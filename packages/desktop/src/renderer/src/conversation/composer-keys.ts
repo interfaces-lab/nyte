@@ -18,12 +18,16 @@ interface EnterKeyState {
 }
 
 export type SubmitAction = "submit" | "submit-alternate";
+
 type ComposerEnterAction = SubmitAction | "newline" | "none";
 
 export function composerEnterAction(event: EnterKeyState): ComposerEnterAction {
   if (event.key !== "Enter" || event.isComposing) return "none";
+
   if (event.shiftKey) return "newline";
+
   if (event.metaKey || event.ctrlKey) return "submit-alternate";
+
   return "submit";
 }
 
@@ -33,14 +37,11 @@ export function submissionDelivery(
   current?: Delivery,
   preference: RunningMessagePreference = "queue",
 ): Delivery {
-  if (current === undefined)
-    return action === "submit"
-      ? choices[preference]
-      : preference === "queue"
-        ? choices.steer
-        : choices.queue;
-  if (action === "submit") return current;
-  return current === choices.steer ? choices.queue : choices.steer;
+  const primary = current ?? choices[preference];
+
+  if (action === "submit") return primary;
+
+  return primary === choices.steer ? choices.queue : choices.steer;
 }
 
 export function modifierKeyLabel(mac: boolean): string {

@@ -14,6 +14,7 @@ import {
   ORIGIN,
   SESSION_TOKEN,
   TOKEN,
+  copilotCatalog,
   deviceCode,
   fakeFetch,
   json,
@@ -49,6 +50,7 @@ test("public Copilot composition bundles and logs in without Node globals", asyn
       [TOKEN]: () => json({ access_token: "github-secret" }),
       [EXCHANGE]: () => sessionToken(),
       [MODELS]: () => json({ data: [{ id: "claude-sonnet-4.6", model_picker_enabled: true }] }),
+      "GET https://models.nyte.sh/github-copilot.json": () => json(copilotCatalog),
     });
     const result = Promise.withResolvers<unknown>();
     const events: unknown[] = [];
@@ -69,6 +71,7 @@ test("public Copilot composition bundles and logs in without Node globals", asyn
         setTimeout,
         clearTimeout,
         crypto: globalThis.crypto,
+        structuredClone,
         postMessage: (message: unknown) => {
           // A real browser bridge clones messages into the receiving realm.
           const received: unknown = structuredClone(message);

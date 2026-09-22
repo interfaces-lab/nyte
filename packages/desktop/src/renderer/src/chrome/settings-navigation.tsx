@@ -105,9 +105,12 @@ export function SettingsNavigation({
 
   const results = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
+
     if (query === "") return undefined;
+
     return SECTION_GROUPS.flat().filter((id) => {
       const { title, keywords } = SECTIONS[id];
+
       return (
         title.toLocaleLowerCase().includes(query) ||
         keywords.some((keyword) => keyword.includes(query))
@@ -127,17 +130,23 @@ export function SettingsNavigation({
       event.preventDefault();
       setSearch("");
       searchRef.current?.blur();
+
       return;
     }
+
     if (results === undefined || results.length === 0 || highlighted === undefined) return;
+
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       const delta = event.key === "ArrowDown" ? 1 : -1;
       setHighlight((current) => (current + delta + results.length) % results.length);
+
       return;
     }
+
     if (event.key === "Enter") {
       const target = results[highlighted];
+
       if (target === undefined) return;
       event.preventDefault();
       setSearch("");

@@ -19,11 +19,14 @@ export function mentionPreviewRows(displayPath: string): readonly MentionPreview
   const segments = displayPath.split("/").filter((segment) => segment !== "");
   // The mention itself always keeps its own row; only the folders above it collapse.
   const collapsed = Math.max(0, segments.length - 1 - MAX_FOLDER_ROWS);
+
   const shown =
     collapsed === 0
       ? segments
       : [segments.slice(0, collapsed).join("/"), ...segments.slice(collapsed)];
+
   const isFolder = displayPath.endsWith("/");
+
   return shown.map((label, index) => ({
     kind: index === shown.length - 1 && !isFolder ? "file" : "folder",
     label,

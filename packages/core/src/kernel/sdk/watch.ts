@@ -38,12 +38,15 @@ function noticeEvent(notice: HostNotice, seq: number): SessionEvent {
         message: notice.message,
         sound: notice.sound === true,
       } satisfies SessionEvent;
+
       return notice.title === undefined ? base : { ...base, title: notice.title };
     }
+
     case "status_changed":
       return { seq, kind: "status_changed", items: notice.items };
     default: {
       const _exhaustive: never = notice;
+
       return _exhaustive;
     }
   }
@@ -60,17 +63,20 @@ export async function* watchSession(options: {
   const source = new AbortController();
   const abort = (): void => source.abort();
   input.signal?.addEventListener("abort", abort, { once: true });
+
   if (input.signal?.aborted) abort();
   const notices: Promise<SessionEvent>[] = [];
   let wake: (() => void) | undefined;
   let iterator: AsyncIterator<Event> | undefined;
   let activationObserved = false;
   let departed = false;
+
   const notify = (): void => {
     const waiting = wake;
     wake = undefined;
     waiting?.();
   };
+
   const enqueue = (notice: HostNotice): Promise<void> => {
     // Reserve arrival order before reading the cursor. Concurrent notices may
     // finish that read in a different order, or while the consumer is at yield.
@@ -81,31 +87,41 @@ export async function* watchSession(options: {
     // reaching it. The original rejection still propagates when it is drained.
     void event.promise.catch(() => undefined);
     notify();
+
     return event.promise.then(() => undefined);
   };
+
   let unsubscribe: Disposer | undefined;
+
   try {
     unsubscribe = options.subscribe((notice) => {
       if (departed) return;
+
       if (notice.kind === "activation_changed") activationObserved = true;
+
       return enqueue(notice);
     });
     const target = await session.events.last();
     const after = "live" in input ? target : (input.afterSeq ?? 0);
     await session.events.read({ afterSeq: after, limit: 0 });
     const activation = await options.activation();
+
     // Cold resolution announces its state through the subscription. A cached
     // resolution does not, so replay it explicitly. Keep every intervening
     // change, including those arriving during the replay's cursor read.
     if (!activationObserved) await enqueue({ kind: "activation_changed", activation });
     let synced = after >= target;
+
     if (synced) yield { seq: target, kind: "synced" };
+
     const durable = session.events
       .watch({ afterSeq: after, signal: source.signal })
       [Symbol.asyncIterator]();
+
     iterator = durable;
     const pending: PendingRead = {};
     let reading = false;
+
     const readNext = (): void => {
       // Exactly one completion registration per read, independent of notices.
       // The durable side retains one result and one wake slot, not a race chain.
@@ -124,6 +140,7 @@ export async function* watchSession(options: {
         },
       );
     };
+
     // Live events the backend already delivered are taken together: one publish
     // then reaches the consumer without a task boundary between its events, so
     // nothing it does in between sees the half-applied state. Replay stays
@@ -133,28 +150,38 @@ export async function* watchSession(options: {
         const take = (): PendingRead["outcome"] => {
           const outcome = pending.outcome;
           pending.outcome = undefined;
+
           return outcome;
         };
+
         if (pending.outcome !== undefined) {
           resolve(take());
+
           return;
         }
+
         readNext();
+
         const later = setImmediate(() => {
           wake = undefined;
           resolve(undefined);
         });
+
         wake = () => {
           clearImmediate(later);
           resolve(take());
         };
       });
+
     readNext();
+
     for (;;) {
       while (notices.length > 0) {
         const notice = notices.shift();
+
         if (notice !== undefined) yield await notice;
       }
+
       if (pending.outcome === undefined) {
         readNext();
         await new Promise<void>((resolve) => {
@@ -162,24 +189,33 @@ export async function* watchSession(options: {
         });
         continue;
       }
+
       const outcome = pending.outcome;
       pending.outcome = undefined;
+
       if (outcome.kind === "error") throw outcome.cause;
+
       if (outcome.result.done) return;
       const group = [outcome.result.value];
+
       while (synced) {
         const next = await buffered();
+
         if (next === undefined || next.kind === "error" || next.result.done) {
           if (next !== undefined) pending.outcome = next;
           break;
         }
+
         group.push(next.result.value);
       }
+
       const projected = await Promise.all(
         group.map((event) => projectEvent(event, session.objects)),
       );
+
       for (const [index, event] of group.entries()) {
         for (const item of projected[index] ?? []) yield item;
+
         // Equal-seq siblings are all part of this barrier, including every commit
         // expanded from the target ref event.
         if (!synced && event.seq >= target) {
@@ -187,6 +223,7 @@ export async function* watchSession(options: {
           yield { seq: target, kind: "synced" };
         }
       }
+
       readNext();
     }
   } finally {

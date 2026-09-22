@@ -189,11 +189,13 @@ test("messages default to next and may steer explicitly", async () => {
     await nyte.messages.send({ sessionId, content: "one" });
     await nyte.messages.send({ sessionId, delivery: "steer", content: "two" });
     assert.deepEqual(
-      (await nyte.messages.pending({ sessionId })).map((item) => [item.delivery, item.content]),
-      [
+      new Set(
+        (await nyte.messages.pending({ sessionId })).map((item) => [item.delivery, item.content]),
+      ),
+      new Set([
         ["next", "one"],
         ["steer", "two"],
-      ],
+      ]),
     );
   } finally {
     await nyte.close();

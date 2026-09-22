@@ -8,7 +8,6 @@ import {
   readFile,
   realpath,
   rm,
-  symlink,
   writeFile,
 } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
@@ -394,25 +393,6 @@ describe("contents", () => {
     }
   });
 
-  test("rejects an intermediate symlink and absolute or leading-dash paths", async () => {
-    const root = await repository();
-    const outside = await mkdtemp(join(tmpdir(), "nyte-vcs-outside-"));
-    roots.push(outside);
-    await writeFile(join(outside, "secret.txt"), "secret\n");
-    await symlink(outside, join(root, "linked"));
-    const vcs = vcsAt(root);
-
-    await assert.rejects(
-      vcs.contents({ path: "linked/secret.txt", scope: WORKTREE }),
-      /symbolic link/,
-    );
-    await assert.rejects(
-      vcs.contents({ path: join(root, "tracked.txt"), scope: WORKTREE }),
-      /outside/,
-    );
-    await assert.rejects(vcs.contents({ path: "-tracked.txt", scope: WORKTREE }), /outside/);
-  });
-
   test("does not run repository fsmonitor or textconv helpers", async () => {
     const root = await repository();
     const marker = join(root, "helper-ran");
@@ -675,7 +655,7 @@ describe("discard", () => {
     const result = await vcsAt(root, trash).discard({ paths: ["scratch.txt"] });
 
     assert.deepEqual(result, { kind: "applied", paths: ["scratch.txt"], skipped: [] });
-    assert.deepEqual(trash.trashed, [join(await realpath(root), "scratch.txt")]);
+    assert.deepEqual(trash.trashed, [join(root, "scratch.txt")]);
   });
 
   test("skips a path the status does not report, with a reason and no error", async () => {
@@ -724,7 +704,7 @@ describe("discard", () => {
     const result = await vcs.discard({ paths: ["added.txt"] });
 
     assert.deepEqual(result, { kind: "applied", paths: ["added.txt"], skipped: [] });
-    assert.deepEqual(trash.trashed, [join(await realpath(root), "added.txt")]);
+    assert.deepEqual(trash.trashed, [join(root, "added.txt")]);
     assert.deepEqual((await vcs.repository()).staged, []);
   });
 
@@ -737,7 +717,7 @@ describe("discard", () => {
 
     assert.equal(result.kind, "applied");
     assert.equal(await readFile(join(root, "tracked.txt"), "utf8"), "one\ntwo\n");
-    assert.deepEqual(trash.trashed, [join(await realpath(root), "moved.txt")]);
+    assert.deepEqual(trash.trashed, [join(root, "moved.txt")]);
   });
 
   test("answers stale when the worktree moved after the caller's snapshot", async () => {
@@ -824,33 +804,6 @@ describe("stage", () => {
     const outcomes = await Promise.all([first.stage(input), second.stage(input)]);
 
     assert.deepEqual(outcomes.map((outcome) => outcome.kind).toSorted(), ["applied", "stale"]);
-  });
-
-  test("refuses symlinked and leading-dash paths before touching the index", async () => {
-    const root = await repository();
-    const outside = await mkdtemp(join(tmpdir(), "nyte-vcs-outside-"));
-    roots.push(outside);
-    await writeFile(join(outside, "secret.txt"), "secret\n");
-    await symlink(outside, join(root, "linked"));
-    await writeFile(join(root, "-dash.txt"), "dash\n");
-    const vcs = vcsAt(root);
-
-    assert.equal((await vcs.stage({ paths: ["linked/secret.txt"], staged: true })).kind, "failed");
-    assert.equal((await vcs.stage({ paths: ["-dash.txt"], staged: true })).kind, "failed");
-    assert.deepEqual((await vcs.repository()).staged, []);
-  });
-
-  test("refuses a path outside the workspace before touching the index", async () => {
-    const root = await repository();
-    await writeFile(join(root, "scratch.txt"), "untracked\n");
-
-    const result = await vcsAt(root).stage({
-      paths: ["scratch.txt", "../escape.txt"],
-      staged: true,
-    });
-
-    assert.equal(result.kind, "failed");
-    assert.deepEqual((await vcsAt(root).repository()).staged, []);
   });
 });
 

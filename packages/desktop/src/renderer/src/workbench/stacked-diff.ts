@@ -1,4 +1,5 @@
 const FAILED_PATCH = "The patch could not be read.";
+
 export const EMPTY_PATCH = "No text diff is available for this file.";
 
 export type ChangeStackSection =
@@ -31,6 +32,7 @@ export function uncommittedStackSection({
       return { kind: "diff", path, patch: state.patch };
     default: {
       const _exhaustive: never = state;
+
       return _exhaustive;
     }
   }

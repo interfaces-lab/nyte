@@ -25,6 +25,7 @@ import {
 } from "../../../shared/client-actions.ts";
 
 const TABS = ["all", "agents", "files", "actions", "settings"] as const;
+
 type PaletteTab = (typeof TABS)[number];
 
 interface SearchPaletteProps {
@@ -57,6 +58,7 @@ function sessionTitle(session: SessionInfo): string {
 
 function matches(action: PaletteAction, query: string): boolean {
   const normalized = query.trim().toLocaleLowerCase();
+
   return (
     normalized === "" ||
     action.label.toLocaleLowerCase().includes(normalized) ||
@@ -78,6 +80,7 @@ function tabLabel(tab: PaletteTab): string {
       return "Settings";
     default: {
       const _exhaustive: never = tab;
+
       return _exhaustive;
     }
   }
@@ -107,14 +110,18 @@ export function SearchPalette({
   const searchingAgents = includesAgents && query.trim() !== "";
   const recentSessions = useSessionPreview(open && sessionQueriesAvailable && includesAgents);
   const sessionSearch = useSessionSearch(query, open && sessionQueriesAvailable && searchingAgents);
+
   const sessions = sessionsForNavigation(
     searchingAgents ? (sessionSearch.data?.items ?? []) : (recentSessions.data?.items ?? []),
   );
+
   const mac = macPlatform(platform);
 
   const actions: readonly PaletteAction[] = Object.values(clientActions).flatMap((action) => {
     if (!("palette" in action)) return [];
+
     if (action.id === "open-home" && onOpenHome === undefined) return [];
+
     const run = (): void => {
       switch (action.id) {
         case "new-chat":
@@ -135,11 +142,14 @@ export function SearchPalette({
           return onOpenCustomize();
         default: {
           const _exhaustive: never = action;
+
           return _exhaustive;
         }
       }
     };
+
     const keys = clientActionKeys(action, mac);
+
     return [
       {
         key: action.id,
@@ -150,9 +160,11 @@ export function SearchPalette({
       },
     ];
   });
+
   const visibleActions = actions.filter(
     (action) => (tab === "all" || tab === action.group) && matches(action, query),
   );
+
   // One stable node the whole time the palette is open: a live region that
   // appears and disappears with the list announces nothing.
   const resultCount =
@@ -179,17 +191,21 @@ export function SearchPalette({
     const onKeyDown = (event: KeyboardEvent): void => {
       if (resolveClientAction(event, mac, "workspace")?.id !== "search") return;
       event.preventDefault();
+
       if (open) setQuery("");
       else setTab("all");
       onOpenChange(!open);
     };
+
     window.addEventListener("keydown", onKeyDown);
+
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [mac, open, onOpenChange]);
 
   useEffect(() => {
     if (!open) return undefined;
     const frame = window.requestAnimationFrame(() => inputRef.current?.focus());
+
     return () => window.cancelAnimationFrame(frame);
   }, [open]);
 
@@ -197,6 +213,7 @@ export function SearchPalette({
     const items = popupRef.current?.querySelectorAll<HTMLElement>(
       '[role="menuitem"]:not([data-disabled])',
     );
+
     if (items === undefined || items.length === 0) return;
     items[edge === "first" ? 0 : items.length - 1]?.focus();
   };
@@ -208,24 +225,28 @@ export function SearchPalette({
           Loading chats…
         </div>
       );
+
     if (searchingAgents ? sessionSearch.isPending : recentSessions.isPending)
       return (
         <div aria-busy="true" {...stylex.props(styles.empty)}>
           Loading chats…
         </div>
       );
+
     if (searchingAgents ? sessionSearch.isError : recentSessions.isError)
       return embedded ? null : (
         <div role="alert" {...stylex.props(styles.empty)}>
           Couldn&rsquo;t load chats. Try again.
         </div>
       );
+
     if (sessions.length === 0)
       return embedded ? null : (
         <div {...stylex.props(styles.empty)}>
           {searchingAgents ? `No chats match "${query.trim()}"` : "No chats yet"}
         </div>
       );
+
     return (
       <>
         <div {...stylex.props(styles.groupLabel)}>{searchingAgents ? "Chats" : "Recent chats"}</div>

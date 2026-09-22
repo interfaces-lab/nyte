@@ -53,6 +53,7 @@ export function livePartKey(runId: RunId, attempt: number, index: number): strin
 /** Streaming or calling tools is work; a retry waits out its delay; a flagged stop is settling; anything else leaves the overlay idle. */
 export function liveRun(run: RunInfo | undefined): LiveRun {
   if (run === undefined) return { runState: "idle" };
+
   switch (run.phase.kind) {
     case "respond":
     case "tools":
@@ -72,6 +73,7 @@ export function liveRun(run: RunInfo | undefined): LiveRun {
       return { runState: "idle" };
     default: {
       const _exhaustive: never = run.phase;
+
       return _exhaustive;
     }
   }
@@ -90,12 +92,15 @@ function sameTools(
   next: ReadonlyMap<string, LiveToolProgress>,
 ): boolean {
   if (previous.size !== next.size) return false;
+
   for (const [callId, tool] of next) {
     const before = previous.get(callId);
+
     if (before === undefined || before.runId !== tool.runId || before.progress !== tool.progress) {
       return false;
     }
   }
+
   return true;
 }
 
@@ -104,6 +109,7 @@ function sameOrder(previous: readonly LivePartRef[], next: readonly LivePartRef[
     previous.length === next.length &&
     previous.every((ref, index) => {
       const other = next[index];
+
       return (
         other !== undefined &&
         ref.kind === other.kind &&
@@ -127,6 +133,7 @@ export function projectLive(
   run: RunInfo | undefined,
 ): LiveSnapshot {
   const state = liveRun(run);
+
   if (parts === previous.parts) {
     return sameRun(previous, state)
       ? previous
@@ -139,10 +146,12 @@ export function projectLive(
           order: previous.order,
         };
   }
+
   const text = new Map<string, string>();
   const thinking = new Map<string, string>();
   const tools = new Map<string, LiveToolProgress>();
   const order: LivePartRef[] = [];
+
   for (const part of parts) {
     if (part.kind === "tool") {
       const before = previous.tools.get(part.callId);
@@ -154,15 +163,19 @@ export function projectLive(
       );
       continue;
     }
+
     const key = livePartKey(part.runId, part.attempt, part.index);
     const texts = part.kind === "text" ? text : thinking;
+
     // A settled response and its successor may reuse the stream identity
     // while a snapshot is pending; both generations stay visible in this slot.
     if (!texts.has(key)) {
       order.push({ kind: part.kind, runId: part.runId, attempt: part.attempt, index: part.index });
     }
+
     texts.set(key, (texts.get(key) ?? "") + part.text);
   }
+
   return {
     ...state,
     parts,

@@ -14,10 +14,12 @@ import {
 } from "./workspace.ts";
 
 const textPart = Type.Object({ type: Type.Literal("text"), text: Type.String() });
+
 const imagePart = Type.Object({
   type: Type.Literal("image_url"),
   image_url: Type.Object({ url: Type.String() }),
 });
+
 const requestSchema = Type.Object({
   model: Type.String(),
   stream: Type.Literal(true),
@@ -60,7 +62,9 @@ const requestSchema = Type.Object({
     ),
   ),
 });
+
 const requestParser = Compile(requestSchema);
+
 export type ProviderPayload = Static<typeof requestSchema>;
 
 export type ProviderAction =
@@ -88,6 +92,7 @@ export interface CapturedRequest {
   readonly payload: ProviderPayload;
   readonly script: string;
 }
+
 export interface ProviderEvent {
   readonly requestId: number;
   readonly stage:
@@ -119,11 +124,22 @@ export interface ProviderController {
 
 type ProviderMessage = ProviderPayload["messages"][number];
 
+interface CompletionDelta {
+  readonly role?: "assistant";
+  readonly content?: string;
+  readonly reasoning_content?: string;
+  readonly tool_calls?: readonly {
+    readonly index: number;
+    readonly id?: string;
+    readonly type?: "function";
+    readonly function: { readonly name?: string; readonly arguments: string };
+  }[];
+}
+
 function messageText(message: ProviderMessage): string {
-  if (typeof message.content === "string") return message.content;
-  return (
-    message.content?.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n") ?? ""
-  );
+  if (!Array.isArray(message.content)) return message.content ?? "";
+
+  return message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
 }
 
 /**
@@ -135,9 +151,12 @@ function messageText(message: ProviderMessage): string {
  */
 function newestInputs(messages: readonly ProviderMessage[]): string[] {
   const last = messages.findLastIndex((message) => message.role === "user");
+
   if (last === -1) return [];
   let first = last;
+
   while (first > 0 && messages[first - 1]?.role === "user") first -= 1;
+
   return messages.slice(first, last + 1).map(messageText);
 }
 
@@ -153,27 +172,35 @@ export async function openProvider(
   const errors: string[] = [];
   const held = new Map<number, (tail?: string) => void>();
   let closed = false;
+
   const record = (requestId: number, stage: ProviderEvent["stage"]) => {
     events.push({ requestId, stage, at: Date.now() });
   };
+
   const serve = async (request: IncomingMessage, response: ServerResponse) => {
     // Absolute-form proxy traffic is never forwarded. The fixture has no outbound HTTP client.
     if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
       errors.push(`Blocked ${request.method ?? "unknown"} ${request.url ?? "unknown"}`);
       response.writeHead(403).end("QA accepts only loopback chat completions");
+
       return;
     }
+
     if (request.headers.authorization !== `Bearer ${FIXTURE_API_KEY}`) {
       throw new Error("Unexpected provider credentials");
     }
+
     let body = "";
     request.setEncoding("utf8");
+
     for await (const part of request) {
-      if (typeof part !== "string") throw new Error("Expected UTF-8 request body");
-      body += part;
+      body += String(part);
+
       if (body.length > 16 * 1024 * 1024) throw new Error("Request exceeds 16 MiB");
     }
+
     const raw: unknown = JSON.parse(body);
+
     if (!requestParser.Check(raw))
       throw new Error(
         `Invalid chat-completions request: ${JSON.stringify(requestParser.Errors(raw))}`,
@@ -181,24 +208,29 @@ export async function openProvider(
     const payload = raw;
     const inputs = newestInputs(payload.messages);
     const prompt = inputs.at(-1) ?? "";
+
     const inputImages = payload.messages.flatMap((message) =>
       Array.isArray(message.content)
         ? message.content.flatMap((part) => (part.type === "image_url" ? [part.image_url.url] : []))
         : [],
     );
+
     const index = queue.findIndex((step) => {
       if (step.model !== undefined && step.model !== payload.model) return false;
       const wanted = step.prompt;
+
       return wanted === undefined || inputs.some((input) => input.includes(wanted));
     });
+
     const title =
       payload.model === FIXTURE_TITLE_MODEL &&
       payload.messages.some(
         (message) =>
           (message.role === "system" || message.role === "developer") &&
-          typeof message.content === "string" &&
-          message.content.includes("You are a title generator."),
+          !Array.isArray(message.content) &&
+          message.content?.includes("You are a title generator.") === true,
       );
+
     const step: ProviderStep | undefined = title
       ? {
           name: "automatic conversation title",
@@ -207,6 +239,7 @@ export async function openProvider(
       : index >= 0
         ? queue.splice(index, 1)[0]
         : undefined;
+
     const id = requests.length + 1;
     requests.push({
       id,
@@ -219,11 +252,14 @@ export async function openProvider(
     record(id, "received");
     response.on("close", () => {
       held.delete(id);
+
       if (!response.writableFinished) record(id, "aborted");
     });
+
     if (step === undefined)
       throw new Error(`Unscripted request ${id}: ${payload.model}: ${prompt}`);
     const action = step.action;
+
     if (action.kind === "fail") {
       record(id, "failed");
       response.writeHead(action.status ?? 400, {
@@ -233,19 +269,23 @@ export async function openProvider(
       response.end(
         JSON.stringify({ error: { message: action.message, type: "qa_error", code: "qa_error" } }),
       );
+
       return;
     }
+
     if (
       action.kind === "tool" &&
       !payload.tools?.some((tool) => tool.function.name === action.name)
     ) {
       throw new Error(`The binary did not offer tool ${action.name}`);
     }
+
     response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
     response.flushHeaders();
     record(id, "streaming");
     const created = Math.floor(Date.now() / 1000);
-    const chunk = (delta: object, finishReason: "stop" | "tool_calls" | null = null) => {
+
+    const chunk = (delta: CompletionDelta, finishReason: "stop" | "tool_calls" | null = null) => {
       response.write(
         `data: ${JSON.stringify({
           id: `chatcmpl-qa-${id}`,
@@ -256,8 +296,10 @@ export async function openProvider(
         })}\n\n`,
       );
     };
+
     const finish = (tail = "") => {
       if (response.destroyed || response.writableEnded) return;
+
       if (tail) chunk({ content: tail });
       chunk({}, action.kind === "tool" ? "tool_calls" : "stop");
       const promptTokens = step.promptTokens ?? 20;
@@ -278,7 +320,9 @@ export async function openProvider(
       response.end("data: [DONE]\n\n");
       record(id, "completed");
     };
+
     chunk({ role: "assistant", content: "" });
+
     if (action.kind === "tool") {
       chunk({
         tool_calls: [
@@ -294,24 +338,32 @@ export async function openProvider(
         tool_calls: [{ index: 0, function: { arguments: JSON.stringify(action.arguments) } }],
       });
       finish();
+
       return;
     }
+
     if (action.kind === "reasoning") chunk({ reasoning_content: action.thinking });
+
     if (action.text) chunk({ content: action.text });
+
     if (action.kind === "reply" || action.kind === "reasoning") {
       finish();
+
       return;
     }
+
     held.set(id, (tail) => {
       record(id, "released");
       finish(tail ?? action.tail ?? "");
     });
     record(id, "held");
   };
+
   const server = createServer((request, response) => {
     void serve(request, response).catch((cause: unknown) => {
       const message = cause instanceof Error ? cause.message : String(cause);
       errors.push(message);
+
       if (response.headersSent) response.destroy();
       else
         response
@@ -319,6 +371,7 @@ export async function openProvider(
           .end(JSON.stringify({ error: { message } }));
     });
   });
+
   server.on("connect", (request, socket) => {
     errors.push(`Blocked CONNECT ${request.url ?? "unknown"}`);
     socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
@@ -332,18 +385,23 @@ export async function openProvider(
     });
   });
   const address = server.address();
+
   if (address === null || typeof address === "string")
     throw new Error("Expected loopback TCP listener");
   const root = `http://127.0.0.1:${address.port}`;
+
   const wait = async (predicate: () => boolean, timeoutMs: number, description: string) => {
     const deadline = Date.now() + timeoutMs;
+
     while (!predicate()) {
       if (closed) throw new Error(`Provider closed while waiting for ${description}`);
+
       if (Date.now() >= deadline)
         throw new Error(`Timed out waiting for ${description}; ${errors.join("; ")}`);
       await setTimeout(10);
     }
   };
+
   return {
     root,
     baseUrl: `${root}/v1`,
@@ -356,6 +414,7 @@ export async function openProvider(
     },
     release(id, tail) {
       const release = held.get(id);
+
       if (!release) throw new Error(`Request ${id} is not held`);
       held.delete(id);
       release(tail);
@@ -363,7 +422,9 @@ export async function openProvider(
     async waitForRequest(predicate = () => true, timeoutMs = 10_000) {
       await wait(() => requests.some(predicate), timeoutMs, "provider request");
       const request = requests.find(predicate);
+
       if (!request) throw new Error("Captured request disappeared");
+
       return request;
     },
     waitForStage(id, stage, timeoutMs = 10_000) {
@@ -401,17 +462,18 @@ export function subagentRequest(options: {
   readonly background: boolean;
   readonly prompt: string;
 }): ProviderStep {
+  const taskArguments = {
+    model: `${FIXTURE_PROVIDER}/${FIXTURE_CHILD_MODEL}`,
+    prompt: options.prompt,
+  };
+
   return {
     name: options.background ? "background subagent" : "foreground subagent",
     model: FIXTURE_MODEL,
     action: {
       kind: "tool",
       name: "task",
-      arguments: {
-        model: `${FIXTURE_PROVIDER}/${FIXTURE_CHILD_MODEL}`,
-        prompt: options.prompt,
-        ...(options.background ? { waitMs: 0 } : {}),
-      },
+      arguments: options.background ? { ...taskArguments, waitMs: 0 } : taskArguments,
     },
   };
 }

@@ -99,6 +99,7 @@ function failureMessage(outcome: Exclude<ConfigureOutcome, { kind: "queued" }>, 
       return "Unknown agent";
     default: {
       const _exhaustive: never = outcome;
+
       return _exhaustive;
     }
   }
@@ -165,55 +166,68 @@ export class SessionConfigurator {
     const preparation: Preparation = { outcome: { kind: "pending" } };
     this.latestPreparation = preparation;
     const settled = Promise.withResolvers<ConfigureResult>();
+
     const apply = (patch: ConfigPatch | undefined): void => {
       preparation.outcome = { kind: "ready" };
       settled.resolve(patch === undefined ? { kind: "superseded" } : this.requestPrepared(patch));
     };
+
     const fail = (cause: unknown): void => {
       const result: ConfigureResult = {
         kind: "failed",
         message: cause instanceof Error ? cause.message : String(cause),
       };
+
       preparation.outcome = result;
       settled.resolve(result);
     };
+
     this.preparations.push(() => {
       try {
         const patch = prepare(this.selected);
+
         if (patch instanceof Promise) return patch.then(apply, fail);
         apply(patch);
       } catch (cause) {
         fail(cause);
       }
+
       return undefined;
     });
     this.prepareNext();
+
     return settled.promise;
   }
 
   private prepareNext(): void {
     if (this.preparing) return;
+
     while (this.preparations.length > 0) {
       const work = this.preparations.shift();
       const pending = work?.();
+
       if (pending instanceof Promise) {
         this.preparing = true;
         void pending.finally(() => {
           this.preparing = false;
           this.prepareNext();
         });
+
         return;
       }
     }
+
     this.reconcile();
   }
 
   private requestPrepared(patch: ConfigPatch): Promise<ConfigureResult> {
     const base = this.selected;
+
     const choice: RunChoice = {
       model: patch.model ?? base.model,
       thinkingLevel: patch.thinkingLevel ?? base.thinkingLevel,
     };
+
     const intent: Intent = {
       kind: "config",
       choice,
@@ -221,10 +235,13 @@ export class SessionConfigurator {
       result: undefined,
       settled: Promise.withResolvers<ConfigureResult>(),
     };
+
     this.selectedChoice = choice;
     this.queue.push(intent);
+
     if (!this.disposed) this.options.onChange(choice);
     this.pump();
+
     return intent.settled.promise;
   }
 
@@ -233,6 +250,7 @@ export class SessionConfigurator {
     // Only submissions registered during this discovery inherit its failure.
     const preparation =
       this.latestPreparation?.outcome.kind === "pending" ? this.latestPreparation : undefined;
+
     const configured = Promise.withResolvers<ConfigureResult | undefined>();
     let reserved: SubmissionSlot | undefined;
     let released = false;
@@ -243,10 +261,12 @@ export class SessionConfigurator {
       configured.resolve(reserved.configured.then((result) => failure ?? result));
     });
     this.prepareNext();
+
     return {
       configured: configured.promise,
       release: () => {
         released = true;
+
         if (reserved === undefined) configured.resolve(undefined);
         else reserved.release();
       },
@@ -261,15 +281,19 @@ export class SessionConfigurator {
       reached: false,
       released: false,
     };
+
     this.queue.push(slot);
     this.pump();
+
     return {
       configured: slot.configured.promise,
       release: () => {
         if (slot.released) return;
         slot.released = true;
         const index = this.queue.indexOf(slot);
+
         if (index !== -1) this.queue.splice(index, 1);
+
         // Released before its turn came: nothing was waited for.
         if (!slot.reached) slot.configured.resolve(undefined);
         this.pump();
@@ -288,9 +312,11 @@ export class SessionConfigurator {
 
   private reconcile(): void {
     if (this.acknowledgedChoice !== undefined) return;
+
     if (this.pending) return;
     const previous = this.selected;
     this.selectedChoice = undefined;
+
     if (!this.disposed && !sameChoice(previous, this.selected))
       this.options.onChange(this.selected);
   }
@@ -298,7 +324,9 @@ export class SessionConfigurator {
   private pump(): void {
     if (this.inFlight !== undefined) return;
     const head = this.queue[0];
+
     if (head === undefined) return;
+
     if (head.kind === "slot") {
       // Everything selected before the message has settled; the slot now
       // holds later configuration until the message is admitted.
@@ -306,30 +334,39 @@ export class SessionConfigurator {
         head.reached = true;
         head.configured.resolve(head.awaiting?.result);
       }
+
       return;
     }
+
     const run: Intent[] = [];
+
     for (const entry of this.queue) {
       if (!isIntent(entry)) break;
       run.push(entry);
     }
+
     this.queue.splice(0, run.length);
     const next = run.pop();
+
     if (next === undefined) return;
     // The newest choice already includes every earlier change; the dispatch
     // names each field any of them touched, plus what a failed one left behind.
     const touched = [...run, next];
+
     const carriesModel =
       this.carried.model !== undefined ||
       touched.some((intent) => intent.patch.model !== undefined);
+
     const carriesLevel =
       this.carried.thinkingLevel !== undefined ||
       touched.some((intent) => intent.patch.thinkingLevel !== undefined);
+
     this.carried = {};
-    next.patch = {
-      ...(carriesModel ? { model: next.choice.model } : {}),
-      ...(carriesLevel ? { thinkingLevel: next.choice.thinkingLevel } : {}),
-    };
+    const modelPatch: ConfigPatch = carriesModel ? { model: next.choice.model } : {};
+    next.patch = carriesLevel
+      ? { ...modelPatch, thinkingLevel: next.choice.thinkingLevel }
+      : modelPatch;
+
     for (const intent of run) this.settle(intent, { kind: "superseded" });
     this.inFlight = next;
     void this.dispatch(next);
@@ -337,8 +374,10 @@ export class SessionConfigurator {
 
   private async dispatch(intent: Intent): Promise<void> {
     let result: ConfigureResult;
+
     try {
       const outcome = await this.options.configure(intent.patch);
+
       if (outcome.kind === "queued") {
         result = { kind: "acknowledged" };
       } else {
@@ -347,10 +386,13 @@ export class SessionConfigurator {
     } catch (cause) {
       result = { kind: "failed", message: cause instanceof Error ? cause.message : String(cause) };
     }
+
     this.inFlight = undefined;
+
     if (result.kind === "acknowledged") {
       this.revision += 1;
       this.acknowledgedChoice = intent.choice;
+
       if (!this.disposed) this.options.onAcknowledged(intent.choice, intent.patch);
     } else if (this.queue.some(isIntent)) {
       // A newer intent was computed on top of this one; it must establish these fields itself.
@@ -358,8 +400,10 @@ export class SessionConfigurator {
     } else {
       // Nothing newer was asked for, so the failed choice stops being shown.
       this.selectedChoice = this.acknowledgedChoice;
+
       if (!this.disposed) this.options.onChange(this.selected);
     }
+
     this.reconcile();
     this.settle(intent, result);
     this.pump();

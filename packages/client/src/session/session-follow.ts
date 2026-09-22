@@ -17,7 +17,7 @@
  * https://github.com/earendil-works/pi/blob/71dca871/packages/coding-agent/src/experimental/services/transcript-provider.ts
  * (rebase only on structural change). Synced with pi 71dca871.
  */
-import type { HeadName, RemoteNyte, SessionEvent, SessionId } from "@nyte-ai/protocol";
+import type { HeadName, RemoteNyte, RunId, SessionEvent, SessionId } from "@nyte-ai/protocol";
 import {
   foldEvent,
   stateFromSnapshot,
@@ -36,6 +36,8 @@ export type SessionUpdate = {
     | { readonly kind: "snapshot" }
     /** Session metadata re-read after events, without a new event. */
     | { readonly kind: "metadata" }
+    /** This client asked the run to stop; the store's flag has not arrived yet. */
+    | { readonly kind: "stop" }
     | { readonly kind: "event"; readonly event: SessionEvent }
   );
 
@@ -94,6 +96,7 @@ function touchesMetadata(event: SessionEvent): boolean {
       return false;
     default: {
       const _exhaustive: never = event;
+
       return _exhaustive;
     }
   }
@@ -129,6 +132,7 @@ export class SessionObserver {
   /** Every update after this call, until the returned function runs or the observer closes. */
   subscribe(listener: (update: SessionUpdate) => void): () => void {
     this.listeners.add(listener);
+
     return () => {
       this.listeners.delete(listener);
     };
@@ -153,17 +157,36 @@ export class SessionObserver {
     if (this.loop !== undefined) this.markMetadataDirty(this.loop);
   }
 
+  /** Stop drawing the run now; frames still in flight for it are dropped. `resync` undoes a failed request. */
+  requestStop(runId: RunId): void {
+    const state = this.current;
+
+    if (
+      state?.run === undefined ||
+      state.run.runId !== runId ||
+      state.run.abortRequested === true
+    ) {
+      return;
+    }
+
+    const next: SessionState = { ...state, run: { ...state.run, abortRequested: true } };
+    this.current = next;
+    this.publish({ kind: "stop", state: next, selectedVersion: undefined });
+  }
+
   close(): void {
     this.closed = true;
     this.listeners.clear();
     this.loop?.abort();
     this.loop = undefined;
+
     if (this.settleTimer !== undefined) clearTimeout(this.settleTimer);
   }
 
   private rebase(): Promise<SessionState> {
     if (this.closed) return Promise.reject(new Error("The session observer is closed"));
     const loop = this.replaceLoop();
+
     return new Promise((resolve, reject) => {
       loop.signal.addEventListener(
         "abort",
@@ -181,6 +204,7 @@ export class SessionObserver {
     // The next snapshot carries current metadata; a read still in flight belongs to the old loop.
     this.metadataDirty = false;
     this.metadataRefreshing = false;
+
     return loop;
   }
 
@@ -201,6 +225,7 @@ export class SessionObserver {
     if (version !== this.options.selectionVersion?.() || read < this.appliedSelectedRead)
       return false;
     this.appliedSelectedRead = read;
+
     return true;
   }
 
@@ -209,14 +234,17 @@ export class SessionObserver {
     const version = this.options.selectionVersion?.();
     const read = ++this.selectedRead;
     const head = this.options.head;
+
     const snapshot = await this.nyte.sessions.snapshot(
       head === undefined
         ? { sessionId: this.options.sessionId }
         : { sessionId: this.options.sessionId, head },
     );
+
     if (snapshot === undefined) throw new Error(`Session not found: ${this.options.sessionId}`);
     const projected = stateFromSnapshot(snapshot);
     const relevant = !loop.signal.aborted && this.acceptSelected(version, read);
+
     const state =
       relevant || this.current === undefined
         ? projected
@@ -224,11 +252,14 @@ export class SessionObserver {
             ...projected,
             info: { ...projected.info, config: this.current.info.config },
           };
+
     if (loop.signal.aborted) return state;
     this.current = state;
     this.publish({ kind: "snapshot", state, selectedVersion: relevant ? version : undefined });
+
     // The selection moved during the read; the metadata loop reads it again.
     if (version !== this.options.selectionVersion?.()) this.markMetadataDirty(loop);
+
     return state;
   }
 
@@ -246,10 +277,12 @@ export class SessionObserver {
     const live = (): boolean => !loop.signal.aborted;
     let cursor: number | undefined;
     let first = onFirst;
+
     while (live()) {
       if (cursor === undefined) {
         try {
           const state = await this.snapshot(loop);
+
           if (!live()) return;
           cursor = state.seq;
           first?.(state);
@@ -259,28 +292,36 @@ export class SessionObserver {
           this.options.onError?.(toError(cause));
           await this.pause(loop);
         }
+
         continue;
       }
+
       let resnapshot = false;
+
       try {
         const events = this.nyte.watch({
           sessionId: this.options.sessionId,
           afterSeq: cursor,
           signal: loop.signal,
         });
+
         for await (const event of events) {
           if (!live()) return;
           const state = this.current;
+
           if (state === undefined) return;
           const outcome = foldEvent(state, event);
+
           if (outcome.kind === "resnapshot") {
             resnapshot = true;
             break;
           }
+
           const next = outcome.state;
           this.current = next;
           this.publish({ kind: "event", state: next, event, selectedVersion: undefined });
           this.scheduleSettle(loop);
+
           // The read runs behind the fold so its publication never waits on the store.
           if (touchesMetadata(event)) this.markMetadataDirty(loop);
         }
@@ -288,14 +329,18 @@ export class SessionObserver {
         if (!live()) return;
         this.options.onError?.(toError(cause));
       }
+
       cursor = undefined;
+
       if (!live()) return;
+
       if (!resnapshot) await this.pause(loop);
     }
   }
 
   private markMetadataDirty(loop: AbortController): void {
     this.metadataDirty = true;
+
     if (this.metadataRefreshing) return;
     this.metadataRefreshing = true;
     void this.refreshMetadata(loop);
@@ -309,23 +354,30 @@ export class SessionObserver {
    */
   private async refreshMetadata(loop: AbortController): Promise<void> {
     const live = (): boolean => this.loop === loop;
+
     while (live() && this.metadataDirty) {
       this.metadataDirty = false;
       const version = this.options.selectionVersion?.();
       const read = ++this.selectedRead;
       const head = this.current?.head;
+
       if (head === undefined) break;
       const generation = this.snapshots;
+
       try {
         const metadata = await this.nyte.sessions.metadata({
           sessionId: this.options.sessionId,
           head,
         });
+
         if (!live()) return;
+
         // A full snapshot or a newer event overtook this read; the loop reads again.
         if (generation !== this.snapshots || this.metadataDirty) continue;
+
         if (metadata === undefined) throw new Error(`Session not found: ${this.options.sessionId}`);
         const state = this.current;
+
         if (state === undefined) break;
         const relevant = this.acceptSelected(version, read);
         const next = stateWithMetadata(state, metadata, relevant);
@@ -335,6 +387,7 @@ export class SessionObserver {
           state: next,
           selectedVersion: relevant ? version : undefined,
         });
+
         if (!relevant && version !== this.options.selectionVersion?.()) this.metadataDirty = true;
       } catch (cause) {
         if (!live()) return;
@@ -343,6 +396,7 @@ export class SessionObserver {
         await this.pause(loop);
       }
     }
+
     if (live()) this.metadataRefreshing = false;
   }
 
@@ -357,6 +411,7 @@ export class SessionObserver {
     this.settleTimer = setTimeout(() => {
       this.settleTimer = undefined;
       const state = this.current;
+
       if (loop.signal.aborted || state === undefined || !tipMismatch(state)) return;
       // An automatic rebase has no caller waiting for a snapshot promise.
       void this.follow(this.replaceLoop());
@@ -366,11 +421,13 @@ export class SessionObserver {
   private pause(loop: AbortController): Promise<void> {
     return new Promise((resolve) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
+
       const done = (): void => {
         if (timer !== undefined) clearTimeout(timer);
         loop.signal.removeEventListener("abort", done);
         resolve();
       };
+
       timer = setTimeout(done, this.options.retryMs ?? DEFAULT_RETRY_MS);
       loop.signal.addEventListener("abort", done, { once: true });
     });

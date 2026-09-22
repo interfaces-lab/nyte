@@ -337,8 +337,9 @@ describe("outbox", () => {
     const submitted = outbox.submit({ sessionId: SESSION, content: "hello" });
     await tick();
 
-    assert.deepEqual(await outbox.withdraw("key-1"), { kind: "withdrawn" });
+    const withdrawal = outbox.withdraw("key-1");
     release();
+    assert.deepEqual(await withdrawal, { kind: "withdrawn" });
     await submitted;
     await tick();
 

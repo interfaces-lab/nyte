@@ -1,6 +1,7 @@
 import type { SessionId, SessionInfo, ToolClass } from "@nyte-ai/protocol";
 
 type ChildSessionName = Pick<SessionInfo, "sessionId" | "name" | "preview">;
+
 type DelegateClass = Extract<ToolClass, { readonly kind: "delegate" }>;
 
 export function indexDelegateNames(
@@ -25,6 +26,7 @@ function delegateVerb(role: DelegateClass["role"], settled: boolean): string {
       return settled ? "Stopped" : "Stopping";
     default: {
       const _exhaustive: never = role;
+
       return _exhaustive;
     }
   }
@@ -36,6 +38,7 @@ export function delegateTitle(
   names: ReadonlyMap<SessionId, string>,
 ): string {
   const delegateTarget = toolClass.target;
+
   const target = (() => {
     switch (delegateTarget.kind) {
       case "one":
@@ -44,9 +47,11 @@ export function delegateTitle(
         return delegateTarget.sessions.map((session) => names.get(session) ?? session).join(", ");
       default: {
         const _exhaustive: never = delegateTarget;
+
         return _exhaustive;
       }
     }
   })();
+
   return `${delegateVerb(toolClass.role, settled)} ${target}`;
 }

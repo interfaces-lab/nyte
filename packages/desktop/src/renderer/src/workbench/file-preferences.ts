@@ -13,6 +13,7 @@ const filePreferencesSchema = Type.Object(
   },
   { additionalProperties: false },
 );
+
 export type FilePreferences = Static<typeof filePreferencesSchema>;
 
 export const defaultFilePreferences: FilePreferences = {
@@ -28,8 +29,10 @@ const STORAGE_KEY = "nyte:desktop:file-preferences:v1";
 
 export function decodeFilePreferences(serialized: string | null): FilePreferences {
   if (serialized === null) return defaultFilePreferences;
+
   try {
     const value: unknown = JSON.parse(serialized);
+
     return Value.Check(filePreferencesSchema, value) ? value : defaultFilePreferences;
   } catch {
     return defaultFilePreferences;
@@ -45,21 +48,25 @@ function readPreferences(): FilePreferences {
 }
 
 let snapshot = readPreferences();
+
 const listeners = new Set<() => void>();
 
 export function setFilePreference(key: keyof FilePreferences, value: boolean): void {
   if (snapshot[key] === value) return;
   snapshot = { ...snapshot, [key]: value };
+
   try {
     globalThis.window?.localStorage?.setItem(STORAGE_KEY, JSON.stringify(snapshot));
   } catch {
     // Disabled storage must not prevent changing editor preferences in this window.
   }
+
   for (const listener of listeners) listener();
 }
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
+
   return () => listeners.delete(listener);
 }
 

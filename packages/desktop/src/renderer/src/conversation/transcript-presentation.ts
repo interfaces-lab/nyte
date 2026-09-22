@@ -1,9 +1,12 @@
 import { sessionId } from "@nyte-ai/protocol";
 import type { ParkedCall, SessionId, ToolTurnPart, TurnPart } from "@nyte-ai/protocol";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { messageParts } from "./message-references.ts";
 import type { ToolPhase } from "./tool-copy.ts";
 
 type AssistantTurnPart = Extract<TurnPart, { readonly kind: "assistant" }>;
+
 export type WorkTurnPart = Extract<TurnPart, { readonly kind: "thinking" | "tool" }>;
 
 type TranscriptDisplayPart =
@@ -15,6 +18,7 @@ function isWorkPart(part: TurnPart): part is WorkTurnPart {
   // A create owns a child session and outlives the call, so it is not a step
   // inside someone else's episode; the bookkeeping on that child is.
   if (part.kind === "tool") return part.class.kind !== "delegate" || part.class.role !== "create";
+
   return part.kind === "thinking";
 }
 
@@ -26,7 +30,7 @@ function isWorkPart(part: TurnPart): part is WorkTurnPart {
 export interface LiveWaits {
   /** Unsettled calls on children created in this turn; drawn nowhere. */
   readonly hidden: ReadonlySet<string>;
-  /** Children the hidden calls are blocked on; their cards say so. */
+  /** Children the hidden calls are blocked on. */
   readonly awaited: ReadonlySet<SessionId>;
   /** Each unsettled call's wake time, when its parked call has one. */
   readonly deadlines: ReadonlyMap<string, number>;
@@ -41,14 +45,15 @@ export const NO_WAITS: LiveWaits = {
   until: undefined,
 };
 
+const awaitArguments = Type.Object({ agents: Type.Array(Type.Unknown()) });
+
+const agentId = Type.String({ minLength: 1 });
+
 /** An await's class names its first agent; the parked arguments name them all. */
 function parkedAgents(args: ParkedCall["args"]): SessionId[] {
-  if (typeof args !== "object" || args === null || Array.isArray(args)) return [];
-  const agents = args.agents;
-  if (!Array.isArray(agents)) return [];
-  return agents.flatMap((agent) =>
-    typeof agent === "string" && agent !== "" ? [sessionId(agent)] : [],
-  );
+  if (!Value.Check(awaitArguments, args)) return [];
+
+  return args.agents.flatMap((agent) => (Value.Check(agentId, agent) ? [sessionId(agent)] : []));
 }
 
 export function liveWaits(
@@ -62,31 +67,44 @@ export function liveWaits(
   const awaited = new Set<SessionId>();
   const deadlines = new Map<string, number>();
   let until: number | undefined;
+
   for (const part of parts) {
     if (part.kind !== "tool" || part.class.kind !== "delegate") continue;
+
     if (part.class.role === "create") {
       created.add(part.class.target.session);
       continue;
     }
+
     if (part.result !== undefined) continue;
     const call = parked?.find((candidate) => candidate.callId === part.callId);
+
     if (call?.until !== undefined) deadlines.set(part.callId, call.until);
+
     const sessions =
       part.class.target.kind === "one" ? [part.class.target.session] : part.class.target.sessions;
+
     const owned = sessions.filter((session) => created.has(session));
+
     if (owned.length === 0) continue;
     hidden.add(part.callId);
+
     for (const session of owned) awaited.add(session);
+
     if (call === undefined) continue;
+
     for (const agent of parkedAgents(call.args)) awaited.add(agent);
+
     if (call.until !== undefined && (until === undefined || call.until < until)) until = call.until;
   }
+
   return { hidden, awaited, deadlines, until };
 }
 
 /** A call with no result is still running only while its run is; otherwise the run left it behind. */
 export function toolPhase(part: ToolTurnPart, running: boolean): ToolPhase {
   if (part.result !== undefined) return part.result.isError ? "failed" : "done";
+
   return running ? "running" : "interrupted";
 }
 
@@ -115,6 +133,7 @@ export function displayTranscriptParts(
     if (work.length > 0) display.push({ kind: "work", parts: work });
     work = [];
   };
+
   const flushResponse = (): void => {
     if (response.length > 0) display.push({ kind: "response", parts: response });
     response = [];
@@ -122,22 +141,27 @@ export function displayTranscriptParts(
 
   for (const part of parts) {
     if (part.kind === "tool" && hidden.has(part.callId)) continue;
+
     if (part.kind === "assistant") {
       flushWork();
       response.push(part);
       continue;
     }
+
     if (isWorkPart(part)) {
       flushResponse();
       work.push(part);
       continue;
     }
+
     flushWork();
     flushResponse();
     display.push({ kind: "part", part });
   }
+
   flushWork();
   flushResponse();
+
   return display;
 }
 
@@ -150,13 +174,17 @@ export function userTextSegments(source: string): readonly UserTextSegment[] {
   const text = source.replaceAll(/\n{3,}/gu, "\n\n");
   const parts = messageParts(text, { form: "message" });
   const segments: UserTextSegment[] = [];
+
   const appendText = (value: string): void => {
     if (value === "") return;
     const previous = segments.at(-1);
+
     if (previous?.kind === "text") {
       segments[segments.length - 1] = { kind: "text", text: previous.text + value };
+
       return;
     }
+
     segments.push({ kind: "text", text: value });
   };
 
@@ -165,20 +193,24 @@ export function userTextSegments(source: string): readonly UserTextSegment[] {
       appendText(part.text);
       continue;
     }
+
     if (part.reference.kind !== "skill") {
       appendText(part.source);
       continue;
     }
+
     segments.push({
       kind: "reference",
       label: `/${part.reference.name}`,
       target: part.reference.path,
     });
+
     if (!part.source.endsWith("\n\n")) continue;
     const next = parts[index + 1];
     const separator = next?.kind === "text" ? "\n" : next?.kind === "reference" ? " " : "";
     appendText(separator);
   }
+
   return segments.length === 0 ? [{ kind: "text", text }] : segments;
 }
 
@@ -190,12 +222,16 @@ export function userDisplayText(source: string): string {
 
 export function formatRunDuration(durationMs: number): string | undefined {
   const totalSeconds = Math.max(0, Math.round(durationMs / 1_000));
+
   if (totalSeconds === 0) return undefined;
   const hours = Math.floor(totalSeconds / 3_600);
   const minutes = Math.floor((totalSeconds % 3_600) / 60);
   const seconds = totalSeconds % 60;
+
   if (hours > 0) return minutes > 0 ? `${String(hours)}h ${String(minutes)}m` : `${String(hours)}h`;
+
   if (minutes > 0)
     return seconds > 0 ? `${String(minutes)}m ${String(seconds)}s` : `${String(minutes)}m`;
+
   return `${String(seconds)}s`;
 }

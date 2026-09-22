@@ -66,8 +66,10 @@ export class SqlQuery {
 export function sql(strings: TemplateStringsArray, ...values: SqlTemplateValue[]): SqlQuery {
   let queryText = strings[0] ?? "";
   const params: SqliteValue[] = [];
+
   for (let index = 0; index < values.length; index++) {
     const value = values[index];
+
     if (value instanceof SqlQuery) {
       queryText += value.queryText;
       params.push(...value.params);
@@ -75,8 +77,10 @@ export function sql(strings: TemplateStringsArray, ...values: SqlTemplateValue[]
       queryText += "?";
       params.push(value ?? null);
     }
+
     queryText += strings[index + 1] ?? "";
   }
+
   return new SqlQuery(queryText, params);
 }
 

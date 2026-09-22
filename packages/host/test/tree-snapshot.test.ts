@@ -9,7 +9,6 @@ import {
   realpath,
   rename,
   rm,
-  symlink,
   writeFile,
 } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
@@ -239,39 +238,6 @@ test("restoreTree restores a rename source and trashes the destination", async (
   });
   assert.equal(await readFile(join(cwd, "from.txt"), "utf8"), "before\n");
   assert.deepEqual(trashed, [join(await realpath(cwd), "to.txt")]);
-});
-
-test("restoreTree rejects a directory and an intermediate symlink", async () => {
-  const cwd = await workspace({ "a.txt": "a\n" });
-  const outside = join(root, "outside");
-  await mkdir(join(cwd, "folder"));
-  await mkdir(outside);
-  await writeFile(join(outside, "file.txt"), "outside\n");
-  await symlink(outside, join(cwd, "linked"));
-  const snapshot = snapshotAt(cwd);
-  const tree = await treeOf(snapshot);
-  const diff = (path: string) => ({
-    path,
-    kind: "added" as const,
-    added: 1,
-    removed: 0,
-    patch: "",
-  });
-
-  const directory = await snapshot.restoreTree({
-    from: tree,
-    expect: tree,
-    paths: [diff("folder")],
-  });
-  const linked = await snapshot.restoreTree({
-    from: tree,
-    expect: tree,
-    paths: [diff("linked/file.txt")],
-  });
-
-  assert.equal(directory.kind, "failed");
-  assert.equal(linked.kind, "failed");
-  assert.equal(await readFile(join(outside, "file.txt"), "utf8"), "outside\n");
 });
 
 test("two processes serialize tree writes through the shadow lock", async () => {

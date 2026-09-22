@@ -46,6 +46,7 @@ const languageAliases = new Map([
   ["ts", "typescript"],
   ["yml", "yaml"],
 ]);
+
 const languageRegistrations = new Map([
   ["bash", bash],
   ["c", c],
@@ -90,11 +91,14 @@ let highlighter: ReturnType<typeof createHighlighter> | undefined;
 export function highlightCode(code: string, language: string): string | undefined {
   const canonicalLanguage = languageAliases.get(language) ?? language;
   const registration = languageRegistrations.get(canonicalLanguage);
+
   if (registration === undefined) return undefined;
   highlighter ??= createHighlighter();
+
   if (!highlighter.getLoadedLanguages().includes(language)) {
     highlighter.loadLanguageSync(registration);
   }
+
   try {
     return highlighter.codeToHtml(code, {
       lang: language,

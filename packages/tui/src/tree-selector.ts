@@ -92,6 +92,7 @@ interface ToolCallSummary {
 }
 
 const MAX_TEXT_CHARS = 200;
+
 const MAX_CALL_CHARS = 50;
 
 function oneLine(text: string): string {
@@ -100,7 +101,9 @@ function oneLine(text: string): string {
 
 function assistantText(node: SessionTreeNode): string {
   const { body } = node.commit;
+
   if (body.kind !== "message" || body.message.role !== "assistant") return "";
+
   return body.message.content
     .flatMap((part) => (part.type === "text" ? [part.text] : []))
     .join(" ");
@@ -109,63 +112,82 @@ function assistantText(node: SessionTreeNode): string {
 /** The argument worth showing for a call: a path, a command, a pattern, a query, a prompt, else the first string. */
 function callSummary(call: ToolCallSummary): string {
   const args = call.args;
+
   if (!isJsonObject(args)) return "";
   const preferred = ["path", "file_path", "command", "pattern", "query", "prompt", "url"];
+
   const value =
     preferred.map((key) => args[key]).find(isJsonString) ?? Object.values(args).find(isJsonString);
+
   return value === undefined ? "" : oneLine(value).slice(0, MAX_CALL_CHARS);
 }
 
 /** Every tool call in the tree by id, from the assistant messages that made them. */
 function toolCalls(tree: SessionTree): ReadonlyMap<string, ToolCallSummary> {
   const calls = new Map<string, ToolCallSummary>();
+
   const visit = (node: SessionTreeNode): void => {
     const { body } = node.commit;
+
     if (body.kind === "message" && body.message.role === "assistant") {
       for (const part of body.message.content) {
         if (part.type === "toolCall") calls.set(part.id, { name: part.name, args: part.arguments });
       }
     }
+
     for (const child of node.children) visit(child);
   };
+
   for (const root of tree.roots) visit(root);
+
   return calls;
 }
 
 function describe(node: SessionTreeNode, calls: ReadonlyMap<string, ToolCallSummary>): Described {
   const { body } = node.commit;
+
   switch (body.kind) {
     case "message": {
       const { message } = body;
+
       switch (message.role) {
         case "user":
           return { role: "user", label: "user:", text: oneLine(userText(message.content)) };
         case "assistant": {
           const text = oneLine(assistantText(node));
+
           if (text !== "") return { role: "assistant", label: "assistant:", text };
+
           if (message.stopReason === "aborted") {
             return { role: "assistant", label: "assistant:", text: "(aborted)" };
           }
+
           if (message.errorMessage !== undefined) {
             return { role: "assistant", label: "assistant:", text: oneLine(message.errorMessage) };
           }
+
           return { role: "assistant", label: "assistant:", text: "(no content)" };
         }
+
         case "toolResult": {
           const call = calls.get(message.toolCallId);
           const summary = call === undefined ? "" : callSummary(call);
+
           return {
             role: "tool",
             label: summary === "" ? `[${message.toolName}]` : `[${message.toolName}: ${summary}]`,
             text: "",
           };
         }
+
         default: {
           const _exhaustive: never = message;
+
           return _exhaustive;
         }
       }
     }
+
     case "completion":
       return {
         role: "tool",
@@ -188,6 +210,7 @@ function describe(node: SessionTreeNode, calls: ReadonlyMap<string, ToolCallSumm
       };
     default: {
       const _exhaustive: never = body;
+
       return _exhaustive;
     }
   }
@@ -197,13 +220,17 @@ function describe(node: SessionTreeNode, calls: ReadonlyMap<string, ToolCallSumm
 function passes(node: SessionTreeNode, filter: TreeFilter, tip: Oid | null): boolean {
   if (node.oid === tip) return true;
   const { body } = node.commit;
+
   if (filter === "all") return true;
+
   if (body.kind === "message" && body.message.role === "assistant") {
     // A step that only called tools is its tool rows; it earns no row of its own.
     const { message } = body;
     const failed = message.stopReason === "aborted" || message.errorMessage !== undefined;
+
     if (assistantText(node).trim() === "" && !failed) return false;
   }
+
   switch (filter) {
     case "users":
       return body.kind === "message" && body.message.role === "user";
@@ -215,6 +242,7 @@ function passes(node: SessionTreeNode, filter: TreeFilter, tip: Oid | null): boo
       return body.kind === "message" || body.kind === "checkpoint" || body.kind === "summary";
     default: {
       const _exhaustive: never = filter;
+
       return _exhaustive;
     }
   }
@@ -222,8 +250,10 @@ function passes(node: SessionTreeNode, filter: TreeFilter, tip: Oid | null): boo
 
 function matches(described: Described, query: string): boolean {
   const terms = query.toLocaleLowerCase().trim().split(/\s+/u).filter(Boolean);
+
   if (terms.length === 0) return true;
   const haystack = `${described.label} ${described.text}`.toLocaleLowerCase();
+
   return terms.every((term) => haystack.includes(term));
 }
 
@@ -234,8 +264,10 @@ function visibleForest(
 ): VisibleNode[] {
   const collect = (node: SessionTreeNode): VisibleNode[] => {
     const children = node.children.flatMap(collect);
+
     return keep(node) ? [{ node, children }] : children;
   };
+
   return roots.flatMap(collect);
 }
 
@@ -262,17 +294,22 @@ function layoutTree(tree: SessionTree, options: TreeLayoutOptions = {}): TreeRow
   const folded = options.folded ?? new Set<Oid>();
   const calls = toolCalls(tree);
   const described = new Map<Oid, Described>();
+
   const describeOnce = (node: SessionTreeNode): Described => {
     const found = described.get(node.oid);
+
     if (found !== undefined) return found;
     const value = describe(node, calls);
     described.set(node.oid, value);
+
     return value;
   };
+
   const forest = visibleForest(
     tree.roots,
     (node) => passes(node, filter, tree.tip) && matches(describeOnce(node), query),
   );
+
   const multipleRoots = forest.length > 1;
   const rows: TreeRow[] = [];
 
@@ -291,10 +328,12 @@ function layoutTree(tree: SessionTree, options: TreeLayoutOptions = {}): TreeRow
     const foldable = connector && item.children.length > 0;
     const isFolded = foldable && folded.has(item.node.oid);
     const cells: string[] = [];
+
     for (let cell = 0; cell < displayIndent * 3; cell++) {
       const level = Math.floor(cell / 3);
       const offset = cell % 3;
       const gutter = gutters.find((candidate) => candidate.position === level);
+
       if (gutter !== undefined) {
         cells.push(offset === 0 && gutter.show ? "│" : " ");
       } else if (connector && level === connectorPosition) {
@@ -305,6 +344,7 @@ function layoutTree(tree: SessionTree, options: TreeLayoutOptions = {}): TreeRow
         cells.push(" ");
       }
     }
+
     rows.push({
       oid: item.node.oid,
       node: item.node,
@@ -317,16 +357,20 @@ function layoutTree(tree: SessionTree, options: TreeLayoutOptions = {}): TreeRow
       heads: item.node.oid === tree.tip ? [] : item.node.heads,
       ...describeOnce(item.node),
     });
+
     if (isFolded) return;
 
     const ordered = item.children.toSorted(
       (left, right) => Number(containsActive(right)) - Number(containsActive(left)),
     );
+
     const multiple = ordered.length > 1;
     const childIndent = multiple || (justBranched && indent > 0) ? indent + 1 : indent;
+
     const childGutters = connector
       ? [...gutters, { position: Math.max(0, displayIndent - 1), show: !isLast }]
       : gutters;
+
     for (const [index, child] of ordered.entries()) {
       visit(
         child,
@@ -343,6 +387,7 @@ function layoutTree(tree: SessionTree, options: TreeLayoutOptions = {}): TreeRow
   const orderedRoots = forest.toSorted(
     (left, right) => Number(containsActive(right)) - Number(containsActive(left)),
   );
+
   for (const [index, root] of orderedRoots.entries()) {
     visit(
       root,
@@ -354,11 +399,13 @@ function layoutTree(tree: SessionTree, options: TreeLayoutOptions = {}): TreeRow
       true,
     );
   }
+
   return rows;
 }
 
 function foldGlyph(foldable: boolean, folded: boolean): string {
   if (!foldable) return "─";
+
   return folded ? "⊞" : "⊟";
 }
 
@@ -371,20 +418,27 @@ function nearestRowIndex(
   const index = new Map(rows.map((row, position) => [row.oid, position]));
   let current = oid;
   const seen = new Set<Oid>();
+
   while (current !== null && !seen.has(current)) {
     seen.add(current);
     const found = index.get(current);
+
     if (found !== undefined) return found;
     current = parents.get(current) ?? null;
   }
+
   return Math.max(0, rows.length - 1);
 }
 
 const PREFIX_WIDTH = 2;
+
 const MIN_ROWS = 5;
+
 /** Title, help, search, footer, and a padding row above and below. */
 const PANEL_CHROME_ROWS = 6;
+
 const PADDING_LEFT = 2;
+
 const PADDING_RIGHT = 1;
 
 interface TreeRowsOptions extends RenderableOptions<TreeRows> {
@@ -430,6 +484,7 @@ class TreeRows extends Renderable {
 
   setSelectedIndex(index: number): void {
     const next = Math.min(Math.max(0, index), Math.max(0, this.rows.length - 1));
+
     if (next === this.selected) return;
     this.selected = next;
     this.requestRender();
@@ -439,11 +494,13 @@ class TreeRows extends Renderable {
   /** Step with wrap-around, as pi's list does. */
   moveBy(steps: number): void {
     const count = this.rows.length;
+
     if (count > 0) this.setSelectedIndex((((this.selected + steps) % count) + count) % count);
   }
 
   indexAt(y: number): number | undefined {
     const index = y - this.screenY;
+
     return index >= 0 && index < this.rows.length ? index : undefined;
   }
 
@@ -467,6 +524,7 @@ class TreeRows extends Renderable {
         return this.theme.muted;
       default: {
         const _exhaustive: never = row.role;
+
         return _exhaustive;
       }
     }
@@ -477,23 +535,29 @@ class TreeRows extends Renderable {
     const left = this.x;
     const top = this.y;
     const first = Math.max(0, this.viewport.screenY - this.screenY, -top);
+
     const end = Math.min(
       this.height,
       this.viewport.screenY + this.viewport.height - this.screenY,
       buffer.height - top,
     );
+
     if (end > first)
       buffer.fillRect(left, top + first, this.width, end - first, this.rowBackground);
     const textWidth = this.width - PREFIX_WIDTH;
+
     for (let index = first; index < end; index += 1) {
       const row = this.rows[index];
+
       if (row === undefined) continue;
       const selected = index === this.selected;
+
       const background = selected
         ? this.selectedBackground
         : index === this.hovered
           ? this.hoverBackground
           : this.rowBackground;
+
       buffer.fillRect(left, top + index, this.width, 1, background);
       buffer.drawText(
         selected ? `${GLYPHS.prompt} ` : "  ",
@@ -502,10 +566,12 @@ class TreeRows extends Renderable {
         parseColor(selected ? this.theme.selectionForeground : this.theme.accent),
         background,
       );
+
       if (textWidth <= 0) continue;
       const attributes = selected ? this.boldAttributes : undefined;
       let x = left + PREFIX_WIDTH;
       let remaining = textWidth;
+
       const draw = (text: string, color: string): void => {
         if (remaining <= 0 || text === "") return;
         const shown = truncateDisplay(text, remaining, remaining > 1 ? GLYPHS.ellipsis : "");
@@ -515,10 +581,14 @@ class TreeRows extends Renderable {
         x += width;
         remaining -= width;
       };
+
       draw(row.prefix, this.theme.dim);
+
       if (row.active) draw("• ", this.theme.accent);
+
       for (const head of row.heads) draw(`[${head}] `, this.theme.warning);
       draw(row.label, this.roleColor(row));
+
       if (row.text !== "") draw(` ${row.text}`, this.theme.foreground);
     }
   }
@@ -581,10 +651,13 @@ export class TreeSelector {
     this.filter = options.filter ?? "default";
     this.lastSelected = options.selectedOid === undefined ? options.tree.tip : options.selectedOid;
     const parents = new Map<Oid, Oid | null>();
+
     const index = (node: SessionTreeNode): void => {
       parents.set(node.oid, node.commit.parent);
+
       for (const child of node.children) index(child);
     };
+
     for (const root of options.tree.roots) index(root);
     this.parents = parents;
     const { theme, nextId } = shell;
@@ -601,6 +674,7 @@ export class TreeSelector {
       paddingTop: 1,
       paddingBottom: 1,
     });
+
     const line = (id: string, content: StyledText | string): TextRenderable =>
       new TextRenderable(shell.renderer, {
         id: nextId(id),
@@ -609,6 +683,7 @@ export class TreeSelector {
         flexShrink: 0,
         wrapMode: "none",
       });
+
     this.container.add(
       line("tree-title", new StyledText([bold(fg(theme.accent)("Session Tree"))])),
     );
@@ -622,12 +697,14 @@ export class TreeSelector {
         ]),
       ),
     );
+
     const searchRow = new BoxRenderable(shell.renderer, {
       id: nextId("tree-search-row"),
       height: 1,
       flexShrink: 0,
       flexDirection: "row",
     });
+
     searchRow.add(line("tree-search-label", new StyledText([fg(theme.dim)("Type to search: ")])));
     this.queryInput = new InputRenderable(shell.renderer, {
       id: nextId("tree-query"),
@@ -731,6 +808,7 @@ export class TreeSelector {
     });
     const selected = nearestRowIndex(this.layout, this.parents, this.lastSelected);
     this.list.setRows(this.layout, selected);
+
     if (this.layout.length > 0) this.lastSelected = this.layout[selected]?.oid ?? null;
     this.scroll.height = Math.max(1, Math.min(this.layout.length, this.maxVisible));
     this.scroll.visible = this.layout.length > 0;
@@ -754,6 +832,7 @@ export class TreeSelector {
   /** Scroll the least that brings the selection into the window. */
   private scrollIntoView(index: number): void {
     const top = this.scroll.scrollTop;
+
     if (index < top) this.scroll.scrollTo(index);
     else if (index >= top + this.maxVisible) this.scroll.scrollTo(index - this.maxVisible + 1);
   }
@@ -765,11 +844,13 @@ export class TreeSelector {
   private onMouseDown(event: MouseEvent): void {
     if (event.button !== 0) return;
     const index = this.list.indexAt(event.y);
+
     if (index === undefined) return;
     event.preventDefault();
     event.stopPropagation();
     this.list.setSelectedIndex(index);
     const oid = this.selectedOid;
+
     if (oid !== undefined) this.onSelect(oid);
   }
 
@@ -801,15 +882,20 @@ export class TreeSelector {
   private foldOrUp(): void {
     const index = this.list.getSelectedIndex();
     const row = this.layout[index];
+
     if (row === undefined) return;
+
     if (row.foldable && !row.folded) {
       this.folded.add(row.oid);
       this.relayout();
+
       return;
     }
+
     const start = this.layout.findLast(
       (candidate, position) => position < index && candidate.connector,
     );
+
     this.list.setSelectedIndex(start === undefined ? 0 : this.layout.indexOf(start));
   }
 
@@ -817,21 +903,27 @@ export class TreeSelector {
   private unfoldOrDown(): void {
     const index = this.list.getSelectedIndex();
     const row = this.layout[index];
+
     if (row === undefined) return;
+
     if (row.folded) {
       this.folded.delete(row.oid);
       this.relayout();
+
       return;
     }
+
     const next = this.layout.findIndex(
       (candidate, position) => position > index && candidate.connector,
     );
+
     if (next !== -1) this.list.setSelectedIndex(next);
   }
 
   private cycleFilter(step: 1 | -1): void {
     const at = FILTER_CYCLE.indexOf(this.filter);
     const next = FILTER_CYCLE[(at + step + FILTER_CYCLE.length) % FILTER_CYCLE.length];
+
     if (next !== undefined) this.setFilter(next);
   }
 
@@ -841,6 +933,7 @@ export class TreeSelector {
 
   private copySelected(): void {
     const row = this.layout[this.list.getSelectedIndex()];
+
     if (row === undefined) return;
     const text = row.text === "" ? row.label : row.text;
     this.renderer.copyToClipboardOSC52(text);
@@ -848,15 +941,19 @@ export class TreeSelector {
 
   private readonly onKeyPress = (key: KeyEvent): void => {
     if (this.destroyed || key.defaultPrevented) return;
+
     if (matchesKey("tree.close", key, "required")) {
       consume(key);
+
       if (this.query === "") this.onCancel();
       else {
         this.setQuery("");
         this.relayout();
       }
+
       return;
     }
+
     if (key.ctrl) {
       switch (true) {
         case matchesKey("tree.filter.default", { name: key.name, ctrl: key.ctrl }):
@@ -893,17 +990,25 @@ export class TreeSelector {
         default:
           return;
       }
+
       consume(key);
+
       return;
     }
+
     if (this.layout.length === 0) return;
+
     if (matchesKeyName("picker.accept", key)) {
       consume(key);
       const oid = this.selectedOid;
+
       if (oid !== undefined) this.onSelect(oid);
+
       return;
     }
+
     const page = Math.max(1, this.maxVisible);
+
     if (matchesKey("picker.previous", key, "required")) {
       this.list.moveBy(-1);
     } else if (matchesKey("picker.next", key, "required")) {
@@ -921,6 +1026,7 @@ export class TreeSelector {
     } else {
       return;
     }
+
     consume(key);
   };
 }

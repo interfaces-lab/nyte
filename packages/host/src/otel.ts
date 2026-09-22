@@ -27,17 +27,22 @@ export interface OtelExport {
 
 export function createOtelExport(options: OtelExportOptions): OtelExport {
   const endpoint = options.endpoint ?? process.env.NYTE_OTEL_ENDPOINT;
+
   if (endpoint === undefined || endpoint === "") {
     return { telemetry: NOOP_TELEMETRY_CONTEXT, shutdown: () => Promise.resolve() };
   }
+
   const url = new URL(endpoint);
+
   if (options.endpoint === undefined && url.pathname === "/") url.pathname = "/v1/traces";
+
   const provider = new TracerProvider({
     resource: resourceFromAttributes({ [ATTR_SERVICE_NAME]: options.serviceName }),
     spanProcessors: [
       new BatchSpanProcessor({ exporter: new OTLPTraceExporter({ url: url.href }) }),
     ],
   });
+
   return {
     telemetry: createOtelTelemetry(provider.getTracer(options.serviceName)),
     shutdown: () => provider.shutdown(),

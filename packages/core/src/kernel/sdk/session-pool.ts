@@ -55,6 +55,7 @@ import {
 import type { HostNotice, NoticeListener } from "./watch.ts";
 
 export const CWD_FACT = "cwd";
+
 export const RUN_PREFIX = "refs/runs/";
 
 export interface DriveState {
@@ -152,6 +153,7 @@ export function clientActivation(activation: SessionActivation): SessionActivati
       return activation;
     default: {
       const _exhaustive: never = activation;
+
       return _exhaustive;
     }
   }
@@ -163,6 +165,7 @@ export function createSessionPool(input: {
 }) {
   const { options, hooks } = input;
   const pool = new Map<SessionId, Pooled>();
+
   const activationSource: ActivationSource =
     options.resolveActivation === undefined
       ? {
@@ -170,8 +173,10 @@ export function createSessionPool(input: {
           activation: { kind: "active", plugins: options.plugins, env: options.env },
         }
       : { kind: "resolver", resolve: options.resolveActivation };
+
   let pluginsOverride =
     activationSource.kind === "static" ? activationSource.activation.plugins : undefined;
+
   let catalogCache: Promise<PluginCatalog> | undefined;
   let closed = false;
   // A host that saw plugin sources change holds the gate until its swap lands,
@@ -191,21 +196,31 @@ export function createSessionPool(input: {
   const adopt = async (session: Session): Promise<Pooled> => {
     const id = sessionId(session.id);
     const existing = pool.get(id);
+
     if (closed || existing !== undefined) {
       await session.close().catch(() => undefined);
+
       if (closed || existing === undefined) throw new NyteClosed();
+
       if (existing.retired) throw new UnknownSession(id);
+
       return existing;
     }
+
     const parent = parentFromFact(await readFact(session, PARENT_FACT));
     // Another opener or shutdown may have won while the parent fact was read.
     const winner = pool.get(id);
+
     if (closed || winner !== undefined) {
       await session.close();
+
       if (closed) throw new NyteClosed();
+
       if (winner === undefined || winner.retired) throw new UnknownSession(id);
+
       return winner;
     }
+
     const pooled: Pooled = {
       session,
       parent,
@@ -213,30 +228,38 @@ export function createSessionPool(input: {
       noticeListeners: new Set(),
       retired: false,
     };
+
     pool.set(id, pooled);
+
     return pooled;
   };
 
   const open = async (id: SessionId): Promise<Pooled> => {
     alive();
     const existing = pool.get(id);
+
     if (existing !== undefined) {
       if (existing.retired) throw new UnknownSession(id);
+
       return existing;
     }
+
     return adopt(await options.store.open(id));
   };
 
   /** Delete the session from the store and drop its handle, after its work has stopped. */
   const retire = async (id: SessionId, pooled: Pooled): Promise<void> => {
     pooled.retired = true;
+
     try {
       await hooks.closeJobs(id, pooled);
       await writeBlobRef(pooled.session, DELETED_REF, { at: Date.now() }, "delete");
       const runs = await pooled.session.refs.list(RUN_PREFIX);
+
       for (const ref of runs) {
         await hooks.requestAbort(pooled, ref.name);
       }
+
       await hooks.stopRunner(pooled);
       await Promise.all([...pooled.runnerTasks].map((task) => task.catch(() => undefined)));
       await pooled.reconciliation;
@@ -262,18 +285,24 @@ export function createSessionPool(input: {
   async function readFact(session: Session, key: string): Promise<JsonValue | undefined> {
     const name = factRef(key);
     const oid = await session.refs.read(name);
+
     if (oid === null) return undefined;
     const object = await session.objects.get(oid);
+
     if (object?.kind !== "blob") throw new CorruptObject(oid, `is not the blob ${name} names`);
+
     return object.value;
   }
 
   const storedCwd = async (session: Session): Promise<string | undefined> => {
     const value = await readFact(session, CWD_FACT);
+
     if (value === undefined) return undefined;
+
     if (!Value.Check(Type.String(), value) || !isAbsolute(value)) {
       throw new Error("Invalid stored session cwd");
     }
+
     return value;
   };
 
@@ -287,15 +316,21 @@ export function createSessionPool(input: {
       value === undefined
         ? null
         : ((await session.objects.put([{ kind: "blob", value }]))[0] ?? null);
+
     if (value !== undefined && next === null) throw new Error(`Writing ${name} returned no oid`);
+
     for (;;) {
       const current = await session.refs.read(name);
+
       if (current === next) return;
+
       const outcome = await session.refs.update(
         [{ name, from: current, to: next }],
         attributed({ reason }, options.actor),
       );
+
       if (outcome.ok) return;
+
       switch (outcome.reason) {
         case "conflict":
           continue;
@@ -303,6 +338,7 @@ export function createSessionPool(input: {
           throw new Error(`Participant update was unexpectedly fenced: ${name}`);
         default: {
           const _exhaustive: never = outcome;
+
           return _exhaustive;
         }
       }
@@ -319,8 +355,10 @@ export function createSessionPool(input: {
     const facts = new Map<string, JsonValue>();
     keys.forEach((key, index) => {
       const value = values[index];
+
       if (value !== undefined) facts.set(key, value);
     });
+
     return facts;
   };
 
@@ -333,21 +371,28 @@ export function createSessionPool(input: {
     head: HeadName,
   ): Promise<{ readonly oid: Oid; readonly run: Run } | undefined> => {
     const oid = await session.refs.read(runRef(head));
+
     if (oid === null) return undefined;
     const object = await session.objects.get(oid);
+
     if (object?.kind !== "run")
       throw new CorruptObject(oid, `is not the run ${runRef(head)} names`);
+
     return { oid, run: object };
   };
 
   const currentRun = async (session: Session, head: HeadName): Promise<RunInfo | undefined> => {
     const stored = await readRun(session, head);
+
     if (stored === undefined) return undefined;
+
     const [lease, awaitingReply] = await Promise.all([
       session.leases.read(headRef(head)),
       awaitsReply(session, stored.run),
     ]);
+
     const projected = runInfo(stored.run, lease);
+
     return awaitingReply ? { ...projected, awaitingReply } : projected;
   };
 
@@ -359,9 +404,11 @@ export function createSessionPool(input: {
   const awaitsReply = async (session: Session, run: Run): Promise<true | undefined> => {
     if (run.phase.kind !== "waiting") return undefined;
     const views = await listEffects(session, run.id);
+
     const asks = views.some(
       (view) => view.effect.state === "waiting" && view.effect.selection !== undefined,
     );
+
     return asks ? true : undefined;
   };
 
@@ -369,8 +416,10 @@ export function createSessionPool(input: {
   const parkedCalls = async (session: Session, run: RunInfo): Promise<ParkedCall[]> => {
     if (isTerminalPhase(run.phase)) return [];
     const views = await listEffects(session, run.runId);
+
     return views.flatMap((view) => {
       if (view.effect.state !== "waiting") return [];
+
       const call = {
         runId: run.runId,
         callId: view.intent.callId,
@@ -378,8 +427,10 @@ export function createSessionPool(input: {
         tool: view.intent.tool,
         args: view.intent.args,
       };
+
       const { selection, until } = view.effect;
       const selected = selection === undefined ? call : { ...call, selection };
+
       return [until === undefined ? selected : { ...selected, until }];
     });
   };
@@ -388,6 +439,7 @@ export function createSessionPool(input: {
   const listSessionHeads = async (session: Session): Promise<ListedHead[]> => {
     const listed = await listHeads(session);
     const first = listed.find((item) => item.head === MAIN) ?? { head: MAIN, tip: null };
+
     return [first, ...listed.filter((item) => item.head !== MAIN)];
   };
 
@@ -396,12 +448,14 @@ export function createSessionPool(input: {
     listed?: readonly ListedHead[],
   ): Promise<HeadInfo[]> => {
     const heads = listed ?? (await listSessionHeads(session));
+
     return Promise.all(
       heads.map(async (item) => {
         const [parentTip, run] = await Promise.all([
           item.stack === undefined ? null : session.refs.read(headRef(item.stack.parent)),
           currentRun(session, item.head),
         ]);
+
         return headInfo(item, parentTip, run);
       }),
     );
@@ -410,8 +464,10 @@ export function createSessionPool(input: {
   const createdAtFor = async (id: SessionId, pooled: Pooled): Promise<number> => {
     if (pooled.createdAt !== undefined) return pooled.createdAt;
     const stored = (await options.store.list()).find((item) => item.id === id);
+
     if (stored === undefined) throw new UnknownSession(id);
     pooled.createdAt = stored.createdAt;
+
     return stored.createdAt;
   };
 
@@ -425,6 +481,7 @@ export function createSessionPool(input: {
     const pendingChanges = await pending(session, MAIN);
     const listed = await listSessionHeads(session);
     const mainTip = listed.find((item) => item.head === MAIN)?.tip ?? null;
+
     const [activation, createdAt, heads, facts, commits] = await Promise.all([
       resolveSessionActivation(id, pooled),
       createdAtFor(id, pooled),
@@ -432,6 +489,7 @@ export function createSessionPool(input: {
       known.facts ?? readFacts(session),
       branch(session.objects, mainTip),
     ]);
+
     return {
       id,
       activation: clientActivation(activation),
@@ -454,6 +512,7 @@ export function createSessionPool(input: {
 
   const subscribeNotices = (pooled: Pooled, listener: NoticeListener): Disposer => {
     pooled.noticeListeners.add(listener);
+
     return () => {
       pooled.noticeListeners.delete(listener);
     };
@@ -468,24 +527,32 @@ export function createSessionPool(input: {
       activationSource.kind === "static"
         ? activationSource.activation
         : await activationSource.resolve(target);
+
     if (resolved.kind !== "active" || pluginsOverride === undefined) return resolved;
+
     return { ...resolved, plugins: pluginsOverride };
   };
 
   const catalogForNewSession = (): Promise<PluginCatalog> => {
     if (catalogCache !== undefined) return catalogCache;
+
     const opening = (async (): Promise<PluginCatalog> => {
       const resolved = await resolveHostActivation({ kind: "new-session" });
+
       if (closed) throw new NyteClosed();
+
       if (resolved.kind !== "active")
         return { plugins: [], commands: [], skills: [], settings: [] };
+
       const activation = await activate({
         target: { kind: "new-session" },
         plugins: resolved.plugins,
         env: resolved.env,
       });
+
       try {
         if (closed) throw new NyteClosed();
+
         return {
           commands: commandInfos(activation),
           skills: [...activation.resources().values()],
@@ -496,10 +563,12 @@ export function createSessionPool(input: {
         await activation.close();
       }
     })();
+
     catalogCache = opening;
     void opening.catch(() => {
       if (catalogCache === opening) catalogCache = undefined;
     });
+
     return opening;
   };
 
@@ -508,8 +577,10 @@ export function createSessionPool(input: {
     pooled: Pooled,
   ): Promise<SessionActivation> {
     if (closed) throw new NyteClosed();
+
     if (pooled.retired) throw new UnknownSession(id);
     const saved = await storedCwd(pooled.session);
+
     if (
       pooled.activationState?.kind === "active" &&
       saved !== undefined &&
@@ -525,11 +596,13 @@ export function createSessionPool(input: {
         activation: clientActivation(pooled.activationState),
       });
     }
+
     if (
       pooled.activationState !== undefined &&
       (pooled.parent === undefined || pooled.activationState.kind === "active")
     )
       return pooled.activationState;
+
     if (pooled.resolving !== undefined) return pooled.resolving;
 
     const resolving = (async () => {
@@ -540,7 +613,9 @@ export function createSessionPool(input: {
               pooled.parent.sessionId,
               await open(pooled.parent.sessionId),
             );
+
       if (closed || pooled.retired) throw closed ? new NyteClosed() : new UnknownSession(id);
+
       // Freeze the initial location too: a completed child must not follow a later parent move.
       const initialCwd =
         resolved.kind === "active"
@@ -548,19 +623,24 @@ export function createSessionPool(input: {
           : resolved.kind === "requires" && resolved.requirement.kind === "workspace_trust"
             ? resolved.requirement.cwd
             : undefined;
+
       if (saved === undefined && initialCwd !== undefined) {
         const [oid] = await pooled.session.objects.put([{ kind: "blob", value: initialCwd }]);
+
         if (oid === undefined) throw new Error("Writing session cwd returned no oid");
         await pooled.session.refs.update(
           [{ name: factRef(CWD_FACT), from: null, to: oid }],
           attributed({ reason: "fact" }, options.actor),
         );
       }
+
       const cwd = await storedCwd(pooled.session);
+
       const state: SessionActivation =
         cwd !== undefined && (resolved.kind !== "active" || resolved.env.cwd !== cwd)
           ? { kind: "requires", requirement: { kind: "workspace_trust", cwd } }
           : resolved;
+
       pooled.scopedPlugins =
         pooled.scopedPlugins === true ||
         (pooled.parent !== undefined
@@ -573,61 +653,80 @@ export function createSessionPool(input: {
         kind: "activation_changed",
         activation: clientActivation(state),
       });
+
       return state;
     })().finally(() => {
       if (pooled.resolving === resolving) pooled.resolving = undefined;
     });
+
     pooled.resolving = resolving;
+
     return resolving;
   }
 
   const activationFor = async (id: SessionId, pooled: Pooled): Promise<Activation | undefined> => {
     if (closed) throw new NyteClosed();
+
     if (pooled.retired) throw new UnknownSession(id);
     const state = await resolveSessionActivation(id, pooled);
+
     if (state.kind !== "active") return undefined;
+
     if (pooled.activation !== undefined && pooled.activationCwd !== state.env.cwd) {
       await hooks.stopRunner(pooled);
       await pooled.activation.close();
       pooled.activation = undefined;
     }
+
     if (pooled.activation !== undefined) return pooled.activation;
+
     if (pooled.opening !== undefined) return pooled.opening;
 
     const opening = (async (): Promise<Activation | undefined> => {
       const resolved = await resolveSessionActivation(id, pooled);
+
       if (closed || pooled.retired) throw closed ? new NyteClosed() : new UnknownSession(id);
+
       if (resolved.kind !== "active") return undefined;
+
       const built = await activate({
         target: { kind: "session", session: pooled.session },
         plugins: hooks.pluginsFor({ id, pooled, plugins: resolved.plugins }),
         env: resolved.env,
       });
+
       if (closed || pooled.retired) {
         await built.close();
         throw closed ? new NyteClosed() : new UnknownSession(id);
       }
+
       built.subscribe((notice) => dispatchNotice(pooled, notice));
       pooled.activation = built;
       pooled.activationCwd = resolved.env.cwd;
       // Activation's first inventory notice fires before activate() returns.
       // Relay the resulting inventory to watches that were already open.
       const plugins = built.plugins.list();
+
       if (plugins.length > 0) {
         await dispatchNotice(pooled, { kind: "plugins_changed", plugins });
       }
+
       return built;
     })().finally(() => {
       if (pooled.opening === opening) pooled.opening = undefined;
     });
+
     pooled.opening = opening;
+
     return opening;
   };
 
   const activeFor = async (id: SessionId): Promise<Activation> => {
     const pooled = await open(id);
     const active = await activationFor(id, pooled);
+
     if (active === undefined) throw new Error("Session is not active in this host");
+
     return active;
   };
 
@@ -644,16 +743,20 @@ export function createSessionPool(input: {
     },
     holdPlugins(): Disposer {
       pluginHolds += 1;
+
       if (pluginHolds === 1) {
         pluginsSettled = new Promise((resolve) => {
           releasePlugins = resolve;
         });
       }
+
       let released = false;
+
       return () => {
         if (released) return;
         released = true;
         pluginHolds = Math.max(0, pluginHolds - 1);
+
         if (pluginHolds === 0) releasePlugins?.();
       };
     },
@@ -688,6 +791,7 @@ export function createSessionPool(input: {
     /** Where a new session would start, without creating or activating one. */
     async cwdForNewSession(): Promise<string | undefined> {
       const resolved = await resolveHostActivation({ kind: "new-session" });
+
       return resolved.kind === "active" ? resolved.env.cwd : undefined;
     },
     /** A global plugin swap replaces the host's answer for every unscoped session and the catalog. */

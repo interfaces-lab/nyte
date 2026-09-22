@@ -52,14 +52,18 @@ function UserMessagePreview({ children }: { children: ReactNode }): ReactElement
 
   useLayoutEffect(() => {
     const content = contentRef.current;
+
     if (content === null) return undefined;
+
     const measure = (): void => {
       const lineHeight = Number.parseFloat(getComputedStyle(content).lineHeight);
       setOverflowing(content.scrollHeight > lineHeight * USER_MESSAGE_PREVIEW_LINES);
     };
+
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(content);
+
     return () => observer.disconnect();
   }, []);
 
@@ -93,7 +97,9 @@ function UserMessagePreview({ children }: { children: ReactNode }): ReactElement
 
 function UserMessageImages({ content }: { content: UserTurnPart["content"] }): ReactElement | null {
   const images = messageImages(content);
+
   if (images.length === 0) return null;
+
   return (
     <div aria-label="Image attachments" {...stylex.props(turnStyles.userImages)}>
       {images.map((item, index) => (
@@ -164,11 +170,14 @@ export function UserMessageView({
   const canDismissEdit = edit !== undefined && !edit.saving && edit.attachmentReads === 0;
   useEffect(() => {
     const row = rowRef.current;
+
     if (!canDismissEdit || row === null) return;
+
     const dismiss = (event: MouseEvent): void => {
       if (event.defaultPrevented || event.button !== 0 || event.composedPath().includes(row))
         return;
       const target = event.target;
+
       // Portalled menus and dialogs still belong to the active editing interaction.
       if (
         target instanceof Element &&
@@ -177,7 +186,9 @@ export function UserMessageView({
         return;
       setEdit(undefined);
     };
+
     row.ownerDocument.addEventListener("click", dismiss);
+
     return () => row.ownerDocument.removeEventListener("click", dismiss);
   }, [canDismissEdit]);
   const original = userMessageText(content);
@@ -188,6 +199,7 @@ export function UserMessageView({
   const begin = (): void => {
     if (onEdit === undefined || edit !== undefined) return;
     const selection = window.getSelection();
+
     if (selection !== null && !selection.isCollapsed) return;
     const text = messageDraftText(original);
     setEdit({
@@ -209,6 +221,7 @@ export function UserMessageView({
 
   const addFiles = async (files: readonly File[]): Promise<void> => {
     patchEdit((current) => ({ ...current, attachmentReads: current.attachmentReads + 1 }));
+
     return attachComposerFiles({ files, editor: editorRef.current })
       .then((result) => {
         patchEdit((current) => ({
@@ -225,11 +238,15 @@ export function UserMessageView({
   const save = async (submission: ComposerSubmission): Promise<boolean> => {
     if (edit === undefined || edit.saving || onEdit === undefined) return false;
     const next = composerMessageContent(submission.text.trim(), edit.attachments);
+
     if (Array.isArray(next) ? next.length === 0 : next.trim() === "") {
       setEdit({ ...edit, error: "A message cannot be empty." });
+
       return false;
     }
+
     setEdit({ ...edit, saving: true, error: undefined });
+
     try {
       await onEdit(next, {
         model: edit.model,
@@ -237,9 +254,11 @@ export function UserMessageView({
         fastEnabled: edit.fastEnabled,
       });
       setEdit(undefined);
+
       return true;
     } catch (cause: unknown) {
       patchEdit((current) => ({ ...current, saving: false, error: errorMessage(cause) }));
+
       return false;
     }
   };
@@ -256,19 +275,25 @@ export function UserMessageView({
           switch (change.kind) {
             case "model":
               setEdit({ ...edit, model: change.option, thinkingLevel: change.thinkingLevel });
+
               return;
             case "thinking":
               setEdit({ ...edit, thinkingLevel: change.thinkingLevel });
+
               return;
             case "fast": {
               const fastEnabled = new Set(edit.fastEnabled);
+
               if (change.enabled) fastEnabled.add(change.settingId);
               else fastEnabled.delete(change.settingId);
               setEdit({ ...edit, fastEnabled });
+
               return;
             }
+
             default: {
               const _exhaustive: never = change;
+
               return _exhaustive;
             }
           }
@@ -362,6 +387,7 @@ export function UserMessageView({
 function ReasoningBlock({ text, streaming }: { text: string; streaming: boolean }): ReactElement {
   const [open, setOpen] = useState<boolean | undefined>();
   const expanded = open ?? streaming;
+
   return (
     <Collapsible.Root
       open={expanded}
@@ -441,6 +467,7 @@ function TurnChangesCard({
   readonly onOpenFile: (path: string) => void;
 }): ReactElement {
   const title = filesChangedLabel(files.length);
+
   return (
     <section aria-label={title} {...stylex.props(turnStyles.changesCard)}>
       <div {...stylex.props(turnStyles.changesHeader)}>
@@ -556,6 +583,7 @@ function TurnPartView({
       );
     default: {
       const _exhaustive: never = part;
+
       return _exhaustive;
     }
   }
@@ -567,6 +595,7 @@ const ResponseView = memo(function ResponseView({
   parts: readonly Extract<TurnPart, { readonly kind: "assistant" }>[];
 }): ReactElement | null {
   const markdown = useMemo(() => parts.map((part) => part.text.trim()).join("\n\n"), [parts]);
+
   return markdown === "" ? null : <Prose markdown={markdown} />;
 });
 
@@ -597,6 +626,7 @@ export const TurnView = memo(function TurnView({
 }): ReactElement | null {
   const appearance = useAppearanceSettings();
   const changes = useMemo(() => changesFromTurns([turn]), [turn]);
+
   const changeTotals = useMemo(
     () =>
       changes.reduce(
@@ -608,16 +638,19 @@ export const TurnView = memo(function TurnView({
       ),
     [changes],
   );
+
   // Progress updates must reuse the settled grouping so summaries can update only live tools.
   const display = useMemo(
     () => (turn.kind === "turn" ? displayTranscriptParts(turn.parts, waits.hidden) : []),
     [turn, waits],
   );
+
   switch (turn.kind) {
     case "turn": {
       // A completion's continuation turn draws nothing until its response
       // lands; an empty completed turn must not leave a blank row behind.
       if (turn.parts.length === 0 && turn.failure === undefined) return null;
+
       return (
         <div
           data-sticky-turn={turn.parts.some((part) => part.kind === "user") || undefined}
@@ -630,6 +663,7 @@ export const TurnView = memo(function TurnView({
               // settled history, and the run's indicator belongs below the
               // prose that follows it.
               const trailing = index === display.length - 1;
+
               return (
                 <WorkGroupView
                   key={`work:${first === undefined ? turn.id : turnPartId(first)}`}
@@ -646,8 +680,10 @@ export const TurnView = memo(function TurnView({
                 />
               );
             }
+
             if (item.kind === "response") {
               const first = item.parts[0];
+
               return (
                 <ResponseView
                   key={`response:${first === undefined ? turn.id : turnPartId(first)}`}
@@ -655,6 +691,7 @@ export const TurnView = memo(function TurnView({
                 />
               );
             }
+
             return (
               <TurnPartView
                 key={turnPartId(item.part)}
@@ -694,6 +731,7 @@ export const TurnView = memo(function TurnView({
         </div>
       );
     }
+
     case "checkpoint":
       return (
         <HistoryDisclosure label="Chat context summarized">
@@ -708,6 +746,7 @@ export const TurnView = memo(function TurnView({
       );
     default: {
       const _exhaustive: never = turn;
+
       return _exhaustive;
     }
   }

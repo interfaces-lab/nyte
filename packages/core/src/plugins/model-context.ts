@@ -4,6 +4,7 @@ import { MapDraft } from "./registry.ts";
 import type { ModelContextPolicy } from "./types.ts";
 
 const tokenCount = Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER });
+
 const modelContextPolicy = Type.Object({ contextWindow: tokenCount, compactAt: tokenCount });
 
 function validatePolicy(value: ModelContextPolicy): ModelContextPolicy {
@@ -12,6 +13,7 @@ function validatePolicy(value: ModelContextPolicy): ModelContextPolicy {
       "Model context policy requires 0 < compactAt <= contextWindow in whole tokens",
     );
   }
+
   return value;
 }
 

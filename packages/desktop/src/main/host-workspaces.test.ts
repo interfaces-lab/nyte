@@ -38,15 +38,16 @@ const renderer = vi.hoisted(() => {
   vi.stubGlobal("window", {
     nyte: {
       host: {
-        state: () => host().call("host.state", undefined),
-        sessionDirectory: () => host().call("host.sessionDirectory", undefined),
-        catalog: () => host().call("host.catalog", undefined),
+        state: () => host().call(1, "host.state", undefined),
+        sessionDirectory: () => host().call(1, "host.sessionDirectory", undefined),
+        catalog: () => host().call(1, "host.catalog", undefined),
       },
-      workspace: { list: () => host().call("workspace.list", undefined) },
+      workspace: { list: () => host().call(1, "workspace.list", undefined) },
       sessions: {
-        list: (input: Parameters<SessionsBridge["list"]>[0]) => host().call("sessions.list", input),
+        list: (input: Parameters<SessionsBridge["list"]>[0]) =>
+          host().call(1, "sessions.list", input),
       },
-      plugins: { catalog: () => host().call("plugins.catalog", undefined) },
+      plugins: { catalog: () => host().call(1, "plugins.catalog", undefined) },
     },
   });
   return state;
@@ -147,13 +148,17 @@ async function fixture() {
   vi.stubEnv("CLAUDE_CONFIG_DIR", join(root, "claude"));
   vi.stubEnv("CODEX_HOME", join(root, "codex"));
   const events: HostEvent[] = [];
+  const routedEvents: { readonly event: HostEvent; readonly window: number | undefined }[] = [];
   const watchEvents: WatchEnvelope[] = [];
   const browserReleases: string[] = [];
   const createHost = () => {
     const host = new DesktopHost({
       storeWorker: new URL("../../../core/src/kernel/store-worker.ts", import.meta.url),
       createModels: echoModels,
-      emitHostEvent: (event) => events.push(event),
+      emitHostEvent: (event, window) => {
+        events.push(event);
+        routedEvents.push({ event, window });
+      },
       emitWatchEvent: (event) => watchEvents.push(event),
       openExternal: () => undefined,
       revealPath: () => undefined,
@@ -173,7 +178,7 @@ async function fixture() {
         retain: () => undefined,
         release: () => undefined,
         warm: async () => undefined,
-        dispose: () => undefined,
+        releaseWindow: () => undefined,
         agent: {
           ...unusedBrowserAgent(),
           release: ({ session }) => browserReleases.push(session),
@@ -183,14 +188,65 @@ async function fixture() {
     hosts.push(host);
     return host;
   };
-  return { root, events, watchEvents, browserReleases, createHost };
+  return { root, events, routedEvents, watchEvents, browserReleases, createHost };
 }
+
+test("each window selects its own workspace and hears only its own changes", async () => {
+  const { root, routedEvents, createHost } = await fixture();
+  const host = createHost();
+  const first = join(root, "first");
+  const second = join(root, "second");
+  await Promise.all([mkdir(first), mkdir(second)]);
+  const workspaceEvents = () =>
+    routedEvents
+      .filter(({ event }) => event.kind === "workspace_opened" || event.kind === "workspace_closed")
+      .map(({ event, window }) => [event.kind, window]);
+
+  assert.equal((await host.call(1, "host.openWorkspace", { path: first })).kind, "opened");
+  assert.equal((await host.call(2, "host.openWorkspace", { path: second })).kind, "opened");
+  assert.equal((await host.call(1, "host.state", undefined)).workspace?.path, first);
+  assert.equal((await host.call(2, "host.state", undefined)).workspace?.path, second);
+
+  await host.call(2, "host.closeWorkspace", undefined);
+  assert.equal((await host.call(1, "host.state", undefined)).workspace?.path, first);
+  assert.equal((await host.call(2, "host.state", undefined)).workspace, undefined);
+  assert.deepEqual(workspaceEvents(), [
+    ["workspace_opened", 1],
+    ["workspace_opened", 2],
+    ["workspace_closed", 2],
+  ]);
+
+  await host.call(2, "host.openWorkspace", { path: second });
+  await host.call(2, "workspace.forget", { path: first });
+  assert.equal((await host.call(1, "host.state", undefined)).workspace, undefined);
+  assert.equal((await host.call(2, "host.state", undefined)).workspace?.path, second);
+});
+
+test("releasing one window leaves another window's watches running", async () => {
+  const { browserReleases, createHost, watchEvents } = await fixture();
+  const host = createHost();
+  const released = await host.call(1, "sessions.create", { name: "Reloaded window" });
+  const kept = await host.call(2, "sessions.create", { name: "Other window" });
+  host.watchStart(1, { watchId: "released", sessionId: released.sessionId, live: true });
+  host.watchStart(2, { watchId: "kept", sessionId: kept.sessionId, live: true });
+  await vi.waitFor(() => {
+    for (const watchId of ["released", "kept"]) {
+      assert.ok(watchEvents.some((event) => event.watchId === watchId && event.kind === "event"));
+    }
+  });
+
+  await host.releaseWindow(1);
+  await vi.waitFor(() => assert.deepEqual(browserReleases, [released.sessionId]));
+
+  host.watchStop("kept");
+  await vi.waitFor(() => assert.deepEqual(browserReleases, [released.sessionId, kept.sessionId]));
+});
 
 test("update activity follows running local tasks", async () => {
   const { createHost } = await fixture();
   const host = createHost();
-  const session = await host.call("sessions.create", { name: "Update activity" });
-  const job = await host.call("jobs.start", {
+  const session = await host.call(1, "sessions.create", { name: "Update activity" });
+  const job = await host.call(1, "jobs.start", {
     sessionId: session.sessionId,
     command: "printf ready; sleep 30",
   });
@@ -201,7 +257,7 @@ test("update activity follows running local tasks", async () => {
     terminalCommandCount: 0,
   });
 
-  await host.call("jobs.cancel", { sessionId: session.sessionId, jobId: job.id });
+  await host.call(1, "jobs.cancel", { sessionId: session.sessionId, jobId: job.id });
   await vi.waitFor(async () => {
     assert.deepEqual(await host.updateActivity(), { kind: "idle" });
   });
@@ -214,42 +270,42 @@ test("untrusted send queues once, reports the requirement, and runs after trust"
   await mkdir(path);
   const file = join(path, "README.md");
   await writeFile(file, "untrusted projects remain browsable\n");
-  assert.equal((await host.call("host.openWorkspace", { path })).kind, "opened");
-  const session = await host.call("sessions.create", { name: "Saved chat" });
-  const document = await host.call("host.files.read", { path: file });
+  assert.equal((await host.call(1, "host.openWorkspace", { path })).kind, "opened");
+  const session = await host.call(1, "sessions.create", { name: "Saved chat" });
+  const document = await host.call(1, "host.files.read", { path: file });
   assert.equal(document.kind, "text");
   if (document.kind === "text") {
     assert.equal(document.contents, "untrusted projects remain browsable\n");
   }
   const send = { sessionId: session.sessionId, content: "Continue", key: "continue" };
-  assert.equal((await host.call("messages.send", send)).kind, "queued");
-  assert.equal((await host.call("messages.send", send)).kind, "duplicate");
+  assert.equal((await host.call(1, "messages.send", send)).kind, "queued");
+  assert.equal((await host.call(1, "messages.send", send)).kind, "duplicate");
   // Session trust is the SDK's state, not a host event; the renderer reads it from the session.
   assert.equal(
     events.some((event) => event.kind === "workspace_trust_required"),
     false,
   );
   assert.deepEqual(
-    (await host.call("sessions.get", { sessionId: session.sessionId }))?.activation,
+    (await host.call(1, "sessions.get", { sessionId: session.sessionId }))?.activation,
     {
       kind: "requires",
       requirement: { kind: "workspace_trust", cwd: path },
     },
   );
-  assert.deepEqual(await host.call("plugins.catalog", undefined), {
+  assert.deepEqual(await host.call(1, "plugins.catalog", undefined), {
     plugins: [],
     commands: [],
     skills: [],
     settings: [],
   });
-  await host.call("host.trustWorkspace", { path });
+  await host.call(1, "host.trustWorkspace", { path });
   await vi.waitFor(async () => {
-    const snapshot = await host.call("sessions.snapshot", { sessionId: session.sessionId });
+    const snapshot = await host.call(1, "sessions.snapshot", { sessionId: session.sessionId });
     assert.equal(snapshot?.pending.length, 0);
     assert.ok(snapshot?.transcript.some((turn) => turn.kind === "turn"));
   });
   assert.equal(
-    (await host.call("sessions.get", { sessionId: session.sessionId }))?.name,
+    (await host.call(1, "sessions.get", { sessionId: session.sessionId }))?.name,
     "Saved chat",
   );
 });
@@ -259,11 +315,11 @@ test("a skill added to a trusted project reaches the session without a restart",
   const host = createHost();
   const path = join(root, "skills-project");
   await mkdir(join(path, ".nyte", "skills"), { recursive: true });
-  assert.equal((await host.call("host.openWorkspace", { path })).kind, "opened");
-  await host.call("host.trustWorkspace", { path });
-  await host.call("sessions.create", { name: "Skills" });
+  assert.equal((await host.call(1, "host.openWorkspace", { path })).kind, "opened");
+  await host.call(1, "host.trustWorkspace", { path });
+  await host.call(1, "sessions.create", { name: "Skills" });
   // The first catalog read resolves plugins, which is when the sources start being watched.
-  const before = await host.call("plugins.catalog", undefined);
+  const before = await host.call(1, "plugins.catalog", undefined);
   assert.equal(
     before.skills.some((skill) => skill.name === "brew-tea"),
     false,
@@ -275,7 +331,7 @@ test("a skill added to a trusted project reaches the session without a restart",
   );
   await vi.waitFor(
     async () => {
-      const catalog = await host.call("plugins.catalog", undefined);
+      const catalog = await host.call(1, "plugins.catalog", undefined);
       assert.ok(catalog.skills.some((skill) => skill.name === "brew-tea"));
     },
     { timeout: 10_000, interval: 100 },
@@ -287,21 +343,21 @@ test("IPC keeps the SDK queued and duplicate receipts verbatim and redacts host 
   const host = createHost();
   const path = join(root, "ipc-project");
   await mkdir(path);
-  await host.call("host.openWorkspace", { path });
-  const session = await host.call("sessions.create", { name: "IPC fixture" });
+  await host.call(1, "host.openWorkspace", { path });
+  const session = await host.call(1, "sessions.create", { name: "IPC fixture" });
   const input = { sessionId: session.sessionId, content: "private prompt", key: "ipc-message" };
-  const queued = await callIpc(() => host, { path: "messages.send", input });
+  const queued = await callIpc(() => host, 1, { path: "messages.send", input });
   assert.equal(queued.ok, true);
   assert.equal(queued.path, "messages.send");
   assert.ok(queued.value !== null && queued.value !== undefined && "kind" in queued.value);
   assert.equal(queued.value.kind, "queued");
-  const duplicate = await callIpc(() => host, { path: "messages.send", input });
+  const duplicate = await callIpc(() => host, 1, { path: "messages.send", input });
   assert.deepEqual(duplicate, {
     ok: true,
     path: "messages.send",
-    value: await host.call("messages.send", input),
+    value: await host.call(1, "messages.send", input),
   });
-  const refused = await callIpc(() => host, {
+  const refused = await callIpc(() => host, 1, {
     path: "host.terminal.create",
     input: { id: "terminal", workspacePath: path },
   });
@@ -315,7 +371,7 @@ test("IPC redacts a real host operation failure and retains one local diagnostic
   const { createHost } = await fixture();
   const host = createHost();
   const before = new Set(ipcDiagnostics.keys());
-  const reply = await callIpc(() => host, {
+  const reply = await callIpc(() => host, 1, {
     path: "host.browser.open",
     input: { surface: "private-surface", url: "https://example.invalid/private-content" },
   });
@@ -334,9 +390,9 @@ test("watch pump forwards activation notices instead of interpreting them", asyn
   const host = createHost();
   const path = join(root, "watched-project");
   await mkdir(path);
-  await host.call("host.openWorkspace", { path });
-  const session = await host.call("sessions.create", { name: "Watched" });
-  host.watchStart({ watchId: "activation", sessionId: session.sessionId, live: true });
+  await host.call(1, "host.openWorkspace", { path });
+  const session = await host.call(1, "sessions.create", { name: "Watched" });
+  host.watchStart(1, { watchId: "activation", sessionId: session.sessionId, live: true });
   await vi.waitFor(() => {
     assert.ok(
       watchEvents.some(
@@ -358,8 +414,8 @@ test("watch pump forwards activation notices instead of interpreting them", asyn
 test("watch errors preserve cursor metadata and release the watch id for a fresh subscription", async () => {
   const { createHost, watchEvents } = await fixture();
   const host = createHost();
-  const session = await host.call("sessions.create", { name: "Watch cursor" });
-  host.watchStart({ watchId: "cursor", sessionId: session.sessionId, afterSeq: -1 });
+  const session = await host.call(1, "sessions.create", { name: "Watch cursor" });
+  host.watchStart(1, { watchId: "cursor", sessionId: session.sessionId, afterSeq: -1 });
   await vi.waitFor(() => assert.ok(watchEvents.some((event) => event.kind === "ended")));
   const ended = watchEvents.find((event) => event.kind === "ended");
   assert.ok(ended);
@@ -368,7 +424,7 @@ test("watch errors preserve cursor metadata and release the watch id for a fresh
   assert.equal(ended.error.floor, 0);
   assert.equal(ended.error.correlationId, undefined);
   const count = watchEvents.length;
-  host.watchStart({ watchId: "cursor", sessionId: session.sessionId, live: true });
+  host.watchStart(1, { watchId: "cursor", sessionId: session.sessionId, live: true });
   await vi.waitFor(() =>
     assert.ok(watchEvents.slice(count).some((event) => event.kind === "event")),
   );
@@ -378,8 +434,8 @@ test("watch errors preserve cursor metadata and release the watch id for a fresh
 test("stopping the last idle watch releases its session resources", async () => {
   const { browserReleases, createHost, watchEvents } = await fixture();
   const host = createHost();
-  const session = await host.call("sessions.create", { name: "Closable watch" });
-  host.watchStart({ watchId: "closable", sessionId: session.sessionId, live: true });
+  const session = await host.call(1, "sessions.create", { name: "Closable watch" });
+  host.watchStart(1, { watchId: "closable", sessionId: session.sessionId, live: true });
   await vi.waitFor(() => assert.ok(watchEvents.some((event) => event.kind === "event")));
 
   host.watchStop("closable");
@@ -390,28 +446,28 @@ test("stopping the last idle watch releases its session resources", async () => 
 test("archiving waits for delegated work before releasing session resources", async () => {
   const { browserReleases, createHost, watchEvents } = await fixture();
   const host = createHost();
-  const parent = await host.call("sessions.create", { name: "Archived parent" });
-  host.watchStart({ watchId: "archived", sessionId: parent.sessionId, live: true });
+  const parent = await host.call(1, "sessions.create", { name: "Archived parent" });
+  host.watchStart(1, { watchId: "archived", sessionId: parent.sessionId, live: true });
   await vi.waitFor(() => assert.ok(watchEvents.some((event) => event.kind === "event")));
-  const child = await host.call("sessions.create", {
+  const child = await host.call(1, "sessions.create", {
     name: "Delegated child",
     parent: { sessionId: parent.sessionId, runId: "run", callId: "call", depth: 1 },
   });
-  const job = await host.call("jobs.start", {
+  const job = await host.call(1, "jobs.start", {
     sessionId: child.sessionId,
     command: "printf ready; sleep 30",
   });
 
-  await host.call("sessions.setArchived", { sessionId: parent.sessionId, archived: true });
+  await host.call(1, "sessions.setArchived", { sessionId: parent.sessionId, archived: true });
 
   assert.deepEqual(browserReleases, []);
   assert.equal(
-    (await host.call("jobs.list", { sessionId: child.sessionId }))[0]?.phase.kind,
+    (await host.call(1, "jobs.list", { sessionId: child.sessionId }))[0]?.phase.kind,
     "running",
   );
 
-  await host.call("jobs.cancel", { sessionId: child.sessionId, jobId: job.id });
-  await host.call("host.sessionDirectory", undefined);
+  await host.call(1, "jobs.cancel", { sessionId: child.sessionId, jobId: job.id });
+  await host.call(1, "host.sessionDirectory", undefined);
   await vi.waitFor(() => assert.deepEqual(browserReleases, [parent.sessionId, child.sessionId]));
   host.watchStop("archived");
 });
@@ -419,11 +475,11 @@ test("archiving waits for delegated work before releasing session resources", as
 test("deleting a session releases its retained resources", async () => {
   const { browserReleases, createHost, watchEvents } = await fixture();
   const host = createHost();
-  const session = await host.call("sessions.create", { name: "Delete resources" });
-  host.watchStart({ watchId: "delete", sessionId: session.sessionId, live: true });
+  const session = await host.call(1, "sessions.create", { name: "Delete resources" });
+  host.watchStart(1, { watchId: "delete", sessionId: session.sessionId, live: true });
   await vi.waitFor(() => assert.ok(watchEvents.some((event) => event.kind === "event")));
 
-  await host.call("sessions.delete", { sessionId: session.sessionId });
+  await host.call(1, "sessions.delete", { sessionId: session.sessionId });
 
   assert.ok(browserReleases.includes(session.sessionId));
   host.watchStop("delete");
@@ -436,25 +492,25 @@ test("trustWorkspace reactivates every open target", async () => {
   const secondPath = join(root, "second-project");
   await Promise.all([mkdir(firstPath), mkdir(secondPath)]);
 
-  await host.call("host.openWorkspace", { path: firstPath });
-  const first = await host.call("sessions.create", { name: "First" });
-  await host.call("messages.send", {
+  await host.call(1, "host.openWorkspace", { path: firstPath });
+  const first = await host.call(1, "sessions.create", { name: "First" });
+  await host.call(1, "messages.send", {
     sessionId: first.sessionId,
     content: "first",
     key: "first",
   });
-  await host.call("host.openWorkspace", { path: secondPath });
-  const second = await host.call("sessions.create", { name: "Second" });
-  await host.call("messages.send", {
+  await host.call(1, "host.openWorkspace", { path: secondPath });
+  const second = await host.call(1, "sessions.create", { name: "Second" });
+  await host.call(1, "messages.send", {
     sessionId: second.sessionId,
     content: "second",
     key: "second",
   });
 
-  await host.call("host.trustWorkspace", { path: root });
+  await host.call(1, "host.trustWorkspace", { path: root });
   await vi.waitFor(async () => {
-    const firstSnapshot = await host.call("sessions.snapshot", { sessionId: first.sessionId });
-    const secondSnapshot = await host.call("sessions.snapshot", { sessionId: second.sessionId });
+    const firstSnapshot = await host.call(1, "sessions.snapshot", { sessionId: first.sessionId });
+    const secondSnapshot = await host.call(1, "sessions.snapshot", { sessionId: second.sessionId });
     assert.equal(firstSnapshot?.pending.length, 0);
     assert.equal(secondSnapshot?.pending.length, 0);
   });
@@ -465,41 +521,44 @@ test("history survives restart while an unavailable workspace requires trust", a
   const path = join(root, "project");
   await mkdir(path);
   const host = createHost();
-  await host.call("host.openWorkspace", { path });
-  const session = await host.call("sessions.create", { name: "Keep this conversation" });
+  await host.call(1, "host.openWorkspace", { path });
+  const session = await host.call(1, "sessions.create", { name: "Keep this conversation" });
   await rm(path, { recursive: true });
-  await host.call("host.closeWorkspace", undefined);
-  assert.equal((await host.call("host.openWorkspace", { path })).kind, "opened");
+  await host.call(1, "host.closeWorkspace", undefined);
+  assert.equal((await host.call(1, "host.openWorkspace", { path })).kind, "opened");
   assert.equal(
-    (await host.call("sessions.get", { sessionId: session.sessionId }))?.name,
+    (await host.call(1, "sessions.get", { sessionId: session.sessionId }))?.name,
     "Keep this conversation",
   );
   await host.close();
   const restarted = createHost();
-  assert.equal((await restarted.call("host.openWorkspace", { path })).kind, "opened");
-  const snapshot = await restarted.call("sessions.snapshot", { sessionId: session.sessionId });
+  assert.equal((await restarted.call(1, "host.openWorkspace", { path })).kind, "opened");
+  const snapshot = await restarted.call(1, "sessions.snapshot", { sessionId: session.sessionId });
   assert.ok(snapshot);
   assert.deepEqual(snapshot.session.activation, {
     kind: "requires",
     requirement: { kind: "workspace_trust", cwd: path },
   });
-  assert.equal((await restarted.call("workspace.list", undefined))[0]?.available, false);
+  assert.equal((await restarted.call(1, "workspace.list", undefined))[0]?.available, false);
   const send = {
     sessionId: session.sessionId,
     content: "Continue",
     key: "continue",
   };
-  assert.equal((await restarted.call("messages.send", send)).kind, "queued");
-  await restarted.call("sessions.rename", { sessionId: session.sessionId, name: "Still editable" });
+  assert.equal((await restarted.call(1, "messages.send", send)).kind, "queued");
+  await restarted.call(1, "sessions.rename", {
+    sessionId: session.sessionId,
+    name: "Still editable",
+  });
   await assert.rejects(access(path));
   await writeFile(path, "A file replaced the folder");
-  assert.equal((await restarted.call("messages.send", send)).kind, "duplicate");
+  assert.equal((await restarted.call(1, "messages.send", send)).kind, "duplicate");
   await rm(path);
   await mkdir(path);
-  await restarted.call("host.trustWorkspace", { path });
-  assert.ok((await restarted.call("plugins.catalog", undefined)).plugins.length > 0);
+  await restarted.call(1, "host.trustWorkspace", { path });
+  assert.ok((await restarted.call(1, "plugins.catalog", undefined)).plugins.length > 0);
   await vi.waitFor(async () => {
-    const current = await restarted.call("sessions.snapshot", { sessionId: session.sessionId });
+    const current = await restarted.call(1, "sessions.snapshot", { sessionId: session.sessionId });
     assert.equal(current?.pending.length, 0);
   });
 });
@@ -507,14 +566,14 @@ test("history survives restart while an unavailable workspace requires trust", a
 test("an invalid local database leaves the currently selected conversation open", async () => {
   const { root, createHost } = await fixture();
   const host = createHost();
-  const session = await host.call("sessions.create", { name: "Home chat" });
+  const session = await host.call(1, "sessions.create", { name: "Home chat" });
   const path = join(root, "bad-project");
   await mkdir(join(path, ".nyte"), { recursive: true });
   await writeFile(join(path, ".nyte", "sessions.db"), "not sqlite");
-  assert.equal((await host.call("host.openWorkspace", { path })).kind, "failed");
-  assert.equal((await host.call("host.state", undefined)).workspace, undefined);
+  assert.equal((await host.call(1, "host.openWorkspace", { path })).kind, "failed");
+  assert.equal((await host.call(1, "host.state", undefined)).workspace, undefined);
   assert.equal(
-    (await host.call("sessions.get", { sessionId: session.sessionId }))?.name,
+    (await host.call(1, "sessions.get", { sessionId: session.sessionId }))?.name,
     "Home chat",
   );
 });
@@ -526,13 +585,13 @@ test("terminal and file mutations still require trust", async () => {
   await mkdir(path);
   const file = join(path, "note.txt");
   await writeFile(file, "before\n");
-  await host.call("host.openWorkspace", { path });
+  await host.call(1, "host.openWorkspace", { path });
   await assert.rejects(
-    host.call("host.terminal.create", { id: "outside", workspacePath: root }),
+    host.call(1, "host.terminal.create", { id: "outside", workspacePath: root }),
     /Open this workspace/,
   );
   await assert.rejects(
-    host.call("host.terminal.create", { id: "untrusted", workspacePath: path }),
+    host.call(1, "host.terminal.create", { id: "untrusted", workspacePath: path }),
     /Workspace trust required/,
   );
   assert.ok(
@@ -542,18 +601,18 @@ test("terminal and file mutations still require trust", async () => {
     events.some((event) => event.kind === "terminal_data"),
     false,
   );
-  const document = await host.call("host.files.read", { path: file });
+  const document = await host.call(1, "host.files.read", { path: file });
   assert.equal(document.kind, "text");
   if (document.kind !== "text") return;
   await assert.rejects(
-    host.call("host.files.save", {
+    host.call(1, "host.files.save", {
       path: file,
       contents: "after\n",
       version: document.version,
     }),
     /Workspace trust required/,
   );
-  const unchanged = await host.call("host.files.read", { path: file });
+  const unchanged = await host.call(1, "host.files.read", { path: file });
   assert.equal(unchanged.kind, "text");
   if (unchanged.kind === "text") assert.equal(unchanged.contents, "before\n");
 });
@@ -563,18 +622,18 @@ test("a complete sidebar directory survives pagination and workspace switches", 
   const host = createHost();
   const path = join(root, "directory-project");
   await mkdir(path);
-  await host.call("host.openWorkspace", { path });
+  await host.call(1, "host.openWorkspace", { path });
   const saved = [];
   for (let index = 0; index < 7; index += 1) {
-    saved.push(await host.call("sessions.create", { name: `Chat ${index}` }));
+    saved.push(await host.call(1, "sessions.create", { name: `Chat ${index}` }));
   }
   const archived = saved[0];
   assert.ok(archived);
-  await host.call("sessions.setArchived", { sessionId: archived.sessionId, archived: true });
-  await host.call("host.closeWorkspace", undefined);
-  await host.call("host.openWorkspace", { path });
+  await host.call(1, "sessions.setArchived", { sessionId: archived.sessionId, archived: true });
+  await host.call(1, "host.closeWorkspace", undefined);
+  await host.call(1, "host.openWorkspace", { path });
   const directory = await loadSessionDirectory((input) =>
-    host.call("sessions.list", { ...input, limit: 2 }),
+    host.call(1, "sessions.list", { ...input, limit: 2 }),
   );
   assert.equal(directory.next, undefined);
   assert.deepEqual(
@@ -593,20 +652,20 @@ test("opening another workspace preserves its predecessor's sessions and live wa
   const first = join(root, "first");
   const second = join(root, "second");
   await Promise.all([mkdir(first), mkdir(second)]);
-  await host.call("host.openWorkspace", { path: first });
-  const firstSession = await host.call("sessions.create", { name: "First folder chat" });
-  host.watchStart({ watchId: "first-folder", sessionId: firstSession.sessionId });
+  await host.call(1, "host.openWorkspace", { path: first });
+  const firstSession = await host.call(1, "sessions.create", { name: "First folder chat" });
+  host.watchStart(1, { watchId: "first-folder", sessionId: firstSession.sessionId });
   await vi.waitFor(() => assert.ok(watchEvents.some((event) => event.kind === "event")));
-  await host.call("host.openWorkspace", { path: second });
-  const secondSession = await host.call("sessions.create", { name: "Second folder chat" });
-  await host.call("sessions.rename", { sessionId: firstSession.sessionId, name: "Still open" });
+  await host.call(1, "host.openWorkspace", { path: second });
+  const secondSession = await host.call(1, "sessions.create", { name: "Second folder chat" });
+  await host.call(1, "sessions.rename", { sessionId: firstSession.sessionId, name: "Still open" });
   assert.equal(
-    (await host.call("sessions.get", { sessionId: firstSession.sessionId }))?.name,
+    (await host.call(1, "sessions.get", { sessionId: firstSession.sessionId }))?.name,
     "Still open",
   );
-  assert.equal((await host.call("host.state", undefined)).workspace?.path, second);
+  assert.equal((await host.call(1, "host.state", undefined)).workspace?.path, second);
   const transitionCount = events.length;
-  const directory = await host.call("host.sessionDirectory", undefined);
+  const directory = await host.call(1, "host.sessionDirectory", undefined);
   assert.deepEqual(
     localSessions(directory, first)?.map((session) => session.name),
     ["Still open"],
@@ -616,21 +675,58 @@ test("opening another workspace preserves its predecessor's sessions and live wa
     [secondSession.sessionId],
   );
   assert.equal(events.length, transitionCount);
-  assert.equal((await host.call("host.state", undefined)).workspace?.path, second);
+  assert.equal((await host.call(1, "host.state", undefined)).workspace?.path, second);
   assert.equal(
     watchEvents.some((event) => event.kind === "ended"),
     false,
   );
-  await host.call("host.closeWorkspace", undefined);
+  await host.call(1, "host.closeWorkspace", undefined);
   assert.equal(
-    (await host.call("sessions.get", { sessionId: firstSession.sessionId }))?.name,
+    (await host.call(1, "sessions.get", { sessionId: firstSession.sessionId }))?.name,
     "Still open",
   );
   assert.equal(
-    (await host.call("sessions.get", { sessionId: secondSession.sessionId }))?.name,
+    (await host.call(1, "sessions.get", { sessionId: secondSession.sessionId }))?.name,
     "Second folder chat",
   );
   host.watchStop("first-folder");
+});
+
+test("a closed directory refresh drops owners for sessions removed from its store", async () => {
+  const { root, createHost } = await fixture();
+  const path = join(root, "refreshed-project");
+  await mkdir(path);
+
+  const seed = createHost();
+  await seed.call(1, "host.openWorkspace", { path });
+  const moved = await seed.call(1, "sessions.create", { name: "Project copy" });
+  await seed.close();
+
+  const reader = createHost();
+  await reader.call(1, "host.sessionDirectory", undefined);
+
+  const writer = createHost();
+  await writer.call(1, "host.openWorkspace", { path });
+  await writer.call(1, "sessions.delete", { sessionId: moved.sessionId });
+  await writer.call(1, "host.closeWorkspace", undefined);
+  await writer.call(1, "sessions.create", {
+    sessionId: moved.sessionId,
+    name: "Home copy",
+  });
+  await writer.close();
+
+  const now = Date.now();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(now + 60_001);
+  try {
+    await reader.call(1, "host.sessionDirectory", undefined);
+  } finally {
+    clock.mockRestore();
+  }
+
+  assert.equal(
+    (await reader.call(1, "sessions.get", { sessionId: moved.sessionId }))?.name,
+    "Home copy",
+  );
 });
 
 test("subagent children stay out of the sidebar directory", async () => {
@@ -638,9 +734,9 @@ test("subagent children stay out of the sidebar directory", async () => {
   const host = createHost();
   const path = join(root, "subagent-project");
   await mkdir(path);
-  await host.call("host.openWorkspace", { path });
-  const parent = await host.call("sessions.create", { name: "Parent chat" });
-  await host.call("sessions.create", {
+  await host.call(1, "host.openWorkspace", { path });
+  const parent = await host.call(1, "sessions.create", { name: "Parent chat" });
+  await host.call(1, "sessions.create", {
     name: "Delegated work",
     parent: {
       sessionId: parent.sessionId,
@@ -649,12 +745,12 @@ test("subagent children stay out of the sidebar directory", async () => {
       depth: 1,
     },
   });
-  const directory = await loadSessionDirectory((input) => host.call("sessions.list", input));
+  const directory = await loadSessionDirectory((input) => host.call(1, "sessions.list", input));
   assert.deepEqual(
     directory.items.map((session) => session.sessionId),
     [parent.sessionId],
   );
-  const workspaces = await host.call("host.sessionDirectory", undefined);
+  const workspaces = await host.call(1, "host.sessionDirectory", undefined);
   assert.deepEqual(
     workspaces.flatMap((entry) => entry.sessions.map((session) => session.sessionId)),
     [parent.sessionId],
@@ -668,22 +764,22 @@ test("searching the same term after switching workspaces returns the selected fo
   const first = join(root, "search-first");
   const second = join(root, "search-second");
   await Promise.all([mkdir(first), mkdir(second)]);
-  await host.call("host.openWorkspace", { path: first });
-  const firstSession = await host.call("sessions.create", { name: "Shared topic in first" });
+  await host.call(1, "host.openWorkspace", { path: first });
+  const firstSession = await host.call(1, "sessions.create", { name: "Shared topic in first" });
   await loadLocalResources();
   assert.deepEqual(queryClient.getQueryData(keys.session(firstSession.sessionId)), firstSession);
   const search = () =>
     queryClient.fetchQuery({
       queryKey: keys.sessionSearch("Shared"),
-      queryFn: () => host.call("sessions.list", { search: "Shared", limit: 50 }),
+      queryFn: () => host.call(1, "sessions.list", { search: "Shared", limit: 50 }),
     });
   assert.deepEqual(
     (await search()).items.map((session) => session.sessionId),
     [firstSession.sessionId],
   );
 
-  await host.call("host.openWorkspace", { path: second });
-  const secondSession = await host.call("sessions.create", { name: "Shared topic in second" });
+  await host.call(1, "host.openWorkspace", { path: second });
+  const secondSession = await host.call(1, "sessions.create", { name: "Shared topic in second" });
   await loadLocalResources();
   assert.deepEqual(queryClient.getQueryData(keys.session(secondSession.sessionId)), secondSession);
   assert.deepEqual(queryClient.getQueryData(keys.session(firstSession.sessionId)), firstSession);
@@ -692,7 +788,7 @@ test("searching the same term after switching workspaces returns the selected fo
     [secondSession.sessionId],
   );
 
-  await host.call("host.openWorkspace", { path: first });
+  await host.call(1, "host.openWorkspace", { path: first });
   await loadLocalResources();
   assert.deepEqual(
     (await search()).items.map((session) => session.sessionId),
@@ -705,19 +801,19 @@ test("usage keeps recorded replies after rewind and desktop restart", async () =
   // All time, so the assertions do not depend on which day the suite runs.
   const allTime = { sinceDay: null, untilDay: localDay(Date.now()) };
   const host = createHost();
-  const session = await host.call("sessions.create", { name: "Recorded work" });
-  await host.call("messages.send", { sessionId: session.sessionId, content: "hello" });
+  const session = await host.call(1, "sessions.create", { name: "Recorded work" });
+  await host.call(1, "messages.send", { sessionId: session.sessionId, content: "hello" });
   await vi.waitFor(async () => {
-    const report = await host.call("host.usage", allTime);
+    const report = await host.call(1, "host.usage", allTime);
     assert.equal(report.entries[0]?.totals.tokens, 2);
   });
-  await host.call("heads.move", { sessionId: session.sessionId, to: null });
-  const rewound = await host.call("sessions.snapshot", { sessionId: session.sessionId });
+  await host.call(1, "heads.move", { sessionId: session.sessionId, to: null });
+  const rewound = await host.call(1, "sessions.snapshot", { sessionId: session.sessionId });
   assert.equal(rewound?.transcript.length, 0);
   await host.close();
 
   const restarted = createHost();
-  const report = await restarted.call("host.usage", allTime);
+  const report = await restarted.call(1, "host.usage", allTime);
   assert.equal(report.sessions.length, 1);
   assert.equal(report.sessions[0]?.name, "Recorded work");
   assert.equal(report.entries.length, 1);
@@ -733,7 +829,7 @@ test("usage snapshots read all Claude Code projects separately and refresh local
   const { root, createHost } = await fixture();
   const host = createHost();
   const window = { sinceDay: "2099-01-01", untilDay: "2099-01-02" };
-  const missing = await host.call("host.usage", window);
+  const missing = await host.call(1, "host.usage", window);
   assert.deepEqual(missing.claudeCode, { kind: "missing" });
   assert.deepEqual(missing.codex, { kind: "missing" });
 
@@ -761,7 +857,7 @@ test("usage snapshots read all Claude Code projects separately and refresh local
     })}\n`,
   );
 
-  const snapshot = await host.call("host.usage", window);
+  const snapshot = await host.call(1, "host.usage", window);
   assert.equal(snapshot.claudeCode.kind, "ready");
   if (snapshot.claudeCode.kind !== "ready") return;
   assert.equal(snapshot.claudeCode.summary.total.totalTokens, 300);
@@ -773,11 +869,11 @@ test("usage snapshots read all Claude Code projects separately and refresh local
   assert.deepEqual(snapshot.entries, []);
   assert.deepEqual(snapshot.sessions, []);
   assert.deepEqual(snapshot.sources, missing.sources);
-  assert.equal((await host.call("host.state", undefined)).workspace, undefined);
-  assert.deepEqual(await host.call("workspace.list", undefined), []);
+  assert.equal((await host.call(1, "host.state", undefined)).workspace, undefined);
+  assert.deepEqual(await host.call(1, "workspace.list", undefined), []);
 
   await rm(join(second, "child.jsonl"));
-  const refreshed = await host.call("host.usage", { sinceDay: null, untilDay: "2099-01-02" });
+  const refreshed = await host.call(1, "host.usage", { sinceDay: null, untilDay: "2099-01-02" });
   assert.equal(refreshed.claudeCode.kind, "ready");
   if (refreshed.claudeCode.kind !== "ready") return;
   assert.equal(refreshed.claudeCode.summary.total.totalTokens, 150);
@@ -806,7 +902,7 @@ test("usage snapshots read Codex rollouts beside Claude Code and refresh local c
     `${context}\n${JSON.stringify(record("one"))}\n${JSON.stringify(record("two"))}\n`,
   );
 
-  const snapshot = await host.call("host.usage", window);
+  const snapshot = await host.call(1, "host.usage", window);
   assert.deepEqual(snapshot.claudeCode, { kind: "missing" });
   assert.equal(snapshot.codex.kind, "ready");
   if (snapshot.codex.kind !== "ready") return;
@@ -816,7 +912,7 @@ test("usage snapshots read Codex rollouts beside Claude Code and refresh local c
   assert.deepEqual(snapshot.entries, []);
 
   await writeFile(rollout, `${context}\n${JSON.stringify(record("one"))}\n`);
-  const refreshed = await host.call("host.usage", window);
+  const refreshed = await host.call(1, "host.usage", window);
   assert.equal(refreshed.codex.kind, "ready");
   if (refreshed.codex.kind === "ready") {
     assert.equal(refreshed.codex.summary.total.totalTokens, 120);
@@ -831,7 +927,7 @@ test("usage snapshots read Codex rollouts beside Claude Code and refresh local c
     rollout,
     `${context}\n${JSON.stringify(record("one"))}\n${JSON.stringify(record("two"))}\n`,
   );
-  const restarted = await createHost().call("host.usage", window);
+  const restarted = await createHost().call(1, "host.usage", window);
   assert.equal(restarted.codex.kind, "ready");
   if (restarted.codex.kind === "ready") {
     assert.equal(restarted.codex.summary.total.totalTokens, 240);
@@ -842,18 +938,16 @@ test("unreadable Claude Code history does not hide Nyte usage and recovers on re
   const { root, createHost } = await fixture();
   await writeFile(join(root, "claude"), "not a directory");
   const host = createHost();
-  const session = await host.call("sessions.create", { name: "Nyte only" });
-  await host.call("messages.send", { sessionId: session.sessionId, content: "hello" });
+  const session = await host.call(1, "sessions.create", { name: "Nyte only" });
+  await host.call(1, "messages.send", { sessionId: session.sessionId, content: "hello" });
   const window = { sinceDay: null, untilDay: localDay(Date.now()) };
   await vi.waitFor(async () => {
-    const snapshot = await host.call("host.usage", window);
+    const snapshot = await host.call(1, "host.usage", window);
     assert.equal(snapshot.entries[0]?.totals.tokens, 2);
-    assert.equal(snapshot.claudeCode.kind, "failed");
-    if (snapshot.claudeCode.kind === "failed") assert.ok(snapshot.claudeCode.message);
   });
   await rm(join(root, "claude"));
   await mkdir(join(root, "claude", "projects"), { recursive: true });
-  const recovered = await host.call("host.usage", window);
+  const recovered = await host.call(1, "host.usage", window);
   assert.equal(recovered.entries[0]?.totals.tokens, 2);
   assert.equal(recovered.claudeCode.kind, "ready");
   if (recovered.claudeCode.kind === "ready") {
@@ -881,7 +975,7 @@ test.each(["store", "registry"])(
     const host = createHost();
     const window = { sinceDay: "2099-01-01", untilDay: "2099-01-02" };
     const before = new Set(ipcDiagnostics.keys());
-    const snapshot = await host.call("host.usage", window);
+    const snapshot = await host.call(1, "host.usage", window);
     const diagnostics = [...ipcDiagnostics.entries()].filter(([id]) => !before.has(id));
     assert.equal(diagnostics.length, 1);
     const diagnostic = diagnostics[0];
@@ -905,7 +999,7 @@ test.each(["store", "registry"])(
 
     await rm(broken, { recursive: true });
     await writeFile(history, `${JSON.stringify({ ...record, costUSD: 2.5 })}\n`);
-    const refreshed = await host.call("host.usage", window);
+    const refreshed = await host.call(1, "host.usage", window);
     assert.equal(refreshed.nyteError, null);
     assert.equal(refreshed.sources[0]?.status, "ok");
     assert.equal(refreshed.claudeCode.kind, "ready");
@@ -913,7 +1007,7 @@ test.each(["store", "registry"])(
       assert.equal(refreshed.claudeCode.summary.total.cost.total, 2.5);
     }
     assert.deepEqual(refreshed.entries, []);
-    assert.equal((await host.call("host.state", undefined)).workspace, undefined);
+    assert.equal((await host.call(1, "host.state", undefined)).workspace, undefined);
   },
 );
 
@@ -922,19 +1016,19 @@ test("the previous directory reopens without granting trust, and choosing Home i
   const path = join(root, "remembered-project");
   await mkdir(path);
   const host = createHost();
-  await host.call("host.openWorkspace", { path });
+  await host.call(1, "host.openWorkspace", { path });
   await host.close();
 
   const restarted = createHost();
-  assert.equal((await restarted.call("host.state", undefined)).workspace?.path, path);
-  const session = await restarted.call("sessions.create", undefined);
+  assert.equal((await restarted.call(1, "host.state", undefined)).workspace?.path, path);
+  const session = await restarted.call(1, "sessions.create", undefined);
   assert.deepEqual(session.activation, {
     kind: "requires",
     requirement: { kind: "workspace_trust", cwd: path },
   });
-  await restarted.call("host.closeWorkspace", undefined);
+  await restarted.call(1, "host.closeWorkspace", undefined);
   await restarted.close();
-  assert.equal((await createHost().call("host.state", undefined)).workspace, undefined);
+  assert.equal((await createHost().call(1, "host.state", undefined)).workspace, undefined);
 });
 
 test("forgetting the previous directory keeps it forgotten after restart", async () => {
@@ -942,12 +1036,12 @@ test("forgetting the previous directory keeps it forgotten after restart", async
   const path = join(root, "forgotten-project");
   await mkdir(path);
   const host = createHost();
-  await host.call("host.openWorkspace", { path });
-  await host.call("workspace.forget", { path });
+  await host.call(1, "host.openWorkspace", { path });
+  await host.call(1, "workspace.forget", { path });
   await host.close();
   const restarted = createHost();
-  assert.equal((await restarted.call("host.state", undefined)).workspace, undefined);
-  assert.deepEqual(await restarted.call("workspace.list", undefined), []);
+  assert.equal((await restarted.call(1, "host.state", undefined)).workspace, undefined);
+  assert.deepEqual(await restarted.call(1, "workspace.list", undefined), []);
 });
 
 test.each(["not json", '"relative/path"', '{"path":"/tmp"}'])(
@@ -956,7 +1050,7 @@ test.each(["not json", '"relative/path"', '{"path":"/tmp"}'])(
     const { root, createHost } = await fixture();
     await mkdir(join(root, "state"));
     await writeFile(join(root, "state", "desktop-workspace.json"), contents);
-    assert.equal((await createHost().call("host.state", undefined)).workspace, undefined);
+    assert.equal((await createHost().call(1, "host.state", undefined)).workspace, undefined);
   },
 );
 
@@ -966,40 +1060,41 @@ test("thread choices survive workspace switches and restart before and after the
   const second = join(root, "configured-second");
   await Promise.all([mkdir(first), mkdir(second)]);
   const host = createHost();
-  await host.call("host.openWorkspace", { path: first });
-  const session = await host.call("sessions.create", undefined);
+  await host.call(1, "host.openWorkspace", { path: first });
+  const session = await host.call(1, "sessions.create", undefined);
   const selected = { model: { provider: "echo", id: "reasoning" }, thinkingLevel: "high" } as const;
   assert.equal(
-    (await host.call("sessions.configure", { sessionId: session.sessionId, ...selected })).kind,
+    (await host.call(1, "sessions.configure", { sessionId: session.sessionId, ...selected })).kind,
     "queued",
   );
   assert.deepEqual(
-    (await host.call("sessions.snapshot", { sessionId: session.sessionId }))?.session.config,
+    (await host.call(1, "sessions.snapshot", { sessionId: session.sessionId }))?.session.config,
     selected,
   );
 
-  await host.call("host.openWorkspace", { path: second });
-  await host.call("host.setPreference", {
+  await host.call(1, "host.openWorkspace", { path: second });
+  await host.call(1, "host.setPreference", {
     kind: "defaults",
     model: { provider: "echo", id: "echo" },
     thinkingLevel: "off",
   });
   assert.deepEqual(
-    (await host.call("sessions.snapshot", { sessionId: session.sessionId }))?.session.config,
+    (await host.call(1, "sessions.snapshot", { sessionId: session.sessionId }))?.session.config,
     selected,
   );
   await host.close();
 
   const restarted = createHost();
-  await restarted.call("host.sessionDirectory", undefined);
+  await restarted.call(1, "host.sessionDirectory", undefined);
   assert.deepEqual(
-    (await restarted.call("sessions.snapshot", { sessionId: session.sessionId }))?.session.config,
+    (await restarted.call(1, "sessions.snapshot", { sessionId: session.sessionId }))?.session
+      .config,
     selected,
   );
-  await restarted.call("host.trustWorkspace", { path: first });
-  await restarted.call("messages.send", { sessionId: session.sessionId, content: "hello" });
+  await restarted.call(1, "host.trustWorkspace", { path: first });
+  await restarted.call(1, "messages.send", { sessionId: session.sessionId, content: "hello" });
   await vi.waitFor(async () => {
-    const snapshot = await restarted.call("sessions.snapshot", { sessionId: session.sessionId });
+    const snapshot = await restarted.call(1, "sessions.snapshot", { sessionId: session.sessionId });
     assert.equal(snapshot?.run?.phase.kind, "done");
     assert.ok(snapshot?.transcript.some((turn) => turn.kind === "turn"));
     assert.deepEqual(snapshot.config, selected);
@@ -1007,8 +1102,8 @@ test("thread choices survive workspace switches and restart before and after the
   await restarted.close();
 
   const reopened = createHost();
-  await reopened.call("host.sessionDirectory", undefined);
-  const snapshot = await reopened.call("sessions.snapshot", { sessionId: session.sessionId });
+  await reopened.call(1, "host.sessionDirectory", undefined);
+  const snapshot = await reopened.call(1, "sessions.snapshot", { sessionId: session.sessionId });
   assert.deepEqual(snapshot?.config, selected);
   assert.deepEqual(snapshot?.session.config, selected);
 });
@@ -1021,10 +1116,10 @@ test("plugin load status retains the available failure record only in main", asy
   const plugin = join(directory, "broken.mjs");
   await writeFile(plugin, 'throw new Error("synthetic-secret-plugin-body");\n');
   const host = createHost();
-  await host.call("host.openWorkspace", { path });
-  await host.call("host.trustWorkspace", { path });
+  await host.call(1, "host.openWorkspace", { path });
+  await host.call(1, "host.trustWorkspace", { path });
   const before = new Set(ipcDiagnostics.keys());
-  await host.call("sessions.create", { name: "Plugin failure" });
+  await host.call(1, "sessions.create", { name: "Plugin failure" });
   const status = events.filter((event) => event.kind === "status");
   assert.equal(status.length, 1);
   const diagnostics = [...ipcDiagnostics.entries()].filter(([id]) => !before.has(id));
@@ -1043,7 +1138,7 @@ test.skipIf(process.platform === "win32")(
     const host = createHost();
     const workspace = join(root, "project");
     await mkdir(workspace);
-    await host.call("host.openWorkspace", { path: workspace });
+    await host.call(1, "host.openWorkspace", { path: workspace });
     const executable = join(root, "rg");
     const header = `#!${process.execPath}\nif (process.argv.includes("--version")) { console.log("ripgrep 15.1.0"); process.exit(0); }\n`;
     await writeFile(
@@ -1053,7 +1148,7 @@ test.skipIf(process.platform === "win32")(
     await chmod(executable, 0o755);
     vi.stubEnv("PATH", root);
     await assert.rejects(
-      host.call("host.files.list", { requestId: "failure" }),
+      host.call(1, "host.files.list", { requestId: "failure" }),
       /42.*mention process failed/su,
     );
 
@@ -1076,10 +1171,10 @@ test.skipIf(process.platform === "win32")(
             });
           }),
         );
-        const pending = host.call("host.files.list", { requestId: stop });
+        const pending = host.call(1, "host.files.list", { requestId: stop });
         const rejected = assert.rejects(pending, /abort/iu);
         const pid = await started;
-        if (stop === "cancel") await host.call("host.files.cancelList", { requestId: stop });
+        if (stop === "cancel") await host.call(1, "host.files.cancelList", { requestId: stop });
         else await host.close();
         await rejected;
         assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });

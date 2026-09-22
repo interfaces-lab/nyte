@@ -30,6 +30,7 @@ export interface OutputSnapshot {
 
 function defaultTempFilePath(prefix: string): string {
   const id = randomBytes(8).toString("hex");
+
   return join(tmpdir(), `${prefix}-${id}.log`);
 }
 
@@ -84,11 +85,13 @@ export class OutputAccumulator {
     if (this.finished) {
       throw new Error("Cannot append to a finished output accumulator");
     }
+
     if (this.appending) {
       throw new Error("Output accumulator appends must be awaited");
     }
 
     this.appending = true;
+
     try {
       this.totalRawBytes += data.length;
       this.appendDecodedText(this.decoder.decode(data, { stream: true }));
@@ -108,12 +111,14 @@ export class OutputAccumulator {
     if (this.finished) {
       return;
     }
+
     if (this.appending) {
       throw new Error("Cannot finish while an output append is pending");
     }
 
     this.finished = true;
     this.appendDecodedText(this.decoder.decode());
+
     if (this.shouldUseTempFile()) {
       await this.ensureTempFile();
     }
@@ -124,10 +129,13 @@ export class OutputAccumulator {
       maxLines: this.maxLines,
       maxBytes: this.maxBytes,
     });
+
     const truncated = this.totalLines > this.maxLines || this.totalDecodedBytes > this.maxBytes;
+
     const truncatedBy = truncated
       ? (tailTruncation.truncatedBy ?? (this.totalDecodedBytes > this.maxBytes ? "bytes" : "lines"))
       : null;
+
     const truncation: TruncationResult = {
       ...tailTruncation,
       truncated,
@@ -151,9 +159,11 @@ export class OutputAccumulator {
 
   async closeTempFile(): Promise<void> {
     const stream = this.tempFileStream;
+
     if (!stream) {
       return;
     }
+
     if (this.tempFileFailure) {
       throw this.tempFileFailure;
     }
@@ -163,10 +173,12 @@ export class OutputAccumulator {
         stream.off("finish", onFinish);
         reject(error);
       };
+
       const onFinish = () => {
         stream.off("error", onError);
         resolve();
       };
+
       stream.once("error", onError);
       stream.once("finish", onFinish);
       stream.end();
@@ -187,16 +199,19 @@ export class OutputAccumulator {
     this.totalDecodedBytes += bytes;
     this.tailText += text;
     this.tailBytes += bytes;
+
     if (this.tailBytes > this.maxRollingBytes * 2) {
       this.trimTail();
     }
 
     let newlines = 0;
     let lastNewline = -1;
+
     for (let i = text.indexOf("\n"); i !== -1; i = text.indexOf("\n", i + 1)) {
       newlines++;
       lastNewline = i;
     }
+
     if (newlines === 0) {
       this.currentLineBytes += bytes;
       this.hasOpenLine = true;
@@ -206,17 +221,21 @@ export class OutputAccumulator {
       this.currentLineBytes = byteLength(tail);
       this.hasOpenLine = tail.length > 0;
     }
+
     this.totalLines = this.completedLines + (this.hasOpenLine ? 1 : 0);
   }
 
   private trimTail(): void {
     const buffer = Buffer.from(this.tailText, "utf-8");
+
     if (buffer.length <= this.maxRollingBytes) {
       this.tailBytes = buffer.length;
+
       return;
     }
 
     let start = buffer.length - this.maxRollingBytes;
+
     while (start < buffer.length && (buffer[start] & 0xc0) === 0x80) {
       start++;
     }
@@ -233,6 +252,7 @@ export class OutputAccumulator {
     }
 
     const firstNewline = this.tailText.indexOf("\n");
+
     return firstNewline === -1 ? this.tailText : this.tailText.slice(firstNewline + 1);
   }
 
@@ -247,6 +267,7 @@ export class OutputAccumulator {
   private async ensureTempFile(): Promise<void> {
     if (this.tempFileStream) {
       if (this.tempFileFailure) throw this.tempFileFailure;
+
       return;
     }
 
@@ -261,6 +282,7 @@ export class OutputAccumulator {
 
     const chunks = this.rawChunks;
     this.rawChunks = [];
+
     for (const chunk of chunks) {
       await this.writeTempFile(chunk);
     }
@@ -268,19 +290,24 @@ export class OutputAccumulator {
 
   private async writeTempFile(data: Buffer): Promise<void> {
     if (data.length === 0) return;
+
     if (this.tempFileFailure) throw this.tempFileFailure;
     const stream = this.tempFileStream;
+
     if (!stream) throw new Error("Output temp file is not open");
 
     let accepted = true;
+
     const writeComplete = new Promise<void>((resolve, reject) => {
       accepted = stream.write(data, (error) => {
         if (error) reject(error);
         else resolve();
       });
     });
+
     if (accepted) {
       await writeComplete;
+
       return;
     }
 
@@ -289,13 +316,16 @@ export class OutputAccumulator {
         stream.off("error", onError);
         resolve();
       };
+
       const onError = (error: Error) => {
         stream.off("drain", onDrain);
         reject(error);
       };
+
       stream.once("drain", onDrain);
       stream.once("error", onError);
     });
+
     await Promise.all([writeComplete, drained]);
   }
 }

@@ -24,10 +24,14 @@ export function completionTrigger(
 ): CompletionTrigger | undefined {
   const caret = Math.max(0, Math.min(cursor, value.length));
   let start = caret;
+
   while (start > 0 && (value[start - 1] ?? "").trim() !== "") start -= 1;
   const kind = value[start];
+
   if (start === caret || kind === undefined || !isCompletionTriggerKind(kind)) return undefined;
   let end = caret;
+
   while (end < value.length && (value[end] ?? "").trim() !== "") end += 1;
+
   return { kind, start, end, query: value.slice(start + 1, caret) };
 }

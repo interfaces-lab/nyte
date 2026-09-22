@@ -17,6 +17,9 @@ async function login(): Promise<void> {
     },
     notify: (event) => postMessage(event),
   };
+  const refresh = await models.refresh({ providers: ["github-copilot"] });
+  const refreshError = refresh.errors.get("github-copilot");
+  if (refreshError) throw refreshError;
   await models.login("github-copilot", "oauth", interaction);
   const auth = await models.getAuth("github-copilot");
   const available = await models.getAvailable("github-copilot");

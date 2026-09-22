@@ -19,6 +19,7 @@ import {
   workbenchController,
   workbenchScopeForTarget,
   workbenchTabAvailable,
+  workbenchKindLabel,
   workbenchTabLabel,
   workbenchTabs,
   workbenchViewIdentity,
@@ -106,11 +107,14 @@ function DoubleChevron({ back = false }: { readonly back?: boolean }): ReactElem
 
 function RailChangeStats({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
   const snapshot = useSessionSnapshot(sessionId);
+
   const stats = changesFromTurns(snapshot.data?.transcript ?? []).reduce(
     (total, file) => ({ added: total.added + file.added, removed: total.removed + file.removed }),
     { added: 0, removed: 0 },
   );
+
   if (stats.added === 0 && stats.removed === 0) return null;
+
   return (
     <span
       aria-label={`${String(stats.added)} added, ${String(stats.removed)} removed`}
@@ -138,6 +142,7 @@ function openWorkbenchTab({
     tab: defaultWorkbenchTab(kind),
     activate: true,
   });
+
   if (kind === "terminal") void terminalActions.create({ id, workspacePath });
 }
 
@@ -179,8 +184,10 @@ function FloatingWorkbenchPanel({
         {visibleTabs.map((tab) => {
           const file =
             tab.kind === "file" ? files.tabs.find((item) => item.id === tab.id) : undefined;
+
           const terminal = tab.kind === "terminal" ? terminals.get(tab.id) : undefined;
           const label = file?.displayPath ?? terminal?.title ?? workbenchTabLabel(tab);
+
           return (
             <RailRow
               key={tab.id}
@@ -203,7 +210,7 @@ function FloatingWorkbenchPanel({
           <RailRow
             key={kind}
             icon={tabIcons[kind]}
-            label={workbenchTabLabel(kind)}
+            label={workbenchKindLabel(kind)}
             onClick={() => openWorkbenchTab({ view: viewKey, kind, workspacePath })}
           >
             {kind === "changes" && sessionId !== undefined && (
@@ -237,7 +244,7 @@ function CompactWorkbenchBar({
         <IconButton
           key={kind}
           icon={tabIcons[kind]}
-          label={`Open ${workbenchTabLabel(kind)}`}
+          label={`Open ${workbenchKindLabel(kind)}`}
           onClick={() => openWorkbenchTab({ view: viewKey, kind, workspacePath })}
         />
       ))}
@@ -352,6 +359,7 @@ function PanelContent({
       return <TerminalPanel tabId={tab.id} workspacePath={workspacePath} visible={visible} />;
     default: {
       const _exhaustive: never = tab;
+
       return _exhaustive;
     }
   }
@@ -384,6 +392,7 @@ function WorkbenchViewHost({
   const compact = view.collapsed === "compact" || bounds.kind === "overlay";
   const panelWidth = view.maximized ? stageWidth : clampWorkbenchWidthToBounds(view.width, bounds);
   const defaultWidth = clampWorkbenchWidthToBounds(WORKBENCH_WIDTH_DEFAULT, bounds);
+
   const resetWidth = useCallback(
     () => workbenchController.actions.setWidth({ view: viewKey, width: defaultWidth }),
     [defaultWidth, viewKey],
@@ -403,21 +412,26 @@ function WorkbenchViewHost({
 
   const moveResize = (event: PointerEvent<HTMLDivElement>): void => {
     const resize = resizeRef.current;
+
     if (resize === undefined || resize.pointerId !== event.pointerId) return;
     resize.nextWidth = clampWorkbenchWidthToBounds(
       resize.startWidth + resize.startX - event.clientX,
       bounds,
     );
+
     if (panelRef.current !== null) panelRef.current.style.width = `${String(resize.nextWidth)}px`;
     setActiveWidth(resize.nextWidth);
   };
 
   const endResize = (event: PointerEvent<HTMLDivElement>): void => {
     const resize = resizeRef.current;
+
     if (resize === undefined || resize.pointerId !== event.pointerId) return;
+
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+
     resizeRef.current = undefined;
     workbenchController.actions.setWidth({ view: viewKey, width: resize.nextWidth });
     setResizing(false);
@@ -425,10 +439,12 @@ function WorkbenchViewHost({
 
   const resizeWithKeyboard = (event: KeyboardEvent<HTMLDivElement>): void => {
     let width: number | undefined;
+
     if (event.key === "ArrowLeft") width = panelWidth + 20;
     else if (event.key === "ArrowRight") width = panelWidth - 20;
     else if (event.key === "Home") width = bounds.min;
     else if (event.key === "End") width = bounds.max;
+
     if (width === undefined) return;
     event.preventDefault();
     workbenchController.actions.setWidth({
@@ -446,6 +462,7 @@ function WorkbenchViewHost({
   const mountedTabs = view.tabs.filter((tab) => workbenchTabAvailable(scope, tab.kind));
   const fileTab = mountedTabs.find((tab) => tab.kind === "file" || tab.kind === "files");
   const panelTabs = mountedTabs.filter((tab) => tab.kind !== "file" && tab.kind !== "files");
+
   const fileVisible =
     panelVisible &&
     (activeTab?.kind === "file" || activeTab?.kind === "files") &&
@@ -453,6 +470,7 @@ function WorkbenchViewHost({
 
   const renderSlot = (tab: WorkbenchTab, visible: boolean, id: string): ReactElement => {
     const sidebarVisible = sidebars.get(tab.id) ?? tab.kind === "changes";
+
     return (
       <div
         key={id}
@@ -549,16 +567,22 @@ interface WorkbenchProps {
 export function Workbench({ target, paneKey }: WorkbenchProps): ReactElement {
   const host = useHostState();
   const rootRef = useRef<HTMLElement>(null);
+
   const [stageWidth, setStageWidth] = useState(
     WORKBENCH_WIDTH_DEFAULT + WORKBENCH_CENTER_WIDTH_MIN,
   );
+
   const viewKey = workbenchViewKey({ paneKey, target });
   const snapshot = useWorkbenchSnapshot();
+
   const retainedViews = [...snapshot.views].flatMap(([knownViewKey, view]) => {
     const identity = workbenchViewIdentity(knownViewKey);
+
     return identity?.paneKey === paneKey && identity.key !== viewKey ? [{ identity, view }] : [];
   });
+
   const currentIdentity = workbenchViewIdentity(viewKey);
+
   const paneViews =
     currentIdentity === undefined
       ? retainedViews
@@ -572,14 +596,19 @@ export function Workbench({ target, paneKey }: WorkbenchProps): ReactElement {
 
   useLayoutEffect(() => {
     const stage = rootRef.current?.parentElement;
+
     if (stage === undefined || stage === null) return;
+
     const update = (): void => {
       const width = Math.floor(stage.getBoundingClientRect().width);
+
       if (width > 0) setStageWidth((current) => (current === width ? current : width));
     };
+
     update();
     const observer = new ResizeObserver(update);
     observer.observe(stage);
+
     return () => observer.disconnect();
   }, []);
 
@@ -587,9 +616,11 @@ export function Workbench({ target, paneKey }: WorkbenchProps): ReactElement {
     <aside ref={rootRef} {...stylex.props(workbenchStyles.root)} aria-label="Workbench">
       {paneViews.map(({ identity, view }) => {
         const current = identity.key === viewKey;
+
         const scope: WorkbenchScope = current
           ? workbenchScopeForTarget(identity.target, host.data?.workspace?.path)
           : { kind: "pathless" };
+
         return (
           <WorkbenchViewHost
             key={identity.key}

@@ -24,6 +24,7 @@ import { Type, Unsafe, type Static } from "typebox";
 import { Value } from "typebox/value";
 
 export const QUESTION_TIMEOUT_SETTING_ID = "question-timeout";
+
 const TIMEOUT_KEY = "timeout";
 
 /** How long a question waits before the runner settles it unanswered. Ids are what storage holds. */
@@ -73,22 +74,26 @@ function parseQuestionInput(args: JsonValue): QuestionInput {
   if (!Value.Check(questionParameters, args)) {
     throw new Error("Question arguments do not match the question schema");
   }
+
   return args;
 }
 
 /** Choice ids are 1-based positions: stable, short, and what a terminal user types. */
 function choiceAt(option: QuestionOption, index: number): Choice {
   const choice = { id: String(index + 1), label: option.label };
+
   return option.description === undefined ? choice : { ...choice, description: option.description };
 }
 
 export function selectionFor(input: QuestionInput): Selection {
   const [first, ...rest] = input.options;
+
   const selection: Selection = {
     title: input.question,
     choices: [choiceAt(first, 0), ...rest.map((option, index) => choiceAt(option, index + 1))],
     other: "Or type your own answer",
   };
+
   return input.multiple === true ? { ...selection, multiple: true } : selection;
 }
 
@@ -100,22 +105,31 @@ export function selectionFor(input: QuestionInput): Selection {
 export function answerFor(input: QuestionInput, reply: JsonValue): string {
   const selection = selectionFor(input);
   const structured = selectionReply(reply);
+
   if (structured !== undefined) {
     if (!acceptsSelectionReply(selection, structured)) return "";
+
     const picked = structured.choices.map((id) => {
       const choice = selection.choices.find((candidate) => candidate.id === id);
+
       if (choice === undefined) throw new Error("Accepted selection reply named an unknown choice");
+
       return choice.label;
     });
+
     const other = structured.other?.trim();
+
     return [...picked, ...(other === undefined ? [] : [other])].join(", ");
   }
+
   if (typeof reply !== "string") return "";
   const trimmed = reply.trim();
   const lowered = trimmed.toLowerCase();
+
   const selected = selection.choices.find(
     (choice) => choice.id === trimmed || choice.label.toLowerCase() === lowered,
   );
+
   return selected?.label ?? trimmed;
 }
 
@@ -156,16 +170,17 @@ export function createQuestionTool(options: {
     replay: "never",
     execute: async (_callId, params) => {
       const ms = await options.timeoutMs();
-      throw new ToolWait({
-        selection: selectionFor(params),
-        ...(ms === undefined ? {} : { until: Date.now() + ms }),
-      });
+      const selection = selectionFor(params);
+      throw new ToolWait(ms === undefined ? { selection } : { selection, until: Date.now() + ms });
     },
     wake: async (waiting, context) => {
       const input = parseQuestionInput(waiting.args);
+
       if (context.expired || context.aborted) return unanswered(input);
+
       if (context.reply === undefined) return { kind: "wait", selection: selectionFor(input) };
       const answer = answerFor(input, context.reply);
+
       return answer === "" ? unanswered(input) : answered(input, answer);
     },
   };
@@ -179,8 +194,10 @@ export const questionPlugin = definePlugin({
   session(api) {
     const timeoutMs = async (): Promise<number | undefined> => {
       const stored = await api.storage.get(TIMEOUT_KEY);
+
       return TIMEOUTS.find((timeout) => timeout.id === stored)?.ms;
     };
+
     api.tools.add((draft) => draft.set(questionTool.name, createQuestionTool({ timeoutMs })));
     api.settings.add((settings) =>
       settings.set(QUESTION_TIMEOUT_SETTING_ID, {

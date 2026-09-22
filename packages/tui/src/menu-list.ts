@@ -46,8 +46,11 @@ interface MenuListOptions {
 
 /** Prefix (`❯ ` on the selected row) plus the gap between label and description. */
 const PREFIX_WIDTH = 2;
+
 const MARK_WIDTH = 2;
+
 const LABEL_GAP = 4;
+
 /** Below this, a complete label is worth more than a clipped second column. */
 const DETAIL_MIN_WIDTH = 48;
 
@@ -117,6 +120,7 @@ class MenuRows extends Renderable {
 
   setSelectedIndex(index: number): void {
     const next = Math.min(Math.max(0, index), Math.max(0, this.items.length - 1));
+
     if (next === this.selected) return;
     this.selected = next;
     this.requestRender();
@@ -126,12 +130,14 @@ class MenuRows extends Renderable {
   /** Step with wrap-around, so down from the last row lands on the first. */
   moveBy(steps: number): void {
     const count = this.items.length;
+
     if (count > 0) this.setSelectedIndex((((this.selected + steps) % count) + count) % count);
   }
 
   /** Local y is the item index, because this renderable never scrolls itself. */
   indexAt(y: number): number | undefined {
     const index = y - this.screenY;
+
     return index >= 0 && index < this.items.length ? index : undefined;
   }
 
@@ -146,28 +152,35 @@ class MenuRows extends Renderable {
     const left = this.x;
     const top = this.y;
     const first = Math.max(0, this.viewport.screenY - this.screenY, -top);
+
     const end = Math.min(
       this.height,
       this.viewport.screenY + this.viewport.height - this.screenY,
       buffer.height - top,
     );
+
     if (end > first)
       buffer.fillRect(left, top + first, this.width, end - first, this.rowBackground);
     const markWidth = this.marked ? MARK_WIDTH : 0;
     const labelLeft = left + PREFIX_WIDTH + markWidth;
+
     const labelColumn = Math.max(
       1,
       Math.min(this.widestLabel, this.width - PREFIX_WIDTH - markWidth),
     );
+
     for (let index = first; index < end; index += 1) {
       const item = this.items[index];
+
       if (item === undefined) continue;
       const selected = index === this.selected;
+
       const background = selected
         ? this.selectedBackground
         : index === this.hovered
           ? this.hoverBackground
           : this.rowBackground;
+
       buffer.fillRect(left, top + index, this.width, 1, background);
       buffer.drawText(
         selected ? `${GLYPHS.prompt} ` : "  ",
@@ -176,6 +189,7 @@ class MenuRows extends Renderable {
         selected ? this.selectedForeground : this.foreground,
         background,
       );
+
       if (item.mark !== undefined) {
         buffer.drawText(
           padDisplay(truncate(item.mark.text, MARK_WIDTH), MARK_WIDTH),
@@ -185,6 +199,7 @@ class MenuRows extends Renderable {
           background,
         );
       }
+
       buffer.drawText(
         padDisplay(truncate(item.label, labelColumn), labelColumn),
         labelLeft,
@@ -197,6 +212,7 @@ class MenuRows extends Renderable {
       const description = item.description ?? "";
       const separator = description === "" || item.status === undefined ? "" : " · ";
       const detail = `${description}${separator}${item.status?.text ?? ""}`;
+
       if (this.width < DETAIL_MIN_WIDTH || detail === "" || width <= 0) continue;
       const descriptionLeft = labelLeft + labelColumn;
       buffer.drawText(
@@ -206,9 +222,11 @@ class MenuRows extends Renderable {
         selected ? this.selectedForeground : this.tones.dim,
         background,
       );
+
       if (item.status !== undefined && item.status.tone !== "dim") {
         const statusOffset = displayWidth(`${description}${separator}`);
         const statusWidth = width - statusOffset;
+
         if (statusWidth > 0) {
           buffer.drawText(
             truncate(item.status.text, statusWidth),
@@ -274,6 +292,7 @@ export class MenuList {
       onSelectionChanged: (index) => {
         this.scrollIntoView(index);
         const item = this.items[index];
+
         if (item !== undefined) this.onHighlight?.(item, index);
       },
       onMouseDown: (event: MouseEvent) => this.onMouseDown(event),
@@ -310,6 +329,7 @@ export class MenuList {
 
   setMaxVisible(maxVisible: number): void {
     const next = Math.max(1, Math.floor(maxVisible));
+
     if (next === this.maxVisible) return;
     this.maxVisible = next;
     this.resizeViewport();
@@ -326,16 +346,22 @@ export class MenuList {
   /** Arrow, emacs and tab navigation plus paging. Enter and plain letters are the caller's. */
   handleNavigationKey(key: KeyEvent): boolean {
     if (this.items.length === 0) return false;
+
     if (matchesKey("picker.previous", key, "required")) return this.navigate("previous");
+
     if (matchesKey("picker.next", key, "required")) return this.navigate("next");
+
     if (matchesKeyName("picker.page.up", key)) return this.navigate("page-up");
+
     if (matchesKeyName("picker.page.down", key)) return this.navigate("page-down");
+
     return false;
   }
 
   navigate(direction: "previous" | "next" | "page-up" | "page-down"): boolean {
     if (this.items.length === 0) return false;
     const page = Math.max(1, this.maxVisible - 1);
+
     switch (direction) {
       case "previous":
         this.rows.moveBy(-1);
@@ -350,18 +376,21 @@ export class MenuList {
         this.rows.setSelectedIndex(Math.min(this.items.length - 1, this.selectedIndex + page));
         break;
     }
+
     return true;
   }
 
   /** Choose the selected row, as enter would. */
   selectCurrent(): void {
     const item = this.selectedItem;
+
     if (item !== undefined) this.onSelect(item, this.selectedIndex);
   }
 
   private onMouseDown(event: MouseEvent): void {
     if (event.button !== 0) return;
     const index = this.rows.indexAt(event.y);
+
     if (index === undefined) return;
     event.preventDefault();
     event.stopPropagation();
@@ -375,8 +404,10 @@ export class MenuList {
 
   private scrollIntoView(index: number): void {
     const height = this.container.viewport.height;
+
     if (height === 0) return;
     const top = this.container.scrollTop;
+
     if (index < top) this.container.scrollTo(index);
     else if (index >= top + height) this.container.scrollTo(index - height + 1);
   }

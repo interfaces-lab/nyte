@@ -11,6 +11,7 @@ export interface SessionDirectoryEntry {
 
 function userText(content: UserMessage["content"]): string {
   if (!Array.isArray(content)) return content;
+
   return content
     .map((part) => {
       switch (part.type) {
@@ -20,6 +21,7 @@ function userText(content: UserMessage["content"]): string {
           return "";
         default: {
           const _exhaustive: never = part;
+
           return _exhaustive;
         }
       }
@@ -38,6 +40,7 @@ function assistantText(content: AssistantMessage["content"]): string {
           return "";
         default: {
           const _exhaustive: never = part;
+
           return _exhaustive;
         }
       }
@@ -49,6 +52,7 @@ function messagePreview(body: CommitBody): string | undefined {
   switch (body.kind) {
     case "message": {
       let text: string;
+
       switch (body.message.role) {
         case "user":
           text = userText(body.message.content);
@@ -60,12 +64,16 @@ function messagePreview(body: CommitBody): string | undefined {
           return undefined;
         default: {
           const _exhaustive: never = body.message;
+
           return _exhaustive;
         }
       }
+
       const preview = text.trim();
+
       return preview === "" ? undefined : preview;
     }
+
     case "completion":
     case "checkpoint":
     case "summary":
@@ -73,6 +81,7 @@ function messagePreview(body: CommitBody): string | undefined {
       return undefined;
     default: {
       const _exhaustive: never = body;
+
       return _exhaustive;
     }
   }
@@ -92,6 +101,7 @@ export function sessionDirectoryEntry(input: {
   for (const commit of input.commits) {
     lastActivity = Math.max(lastActivity, commit.at);
     const value = messagePreview(commit.body);
+
     if (value !== undefined && (preview === undefined || commit.at > preview.at)) {
       preview = { at: commit.at, value };
     }
@@ -102,7 +112,9 @@ export function sessionDirectoryEntry(input: {
     lastActivity,
     heads: [...new Set(input.heads)],
   };
+
   const named: SessionDirectoryEntry =
     input.name === undefined ? base : { ...base, name: input.name };
+
   return preview === undefined ? named : { ...named, preview: preview.value };
 }

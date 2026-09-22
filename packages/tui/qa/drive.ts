@@ -50,6 +50,7 @@ export async function press(
   predicate: (screen: Screen) => boolean,
 ): Promise<Screen> {
   const input = terminal.key(action);
+
   return terminal.waitForScreen(predicate, deadline(), input);
 }
 
@@ -60,12 +61,15 @@ export async function type(
   options: { prefix?: string; label?: string } = {},
 ): Promise<void> {
   let expected = options.prefix ?? "";
+
   for (const { segment } of new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(
     text,
   )) {
     expected += segment;
+
     const input =
       options.label === undefined ? terminal.text(segment) : terminal.raw(segment, options.label);
+
     await terminal.waitForScreen(
       (screen) =>
         composer(screen, expected) &&
@@ -84,6 +88,7 @@ export async function command(
   predicate: (screen: Screen) => boolean,
 ): Promise<Screen> {
   await type(terminal, `/${name}`);
+
   return press(terminal, "chat.submit", predicate);
 }
 
@@ -103,16 +108,20 @@ export async function resumeSession(terminal: Terminal, expectedCode: number): P
   assert.equal(await terminal.waitForExit(deadline()), expectedCode);
   // A --show run shares the real stdin; the next open needs this renderer released.
   await terminal.close();
+
   const match = /(?:^|\n)To resume previous session\nnyte --session=([^\n]+)\n$/u.exec(
     output(terminal),
   );
+
   assert.ok(match?.[1], "Exit ends with the public two-line resume command");
+
   return match[1];
 }
 
 export async function quit(terminal: Terminal): Promise<string> {
   await type(terminal, "/quit");
   terminal.key("chat.submit");
+
   return resumeSession(terminal, 0);
 }
 
@@ -127,6 +136,7 @@ async function file(path: string): Promise<string> {
 
 async function outcome(description: string, predicate: () => Promise<boolean>) {
   const until = deadline();
+
   while (!(await predicate())) {
     assert.ok(performance.now() < until, `Timed out: ${description}`);
     // Poll external process evidence, not elapsed time as a completion assertion.
@@ -138,16 +148,20 @@ async function outcome(description: string, predicate: () => Promise<boolean>) {
 export async function heartbeat(workspace: Workspace, name: string) {
   const evidence = join(workspace.cwd, name, "evidence");
   await mkdir(evidence, { recursive: true });
+
   const snapshot = async () => {
     const pid = await file(join(evidence, "pid"));
     let process = "not started";
+
     if (pid !== "") {
       assert.match(pid, /^[1-9]\d*\n$/u, "Parse the fixture's PID before passing it to ps");
+
       const status = Bun.spawnSync(["/bin/ps", "-p", pid.trim(), "-o", "pid=,stat="], {
         env: workspace.env,
         stdout: "pipe",
         stderr: "pipe",
       });
+
       assert.ok(
         status.exitCode === 0 || status.exitCode === 1,
         "ps must succeed or report no process",
@@ -156,6 +170,7 @@ export async function heartbeat(workspace: Workspace, name: string) {
       process = status.stdout.toString().trim();
       assert.ok(process === "" || /^\d+\s+\S+$/u.test(process), "Parse ps output");
     }
+
     return {
       pid,
       process,
@@ -163,6 +178,7 @@ export async function heartbeat(workspace: Workspace, name: string) {
       heartbeat: await file(join(evidence, "heartbeat")),
     };
   };
+
   return {
     name,
     // Each invocation uses the unchanged public script with its own working directory.
@@ -177,6 +193,7 @@ export async function heartbeat(workspace: Workspace, name: string) {
       await outcome(`${name} produces another heartbeat`, async () => {
         const current = await snapshot();
         assert.ok(!current.lifetime.includes("exited"), `${name} exited instead of staying alive`);
+
         return current.heartbeat.length >= before.heartbeat.length + "heartbeat\n".length * 3;
       });
       assert.notEqual((await snapshot()).process, "", `${name} process is still present`);
@@ -187,10 +204,12 @@ export async function heartbeat(workspace: Workspace, name: string) {
       await outcome(`${name} process disappears`, async () => (await snapshot()).process === "");
       const before = await snapshot();
       assert.equal(before.lifetime.includes("released\n"), !cancelled);
+
       if (!cancelled) assert.ok(before.lifetime.includes("exited\n"));
       // Sample across several 100ms heartbeat periods as an extra check that a
       // writer did not survive the original process. Time alone never proves exit.
       const until = performance.now() + 400;
+
       do {
         await setTimeout(40);
         assert.equal((await snapshot()).heartbeat, before.heartbeat, `${name} wrote after exit`);
@@ -226,6 +245,7 @@ export async function session(
   const terminals: Terminal[] = [];
   const tools: Heartbeat[] = [];
   let workspace: Workspace | undefined;
+
   try {
     const isolated = await createWorkspace({
       baseUrl: provider.baseUrl,
@@ -233,17 +253,23 @@ export async function session(
       question: options.question,
       reasoning: options.reasoning,
     });
+
     workspace = isolated;
+
     const reopen = async (args: string[] = []) => {
-      const terminal = await context.open({
-        cwd: isolated.cwd,
-        env: isolated.env,
-        args,
-        ...(options.height === undefined ? {} : { height: options.height }),
-      });
+      const terminalOptions = { cwd: isolated.cwd, env: isolated.env, args };
+
+      const terminal = await context.open(
+        options.height === undefined
+          ? terminalOptions
+          : { ...terminalOptions, height: options.height },
+      );
+
       terminals.push(terminal);
+
       return terminal;
     };
+
     const terminal = await reopen();
     await run({
       terminal,
@@ -253,6 +279,7 @@ export async function session(
       async tool(name) {
         const tool = await heartbeat(isolated, name);
         tools.push(tool);
+
         return tool;
       },
     });
@@ -291,6 +318,7 @@ export async function session(
             tools.map((tool) =>
               outcome(`${tool.name} cleanup`, async () => {
                 const state = await tool.snapshot();
+
                 return state.process === "" || state.process === "not started";
               }),
             ),

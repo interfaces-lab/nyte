@@ -102,6 +102,7 @@ export function connectCopy(stage: ConnectStage): ConnectCopy {
       };
     default: {
       const exhaustive: never = stage;
+
       return exhaustive;
     }
   }
@@ -114,6 +115,7 @@ export function connectCopy(stage: ConnectStage): ConnectCopy {
  */
 export function introCopy(editing: boolean): ConnectCopy {
   if (!editing) return connectCopy({ kind: "idle" });
+
   return {
     title: "Update your Mac",
     body: `Your Mac gives out a new address and token each time sharing starts. Copy the current pair from ${SHARE_LOCATION}.`,
@@ -136,8 +138,10 @@ export function classifyConnectFailure(
 ): ConnectFailure {
   if (cause instanceof NyteWireError) {
     if (cause.code === "unauthorized" || cause.code === "forbidden") return { kind: "refused" };
+
     return { kind: "wrongServer", address };
   }
+
   switch (cause.failure.kind) {
     case "network":
     case "disconnected":
@@ -148,6 +152,7 @@ export function classifyConnectFailure(
       return { kind: "wrongServer", address };
     default: {
       const exhaustive: never = cause.failure;
+
       return exhaustive;
     }
   }

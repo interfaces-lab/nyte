@@ -21,6 +21,7 @@ export const GlassSurface = forwardRef<View, GlassSurfaceProps>(function GlassSu
   ref,
 ) {
   const theme = useTheme();
+
   if (HAS_GLASS) {
     return (
       <GlassView
@@ -32,12 +33,14 @@ export const GlassSurface = forwardRef<View, GlassSurfaceProps>(function GlassSu
       />
     );
   }
+
   const fallback: ViewStyle = {
     backgroundColor: theme.surface,
     borderWidth: controls.hairline,
     borderColor: theme.border,
     borderStyle: "solid",
   };
+
   return <View ref={ref} style={[fallback, style]} {...rest} />;
 });
 

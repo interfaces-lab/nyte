@@ -215,6 +215,9 @@ export const sidebarStyles = stylex.create({
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
   },
+  rowPrimary: {
+    "::before": { content: "''", position: "absolute", inset: 0 },
+  },
   /**
    * A folder header is a group label, not a list cell: it leaves `--_row-fill`
    * unset, so the revealed action's own hover fill is the only background. The
@@ -353,15 +356,8 @@ export const sidebarStyles = stylex.create({
     lineHeight: t.leadingXs,
     letterSpacing: 0.07,
   },
-  /**
-   * Holds its width whether or not the actions are showing, so revealing them
-   * cannot shift the icons within the lane.
-   */
   rowActions: {
-    justifyContent: "flex-end",
     gap: 2,
-    width: sidebar.trailingWidth,
-    pointerEvents: "none",
   },
   /** On a timed row the lane stops a row gap short of the time's column. */
   rowActionsBesideMeta: {
@@ -409,7 +405,6 @@ export const sidebarStyles = stylex.create({
     width: sidebar.actionSize,
     height: sidebar.actionSize,
     padding: 0,
-    pointerEvents: "var(--_row-actions-pointer-events, auto)",
     borderStyle: "none",
     borderRadius: t.radiusBase,
     backgroundColor: "transparent",
@@ -424,7 +419,6 @@ export const sidebarStyles = stylex.create({
     width: sidebar.actionSize,
     height: sidebar.actionSize,
     padding: 0,
-    pointerEvents: "var(--_row-actions-pointer-events, auto)",
     borderStyle: "none",
     borderRadius: t.radiusBase,
     backgroundColor: {
@@ -444,7 +438,6 @@ export const sidebarStyles = stylex.create({
    * transition without desynchronising from a title.
    */
   workspaceActions: {
-    pointerEvents: "none",
     transitionProperty: "opacity",
     transitionDuration: t.durationFast,
     transitionTimingFunction: t.easeOut,

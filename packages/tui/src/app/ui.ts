@@ -42,6 +42,7 @@ export class FocusController {
   use(target: { focus(): void; blur(): void }): void {
     if (this.target !== target) this.target.blur();
     this.target = target;
+
     if (this.terminalFocused) target.focus();
     else target.blur();
   }
@@ -172,11 +173,14 @@ export interface Chunk {
 /** Keycaps carry the weight, what they do stays quiet, and the dots between groups recede. */
 export function hintChunks(text: string, theme: CliTheme): Chunk[] {
   const chunks: Chunk[] = [{ fg: theme.dim, text: "  " }];
+
   for (const [index, group] of hintGroups(text).entries()) {
     if (index > 0) chunks.push({ fg: theme.muted, text: " · " });
     chunks.push({ fg: theme.user, text: group.key });
+
     if (group.label !== "") chunks.push({ fg: theme.dim, text: ` ${group.label}` });
   }
+
   return chunks;
 }
 
@@ -200,11 +204,14 @@ function powerlineColor(theme: CliTheme, segment: PowerlineSegment): string {
           return theme.error;
         default: {
           const _exhaustive: never = segment.level;
+
           return _exhaustive;
         }
       }
+
     default: {
       const _exhaustive: never = segment;
+
       return _exhaustive;
     }
   }
@@ -218,8 +225,11 @@ export function framedPowerline(
   borderColor: string = theme.promptBorder,
 ): Chunk[] {
   const frameWidth = Math.max(0, Math.floor(width));
+
   if (frameWidth === 0) return [];
+
   if (frameWidth === 1) return [{ fg: borderColor, text: GLYPHS.rule }];
+
   if (frameWidth < 6) {
     return [
       {
@@ -228,25 +238,31 @@ export function framedPowerline(
       },
     ];
   }
+
   const captionWidth = frameWidth - 5;
   const segments = fitPowerlineSegments(powerlineSegments(state ?? {}), captionWidth);
   const chunks: Chunk[] = [{ fg: borderColor, text: `${GLYPHS.frameBottomLeft}${GLYPHS.rule}` }];
   let captionLength = 0;
+
   for (const [index, segment] of segments.entries()) {
     const separator = index === 0 ? " " : ` ${GLYPHS.separator} `;
     const separatorRoom = captionWidth - captionLength;
+
     if (separatorRoom <= 0) break;
     const visibleSeparator = truncateDisplay(separator, separatorRoom);
     chunks.push({ fg: borderColor, text: visibleSeparator });
     captionLength += displayWidth(visibleSeparator);
     const textRoom = captionWidth - captionLength;
+
     if (textRoom <= 0) break;
     const visibleText = truncateDisplay(segment.text, textRoom);
     chunks.push({ fg: powerlineColor(theme, segment), text: visibleText });
     captionLength += displayWidth(visibleText);
   }
+
   const trailingRule = GLYPHS.rule.repeat(Math.max(1, frameWidth - captionLength - 4));
   chunks.push({ fg: borderColor, text: ` ${trailingRule}${GLYPHS.frameBottomRight}` });
+
   return chunks;
 }
 
@@ -262,11 +278,15 @@ export function patchStatus(shell: Shell, patch: Partial<PowerlineState>): void 
  */
 export function notice(shell: Shell, text: string | readonly string[], color?: string): void {
   const lines = (Array.isArray(text) ? text : [text]).flatMap((line) => line.split("\n"));
+
   if (lines.length === 0) {
     clearNotice(shell);
+
     return;
   }
+
   const next: Notice = { lines, color };
+
   if (shell.ui.slot.kind === "panel") shell.setUi("queuedNotice", next);
   else shell.setUi("slot", { kind: "notice", notice: next });
 }
@@ -291,10 +311,13 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
  */
 export function mergeCombiningMark(input: TextareaRenderable, key: KeyEvent): void {
   if (key.ctrl || key.meta || key.option || key.super || !/^\p{M}$/u.test(key.sequence)) return;
+
   if (input.hasSelection()) return;
+
   const base = [...graphemes.segment(input.editBuffer.getTextRange(0, input.cursorOffset))].at(
     -1,
   )?.segment;
+
   if (base === undefined || base === "\n") return;
   key.preventDefault();
   input.deleteCharBackward();
@@ -305,6 +328,7 @@ export function mergeCombiningMark(input: TextareaRenderable, key: KeyEvent): vo
 export function openPanel<P extends EphemeralPanel>(shell: Shell, panel: P): P {
   shell.closeCompletion();
   shell.dismissInfoPanel?.();
+
   if (shell.ui.selecting) throw new Error("Another panel is already open");
   shell.setUi({
     slot: { kind: "panel", container: panel.container, rows: panel.rows },
@@ -313,12 +337,14 @@ export function openPanel<P extends EphemeralPanel>(shell: Shell, panel: P): P {
   });
   shell.focus.use(panel);
   shell.input.focusable = false;
+
   return panel;
 }
 
 /** Puts a container in the slot without taking the keyboard, as the completion dropdown does. */
 export function holdSlot(shell: Shell, container: BoxRenderable, rows: number): void {
   const { slot } = shell.ui;
+
   if (slot.kind === "notice") shell.setUi("queuedNotice", slot.notice);
   shell.setUi("slot", { kind: "panel", container, rows });
 }
@@ -326,6 +352,7 @@ export function holdSlot(shell: Shell, container: BoxRenderable, rows: number): 
 /** The panel holding the slot grew or shrank. */
 export function setSlotRows(shell: Shell, rows: number): void {
   const { slot } = shell.ui;
+
   if (slot.kind !== "panel") return;
   shell.setUi("slot", { kind: "panel", container: slot.container, rows });
 }
@@ -333,6 +360,7 @@ export function setSlotRows(shell: Shell, rows: number): void {
 /** Gives the slot back, but only if `container` still holds it; a waiting notice then shows. */
 export function releaseSlot(shell: Shell, container: BoxRenderable): void {
   const { slot, queuedNotice } = shell.ui;
+
   if (slot.kind !== "panel" || slot.container !== container) return;
   shell.setUi({
     slot: queuedNotice === undefined ? { kind: "empty" } : { kind: "notice", notice: queuedNotice },
@@ -393,25 +421,34 @@ export function selectChoice(
   options: SelectChoiceOptions = {},
 ): Promise<string> {
   shell.dismissInfoPanel?.();
+
   if (shell.ui.selecting) return Promise.reject(new Error("Another menu is already open"));
+
   if (options.signal?.aborted === true) return Promise.reject(new PickerCancelled());
+
   if (choices.length === 0 && options.load === undefined) {
     return Promise.reject(new Error("A selection menu needs at least 1 choice"));
   }
+
   const restoredHints = shell.ui.hints;
+
   return new Promise<string>((resolve, reject) => {
     let menu: InlineMenu | undefined;
     let settled = false;
+
     const settle = (finish: () => void): void => {
       if (settled) return;
       settled = true;
       options.signal?.removeEventListener("abort", onAbort);
+
       if (menu !== undefined) closePanel(shell, menu);
       setHints(shell, restoredHints);
       finish();
     };
+
     const onAbort = (): void => settle(() => reject(new PickerCancelled()));
     const { typedPlaceholder, signal, ...rest } = options;
+
     const screen: MenuScreen = {
       ...rest,
       title,
@@ -423,6 +460,7 @@ export function selectChoice(
           ? undefined
           : { placeholder: typedPlaceholder, onSubmit: (text) => settle(() => resolve(text)) },
     };
+
     menu = openInlineMenu(shell, screen, (cause) => settle(() => reject(cause)));
     signal?.addEventListener("abort", onAbort, { once: true });
   });
@@ -440,44 +478,55 @@ export function selectSelection(
   options: SelectSelectionOptions = {},
 ): Promise<SelectionReply> {
   shell.dismissInfoPanel?.();
+
   if (shell.ui.selecting) return Promise.reject(new Error("Another menu is already open"));
+
   if (options.signal?.aborted === true) return Promise.reject(new PickerCancelled());
   const restoredHints = shell.ui.hints;
+
   return new Promise<SelectionReply>((resolve, reject) => {
     const selected = new Set<string>();
     let menu: InlineMenu | undefined;
     let settled = false;
+
     const selectedIds = (): string[] =>
       selection.choices.filter((choice) => selected.has(choice.id)).map((choice) => choice.id);
+
     const choices = (): Choice[] =>
-      selection.choices.map((choice): Choice => ({
-        ...choice,
-        ...(selection.multiple === true
+      selection.choices.map((choice): Choice =>
+        selection.multiple === true
           ? {
+              ...choice,
               mark: selected.has(choice.id)
                 ? { text: GLYPHS.check, tone: "ok" }
                 : { text: "·", tone: "muted" },
             }
-          : {}),
-      }));
+          : { ...choice },
+      );
+
     const settle = (finish: () => void): void => {
       if (settled) return;
       settled = true;
       options.signal?.removeEventListener("abort", onAbort);
+
       if (menu !== undefined) closePanel(shell, menu);
       setHints(shell, restoredHints);
       finish();
     };
+
     const submit = (other?: string): void => {
       const picked = selectedIds();
       const text = other?.trim();
       const own = text === "" ? undefined : text;
+
       if (picked.length === 0 && own === undefined) return;
       settle(() =>
         resolve(own === undefined ? { choices: picked } : { choices: picked, other: own }),
       );
     };
+
     const onAbort = (): void => settle(() => reject(new PickerCancelled()));
+
     const screen: MenuScreen = {
       title: selection.title,
       choices: choices(),
@@ -498,8 +547,10 @@ export function selectSelection(
       onSelect: (id) => {
         if (selection.multiple !== true) {
           settle(() => resolve({ choices: [id] }));
+
           return;
         }
+
         if (selected.has(id)) selected.delete(id);
         else selected.add(id);
         menu?.setChoices(choices(), id);
@@ -510,6 +561,7 @@ export function selectSelection(
           ? undefined
           : { placeholder: selection.other, onSubmit: (text) => submit(text) },
     };
+
     menu = openInlineMenu(shell, screen, (cause) => settle(() => reject(cause)));
     options.signal?.addEventListener("abort", onAbort, { once: true });
   });

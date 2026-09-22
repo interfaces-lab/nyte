@@ -102,12 +102,15 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 function withoutGeneratedExtensions(extra: ExpoConfig["extra"]): ExpoConfig["extra"] {
   if (extra === undefined) return undefined;
   const eas: unknown = extra["eas"];
+
   if (eas === null || typeof eas !== "object") return extra;
   const keptEas = Object.fromEntries(Object.entries(eas).filter(([key]) => key !== "build"));
+
   return { ...extra, eas: keptEas };
 }
 
 function isVoltraPlugin(plugin: NonNullable<ExpoConfig["plugins"]>[number]): boolean {
   const name = Array.isArray(plugin) ? plugin[0] : plugin;
+
   return name === "@use-voltra/ios-client";
 }

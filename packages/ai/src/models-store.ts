@@ -40,6 +40,7 @@ export class InMemoryModelsStore implements ModelsStore {
   ): Promise<ModelsStoreEntry | undefined> {
     options?.signal?.throwIfAborted();
     const entry = this.entries.get(providerId);
+
     return entry ? structuredClone(entry) : undefined;
   }
 

@@ -28,8 +28,8 @@ const NYTE_PROVIDERS: readonly (() => Provider)[] = [
 ];
 
 /**
- * The model a client reaches for first within a provider. Only baked catalogs
- * name one; remote catalogs move, so their first entry stands in.
+ * Explicit defaults for providers whose first choice should not depend on feed order.
+ * Providers without one use the first catalog entry.
  */
 export const defaultModelPerProvider: Readonly<Record<ProviderId, string>> = {
   "openai-codex": "gpt-5.6-luna",
@@ -42,7 +42,10 @@ export function createNyteModels(): MutableModels {
     credentials: new FileCredentialStore(),
     authContext: defaultProviderAuthContext(),
     modelsStore: new FileModelsStore(),
+    catalog: { url: process.env.NYTE_MODELS_URL },
   });
+
   for (const provider of NYTE_PROVIDERS) models.setProvider(provider());
+
   return models;
 }

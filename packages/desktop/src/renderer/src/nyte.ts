@@ -32,6 +32,7 @@ function watchEvents(input: Parameters<Watch>[0]): AsyncIterable<SessionEvent> {
       let pull: PromiseWithResolvers<IteratorResult<SessionEvent>> | undefined;
       let ended: { readonly error: Error | undefined } | undefined;
       let stop = (): void => {};
+
       const end = (error: Error | undefined): void => {
         if (ended !== undefined) return;
         ended = { error };
@@ -40,11 +41,15 @@ function watchEvents(input: Parameters<Watch>[0]): AsyncIterable<SessionEvent> {
         stop();
         const waiting = pull;
         pull = undefined;
+
         if (waiting === undefined) return;
+
         if (error === undefined) waiting.resolve({ value: undefined, done: true });
         else waiting.reject(error);
       };
+
       const abort = (): void => end(undefined);
+
       if (input.signal?.aborted) {
         ended = { error: undefined };
       } else {
@@ -56,34 +61,44 @@ function watchEvents(input: Parameters<Watch>[0]): AsyncIterable<SessionEvent> {
               : { sessionId: input.sessionId, afterSeq: input.afterSeq },
           (event) => {
             if (ended !== undefined) return;
+
             if (pull === undefined) {
               queued.push(event);
+
               return;
             }
+
             const waiting = pull;
             pull = undefined;
             waiting.resolve({ value: event, done: false });
           },
           end,
         );
+
         // A bridge that refuses before returning ended without a stop to call.
         if (ended !== undefined) stop();
         else input.signal?.addEventListener("abort", abort, { once: true });
       }
+
       return {
         next: () => {
           const event = queued.shift();
+
           if (event !== undefined) return Promise.resolve({ value: event, done: false });
+
           if (ended !== undefined) {
             return ended.error === undefined
               ? Promise.resolve({ value: undefined, done: true })
               : Promise.reject(ended.error);
           }
+
           pull = Promise.withResolvers();
+
           return pull.promise;
         },
         return: () => {
           end(undefined);
+
           return Promise.resolve({ value: undefined, done: true });
         },
       };

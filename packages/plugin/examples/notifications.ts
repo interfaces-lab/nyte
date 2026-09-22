@@ -11,9 +11,13 @@ import type { RunPhase } from "@nyte-ai/core";
 import type { JsonValue } from "@nyte-ai/schema";
 
 export const NOTIFICATIONS_SETTING_ID = "run-alerts";
+
 const MODE_KEY = "mode";
+
 const MODES = ["alert", "sound", "off"] as const;
+
 type Mode = (typeof MODES)[number];
+
 /** Desktop notifications truncate without warning, so bound the provider text here. */
 const MAX_DETAIL_CHARS = 120;
 
@@ -23,7 +27,9 @@ function isMode(value: JsonValue | undefined): value is Mode {
 
 function summarize(message: string): string {
   const collapsed = message.replaceAll(/\s+/gu, " ").trim();
+
   if (collapsed.length <= MAX_DETAIL_CHARS) return collapsed;
+
   return `${collapsed.slice(0, MAX_DETAIL_CHARS - 1).trimEnd()}…`;
 }
 
@@ -36,8 +42,10 @@ export function runEndMessage(phase: RunPhase): string | undefined {
       return "Turn stopped";
     case "failed": {
       const detail = summarize(phase.failure.message);
+
       return detail === "" ? "Turn failed" : `Turn failed: ${detail}`;
     }
+
     case "respond":
     case "tools":
     case "waiting":
@@ -45,6 +53,7 @@ export function runEndMessage(phase: RunPhase): string | undefined {
       return undefined;
     default: {
       const _exhaustive: never = phase;
+
       return _exhaustive;
     }
   }
@@ -61,6 +70,7 @@ function isString(value: JsonValue | undefined): value is string {
 function questionTitle(args: JsonValue): string | undefined {
   if (!isJsonObject(args)) return undefined;
   const question = args["question"];
+
   return isString(question) ? summarize(question) : undefined;
 }
 
@@ -85,15 +95,19 @@ export const notificationsPlugin = definePlugin({
     });
 
     let child: boolean | undefined;
+
     const notify = async (message: string, title?: string): Promise<void> => {
       const stored = await api.storage.get(MODE_KEY);
       const mode = isMode(stored) ? stored : "alert";
+
       if (mode === "off") return;
       child ??= (await api.session.info()).child;
+
       if (child) return;
       const notification = { message, sound: mode === "sound" };
       api.diagnostics.notify(title === undefined ? notification : { ...notification, title });
     };
+
     const report = (cause: unknown): void => {
       api.diagnostics.warn(`notify: ${cause instanceof Error ? cause.message : String(cause)}`);
     };
@@ -104,17 +118,22 @@ export const notificationsPlugin = definePlugin({
       switch (event.kind) {
         case "run": {
           const message = runEndMessage(event.run.phase);
+
           if (message === undefined || ended.has(event.run.runId)) return;
           ended.add(event.run.runId);
           void notify(message).catch(report);
+
           return;
         }
+
         case "effect": {
           if (event.state !== "waiting" || asked.has(event.callId)) return;
           asked.add(event.callId);
           void notify("Input needs response", questionTitle(event.args)).catch(report);
+
           return;
         }
+
         default:
           return;
       }

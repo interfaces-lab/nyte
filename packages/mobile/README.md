@@ -272,9 +272,7 @@ options cannot drift from the words on screen and no setting can lack a
 fallback; a hook hands a row that list together with the current choice, so a
 row cannot show one setting's value over another's menu. Appearance stores the
 argument `Appearance.setColorScheme` takes, including its `unspecified` for
-following the system, rather than a second spelling to translate. Stored text is
-external input, and `settings/choice.ts` keeps that resolution free of native
-imports so `test/preferences.test.ts` can check it.
+following the system, rather than a second spelling to translate.
 `chat/messages.tsx` owns message and Markdown rendering. Keep a feature's state
 and components together; add a shared UI component only when several features
 use it. Protocol types and execution rules stay in their existing workspace

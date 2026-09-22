@@ -27,10 +27,15 @@ interface ToastItem {
 }
 
 const VISIBLE_LIMIT = 3;
+
 const DURATION_MS = 4_000;
+
 const ENTER_OFFSET = 20;
+
 const EXIT_MS = 180;
+
 const DISMISS_TRANSLATION = 40;
+
 const DISMISS_VELOCITY = 400;
 
 const icons: Record<
@@ -42,7 +47,9 @@ const icons: Record<
 };
 
 let items: ToastItem[] = [];
+
 let counter = 0;
+
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -77,6 +84,7 @@ export const toast = {
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
+
   return () => listeners.delete(listener);
 }
 
@@ -91,6 +99,7 @@ function ToastCard({ item }: { item: ToastItem }) {
     offset.set(withSpring(0, { damping: 24, stiffness: 260, mass: 0.9 }));
     opacity.set(withTiming(1, { duration: 160 }));
     const timer = setTimeout(() => dismiss(item.id), DURATION_MS);
+
     return () => clearTimeout(timer);
   });
 
@@ -132,6 +141,7 @@ function ToastCard({ item }: { item: ToastItem }) {
   }));
 
   const icon = item.kind === "default" ? undefined : icons[item.kind];
+
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View style={animatedStyle}>
@@ -160,7 +170,9 @@ function ToastCard({ item }: { item: ToastItem }) {
 export function Toaster() {
   const insets = useSafeAreaInsets();
   const toasts = useSyncExternalStore(subscribe, () => items);
+
   if (toasts.length === 0) return null;
+
   return (
     <View
       pointerEvents="box-none"

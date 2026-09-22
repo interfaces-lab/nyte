@@ -12,8 +12,11 @@ import { createTwoFilesPatch, diffLines, FILE_HEADERS_ONLY } from "diff";
 export function detectLineEnding(content: string): "\r\n" | "\n" {
   const crlfIdx = content.indexOf("\r\n");
   const lfIdx = content.indexOf("\n");
+
   if (lfIdx === -1) return "\n";
+
   if (crlfIdx === -1) return "\n";
+
   return crlfIdx < lfIdx ? "\r\n" : "\n";
 }
 
@@ -75,9 +78,11 @@ type TextReplacement = Pick<MatchedEdit, "matchIndex" | "matchLength" | "newText
 
 function getLineSpans(content: string): LineSpan[] {
   let offset = 0;
+
   return splitLinesWithEndings(content).map((line) => {
     const span = { start: offset, end: offset + line.length };
     offset = span.end;
+
     return span;
   });
 }
@@ -87,21 +92,26 @@ function getReplacementLineRange(lines: LineSpan[], replacement: TextReplacement
   const replacementEnd = replacement.matchIndex + replacement.matchLength;
 
   let startLine = -1;
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+
     if (replacementStart >= line.start && replacementStart < line.end) {
       startLine = i;
       break;
     }
   }
+
   if (startLine === -1) {
     throw new Error("Replacement range is outside the base content.");
   }
 
   let endLine = startLine;
+
   while (endLine < lines.length && lines[endLine].end < replacementEnd) {
     endLine++;
   }
+
   if (endLine >= lines.length) {
     throw new Error("Replacement range is outside the base content.");
   }
@@ -112,12 +122,15 @@ function getReplacementLineRange(lines: LineSpan[], replacement: TextReplacement
 function applyReplacements(content: string, replacements: TextReplacement[], offset = 0): string {
   const parts: string[] = [];
   let cursor = 0;
+
   for (const replacement of replacements) {
     const matchIndex = replacement.matchIndex - offset;
     parts.push(content.slice(cursor, matchIndex), replacement.newText);
     cursor = matchIndex + replacement.matchLength;
   }
+
   parts.push(content.slice(cursor));
+
   return parts.join("");
 }
 
@@ -138,6 +151,7 @@ function applyReplacementsPreservingUnchangedLines(
 ): string {
   const originalLines = splitLinesWithEndings(originalContent);
   const baseLines = getLineSpans(baseContent);
+
   if (originalLines.length !== baseLines.length) {
     throw new Error(
       "Cannot preserve unchanged lines because the base content has a different line count.",
@@ -146,19 +160,23 @@ function applyReplacementsPreservingUnchangedLines(
 
   const groups: Array<{ startLine: number; endLine: number; replacements: TextReplacement[] }> = [];
   const sortedReplacements = [...replacements].sort((a, b) => a.matchIndex - b.matchIndex);
+
   for (const replacement of sortedReplacements) {
     const range = getReplacementLineRange(baseLines, replacement);
     const current = groups[groups.length - 1];
+
     if (current && range.startLine < current.endLine) {
       current.endLine = Math.max(current.endLine, range.endLine);
       current.replacements.push(replacement);
       continue;
     }
+
     groups.push({ ...range, replacements: [replacement] });
   }
 
   let originalLineIndex = 0;
   let result = "";
+
   for (const group of groups) {
     result += originalLines.slice(originalLineIndex, group.startLine).join("");
 
@@ -171,6 +189,7 @@ function applyReplacementsPreservingUnchangedLines(
     );
     originalLineIndex = group.endLine;
   }
+
   result += originalLines.slice(originalLineIndex).join("");
 
   return result;
@@ -221,6 +240,7 @@ function findText(input: {
 }): FuzzyMatchResult {
   const { content, fuzzyContent, needle } = input;
   const exactIndex = content.indexOf(needle.oldText);
+
   if (exactIndex !== -1) {
     return {
       found: true,
@@ -230,7 +250,9 @@ function findText(input: {
       contentForReplacement: content,
     };
   }
+
   const fuzzyIndex = fuzzyContent.indexOf(needle.fuzzyOldText);
+
   if (fuzzyIndex === -1) {
     return {
       found: false,
@@ -240,6 +262,7 @@ function findText(input: {
       contentForReplacement: content,
     };
   }
+
   return {
     found: true,
     index: fuzzyIndex,
@@ -264,6 +287,7 @@ function getNotFoundError(path: string, editIndex: number, totalEdits: number): 
       `Could not find the exact text in ${path}. The old text must match exactly including all whitespace and newlines.`,
     );
   }
+
   return new Error(
     `Could not find edits[${editIndex}] in ${path}. The oldText must match exactly including all whitespace and newlines.`,
   );
@@ -280,6 +304,7 @@ function getDuplicateError(
       `Found ${occurrences} occurrences of the text in ${path}. The text must be unique. Please provide more context to make it unique.`,
     );
   }
+
   return new Error(
     `Found ${occurrences} occurrences of edits[${editIndex}] in ${path}. Each oldText must be unique. Please provide more context to make it unique.`,
   );
@@ -289,6 +314,7 @@ function getEmptyOldTextError(path: string, editIndex: number, totalEdits: numbe
   if (totalEdits === 1) {
     return new Error(`oldText must not be empty in ${path}.`);
   }
+
   return new Error(`edits[${editIndex}].oldText must not be empty in ${path}.`);
 }
 
@@ -298,6 +324,7 @@ function getNoChangeError(path: string, totalEdits: number): Error {
       `No changes made to ${path}. The replacement produced identical content. This might indicate an issue with special characters or the text not existing as expected.`,
     );
   }
+
   return new Error(`No changes made to ${path}. The replacements produced identical content.`);
 }
 
@@ -329,28 +356,35 @@ export function applyEditsToNormalizedContent(
   // Normalizing is idempotent, so the fuzzy view of the fuzzy view is itself:
   // once any edit needs fuzzy space, every edit is re-matched there.
   const fuzzyContent = normalizeForFuzzyMatch(normalizedContent);
+
   const needles = normalizedEdits.map((edit): Needle => ({
     oldText: edit.oldText,
     fuzzyOldText: normalizeForFuzzyMatch(edit.oldText),
   }));
+
   const initialMatches = needles.map((needle) =>
     findText({ content: normalizedContent, fuzzyContent, needle }),
   );
+
   const usedFuzzyMatch = initialMatches.some((match) => match.usedFuzzyMatch);
   const replacementBaseContent = usedFuzzyMatch ? fuzzyContent : normalizedContent;
 
   const matchedEdits: MatchedEdit[] = [];
+
   for (let i = 0; i < normalizedEdits.length; i++) {
     const edit = normalizedEdits[i];
     const needle = needles[i];
+
     const matchResult = usedFuzzyMatch
       ? findText({ content: fuzzyContent, fuzzyContent, needle })
       : initialMatches[i];
+
     if (!matchResult.found) {
       throw getNotFoundError(path, i, normalizedEdits.length);
     }
 
     const occurrences = countOccurrences(fuzzyContent, needle);
+
     if (occurrences > 1) {
       throw getDuplicateError(path, i, normalizedEdits.length, occurrences);
     }
@@ -364,9 +398,11 @@ export function applyEditsToNormalizedContent(
   }
 
   matchedEdits.sort((a, b) => a.matchIndex - b.matchIndex);
+
   for (let i = 1; i < matchedEdits.length; i++) {
     const previous = matchedEdits[i - 1];
     const current = matchedEdits[i];
+
     if (previous.matchIndex + previous.matchLength > current.matchIndex) {
       throw new Error(
         `edits[${previous.editIndex}] and edits[${current.editIndex}] overlap in ${path}. Merge them into one edit or target disjoint regions.`,
@@ -375,6 +411,7 @@ export function applyEditsToNormalizedContent(
   }
 
   const baseContent = normalizedContent;
+
   const newContent = usedFuzzyMatch
     ? applyReplacementsPreservingUnchangedLines(
         normalizedContent,
@@ -405,10 +442,13 @@ export function generateFileMutationDetails(
 ): FileMutationDetails {
   let added = 0;
   let removed = 0;
+
   for (const part of diffLines(oldContent, newContent)) {
     if (part.added) added += part.count;
+
     if (part.removed) removed += part.count;
   }
+
   return {
     patch: createTwoFilesPatch(path, path, oldContent, newContent, undefined, undefined, {
       context: 4,

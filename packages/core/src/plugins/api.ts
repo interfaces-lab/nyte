@@ -38,6 +38,7 @@ export function bindSessionApi(
     rebuild: () => {
       const diff = inner.rebuild();
       target.rebuildAll();
+
       return diff;
     },
   });

@@ -33,9 +33,10 @@ async function putCommit(
     kind: "commit",
     parent,
     at: Date.now(),
-    ...(run === undefined ? {} : { run }),
   } as const;
+
   const message = body.message;
+
   const commit =
     message.role === "user"
       ? ({
@@ -56,8 +57,11 @@ async function putCommit(
             call: { kind: "custom", label: message.toolName },
             tree: null,
           } satisfies Commit);
-  const [oid] = await session.objects.put([commit]);
+
+  const [oid] = await session.objects.put([run === undefined ? commit : { ...commit, run }]);
+
   if (oid === undefined) throw new Error("SQLite did not return a commit object id");
+
   return oid;
 }
 
@@ -66,6 +70,7 @@ export async function openBenchmarkSessionWriter(
   sessionIndex: number,
 ): Promise<BenchmarkSessionWriter> {
   const seeded = fixture.sessions[sessionIndex];
+
   if (seeded === undefined)
     throw new RangeError(`Unknown benchmark session index ${String(sessionIndex)}`);
   const store = new SqliteStore(fixture.paths.workspaceStore);
@@ -77,6 +82,7 @@ export async function openBenchmarkSessionWriter(
     const outcome = await session.refs.update([{ name: "refs/heads/main", from: tip, to: next }], {
       reason,
     });
+
     if (!outcome.ok) throw new Error(`Benchmark head move failed: ${outcome.reason}`);
     tip = next;
   };
@@ -88,6 +94,7 @@ export async function openBenchmarkSessionWriter(
         kind: "message",
         message: { role: "user", content, timestamp: Date.now() },
       } satisfies CommitBody;
+
       await moveHead(await putCommit(session, tip, body), "benchmark-stream-user");
     },
     appendTextDelta: async (runId, index, delta) => {
@@ -99,7 +106,9 @@ export async function openBenchmarkSessionWriter(
         part: "text",
         delta,
       } satisfies EventBody;
+
       const outcome = await session.events.append([event]);
+
       if (!outcome.ok) throw new Error("Benchmark delta append was fenced");
     },
     settleAssistant: async (runId, content) => {
@@ -116,13 +125,16 @@ export async function openBenchmarkSessionWriter(
           usage: USAGE,
         },
       } satisfies CommitBody;
+
       await moveHead(await putCommit(session, tip, body, runId), "benchmark-stream-settle");
     },
     interruptWatchProjection: async () => {
       const [oid] = await session.objects.put([
         { kind: "blob", value: "not a run; benchmark projection interruption" },
       ]);
+
       if (oid === undefined) throw new Error("SQLite did not return a projection fixture id");
+
       const event = {
         kind: "ref",
         name: "refs/runs/main",
@@ -130,12 +142,15 @@ export async function openBenchmarkSessionWriter(
         to: oid,
         reason: "benchmark-projection-interruption",
       } satisfies EventBody;
+
       const outcome = await session.events.append([event]);
+
       if (!outcome.ok) throw new Error("Benchmark projection interruption was fenced");
     },
     close: async () => {
       if (closed) return;
       closed = true;
+
       try {
         await session.close();
       } finally {

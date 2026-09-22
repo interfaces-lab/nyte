@@ -16,10 +16,13 @@ import { App } from "./app";
  * initial state rather than keeping a second copy of the default.
  */
 document.documentElement.dataset.appearance = "dark";
+
 document.documentElement.dataset.theme = "dark";
+
 document.documentElement.dataset.labTokens = "nyte";
 
 const root = document.getElementById("root");
+
 if (root === null) throw new Error("index.html is missing #root");
 
 createRoot(root).render(

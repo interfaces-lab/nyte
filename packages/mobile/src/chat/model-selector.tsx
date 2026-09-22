@@ -68,19 +68,25 @@ function SheetBody({
   const [query, setQuery] = useState("");
   // Each open starts a clean search; the reset rides the prop, not an effect.
   const [seenOpen, setSeenOpen] = useState(open);
+
   if (seenOpen !== open) {
     setSeenOpen(open);
+
     if (open) setQuery("");
   }
+
   const { catalog, refresh } = useModelCatalog(client, open);
   const current = selectedModel ?? (catalog.kind === "ready" ? catalog.defaultModel : undefined);
   const models = catalog.kind === "ready" ? catalog.models : [];
+
   const selected = models.find(
     (model) =>
       model.id === current?.id &&
       (current?.provider === undefined || model.provider === current.provider),
   );
+
   const search = query.trim().toLocaleLowerCase();
+
   const matches = models.filter((model) =>
     `${model.name} ${model.provider} ${model.id}`.toLocaleLowerCase().includes(search),
   );
@@ -89,8 +95,10 @@ function SheetBody({
     // Re-choosing the session's explicit model would only queue a no-op configure.
     if (selectedModel?.provider === model.provider && selectedModel.id === model.id) {
       onClose();
+
       return;
     }
+
     if (await onSelect(model)) onClose();
   }
 
@@ -166,6 +174,7 @@ function SheetBody({
               keyboardDismissMode="on-drag"
               renderItem={({ item, index }) => {
                 const chosen = item === selected;
+
                 return (
                   <html.button
                     aria-label={`${item.name}, ${item.provider}`}

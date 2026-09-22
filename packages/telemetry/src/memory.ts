@@ -44,6 +44,7 @@ export class InMemoryTelemetryContext implements TelemetryContext {
     parentId: number | undefined,
   ): Promise<T> {
     const events: RecordedEvent[] = [];
+
     const recorded: RecordedSpan = {
       id: this.#spans.length + 1,
       parentId,
@@ -53,8 +54,10 @@ export class InMemoryTelemetryContext implements TelemetryContext {
       status: { status: "ok" },
       ended: false,
     };
+
     this.#spans.push(recorded);
     let explicitStatus = false;
+
     const span: TelemetrySpan = {
       startSpan: (child, callback) =>
         recorded.ended
@@ -74,6 +77,7 @@ export class InMemoryTelemetryContext implements TelemetryContext {
         recorded.status = status;
       },
     };
+
     try {
       return await fn(span);
     } catch (error) {

@@ -18,19 +18,25 @@ export function parseArgs(args: readonly string[]) {
   if (args.length === 1 && args[0] === "--help") return { kind: "help" } as const;
   const flags = new Map<string, string>();
   const allowed = ["--suite", "--sizes", "--count", "--events", "--samples", "--warmups"];
+
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index];
     const value = args[index + 1];
+
     if (flag === undefined || !allowed.includes(flag))
       throw new Error(`Unknown flag: ${flag ?? ""}. Use --help.`);
+
     if (flags.has(flag)) throw new Error(`Duplicate flag: ${flag}. Provide it once.`);
+
     if (value === undefined || value.startsWith("--"))
       throw new Error(`Missing value for ${flag}. Use --help.`);
     flags.set(flag, value);
   }
+
   const integer = (flag: string, fallback: number, minimum: number, maximum: number) => {
     const value = flags.get(flag) ?? String(fallback);
     const parsed = Number(value);
+
     if (
       !/^\d+$/u.test(value) ||
       !Number.isSafeInteger(parsed) ||
@@ -39,9 +45,12 @@ export function parseArgs(args: readonly string[]) {
     ) {
       throw new Error(`${flag} requires an integer from ${minimum} to ${maximum}.`);
     }
+
     return parsed;
   };
+
   const suite = flags.get("--suite") ?? "all";
+
   if (
     suite !== "all" &&
     suite !== "projections" &&
@@ -51,13 +60,16 @@ export function parseArgs(args: readonly string[]) {
   ) {
     throw new Error("--suite requires all, projections, histories, sqlite, or watch.");
   }
+
   const sizes = (flags.get("--sizes") ?? "100,1000,10000").split(",");
+
   if (
     sizes.some((size) => !["100", "1000", "10000"].includes(size)) ||
     new Set(sizes).size !== sizes.length
   ) {
     throw new Error("--sizes requires distinct comma-separated values from 100,1000,10000.");
   }
+
   return {
     kind: "run",
     suite,

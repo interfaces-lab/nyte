@@ -14,11 +14,14 @@ import { VERSION } from "./version.ts";
 export function ansiEnabled(stream: Pick<NodeJS.WriteStream, "isTTY"> = process.stdout): boolean {
   if (!stream.isTTY) return false;
   const noColor = process.env["NO_COLOR"];
+
   if (noColor !== undefined && noColor !== "") return false;
+
   return process.env["CI"] !== "true";
 }
 
 const SGR = { bold: "1", dim: "2", red: "31", green: "32", yellow: "33", cyan: "36" } as const;
+
 type SgrCode = (typeof SGR)[keyof typeof SGR];
 
 function paint(enabled: boolean, code: SgrCode, text: string): string {
@@ -54,6 +57,7 @@ const SEVERITY_STYLE: Readonly<Record<Severity, SeverityStyle>> = {
 /** The gutter glyph for a finished step: ✓ done, ● needs attention, ✗ failed. */
 export function statusGlyph(severity: Severity, color: boolean): string {
   const { glyph, code } = SEVERITY_STYLE[severity];
+
   return paint(color, code, glyph);
 }
 
@@ -68,6 +72,7 @@ export function updateSeverity(outcome: UpdateOutcome): Severity {
       return "fail";
     default: {
       const _exhaustive: never = outcome;
+
       return _exhaustive;
     }
   }
@@ -88,8 +93,10 @@ export function alignedRows(
 ): string[] {
   return rows.map(({ label, detail }) => {
     const styled = paint(color, SGR.bold, label);
+
     if (detail === "") return `  ${styled}`;
     const pad = " ".repeat(Math.max(0, width - label.length) + COLUMN_GAP);
+
     return `  ${styled}${pad}${paint(color, SGR.dim, detail)}`;
   });
 }
@@ -104,8 +111,8 @@ const HELP_COMMANDS: readonly AlignedRow[] = [
   { label: "nyte logout [<provider>]", detail: "remove stored credentials; choose when omitted" },
   { label: "nyte status", detail: "list stored credentials" },
   {
-    label: "nyte update [version|--check]",
-    detail: "install the latest release, a given one, or only check",
+    label: "nyte update [version|--check|--models]",
+    detail: "install nyte, check for an update, or refresh models",
   },
   { label: "nyte --version", detail: "print the installed version" },
   { label: "nyte -p [--json] [--quiet] [--resume] [prompt]", detail: "" },
@@ -163,10 +170,11 @@ export function renderCommandHelp(command: "login" | "logout" | "update" | "stat
       ].join("\n");
     case "update":
       return [
-        "Usage: nyte update [<version> | --check]",
+        "Usage: nyte update [<version> | --check | --models]",
         "Install the latest release or an explicit version; --check only checks for an update.",
-        "A version and --check are mutually exclusive. Progress uses stderr; the result uses stdout.",
-        "Examples: nyte update | nyte update 0.0.2 | nyte update --check",
+        "--models refreshes the model catalog without updating nyte.",
+        "A version, --check, and --models are mutually exclusive. Progress uses stderr; results use stdout.",
+        "Examples: nyte update | nyte update 0.0.2 | nyte update --check | nyte update --models",
       ].join("\n");
     case "status":
       return [
@@ -177,6 +185,7 @@ export function renderCommandHelp(command: "login" | "logout" | "update" | "stat
       ].join("\n");
     default: {
       const _exhaustive: never = command;
+
       return _exhaustive;
     }
   }

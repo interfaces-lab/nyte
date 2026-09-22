@@ -16,12 +16,14 @@ export function skillsPlugin(loaded: LoadedSkills) {
       for (const diagnostic of loaded.diagnostics) {
         api.diagnostics.warn(`${diagnostic.path}: ${diagnostic.message}`);
       }
+
       api.resources.add((draft) => {
         for (const skill of loaded.skills) {
           if (!draft.has(skill.name)) draft.set(skill.name, skill);
         }
       });
       const catalog = formatSkillsForPrompt(loaded.skills);
+
       if (catalog !== "") {
         api.prompt.add((draft) => draft.set("available-skills", { text: catalog, order: 90 }));
       }

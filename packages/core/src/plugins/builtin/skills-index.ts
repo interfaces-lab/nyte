@@ -3,21 +3,28 @@
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/agent/src/harness/skills.ts
  */
+import { existsSync } from "node:fs";
 import { lstat, readFile, readdir, stat } from "node:fs/promises";
 import { basename, dirname, join, relative, sep } from "node:path";
 import type { Skill } from "@nyte-ai/schema";
 import ignorePackage from "ignore";
 import type { Ignore } from "ignore";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { parse } from "yaml";
 
 const MAX_NAME_LENGTH = 64;
+
 const MAX_DESCRIPTION_LENGTH = 1024;
+
 const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"] as const;
 
 type IgnoreFactory = () => Ignore;
+
 interface IgnoreModuleNamespace {
   readonly default?: IgnoreFactory;
 }
+
 type IgnorePackageExport = IgnoreFactory | IgnoreModuleNamespace | null | undefined;
 
 function isIgnoreFactory(value: IgnorePackageExport): value is IgnoreFactory {
@@ -38,6 +45,7 @@ function hasDefaultIgnoreFactory(
 /** `ignore` is CommonJS; NodeNext and bundler consumers expose its default differently. */
 function parseIgnoreFactory(value: IgnorePackageExport): IgnoreFactory {
   if (isIgnoreFactory(value)) return value;
+
   if (hasDefaultIgnoreFactory(value)) return value.default;
   throw new TypeError("ignore package does not export a factory");
 }
@@ -65,11 +73,11 @@ interface SkillFrontmatter {
   readonly disableModelInvocation?: boolean;
 }
 
-interface RawSkillFrontmatter {
-  readonly name?: unknown;
-  readonly description?: unknown;
-  readonly "disable-model-invocation"?: unknown;
-}
+const RawSkillFrontmatter = Type.Object({
+  name: Type.Optional(Type.Unknown()),
+  description: Type.Optional(Type.Unknown()),
+  "disable-model-invocation": Type.Optional(Type.Unknown()),
+});
 
 interface ParsedFrontmatter {
   readonly frontmatter: SkillFrontmatter;
@@ -100,12 +108,16 @@ export async function loadSkills(directories: string | readonly string[]): Promi
   const diagnostics: SkillDiagnostic[] = [];
   const claimedBy = new Map<string, string>();
   const roots = isDirectoryList(directories) ? directories : [directories];
+
   for (const directory of roots) {
     const kind = await pathKind(directory, diagnostics);
+
     if (kind !== "directory") continue;
     const loaded = await loadSkillsFromDirectory(directory, directory, createIgnore());
+
     for (const skill of loaded.skills) {
       const claimed = claimedBy.get(skill.name);
+
       if (claimed !== undefined) {
         diagnostics.push(
           diagnostic(
@@ -116,11 +128,14 @@ export async function loadSkills(directories: string | readonly string[]): Promi
         );
         continue;
       }
+
       claimedBy.set(skill.name, skill.filePath);
       skills.push(skill);
     }
+
     diagnostics.push(...loaded.diagnostics);
   }
+
   return { skills, diagnostics };
 }
 
@@ -129,6 +144,7 @@ export function formatSkillInvocation(skill: Skill, additionalInstructions?: str
   const skillBlock =
     `<skill name="${escapeXml(skill.name)}" location="${escapeXml(skill.filePath)}">\n` +
     `References are relative to ${dirname(skill.filePath)}.\n\n${skill.content}\n</skill>`;
+
   return additionalInstructions === undefined || additionalInstructions === ""
     ? skillBlock
     : `${skillBlock}\n\n${additionalInstructions}`;
@@ -137,6 +153,7 @@ export function formatSkillInvocation(skill: Skill, additionalInstructions?: str
 /** Format the model-visible skill catalog. Full instructions remain on disk until needed. */
 export function formatSkillsForPrompt(skills: readonly Skill[]): string {
   const visible = skills.filter((skill) => skill.disableModelInvocation !== true);
+
   if (visible.length === 0) return "";
 
   const lines = [
@@ -146,6 +163,7 @@ export function formatSkillsForPrompt(skills: readonly Skill[]): string {
     "",
     "<available_skills>",
   ];
+
   for (const skill of visible) {
     lines.push("  <skill>");
     lines.push(`    <name>${escapeXml(skill.name)}</name>`);
@@ -153,7 +171,9 @@ export function formatSkillsForPrompt(skills: readonly Skill[]): string {
     lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
     lines.push("  </skill>");
   }
+
   lines.push("</available_skills>");
+
   return lines.join("\n");
 }
 
@@ -167,39 +187,49 @@ async function loadSkillsFromDirectory(
   await addIgnoreRules(matcher, directory, root, diagnostics);
 
   let entries;
+
   try {
     entries = await readdir(directory, { withFileTypes: true });
   } catch (error) {
     diagnostics.push(diagnostic("list_failed", errorMessage(error), directory));
+
     return { skills, diagnostics };
   }
+
   entries.sort((left, right) => left.name.localeCompare(right.name));
 
   const declared = entries.find((entry) => entry.name === "SKILL.md");
+
   if (declared !== undefined) {
     const filePath = join(directory, declared.name);
     const kind = await pathKind(filePath, diagnostics);
+
     if (kind === "file" && !matcher.ignores(relativePath(root, filePath))) {
       const loaded = await loadSkillFile(filePath, basename(directory));
+
       if (loaded.skill !== undefined) skills.push(loaded.skill);
       diagnostics.push(...loaded.diagnostics);
     }
+
     return { skills, diagnostics };
   }
 
   for (const entry of entries) {
     if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
     const path = join(directory, entry.name);
+
     const kind = entry.isDirectory()
       ? "directory"
       : entry.isSymbolicLink()
         ? await pathKind(path, diagnostics)
         : undefined;
+
     if (kind !== "directory" || matcher.ignores(`${relativePath(root, path)}/`)) continue;
     const loaded = await loadSkillsFromDirectory(path, root, matcher);
     skills.push(...loaded.skills);
     diagnostics.push(...loaded.diagnostics);
   }
+
   return { skills, diagnostics };
 }
 
@@ -209,29 +239,36 @@ async function loadSkillFile(
 ): Promise<{ skill?: Skill; diagnostics: SkillDiagnostic[] }> {
   const diagnostics: SkillDiagnostic[] = [];
   let content: string;
+
   try {
     content = await readFile(filePath, "utf8");
   } catch (error) {
     diagnostics.push(diagnostic("read_failed", errorMessage(error), filePath));
+
     return { diagnostics };
   }
 
   let parsed: ParsedFrontmatter;
+
   try {
     parsed = parseFrontmatter(content);
   } catch (error) {
     diagnostics.push(diagnostic("parse_failed", errorMessage(error), filePath));
+
     return { diagnostics };
   }
 
   const name = parsed.frontmatter.name || parentDirectoryName;
   const description = parsed.frontmatter.description;
+
   for (const message of validateName(name, parentDirectoryName)) {
     diagnostics.push(diagnostic("invalid_metadata", message, filePath));
   }
+
   for (const message of validateDescription(description)) {
     diagnostics.push(diagnostic("invalid_metadata", message, filePath));
   }
+
   if (description === undefined || description.trim() === "") return { diagnostics };
 
   return {
@@ -248,22 +285,30 @@ async function loadSkillFile(
 
 function parseFrontmatter(content: string): ParsedFrontmatter {
   const normalized = content.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
+
   if (!normalized.startsWith("---\n")) return { frontmatter: {}, body: normalized };
   const end = normalized.indexOf("\n---", 4);
+
   if (end === -1) return { frontmatter: {}, body: normalized };
   const value: unknown = parse(normalized.slice(4, end));
-  if (value !== null && !isRawSkillFrontmatter(value)) {
+
+  if (value !== null && !Value.Check(RawSkillFrontmatter, value)) {
     throw new Error("skill frontmatter must be a YAML object");
   }
+
   const raw = value ?? {};
   let frontmatter: SkillFrontmatter = {};
+
   if (isString(raw.name)) frontmatter = { ...frontmatter, name: raw.name };
+
   if (isString(raw.description)) {
     frontmatter = { ...frontmatter, description: raw.description };
   }
+
   if (raw["disable-model-invocation"] === true) {
     frontmatter = { ...frontmatter, disableModelInvocation: true };
   }
+
   return {
     frontmatter,
     body: normalized.slice(end + 4).trim(),
@@ -272,24 +317,31 @@ function parseFrontmatter(content: string): ParsedFrontmatter {
 
 function validateName(name: string, parentDirectoryName: string): string[] {
   const messages: string[] = [];
+
   if (name !== parentDirectoryName) {
     messages.push(`name "${name}" does not match parent directory "${parentDirectoryName}"`);
   }
+
   if (name.length > MAX_NAME_LENGTH) {
     messages.push(`name exceeds ${MAX_NAME_LENGTH} characters (${name.length})`);
   }
+
   if (!/^[a-z0-9-]*$/.test(name)) {
     messages.push("name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)");
   }
+
   if (name.startsWith("-") || name.endsWith("-")) {
     messages.push("name must not start or end with a hyphen");
   }
+
   if (name.includes("--")) messages.push("name must not contain consecutive hyphens");
+
   return messages;
 }
 
 function validateDescription(description: string | undefined): string[] {
   if (description === undefined || description.trim() === "") return ["description is required"];
+
   return description.length > MAX_DESCRIPTION_LENGTH
     ? [`description exceeds ${MAX_DESCRIPTION_LENGTH} characters (${description.length})`]
     : [];
@@ -303,42 +355,51 @@ async function addIgnoreRules(
 ): Promise<void> {
   const relativeDirectory = relativePath(root, directory);
   const prefix = relativeDirectory === "" ? "" : `${relativeDirectory}/`;
+
   for (const filename of IGNORE_FILE_NAMES) {
     const path = join(directory, filename);
+
+    if (!existsSync(path)) continue;
     let content: string;
+
     try {
       content = await readFile(path, "utf8");
     } catch (error) {
-      if (errorCode(error) !== "ENOENT") {
-        diagnostics.push(diagnostic("read_failed", errorMessage(error), path));
-      }
+      diagnostics.push(diagnostic("read_failed", errorMessage(error), path));
       continue;
     }
+
     const patterns = content
       .replaceAll("\r\n", "\n")
       .replaceAll("\r", "\n")
       .split("\n")
       .map((line) => prefixIgnorePattern(line, prefix))
       .filter((line): line is string => line !== undefined);
+
     if (patterns.length > 0) matcher.add(patterns);
   }
 }
 
 function prefixIgnorePattern(line: string, prefix: string): string | undefined {
   const trimmed = line.trim();
+
   if (trimmed === "" || (trimmed.startsWith("#") && !trimmed.startsWith("\\#"))) {
     return undefined;
   }
+
   let pattern = line;
   let negated = false;
+
   if (pattern.startsWith("!")) {
     negated = true;
     pattern = pattern.slice(1);
   } else if (pattern.startsWith("\\!")) {
     pattern = pattern.slice(1);
   }
+
   if (pattern.startsWith("/")) pattern = pattern.slice(1);
   const prefixed = `${prefix}${pattern}`;
+
   return negated ? `!${prefixed}` : prefixed;
 }
 
@@ -346,19 +407,26 @@ async function pathKind(
   path: string,
   diagnostics: SkillDiagnostic[],
 ): Promise<"file" | "directory" | undefined> {
+  if (!existsSync(path)) return undefined;
+
   try {
     const info = await lstat(path);
+
     if (info.isFile()) return "file";
+
     if (info.isDirectory()) return "directory";
+
     if (!info.isSymbolicLink()) return undefined;
     const target = await stat(path);
+
     if (target.isFile()) return "file";
+
     if (target.isDirectory()) return "directory";
+
     return undefined;
   } catch (error) {
-    if (errorCode(error) !== "ENOENT") {
-      diagnostics.push(diagnostic("file_info_failed", errorMessage(error), path));
-    }
+    diagnostics.push(diagnostic("file_info_failed", errorMessage(error), path));
+
     return undefined;
   }
 }
@@ -380,14 +448,6 @@ function diagnostic(code: SkillDiagnosticCode, message: string, path: string): S
   return { type: "warning", code, message, path };
 }
 
-function errorCode(cause: unknown): string | undefined {
-  return cause instanceof Error && "code" in cause && isString(cause.code) ? cause.code : undefined;
-}
-
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
-}
-
-function isRawSkillFrontmatter(value: unknown): value is RawSkillFrontmatter {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

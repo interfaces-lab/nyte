@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+
 const check = process.argv.includes("--check");
 
 // `defineVars` and `defineConsts` are compile-time markers that throw when they
@@ -15,10 +16,13 @@ const identityMarkers =
 registerHooks({
   resolve(specifier, context, next) {
     if (specifier !== "@stylexjs/stylex") return next(specifier, context);
+
     return { url: identityMarkers, shortCircuit: true };
   },
 });
+
 const { tokens } = await import("../src/platform-tokens.stylex.ts");
+
 const declared = Object.assign({}, ...Object.values(tokens));
 
 const colorKey = (name) =>
@@ -33,8 +37,10 @@ const splitArguments = (source) => {
   const parts = [];
   let depth = 0;
   let start = 0;
+
   for (let index = 0; index < source.length; index += 1) {
     const character = source[index];
+
     if (character === "(") depth += 1;
     else if (character === ")") depth -= 1;
     else if (character === "," && depth === 0) {
@@ -42,12 +48,15 @@ const splitArguments = (source) => {
       start = index + 1;
     }
   }
+
   parts.push(source.slice(start));
+
   return parts.map((part) => part.trim());
 };
 
 const callArguments = (value, name) => {
   if (!value.startsWith(`${name}(`) || !value.endsWith(")")) return undefined;
+
   return splitArguments(value.slice(name.length + 1, -1));
 };
 
@@ -56,9 +65,11 @@ const parseHex = (value) => {
   const expand = (pair) => Number.parseInt(pair.length === 1 ? pair + pair : pair, 16);
   const sizes = { 3: 1, 4: 1, 6: 2, 8: 2 };
   const size = sizes[digits.length];
+
   if (size === undefined || !/^[0-9a-f]+$/i.test(digits)) return undefined;
   const channel = (index) => expand(digits.slice(index * size, index * size + size));
   const alpha = digits.length === 4 || digits.length === 8 ? channel(3) / 255 : 1;
+
   return { red: channel(0), green: channel(1), blue: channel(2), alpha };
 };
 
@@ -68,8 +79,10 @@ const mixColors = (first, firstWeight, second, secondWeight) => {
   const total = firstWeight + secondWeight;
   const [share, rest] = [firstWeight / total, secondWeight / total];
   const alpha = first.alpha * share + second.alpha * rest;
+
   const channel = (from, to) =>
     alpha === 0 ? 0 : (from * first.alpha * share + to * second.alpha * rest) / alpha;
+
   return {
     red: channel(first.red, second.red),
     green: channel(first.green, second.green),
@@ -81,45 +94,61 @@ const mixColors = (first, firstWeight, second, secondWeight) => {
 /** A `color-mix()` operand: a color with an optional percentage after it. */
 const parseOperand = (operand) => {
   const match = operand.match(/^(.*?)\s+([\d.]+)%$/);
+
   if (!match) return { color: operand, weight: undefined };
+
   return { color: match[1], weight: Number.parseFloat(match[2]) };
 };
 
 const resolve = (expression, mode, trail) => {
   const value = expression.trim();
+
   if (value === "transparent") return { red: 0, green: 0, blue: 0, alpha: 0 };
+
   if (value.startsWith("#")) {
     const color = parseHex(value);
+
     if (color === undefined) throw new Error(`${trail.at(-1)}: ${value} is not a color`);
+
     return color;
   }
 
   const reference = callArguments(value, "var");
+
   if (reference !== undefined) {
     const [name] = reference;
+
     if (reference.length !== 1 || declared[name] === undefined) {
       throw new Error(`${trail.at(-1)}: ${value} names no declared token`);
     }
+
     if (trail.includes(name)) throw new Error(`${name} refers back to itself`);
+
     return resolve(declared[name], mode, [...trail, name]);
   }
 
   const appearances = callArguments(value, "light-dark");
+
   if (appearances !== undefined) {
     if (appearances.length !== 2) throw new Error(`${trail.at(-1)}: ${value} needs two colors`);
+
     return resolve(mode === "light" ? appearances[0] : appearances[1], mode, trail);
   }
 
   const mix = callArguments(value, "color-mix");
+
   if (mix !== undefined) {
     const [space, ...operands] = mix;
+
     if (space !== "in srgb" || operands.length !== 2) {
       throw new Error(`${trail.at(-1)}: ${value} is not an srgb mix of two colors`);
     }
+
     const [first, second] = operands.map(parseOperand);
     // CSS fills an omitted percentage with the remainder of the other.
     const firstWeight = first.weight ?? (second.weight === undefined ? 50 : 100 - second.weight);
     const secondWeight = second.weight ?? 100 - firstWeight;
+
     return mixColors(
       resolve(first.color, mode, trail),
       firstWeight,
@@ -134,6 +163,7 @@ const resolve = (expression, mode, trail) => {
 const formatHex = (color) => {
   const byte = (value) => Math.round(value).toString(16).padStart(2, "0");
   const opaque = `#${byte(color.red)}${byte(color.green)}${byte(color.blue)}`;
+
   return color.alpha === 1 ? opaque : `${opaque}${byte(color.alpha * 255)}`;
 };
 
@@ -143,7 +173,9 @@ const formatHex = (color) => {
 // `color-mix` or `light-dark`, so an expression that fails here has no value to
 // ship. The focus ring is a CSS-only alias and stays out of the native output.
 const colorNames = Object.keys(declared).filter((name) => name.startsWith("--nyte-color-"));
+
 const resolved = { light: {}, dark: {} };
+
 for (const mode of ["light", "dark"]) {
   for (const name of colorNames) {
     resolved[mode][colorKey(name)] = formatHex(resolve(declared[name], mode, [name]));
@@ -152,9 +184,11 @@ for (const mode of ["light", "dark"]) {
 
 const notice =
   "Generated from platform-tokens.stylex.ts. Run pnpm --filter @nyte-ai/ui sync:tokens.";
+
 const declarations = Object.entries(declared)
   .map(([name, value]) => `  ${name}: ${value};`)
   .join("\n");
+
 const css = `/* ${notice} */\n:root {\n  color-scheme: light dark;\n${declarations}\n}\n`;
 
 const scheme = (mode) =>
@@ -162,6 +196,7 @@ const scheme = (mode) =>
     .filter(([key]) => key !== colorKey("--nyte-color-focus-ring"))
     .map(([key, value]) => `    ${key}: "${value}",`)
     .join("\n");
+
 const platformColors = `// ${notice}\nexport const platformColors = {\n  light: {\n${scheme("light")}\n  },\n  dark: {\n${scheme("dark")}\n  },\n} as const;\n`;
 
 for (const [name, generated] of [
@@ -169,8 +204,10 @@ for (const [name, generated] of [
   ["platform-colors.ts", platformColors],
 ]) {
   const outputPath = join(packageRoot, "src", name);
+
   if (check) {
     const current = await readFile(outputPath, "utf8");
+
     if (current !== generated) {
       throw new Error(`${name} is stale; run pnpm --filter @nyte-ai/ui sync:tokens`);
     }

@@ -8,14 +8,20 @@ import { nyte } from "../nyte.ts";
 import type { ThemePreference } from "../nyte.ts";
 
 const THEME_STORAGE_KEY = "nyte:theme";
+
 const APPEARANCE_STORAGE_KEY = "nyte:appearance:v1";
 
 export type { ThemePreference } from "../nyte.ts";
+
 export type ToolCallDensity = "compact" | "balanced" | "detailed";
+
 type LocalFontSelection = `local:${string}`;
+
 /** Bundled/system stacks plus one installed family discovered by the host. */
 export type UiFont = "inter" | "system" | LocalFontSelection;
+
 export type CodeFont = "system" | "jetbrains-mono" | LocalFontSelection;
+
 type FontSmoothing = "antialiased" | "auto";
 
 export interface AppearanceSettings {
@@ -53,8 +59,10 @@ const LOCAL_FONT_PREFIX = "local:";
 function hasControlCharacter(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
     const codeUnit = value.charCodeAt(index);
+
     if (codeUnit <= 31 || codeUnit === 127) return true;
   }
+
   return false;
 }
 
@@ -64,7 +72,9 @@ function usableFontFamily(family: string): boolean {
 
 export function localFontSelection(family: string): LocalFontSelection {
   const normalized = family.trim();
+
   if (!usableFontFamily(normalized)) throw new Error("Invalid local font family");
+
   return `${LOCAL_FONT_PREFIX}${normalized}`;
 }
 
@@ -77,6 +87,7 @@ function isLocalFontSelection(value: string): value is LocalFontSelection {
 export function localFontFamily(selection: UiFont | CodeFont): string | undefined {
   if (!isLocalFontSelection(selection)) return undefined;
   const family = selection.slice(LOCAL_FONT_PREFIX.length);
+
   return family;
 }
 
@@ -86,13 +97,17 @@ function quotedCssFamily(family: string): string {
 
 export function uiFontFamily(selection: UiFont): string {
   const local = localFontFamily(selection);
+
   if (local !== undefined) return `${quotedCssFamily(local)}, system-ui, sans-serif`;
+
   return selection === "inter" ? "var(--nyte-ui-font-inter)" : "var(--nyte-ui-font-system)";
 }
 
 export function codeFontFamily(selection: CodeFont): string {
   const local = localFontFamily(selection);
+
   if (local !== undefined) return `${quotedCssFamily(local)}, ui-monospace, monospace`;
+
   return selection === "jetbrains-mono"
     ? "var(--nyte-code-font-jetbrains-mono)"
     : "var(--nyte-code-font-system)";
@@ -126,16 +141,20 @@ function clamp(minimum: number, maximum: number, value: number): number {
 
 function storedUiFont(value: string | undefined, fallback: UiFont): UiFont {
   if (value === "inter" || value === "system") return value;
+
   return value !== undefined && isLocalFontSelection(value) ? value : fallback;
 }
 
 function storedCodeFont(value: string | undefined, fallback: CodeFont): CodeFont {
   if (value === "system" || value === "jetbrains-mono") return value;
+
   return value !== undefined && isLocalFontSelection(value) ? value : fallback;
 }
 
 const listeners = new Set<() => void>();
+
 const colorSchemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
 const reduceTransparencyQuery = window.matchMedia("(prefers-reduced-transparency: reduce)");
 
 function systemDark(): boolean {
@@ -149,6 +168,7 @@ export function systemReducesTransparency(): boolean {
 function storedTheme(): ThemePreference {
   try {
     const value = localStorage.getItem(THEME_STORAGE_KEY);
+
     return value === "light" || value === "dark" ? value : "system";
   } catch {
     return "system";
@@ -158,11 +178,15 @@ function storedTheme(): ThemePreference {
 function storedAppearance(): AppearanceSettings {
   const legacyTheme = storedTheme();
   const fallback = { ...DEFAULT_APPEARANCE, theme: legacyTheme };
+
   try {
     const value = localStorage.getItem(APPEARANCE_STORAGE_KEY);
+
     if (value === null) return fallback;
     const stored: unknown = JSON.parse(value);
+
     if (!Value.Check(storedAppearanceSchema, stored)) return fallback;
+
     return {
       theme: stored.theme ?? fallback.theme,
       tintHue: clamp(0, 360, stored.tintHue ?? fallback.tintHue),
@@ -227,26 +251,33 @@ export function appearanceSettings(): AppearanceSettings {
 
 export function subscribeAppearance(listener: () => void): () => void {
   listeners.add(listener);
+
   return () => listeners.delete(listener);
 }
 
 export function setAppearanceSettings(next: AppearanceSettings): void {
   appearance = next;
+
   try {
     localStorage.setItem(APPEARANCE_STORAGE_KEY, JSON.stringify(next));
     localStorage.removeItem(THEME_STORAGE_KEY);
   } catch {
     // Preference persistence is best-effort.
   }
+
   apply(next);
+
   for (const listener of listeners) listener();
 }
 
 apply(appearance);
+
 colorSchemeQuery.addEventListener("change", () => {
   if (appearance.theme === "system") apply(appearance);
 });
+
 reduceTransparencyQuery.addEventListener("change", () => {
   apply(appearance);
+
   for (const listener of listeners) listener();
 });

@@ -11,12 +11,15 @@ const properties = new Map<string, string>(strings);
 
 function disabled(group: Record<string, { override: boolean }>) {
   const updates: Record<string, { override: boolean }> = {};
+
   for (const name of Object.keys(group)) updates[name] = { override: false };
+
   return updates;
 }
 
 function useProfile(baseline: TokenBaselines[TokenSet], set: TokenSet, appearance: Appearance) {
   const config = useMemo(() => tokenConfig(baseline, set), [baseline, set]);
+
   const controller = useDialKitController(
     set === "nyte" ? "A · Desktop tokens" : "B · Calendar tokens",
     config,
@@ -26,6 +29,7 @@ function useProfile(baseline: TokenBaselines[TokenSet], set: TokenSet, appearanc
       defaultCollapsed: set !== "nyte",
       onAction: (action: string): void => {
         if (action === "reset") controller.resetValues();
+
         if (action === "disableAll") {
           const current = controller.getValues();
           controller.setValues({
@@ -42,31 +46,40 @@ function useProfile(baseline: TokenBaselines[TokenSet], set: TokenSet, appearanc
       },
     },
   );
+
   return controller;
 }
 
 function overrides(values: ProfileValues) {
   const result: Record<string, string> = {};
+
   for (const [name, setting] of Object.entries(values.geometry)) {
     if (setting.override && Number.isFinite(setting.value)) result[name] = `${setting.value}px`;
   }
+
   for (const [name, setting] of Object.entries(values.material)) {
     if (setting.override && Number.isFinite(setting.value)) result[name] = `${setting.value}%`;
   }
+
   for (const [name, setting] of Object.entries(values.palette)) {
     if (setting.override && CSS.supports("color", setting.value)) result[name] = setting.value;
   }
+
   for (const [name, setting] of Object.entries(values.typography)) {
     const property = properties.get(name);
+
     if (property !== undefined && setting.override && CSS.supports(property, setting.value))
       result[name] = setting.value;
   }
+
   for (const [name, setting] of Object.entries(values.shadows.ink)) {
     if (setting.override && CSS.supports("color", setting.value)) result[name] = setting.value;
   }
+
   for (const [name, setting] of Object.entries(values.shadows.stacks)) {
     if (setting.override && CSS.supports("box-shadow", setting.value)) result[name] = setting.value;
   }
+
   /*
    * Depth is a bare multiplier rather than a length, and it is the one control
    * with no override toggle: shadow.css rests at 1, so writing the number
@@ -75,6 +88,7 @@ function overrides(values: ProfileValues) {
   for (const [name, value] of Object.entries(values.shadows.depth)) {
     if (Number.isFinite(value)) result[name] = `${value}`;
   }
+
   return result;
 }
 
@@ -107,7 +121,9 @@ export function TokenDials({
 
   useLayoutEffect(() => {
     const root = preview.documentElement;
+
     for (const name of applied.current) if (!(name in css)) root.style.removeProperty(name);
+
     for (const [name, value] of Object.entries(css)) root.style.setProperty(name, value);
     root.style.removeProperty("--nyte-sidebar-width");
     applied.current = Object.keys(css);
@@ -129,7 +145,9 @@ export function TokenDials({
     () =>
       DialStore.subscribePanelOpen((id, open) => {
         if (!open) return;
+
         if (id === `nyte-lab-nyte-${appearance}-individual-v1`) onActive("nyte");
+
         if (id === `nyte-lab-calendar-${appearance}-individual-v1`) onActive("calendar");
       }),
     [appearance, onActive],

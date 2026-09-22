@@ -93,6 +93,7 @@ export class NyteTransportError extends Error {
     super(describeFailure(failure));
     this.name = "NyteTransportError";
     this.failure = failure;
+
     if (failure.kind === "network") this.cause = failure.cause;
   }
 }
@@ -111,6 +112,7 @@ function describeFailure(failure: TransportFailure): string {
       return "The watch stream was interrupted";
     default: {
       const _exhaustive: never = failure;
+
       return _exhaustive;
     }
   }
@@ -149,7 +151,9 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
   const headersFor = (accept: string): Headers => {
     const headers = new Headers(options.headers);
     headers.set("accept", accept);
+
     if (options.token !== undefined) headers.set("authorization", `Bearer ${options.token}`);
+
     return headers;
   };
 
@@ -163,6 +167,7 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
 
   const readReply = async (response: Response): Promise<CallReply> => {
     const type = mediaType(response.headers.get("content-type"));
+
     if (type !== JSON_MEDIA_TYPE) {
       void response.body?.cancel().catch(() => undefined);
       throw new NyteTransportError({
@@ -171,7 +176,9 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
         contentType: type,
       });
     }
+
     let parsed: unknown;
+
     try {
       parsed = await response.json();
     } catch {
@@ -181,6 +188,7 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
         issues: [],
       });
     }
+
     if (!Value.Check(CallReplySchema, parsed)) {
       const issues = validationIssues(Value.Errors(CallReplySchema, parsed));
       throw new NyteTransportError({
@@ -189,6 +197,7 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
         issues,
       });
     }
+
     return parsed;
   };
 
@@ -199,9 +208,12 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
     label: string,
   ): Promise<Static<S>> => {
     const reply = await readReply(response);
+
     if (!reply.ok) throw new NyteWireError(reply.error, response.status);
+
     if (!response.ok) throw new NyteTransportError({ kind: "bad_status", status: response.status });
     const value = reply.defined ? reply.value : undefined;
+
     if (!Value.Check(schema, value)) {
       const issues = validationIssues(Value.Errors(schema, value));
       throw new NyteTransportError({
@@ -210,6 +222,7 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
         issues,
       });
     }
+
     return value;
   };
 
@@ -220,18 +233,22 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
   ): Promise<OperationOutput<V>> {
     const headers = headersFor(JSON_MEDIA_TYPE);
     headers.set("content-type", JSON_MEDIA_TYPE);
+
     const response = await send(`${base}${CALL_ROUTE_PREFIX}${operation}`, {
       method: "POST",
       headers,
       body: JSON.stringify(input === undefined ? {} : { input }),
     });
+
     const schema: (typeof OPERATIONS)[V]["output"] = OPERATIONS[operation].output;
+
     return checkedValue(response, schema, operation);
   }
 
   /** A refused watch carries a JSON error, never a successful call reply. */
   const refusal = async (response: Response): Promise<never> => {
     const reply = await readReply(response);
+
     if (!reply.ok) throw new NyteWireError(reply.error, response.status);
     throw new NyteTransportError({ kind: "bad_status", status: response.status });
   };
@@ -246,6 +263,7 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
       method: "GET",
       headers: headersFor(JSON_MEDIA_TYPE),
     });
+
     return checkedValue(response, ServerInfoSchema, "info");
   };
 
@@ -257,9 +275,11 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
         open: () => {
           const params = new URLSearchParams();
           params.set(WATCH_QUERY.sessionId, input.sessionId);
+
           if ("live" in input) params.set(WATCH_QUERY.live, "1");
           else if (input.afterSeq !== undefined)
             params.set(WATCH_QUERY.after, String(input.afterSeq));
+
           return {
             url: `${base}${WATCH_ROUTE}?${params.toString()}`,
             headers: headersFor(EVENT_STREAM_MEDIA_TYPE),
@@ -371,7 +391,7 @@ type BodyReadResult =
 /** The subset of a stream reader the watch uses. Structural, so a runtime's augmented reader also fits. */
 interface BodyReader {
   read(): Promise<BodyReadResult>;
-  cancel(): Promise<unknown>;
+  cancel(): Promise<void>;
 }
 
 function badFrame(detail: string, issues: readonly Issue[] = []): NyteTransportError {
@@ -380,6 +400,7 @@ function badFrame(detail: string, issues: readonly Issue[] = []): NyteTransportE
 
 function asTransportError(cause: unknown): NyteWireError | NyteTransportError {
   if (cause instanceof NyteWireError || cause instanceof NyteTransportError) return cause;
+
   return new NyteTransportError({ kind: "network", cause });
 }
 
@@ -431,15 +452,20 @@ function createWatchIterator(dependencies: WatchIteratorDependencies): AsyncIter
   const settle = (frameKind: string, data: string): void => {
     if (!Value.Check(WatchFrameKindSchema, frameKind)) {
       fail(badFrame(`Unknown watch frame: ${frameKind}`));
+
       return;
     }
+
     let parsed: unknown;
+
     try {
       parsed = JSON.parse(data);
     } catch {
       fail(badFrame(`Watch frame ${frameKind} is not valid JSON`));
+
       return;
     }
+
     switch (frameKind) {
       case "event": {
         if (Value.Check(schemas.SessionEvent, parsed)) queue.push(parsed);
@@ -447,26 +473,33 @@ function createWatchIterator(dependencies: WatchIteratorDependencies): AsyncIter
           const issues = validationIssues(Value.Errors(schemas.SessionEvent, parsed));
           fail(badFrame(`Watch event did not match its schema: ${describeIssues(issues)}`, issues));
         }
+
         return;
       }
+
       case "ended": {
         if (Value.Check(WatchEndedSchema, parsed)) outcome = { kind: "ended" };
         else {
           const issues = validationIssues(Value.Errors(WatchEndedSchema, parsed));
           fail(badFrame(`Watch ended frame is malformed: ${describeIssues(issues)}`));
         }
+
         return;
       }
+
       case "error": {
         if (Value.Check(WireErrorSchema, parsed)) fail(new NyteWireError(parsed));
         else {
           const issues = validationIssues(Value.Errors(WireErrorSchema, parsed));
           fail(badFrame(`Watch error frame is malformed: ${describeIssues(issues)}`, issues));
         }
+
         return;
       }
+
       default: {
         const _exhaustive: never = frameKind;
+
         return _exhaustive;
       }
     }
@@ -475,35 +508,46 @@ function createWatchIterator(dependencies: WatchIteratorDependencies): AsyncIter
   const open = async (): Promise<void> => {
     opened = true;
     const target = dependencies.open();
+
     const response = await dependencies.send(target.url, {
       method: "GET",
       headers: target.headers,
       signal: controller.signal,
     });
+
     if (finished) {
       // The caller stopped while the request was in flight; the body is not ours to read.
       void response.body?.cancel().catch(() => undefined);
+
       return;
     }
+
     const type = mediaType(response.headers.get("content-type"));
+
     if (response.status !== 200 || type !== EVENT_STREAM_MEDIA_TYPE) {
       return dependencies.refusal(response);
     }
+
     if (response.body === null) throw new NyteTransportError({ kind: "disconnected" });
     reader = response.body.getReader();
   };
 
   const pump = async (): Promise<void> => {
     const current = reader;
+
     if (current === undefined) throw new NyteTransportError({ kind: "disconnected" });
     const { done, value } = await current.read();
+
     if (finished) return;
     const frames = done ? parser.end() : parser.feed(value);
+
     for (const frame of frames) {
       if (outcome !== undefined) break;
       settle(frame.event ?? "", frame.data);
     }
+
     if (outcome !== undefined) return;
+
     if (parser.overflow !== undefined) fail(badFrame(parser.overflow.message));
     else if (done) fail(new NyteTransportError({ kind: "disconnected" }));
   };
@@ -512,7 +556,9 @@ function createWatchIterator(dependencies: WatchIteratorDependencies): AsyncIter
     finish();
     const result = outcome;
     outcome = { kind: "ended" };
+
     if (result?.kind === "failed") throw result.error;
+
     return DONE;
   };
 
@@ -520,13 +566,17 @@ function createWatchIterator(dependencies: WatchIteratorDependencies): AsyncIter
     for (;;) {
       if (finished) return terminal();
       const event = queue.shift();
+
       if (event !== undefined) return { done: false, value: event };
+
       if (outcome !== undefined) return terminal();
+
       try {
         if (!opened) await open();
         else await pump();
       } catch (cause) {
         if (!finished) fail(asTransportError(cause));
+
         return terminal();
       }
     }
@@ -536,14 +586,17 @@ function createWatchIterator(dependencies: WatchIteratorDependencies): AsyncIter
     next() {
       const result = busy.then(advance, advance);
       busy = result.catch(() => DONE);
+
       return result;
     },
     return() {
       cancel();
+
       return Promise.resolve(DONE);
     },
     throw(cause: unknown) {
       cancel();
+
       return Promise.reject(cause);
     },
   };
@@ -564,13 +617,16 @@ export {
   type SessionState,
   type WaitingCall,
 } from "./session/session-state.ts";
+
 export {
   SessionObserver,
   type SessionObserverClient,
   type SessionObserverOptions,
   type SessionUpdate,
 } from "./session/session-follow.ts";
+
 export { sessionMark, type SessionMark } from "./session/session-status.ts";
+
 export {
   createOutbox,
   retryDelayMs,
@@ -596,6 +652,7 @@ export {
   type ChangesState,
   type FileChange,
 } from "./views/changes.ts";
+
 export {
   estimateContextTokens,
   estimateModelContextTokens,
@@ -606,7 +663,9 @@ export {
   type ContextStatus,
   type ContextUsageEstimate,
 } from "./views/context.ts";
+
 export { sessionDirectoryEntry, type SessionDirectoryEntry } from "./views/directory.ts";
+
 export {
   EMPTY_LIVE_PARTS,
   foldLiveParts,
@@ -614,12 +673,14 @@ export {
   type LivePart,
   type LiveParts,
 } from "./views/live-parts.ts";
+
 export {
   parsePatchFacts,
   type ParsedPatch,
   type PatchFile,
   type PatchStat,
 } from "./views/patch.ts";
+
 export {
   appendTranscriptCommit,
   EMPTY_TRANSCRIPT,
@@ -631,6 +692,7 @@ export {
   type TurnPart,
   type UserTurnPart,
 } from "./views/transcript.ts";
+
 export {
   collectAbandoned,
   navigationTarget,
@@ -639,6 +701,7 @@ export {
   type SessionTree,
   type SessionTreeNode,
 } from "./views/tree.ts";
+
 export {
   addUsage,
   commitUsage,
@@ -660,6 +723,7 @@ export {
   type CompletionTrigger,
   type CompletionTriggerKind,
 } from "./completion-trigger.ts";
+
 export {
   branchConfig,
   completionText,
@@ -668,6 +732,7 @@ export {
   modelContext,
   type ModelContext,
 } from "./context.ts";
+
 export {
   canonicalJson,
   isJsonObject,
@@ -675,5 +740,7 @@ export {
   type JsonObject,
   type JsonValue,
 } from "./json.ts";
+
 export { mergeByDelivery } from "./queue-order.ts";
+
 export { isTerminalPhase, type MentionFile } from "@nyte-ai/protocol";

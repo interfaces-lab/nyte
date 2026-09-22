@@ -9,6 +9,7 @@ import type {
 } from "../types.ts";
 
 const NON_VISION_USER_IMAGE_PLACEHOLDER = "(image omitted: model does not support images)";
+
 const NON_VISION_TOOL_IMAGE_PLACEHOLDER = "(tool image omitted: model does not support images)";
 
 function replaceImagesWithPlaceholder(
@@ -23,6 +24,7 @@ function replaceImagesWithPlaceholder(
       if (!previousWasPlaceholder) {
         result.push({ type: "text", text: placeholder });
       }
+
       previousWasPlaceholder = true;
       continue;
     }
@@ -73,11 +75,13 @@ export function transformMessages<TApi extends Api>(
 ): Message[] {
   // Build a map of original tool call IDs to normalized IDs
   const toolCallIdMap = new Map<string, string>();
+
   // Normalize null/undefined content from untyped callers (custom tools, hand-built
   // histories, old session files) so downstream code can rely on the type contract.
   const normalizedMessages = messages.map((msg) =>
     msg.content == null ? { ...msg, content: [] } : msg,
   );
+
   const imageAwareMessages = downgradeUnsupportedImages(normalizedMessages, model);
 
   // First pass: transform messages (unsupported image downgrade, thinking blocks, tool call ID normalization)
@@ -90,9 +94,11 @@ export function transformMessages<TApi extends Api>(
     // Handle toolResult messages - normalize toolCallId if we have a mapping
     if (msg.role === "toolResult") {
       const normalizedId = toolCallIdMap.get(msg.toolCallId);
+
       if (normalizedId && normalizedId !== msg.toolCallId) {
         return { ...msg, toolCallId: normalizedId };
       }
+
       return msg;
     }
 
@@ -108,12 +114,16 @@ export function transformMessages<TApi extends Api>(
           if (block.redacted) {
             return isSameModel ? block : [];
           }
+
           // For same model: keep thinking blocks with signatures (needed for replay)
           // even if the thinking text is empty (OpenAI encrypted reasoning)
           if (isSameModel && block.thinkingSignature) return block;
+
           // Skip empty thinking blocks, convert others to plain text
           if (!block.thinking || block.thinking.trim() === "") return [];
+
           if (isSameModel) return block;
+
           return {
             type: "text" as const,
             text: block.thinking,
@@ -122,6 +132,7 @@ export function transformMessages<TApi extends Api>(
 
         if (block.type === "text") {
           if (isSameModel) return block;
+
           return {
             type: "text" as const,
             text: block.text,
@@ -138,6 +149,7 @@ export function transformMessages<TApi extends Api>(
 
           if (!isSameModel && normalizeToolCallId) {
             const normalizedId = normalizeToolCallId(block.id, model, msg);
+
             if (normalizedId !== block.id) {
               toolCallIdMap.set(block.id, normalizedId);
               normalizedToolCall = { ...normalizedToolCall, id: normalizedId };
@@ -155,6 +167,7 @@ export function transformMessages<TApi extends Api>(
         content: transformedContent,
       };
     }
+
     return msg;
   });
 
@@ -163,6 +176,7 @@ export function transformMessages<TApi extends Api>(
   const result: Message[] = [];
   let pendingToolCalls: ToolCall[] = [];
   let existingToolResultIds = new Set<string>();
+
   const insertSyntheticToolResults = () => {
     if (pendingToolCalls.length > 0) {
       for (const tc of pendingToolCalls) {
@@ -177,6 +191,7 @@ export function transformMessages<TApi extends Api>(
           });
         }
       }
+
       pendingToolCalls = [];
       existingToolResultIds = new Set();
     }
@@ -200,6 +215,7 @@ export function transformMessages<TApi extends Api>(
 
       // Track tool calls from this assistant message
       const toolCalls = msg.content.filter((b) => b.type === "toolCall");
+
       if (toolCalls.length > 0) {
         pendingToolCalls = toolCalls;
         existingToolResultIds = new Set();

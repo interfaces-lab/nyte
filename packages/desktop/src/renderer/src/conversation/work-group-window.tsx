@@ -16,12 +16,14 @@ const ROW_ESTIMATE = 24;
  * is accepted only when the snapshot names the rows the group actually holds.
  */
 const MAX_CACHED_GROUPS = 64;
+
 const measurements = new Map<string, VirtualItem[]>();
 
 function rememberMeasurements(cacheKey: string, snapshot: VirtualItem[]): void {
   // Re-inserting moves the group to the newest end of the Map's insertion order.
   measurements.delete(cacheKey);
   measurements.set(cacheKey, snapshot);
+
   for (const oldest of measurements.keys()) {
     if (measurements.size <= MAX_CACHED_GROUPS) break;
     measurements.delete(oldest);
@@ -30,6 +32,7 @@ function rememberMeasurements(cacheKey: string, snapshot: VirtualItem[]): void {
 
 export function workGroupScrollport(viewport: HTMLElement): HTMLElement {
   const outer = viewport.parentElement?.closest("[data-nyte-scrollport]");
+
   return outer instanceof HTMLElement ? outer : viewport;
 }
 
@@ -47,6 +50,7 @@ export function opensWorkGroup(
       if (selection.getRangeAt(index).intersectsNode(viewport)) return false;
     }
   }
+
   return (
     target instanceof Element &&
     target.closest(
@@ -78,8 +82,10 @@ export function WorkGroupWindow<Entry extends { readonly key: string }>({
   // Heights measured under another density describe different rows. A blank
   // group key names no group: a provider can report a tool call with an empty id.
   const cacheKey = groupKey === undefined || groupKey === "" ? undefined : `${density}:${groupKey}`;
+
   const [restore] = useState(() => {
     const snapshot = cacheKey === undefined ? undefined : measurements.get(cacheKey);
+
     // Row keys are the virtualizer's identity. A snapshot that names rows this
     // group does not hold was measured by another group under a colliding key,
     // since group keys come from provider call ids that repeat across chats.
@@ -90,13 +96,17 @@ export function WorkGroupWindow<Entry extends { readonly key: string }>({
       )
         ? snapshot
         : [];
+
     const sizes = new Map(cached.map((item) => [item.key, item.size]));
     let total = 0;
+
     for (let index = 0; index < entries.count; index += 1) {
       total += sizes.get(entries.keyAt(index)) ?? ROW_ESTIMATE;
     }
+
     return { cached, offset: preview ? Math.max(0, total - WORK_PREVIEW_HEIGHT) : 0 };
   });
+
   const [bridge] = useState<{
     preview: boolean;
     viewport: HTMLDivElement | null;
@@ -114,14 +124,18 @@ export function WorkGroupWindow<Entry extends { readonly key: string }>({
     notifyOffset: (_offset: number, _scrolling: boolean) => {},
     notifyRect: (_rect: { width: number; height: number }) => {},
   }));
+
   const sync = useCallback(
     (scrolling = false) => {
       const { viewport, plane } = bridge;
+
       if (viewport === null || plane === null) return;
       const port = bridge.preview ? viewport : workGroupScrollport(viewport);
+
       const offset = bridge.preview
         ? viewport.scrollTop
         : port.getBoundingClientRect().top + port.clientTop - plane.getBoundingClientRect().top;
+
       if (bridge.preview) {
         const outer = workGroupScrollport(viewport);
         bridge.previewTop =
@@ -129,39 +143,50 @@ export function WorkGroupWindow<Entry extends { readonly key: string }>({
           outer.getBoundingClientRect().top -
           outer.clientTop;
       }
+
       bridge.offset = offset;
       bridge.notifyRect({ width: port.clientWidth, height: port.clientHeight });
       bridge.notifyOffset(offset, scrolling);
     },
     [bridge],
   );
+
   // Run before the virtualizer's layout effects. The old range remains mounted
   // while we transfer its visible position to the transcript scrollport.
   useLayoutEffect(() => {
     bridge.viewport = viewportRef.current;
     bridge.plane = planeRef.current;
     const { viewport, plane } = bridge;
+
     if (viewport === null || plane === null) return;
+
     if (bridge.preview !== preview) {
       if (!preview) {
         const outer = workGroupScrollport(viewport);
         viewport.scrollTop = 0;
+
         const top =
           plane.getBoundingClientRect().top - outer.getBoundingClientRect().top - outer.clientTop;
+
         outer.scrollTop += top + bridge.offset - bridge.previewTop;
       } else {
         const outer = workGroupScrollport(viewport);
+
         const top =
           viewport.getBoundingClientRect().top -
           outer.getBoundingClientRect().top -
           outer.clientTop;
+
         outer.scrollTop += top - bridge.previewTop;
         viewport.scrollTop = viewport.scrollHeight;
       }
+
       bridge.preview = preview;
     }
+
     sync();
   });
+
   // oxlint-disable-next-line react/incompatible-library -- the mutable instance stays local
   const virtualizer = useVirtualizer({
     count: entries.count,
@@ -175,6 +200,7 @@ export function WorkGroupWindow<Entry extends { readonly key: string }>({
     observeElementRect: (_instance, notify) => {
       bridge.notifyRect = notify;
       sync();
+
       return () => {
         bridge.notifyRect = () => {};
       };
@@ -182,6 +208,7 @@ export function WorkGroupWindow<Entry extends { readonly key: string }>({
     observeElementOffset: (_instance, notify) => {
       bridge.notifyOffset = notify;
       const viewport = viewportRef.current;
+
       if (viewport === null) return undefined;
       const outer = workGroupScrollport(viewport);
       const onScroll = () => sync(true);
@@ -191,6 +218,7 @@ export function WorkGroupWindow<Entry extends { readonly key: string }>({
       viewport.addEventListener("scrollend", onScrollEnd);
       outer.addEventListener("scrollend", onScrollEnd);
       const observer = new ResizeObserver(() => sync());
+
       // Ancestor size changes can move this group without changing its own size.
       for (
         let node: HTMLElement | null = planeRef.current;
@@ -198,9 +226,12 @@ export function WorkGroupWindow<Entry extends { readonly key: string }>({
         node = node.parentElement
       ) {
         observer.observe(node);
+
         if (node === outer) break;
       }
+
       sync();
+
       return () => {
         observer.disconnect();
         viewport.removeEventListener("scroll", onScroll);
@@ -212,26 +243,34 @@ export function WorkGroupWindow<Entry extends { readonly key: string }>({
     },
     scrollToFn: (offset, { adjustments = 0, behavior }) => {
       const { viewport, plane } = bridge;
+
       if (viewport === null || plane === null) return;
+
       if (bridge.preview) {
         viewport.scrollTo({ top: offset + adjustments, behavior });
+
         return;
       }
+
       const outer = workGroupScrollport(viewport);
+
       const origin =
         plane.getBoundingClientRect().top -
         outer.getBoundingClientRect().top -
         outer.clientTop +
         outer.scrollTop;
+
       outer.scrollTo({ top: origin + offset + adjustments, behavior });
     },
   });
+
   useLayoutEffect(
     () => () => {
       if (cacheKey !== undefined) rememberMeasurements(cacheKey, virtualizer.takeSnapshot());
     },
     [cacheKey, virtualizer],
   );
+
   return (
     <div
       ref={planeRef}
@@ -240,7 +279,9 @@ export function WorkGroupWindow<Entry extends { readonly key: string }>({
     >
       {virtualizer.getVirtualItems().map((item) => {
         const entry = entries.at(item.index);
+
         if (entry === undefined) return null;
+
         return (
           <div
             key={entry.key}

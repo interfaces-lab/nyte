@@ -21,14 +21,17 @@ import {
 } from "./store-rpc.ts";
 
 const port = parentPort;
+
 if (port === null) throw new Error("store-worker must run as a worker thread");
 
 const WorkerDataSchema = Type.Object({
   path: Type.String(),
   watchPollIntervalMs: Type.Optional(Type.Number()),
 });
+
 if (!Compile(WorkerDataSchema).Check(workerData))
   throw new Error("store-worker needs a store path");
+
 const store = new SqliteStore(
   workerData.path,
   workerData.watchPollIntervalMs === undefined
@@ -47,7 +50,9 @@ interface Watch {
 }
 
 const sessions = new Map<number, Session>();
+
 const watches = new Map<number, Watch>();
+
 let nextHandle = 1;
 
 /** Closing a session or the store ends its watches at once, as the backend does for its own iterators. */
@@ -92,24 +97,29 @@ const check = {
 
 function argument<T>(value: unknown, validate: { Check(value: unknown): value is T }): T {
   if (!validate.Check(value)) throw new TypeError("store-worker received a malformed argument");
+
   return value;
 }
 
 function session(handle: number | null): Session {
   if (handle === null) throw new TypeError("store-worker call needs a session handle");
   const open = sessions.get(handle);
+
   if (open === undefined) throw new Error(`store-worker has no session handle ${String(handle)}`);
+
   return open;
 }
 
-function adopt(open: Session): { handle: number; id: string } {
+function adopt(open: Session) {
   const handle = nextHandle++;
   sessions.set(handle, open);
+
   return { handle, id: open.id };
 }
 
-async function call(request: Extract<StoreRequest, { kind: "call" }>): Promise<unknown> {
+async function call(request: Extract<StoreRequest, { kind: "call" }>) {
   const [first, second] = request.args;
+
   switch (request.method) {
     case "store.create":
       return adopt(await store.create(argument(first, check.optionalId)));
@@ -119,25 +129,32 @@ async function call(request: Extract<StoreRequest, { kind: "call" }>): Promise<u
       return store.list();
     case "store.delete":
       await store.delete(argument(first, check.string));
+
       return null;
     case "store.close": {
       endWatches(undefined);
+
       try {
         await store.close();
       } finally {
         sessions.clear();
       }
+
       return null;
     }
+
     case "session.close": {
       const handle = request.session;
+
       if (handle === null) throw new TypeError("store-worker call needs a session handle");
       const open = session(handle);
       endWatches(handle);
       sessions.delete(handle);
       await open.close();
+
       return null;
     }
+
     case "objects.put":
       return session(request.session).objects.put(argument(first, check.objects));
     case "objects.get":
@@ -189,9 +206,11 @@ async function call(request: Extract<StoreRequest, { kind: "call" }>): Promise<u
       return session(request.session).events.floor();
     case "events.trim":
       await session(request.session).events.trim(argument(first, check.number));
+
       return null;
     default: {
       const _exhaustive: never = request.method;
+
       return _exhaustive;
     }
   }
@@ -203,10 +222,12 @@ async function* pulled<T>(
   granted: () => Promise<boolean>,
 ): AsyncGenerator<T> {
   const iterator = source[Symbol.asyncIterator]();
+
   try {
     for (;;) {
       if (!(await granted())) return;
       const next = await iterator.next();
+
       if (next.done) return;
       yield next.value;
     }
@@ -218,11 +239,15 @@ async function* pulled<T>(
 function wireError(cause: unknown): WireError {
   if (cause instanceof UnknownSession)
     return { name: cause.name, message: cause.message, id: cause.id };
+
   if (cause instanceof CursorExpired)
     return { name: cause.name, message: cause.message, floor: cause.floor };
+
   if (cause instanceof CorruptObject)
     return { name: cause.name, message: cause.message, oid: cause.oid };
+
   if (cause instanceof Error) return { name: cause.name, message: cause.message };
+
   return { name: "Error", message: String(cause) };
 }
 
@@ -248,34 +273,44 @@ async function watch(request: Extract<StoreRequest, { kind: "watch" }>): Promise
   watches.set(request.id, entry);
   // Once the entry is gone, its end or error was already reported.
   const live = (): boolean => watches.get(request.id) === entry;
+
   const granted = async (): Promise<boolean> => {
     while (entry.credit === 0 && live()) {
       await new Promise<void>((resolve) => {
         entry.wake = resolve;
       });
     }
+
     return live();
   };
+
   // Events that arrive in one tick leave in one message, so the consumer folds
   // a published batch without a task boundary between its events.
   let batch: Event[] = [];
+
   const flush = (): void => {
     if (batch.length === 0) return;
     const events = batch;
     batch = [];
     send({ kind: "events", id: request.id, events });
   };
+
   entry.flush = flush;
+
   try {
     const open = session(request.session);
     const events = open.events.watch({ afterSeq: request.afterSeq, signal: controller.signal });
+
     for await (const event of pulled(events, granted)) {
       if (!live()) return;
       entry.credit -= 1;
+
       if (batch.length === 0) setImmediate(flush);
       batch.push(event);
     }
+
     flush();
+
     if (live()) send({ kind: "end", id: request.id });
   } catch (cause) {
     if (live()) send({ kind: "error", id: request.id, error: wireError(cause) });

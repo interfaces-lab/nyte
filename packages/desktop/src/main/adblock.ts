@@ -24,26 +24,34 @@ export function createBlocker(engine: FiltersEngine): Blocker {
   return {
     decide(details) {
       if (details.resourceType === "mainFrame") return { kind: "allow" };
+
       const request = Request.fromRawDetails({
         url: details.url,
         type: details.resourceType,
         sourceUrl: details.referrer,
       });
+
       const response = engine.match(request);
+
       if (response.redirect !== undefined)
         return { kind: "redirect", url: response.redirect.dataUrl };
+
       return response.match ? { kind: "block" } : { kind: "allow" };
     },
     stylesFor(url) {
       let parsed: URL;
+
       try {
         parsed = new URL(url);
       } catch {
         return "";
       }
+
       const { hostname } = parsed;
+
       if (hostname === "") return "";
       const domain = hostname.split(".").slice(-2).join(".");
+
       return engine.getCosmeticsFilters({
         url,
         hostname,
@@ -69,11 +77,13 @@ export function parseFilterLists(text: string): FiltersEngine {
 /** Undefined when the file is missing or was written by another engine version. */
 export async function loadBlocker(path: string): Promise<Blocker | undefined> {
   let bytes: Uint8Array;
+
   try {
     bytes = await readFile(path);
   } catch {
     return undefined;
   }
+
   try {
     return createBlocker(FiltersEngine.deserialize(bytes));
   } catch {

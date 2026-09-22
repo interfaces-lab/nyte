@@ -5,10 +5,11 @@ let runtime: ReturnType<typeof openRuntime> | undefined;
 
 export default {
   async fetch(request: Request): Promise<Response> {
-    runtime ??= openRuntime(wakeSession).catch((error: unknown) => {
+    runtime ??= openRuntime(wakeSession).catch((cause: unknown) => {
       runtime = undefined;
-      throw error;
+      throw cause;
     });
+
     return (await runtime).fetch(request);
   },
 };

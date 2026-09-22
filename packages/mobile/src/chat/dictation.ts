@@ -36,6 +36,7 @@ function dictationFailure(code: ExpoSpeechRecognitionErrorCode): string | undefi
       return "Dictation isn't available here.";
     default: {
       const exhaustive: never = code;
+
       return exhaustive;
     }
   }
@@ -72,31 +73,42 @@ export function useDictation(onTranscript: (transcript: string) => void) {
   useEffect(() => {
     if (!recording) return;
     const timer = setInterval(() => setElapsed((value) => value + 1), 1000);
+
     return () => clearInterval(timer);
   }, [recording]);
 
   const stop = () => {
     setError(undefined);
+
     if (recordingRef.current) ExpoSpeechRecognitionModule.stop();
   };
 
   const start = async () => {
     setError(undefined);
+
     if (recordingRef.current) {
       ExpoSpeechRecognitionModule.stop();
+
       return;
     }
+
     if (!ExpoSpeechRecognitionModule.isRecognitionAvailable()) {
       setError("Speech recognition isn't available on this device.");
+
       return;
     }
+
     const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+
     if (!permission.granted) {
       setError("Microphone or speech recognition permission is off. Enable it in Settings.");
+
       return;
     }
+
     setLevels([]);
     setElapsed(0);
+
     try {
       ExpoSpeechRecognitionModule.start({
         interimResults: true,
@@ -116,6 +128,7 @@ export function useDictation(onTranscript: (transcript: string) => void) {
 
 export function formatElapsed(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
+
   return `${String(minutes)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 

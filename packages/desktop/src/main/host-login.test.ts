@@ -289,7 +289,7 @@ async function desktop(createModels: () => MutableModels) {
       retain: () => undefined,
       release: () => undefined,
       warm: async () => undefined,
-      dispose: () => undefined,
+      releaseWindow: () => undefined,
       agent: unusedBrowserAgent(),
     },
   });
@@ -320,15 +320,15 @@ async function settled(condition: () => boolean): Promise<void> {
 }
 
 function deviceLogin(host: DesktopHost, attempt: string) {
-  return host.call("host.login", { provider: "device", method: { kind: "browser" }, attempt });
+  return host.call(1, "host.login", { provider: "device", method: { kind: "browser" }, attempt });
 }
 
 test("a device code reaches the renderer without the device secret and the provider connects on approval", async () => {
   const provider = deviceCodeProvider();
   const { host, events, opened } = await desktop(provider.create);
-  const before = await host.call("host.catalog", undefined);
+  const before = await host.call(1, "host.catalog", undefined);
   assert.equal(deviceStatus(before), "disconnected");
-  assert.deepEqual(deviceModels(before), []);
+  assert.deepEqual(deviceModels(before), [["device/copilot-fixture", false]]);
 
   const pending = deviceLogin(host, "attempt-1");
   await settled(() => provider.state.polling);
@@ -362,9 +362,10 @@ test("a device code reaches the renderer without the device secret and the provi
     provider.state.refreshes.some((refresh) => refresh.allowNetwork && refresh.force === true),
     "discovery must be forced after login",
   );
-  const after = await host.call("host.catalog", undefined);
+  const after = await host.call(1, "host.catalog", undefined);
   assert.equal(deviceStatus(after), "oauth");
   assert.deepEqual(deviceModels(after), [["device/copilot-fixture", true]]);
+  assert.ok(after.defaults);
   assert.deepEqual(after.defaults.model, { provider: "device", id: "copilot-fixture" });
 });
 
@@ -373,21 +374,22 @@ test("cancelling a sign-in aborts the provider's polling and stores nothing", as
   const { host, events } = await desktop(provider.create);
   const pending = deviceLogin(host, "attempt-2");
   await settled(() => provider.state.polling);
+  events.length = 0;
 
   // A cancel for some other attempt leaves this one polling.
-  await host.call("host.cancelLogin", { attempt: "stale-attempt" });
+  await host.call(1, "host.cancelLogin", { attempt: "stale-attempt" });
   assert.equal(provider.state.polling, true);
 
-  await host.call("host.cancelLogin", { attempt: "attempt-2" });
+  await host.call(1, "host.cancelLogin", { attempt: "attempt-2" });
   assert.deepEqual(await pending, { kind: "cancelled" } satisfies LoginOutcome);
   assert.equal(provider.state.aborted, true);
   assert.ok(!events.some((event) => event.kind === "catalog_changed"));
-  assert.equal(deviceStatus(await host.call("host.catalog", undefined)), "disconnected");
+  assert.equal(deviceStatus(await host.call(1, "host.catalog", undefined)), "disconnected");
 
   // Approval after the cancel cannot reconnect the attempt.
   provider.approve();
   await new Promise((r) => setTimeout(r, 20));
-  assert.equal(deviceStatus(await host.call("host.catalog", undefined)), "disconnected");
+  assert.equal(deviceStatus(await host.call(1, "host.catalog", undefined)), "disconnected");
 });
 
 test("a cancelled attempt's late approval never saves a credential", async () => {
@@ -395,14 +397,15 @@ test("a cancelled attempt's late approval never saves a credential", async () =>
   const { host, events } = await desktop(provider.create);
   const pending = deviceLogin(host, "attempt-late");
   await settled(() => provider.state.polling);
-  await host.call("host.cancelLogin", { attempt: "attempt-late" });
+  events.length = 0;
+  await host.call(1, "host.cancelLogin", { attempt: "attempt-late" });
   assert.deepEqual(await pending, { kind: "cancelled" } satisfies LoginOutcome);
   // The flow ignored the abort and is still polling when the user approves.
   assert.equal(provider.state.polling, true);
   provider.approve();
   await settled(() => !provider.state.polling);
   await new Promise((r) => setTimeout(r, 20));
-  assert.equal(deviceStatus(await host.call("host.catalog", undefined)), "disconnected");
+  assert.equal(deviceStatus(await host.call(1, "host.catalog", undefined)), "disconnected");
   assert.ok(!events.some((event) => event.kind === "catalog_changed"));
 });
 
@@ -411,7 +414,7 @@ test("an attempt ID cannot be reused until its cancelled flow has settled, and a
   const { host } = await desktop(provider.create);
   const first = deviceLogin(host, "attempt-reuse");
   await settled(() => provider.state.polling);
-  await host.call("host.cancelLogin", { attempt: "attempt-reuse" });
+  await host.call(1, "host.cancelLogin", { attempt: "attempt-reuse" });
   // Cancel returns before the abandoned flow has let go; the ID is still taken.
   await assert.rejects(deviceLogin(host, "attempt-reuse"), /attempt ID is already running/);
   assert.deepEqual(await first, { kind: "cancelled" } satisfies LoginOutcome);
@@ -419,9 +422,9 @@ test("an attempt ID cannot be reused until its cancelled flow has settled, and a
   // Once settled, the ID is free again and the new attempt owns its own cancel.
   const second = deviceLogin(host, "attempt-reuse");
   await settled(() => provider.state.polling);
-  await host.call("host.cancelLogin", { attempt: "attempt-reuse" });
+  await host.call(1, "host.cancelLogin", { attempt: "attempt-reuse" });
   assert.deepEqual(await second, { kind: "cancelled" } satisfies LoginOutcome);
-  assert.equal(deviceStatus(await host.call("host.catalog", undefined)), "disconnected");
+  assert.equal(deviceStatus(await host.call(1, "host.catalog", undefined)), "disconnected");
 });
 
 test("a new sign-in for the same provider supersedes the running one", async () => {
@@ -446,7 +449,7 @@ test("a reused attempt ID is refused before any flow starts", async () => {
   await settled(() => provider.state.polling);
   await assert.rejects(deviceLogin(host, "attempt-4"), /attempt ID is already running/);
   assert.equal(provider.state.polling, true);
-  await host.call("host.cancelLogin", { attempt: "attempt-4" });
+  await host.call(1, "host.cancelLogin", { attempt: "attempt-4" });
   assert.deepEqual(await pending, { kind: "cancelled" } satisfies LoginOutcome);
 });
 
@@ -478,7 +481,7 @@ test("signing out during approval waits for the credential the flow was already 
     () => (loginSettled = true),
   );
   let logoutSettled = false;
-  const logout = host.call("host.logout", { provider: "device" }).then(() => {
+  const logout = host.call(1, "host.logout", { provider: "device" }).then(() => {
     logoutSettled = true;
   });
   await new Promise((r) => setTimeout(r, 20));
@@ -489,7 +492,7 @@ test("signing out during approval waits for the credential the flow was already 
   await logout;
   assert.equal(store.state.writesLanded, 1);
   assert.equal(loginSettled, true, "the sign-in settled before the logout did");
-  assert.equal(deviceStatus(await host.call("host.catalog", undefined)), "disconnected");
+  assert.equal(deviceStatus(await host.call(1, "host.catalog", undefined)), "disconnected");
   assert.ok(events.some((event) => event.kind === "catalog_changed"));
   await pending;
 });
@@ -499,12 +502,12 @@ test("signing out while the code is still pending cancels the sign-in", async ()
   const { host } = await desktop(provider.create);
   const pending = deviceLogin(host, "attempt-logout");
   await settled(() => provider.state.polling);
-  await host.call("host.logout", { provider: "device" });
+  await host.call(1, "host.logout", { provider: "device" });
   assert.deepEqual(await pending, { kind: "cancelled" } satisfies LoginOutcome);
   assert.equal(provider.state.aborted, true);
   provider.approve();
   await new Promise((r) => setTimeout(r, 20));
-  assert.equal(deviceStatus(await host.call("host.catalog", undefined)), "disconnected");
+  assert.equal(deviceStatus(await host.call(1, "host.catalog", undefined)), "disconnected");
 });
 
 test("a saved credential is reported apart from a failed model discovery", async () => {
@@ -519,7 +522,7 @@ test("a saved credential is reported apart from a failed model discovery", async
     catalogRefreshed: false,
   } satisfies LoginOutcome);
   assert.ok(events.some((event) => event.kind === "catalog_changed"));
-  const catalog = await host.call("host.catalog", undefined);
+  const catalog = await host.call(1, "host.catalog", undefined);
   assert.equal(deviceStatus(catalog), "oauth");
   assert.deepEqual(deviceModels(catalog), []);
 });
@@ -527,7 +530,7 @@ test("a saved credential is reported apart from a failed model discovery", async
 test("browser sign-in still answers the method choice and opens the URL", async () => {
   const provider = browserProvider({ offersBrowser: true });
   const { host, opened, events } = await desktop(provider.create);
-  const outcome = await host.call("host.login", {
+  const outcome = await host.call(1, "host.login", {
     provider: "browser",
     method: { kind: "browser" },
     attempt: "attempt-7",
@@ -536,13 +539,16 @@ test("browser sign-in still answers the method choice and opens the URL", async 
   assert.deepEqual(provider.state.prompts, ["browser"]);
   assert.deepEqual(opened, ["https://example.com/authorize"]);
   assert.deepEqual(loginEvents(events), []);
-  assert.equal((await host.call("host.catalog", undefined)).providers[0]?.connection.kind, "oauth");
+  assert.equal(
+    (await host.call(1, "host.catalog", undefined)).providers[0]?.connection.kind,
+    "oauth",
+  );
 });
 
 test("a sign-in link that is not a web address is never opened", async () => {
   const provider = browserProvider({ offersBrowser: true, authUrl: "file:///etc/passwd" });
   const { host, opened, events } = await desktop(provider.create);
-  await host.call("host.login", {
+  await host.call(1, "host.login", {
     provider: "browser",
     method: { kind: "browser" },
     attempt: "attempt-unsafe",
@@ -557,19 +563,19 @@ test("a sign-in link that is not a web address is never opened", async () => {
 test("cancelling releases a manual-code prompt the provider gave no signal for", async () => {
   const provider = browserProvider({ offersBrowser: true, holdsManualCode: true });
   const { host, opened } = await desktop(provider.create);
-  const pending = host.call("host.login", {
+  const pending = host.call(1, "host.login", {
     provider: "browser",
     method: { kind: "browser" },
     attempt: "attempt-held",
   });
   await settled(() => opened.length === 1);
   assert.equal(provider.state.manualCodeReleased, false);
-  await host.call("host.cancelLogin", { attempt: "attempt-held" });
+  await host.call(1, "host.cancelLogin", { attempt: "attempt-held" });
   assert.deepEqual(await pending, { kind: "cancelled" } satisfies LoginOutcome);
   await settled(() => provider.state.manualCodeReleased);
   assert.match(provider.state.manualCodeReason, /Browser login finished/);
   assert.equal(
-    (await host.call("host.catalog", undefined)).providers[0]?.connection.kind,
+    (await host.call(1, "host.catalog", undefined)).providers[0]?.connection.kind,
     "disconnected",
   );
 });
@@ -577,7 +583,7 @@ test("cancelling releases a manual-code prompt the provider gave no signal for",
 test("closing the host releases a held manual-code prompt", async () => {
   const provider = browserProvider({ offersBrowser: true, holdsManualCode: true });
   const { host, opened } = await desktop(provider.create);
-  const pending = host.call("host.login", {
+  const pending = host.call(1, "host.login", {
     provider: "browser",
     method: { kind: "browser" },
     attempt: "attempt-held-close",
@@ -592,7 +598,7 @@ test("a method choice without a browser option fails instead of being answered b
   const provider = browserProvider({ offersBrowser: false });
   const { host, opened } = await desktop(provider.create);
   await assert.rejects(
-    host.call("host.login", {
+    host.call(1, "host.login", {
       provider: "browser",
       method: { kind: "browser" },
       attempt: "attempt-8",
@@ -601,7 +607,7 @@ test("a method choice without a browser option fails instead of being answered b
   assert.deepEqual(provider.state.prompts, []);
   assert.deepEqual(opened, []);
   assert.equal(
-    (await host.call("host.catalog", undefined)).providers[0]?.connection.kind,
+    (await host.call(1, "host.catalog", undefined)).providers[0]?.connection.kind,
     "disconnected",
   );
 });

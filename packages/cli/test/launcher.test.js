@@ -5,14 +5,7 @@ import { join } from "node:path";
 import { test } from "vitest";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { ensureBinary, platformTarget, releaseAssetName } from "../src/launcher.js";
-
-test("maps supported release targets", () => {
-  assert.equal(platformTarget("darwin", "arm64"), "darwin-arm64");
-  assert.equal(platformTarget("linux", "x64"), "linux-x64");
-  assert.equal(platformTarget("win32", "x64"), undefined);
-  assert.equal(releaseAssetName("v0.2.0", "darwin-arm64"), "nyte-v0.2.0-darwin-arm64");
-});
+import { ensureBinary } from "../src/launcher.js";
 
 test("downloads, verifies, and caches the native binary", async () => {
   const root = await mkdtemp(join(tmpdir(), "nyte-launcher-"));

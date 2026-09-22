@@ -15,7 +15,7 @@ import type { TelemetryContext } from "@nyte-ai/telemetry";
 import {
   DEFAULT_THINKING_LEVEL,
   defaultModel,
-  loadProviderCatalog,
+  loadAuthenticatedModels,
   requireModel,
   requireProvider,
 } from "./catalog.ts";
@@ -26,7 +26,7 @@ import type { ResolvedSettings } from "./settings.ts";
 export interface Runtime {
   readonly models: MutableModels;
   readonly provider: Provider;
-  /** Auth-filtered at signed-in startup; the baked catalog for a signed-out shell. */
+  /** Auth-filtered models for a signed-in startup; the full catalog for a signed-out shell. */
   readonly modelCandidates: readonly Model<Api>[];
 }
 
@@ -37,9 +37,12 @@ function runProviderCandidates(
 ): readonly Provider[] {
   if (providerId !== undefined) return [requireProvider(models, providerId)];
   const providers = models.getProviders();
+
   if (settings?.defaultProvider === undefined) return providers;
   const preferred = models.getProvider(settings.defaultProvider);
+
   if (preferred === undefined) return providers;
+
   return [preferred, ...providers.filter((provider) => provider.id !== preferred.id)];
 }
 
@@ -53,7 +56,9 @@ function resolveRunModel(
   },
 ): Model<Api> {
   const override = sources.flag ?? sources.environment;
+
   if (override !== undefined) return requireModel(modelCandidates, providerId, override);
+
   if (
     sources.settings.defaultProvider === providerId &&
     sources.settings.defaultModel !== undefined
@@ -61,31 +66,33 @@ function resolveRunModel(
     const preferred = modelCandidates.find(
       (model) => model.provider === providerId && model.id === sources.settings.defaultModel,
     );
+
     if (preferred !== undefined) return preferred;
   }
+
   return defaultModel(modelCandidates, providerId);
 }
 
-/** Choose configured auth and its credential-filtered models without refreshing OAuth. */
+/** Choose configured auth and its credential-filtered models after refreshing the catalog. */
 export async function resolveRuntime(
   flags: RunFlags,
   settings: ResolvedSettings,
 ): Promise<Runtime | undefined> {
   const models = createNyteModels();
+  await loadAuthenticatedModels(models);
+
   for (const provider of runProviderCandidates(models, flags.provider, settings)) {
-    await loadProviderCatalog(models, provider.id);
     const modelCandidates = await models.getAvailable(provider.id);
+
     if (modelCandidates.length === 0) continue;
+
     return { models, provider, modelCandidates };
   }
+
   return undefined;
 }
 
-/**
- * The runtime a signed-out launch starts from: the preferred provider over
- * its baked catalog, so the shell can open and offer `/login`. If a provider
- * has no baked models, fall through to the next catalog.
- */
+/** Fetch a catalog so a signed-out shell can open and offer `/login`. */
 export async function signedOutRuntime(
   flags: RunFlags,
   settings: ResolvedSettings,
@@ -95,12 +102,18 @@ export async function signedOutRuntime(
   const remaining = models
     .getProviders()
     .filter((provider) => !preferred.some((candidate) => candidate.id === provider.id));
+
+  await models.refresh();
+
   for (const provider of [...preferred, ...remaining]) {
-    await loadProviderCatalog(models, provider.id);
     const modelCandidates = models.getModels(provider.id);
+
     if (modelCandidates.length > 0) return { models, provider, modelCandidates };
   }
-  throw new Error("No provider exposes models for a signed-out launch");
+
+  throw new Error(
+    "No models are available. Check your connection, then run `nyte update --models`.",
+  );
 }
 
 interface HostFallbacks {
@@ -119,11 +132,14 @@ export function hostFallbacks(
     environment: process.env["NYTE_MODEL"],
     settings,
   });
+
   const requested = flags.effort ?? process.env["NYTE_EFFORT"];
+
   const effort =
     requested !== undefined && isThinkingLevel(requested)
       ? requested
       : (settings.defaultThinkingLevel ?? DEFAULT_THINKING_LEVEL);
+
   return { model, thinkingLevel: clampThinkingLevel(model, effort) };
 }
 
@@ -175,18 +191,25 @@ export async function targetSession(nyte: Nyte, target: ResumeTarget): Promise<S
       // Skip sessions that were created by a launch and never written to,
       // and subagent children, which resume under their parent's task call.
       const result = await nyte.sessions.list({ parent: null });
+
       const used = result.items
         .filter((info) => info.heads.some((head) => head.tip !== null))
         .toSorted((left, right) => right.lastActivityAt - left.lastActivityAt)[0];
+
       return used ?? nyte.sessions.create();
     }
+
     case "session": {
       const info = await nyte.sessions.get({ sessionId: sessionId(target.id) });
+
       if (info === undefined) throw new Error(`Session not found: ${target.id}`);
+
       return info;
     }
+
     default: {
       const _exhaustive: never = target;
+
       return _exhaustive;
     }
   }

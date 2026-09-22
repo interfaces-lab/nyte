@@ -39,12 +39,15 @@ const SearchResponse = Type.Object({
 
 export function parseFirecrawlResults(text: string): WebSearchResult[] {
   let parsed: JsonValue;
+
   try {
     parsed = JSON.parse(text);
   } catch {
     return [];
   }
+
   if (!Value.Check(SearchResponse, parsed)) return [];
+
   return parsed.data.web.map((item) =>
     webSearchResult(item.url, { title: item.title, content: item.description }),
   );
@@ -56,7 +59,9 @@ export const firecrawlProvider: WebSearchProvider = {
   keyEnvironment: "FIRECRAWL_API_KEY",
   async execute({ query, key, fetch, signal }) {
     const headers = new Headers({ "User-Agent": USER_AGENT });
+
     if (key !== undefined) headers.set("Authorization", `Bearer ${key}`);
+
     const result = await callMcpTool(
       FIRECRAWL_ENDPOINT,
       "firecrawl_search",
@@ -64,7 +69,9 @@ export const firecrawlProvider: WebSearchProvider = {
       Output,
       { fetch, signal, headers },
     );
+
     const content = result?.content.find((item) => item.text !== "");
+
     return content === undefined ? [] : parseFirecrawlResults(content.text);
   },
 };

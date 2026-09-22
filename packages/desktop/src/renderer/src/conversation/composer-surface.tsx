@@ -23,33 +23,44 @@ function registerComposerAutoLink(editor: LexicalEditor): () => void {
     excludeParents: [
       (parent) => {
         const type = parent.getType();
+
         return type === ComposerReferenceNode.getType() || type === "code";
       },
     ],
   });
+
   const root = editor.getRootElement();
+
   if (root === null) return unregisterAutoLink;
+
   const intercept = (event: MouseEvent): void => {
     const target = event.target;
+
     if (!(target instanceof Element)) return;
     const link = target.closest("a");
+
     if (link === null) return;
     event.preventDefault();
     event.stopPropagation();
     const url = new URL(link.href);
+
     if (url.protocol === "http:" || url.protocol === "https:") {
       void nyte.host.openExternal({ url: url.href }).catch(() => undefined);
     }
   };
+
   const onAuxClick = (event: MouseEvent): void => {
     if (event.button === 1) intercept(event);
   };
+
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === "Enter" && event.target instanceof HTMLAnchorElement) event.stopPropagation();
   };
+
   root.addEventListener("click", intercept);
   root.addEventListener("auxclick", onAuxClick);
   root.addEventListener("keydown", onKeyDown, true);
+
   return () => {
     root.removeEventListener("click", intercept);
     root.removeEventListener("auxclick", onAuxClick);
@@ -61,6 +72,7 @@ function registerComposerAutoLink(editor: LexicalEditor): () => void {
 /** Both modes mount the same Lexical document and decorate the same reference nodes. */
 export function useComposerSurface(editable: boolean) {
   const rootRef = useRef<HTMLDivElement>(null);
+
   const [editor] = useState(() =>
     createEditor({
       namespace: "nyte-composer",
@@ -75,12 +87,14 @@ export function useComposerSurface(editable: boolean) {
       },
     }),
   );
+
   const [decorators, setDecorators] = useState<Readonly<Record<string, MessageReference>>>({});
   useLayoutEffect(() => {
     editor.setRootElement(rootRef.current);
     const plainText = registerPlainText(editor);
     const links = registerComposerAutoLink(editor);
     const decorations = editor.registerDecoratorListener<MessageReference>(setDecorators);
+
     return () => {
       decorations();
       links();
@@ -88,6 +102,7 @@ export function useComposerSurface(editable: boolean) {
       editor.setRootElement(null);
     };
   }, [editor]);
+
   return { editor, rootRef, decorators };
 }
 
@@ -102,6 +117,7 @@ export function ComposerDecorators({
 }) {
   return Object.entries(decorators).map(([key, reference]) => {
     const element = editor.getElementByKey(key);
+
     return element === null
       ? null
       : createPortal(
@@ -122,6 +138,7 @@ export function ComposerReadOnly({ text }: { readonly text: string }) {
     const draft = messageDraftText(text)
       .replaceAll(/\n{3,}/gu, "\n\n")
       .replace(/^\n+|\n+$/gu, "");
+
     editor.update(
       () => $restoreComposerDocument({ text: draft, selectionStart: 0, selectionEnd: 0 }),
       {
@@ -130,6 +147,7 @@ export function ComposerReadOnly({ text }: { readonly text: string }) {
       },
     );
   }, [editor, text]);
+
   return (
     <>
       <div

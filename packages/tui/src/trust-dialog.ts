@@ -59,6 +59,7 @@ class WorkspaceTrustDialog {
       justifyContent: "center",
       backgroundColor: theme.terminal,
     });
+
     const window = new BoxRenderable(options.renderer, {
       id: nextId("trust-window"),
       width: "90%",
@@ -75,6 +76,7 @@ class WorkspaceTrustDialog {
       borderColor: theme.path,
       backgroundColor: theme.transparent,
     });
+
     const details = new BoxRenderable(options.renderer, {
       id: nextId("trust-details"),
       width: "100%",
@@ -83,6 +85,7 @@ class WorkspaceTrustDialog {
       minHeight: 1,
       overflow: "hidden",
     });
+
     details.add(
       new TextRenderable(options.renderer, {
         id: nextId("trust-title"),
@@ -154,12 +157,14 @@ class WorkspaceTrustDialog {
     });
     options.renderer.keyInput.on("keypress", this.onKeyPress);
     options.signal?.addEventListener("abort", this.onAbort, { once: true });
+
     if (options.signal?.aborted === true) this.select("decline");
   }
 
   private row(decision: WorkspaceTrustDecision, key: string, label: string): StyledText {
     const selected = decision === this.selected;
     const emphasis = selected ? bold : (chunk: TextChunk) => chunk;
+
     return new StyledText([
       fg(selected ? this.theme.ok : this.theme.dim)(selected ? "▸ " : "  "),
       fg(selected ? this.theme.foreground : this.theme.dim)(`[${key}] `),
@@ -180,21 +185,28 @@ class WorkspaceTrustDialog {
 
   private readonly onKeyPress = (key: KeyEvent): void => {
     if (this.settled) return;
+
     if (matchesKeyName("workspace.trust", key)) {
       consume(key);
       this.select("trust");
+
       return;
     }
+
     if (matchesKeyName("workspace.decline", key)) {
       consume(key);
       this.select("decline");
+
       return;
     }
+
     if (matchesKeyName("workspace.accept", key)) {
       consume(key);
       this.select(this.selected);
+
       return;
     }
+
     if (matchesKeyName("workspace.toggle", key)) {
       consume(key);
       this.selected = this.selected === "trust" ? "decline" : "trust";
@@ -207,10 +219,12 @@ class WorkspaceTrustDialog {
     this.settled = true;
     this.signal?.removeEventListener("abort", this.onAbort);
     this.renderer.keyInput.off("keypress", this.onKeyPress);
+
     if (decision === "trust" || this.decline === "cancel") {
       this.renderer.root.remove(this.overlay);
       this.overlay.destroyRecursively();
     }
+
     // Startup decline leaves the overlay for renderer teardown, avoiding an
     // extra frame of the workspace the user chose not to trust.
     this.resolveResult?.(decision);

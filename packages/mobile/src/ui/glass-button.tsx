@@ -81,6 +81,7 @@ export function GlassButton(props: GlassButtonProps) {
   // from the dark palette instead of the app's current appearance.
   const palette = scheme === "dark" ? themes.dark : theme;
   const height = size === "compact" ? controls.touchTarget : controls.primaryHeight;
+
   const hostStyle: ViewStyle = iconOnly
     ? { width: controls.touchTarget, height: controls.touchTarget }
     : { height };

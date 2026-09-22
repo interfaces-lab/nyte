@@ -118,6 +118,7 @@ function statusIcon(status: SessionStatus): IconName | undefined {
       return undefined;
     default: {
       const _exhaustive: never = status;
+
       return _exhaustive;
     }
   }
@@ -143,6 +144,7 @@ export function WorkspaceControls({
   onCollapseAll,
 }: WorkspaceControlsProps): ReactElement {
   const filtersActive = hasSessionFilters(value);
+
   const resetFilters = (): void => {
     onChange(clearSessionFilters(value));
   };

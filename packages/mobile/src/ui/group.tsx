@@ -26,6 +26,7 @@ export function Group({
   variant?: "card" | "flat";
 }) {
   const isFlat = variant === "flat";
+
   return (
     <flat.Provider value={isFlat}>
       <html.div style={[styles.group, isFlat && styles.flatGroup]}>
@@ -72,12 +73,14 @@ export function GroupRow({
 }) {
   const theme = useTheme();
   const isFlat = use(flat);
+
   const style = [
     styles.row,
     isFlat && styles.flatRow,
     align === "center" && styles.centered,
     disabled && styles.disabled,
   ];
+
   const content = (
     <>
       {children}
@@ -93,6 +96,7 @@ export function GroupRow({
       )}
     </>
   );
+
   if (onClick !== undefined) {
     return (
       <html.button onClick={onClick} disabled={disabled} aria-disabled={disabled} style={style}>
@@ -100,6 +104,7 @@ export function GroupRow({
       </html.button>
     );
   }
+
   return <html.div style={style}>{content}</html.div>;
 }
 

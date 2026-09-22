@@ -7,10 +7,12 @@ export async function loadSessionDirectory(list: SessionsBridge["list"]): Promis
   const first = await list({ parent: null, includeArchived: true });
   const items = [...first.items];
   let cursor = first.next;
+
   while (cursor !== undefined) {
     const page = await list({ cursor, parent: null, includeArchived: true });
     items.push(...page.items);
     cursor = page.next;
   }
+
   return { ...first, items, next: undefined };
 }

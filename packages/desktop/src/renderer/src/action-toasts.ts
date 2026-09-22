@@ -25,12 +25,15 @@ export class ActionToasts {
       actions: new Set<UndoableAction>(),
       revision: 0,
     };
+
     this.#batches.set(label, batch);
     batch.actions.add(action);
     this.#show(batch);
+
     return () => {
       if (this.#batches.get(label) !== batch) return;
       batch.actions.delete(action);
+
       if (batch.actions.size > 0) this.#show(batch);
       else {
         this.#batches.delete(label);
@@ -41,12 +44,14 @@ export class ActionToasts {
 
   undo(id: ReturnType<typeof toast.success>): void {
     const batch = this.#batches.values().find((entry) => entry.id === id);
+
     if (batch !== undefined) this.#finish(batch, true);
   }
 
   #finish(batch: ActionBatch, undo: boolean): void {
     if (this.#batches.get(batch.label) !== batch) return;
     this.#batches.delete(batch.label);
+
     for (const action of [...batch.actions].reverse()) {
       if (undo) action.undo();
       else action.commit?.();

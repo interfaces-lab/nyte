@@ -255,6 +255,7 @@ type RenderablePatch =
 function renderablePatch(patch: string): RenderablePatch {
   try {
     const files = parsePatchFiles(patch, patchDigest(patch)).flatMap((parsed) => parsed.files);
+
     return files.length > 0 ? { kind: "files", files } : { kind: "raw", text: patch };
   } catch {
     return { kind: "raw", text: patch };
@@ -296,6 +297,7 @@ export const DiffView = memo(function DiffView({
   const renderable = useMemo(() => renderablePatch(diff.patch), [diff.patch]);
   const wrapped = wordWrap ?? stacked;
   const expansion = expandContext ? loadDiffFiles : undefined;
+
   const options = useMemo<FileDiffOptions<undefined, undefined>>(
     () => ({
       ...PATCH_OPTIONS,

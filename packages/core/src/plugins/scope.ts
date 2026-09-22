@@ -32,9 +32,12 @@ export class PluginScope {
   track<T extends Disposer | AsyncDisposer>(disposer: T): T {
     if (this.disposed) {
       void Promise.resolve(disposer()).catch((cause: unknown) => this.report(normalize(cause)));
+
       return disposer;
     }
+
     this.disposers.push(disposer);
+
     return disposer;
   }
 
@@ -54,6 +57,7 @@ export class PluginScope {
     this.controller.abort();
     const disposers = this.disposers.reverse();
     this.disposers = [];
+
     for (const disposer of disposers) {
       try {
         await withBudget(Promise.resolve(disposer()), this.budgetMs);

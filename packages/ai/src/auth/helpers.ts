@@ -21,10 +21,12 @@ export function envApiKeyAuth(name: string, envVars: readonly string[]): ApiKeyA
       interaction.signal.throwIfAborted();
       const key = await interaction.prompt({ type: "secret", message: `Enter ${name}` });
       interaction.signal.throwIfAborted();
+
       return { type: "api_key", key };
     },
     resolve: async ({ ctx, credential, signal }) => {
       signal.throwIfAborted();
+
       if (credential?.key) {
         return {
           auth: { apiKey: credential.key },
@@ -32,11 +34,14 @@ export function envApiKeyAuth(name: string, envVars: readonly string[]): ApiKeyA
           source: "stored credential",
         };
       }
+
       for (const envVar of envVars) {
         const value = await ctx.env(envVar);
         signal.throwIfAborted();
+
         if (value) return { auth: { apiKey: value }, source: envVar };
       }
+
       return undefined;
     },
   };
@@ -56,15 +61,18 @@ export function lazyOAuth(input: {
   load: () => Promise<OAuthAuth>;
 }): OAuthAuth {
   let promise: Promise<OAuthAuth> | undefined;
+
   const loaded = () => {
     // Memoize only successful loads: a cached rejection would poison every
     // later login/refresh/toAuth call for the life of the process.
-    promise ??= input.load().catch((error: unknown) => {
+    promise ??= input.load().catch((error) => {
       promise = undefined;
       throw error;
     });
+
     return promise;
   };
+
   return {
     name: input.name,
     isSubscription: input.isSubscription,

@@ -5,6 +5,7 @@ import { controls, list, radii, tokens, useTheme } from "../theme.ts";
 /** A muted icon tile — the leading slot in grouped rows. */
 export function IconTile({ name, color }: { name: SFSymbol; color?: string }) {
   const theme = useTheme();
+
   return (
     <html.div style={styles.tile}>
       <SymbolView name={name} size={14} tintColor={color ?? theme.muted} />
@@ -16,6 +17,7 @@ export function IconTile({ name, color }: { name: SFSymbol; color?: string }) {
 export function IconRing({ name, color }: { name: SFSymbol; color?: string }) {
   const theme = useTheme();
   const tint = color ?? theme.muted;
+
   return (
     <html.div style={[styles.ring, styles.ringTint(tint)]}>
       <SymbolView name={name} size={13} tintColor={tint} />

@@ -7,6 +7,8 @@
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/types.ts
  * Synced with pi 7ebf9087e.
  */
+import { Type } from "typebox";
+import { object, typed } from "./typed.ts";
 
 /** Ordered low→high; the single source of truth for every thinking-level union. */
 export const MODEL_THINKING_LEVELS = [
@@ -18,10 +20,13 @@ export const MODEL_THINKING_LEVELS = [
   "xhigh",
   "max",
 ] as const;
+
 /** Reasoning effort actually sent on the wire. */
 export type ThinkingLevel = Exclude<ModelThinkingLevel, "off">;
+
 /** What a model or lane is configured to: a level, or reasoning off. */
 export type ModelThinkingLevel = (typeof MODEL_THINKING_LEVELS)[number];
+
 /**
  * Maps thinking levels to provider/model-specific values.
  * Missing keys use provider defaults. `null` marks a level as unsupported.
@@ -30,6 +35,7 @@ export type ThinkingLevelMap = Partial<Record<ModelThinkingLevel, string | null>
 
 /** Request modes that a model explicitly supports. */
 export const MODEL_MODES = ["fast"] as const;
+
 export type ModelMode = (typeof MODEL_MODES)[number];
 
 export type KnownApi =
@@ -87,6 +93,7 @@ export type KnownProvider =
   | "xiaomi-token-plan-cn"
   | "xiaomi-token-plan-ams"
   | "xiaomi-token-plan-sgp";
+
 export type ProviderId = KnownProvider | string;
 
 export type ChatTemplateKwargValue =
@@ -413,3 +420,224 @@ export interface Model<TApi extends Api> {
           ? BedrockCompat
           : never;
 }
+
+const nullableString = Type.Union([Type.String(), Type.Null()]);
+
+const ModelCostRatesSchema = object({
+  input: Type.Number(),
+  output: Type.Number(),
+  cacheRead: Type.Number(),
+  cacheWrite: Type.Number(),
+});
+
+const ModelCostTierSchema = object({
+  ...ModelCostRatesSchema.properties,
+  inputTokensAbove: Type.Number(),
+});
+
+const ModelCostSchema = object({
+  ...ModelCostRatesSchema.properties,
+  tiers: Type.Optional(Type.Array(ModelCostTierSchema)),
+});
+
+const ThinkingLevelMapSchema = object({
+  off: Type.Optional(nullableString),
+  minimal: Type.Optional(nullableString),
+  low: Type.Optional(nullableString),
+  medium: Type.Optional(nullableString),
+  high: Type.Optional(nullableString),
+  xhigh: Type.Optional(nullableString),
+  max: Type.Optional(nullableString),
+});
+
+const ChatTemplateKwargValueSchema = Type.Union([
+  Type.String(),
+  Type.Number(),
+  Type.Boolean(),
+  Type.Null(),
+  object({
+    $var: Type.Union([
+      Type.Literal("thinking.enabled"),
+      Type.Literal("thinking.effort"),
+      Type.Literal("thinking.budget"),
+    ]),
+    omitWhenOff: Type.Optional(Type.Boolean()),
+  }),
+]);
+
+const OpenRouterRoutingSchema = object({
+  allow_fallbacks: Type.Optional(Type.Boolean()),
+  require_parameters: Type.Optional(Type.Boolean()),
+  data_collection: Type.Optional(Type.Union([Type.Literal("deny"), Type.Literal("allow")])),
+  zdr: Type.Optional(Type.Boolean()),
+  enforce_distillable_text: Type.Optional(Type.Boolean()),
+  order: Type.Optional(Type.Array(Type.String())),
+  only: Type.Optional(Type.Array(Type.String())),
+  ignore: Type.Optional(Type.Array(Type.String())),
+  quantizations: Type.Optional(Type.Array(Type.String())),
+  sort: Type.Optional(
+    Type.Union([
+      Type.String(),
+      object({ by: Type.Optional(Type.String()), partition: Type.Optional(nullableString) }),
+    ]),
+  ),
+  max_price: Type.Optional(
+    object({
+      prompt: Type.Optional(Type.Union([Type.Number(), Type.String()])),
+      completion: Type.Optional(Type.Union([Type.Number(), Type.String()])),
+      image: Type.Optional(Type.Union([Type.Number(), Type.String()])),
+      audio: Type.Optional(Type.Union([Type.Number(), Type.String()])),
+      request: Type.Optional(Type.Union([Type.Number(), Type.String()])),
+    }),
+  ),
+  preferred_min_throughput: Type.Optional(
+    Type.Union([
+      Type.Number(),
+      object({
+        p50: Type.Optional(Type.Number()),
+        p75: Type.Optional(Type.Number()),
+        p90: Type.Optional(Type.Number()),
+        p99: Type.Optional(Type.Number()),
+      }),
+    ]),
+  ),
+  preferred_max_latency: Type.Optional(
+    Type.Union([
+      Type.Number(),
+      object({
+        p50: Type.Optional(Type.Number()),
+        p75: Type.Optional(Type.Number()),
+        p90: Type.Optional(Type.Number()),
+        p99: Type.Optional(Type.Number()),
+      }),
+    ]),
+  ),
+});
+
+const VercelGatewayRoutingSchema = object({
+  only: Type.Optional(Type.Array(Type.String())),
+  order: Type.Optional(Type.Array(Type.String())),
+});
+
+const OpenAICompletionsCompatSchema = object({
+  supportsStore: Type.Optional(Type.Boolean()),
+  supportsDeveloperRole: Type.Optional(Type.Boolean()),
+  supportsReasoningEffort: Type.Optional(Type.Boolean()),
+  supportsUsageInStreaming: Type.Optional(Type.Boolean()),
+  supportsFinishReason: Type.Optional(Type.Boolean()),
+  maxTokensField: Type.Optional(
+    Type.Union([Type.Literal("max_completion_tokens"), Type.Literal("max_tokens")]),
+  ),
+  requiresToolResultName: Type.Optional(Type.Boolean()),
+  requiresAssistantAfterToolResult: Type.Optional(Type.Boolean()),
+  requiresThinkingAsText: Type.Optional(Type.Boolean()),
+  requiresReasoningContentOnAssistantMessages: Type.Optional(Type.Boolean()),
+  thinkingFormat: Type.Optional(
+    Type.Union([
+      Type.Literal("openai"),
+      Type.Literal("openrouter"),
+      Type.Literal("deepseek"),
+      Type.Literal("together"),
+      Type.Literal("baseten"),
+      Type.Literal("zai"),
+      Type.Literal("qwen"),
+      Type.Literal("chat-template"),
+      Type.Literal("qwen-chat-template"),
+      Type.Literal("string-thinking"),
+      Type.Literal("ant-ling"),
+    ]),
+  ),
+  chatTemplateKwargs: Type.Optional(Type.Record(Type.String(), ChatTemplateKwargValueSchema)),
+  chatTemplateArgs: Type.Optional(Type.Record(Type.String(), ChatTemplateKwargValueSchema)),
+  openRouterRouting: Type.Optional(OpenRouterRoutingSchema),
+  vercelGatewayRouting: Type.Optional(VercelGatewayRoutingSchema),
+  zaiToolStream: Type.Optional(Type.Boolean()),
+  thinkingTokenBudgetField: Type.Optional(
+    Type.Union([
+      Type.Literal("thinking_token_budget"),
+      Type.Literal("thinking_budget"),
+      Type.Literal("thinking_budget_tokens"),
+    ]),
+  ),
+  supportsThinkingTokenBudget: Type.Optional(Type.Boolean()),
+  supportsOpenAIGrammarTools: Type.Optional(Type.Boolean()),
+  supportsStrictMode: Type.Optional(Type.Boolean()),
+  cacheControlFormat: Type.Optional(Type.Literal("anthropic")),
+  sendSessionAffinityHeaders: Type.Optional(Type.Boolean()),
+  deferredToolsMode: Type.Optional(Type.Literal("kimi")),
+  sessionAffinityFormat: Type.Optional(
+    Type.Union([
+      Type.Literal("openai"),
+      Type.Literal("openai-nosession"),
+      Type.Literal("openrouter"),
+    ]),
+  ),
+  supportsLongCacheRetention: Type.Optional(Type.Boolean()),
+});
+
+const OpenAIResponsesCompatSchema = object({
+  supportsDeveloperRole: Type.Optional(Type.Boolean()),
+  sessionAffinityFormat: Type.Optional(
+    Type.Union([
+      Type.Literal("openai"),
+      Type.Literal("openai-nosession"),
+      Type.Literal("openrouter"),
+    ]),
+  ),
+  supportsLongCacheRetention: Type.Optional(Type.Boolean()),
+  supportsStrictMode: Type.Optional(Type.Boolean()),
+  supportsOpenAIGrammarTools: Type.Optional(Type.Boolean()),
+  supportsAdditionalTools: Type.Optional(Type.Boolean()),
+  supportsToolSearch: Type.Optional(Type.Boolean()),
+  supportsExplicitPromptCacheMode: Type.Optional(Type.Boolean()),
+});
+
+const AnthropicAllowedFallbackModelSchema = object({
+  provider: Type.String(),
+  model: Type.String(),
+  cost: ModelCostSchema,
+});
+
+const AnthropicMessagesCompatSchema = object({
+  supportsEagerToolInputStreaming: Type.Optional(Type.Boolean()),
+  supportsLongCacheRetention: Type.Optional(Type.Boolean()),
+  sendSessionAffinityHeaders: Type.Optional(Type.Boolean()),
+  supportsCacheControlOnTools: Type.Optional(Type.Boolean()),
+  supportsTemperature: Type.Optional(Type.Boolean()),
+  forceAdaptiveThinking: Type.Optional(Type.Boolean()),
+  allowEmptySignature: Type.Optional(Type.Boolean()),
+  supportsStrictTools: Type.Optional(Type.Boolean()),
+  allowedFallbackModels: Type.Optional(Type.Array(AnthropicAllowedFallbackModelSchema)),
+  supportsToolReferences: Type.Optional(Type.Boolean()),
+});
+
+const BedrockCompatSchema = object({
+  supportsStrictMode: Type.Optional(Type.Boolean()),
+});
+
+export const ModelSchema = typed<Model<Api>>()(
+  object({
+    id: Type.String(),
+    name: Type.String(),
+    api: Type.String(),
+    provider: Type.String(),
+    baseUrl: Type.String(),
+    reasoning: Type.Boolean(),
+    modes: Type.Optional(Type.Array(Type.Enum(MODEL_MODES))),
+    thinkingLevelMap: Type.Optional(ThinkingLevelMapSchema),
+    input: Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")])),
+    cost: ModelCostSchema,
+    contextWindow: Type.Number(),
+    maxTokens: Type.Number(),
+    samplingParams: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+    headers: Type.Optional(Type.Record(Type.String(), Type.String())),
+    compat: Type.Optional(
+      Type.Union([
+        OpenAICompletionsCompatSchema,
+        OpenAIResponsesCompatSchema,
+        AnthropicMessagesCompatSchema,
+        BedrockCompatSchema,
+      ]),
+    ),
+  }),
+);

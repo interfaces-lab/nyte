@@ -103,9 +103,11 @@ interface CaretBox {
 
 function nodeRects(node: Node): readonly DOMRect[] {
   if (node instanceof Element) return Array.from(node.getClientRects());
+
   if (!(node instanceof Text)) return [];
   const range = node.ownerDocument.createRange();
   range.selectNodeContents(node);
+
   return Array.from(range.getClientRects());
 }
 
@@ -116,32 +118,42 @@ function nodeRects(node: Node): readonly DOMRect[] {
  */
 function caretBox(range: Range): CaretBox | undefined {
   const own = range.getClientRects()[0];
+
   if (own !== undefined && own.height > 0) return { x: own.left, top: own.top, height: own.height };
   const container = range.startContainer;
   const siblings = container instanceof Text ? [] : Array.from(container.childNodes);
   const before = siblings[range.startOffset - 1];
   const after = siblings[range.startOffset];
+
   if (before?.nodeName === "BR") {
     // After a line break the caret opens the next line at the block's start edge.
     const line = nodeRects(before).at(-1);
     const block = container instanceof Element ? container.getBoundingClientRect() : undefined;
+
     if (line !== undefined && line.height > 0 && block !== undefined) {
       return { x: block.left, top: line.bottom, height: line.height };
     }
   }
+
   const beforeRect =
     before === undefined || before.nodeName === "BR" ? undefined : nodeRects(before).at(-1);
+
   if (beforeRect !== undefined && beforeRect.height > 0) {
     return { x: beforeRect.right, top: beforeRect.top, height: beforeRect.height };
   }
+
   const afterRect =
     after === undefined || after.nodeName === "BR" ? undefined : nodeRects(after)[0];
+
   if (afterRect !== undefined && afterRect.height > 0) {
     return { x: afterRect.left, top: afterRect.top, height: afterRect.height };
   }
+
   const element = container instanceof Element ? container : container.parentElement;
   const rect = element?.getBoundingClientRect();
+
   if (rect === undefined || rect.height === 0) return undefined;
+
   return { x: rect.left, top: rect.top, height: rect.height };
 }
 
@@ -208,6 +220,7 @@ export function ComposerEditor({
         editor.read(() => {
           const document = $readComposerDocument();
           observed.current = document;
+
           return document;
         }),
       replaceText(start, end, text) {
@@ -227,6 +240,7 @@ export function ComposerEditor({
     }),
     [editor, focusEditor, rootRef],
   );
+
   useImperativeHandle(ref, () => handle, [handle]);
   useImperativeHandle(inputRef, () => handle, [handle]);
 
@@ -242,16 +256,21 @@ export function ComposerEditor({
         editorState.read(() => {
           const next = $readComposerDocument();
           observed.current = next;
+
           if (editor.isComposing()) return;
+
           if (referencesDirty.current) {
             referencesDirty.current = false;
             const references = $composerReferences();
+
             if (!sameReferences(references, lastReferences.current)) {
               lastReferences.current = references;
               onReferencesChange?.(references);
             }
           }
+
           const previous = reported.current;
+
           if (previous !== undefined && sameComposerDocument(previous, next)) return;
           reported.current = next;
           setEmpty(next.text === "");
@@ -269,6 +288,7 @@ export function ComposerEditor({
 
   useLayoutEffect(() => {
     const current = observed.current;
+
     if (current !== undefined && sameComposerDocument(current, externalDocument)) return;
     const root = rootRef.current;
     const focused = root !== null && root.ownerDocument.activeElement === root;
@@ -290,6 +310,7 @@ export function ComposerEditor({
         (event) => {
           if (event.isComposing || editor.isComposing()) return false;
           onKeyDown(event);
+
           return event.defaultPrevented;
         },
         COMMAND_PRIORITY_HIGH,
@@ -304,21 +325,26 @@ export function ComposerEditor({
         (event) => {
           if (!(event instanceof ClipboardEvent)) return false;
           const files = Array.from(event.clipboardData?.files ?? []);
+
           if (files.length > 0) {
             if (onFilesSelected === undefined) return false;
             event.preventDefault();
             onFilesSelected(files);
+
             return true;
           }
+
           const clipboard = clipboardReferenceFromPaste(
             event.clipboardData?.getData("text/plain") ?? "",
           );
+
           if (clipboard === undefined) return false;
           event.preventDefault();
           editor.update(() => $insertComposerReference(clipboard), {
             discrete: true,
             tag: HISTORY_PUSH_TAG,
           });
+
           return true;
         },
         COMMAND_PRIORITY_HIGH,
@@ -330,15 +356,18 @@ export function ComposerEditor({
   useLayoutEffect(() => {
     const root = rootRef.current;
     const caret = caretRef.current;
+
     if (root === null || caret === null) return;
     let frame = 0;
     let lastPosition = "";
     const glyph = root.ownerDocument.createRange();
     glyph.selectNodeContents(caret);
+
     const draw = (): void => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const selection = root.ownerDocument.getSelection();
+
         const visible =
           root.ownerDocument.activeElement === root &&
           !editor.isComposing() &&
@@ -346,17 +375,23 @@ export function ComposerEditor({
           selection.isCollapsed &&
           selection.rangeCount > 0 &&
           root.contains(selection.anchorNode);
+
         if (!visible) {
           caret.hidden = true;
           root.dataset["customCaret"] = "false";
+
           return;
         }
+
         const box = caretBox(selection.getRangeAt(0));
+
         if (box === undefined) {
           caret.hidden = true;
           root.dataset["customCaret"] = "false";
+
           return;
         }
+
         const bounds = root.getBoundingClientRect();
         const typography = getComputedStyle(root);
         const lineHeight = Number.parseFloat(typography.lineHeight);
@@ -372,12 +407,15 @@ export function ComposerEditor({
         const position = `translate(${String(x)}px, ${String(y)}px)`;
         caret.style.transform = position;
         caret.style.height = `${String(height)}px`;
+
         if (position !== lastPosition) {
           for (const animation of caret.getAnimations()) animation.currentTime = 0;
         }
+
         lastPosition = position;
       });
     };
+
     const ownerDocument = root.ownerDocument;
     ownerDocument.addEventListener("selectionchange", draw);
     root.addEventListener("focus", draw);
@@ -395,6 +433,7 @@ export function ComposerEditor({
     });
     ownerDocument.fonts.addEventListener("loadingdone", draw);
     const unregister = editor.registerUpdateListener(draw);
+
     return () => {
       cancelAnimationFrame(frame);
       unregister();

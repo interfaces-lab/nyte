@@ -3,17 +3,32 @@ import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import { streamSimple as streamCodex } from "../src/api/openai-codex-responses.ts";
 import { streamSimple as streamOpenAI } from "../src/api/openai-responses.ts";
-import { OPENAI_CODEX_MODELS } from "../src/providers/openai-codex.models.ts";
-import { OPENAI_MODELS } from "../src/providers/openai.models.ts";
-import type { Context, SimpleStreamOptions } from "../src/types.ts";
+import type { Context, Model, SimpleStreamOptions } from "../src/types.ts";
 
 const context: Context = {
   systemPrompt: "sys",
   messages: [{ role: "user", content: "hi", timestamp: 0 }],
 };
 
-const codexModel = OPENAI_CODEX_MODELS["gpt-5.4"];
-const openaiModel = OPENAI_MODELS["gpt-5.4"];
+const codexModel: Model<"openai-codex-responses"> = {
+  id: "gpt-test",
+  name: "GPT Test",
+  api: "openai-codex-responses",
+  provider: "openai-codex",
+  baseUrl: "https://chatgpt.test/backend-api",
+  reasoning: true,
+  input: ["text"],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 100_000,
+  maxTokens: 10_000,
+};
+
+const openaiModel: Model<"openai-responses"> = {
+  ...codexModel,
+  api: "openai-responses",
+  provider: "openai",
+  baseUrl: "https://api.openai.test/v1",
+};
 
 const codexToken = `h.${Buffer.from(
   JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "acct_1" } }),

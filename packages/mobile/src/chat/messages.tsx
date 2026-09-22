@@ -53,6 +53,7 @@ export function Markdown({
   const scheme = useColorScheme() === "dark" ? "dark" : "light";
   const transcriptFont = useTranscriptFont();
   const style = markdownStyle(theme, transcriptFont.value, scheme);
+
   return (
     <EnrichedMarkdownText
       // remend closes the stream's dangling fences and markers so the tail
@@ -98,13 +99,10 @@ function UserMessage({
   layout: ConversationLayout;
   note?: string;
 }) {
-  const text =
-    typeof content === "string"
-      ? content
-      : content
-          .filter((part) => part.type === "text")
-          .map((part) => part.text)
-          .join("\n");
+  const text = Array.isArray(content)
+    ? content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n")
+    : content;
+
   return (
     <Row layout={layout}>
       <Pressable onLongPress={() => copySheet(text)}>
@@ -115,9 +113,7 @@ function UserMessage({
               styles.bubbleWidth(Math.floor(layout.contentWidth * media.bubbleMaxWidthRatio)),
             ]}
           >
-            {typeof content === "string" ? (
-              <html.p style={textStyles.body}>{content}</html.p>
-            ) : (
+            {Array.isArray(content) ? (
               content.map((part, index) =>
                 part.type === "text" ? (
                   <html.p key={index} style={textStyles.body}>
@@ -132,6 +128,8 @@ function UserMessage({
                   />
                 ),
               )
+            ) : (
+              <html.p style={textStyles.body}>{content}</html.p>
             )}
           </html.div>
           {note ? <html.span style={textStyles.caption}>{note}</html.span> : null}
@@ -180,6 +178,7 @@ function Disclosure({
 }) {
   const theme = useTheme();
   const [expanded, setExpanded] = useState(false);
+
   return (
     <html.div style={styles.disclosure}>
       <html.button
@@ -211,6 +210,7 @@ function EditRow({
 }) {
   const theme = useTheme();
   const basename = patch.path.split("/").pop() ?? patch.path;
+
   return (
     <html.button onClick={() => onOpenFile?.(patch.path)} style={styles.editRow}>
       <html.div style={styles.editBadge}>
@@ -249,6 +249,7 @@ function toolTitle(
       return toolClass.label;
     default: {
       const _exhaustive: never = toolClass;
+
       return _exhaustive;
     }
   }
@@ -275,6 +276,7 @@ function failureLabel(failure: Failure): string {
       return failure.message.replaceAll(/\s+/gu, " ").trim() || "Failed";
     default: {
       const _exhaustive: never = failure.class;
+
       return _exhaustive;
     }
   }
@@ -299,11 +301,13 @@ function WorkRow({
   const [expanded, setExpanded] = useState(false);
   const [now] = useState(() => Date.now());
   const failed = turn.failure !== undefined && turn.failure.class !== "aborted";
+
   const label = live
     ? `Responding · ${elapsed(turn.startedAt, now)}`
     : turn.failure === undefined
       ? "Finished"
       : failureLabel(turn.failure);
+
   return (
     <Row layout={layout}>
       <html.div style={styles.work}>
@@ -353,11 +357,14 @@ function WorkRow({
                     layout={layout}
                   />
                 );
+
               if (part.kind !== "tool") return null;
+
               if (part.class.kind === "file_patch" && part.result?.isError === false)
                 return <EditRow key={part.callId} patch={part.class} onOpenFile={onOpenFile} />;
               const title = `${part.result?.isError === true ? "Failed: " : ""}${toolTitle(part.class, part.result !== undefined, delegateNames)}`;
               const text = part.result?.output ?? "";
+
               return <Disclosure key={part.callId} title={title} text={text} layout={layout} />;
             })}
           </html.div>
@@ -388,6 +395,7 @@ export const MessageRow = memo(function MessageRow({
 }) {
   if ("change" in item)
     return <UserMessage content={item.content} layout={layout} note="Queued on Mac" />;
+
   switch (item.kind) {
     case "user":
       return <UserMessage content={item.content} layout={layout} />;
@@ -419,6 +427,7 @@ export const MessageRow = memo(function MessageRow({
       return null;
     default: {
       const _exhaustive: never = item;
+
       return _exhaustive;
     }
   }

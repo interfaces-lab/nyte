@@ -24,7 +24,7 @@ import { ExpectedHostError, ipcResult } from "./errors.ts";
 import { callIpc } from "./ipc-call.ts";
 import { localFonts } from "./fonts.ts";
 import { UsageScanWorker } from "./usage-scan.ts";
-import { DesktopHost, type DesktopHostDependencies } from "./host.ts";
+import { DesktopHost, type DesktopHostDependencies, type HostWindow } from "./host.ts";
 import { registerUpdates } from "./updates.ts";
 import { ensureShellEnvironment } from "./shell-environment.ts";
 
@@ -36,7 +36,21 @@ import {
   themePreference,
 } from "./ipc-inputs.ts";
 
-let mainWindow: BrowserWindow | undefined;
+interface NyteWindow {
+  readonly window: BrowserWindow;
+  readonly editor: ReturnType<typeof createWorkspaceEditor>;
+  readonly menuCommands: ReturnType<typeof createMenuCommandDelivery>;
+  /**
+   * Whether the window has been shown at least once. Synthesized mouse input
+   * is silently dropped until the first show, so the explicit signal avoids
+   * a race the fallback (window.isVisible) cannot catch.
+   */
+  shown: boolean;
+}
+
+/** Keyed by the renderer's webContents id; ordered by focus, most recent last. */
+const windows = new Map<HostWindow, NyteWindow>();
+
 let desktopHost: DesktopHost | undefined;
 
 registerBunOAuthFlows();
@@ -51,6 +65,7 @@ registerBunOAuthFlows();
 function macOSWindowChrome(): Partial<Electron.BrowserWindowConstructorOptions> {
   const trafficLightDiameter = Number.parseFloat(process.getSystemVersion()) >= 25 ? 14 : 16;
   const trafficLightInset = Math.floor((35 - trafficLightDiameter) / 2);
+
   const options: Partial<Electron.BrowserWindowConstructorOptions> = {
     acceptFirstMouse: true,
     hasShadow: true,
@@ -58,10 +73,12 @@ function macOSWindowChrome(): Partial<Electron.BrowserWindowConstructorOptions> 
     titleBarStyle: "hidden",
     trafficLightPosition: { x: trafficLightInset + 1, y: trafficLightInset },
   };
+
   if (!nativeTheme.shouldUseHighContrastColors) {
     options.vibrancy = "sidebar";
     options.visualEffectState = "active";
   }
+
   return options;
 }
 
@@ -75,11 +92,14 @@ function windowBackgroundColor(): string {
   if (process.platform !== "darwin" || nativeTheme.shouldUseHighContrastColors) {
     return nativeTheme.shouldUseDarkColors ? "#111111" : "#f8f8f8";
   }
+
   return nativeTheme.shouldUseDarkColors ? "#40000000" : "#00ffffff";
 }
 
 const updateTest = app.isPackaged && app.getName() === "Nyte Update Test";
+
 app.setName(updateTest ? "Nyte Update Test" : app.isPackaged ? "Nyte" : "Nyte (Dev)");
+
 app.setPath(
   "userData",
   join(
@@ -87,30 +107,43 @@ app.setPath(
     updateTest ? "Nyte Update Test" : app.isPackaged ? "Nyte" : "Nyte Dev",
   ),
 );
+
 // The packaged test must remain isolated after Sparkle relaunches without shell variables.
 if (updateTest) process.env["NYTE_HOME"] = join(app.getPath("userData"), "nyte");
+
 if (process.platform === "linux") app.commandLine.appendSwitch("gtk-version", "3");
 
-function send(channel: string, payload: HostEvent | WatchEnvelope): void {
-  if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send(channel, payload);
+function send(window: HostWindow, channel: string, payload: HostEvent | WatchEnvelope): void {
+  const entry = windows.get(window);
+
+  if (entry !== undefined && !entry.window.isDestroyed()) {
+    entry.window.webContents.send(channel, payload);
   }
 }
 
-/**
- * Whether the window has been shown at least once. Synthesized mouse input
- * is silently dropped until the first show, so the explicit signal avoids
- * a race the fallback (window.isVisible) cannot catch.
- */
-let windowHasBeenShown = false;
+function broadcast(event: HostEvent): void {
+  for (const window of windows.keys()) send(window, HOST_EVENT_CHANNEL, event);
+}
+
+/** The window app-level commands act on: the one focused most recently. */
+function currentWindow(): NyteWindow | undefined {
+  return [...windows.values()].at(-1);
+}
+
+function reveal(window: BrowserWindow): void {
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+}
 
 const browserSurfaces = createBrowserSurfaces({
-  window: () => mainWindow,
-  emit: (event) => send(HOST_EVENT_CHANNEL, event),
+  window: (id) =>
+    (id === undefined ? undefined : windows.get(id))?.window ?? currentWindow()?.window,
+  emit: broadcast,
   filterListPath: app.isPackaged
     ? join(process.resourcesPath, "adblock.bin")
     : join(app.getAppPath(), "resources", "adblock.bin"),
-  windowShown: () => windowHasBeenShown,
+  windowShown: (window) => windows.get(window.webContents.id)?.shown ?? false,
 });
 
 const hostDependencies = {
@@ -119,108 +152,126 @@ const hostDependencies = {
   // A sibling entry of this bundle; see the main build's rollup inputs.
   usageScan: new UsageScanWorker(nyteHome(), new URL("./usage-worker.js", import.meta.url)),
   storeWorker: new URL("./store-worker.js", import.meta.url),
-  emitHostEvent: (event) => send(HOST_EVENT_CHANNEL, event),
-  emitWatchEvent: (envelope) => send(WATCH_EVENT_CHANNEL, envelope),
+  emitHostEvent: (event, window) =>
+    window === undefined ? broadcast(event) : send(window, HOST_EVENT_CHANNEL, event),
+  emitWatchEvent: (envelope, window) => send(window, WATCH_EVENT_CHANNEL, envelope),
   openExternal: (url) => void shell.openExternal(url),
   revealPath: (path) => shell.showItemInFolder(path),
   trashPath: (path) => shell.trashItem(path),
-  showContextMenu: (input) => showContextMenu({ window: mainWindow, input }),
+  showContextMenu: (input, window) =>
+    showContextMenu({ window: windows.get(window)?.window, input }),
   browser: browserSurfaces,
   listFonts: localFonts,
-  pickFolder: async () => {
-    const window = mainWindow;
+  pickFolder: async (id) => {
+    const window = windows.get(id)?.window;
+
     const options: Electron.OpenDialogOptions = {
       properties: ["openDirectory", "createDirectory"],
       message: "Open a workspace folder",
     };
+
     const result =
       window === undefined
         ? await dialog.showOpenDialog(options)
         : await dialog.showOpenDialog(window, options);
+
     return result.canceled ? undefined : result.filePaths[0];
   },
 } satisfies DesktopHostDependencies;
 
 function getHost(): DesktopHost {
   desktopHost ??= new DesktopHost(hostDependencies);
+
   return desktopHost;
 }
 
-const workspaceEditor = createWorkspaceEditor({
-  workspace: async () => {
-    const state = await getHost().call("host.state", undefined);
-    if (state.workspace === undefined)
-      throw new ExpectedHostError({ code: "not_found", message: "No project is open" });
-    return state.workspace.path;
-  },
-  requireTrust: async (path) => {
-    try {
-      await createWorkspaceStore().require(path);
-    } catch (cause) {
-      if (cause instanceof WorkspaceTrustRequired) {
-        send(HOST_EVENT_CHANNEL, { kind: "workspace_trust_required", path: cause.cwd });
-      }
-      throw cause;
-    }
-  },
-});
+/** Editor requests capture the requesting window's workspace. */
+function createWindowEditor(window: HostWindow): ReturnType<typeof createWorkspaceEditor> {
+  return createWorkspaceEditor({
+    workspace: async () => {
+      const state = await getHost().call(window, "host.state", undefined);
 
-function assertMainFrame(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): void {
-  const window = mainWindow;
+      if (state.workspace === undefined)
+        throw new ExpectedHostError({ code: "not_found", message: "No project is open" });
+
+      return state.workspace.path;
+    },
+    requireTrust: async (path) => {
+      try {
+        await createWorkspaceStore().require(path);
+      } catch (cause) {
+        if (cause instanceof WorkspaceTrustRequired) {
+          send(window, HOST_EVENT_CHANNEL, { kind: "workspace_trust_required", path: cause.cwd });
+        }
+
+        throw cause;
+      }
+    },
+  });
+}
+
+function senderWindow(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): NyteWindow {
+  const entry = windows.get(event.sender.id);
+
   if (
-    window === undefined ||
-    event.sender !== window.webContents ||
-    event.senderFrame !== window.webContents.mainFrame
+    entry === undefined ||
+    event.sender !== entry.window.webContents ||
+    event.senderFrame !== entry.window.webContents.mainFrame
   ) {
-    throw new Error("IPC request did not come from the main window");
+    throw new Error("IPC request did not come from a Nyte window");
   }
+
+  return entry;
 }
 
 function registerIpc(): void {
   ipcMain.on(APP_MENU_READY_CHANNEL, (event) => {
-    assertMainFrame(event);
-    menuCommands.ready();
+    senderWindow(event).menuCommands.ready();
   });
 
   ipcMain.on(THEME_PREFERENCE_CHANNEL, (event, value) => {
-    assertMainFrame(event);
+    senderWindow(event);
+
     if (!themePreference.Check(value)) return;
     nativeTheme.themeSource = value;
   });
 
   ipcMain.on(BROWSER_BOUNDS_CHANNEL, (event, message) => {
-    assertMainFrame(event);
+    senderWindow(event);
+
     try {
-      browserSurfaces.setBounds(decodeBrowserBounds(message));
+      browserSurfaces.setBounds(decodeBrowserBounds(message), event.sender.id);
     } catch {
       return;
     }
   });
 
   ipcMain.handle(WORKSPACE_EDITOR_CHANNEL, async (event, request) => {
-    assertMainFrame(event);
-    return ipcResult(() => workspaceEditor.call(decodeWorkspaceEditorRequest(request)));
+    const { editor } = senderWindow(event);
+
+    return ipcResult(() => editor.call(decodeWorkspaceEditorRequest(request)));
   });
 
   ipcMain.handle(CALL_CHANNEL, async (event, request) => {
-    assertMainFrame(event);
-    return callIpc(getHost, request);
+    senderWindow(event);
+
+    return callIpc(getHost, event.sender.id, request);
   });
 
   ipcMain.handle(WATCH_START_CHANNEL, async (event, input) => {
-    assertMainFrame(event);
-    return ipcResult(() => getHost().watchStart(decodeWatchStart(input)));
+    senderWindow(event);
+
+    return ipcResult(() => getHost().watchStart(event.sender.id, decodeWatchStart(input)));
   });
 
   ipcMain.handle(WATCH_STOP_CHANNEL, async (event, input) => {
-    assertMainFrame(event);
+    senderWindow(event);
+
     return ipcResult(() => getHost().watchStop(decodeWatchStop(input)));
   });
 }
 
-function createWindow(): void {
-  if (mainWindow !== undefined) return;
-  windowHasBeenShown = false;
+function createWindow(): NyteWindow {
   const options: Electron.BrowserWindowConstructorOptions = {
     width: 1200,
     height: 800,
@@ -235,34 +286,53 @@ function createWindow(): void {
       sandbox: true,
     },
   };
+
   if (process.platform === "darwin") Object.assign(options, macOSWindowChrome());
   const created = new BrowserWindow(options);
-  mainWindow = created;
-  const releaseRendererWork = (): void => {
-    workspaceEditor.dispose();
-    desktopHost?.cancelLogins();
-    desktopHost?.stopWatches();
-    void desktopHost?.closeTerminals().catch(() => undefined);
+  const id = created.webContents.id;
+
+  const entry: NyteWindow = {
+    window: created,
+    editor: createWindowEditor(id),
+    menuCommands: createMenuCommandDelivery({
+      openWindow: () => reveal(created),
+      send: (command) => created.webContents.send(APP_MENU_COMMAND_CHANNEL, command),
+    }),
+    shown: false,
   };
+
+  windows.set(id, entry);
+  created.on("focus", () => {
+    windows.delete(id);
+    windows.set(id, entry);
+  });
+
+  const releaseRendererWork = (): void => {
+    entry.editor.dispose();
+    desktopHost?.releaseWindow(id);
+  };
+
   created.webContents.on("render-process-gone", releaseRendererWork);
   // Only a committed main-frame navigation has left the document behind. The
   // start event fires before `will-navigate` can cancel, and would tear down
   // under a renderer that stays.
   created.webContents.on("did-navigate", () => {
     releaseRendererWork();
-    menuCommands.reset();
+    entry.menuCommands.reset();
   });
 
   const updateWindowBackground = (): void => {
     created.setBackgroundColor(windowBackgroundColor());
+
     if (process.platform === "darwin") {
       created.setVibrancy(nativeTheme.shouldUseHighContrastColors ? null : "sidebar");
     }
   };
+
   nativeTheme.on("updated", updateWindowBackground);
   created.once("ready-to-show", () => {
     created.show();
-    windowHasBeenShown = true;
+    entry.shown = true;
   });
 
   created.webContents.setWindowOpenHandler(({ url }) => {
@@ -271,6 +341,7 @@ function createWindow(): void {
     } catch {
       // Invalid renderer URLs stay closed.
     }
+
     return { action: "deny" };
   });
   created.webContents.on("context-menu", (_event, params) => {
@@ -292,33 +363,25 @@ function createWindow(): void {
   });
 
   const developmentUrl = process.env["ELECTRON_RENDERER_URL"];
+
   if (developmentUrl === undefined)
     void created.loadFile(join(import.meta.dirname, "../renderer/index.html"));
   else void created.loadURL(developmentUrl);
 
   created.on("closed", () => {
-    menuCommands.reset();
-    releaseRendererWork();
+    entry.menuCommands.reset();
+    entry.editor.dispose();
     nativeTheme.off("updated", updateWindowBackground);
-    browserSurfaces.dispose();
-    if (mainWindow === created) {
-      mainWindow = undefined;
-      windowHasBeenShown = false;
-    }
+    windows.delete(id);
+    browserSurfaces.releaseWindow(id);
+    desktopHost?.closeWindow(id);
   });
+
+  return entry;
 }
 
-const menuCommands = createMenuCommandDelivery({
-  openWindow: () => {
-    createWindow();
-    if (mainWindow?.isMinimized() === true) mainWindow.restore();
-    mainWindow?.show();
-    mainWindow?.focus();
-  },
-  send: (command) => mainWindow?.webContents.send(APP_MENU_COMMAND_CHANNEL, command),
-});
-
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
@@ -326,26 +389,29 @@ if (!hasSingleInstanceLock) {
   void ensureShellEnvironment();
 
   app.on("second-instance", () => {
-    if (mainWindow?.isMinimized() === true) mainWindow.restore();
-    mainWindow?.show();
-    mainWindow?.focus();
+    reveal((currentWindow() ?? createWindow()).window);
   });
 
   void app.whenReady().then(async () => {
     registerIpc();
+
     // Packaged apps use the bundle ICNS. The dev PNG shares its macOS inset.
     if (!app.isPackaged && process.platform === "darwin") {
       app.dock?.setIcon(join(app.getAppPath(), "resources", "icon.png"));
     }
-    createWindow();
+
+    const first = createWindow();
     void getHost()
-      .prepare()
+      .prepare(first.window.webContents.id)
       .catch(() => undefined);
+
     const menu = Menu.buildFromTemplate(
       applicationMenuTemplate({
         platform: process.platform,
         name: app.getName(),
-        dispatch: menuCommands.dispatch,
+        // A command with no window open reopens one, as the single window did.
+        dispatch: (command) => (currentWindow() ?? createWindow()).menuCommands.dispatch(command),
+        newWindow: createWindow,
         appInfo: () => ({
           name: app.getName(),
           version: app.getVersion(),
@@ -356,7 +422,9 @@ if (!hasSingleInstanceLock) {
         }),
       }),
     );
+
     const updateItem = menu.getMenuItemById("check-for-updates");
+
     if (updateItem !== null)
       registerUpdates({
         item: updateItem,
@@ -378,7 +446,7 @@ if (!hasSingleInstanceLock) {
 
   app.on("activate", () => {
     void app.whenReady().then(() => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (windows.size === 0) createWindow();
     });
   });
 }

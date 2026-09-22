@@ -5,13 +5,16 @@ import { measureOperation, measureSettledDesktop } from "./measure.ts";
 
 benchmark("opens an unvisited session tab without a blank frame", async ({ report }) => {
   const desktop = await launchDesktop({ sessionCount: 2, turnsPerSession: 1 });
+
   try {
     await openBenchmarkSession(desktop, 0);
     const source = desktop.fixture.sessions[0];
     const destination = desktop.fixture.sessions[1];
+
     if (source === undefined || destination === undefined) {
       throw new Error("Navigation benchmark requires two sessions");
     }
+
     const sourceText = `Benchmark prompt 0001 for ${source.name}`;
     const destinationText = `Benchmark prompt 0001 for ${destination.name}`;
     const pane = desktop.page.getByRole("region", { name: "Active chat pane" });
@@ -22,9 +25,11 @@ benchmark("opens an unvisited session tab without a blank frame", async ({ repor
         ({ sourceText, destinationText }) =>
           new Promise<string[]>((resolve) => {
             const frames: string[] = [];
+
             const sample = (): void => {
               const element = document.querySelector('[aria-label="Active chat pane"]');
               const text = element instanceof HTMLElement ? element.innerText.trim() : "";
+
               const frame = text.includes(destinationText)
                 ? "destination"
                 : text.includes(sourceText)
@@ -32,20 +37,26 @@ benchmark("opens an unvisited session tab without a blank frame", async ({ repor
                   : text === ""
                     ? "blank"
                     : "unknown";
+
               frames.push(frame);
+
               if (frame === "destination") resolve(frames);
               else requestAnimationFrame(sample);
             };
+
             requestAnimationFrame(sample);
           }),
         { sourceText, destinationText },
       );
+
       await openBenchmarkSession(desktop, 1);
       const frames = await observation;
       expect(frames.at(-1)).toBe("destination");
       expect(frames.filter((frame) => frame === "blank" || frame === "unknown")).toEqual([]);
+
       return frames;
     });
+
     const idle = await measureSettledDesktop(desktop);
     expect(desktop.pageErrors).toEqual([]);
     report(

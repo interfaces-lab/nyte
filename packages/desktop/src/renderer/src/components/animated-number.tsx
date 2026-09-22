@@ -21,14 +21,17 @@ export function AnimatedNumber({ value }: { readonly value: number }) {
 
   useLayoutEffect(() => {
     const node = element.current;
+
     if (node === null) return;
     const style = getComputedStyle(node);
     const durationToken = style.getPropertyValue("--nyte-duration-normal").trim();
     const duration = Number.parseFloat(durationToken) * (durationToken.endsWith("ms") ? 1 : 1000);
     const ease = style.getPropertyValue("--nyte-easing-out").trim();
+
     if (!Number.isFinite(duration) || duration <= 0 || ease === "") return;
     const instance = new TextMorph({ element: node, duration, ease, numbers: true });
     morph.current = instance;
+
     return () => {
       node.getAnimations({ subtree: true }).forEach((animation) => animation.cancel());
       instance.destroy();

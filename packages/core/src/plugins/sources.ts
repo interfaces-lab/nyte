@@ -13,6 +13,8 @@ import { createHash } from "node:crypto";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { JsonValue } from "@nyte-ai/schema";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import type { Disposer, LoadedPlugin, Plugin, PluginSource } from "./types.ts";
 
 type ManifestPluginRef = { id: string; options?: JsonValue };
@@ -21,20 +23,15 @@ function isDisabledPluginId(item: string | ManifestPluginRef): item is string {
   return typeof item === "string" && item.startsWith("-");
 }
 
-function hasDefaultExport(value: unknown): value is { default: unknown } {
-  return typeof value === "object" && value !== null && "default" in value;
-}
+const ModuleWithDefault = Type.Object({ default: Type.Unknown() });
+
+const PluginExport = Type.Object({
+  id: Type.String({ minLength: 1 }),
+  session: Type.Function([], Type.Unknown()),
+});
 
 function isPlugin(value: unknown): value is Plugin {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "id" in value &&
-    typeof value.id === "string" &&
-    value.id.length > 0 &&
-    "session" in value &&
-    typeof value.session === "function"
-  );
+  return Value.Check(PluginExport, value);
 }
 
 export interface PluginManifest {
@@ -68,11 +65,13 @@ export interface ResolveOptions {
 }
 
 const ENTRY_EXTENSIONS = new Set([".ts", ".js", ".mts", ".mjs"]);
+
 const SOURCE_EXTENSIONS = new Set([...ENTRY_EXTENSIONS, ".tsx", ".jsx", ".cts", ".cjs", ".json"]);
 
 export async function resolvePlugins(options: ResolveOptions): Promise<ResolvedPlugins> {
   const byId = new Map<string, LoadedPlugin>();
   const failures: LoadFailure[] = [];
+
   for (const plugin of options.builtins) {
     byId.set(plugin.id, {
       id: plugin.id,
@@ -81,50 +80,65 @@ export async function resolvePlugins(options: ResolveOptions): Promise<ResolvedP
       module: plugin,
     });
   }
+
   for (const directory of options.directories ?? []) {
     for (const entry of await listPluginEntries(directory.path)) {
       const loaded = await loadPluginFile(entry, directory.source);
+
       if ("error" in loaded) {
         failures.push(loaded);
         continue;
       }
+
       byId.set(loaded.id, loaded);
     }
   }
+
   const disabled = new Set<string>();
+
   for (const item of options.manifest?.plugins ?? []) {
     if (isDisabledPluginId(item)) disabled.add(item.slice(1));
   }
+
   return { plugins: [...byId.values()].filter((plugin) => !disabled.has(plugin.id)), failures };
 }
 
 /** `foo.ts` and `foo/index.ts` are plugin entries; anything else in the directory is ignored. */
 async function listPluginEntries(directory: string): Promise<string[]> {
   let names: string[];
+
   try {
     names = await readdir(directory);
   } catch {
     return [];
   }
+
   const entries: string[] = [];
+
   for (const name of names.sort()) {
     if (name.startsWith(".") || name.startsWith("_")) continue;
     const path = join(directory, name);
     const info = await stat(path).catch(() => undefined);
+
     if (info === undefined) continue;
+
     if (info.isFile() && ENTRY_EXTENSIONS.has(extname(name))) {
       entries.push(path);
       continue;
     }
+
     if (!info.isDirectory()) continue;
+
     for (const candidate of ["index.ts", "index.js", "index.mts", "index.mjs"]) {
       const index = join(path, candidate);
+
       if ((await stat(index).catch(() => undefined))?.isFile()) {
         entries.push(index);
         break;
       }
     }
   }
+
   return entries;
 }
 
@@ -134,15 +148,20 @@ async function loadPluginFile(
 ): Promise<LoadedPlugin | LoadFailure> {
   const absolute = resolve(path);
   const id = pluginIdForPath(absolute);
+
   try {
     const files = await pluginFiles(absolute);
+
     const stats = await Promise.all(
       files.map(async (file) => {
         const info = await stat(file);
+
         return `${info.mtimeMs}:${info.size}`;
       }),
     );
+
     const version = createHash("sha256").update(stats.join(",")).digest("hex").slice(0, 16);
+
     // A query string gives `import()` a fresh entry module. Helpers keep their
     // plain URL, so Bun's module cache is evicted for the whole tree (it keys
     // by real path); Node's ESM cache has no eviction, so helpers there stay
@@ -150,19 +169,23 @@ async function loadPluginFile(
     if (typeof require !== "undefined") {
       for (const file of files) delete require.cache[await realpath(file).catch(() => file)];
     }
+
     const url = pathToFileURL(absolute);
     url.searchParams.set("v", version);
     const loaded: unknown = await import(url.href);
-    const module = hasDefaultExport(loaded) ? loaded.default : undefined;
+    const module = Value.Check(ModuleWithDefault, loaded) ? loaded.default : undefined;
+
     if (!isPlugin(module)) {
       return { path: absolute, error: "default export is not a plugin (use definePlugin)" };
     }
+
     if (module.id !== id) {
       return {
         path: absolute,
         error: `plugin id "${module.id}" must match the file name "${id}"`,
       };
     }
+
     return { id, version, source, module, path: absolute };
   } catch (error) {
     return { path: absolute, error: error instanceof Error ? error.message : String(error) };
@@ -172,7 +195,9 @@ async function loadPluginFile(
 /** `.../profile.ts` and `.../profile/index.ts` are both "profile". */
 function pluginIdForPath(path: string): string {
   const file = basename(path, extname(path));
+
   if (file === "index") return basename(resolve(path, ".."));
+
   return file;
 }
 
@@ -185,11 +210,13 @@ async function pluginFiles(entry: string): Promise<string[]> {
   if (basename(entry, extname(entry)) !== "index") return [entry];
   const root = dirname(entry);
   const names = await readdir(root, { recursive: true, withFileTypes: true });
+
   const files = names
     .filter((item) => item.isFile() && !item.parentPath.split(sep).includes("node_modules"))
     .map((item) => join(item.parentPath, item.name))
     .filter((file) => file !== entry && SOURCE_EXTENSIONS.has(extname(file)))
     .sort();
+
   return [entry, ...files];
 }
 
@@ -233,15 +260,19 @@ export function watchPluginDirectories(options: WatchOptions): () => void {
   const fire = async (): Promise<void> => {
     if (running) {
       pending = true;
+
       return;
     }
+
     running = true;
+
     try {
       await options.onChange();
     } catch (error) {
       report(error instanceof Error ? error : new Error(String(error)));
     } finally {
       running = false;
+
       if (pending && !stopped) {
         pending = false;
         schedule();
@@ -255,6 +286,7 @@ export function watchPluginDirectories(options: WatchOptions): () => void {
   const schedule = (): void => {
     if (stopped) return;
     release ??= options.hold?.();
+
     if (timer !== undefined) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = undefined;
@@ -266,8 +298,10 @@ export function watchPluginDirectories(options: WatchOptions): () => void {
   const ensureWatchers = (): void => {
     for (const directory of options.directories) {
       if (watchers.has(directory.path)) continue;
+
       try {
         const names = directory.names === undefined ? undefined : new Set(directory.names);
+
         const watcher = watch(
           directory.path,
           { recursive: directory.recursive ?? true },
@@ -277,6 +311,7 @@ export function watchPluginDirectories(options: WatchOptions): () => void {
             schedule();
           },
         );
+
         watcher.on("error", () => {
           watchers.delete(directory.path);
           watcher.close();
@@ -298,9 +333,11 @@ export function watchPluginDirectories(options: WatchOptions): () => void {
   return () => {
     stopped = true;
     clearInterval(retry);
+
     if (timer !== undefined) clearTimeout(timer);
     release?.();
     release = undefined;
+
     for (const watcher of watchers.values()) watcher.close();
     watchers.clear();
   };

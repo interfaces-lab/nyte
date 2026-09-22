@@ -1,10 +1,9 @@
 import { openAIResponsesApi } from "../api/openai-responses.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
 import { createProvider, type Provider } from "../models.ts";
-import { OPENAI_MODELS } from "./openai.models.ts";
 
 export function openaiProvider(): Provider<"openai-responses"> {
-  return createProvider({
+  return createProvider<"openai-responses">({
     id: "openai",
     name: "OpenAI",
     baseUrl: "https://api.openai.com/v1",
@@ -12,7 +11,6 @@ export function openaiProvider(): Provider<"openai-responses"> {
       minimumRetentionMs: { short: 5 * 60_000, long: 24 * 60 * 60_000 },
     },
     auth: { apiKey: envApiKeyAuth("OpenAI API key", ["OPENAI_API_KEY"]) },
-    models: Object.values(OPENAI_MODELS),
-    api: openAIResponsesApi(),
+    api: { "openai-responses": openAIResponsesApi() },
   });
 }

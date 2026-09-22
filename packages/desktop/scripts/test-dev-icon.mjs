@@ -25,9 +25,11 @@ await test(
   async (t) => {
     const root = mkdtempSync(join(tmpdir(), "nyte-dev-icon-"));
     t.after(() => rmSync(root, { recursive: true, force: true }));
+
     for (const directory of ["scripts", "build", "node_modules"]) {
       mkdirSync(join(root, directory));
     }
+
     const script = join(root, "scripts/dev.mjs");
     const icon = join(root, "build/icon.icns");
     copyFileSync(new URL("./dev.mjs", import.meta.url), script);
@@ -44,11 +46,13 @@ await test(
     );
     const originalPlist = join(dirname(electronPath), "../Info.plist");
     const originalPlistContents = readFileSync(originalPlist);
+
     const originalIconName = execFileSync(
       "/usr/bin/plutil",
       ["-extract", "CFBundleIconFile", "raw", "-o", "-", originalPlist],
       { encoding: "utf8" },
     ).trim();
+
     const originalIcon = join(dirname(electronPath), "../Resources", originalIconName);
     const originalIconContents = readFileSync(originalIcon);
 
@@ -60,6 +64,7 @@ await test(
       assert.ok(existsSync(executable));
       assert.notEqual(executable, electronPath);
       const bundle = join(dirname(executable), "../..");
+
       const plist = JSON.parse(
         execFileSync(
           "/usr/bin/plutil",
@@ -67,6 +72,7 @@ await test(
           { encoding: "utf8" },
         ),
       );
+
       assert.equal(plist.CFBundleName, "Nyte (Dev)");
       assert.equal(plist.CFBundleDisplayName, "Nyte (Dev)");
       assert.equal(plist.CFBundleIdentifier, "ai.nyte.desktop.dev");

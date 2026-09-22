@@ -15,16 +15,18 @@ export type WakeSession = (
   input: Pick<Parameters<Nyte["advance"]>[0], "sessionId" | "head">,
 ) => Promise<void>;
 
-export function createServerModels(secrets: Readonly<Record<string, unknown>>) {
+export function createServerModels(secrets: Readonly<Record<string, string | undefined>>) {
   const models = createModels({
     authContext: {
       env: async (name) => {
         const value = secrets[name];
-        return typeof value === "string" && value.length > 0 ? value : undefined;
+
+        return value === "" ? undefined : value;
       },
       fileExists: async () => false,
     },
   });
+
   models.setProvider(anthropicProvider());
   models.setProvider(openaiProvider());
   models.setProvider({
@@ -35,6 +37,7 @@ export function createServerModels(secrets: Readonly<Record<string, unknown>>) {
         name: "Codex OAuth access token",
         resolve: async ({ ctx }) => {
           const access = await ctx.env("OPENAI_CODEX_ACCESS_TOKEN");
+
           return access
             ? { auth: { apiKey: access }, source: "Codex OAuth access token" }
             : undefined;
@@ -42,6 +45,7 @@ export function createServerModels(secrets: Readonly<Record<string, unknown>>) {
       },
     },
   });
+
   return models;
 }
 
@@ -76,8 +80,10 @@ export function createChatServer({
         ...sdk.sessions,
         async configure(input) {
           const outcome = await sdk.sessions.configure(input);
+
           if (outcome.kind === "queued")
             await wake({ sessionId: input.sessionId, head: input.head });
+
           return outcome;
         },
       },
@@ -87,12 +93,15 @@ export function createChatServer({
           const receipt = await sdk.messages.send(input);
           // Lost dispatch responses can be retried with the same admission key.
           await wake({ sessionId: input.sessionId, head: input.head });
+
           return receipt;
         },
         async redeliver(input) {
           const outcome = await sdk.messages.redeliver(input);
+
           if (outcome.kind !== "not_found")
             await wake({ sessionId: input.sessionId, head: input.head });
+
           return outcome;
         },
       },
@@ -100,14 +109,18 @@ export function createChatServer({
         ...sdk.runs,
         async reply(input) {
           const outcome = await sdk.runs.reply(input);
+
           if (outcome.kind !== "not_found")
             await wake({ sessionId: input.sessionId, head: input.head });
+
           return outcome;
         },
         async abort(input) {
           const outcome = await sdk.runs.abort(input);
+
           if (outcome.kind === "requested")
             await wake({ sessionId: input.sessionId, head: input.head });
+
           return outcome;
         },
       },

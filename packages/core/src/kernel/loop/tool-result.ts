@@ -36,6 +36,7 @@ export function toolErrorResult(
   lastPartial?: AgentToolResult<unknown>,
 ): AgentToolResult<unknown> {
   if (cause instanceof ToolError) return cause.result;
+
   const result: AgentToolResult<unknown> = {
     content: [
       ...toolResultContent(cause instanceof Error ? cause.message : String(cause)),
@@ -43,8 +44,10 @@ export function toolErrorResult(
     ],
     details: lastPartial?.details === undefined ? {} : lastPartial.details,
   };
+
   if (lastPartial?.title !== undefined) {
     result.title = lastPartial.title;
   }
+
   return result;
 }

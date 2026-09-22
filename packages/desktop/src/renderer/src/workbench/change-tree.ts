@@ -34,14 +34,18 @@ export interface ChangeFilter {
 
 export function matchesChangePathQuery(path: string, query: string): boolean {
   const needle = query.trim().toLowerCase();
+
   if (needle === "") return true;
   const haystack = path.toLowerCase();
   let cursor = 0;
+
   for (const character of needle) {
     const found = haystack.indexOf(character, cursor);
+
     if (found === -1) return false;
     cursor = found + 1;
   }
+
   return true;
 }
 
@@ -52,19 +56,26 @@ export function filterChangePaths(
 ): readonly string[] {
   const statuses = filter.statuses;
   const viewed = filter.viewed;
+
   return entries
+    .values()
     .filter((entry) => {
       if (!matchesChangePathQuery(entry.path, filter.query ?? "")) return false;
+
       if (statuses !== undefined && statuses.length > 0) {
         if (entry.status === undefined || !statuses.includes(entry.status)) return false;
       }
+
       if (viewed !== undefined && viewed.mode !== "all") {
         const isViewed = viewed.isViewed(entry.path);
+
         if (viewed.mode === "viewed" ? !isViewed : isViewed) return false;
       }
+
       return true;
     })
-    .map((entry) => entry.path);
+    .map((entry) => entry.path)
+    .toArray();
 }
 
 /** Master-checkbox state over a list of paths. An empty list reports `"none"`. */
@@ -76,9 +87,12 @@ export function changeSelectionSummary(
 ): ChangeSelectionSummary {
   if (paths.length === 0) return "none";
   let matched = 0;
+
   for (const path of paths) {
     if (selected(path)) matched += 1;
   }
+
   if (matched === 0) return "none";
+
   return matched === paths.length ? "all" : "some";
 }

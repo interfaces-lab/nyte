@@ -15,6 +15,7 @@ export async function timed<Result>(operation: () => Result | Promise<Result>) {
   const result = await operation();
   const ms = performance.now() - start;
   const heapUsedDeltaBytes = process.memoryUsage().heapUsed - heapBefore;
+
   // Keep measurement arrays independent of the potentially large result.
   return { result, measurement: { ms, heapUsedDeltaBytes } };
 }
@@ -22,6 +23,7 @@ export async function timed<Result>(operation: () => Result | Promise<Result>) {
 export function summarize(measurements: readonly Measurement[]) {
   const durations = measurements.map((sample) => sample.ms).sort((a, b) => a - b);
   const heaps = measurements.map((sample) => sample.heapUsedDeltaBytes).sort((a, b) => a - b);
+
   return {
     samples: measurements.length,
     p50Ms: durations[Math.ceil(durations.length * 0.5) - 1],

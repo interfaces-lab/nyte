@@ -64,6 +64,7 @@ export function createChatKeymap(renderer: CliRenderer): Keymap<Renderable, KeyE
   // Fall back to the key's base layout code, so Dvorak and AZERTY keep the
   // same physical shortcuts.
   registerBaseLayoutFallback(keymap);
+
   return keymap;
 }
 
@@ -91,9 +92,11 @@ function chatCommand<T extends object, E extends KeymapEvent>(
     enabled: () => spec.unavailable?.() === undefined && spec.enabled?.() !== false,
     run: () => {
       onRun?.();
+
       return spec.run();
     },
   };
+
   return command;
 }
 
@@ -116,10 +119,13 @@ export function registerChatLayer<T extends object, E extends KeymapEvent>(
   },
 ): () => void {
   const names = Object.keys(options.commands).filter(isChatCommand);
+
   const commands = names.flatMap((name) => {
     const spec = options.commands[name];
+
     return spec === undefined ? [] : [chatCommand<T, E>(name, spec, options.onRun)];
   });
+
   return keymap.registerLayer({
     enabled: options.enabled,
     commands,
@@ -138,10 +144,13 @@ function isChatCommand(name: string): name is ChatCommand {
 /** Based on https://github.com/anomalyco/opencode/blob/0643a5638e0cd02234e73f176771527d7600faf7/packages/tui/src/util/selection.ts */
 function copy(renderer: CliRenderer, write: (text: string) => void): boolean {
   const selection = renderer.getSelection();
+
   if (selection === null || (selection.isStart && selection.behavior === "cell")) return false;
   const text = selection.getSelectedText();
+
   if (text === "") return false;
   write(text);
+
   // Copy never clears selection: clearing also resets multi-click history.
   return true;
 }
@@ -157,6 +166,7 @@ function handleSelectionKey(
   copyOnSelect: boolean,
 ): void {
   const selection = renderer.getSelection();
+
   if (!selection) return;
   const focus = renderer.currentFocusedEditor;
   const editing = focus?.hasSelection() && selection.selectedRenderables.includes(focus);
@@ -165,21 +175,29 @@ function handleSelectionKey(
   if (event.ctrl && (event.name === "c" || event.baseCode === 99 || event.baseCode === 67)) {
     if ((copyOnSelect && !editing) || !copy(renderer, write)) {
       renderer.clearSelection();
+
       return;
     }
+
     event.preventDefault();
     event.stopPropagation();
+
     return;
   }
+
   if (event.name === "escape") {
     const text =
       selection.isStart && selection.behavior === "cell" ? "" : selection.getSelectedText();
+
     renderer.clearSelection();
+
     if (!text) return;
     event.preventDefault();
     event.stopPropagation();
+
     return;
   }
+
   if (editing) return;
   renderer.clearSelection();
 }
@@ -194,15 +212,19 @@ export function registerSelectionKeys(
     ({ event }) => handleSelectionKey(renderer, options.copy, event, options.copyOnSelect()),
     { priority: 101 },
   );
+
   renderer.root.onMouseDown = (event) => {
     if (options.copyOnSelect() || event.button !== Number(MouseButton.RIGHT)) return;
+
     if (!copy(renderer, options.copy)) return;
     event.preventDefault();
     event.stopPropagation();
   };
+
   renderer.root.onMouseUp = (event) => {
     if (options.copyOnSelect() && event.isDragging) copy(renderer, options.copy);
   };
+
   return () => {
     offSelectionKeys();
     renderer.root.onMouseDown = undefined;
@@ -231,6 +253,7 @@ export class DoubleEscape {
   press(now: number = Date.now()): boolean {
     const paired = now - this.armedAt < DOUBLE_ESCAPE_MS;
     this.armedAt = paired ? 0 : now;
+
     return paired;
   }
 }
@@ -253,6 +276,7 @@ export function ctrlCAction(
 ): CtrlCAction | undefined {
   if (!matchesKey("chat.quit", key, "required") || state.prompting || state.selecting)
     return undefined;
+
   return state.hasDraft ? "clear_for_quit" : "shutdown";
 }
 
@@ -260,6 +284,7 @@ export function ctrlCAction(
 export function isComposerTextKey(key: KeyEvent): boolean {
   if (key.ctrl || key.meta || key.option || key.super === true) return false;
   const first = key.sequence.charCodeAt(0);
+
   return key.sequence !== "" && first >= 32 && first !== 127;
 }
 
@@ -269,6 +294,7 @@ export function nextThinkingLevel<Level extends string>(
 ): Level | undefined {
   if (supported.length < 2) return undefined;
   const index = supported.indexOf(current);
+
   return supported[(index + 1) % supported.length];
 }
 
@@ -282,8 +308,10 @@ export function matchesKey(
 ): boolean {
   const strokes = parsedBindings.get(command) ?? keyStrokes(command);
   parsedBindings.set(command, strokes);
+
   return strokes.some((stroke) => {
     if (modifiers === "exact") return stringifyKeyStroke(stroke) === stringifyKeyStroke(key);
+
     return (
       stringifyKeyStroke(stroke) ===
       stringifyKeyStroke({
@@ -302,6 +330,7 @@ export function matchesKey(
 export function matchesKeyName(command: ChatCommand, key: Pick<KeyStrokeInput, "name">): boolean {
   const strokes = parsedBindings.get(command) ?? keyStrokes(command);
   parsedBindings.set(command, strokes);
+
   return strokes.some(
     (stroke) =>
       stringifyKeyStroke({ name: stroke.name }) === stringifyKeyStroke({ name: key.name }),

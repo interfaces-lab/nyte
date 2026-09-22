@@ -1,19 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import { streamSimple as streamAnthropic } from "../src/api/anthropic-messages.ts";
-import { ANTHROPIC_MODELS } from "../src/providers/anthropic.models.ts";
 import type { AssistantMessage, Context, Model, SimpleStreamOptions } from "../src/types.ts";
-
-function anthropicCatalogModel(id: string) {
-  return Object.values(ANTHROPIC_MODELS).find((model) => model.id === id);
-}
-
-function fastAnthropicModelIds(): string[] {
-  return Object.values(ANTHROPIC_MODELS)
-    .filter((model) => model.provider === "anthropic" && model.modes?.includes("fast") === true)
-    .map((model) => model.id)
-    .sort();
-}
 
 const FAST_MODE_BETA = "fast-mode-2026-02-01";
 
@@ -24,6 +12,7 @@ const context: Context = {
 function createModel(
   id: string,
   provider: Model<"anthropic-messages">["provider"] = "anthropic",
+  fast = true,
 ): Model<"anthropic-messages"> {
   return {
     id,
@@ -32,7 +21,7 @@ function createModel(
     provider,
     baseUrl: "https://api.anthropic.test",
     reasoning: true,
-    modes: anthropicCatalogModel(id)?.modes,
+    modes: fast ? ["fast"] : undefined,
     input: ["text"],
     cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
     contextWindow: 1_000_000,
@@ -132,23 +121,19 @@ async function runRequest(
 }
 
 describe("Anthropic fast mode", () => {
-  test("maps fast mode for every first-party catalog model that advertises it", async () => {
-    const modelIds = fastAnthropicModelIds();
-    assert.ok(modelIds.length > 0);
-    for (const modelId of modelIds) {
-      const { captured, message } = await runRequest(createModel(modelId), {
-        fast: true,
-        headers: { "Anthropic-Beta": "request-beta" },
-      });
+  test("maps fast mode for a first-party model that advertises it", async () => {
+    const { captured, message } = await runRequest(createModel("claude-fast"), {
+      fast: true,
+      headers: { "Anthropic-Beta": "request-beta" },
+    });
 
-      assert.equal(captured.body?.speed, "fast");
-      assert.equal(
-        captured.headers?.get("anthropic-beta"),
-        `model-beta,request-beta,${FAST_MODE_BETA}`,
-      );
-      assert.equal(message.stopReason, "stop");
-      assert.equal(message.usage.cost.total, 60);
-    }
+    assert.equal(captured.body?.speed, "fast");
+    assert.equal(
+      captured.headers?.get("anthropic-beta"),
+      `model-beta,request-beta,${FAST_MODE_BETA}`,
+    );
+    assert.equal(message.stopReason, "stop");
+    assert.equal(message.usage.cost.total, 60);
   });
 
   test("prices from the response speed instead of the request", async () => {
@@ -160,8 +145,8 @@ describe("Anthropic fast mode", () => {
 
   test("rejects unsupported and Anthropic-compatible models before sending", async () => {
     for (const model of [
-      createModel("claude-opus-4-7"),
-      createModel("claude-opus-5", "anthropic-compatible-test"),
+      createModel("claude-standard", "anthropic", false),
+      createModel("claude-fast", "anthropic-compatible-test"),
     ]) {
       let fetchCalled = false;
       const message = await streamAnthropic(model, context, {

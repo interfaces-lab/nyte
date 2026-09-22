@@ -13,6 +13,7 @@ export function createWorkGroupEntries<Entry extends { readonly key: string }>()
         readonly keyAt: WorkGroupEntries<Entry>["keyAt"];
       }
     | undefined;
+
   return (settled: readonly Entry[], live: readonly Entry[]): WorkGroupEntries<Entry> => {
     if (
       previous === undefined ||
@@ -27,6 +28,7 @@ export function createWorkGroupEntries<Entry extends { readonly key: string }>()
         keyAt: (index) => settled[index]?.key ?? liveKeys[index - settled.length] ?? index,
       };
     }
+
     return {
       count: settled.length + live.length,
       at: (index) => (index < settled.length ? settled[index] : live[index - settled.length]),

@@ -17,13 +17,16 @@ const ENVIRONMENTS = new Set(["development", "production"]);
 /** @type {import("expo/config-plugins").ConfigPlugin<{ environment: string }>} */
 const withApsEnvironment = (config, props) => {
   const environment = props?.environment;
+
   if (!ENVIRONMENTS.has(environment)) {
     throw new Error(
       `with-aps-environment: environment must be "development" or "production", got ${String(environment)}`,
     );
   }
+
   return withEntitlementsPlist(config, (mod) => {
     mod.modResults["aps-environment"] = environment;
+
     return mod;
   });
 };

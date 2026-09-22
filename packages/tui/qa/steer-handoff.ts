@@ -21,8 +21,10 @@ export const steerHandoff: Scenario = {
     const correction = "Only change the spacing, not the colors.";
     const draft = "Keep the keyboard shortcuts too.";
     const fixtureHoldMs = 1_000;
+
     const rowsWith = (screen: Screen) =>
       screen.lines.flatMap((line, index) => (line.includes(correction) ? [index + 1] : []));
+
     return session(
       context,
       {
@@ -64,20 +66,24 @@ export const steerHandoff: Scenario = {
         await provider.waitForStage(review.id, "held");
 
         await type(terminal, correction);
+
         if (context.show) await setTimeout(1_000);
         const before = terminal.screen();
         // Every observed frame from Enter to admission, as rows holding the message: one row, never moving.
         const frames: { readonly at: number; readonly rows: readonly number[] }[] = [];
+
         const stopObserving = terminal.observe((screen) => {
           if (composer(screen, correction)) return;
           frames.push({ at: performance.now(), rows: rowsWith(screen) });
         });
+
         let submit: InputRecord;
         let pending: Screen;
         let landed: Screen;
         let pendingAt: number;
         let releasedAt: number;
         let landedAt: number;
+
         try {
           submit = terminal.key("chat.submit");
           pending = await terminal.waitForScreen(
@@ -107,6 +113,7 @@ export const steerHandoff: Scenario = {
         } finally {
           stopObserving();
         }
+
         assert.equal(rowsWith(landed).length, 1);
 
         await Promise.all([
@@ -132,15 +139,18 @@ export const steerHandoff: Scenario = {
             ),
           ),
         ]);
+
         const steered = await provider.waitForRequest(
           (request) => request.script === "fake steered reply",
         );
+
         await provider.waitForStage(steered.id, "held");
         assert.equal(steered.prompt, correction);
         assert.equal(
           steered.payload.messages.filter((message) => message.role === "user").length,
           2,
         );
+
         if (context.show) await setTimeout(1_000);
         assert.deepEqual(
           rowsWith(landed),
@@ -149,7 +159,7 @@ export const steerHandoff: Scenario = {
         );
         assert.ok(frames.length > 0, "The handoff painted no observed frame");
         assert.deepEqual(
-          frames.map((frame) => frame.rows).filter((rows) => rows.length !== 1),
+          frames.flatMap((frame) => (frame.rows.length === 1 ? [] : [frame.rows])),
           [],
           "Every observed frame between Enter and admission shows the message exactly once",
         );

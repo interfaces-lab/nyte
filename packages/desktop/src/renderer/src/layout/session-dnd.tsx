@@ -115,12 +115,14 @@ function matchingDropContainer(
   target: SessionDropTarget,
 ): DroppableContainer | undefined {
   const targetId = sessionDropId(target.paneId, target.placement);
+
   return containers.find((container) => container.id === targetId);
 }
 
 function collisionDetector(layout: PaneLayout): CollisionDetection {
   return ({ active, collisionRect, droppableContainers, droppableRects, pointerCoordinates }) => {
     const dragged = parseSessionDragData(active.data.current);
+
     if (dragged === undefined) return [];
     const point = pointForCollision(pointerCoordinates, collisionRect);
 
@@ -129,16 +131,22 @@ function collisionDetector(layout: PaneLayout): CollisionDetection {
         paneId: pane.id,
         placement: "center",
       });
+
       if (paneContainer === undefined) continue;
       const rect = droppableRects.get(paneContainer.id);
+
       if (rect === undefined || !contains(rect, point)) continue;
+
       if (pane.selection.kind === "session" && pane.selection.sessionId === dragged.sessionId) {
         return [];
       }
+
       const placement = placementInRect(rect, point, layout.kind === "split");
+
       if (placement === undefined) return [];
       const target = { paneId: pane.id, placement } satisfies SessionDropTarget;
       const container = matchingDropContainer(droppableContainers, target);
+
       return container === undefined
         ? []
         : [{ id: container.id, data: { droppableContainer: container, value: 0 } }];
@@ -151,6 +159,7 @@ function collisionDetector(layout: PaneLayout): CollisionDetection {
 function dropTargetFromEvent(event: DragEndEvent): SessionDropTarget | undefined {
   if (event.over === null) return undefined;
   const data = parseSessionDropData(event.over.data.current);
+
   return data === undefined ? undefined : { paneId: data.paneId, placement: data.placement };
 }
 
@@ -186,15 +195,18 @@ export function SessionDndProvider({ children }: { readonly children: ReactNode 
   const { layout } = usePaneControllerSnapshot();
   const panes = usePaneActions();
   const detectCollision = useMemo(() => collisionDetector(layout), [layout]);
+
   const pointerSensor = useSensor(PointerSensor, {
     activationConstraint: { distance: SESSION_DRAG_ACTIVATION_DISTANCE },
   });
+
   const sensors = useSensors(pointerSensor);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent): void => {
       const dragged = parseSessionDragData(event.active.data.current);
       const target = dropTargetFromEvent(event);
+
       if (dragged === undefined || target === undefined) return;
       panes.drop(dragged.sessionId, target.paneId, target.placement);
     },
@@ -250,7 +262,9 @@ export function useSessionPaneDropTarget(paneId: PaneId): (element: HTMLElement 
 export function useSessionDropTarget(): SessionDropTarget | undefined {
   const { active, over } = useDndContext();
   const dragged = parseSessionDragData(active?.data.current);
+
   if (dragged === undefined || over === null) return undefined;
   const target = parseSessionDropData(over.data.current);
+
   return target === undefined ? undefined : { paneId: target.paneId, placement: target.placement };
 }

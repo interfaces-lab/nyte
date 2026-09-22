@@ -26,7 +26,9 @@ const HostContext = createContext<HostSession | undefined>(undefined);
 /** Screens below the connection gate always have a live host client. */
 export function useHost(): HostSession {
   const host = use(HostContext);
+
   if (host === undefined) throw new Error("The host connection is not available.");
+
   return host;
 }
 
@@ -37,6 +39,7 @@ export function HostProvider({ session, children }: { session: HostSession; chil
 /** Owns the saved-connection lifecycle above the router: restore and forget. */
 export function useHostConnection() {
   const queryClient = useQueryClient();
+
   // The Keychain read is the app's only boot fetch; nothing else writes it.
   // `null` stands in for "not saved" because setQueryData treats `undefined` as a bail-out.
   const saved = useQuery({
@@ -45,13 +48,16 @@ export function useHostConnection() {
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,
   });
+
   const [form, setForm] = useState<{ notice?: string; editing?: Connection } | undefined>(
     undefined,
   );
+
   const client = useMemo(
     () => (saved.data == null ? undefined : createHostClient(saved.data)),
     [saved.data],
   );
+
   const host: HostConnectionState =
     form !== undefined
       ? {
@@ -76,9 +82,11 @@ export function useHostConnection() {
     signal: AbortSignal,
   ): Promise<ConnectFailure | undefined> {
     const result = await connectHost(connection, signal);
+
     if (result.kind !== "connected") return result;
     queryClient.setQueryData(["connection"], connection);
     setForm(undefined);
+
     return undefined;
   }
 

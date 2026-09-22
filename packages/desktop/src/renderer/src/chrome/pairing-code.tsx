@@ -23,6 +23,7 @@ const styles = stylex.create({
 
 export function pairingPayload(input: { address: string; token: string }): string {
   const query = new URLSearchParams({ url: input.address, token: input.token });
+
   return `nyte://connect?${query.toString()}`;
 }
 
@@ -30,11 +31,13 @@ export function pairingPayload(input: { address: string; token: string }): strin
 function modulePath(code: ReturnType<typeof qrcode>): string {
   const count = code.getModuleCount();
   let path = "";
+
   for (let row = 0; row < count; row += 1) {
     for (let column = 0; column < count; column += 1) {
       if (code.isDark(row, column)) path += `M${String(column)} ${String(row)}h1v1h-1z`;
     }
   }
+
   return path;
 }
 
@@ -45,6 +48,7 @@ export function PairingCode({ value, size }: { value: string; size: number }): R
     const code = qrcode(0, "M");
     code.addData(value);
     code.make();
+
     return { path: modulePath(code), count: code.getModuleCount() };
   }, [value]);
 

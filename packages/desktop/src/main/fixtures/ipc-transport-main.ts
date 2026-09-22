@@ -17,13 +17,19 @@ import {
 import type { CallRequest, CallOutput, WatchStartInput, WatchEnvelope } from "../../shared/ipc.ts";
 
 const directory = process.argv[2];
+
 assert.ok(directory);
+
 app.setPath("userData", join(directory, "profile"));
+
 app.setPath("sessionData", join(directory, "session"));
+
 const operationCause = new TypeError("synthetic-secret-operation", {
   cause: new Error("synthetic-secret-nested-body"),
 });
+
 const watchCause = new Error("synthetic-secret-watch");
+
 const startCause = new Error("synthetic-secret-start");
 
 void app.whenReady().then(async () => {
@@ -36,29 +42,42 @@ void app.whenReady().then(async () => {
       nodeIntegration: false,
     },
   });
+
   const authorize = (event: Electron.IpcMainInvokeEvent): void => {
     assert.equal(event.sender, window.webContents);
     assert.equal(event.senderFrame, window.webContents.mainFrame);
   };
+
   ipcMain.handle(CALL_CHANNEL, async (event, request: CallRequest) => {
     authorize(event);
+
     if (request.path === "host.fonts" || request.path === "host.state") {
-      return callIpc(() => {
-        throw request.path === "host.fonts" ? operationCause : new CursorExpired(23);
-      }, request);
+      return callIpc(
+        () => {
+          throw request.path === "host.fonts" ? operationCause : new CursorExpired(23);
+        },
+        1,
+        request,
+      );
     }
+
     const result = await ipcResult(() => {
       const decoded = decodeCallRequest(request);
       assert.equal(decoded.path, "host.pickWorkspace");
+
       return { kind: "cancelled" } satisfies CallOutput<"host.pickWorkspace">;
     });
+
     return result.ok ? { ...result, path: request.path } : result;
   });
   ipcMain.handle(WATCH_START_CHANNEL, (event, input: WatchStartInput) => {
     authorize(event);
+
     return ipcResult(() => {
       const start = decodeWatchStart(input);
+
       if (start.sessionId === "start-failure") throw startCause;
+
       const frames: WatchEnvelope[] = [
         {
           watchId: start.watchId,
@@ -67,15 +86,18 @@ void app.whenReady().then(async () => {
         },
         { watchId: start.watchId, kind: "ended", error: ipcFailure(watchCause) },
       ];
+
       for (const frame of frames) window.webContents.send(WATCH_EVENT_CHANNEL, frame);
     });
   });
   ipcMain.handle(WATCH_STOP_CHANNEL, (event, input: { readonly watchId: string }) => {
     authorize(event);
+
     return ipcResult(() => {
       decodeWatchStop(input);
     });
   });
+
   try {
     await window.loadFile(join(directory, "index.html"));
     const observed: unknown = await window.webContents.executeJavaScript("TransportTest.run()");

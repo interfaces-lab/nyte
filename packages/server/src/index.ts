@@ -129,9 +129,13 @@ export interface NyteServer {
 }
 
 const MIN_TOKEN_LENGTH = 16;
+
 const DEFAULT_MAX_BODY_BYTES = 8_388_608;
+
 const DEFAULT_HEARTBEAT_MS = 15_000;
+
 const WATCH_QUERY_KEYS: readonly string[] = Object.values(WATCH_QUERY);
+
 const encoder = new TextEncoder();
 
 function invalid(message: string, issues: readonly Issue[] = []): WireError {
@@ -145,10 +149,13 @@ function invalid(message: string, issues: readonly Issue[] = []): WireError {
  */
 function wireErrorFor(cause: unknown): WireError {
   if (cause instanceof UnknownSession) return { code: "unknown_session", message: cause.message };
+
   if (cause instanceof NyteClosed) return { code: "closed", message: "The host is closed" };
+
   if (cause instanceof CursorExpired) {
     return { code: "cursor_expired", message: cause.message, floor: cause.floor };
   }
+
   return { code: "internal", message: "Internal error" };
 }
 
@@ -168,27 +175,37 @@ function decideOrigin(
   browserOrigins: readonly string[],
 ): OriginDecision {
   const origin = request.headers.get("origin");
+
   if (origin === null) return { kind: "absent" };
+
   if (origin === url.origin) return { kind: "same" };
+
   if (browserOrigins.includes(origin)) return { kind: "allowed", origin };
+
   return { kind: "refused" };
 }
 
 function corsHeaders(origin: OriginDecision): Headers {
   const headers = new Headers();
+
   if (origin.kind === "allowed") {
     headers.set("access-control-allow-origin", origin.origin);
     headers.set("vary", "origin");
   }
+
   return headers;
 }
 
 function bearerToken(request: Request): string | undefined {
   const header = request.headers.get("authorization");
+
   if (header === null) return undefined;
   const space = header.indexOf(" ");
+
   if (space === -1) return undefined;
+
   if (header.slice(0, space).toLowerCase() !== "bearer") return undefined;
+
   return header.slice(space + 1).trim();
 }
 
@@ -199,31 +216,41 @@ type BodyRead =
 
 async function readBody(request: Request, maxBytes: number): Promise<BodyRead> {
   const declared = request.headers.get("content-length");
+
   if (declared !== null && !(Number(declared) <= maxBytes)) return { kind: "too_large" };
+
   if (request.body === null) return { kind: "text", text: "" };
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
+
   try {
     for (;;) {
       const { done, value } = await reader.read();
+
       if (done) break;
       total += value.byteLength;
+
       if (total > maxBytes) {
         await reader.cancel();
+
         return { kind: "too_large" };
       }
+
       chunks.push(value);
     }
   } finally {
     reader.releaseLock();
   }
+
   const bytes = new Uint8Array(total);
   let offset = 0;
+
   for (const chunk of chunks) {
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
+
   try {
     return { kind: "text", text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
   } catch {
@@ -239,29 +266,39 @@ function parseWatchQuery(params: URLSearchParams): WatchQueryParse {
   for (const key of new Set(params.keys())) {
     if (!WATCH_QUERY_KEYS.includes(key))
       return { kind: "invalid", message: `Unknown query key ${key}` };
+
     if (params.getAll(key).length > 1)
       return { kind: "invalid", message: `Repeated query key ${key}` };
   }
+
   const id = params.get(WATCH_QUERY.sessionId);
   const after = params.get(WATCH_QUERY.after);
   const live = params.get(WATCH_QUERY.live);
+
   if (!Value.Check(schemas.SessionId, id)) {
     return { kind: "invalid", message: "sessionId is required" };
   }
+
   if (after !== null && live !== null) {
     return { kind: "invalid", message: "after and live are mutually exclusive" };
   }
+
   if (live !== null) {
     if (live !== "1" && live !== "true") return { kind: "invalid", message: "live must be 1" };
+
     return { kind: "ok", input: { sessionId: id, live: true } };
   }
+
   if (after === null) {
     return { kind: "ok", input: { sessionId: id } };
   }
+
   const afterSeq = /^[0-9]{1,16}$/.test(after) ? Number(after) : Number.NaN;
+
   if (!Number.isSafeInteger(afterSeq)) {
     return { kind: "invalid", message: "after must be a non-negative safe integer" };
   }
+
   return { kind: "ok", input: { sessionId: id, afterSeq } };
 }
 
@@ -281,6 +318,7 @@ function frameBytes(frame: WatchFrame): Uint8Array {
       return encoder.encode(encodeSseFrame({ event: "error", data: JSON.stringify(frame.error) }));
     default: {
       const _exhaustive: never = frame;
+
       return _exhaustive;
     }
   }
@@ -326,13 +364,17 @@ class PendingNext {
       await new Promise<void>((resolve) => {
         this.wake = () => {
           this.wake = undefined;
+
           if (timer !== undefined) clearTimeout(timer);
           resolve();
         };
+
         if (waitMs > 0) timer = setTimeout(() => this.wake?.(), waitMs);
       });
     }
+
     if (this.outcome?.kind === "error") throw this.outcome.cause;
+
     return this.outcome?.result;
   }
 }
@@ -341,14 +383,19 @@ function validateOptions(options: NyteServerOptions) {
   if (options.auth.kind === "token" && options.auth.token.length < MIN_TOKEN_LENGTH) {
     throw new RangeError(`auth.token must be at least ${String(MIN_TOKEN_LENGTH)} characters`);
   }
+
   const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
+
   if (!Number.isSafeInteger(maxBodyBytes) || maxBodyBytes <= 0) {
     throw new RangeError("maxBodyBytes must be a positive integer");
   }
+
   const heartbeatMs = options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
+
   if (!Number.isFinite(heartbeatMs) || heartbeatMs < 0) {
     throw new RangeError("heartbeatMs must be a non-negative number");
   }
+
   return { maxBodyBytes, heartbeatMs };
 }
 
@@ -358,6 +405,7 @@ function validateOptions(options: NyteServerOptions) {
 
 export function createNyteServer(options: NyteServerOptions): NyteServer {
   const { sdk } = options;
+
   // Equal-length digests let the native comparison handle tokens of any byte length.
   const auth =
     options.auth.kind === "token"
@@ -366,6 +414,7 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
           digest: createHash("sha256").update(options.auth.token).digest(),
         } as const)
       : options.auth;
+
   const { maxBodyBytes, heartbeatMs } = validateOptions(options);
   const browserOrigins = options.browserOrigins ?? [];
   const watches = new Set<() => void>();
@@ -384,7 +433,9 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
     const headers = new Headers(cors);
     headers.set("content-type", `${JSON_MEDIA_TYPE}; charset=utf-8`);
     headers.set("cache-control", "no-store");
+
     if (status === 401) headers.set("www-authenticate", "Bearer");
+
     return new Response(JSON.stringify(reply), { status, headers });
   };
 
@@ -395,19 +446,25 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
     switch (auth.kind) {
       case "token": {
         const presented = bearerToken(request);
+
         if (presented === undefined) return { kind: "deny", reason: "unauthorized" };
+
         return timingSafeEqual(createHash("sha256").update(presented).digest(), auth.digest)
           ? { kind: "allow" }
           : { kind: "deny", reason: "forbidden" };
       }
+
       case "custom": {
         const decision = await auth.authorize(request);
+
         return Value.Check(AuthDecisionSchema, decision)
           ? decision
           : { kind: "deny", reason: "forbidden" };
       }
+
       default: {
         const _exhaustive: never = auth;
+
         return _exhaustive;
       }
     }
@@ -415,12 +472,15 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
 
   const preflight = (origin: OriginDecision): Response => {
     const headers = corsHeaders(origin);
+
     if (origin.kind === "allowed") {
       headers.set("access-control-allow-methods", "GET, POST");
       headers.set("access-control-allow-headers", "authorization, content-type");
       headers.set("access-control-max-age", "600");
     }
+
     headers.set("allow", "GET, POST, OPTIONS");
+
     return new Response(null, { status: 204, headers });
   };
 
@@ -432,7 +492,9 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
     if (mediaType(request.headers.get("content-type")) !== JSON_MEDIA_TYPE) {
       return refuse({ code: "unsupported_media_type", message: `Send ${JSON_MEDIA_TYPE}` }, cors);
     }
+
     const body = await readBody(request, maxBodyBytes);
+
     switch (body.kind) {
       case "too_large":
         return refuse(
@@ -445,30 +507,38 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
         break;
       default: {
         const _exhaustive: never = body;
+
         return _exhaustive;
       }
     }
+
     let parsed: unknown;
+
     try {
       parsed = JSON.parse(body.text);
     } catch {
       return refuse(invalid("Body is not valid JSON"), cors);
     }
+
     if (!Value.Check(CallRequestSchema, parsed)) {
       const issues = validationIssues(Value.Errors(CallRequestSchema, parsed));
+
       return refuse(
         invalid(`Body must be {"input": ...}: ${describeIssues(issues)}`, issues),
         cors,
       );
     }
+
     const schema: (typeof OPERATIONS)[O]["input"] = OPERATIONS[operation].input;
     const input = Object.hasOwn(parsed, "input") ? parsed.input : undefined;
+
     if (!Value.Check(schema, input)) {
       return refuse(
         invalid("Input did not match the operation", validationIssues(Value.Errors(schema, input))),
         cors,
       );
     }
+
     try {
       if (
         options.permissions !== undefined &&
@@ -476,8 +546,10 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       ) {
         return refuse({ code: "forbidden", message: "Operation is not allowed" }, cors);
       }
+
       if (closed) return refuse({ code: "closed", message: "The server is closed" }, cors);
       const value = await dispatch(sdk, operation, input);
+
       return jsonResponse(
         200,
         value === undefined ? { ok: true, defined: false } : { ok: true, defined: true, value },
@@ -485,21 +557,27 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       );
     } catch (cause) {
       const error = wireErrorFor(cause);
+
       if (error.code === "internal") report({ route: "call", operation, cause });
+
       return refuse(error, cors);
     }
   };
 
   const watch = async (request: Request, url: URL, cors: Headers): Promise<Response> => {
     const query = parseWatchQuery(url.searchParams);
+
     if (query.kind === "invalid") return refuse(invalid(query.message), cors);
+
     if (
       options.permissions !== undefined &&
       (await options.permissions.watch?.(query.input.sessionId, request)) !== true
     ) {
       return refuse({ code: "forbidden", message: "Watch is not allowed" }, cors);
     }
+
     if (closed) return refuse({ code: "closed", message: "The server is closed" }, cors);
+
     if (request.signal.aborted) return refuse(invalid("The request was already aborted"), cors);
 
     const watchController = new AbortController();
@@ -515,6 +593,7 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
     // event that never comes.
     const finish = (): void => {
       request.signal.removeEventListener("abort", finish);
+
       if (!watches.delete(finish)) return;
       watchController.abort();
       firstRead.resolve({ done: true, value: undefined });
@@ -522,32 +601,41 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       endResponse?.();
       void iterator.return?.().catch(() => undefined);
     };
+
     watches.add(finish);
     request.signal.addEventListener("abort", finish, { once: true });
+
     if (request.signal.aborted) finish();
 
     // The first pull happens before any header is written: a cursor below
     // the floor or an unknown session is a JSON error with a status, not a
     // stream that fails on its first frame.
     let first: IteratorResult<SessionEvent>;
+
     try {
       if (!signal.aborted) void iterator.next().then(firstRead.resolve, firstRead.reject);
       first = await firstRead.promise;
     } catch (cause) {
       finish();
       const error = wireErrorFor(cause);
+
       if (error.code === "internal") report({ route: "watch", cause });
+
       return refuse(error, cors);
     }
+
     if (request.signal.aborted) {
       finish();
+
       return refuse(invalid("The request was aborted"), cors);
     }
+
     if (closed) {
       return refuse({ code: "closed", message: "The server is closed" }, cors);
     }
 
     let ended = false;
+
     const end = (
       controller: ReadableStreamDefaultController<Uint8Array>,
       frame: WatchFrame,
@@ -558,58 +646,76 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       controller.close();
       finish();
     };
+
     const closedFrame: WatchFrame = {
       kind: "error",
       error: { code: "closed", message: "The server closed the stream" },
     };
+
     /** An event JSON cannot carry ends the stream as `internal`; it never escapes the stream. */
     const emit = (
       controller: ReadableStreamDefaultController<Uint8Array>,
       event: SessionEvent,
     ): void => {
       let bytes: Uint8Array;
+
       try {
         bytes = frameBytes({ kind: "event", event });
       } catch (cause) {
         report({ route: "watch", cause });
         end(controller, { kind: "error", error: { code: "internal", message: "Internal error" } });
+
         return;
       }
+
       if (!ended) controller.enqueue(bytes);
     };
 
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         endResponse = () => end(controller, closed ? closedFrame : { kind: "ended" });
+
         if (first.done) {
           end(controller, closed ? closedFrame : { kind: "ended" });
+
           return;
         }
+
         emit(controller, first.value);
       },
       async pull(controller) {
         if (ended) return;
         let result: IteratorResult<SessionEvent> | undefined;
+
         try {
           pending ??= new PendingNext(iterator.next());
           result = await pending.wait(heartbeatMs);
         } catch (cause) {
           pending = undefined;
           const error = wireErrorFor(cause);
+
           if (error.code === "internal") report({ route: "watch", cause });
           end(controller, { kind: "error", error });
+
           return;
         }
+
         if (ended) return;
+
         if (result === undefined) {
           controller.enqueue(encoder.encode(encodeSseComment("keepalive")));
+
           return;
         }
+
         pending = undefined;
+
         if (result.done) {
           end(controller, closed ? closedFrame : { kind: "ended" });
+
           return;
         }
+
         emit(controller, result.value);
       },
       cancel() {
@@ -622,6 +728,7 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
     headers.set("content-type", `${EVENT_STREAM_MEDIA_TYPE}; charset=utf-8`);
     headers.set("cache-control", "no-store");
     headers.set("x-accel-buffering", "no");
+
     return new Response(stream, { status: 200, headers });
   };
 
@@ -634,9 +741,11 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
     if (origin.kind === "refused") {
       return refuse({ code: "forbidden", message: "Origin is not allowed" }, cors);
     }
+
     if (request.method === "OPTIONS") return preflight(origin);
 
     const decision = await authorize(request);
+
     if (decision.kind === "deny") {
       return refuse(
         decision.reason === "unauthorized"
@@ -652,11 +761,15 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       if (request.method !== "GET") {
         return refuse({ code: "method_not_allowed", message: "Info is GET" }, cors);
       }
+
       const description = await options.describe?.();
+
       if (description !== undefined && !Value.Check(ServerDescriptionSchema, description)) {
         throw new TypeError("Invalid server description");
       }
+
       if (closed) return refuse({ code: "closed", message: "The server is closed" }, cors);
+
       const info: ServerInfo = {
         version: options.version,
         wireVersion: WIRE_VERSION,
@@ -665,25 +778,33 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
             ? { kind: "unspecified" }
             : { kind: "described", ...description },
       };
+
       return jsonResponse(200, { ok: true, defined: true, value: info }, cors);
     }
+
     if (url.pathname === WATCH_ROUTE) {
       if (request.method !== "GET") {
         return refuse({ code: "method_not_allowed", message: "Watch is GET" }, cors);
       }
+
       return watch(request, url, cors);
     }
+
     if (url.pathname.startsWith(CALL_ROUTE_PREFIX)) {
       if (request.method !== "POST") {
         return refuse({ code: "method_not_allowed", message: "Calls are POST" }, cors);
       }
+
       const name = url.pathname.slice(CALL_ROUTE_PREFIX.length);
       const operation = parseOperation(name);
+
       if (operation === undefined) {
         return refuse({ code: "unknown_operation", message: `Unknown operation: ${name}` }, cors);
       }
+
       return call(request, operation, cors);
     }
+
     return refuse({ code: "not_found", message: "No such route" }, cors);
   };
 
@@ -692,20 +813,24 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       // The origin decision comes first so a redacted failure still carries
       // the CORS headers an approved browser page needs to read it.
       let cors = new Headers();
+
       try {
         const url = new URL(request.url);
         const origin = decideOrigin(request, url, browserOrigins);
         cors = corsHeaders(origin);
+
         return await route(request, url, origin, cors);
       } catch (cause) {
         // An auth callback that threw, a body that could not be read, a URL
         // that would not parse: the client hears `internal`, the host hears why.
         report({ route: "request", cause });
+
         return refuse({ code: "internal", message: "Internal error" }, cors);
       }
     },
     close() {
       closed = true;
+
       // Release each watch outright. A generator parked at `yield` behind an
       // unread response never sees an abort signal; only `return()` unwinds it.
       for (const finish of watches) finish();

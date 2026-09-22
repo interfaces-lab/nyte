@@ -43,7 +43,9 @@ function parseObject(row: PostgresRow) {
 
 function parseEvent(row: PostgresRow): Event {
   const body: unknown = JSON.parse(stringColumn(row, "body"));
+
   if (!checkEventBody.Check(body)) throw new TypeError("Stored event is not a known event body");
+
   return { ...body, seq: integerColumn(row, "seq"), at: integerColumn(row, "at") };
 }
 
@@ -60,6 +62,7 @@ function expiry(now: number, ttlMs: number): number {
   if (!Number.isSafeInteger(ttlMs) || ttlMs <= 0 || !Number.isSafeInteger(now + ttlMs)) {
     throw new RangeError("ttlMs must be a positive safe integer");
   }
+
   return now + ttlMs;
 }
 
@@ -90,6 +93,7 @@ class SessionState {
     run: (transaction: PostgresQuery, session: PostgresRow) => Promise<T>,
   ): Promise<T> {
     this.assertOpen();
+
     return this.db.transaction(async (transaction) => {
       // The session row serializes ref CAS, lease takeover, event allocation,
       // and deletion without locking unrelated sessions.
@@ -97,18 +101,23 @@ class SessionState {
         "SELECT next_seq, event_floor FROM nyte_sessions WHERE id = $1 FOR UPDATE",
         [this.id],
       );
+
       if (row === undefined) throw new UnknownSession(this.id);
+
       return run(transaction, row);
     });
   }
 
   async metadata(): Promise<PostgresRow> {
     this.assertOpen();
+
     const [row] = await this.db.query(
       "SELECT next_seq, event_floor FROM nyte_sessions WHERE id = $1",
       [this.id],
     );
+
     if (row === undefined) throw new UnknownSession(this.id);
+
     return row;
   }
 
@@ -118,6 +127,7 @@ class SessionState {
        WHERE session_id = $1 AND name = $2 AND owner = $3 AND fence = $4`,
       [this.id, lease.name, lease.owner, lease.fence],
     );
+
     return rows.length === 1;
   }
 
@@ -127,8 +137,10 @@ class SessionState {
     bodies: readonly EventBody[],
   ): Promise<number> {
     const firstSeq = integerColumn(session, "next_seq");
+
     if (bodies.length === 0) return firstSeq - 1;
     const nextSeq = firstSeq + bodies.length;
+
     if (!Number.isSafeInteger(nextSeq)) throw new RangeError("Session event sequence overflow");
     await transaction.query("UPDATE nyte_sessions SET next_seq = $2 WHERE id = $1", [
       this.id,
@@ -142,6 +154,7 @@ class SessionState {
        FROM json_array_elements_text($3::json) WITH ORDINALITY AS batch(body, ordinal)`,
       [this.id, firstSeq, JSON.stringify(bodies.map(serializeEventBody))],
     );
+
     return nextSeq - 1;
   }
 
@@ -170,15 +183,18 @@ class PostgresObjects implements Objects {
         [this.state.id, JSON.stringify(encoded)],
       );
     });
+
     return encoded.map((item) => item.oid);
   }
 
   async get(oid: string): Promise<Obj | undefined> {
     this.state.assertOpen();
+
     const [row] = await this.state.db.query(
       "SELECT oid, body FROM nyte_objects WHERE session_id = $1 AND oid = $2",
       [this.state.id, oid],
     );
+
     return row === undefined ? undefined : parseObject(row).object;
   }
 
@@ -188,7 +204,9 @@ class PostgresObjects implements Objects {
   ): Promise<readonly { readonly oid: string; readonly object: Obj }[]> {
     this.state.assertOpen();
     validateLimit(options.limit);
+
     if (options.limit === 0) return [];
+
     const rows = await this.state.db.query(
       `WITH RECURSIVE chain(oid, body, depth) AS (
          SELECT oid, body, 0 FROM nyte_objects WHERE session_id = $1 AND oid = $2
@@ -200,29 +218,37 @@ class PostgresObjects implements Objects {
        ) SELECT oid, body FROM chain ORDER BY depth`,
       [this.state.id, from, options.limit],
     );
+
     return rows.map(parseObject);
   }
 
   async list(): Promise<readonly { readonly oid: string; readonly at: number }[]> {
     this.state.assertOpen();
+
     const rows = await this.state.db.query(
       'SELECT oid, at FROM nyte_objects WHERE session_id = $1 ORDER BY oid COLLATE "C"',
       [this.state.id],
     );
+
     return rows.map((row) => ({ oid: stringColumn(row, "oid"), at: integerColumn(row, "at") }));
   }
 
   async commits(): Promise<readonly { readonly oid: string; readonly commit: Commit }[]> {
     this.state.assertOpen();
+
     const rows = await this.state.db.query(
       "SELECT oid, body FROM nyte_objects WHERE session_id = $1 AND kind = 'commit'",
       [this.state.id],
     );
+
     const commits: { readonly oid: string; readonly commit: Commit }[] = [];
+
     for (const row of rows) {
       const { oid, object } = parseObject(row);
+
       if (object.kind === "commit") commits.push({ oid, commit: object });
     }
+
     return commits.sort(
       (left, right) => left.commit.at - right.commit.at || left.oid.localeCompare(right.oid),
     );
@@ -234,6 +260,7 @@ class PostgresObjects implements Objects {
         "DELETE FROM nyte_objects WHERE session_id = $1 AND oid = ANY($2::text[]) RETURNING oid",
         [this.state.id, oids],
       );
+
       return rows.length;
     });
   }
@@ -248,20 +275,24 @@ class PostgresRefs implements Refs {
 
   async read(name: string): Promise<string | null> {
     this.state.assertOpen();
+
     const [row] = await this.state.db.query(
       "SELECT oid FROM nyte_refs WHERE session_id = $1 AND name = $2",
       [this.state.id, name],
     );
+
     return row === undefined ? null : stringColumn(row, "oid");
   }
 
   async list(prefix: string): Promise<readonly { readonly name: string; readonly oid: string }[]> {
     this.state.assertOpen();
+
     const rows = await this.state.db.query(
       `SELECT name, oid FROM nyte_refs WHERE session_id = $1 AND starts_with(name, $2)
        ORDER BY name COLLATE "C"`,
       [this.state.id, prefix],
     );
+
     return rows.map((row) => ({ name: stringColumn(row, "name"), oid: stringColumn(row, "oid") }));
   }
 
@@ -271,11 +302,14 @@ class PostgresRefs implements Refs {
   ): ReturnType<Refs["update"]> {
     if (updates.length === 0) throw new TypeError("refs.update requires at least one update");
     const names = new Set<string>();
+
     for (const update of updates) {
       if (!isRefName(update.name)) throw new TypeError(`Invalid ref name: ${update.name}`);
+
       if (names.has(update.name)) throw new TypeError(`Duplicate ref name: ${update.name}`);
       names.add(update.name);
     }
+
     return this.state.transact(async (transaction, session): ReturnType<Refs["update"]> => {
       if (
         options.lease !== undefined &&
@@ -283,19 +317,25 @@ class PostgresRefs implements Refs {
       ) {
         return { ok: false, reason: "fenced" };
       }
+
       const rows = await transaction.query(
         "SELECT name, oid FROM nyte_refs WHERE session_id = $1 AND name = ANY($2::text[])",
         [this.state.id, [...names]],
       );
+
       const actualRefs = new Map(
         rows.map((row) => [stringColumn(row, "name"), stringColumn(row, "oid")]),
       );
+
       for (const update of updates) {
         const actual = actualRefs.get(update.name) ?? null;
+
         if (actual !== update.from)
           return { ok: false, reason: "conflict", name: update.name, actual };
       }
+
       const writes = updates.filter((update) => update.to !== update.from);
+
       for (const update of writes) {
         if (update.to === null) {
           await transaction.query("DELETE FROM nyte_refs WHERE session_id = $1 AND name = $2", [
@@ -310,16 +350,19 @@ class PostgresRefs implements Refs {
           );
         }
       }
+
       const events: EventBody[] = writes.map((update) => ({
         kind: "ref",
         ...update,
         reason: options.reason,
-        ...(options.actor === undefined ? {} : { actor: options.actor }),
+        actor: options.actor,
       }));
+
       const seq = await this.state.writeEvents(transaction, session, [
         ...events,
         ...(options.events ?? []),
       ]);
+
       return { ok: true, seq };
     });
   }
@@ -336,13 +379,17 @@ class PostgresLeases implements Leases {
     return this.state.transact(async (transaction): ReturnType<Leases["acquire"]> => {
       const now = await databaseTime(transaction);
       const expiresAt = expiry(now, ttlMs);
+
       const [row] = await transaction.query(
         "SELECT owner, fence, expires_at FROM nyte_leases WHERE session_id = $1 AND name = $2",
         [this.state.id, name],
       );
+
       const holder = row === undefined ? undefined : parseLease(row, name);
+
       if (holder !== undefined && holder.expiresAt > now) return { ok: false, holder };
       const fence = (holder?.fence ?? 0) + 1;
+
       if (!Number.isSafeInteger(fence)) throw new RangeError("Lease fence overflow");
       const lease: Lease = { name, owner: newOwnerId(), fence, expiresAt };
       await transaction.query(
@@ -351,6 +398,7 @@ class PostgresLeases implements Leases {
            fence = excluded.fence, expires_at = excluded.expires_at`,
         [this.state.id, name, lease.owner, lease.fence, lease.expiresAt],
       );
+
       return { ok: true, lease };
     });
   }
@@ -358,11 +406,13 @@ class PostgresLeases implements Leases {
   async renew(lease: Lease, ttlMs: number): Promise<boolean> {
     return this.state.transact(async (transaction) => {
       const expiresAt = expiry(await databaseTime(transaction), ttlMs);
+
       const rows = await transaction.query(
         `UPDATE nyte_leases SET expires_at = $5
          WHERE session_id = $1 AND name = $2 AND owner = $3 AND fence = $4 RETURNING name`,
         [this.state.id, lease.name, lease.owner, lease.fence, expiresAt],
       );
+
       return rows.length === 1;
     });
   }
@@ -374,17 +424,20 @@ class PostgresLeases implements Leases {
          RETURNING name`,
         [this.state.id, lease.name, lease.owner, lease.fence],
       );
+
       return rows.length === 1;
     });
   }
 
   async read(name: string): Promise<Lease | undefined> {
     this.state.assertOpen();
+
     const [row] = await this.state.db.query(
       `SELECT owner, fence, expires_at FROM nyte_leases WHERE session_id = $1 AND name = $2
        AND expires_at > floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint`,
       [this.state.id, name],
     );
+
     return row === undefined ? undefined : parseLease(row, name);
   }
 }
@@ -407,6 +460,7 @@ class PostgresEvents implements Events {
       ) {
         return { ok: false, reason: "fenced" };
       }
+
       return { ok: true, seq: await this.state.writeEvents(transaction, session, events) };
     });
   }
@@ -417,6 +471,7 @@ class PostgresEvents implements Events {
   }): Promise<readonly Event[]> {
     this.state.assertOpen();
     validateLimit(options.limit);
+
     // One statement observes the floor and event page in the same MVCC snapshot.
     // Separate READ COMMITTED queries could miss a concurrent trim and lose events.
     const rows = await this.state.db.query(
@@ -427,10 +482,14 @@ class PostgresEvents implements Events {
        ) events ON true WHERE session.id = $1 ORDER BY events.seq`,
       [this.state.id, options.afterSeq, options.limit ?? null],
     );
+
     const first = rows[0];
+
     if (first === undefined) throw new UnknownSession(this.state.id);
     const floor = integerColumn(first, "event_floor");
+
     if (options.afterSeq < floor) throw new CursorExpired(floor);
+
     return rows.filter((row) => row.seq !== null).map(parseEvent);
   }
 
@@ -448,6 +507,7 @@ class PostgresEvents implements Events {
         integerColumn(session, "event_floor"),
         Math.min(beforeSeq, integerColumn(session, "next_seq") - 1),
       );
+
       await transaction.query("DELETE FROM nyte_events WHERE session_id = $1 AND seq <= $2", [
         this.state.id,
         floor,
@@ -464,23 +524,29 @@ class PostgresEvents implements Events {
     readonly signal?: AbortSignal;
   }): AsyncIterable<Event> {
     this.state.assertOpen();
+
     const signal =
       options.signal === undefined
         ? this.state.signal
         : AbortSignal.any([this.state.signal, options.signal]);
+
     return this.stream(options.afterSeq, signal);
   }
 
   private async *stream(afterSeq: number, signal: AbortSignal): AsyncIterable<Event> {
     let cursor = afterSeq;
+
     while (!signal.aborted) {
       const events = await this.read({ afterSeq: cursor, limit: WATCH_PAGE_SIZE });
+
       for (const event of events) {
         if (signal.aborted) return;
         cursor = event.seq;
         yield event;
       }
+
       if (events.length === WATCH_PAGE_SIZE) continue;
+
       try {
         await setTimeout(this.state.watchPollIntervalMs, undefined, { signal, ref: false });
       } catch (error) {
@@ -493,6 +559,7 @@ class PostgresEvents implements Events {
 
 export function postgresSession(options: ConstructorParameters<typeof SessionState>[0]): Session {
   const state = new SessionState(options);
+
   return {
     id: state.id,
     objects: new PostgresObjects(state),

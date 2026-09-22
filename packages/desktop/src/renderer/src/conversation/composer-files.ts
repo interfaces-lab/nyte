@@ -27,6 +27,7 @@ const INLINE_IMAGE_TYPE_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
   ["png", "image/png"],
   ["webp", "image/webp"],
 ]);
+
 const INLINE_IMAGE_TYPES: ReadonlySet<string> = new Set(INLINE_IMAGE_TYPE_BY_EXTENSION.values());
 
 type ComposerFileIntake =
@@ -37,31 +38,35 @@ type ComposerFileIntake =
 /** A definite type decides; only an empty or generic one falls back to the extension. */
 function inlineImageType(file: File): string | undefined {
   const type = file.type.toLowerCase();
+
   if (type !== "" && type !== "application/octet-stream") {
     return INLINE_IMAGE_TYPES.has(type) ? type : undefined;
   }
+
   const dot = file.name.lastIndexOf(".");
+
   if (dot <= 0) return undefined;
+
   return INLINE_IMAGE_TYPE_BY_EXTENSION.get(file.name.slice(dot + 1).toLowerCase());
 }
 
 function fileUrl(path: string): string {
   const url = new URL("file://");
   url.pathname = path.replace(/[%\\\n\r\t]/gu, encodeURIComponent);
+
   return url.href;
 }
 
 function classifyComposerFile(file: File): ComposerFileIntake {
   const mimeType = inlineImageType(file);
+
   if (mimeType !== undefined) return { kind: "image", file, mimeType };
   const path = nyte.host.pathForFile(file);
   const mention = path === "" ? undefined : fileFromUrl(fileUrl(path));
-  if (mention === undefined) return { kind: "unreachable", name: file.name };
-  return { kind: "reference", reference: { kind: "file", file: mention } };
-}
 
-function isTextFileReaderResult(result: FileReader["result"]): result is string {
-  return typeof result === "string";
+  if (mention === undefined) return { kind: "unreachable", name: file.name };
+
+  return { kind: "reference", reference: { kind: "file", file: mention } };
 }
 
 function readImageAttachment(args: {
@@ -69,22 +74,29 @@ function readImageAttachment(args: {
   readonly mimeType: string;
 }): Promise<ComposerImageAttachment> {
   const { file, mimeType } = args;
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.addEventListener(
       "load",
       () => {
         const result = reader.result;
-        if (!isTextFileReaderResult(result)) {
+
+        if (result === null || result instanceof ArrayBuffer) {
           reject(new Error(`Could not read ${file.name}`));
+
           return;
         }
+
         const marker = ";base64,";
         const markerIndex = result.indexOf(marker);
+
         if (!result.startsWith("data:") || markerIndex === -1) {
           reject(new Error(`Could not encode ${file.name}`));
+
           return;
         }
+
         const data = result.slice(markerIndex + marker.length);
         resolve({
           id: crypto.randomUUID(),
@@ -123,20 +135,26 @@ export async function attachComposerFiles(args: {
   readonly error: string | undefined;
 }> {
   const intake = args.files.map(classifyComposerFile);
+
   for (const item of intake) {
     if (item.kind === "reference") args.editor?.insertReference(item.reference);
   }
+
   const images = intake.flatMap((item) => (item.kind === "image" ? [item] : []));
   const results = await Promise.allSettled(images.map(readImageAttachment));
+
   const attachments = results.flatMap((result) =>
     result.status === "fulfilled" ? [result.value] : [],
   );
+
   const unreachable = intake.flatMap((item) => (item.kind === "unreachable" ? [item.name] : []));
+
   const error =
     attachments.length !== images.length
       ? "Some images could not be read."
       : unreachable.length > 0
         ? `Save ${unreachable.join(", ")} to disk, then attach ${unreachable.length === 1 ? "it" : "them"} again.`
         : undefined;
+
   return { attachments, error };
 }

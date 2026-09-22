@@ -111,18 +111,25 @@ function ShellChrome(): ReactElement {
       const settingsOpen = shellRouter.state.matches.some(
         (match) => match.routeId === settingsRoute.id,
       );
+
       const action = resolveClientAction(event, mac, settingsOpen ? "settings" : shellStage.kind);
+
       if (action === undefined) return;
+
       if (action.id === "split-right" || action.id === "split-down") {
         if (!canSplit) return;
         event.preventDefault();
         panes.split(action.id === "split-down" ? "down" : "right");
+
         return;
       }
+
       if (action.id === "focus-pane") {
         if (panes.focusNext()) event.preventDefault();
+
         return;
       }
+
       if (action.id === "new-chat") {
         event.preventDefault();
         panes.newChat();
@@ -154,7 +161,9 @@ function ShellChrome(): ReactElement {
         });
       }
     };
+
     window.addEventListener("keydown", onKeyDown);
+
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
@@ -167,9 +176,11 @@ function ShellChrome(): ReactElement {
         {...stylex.props(styles.stage)}
         onClickCapture={(event) => {
           if (!customizeOpen || !(event.target instanceof Element)) return;
+
           const sidebarAction = event.target.closest(
             'nav[aria-label="Sessions and workspaces"] button',
           );
+
           if (sidebarAction === null || sidebarAction.getAttribute("aria-haspopup") === "dialog")
             return;
           shellActions.showWorkspace();
@@ -198,8 +209,11 @@ function StageContent({
   readonly shellStage: ReturnType<typeof useShellState>["stage"];
 }): ReactElement | null {
   const settings = useMatch({ from: "/settings/$section", shouldThrow: false });
+
   if (settings !== undefined) return <Matches />;
+
   if (shellStage.kind === "workspace") return <Matches />;
+
   return <CustomizeSurface sessionId={shellStage.sessionId} />;
 }
 
@@ -223,13 +237,16 @@ const indexRoute = createRoute({
   beforeLoad: async () => {
     if (!startupDestinationPending) return;
     startupDestinationPending = false;
+
     if (getStartupDestination() === "new-chat") return;
 
     const sessions = queryClient.getQueryData<SessionPage>(keys.sessionPreview);
+
     const sessionId = startupSession(
       "last-session",
       sessions?.items.filter((session) => !session.archived) ?? [],
     );
+
     if (sessionId !== undefined) {
       throw redirect({
         to: threadRoute.to,
@@ -242,6 +259,7 @@ const indexRoute = createRoute({
 
 function ThreadRouteError(): ReactElement {
   const threadRouter = useRouter();
+
   return (
     <div role="alert" {...stylex.props(styles.loadError)}>
       <p {...stylex.props(styles.loadErrorText)}>Couldn&rsquo;t open this chat.</p>
@@ -263,6 +281,7 @@ const threadRoute = createRoute({
       sessionId: params.sessionId,
       read: () => nyte.sessions.get({ sessionId: params.sessionId }),
     });
+
     if (session === null) throw redirect({ to: indexRoute.to, replace: true });
   },
   errorComponent: ThreadRouteError,
@@ -284,6 +303,7 @@ export const settingsRoute = createRoute({
           replace: true,
         });
       }
+
       return { section };
     },
     stringify: ({ section }) => ({ section }),
@@ -292,7 +312,9 @@ export const settingsRoute = createRoute({
 });
 
 const workspaceRouteTree = workspaceRoute.addChildren([indexRoute, threadRoute]);
+
 const routeTree = rootRoute.addChildren([workspaceRouteTree, settingsRoute]);
+
 const history = createMemoryHistory({ initialEntries: ["/"] });
 
 export const router = createRouter({
@@ -311,6 +333,7 @@ export function currentRouteSession(): SessionId | undefined {
   for (const match of router.state.matches) {
     if (match.routeId === threadRoute.id) return match.params.sessionId;
   }
+
   return undefined;
 }
 

@@ -40,7 +40,9 @@ export class ComposerDocument {
     if (this.scoped && this.snapshot !== undefined) return this.snapshot;
     const snapshot = classify(this.input.plainText);
     this.latest = snapshot;
+
     if (this.scoped) this.snapshot = snapshot;
+
     return snapshot;
   }
 
@@ -66,6 +68,7 @@ export class ComposerDocument {
     const outer = this.scoped;
     this.snapshot = undefined;
     this.scoped = true;
+
     try {
       return work();
     } finally {

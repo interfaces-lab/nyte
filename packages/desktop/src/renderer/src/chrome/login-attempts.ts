@@ -25,13 +25,16 @@ interface LoginAttemptView {
 }
 
 let attempts: ReadonlyMap<string, LoginAttemptView> = new Map();
+
 const listeners = new Set<() => void>();
 
 function set(provider: string, view: LoginAttemptView | undefined): void {
   const next = new Map(attempts);
+
   if (view === undefined) next.delete(provider);
   else next.set(provider, Object.freeze(view));
   attempts = next;
+
   for (const listener of listeners) listener();
 }
 
@@ -59,6 +62,7 @@ export function setLoginAttemptCancelling(
   cancelling: boolean,
 ): void {
   const current = attempts.get(provider);
+
   if (current?.attempt === attempt && current.cancelling !== cancelling)
     set(provider, { ...current, cancelling });
 }
@@ -85,6 +89,7 @@ function apply(current: LoginAttemptView, progress: LoginProgress): LoginAttempt
       return { ...current, message: progress.message };
     default: {
       const _exhaustive: never = progress;
+
       return _exhaustive;
     }
   }
@@ -92,16 +97,19 @@ function apply(current: LoginAttemptView, progress: LoginProgress): LoginAttempt
 
 export function applyLoginEvent(event: Extract<HostEvent, { kind: "login_progress" }>): void {
   const current = attempts.get(event.provider);
+
   if (current === undefined || current.attempt !== event.attempt) return;
   set(event.provider, apply(current, event.progress));
 }
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
+
   return () => listeners.delete(listener);
 }
 
 export function useLoginAttempt(provider: string): LoginAttemptView | undefined {
   const read = (): LoginAttemptView | undefined => attempts.get(provider);
+
   return useSyncExternalStore(subscribe, read, read);
 }

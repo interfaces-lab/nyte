@@ -53,5 +53,6 @@ const styles = create({
 
 export function Icon({ name }: { name: keyof typeof glyphs }) {
   const Glyph = glyphs[name];
+
   return <Glyph ariaHidden={true} {...props(styles.glyph)} />;
 }

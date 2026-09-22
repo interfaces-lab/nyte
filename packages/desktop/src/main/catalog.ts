@@ -36,7 +36,7 @@ export async function loadPersistedCatalog(models: Models): Promise<void> {
 export interface ResolvedCatalog {
   readonly catalog: DesktopCatalog;
   /** The catalog's default as the SDK needs it, for composition. */
-  readonly defaultModel: Model<Api>;
+  readonly defaultModel?: Model<Api>;
 }
 
 interface Entry {
@@ -59,6 +59,7 @@ export async function readCatalog(
     models.getProviders().map(async (provider): Promise<ProviderStatus> => {
       const auth = await models.checkAuth(provider.id).catch(() => undefined);
       const signIn: SignInMethod[] = [];
+
       if (provider.auth.oauth !== undefined) {
         signIn.push({
           kind: "browser",
@@ -66,9 +67,11 @@ export async function readCatalog(
           subscription: provider.auth.oauth.name,
         });
       }
+
       if (provider.auth.apiKey?.login !== undefined) {
         signIn.push({ kind: "api_key", label: provider.auth.apiKey.name });
       }
+
       return {
         id: provider.id,
         name: provider.name,
@@ -83,18 +86,22 @@ export async function readCatalog(
       };
     }),
   );
+
   const listedProviders = new Set(
     providers
       .filter((provider) => provider.enabled && provider.connection.kind !== "disconnected")
       .map((provider) => provider.id),
   );
+
   const availableKeys = new Set(
     (await models.getAvailable()).map((model) => `${model.provider}/${model.id}`),
   );
+
   const entries = models.getModels().map((model): Entry => {
     const key = `${model.provider}/${model.id}`;
     const available = availableKeys.has(key);
     const hidden = preferences.providers[model.provider]?.hiddenModels?.includes(model.id) ?? false;
+
     return {
       model,
       available,
@@ -119,13 +126,14 @@ export async function readCatalog(
       },
     };
   });
+
   const providerIds = providers.map((provider) => provider.id);
   const listed = entries.filter((entry) => entry.option.listed);
   const available = entries.filter((entry) => entry.available);
   const chosen = preferences.defaults.model;
+
   // Prefer a listed choice, but keep hidden or disabled settings usable as a
-  // last resort. With no available models, a baked placeholder keeps Settings
-  // reachable for sign-in; it is not listed as a selectable model.
+  // last resort.
   const fallback =
     listed.find(
       (entry) => entry.model.provider === chosen?.provider && entry.model.id === chosen.id,
@@ -133,20 +141,23 @@ export async function readCatalog(
     firstPreferred(listed, providerIds) ??
     firstPreferred(available, providerIds) ??
     firstPreferred(entries, providerIds);
-  if (fallback === undefined) throw new Error("No models in the provider catalog");
+
   return {
-    defaultModel: fallback.model,
+    defaultModel: fallback?.model,
     catalog: {
       source: "local",
       providers,
       models: entries.map((entry) => entry.option),
-      defaults: {
-        model: { provider: fallback.model.provider, id: fallback.model.id },
-        thinkingLevel: clampThinkingLevel(
-          fallback.model,
-          preferences.defaults.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
-        ),
-      },
+      defaults:
+        fallback === undefined
+          ? undefined
+          : {
+              model: { provider: fallback.model.provider, id: fallback.model.id },
+              thinkingLevel: clampThinkingLevel(
+                fallback.model,
+                preferences.defaults.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
+              ),
+            },
     },
   };
 }
@@ -164,8 +175,10 @@ function firstPreferred(
     const own = entries.filter((entry) => entry.model.provider === providerId);
     const preferred = own.find((entry) => entry.model.id === defaultModelPerProvider[providerId]);
     const pick = preferred ?? own[0];
+
     if (pick !== undefined) return pick;
   }
+
   return undefined;
 }
 
@@ -209,12 +222,14 @@ export async function login(
       prompt: (prompt) => {
         if (prompt.type === "secret" && method.kind === "api_key")
           return Promise.resolve(method.key);
+
         if (
           prompt.type === "select" &&
           method.kind === "browser" &&
           prompt.options.some((option) => option.id === BROWSER_OPTION_ID)
         )
           return Promise.resolve(BROWSER_OPTION_ID);
+
         if (prompt.type === "manual_code") {
           // Held open until the callback lands or the desktop gives up: a flow
           // that passes no prompt signal still releases on cancel or shutdown.
@@ -222,29 +237,36 @@ export async function login(
             prompt.signal === undefined
               ? host.signal
               : AbortSignal.any([host.signal, prompt.signal]);
+
           return new Promise<string>((_resolve, reject) => {
             const cancel = (): void => reject(new Error("Browser login finished"));
+
             if (release.aborted) cancel();
             else release.addEventListener("abort", cancel, { once: true });
           });
         }
+
         return Promise.reject(
           new Error("Couldn't finish signing in here. Run `nyte login` in a terminal."),
         );
       },
       notify: (event) => {
         if (host.signal.aborted) return;
+
         switch (event.type) {
           case "auth_url": {
             const url = webUrl(event.url);
+
             if (url === undefined)
               host.report({
                 kind: "message",
                 message: "The provider sent a sign-in link that isn't a web address.",
               });
             else host.openExternal(url);
+
             return;
           }
+
           case "device_code":
             host.report({
               kind: "device_code",
@@ -253,13 +275,16 @@ export async function login(
               expiresInSeconds: event.expiresInSeconds,
               instructions: event.instructions,
             });
+
             return;
           case "progress":
           case "info":
             host.report({ kind: "message", message: event.message });
+
             return;
           default: {
             const _exhaustive: never = event;
+
             return _exhaustive;
           }
         }
@@ -270,6 +295,7 @@ export async function login(
     if (host.signal.aborted) return { kind: "cancelled" };
     throw error;
   }
+
   // The credential is saved; discovery is a separate step that can fail on
   // its own. Forced so a provider whose list depends on the account fetches now.
   const refreshed = await models.refresh({
@@ -277,5 +303,6 @@ export async function login(
     force: true,
     signal: host.signal,
   });
+
   return { kind: "connected", catalogRefreshed: !refreshed.aborted && refreshed.errors.size === 0 };
 }

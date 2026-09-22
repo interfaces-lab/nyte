@@ -111,6 +111,7 @@ class TaskInspector {
           .join(" · "),
       ),
     ]);
+
     if (this.id !== `${task.kind}:${task.id}`) {
       this.output?.destroyRecursively();
       this.output = undefined;
@@ -118,6 +119,7 @@ class TaskInspector {
       this.id = `${task.kind}:${task.id}`;
       this.scroll.scrollTo(0);
     }
+
     if (task.kind === "agent") {
       this.view.sync(task.state);
     } else {
@@ -128,6 +130,7 @@ class TaskInspector {
         });
         this.scroll.add(this.output);
       }
+
       this.output.content = task.job.output || "No output yet.";
     }
   }
@@ -185,6 +188,7 @@ export class TaskBrowser {
   update(state: SessionState, event?: SessionEvent): void {
     const changedSession = this.state?.sessionId !== state.sessionId;
     const previousWaiting = this.state === undefined ? undefined : waitingCall(this.state);
+
     if (changedSession) {
       this.close();
       this.generation += 1;
@@ -196,16 +200,20 @@ export class TaskBrowser {
         onError: this.options.onError,
       });
     }
+
     this.state = state;
     this.index?.update(state, event);
+
     if (event?.kind === "job") {
       const jobs = new Map(this.jobs.map((job) => [job.id, job]));
       jobs.set(event.job.id, event.job);
       this.jobs = [...jobs.values()];
     }
+
     if (changedSession || event?.kind === "job") this.updateTasks();
     // Parent questions must still notify the host without repainting unchanged tasks.
     else if (previousWaiting?.waitId !== waitingCall(state)?.waitId) this.options.onChange?.();
+
     if (changedSession || event === undefined || event.kind === "synced") {
       void this.refresh().catch(this.options.onError);
     }
@@ -213,17 +221,21 @@ export class TaskBrowser {
 
   private async refresh(): Promise<void> {
     const state = this.state;
+
     if (state === undefined) return;
     const generation = this.generation;
     const request = ++this.request;
     const before = new Map(this.jobs.map((job) => [job.id, job]));
     const listed = await this.options.nyte.jobs.list({ sessionId: state.sessionId });
+
     if (generation !== this.generation || request !== this.request) return;
     const merged = new Map(listed.map((job) => [job.id, job]));
+
     // A watch update received during the read wins, even within the same clock tick.
     for (const job of this.jobs) {
       if (job !== before.get(job.id)) merged.set(job.id, job);
     }
+
     this.jobs = [...merged.values()];
     this.updateTasks();
   }
@@ -231,20 +243,26 @@ export class TaskBrowser {
   async backgroundForeground(): Promise<void> {
     if (this.backgrounding) return;
     const state = this.state;
+
     if (state === undefined) return;
     this.backgrounding = true;
     const generation = this.generation;
+
     try {
       const jobs = await this.options.nyte.jobs.list({
         sessionId: state.sessionId,
         head: state.head,
       });
+
       if (generation !== this.generation) return;
       const foreground = jobs.filter(foregroundJob);
+
       if (foreground.length === 0) {
         notice(this.options.shell, "No foreground work to background.");
+
         return;
       }
+
       for (const job of foreground) {
         if (generation !== this.generation) return;
         await this.act(state.sessionId, job.id, "background");
@@ -275,8 +293,10 @@ export class TaskBrowser {
   get waiting() {
     for (const state of this.index?.states ?? []) {
       const waiting = waitingCall(state);
+
       if (waiting !== undefined) return waiting;
     }
+
     return undefined;
   }
 
@@ -318,11 +338,13 @@ export class TaskBrowser {
     this.finished = finished;
     this.menuHasTasks = this.tasks.some((task) => unfinishedTask(task) !== this.finished);
     this.menu?.show(this.screen());
+
     if (this.menu !== undefined) setHints(this.options.shell, this.menu.hints);
   }
 
   open(): void {
     const { shell } = this.options;
+
     if (this.menu !== undefined || shell.ui.selecting || shell.ui.prompting) return;
     this.index?.discover();
     this.finished = false;
@@ -340,6 +362,7 @@ export class TaskBrowser {
 
   close(): void {
     this.back();
+
     if (this.menu === undefined) return;
     const menu = this.menu;
     this.menu = undefined;
@@ -360,12 +383,14 @@ export class TaskBrowser {
   private choices() {
     const tasks = this.tasks;
     const now = Date.now();
+
     return [
       ...tasks
         .filter((task) => unfinishedTask(task) !== this.finished)
         .map((task) => {
           const mark = statusMark(taskStatus(task));
           const elapsed = taskElapsedMs(task, now);
+
           return {
             id: task.id,
             mark: { text: mark.glyph, tone: mark.tone },
@@ -392,9 +417,11 @@ export class TaskBrowser {
 
   private repaint(): void {
     const { shell } = this.options;
+
     const active = this.tasks.filter((task) =>
       task.kind === "job" ? backgroundJob(task.job) : unfinishedTask(task),
     ).length;
+
     shell.taskStatus.visible = active > 0;
     // A background child waiting on the user outranks the count: it is the one thing to act on.
     const mark = statusMark(this.waiting === undefined ? "running" : "waiting");
@@ -409,8 +436,10 @@ export class TaskBrowser {
     ]);
     this.repaintMenu();
     const inspector = this.inspector;
+
     if (inspector !== undefined) {
       const task = this.tasks.find((candidate) => candidate.id === inspector.id);
+
       if (task !== undefined) {
         inspector.view.show(task);
         setHints(
@@ -427,6 +456,7 @@ export class TaskBrowser {
         );
       }
     }
+
     this.options.onChange?.();
   }
 
@@ -440,8 +470,11 @@ export class TaskBrowser {
   private async selectedAction(id: string, action: "background" | "cancel"): Promise<void> {
     const state = this.state;
     const task = this.tasks.find((candidate) => candidate.id === id);
+
     if (state === undefined || task === undefined) return;
+
     if (this.inspector === undefined) this.close();
+
     if (task.kind === "agent") {
       if (action !== "cancel" || !canStopTask(task)) return;
       notice(this.options.shell, "Cancellation requested.");
@@ -449,16 +482,22 @@ export class TaskBrowser {
         sessionId: task.state.sessionId,
         head: task.state.head,
       });
+
       return;
     }
+
     if (task.job.phase.kind !== "running") {
       notice(this.options.shell, "This task has already finished. /tasks opens its output.");
+
       return;
     }
+
     if (action === "background" && backgroundJob(task.job)) {
       notice(this.options.shell, "This task is already running in background.");
+
       return;
     }
+
     await this.act(state.sessionId, task.job.id, action);
   }
 
@@ -477,7 +516,9 @@ export class TaskBrowser {
         : "Cancellation requested.",
     );
     const outcome = await this.options.nyte.jobs[action]({ sessionId, jobId });
+
     if (generation !== this.generation) return;
+
     switch (outcome.kind) {
       case "applied":
         break;
@@ -489,23 +530,28 @@ export class TaskBrowser {
         break;
       default: {
         const exhaustive: never = outcome;
+
         return exhaustive;
       }
     }
+
     await this.refresh();
   }
 
   private inspect(id: string): void {
     const { shell } = this.options;
     const menu = this.menu;
+
     if (menu === undefined || this.inspector !== undefined) return;
     const task = this.tasks.find((candidate) => candidate.id === id);
+
     if (task === undefined) return;
     const view = new TaskInspector(shell);
     const scroll = view.scroll;
     menu.container.visible = false;
     shell.setUi("screen", view.container);
     shell.focus.use(view);
+
     const unregister = registerChatLayer(shell.keymap, {
       enabled: () => this.inspector !== undefined,
       commands: {
@@ -515,6 +561,7 @@ export class TaskBrowser {
             void this.selectedAction(this.inspector?.id ?? id, "cancel").catch(
               this.options.onError,
             );
+
             return true;
           },
         },
@@ -524,6 +571,7 @@ export class TaskBrowser {
             void this.selectedAction(this.inspector?.id ?? id, "background").catch(
               this.options.onError,
             );
+
             return true;
           },
         },
@@ -531,6 +579,7 @@ export class TaskBrowser {
           title: "Follow output",
           run: () => {
             scroll.scrollTo(scroll.scrollHeight);
+
             return true;
           },
         },
@@ -540,6 +589,7 @@ export class TaskBrowser {
           title: "Back to Tasks",
           run: () => {
             this.back();
+
             return true;
           },
         },
@@ -547,6 +597,7 @@ export class TaskBrowser {
           title: "Scroll up",
           run: () => {
             scroll.scrollBy(-1);
+
             return true;
           },
         },
@@ -554,6 +605,7 @@ export class TaskBrowser {
           title: "Scroll down",
           run: () => {
             scroll.scrollBy(1);
+
             return true;
           },
         },
@@ -561,6 +613,7 @@ export class TaskBrowser {
           title: "Scroll up",
           run: () => {
             scroll.scrollBy(-0.5, "viewport");
+
             return true;
           },
         },
@@ -568,11 +621,13 @@ export class TaskBrowser {
           title: "Scroll down",
           run: () => {
             scroll.scrollBy(0.5, "viewport");
+
             return true;
           },
         },
       },
     });
+
     this.inspector = { view, id, unregister };
     this.repaint();
   }
@@ -581,21 +636,25 @@ export class TaskBrowser {
     const tasks = this.tasks.filter((task) => unfinishedTask(task) !== this.finished);
     const index = tasks.findIndex((task) => task.id === this.inspector?.id);
     const task = tasks[(index + delta + tasks.length) % tasks.length];
+
     if (task !== undefined) {
       this.back();
       this.inspect(task.id);
     }
+
     return true;
   }
 
   private back(): void {
     const inspector = this.inspector;
+
     if (inspector === undefined) return;
     this.inspector = undefined;
     inspector.unregister();
     inspector.view.destroy();
     const { shell } = this.options;
     shell.setUi("screen", undefined);
+
     if (this.menu !== undefined) {
       this.menu.container.visible = true;
       this.repaintMenu();

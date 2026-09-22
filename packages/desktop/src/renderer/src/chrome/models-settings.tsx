@@ -37,25 +37,34 @@ import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
 import { SettingsRow, SettingsSelect, SettingsSwitch } from "./settings-controls.tsx";
 
 type LoginMethod = Parameters<typeof nyte.host.login>[0]["method"];
+type CatalogDefaults = NonNullable<DesktopCatalog["defaults"]>;
 
 function providerIcon(providerId: string): IconName {
   if (providerId === "anthropic") return "model-anthropic";
+
   if (providerId === "openai" || providerId === "openai-codex") return "model-openai";
+
   if (providerId === "opencode" || providerId === "opencode-go") return "provider-opencode";
+
   return "model-generic";
 }
 
-function DefaultsSection({ catalog }: { catalog: DesktopCatalog }): ReactElement {
+function DefaultsSection({
+  catalog,
+  defaults,
+}: {
+  catalog: DesktopCatalog;
+  defaults: CatalogDefaults;
+}): ReactElement {
   const setPreference = useSetPreference();
   const providerNames = new Map(catalog.providers.map((provider) => [provider.id, provider.name]));
   const listed = catalog.models.filter((option) => option.listed);
+
   const chosen = catalog.models.find(
-    (option) =>
-      option.provider === catalog.defaults.model.provider &&
-      option.id === catalog.defaults.model.id,
+    (option) => option.provider === defaults.model.provider && option.id === defaults.model.id,
   );
-  // Before any login the default is a placeholder no one can switch away from;
-  // the select still names it so the composer's chip and this row agree.
+
+  // Keep a hidden or disabled default visible until the user chooses a listed model.
   const candidates = chosen !== undefined && !chosen.listed ? [chosen, ...listed] : listed;
   const levels = thinkingLevelsFor(chosen);
 
@@ -85,6 +94,7 @@ function DefaultsSection({ catalog }: { catalog: DesktopCatalog }): ReactElement
             }))}
             onValueChange={(key) => {
               const option = candidates.find((candidate) => candidate.key === key);
+
               if (option === undefined) return;
               setPreference.mutate({
                 kind: "defaults",
@@ -96,7 +106,7 @@ function DefaultsSection({ catalog }: { catalog: DesktopCatalog }): ReactElement
         <SettingsRow title="Reasoning" description="How long the model thinks before it answers">
           <SettingsSelect<ModelThinkingLevel>
             label="Default reasoning"
-            value={catalog.defaults.thinkingLevel}
+            value={defaults.thinkingLevel}
             disabled={levels.length <= 1 || setPreference.isPending}
             options={levels.map((level) => ({ value: level, label: THINKING_LABELS[level] }))}
             onValueChange={(thinkingLevel) =>
@@ -121,11 +131,13 @@ function ApiKeyForm({
   onCancel: () => void;
 }): ReactElement {
   const [key, setKey] = useState("");
+
   return (
     <form
       {...stylex.props(styles.keyForm)}
       onSubmit={(event) => {
         event.preventDefault();
+
         if (key.trim() !== "") onSubmit(key.trim());
       }}
     >
@@ -177,9 +189,12 @@ function DeviceCodePanel({
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const { userCode, verificationUri, expiresInSeconds, instructions } = deviceCode;
   const host = linkHost(verificationUri);
+
   const expiryMinutes =
     expiresInSeconds === undefined ? undefined : Math.max(1, Math.round(expiresInSeconds / 60));
+
   const openLabel = host === undefined ? "Open link" : `Open ${host}`;
+
   return (
     <div {...stylex.props(styles.deviceCodePanel)}>
       <span {...stylex.props(styles.deviceCodeLead)}>
@@ -235,10 +250,12 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
   const running = useLoginAttempt(provider.id);
   // Once the catalog reports the connection, the attempt is only winding down.
   const attempt = provider.connection.kind === "disconnected" ? running : undefined;
+
   const login = useMutation({
     mutationFn: async (method: LoginMethod) => {
       const id = newLoginAttemptId();
       beginLoginAttempt({ provider: provider.id, attempt: id, method: method.kind });
+
       try {
         return await nyte.host.login({ provider: provider.id, method, attempt: id });
       } finally {
@@ -248,6 +265,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
     onSuccess: (outcome) => {
       if (outcome.kind === "cancelled") return;
       setKeyFormOpen(false);
+
       if (outcome.catalogRefreshed) toast.success(`Connected to ${provider.name}`);
       else
         toast.warning(
@@ -256,11 +274,13 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
     },
     onError: () => toast.error(`Couldn't sign in to ${provider.name}. Try again.`),
   });
+
   const logout = useMutation({
     mutationFn: () => nyte.host.logout({ provider: provider.id }),
     onSuccess: () => toast.success(`Signed out of ${provider.name}`),
     onError: () => toast.error(`Couldn't sign out of ${provider.name}. Try again.`),
   });
+
   const cancelLogin = (): void => {
     if (attempt === undefined) return;
     const id = attempt.attempt;
@@ -271,6 +291,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
       toast.error(`Couldn't cancel the ${provider.name} sign-in. Try again.`);
     });
   };
+
   const busy = login.isPending || logout.isPending;
   const browser = provider.signIn.find((method) => method.kind === "browser");
   const apiKey = provider.signIn.find((method) => method.kind === "api_key");
@@ -390,11 +411,14 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
   const [expandedProviders, setExpandedProviders] = useState<ReadonlySet<string>>(new Set());
   const needle = query.trim().toLowerCase();
   const enabled = catalog.providers.filter((provider) => provider.enabled);
+
   const groups = enabled.flatMap((provider) => {
     const all = catalog.models.filter((option) => option.provider === provider.id);
+
     const matching = all.filter((option) =>
       `${option.name}\n${option.id}`.toLowerCase().includes(needle),
     );
+
     return matching.length === 0 ? [] : [{ provider, all, matching }];
   });
 
@@ -430,6 +454,7 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
       )}
       {groups.map(({ provider, all, matching }) => {
         const shown = all.filter((option) => !option.hidden).length;
+
         const setAll = (hidden: boolean): void =>
           setPreference.mutate({
             kind: "models",
@@ -437,6 +462,7 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
             ids: all.map((option) => option.id),
             hidden,
           });
+
         const heading = (
           <>
             <Icon
@@ -454,6 +480,7 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
             </span>
           </>
         );
+
         return (
           <Collapsible.Root
             key={provider.id}
@@ -461,8 +488,10 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
             onOpenChange={(open) =>
               setExpandedProviders((previous) => {
                 const next = new Set(previous);
+
                 if (open) next.add(provider.id);
                 else next.delete(provider.id);
+
                 return next;
               })
             }
@@ -532,17 +561,22 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
 
 export function ModelsSettings(): ReactElement | null {
   const catalog = useCatalog();
+
   if (catalog.data === undefined) {
     if (!catalog.isError) return null;
+
     return (
       <div role="alert" title={catalog.error.message} {...stylex.props(styles.alert)}>
         Couldn&rsquo;t load providers. Try again.
       </div>
     );
   }
+
+  const defaults = catalog.data.defaults;
+
   return (
     <>
-      <DefaultsSection catalog={catalog.data} />
+      {defaults !== undefined && <DefaultsSection catalog={catalog.data} defaults={defaults} />}
       <section {...stylex.props(settingsPatterns.section)}>
         <div {...stylex.props(settingsPatterns.sectionHeader)}>
           <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Providers</h2>

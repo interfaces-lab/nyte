@@ -10,6 +10,7 @@ import type {
 import { estimateContextTokens } from "../utils/estimate.ts";
 
 const CONTEXT_SAFETY_TOKENS = 4096;
+
 const MIN_MAX_TOKENS = 1;
 
 export function clampMaxTokensToContext(
@@ -18,8 +19,10 @@ export function clampMaxTokensToContext(
   maxTokens: number,
 ): number {
   if (model.contextWindow <= 0) return Math.max(MIN_MAX_TOKENS, maxTokens);
+
   const available =
     model.contextWindow - estimateContextTokens(context).tokens - CONTEXT_SAFETY_TOKENS;
+
   return Math.min(maxTokens, Math.max(MIN_MAX_TOKENS, available));
 }
 
@@ -33,6 +36,7 @@ export function buildBaseOptions(
     model.samplingParams || options?.samplingParams
       ? { ...model.samplingParams, ...options?.samplingParams }
       : undefined;
+
   return {
     temperature: options?.temperature,
     samplingParams,
@@ -78,6 +82,7 @@ export function thinkingBudgetForLevel(
 ): number {
   const budgets = { ...DEFAULT_THINKING_BUDGETS, ...customBudgets };
   const level = clampReasoning(reasoningLevel)!;
+
   return budgets[level]!;
 }
 
@@ -92,8 +97,9 @@ export function adjustMaxTokensForThinking(
   modelMaxTokens: number,
   reasoningLevel: ThinkingLevel,
   customBudgets?: ThinkingBudgets,
-): { maxTokens: number; thinkingBudget: number } {
+) {
   let thinkingBudget = thinkingBudgetForLevel(reasoningLevel, customBudgets);
+
   const maxTokens =
     baseMaxTokens === undefined
       ? modelMaxTokens

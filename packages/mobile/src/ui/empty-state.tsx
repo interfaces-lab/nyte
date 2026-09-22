@@ -15,6 +15,7 @@ export function EmptyState({
   children?: ReactNode;
 }) {
   const theme = useTheme();
+
   return (
     <html.div style={styles.content}>
       {systemImage ? <SymbolView name={systemImage} size={36} tintColor={theme.tertiary} /> : null}

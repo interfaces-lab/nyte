@@ -10,15 +10,14 @@ import { openAICompletionsApi } from "../api/openai-completions.lazy.ts";
 import { openAIResponsesApi } from "../api/openai-responses.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
 import { createProvider, type Provider } from "../models.ts";
-import catalogSnapshot from "./snapshots/opencode-catalog.json" with { type: "json" };
-import {
-  openCodeCatalogFetcher,
-  parseOpenCodeCatalog,
-  type OpenCodeApi,
-  type OpenCodeCatalogOptions,
-} from "./opencode-catalog.ts";
 
-export function opencodeProvider(options: OpenCodeCatalogOptions = {}): Provider<OpenCodeApi> {
+export type OpenCodeApi =
+  | "anthropic-messages"
+  | "google-generative-ai"
+  | "openai-completions"
+  | "openai-responses";
+
+export function opencodeProvider(): Provider<OpenCodeApi> {
   return createProvider({
     id: "opencode",
     name: "OpenCode Zen",
@@ -30,10 +29,6 @@ export function opencodeProvider(options: OpenCodeCatalogOptions = {}): Provider
       minimumRetentionMs: { short: 5 * 60_000, long: 5 * 60_000 },
     },
     auth: { apiKey: envApiKeyAuth("OpenCode API key", ["OPENCODE_API_KEY"]) },
-    // Baked snapshot so a first boot with no network still has a catalog;
-    // fetchModels overlays the live list when a refresh reaches the network.
-    models: parseOpenCodeCatalog(catalogSnapshot, "opencode"),
-    fetchModels: openCodeCatalogFetcher("opencode", options),
     api: {
       "anthropic-messages": anthropicMessagesApi(),
       "google-generative-ai": googleGenerativeAIApi(),

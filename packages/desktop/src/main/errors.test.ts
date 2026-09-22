@@ -14,9 +14,13 @@ afterEach(() => ipcDiagnostics.clear());
 
 test("request envelope rejection is redacted before a host is constructed", async () => {
   const request = { path: "host.fonts", input: undefined, credential: "secret-key" } as const;
-  const result = await callIpc(() => {
-    throw new Error("The invalid envelope must never construct a host");
-  }, request);
+  const result = await callIpc(
+    () => {
+      throw new Error("The invalid envelope must never construct a host");
+    },
+    1,
+    request,
+  );
   assert.equal(result.ok, false);
   assert.equal(result.error.code, "invalid_input");
   assert.equal(ipcDiagnostics.size, 0);
@@ -83,6 +87,7 @@ test("unexpected TypeError is captured once with its original cause and opaque r
     () => {
       throw cause;
     },
+    1,
     { path: "host.fonts", input: undefined },
   );
   assert.equal(result.ok, false);

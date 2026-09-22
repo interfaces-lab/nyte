@@ -126,6 +126,7 @@ const sizeStyles = {
 } as const;
 
 export type ButtonVariant = keyof typeof variantStyles;
+
 export type ButtonSize = keyof typeof sizeStyles;
 
 interface StyledButtonAppearance {

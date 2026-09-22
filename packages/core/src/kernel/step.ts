@@ -7,6 +7,8 @@ import {
   type TreeOutcome,
 } from "@nyte-ai/protocol";
 import { NOOP_TELEMETRY_CONTEXT, type TelemetryContext } from "@nyte-ai/telemetry";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { agentChanged, boundaryBatch, decide, headFor, leadFor, nextBatch } from "./admission.ts";
 import { revokeDelegations } from "./delegation-record.ts";
 import { compactionClearUpdates, finishCompaction } from "./compaction.ts";
@@ -97,15 +99,18 @@ function isCommit(object: Obj): object is Commit {
 /** The tree to stamp, or none: a host without a backend, or one that cannot answer, stamps nothing. */
 async function currentTree(options: StepOptions): Promise<TreeId | undefined> {
   const outcome = await options.tree?.();
+
   return outcome?.kind === "tree" ? outcome.id : undefined;
 }
 
 async function readRun(session: Session, oid: string | null): Promise<Run | undefined> {
   if (oid === null) return undefined;
   const object = await session.objects.get(oid);
+
   if (object === undefined || !isRun(object)) {
     throw new Error(`Corrupt run ref at ${oid}: missing or non-run object`);
   }
+
   return object;
 }
 
@@ -121,6 +126,7 @@ async function publish(
     [...options.updates, { name: DELETED_REF, from: null, to: null }],
     { lease: options.lease, reason: options.reason },
   );
+
   return outcome.ok ? "ok" : outcome.reason;
 }
 
@@ -164,22 +170,27 @@ function commitsFor(
   const commits: Commit[] = [];
   let previous = parent;
   let started = false;
+
   for (const item of changes) {
     const body = item.change.body;
+
     const common = {
       kind: "commit" as const,
       parent: previous,
       change: item.oid,
       run: runId,
       at: now(),
-      ...(item.change.key === undefined ? {} : { key: item.change.key }),
-      ...(item.change.author === undefined ? {} : { author: item.change.author }),
+      key: item.change.key,
+      author: item.change.author,
     };
+
     const start =
       !started && runStart !== undefined && (body.kind === "message" || body.kind === "completion")
         ? runStart
         : { kind: "none" as const };
+
     let commit: Commit;
+
     switch (body.kind) {
       case "message":
         commit = { ...common, body, start };
@@ -195,11 +206,14 @@ function commitsFor(
         commit = _exhaustive;
       }
     }
+
     if (start.kind === "run") started = true;
     previous = hashObject(commit);
     commits.push(commit);
   }
+
   if (previous === null) throw new Error("Landing produced no commit");
+
   return { commits, tip: previous };
 }
 
@@ -208,21 +222,18 @@ interface ChainCounter {
   readonly attempts: number;
 }
 
+const ChainCounterValue = Type.Object({ attempts: Type.Integer({ minimum: 0 }) });
+
 async function readChain(session: Session, root: string): Promise<ChainCounter> {
   const oid = await session.refs.read(chainRef(root));
+
   if (oid === null) throw new Error(`Missing chain counter for ${root}`);
   const object = await session.objects.get(oid);
-  if (
-    object?.kind !== "blob" ||
-    typeof object.value !== "object" ||
-    object.value === null ||
-    Array.isArray(object.value) ||
-    typeof object.value.attempts !== "number" ||
-    !Number.isInteger(object.value.attempts) ||
-    object.value.attempts < 0
-  ) {
+
+  if (object?.kind !== "blob" || !Value.Check(ChainCounterValue, object.value)) {
     throw new Error(`Corrupt chain counter for ${root}`);
   }
+
   return { oid, attempts: object.value.attempts };
 }
 
@@ -236,6 +247,12 @@ interface LandingRequest {
   readonly boundary: { readonly awaitingAnswer: boolean } | { readonly kind: "idle" };
 }
 
+interface LandingPlan {
+  readonly landed: LandedCommits;
+  readonly run: Run;
+  readonly updates: readonly RefUpdate[];
+}
+
 async function land(
   context: Omit<StepContext, "run">,
   request: LandingRequest,
@@ -244,19 +261,23 @@ async function land(
     head: context.options.head,
     delivery: request.delivery,
   });
+
   const changes =
     "awaitingAnswer" in request.boundary
       ? boundaryBatch(queued, context.options.drain, request.boundary.awaitingAnswer)
       : nextBatch(queued, context.options.drain);
+
   const decision = decide(
     headFor(request.run),
     await leadFor(context.session, changes),
     agentChanged(request.run, changes),
   );
+
   const baseName = inboxBaseRef(context.options.head, request.delivery);
   const base = await context.session.refs.read(baseName);
 
   if (decision.kind === "wait") return { kind: "idle" };
+
   if (decision.kind === "handoff") {
     return storeRun(
       { ...context, run: decision.run },
@@ -269,11 +290,8 @@ async function land(
     );
   }
 
-  let plan: {
-    readonly landed: ReturnType<typeof commitsFor>;
-    readonly run: Run;
-    readonly updates: readonly RefUpdate[];
-  };
+  let plan: LandingPlan;
+
   switch (decision.kind) {
     case "join":
     case "settle":
@@ -285,24 +303,30 @@ async function land(
       break;
     case "start": {
       const id = newRunId();
+
       const landed = commitsFor(changes, context.tip, id, context.now, {
         kind: "run",
         tree: (await currentTree(context.options)) ?? null,
       });
+
       const prior = await branch(context.session.objects, context.tip);
       const config = branchConfig([...prior.map((entry) => entry.commit), ...landed.commits]);
       let root: string;
       let updates: readonly RefUpdate[];
+
       switch (decision.chain.kind) {
         case "new": {
           root = id;
+
           const [counter] = await context.session.objects.put([
             { kind: "blob", value: { attempts: 0 } },
           ]);
+
           if (counter === undefined) throw new Error("Chain counter write returned no object");
           updates = [{ name: chainRef(root), from: null, to: counter }];
           break;
         }
+
         case "inherit":
           root = decision.chain.root;
           updates = [decision.chain.consume];
@@ -313,6 +337,7 @@ async function land(
           updates = _exhaustive;
         }
       }
+
       plan = {
         landed,
         run: {
@@ -330,15 +355,19 @@ async function land(
       };
       break;
     }
+
     default: {
       const _exhaustive: never = decision;
+
       return _exhaustive;
     }
   }
 
   await context.session.objects.put([...plan.landed.commits, plan.run]);
   const last = changes.at(-1);
+
   if (last === undefined) throw new Error("Landing lost its final change");
+
   const outcome = await publish(context.session, {
     lease: context.lease,
     updates: [
@@ -350,6 +379,7 @@ async function land(
     ],
     reason: "land",
   });
+
   return outcome === "fenced" ? { kind: "fenced" } : { kind: "continue" };
 }
 
@@ -359,8 +389,10 @@ async function landOrIdle(
 ): Promise<StepOutcome> {
   for (const delivery of ["steer", "next"] as const) {
     const outcome = await land(context, { delivery, run, boundary: { kind: "idle" } });
+
     if (outcome.kind !== "idle") return outcome;
   }
+
   return { kind: "idle" };
 }
 
@@ -371,6 +403,7 @@ async function storeRun(
   assertions: readonly RefUpdate[] = [],
 ): Promise<StepOutcome> {
   await context.session.objects.put([run]);
+
   const outcome = await publish(context.session, {
     lease: context.lease,
     updates: [
@@ -380,13 +413,16 @@ async function storeRun(
     ],
     reason,
   });
+
   if (outcome === "fenced") return { kind: "fenced" };
+
   return outcome === "ok" ? { kind: "finished", run } : { kind: "continue" };
 }
 
 /** Publish the run's terminal phase with no other output. */
 async function endRun(context: StepContext, phase: RunPhase, reason: string): Promise<StepOutcome> {
   await noteOverriddenFailure(context, phase);
+
   return storeRun(context, withPhase(context.run, phase), reason);
 }
 
@@ -398,8 +434,10 @@ async function callTurn<T>(
   const controller = new AbortController();
   let fenced = false;
   const abort = (): void => controller.abort();
+
   if (abortRequested || context.options.signal?.aborted === true) abort();
   else context.options.signal?.addEventListener("abort", abort, { once: true });
+
   const outbox = createOutbox(context.session, {
     lease: context.lease,
     onFenced: () => {
@@ -407,8 +445,10 @@ async function callTurn<T>(
       abort();
     },
   });
+
   try {
     let outcome: T;
+
     try {
       outcome = await withLeaseRenewal(
         {
@@ -422,6 +462,7 @@ async function callTurn<T>(
     } finally {
       await outbox.flush();
     }
+
     return fenced ? { kind: "fenced" } : { kind: "outcome", outcome };
   } catch (cause) {
     if (cause instanceof LeaseLost) return { kind: "fenced" };
@@ -438,6 +479,7 @@ async function currentRun(
     context.session.refs.read(runRef(context.options.head)),
     context.session.refs.read(headRef(context.options.head)),
   ]);
+
   return { oid, run: await readRun(context.session, oid), tip };
 }
 
@@ -449,18 +491,27 @@ async function afterConflict(
   },
 ): Promise<StepOutcome> {
   const current = await currentRun(context);
+
   if (current.run !== undefined && current.run.id !== context.run.id) return { kind: "fenced" };
 
   if (current.run?.id === context.run.id && current.run.abortRequested === true) {
-    // The abort raced this step. Keep its output and carry the flag to where it
-    // is honored: a tool batch settles its calls first, anything else goes to
-    // the response boundary, which ends the run `aborted`.
-    const phase: RunPhase =
-      options.next.phase.kind === "tools" || options.next.phase.kind === "waiting"
-        ? options.next.phase
-        : { kind: "respond" };
-    const interrupted = withPhase(current.run, phase, options.next.attempts);
+    // The abort raced this step. Keep its output; a tool batch settles its
+    // calls first, anything else ends the run `aborted` in the same publish.
+    if (options.next.phase.kind !== "tools" && options.next.phase.kind !== "waiting") {
+      const stopped = { ...context, run: current.run, runOid: current.oid };
+      await noteOverriddenFailure(stopped, options.next.phase);
+
+      return storeRun(
+        stopped,
+        withPhase(current.run, { kind: "aborted" }, options.next.attempts),
+        "abort",
+        options.outputUpdates,
+      );
+    }
+
+    const interrupted = withPhase(current.run, options.next.phase, options.next.attempts);
     await context.session.objects.put([interrupted]);
+
     const outcome = await publish(context.session, {
       lease: context.lease,
       updates: [
@@ -469,18 +520,22 @@ async function afterConflict(
       ],
       reason: "interrupt",
     });
+
     return outcome === "fenced" ? { kind: "fenced" } : { kind: "continue" };
   }
 
   if (current.tip !== context.tip && current.run?.id === context.run.id) {
     const aborted = withPhase(current.run, { kind: "aborted" }, options.next.attempts);
     await context.session.objects.put([aborted]);
+
     const outcome = await publish(context.session, {
       lease: context.lease,
       updates: [{ name: runRef(context.options.head), from: current.oid, to: hashObject(aborted) }],
       reason: "superseded",
     });
+
     if (outcome === "fenced") return { kind: "fenced" };
+
     return outcome === "ok" ? { kind: "finished", run: aborted } : { kind: "continue" };
   }
 
@@ -508,6 +563,7 @@ function responsePhase(
       return { kind: "aborted" };
     default: {
       const _exhaustive: never = outcome;
+
       return _exhaustive;
     }
   }
@@ -516,10 +572,7 @@ function responsePhase(
 /** What the response's commit records beside its message. */
 function responseProvenance(
   outcome: Exclude<RespondOutcome, { readonly kind: "checkpoint" }>,
-): Pick<
-  Extract<Commit, { readonly calls: Readonly<Record<string, unknown>> }>,
-  "calls" | "outcome"
-> {
+): Pick<Extract<Commit, { readonly calls: unknown }>, "calls" | "outcome"> {
   switch (outcome.kind) {
     case "complete":
       return { calls: {}, outcome: { kind: "ok" } };
@@ -540,6 +593,7 @@ function responseProvenance(
       };
     default: {
       const _exhaustive: never = outcome;
+
       return _exhaustive;
     }
   }
@@ -556,13 +610,16 @@ async function publishCheckpoint(
     run: context.run.id,
     at: context.now(),
   };
+
   const commitOid = hashObject(commit);
   await context.session.objects.put([commit]);
+
   const updates: RefUpdate[] = [
     { name: headRef(context.options.head), from: context.tip, to: commitOid },
     { name: runRef(context.options.head), from: context.runOid, to: context.runOid },
     ...(await compactionClearUpdates(context.session, context.options.head)),
   ];
+
   const outcome = await startSpan(
     context.telemetry,
     "nyte.compaction.publish",
@@ -577,12 +634,15 @@ async function publishCheckpoint(
         updates,
         reason: "checkpoint",
       });
+
       span.setAttributes({
         "nyte.compaction.publication": published === "ok" ? "published" : published,
       });
+
       return published;
     },
   );
+
   return outcome === "fenced" ? { kind: "fenced" } : { kind: "continue" };
 }
 
@@ -590,6 +650,7 @@ async function publishCheckpoint(
 async function awaitingAnswer(context: StepContext): Promise<boolean> {
   if (context.tip === null) return false;
   const tip = await context.session.objects.get(context.tip);
+
   return (
     tip?.kind === "commit" &&
     (tip.body.kind === "completion" ||
@@ -605,12 +666,15 @@ function isStepCeilingResolver(
 
 async function respond(context: StepContext): Promise<StepOutcome> {
   const answering = context.options.drain === "one" && (await awaitingAnswer(context));
+
   const landed = await land(context, {
     delivery: "steer",
     run: context.run,
     boundary: { awaitingAnswer: answering },
   });
+
   if (landed.kind !== "idle") return landed;
+
   if (context.run.abortRequested === true) {
     return endRun(context, { kind: "aborted" }, "abort");
   }
@@ -618,6 +682,7 @@ async function respond(context: StepContext): Promise<StepOutcome> {
   const commits = await contextCommits(context.session.objects, context.tip);
   const messages = contextMessages(commits.map((entry) => entry.commit));
   const last = messages[messages.length - 1];
+
   if (last === undefined || (last.role !== "user" && last.role !== "toolResult")) {
     return endRun(context, { kind: "done" }, "done");
   }
@@ -625,31 +690,41 @@ async function respond(context: StepContext): Promise<StepOutcome> {
   // Older runs have only declared inputs. A successor may also lack the
   // recorded model. Publish the inputs this host will actually use first.
   const config = context.options.resolveConfig?.(context.run.config);
+
   if (config !== undefined) {
     const resolved = { ...context.run, config };
+
     if (hashObject(resolved) !== context.runOid) {
       const outcome = await storeRun(context, resolved, "resolve config");
+
       return outcome.kind === "finished" ? { kind: "continue" } : outcome;
     }
   }
 
   const chain = await readChain(context.session, context.run.root);
+
   const ceiling = isStepCeilingResolver(context.options.steps)
     ? context.options.steps(context.run)
     : context.options.steps;
+
   if (ceiling !== undefined && chain.attempts >= ceiling) {
     return endRun(context, { kind: "failed", failure: runnerFailure("step ceiling") }, "fail");
   }
+
   const [counter] = await context.session.objects.put([
     { kind: "blob", value: { attempts: chain.attempts + 1 } },
   ]);
+
   if (counter === undefined) throw new Error("Chain counter write returned no object");
+
   const reservation = await publish(context.session, {
     lease: context.lease,
     updates: [{ name: chainRef(context.run.root), from: chain.oid, to: counter }],
     reason: "reserve response",
   });
+
   if (reservation === "fenced") return { kind: "fenced" };
+
   if (reservation === "conflict") {
     return endRun(context, { kind: "failed", failure: runnerFailure("step ceiling") }, "fail");
   }
@@ -667,11 +742,14 @@ async function respond(context: StepContext): Promise<StepOutcome> {
       signal,
     }),
   );
+
   if (called.kind === "fenced") return { kind: "fenced" };
   const turnOutcome = called.outcome;
+
   if (turnOutcome.kind === "checkpoint") {
     return publishCheckpoint(context, turnOutcome.body);
   }
+
   const commit: Commit = {
     kind: "commit",
     parent: context.tip,
@@ -680,12 +758,15 @@ async function respond(context: StepContext): Promise<StepOutcome> {
     at: context.now(),
     ...responseProvenance(turnOutcome),
   };
+
   const commitOid = hashObject(commit);
   const next = withPhase(context.run, responsePhase(turnOutcome), context.run.attempts + 1);
   await context.session.objects.put([commit, next]);
+
   const outputUpdates: RefUpdate[] = [
     { name: headRef(context.options.head), from: context.tip, to: commitOid },
   ];
+
   const outcome = await publish(context.session, {
     lease: context.lease,
     updates: [
@@ -695,10 +776,13 @@ async function respond(context: StepContext): Promise<StepOutcome> {
     ],
     reason: "respond",
   });
+
   if (outcome === "fenced") return { kind: "fenced" };
+
   if (outcome === "conflict") {
     return afterConflict(context, { next, outputUpdates });
   }
+
   switch (next.phase.kind) {
     case "tools":
       return { kind: "continue" };
@@ -713,6 +797,7 @@ async function respond(context: StepContext): Promise<StepOutcome> {
       throw new Error(`Respond produced invalid phase ${next.phase.kind}`);
     default: {
       const _exhaustive: never = next.phase;
+
       return _exhaustive;
     }
   }
@@ -727,8 +812,10 @@ function toolCommits(
 ): Commit[] {
   const commits: Commit[] = [];
   let previous = parent;
+
   for (const message of results.messages) {
     const settled = results.calls[message.toolCallId];
+
     const commit: Commit = {
       kind: "commit",
       parent: previous,
@@ -738,9 +825,11 @@ function toolCommits(
       call: settled ?? { kind: "custom", label: message.toolName },
       tree: tree ?? null,
     };
+
     previous = hashObject(commit);
     commits.push(commit);
   }
+
   return commits;
 }
 
@@ -759,19 +848,23 @@ async function publishTools(
     context.now,
     await currentTree(context.options),
   );
+
   const finalCommit = commits.at(-1);
   const outputTip = finalCommit === undefined ? context.tip : hashObject(finalCommit);
   await noteOverriddenFailure(context, options.phase);
   const next = withPhase(context.run, options.phase);
   const views = await listEffects(context.session, context.run.id);
   await context.session.objects.put([...commits, next]);
+
   const headUpdate: RefUpdate = {
     name: headRef(context.options.head),
     from: context.tip,
     to: outputTip,
   };
+
   const effectClears = views.map((view) => ({ name: view.ref, from: view.oid, to: null }));
   const outputUpdates: RefUpdate[] = [headUpdate, ...effectClears];
+
   const outcome = await publish(context.session, {
     lease: context.lease,
     updates: [
@@ -782,10 +875,13 @@ async function publishTools(
     ],
     reason: options.reason,
   });
+
   if (outcome === "fenced") return { kind: "fenced" };
+
   if (outcome === "conflict") {
     return afterConflict(context, { next, outputUpdates });
   }
+
   return options.outcome.kind === "failed" ? { kind: "finished", run: next } : { kind: "continue" };
 }
 
@@ -797,7 +893,9 @@ async function tools(context: StepContext): Promise<StepOutcome> {
       "fail",
     );
   }
+
   const object = await context.session.objects.get(context.tip);
+
   if (
     object === undefined ||
     !isCommit(object) ||
@@ -810,8 +908,10 @@ async function tools(context: StepContext): Promise<StepOutcome> {
       "fail",
     );
   }
+
   const assistant = object.body.message;
   const commits = await contextCommits(context.session.objects, context.tip);
+
   const called = await callTurn(context, context.run.abortRequested === true, (emit, signal) =>
     context.turn.tools({
       session: context.session,
@@ -826,8 +926,10 @@ async function tools(context: StepContext): Promise<StepOutcome> {
       signal,
     }),
   );
+
   if (called.kind === "fenced") return { kind: "fenced" };
   const outcome = called.outcome;
+
   switch (outcome.kind) {
     case "fenced":
       return { kind: "fenced" };
@@ -838,6 +940,7 @@ async function tools(context: StepContext): Promise<StepOutcome> {
     case "waiting": {
       const next = withPhase(context.run, { kind: "waiting" });
       await context.session.objects.put([next]);
+
       const published = await publish(context.session, {
         lease: context.lease,
         updates: [
@@ -845,12 +948,16 @@ async function tools(context: StepContext): Promise<StepOutcome> {
         ],
         reason: "wait",
       });
+
       if (published === "fenced") return { kind: "fenced" };
+
       if (published === "conflict") {
         return afterConflict(context, { next, outputUpdates: [] });
       }
+
       return { kind: "waiting", run: next };
     }
+
     case "failed":
       return publishTools(context, {
         outcome,
@@ -859,6 +966,7 @@ async function tools(context: StepContext): Promise<StepOutcome> {
       });
     default: {
       const _exhaustive: never = outcome;
+
       return _exhaustive;
     }
   }
@@ -871,14 +979,19 @@ async function runStep(
   lease: Lease,
 ): Promise<StepOutcome> {
   await options.beforeStep?.();
+
   if (!(await finishCompaction(session, { head: options.head, lease }))) return { kind: "fenced" };
+
   const [tip, runOid, deleted] = await Promise.all([
     session.refs.read(headRef(options.head)),
     session.refs.read(runRef(options.head)),
     session.refs.read(DELETED_REF),
   ]);
+
   const run = await readRun(session, runOid);
+
   if (deleted !== null) return { kind: "idle" };
+
   return startSpan(
     options.telemetry ?? NOOP_TELEMETRY_CONTEXT,
     "nyte.step",
@@ -893,7 +1006,9 @@ async function runStep(
         { session, telemetry, turn, options, lease, tip, runOid, now: options.now ?? Date.now },
         run,
       );
+
       telemetry.setAttributes({ "nyte.step.outcome": outcome.kind });
+
       return outcome;
     },
   );
@@ -915,20 +1030,25 @@ async function advance(base: Omit<StepContext, "run">, run: Run | undefined): Pr
     case "waiting": {
       const views = await listEffects(context.session, run.id);
       const now = context.now();
+
       const deadlines = views.flatMap((view) =>
         view.effect.state === "waiting" && view.effect.until !== undefined
           ? [view.effect.until]
           : [],
       );
+
       const wake =
         run.abortRequested === true ||
         waitingBatchReady(views) ||
         deadlines.some((until) => until <= now);
+
       if (wake) return tools(context);
+
       return deadlines.length === 0
         ? { kind: "waiting", run }
         : { kind: "waiting", run, until: Math.min(...deadlines) };
     }
+
     case "retry":
       // A stop does not wait out the backoff; the boundary ends the run at once.
       return run.abortRequested !== true && context.now() < run.phase.at
@@ -936,6 +1056,7 @@ async function advance(base: Omit<StepContext, "run">, run: Run | undefined): Pr
         : respond(context);
     default: {
       const _exhaustive: never = run.phase;
+
       return _exhaustive;
     }
   }
@@ -949,12 +1070,15 @@ export async function step(
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
   let lease = options.lease;
   let acquiredHere = false;
+
   if (lease === undefined) {
     const acquired = await session.leases.acquire(headRef(options.head), ttlMs);
+
     if (!acquired.ok) return { kind: "busy", holder: acquired.holder };
     lease = acquired.lease;
     acquiredHere = true;
   }
+
   try {
     return await runStep(session, turn, options, lease);
   } finally {
@@ -972,11 +1096,15 @@ async function waitUntil(
   signal: AbortSignal | undefined,
 ): Promise<boolean> {
   const delay = at - now();
+
   if (delay <= 0) return true;
+
   if (signalAborted(signal)) return false;
+
   try {
     if (signal === undefined) await setTimeout(delay);
     else await setTimeout(delay, undefined, { signal });
+
     return true;
   } catch (error) {
     if (signalAborted(signal)) return false;
@@ -1000,20 +1128,25 @@ export async function drive(
 ): Promise<StepOutcome> {
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
   const acquired = await session.leases.acquire(headRef(options.head), ttlMs);
+
   if (!acquired.ok) return { kind: "busy", holder: acquired.holder };
   const lease = acquired.lease;
+
   try {
     for (;;) {
       if (!(await session.leases.renew(lease, ttlMs))) return { kind: "fenced" };
       const outcome = await step(session, turn, { ...options, lease });
+
       if (outcome.kind === "continue") {
         if (options.signal?.aborted === true) return outcome;
         continue;
       }
+
       if (outcome.kind === "retry") {
         if (!(await waitUntil(outcome.at, options.now ?? Date.now, options.signal))) return outcome;
         continue;
       }
+
       return outcome;
     }
   } finally {

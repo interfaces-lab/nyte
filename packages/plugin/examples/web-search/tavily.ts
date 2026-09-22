@@ -39,8 +39,10 @@ export const tavilyProvider: WebSearchProvider = {
       "User-Agent": USER_AGENT,
       "X-Client-Name": "nyte",
     });
+
     if (key === undefined) headers.set("X-Tavily-Access-Mode", "keyless");
     else headers.set("Authorization", `Bearer ${key}`);
+
     try {
       const response = await fetch(TAVILY_ENDPOINT, {
         method: "POST",
@@ -53,22 +55,28 @@ export const tavilyProvider: WebSearchProvider = {
         }),
         signal: requestSignal(signal),
       });
+
       const text = await readBoundedBody(response, MAX_RESPONSE_BYTES, tooLarge);
+
       if (!response.ok) {
         throw new WebSearchRequestError(
           text.trim() || response.statusText || `HTTP ${String(response.status)}`,
           { status: response.status },
         );
       }
+
       let parsed: JsonValue;
+
       try {
         parsed = JSON.parse(text);
       } catch (cause) {
         throw new Error("Tavily returned a body that is not JSON", { cause });
       }
+
       if (!Value.Check(SearchResponse, parsed)) {
         throw new Error("Tavily returned a response the tool does not recognise");
       }
+
       return parsed.results.map((item) =>
         webSearchResult(item.url, { title: item.title, content: item.content }),
       );

@@ -26,14 +26,18 @@ export function createChangesCodeViewItems() {
 
   const parseDiffs = (patch: string): readonly FileDiffMetadata[] => {
     const cached = parsedByPatch.get(patch);
+
     if (cached !== undefined) return cached;
+
     try {
       const parsed = parsePatchFiles(patch, patchDigest(patch)).flatMap((entry) => entry.files);
       const files = parsed.length === 0 ? NO_DIFFS : parsed;
       parsedByPatch.set(patch, files);
+
       return files;
     } catch {
       parsedByPatch.set(patch, NO_DIFFS);
+
       return NO_DIFFS;
     }
   };
@@ -52,7 +56,9 @@ export function createChangesCodeViewItems() {
     readonly collapsed: boolean;
   }): CodeViewItem<string> => {
     const cached = cachedById.get(id);
+
     if (cached?.payload === payload) return cached.item;
+
     const item: CodeViewItem<string> = {
       id,
       type: "diff",
@@ -60,7 +66,9 @@ export function createChangesCodeViewItems() {
       collapsed,
       version: version(id),
     };
+
     cachedById.set(id, { payload, item });
+
     return item;
   };
 
@@ -80,9 +88,12 @@ export function createChangesCodeViewItems() {
     readonly collapsed: boolean;
   }): CodeViewItem<string> => {
     const cached = cachedById.get(id);
+
     if (cached?.payload === payload) return cached.item;
+
     const annotation: LineAnnotation<string> | undefined =
       notice === undefined ? undefined : { lineNumber: 0, metadata: notice };
+
     const item: CodeViewItem<string> = {
       id,
       type: "file",
@@ -96,7 +107,9 @@ export function createChangesCodeViewItems() {
       collapsed,
       version: version(id),
     };
+
     cachedById.set(id, { payload, item });
+
     return item;
   };
 
@@ -107,8 +120,10 @@ export function createChangesCodeViewItems() {
 
     for (const source of sources) {
       const pathCollapsed = collapsed.has(source.path);
+
       if (source.kind === "diff") {
         const files = parseDiffs(source.patch);
+
         if (files.length > 0) {
           files.forEach((fileDiff, index) => {
             const id = itemId(source.path, index);
@@ -121,8 +136,10 @@ export function createChangesCodeViewItems() {
       }
 
       const id = itemId(source.path, 0);
+
       const contents =
         source.kind === "diff" ? source.patch : source.kind === "raw" ? source.text : "";
+
       const notice = source.kind === "notice" ? source.text : undefined;
       const nativeCollapsed = pathCollapsed || source.kind === "pending";
       const payload = `${source.kind}\u0000${contents}\u0000${notice ?? ""}\u0000${nativeCollapsed ? "c" : "e"}`;
@@ -142,12 +159,15 @@ export function createChangesCodeViewItems() {
     const patches = new Set(
       sources.flatMap((source) => (source.kind === "diff" ? [source.patch] : [])),
     );
+
     for (const patch of parsedByPatch.keys()) {
       if (!patches.has(patch)) parsedByPatch.delete(patch);
     }
+
     for (const id of cachedById.keys()) {
       if (!sourceById.has(id)) cachedById.delete(id);
     }
+
     return { items: nextItems, sourceById };
   };
 }

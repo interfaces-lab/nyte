@@ -49,28 +49,35 @@ type SettingsHost = Pick<
 >;
 
 const calls: RecordedHostCall[] = [];
+
 const clipboard: string[] = [];
+
 const listeners = new Set<(event: HostEvent) => void>();
+
 // Reassigned, never mutated: a bundler may otherwise fold the reads to false.
 let failures: HarnessFailures = { cancel: false, open: false, clipboard: false };
+
 let catalog: DesktopCatalog = {
   source: "local",
   providers: [],
   models: [],
   defaults: { model: { provider: "", id: "" }, thinkingLevel: "off" },
 };
+
 let pendingLogin: { resolve(outcome: LoginOutcome): void; reject(error: Error): void } | undefined;
 
 const host: SettingsHost = {
   catalog: async () => catalog,
   login: (input) => {
     calls.push({ path: "host.login", input });
+
     return new Promise<LoginOutcome>((resolve, reject) => {
       pendingLogin = { resolve, reject };
     });
   },
   cancelLogin: async (input) => {
     calls.push({ path: "host.cancelLogin", input });
+
     if (failures.cancel) throw new Error("cancel refused");
   },
   logout: async (input) => {
@@ -78,11 +85,13 @@ const host: SettingsHost = {
   },
   openExternal: async (input) => {
     calls.push({ path: "host.openExternal", input });
+
     if (failures.open) throw new Error("open refused");
   },
   setPreference: async () => catalog,
   onEvent: (listener) => {
     listeners.add(listener);
+
     return () => listeners.delete(listener);
   },
 };
@@ -111,7 +120,9 @@ const harness: LoginHarness = {
 
 // The renderer's bridge is a readonly global; the harness owns it here.
 Object.defineProperty(window, "nyte", { value: { host } });
+
 Object.defineProperty(window, "nyteLoginHarness", { value: harness });
+
 // A test never writes the user's clipboard.
 Object.defineProperty(navigator, "clipboard", {
   value: {

@@ -30,6 +30,7 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 
     // Deliver to waiting consumer or queue it
     const waiter = this.waiting.shift();
+
     if (waiter) {
       waiter({ value: event, done: false });
     } else {
@@ -39,9 +40,11 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 
   end(result?: R): void {
     this.done = true;
+
     if (result !== undefined) {
       this.finalResult.resolve(result);
     }
+
     // Notify all waiting consumers that we're done
     for (const waiter of this.waiting.splice(0)) {
       waiter({ value: undefined, done: true });
@@ -58,6 +61,7 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
         const result = await new Promise<IteratorResult<T>>((resolve) =>
           this.waiting.push(resolve),
         );
+
         if (result.done) return;
         yield result.value;
       }
@@ -82,6 +86,7 @@ export class AssistantMessageEventStream extends EventStream<
         } else if (event.type === "error") {
           return event.error;
         }
+
         throw new Error("Unexpected event type for final result");
       },
     );

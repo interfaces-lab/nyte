@@ -26,14 +26,13 @@
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
-    "models:check": "node scripts/check-model-data.ts",
-    "models:generate": "node scripts/generate-models.ts --strict --pretty",
-    "models:opencode:snapshot": "node scripts/snapshot-opencode-catalog.ts",
+    "models:generate": "node scripts/generate-models.ts",
+    "models:publish": "node scripts/publish-models.ts",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm models:check && vitest --run"
+    "test": "vitest --run"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "0.91.1",
+    "@anthropic-ai/sdk": "0.128.0",
     "@google/genai": "1.52.0",
     "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/telemetry": "workspace:*",

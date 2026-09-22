@@ -91,8 +91,6 @@ const styles = stylex.create({
     textAlign: "start",
     textDecoration: "none",
     appearance: "none",
-    // Extend through the row's inline padding without nesting sibling actions.
-    "::before": { content: "''", position: "absolute", inset: 0 },
     // A row sits flush in a scroll container, where an outset ring would clip.
     outlineColor: colorVars["--nyte-color-focus-ring"],
     outlineStyle: { default: "none", ":focus-visible": "solid" },
@@ -262,20 +260,26 @@ function rowPart(slot: RowSlot, part: stylex.StyleXStyles, decorative = false) {
  * outside it: a row whose whole shell is a button cannot contain one.
  */
 const RowPrimary = rowPart("row-primary", styles.primary);
+
 /**
  * Sits behind the row's content, for a selection layer the surface animates
  * itself. It takes `render`, like every part.
  */
 const RowBackdrop = rowPart("row-backdrop", styles.backdrop, true);
+
 /** A fixed lane, so labels align down the list whatever glyph each row carries. */
 const RowLeading = rowPart("row-leading", styles.leading);
+
 /**
  * Stacks its children, so a label can carry a description under it, or two.
  * Omit it when there is only a label.
  */
 const RowBody = rowPart("row-body", styles.body);
+
 const RowLabel = rowPart("row-label", styles.label);
+
 const RowDescription = rowPart("row-description", styles.description);
+
 /** Trailing text such as a time or a count. */
 const RowMeta = rowPart("row-meta", styles.meta);
 
@@ -310,10 +314,17 @@ function RowActions({
 }
 
 Row.Backdrop = RowBackdrop;
+
 Row.Primary = RowPrimary;
+
 Row.Leading = RowLeading;
+
 Row.Body = RowBody;
+
 Row.Label = RowLabel;
+
 Row.Description = RowDescription;
+
 Row.Meta = RowMeta;
+
 Row.Actions = RowActions;

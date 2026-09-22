@@ -15,6 +15,7 @@ export const outbox = createOutbox({ storage, send: (input) => nyte.messages.sen
 
 export function activateOutbox(workspacePath: string | undefined): Promise<void> {
   storage.select(workspacePath ?? null);
+
   return outbox.activate();
 }
 
@@ -28,5 +29,6 @@ export function useOutboxRows(sessionId: SessionId): readonly OutboxRow[] {
 
 export function useOptimisticSessionIds(): ReadonlySet<SessionId> {
   const rows = useOutboxSnapshot();
+
   return useMemo(() => optimisticSessionIds(rows), [rows]);
 }

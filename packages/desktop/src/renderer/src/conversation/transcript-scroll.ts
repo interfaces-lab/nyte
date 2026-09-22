@@ -6,10 +6,13 @@
 
 /** Mirrors the transcript's former `paddingTop`. */
 export const TRANSCRIPT_PADDING_START = 16;
+
 /** The transcript's former `paddingBottom`, before the standing slack below. */
 const TRANSCRIPT_PADDING_END = 8;
+
 /** How close to the end the reader must be for the transcript to follow new content. */
 const BOTTOM_PIN_THRESHOLD = 60;
+
 /** A row's own top may sit a hair below the scroll offset after subpixel layout. */
 const STICKY_MESSAGE_ACTIVATION_EPSILON = 2;
 
@@ -43,11 +46,14 @@ export function activeStickyCandidate(
   bottomPinned: boolean,
 ): number | undefined {
   let active: number | undefined;
+
   for (const [index, candidate] of candidates.entries()) {
     const last = index === candidates.length - 1;
     const slack = bottomPinned && last ? candidate.height : STICKY_MESSAGE_ACTIVATION_EPSILON;
+
     if (candidate.start <= scrollTop + slack) active = index;
   }
+
   return active;
 }
 
@@ -64,6 +70,7 @@ export function activeStickyCandidate(
  */
 export function transcriptPaddingEnd(viewportHeight: number): number {
   if (viewportHeight <= 0) return TRANSCRIPT_PADDING_END;
+
   return TRANSCRIPT_PADDING_END + Math.min(240, Math.max(80, Math.round(viewportHeight * 0.2)));
 }
 
@@ -85,5 +92,6 @@ export function initialTranscriptOffset({
   if (!scroll.bottomPinned) return scroll.top;
   const padding = TRANSCRIPT_PADDING_START + transcriptPaddingEnd(viewportHeight);
   const total = sizes.reduce((sum, size) => sum + size, padding);
+
   return Math.max(0, total - viewportHeight);
 }

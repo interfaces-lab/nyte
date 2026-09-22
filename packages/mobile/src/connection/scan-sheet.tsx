@@ -4,6 +4,7 @@ import { AppState, Linking, Modal, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Camera,
+  isScannedCode,
   useCameraDevice,
   useCameraPermission,
   useObjectOutput,
@@ -18,11 +19,6 @@ import { parseConnectionPayload, type Connection } from "./connection.ts";
 // Hoisted: `useObjectOutput` memoizes on this array, so an inline literal would
 // rebuild the camera output on every render.
 const SCANNED_TYPES: ScannedObjectType[] = ["qr"];
-
-/** A scanned code carries its decoded text; other object kinds do not. */
-function decodedValue(object: ScannedObject): string | undefined {
-  return "value" in object && typeof object.value === "string" ? object.value : undefined;
-}
 
 type ScanSheetProps = {
   visible: boolean;
@@ -57,9 +53,12 @@ function ScanSession({ onClose, onScan }: Omit<ScanSheetProps, "visible">) {
   const onObjectsScanned = useCallback(
     (objects: ScannedObject[]) => {
       if (settled.current) return;
+
       for (const object of objects) {
-        const value = decodedValue(object);
+        const value = isScannedCode(object) ? object.value : undefined;
+
         if (value === undefined) continue;
+
         try {
           const connection = parseConnectionPayload(value);
           settled.current = true;
@@ -68,11 +67,13 @@ function ScanSession({ onClose, onScan }: Omit<ScanSheetProps, "visible">) {
         } catch (cause) {
           setError(cause instanceof Error ? cause.message : "That code isn't a Nyte connection.");
         }
+
         return;
       }
     },
     [onScan],
   );
+
   const output = useObjectOutput({ types: SCANNED_TYPES, onObjectsScanned });
 
   // The camera session is an external system: it follows the app's foreground.
@@ -80,10 +81,12 @@ function ScanSession({ onClose, onScan }: Omit<ScanSheetProps, "visible">) {
     const subscription = AppState.addEventListener("change", (state) =>
       setForeground(state === "active"),
     );
+
     return () => subscription.remove();
   });
 
   const scanning = hasPermission && device !== undefined;
+
   return (
     <View style={{ flex: 1, backgroundColor: overCamera.backdrop }}>
       {scanning ? (

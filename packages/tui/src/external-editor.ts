@@ -25,12 +25,15 @@ export function resolveExternalEditor(
 
 function runEditor(command: string, file: string): Promise<void> {
   const [program, ...args] = command.trim().split(/\s+/u);
+
   if (program === undefined || program === "") throw new Error("External editor is empty");
+
   return new Promise<void>((resolve, reject) => {
     const child = spawn(program, [...args, file], {
       stdio: "inherit",
       shell: process.platform === "win32",
     });
+
     child.once("error", reject);
     child.once("exit", (code, signal) => {
       if (code === 0) resolve();
@@ -52,12 +55,14 @@ export async function editInExternalEditor(
   command: string,
 ): Promise<ExternalEditorResult> {
   let directory: string | undefined;
+
   try {
     directory = await mkdtemp(join(tmpdir(), "nyte-editor-"));
     const file = join(directory, "draft.md");
     await writeFile(file, text, "utf8");
     await runEditor(command, file);
     const edited = await readFile(file, "utf8");
+
     return { status: "completed", text: edited.replace(/^\uFEFF/u, "").replace(/\r?\n$/u, "") };
   } catch (cause) {
     return { status: "failed", error: cause instanceof Error ? cause : new Error(String(cause)) };

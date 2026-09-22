@@ -41,10 +41,12 @@ interface AbandonedCommits {
 function activePathOids(byOid: ReadonlyMap<Oid, Commit>, tip: Oid | null): Set<Oid> {
   const path = new Set<Oid>();
   let current = tip;
+
   while (current !== null && !path.has(current)) {
     path.add(current);
     current = byOid.get(current)?.parent ?? null;
   }
+
   return path;
 }
 
@@ -61,19 +63,23 @@ export function projectTree(
   },
 ): SessionTree {
   const byOid = new Map<Oid, Commit>();
+
   for (const item of commits) byOid.set(item.oid, item.commit);
   const activePath = activePathOids(byOid, options.tip);
 
   const headsAt = new Map<Oid, string[]>();
+
   for (const head of options.heads ?? []) {
     if (head.tip === null) continue;
     const names = headsAt.get(head.tip);
+
     if (names === undefined) headsAt.set(head.tip, [head.head]);
     else names.push(head.head);
   }
 
   const childrenByParent = new Map<Oid | null, StoredCommit[]>();
   const sorted = [...byOid].map(([oid, commit]) => ({ oid, commit })).toSorted(compareCommits);
+
   for (const item of sorted) {
     const parent =
       item.commit.parent !== null &&
@@ -81,7 +87,9 @@ export function projectTree(
       byOid.has(item.commit.parent)
         ? item.commit.parent
         : null;
+
     const siblings = childrenByParent.get(parent);
+
     if (siblings === undefined) childrenByParent.set(parent, [item]);
     else siblings.push(item);
   }
@@ -115,6 +123,7 @@ export function navigationTarget(selected: StoredCommit | undefined): Navigation
   if (selected === undefined) return { kind: "move", to: null };
 
   const body = selected.commit.body;
+
   switch (body.kind) {
     case "message":
       switch (body.message.role) {
@@ -125,9 +134,11 @@ export function navigationTarget(selected: StoredCommit | undefined): Navigation
           return { kind: "move", to: selected.oid };
         default: {
           const _exhaustive: never = body.message;
+
           return _exhaustive;
         }
       }
+
     case "completion":
     case "checkpoint":
     case "summary":
@@ -135,6 +146,7 @@ export function navigationTarget(selected: StoredCommit | undefined): Navigation
       return { kind: "move", to: selected.oid };
     default: {
       const _exhaustive: never = body;
+
       return _exhaustive;
     }
   }
@@ -155,13 +167,16 @@ export function collectAbandoned(
   const commits: StoredCommit[] = [];
   const seen = new Set<Oid>();
   let current: Oid | null = options.from;
+
   while (current !== null && !selectedPath.has(current) && !seen.has(current)) {
     seen.add(current);
     const commit = byOid.get(current);
+
     if (commit === undefined) break;
     commits.push({ oid: current, commit });
     current = commit.parent;
   }
+
   commits.reverse();
 
   return {

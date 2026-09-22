@@ -5,6 +5,7 @@ import { fileActions } from "./file-store.ts";
 
 function workspaceRelativePath(workspacePath: string, path: string): string | undefined {
   const root = workspacePath.endsWith("/") ? workspacePath : `${workspacePath}/`;
+
   return path.startsWith(root) ? path.slice(root.length) : undefined;
 }
 
@@ -18,12 +19,16 @@ export function workbenchReferenceOpener(input: {
   readonly workspacePath: string | undefined;
 }): ReferenceOpener {
   const { viewKey, workspacePath } = input;
+
   return (reference) => {
     if (workspacePath === undefined) return undefined;
+
     switch (reference.kind) {
       case "file": {
         const { file } = reference;
+
         if (isFolder(file)) return () => fileActions.reveal(viewKey, file.displayPath);
+
         return () =>
           fileActions.open(viewKey, {
             path: file.path,
@@ -31,18 +36,23 @@ export function workbenchReferenceOpener(input: {
             preview: true,
           });
       }
+
       case "skill": {
         const displayPath =
           reference.path === "" ? undefined : workspaceRelativePath(workspacePath, reference.path);
+
         if (displayPath === undefined) return undefined;
+
         return () =>
           fileActions.open(viewKey, { path: reference.path, displayPath, preview: true });
       }
+
       case "mention":
       case "clipboard":
         return undefined;
       default: {
         const exhaustive: never = reference;
+
         return exhaustive;
       }
     }

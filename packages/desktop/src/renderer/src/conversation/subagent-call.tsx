@@ -24,7 +24,9 @@ function SubagentModel({
 }): ReactElement | null {
   const catalog = useCatalog(session);
   const name = modelDisplayName(catalog.data, model);
+
   if (name === undefined) return null;
+
   return <span {...props(toolCallStyles.detail)}>{name}</span>;
 }
 
@@ -33,28 +35,28 @@ export function SubagentCallView({
   title,
   phase,
   density,
-  awaited,
 }: {
   session: SessionId;
   title: string;
   phase: ToolPhase;
   density: ToolCallDensity;
-  /** The run is blocked on this child. */
-  awaited: boolean;
 }): ReactElement {
   const child = useChildSession(session);
   const openTray = useOpenSubagentTray();
-  const state = child === undefined ? undefined : agentState(child);
-  const blocking = awaited && state !== "completed" && state !== "failed" && state !== "stopped";
+  const state = child === undefined ? undefined : "kind" in child ? "starting" : agentState(child);
   const failed = state === undefined ? phase === "failed" : state === "failed";
-  const status = blocking
-    ? "Waiting"
-    : state === undefined
-      ? phase === "failed"
-        ? "Failed"
-        : undefined
-      : AGENT_STATE_LABEL[state];
-  const running = blocking || state === "working";
+
+  const status =
+    state === "starting"
+      ? "Starting"
+      : state === undefined
+        ? phase === "failed"
+          ? "Failed"
+          : undefined
+        : AGENT_STATE_LABEL[state];
+
+  const running = state === "starting" || state === "working";
+
   const content = (
     <>
       <span
@@ -74,6 +76,7 @@ export function SubagentCallView({
       )}
     </>
   );
+
   const lineStyles = [
     toolCallStyles.line,
     subagentCallStyles.line,
@@ -109,17 +112,22 @@ export function SubagentLineView({
 }): ReactElement {
   const session =
     toolClass.target.kind === "one" ? toolClass.target.session : toolClass.target.sessions[0];
+
   const childSession = useChildSession(session);
+
   const child =
     childSession === undefined
       ? undefined
       : "kind" in childSession
         ? childSession.title
         : childSession.name;
+
   const openTray = useOpenSubagentTray();
   const others = toolClass.target.kind === "many" ? toolClass.target.sessions.length - 1 : 0;
+
   const label =
     child === undefined ? undefined : others > 0 ? `${child} +${String(others)}` : child;
+
   const content = (
     <>
       <span {...props(toolCallStyles.verb, phase === "running" && activityStyles.shimmer)}>
@@ -135,8 +143,10 @@ export function SubagentLineView({
       )}
     </>
   );
+
   const failed = phase === "failed" && toolCallStyles.failed;
   const lineStyles = [toolCallStyles.line, density === "detailed" && toolCallStyles.lineDetailed];
+
   if (openTray === undefined) {
     return (
       <div data-tool-status={phase} {...props(...lineStyles, toolCallStyles.lineStatic, failed)}>
@@ -144,6 +154,7 @@ export function SubagentLineView({
       </div>
     );
   }
+
   return (
     <button
       type="button"

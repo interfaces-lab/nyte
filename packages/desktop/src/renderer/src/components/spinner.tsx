@@ -11,13 +11,17 @@ const pulse = keyframes({
   "50%": { opacity: 1 },
   "100%": { opacity: 0.4 },
 });
+
 const pulseDim = keyframes({
   "0%": { opacity: 0.15 },
   "50%": { opacity: 0.35 },
   "100%": { opacity: 0.15 },
 });
+
 const outerIndices = new Set([1, 2, 4, 7, 8, 11, 13, 14]);
+
 const cornerIndices = new Set([0, 3, 12, 15]);
+
 const squares = Array.from({ length: 16 }, (_, index) => ({
   index,
   x: (index % 4) * 4,

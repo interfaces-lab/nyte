@@ -12,21 +12,26 @@ import {
 import { parseGitHubCopilotCatalog } from "../../providers/github-copilot-catalog.ts";
 import type { FetchFunction } from "../../types.ts";
 import { raceWithAbortSignal } from "../../utils/abort.ts";
-import type { OAuthAuth } from "../types.ts";
+import type { AuthEvent, OAuthAuth } from "../types.ts";
 import { pollOAuthDeviceCodeFlow } from "./device-code.ts";
 
 /** Pi's public Copilot client, not a Nyte-owned OAuth application. */
 const DEFAULT_CLIENT_ID = "Iv1.b507a08c87ecfe98";
+
 const DEVICE_CODE_LIFETIME_SECONDS = 15 * 60;
+
 const EXPIRED_MESSAGE = "The device code expired before GitHub approved it. Sign in again.";
+
 const CREDENTIAL_ERROR =
   "Invalid stored GitHub Copilot credential. Sign in to GitHub Copilot again.";
+
 const KNOWN_GRANT_ERRORS = new Set([
   "unsupported_grant_type",
   "incorrect_client_credentials",
   "incorrect_device_code",
   "device_flow_disabled",
 ]);
+
 const DeviceCodeResponse = Type.Object({
   device_code: Type.String({ minLength: 1 }),
   user_code: Type.String({ minLength: 1 }),
@@ -34,12 +39,18 @@ const DeviceCodeResponse = Type.Object({
   interval: Type.Optional(Type.Unknown()),
   expires_in: Type.Optional(Type.Unknown()),
 });
+
 const GitHubToken = Type.Object({ access_token: Type.String({ minLength: 1 }) });
+
 const GrantError = Type.Object({ error: Type.String(), interval: Type.Optional(Type.Unknown()) });
+
+const PositiveSeconds = Type.Number({ exclusiveMinimum: 0 });
+
 const CopilotToken = Type.Object({
   token: Type.String({ minLength: 1 }),
   expires_at: Type.Number(),
 });
+
 const CopilotCredential = Type.Object({
   type: Type.Literal("oauth"),
   refresh: Type.String({ minLength: 1 }),
@@ -63,8 +74,10 @@ export function isGitHubCopilotCredential(
 
 function copilotOrigin(token: string): string {
   const proxy = /(?:^|;)proxy-ep=([^;]+)/u.exec(token)?.[1];
+
   if (proxy === undefined) return GITHUB_COPILOT_DEFAULT_ORIGIN;
   const url = URL.parse(`https://${proxy.replace(/^proxy\./u, "api.")}`);
+
   if (
     !url ||
     url.protocol !== "https:" ||
@@ -78,6 +91,7 @@ function copilotOrigin(token: string): string {
   ) {
     throw new Error("GitHub Copilot token contains an untrusted API endpoint");
   }
+
   return url.origin;
 }
 
@@ -91,6 +105,7 @@ async function requestCopilot(input: {
 }): Promise<unknown> {
   const bounded = AbortSignal.any([input.signal, AbortSignal.timeout(15_000)]);
   let response: Response;
+
   try {
     response = await raceWithAbortSignal(
       (input.fetch ?? globalThis.fetch)(input.url, {
@@ -102,14 +117,18 @@ async function requestCopilot(input: {
     );
   } catch (error) {
     if (input.signal.aborted) throw new Error("Login cancelled", { cause: error });
+
     if (bounded.aborted) throw new Error(`${input.describe} timed out`, { cause: error });
     throw new Error(`${input.describe} failed: network error`, { cause: error });
   }
+
   if (!response.ok) throw new Error(`${input.describe} failed (HTTP ${String(response.status)})`);
+
   try {
     return await raceWithAbortSignal<unknown>(response.json(), bounded);
   } catch (error) {
     if (input.signal.aborted) throw new Error("Login cancelled", { cause: error });
+
     if (bounded.aborted) throw new Error(`${input.describe} timed out`, { cause: error });
     throw new Error(`${input.describe} returned an unreadable response`, { cause: error });
   }
@@ -120,10 +139,6 @@ const DEVICE_HEADERS = {
   "Content-Type": "application/x-www-form-urlencoded",
   "User-Agent": GITHUB_COPILOT_HEADERS["User-Agent"],
 } as const;
-
-function positiveSeconds(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
-}
 
 async function startDeviceAuthorization(input: {
   fetch: FetchFunction | undefined;
@@ -141,9 +156,11 @@ async function startDeviceAuthorization(input: {
     signal: input.signal,
     describe: "GitHub device code request",
   });
+
   if (!Value.Check(DeviceCodeResponse, json))
     throw new Error("GitHub device code response is missing required fields");
   const url = URL.parse(json.verification_uri);
+
   if (
     !url ||
     url.protocol !== "https:" ||
@@ -155,13 +172,16 @@ async function startDeviceAuthorization(input: {
   ) {
     throw new Error("GitHub device code response named a verification page outside github.com");
   }
+
   return {
     ...json,
     verification_uri: url.href,
-    interval: positiveSeconds(json.interval),
+    interval: Value.Check(PositiveSeconds, json.interval) ? json.interval : undefined,
     expires_in: Math.min(
       DEVICE_CODE_LIFETIME_SECONDS,
-      positiveSeconds(json.expires_in) ?? DEVICE_CODE_LIFETIME_SECONDS,
+      Value.Check(PositiveSeconds, json.expires_in)
+        ? json.expires_in
+        : DEVICE_CODE_LIFETIME_SECONDS,
     ),
   };
 }
@@ -174,6 +194,7 @@ async function pollForGitHubToken(input: {
 }): Promise<Static<typeof GitHubToken>> {
   const lifetime = AbortSignal.timeout(Math.ceil(input.device.expires_in * 1000));
   const pollSignal = AbortSignal.any([input.signal, lifetime]);
+
   try {
     return await pollOAuthDeviceCodeFlow<Static<typeof GitHubToken>>({
       intervalSeconds: input.device.interval,
@@ -196,14 +217,22 @@ async function pollForGitHubToken(input: {
           signal: pollSignal,
           describe: "GitHub device authorization",
         });
+
         if (Value.Check(GitHubToken, json)) return { status: "complete", value: json };
+
         if (!Value.Check(GrantError, json))
           return { status: "failed", message: "GitHub device authorization response is malformed" };
+
         switch (json.error) {
           case "authorization_pending":
             return { status: "pending" };
           case "slow_down":
-            return { status: "slow_down", intervalSeconds: positiveSeconds(json.interval) };
+            return {
+              status: "slow_down",
+              intervalSeconds: Value.Check(PositiveSeconds, json.interval)
+                ? json.interval
+                : undefined,
+            };
           case "expired_token":
             return { status: "failed", message: EXPIRED_MESSAGE };
           case "access_denied":
@@ -220,6 +249,7 @@ async function pollForGitHubToken(input: {
     });
   } catch (error) {
     if (input.signal.aborted) throw new Error("Login cancelled", { cause: error });
+
     if (lifetime.aborted) throw new Error(EXPIRED_MESSAGE, { cause: error });
     throw error;
   }
@@ -229,6 +259,7 @@ async function pollForGitHubToken(input: {
 async function loadCopilotCredential(input: {
   fetch: FetchFunction | undefined;
   github: Static<typeof GitHubToken>;
+  knownModelIds: ReadonlySet<string>;
   signal: AbortSignal;
 }) {
   const token = await requestCopilot({
@@ -244,6 +275,7 @@ async function loadCopilotCredential(input: {
     signal: input.signal,
     describe: "GitHub Copilot token exchange",
   });
+
   if (
     !Value.Check(CopilotToken, token) ||
     !Number.isSafeInteger(token.expires_at * 1000) ||
@@ -253,7 +285,9 @@ async function loadCopilotCredential(input: {
       "GitHub Copilot token exchange returned an invalid token or expiry. Sign in to GitHub Copilot again.",
     );
   }
+
   const origin = copilotOrigin(token.token);
+
   const catalog = parseGitHubCopilotCatalog(
     await requestCopilot({
       fetch: input.fetch,
@@ -270,8 +304,11 @@ async function loadCopilotCredential(input: {
       describe: "GitHub Copilot catalog request",
     }),
     origin,
+    input.knownModelIds,
   );
+
   input.signal.throwIfAborted();
+
   return {
     credential: {
       type: "oauth",
@@ -285,63 +322,84 @@ async function loadCopilotCredential(input: {
   };
 }
 
-export function githubCopilotOAuth(options: GitHubCopilotOAuthOptions = {}): OAuthAuth {
+export function githubCopilotOAuth(
+  options: GitHubCopilotOAuthOptions = {},
+  knownModelIds: () => ReadonlySet<string> = () => new Set(),
+): OAuthAuth {
   return {
     name: "GitHub Copilot",
     isSubscription: true,
     loginLabel: "Sign in with GitHub",
     login: async (interaction) => {
       interaction.signal.throwIfAborted();
+
       const environment =
         typeof process === "undefined" ? undefined : process.env.NYTE_GITHUB_COPILOT_CLIENT_ID;
+
       const clientId = options.clientId || environment || DEFAULT_CLIENT_ID;
+
       const device = await startDeviceAuthorization({
         fetch: options.fetch,
         clientId,
         signal: interaction.signal,
       });
+
       if (interaction.signal.aborted) throw new Error("Login cancelled");
-      interaction.notify({
+
+      const deviceCode: Extract<AuthEvent, { type: "device_code" }> = {
         type: "device_code",
         userCode: device.user_code,
         verificationUri: device.verification_uri,
         intervalSeconds: device.interval,
         expiresInSeconds: device.expires_in,
-        ...(clientId === DEFAULT_CLIENT_ID
-          ? { instructions: "This sign-in uses GitHub's Copilot app, not a Nyte OAuth app." }
-          : {}),
-      });
+      };
+
+      if (clientId === DEFAULT_CLIENT_ID) {
+        deviceCode.instructions = "This sign-in uses GitHub's Copilot app, not a Nyte OAuth app.";
+      }
+
+      interaction.notify(deviceCode);
+
       const github = await pollForGitHubToken({
         fetch: options.fetch,
         clientId,
         device,
         signal: interaction.signal,
       });
+
       interaction.notify({ type: "progress", message: "Connecting to GitHub Copilot" });
+
       const result = await loadCopilotCredential({
         fetch: options.fetch,
         github,
+        knownModelIds: knownModelIds(),
         signal: interaction.signal,
       });
+
       if (result.needsApproval)
         interaction.notify({
           type: "info",
           message:
             "Some Copilot models need account approval. Enable them in your Copilot settings, then sign in again.",
         });
+
       return result.credential;
     },
     refresh: async (previous, signal) => {
       if (!isGitHubCopilotCredential(previous)) throw new Error(CREDENTIAL_ERROR);
+
       const result = await loadCopilotCredential({
         fetch: options.fetch,
         github: { access_token: previous.refresh },
+        knownModelIds: knownModelIds(),
         signal,
       });
+
       return result.credential;
     },
     async toAuth(credential) {
       if (!isGitHubCopilotCredential(credential)) throw new Error(CREDENTIAL_ERROR);
+
       return {
         apiKey: credential.access,
         baseUrl: copilotOrigin(credential.access),

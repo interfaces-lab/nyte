@@ -27,8 +27,10 @@ export function startRendererStartup(options: RendererStartupOptions): void {
       } catch {
         loading = false;
         options.showError(load);
+
         return;
       }
+
       loading = false;
       options.mountShell();
       options.onReady?.();

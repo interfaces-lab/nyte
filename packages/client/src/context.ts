@@ -22,6 +22,7 @@ export interface ModelContext {
 
 export const COMPACTION_SUMMARY_PREFIX =
   "The conversation history before this point was compacted into the following summary:\n\n<summary>\n";
+
 const COMPACTION_SUMMARY_SUFFIX = "\n</summary>";
 
 function createCompactionSummaryMessage(summary: string, timestamp: number): UserMessage {
@@ -39,6 +40,7 @@ function createCompactionSummaryMessage(summary: string, timestamp: number): Use
 
 const BRANCH_SUMMARY_PREFIX =
   "The following is a summary of a branch that this conversation came back from:\n\n<summary>\n";
+
 const BRANCH_SUMMARY_SUFFIX = "\n</summary>";
 
 /** A branch summary joins context as one user message; nothing before it is dropped. */
@@ -73,6 +75,7 @@ function isContextMessage(message: Message): boolean {
 function enforceToolPairs(messages: readonly Message[]): Message[] {
   const output: Message[] = [];
   let open = new Map<string, { name: string; timestamp: number }>();
+
   const settleOpen = (): void => {
     for (const [toolCallId, call] of open) {
       output.push({
@@ -90,6 +93,7 @@ function enforceToolPairs(messages: readonly Message[]): Message[] {
         timestamp: call.timestamp,
       });
     }
+
     open = new Map();
   };
 
@@ -99,7 +103,9 @@ function enforceToolPairs(messages: readonly Message[]): Message[] {
       output.push(message);
       continue;
     }
+
     settleOpen();
+
     if (message.role === "assistant") {
       for (const part of message.content) {
         if (part.type === "toolCall") {
@@ -107,9 +113,12 @@ function enforceToolPairs(messages: readonly Message[]): Message[] {
         }
       }
     }
+
     output.push(message);
   }
+
   settleOpen();
+
   return output;
 }
 
@@ -124,6 +133,7 @@ function endText(end: JobEnd): string {
       return `was ${end.kind}`;
     default: {
       const _exhaustive: never = end;
+
       return _exhaustive;
     }
   }
@@ -138,6 +148,7 @@ export function completionText(job: JobReport): string {
       return `Background agent ${job.title} (${job.session}) ${endText(job.end)}. Its report:\n\n${job.report.kind === "text" && job.report.text !== "" ? job.report.text : "(no report)"}`;
     default: {
       const _exhaustive: never = job;
+
       return _exhaustive;
     }
   }
@@ -146,8 +157,10 @@ export function completionText(job: JobReport): string {
 /** Convert oldest-first commits into provider-safe model messages. */
 export function contextMessages(commits: readonly Commit[]): Message[] {
   const messages: Message[] = [];
+
   for (const commit of commits) {
     const body = commit.body;
+
     switch (body.kind) {
       case "message":
         if (isContextMessage(body.message)) messages.push(body.message);
@@ -171,10 +184,12 @@ export function contextMessages(commits: readonly Commit[]): Message[] {
         break;
       default: {
         const _exhaustive: never = body;
+
         return _exhaustive;
       }
     }
   }
+
   return enforceToolPairs(messages);
 }
 
@@ -184,6 +199,7 @@ export function modelContext(
   target: { readonly provider: ProviderId; readonly api: Api; readonly model: string },
 ): ModelContext {
   const first = commits[0];
+
   if (
     first?.body.kind === "checkpoint" &&
     first.body.material?.provider === target.provider &&
@@ -195,6 +211,7 @@ export function modelContext(
       messages: contextMessages(commits.slice(1)),
     };
   }
+
   return { messages: contextMessages(commits) };
 }
 
@@ -209,10 +226,13 @@ export function branchConfig(commits: readonly Pick<Commit, "body">[]): BranchCo
 
   for (const commit of commits) {
     const body = commit.body;
+
     switch (body.kind) {
       case "config":
         if (body.model !== undefined) model = body.model;
+
         if (body.thinkingLevel !== undefined) thinkingLevel = body.thinkingLevel;
+
         if (body.agent !== undefined) agent = body.agent;
         break;
       case "message":
@@ -224,14 +244,19 @@ export function branchConfig(commits: readonly Pick<Commit, "body">[]): BranchCo
         break;
       default: {
         const _exhaustive: never = body;
+
         return _exhaustive;
       }
     }
   }
 
   let config: BranchConfig = {};
+
   if (model !== undefined) config = { ...config, model };
+
   if (thinkingLevel !== undefined) config = { ...config, thinkingLevel };
+
   if (agent !== undefined) config = { ...config, agent };
+
   return config;
 }

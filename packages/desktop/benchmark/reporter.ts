@@ -28,9 +28,8 @@ export default class DesktopBenchmarkReporter implements Reporter {
   }
 
   onTestEnd(test: TestCase, result: TestResult): void {
-    const text = Buffer.concat(
-      result.stdout.map((chunk) => (typeof chunk === "string" ? Buffer.from(chunk) : chunk)),
-    ).toString("utf8");
+    const text = Buffer.concat(result.stdout.map((chunk) => Buffer.from(chunk))).toString("utf8");
+
     this.results.push({
       id: test.id,
       title: test.titlePath().slice(1).join(" > "),
@@ -44,6 +43,7 @@ export default class DesktopBenchmarkReporter implements Reporter {
 
   async onEnd(result: FullResult): Promise<void | { readonly status: "failed" }> {
     const file = join(this.outputDirectory, "desktop-benchmark.jsonl");
+
     try {
       await mkdir(this.outputDirectory, { recursive: true });
       await writeFile(
@@ -55,6 +55,7 @@ export default class DesktopBenchmarkReporter implements Reporter {
       process.stderr.write(
         `Could not save desktop benchmark records: ${cause instanceof Error ? cause.message : String(cause)}\n`,
       );
+
       return { status: "failed" };
     }
 

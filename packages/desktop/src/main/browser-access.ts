@@ -16,6 +16,7 @@ const accessLevelType = Type.Union([
   Type.Literal("read"),
   Type.Literal("off"),
 ]);
+
 const accessLevelCheck = Compile(accessLevelType);
 
 export type BrowserAccessLevel = Static<typeof accessLevelType>;
@@ -26,6 +27,7 @@ export function isBrowserAccessLevel(value: unknown): value is BrowserAccessLeve
 
 /** Absolute folder path to the level answered for it. */
 const rememberedType = Type.Record(Type.String(), accessLevelType);
+
 const rememberedFile = Compile(rememberedType);
 
 /** Serializes read-modify-write so two sessions cannot lose each other's answer. */
@@ -44,6 +46,7 @@ export class BrowserAccessStore {
   async remember(folder: string, level: BrowserAccessLevel): Promise<void> {
     await this.serialized(async () => {
       const next = { ...(await this.load()), [folder]: level };
+
       try {
         await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
         await writeFile(this.path, `${JSON.stringify(next, null, 2)}\n`);
@@ -73,6 +76,7 @@ export class BrowserAccessStore {
       () => undefined,
       () => undefined,
     );
+
     return result;
   }
 }

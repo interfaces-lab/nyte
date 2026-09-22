@@ -2,13 +2,17 @@
  * A create and the later wait on it are two calls on one child. The
  * transcript draws the child once: the create is the agent card, the await a
  * compact line inside the work around it. While the wait is live it is run
- * status, not a row: the cards say "Waiting" and the header counts down.
+ * status, not a row: the cards show each child's state and the header counts down.
  */
 import { afterAll, expect, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { sessionId } from "@nyte-ai/protocol";
 import type { ParkedCall, SessionId, SessionInfo, ToolTurnPart, TurnPart } from "@nyte-ai/protocol";
+import { SubagentCallView } from "./subagent-call.tsx";
+import { SubagentTray } from "./tray/agents.tsx";
+import type { SubagentTrayView } from "./tray/agents.tsx";
+import type { SubagentSession } from "./subagent-sessions.ts";
 import { SubagentSessionsProvider } from "./subagent-sessions.ts";
 import { NO_WAITS, liveWaits } from "./transcript-presentation.ts";
 import type { RenderedTurn } from "./transcript-rows.ts";
@@ -27,6 +31,8 @@ vi.hoisted(() => {
   vi.stubGlobal("window", {
     nyte: { host: { setThemePreference: () => {} } },
     matchMedia: () => query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
   });
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {}, removeItem: () => {} });
   const styleHost = { insertBefore: () => {}, appendChild: () => {}, firstChild: null };
@@ -229,7 +235,8 @@ test("a live await on agents created in the turn is run status, not a row", () =
     parked: [parkedWait],
   });
   vi.useRealTimers();
-  expect(html.match(/>Waiting</g)?.length).toBe(4);
+  expect(html.match(/>Working</g)?.length).toBe(4);
+  expect(html).not.toContain(">Waiting<");
   expect(html).not.toContain(">Waiting for<");
   expect(html).toContain(">Waiting for subagents<");
   expect(html).toContain("· 1:23");
@@ -260,3 +267,48 @@ test("a live await on children from an earlier turn keeps its line and counts do
   // One call, four children: the header counts the children it waits on.
   expect(html).toContain(">Waiting for subagents<");
 });
+
+for (const kind of ["list", "detail"] as const) {
+  test(`a provisional agent is starting and has no stop action in ${kind}`, () => {
+    const client = new QueryClient();
+    const provisional: SubagentSession = {
+      kind: "provisional",
+      sessionId: child,
+      title: "Map the workbench",
+      startedAt: 1,
+    };
+    const view: SubagentTrayView =
+      kind === "list"
+        ? { kind: "list", retainedSessionId: child }
+        : { kind: "detail", sessionId: child };
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <SubagentSessionsProvider
+          value={{ children: new Map([[child, provisional]]), open: () => {} }}
+        >
+          <SubagentCallView
+            session={child}
+            title={provisional.title}
+            phase="running"
+            density="detailed"
+          />
+          <SubagentTray
+            parentSessionId={parent}
+            agents={[provisional]}
+            view={view}
+            onViewChange={() => {}}
+            onExpand={() => {}}
+            onRelease={() => {}}
+            viewport={null}
+            detail={null}
+          />
+        </SubagentSessionsProvider>
+      </QueryClientProvider>,
+    );
+    client.clear();
+    expect(html).toContain(">Starting<");
+    expect(html).not.toContain(">Working<");
+    expect(html).not.toContain(">Stop<");
+    expect(html).not.toContain(">Stop all<");
+  });
+}

@@ -18,6 +18,7 @@ const importOAuthModule = async (specifier: string): Promise<unknown> => {
   const runtimeSpecifier = import.meta.url.endsWith(".js")
     ? specifier.replace(/\.ts$/, ".js")
     : specifier;
+
   try {
     return await import(runtimeSpecifier);
   } catch (error) {
@@ -44,12 +45,16 @@ export function registerBundledOAuthFlowLoaders(loaders: OAuthFlowLoaders): void
 
 export const loadAnthropicOAuth = async (): Promise<OAuthAuth> => {
   if (bundledLoaders) return bundledLoaders.anthropic();
+
+  // SAFETY: ./anthropic.ts is this package's Anthropic flow module, which exports `anthropicOAuth`.
   return ((await importOAuthModule("./anthropic.ts")) as { anthropicOAuth: OAuthAuth })
     .anthropicOAuth;
 };
 
 export const loadOpenAICodexOAuth = async (): Promise<OAuthAuth> => {
   if (bundledLoaders) return bundledLoaders.openaiCodex();
+
+  // SAFETY: ./openai-codex.ts is this package's Codex flow module, which exports `openaiCodexOAuth`.
   return ((await importOAuthModule("./openai-codex.ts")) as { openaiCodexOAuth: OAuthAuth })
     .openaiCodexOAuth;
 };

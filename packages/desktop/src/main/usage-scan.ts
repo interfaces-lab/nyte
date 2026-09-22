@@ -75,36 +75,46 @@ type SessionScanCache = Map<string, { readonly fingerprint: string; readonly sca
 
 async function scanStore(location: StoreLocation, cache: SessionScanCache): Promise<StoreScan> {
   let store: SqliteStore | undefined;
+
   try {
     store = new SqliteStore(location.path);
     const sessions: SessionScan[] = [];
     const seen = new Set<string>();
+
     for (const info of await store.list()) {
       seen.add(info.id);
       const session = await store.open(info.id);
+
       try {
         const listed = await session.objects.list();
         const fingerprint = `${String(listed.length)}:${String(listed.reduce((latest, row) => Math.max(latest, row.at), 0))}`;
         const hit = cache.get(info.id);
+
         if (hit !== undefined && hit.fingerprint === fingerprint) {
           sessions.push(hit.scan);
           continue;
         }
+
         const commits = await session.objects.commits();
+
         const scan: SessionScan = {
           sessionId: sessionId(info.id),
           commits: commits.flatMap(({ commit }) => usageCommit(commit) ?? []),
         };
+
         cache.set(info.id, { fingerprint, scan });
         sessions.push(scan);
       } finally {
         await session.close();
       }
     }
+
     for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id);
+
     return { workspacePath: location.workspacePath, sessions, failure: null };
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
+
     return { workspacePath: location.workspacePath, sessions: [], failure: message };
   } finally {
     await store?.close();
@@ -133,17 +143,21 @@ export class UsageScanner implements UsageScanReader {
   async scan(request: UsageScanRequest): Promise<UsageScan> {
     const caches = await this.load();
     const models: Pick<Models, "getModels"> = { getModels: () => request.catalog };
+
     const [stores, local] = await Promise.all([
       Promise.all(
         request.stores.map((location) => {
           const cache = this.sessions.get(location.path) ?? new Map();
           this.sessions.set(location.path, cache);
+
           return scanStore(location, cache);
         }),
       ),
       readLocalUsage({ models, caches }),
     ]);
+
     await this.save(caches);
+
     return { stores, ...local };
   }
 
@@ -157,16 +171,20 @@ export class UsageScanner implements UsageScanReader {
     this.loaded ??= readFile(this.cachePath, "utf8").then(
       (text) => {
         this.persisted = text;
+
         return decodeUsageScanCaches(text);
       },
       () => createUsageScanCaches(),
     );
+
     return this.loaded;
   }
 
   private async save(caches: UsageScanCaches): Promise<void> {
     const text = encodeUsageScanCaches(caches);
+
     if (text === this.persisted) return;
+
     try {
       await mkdir(dirname(this.cachePath), { recursive: true });
       // A crash mid-write leaves the previous cache, not half of this one.
@@ -226,6 +244,7 @@ export class UsageScanWorker implements UsageScanReader {
   scan(request: UsageScanRequest): Promise<UsageScan> {
     const worker = this.spawn();
     const id = this.nextId++;
+
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
       worker.postMessage({ id, home: this.home, ...request } satisfies UsageWorkerRequest);
@@ -235,6 +254,7 @@ export class UsageScanWorker implements UsageScanReader {
   async close(): Promise<void> {
     const worker = this.worker;
     this.worker = undefined;
+
     if (worker !== undefined) await worker.terminate();
   }
 
@@ -248,16 +268,20 @@ export class UsageScanWorker implements UsageScanReader {
       this.pending.delete(value.id);
       request?.resolve(value.scan);
     });
+
     const fail = (cause: unknown) => {
       if (this.worker === worker) this.worker = undefined;
+
       for (const request of this.pending.values()) request.reject(cause);
       this.pending.clear();
     };
+
     worker.on("error", fail);
     worker.on("exit", (code) => {
       if (this.pending.size > 0) fail(new Error(`Usage worker exited with code ${String(code)}.`));
     });
     this.worker = worker;
+
     return worker;
   }
 }

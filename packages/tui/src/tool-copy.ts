@@ -10,6 +10,7 @@ export function toolPhase(
   running: boolean,
 ): ToolPhase {
   if (result !== undefined) return result.isError ? "failed" : "done";
+
   return running ? "running" : "interrupted";
 }
 
@@ -28,6 +29,7 @@ function phased(
       return `${words.noun} stopped`;
     default: {
       const _exhaustive: never = phase;
+
       return _exhaustive;
     }
   }
@@ -59,16 +61,13 @@ export function toolLabel(toolClass: ToolClass, phase: ToolPhase): string {
       });
     default: {
       const _exhaustive: never = toolClass;
+
       return _exhaustive;
     }
   }
 }
 
-function delegateWords(role: "create" | "send" | "await" | "read" | "stop"): {
-  readonly running: string;
-  readonly done: string;
-  readonly noun: string;
-} {
+function delegateWords(role: "create" | "send" | "await" | "read" | "stop") {
   switch (role) {
     case "create":
       return { running: "agent", done: "agent", noun: "agent" };
@@ -82,6 +81,7 @@ function delegateWords(role: "create" | "send" | "await" | "read" | "stop"): {
       return { running: "stopping", done: "stopped", noun: "stop" };
     default: {
       const _exhaustive: never = role;
+
       return _exhaustive;
     }
   }
@@ -106,6 +106,7 @@ export function toolSubject(toolClass: ToolClass): string | undefined {
       return undefined;
     default: {
       const _exhaustive: never = toolClass;
+
       return _exhaustive;
     }
   }
@@ -114,10 +115,14 @@ export function toolSubject(toolClass: ToolClass): string | undefined {
 /** The status row for the tools still running: subagent waits win, otherwise the newest call. */
 export function runningActivityLabel(running: readonly ToolClass[]): string | undefined {
   const delegates = running.filter((toolClass) => toolClass.kind === "delegate").length;
+
   if (delegates > 1) return "Waiting for subagents";
+
   if (delegates === 1) return "Waiting for subagent";
   const newest = running.at(-1);
+
   if (newest === undefined) return undefined;
+
   switch (newest.kind) {
     case "file_read":
     case "list":
@@ -134,6 +139,7 @@ export function runningActivityLabel(running: readonly ToolClass[]): string | un
       return undefined;
     default: {
       const _exhaustive: never = newest;
+
       return _exhaustive;
     }
   }
@@ -143,7 +149,9 @@ const NOTICE_LIMIT = 120;
 
 function oneLine(message: string): string | undefined {
   const compact = message.replaceAll(/\s+/gu, " ").trim();
+
   if (compact === "") return undefined;
+
   return compact.length <= NOTICE_LIMIT
     ? compact
     : `${compact.slice(0, NOTICE_LIMIT - 1).trimEnd()}${GLYPHS.ellipsis}`;
@@ -183,6 +191,7 @@ export function failureNotice(failure: Failure): Notice {
       return failed(oneLine(failure.message));
     default: {
       const _exhaustive: never = failure.class;
+
       return _exhaustive;
     }
   }

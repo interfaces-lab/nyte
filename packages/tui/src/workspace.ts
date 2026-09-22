@@ -15,6 +15,7 @@ type WorkspaceStatus = Pick<PowerlineState, "workspace" | "branch" | "dirty">;
 async function git(cwd: string, args: readonly string[]): Promise<string | undefined> {
   try {
     const { stdout } = await run("git", [...args], { cwd, timeout: 3000, encoding: "utf8" });
+
     return stdout;
   } catch {
     return undefined;
@@ -24,12 +25,16 @@ async function git(cwd: string, args: readonly string[]): Promise<string | undef
 export async function readWorkspaceStatus(cwd: string): Promise<WorkspaceStatus> {
   const workspace = basename(cwd) || cwd;
   const head = await git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"]);
+
   if (head === undefined) return { workspace, dirty: false };
   let branch = head.trim();
+
   if (branch === "HEAD") {
     const sha = await git(cwd, ["rev-parse", "--short", "HEAD"]);
     branch = sha === undefined ? "detached" : `@${sha.trim()}`;
   }
+
   const status = await git(cwd, ["status", "--porcelain", "--untracked-files=no"]);
+
   return { workspace, branch, dirty: status !== undefined && status.trim() !== "" };
 }

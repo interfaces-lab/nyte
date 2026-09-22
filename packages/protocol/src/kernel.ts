@@ -23,14 +23,17 @@ export type { Failure, FailureClass } from "@nyte-ai/schema";
 
 /** SHA-256 hex over the object's canonical JSON. */
 export type Oid = string;
+
 /** Position in a session's event stream. The first event is 1. */
 export type Seq = number;
+
 /** The VCS backend's id for one workspace tree: a git tree hash, SHA-1 or SHA-256. */
 export type TreeId = string & { readonly __brand: "TreeId" };
 
 /** Parse the untrusted string a wire request or a git command supplied. */
 export function treeId(value: string): TreeId {
   if (!Value.Check(TreeIdSchema, value)) throw new Error(`Invalid tree id: ${value}`);
+
   return value;
 }
 

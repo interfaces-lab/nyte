@@ -23,13 +23,16 @@ export class PromptHistory {
 
   record(entry: string): void {
     if (entry.trim() === "") return;
+
     if (this.entries.at(-1) !== entry) this.entries.push(entry);
+
     if (this.entries.length > MAX_HISTORY) this.entries.shift();
     this.index = undefined;
   }
 
   previous(current: string): string | undefined {
     if (this.entries.length === 0) return undefined;
+
     if (this.index === undefined) {
       this.draft = current;
       this.index = this.entries.length - 1;
@@ -38,18 +41,23 @@ export class PromptHistory {
     } else {
       this.index -= 1;
     }
+
     return this.entries[this.index];
   }
 
   next(): string | undefined {
     if (this.index === undefined) return undefined;
+
     if (this.index === this.entries.length - 1) {
       this.index = undefined;
       const draft = this.draft;
       this.draft = "";
+
       return draft;
     }
+
     this.index += 1;
+
     return this.entries[this.index];
   }
 
@@ -90,22 +98,31 @@ export function browseHistory(
     if (input.cursorOffset !== 0) {
       if (caretRow(input) !== 0) return false;
       input.gotoBufferHome();
+
       return true;
     }
+
     const entry = history.previous(input.plainText);
+
     if (entry === undefined) return false;
     input.setText(entry);
     input.gotoBufferHome();
+
     return true;
   }
+
   if (!atEnd(input)) {
     if (caretRow(input) !== lastRow(input)) return false;
     input.gotoBufferEnd();
+
     return true;
   }
+
   const entry = history.next();
+
   if (entry === undefined) return false;
   input.setText(entry);
   input.gotoBufferEnd();
+
   return true;
 }

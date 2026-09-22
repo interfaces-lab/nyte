@@ -47,7 +47,9 @@ import {
 } from "./ui.ts";
 
 const MAX_COMPOSER_ROWS = 8;
+
 const COMPOSER_CHROME_ROWS = 4;
+
 const MAX_NOTICE_SHARE = 0.4;
 
 function composerRowsForHeight(height: number): number {
@@ -65,6 +67,7 @@ function slotRows(slot: Slot, height: number): number {
       return Math.max(0, Math.floor(slot.rows));
     default: {
       const _exhaustive: never = slot;
+
       return _exhaustive;
     }
   }
@@ -87,7 +90,9 @@ function adopt(host: BoxRenderable, child: () => BoxRenderable | undefined): voi
   createEffect((previous: BoxRenderable | undefined) => {
     if (previous !== undefined && previous.parent === host) host.remove(previous);
     const next = child();
+
     if (next !== undefined) host.add(next);
+
     return next;
   }, undefined);
 }
@@ -129,13 +134,17 @@ function App(props: AppProps): BoxRenderable {
   const newScrollAcceleration = () => createScrollAcceleration(acceleratedScrolling);
 
   const rows = createMemo(() => slotRows(ui.slot, dimensions().height));
+
   const noticeLines = createMemo(() =>
     ui.slot.kind === "notice" ? ui.slot.notice.lines.slice(0, rows()).join("\n") : undefined,
   );
+
   const noticeColor = createMemo(() =>
     ui.slot.kind === "notice" ? (ui.slot.notice.color ?? theme.dim) : theme.dim,
   );
+
   const hints = createMemo(() => hintChunks(ui.hints, theme));
+
   // The rule stretches to the composer column: the screen minus its own margins.
   const powerline = createMemo(() =>
     framedPowerline(
@@ -280,6 +289,7 @@ function App(props: AppProps): BoxRenderable {
               // Mouse auto-focus runs after bubbling and must not focus the border or
               // the disabled composer behind a panel.
               event.preventDefault();
+
               if (input.focusable) focusController.reset();
             }}
           >
@@ -377,6 +387,7 @@ function App(props: AppProps): BoxRenderable {
   createEffect(() => renderer.setBackgroundColor(theme.terminal));
   createEffect(() => {
     void dimensions();
+
     for (const block of userBlocks) block.width = userBlockWidth();
     pendingGutter.resize();
   });
@@ -403,6 +414,7 @@ function App(props: AppProps): BoxRenderable {
     userBlocks,
     userBlockWidth,
   };
+
   // Steer messages draw at the transcript's tail, in the shape of the turns they become.
   const pendingTail = new PendingTail(transcript, roles);
   view = new TranscriptView(transcript, { tail: pendingTail.container });
@@ -449,6 +461,7 @@ function App(props: AppProps): BoxRenderable {
     closeCompletion: () => undefined,
     dismissInfoPanel: undefined,
   });
+
   return tree;
 }
 
@@ -467,6 +480,8 @@ export async function mountShell(input: Omit<AppProps, "onShell">): Promise<Shel
     ),
     input.renderer,
   );
+
   if (shell === undefined) throw new Error("The screen did not mount");
+
   return shell;
 }

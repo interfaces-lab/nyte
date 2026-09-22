@@ -1,11 +1,34 @@
-import type { Configuration } from "electron-builder";
+import type { Configuration, MacConfiguration } from "electron-builder";
 import { electronSparkle } from "electron-sparkle/electron-builder";
 
 const updateTest = process.env["NYTE_UPDATE_TEST"] === "1";
+
 const productName = updateTest ? "Nyte Update Test" : "Nyte";
+
 const publicKey =
   process.env["NYTE_SPARKLE_PUBLIC_KEY"] ??
   (updateTest ? undefined : "u6NmdrN0PD5XXdy2KJyUfyvzB3hCtI3+6Gf1bg8IYDc=");
+
+const mac = {
+  bundleVersion: process.env.GITHUB_RUN_NUMBER,
+  category: "public.app-category.developer-tools",
+  icon: "build/icon.icns",
+  target: [
+    { target: "dmg", arch: ["arm64"] },
+    { target: "zip", arch: ["arm64"] },
+  ],
+  hardenedRuntime: !updateTest,
+  forceCodeSigning: true,
+  extendInfo: {
+    SUFeedURL:
+      "https://github.com/interfaces-lab/nyte/releases/download/desktop-updates/appcast.xml",
+    SUPublicEDKey: publicKey,
+    SUEnableAutomaticChecks: false,
+    SUAutomaticallyUpdate: false,
+  },
+  entitlements: "build/entitlements.mac.plist",
+  entitlementsInherit: "build/entitlements.mac.plist",
+} satisfies MacConfiguration;
 
 export default {
   appId: updateTest ? "ai.nyte.desktop.update-test" : "ai.nyte.desktop",
@@ -16,6 +39,7 @@ export default {
   extraMetadata: { name: productName, productName },
   beforePack: (context) => {
     if (context.electronPlatformName !== "darwin") return;
+
     if (
       publicKey === undefined ||
       !/^[A-Za-z0-9+/]{43}=$/u.test(publicKey) ||
@@ -42,29 +66,18 @@ export default {
   ],
   asarUnpack: ["node_modules/@lydell/**/*"],
   extraResources: [{ from: "resources/adblock.bin", to: "adblock.bin" }],
-  mac: {
-    bundleVersion: process.env.GITHUB_RUN_NUMBER,
-    category: "public.app-category.developer-tools",
-    icon: "build/icon.icns",
-    target: [
-      { target: "dmg", arch: ["arm64"] },
-      { target: "zip", arch: ["arm64"] },
-    ],
-    hardenedRuntime: !updateTest,
-    forceCodeSigning: true,
-    ...(updateTest ? { identity: "-", notarize: false } : {}),
-    extendInfo: {
-      SUFeedURL: updateTest
-        ? "http://localhost:8917/appcast.xml"
-        : "https://github.com/interfaces-lab/nyte/releases/download/desktop-updates/appcast.xml",
-      SUPublicEDKey: publicKey,
-      SUEnableAutomaticChecks: false,
-      SUAutomaticallyUpdate: false,
-      ...(updateTest ? { NSAppTransportSecurity: { NSAllowsLocalNetworking: true } } : {}),
-    },
-    entitlements: "build/entitlements.mac.plist",
-    entitlementsInherit: "build/entitlements.mac.plist",
-  },
+  mac: updateTest
+    ? {
+        ...mac,
+        identity: "-",
+        notarize: false,
+        extendInfo: {
+          ...mac.extendInfo,
+          SUFeedURL: "http://localhost:8917/appcast.xml",
+          NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
+        },
+      }
+    : mac,
   linux: { target: ["AppImage"], category: "Development", executableName: productName },
   win: { target: ["nsis"], executableName: productName },
 } satisfies Configuration;

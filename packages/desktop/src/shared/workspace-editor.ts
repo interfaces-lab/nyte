@@ -2,6 +2,7 @@ import type {
   WorkspaceSearchInput as CoreWorkspaceSearchInput,
   WorkspaceSearchResult,
 } from "@nyte-ai/protocol";
+
 export type { WorkspaceSearchMatch, WorkspaceSearchResult } from "@nyte-ai/protocol";
 
 /** Desktop search request with a window-owned cancellation ID. */

@@ -5,6 +5,7 @@ import { Value } from "typebox/value";
 import type { LocalFontCatalog } from "../shared/ipc.ts";
 
 const EMPTY_CATALOG: LocalFontCatalog = { sans: [], monospace: [] };
+
 const fontCatalogSchema = Type.Object(
   {
     sans: Type.Array(Type.String()),
@@ -57,12 +58,16 @@ function normalizedFamilies(families: readonly string[]): readonly string[] {
   const hasControlCharacter = (value: string): boolean => {
     for (let index = 0; index < value.length; index += 1) {
       const codeUnit = value.charCodeAt(index);
+
       if (codeUnit <= 31 || codeUnit === 127) return true;
     }
+
     return false;
   };
+
   const unique = new Set(
     families
+      .values()
       .map((family) => family.trim())
       .filter(
         (family) =>
@@ -72,12 +77,14 @@ function normalizedFamilies(families: readonly string[]): readonly string[] {
           !hasControlCharacter(family),
       ),
   );
+
   return [...unique].sort((left, right) => left.localeCompare(right));
 }
 
 function parseMacOSCatalog(output: string): LocalFontCatalog {
   const parsed: unknown = JSON.parse(output);
   const catalog = Value.Parse(fontCatalogSchema, parsed);
+
   return {
     sans: normalizedFamilies(catalog.sans),
     monospace: normalizedFamilies(catalog.monospace),
@@ -87,13 +94,16 @@ function parseMacOSCatalog(output: string): LocalFontCatalog {
 function parseFontconfigCatalog(output: string): LocalFontCatalog {
   const sans: string[] = [];
   const monospace: string[] = [];
+
   for (const line of output.split("\n")) {
     const separator = line.lastIndexOf("\t");
+
     if (separator < 0) continue;
     const spacing = Number.parseInt(line.slice(separator + 1), 10);
     const target = spacing >= 90 ? monospace : sans;
     target.push(...line.slice(0, separator).split(","));
   }
+
   return { sans: normalizedFamilies(sans), monospace: normalizedFamilies(monospace) };
 }
 
@@ -107,11 +117,13 @@ export async function readLocalFonts(
       await run("/usr/bin/osascript", ["-l", "JavaScript", "-e", MACOS_FONT_SCRIPT]),
     );
   }
+
   if (platform === "linux") {
     return parseFontconfigCatalog(
       await run("/usr/bin/fc-list", ["--format=%{family}\\t%{spacing}\\n"]),
     );
   }
+
   return EMPTY_CATALOG;
 }
 
@@ -119,5 +131,6 @@ let localFontsPromise: Promise<LocalFontCatalog> | undefined;
 
 export function localFonts(): Promise<LocalFontCatalog> {
   localFontsPromise ??= readLocalFonts(process.platform).catch(() => EMPTY_CATALOG);
+
   return localFontsPromise;
 }

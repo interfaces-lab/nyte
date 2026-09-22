@@ -15,6 +15,7 @@ export function ReviewStrip({
 }) {
   const added = changes.reduce((total, file) => total + file.added, 0);
   const removed = changes.reduce((total, file) => total + file.removed, 0);
+
   return (
     <html.div style={styles.row}>
       <Chip onClick={onReview}>

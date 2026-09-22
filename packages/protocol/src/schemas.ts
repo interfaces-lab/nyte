@@ -182,15 +182,21 @@ const literals = <Values extends string[]>(values: readonly [...Values]) => Type
 
 /** Non-empty is the whole `SessionId` brand invariant, so the check earns the type. */
 export const SessionId = Unsafe<SessionIdType>({ type: "string", minLength: 1 });
+
 export const Oid = Type.String({ minLength: 1 });
+
 /** A git tree hash, SHA-1 or SHA-256; the pattern is the whole `TreeId` brand invariant. */
 export const TreeId = Unsafe<TreeIdType>({
   type: "string",
   pattern: "^([0-9a-f]{40}|[0-9a-f]{64})$",
 });
+
 export const Seq = Type.Integer({ minimum: 0 });
+
 export { HeadName };
+
 export const NonEmptyString = Type.String({ minLength: 1 });
+
 export const ThinkingLevel = Type.Enum(MODEL_THINKING_LEVELS);
 
 /** Any JSON value, including nested. Rejects `undefined` at every depth. */
@@ -1365,6 +1371,7 @@ export const VcsCommitTarget = typed<VcsCommitTargetType>()(
 );
 
 const VcsFailed = open({ kind: Type.Literal("failed"), reason: Type.String() });
+
 const VcsStale = open({ kind: Type.Literal("stale") });
 
 export const VcsPathsOutcome = typed<VcsPathsOutcomeType>()(

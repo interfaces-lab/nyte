@@ -55,13 +55,16 @@ export function Dialog({ open, onDismiss, children, container }: DialogProps) {
     if (!open) return;
     const active = document.activeElement;
     restoreRef.current = active instanceof HTMLElement ? active : null;
+
     return () => restoreRef.current?.focus();
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const panel = panelRef.current;
+
     if (!panel) return;
+
     /* The confirming action if it is safe, otherwise the way out, and never
      * the destructive button: a stray Return must not delete anything. The
      * panel is the fallback, so a dialog with no buttons still announces its
@@ -69,6 +72,7 @@ export function Dialog({ open, onDismiss, children, container }: DialogProps) {
     const preferred =
       panel.querySelector('[data-variant="primary"]') ??
       panel.querySelector('[data-variant="secondary"]');
+
     const target = preferred instanceof HTMLElement ? preferred : panel;
     target.focus();
   }, [open]);
@@ -102,24 +106,33 @@ export function Dialog({ open, onDismiss, children, container }: DialogProps) {
             if (event.key === "Escape") {
               event.stopPropagation();
               onDismiss();
+
               return;
             }
+
             if (event.key !== "Tab") return;
             const panel = panelRef.current;
+
             if (!panel) return;
+
             /* Tab wraps inside the panel. Without this the next Tab lands on
              * the shell behind the scrim, where nothing is reachable. */
             const stops = Array.from(panel.querySelectorAll(focusable)).filter(
               (node) => node instanceof HTMLElement,
             );
+
             const first = stops[0];
             const last = stops[stops.length - 1];
+
             if (!first || !last) return;
+
             if (event.shiftKey && document.activeElement === first) {
               event.preventDefault();
               last.focus();
+
               return;
             }
+
             if (!event.shiftKey && document.activeElement === last) {
               event.preventDefault();
               first.focus();
@@ -136,6 +149,7 @@ export function Dialog({ open, onDismiss, children, container }: DialogProps) {
 
 export function DialogTitle({ children }: { children: ReactNode }) {
   const ids = useContext(DialogIds);
+
   return (
     <h2 data-grid-text="" id={ids?.titleId} {...props(text.title, dialog.title)}>
       {children}
@@ -145,6 +159,7 @@ export function DialogTitle({ children }: { children: ReactNode }) {
 
 export function DialogBody({ children }: { children: ReactNode }) {
   const ids = useContext(DialogIds);
+
   return (
     <div data-grid-text="" id={ids?.bodyId} {...props(text.body, dialog.body)}>
       {children}

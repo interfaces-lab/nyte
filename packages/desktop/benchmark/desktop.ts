@@ -41,9 +41,11 @@ async function rendererStartupTiming(page: Page) {
     const navigation = performance
       .getEntriesByType("navigation")
       .find((entry) => entry instanceof PerformanceNavigationTiming);
+
     const paints = performance.getEntriesByType("paint");
     const firstPaint = paints.find((entry) => entry.name === "first-paint");
     const firstContentfulPaint = paints.find((entry) => entry.name === "first-contentful-paint");
+
     return {
       navigation:
         navigation === undefined
@@ -77,20 +79,24 @@ export async function launchDesktop(options: DesktopLaunchOptions = {}): Promise
   if (typeof electronExecutable !== "string") {
     throw new Error("Expected Electron to resolve to its executable path");
   }
+
   const buildRoot = resolve(
     process.env.NYTE_DESKTOP_BENCHMARK_BUILD_ROOT ?? resolve(DESKTOP_ROOT, "out"),
   );
+
   const mainEntry = resolve(buildRoot, "main/index.js");
   await access(mainEntry).catch(() => {
     throw new Error(`Desktop benchmark build is missing ${mainEntry}`);
   });
   const fixture = await createDesktopBenchmarkFixture(options);
+
   const inheritedEnvironment = Object.fromEntries(
     Object.entries(process.env).filter(
       (entry): entry is [string, string] =>
         entry[1] !== undefined && entry[0] !== "ELECTRON_RUN_AS_NODE",
     ),
   );
+
   const environment = {
     ...inheritedEnvironment,
     ...fixture.env,
@@ -98,6 +104,7 @@ export async function launchDesktop(options: DesktopLaunchOptions = {}): Promise
   };
 
   let application: ElectronApplication | undefined;
+
   try {
     const appData = resolve(fixture.paths.root, "app-data");
     const userData = resolve(appData, "user-data");
@@ -132,10 +139,13 @@ export async function launchDesktop(options: DesktopLaunchOptions = {}): Promise
       env: environment,
       timeout: 30_000,
     };
+
     const profilePreparation =
       options.startupDestination === "last-session" ? "startup-destination" : "fresh";
+
     if (profilePreparation === "startup-destination") {
       const preparation = await _electron.launch(launchOptions);
+
       try {
         const page = await preparation.firstWindow();
         await page.locator("[data-nyte-shell]").waitFor({ state: "visible", timeout: 30_000 });
@@ -155,6 +165,7 @@ export async function launchDesktop(options: DesktopLaunchOptions = {}): Promise
     const connected = application;
     const electronConnectedMs = performance.now() - launchStartedAt;
     const processId = connected.process().pid;
+
     if (processId === undefined) throw new Error("Electron did not expose its process id");
     const pageErrors: string[] = [];
     const page = await connected.firstWindow();
@@ -167,15 +178,18 @@ export async function launchDesktop(options: DesktopLaunchOptions = {}): Promise
       timeout: 30_000,
     });
     const firstSession = fixture.sessions[0];
+
     if (firstSession !== undefined) {
       await page
         .getByRole("navigation", { name: "Sessions and workspaces" })
         .getByRole("button", { name: firstSession.name })
         .waitFor({ state: "visible" });
     }
+
     const shellReadyMs = performance.now() - launchStartedAt;
     const renderer = await rendererStartupTiming(page);
     let closed = false;
+
     return {
       application: connected,
       page,
@@ -195,6 +209,7 @@ export async function launchDesktop(options: DesktopLaunchOptions = {}): Promise
       close: async () => {
         if (closed) return;
         closed = true;
+
         try {
           await connected.close().catch(() => undefined);
         } finally {
@@ -211,6 +226,7 @@ export async function launchDesktop(options: DesktopLaunchOptions = {}): Promise
 
 export async function openBenchmarkSession(desktop: LaunchedDesktop, index: number): Promise<void> {
   const session = desktop.fixture.sessions[index];
+
   if (session === undefined)
     throw new RangeError(`Unknown benchmark session index ${String(index)}`);
   await desktop.page

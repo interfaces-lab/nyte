@@ -45,10 +45,15 @@ const MENU_ITEMS = [
 ] as const;
 
 const CLOSED = 34;
+
 const OPEN_WIDTH = 220;
+
 const ITEM_ICON = 40;
+
 const OPEN_PAD = spacing.lg;
+
 const OPEN_GAP = spacing.md;
+
 const OPEN_HEIGHT =
   OPEN_PAD * 2 + ITEM_ICON * MENU_ITEMS.length + OPEN_GAP * (MENU_ITEMS.length - 1);
 
@@ -100,6 +105,7 @@ export function AttachmentsMenu({
     extendProgress.set(
       withSpring(0, SPRING.open, (finished) => {
         "worklet";
+
         if (finished) scheduleOnRN(setExtended, false);
       }),
     );
@@ -109,25 +115,32 @@ export function AttachmentsMenu({
     const x = extendProgress.get();
     const closed = cardDock.get() + ICON_ROW_INSET - CLOSED / 2;
     const next = 8;
+
     return closed + (next - closed) * x;
   });
+
   const left = useDerivedValue(() => {
     const x = extendProgress.get();
     const closed = plusLeft.get();
     const next = 8;
+
     return closed + (next - closed) * x;
   });
+
   const width = useDerivedValue(() => {
     const p = progress.get();
     const x = extendProgress.get();
     const next = screenWidth - 16;
+
     return CLOSED + (OPEN_WIDTH - CLOSED) * p + (next - OPEN_WIDTH) * x;
   });
+
   const height = useDerivedValue(() => {
     const p = progress.get();
     const x = extendProgress.get();
     const kb = keyboardHeight.get();
     const next = kb === 0 ? 440 : OPEN_HEIGHT - 108 - kb;
+
     return CLOSED + (OPEN_HEIGHT - CLOSED) * p + (next - OPEN_HEIGHT) * x;
   });
 
@@ -138,6 +151,7 @@ export function AttachmentsMenu({
     left: left.get(),
     boxShadow: `${interpolate(progress.get(), [0, 1], [0, 0.2])}px ${interpolate(progress.get(), [0, 1], [0, 4])}px ${interpolate(progress.get(), [0, 1], [0, 24])}px rgba(0, 0, 0, ${interpolate(progress.get(), [0, 1], [0, 0.05])})`,
   }));
+
   const fallbackFill = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
       progress.get(),
@@ -148,14 +162,17 @@ export function AttachmentsMenu({
 
   const itemListOpacity = useDerivedValue(() => {
     const openFade = interpolate(progress.get(), [0, 0.3, 1], [0, 0, 1]);
+
     return Math.max(0, openFade - extendProgress.get());
   });
+
   // Scale from the plus's bottom-left: RN scales from the centre, so shift by
   // half the leftover size to keep that corner planted.
   const itemListStyle = useAnimatedStyle(() => {
     const s = interpolate(progress.get(), [0, 1], [0.7, 1]);
     const w = width.get();
     const h = height.get();
+
     return {
       opacity: itemListOpacity.get(),
       transform: [
@@ -165,19 +182,23 @@ export function AttachmentsMenu({
       ],
     };
   });
+
   const imageGridStyle = useAnimatedStyle(() => ({
     width: screenWidth - 16,
     height: height.get(),
   }));
+
   const gridFadeStyle = useAnimatedStyle(() => ({
     opacity: interpolate(extendProgress.get(), [0, 0.4, 1], [0, 0, 1]),
   }));
+
   const gridButtonsStyle = useAnimatedStyle(() => ({
     transform: [
       { translateY: interpolate(extendProgress.get(), [0, 0.6, 1], [20, 20, 0]) },
       { scale: interpolate(extendProgress.get(), [0, 0.6, 1], [0, 0, 1]) },
     ],
   }));
+
   const plusIconStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.get(), [0, 0.3, 1], [1, 0, 0]),
   }));
@@ -312,6 +333,7 @@ function AttachCamera({
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [active, setActive] = useState(AppState.currentState === "active");
+
   const shutterStyle = useAnimatedStyle(() => ({
     transform: [
       { translateY: interpolate(extendProgress.get(), [0, 0.6, 1], [20, 20, 0]) },
@@ -328,6 +350,7 @@ function AttachCamera({
     const subscription = AppState.addEventListener("change", (state) =>
       setActive(state === "active"),
     );
+
     return () => subscription.remove();
   });
 

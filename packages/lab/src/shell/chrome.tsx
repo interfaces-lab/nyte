@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 import { chrome } from "./chrome.stylex";
 
 export type Appearance = "light" | "dark";
+
 export type BackdropKind = "photo" | "grid" | "flat";
+
 export type TokenSet = "nyte" | "calendar";
 
 const backdropStyles = {

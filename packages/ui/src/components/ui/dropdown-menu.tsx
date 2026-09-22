@@ -122,8 +122,11 @@ const menuStyles = stylex.create({
 });
 
 export const DropdownMenu = MenuPrimitive.Root;
+
 export const DropdownMenuTrigger = MenuPrimitive.Trigger;
+
 export const DropdownMenuRadioGroup = MenuPrimitive.RadioGroup;
+
 export const DropdownMenuSub = MenuPrimitive.SubmenuRoot;
 
 export interface DropdownMenuContentProps extends StyledProps<MenuPrimitive.Popup.Props> {

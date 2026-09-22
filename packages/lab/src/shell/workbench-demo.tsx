@@ -254,6 +254,7 @@ export function WorkbenchDemo({
                 data-grid-row="workbench"
                 onClick={() => {
                   setOpenTab(item.label);
+
                   if (item.label === "Changes") onState("panel");
                 }}
                 {...props(workbenchStyles.railRow, focus.ring)}

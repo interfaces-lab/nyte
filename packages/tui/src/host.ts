@@ -66,14 +66,17 @@ export class Host {
 
   static async open(options: OpenHostOptions): Promise<Host> {
     const { cwd, storePath, watchPollIntervalMs, ...host } = options;
+
     // SQLite work runs in a worker so the rendering thread never waits on it.
-    const store = new WorkerStore({
-      path: storePath,
-      worker: storeWorkerLocation(),
-      ...(watchPollIntervalMs === undefined ? {} : { watchPollIntervalMs }),
-    });
+    const storeOptions = { path: storePath, worker: storeWorkerLocation() };
+
+    const store = new WorkerStore(
+      watchPollIntervalMs === undefined ? storeOptions : { ...storeOptions, watchPollIntervalMs },
+    );
+
     try {
       await store.ready();
+
       return new Host(await createHost({ ...host, store }), store, cwd);
     } catch (cause) {
       await store.close().catch(() => undefined);
@@ -103,6 +106,7 @@ export class Host {
    */
   async sessionCommits(id: SessionId): Promise<readonly StoredCommit[]> {
     const session = await this.store.open(id);
+
     try {
       return await session.objects.commits();
     } finally {
@@ -115,22 +119,29 @@ export class Host {
     let workspace = emptyUsageSummary();
     let current = emptyUsageSummary();
     let chats = 0;
+
     for (const { id } of await this.store.list()) {
       const info = await this.nyte.sessions.get({ sessionId: sessionId(id) });
+
       if (info === undefined) continue;
       const session = await this.store.open(id);
       let commits: readonly StoredCommit[];
+
       try {
         commits = await session.objects.commits();
       } finally {
         await session.close().catch(() => undefined);
       }
+
       const summary = projectUsage(commits.map((item) => item.commit));
+
       if (!hasUsage(summary.total)) continue;
       chats += 1;
       workspace = mergeUsageSummaries(workspace, summary);
+
       if (info.sessionId === currentSessionId) current = summary;
     }
+
     return { chats, workspace, current };
   }
 
@@ -138,18 +149,22 @@ export class Host {
   close(): Promise<HostCloseOutcome> {
     this.closing ??= Promise.resolve().then(async (): Promise<HostCloseOutcome> => {
       const failures: HostCloseFailure[] = [];
+
       try {
         await this.nyte.close();
       } catch (cause) {
         failures.push({ resource: "sdk", cause });
       }
+
       try {
         await this.store.close();
       } catch (cause) {
         failures.push({ resource: "store", cause });
       }
+
       return failures.length === 0 ? { kind: "closed" } : { kind: "failed", failures };
     });
+
     return this.closing;
   }
 }
@@ -161,6 +176,7 @@ export class Host {
  */
 function storeWorkerLocation(): URL {
   const compiled = import.meta.url.startsWith("file:///$bunfs/");
+
   return compiled
     ? new URL("file:///$bunfs/root/core/src/kernel/store-worker.js")
     : new URL("../../core/src/kernel/store-worker.ts", import.meta.url);

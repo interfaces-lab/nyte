@@ -76,10 +76,12 @@ type ComposerSource<T> =
   | { readonly status: "ready"; readonly data: T };
 
 export type ComposerSuggestionCatalog = ComposerSource<PluginCatalog>;
+
 export type ComposerMentionFiles = ComposerSource<readonly MentionFile[]>;
 
 export function composerSource<T>(data: T | undefined, failed: boolean): ComposerSource<T> {
   if (data !== undefined) return { status: "ready", data };
+
   return failed ? { status: "error" } : { status: "loading" };
 }
 
@@ -95,6 +97,7 @@ function revealSuggestion(list: HTMLElement | null, option: HTMLElement): void {
   // The list is positioned, so offsets are relative to it.
   const top = option.offsetTop;
   const bottom = top + option.offsetHeight;
+
   if (top < list.scrollTop) list.scrollTop = top;
   else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
 }
@@ -110,10 +113,12 @@ function rankSuggestions(
   query: string,
 ): readonly ComposerSuggestion[] {
   if (query === "") return suggestions;
+
   return suggestions
     .flatMap((suggestion, index): RankedSuggestion[] => {
       const label = suggestion.label.toLocaleLowerCase();
       const description = suggestion.description.toLocaleLowerCase();
+
       const rank = label.startsWith(query)
         ? 0
         : label.includes(query)
@@ -121,6 +126,7 @@ function rankSuggestions(
           : description.includes(query)
             ? 2
             : undefined;
+
       return rank === undefined ? [] : [{ suggestion, index, rank }];
     })
     .sort((left, right) => left.rank - right.rank || left.index - right.index)
@@ -138,7 +144,9 @@ function suggestionsFor(
   if (kind === "mention") {
     return rankMentions(rawQuery, hasConversationContext);
   }
+
   const query = rawQuery.trim().toLocaleLowerCase();
+
   return rankSuggestions(
     [
       ...commands.map((command): ComposerSuggestion => ({
@@ -176,6 +184,7 @@ function suggestionGroup(suggestion: ComposerSuggestion): SuggestionGroup {
       return "skills";
     default: {
       const _exhaustive: never = suggestion;
+
       return _exhaustive;
     }
   }
@@ -183,6 +192,7 @@ function suggestionGroup(suggestion: ComposerSuggestion): SuggestionGroup {
 
 function suggestionPreviewTitle(suggestion: ComposerSuggestion): string {
   if (suggestion.kind !== "skill") return suggestion.label;
+
   return suggestion.label
     .split(/[-_]/u)
     .filter((part) => part !== "")
@@ -204,6 +214,7 @@ function suggestionAttribution(suggestion: ComposerSuggestion): string | undefin
       return isFolder(suggestion.file) ? "Workspace folder" : "Workspace file";
     default: {
       const _exhaustive: never = suggestion;
+
       return _exhaustive;
     }
   }
@@ -224,6 +235,7 @@ function suggestionEmptyText(
       return kind === "mention" ? "No Context Found" : "No Matches Found";
     default: {
       const _exhaustive: never = source;
+
       return _exhaustive;
     }
   }
@@ -231,10 +243,13 @@ function suggestionEmptyText(
 
 function descriptionExcerpt(description: string, query: string): string {
   const normalizedQuery = query.trim().toLocaleLowerCase();
+
   if (normalizedQuery === "") return description;
   const match = description.toLocaleLowerCase().indexOf(normalizedQuery);
+
   if (match <= 36) return description;
   const start = Math.max(0, match - 24);
+
   return `${start === 0 ? "" : "…"}${description.slice(start)}`;
 }
 
@@ -247,8 +262,10 @@ function HighlightedSuggestionText({
 }): ReactElement {
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const match = normalizedQuery === "" ? -1 : text.toLocaleLowerCase().indexOf(normalizedQuery);
+
   if (match === -1) return <>{text}</>;
   const end = match + normalizedQuery.length;
+
   return (
     <>
       {text.slice(0, match)}
@@ -265,6 +282,7 @@ function HighlightedSuggestionText({
  */
 function MentionPathPreview({ file }: { readonly file: MentionFile }): ReactElement {
   const rows = mentionPreviewRows(file.displayPath);
+
   return (
     <div {...stylex.props(composerStyles.suggestionPreviewPath)}>
       {rows.map((row, depth) => (
@@ -296,6 +314,7 @@ function SuggestionPreview({
   readonly suggestion: ComposerSuggestion;
 }): ReactElement {
   const attribution = suggestionAttribution(suggestion);
+
   return (
     <>
       <div {...stylex.props(composerStyles.suggestionPreviewTitle)}>
@@ -332,6 +351,7 @@ function suggestionReference(suggestion: ChipSuggestion): MessageReference {
       return { kind: "file", file: suggestion.file };
     default: {
       const exhaustive: never = suggestion;
+
       return exhaustive;
     }
   }
@@ -382,6 +402,7 @@ export function useComposerSuggestions({
   const files = mentionFiles.status === "ready" ? mentionFiles.data : NONE;
   const rankMentions = useMemo(() => createMentionSuggestionRanking(files), [files]);
   const kind = menu?.kind;
+
   // Up to thousands of files rank per keystroke; keep that off the render path
   // for renders that changed nothing the ranking reads.
   const suggestions = useMemo(
@@ -398,34 +419,42 @@ export function useComposerSuggestions({
           ),
     [kind, deferredQuery, commands, skills, rankMentions, hasConversationContext],
   );
+
   const activeIndex = Math.min(index, Math.max(0, suggestions.length - 1));
 
   const openPreview = (nextIndex: number): void => {
     requestAnimationFrame(() => {
       const optionId = `${popupId}-${String(nextIndex)}`;
       const option = window.document.getElementById(optionId);
+
       if (option === null) return;
       revealSuggestion(listRef.current, option);
       previewHandle.open(optionId);
     });
   };
+
   const show = (next: SuggestionMenuState | undefined): void => {
     const continuesCurrentToken =
       menu !== undefined &&
       next !== undefined &&
       menu.kind === next.kind &&
       menu.start === next.start;
+
     if (!continuesCurrentToken) {
       previewHandle.close();
       setIndex(0);
+
       if (next !== undefined) openPreview(0);
     }
+
     setMenu(next);
   };
+
   const activate = (nextIndex: number): void => {
     setIndex(nextIndex);
     openPreview(nextIndex);
   };
+
   const clampedActivate = (nextIndex: number): void => {
     if (suggestions.length === 0) return;
     activate(Math.max(0, Math.min(suggestions.length - 1, nextIndex)));
@@ -437,23 +466,28 @@ export function useComposerSuggestions({
       references.some((candidate) => sameReference(candidate, reference))
     ) {
       editorRef.current?.replaceText(start, end, "");
+
       return;
     }
+
     editorRef.current?.insertReference(reference, start, end);
   };
 
   const select = (suggestion: ComposerSuggestion): void => {
     if (menu === undefined) return;
+
     if (suggestion.kind === "plugin-command") {
       editorRef.current?.replaceText(menu.start, menu.end, `/${suggestion.command.name} `);
     } else {
       addReference(suggestionReference(suggestion), menu.start, menu.end);
     }
+
     show(undefined);
   };
 
   const insertTrigger = (trigger: "@" | "/"): void => {
     const editor = editorRef.current;
+
     if (editor === null) return;
     const current = editor.readDocument();
     const start = current.selectionStart;
@@ -463,41 +497,57 @@ export function useComposerSuggestions({
 
   const onKeyDown = (event: KeyboardEvent): boolean => {
     if (menu === undefined) return false;
+
     if (event.key === "Escape") {
       event.preventDefault();
       show(undefined);
+
       return true;
     }
+
     const down =
       event.key === "ArrowDown" || (event.ctrlKey && (event.key === "n" || event.key === "j"));
+
     const up =
       event.key === "ArrowUp" || (event.ctrlKey && (event.key === "p" || event.key === "k"));
+
     if (down || up) {
       event.preventDefault();
       clampedActivate(activeIndex + (down ? 1 : -1));
+
       return true;
     }
+
     if (event.key === "Home" || event.key === "End") {
       event.preventDefault();
       clampedActivate(event.key === "Home" ? 0 : suggestions.length - 1);
+
       return true;
     }
+
     if (event.key === "PageDown" || event.key === "PageUp") {
       event.preventDefault();
       clampedActivate(activeIndex + (event.key === "PageDown" ? 9 : -9));
+
       return true;
     }
+
     // Plain Enter and Tab pick; the modifier keeps its meaning and sends past the menu.
     const picks =
       composerEnterAction(event) === "submit" || (event.key === "Tab" && !event.shiftKey);
+
     if (!picks) return false;
     const active = suggestions[activeIndex];
+
     if (active === undefined) {
       show(undefined);
+
       return false;
     }
+
     event.preventDefault();
     select(active);
+
     return true;
   };
 
@@ -511,14 +561,17 @@ export function useComposerSuggestions({
           // The editor drives this popup. A press or focus move inside
           // the anchor is editing, not dismissal; `select` decides then.
           const target = details.event.target;
+
           if (
             (details.reason === "outside-press" || details.reason === "focus-out") &&
             target instanceof Node &&
             anchorRef.current?.contains(target) === true
           ) {
             details.cancel();
+
             return;
           }
+
           show(undefined);
         }}
       >
@@ -565,12 +618,15 @@ export function useComposerSuggestions({
                 ) : (
                   suggestions.map((suggestion, optionIndex) => {
                     const previous = suggestions[optionIndex - 1];
+
                     const startsGroup =
                       previous !== undefined &&
                       suggestionGroup(previous) !== suggestionGroup(suggestion);
+
                     const optionId = `${popupId}-${String(optionIndex)}`;
                     const selected = activeIndex === optionIndex;
                     const description = descriptionExcerpt(suggestion.description, deferredQuery);
+
                     return (
                       <PreviewCard.Trigger
                         key={suggestion.id}

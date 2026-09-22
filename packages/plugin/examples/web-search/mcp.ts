@@ -14,6 +14,7 @@ import { Value } from "typebox/value";
 import { WebSearchRequestError } from "./provider.ts";
 
 export const MAX_RESPONSE_BYTES = 256 * 1024;
+
 export const REQUEST_TIMEOUT_MS = 25_000;
 
 export interface McpCallOptions {
@@ -29,6 +30,7 @@ function isTimeout(cause: unknown): boolean {
 /** Bound the request by `REQUEST_TIMEOUT_MS` and by the caller's own signal. */
 export function requestSignal(signal: AbortSignal | undefined): AbortSignal {
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+
   return signal === undefined ? timeout : AbortSignal.any([signal, timeout]);
 }
 
@@ -39,8 +41,11 @@ export function requestFailure(
   timedOut: string,
 ): Error {
   if (signal?.aborted === true && cause instanceof Error) return cause;
+
   if (isTimeout(cause)) return new WebSearchRequestError(timedOut, { cause });
+
   if (cause instanceof WebSearchRequestError) return cause;
+
   return new WebSearchRequestError(cause instanceof Error ? cause.message : String(cause), {
     cause,
   });
@@ -53,21 +58,28 @@ export async function readBoundedBody(
   tooLarge: () => Error,
 ): Promise<string> {
   const declared = Number.parseInt(response.headers.get("content-length") ?? "", 10);
+
   if (Number.isSafeInteger(declared) && declared > maximumBytes) throw tooLarge();
+
   if (response.body === null) return "";
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
+
   for (;;) {
     const { done, value } = await reader.read();
+
     if (done) break;
     size += value.byteLength;
+
     if (size > maximumBytes) {
       await reader.cancel();
       throw tooLarge();
     }
+
     chunks.push(value);
   }
+
   return Buffer.concat(chunks).toString("utf8");
 }
 
@@ -80,19 +92,25 @@ function decodeFrame<TResult extends TObject>(
   result: TResult,
 ): Static<TResult> | undefined {
   const trimmed = payload.trim();
+
   if (!trimmed.startsWith("{")) return undefined;
   let parsed: JsonValue;
+
   try {
     parsed = JSON.parse(trimmed);
   } catch (cause) {
     throw new Error("MCP route returned a frame that is not JSON", { cause });
   }
+
   if (!isJsonObject(parsed)) return undefined;
   const candidate = parsed["result"];
+
   if (candidate === undefined) return undefined;
+
   if (!Value.Check(result, candidate)) {
     throw new Error("MCP route returned a result the tool does not recognise");
   }
+
   return candidate;
 }
 
@@ -102,12 +120,16 @@ export function parseMcpResponse<TResult extends TObject>(
   result: TResult,
 ): Static<TResult> | undefined {
   const direct = body.trim() === "" ? undefined : decodeFrame(body, result);
+
   if (direct !== undefined) return direct;
+
   for (const line of body.split("\n")) {
     if (!line.startsWith("data: ")) continue;
     const frame = decodeFrame(line.slice(6), result);
+
     if (frame !== undefined) return frame;
   }
+
   return undefined;
 }
 
@@ -128,15 +150,18 @@ export async function callMcpTool<TOutput extends TObject>(
     Accept: "application/json, text/event-stream",
     "Content-Type": "application/json",
   });
+
   if (options.headers !== undefined) {
     for (const [name, value] of options.headers) headers.set(name, value);
   }
+
   const body = JSON.stringify({
     jsonrpc: "2.0",
     id: 1,
     method: "tools/call",
     params: { name: tool, arguments: args },
   });
+
   try {
     const response = await options.fetch(url, {
       method: "POST",
@@ -144,12 +169,14 @@ export async function callMcpTool<TOutput extends TObject>(
       body,
       signal: requestSignal(options.signal),
     });
+
     if (!response.ok) {
       const text = await readBoundedBody(
         response,
         MAX_RESPONSE_BYTES,
         () => new Error(`${tool} response exceeded ${String(MAX_RESPONSE_BYTES)} bytes`),
       ).catch(() => "");
+
       throw new WebSearchRequestError(
         text.trim() || response.statusText || `HTTP ${String(response.status)}`,
         {
@@ -157,11 +184,13 @@ export async function callMcpTool<TOutput extends TObject>(
         },
       );
     }
+
     const text = await readBoundedBody(
       response,
       MAX_RESPONSE_BYTES,
       () => new Error(`${tool} response exceeded ${String(MAX_RESPONSE_BYTES)} bytes`),
     );
+
     return parseMcpResponse(text, output);
   } catch (error) {
     throw requestFailure(error, options.signal, `${tool} request timed out`);

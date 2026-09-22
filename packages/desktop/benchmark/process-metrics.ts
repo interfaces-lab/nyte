@@ -12,6 +12,7 @@ const ElectronProcess = Type.Object({
   idleWakeupsPerSecond: Type.Number({ minimum: 0 }),
   rssBytes: Type.Number({ minimum: 0 }),
 });
+
 const ElectronProcesses = Type.Array(ElectronProcess);
 
 type ElectronProcess = Static<typeof ElectronProcess>;
@@ -77,8 +78,10 @@ function run(file: string, args: readonly string[]): Promise<string> {
       (error, stdout, stderr) => {
         if (error !== null) {
           reject(new Error(`${file} failed: ${stderr.trim() || error.message}`));
+
           return;
         }
+
         resolve(stdout);
       },
     );
@@ -91,9 +94,11 @@ export function parseProcessList(output: string): ProcessTreeEntry[] {
     .filter((line) => line.trim() !== "")
     .map((line) => {
       const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.+?)\s*$/u.exec(line);
+
       if (match === null) throw new Error(`Invalid ps row: ${line}`);
       const [pid, parentPid, rssKiB] = match.slice(1, 4).map(Number);
       const command = match[4];
+
       if (
         pid === undefined ||
         parentPid === undefined ||
@@ -108,6 +113,7 @@ export function parseProcessList(output: string): ProcessTreeEntry[] {
       ) {
         throw new Error(`Invalid ps row: ${line}`);
       }
+
       return { pid, parentPid, rssBytes: rssKiB * 1024, command };
     });
 }
@@ -117,22 +123,27 @@ export function processTree(
   rootPid: number,
 ): ProcessTreeEntry[] {
   const root = processes.find((process) => process.pid === rootPid);
+
   if (root === undefined) return [];
   const found: ProcessTreeEntry[] = [];
   const pending = [root];
   const seen = new Set<number>();
+
   while (pending.length > 0) {
     const process = pending.shift();
+
     if (process === undefined || seen.has(process.pid)) continue;
     seen.add(process.pid);
     found.push(process);
     pending.push(...processes.filter((candidate) => candidate.parentPid === process.pid));
   }
+
   return found;
 }
 
 export async function readProcessTree(rootPid: number): Promise<ProcessTreeEntry[]> {
   if (process.platform === "win32") return [];
+
   return processTree(
     parseProcessList(await run("/bin/ps", ["-axo", "pid=,ppid=,rss=,comm="])),
     rootPid,
@@ -146,26 +157,33 @@ export function parseDarwinActivity(
 ): DarwinActivity | null {
   let table = false;
   const activity = new Map<number, DarwinActivity>();
+
   for (const line of output.split(/\r?\n/u)) {
     if (/^PID\s+%CPU\s+POWER\s*$/u.test(line.trim())) {
       table = true;
       activity.clear();
       continue;
     }
+
     if (!table || line.trim() === "") continue;
     const match = /^\s*(\d+)\s+([\d.]+)\s+([\d.]+)\s*$/u.exec(line);
+
     if (match === null) {
       table = false;
       continue;
     }
+
     const pid = Number(match[1]);
     const cpuPercent = Number(match[2]);
     const power = Number(match[3]);
+
     if (pids.has(pid) && Number.isFinite(cpuPercent) && Number.isFinite(power)) {
       activity.set(pid, { cpuPercent, power });
     }
   }
+
   if (activity.size === 0) return null;
+
   return [...activity.values()].reduce(
     (total, value) => ({
       cpuPercent: total.cpuPercent + value.cpuPercent,
@@ -179,7 +197,9 @@ function summary(values: readonly number[]): NumericSummary {
   const sorted = [...values].sort((left, right) => left - right);
   const p50 = sorted[Math.ceil(sorted.length * 0.5) - 1];
   const p95 = sorted[Math.ceil(sorted.length * 0.95) - 1];
+
   if (p50 === undefined || p95 === undefined) throw new Error("A metric report needs one sample");
+
   return {
     count: sorted.length,
     mean: sorted.reduce((total, value) => total + value, 0) / sorted.length,
@@ -196,14 +216,17 @@ async function sample(
 ): Promise<ProcessMetricSample> {
   const tree = await readProcessTree(rootPid);
   let activity: DarwinActivity | null = null;
+
   if (includePower && process.platform === "darwin" && tree.length > 0) {
     const args = ["-l", "2", "-s", "1", "-stats", "pid,cpu,power"];
+
     for (const process of tree) args.push("-pid", String(process.pid));
     activity = parseDarwinActivity(
       await run("/usr/bin/top", args),
       new Set(tree.map((process) => process.pid)),
     );
   }
+
   const raw: unknown = await application.evaluate(({ app }) =>
     app.getAppMetrics().map((metric) => ({
       pid: metric.pid,
@@ -213,12 +236,15 @@ async function sample(
       rssBytes: metric.memory.workingSetSize * 1024,
     })),
   );
+
   const electronProcesses = Value.Parse(ElectronProcesses, raw);
   const latestTree = await readProcessTree(rootPid);
+
   const electronCpuPercent = electronProcesses.reduce(
     (total, process) => total + process.cpuPercent,
     0,
   );
+
   return {
     elapsedMs: performance.now() - started,
     cpuPercent: activity?.cpuPercent ?? electronCpuPercent,
@@ -243,6 +269,7 @@ export async function startProcessMetricsSampling(
   if (!Number.isFinite(intervalMs) || intervalMs <= 0)
     throw new Error("Sample interval must be positive");
   const rootPid = application.process().pid;
+
   if (rootPid === undefined) throw new Error("Electron did not expose its process id");
   await application.evaluate(({ app }) => {
     app.getAppMetrics();
@@ -251,34 +278,44 @@ export async function startProcessMetricsSampling(
   const samples: ProcessMetricSample[] = [];
   let stopping = false;
   let sampling = false;
+
   const takeSample = async (includePower: boolean): Promise<void> => {
     sampling = true;
+
     try {
       samples.push(await sample(application, rootPid, started, includePower));
     } finally {
       sampling = false;
     }
   };
+
   let pending = takeSample(true);
+
   const loop = async (): Promise<void> => {
     await pending;
+
     while (!stopping) {
       await delay(intervalMs);
+
       if (stopping) break;
       pending = takeSample(true);
       await pending;
     }
   };
+
   const running = loop();
   let report: Promise<ProcessMetricsReport> | undefined;
+
   return {
     stop() {
       report ??= (async () => {
         const sampleInFlight = sampling;
         stopping = true;
         await running;
+
         if (!sampleInFlight) await takeSample(false);
         const power = samples.flatMap((value) => (value.power === null ? [] : [value.power]));
+
         return {
           schemaVersion: 1,
           intervalMs,
@@ -298,6 +335,7 @@ export async function startProcessMetricsSampling(
           },
         };
       })();
+
       return report;
     },
   };

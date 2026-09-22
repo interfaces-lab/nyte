@@ -19,6 +19,7 @@ interface TerminalView {
 }
 
 let ghostty: Promise<Ghostty> | undefined;
+
 const views = new Map<string, TerminalView>();
 
 function loadGhostty(): Promise<Ghostty> {
@@ -26,6 +27,7 @@ function loadGhostty(): Promise<Ghostty> {
     ghostty = undefined;
     throw cause;
   });
+
   return ghostty;
 }
 
@@ -35,11 +37,14 @@ function terminalTheme(): ITheme {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 1;
   const context = canvas.getContext("2d");
+
   if (context === null) throw new Error("Canvas rendering is unavailable");
   document.documentElement.append(probe);
+
   const background = getComputedStyle(document.documentElement).getPropertyValue(
     "--nyte-bg-chrome",
   );
+
   const color = (variable: string): string => {
     probe.style.color = "var(" + variable + ")";
     context.clearRect(0, 0, 1, 1);
@@ -47,6 +52,7 @@ function terminalTheme(): ITheme {
     context.fillRect(0, 0, 1, 1);
     context.fillStyle = getComputedStyle(probe).color;
     context.fillRect(0, 0, 1, 1);
+
     return (
       "#" +
       [...context.getImageData(0, 0, 1, 1).data]
@@ -55,6 +61,7 @@ function terminalTheme(): ITheme {
         .join("")
     );
   };
+
   try {
     return {
       background: color("--nyte-bg-chrome"),
@@ -85,20 +92,25 @@ function terminalTheme(): ITheme {
 
 function sendInput(id: string, data: string): Promise<void> {
   const tab = getTerminal(id);
+
   if (tab === undefined || !isShellTerminal(tab) || tab.state.kind !== "running") {
     return Promise.resolve();
   }
+
   const write = async (): Promise<void> => {
     for (let start = 0; start < data.length;) {
       let end = Math.min(start + 65536, data.length);
       const last = data.charCodeAt(end - 1);
+
       if (end < data.length && last >= 0xd800 && last <= 0xdbff) end -= 1;
       await nyte.host.terminal.write({ id, data: data.slice(start, end) });
       start = end;
     }
   };
+
   return write().catch((cause: unknown) => {
     const current = getTerminal(id);
+
     if (current !== undefined && isShellTerminal(current) && current.state.kind === "running") {
       toast.error("Couldn't write to terminal", {
         id: "terminal-write-" + id,
@@ -111,8 +123,10 @@ function sendInput(id: string, data: string): Promise<void> {
 async function createView(id: string): Promise<TerminalView | undefined> {
   const engine = await loadGhostty();
   const existing = views.get(id);
+
   if (existing !== undefined) return existing;
   const initialTab = getTerminal(id);
+
   if (initialTab === undefined) return undefined;
   const commandOutput = !isShellTerminal(initialTab);
   const root = document.documentElement;
@@ -123,6 +137,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   element.style.overflow = "hidden";
   element.style.position = "relative";
   element.style.caretColor = "transparent";
+
   const terminal = new Terminal({
     ghostty: engine,
     cursorStyle: "bar",
@@ -136,9 +151,11 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     convertEol: commandOutput,
     disableStdin: commandOutput || initialTab.state.kind !== "running",
   });
+
   const fit = new FitAddon();
   terminal.loadAddon(fit);
   terminal.open(element);
+
   if (commandOutput) terminal.write("\u001b[?25l");
   // Ghostty's compatibility container is editable; only its input should accept native text/IME.
   element.removeAttribute("contenteditable");
@@ -152,19 +169,24 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     "aria-label",
     commandOutput ? "Command output" : "Terminal input",
   );
+
   if (commandOutput) terminal.textarea?.setAttribute("readonly", "");
+
   if (!isShellTerminal(initialTab) && terminal.textarea !== undefined) {
     terminal.textarea.value = initialTab.source.output;
   }
+
   terminal.textarea?.setAttribute("spellcheck", "false");
   let disposed = false;
   let resizeFrame = 0;
   let lastSize = "";
+
   const fitVisible = (): void => {
     if (!element.isConnected || element.clientWidth === 0 || element.clientHeight === 0) return;
     fit.fit();
     const size = String(terminal.cols) + ":" + String(terminal.rows);
     const tab = getTerminal(id);
+
     if (
       size === lastSize ||
       tab === undefined ||
@@ -173,6 +195,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     ) {
       return;
     }
+
     lastSize = size;
     void nyte.host.terminal
       .resize({
@@ -187,22 +210,29 @@ async function createView(id: string): Promise<TerminalView | undefined> {
         });
       });
   };
+
   const scheduleFit = (): void => {
     cancelAnimationFrame(resizeFrame);
     resizeFrame = requestAnimationFrame(fitVisible);
   };
+
   const update = (tab: TerminalTab): void => {
     terminal.options.disableStdin = !isShellTerminal(tab) || tab.state.kind !== "running";
+
     if (!isShellTerminal(tab) && terminal.textarea !== undefined) {
       terminal.textarea.value = tab.source.output;
     }
+
     scheduleFit();
   };
+
   const resize = new ResizeObserver(scheduleFit);
   resize.observe(element);
   let lastAppearance = "";
+
   const appearance = new MutationObserver(() => {
     const next = getComputedStyle(root);
+
     const signature = [
       root.dataset["theme"],
       root.style.getPropertyValue("--nyte-tint-hue"),
@@ -210,6 +240,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
       next.getPropertyValue("--nyte-font-family-mono"),
       next.getPropertyValue("--nyte-font-size-code"),
     ].join("|");
+
     if (signature === lastAppearance) return;
     lastAppearance = signature;
     terminal.options.theme = terminalTheme();
@@ -218,36 +249,48 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     terminal.options.fontSize = Number.parseFloat(next.getPropertyValue("--nyte-font-size-code"));
     scheduleFit();
   });
+
   appearance.observe(root, { attributes: true, attributeFilter: ["style", "data-theme"] });
   document.fonts.addEventListener("loadingdone", scheduleFit);
   let pendingInput = Promise.resolve();
+
   const data = terminal.onData((value) => {
     pendingInput = pendingInput.then(() => sendInput(id, value));
   });
+
   const title = terminal.onTitleChange((value) => terminalActions.title(id, value));
+
   const copy = (event: ClipboardEvent): void => {
     const text = terminal.getSelection();
+
     if (text === "") return;
     event.preventDefault();
     event.clipboardData?.setData("text/plain", text);
   };
+
   const paste = (event: ClipboardEvent): void => {
     const text = event.clipboardData?.getData("text/plain");
+
     if (text === undefined) return;
     event.preventDefault();
     event.stopPropagation();
     const tab = getTerminal(id);
+
     if (tab === undefined || !isShellTerminal(tab) || tab.state.kind !== "running") return;
     terminal.paste(text);
   };
+
   element.addEventListener("copy", copy, true);
   element.addEventListener("paste", paste, true);
   terminal.attachCustomKeyEventHandler((event) => {
     if (event.ctrlKey && event.code === "Backquote") return true;
+
     if ((event.metaKey || (event.ctrlKey && event.shiftKey)) && event.key.toLowerCase() === "c") {
       if (event.type === "keydown") document.execCommand("copy");
+
       return true;
     }
+
     return false;
   });
   const view = { element, terminal, fit: fitVisible };
@@ -256,6 +299,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     write(value) {
       terminal.write(commandOutput ? value + "\u001b[?25l" : value, () => {
         const tab = getTerminal(id);
+
         if (!disposed && tab !== undefined && isShellTerminal(tab)) {
           void nyte.host.terminal.acknowledge({ id, length: value.length }).catch(() => undefined);
         }
@@ -285,6 +329,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     },
   });
   scheduleFit();
+
   return view;
 }
 
@@ -302,9 +347,11 @@ export function mountTerminal(id: string, container: HTMLDivElement, visible: bo
       element = view.element;
       container.append(view.element);
       view.fit();
+
       if (container.checkVisibility()) view.terminal.textarea?.focus({ preventScroll: true });
     })
     .catch((cause: unknown) => terminalActions.fail(id, errorMessage(cause)));
+
   return () => {
     detached = true;
     element?.remove();
@@ -313,6 +360,7 @@ export function mountTerminal(id: string, container: HTMLDivElement, visible: bo
 
 export function focusTerminal(id: string): void {
   const view = views.get(id);
+
   if (view?.element.checkVisibility()) view.terminal.textarea?.focus({ preventScroll: true });
 }
 
@@ -322,6 +370,7 @@ export function clearTerminal(id: string): void {
 
 export function copyTerminal(id: string): void {
   const selection = views.get(id)?.terminal.getSelection();
+
   if (selection)
     void navigator.clipboard
       .writeText(selection)

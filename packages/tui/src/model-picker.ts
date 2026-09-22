@@ -115,12 +115,14 @@ export class ModelPicker implements EphemeralPanel {
       paddingTop: 1,
       paddingBottom: 1,
     });
+
     const query = new BoxRenderable(renderer, {
       id: nextId("model-search"),
       flexDirection: "row",
       height: 1,
       flexShrink: 0,
     });
+
     query.add(
       new TextRenderable(renderer, {
         id: nextId("model-search-prefix"),
@@ -226,13 +228,17 @@ export class ModelPicker implements EphemeralPanel {
 
   private fields(model: Model<Api>): readonly Field[] {
     const fields: Field[] = [];
+
     if (getSupportedThinkingLevels(model).length > 1) fields.push("effort");
+
     if (this.fastSetting(model) !== undefined) fields.push("fast");
+
     return fields;
   }
 
   private activeField(model: Model<Api>): Field | undefined {
     const fields = this.fields(model);
+
     return fields.includes(this.field) ? this.field : fields[0];
   }
 
@@ -240,6 +246,7 @@ export class ModelPicker implements EphemeralPanel {
     const model = this.selectedModel;
     const fields = model === undefined ? [] : this.fields(model);
     const active = model === undefined ? undefined : this.activeField(model);
+
     if (this.options.renderer.width < 80) {
       return [
         `${keycap("model.previous", "symbol")}${keycap("model.next", "symbol")}`,
@@ -253,6 +260,7 @@ export class ModelPicker implements EphemeralPanel {
         keycap("picker.close"),
       ].join(" · ");
     }
+
     return [
       `${keycap("model.previous", "symbol")}${keycap("model.next", "symbol")} select`,
       ...(fields.length > 1
@@ -296,6 +304,7 @@ export class ModelPicker implements EphemeralPanel {
 
   private fastSetting(model: Model<Api>): string | undefined {
     const settingId = fastModeSettingId(model.provider);
+
     return model.modes?.includes("fast") === true && this.fastModes.has(settingId)
       ? settingId
       : undefined;
@@ -303,6 +312,7 @@ export class ModelPicker implements EphemeralPanel {
 
   private fastEnabled(model: Model<Api>): boolean {
     const settingId = this.fastSetting(model);
+
     return settingId !== undefined && this.fastModes.get(settingId) === true;
   }
 
@@ -311,6 +321,7 @@ export class ModelPicker implements EphemeralPanel {
     const terms = this.queryInput.value.toLocaleLowerCase().trim().split(/\s+/u).filter(Boolean);
     this.matches = this.models.filter((model) => {
       const text = `${model.name} ${identity(model)}`.toLocaleLowerCase();
+
       return terms.every((term) => text.includes(term));
     });
     const current = identity(previous ?? this.options.current);
@@ -324,28 +335,35 @@ export class ModelPicker implements EphemeralPanel {
 
   private move(delta: number): void {
     const count = this.matches.length;
+
     if (count === 0) return;
     this.selected = (this.selected + delta + count) % count;
   }
 
   private change(delta: -1 | 1): void {
     const model = this.selectedModel;
+
     if (model === undefined) return;
+
     if (this.activeField(model) === "fast") {
       const settingId = this.fastSetting(model);
+
       if (settingId !== undefined) this.fastModes.set(settingId, delta === 1);
     } else {
       const levels = getSupportedThinkingLevels(model);
+
       const next =
         levels[
           Math.max(0, Math.min(levels.length - 1, levels.indexOf(this.effort(model)) + delta))
         ];
+
       if (next !== undefined) this.efforts.set(identity(model), next);
     }
   }
 
   private confirm(): void {
     const model = this.selectedModel;
+
     if (model === undefined) return;
     const settingId = this.fastSetting(model);
     this.options.onSelect({
@@ -357,6 +375,7 @@ export class ModelPicker implements EphemeralPanel {
 
   private readonly onKeyPress = (key: KeyEvent): void => {
     if (this.destroyed || key.defaultPrevented) return;
+
     if (matchesKeyName("picker.close", key)) this.options.onCancel();
     else if (matchesKeyName("picker.accept", key)) this.confirm();
     else if (matchesKey("model.previous", key, "required")) this.move(-1);
@@ -372,6 +391,7 @@ export class ModelPicker implements EphemeralPanel {
     else return;
     key.preventDefault();
     key.stopPropagation();
+
     if (!this.destroyed) this.repaint();
   };
 
@@ -386,13 +406,16 @@ export class ModelPicker implements EphemeralPanel {
     const levels = getSupportedThinkingLevels(model);
     const bars = "■".repeat(level === "off" ? 0 : Math.max(0, levels.indexOf(level) + 1));
     const emptyBars = "□".repeat(Math.max(0, levels.length - bars.length));
+
     const effort = wide
       ? `${padDisplay(bars + emptyBars, 7)} ${padDisplay(effortLabel(level), 7)}`
       : effortLabel(level);
+
     const fast =
       this.fastSetting(model) === undefined
         ? ""
         : `Fast mode ${this.fastEnabled(model) ? "On" : "Off"}`;
+
     return new StyledText([
       fg(color)(
         selected
@@ -418,17 +441,21 @@ export class ModelPicker implements EphemeralPanel {
   private detail(model: Model<Api>, width: number): StyledText {
     const { theme } = this.options;
     const level = effortLabel(this.effort(model));
+
     const fast =
       this.fastSetting(model) === undefined
         ? ""
         : ` · Fast mode ${this.fastEnabled(model) ? "On" : "Off"}`;
+
     const info = `${identity(model)} · ${level}${fast}`;
+
     if (this.detailRows === 1)
       return new StyledText([
         fg(theme.dim)(truncate(`${level}${fast} · ${model.provider}`, width)),
       ]);
     const meterWidth = Math.min(34, width);
     const multiplier = this.fastEnabled(model) ? getFastModeCostMultiplier(model) : 1;
+
     const ceiling = (this.costCeiling ??= this.models.reduce(
       (maximum, candidate) =>
         Math.max(
@@ -438,6 +465,7 @@ export class ModelPicker implements EphemeralPanel {
         ),
       0,
     ));
+
     const position =
       ceiling === 0
         ? 0
@@ -445,22 +473,28 @@ export class ModelPicker implements EphemeralPanel {
             ((meterWidth - 1) * (model.cost.input + model.cost.output) * (multiplier ?? 1)) /
               ceiling,
           );
+
     const meter = Array.from({ length: meterWidth }, (_, index) =>
       fg(index < meterWidth / 2 ? theme.ok : theme.thinking)(index === position ? "●" : "─"),
     );
+
     const column = Math.max(1, Math.min(17, Math.floor(width / 3)));
+
     const cells = (values: readonly string[]): string =>
       values.map((value) => padDisplay(truncate(value, column), column)).join("");
+
     const caption =
       multiplier === undefined
         ? "Fast-mode pricing unavailable"
         : `${String(model.contextWindow / 1000)}k context · ${this.fastEnabled(model) ? "Fast rates" : "USD per million tokens"}`;
+
     const rates =
       multiplier === undefined
         ? ["Unavailable", "Unavailable", "Unavailable"]
         : [model.cost.input, model.cost.cacheRead, model.cost.output].map((rate) =>
             price(Number((rate * multiplier).toPrecision(10))),
           );
+
     return new StyledText([
       fg(theme.dim)(`${truncate(info, width)}\n`),
       ...meter,
@@ -476,13 +510,16 @@ export class ModelPicker implements EphemeralPanel {
     const width = Math.max(1, renderer.width - 5);
     const count = this.visibleCount;
     this.offset = Math.max(0, Math.min(this.offset, this.selected, this.matches.length - count));
+
     if (this.selected >= this.offset + count) this.offset = this.selected - count + 1;
     this.count.content = ` ${String(this.matches.length)}/${String(this.models.length)}`;
     this.count.visible = width >= 40;
     this.above.content = this.offset > 0 ? "  ↑ more above" : "";
     this.below.content = this.offset + count < this.matches.length ? "  ↓ more below" : "";
+
     while (this.rowViews.length < count) {
       const index = this.rowViews.length;
+
       const view = new TextRenderable(renderer, {
         id: nextId("model-row"),
         width: "100%",
@@ -498,11 +535,14 @@ export class ModelPicker implements EphemeralPanel {
           this.focus();
         },
       });
+
       this.rowViews.push(view);
       this.list.add(view);
     }
+
     for (const [index, view] of this.rowViews.entries()) {
       view.visible = index < count;
+
       if (!view.visible) continue;
       const item = this.offset + index;
       const model = this.matches[item];
@@ -523,6 +563,7 @@ export class ModelPicker implements EphemeralPanel {
             ])
           : this.row(model, selected, width);
     }
+
     this.list.height = count;
     this.details.height = this.detailRows;
     this.details.content =

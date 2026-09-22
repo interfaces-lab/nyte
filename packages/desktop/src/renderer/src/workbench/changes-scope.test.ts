@@ -43,9 +43,9 @@ test(
     assert.deepEqual(at("all conversation files reverted").stackPaths, []);
     const newest = at("selected the newest turn");
     const older = at("selected an older turn");
-    assert.equal(newest.scopeLabel, "Showing Latest");
+    assert.equal(newest.scopeLabel, "Select scope, showing Latest");
     assert.deepEqual(newest.stackPaths, ["src/third.ts"]);
-    assert.equal(older.scopeLabel, "Showing Turn 1");
+    assert.equal(older.scopeLabel, "Select scope, showing Turn 1");
     assert.deepEqual(older.stackPaths, ["src/first.ts"]);
     assert.equal(older.snapshotReads, 1);
 
@@ -63,15 +63,15 @@ test(
   async () => {
     const at = await observations();
     const dropped = at("selected turn dropped from the transcript");
-    assert.equal(dropped.scopeLabel, "Showing Uncommitted");
+    assert.equal(dropped.scopeLabel, "Select scope, showing Uncommitted");
     assert.equal(dropped.alert, null);
     assert.deepEqual(dropped.stackPaths, ["src/working.ts"]);
     const regained = at("transcript regained the dropped turn");
-    assert.equal(regained.scopeLabel, "Showing Turn 1");
+    assert.equal(regained.scopeLabel, "Select scope, showing Turn 1");
     assert.deepEqual(regained.stackPaths, ["src/first.ts"]);
     assert.equal(
       at("transcript regained the turn after picking Uncommitted").scopeLabel,
-      "Showing Uncommitted",
+      "Select scope, showing Uncommitted",
     );
   },
 );

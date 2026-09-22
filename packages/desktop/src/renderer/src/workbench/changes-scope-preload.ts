@@ -44,11 +44,15 @@ function changedTurn(id: string, paths: readonly string[]): ConversationTurn {
 }
 
 export const FIRST_TURN = "turn-first";
+
 export const SECOND_TURN = "turn-second";
+
 export const THIRD_TURN = "turn-third";
 
 export const firstTurn = changedTurn(FIRST_TURN, ["src/first.ts"]);
+
 export const secondTurn = changedTurn(SECOND_TURN, ["src/second.ts"]);
+
 export const thirdTurn = changedTurn(THIRD_TURN, ["src/third.ts"]);
 
 const session: SessionSnapshot["session"] = {
@@ -130,17 +134,21 @@ export function releaseSnapshot(): void {
 
 const snapshot: NyteBridge["sessions"]["snapshot"] = async () => {
   changesScopeScript.snapshotReads += 1;
+
   if (changesScopeScript.failSnapshot) throw new Error("Scripted snapshot failure");
+
   if (changesScopeScript.hangSnapshot) {
     await new Promise<void>((resolve) => {
       changesScopeScript.release = resolve;
     });
   }
+
   return snapshotWith(changesScopeScript.transcript);
 };
 
 const metadata: NyteBridge["sessions"]["metadata"] = async () => {
   const held = snapshotWith(changesScopeScript.transcript);
+
   return { session: held.session, head: held.head, config: held.config, context: held.context };
 };
 
@@ -153,6 +161,7 @@ const vcsSnapshot = async (): Promise<VcsSnapshot> => {
 const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) => {
   if (input.scope.kind === "staged") return [];
   const paths = input.paths ?? changesScopeScript.vcsFiles.map((file) => file.path);
+
   return paths.map((path) => ({
     path,
     status: "modified",

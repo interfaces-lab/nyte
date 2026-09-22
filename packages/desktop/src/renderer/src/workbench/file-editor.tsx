@@ -129,22 +129,28 @@ function replaceContents(
   // CodeView exposes the Editor before its first document has attached.
   if (editor.getFile() === undefined) return;
   const previous = editor.getText();
+
   if (previous === contents) return;
   let start = 0;
+
   while (start < previous.length && start < contents.length && previous[start] === contents[start])
     start += 1;
   let end = previous.length;
   let nextEnd = contents.length;
+
   while (end > start && nextEnd > start && previous[end - 1] === contents[nextEnd - 1]) {
     end -= 1;
     nextEnd -= 1;
   }
+
   // Positions cannot address the middle of a CRLF pair.
   if (start > 0 && previous[start - 1] === "\r" && previous[start] === "\n") start -= 1;
+
   if (end > 0 && previous[end - 1] === "\r" && previous[end] === "\n") {
     end += 1;
     nextEnd += 1;
   }
+
   const before = previous.slice(0, start).split("\n");
   const through = previous.slice(0, end).split("\n");
   editor.applyEdits([
@@ -160,7 +166,9 @@ function replaceContents(
 
 export function WorkspaceFileEditor(input: FileEditorProps): ReactElement {
   const document = useWorkspaceFile(input.file.path);
+
   if (document.data?.kind === "text") return <TextFileEditor {...input} document={document.data} />;
+
   return (
     <div
       aria-hidden={!input.active}
@@ -201,8 +209,10 @@ function TextFileEditor({
       file.draft?.contents,
     ),
   );
+
   const snapshot = useSyncExternalStore(buffer.subscribe, buffer.getSnapshot, buffer.getSnapshot);
   const viewer = useRef<CodeViewHandle<undefined, undefined>>(null);
+
   const navigation = useRef({
     active,
     revision: navigationRevision,
@@ -210,20 +220,25 @@ function TextFileEditor({
     column: file.column,
     length: file.length,
   });
+
   const appliedNavigation = useRef(-1);
   const [clickedLine, setClickedLine] = useState({ line: file.line ?? 1, navigationRevision });
+
   const line =
     clickedLine.navigationRevision === navigationRevision ? clickedLine.line : (file.line ?? 1);
+
   const appearance = useAppearanceSettings();
   const host = useHostState();
   const saveFile = useSaveWorkspaceFile();
   const disk = useWorkspaceFile(file.path);
   const dirty = snapshot.contents !== snapshot.savedContents;
+
   const blame = useQuery({
     queryKey: ["files", "blame", file.path, snapshot.version],
     queryFn: () => nyte.host.files.blame({ path: file.path }),
     enabled: preferences.gitBlame && active && !dirty,
   });
+
   const [initialItems] = useState<readonly CodeViewItem<undefined>[]>(() => [
     {
       id: file.path,
@@ -242,6 +257,7 @@ function TextFileEditor({
       write: saveFile.mutateAsync,
       format: preferences.formatOnSave ? (input) => nyte.host.files.format(input) : undefined,
     });
+
   // The autosave timer is armed inside the buffer subscription, which is bound
   // once per buffer; it reads the current save and the preference at fire time.
   const autosave = useRef({ enabled: preferences.autoSave, save });
@@ -251,6 +267,7 @@ function TextFileEditor({
 
   useLayoutEffect(() => {
     let timer: number | undefined;
+
     const synchronize = (): void => {
       const current = buffer.getSnapshot();
       fileActions.setSaving(viewKey, file.path, current.status.kind === "saving");
@@ -265,10 +282,12 @@ function TextFileEditor({
               version: current.version,
             },
       );
+
       if (timer !== undefined) {
         window.clearTimeout(timer);
         timer = undefined;
       }
+
       if (
         current.contents !== current.savedContents &&
         (current.status.kind === "idle" || current.status.kind === "saved")
@@ -276,15 +295,19 @@ function TextFileEditor({
         timer = window.setTimeout(() => {
           timer = undefined;
           const pending = autosave.current;
+
           // Read at fire time: turning Auto Save off also drops a pending save.
           if (pending.enabled) void pending.save();
         }, 1000);
       }
     };
+
     synchronize();
     const unsubscribe = buffer.subscribe(synchronize);
+
     return () => {
       unsubscribe();
+
       if (timer !== undefined) window.clearTimeout(timer);
     };
   }, [buffer, file.path, viewKey]);
@@ -299,6 +322,7 @@ function TextFileEditor({
 
   useLayoutEffect(() => {
     const editor = viewer.current?.getEditor(file.path);
+
     if (editor !== undefined) replaceContents(editor, snapshot.contents);
   }, [file.path, snapshot.contents]);
 
@@ -309,6 +333,7 @@ function TextFileEditor({
       if (editor.getFile() === undefined) return;
       replaceContents(editor, buffer.getSnapshot().contents);
       const target = navigation.current;
+
       if (
         !target.active ||
         target.line === undefined ||
@@ -331,6 +356,7 @@ function TextFileEditor({
         character: (target.column ?? 1) - 1,
         preventScroll: true,
       });
+
       if (target.column !== undefined && target.length !== undefined)
         editor.setSelections([
           {
@@ -353,6 +379,7 @@ function TextFileEditor({
       length: file.length,
     };
     const editor = viewer.current?.getEditor(file.path);
+
     if (editor !== undefined) attachEditor(editor);
   });
 
@@ -360,20 +387,25 @@ function TextFileEditor({
     if (buffer.getSnapshot().status.kind === "saving")
       throw new Error("Wait for the current save to finish.");
     const result = await disk.refetch();
+
     if (result.error !== null) throw result.error;
+
     if (result.data?.kind !== "text") throw new Error("The file can no longer be read as text.");
     buffer.discard(result.data);
   };
+
   useImperativeHandle(ref, () => ({ save, discard }));
 
   /** Formatting lands as an ordinary edit, so it stays on the undo stack. */
   const format = async (): Promise<void> => {
     const current = buffer.getSnapshot();
+
     const result = await nyte.host.files.format({
       path: file.path,
       contents: current.contents,
       version: current.version,
     });
+
     if (result.kind === "formatted") buffer.edit(result.contents);
   };
 
@@ -416,6 +448,7 @@ function TextFileEditor({
     blame.data?.kind === "blame"
       ? blame.data.lines.find((entry) => entry.line === line)
       : undefined;
+
   const blameText = dirty
     ? "Save the file to see up-to-date Git blame."
     : blame.isError

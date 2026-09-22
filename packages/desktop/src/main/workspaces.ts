@@ -25,6 +25,7 @@ export async function readLastWorkspace(): Promise<string | null> {
     const value: unknown = JSON.parse(
       await readFile(join(nyteHome(), "desktop-workspace.json"), "utf8"),
     );
+
     return Value.Check(Type.String(), value) && isAbsolute(value) ? value : null;
   } catch {
     return null;

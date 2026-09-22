@@ -32,6 +32,7 @@ class DiagnosticReport implements EphemeralPanel {
       focusable: true,
       paddingX: 1,
     });
+
     const heading = new TextRenderable(shell.renderer, {
       content: title,
       fg: shell.theme.foreground,
@@ -39,6 +40,7 @@ class DiagnosticReport implements EphemeralPanel {
       flexShrink: 0,
       selectable: false,
     });
+
     const controls = new TextRenderable(shell.renderer, {
       height: 2,
       fg: shell.theme.dim,
@@ -46,12 +48,14 @@ class DiagnosticReport implements EphemeralPanel {
       wrapMode: "word",
       selectable: false,
     });
+
     const navigation = new TextRenderable(shell.renderer, {
       fg: shell.theme.dim,
       flexShrink: 0,
       wrapMode: "word",
       selectable: false,
     });
+
     const scroll = new ScrollBoxRenderable(shell.renderer, {
       flexGrow: 1,
       minHeight: 1,
@@ -66,6 +70,7 @@ class DiagnosticReport implements EphemeralPanel {
         },
       },
     });
+
     this.text = new TextRenderable(shell.renderer, {
       content: lines.join("\n"),
       fg: shell.theme.foreground,
@@ -75,24 +80,28 @@ class DiagnosticReport implements EphemeralPanel {
       selectionBg: shell.theme.selectionBackground,
       selectionFg: shell.theme.selectionForeground,
     });
+
     const position = new TextRenderable(shell.renderer, {
       fg: shell.theme.dim,
       height: 1,
       flexShrink: 0,
       selectable: false,
     });
+
     scroll.add(this.text);
     this.container.add(heading);
     this.container.add(controls);
     this.container.add(navigation);
     this.container.add(scroll);
     this.container.add(position);
+
     const actions = [
       {
         name: "report.close",
         title: "close",
         run: () => {
           close();
+
           return true;
         },
       },
@@ -103,6 +112,7 @@ class DiagnosticReport implements EphemeralPanel {
       { name: "report.top", title: "top", run: () => scroll.scrollTo(0) },
       { name: "report.end", title: "end", run: () => scroll.scrollTo(scroll.scrollHeight) },
     ];
+
     const unregister = shell.keymap.registerLayer({
       priority: 20,
       enabled: () => !this.container.isDestroyed,
@@ -117,24 +127,31 @@ class DiagnosticReport implements EphemeralPanel {
         "report.end": CHAT_KEYBINDS["chat.message.next"],
       }),
     });
+
     let lastControls = "";
     let lastNavigation = "";
     let lastPosition = "";
+
     const paintControls = (): void => {
       if (this.container.isDestroyed) return;
+
       const entries = shell.keymap.getCommandEntries({
         namespace: "report",
         visibility: "active",
       });
+
       const primary = entries.filter(({ command }) => command.name === "report.close");
       const secondary = entries.filter(({ command }) => command.name !== "report.close");
       const nextControls = reportControlRows(primary, shell.renderer.width - 2);
+
       if (nextControls !== lastControls) controls.content = lastControls = nextControls;
       const nextNavigation = reportControlRows(secondary, shell.renderer.width - 2);
+
       if (nextNavigation !== lastNavigation) {
         navigation.content = lastNavigation = nextNavigation;
       }
     };
+
     const paint = async (): Promise<void> => {
       if (this.container.isDestroyed) return;
       // Native scrolling and wrapping settle during layout, including mouse scrolling.
@@ -142,8 +159,10 @@ class DiagnosticReport implements EphemeralPanel {
       const total = scroll.scrollHeight;
       const end = Math.min(total, scroll.scrollTop + scroll.viewport.height);
       const nextPosition = `${String(scroll.scrollTop + 1)}-${String(end)}/${String(total)}${end < total ? " · more below" : " · end"}`;
+
       if (nextPosition !== lastPosition) position.content = lastPosition = nextPosition;
     };
+
     paintControls();
     const unsubscribe = shell.keymap.on("state", paintControls);
     shell.renderer.on(CliRenderEvents.RESIZE, paintControls);
@@ -179,18 +198,22 @@ function reportControlRows(
   width: number,
 ): string {
   const rows: string[] = [];
+
   for (const { command, bindings } of entries) {
     // One installed binding per action keeps aliases from displacing the report body.
     const key = formatCommandBindings(bindings.slice(0, 1), {
       keyNameAliases: { escape: "esc" },
     });
+
     if (key === undefined) continue;
     const label = `${key} ${String(command.hint ?? command.title)}`;
     const previous = rows.at(-1);
+
     if (previous !== undefined && displayWidth(`${previous} · ${label}`) <= width)
       rows[rows.length - 1] = `${previous} · ${label}`;
     else rows.push(label);
   }
+
   return rows.join("\n");
 }
 
@@ -202,17 +225,21 @@ export function openDiagnosticReport(
 ): DiagnosticReport | undefined {
   if (shell.root.isDestroyed || shell.ui.prompting || shell.ui.selecting) return undefined;
   const focus = shell.renderer.currentFocusedRenderable;
+
   const close = (): void => {
     if (shell.dismissInfoPanel !== close) return;
     shell.dismissInfoPanel = undefined;
     shell.setUi("overlay", undefined);
     closePanel(shell, panel);
+
     if (focus !== null && !focus.isDestroyed) shell.focus.use(focus);
     else shell.input.blur();
     onClose();
   };
+
   const panel = openPanel(shell, new DiagnosticReport(shell, title, lines, close));
   shell.setUi("overlay", panel.container);
   shell.dismissInfoPanel = close;
+
   return panel;
 }

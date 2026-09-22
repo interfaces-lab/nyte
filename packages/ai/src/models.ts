@@ -1,5 +1,6 @@
+import { MODEL_THINKING_LEVELS, ModelSchema } from "@nyte-ai/schema";
+import { Value } from "typebox/value";
 import { lazyStream } from "./api/lazy.ts";
-import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
 import { defaultProviderAuthContext as defaultAuthContext } from "./auth/context.ts";
 import { InMemoryCredentialStore } from "./auth/credential-store.ts";
 import {
@@ -29,6 +30,7 @@ import type {
   DeferredCancelOptions,
   DeferredFetchOptions,
   DeferredHandle,
+  FetchFunction,
   Model,
   ModelCostRates,
   ModelThinkingLevel,
@@ -64,6 +66,11 @@ export interface RefreshModelsContext {
   allowNetwork: boolean;
   /** Bypass provider freshness checks and fetch immediately when network access is allowed. */
   force?: boolean;
+  /** Hosted catalog transport shared by every provider in this collection. */
+  catalog: {
+    url: string;
+    fetch: FetchFunction;
+  };
   /** Always present, including when the public refresh caller omits its optional signal. */
   signal: AbortSignal;
 }
@@ -89,8 +96,11 @@ export interface ModelsRequestTransforms {
 
 export type ModelsApiStreamOptions<TApi extends Api> = ApiStreamOptions<TApi> &
   ModelsRequestTransforms;
+
 export type ModelsSimpleStreamOptions = SimpleStreamOptions & ModelsRequestTransforms;
+
 export type ModelsDeferredFetchOptions = DeferredFetchOptions & ModelsRequestTransforms;
+
 export type ModelsDeferredCancelOptions = DeferredCancelOptions & ModelsRequestTransforms;
 
 /**
@@ -121,18 +131,16 @@ export interface Provider<TApi extends Api = Api> {
   readonly auth: ProviderAuth;
 
   /**
-   * Current known models, sync. Static providers return their catalog;
-   * dynamic providers return the list as of the last `refreshModels()`
-   * (empty before the first). Must not throw; `Models` treats a throwing
-   * implementation as having no models.
+   * Current catalog, sync. Returns the list restored by the last `refreshModels()`
+   * call or fetched from the hosted feed. Empty before either succeeds. Must not
+   * throw; `Models` treats a throwing implementation as having no models.
    */
   getModels(): readonly Model<TApi>[];
 
   /**
-   * Dynamic providers only: restore `context.stored` and optionally fetch a newer list using
-   * the effective credential. Implementations retain their previous list on failure, publish
-   * persistence and synchronous state changes through `context.publish()`, and honor the
-   * shared abort signal for blocking work.
+   * Restore `context.stored` and optionally fetch a newer catalog. Implementations retain their
+   * previous list on failure, publish persistence and synchronous state changes through
+   * `context.publish()`, and honor the shared abort signal for blocking work.
    */
   refreshModels?(context: RefreshModelsContext): Promise<void>;
 
@@ -191,9 +199,8 @@ export interface Models {
   getModel(provider: string, id: string): Model<Api> | undefined;
 
   /**
-   * Refresh selected configured dynamic providers concurrently (all when `providers` is omitted).
-   * Provider errors and cancellation are returned without rejecting; static, unknown, and
-   * unconfigured providers are skipped.
+   * Refresh selected providers concurrently (all when `providers` is omitted). Provider errors
+   * and cancellation are returned without rejecting; static and unknown providers are skipped.
    */
   refresh(options?: ModelsRefreshOptions): Promise<ModelsRefreshResult>;
 
@@ -256,6 +263,8 @@ export interface Models {
 }
 
 export interface MutableModels extends Models {
+  /** An independent provider registry sharing this catalog's credential and model stores. */
+  withProvider(provider: Provider): Models;
   /** Upsert/replace by provider.id. Provider ids are unique. */
   setProvider(provider: Provider): void;
   deleteProvider(id: string): void;
@@ -266,6 +275,10 @@ export interface CreateModelsOptions {
   credentials?: CredentialStore;
   modelsStore?: ModelsStore;
   authContext?: AuthContext;
+  catalog?: {
+    url?: string;
+    fetch?: FetchFunction;
+  };
 }
 
 function mergeHeaders(
@@ -274,13 +287,17 @@ function mergeHeaders(
 ): ProviderHeaders | undefined {
   if (!base && !override) return undefined;
   const merged = { ...base };
+
   for (const [name, value] of Object.entries(override ?? {})) {
     const lowerName = name.toLowerCase();
+
     for (const existingName of Object.keys(merged)) {
       if (existingName.toLowerCase() === lowerName) delete merged[existingName];
     }
+
     merged[name] = value;
   }
+
   return merged;
 }
 
@@ -289,6 +306,7 @@ class ModelsImpl implements MutableModels {
   private credentials: CredentialStore;
   private modelsStore: ModelsStore;
   private authContext: AuthContext;
+  private catalog: RefreshModelsContext["catalog"];
   private refreshGenerations = new Map<string, number>();
   private refreshControllers = new Map<string, AbortController>();
   private publicationChains = new Map<string, Promise<unknown>>();
@@ -297,6 +315,24 @@ class ModelsImpl implements MutableModels {
     this.credentials = options?.credentials ?? new InMemoryCredentialStore();
     this.modelsStore = options?.modelsStore ?? new InMemoryModelsStore();
     this.authContext = options?.authContext ?? defaultAuthContext();
+    this.catalog = {
+      url: options?.catalog?.url ?? "https://pub-426b80ba181f408387bc9361b2fcbe3f.r2.dev",
+      fetch: options?.catalog?.fetch ?? globalThis.fetch,
+    };
+  }
+
+  withProvider(provider: Provider): Models {
+    const models = new ModelsImpl({
+      credentials: this.credentials,
+      modelsStore: this.modelsStore,
+      authContext: this.authContext,
+      catalog: this.catalog,
+    });
+
+    for (const entry of this.providers.values()) models.setProvider(entry);
+    models.setProvider(provider);
+
+    return models;
   }
 
   setProvider(provider: Provider): void {
@@ -313,6 +349,7 @@ class ModelsImpl implements MutableModels {
     for (const id of new Set([...this.providers.keys(), ...this.refreshControllers.keys()])) {
       this.supersedeProviderRefresh(id);
     }
+
     this.providers.clear();
   }
 
@@ -327,7 +364,9 @@ class ModelsImpl implements MutableModels {
   getModels(provider?: string): readonly Model<Api>[] {
     if (provider !== undefined) {
       const entry = this.providers.get(provider);
+
       if (!entry) return [];
+
       try {
         return entry.getModels();
       } catch {
@@ -336,6 +375,7 @@ class ModelsImpl implements MutableModels {
     }
 
     const models: Model<Api>[] = [];
+
     for (const entry of this.providers.values()) {
       try {
         models.push(...entry.getModels());
@@ -343,6 +383,7 @@ class ModelsImpl implements MutableModels {
         // Best-effort: ill-behaved providers yield no models.
       }
     }
+
     return models;
   }
 
@@ -354,20 +395,20 @@ class ModelsImpl implements MutableModels {
     const generation = (this.refreshGenerations.get(providerId) ?? 0) + 1;
     this.refreshGenerations.set(providerId, generation);
     const previous = this.refreshControllers.get(providerId);
+
     if (previous) {
       this.refreshControllers.delete(providerId);
       previous.abort();
     }
+
     return generation;
   }
 
-  private beginProviderRefresh(providerId: string): {
-    generation: number;
-    controller: AbortController;
-  } {
+  private beginProviderRefresh(providerId: string) {
     const generation = this.supersedeProviderRefresh(providerId);
     const controller = new AbortController();
     this.refreshControllers.set(providerId, controller);
+
     return { generation, controller };
   }
 
@@ -378,8 +419,10 @@ class ModelsImpl implements MutableModels {
     publication: ModelsPublication,
   ): Promise<boolean> {
     const previous = this.publicationChains.get(providerId) ?? Promise.resolve();
+
     const queued = (async () => {
       await previous.catch(() => {});
+
       if (signal.aborted || this.refreshGenerations.get(providerId) !== generation) return false;
 
       if (publication.persist === null) {
@@ -390,14 +433,17 @@ class ModelsImpl implements MutableModels {
 
       if (signal.aborted || this.refreshGenerations.get(providerId) !== generation) return false;
       publication.update?.();
+
       return true;
     })();
+
     const tail = queued.catch(() => {});
     this.publicationChains.set(providerId, tail);
     void tail.then(() => {
       if (this.publicationChains.get(providerId) === tail)
         this.publicationChains.delete(providerId);
     });
+
     return raceWithAbortSignal(queued, signal);
   }
 
@@ -417,6 +463,7 @@ class ModelsImpl implements MutableModels {
         this.publishProviderModels(provider.id, generation, signal, publication),
       allowNetwork,
       force: allowNetwork ? force : undefined,
+      catalog: this.catalog,
       signal,
     });
   }
@@ -425,8 +472,10 @@ class ModelsImpl implements MutableModels {
     const allowNetwork = options.allowNetwork ?? true;
     const callerSignal = operationSignal(options.signal);
     const errors = new Map<string, Error>();
+
     if (callerSignal.aborted) return { aborted: true, errors };
     const selected = options.providers ? new Set(options.providers) : undefined;
+
     const refreshable = Array.from(this.providers.values()).filter(
       (provider): provider is Provider & Required<Pick<Provider, "refreshModels">> =>
         provider.refreshModels !== undefined && (!selected || selected.has(provider.id)),
@@ -436,9 +485,11 @@ class ModelsImpl implements MutableModels {
       refreshable.map(async (provider) => {
         const { generation, controller } = this.beginProviderRefresh(provider.id);
         const signal = AbortSignal.any([callerSignal, controller.signal]);
+
         const operation = (async () => {
           let storedCredential: Credential | undefined;
           let credentialError: unknown;
+
           try {
             storedCredential = await this.readCredential(provider.id, signal);
           } catch (error) {
@@ -454,7 +505,9 @@ class ModelsImpl implements MutableModels {
             generation,
             signal,
           );
+
           if (credentialError !== undefined) throw credentialError;
+
           if (!allowNetwork || signal.aborted) return;
 
           const credential = await this.resolveRefreshCredential(
@@ -462,7 +515,7 @@ class ModelsImpl implements MutableModels {
             storedCredential,
             signal,
           );
-          if (!credential) return;
+
           await this.runProviderRefreshPhase(
             provider,
             credential,
@@ -510,13 +563,18 @@ class ModelsImpl implements MutableModels {
   ): Promise<Credential | undefined> {
     if (stored?.type === "oauth") {
       const oauth = provider.auth.oauth;
+
       if (!oauth) return undefined;
+
       if (Date.now() < stored.expires) return stored;
+
       if (signal.aborted) return undefined;
+
       const post = await this.credentials.modify(
         provider.id,
         async (current) => {
           if (current?.type !== "oauth" || Date.now() < current.expires) return undefined;
+
           // Same cap as request-path refresh: this runs while the credential
           // lock is held, so a hung request would block every other client.
           return oauth.refresh(
@@ -526,14 +584,18 @@ class ModelsImpl implements MutableModels {
         },
         { signal },
       );
+
       return post?.type === "oauth" ? post : undefined;
     }
 
     const apiKey = provider.auth.apiKey;
+
     if (!apiKey) return undefined;
     const credential = stored?.type === "api_key" ? stored : undefined;
     const result = await apiKey.resolve({ ctx: this.authContext, credential, signal });
+
     if (!result) return undefined;
+
     return { type: "api_key", key: result.auth.apiKey, env: result.env };
   }
 
@@ -558,8 +620,11 @@ class ModelsImpl implements MutableModels {
     if (credential?.type === "oauth") {
       return provider.auth.oauth ? { source: "OAuth", type: "oauth" } : undefined;
     }
+
     const apiKey = provider.auth.apiKey;
+
     if (!apiKey) return undefined;
+
     if (apiKey.check) {
       try {
         return await apiKey.check({
@@ -577,21 +642,26 @@ class ModelsImpl implements MutableModels {
     const resolution = await resolveProviderAuth(provider, this.credentials, this.authContext, {
       signal,
     });
+
     return resolution ? { source: resolution.source, type: "api_key" } : undefined;
   }
 
   checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined> {
     const signal = operationSignal(options?.signal);
+
     const check = (async () => {
       signal.throwIfAborted();
       const provider = this.providers.get(providerId);
+
       if (!provider) return undefined;
+
       return this.checkProviderAuth(
         provider,
         await this.readCredential(providerId, signal),
         signal,
       );
     })();
+
     return raceWithAbortSignal(check, signal);
   }
 
@@ -600,14 +670,18 @@ class ModelsImpl implements MutableModels {
     options?: AuthOperationOptions,
   ): Promise<readonly Model<Api>[]> {
     const signal = operationSignal(options?.signal);
+
     const available = (async () => {
       signal.throwIfAborted();
+
       const providers = providerId
         ? [this.providers.get(providerId)].filter((entry) => entry !== undefined)
         : this.getProviders();
+
       const checks = await Promise.all(
         providers.map(async (provider) => {
           const credential = await this.readCredential(provider.id, signal);
+
           return {
             provider,
             credential,
@@ -615,12 +689,15 @@ class ModelsImpl implements MutableModels {
           };
         }),
       );
+
       return checks.flatMap(({ provider, credential, auth }) => {
         if (!auth) return [];
         const models = provider.getModels();
+
         return provider.filterModels?.(models, credential) ?? models;
       });
     })();
+
     return raceWithAbortSignal(available, signal);
   }
 
@@ -631,15 +708,21 @@ class ModelsImpl implements MutableModels {
     overrides?: AuthResolutionOverrides,
   ): Promise<AuthResult | undefined> {
     const signal = operationSignal(overrides?.signal);
+
     const providerId =
       typeof providerOrModel === "string" ? providerOrModel : providerOrModel.provider;
+
     const provider = this.providers.get(providerId);
+
     if (!provider) return undefined;
+
     const result = await resolveProviderAuth(provider, this.credentials, this.authContext, {
       ...overrides,
       signal,
     });
+
     if (!result || typeof providerOrModel === "string" || !providerOrModel.headers) return result;
+
     return {
       ...result,
       auth: {
@@ -657,44 +740,47 @@ class ModelsImpl implements MutableModels {
     const signal = operationSignal(interaction.signal);
     signal.throwIfAborted();
     const provider = this.providers.get(providerId);
+
     if (!provider) throw new ModelsError("provider", `Unknown provider: ${providerId}`);
     const method = type === "oauth" ? provider.auth.oauth : provider.auth.apiKey;
+
     if (!method?.login) {
       throw new ModelsError("auth", `${provider.name} does not support ${type} login`);
     }
+
     const loginOperation: Promise<Credential> = method.login({ ...interaction, signal });
     const credential = await raceWithAbortSignal(loginOperation, signal);
     let mutationStarted = false;
     let markMutationStarted: (() => void) | undefined;
+
     const started = new Promise<void>((resolve) => {
       markMutationStarted = resolve;
     });
+
     const mutation = this.credentials.modify(
       providerId,
       async () => {
         mutationStarted = true;
         markMutationStarted?.();
+
         return credential;
       },
       { signal },
     );
+
     void mutation.catch(() => {});
+
     try {
       await new Promise<void>((resolve, reject) => {
         const onAbort = () => {
           if (!mutationStarted) reject(signal.reason);
         };
+
         signal.addEventListener("abort", onAbort, { once: true });
-        void Promise.race([started, mutation]).then(
-          () => {
-            signal.removeEventListener("abort", onAbort);
-            resolve();
-          },
-          (error: unknown) => {
-            signal.removeEventListener("abort", onAbort);
-            reject(error);
-          },
-        );
+        void Promise.race([started, mutation])
+          .finally(() => signal.removeEventListener("abort", onAbort))
+          .then(() => resolve(), reject);
+
         if (signal.aborted) onAbort();
       });
       await mutation;
@@ -704,14 +790,17 @@ class ModelsImpl implements MutableModels {
         cause: error,
       });
     }
+
     // Discovery started for the previous credential must not publish over the new one.
     this.supersedeProviderRefresh(providerId);
+
     return credential;
   }
 
   async logout(providerId: string, options?: AuthOperationOptions): Promise<void> {
     const signal = operationSignal(options?.signal);
     signal.throwIfAborted();
+
     try {
       await this.credentials.delete(providerId, { signal });
     } catch (error) {
@@ -720,45 +809,59 @@ class ModelsImpl implements MutableModels {
         cause: error,
       });
     }
+
     this.supersedeProviderRefresh(providerId);
   }
 
   private requireProvider(model: Model<Api>): Provider {
     const provider = this.providers.get(model.provider);
+
     if (!provider) {
       throw new ModelsError("provider", `Unknown provider: ${model.provider}`);
     }
+
     return provider;
   }
 
-  private async applyAuth<TOptions extends ProviderRequestOptions & ModelsRequestTransforms>(
-    model: Model<Api>,
+  private async applyAuth<
+    TModel extends Model<Api>,
+    TOptions extends ProviderRequestOptions & ModelsRequestTransforms,
+  >(
+    model: TModel,
     options: TOptions | undefined,
   ): Promise<{
-    requestModel: Model<Api>;
+    requestModel: TModel;
     requestOptions: Omit<TOptions, "transformHeaders"> & ProviderRequestOptions;
   }> {
     this.requireProvider(model);
+
     const resolution = await this.getAuth(model, {
       apiKey: options?.apiKey,
       env: options?.env,
       signal: options?.signal,
     });
+
     if (!resolution) {
       throw new ModelsError("auth", `Provider is not configured: ${model.provider}`);
     }
+
     const auth = resolution.auth;
 
     // Explicit request options win per-field; the Models-only transform runs last.
     const apiKey = options?.apiKey ?? auth.apiKey;
     let headers = mergeHeaders(auth.headers, options?.headers);
+
     if (options?.transformHeaders) headers = await options.transformHeaders(headers ?? {});
+
     const env =
       resolution.env || options?.env
         ? { ...(resolution.env ?? {}), ...(options?.env ?? {}) }
         : undefined;
+
     const requestModel = auth.baseUrl ? { ...model, baseUrl: auth.baseUrl } : model;
     const { transformHeaders: _transformHeaders, ...providerOptions } = options ?? {};
+
+    // SAFETY: providerOptions is TOptions minus transformHeaders; the spread only overrides ProviderRequestOptions fields.
     const requestOptions = { ...providerOptions, apiKey, headers, env } as Omit<
       TOptions,
       "transformHeaders"
@@ -775,15 +878,15 @@ class ModelsImpl implements MutableModels {
   ): AssistantMessageEventStream {
     return lazyStream(model, async () => {
       const provider = this.requireProvider(model);
+
       const { requestModel, requestOptions } = await this.applyAuth(
         model,
+        // SAFETY: every ApiStreamOptions<TApi> extends ProviderRequestOptions; TypeScript cannot resolve the conditional type for a generic TApi.
         options as ModelsApiStreamOptions<Api> | undefined,
       );
-      return provider.stream(
-        requestModel as Model<TApi>,
-        context,
-        requestOptions as ApiStreamOptions<TApi>,
-      );
+
+      // SAFETY: requestOptions is the caller's ModelsApiStreamOptions<TApi> with only auth fields replaced.
+      return provider.stream(requestModel, context, requestOptions as ApiStreamOptions<TApi>);
     });
   }
 
@@ -803,7 +906,8 @@ class ModelsImpl implements MutableModels {
     return lazyStream(model, async () => {
       const provider = this.requireProvider(model);
       const { requestModel, requestOptions } = await this.applyAuth(model, options);
-      return provider.streamSimple(requestModel, context, requestOptions as SimpleStreamOptions);
+
+      return provider.streamSimple(requestModel, context, requestOptions);
     });
   }
 
@@ -822,14 +926,17 @@ class ModelsImpl implements MutableModels {
   ): Promise<AssistantMessage> {
     return lazyStream(model, async () => {
       const provider = this.requireProvider(model);
+
       if (!provider.fetchDeferred) {
         throw new ModelsError(
           "provider",
           `Provider ${model.provider} does not support deferred responses`,
         );
       }
+
       const { requestModel, requestOptions } = await this.applyAuth(model, options);
-      return provider.fetchDeferred(requestModel, handle, requestOptions as DeferredFetchOptions);
+
+      return provider.fetchDeferred(requestModel, handle, requestOptions);
     }).result();
   }
 
@@ -839,12 +946,14 @@ class ModelsImpl implements MutableModels {
     options?: ModelsDeferredCancelOptions,
   ): Promise<void> {
     const provider = this.requireProvider(model);
+
     if (!provider.cancelDeferred) {
       throw new ModelsError(
         "provider",
         `Provider ${model.provider} does not support deferred responses`,
       );
     }
+
     const { requestModel, requestOptions } = await this.applyAuth(model, options);
     await provider.cancelDeferred(requestModel, handle, requestOptions);
   }
@@ -863,10 +972,6 @@ export interface CreateProviderOptions<TApi extends Api = Api> {
   promptCache?: PromptCachePolicy;
   /** Required — every provider has auth semantics, even ambient/keyless ones. */
   auth: ProviderAuth;
-  /** Static baseline model list (empty for purely dynamic providers). */
-  models: readonly Model<TApi>[];
-  /** Fetch a dynamic model overlay. createProvider restores and publishes it transactionally. */
-  fetchModels?: (context: RefreshModelsContext) => Promise<readonly Model<TApi>[]>;
   filterModels?: (
     models: readonly Model<TApi>[],
     credential: Credential | undefined,
@@ -879,39 +984,31 @@ export interface CreateProviderOptions<TApi extends Api = Api> {
 const CATALOG_FRESHNESS_WINDOW_MS = 4 * 60 * 60 * 1000;
 
 /**
- * Builds a provider from parts. Built-in provider factories and models.json
- * custom providers both go through this. A single `api` streams all models;
- * an `api` map dispatches on `model.api`, and a model whose api has no entry
- * produces a stream error.
+ * Builds a provider from parts. Built-in and custom provider factories both go through this. A
+ * single `api` streams all models; an `api` map dispatches on `model.api`, and a model whose api
+ * has no entry is omitted from the catalog and produces a stream error if passed directly.
  */
 export function createProvider<TApi extends Api = Api>(
   input: CreateProviderOptions<TApi>,
 ): Provider<TApi> {
-  const baselineModels = input.models;
-  let dynamicModels: readonly Model<TApi>[] = [];
-  const fetchModels = input.fetchModels;
-  const currentModels = (): readonly Model<TApi>[] => {
-    const merged = [...baselineModels];
-    for (const model of dynamicModels) {
-      const index = merged.findIndex((entry) => entry.id === model.id);
-      if (index >= 0) merged[index] = model;
-      else merged.push(model);
-    }
-    return merged;
-  };
-  const single =
-    typeof (input.api as ProviderStreams).stream === "function"
-      ? (input.api as ProviderStreams)
-      : undefined;
-  const byApi = single ? undefined : (input.api as Partial<Record<string, ProviderStreams>>);
+  let catalogModels: readonly Model<TApi>[] = [];
+  const api = input.api;
+  const single = "streamSimple" in api ? api : undefined;
 
-  const apiFor = (model: Model<Api>): ProviderStreams | undefined => single ?? byApi?.[model.api];
+  const byApi = new Map(
+    "streamSimple" in api ? [] : Object.entries<ProviderStreams | undefined>(api),
+  );
+
+  const apiFor = (model: Model<Api>): ProviderStreams | undefined => single ?? byApi.get(model.api);
+
+  const isDispatchable = (model: Model<Api>): model is Model<TApi> => apiFor(model) !== undefined;
 
   const dispatch = (
     model: Model<Api>,
     run: (streams: ProviderStreams) => AssistantMessageEventStream,
   ): AssistantMessageEventStream => {
     const streams = apiFor(model);
+
     if (!streams) {
       return lazyStream(model, async () => {
         throw new ModelsError(
@@ -920,6 +1017,7 @@ export function createProvider<TApi extends Api = Api>(
         );
       });
     }
+
     return run(streams);
   };
 
@@ -930,43 +1028,126 @@ export function createProvider<TApi extends Api = Api>(
     headers: input.headers,
     promptCache: input.promptCache,
     auth: input.auth,
-    getModels: currentModels,
-    refreshModels: fetchModels
-      ? async (context) => {
-          if (context.stored) {
-            const restored = context.stored.models
-              .filter((model) => model.provider === input.id)
-              .map((model) => model as Model<TApi>);
-            if (
-              !(await context.publish({
-                update: () => {
-                  dynamicModels = restored;
-                },
-              }))
-            ) {
-              return;
-            }
-          }
-          if (!context.allowNetwork || context.signal.aborted) return;
-          // A background freshen within the window is a no-op, so repeated
-          // boots do not re-download an unchanged catalog.
-          if (
-            context.force !== true &&
-            context.stored?.checkedAt !== undefined &&
-            Date.now() - context.stored.checkedAt < CATALOG_FRESHNESS_WINDOW_MS
-          ) {
-            return;
-          }
-          const refreshed = await fetchModels(context);
-          if (context.signal.aborted) return;
-          await context.publish({
-            persist: { models: refreshed, checkedAt: Date.now() },
+    getModels: () => catalogModels,
+    refreshModels: async (context) => {
+      if (context.stored) {
+        const restored = context.stored.models.filter(
+          (model): model is Model<TApi> => model.provider === input.id && isDispatchable(model),
+        );
+
+        if (
+          !(await context.publish({
             update: () => {
-              dynamicModels = refreshed;
+              catalogModels = restored;
             },
-          });
+          }))
+        ) {
+          return;
         }
-      : undefined,
+      }
+
+      if (!context.allowNetwork || context.signal.aborted) return;
+
+      if (
+        context.force !== true &&
+        context.stored?.checkedAt !== undefined &&
+        Date.now() - context.stored.checkedAt < CATALOG_FRESHNESS_WINDOW_MS
+      ) {
+        return;
+      }
+
+      const headers = new Headers({ Accept: "application/json" });
+
+      if (context.stored?.etag !== undefined) {
+        headers.set("If-None-Match", context.stored.etag);
+      }
+
+      let response: Response;
+
+      try {
+        response = await context.catalog.fetch(
+          `${context.catalog.url.replace(/\/+$/u, "")}/${input.id}.json`,
+          {
+            headers,
+            signal: context.signal,
+            redirect: "error",
+          },
+        );
+      } catch (error) {
+        context.signal.throwIfAborted();
+        throw new ModelsError("model_source", `Model catalog request failed for ${input.id}`, {
+          cause: error,
+        });
+      }
+
+      const checkedAt = Date.now();
+
+      if (response.status === 304) {
+        if (!context.stored) {
+          throw new ModelsError(
+            "model_source",
+            `Model catalog request failed for ${input.id} (HTTP 304 without cached models)`,
+          );
+        }
+
+        await context.publish({ persist: { ...context.stored, checkedAt } });
+
+        return;
+      }
+
+      if (response.status !== 200) {
+        throw new ModelsError(
+          "model_source",
+          `Model catalog request failed for ${input.id} (HTTP ${String(response.status)})`,
+        );
+      }
+
+      let value: unknown;
+
+      try {
+        value = await response.json();
+      } catch {
+        throw new ModelsError(
+          "model_source",
+          `Model catalog request failed for ${input.id} (HTTP 200, invalid JSON)`,
+        );
+      }
+
+      if (!Array.isArray(value)) {
+        throw new ModelsError(
+          "model_source",
+          `Model catalog request failed for ${input.id} (HTTP 200, expected an array)`,
+        );
+      }
+
+      const refreshed = value.filter(
+        (model): model is Model<TApi> =>
+          Value.Check(ModelSchema, model) && model.provider === input.id && isDispatchable(model),
+      );
+
+      const lastModifiedHeader = response.headers.get("Last-Modified");
+
+      const parsedLastModified =
+        lastModifiedHeader === null ? undefined : Date.parse(lastModifiedHeader);
+
+      const lastModified =
+        parsedLastModified === undefined || Number.isNaN(parsedLastModified)
+          ? undefined
+          : parsedLastModified;
+
+      if (context.signal.aborted) return;
+      await context.publish({
+        persist: {
+          models: refreshed,
+          etag: response.headers.get("ETag") ?? undefined,
+          lastModified,
+          checkedAt,
+        },
+        update: () => {
+          catalogModels = refreshed;
+        },
+      });
+    },
     filterModels: input.filterModels,
     stream: (model, context, options) =>
       dispatch(model, (streams) => streams.stream(model, context, options)),
@@ -974,31 +1155,35 @@ export function createProvider<TApi extends Api = Api>(
       dispatch(model, (streams) => streams.streamSimple(model, context, options)),
   };
 
-  const streams = single
-    ? [single]
-    : Object.values(byApi ?? {}).filter((entry) => entry !== undefined);
+  const streams = single ? [single] : [...byApi.values()].filter((entry) => entry !== undefined);
+
   if (streams.some((entry) => entry.fetchDeferred !== undefined)) {
     provider.fetchDeferred = (model, handle, options) =>
       lazyStream(model, async () => {
         const implementation = apiFor(model);
+
         if (!implementation?.fetchDeferred) {
           throw new ModelsError(
             "provider",
             `Provider ${input.id} does not support deferred responses for "${model.api}"`,
           );
         }
+
         return implementation.fetchDeferred(model, handle, options);
       });
   }
+
   if (streams.some((entry) => entry.cancelDeferred !== undefined)) {
     provider.cancelDeferred = async (model, handle, options) => {
       const implementation = apiFor(model);
+
       if (!implementation?.cancelDeferred) {
         throw new ModelsError(
           "provider",
           `Provider ${input.id} cannot cancel deferred responses for "${model.api}"`,
         );
       }
+
       await implementation.cancelDeferred(model, handle, options);
     };
   }
@@ -1024,6 +1209,7 @@ export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage
   const inputTokens = usage.input + usage.cacheRead + usage.cacheWrite;
   let rates: ModelCostRates = model.cost;
   let matchedThreshold = -1;
+
   for (const tier of model.cost.tiers ?? []) {
     if (inputTokens > tier.inputTokensAbove && tier.inputTokensAbove > matchedThreshold) {
       rates = tier;
@@ -1040,6 +1226,7 @@ export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage
   usage.cost.cacheWrite = (rates.cacheWrite * shortWrite + rates.input * 2 * longWrite) / 1000000;
   usage.cost.total =
     usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
+
   return usage.cost;
 }
 
@@ -1050,8 +1237,11 @@ export function getSupportedThinkingLevels<TApi extends Api>(
 
   return MODEL_THINKING_LEVELS.filter((level) => {
     const mapped = model.thinkingLevelMap?.[level];
+
     if (mapped === null) return false;
+
     if (level === "xhigh" || level === "max") return mapped !== undefined;
+
     return true;
   });
 }
@@ -1061,19 +1251,25 @@ export function clampThinkingLevel<TApi extends Api>(
   level: ModelThinkingLevel,
 ): ModelThinkingLevel {
   const availableLevels = getSupportedThinkingLevels(model);
+
   if (availableLevels.includes(level)) return level;
 
   const requestedIndex = MODEL_THINKING_LEVELS.indexOf(level);
+
   if (requestedIndex === -1) return availableLevels[0] ?? "off";
 
   for (let i = requestedIndex; i < MODEL_THINKING_LEVELS.length; i++) {
     const candidate = MODEL_THINKING_LEVELS[i];
+
     if (availableLevels.includes(candidate)) return candidate;
   }
+
   for (let i = requestedIndex - 1; i >= 0; i--) {
     const candidate = MODEL_THINKING_LEVELS[i];
+
     if (availableLevels.includes(candidate)) return candidate;
   }
+
   return availableLevels[0] ?? "off";
 }
 
@@ -1086,5 +1282,6 @@ export function modelsAreEqual<TApi extends Api>(
   b: Model<TApi> | null | undefined,
 ): boolean {
   if (!a || !b) return false;
+
   return a.id === b.id && a.provider === b.provider;
 }

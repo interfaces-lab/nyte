@@ -16,8 +16,11 @@ export function composerMessageContent(
 ): UserMessage["content"] {
   if (attachments.length === 0) return text;
   const parts: (TextContent | ImageContent)[] = [];
+
   if (text !== "") parts.push({ type: "text", text });
+
   for (const attachment of attachments) parts.push(attachment.content);
+
   return parts;
 }
 
@@ -42,12 +45,16 @@ export function composerSendPlan(input: {
 }): ComposerSendPlan {
   const text = input.submission.text.trim();
   const references = input.submission.references;
+
   if (text === "" && input.attachments.length === 0) return { kind: "empty" };
+
   const command =
     references.every((reference) => reference.kind === "file") && input.attachments.length === 0
       ? parsePluginCommand(text, input.commands)
       : undefined;
+
   if (command !== undefined) return { kind: "command", command, delivery: input.delivery };
+
   return {
     kind: "message",
     content: composerMessageContent(text, input.attachments),

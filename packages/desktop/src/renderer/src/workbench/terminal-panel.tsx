@@ -24,10 +24,12 @@ function TerminalCanvas({
   const attach = useCallback(
     (element: HTMLDivElement | null) => {
       if (element === null) return;
+
       return mountTerminal(id, element, visible);
     },
     [id, visible],
   );
+
   return <div ref={attach} {...stylex.props(styles.canvas)} />;
 }
 
@@ -49,6 +51,7 @@ function TerminalStatus({
         </div>
       );
     }
+
     switch (tab.state.kind) {
       case "running":
         return <div {...stylex.props(styles.state)}>Agent command · read-only</div>;
@@ -78,10 +81,12 @@ function TerminalStatus({
         );
       default: {
         const _exhaustive: never = tab.state.kind;
+
         return _exhaustive;
       }
     }
   }
+
   switch (tab.state.kind) {
     case "starting":
       return (
@@ -115,6 +120,7 @@ function TerminalStatus({
       );
     default: {
       const _exhaustive: never = tab.state;
+
       return _exhaustive;
     }
   }
@@ -132,6 +138,7 @@ export function TerminalPanel({
   const tab = useTerminal(tabId);
   const jobSessionId = tab !== undefined && isJobTerminal(tab) ? tab.source.sessionId : null;
   const jobRunning = tab !== undefined && isJobTerminal(tab) && tab.state.kind === "running";
+
   const jobs = useQuery({
     queryKey: keys.jobs(jobSessionId ?? undefined),
     queryFn: (): Promise<readonly JobInfo[]> =>
@@ -139,6 +146,7 @@ export function TerminalPanel({
     enabled: jobSessionId !== null,
     refetchInterval: jobRunning ? 2_000 : false,
   });
+
   // The conversation reads the same key; the store follows the settled data
   // no matter whose reader ran.
   useEffect(() => {
@@ -149,6 +157,7 @@ export function TerminalPanel({
 
   const restart = async (current: TerminalTab): Promise<void> => {
     setError(undefined);
+
     try {
       await terminalActions.close(current.id);
       await terminalActions.create({ id: current.id, workspacePath });

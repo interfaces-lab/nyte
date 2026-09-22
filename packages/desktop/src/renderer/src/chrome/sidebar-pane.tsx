@@ -108,6 +108,7 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
 
   const moveResize = (event: PointerEvent<HTMLDivElement>): void => {
     const resize = resizeRef.current;
+
     if (resize === undefined || resize.pointerId !== event.pointerId) return;
     resize.nextWidth = clampSidebarWidth(resize.startWidth + event.clientX - resize.startX);
     applyWidth(resize.nextWidth);
@@ -115,10 +116,13 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
 
   const endResize = (event: PointerEvent<HTMLDivElement>): void => {
     const resize = resizeRef.current;
+
     if (resize === undefined || resize.pointerId !== event.pointerId) return;
+
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+
     resizeRef.current = undefined;
     shellActions.setSidebarWidth(resize.nextWidth);
     setResizing(false);
@@ -126,6 +130,7 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
 
   const cancelResize = (event: PointerEvent<HTMLDivElement>): void => {
     const resize = resizeRef.current;
+
     if (resize === undefined || resize.pointerId !== event.pointerId) return;
     resizeRef.current = undefined;
     applyWidth(resize.startWidth);
@@ -135,10 +140,12 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
   const resizeWithKeyboard = (event: KeyboardEvent<HTMLDivElement>): void => {
     let width: number | undefined;
     const step = event.shiftKey ? SIDEBAR_WIDTH_STEP * 4 : SIDEBAR_WIDTH_STEP;
+
     if (event.key === "ArrowLeft") width = sidebarWidth - step;
     else if (event.key === "ArrowRight") width = sidebarWidth + step;
     else if (event.key === "Home") width = SIDEBAR_WIDTH_MIN;
     else if (event.key === "End") width = SIDEBAR_WIDTH_MAX;
+
     if (width === undefined) return;
     event.preventDefault();
     shellActions.setSidebarWidth(width);

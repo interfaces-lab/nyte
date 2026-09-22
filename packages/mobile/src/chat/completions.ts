@@ -41,6 +41,7 @@ export interface Completions {
 
 /** Commands and skills come whole, so the phone caps what it lists from them. */
 const MAX_SUGGESTIONS = 30;
+
 /** Each keystroke inside an `@` token would otherwise be one host request. */
 const FILE_DEBOUNCE_MS = 180;
 
@@ -68,6 +69,7 @@ export function suggestionLabel(suggestion: Suggestion): string {
       return suggestion.name;
     default: {
       const exhaustive: never = suggestion;
+
       return exhaustive;
     }
   }
@@ -83,6 +85,7 @@ export function suggestionIcon(suggestion: Suggestion): "doc" | "sparkles" | "bo
       return "book";
     default: {
       const exhaustive: never = suggestion;
+
       return exhaustive;
     }
   }
@@ -90,7 +93,9 @@ export function suggestionIcon(suggestion: Suggestion): "doc" | "sparkles" | "bo
 
 function matching(suggestions: readonly Suggestion[], query: string): readonly Suggestion[] {
   const needle = query.trim().toLocaleLowerCase();
+
   if (needle === "") return suggestions.slice(0, MAX_SUGGESTIONS);
+
   return suggestions
     .filter((suggestion) =>
       `${suggestionLabel(suggestion)} ${suggestion.detail}`.toLocaleLowerCase().includes(needle),
@@ -129,6 +134,7 @@ export function useCompletions(
   const trigger = enabled ? completionTrigger(draft, Math.min(caret, draft.length)) : undefined;
   const kind = trigger?.kind;
   const query = trigger?.query ?? "";
+
   // The keys carry the conversation and the workspace epoch, so an answer for
   // the previous chat or the previous folder can never appear as this one's.
   const slashQuery = useQuery({
@@ -136,13 +142,16 @@ export function useCompletions(
     enabled: kind === "/",
     queryFn: async (): Promise<Pick<PluginCatalog, "commands" | "skills">> => {
       if (sessionId === undefined) return client.plugins.catalog();
+
       const [commands, skills] = await Promise.all([
         client.plugins.commands.list({ sessionId }),
         client.plugins.resources.list({ sessionId }),
       ]);
+
       return { commands, skills };
     },
   });
+
   const filesQuery = useQuery({
     queryKey: ["file-completion", sessionId ?? null, epoch, query],
     enabled: kind === "@",
@@ -154,10 +163,12 @@ export function useCompletions(
       // observer to a new key, the old query loses its last observer, and the
       // aborted delay ends before the request fires — debounce without a timer.
       await delay(FILE_DEBOUNCE_MS, signal);
+
       const found = await client.workspace.files({
         target: sessionId === undefined ? { kind: "workspace" } : { kind: "session", sessionId },
         query,
       });
+
       return found.map((file): Suggestion => ({
         kind: "file",
         url: file.url,
@@ -173,6 +184,7 @@ export function useCompletions(
       : slashQuery.status === "error"
         ? { kind: "failed", message: describeHostError(slashQuery.error) }
         : { kind: "ready", value: slashQuery.data };
+
   const files: Loaded<readonly Suggestion[]> =
     filesQuery.status === "pending"
       ? { kind: "loading" }
@@ -181,8 +193,11 @@ export function useCompletions(
         : { kind: "ready", value: filesQuery.data };
 
   const commands = slashQuery.data?.commands ?? [];
+
   if (trigger === undefined) return { completion: undefined, commands };
+
   if (trigger.kind === "@") return { commands, completion: { trigger, list: files } };
+
   return {
     commands,
     completion: {
@@ -198,6 +213,7 @@ export function useCompletions(
 /** What the menu says instead of rows: loading, the host's refusal, or no match. */
 export function suggestionNotice(completion: Completion): string | undefined {
   const files = completion.trigger.kind === "@";
+
   switch (completion.list.kind) {
     case "loading":
       return files ? "Looking for files…" : "Loading commands and skills…";
@@ -211,6 +227,7 @@ export function suggestionNotice(completion: Completion): string | undefined {
           : "No matching commands or skills";
     default: {
       const exhaustive: never = completion.list;
+
       return exhaustive;
     }
   }
@@ -230,18 +247,23 @@ export function acceptSuggestion(
   draft: string,
   trigger: CompletionTrigger,
   suggestion: Suggestion,
-): { draft: string; caret: number } {
+) {
   const before = draft.slice(0, trigger.start);
   const after = draft.slice(trigger.end);
+
   if (suggestion.kind === "skill") {
     const instruction = skillInstruction(suggestion.name);
     const body = `${before}${after}`;
+
     if (body.trimStart().startsWith(instruction))
       return { draft: body, caret: Math.min(before.length, body.length) };
     const head = `${instruction}\n\n`;
+
     return { draft: `${head}${body}`, caret: head.length + before.length };
   }
+
   const token = suggestion.kind === "command" ? `/${suggestion.name} ` : `@${suggestion.url} `;
+
   return { draft: `${before}${token}${after}`, caret: before.length + token.length };
 }
 
@@ -257,9 +279,12 @@ export function parseCommandLine(
   commands: readonly CommandInfo[],
 ): CommandLine | undefined {
   const input = draft.trim();
+
   if (!input.startsWith("/")) return undefined;
   const separator = input.search(/\s/u);
   const name = input.slice(1, separator === -1 ? undefined : separator);
+
   if (name === "" || !commands.some((command) => command.name === name)) return undefined;
+
   return { name, argument: separator === -1 ? "" : input.slice(separator).trimStart() };
 }

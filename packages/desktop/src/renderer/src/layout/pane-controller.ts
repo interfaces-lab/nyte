@@ -37,6 +37,7 @@ function selectedSession(action: PaneLayoutAction): SessionId | undefined {
   if (action.kind === "select" || action.kind === "select-in-pane") {
     return action.selection.kind === "session" ? action.selection.sessionId : undefined;
   }
+
   return undefined;
 }
 
@@ -54,11 +55,13 @@ export class PaneController {
       storage === undefined ? undefined : { storage, storageKey: `${storageKey}:composer-drafts` },
     );
     let persisted: string | null = null;
+
     try {
       persisted = storage?.getItem(storageKey) ?? null;
     } catch {
       persisted = null;
     }
+
     const layout = parsePersistedPaneLayout(persisted);
     this.#snapshot = {
       layout,
@@ -69,6 +72,7 @@ export class PaneController {
 
   readonly subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
+
     return () => this.#listeners.delete(listener);
   };
 
@@ -83,8 +87,10 @@ export class PaneController {
     this.#rememberLayout(current);
     let layout = reducePaneLayout(current, action);
     const restoredSessionId = selectedSession(action);
+
     if (layout.kind === "split" && restoredSessionId !== undefined) {
       const restored = this.#viewState.readSession(restoredSessionId, activePane(layout).id).split;
+
       if (
         restored !== undefined &&
         (layout.direction !== restored.direction || layout.ratio !== restored.ratio)
@@ -92,21 +98,27 @@ export class PaneController {
         layout = { ...layout, direction: restored.direction, ratio: restored.ratio };
       }
     }
+
     if (layout === current) return current;
     this.#rememberLayout(layout);
+
     const focusRequest = actionRequestsFocus(action)
       ? {
           paneId: activePane(layout).id,
           revision: this.#snapshot.focusRequest.revision + 1,
         }
       : this.#snapshot.focusRequest;
+
     this.#snapshot = { layout, focusRequest };
+
     try {
       this.#storage?.setItem(this.#storageKey, serializePaneLayout(layout));
     } catch {
       // A denied or full local store must not break pane navigation.
     }
+
     for (const listener of this.#listeners) listener();
+
     return layout;
   }
 
@@ -135,36 +147,50 @@ export class PaneController {
     const paneId = activePane(before).id;
     this.#viewState.startNewDraft(paneId);
     const layout = this.selectBlank();
+
     if (layout === before) this.#requestFocus(paneId);
+
     return layout;
   }
 
   selectDraft(draftId: string): PaneLayout {
     const before = this.#snapshot.layout;
+
     const visible = orderedPanes(before).find(
       (pane) =>
         pane.selection.kind === "blank" && this.#viewState.readBlank(pane.id).id === draftId,
     );
+
     if (visible !== undefined) {
       const layout = this.focus(visible.id);
+
       if (layout === before) this.#requestFocus(visible.id);
+
       return layout;
     }
+
     const paneId = activePane(before).id;
+
     if (!this.#viewState.activateDraft(paneId, draftId)) return before;
     const layout = this.selectBlank();
+
     if (layout === before) this.#requestFocus(paneId);
+
     return layout;
   }
 
   removeDraft(draftId: string): PaneLayout {
     const layout = this.#snapshot.layout;
+
     const visible = orderedPanes(layout).find(
       (pane) =>
         pane.selection.kind === "blank" && this.#viewState.readBlank(pane.id).id === draftId,
     );
+
     if (!this.#viewState.removeDraft(draftId)) return layout;
+
     if (visible !== undefined) this.#requestFocus(visible.id);
+
     return layout;
   }
 
@@ -201,17 +227,22 @@ export class PaneController {
   removeSessionWithUndo(sessionId: SessionId): () => boolean {
     const previous = this.#snapshot.layout;
     const paneId = paneForSession(previous, sessionId);
+
     if (paneId === undefined) return () => false;
     const focused = activePane(previous).id;
     this.removeSession(sessionId);
     this.focus(focused);
+
     return () => {
       const current = this.#snapshot.layout;
+
       if (paneSelection(current, paneId)?.kind !== "blank") return false;
+
       if (this.#viewState.readBlank(paneId).composer.draft !== "") return false;
       const active = activePane(current);
       this.selectSessionInPane(paneId, sessionId);
       this.focus(active.selection.kind === "blank" ? focused : active.id);
+
       return true;
     };
   }
@@ -221,13 +252,16 @@ export class PaneController {
       ...this.#snapshot,
       focusRequest: { paneId, revision: this.#snapshot.focusRequest.revision + 1 },
     };
+
     for (const listener of this.#listeners) listener();
   }
 
   #rememberLayout(layout: PaneLayout): void {
     const split =
       layout.kind === "split" ? { direction: layout.direction, ratio: layout.ratio } : undefined;
+
     const selected = activeSelection(layout);
+
     for (const pane of orderedPanes(layout)) {
       if (pane.selection.kind !== "session") continue;
       const sessionId = pane.selection.sessionId;

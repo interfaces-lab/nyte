@@ -145,18 +145,24 @@ export function DesktopDemo({
   const [pinned, setPinned] = useState<ReadonlySet<string>>(new Set());
   const menuRef = useRef<HTMLButtonElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
+
   const togglePin = (title: string) =>
     setPinned((current) => {
       const next = new Set(current);
+
       if (next.has(title)) next.delete(title);
       else next.add(title);
+
       return next;
     });
+
   const archive = (title: string) => {
     const remaining = sessions.filter((item) => item !== title);
     setSessions(remaining);
+
     if (selected === title) setSelected(remaining[0] ?? "New chat");
   };
+
   const [reply, setReply] = useState("");
 
   return (

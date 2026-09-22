@@ -7,6 +7,7 @@ import {
 import { definePlugin } from "@nyte-ai/core/plugins";
 
 export const OPENAI_COMPACTION_PLUGIN_ID = "openai/compaction";
+
 const COMPACTION_TIMEOUT_MS = 30_000;
 
 export interface OpenAICompactionOptions {
@@ -20,6 +21,7 @@ export function openaiCompactionPlugin({ models }: OpenAICompactionOptions) {
     session(api) {
       api.hook("before_compaction", async (event, parentSignal) => {
         const model = models.getModel(event.model.provider, event.model.modelId);
+
         if (
           model === undefined ||
           !(
@@ -29,22 +31,27 @@ export function openaiCompactionPlugin({ models }: OpenAICompactionOptions) {
         ) {
           return undefined;
         }
+
         // Codex owns a streaming idle timeout, not a total compaction deadline.
         const timeout =
           model.api === "openai-codex-responses"
             ? undefined
             : AbortSignal.timeout(COMPACTION_TIMEOUT_MS);
+
         const signal =
           timeout === undefined
             ? parentSignal
             : parentSignal === undefined
               ? timeout
               : AbortSignal.any([parentSignal, timeout]);
+
         signal?.throwIfAborted();
         const auth = await models.getAuth(model, { signal });
         signal?.throwIfAborted();
+
         if (auth === undefined) return undefined;
         const requestModel = { ...model, baseUrl: auth.auth.baseUrl ?? model.baseUrl };
+
         const context =
           event.customInstructions === undefined
             ? event.context
@@ -54,7 +61,9 @@ export function openaiCompactionPlugin({ models }: OpenAICompactionOptions) {
                   .filter((part) => part !== undefined)
                   .join("\n\n"),
               };
+
         const options = { apiKey: auth.auth.apiKey, headers: auth.auth.headers, signal };
+
         try {
           const compacted =
             model.api === "openai-codex-responses"
@@ -68,6 +77,7 @@ export function openaiCompactionPlugin({ models }: OpenAICompactionOptions) {
                   context,
                   options,
                 );
+
           // Core checks cancellation before publishing and retains reported usage.
           return {
             material: {
@@ -81,6 +91,7 @@ export function openaiCompactionPlugin({ models }: OpenAICompactionOptions) {
           };
         } catch (error) {
           if (!(error instanceof OpenAICodexCompactionError)) throw error;
+
           return { error: error.message, usage: error.usage };
         }
       });

@@ -5,22 +5,27 @@ import { measureOperation, measureSettledDesktop } from "./measure.ts";
 import { openBenchmarkSessionWriter } from "./session-writer.ts";
 
 const RUN_ID = "desktop-benchmark-transport-run";
+
 const RECOVERED_MARKDOWN = "# Transport watch recovered";
 
 benchmark("reconnects after a stream error", async ({ report }) => {
   const desktop = await launchDesktop({ sessionCount: 1, turnsPerSession: 1 });
+
   try {
     const writer = await openBenchmarkSessionWriter(desktop.fixture, 0);
+
     try {
       await openBenchmarkSession(desktop, 0);
       const user = "Exercise the desktop watch reconnect path.";
       await writer.appendUser(user);
       await expect(desktop.page.getByText(user, { exact: true })).toBeVisible();
       await writer.appendTextDelta(RUN_ID, 0, "# Transport watch baseline");
+
       const baseline = desktop.page.getByRole("heading", {
         name: "Transport watch baseline",
         exact: true,
       });
+
       await expect(baseline).toBeVisible();
 
       const reconnect = await measureOperation(desktop, async () => {
@@ -31,6 +36,7 @@ benchmark("reconnects after a stream error", async ({ report }) => {
           desktop.page.getByRole("heading", { name: "Transport watch recovered", exact: true }),
         ).toBeVisible();
       });
+
       await writer.settleAssistant(RUN_ID, RECOVERED_MARKDOWN);
       await expect(
         desktop.page.getByRole("heading", { name: "Transport watch recovered", exact: true }),

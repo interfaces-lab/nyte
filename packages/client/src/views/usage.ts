@@ -50,6 +50,7 @@ export function commitUsage(
   commit: Commit,
 ): { readonly subject: UsageSubject; readonly usage: Usage } | undefined {
   const body = commit.body;
+
   switch (body.kind) {
     case "message":
       switch (body.message.role) {
@@ -66,9 +67,11 @@ export function commitUsage(
           return undefined;
         default: {
           const _exhaustive: never = body.message;
+
           return _exhaustive;
         }
       }
+
     case "checkpoint":
     case "summary":
       return body.usage === undefined
@@ -79,6 +82,7 @@ export function commitUsage(
       return undefined;
     default: {
       const _exhaustive: never = body;
+
       return _exhaustive;
     }
   }
@@ -99,12 +103,15 @@ export function addUsage(left: Usage, right: Usage): Usage {
       total: left.cost.total + right.cost.total,
     },
   };
+
   if (left.cacheWrite1h !== undefined || right.cacheWrite1h !== undefined) {
     total = { ...total, cacheWrite1h: (left.cacheWrite1h ?? 0) + (right.cacheWrite1h ?? 0) };
   }
+
   if (left.reasoning !== undefined || right.reasoning !== undefined) {
     total = { ...total, reasoning: (left.reasoning ?? 0) + (right.reasoning ?? 0) };
   }
+
   return total;
 }
 
@@ -124,10 +131,12 @@ function summarize(
       left.model.localeCompare(right.model) ||
       left.provider.localeCompare(right.provider),
   );
+
   const total = [...sorted.map((row) => row.usage), compaction, tools].reduce(
     addUsage,
     emptyUsage(),
   );
+
   return { models: sorted, compaction, tools, total };
 }
 
@@ -139,8 +148,10 @@ export function projectUsage(commits: readonly Commit[]): UsageSummary {
 
   for (const commit of commits) {
     const spend = commitUsage(commit);
+
     if (spend === undefined) continue;
     const { subject, usage } = spend;
+
     switch (subject.kind) {
       case "model": {
         const key = JSON.stringify([subject.provider, subject.model]);
@@ -153,6 +164,7 @@ export function projectUsage(commits: readonly Commit[]): UsageSummary {
         });
         break;
       }
+
       case "tool":
         tools = addUsage(tools, usage);
         break;
@@ -161,6 +173,7 @@ export function projectUsage(commits: readonly Commit[]): UsageSummary {
         break;
       default: {
         const _exhaustive: never = subject;
+
         return _exhaustive;
       }
     }
@@ -172,6 +185,7 @@ export function projectUsage(commits: readonly Commit[]): UsageSummary {
 /** Combine per-session summaries into a workspace-wide summary. */
 export function mergeUsageSummaries(left: UsageSummary, right: UsageSummary): UsageSummary {
   const models = new Map<string, ModelUsage>();
+
   for (const row of [...left.models, ...right.models]) {
     const key = JSON.stringify([row.provider, row.model]);
     const bucket = models.get(key);
@@ -182,6 +196,7 @@ export function mergeUsageSummaries(left: UsageSummary, right: UsageSummary): Us
       usage: addUsage(bucket?.usage ?? emptyUsage(), row.usage),
     });
   }
+
   return summarize(
     models,
     addUsage(left.compaction, right.compaction),

@@ -4,18 +4,25 @@ import type { Obj, Oid, Seq } from "./model.ts";
 import type { Session } from "./store.ts";
 
 const EVENT_PAGE_SIZE = 256;
+
 const DELETE_BATCH_SIZE = 256;
 
 function references(object: Obj): readonly Oid[] {
   if ("type" in object) return object.previous === null ? [] : [object.previous];
+
   switch (object.kind) {
     case "commit": {
       const oids: Oid[] = [];
+
       if (object.parent !== null) oids.push(object.parent);
+
       if ("imports" in object) oids.push(...object.imports);
+
       if (object.change !== undefined) oids.push(object.change);
+
       return oids;
     }
+
     case "effect":
       return object.state === "intent" ? [] : [object.intent];
     case "stack":
@@ -30,6 +37,7 @@ function references(object: Obj): readonly Oid[] {
         : [];
     default: {
       const _exhaustive: never = object;
+
       return _exhaustive;
     }
   }
@@ -37,28 +45,38 @@ function references(object: Obj): readonly Oid[] {
 
 async function markRoots(session: Session): Promise<Set<Oid>> {
   const pending: Oid[] = [];
+
   for (const ref of await session.refs.list("")) pending.push(ref.oid);
 
   let cursor = await session.events.floor();
+
   for (;;) {
     const events = await session.events.read({ afterSeq: cursor, limit: EVENT_PAGE_SIZE });
+
     if (events.length === 0) break;
+
     for (const event of events) {
       cursor = event.seq;
+
       if (event.kind !== "ref") continue;
+
       if (event.from !== null) pending.push(event.from);
+
       if (event.to !== null) pending.push(event.to);
     }
   }
 
   const marked = new Set<Oid>();
+
   for (let oid = pending.pop(); oid !== undefined; oid = pending.pop()) {
     if (marked.has(oid)) continue;
     marked.add(oid);
     const object = await session.objects.get(oid);
+
     if (object === undefined) continue;
     pending.push(...references(object));
   }
+
   return marked;
 }
 
@@ -82,6 +100,7 @@ export async function collect(
   }
 
   let swept = 0;
+
   for (let index = 0; index < expired.length; index += DELETE_BATCH_SIZE) {
     swept += await session.objects.delete(expired.slice(index, index + DELETE_BATCH_SIZE));
   }
@@ -99,5 +118,6 @@ export async function trimStream(
   options: { readonly keepAfterSeq: Seq },
 ): Promise<Seq> {
   await session.events.trim(options.keepAfterSeq);
+
   return session.events.floor();
 }

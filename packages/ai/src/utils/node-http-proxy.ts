@@ -7,18 +7,19 @@
 import type { ProviderEnv } from "../types.ts";
 import { getProviderEnvValue } from "./provider-env.ts";
 
-const DEFAULT_PROXY_PORTS: Record<string, number> = {
-  ftp: 21,
-  gopher: 70,
-  http: 80,
-  https: 443,
-  ws: 80,
-  wss: 443,
-};
+const DEFAULT_PROXY_PORTS = new Map([
+  ["ftp", 21],
+  ["gopher", 70],
+  ["http", 80],
+  ["https", 443],
+  ["ws", 80],
+  ["wss", 443],
+]);
 
 function getProxyEnv(key: string, env?: ProviderEnv): string {
   const lowercaseKey = key.toLowerCase();
   const uppercaseKey = key.toUpperCase();
+
   return (
     env?.[lowercaseKey] ||
     env?.[uppercaseKey] ||
@@ -42,9 +43,11 @@ function parseProxyTargetUrl(targetUrl: string | URL): URL | undefined {
 
 function shouldProxyHostname(hostname: string, port: number, env?: ProviderEnv): boolean {
   const noProxy = getProxyEnv("no_proxy", env).toLowerCase();
+
   if (!noProxy) {
     return true;
   }
+
   if (noProxy === "*") {
     return false;
   }
@@ -57,6 +60,7 @@ function shouldProxyHostname(hostname: string, port: number, env?: ProviderEnv):
     const parsedProxy = proxy.match(/^(.+):(\d+)$/);
     let proxyHostname = parsedProxy ? parsedProxy[1] : proxy;
     const proxyPort = parsedProxy ? Number.parseInt(parsedProxy[2]!, 10) : 0;
+
     if (proxyPort && proxyPort !== port) {
       return true;
     }
@@ -68,27 +72,32 @@ function shouldProxyHostname(hostname: string, port: number, env?: ProviderEnv):
     if (proxyHostname.startsWith("*")) {
       proxyHostname = proxyHostname.slice(1);
     }
+
     return !hostname.endsWith(proxyHostname);
   });
 }
 
 function getProxyForUrl(targetUrl: string | URL, env?: ProviderEnv): string {
   const parsedUrl = parseProxyTargetUrl(targetUrl);
+
   if (!parsedUrl?.protocol || !parsedUrl.host) {
     return "";
   }
 
   const protocol = parsedUrl.protocol.split(":", 1)[0]!;
   const hostname = parsedUrl.host.replace(/:\d*$/, "");
-  const port = Number.parseInt(parsedUrl.port, 10) || DEFAULT_PROXY_PORTS[protocol] || 0;
+  const port = Number.parseInt(parsedUrl.port, 10) || DEFAULT_PROXY_PORTS.get(protocol) || 0;
+
   if (!shouldProxyHostname(hostname, port, env)) {
     return "";
   }
 
   let proxy = getProxyEnv(`${protocol}_proxy`, env) || getProxyEnv("all_proxy", env);
+
   if (proxy && !proxy.includes("://")) {
     proxy = `${protocol}://${proxy}`;
   }
+
   return proxy;
 }
 
@@ -100,11 +109,13 @@ export function resolveHttpProxyUrlForTarget(
   env?: ProviderEnv,
 ): URL | undefined {
   const proxy = getProxyForUrl(targetUrl, env);
+
   if (!proxy) {
     return undefined;
   }
 
   let proxyUrl: URL;
+
   try {
     proxyUrl = new URL(proxy);
   } catch (error) {

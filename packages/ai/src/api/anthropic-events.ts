@@ -1,17 +1,17 @@
 import { Type, type Static } from "typebox";
+import { NullableTokenCount } from "./token-count.ts";
 
 // Decode only the fields this adapter consumes. Other provider fields remain intact.
-const TokenCount = Type.Optional(Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]));
 const UsageSchema = Type.Object({
-  input_tokens: TokenCount,
-  output_tokens: TokenCount,
-  cache_read_input_tokens: TokenCount,
-  cache_creation_input_tokens: TokenCount,
+  input_tokens: NullableTokenCount,
+  output_tokens: NullableTokenCount,
+  cache_read_input_tokens: NullableTokenCount,
+  cache_creation_input_tokens: NullableTokenCount,
   cache_creation: Type.Optional(
-    Type.Union([Type.Object({ ephemeral_1h_input_tokens: TokenCount }), Type.Null()]),
+    Type.Union([Type.Object({ ephemeral_1h_input_tokens: NullableTokenCount }), Type.Null()]),
   ),
   output_tokens_details: Type.Optional(
-    Type.Union([Type.Object({ thinking_tokens: TokenCount }), Type.Null()]),
+    Type.Union([Type.Object({ thinking_tokens: NullableTokenCount }), Type.Null()]),
   ),
   speed: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
@@ -43,6 +43,7 @@ const ContentDeltaSchema = Type.Union([
 ]);
 
 const ContentIndex = Type.Integer({ minimum: 0 });
+
 export const AnthropicEventSchema = Type.Union([
   Type.Object({
     type: Type.Literal("message_start"),
@@ -74,7 +75,9 @@ export const AnthropicEventSchema = Type.Union([
   }),
   Type.Object({ type: Type.Literal("content_block_stop"), index: ContentIndex }),
 ]);
+
 export type AnthropicEvent = Static<typeof AnthropicEventSchema>;
+
 export const AnthropicEventTypeSchema = Type.Index(AnthropicEventSchema, ["type"]);
 
 // Unknown block variants are forward-compatible. Malformed *known* variants must

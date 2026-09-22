@@ -39,14 +39,19 @@ import type { ContextStatus, FileDiff, Turn } from "./views.ts";
 // ---------------------------------------------------------------------------
 
 export type SessionId = string & { readonly __brand: "SessionId" };
+
 export type RunId = string;
+
 export type HeadName = string;
+
 export type Delivery = "steer" | "next";
+
 export type Drain = "one" | "all";
 
 /** Parse the untrusted string a CLI flag, route, or wire request supplied. */
 export function sessionId(value: string): SessionId {
   if (value === "") throw new Error("Invalid session id: empty");
+
   // SAFETY: non-empty is the SessionId invariant, checked above at construction.
   return value as SessionId;
 }

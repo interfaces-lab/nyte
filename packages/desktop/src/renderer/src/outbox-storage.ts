@@ -10,7 +10,9 @@ import type { OutboxRecord, OutboxStorage } from "@nyte-ai/client";
 import { userContent } from "../../shared/schemas.ts";
 
 const DATABASE_NAME = "nyte-renderer";
+
 const DATABASE_VERSION = 1;
+
 const STORE_NAME = "outbox";
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
@@ -43,6 +45,7 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
 }
 
 const strict = { additionalProperties: false };
+
 const storedRecord = Type.Object(
   {
     /** The workspace path, or null for the home host. */
@@ -95,6 +98,7 @@ export function createIndexedDbOutboxStorage(): WorkspaceOutboxStorage {
   let database: Promise<IDBDatabase> | undefined;
   const open = (): Promise<IDBDatabase> => (database ??= openDatabase());
   let workspace: string | null = null;
+
   return {
     select: (selected) => {
       workspace = selected;
@@ -105,8 +109,10 @@ export function createIndexedDbOutboxStorage(): WorkspaceOutboxStorage {
       const values = await requestResult(transaction.objectStore(STORE_NAME).getAll());
       await transactionDone(transaction);
       const records: OutboxRecord[] = [];
+
       for (const value of values) {
         if (!Value.Check(storedRecord, value) || value.workspace !== workspace) continue;
+
         try {
           records.push({
             key: value.key,
@@ -117,6 +123,7 @@ export function createIndexedDbOutboxStorage(): WorkspaceOutboxStorage {
           // A malformed session id names nothing this host can send to.
         }
       }
+
       return records;
     },
     put: async (record) => {

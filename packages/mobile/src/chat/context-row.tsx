@@ -16,6 +16,7 @@ export function ContextRow({
   onChooseHead: (head: string) => void;
 }) {
   const theme = useTheme();
+
   if (head === undefined || heads.length < 2) return null;
 
   return (
@@ -43,4 +44,5 @@ export function ContextRow({
 }
 
 const chipFont = { size: typography.caption.fontSize, weight: "medium" } as const;
+
 const headHost = { height: controls.metaTarget } as const;

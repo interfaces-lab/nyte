@@ -15,16 +15,20 @@ export const benchmark = base.extend<BenchmarkFixtures>({
           readonly context: Readonly<Record<string, unknown>>;
         }
       | undefined;
+
     await use((metrics, context = {}) => {
       if (payload !== undefined) throw new Error("Benchmark reported metrics more than once");
       payload = { metrics, context };
     });
+
     if (payload === undefined) {
       if (testInfo.status === testInfo.expectedStatus) {
         throw new Error(`Benchmark did not report metrics: ${testInfo.title}`);
       }
+
       return;
     }
+
     process.stdout.write(
       `BENCHMARK ${JSON.stringify({
         schemaVersion: 1,

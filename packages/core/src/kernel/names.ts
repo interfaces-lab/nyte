@@ -29,15 +29,25 @@ export { isHeadName };
 export const DELETED_REF: RefName = "refs/deleted";
 
 const HEADS = "refs/heads/";
+
 const STACKS = "refs/stacks/";
+
 const INBOX = "refs/inbox/";
+
 const RUNS = "refs/runs/";
+
 const CHAINS = "refs/chains/";
+
 const COMPACTIONS = "refs/compactions/";
+
 const EFFECTS = "refs/effects/";
+
 const KEYS = "refs/keys/";
+
 const FACTS = "refs/facts/";
+
 const DELEGATIONS = "refs/delegations/";
+
 const CANCELLED = "refs/cancelled/";
 
 export function headRef(head: string): RefName {
@@ -70,6 +80,7 @@ export function parseInboxRef(name: RefName): InboxRefParts | undefined {
   if (!name.startsWith(INBOX)) return undefined;
   const parts = name.slice(INBOX.length).split("/");
   const [head, delivery, position] = parts;
+
   if (
     parts.length !== 3 ||
     head === undefined ||
@@ -80,6 +91,7 @@ export function parseInboxRef(name: RefName): InboxRefParts | undefined {
   ) {
     return undefined;
   }
+
   return { head, delivery, position };
 }
 
@@ -98,6 +110,7 @@ export function compactionRef(head: string): RefName {
 export function parseCompactionRef(name: RefName): string | undefined {
   if (!name.startsWith(COMPACTIONS)) return undefined;
   const head = name.slice(COMPACTIONS.length);
+
   return isHeadName(head) ? head : undefined;
 }
 
@@ -133,9 +146,11 @@ export function delegationPrefix(child: string): string {
  */
 export function encodeFactKey(key: string): string {
   if (key === "") return "%_";
+
   return [...new TextEncoder().encode(key)]
     .map((byte) => {
       const character = String.fromCharCode(byte);
+
       return /^[A-Za-z0-9_-]$/.test(character)
         ? character
         : `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
@@ -146,18 +161,23 @@ export function encodeFactKey(key: string): string {
 export function decodeFactKey(key: string): string {
   if (key === "%_") return "";
   const bytes: number[] = [];
+
   for (let index = 0; index < key.length; index += 1) {
     const character = key[index];
+
     if (character !== "%") {
       if (character === undefined) throw new Error(`Malformed encoded fact key: ${key}`);
       bytes.push(character.charCodeAt(0));
       continue;
     }
+
     const hex = key.slice(index + 1, index + 3);
+
     if (!/^[0-9A-F]{2}$/.test(hex)) throw new Error(`Malformed encoded fact key: ${key}`);
     bytes.push(Number.parseInt(hex, 16));
     index += 2;
   }
+
   return new TextDecoder().decode(Uint8Array.from(bytes));
 }
 
@@ -167,10 +187,15 @@ export function cancelledRef(change: Oid): RefName {
 }
 
 export const HEAD_PREFIX = HEADS;
+
 export const STACK_PREFIX = STACKS;
+
 export const CHAIN_PREFIX = CHAINS;
+
 export const DELEGATION_PREFIX = DELEGATIONS;
+
 export const FACT_PREFIX = FACTS;
+
 export const CANCELLED_PREFIX = CANCELLED;
 
 /** The branch a `refs/heads/*` name points at, or undefined for any other ref. */
@@ -195,11 +220,15 @@ export function isRefName(value: string): boolean {
   ) {
     return false;
   }
+
   for (const char of value) {
     const code = char.charCodeAt(0);
+
     if (code < 0x20 || code === 0x7f || char === " " || char === "~" || char === "^") return false;
+
     if (char === ":" || char === "?" || char === "*" || char === "[" || char === "\\") return false;
   }
+
   return value
     .split("/")
     .every(

@@ -64,10 +64,15 @@ Your output must be:
 
 /** The model asked first, at the effort it is asked at. */
 export const TITLE_MODEL_ID = "gpt-5.6-luna";
+
 const TITLE_THINKING = "medium";
+
 const MAX_TITLE_CHARS = 100;
+
 const MAX_REQUEST_CHARS = 2000;
+
 const MAX_CONVERSATION_CHARS = 8000;
+
 const MAX_OUTPUT_TOKENS = 64;
 
 export type TitleModels = Pick<Models, "getModels" | "streamSimple">;
@@ -75,6 +80,7 @@ export type TitleModels = Pick<Models, "getModels" | "streamSimple">;
 function spoken(message: Message): string | undefined {
   if (message.role === "toolResult") return undefined;
   const text = contentText(message.content, "").trim();
+
   return text === "" ? undefined : text;
 }
 
@@ -87,19 +93,25 @@ export function titleRequest(messages: readonly Message[]): string | undefined {
   const index = messages.findIndex((message) => message.role === "user");
   const first = messages[index];
   const request = first === undefined ? undefined : spoken(first);
+
   if (request === undefined) return undefined;
+
   const recent = messages.slice(index + 1).flatMap((message) => {
     const text = spoken(message);
+
     return text === undefined ? [] : [`${message.role === "user" ? "User" : "Assistant"}: ${text}`];
   });
+
   if (recent.length === 0) return request;
   const conversation = `Original request:\n${request.slice(0, MAX_REQUEST_CHARS)}\n\nRecent conversation:\n${recent.join("\n\n")}`;
+
   return conversation.slice(0, MAX_CONVERSATION_CHARS);
 }
 
 /** Luna wherever a signed-in provider serves it, then the chat's own model. */
 export function titleCandidates(models: TitleModels, primary: Model<Api>): Model<Api>[] {
   const luna = models.getModels().filter((model) => model.id === TITLE_MODEL_ID);
+
   return [...luna, primary].filter(
     (model, index, all) =>
       all.findIndex((other) => other.provider === model.provider && other.id === model.id) ===
@@ -114,6 +126,7 @@ function titleOptions(model: Model<Api>, signal: AbortSignal | undefined): Simpl
     cacheRetention: "none",
     sessionId: uuidv7(),
   };
+
   return model.reasoning ? { ...options, reasoning: TITLE_THINKING } : options;
 }
 
@@ -125,19 +138,24 @@ export async function generateTitle(
   signal?: AbortSignal,
 ): Promise<string | undefined> {
   const request = titleRequest(messages);
+
   if (request === undefined) return undefined;
+
   const context = {
     systemPrompt: TITLE_PROMPT,
     messages: [
       { role: "user", content: [{ type: "text", text: request }], timestamp: Date.now() },
     ] satisfies Message[],
   };
+
   for (const model of titleCandidates(models, primary)) {
     let line: string | undefined;
+
     try {
       const response = await models
         .streamSimple(model, context, titleOptions(model, signal))
         .result();
+
       if (response.stopReason === "error" || response.stopReason === "aborted") continue;
       line = contentText(response.content)
         .split("\n")
@@ -146,8 +164,10 @@ export async function generateTitle(
     } catch {
       continue;
     }
+
     if (line !== undefined) return line.slice(0, MAX_TITLE_CHARS);
   }
+
   return undefined;
 }
 
@@ -168,10 +188,13 @@ export function renamePlugin(deps: { readonly models: TitleModels; readonly mode
       const generate = async (messages: readonly Message[]): Promise<void> => {
         const before = (await api.session.info()).name;
         const title = await generateTitle(deps.models, deps.model, messages);
+
         if (title === undefined) return;
+
         if ((await api.session.info()).name !== before) return;
         await api.session.rename(title);
       };
+
       // Named `rename_chat`, not `rename`, because the model sees it beside the
       // file tools, where a bare `rename` reads as renaming a path.
       api.tools.add((draft) =>
@@ -187,8 +210,10 @@ export function renamePlugin(deps: { readonly models: TitleModels; readonly mode
           execute: async (_callId, params) => {
             // Trimmed and capped like a generated title: both names come from a model.
             const name = params.name.trim().slice(0, MAX_TITLE_CHARS);
+
             if (name === "") throw new Error("A chat name cannot be blank");
             await api.session.rename(name);
+
             // `title` is the heading a client shows on the row; without it the row reads "rename_chat".
             return {
               content: [{ type: "text", text: `Chat named ${name}` }],
@@ -203,11 +228,15 @@ export function renamePlugin(deps: { readonly models: TitleModels; readonly mode
           description: "Name the chat; with no name, the model picks one",
           run: async (argument) => {
             const name = argument.trim();
+
             if (name !== "") {
               await api.session.rename(name);
+
               return `Chat named ${name}`;
             }
+
             await generate((await api.session.context()).messages);
+
             return undefined;
           },
         });
@@ -216,6 +245,7 @@ export function renamePlugin(deps: { readonly models: TitleModels; readonly mode
       // background, the way opencode's runner forks a title on the first prompt.
       api.hook("transform_context", (event) => {
         const { messages } = event;
+
         if (messages.filter((message) => message.role === "user").length !== 1) return undefined;
         void api.session
           .info()
@@ -225,6 +255,7 @@ export function renamePlugin(deps: { readonly models: TitleModels; readonly mode
               `title: ${cause instanceof Error ? cause.message : String(cause)}`,
             );
           });
+
         return undefined;
       });
     },

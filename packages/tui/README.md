@@ -66,9 +66,9 @@ input, authentication instructions, and progress use stderr. Login and logout re
 use stdout. SIGINT and Ctrl+C cancel login with exit 130; SIGTERM exits 143. Cancelling
 an active secret prompt does not save a credential. GitHub Copilot discovers the account's
 available model IDs before saving its OAuth credential. If discovery fails, login fails and
-saves nothing. Later catalog reads combine generated model definitions with that account filter
-without network access or token refresh. A signed-out interactive launch still uses baked model
-definitions so the shell can open and offer `/login`; sending a request still requires auth.
+saves nothing. Catalog reads restore persisted models, then refresh the hosted feed when the
+network is available. A signed-out interactive launch fetches the feed so the shell can open and
+offer `/login`; if no cached catalog exists while offline, Nyte reports that no models are available.
 
 `nyte logout <provider>` works without a terminal and removes only that stored credential.
 Its receipt reports credentials still available through environment variables or other tools.
@@ -77,7 +77,9 @@ show command-specific usage without starting the operation. Help must be used on
 Unknown, duplicate, and incompatible options fail before the operation starts.
 
 `nyte update`, `nyte update <version>`, and `nyte update --check` select latest install,
-versioned install, and check-only respectively. Update progress uses stderr; results use stdout.
+versioned install, and check-only respectively. `nyte update --models` refreshes the hosted model
+catalog without updating Nyte. These choices are mutually exclusive. Update progress uses stderr;
+results use stdout.
 `--json` is supported for print and status, not login, logout, or update.
 
 When an interactive login displays a browser URL or device code, Enter or `o` opens that URL.

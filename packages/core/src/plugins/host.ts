@@ -44,6 +44,7 @@ export interface PluginRegistries {
 export function createRegistries(): PluginRegistries {
   // Binding must not make an unchanged contribution appear changed on every rebuild.
   const toolBindings = new WeakMap<object, AgentTool>();
+
   return {
     agents: new ContributionRegistry(() => new MapDraft<Agent>()),
     tools: new ContributionRegistry(() => new ToolMapDraft(toolBindings)),
@@ -106,6 +107,7 @@ export class PluginHost {
   activate(next: readonly LoadedPlugin[]): Promise<readonly PluginInfo[]> {
     const run = this.tail.then(() => this.activateNow(next));
     this.tail = run.catch(() => undefined);
+
     return run;
   }
 
@@ -123,24 +125,32 @@ export class PluginHost {
 
     for (const [index, plugin] of next.entries()) {
       const previous = this.active.get(plugin.id);
+
       if (previous !== undefined && previous.plugin.version === plugin.version) {
         info.push(activeInfo(plugin));
         continue;
       }
+
       changed = true;
+
       if (previous !== undefined) {
         this.active.delete(plugin.id);
         await previous.scope.dispose();
       }
+
       const loaded = await this.load(plugin, index);
+
       if (loaded.ok) {
         this.active.set(plugin.id, loaded.value);
         info.push(activeInfo(plugin));
         continue;
       }
+
       info.push({ ...activeInfo(plugin), status: "failed", error: loaded.error });
+
       if (previous === undefined) continue;
       const restored = await this.load(previous.plugin, index);
+
       if (restored.ok) this.active.set(plugin.id, restored.value);
     }
 
@@ -153,7 +163,9 @@ export class PluginHost {
 
     if (changed) this.target.rebuildAll();
     this.inventory = info;
+
     if (changed) await this.target.emit({ kind: "plugins_changed", plugins: info });
+
     return info;
   }
 
@@ -166,12 +178,16 @@ export class PluginHost {
         message: error.message,
       });
     });
+
     const api = bindSessionApi(this.target, plugin, scope, order);
+
     try {
       await plugin.module.session(api);
+
       return Result.ok({ plugin, scope });
     } catch (error) {
       await scope.dispose();
+
       return Result.err(error instanceof Error ? error.message : String(error));
     }
   }
@@ -179,6 +195,7 @@ export class PluginHost {
 
 function activeInfo(plugin: LoadedPlugin): Extract<PluginInfo, { status: "active" }> {
   const { id, version, source, path } = plugin;
+
   return path === undefined
     ? { id, version, source, status: "active" }
     : { id, version, source, path, status: "active" };
@@ -186,6 +203,7 @@ function activeInfo(plugin: LoadedPlugin): Extract<PluginInfo, { status: "active
 
 function assertUniqueIds(plugins: readonly LoadedPlugin[]): void {
   const seen = new Set<string>();
+
   for (const plugin of plugins) {
     if (seen.has(plugin.id)) throw new Error(`duplicate plugin id: ${plugin.id}`);
     seen.add(plugin.id);

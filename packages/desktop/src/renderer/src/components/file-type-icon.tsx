@@ -22,7 +22,9 @@ type FileIconTone =
   | "magenta";
 
 const GLYPH_SIZE = "1em";
+
 const resolver = createFileTreeIconResolver("complete");
+
 const spriteMarkup = { __html: getBuiltInSpriteSheet("complete") };
 
 const styles = stylex.create({

@@ -1,20 +1,22 @@
 # @nyte-ai/ai
 
-Provider streaming, authentication, and the model catalog. Every Nyte client composes the same
+Provider streaming, authentication, and model catalogs. Every Nyte client composes the same
 providers through `createNyteModels()` over the shared `~/.nyte` credential and model stores
-(`NYTE_HOME` overrides the directory), so a login made in one client is a login in all of them.
+(`NYTE_HOME` overrides the directory). Catalogs come from `https://models.nyte.sh` and are cached
+in `~/.nyte/models-store.json`; `NYTE_MODELS_URL` overrides the catalog origin. A login made in one
+client is a login in all of them.
 
 ## Layout
 
 | Path | Responsibility |
 | --- | --- |
-| `src/models.ts` | `Provider`, `Models`, `createProvider`, auth resolution, catalog refresh and publication |
+| `src/models.ts` | `Provider`, `Models`, `createProvider`, auth resolution, hosted catalog refresh and caching |
 | `src/auth/` | Credential types and stores, api-key helpers, OAuth flows under `auth/oauth/` |
 | `src/api/` | Wire adapters: Anthropic Messages, OpenAI Responses and Chat Completions, Codex, Google |
 | `src/api/github-copilot-headers.ts` | Copilot identity shared by auth, catalog generation, and request adapters |
-| `src/providers/` | Provider factories and the baked catalog data they ship |
+| `src/providers/` | Provider factories and provider-specific account filtering |
 | `src/providers/nyte-catalog.ts` | The provider list and default models each client starts from |
-| `scripts/` | Catalog generation and checks (`pnpm models:generate`, `pnpm models:check`) |
+| `scripts/` | Hosted catalog generation and R2 publishing (`pnpm models:generate`, `pnpm models:publish`) |
 
 Most flows are ports from pi; each file names its upstream source and the revision it was synced with.
 
@@ -22,10 +24,14 @@ Most flows are ports from pi; each file names its upstream source and the revisi
 
 | Provider | Auth | Catalog |
 | --- | --- | --- |
-| `openai-codex` | ChatGPT OAuth (browser or device code) | Baked |
-| `openai`, `anthropic` | API key from the environment or a stored key; Anthropic also offers OAuth | Baked |
-| `opencode`, `opencode-go` | `OPENCODE_API_KEY` or a stored key | Baked snapshot, refreshed from models.opencode.ai |
-| `github-copilot` | GitHub device sign-in or an injected bearer token | Generated definitions, filtered by OAuth account model IDs |
+| `openai-codex` | ChatGPT OAuth (browser or device code) | Hosted JSON feed |
+| `openai`, `anthropic` | API key from the environment or a stored key; Anthropic also offers OAuth | Hosted JSON feed |
+| `opencode`, `opencode-go` | `OPENCODE_API_KEY` or a stored key | Hosted JSON feed |
+| `github-copilot` | GitHub device sign-in or an injected bearer token | Hosted JSON feed, filtered by OAuth account model IDs |
+
+`pnpm models:generate` writes one JSON array per provider under `catalog/`, and
+`pnpm models:publish` uploads those files to Cloudflare R2. Clients fetch the file for their
+provider and cache the result.
 
 ## Credential storage
 
@@ -82,13 +88,12 @@ and bounded by the code's lifetime. Verification URLs must name a GitHub HTTPS l
 
 ### Model definitions and account access
 
-`pnpm --dir packages/ai models:generate` generates the Copilot definitions alongside the other
-baked catalogs. Endpoint routes, limits, reasoning controls, and prices come from those definitions.
-The authenticated `/models` response supplies availability, not a second complete model schema.
+The hosted catalog supplies Copilot endpoint routes, limits, reasoning controls, and prices. The
+authenticated `/models` response supplies account availability, not a second complete model schema.
 Missing `supported_endpoints`, limits, or billing metadata therefore does not drop a known model.
 Unknown IDs wait for a catalog update rather than receiving guessed routes.
 
-`getModels()` returns the generated definitions. `getAvailable()` applies the account's
+`getModels()` returns the cached hosted definitions. `getAvailable()` applies the account's
 `availableModelIds`. Those IDs live with the credential, so another client can restore them offline
 without a separate Copilot model-cache entry. Login and token refresh replace the list, including
 an empty list. Disabled policies and explicit lack of tool support are excluded. When every picker
@@ -96,7 +101,7 @@ flag is false, only the Individual endpoint falls back to explicitly enabled pol
 Unlike Pi, Nyte does not automatically enable unconfigured model policies. It reports that account
 approval is needed and leaves those models unavailable until enabled.
 
-Generated prices are model-rate estimates, not a calculation of Copilot subscription charges or
+Catalog prices are model-rate estimates, not a calculation of Copilot subscription charges or
 premium-request usage. Request adapters retain Copilot headers, vision declarations, opaque
 Chat Completions reasoning, and encrypted Responses reasoning across turns.
 
@@ -115,6 +120,7 @@ const models = createModels({ credentials });
 models.setProvider(githubCopilotProvider());
 
 async function connect(interaction: AuthInteraction) {
+  await models.refresh({ providers: ["github-copilot"] });
   await models.login("github-copilot", "oauth", interaction);
   return models.getAvailable("github-copilot");
 }

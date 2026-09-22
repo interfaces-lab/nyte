@@ -15,7 +15,14 @@ export default defineConfig(({ command }) => ({
     react(),
   ],
   build: {
-    rollupOptions: { input: { index: "index.html", demo: "demo.html", core: "core.html" } },
+    rollupOptions: {
+      input: {
+        index: "index.html",
+        demo: "demo.html",
+        core: "core.html",
+        antimetal: "antimetal.html",
+      },
+    },
   },
   server: { port: 5178 },
 }));

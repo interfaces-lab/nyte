@@ -35,6 +35,7 @@ const StoreMethodSchema = Type.Union([
   Type.Literal("events.floor"),
   Type.Literal("events.trim"),
 ]);
+
 export type StoreMethod = Static<typeof StoreMethodSchema>;
 
 const RequestSchema = Type.Union([
@@ -56,6 +57,7 @@ const RequestSchema = Type.Union([
   Type.Object({ kind: Type.Literal("credit"), id: Type.Number(), credit: Type.Number() }),
   Type.Object({ kind: Type.Literal("unwatch"), id: Type.Number() }),
 ]);
+
 export type StoreRequest = Static<typeof RequestSchema>;
 
 const WireErrorSchema = Type.Object({
@@ -66,6 +68,7 @@ const WireErrorSchema = Type.Object({
   floor: Type.Optional(Type.Number()),
   oid: Type.Optional(Type.String()),
 });
+
 export type WireError = Static<typeof WireErrorSchema>;
 
 const ResponseSchema = Type.Union([
@@ -76,6 +79,7 @@ const ResponseSchema = Type.Union([
   Type.Object({ kind: Type.Literal("events"), id: Type.Number(), events: Type.Array(EventSchema) }),
   Type.Object({ kind: Type.Literal("end"), id: Type.Number() }),
 ]);
+
 export type StoreResponse = Static<typeof ResponseSchema>;
 
 export const checkRequests = Compile(Type.Array(RequestSchema, { maxItems: STORE_BATCH_SIZE }));

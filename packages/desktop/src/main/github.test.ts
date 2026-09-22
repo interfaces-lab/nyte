@@ -320,7 +320,7 @@ it("serves GitHub from Home and never sends command output or exceptions to tele
       retain: () => {},
       release: () => {},
       warm: async () => {},
-      dispose: () => {},
+      releaseWindow: () => undefined,
       menu: async () => undefined,
       perform: async () => {},
       agent: unusedBrowserAgent(),
@@ -335,8 +335,8 @@ it("serves GitHub from Home and never sends command output or exceptions to tele
     },
   });
   try {
-    expect(await host.call("host.github.state", undefined)).toMatchObject({ kind: "error" });
-    expect(await host.call("host.github.signIn", undefined)).toMatchObject({ kind: "error" });
+    expect(await host.call(1, "host.github.state", undefined)).toMatchObject({ kind: "error" });
+    expect(await host.call(1, "host.github.signIn", undefined)).toMatchObject({ kind: "error" });
     expect(events).toContainEqual({ kind: "github_changed" });
     expect(recorded).toContainEqual({
       name: "desktop.github.command",
@@ -353,8 +353,8 @@ it("serves GitHub from Home and never sends command output or exceptions to tele
       duration_ms: expect.any(Number),
     });
     healthy = true;
-    expect(await host.call("host.github.state", undefined)).toMatchObject({ kind: "ready" });
-    expect(await host.call("host.github.signOut", undefined)).toMatchObject({ kind: "ready" });
+    expect(await host.call(1, "host.github.state", undefined)).toMatchObject({ kind: "ready" });
+    expect(await host.call(1, "host.github.signOut", undefined)).toMatchObject({ kind: "ready" });
     for (const entry of operations) {
       expect(entry).toMatchObject({
         name: "desktop.github.command",

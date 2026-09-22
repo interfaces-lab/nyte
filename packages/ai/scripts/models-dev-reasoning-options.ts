@@ -20,9 +20,11 @@ export function getEffortThinkingLevelMap(
   options: readonly ModelsDevReasoningOption[],
 ): ThinkingLevelMap | undefined {
   const effortValues = options.flatMap((option) => (option.type === "effort" ? option.values : []));
+
   if (effortValues.length === 0) return undefined;
 
   const supported = new Set(effortValues);
+
   if (
     !MODEL_THINKING_LEVELS.some((level) => level !== "off" && supported.has(level)) &&
     !supported.has("none")
@@ -31,9 +33,11 @@ export function getEffortThinkingLevelMap(
   }
 
   const map: ThinkingLevelMap = { off: supported.has("none") ? "none" : null };
+
   for (const level of MODEL_THINKING_LEVELS) {
     if (level === "off") continue;
     map[level] = supported.has(level) ? level : null;
   }
+
   return map;
 }

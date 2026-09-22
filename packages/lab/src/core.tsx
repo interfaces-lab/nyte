@@ -5,6 +5,7 @@ import "./tokens/palette.css";
 import "./shell/reset.css";
 
 const root = document.getElementById("root");
+
 if (root === null) throw new Error("core.html is missing #root");
 
 createRoot(root).render(

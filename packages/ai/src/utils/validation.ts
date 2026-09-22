@@ -12,6 +12,7 @@ import { Value } from "typebox/value";
 import type { Tool, ToolCall } from "@nyte-ai/schema";
 
 const validatorCache = new WeakMap<object, ReturnType<typeof Compile>>();
+
 const TYPEBOX_KIND = Symbol.for("TypeBox.Kind");
 
 interface JsonSchemaObject {
@@ -23,16 +24,13 @@ interface JsonSchemaObject {
   allOf?: JsonSchemaObject[];
   anyOf?: JsonSchemaObject[];
   oneOf?: JsonSchemaObject[];
+  $ref?: string;
 }
 
-function getSchemaTypes(schema: JsonSchemaObject): string[] {
-  if (typeof schema.type === "string") {
-    return [schema.type];
-  }
-  if (Array.isArray(schema.type)) {
-    return schema.type.filter((type): type is string => typeof type === "string");
-  }
-  return [];
+function getSchemaTypes(schema: JsonSchemaObject) {
+  if (schema.type === undefined) return [];
+
+  return Array.isArray(schema.type) ? schema.type : [schema.type];
 }
 
 function matchesJsonType(value: unknown, type: string): boolean {
@@ -56,83 +54,104 @@ function matchesJsonType(value: unknown, type: string): boolean {
   }
 }
 
-function getSubSchemaValidator(schema: JsonSchemaObject): ReturnType<typeof Compile> | undefined {
+function getSubSchemaValidator(schema: JsonSchemaObject) {
   try {
-    return getValidator(schema as Tool["parameters"]);
+    return getValidator(schema);
   } catch {
     return undefined;
   }
 }
 
-function coercePrimitiveByType(value: unknown, type: string): unknown {
+function coercePrimitiveByType(value: unknown, type: string) {
   switch (type) {
     case "number": {
       if (value === null) {
         return 0;
       }
+
       if (typeof value === "string" && value.trim() !== "") {
         const parsed = Number(value);
+
         if (Number.isFinite(parsed)) {
           return parsed;
         }
       }
+
       if (typeof value === "boolean") {
         return value ? 1 : 0;
       }
+
       return value;
     }
+
     case "integer": {
       if (value === null) {
         return 0;
       }
+
       if (typeof value === "string" && value.trim() !== "") {
         const parsed = Number(value);
+
         if (Number.isInteger(parsed)) {
           return parsed;
         }
       }
+
       if (typeof value === "boolean") {
         return value ? 1 : 0;
       }
+
       return value;
     }
+
     case "boolean": {
       if (value === null) {
         return false;
       }
+
       if (typeof value === "string") {
         if (value === "true") {
           return true;
         }
+
         if (value === "false") {
           return false;
         }
       }
+
       if (typeof value === "number") {
         if (value === 1) {
           return true;
         }
+
         if (value === 0) {
           return false;
         }
       }
+
       return value;
     }
+
     case "string": {
       if (value === null) {
         return "";
       }
+
       if (typeof value === "number" || typeof value === "boolean") {
         return String(value);
       }
+
       return value;
     }
+
     case "null": {
       if (value === "" || value === 0 || value === false) {
         return null;
       }
+
       return value;
     }
+
     default:
       return value;
   }
@@ -147,15 +166,17 @@ function applySchemaObjectCoercion(value: Record<string, unknown>, schema: JsonS
       if (!(key in value)) {
         continue;
       }
+
       value[key] = coerceWithJsonSchema(value[key], propertySchema);
     }
   }
 
-  if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
+  if (schema.additionalProperties && schema.additionalProperties !== true) {
     for (const [key, propertyValue] of Object.entries(value)) {
       if (definedKeys.has(key)) {
         continue;
       }
+
       value[key] = coerceWithJsonSchema(propertyValue, schema.additionalProperties);
     }
   }
@@ -165,15 +186,18 @@ function applySchemaArrayCoercion(value: unknown[], schema: JsonSchemaObject): v
   if (Array.isArray(schema.items)) {
     for (let index = 0; index < value.length; index++) {
       const itemSchema = schema.items[index];
+
       if (!itemSchema) {
         continue;
       }
+
       value[index] = coerceWithJsonSchema(value[index], itemSchema);
     }
+
     return;
   }
 
-  if (schema.items && typeof schema.items === "object") {
+  if (schema.items) {
     for (let index = 0; index < value.length; index++) {
       value[index] = coerceWithJsonSchema(value[index], schema.items);
     }
@@ -183,6 +207,7 @@ function applySchemaArrayCoercion(value: unknown[], schema: JsonSchemaObject): v
 function coerceWithUnionSchema(value: unknown, schemas: JsonSchemaObject[]): unknown {
   for (const schema of schemas) {
     const validator = getSubSchemaValidator(schema);
+
     if (validator?.Check(value)) {
       return value;
     }
@@ -192,10 +217,12 @@ function coerceWithUnionSchema(value: unknown, schemas: JsonSchemaObject[]): unk
     const candidate = structuredClone(value);
     const coerced = coerceWithJsonSchema(candidate, schema);
     const validator = getSubSchemaValidator(schema);
+
     if (validator?.Check(coerced)) {
       return coerced;
     }
   }
+
   return value;
 }
 
@@ -217,12 +244,15 @@ function coerceWithJsonSchema(value: unknown, schema: JsonSchemaObject): unknown
   }
 
   const schemaTypes = getSchemaTypes(schema);
+
   const matchesUnionMember =
     schemaTypes.length > 1 &&
     schemaTypes.some((schemaType) => matchesJsonType(nextValue, schemaType));
+
   if (schemaTypes.length > 0 && !matchesUnionMember) {
     for (const schemaType of schemaTypes) {
       const candidate = coercePrimitiveByType(nextValue, schemaType);
+
       if (candidate !== nextValue) {
         nextValue = candidate;
         break;
@@ -236,6 +266,7 @@ function coerceWithJsonSchema(value: unknown, schema: JsonSchemaObject): unknown
     nextValue !== null &&
     !Array.isArray(nextValue)
   ) {
+    // SAFETY: nextValue is a non-null, non-array object cloned from JSON tool arguments, so it is a string-keyed record.
     applySchemaObjectCoercion(nextValue as Record<string, unknown>, schema);
   }
 
@@ -251,23 +282,29 @@ function normalizeOptionalNulls(value: unknown, schema: JsonSchemaObject): void 
     if (Array.isArray(schema.items)) {
       for (let index = 0; index < value.length; index++) {
         const itemSchema = schema.items[index];
+
         if (itemSchema) normalizeOptionalNulls(value[index], itemSchema);
       }
     } else if (schema.items) {
       for (const item of value) normalizeOptionalNulls(item, schema.items);
     }
+
     return;
   }
+
   if (typeof value !== "object" || value === null || !schema.properties) return;
 
+  // SAFETY: value is a non-null, non-array object cloned from JSON tool arguments, so it is a string-keyed record.
   const object = value as Record<string, unknown>;
   const required = new Set(schema.required ?? []);
+
   for (const [key, propertySchema] of Object.entries(schema.properties)) {
     if (!(key in object)) continue;
+
     if (
       object[key] === null &&
       !required.has(key) &&
-      typeof (propertySchema as { $ref?: unknown }).$ref !== "string" &&
+      propertySchema.$ref === undefined &&
       getSubSchemaValidator(propertySchema)?.Check(null) === false
     ) {
       delete object[key];
@@ -278,43 +315,34 @@ function normalizeOptionalNulls(value: unknown, schema: JsonSchemaObject): void 
 }
 
 function getValidator(schema: Tool["parameters"]): ReturnType<typeof Compile> {
+  // SAFETY: tool parameter schemas are TypeBox or JSON Schema objects, never boolean schemas, so they are valid WeakMap keys.
   const key = schema as object;
   const cached = validatorCache.get(key);
+
   if (cached) {
     return cached;
   }
+
   const validator = Compile(schema);
   validatorCache.set(key, validator);
+
   return validator;
 }
 
 function formatValidationPath(error: TLocalizedValidationError): string {
   if (error.keyword === "required") {
-    const requiredProperties = (error.params as { requiredProperties?: string[] })
-      .requiredProperties;
-    const requiredProperty = requiredProperties?.[0];
+    const requiredProperty = error.params.requiredProperties[0];
+
     if (requiredProperty) {
       const basePath = error.instancePath.replace(/^\//, "").replace(/\//g, ".");
+
       return basePath ? `${basePath}.${requiredProperty}` : requiredProperty;
     }
   }
-  const path = error.instancePath.replace(/^\//, "").replace(/\//g, ".");
-  return path || "root";
-}
 
-/**
- * Finds a tool by name and validates the tool call arguments against its TypeBox schema
- * @param tools Array of tool definitions
- * @param toolCall The tool call from the LLM
- * @returns The validated arguments
- * @throws Error if tool is not found or validation fails
- */
-export function validateToolCall(tools: Tool[], toolCall: ToolCall): unknown {
-  const tool = tools.find((t) => t.name === toolCall.name);
-  if (!tool) {
-    throw new Error(`Tool "${toolCall.name}" not found`);
-  }
-  return validateToolArguments(tool, toolCall);
+  const path = error.instancePath.replace(/^\//, "").replace(/\//g, ".");
+
+  return path || "root";
 }
 
 /**
@@ -324,7 +352,7 @@ export function validateToolCall(tools: Tool[], toolCall: ToolCall): unknown {
  * @returns The validated (and potentially coerced) arguments
  * @throws Error with formatted message if validation fails
  */
-export function validateToolArguments(tool: Tool, toolCall: ToolCall): unknown {
+export function validateToolArguments(tool: Tool, toolCall: ToolCall) {
   return parseToolArguments(
     tool.parameters,
     toolCall.arguments,
@@ -339,6 +367,7 @@ export function createToolArgumentParser<T extends TSchema>(
 ): (args: unknown) => Static<T> {
   const schema = tool.parameters;
   const validator = Compile(schema);
+
   return (args) => parseToolArguments(schema, args, tool.name, validator);
 }
 
@@ -351,9 +380,11 @@ function parseToolArguments<T extends TSchema>(
   const args = structuredClone(input);
   normalizeOptionalNulls(args, schema);
   Value.Convert(schema, args);
+
   const coerced = Object.getOwnPropertySymbols(schema).includes(TYPEBOX_KIND)
     ? args
     : coerceWithJsonSchema(args, schema);
+
   if (validator.Check(coerced)) return coerced;
 
   const errors =
@@ -361,6 +392,7 @@ function parseToolArguments<T extends TSchema>(
       .Errors(coerced)
       .map((error) => `  - ${formatValidationPath(error)}: ${error.message}`)
       .join("\n") || "Unknown validation error";
+
   throw new Error(
     `Validation failed for tool "${name}":\n${errors}\n\nReceived arguments:\n${JSON.stringify(input, null, 2)}`,
   );

@@ -83,6 +83,7 @@ function SettingsPanel({ section }: { section: SettingsSection }): ReactElement 
       return <ServerSettings />;
     default: {
       const _exhaustive: never = section;
+
       return _exhaustive;
     }
   }

@@ -9,8 +9,10 @@ import type { ToolCallDensity } from "../theme/boot.ts";
 import type { PaneId, SplitDirection } from "./pane-layout.ts";
 
 const DRAFT_LIST_DEBOUNCE_MS = 200;
+
 /** Sessions whose measured row heights survive a visit; matches the snapshot cache's entry budget. */
 const MEASURED_SESSIONS = 12;
+
 const strict = { additionalProperties: false };
 
 export interface ComposerViewState {
@@ -108,6 +110,7 @@ const composerSchema = Type.Object(
   },
   strict,
 );
+
 const chatDraftSchema = Type.Object(
   {
     id: Type.String({ minLength: 1 }),
@@ -129,10 +132,12 @@ const chatDraftSchema = Type.Object(
   },
   strict,
 );
+
 const paneDraftsSchema = Type.Object(
   { active: chatDraftSchema, parked: Type.Array(chatDraftSchema) },
   strict,
 );
+
 const persistedSnapshotSchema = Type.Object(
   {
     version: Type.Literal(1),
@@ -149,11 +154,14 @@ const persistedSnapshotSchema = Type.Object(
 );
 
 type PersistedComposer = Static<typeof composerSchema>;
+
 type PersistedChatDraft = Static<typeof chatDraftSchema>;
+
 type PersistedSnapshot = Static<typeof persistedSnapshotSchema>;
 
 function composerView(composer: PersistedComposer): ComposerViewState {
   const length = composer.draft.length;
+
   return {
     draft: composer.draft,
     selectionStart: Math.min(composer.selectionStart, length),
@@ -171,22 +179,24 @@ function persistableComposer(composer: ComposerViewState): PersistedComposer {
 }
 
 function persistableDraft(draft: ChatDraft): PersistedChatDraft {
-  return {
+  const persisted: PersistedChatDraft = {
     id: draft.id,
     updatedAt: draft.updatedAt,
     composer: persistableComposer(draft.composer),
-    ...(draft.configuration === undefined
-      ? {}
-      : {
-          configuration: {
-            model: {
-              provider: draft.configuration.model.provider,
-              id: draft.configuration.model.id,
-            },
-            thinkingLevel: draft.configuration.thinkingLevel,
-          },
-        }),
     fastSettings: [...draft.fastSettings],
+  };
+
+  if (draft.configuration === undefined) return persisted;
+
+  return {
+    ...persisted,
+    configuration: {
+      model: {
+        provider: draft.configuration.model.provider,
+        id: draft.configuration.model.id,
+      },
+      thinkingLevel: draft.configuration.thinkingLevel,
+    },
   };
 }
 
@@ -202,9 +212,11 @@ function hydrateDraft(draft: PersistedChatDraft): ChatDraft {
 
 function persistablePane(state: PaneDraftState): Static<typeof paneDraftsSchema> {
   const parked: PersistedChatDraft[] = [];
+
   for (const draft of state.parked.values()) {
     if (draftHasContent(draft)) parked.push(persistableDraft(draft));
   }
+
   return { active: persistableDraft(state.active), parked };
 }
 
@@ -218,8 +230,10 @@ function composerTextChanged(left: ComposerViewState, right: ComposerViewState):
 
 function parsePersistedSnapshot(value: string | null): PersistedSnapshot | undefined {
   if (value === null) return undefined;
+
   try {
     const parsed: unknown = JSON.parse(value);
+
     return Value.Check(persistedSnapshotSchema, parsed) ? parsed : undefined;
   } catch {
     return undefined;
@@ -243,6 +257,7 @@ export class SessionViewStateStore {
 
   readonly subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
+
     return () => this.#listeners.delete(listener);
   };
 
@@ -254,12 +269,16 @@ export class SessionViewStateStore {
 
   writeSession(sessionId: SessionId, state: SessionViewState): void {
     const previous = this.#sessions.get(sessionId);
+
     const measured =
       state.transcript.measurements.length > 0 &&
       previous?.transcript.measurements !== state.transcript.measurements;
+
     if (measured) this.#sessions.delete(sessionId);
     this.#sessions.set(sessionId, state);
+
     if (measured) this.#trimMeasurements();
+
     if (composerTextChanged(previous?.composer ?? DEFAULT_COMPOSER_VIEW_STATE, state.composer)) {
       this.#persist();
     }
@@ -272,6 +291,7 @@ export class SessionViewStateStore {
   ): SessionViewState {
     const next = update(this.readSession(sessionId, paneId));
     this.writeSession(sessionId, next);
+
     return next;
   }
 
@@ -282,15 +302,20 @@ export class SessionViewStateStore {
   writeBlank(paneId: PaneId, state: BlankViewState): void {
     const drafts = this.#draftState(paneId);
     const current = drafts.active;
+
     if (current === state) return;
     const contentChanged = current.composer.draft !== state.composer.draft;
+
     const next: ChatDraft = {
       ...state,
       id: current.id,
       updatedAt: contentChanged ? Date.now() : current.updatedAt,
     };
+
     drafts.active = next;
+
     if (contentChanged) this.#schedulePublish();
+
     if (
       composerTextChanged(current.composer, next.composer) ||
       current.configuration !== next.configuration ||
@@ -302,12 +327,15 @@ export class SessionViewStateStore {
 
   drafts(): readonly ChatDraft[] {
     const drafts: ChatDraft[] = [];
+
     for (const state of this.#drafts.values()) {
       if (draftHasContent(state.active)) drafts.push(state.active);
+
       for (const parked of state.parked.values()) {
         if (draftHasContent(parked)) drafts.push(parked);
       }
     }
+
     return drafts.toSorted(
       (left, right) => right.updatedAt - left.updatedAt || left.id.localeCompare(right.id),
     );
@@ -316,6 +344,7 @@ export class SessionViewStateStore {
   startNewDraft(paneId: PaneId): void {
     const drafts = this.#draftState(paneId);
     const current = drafts.active;
+
     if (!draftHasContent(current)) return;
     drafts.parked.set(current.id, current);
     drafts.active = this.#createDraft();
@@ -324,45 +353,57 @@ export class SessionViewStateStore {
 
   activateDraft(paneId: PaneId, draftId: string): boolean {
     const located = this.#findDraft(draftId);
+
     if (located === undefined || !draftHasContent(located.draft)) return false;
+
     if (located.kind === "active" && located.paneId === paneId) return true;
 
     const target = this.#draftState(paneId);
+
     if (draftHasContent(target.active)) {
       target.parked.set(target.active.id, target.active);
     }
+
     if (located.kind === "active") {
       this.#draftState(located.paneId).active = this.#createDraft();
     } else {
       this.#draftState(located.paneId).parked.delete(draftId);
     }
+
     target.active = located.draft;
     this.#emit();
+
     return true;
   }
 
   removeDraft(draftId: string): boolean {
     const located = this.#findDraft(draftId);
+
     if (located === undefined) return false;
     const drafts = this.#draftState(located.paneId);
+
     if (located.kind === "active") {
       drafts.active = this.#createDraft();
     } else {
       drafts.parked.delete(draftId);
     }
+
     this.#emit();
+
     return true;
   }
 
   takeBlank(paneId: PaneId, composer: ComposerViewState): ClaimedChatDraft {
     const drafts = this.#draftState(paneId);
     const current = drafts.active;
+
     const submitted: ClaimedChatDraft = {
       composer,
       configuration: current.configuration,
       fastSettings: current.fastSettings,
       updatedAt: current.composer.draft === composer.draft ? current.updatedAt : Date.now(),
     };
+
     // Sending is not a reason to drop the model the reader chose: the pane's
     // next chat keeps it, and the catalog default applies only before a pick.
     drafts.active = {
@@ -371,25 +412,30 @@ export class SessionViewStateStore {
       fastSettings: current.fastSettings,
     };
     this.#emit();
+
     return submitted;
   }
 
   restoreBlank(paneId: PaneId, submitted: ClaimedChatDraft): void {
     const drafts = this.#draftState(paneId);
+
     if (!draftHasContent(drafts.active)) {
       drafts.active = { ...submitted, id: drafts.active.id, updatedAt: Date.now() };
     } else if (draftHasContent(submitted)) {
       const parked = { ...submitted, id: crypto.randomUUID(), updatedAt: Date.now() };
       drafts.parked.set(parked.id, parked);
     }
+
     this.#emit();
   }
 
   #draftState(paneId: PaneId): PaneDraftState {
     const current = this.#drafts.get(paneId);
+
     if (current !== undefined) return current;
     const created = { active: this.#createDraft(), parked: new Map<string, ChatDraft>() };
     this.#drafts.set(paneId, created);
+
     return created;
   }
 
@@ -398,9 +444,12 @@ export class SessionViewStateStore {
       if (state.active.id === draftId) {
         return { kind: "active", paneId, draft: state.active };
       }
+
       const parked = state.parked.get(draftId);
+
       if (parked !== undefined) return { kind: "parked", paneId, draft: parked };
     }
+
     return undefined;
   }
 
@@ -421,9 +470,11 @@ export class SessionViewStateStore {
    */
   #trimMeasurements(): void {
     let measured = 0;
+
     for (const [id, state] of [...this.#sessions].toReversed()) {
       if (state.transcript.measurements.length === 0) continue;
       measured += 1;
+
       if (measured <= MEASURED_SESSIONS) continue;
       this.#sessions.set(id, {
         ...state,
@@ -434,27 +485,37 @@ export class SessionViewStateStore {
 
   #restore(): void {
     const persistence = this.#persistence;
+
     if (persistence === undefined) return;
     let raw: string | null = null;
+
     try {
       raw = persistence.storage.getItem(persistence.storageKey);
     } catch {
       return;
     }
+
     const persisted = parsePersistedSnapshot(raw);
+
     if (persisted === undefined) return;
+
     for (const paneId of ["primary", "secondary"] as const) {
       const stored = persisted.panes[paneId];
+
       if (stored === undefined) continue;
       const parked = new Map<string, ChatDraft>();
+
       for (const storedDraft of stored.parked) {
         const draft = hydrateDraft(storedDraft);
+
         if (draftHasContent(draft) && draft.id !== stored.active.id) {
           parked.set(draft.id, draft);
         }
       }
+
       this.#drafts.set(paneId, { active: hydrateDraft(stored.active), parked });
     }
+
     for (const [id, composer] of Object.entries(persisted.sessions)) {
       if (composer.draft.trim() === "") continue;
       this.#sessions.set(sessionId(id), {
@@ -471,17 +532,22 @@ export class SessionViewStateStore {
 
   #persist(): void {
     const persistence = this.#persistence;
+
     if (persistence === undefined) return;
     const panes: PersistedSnapshot["panes"] = {};
     const primary = this.#drafts.get("primary");
     const secondary = this.#drafts.get("secondary");
+
     if (primary !== undefined) panes.primary = persistablePane(primary);
+
     if (secondary !== undefined) panes.secondary = persistablePane(secondary);
     const sessions: PersistedSnapshot["sessions"] = {};
+
     for (const [id, state] of this.#sessions) {
       if (state.composer.draft.trim() === "") continue;
       sessions[id] = persistableComposer(state.composer);
     }
+
     try {
       persistence.storage.setItem(
         persistence.storageKey,
@@ -497,8 +563,10 @@ export class SessionViewStateStore {
       clearTimeout(this.#publishTimer);
       this.#publishTimer = undefined;
     }
+
     this.#persist();
     this.#revision += 1;
+
     for (const listener of this.#listeners) listener();
   }
 }

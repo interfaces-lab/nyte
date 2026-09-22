@@ -55,6 +55,7 @@ import type { WorkbenchChangesScope } from "./controller.ts";
 
 /** One page of history, and how deep the menu will page before it stops offering more. */
 const COMMIT_PAGE_SIZE = 20;
+
 const MAX_COMMIT_PAGES = 10;
 
 /** The repository a scope is read against; absent outside a Git working tree. */
@@ -88,13 +89,18 @@ export function changesShortcutAction(
   mac: boolean,
 ): ChangesShortcutAction | undefined {
   if (event.isComposing || event.defaultPrevented) return undefined;
+
   if (event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey) {
     return event.code === "Semicolon" ? "ignore-whitespace" : undefined;
   }
+
   if (event.altKey || event.shiftKey) return undefined;
+
   if (mac ? !event.metaKey || event.ctrlKey : !event.ctrlKey || event.metaKey) return undefined;
   const key = event.key.toLowerCase();
+
   if (key === "f") return "filter-files";
+
   return key === "r" ? "refresh" : undefined;
 }
 
@@ -213,6 +219,7 @@ export function ChangeStats({
   readonly removed: number;
 }): ReactElement | null {
   if (added === 0 && removed === 0) return null;
+
   return (
     <span
       aria-label={`${String(added)} added, ${String(removed)} removed`}
@@ -242,7 +249,9 @@ function ScopeMeta({
 }): ReactElement | null {
   if (stats !== undefined && (stats.added > 0 || stats.removed > 0))
     return <ChangeStats {...stats} />;
+
   if (fileCount === undefined) return null;
+
   return (
     <span {...stylex.props(styles.scopeCount)}>
       {String(fileCount)} {fileCount === 1 ? "file" : "files"}
@@ -293,7 +302,9 @@ function diffRead(
   ignoreWhitespace: boolean,
 ): VcsDiffRead | undefined {
   const request = diffRequestForScope(scope, { ignoreWhitespace });
+
   if (repository === undefined || request === undefined) return undefined;
+
   return { ...repository, request };
 }
 
@@ -312,20 +323,25 @@ function WorkingTreeScopeItems({
   readonly ignoreWhitespace: boolean;
 }): ReactElement {
   const enabled = repository !== undefined;
+
   const uncommitted = useVcsDiff(
     diffRead(repository, { kind: "uncommitted" }, ignoreWhitespace),
     enabled,
   );
+
   const staged = useVcsDiff(diffRead(repository, { kind: "staged" }, ignoreWhitespace), enabled);
+
   const unstaged = useVcsDiff(
     diffRead(repository, { kind: "unstaged" }, ignoreWhitespace),
     enabled,
   );
+
   const options = workingTreeScopeOptions(snapshot, {
     uncommitted: uncommitted.data,
     staged: staged.data,
     unstaged: unstaged.data,
   });
+
   return (
     <>
       {options.map((option) => (
@@ -351,13 +367,16 @@ function CommitScopeItems({
   readonly page: number;
 }): ReactElement {
   const [showNextPage, setShowNextPage] = useState(false);
+
   const log = useVcsLog(
     before === undefined ? { limit: COMMIT_PAGE_SIZE } : { limit: COMMIT_PAGE_SIZE, before },
     repository !== undefined,
   );
+
   const commits = log.data?.commits ?? [];
   const oldest = commits.at(-1);
   const hasMore = log.data?.hasMore === true && oldest !== undefined && page < MAX_COMMIT_PAGES;
+
   return (
     <>
       {page === 1 && commits.length === 0 && (
@@ -399,13 +418,19 @@ function branchDescription(branch: BranchReadout): string {
       return `On branch ${branch.label}, no commits yet`;
     case "attached": {
       const parts = [`On branch ${branch.label}`];
+
       if (branch.upstream !== null) parts.push(`tracking ${branch.upstream}`);
+
       if (branch.ahead > 0) parts.push(`${String(branch.ahead)} ahead`);
+
       if (branch.behind > 0) parts.push(`${String(branch.behind)} behind`);
+
       return parts.join(", ");
     }
+
     default: {
       const _exhaustive: never = branch;
+
       return _exhaustive;
     }
   }
@@ -414,6 +439,7 @@ function branchDescription(branch: BranchReadout): string {
 /** HEAD as it stands. Reading only: no checkout, no fetch, no branch switch. */
 function BranchReadoutChip({ branch }: { readonly branch: BranchReadout }): ReactElement {
   const description = branchDescription(branch);
+
   return (
     <span aria-label={description} title={description} {...stylex.props(styles.branch)}>
       <Icon name={branch.kind === "detached" ? "git" : "git-branch"} size={12} />
@@ -483,12 +509,14 @@ export function ChangesToolbar({
   const selectedTurnId = scope.kind === "turn" ? scope.turnId : undefined;
   const visibleTurns = visibleTurnOptions(turnOptions, showAllTurns, selectedTurnId);
   const hasEmptyTurns = turnOptions.some((option) => !turnHasChanges(option));
+
   const commitReads: ReadonlyMap<string, ChangeScopeRead> =
     scope.kind === "commit" && scopeStats !== undefined
       ? new Map([
           [scope.oid, { kind: "ready", stats: scopeStats, fileCount: scopeFileCount } as const],
         ])
       : new Map();
+
   const selectScope = (value: string): void => {
     for (const candidate of [
       ...workingTreeScopeOptions(snapshot).map((option) => option.scope),
@@ -496,10 +524,13 @@ export function ChangesToolbar({
     ]) {
       if (changesScopeValue(candidate) === value) {
         onScopeChange(candidate);
+
         return;
       }
     }
+
     const commit = value.startsWith("commit:") ? value.slice("commit:".length) : undefined;
+
     if (commit !== undefined && commit !== "") onScopeChange({ kind: "commit", oid: commit });
   };
 

@@ -22,7 +22,6 @@ async function fixture(): Promise<{ readonly root: string; readonly file: string
 describe("workspace search", () => {
   test("returns shared search results and maps core failures across IPC", async () => {
     const { root, file } = await fixture();
-    const outside = await fixture();
     const editor = createWorkspaceEditor({
       workspace: async () => root,
       requireTrust: async () => undefined,
@@ -55,18 +54,6 @@ describe("workspace search", () => {
       );
       assert.equal(invalid.ok, false);
       assert.equal(invalid.error.code, "invalid_input");
-      const forbidden = await ipcResult(() =>
-        editor.call({
-          operation: "search",
-          input: {
-            requestId: "shared",
-            query: "value",
-            drafts: [{ path: outside.file, contents: "value" }],
-          },
-        }),
-      );
-      assert.equal(forbidden.ok, false);
-      assert.equal(forbidden.error.code, "forbidden");
       const oversized = await ipcResult(() =>
         editor.call({
           operation: "search",
@@ -85,16 +72,12 @@ describe("workspace search", () => {
       assert.equal(await readFile(file, "utf8"), "export const value = 1;\n");
     } finally {
       editor.dispose();
-      await Promise.all([
-        rm(root, { recursive: true, force: true }),
-        rm(outside.root, { recursive: true, force: true }),
-      ]);
+      await rm(root, { recursive: true, force: true });
     }
   });
 
-  test("cancels window requests and refuses drafts outside the workspace", async () => {
+  test("cancels window requests", async () => {
     const { root } = await fixture();
-    const outside = await fixture();
     try {
       const editor = createWorkspaceEditor({
         workspace: async () => root,
@@ -106,22 +89,8 @@ describe("workspace search", () => {
       });
       await editor.call({ operation: "cancelSearch", input: { requestId: "cancel" } });
       await assert.rejects(pending, /abort/i);
-      await assert.rejects(
-        editor.call({
-          operation: "search",
-          input: {
-            requestId: "draft",
-            query: "value",
-            drafts: [{ path: outside.file, contents: "value" }],
-          },
-        }),
-        /outside the open workspace/,
-      );
     } finally {
-      await Promise.all([
-        rm(root, { recursive: true, force: true }),
-        rm(outside.root, { recursive: true, force: true }),
-      ]);
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

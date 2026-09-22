@@ -141,6 +141,7 @@ const repaints = new WeakMap<Renderable, () => void>();
 
 export function repaintTree(root: Renderable): void {
   repaints.get(root)?.();
+
   for (const child of root.getChildren()) repaintTree(child);
 }
 
@@ -170,6 +171,7 @@ class TranscriptMarkdownRenderable extends MarkdownRenderable {
 
   override set streaming(value: boolean) {
     super.streaming = value;
+
     if (!value) this.showPendingText(this);
   }
 
@@ -177,16 +179,21 @@ class TranscriptMarkdownRenderable extends MarkdownRenderable {
   retheme(theme: CliTheme, style: SyntaxStyle, subtle: boolean): void {
     const previous = this.syntaxStyle;
     const colors = new Map<string, RGBA>();
+
     for (const [name, old] of previous.getAllStyles()) {
       const next = style.getStyle(name)?.fg;
+
       if (old.fg !== undefined && next !== undefined) colors.set(old.fg.toString(), next);
     }
+
     const tint = (chunk: TextChunk): TextChunk => ({
       ...chunk,
       fg: chunk.fg === undefined ? undefined : (colors.get(chunk.fg.toString()) ?? chunk.fg),
     });
+
     this.syntaxStyle = style;
     this.fg = subtle ? theme.dim : theme.foreground;
+
     const paint = (node: Renderable): void => {
       if (node instanceof CodeRenderable) {
         node.syntaxStyle = style;
@@ -201,13 +208,16 @@ class TranscriptMarkdownRenderable extends MarkdownRenderable {
       } else if (node instanceof TextTableRenderable) {
         const selected = node.hasSelection();
         node.content = node.content.map((row) => row.map((cell) => cell?.map(tint)));
+
         // TextTable's public content setter replaces cell buffers, not its owner.
         if (selected) node.onSelectionChanged(this.ctx.getSelection());
         node.borderColor = theme.dim;
       } else if (node instanceof BoxRenderable && node.border !== false)
         node.borderColor = theme.dim;
+
       for (const child of node.getChildren()) paint(child);
     };
+
     for (const child of this.getChildren()) paint(child);
     this.requestRender();
   }
@@ -219,9 +229,11 @@ class TranscriptMarkdownRenderable extends MarkdownRenderable {
     for (const child of parent.getChildren()) {
       if (child instanceof TextBufferRenderable && !bufferWidths.has(child))
         bufferWidths.set(child, this.ctx.widthMethod);
+
       if (child instanceof CodeRenderable) {
         if (!child.drawUnstyledText) child.drawUnstyledText = true;
         const previous = child.onChunks;
+
         if (previous !== highlightSources.get(child)?.callback) {
           const callback: NonNullable<CodeRenderable["onChunks"]> = async (chunks, context) => {
             const result = (await previous?.(chunks, context)) ?? chunks;
@@ -231,12 +243,15 @@ class TranscriptMarkdownRenderable extends MarkdownRenderable {
               text: result.map((chunk) => chunk.text).join(""),
               highlights: context.highlights,
             });
+
             return result;
           };
+
           highlightSources.set(child, { callback, source: "", text: "", highlights: [] });
           child.onChunks = callback;
         }
       }
+
       this.showPendingText(child);
     }
   }
@@ -248,7 +263,9 @@ function prepareDiagram(source: string) {
     throw new RangeError("Diagram is too large");
   const text = renderMermaidASCII(source, { colorMode: "none", paddingX: 3, paddingY: 2 });
   const lines = text.split("\n");
+
   if (lines.length > 300 || text.length > 100_000) throw new RangeError("Diagram is too large");
+
   return { source, text, height: lines.length, width: Math.max(1, ...lines.map(displayWidth)) };
 }
 
@@ -262,18 +279,21 @@ class StaticDiagramRenderable extends BoxRenderable {
     disclosures?: Map<string, boolean>,
   ) {
     super(renderer, { flexDirection: "column", width: "100%" });
+
     const toggle = new TranscriptTextRenderable(renderer, {
       content: "mermaid · click for source",
       fg: theme.dim,
       selectable: false,
       height: 1,
     });
+
     const viewport = new ScrollBoxRenderable(renderer, {
       width: "100%",
       height: Math.min(prepared.height + 1, 24),
       scrollX: true,
       scrollY: true,
     });
+
     viewport.add(
       new TranscriptTextRenderable(renderer, {
         content: prepared.text,
@@ -286,6 +306,7 @@ class StaticDiagramRenderable extends BoxRenderable {
     );
     source.visible = disclosures?.get(disclosure()) ?? false;
     viewport.visible = !source.visible;
+
     if (source.visible) toggle.content = "mermaid · click for diagram";
     toggle.onMouseUp = (event) => {
       if (event.button !== 0 || renderer.getSelection()?.getSelectedText()) return;
@@ -298,8 +319,10 @@ class StaticDiagramRenderable extends BoxRenderable {
       event.preventDefault();
       event.stopPropagation();
     };
+
     repaints.set(this, () => {
       toggle.fg = theme.dim;
+
       for (const child of viewport.getChildren()) {
         if (!(child instanceof TextRenderable)) continue;
         child.fg = theme.foreground;
@@ -322,14 +345,19 @@ function createMermaidCodeBlockRenderer(
   // One renderer serves one markdown renderable, so block ids stay bounded and
   // the map dies with it.
   const lastGood = new Map<string, ReturnType<typeof prepareDiagram>>();
+
   return (token, context) => {
     const source = context.defaultRender();
+
     if (source === null) return undefined;
+
     const disclosure = (): string =>
       `${partKey.key}:${source.id.slice(source.id.lastIndexOf("-block-"))}`;
+
     try {
       const prepared = prepareDiagram(token.text);
       lastGood.set(source.id, prepared);
+
       return new StaticDiagramRenderable(
         renderer,
         theme,
@@ -340,7 +368,9 @@ function createMermaidCodeBlockRenderer(
       );
     } catch {
       const previous = lastGood.get(source.id);
+
       if (previous === undefined) return undefined;
+
       return new StaticDiagramRenderable(
         renderer,
         theme,
@@ -370,12 +400,14 @@ function rekeyDisclosures(
   disclosures: Transcript["disclosures"],
 ): void {
   if (key.key === next) return;
+
   // Rekey a snapshot: inserting into the live Map also extends its iterator.
   for (const [name, value] of Array.from(disclosures ?? [])) {
     if (!name.startsWith(`${key.key}:`)) continue;
     disclosures?.set(`${next}${name.slice(key.key.length)}`, value);
     disclosures?.delete(name);
   }
+
   key.key = next;
 }
 
@@ -388,19 +420,24 @@ function syncDiffGutters(diffs: readonly DiffRenderable[]): void {
   const gutters = diffs.flatMap((diff) =>
     diff.getChildren().filter((child) => child instanceof LineNumberRenderable),
   );
+
   const numbers = gutters.map((gutter) => new Map(gutter.getLineNumbers()));
   const digits = numbers.map((lines) => Math.max(0, ...lines.values()).toString().length);
+
   const after = gutters.map((gutter) =>
     Math.max(
       0,
       ...[...gutter.getLineSigns().values()].map((sign) => displayWidth(sign.after ?? "")),
     ),
   );
+
   const maxDigits = Math.max(0, ...digits);
   const maxAfter = Math.max(0, ...after);
+
   for (const [index, gutter] of gutters.entries()) {
     const lineNumbers = numbers[index];
     const lineDigits = digits[index];
+
     if (lineNumbers === undefined || lineDigits === undefined) continue;
     const signs = new Map(gutter.getLineSigns());
     signs.set(-1, { after: " ".repeat(maxAfter + maxDigits - lineDigits) });
@@ -421,17 +458,21 @@ const WORD_SPAN_LIMIT = 4_000;
 export function wordSpans(content: string, pair: ChangedLinePair): SimpleHighlight[] {
   if (pair.removed.length + pair.added.length > WORD_SPAN_LIMIT) return [];
   const rows = content.split("\n");
+
   if (rows[pair.row] !== pair.removed || rows[pair.row + 1] !== pair.added) return [];
   const removedStart = rows.slice(0, pair.row).reduce((sum, row) => sum + row.length + 1, 0);
   const addedStart = removedStart + pair.removed.length + 1;
   const spans: SimpleHighlight[] = [];
   let removedOffset = removedStart;
   let addedOffset = addedStart;
+
   for (const change of diffWordsWithSpace(pair.removed, pair.added)) {
     const offset = change.added ? addedOffset : removedOffset;
+
     if (change.added || change.removed) {
       const leading = change.value.length - change.value.trimStart().length;
       const trailing = change.value.length - change.value.trimEnd().length;
+
       if (leading + trailing < change.value.length)
         spans.push([
           offset + leading,
@@ -439,9 +480,12 @@ export function wordSpans(content: string, pair: ChangedLinePair): SimpleHighlig
           change.added ? "diff.plus" : "diff.minus",
         ]);
     }
+
     if (!change.added) removedOffset += change.value.length;
+
     if (!change.removed) addedOffset += change.value.length;
   }
+
   return spans;
 }
 
@@ -452,6 +496,7 @@ function markChangedWords(diff: DiffRenderable, pair: ChangedLinePair): void {
     .filter((child) => child instanceof LineNumberRenderable)
     .flatMap((gutter) => gutter.getChildren())
     .find((child) => child instanceof CodeRenderable);
+
   if (code === undefined) return;
   code.onHighlight = (highlights, context) => [...highlights, ...wordSpans(context.content, pair)];
 }
@@ -464,26 +509,33 @@ function previewCut(toolClass: ToolTurnPart["class"] | undefined): PreviewCut {
 
 function inlineToolPreview(text: string): string | undefined {
   const value = text.trim();
+
   if (value === "" || value.includes("\n") || displayWidth(value) > TOOL_INLINE_PREVIEW_LENGTH) {
     return undefined;
   }
+
   return value;
 }
 
 /** The collapsed body of a tool card or thought; the cut's label names the key that expands it. */
 function toolOutputPreview(text: string, expanded: boolean, cut: PreviewCut): string {
   const trimmed = text.replace(/\n+$/u, "");
+
   if (expanded || trimmed === "") return trimmed;
   const preview = previewLines(trimmed, cut);
+
   if (preview.omitted === 0) return preview.text;
+
   const omission =
     cut.kind === "tail" ? earlierLinesLabel(preview.omitted) : omittedLabel(preview.omitted);
+
   return preview.text.replace(omission, `${omission} · ${keycap("chat.tools.toggle")} expand`);
 }
 
 /** Highlight groups, named as the shipped grammars emit them. */
 function syntaxStyle(theme: CliTheme, subtle: boolean): SyntaxStyle {
   const color = (value: string): string => (subtle ? theme.dim : value);
+
   return SyntaxStyle.fromStyles({
     default: { fg: color(theme.foreground) },
     markup: { fg: color(theme.foreground) },
@@ -551,12 +603,15 @@ export class ToolOutputExpansion {
   register(card: ExpandableToolOutput): () => void {
     this.cards.add(card);
     card.setExpanded(this.current);
+
     return () => this.cards.delete(card);
   }
 
   toggle(): boolean {
     this.current = !this.current;
+
     for (const card of this.cards) card.setExpanded(this.current);
+
     return this.current;
   }
 }
@@ -569,6 +624,7 @@ class TranscriptDisclosures extends Map<string, boolean> {
     if (this.get(key) === value) return this;
     super.set(key, value);
     this.revision += 1;
+
     return this;
   }
 }
@@ -631,8 +687,10 @@ function section(
     marginRight: options.marginRight ?? 0,
     width: options.width ?? "100%",
   });
+
   if (before === undefined) parent.add(box);
   else parent.insertBefore(box, before);
+
   return box;
 }
 
@@ -642,15 +700,18 @@ function label(transcript: Transcript, text: string, color: string): TextRendera
     content: text,
     fg: color,
   });
+
   repaints.set(line, () => {
     line.fg = transcript.theme.dim;
   });
+
   return line;
 }
 
 /** Hold a streamed heading marker until its text arrives. */
 function hasIncompleteHeadingPrefix(text: string): boolean {
   const line = text.slice(text.lastIndexOf("\n") + 1);
+
   return /^\s{0,3}#{1,6}\s*$/.test(line);
 }
 
@@ -680,31 +741,41 @@ function userPresentation(content: UserMessage["content"]): UserPresentation {
   let text = Array.isArray(content)
     ? content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
     : content;
+
   // Instructions the prompt pulled in are the skill, not the prompt; an
   // attached body is the file, not the prompt. Both fold back to their tag.
   const skills: PresentedSkill[] = [];
+
   for (const invocation of extractSkillInvocations(text)) {
     skills.push({ name: invocation.name, path: invocation.path });
     text = text.replace(invocation.source, "");
   }
+
   const files: PresentedFile[] = [];
+
   for (const attachment of extractFileAttachments(text)) {
     files.push({ path: attachment.path, text: attachment.text });
     text = text.replace(attachment.source, "");
   }
+
   for (const mention of extractFileMentions(text)) {
     files.push({ path: mention.path });
     text = text.replace(mention.source, "");
   }
+
   const shells: ShellRun[] = [];
+
   for (const block of extractShellBlocks(text)) {
     shells.push({ command: block.command, output: block.output, exitCode: block.exitCode });
     text = text.replace(block.source, "");
   }
+
   const images = Array.isArray(content)
     ? content.flatMap((part) => (part.type === "image" ? [part] : []))
     : [];
+
   if (images.length > 0) text = text.replace(/\[Image \d+\]/g, "");
+
   return {
     text: text
       .replace(/[ \t]{2,}/g, " ")
@@ -732,6 +803,7 @@ function collapsedTag(
 ): TextRenderable {
   const { renderer, theme } = transcript;
   let hovered = false;
+
   const tag = new TranscriptTextRenderable(renderer, {
     id: transcript.nextId("tag"),
     content: "",
@@ -740,33 +812,40 @@ function collapsedTag(
     wrapMode: "none",
     marginTop: options.marginTop ?? 0,
   });
+
   const paint = (): void => {
     tag.content = new StyledText([fg(theme.pasteForeground)(options.label())]);
     tag.bg = hovered ? theme.hover : theme.pasteBackground;
   };
+
   tag.onMouseOver = () => {
     hovered = true;
     paint();
   };
+
   tag.onMouseOut = () => {
     hovered = false;
     paint();
   };
+
   tag.onMouseUp = (event) => {
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
     const selected = renderer.getSelection()?.getSelectedText() ?? "";
+
     if (selected !== "") return;
     options.onToggle();
     paint();
   };
+
   repaints.set(tag, () => {
     tag.fg = theme.pasteForeground;
     paint();
   });
   paint();
   parent.add(tag);
+
   return tag;
 }
 
@@ -775,6 +854,7 @@ function addUserText(transcript: Transcript, block: BoxRenderable, text: string)
   const folded = lines.length > PASTE_COLLAPSE_LINES;
   const preview = lines.slice(0, PASTE_PREVIEW_LINES).join("\n");
   let expanded = transcript.disclosures?.get(`user:${text}`) ?? false;
+
   const body = new TranscriptTextRenderable(transcript.renderer, {
     id: transcript.nextId("user-text"),
     content: folded && !expanded ? preview : text,
@@ -783,12 +863,14 @@ function addUserText(transcript: Transcript, block: BoxRenderable, text: string)
     selectionBg: transcript.theme.selectionBackground,
     selectionFg: transcript.theme.selectionForeground,
   });
+
   repaints.set(body, () => {
     body.fg = transcript.theme.foreground;
     body.selectionBg = transcript.theme.selectionBackground;
     body.selectionFg = transcript.theme.selectionForeground;
   });
   block.add(body);
+
   if (!folded) return;
   const hidden = lines.length - PASTE_PREVIEW_LINES;
   collapsedTag(transcript, block, {
@@ -809,15 +891,19 @@ function addFileTag(
   file: PresentedFile,
 ): void {
   const { path, text } = file;
+
   if (text === undefined) {
     collapsedTag(transcript, tags, {
       url: pathToFileURL(path).href,
       label: () => ` File ${basename(path)} `,
       onToggle: () => transcript.openPath(path),
     });
+
     return;
   }
+
   let open = transcript.disclosures?.get(`file:${path}`) ?? false;
+
   const body = new TranscriptCodeRenderable(transcript.renderer, {
     id: transcript.nextId("file-body"),
     content: text,
@@ -829,6 +915,7 @@ function addFileTag(
     selectionBg: transcript.theme.selectionBackground,
     selectionFg: transcript.theme.selectionForeground,
   });
+
   repaints.set(body, () => {
     body.syntaxStyle = transcript.syntaxStyle;
     body.fg = transcript.theme.foreground;
@@ -856,6 +943,7 @@ function addShellTag(
 ): void {
   const key = `shell:${run.command}:${run.output}`;
   let open = transcript.disclosures?.get(key) ?? false;
+
   const body = new TranscriptCodeRenderable(transcript.renderer, {
     id: transcript.nextId("shell-body"),
     content: run.output,
@@ -866,6 +954,7 @@ function addShellTag(
     selectionBg: transcript.theme.selectionBackground,
     selectionFg: transcript.theme.selectionForeground,
   });
+
   repaints.set(body, () => {
     body.syntaxStyle = transcript.syntaxStyle;
     body.fg = transcript.theme.foreground;
@@ -892,6 +981,7 @@ export function appendUser(
   before?: Renderable,
 ): BoxRenderable {
   const presentation = userPresentation(content);
+
   const block = section(
     transcript,
     "user",
@@ -908,11 +998,13 @@ export function appendUser(
     parent,
     before,
   );
+
   repaints.set(block, () => {
     block.backgroundColor = transcript.theme.userBackground;
   });
   transcript.userBlocks.add(block);
   block.once(RenderableEvents.DESTROYED, () => transcript.userBlocks.delete(block));
+
   if (presentation.text !== "") addUserText(transcript, block, presentation.text);
 
   const tags = new BoxRenderable(transcript.renderer, {
@@ -928,7 +1020,9 @@ export function appendUser(
       0,
     marginTop: presentation.text === "" ? 0 : 1,
   });
+
   block.add(tags);
+
   for (const skill of presentation.skills) {
     collapsedTag(transcript, tags, {
       url: pathToFileURL(skill.path).href,
@@ -936,8 +1030,11 @@ export function appendUser(
       onToggle: () => transcript.openPath(skill.path),
     });
   }
+
   for (const file of presentation.files) addFileTag(transcript, block, tags, file);
+
   for (const run of presentation.shells) addShellTag(transcript, block, tags, run);
+
   for (const [index, image] of presentation.images.entries()) {
     const preview = new ImageRenderable(transcript.renderer, {
       id: transcript.nextId("user-image"),
@@ -947,6 +1044,7 @@ export function appendUser(
       fit: "fit",
       visible: transcript.disclosures?.get(`image:${String(index)}`) ?? false,
     });
+
     collapsedTag(transcript, tags, {
       label: () => ` Image ${String(index + 1)} (${image.mimeType}) `,
       onToggle: () => {
@@ -956,6 +1054,7 @@ export function appendUser(
     });
     block.add(preview);
   }
+
   return block;
 }
 
@@ -985,14 +1084,17 @@ function appendNote(
         child.fg = color === undefined ? transcript.theme.dim : transcript.theme.error;
     }
   });
+
   return box;
 }
 
 function appendCard(transcript: Transcript, heading: string, summary: string): BoxRenderable {
   const { theme } = transcript;
   const preview = previewLines(summary, { kind: "head", max: 40 });
+
   const visibleSummary =
     preview.omitted === 0 ? preview.text : `${preview.text}\n${omittedLabel(preview.omitted)}`;
+
   const card = new BoxRenderable(transcript.renderer, {
     id: transcript.nextId("card"),
     flexDirection: "column",
@@ -1004,6 +1106,7 @@ function appendCard(transcript: Transcript, heading: string, summary: string): B
     marginTop: SPACING.block,
     width: "100%",
   });
+
   card.add(
     new TranscriptTextRenderable(transcript.renderer, {
       id: transcript.nextId("card-heading"),
@@ -1011,6 +1114,7 @@ function appendCard(transcript: Transcript, heading: string, summary: string): B
       wrapMode: "word",
     }),
   );
+
   if (visibleSummary !== "") {
     card.add(
       new TranscriptMarkdownRenderable(transcript.renderer, {
@@ -1028,15 +1132,19 @@ function appendCard(transcript: Transcript, heading: string, summary: string): B
       }),
     );
   }
+
   repaints.set(card, () => {
     card.borderColor = theme.promptBorder;
+
     for (const child of card.getChildren()) {
       if (child instanceof TextRenderable) child.content = new StyledText([fg(theme.dim)(heading)]);
+
       if (child instanceof TranscriptMarkdownRenderable)
         child.retheme(theme, transcript.subtleSyntaxStyle, true);
     }
   });
   transcript.container.add(card);
+
   return card;
 }
 
@@ -1053,17 +1161,23 @@ function appendMarker(transcript: Transcript, item: Exclude<Turn, { kind: "turn"
       return appendCard(transcript, "branch summary", item.body.text);
     case "config": {
       const parts: string[] = [];
+
       if (item.body.model !== undefined) {
         const { provider, id } = item.body.model;
         parts.push(`Model → ${provider === undefined ? id : `${provider}/${id}`}`);
       }
+
       if (item.body.thinkingLevel !== undefined)
         parts.push(`Thinking → ${item.body.thinkingLevel}`);
+
       if (item.body.agent !== undefined) parts.push(`Agent → ${item.body.agent}`);
+
       return appendNote(transcript, parts.join(" · "), undefined, transcript.container);
     }
+
     default: {
       const _exhaustive: never = item;
+
       return _exhaustive;
     }
   }
@@ -1143,6 +1257,7 @@ class AssistantPartBlock {
     if (text === this.buffer) return;
     this.buffer = text;
     this.box.visible = text.trim() !== "";
+
     if (!hasIncompleteHeadingPrefix(text)) this.markdown.content = text;
   }
 
@@ -1214,6 +1329,7 @@ class ReasoningBlock implements ExpandableToolOutput {
     this.box.add(this.markdown);
     const unregister = transcript.toolOutput.register(this);
     this.box.once(RenderableEvents.DESTROYED, unregister);
+
     if (settledText !== undefined) this.finish(settledText);
   }
 
@@ -1222,6 +1338,7 @@ class ReasoningBlock implements ExpandableToolOutput {
     if (text === this.buffer) return;
     this.buffer = text;
     this.box.visible = text.trim() !== "";
+
     if (!hasIncompleteHeadingPrefix(text)) this.markdown.content = text;
   }
 
@@ -1241,6 +1358,7 @@ class ReasoningBlock implements ExpandableToolOutput {
   /** A toggle mid-stream does nothing: `finish` is the only cut point. */
   setExpanded(expanded: boolean): void {
     this.expanded = expanded;
+
     if (this.markdown.streaming) return;
     this.markdown.content = this.preview();
   }
@@ -1311,6 +1429,7 @@ class ActivityBlock {
     repaints.set(this.line, () => this.paint());
     this.paint();
     this.spinner.visible = spins(mode);
+
     if (spins(mode)) this.spinner.start();
   }
 
@@ -1318,14 +1437,18 @@ class ActivityBlock {
   setMode(mode: ActivityMode, activity?: string): void {
     if (this.mode === "settled") return;
     const workingLabel = activity === undefined ? ACTIVITY_WORKING_LABEL : ` ${activity}`;
+
     if (this.mode === mode && this.workingLabel === workingLabel) return;
+
     // The wait for a run is not the run's time.
     if (this.mode === "unanswered") this.startedAt = performance.now();
     this.workingLabel = workingLabel;
     this.mode = mode;
+
     if (!spins(mode)) this.spinner.stop();
     this.spinner.visible = spins(mode);
     this.paint();
+
     if (spins(mode)) this.spinner.start();
   }
 
@@ -1336,16 +1459,21 @@ class ActivityBlock {
     this.spinner.stop();
     this.spinner.visible = false;
     this.mode = "settled";
+
     const paint = (): void => {
       if (failure === undefined) {
         const duration =
           elapsed >= MIN_REPORTED_DURATION_MS ? ` for ${formatDuration(elapsed)}` : "";
+
         this.line.content = new StyledText([fg(theme.dim)(`${ACTIVITY_WORKED_LABEL}${duration}`)]);
+
         return;
       }
+
       const notice = failureNotice(failure);
       this.line.content = new StyledText([fg(theme[notice.tone])(notice.text)]);
     };
+
     repaints.set(this.line, paint);
     paint();
   }
@@ -1357,6 +1485,7 @@ class ActivityBlock {
 
   private paint(): void {
     const { theme } = this.transcript;
+
     switch (this.mode) {
       case "working":
       case "compacting":
@@ -1364,27 +1493,33 @@ class ActivityBlock {
         this.line.content = new StyledText([
           fg(theme.dim)(this.mode === "compacting" ? " Compacting context…" : this.workingLabel),
         ]);
+
         return;
       case "thinking":
         this.spinner.color = theme.thinking;
         this.line.content = new StyledText([fg(theme.thinking)(ACTIVITY_THINKING_LABEL)]);
+
         return;
       case "waiting":
         this.line.content = new StyledText([
           fg(theme.warning)(`${GLYPHS.bullet}${ACTIVITY_WAITING_LABEL}`),
         ]);
+
         return;
       case "retrying":
         this.spinner.color = theme.warning;
         this.line.content = new StyledText([fg(theme.warning)(ACTIVITY_RETRY_LABEL)]);
+
         return;
       case "unanswered":
         this.line.content = "";
+
         return;
       case "settled":
         return;
       default: {
         const _exhaustive: never = this.mode;
+
         return _exhaustive;
       }
     }
@@ -1476,6 +1611,7 @@ class ToolCard {
     this.container.add(this.detail);
     repaints.set(this.container, () => this.retheme());
     const unregister = transcript.toolOutput.register(this);
+
     if (this.toolClass?.kind === "shell" && !this.completed) {
       this.timing = {
         kind: "running",
@@ -1483,11 +1619,13 @@ class ToolCard {
         ticker: setInterval(this.refreshHeading, 1000),
       };
     }
+
     this.container.once(RenderableEvents.DESTROYED, () => {
       this.destroyed = true;
       this.stopClock();
       unregister();
     });
+
     if (!this.expanded) this.render();
   }
 
@@ -1532,7 +1670,9 @@ class ToolCard {
     this.current = part;
     this.live = live;
     this.running = running;
+
     if (this.completed) this.stopClock();
+
     // A delegation's rows follow the child, which changes without this part.
     if (changed || this.window !== undefined) this.render();
   }
@@ -1546,8 +1686,10 @@ class ToolCard {
   private clock(): string | undefined {
     if (this.current.kind === "shell") {
       const until = this.current.state === "running" ? Date.now() : this.current.finishedAt;
+
       return formatDuration(Math.max(0, until - this.current.startedAt));
     }
+
     switch (this.timing?.kind) {
       case "running":
         return formatDuration(performance.now() - this.timing.startedAt);
@@ -1557,6 +1699,7 @@ class ToolCard {
         return undefined;
       default: {
         const _exhaustive: never = this.timing;
+
         return _exhaustive;
       }
     }
@@ -1564,15 +1707,20 @@ class ToolCard {
 
   private retheme(): void {
     const { theme } = this.transcript;
+
     if (this.current.kind === "shell") {
       this.detail.backgroundColor = theme.codeBackground;
       this.renderShell(this.current);
+
       return;
     }
+
     if (this.current.class.kind === "delegate") {
       this.renderDelegation(this.current.class);
+
       return;
     }
+
     const output = this.live?.text ?? "";
     this.headingState[1] =
       this.result === undefined
@@ -1585,6 +1733,7 @@ class ToolCard {
     this.refreshHeading();
     this.detail.backgroundColor = theme.codeBackground;
     const diffs: DiffRenderable[] = [];
+
     const paint = (node: Renderable): void => {
       if (node instanceof DiffRenderable) {
         node.syntaxStyle = this.transcript.syntaxStyle;
@@ -1599,8 +1748,10 @@ class ToolCard {
         node.selectionBg = theme.selectionBackground;
         node.selectionFg = theme.selectionForeground;
         diffs.push(node);
+
         return;
       }
+
       if (node instanceof CodeRenderable) {
         node.syntaxStyle = this.transcript.syntaxStyle;
         node.fg = this.result?.isError === true ? theme.error : theme.dim;
@@ -1608,9 +1759,12 @@ class ToolCard {
         node.selectionBg = theme.selectionBackground;
         node.selectionFg = theme.selectionForeground;
       }
+
       if (node instanceof TextRenderable) node.fg = theme.dim;
+
       for (const child of node.getChildren()) paint(child);
     };
+
     paint(this.detail);
     syncDiffGutters(diffs);
   }
@@ -1619,10 +1773,13 @@ class ToolCard {
     this.headingState = result === undefined ? [icon, color] : [icon, color, result];
     const { theme } = this.transcript;
     const chunks = [fg(color)(icon), ...this.headingTitle()];
+
     const tail = [result, this.clock(), this.note]
       .filter((value) => value !== undefined)
       .join(" · ");
+
     if (tail !== "") chunks.push(fg(theme.dim)(`  ${tail}`));
+
     return new StyledText(chunks);
   }
 
@@ -1633,22 +1790,28 @@ class ToolCard {
   private headingTitle(): TextChunk[] {
     const { theme, labelSyntax } = this.transcript;
     const title = this.title();
+
     const name =
       this.current.kind === "shell"
         ? this.note === undefined
           ? "!"
           : "!!"
         : toolLabel(this.current.class, this.phase());
+
     const plain = fg(theme.foreground)(` ${toolHeading(name, title)}`);
     const command = this.current.kind === "shell" || this.current.class.kind === "shell";
+
     if (!command || title === undefined) return [plain];
+
     const highlighted = labelSyntax.chunks(
       title,
       "bash",
       this.transcript.syntaxStyle,
       this.refreshHeading,
     );
+
     if (highlighted === undefined) return [plain];
+
     return [fg(theme.foreground)(` ${name} `), ...highlighted];
   }
 
@@ -1658,20 +1821,27 @@ class ToolCard {
 
   private title(): string | undefined {
     if (this.current.kind === "shell") return this.current.command;
+
     return toolSubject(this.current.class);
   }
 
   private render(): void {
     if (this.current.kind === "shell") {
       this.renderShell(this.current);
+
       return;
     }
+
     const { theme } = this.transcript;
+
     if (this.current.class.kind === "delegate") {
       this.renderDelegation(this.current.class);
+
       return;
     }
+
     const phase = this.phase();
+
     switch (phase) {
       case "running":
       case "interrupted": {
@@ -1683,18 +1853,24 @@ class ToolCard {
           phase === "running" && text !== "" ? theme.user : theme[mark.tone],
           inline ?? resultSummary(text),
         );
+
         if (inline !== undefined || text === "") this.clearBody();
         else this.showPreview(text, theme.dim);
+
         return;
       }
+
       case "failed":
         this.renderSettled(true);
+
         return;
       case "done":
         this.renderSettled(false);
+
         return;
       default: {
         const _exhaustive: never = phase;
+
         return _exhaustive;
       }
     }
@@ -1702,6 +1878,7 @@ class ToolCard {
 
   private renderShell(execution: ShellExecution): void {
     const { theme } = this.transcript;
+
     const mark = statusMark(
       execution.state === "running"
         ? "running"
@@ -1709,6 +1886,7 @@ class ToolCard {
           ? "done"
           : "failed",
     );
+
     const outcome =
       execution.state === "exited" && execution.exitCode !== 0
         ? `exit ${String(execution.exitCode)}`
@@ -1719,6 +1897,7 @@ class ToolCard {
             : execution.state === "failed"
               ? execution.message
               : undefined;
+
     this.heading.content = this.headingContent(
       mark.glyph,
       theme[mark.tone],
@@ -1736,16 +1915,22 @@ class ToolCard {
     if (this.current.kind !== "tool") return;
     const { theme } = this.transcript;
     const agents = this.transcript.tasks().flatMap((task) => (task.kind === "agent" ? [task] : []));
+
     const sessions =
       delegation.target.kind === "one" ? [delegation.target.session] : delegation.target.sessions;
+
     const tasks = sessions.map((session) =>
       agents.find((candidate) => candidate.state.sessionId === session),
     );
+
     const task = tasks[0];
+
     const name = tasks
       .map((candidate, index) => (candidate === undefined ? sessions[index] : taskLabel(candidate)))
       .join(", ");
+
     const phase = this.phase();
+
     if (delegation.role !== "create") {
       const mark = statusMark(phaseStatus(phase));
       this.heading.content = new StyledText([
@@ -1754,10 +1939,13 @@ class ToolCard {
         fg(theme.tool)(name),
       ]);
       this.clearBody();
+
       return;
     }
+
     const child = task?.state;
     const result = this.result;
+
     const status =
       result !== undefined
         ? result.isError
@@ -1766,10 +1954,13 @@ class ToolCard {
         : child === undefined
           ? "running"
           : runStatus(child.run);
+
     const mark = statusMark(status);
+
     const config = [child?.config.model?.id, child?.config.thinkingLevel]
       .filter((value) => value !== undefined)
       .join(" · ");
+
     this.heading.content = new StyledText([
       fg(theme[mark.tone])(`${mark.glyph} `),
       fg(theme.foreground)(`${toolLabel(delegation, phase)} `),
@@ -1787,19 +1978,25 @@ class ToolCard {
       });
       this.container.add(this.window);
     }
+
     const prompt = child === undefined ? undefined : taskPrompt(child);
+
     const steps = [
       ...(prompt === undefined ? [] : [{ status: "queued" as const, text: prompt }]),
       ...(child === undefined ? [] : taskSteps(child)),
     ].slice(-DELEGATION_ROWS);
+
     const rows: TextChunk[] = [];
+
     for (let index = 0; index < DELEGATION_ROWS; index += 1) {
       if (index > 0) rows.push(fg(theme.dim)("\n"));
       const step = steps[index];
+
       if (step === undefined) continue;
       const stepMark = statusMark(step.status);
       rows.push(fg(theme[stepMark.tone])(`${stepMark.glyph} `), fg(theme.dim)(step.text));
     }
+
     this.window.content = new StyledText(rows);
   }
 
@@ -1807,6 +2004,7 @@ class ToolCard {
     const { theme } = this.transcript;
     const output = this.result?.output ?? "";
     const toolClass = this.toolClass;
+
     if (toolClass?.kind === "file_patch" && !isError) {
       const { patch, path, added, removed } = toolClass;
       this.heading.content = this.headingContent(
@@ -1815,6 +2013,7 @@ class ToolCard {
         `+${String(added)} -${String(removed)}`,
       );
       const facts = parsePatchFacts(patch);
+
       if (facts === undefined) this.showPreview(patch, theme.dim);
       else
         this.showDiff({
@@ -1822,9 +2021,12 @@ class ToolCard {
           before: undefined,
           after: undefined,
         });
+
       return;
     }
+
     const outputDiff = isError ? undefined : diffFromOutput(output);
+
     if (outputDiff !== undefined) {
       const hunks = outputDiff.files.reduce((count, file) => count + file.sections.length, 0);
       this.heading.content = this.headingContent(
@@ -1833,20 +2035,26 @@ class ToolCard {
         `${String(hunks)} ${hunks === 1 ? "hunk" : "hunks"}`,
       );
       this.showDiff(outputDiff);
+
       return;
     }
+
     const inline = inlineToolPreview(output);
     const summary = inline ?? resultSummary(output);
+
     // A collapsed read names the file and its size without repeating its body.
     const collapsedRead =
       toolClass?.kind === "file_read" && !isError && !this.expanded && inline === undefined;
+
     const headingResult = collapsedRead
       ? [summary, `${keycap("chat.tools.toggle")} expand`]
           .filter((value) => value !== undefined)
           .join(" · ")
       : summary;
+
     const mark = statusMark(isError ? "failed" : "done");
     this.heading.content = this.headingContent(mark.glyph, theme[mark.tone], headingResult);
+
     if (collapsedRead || inline !== undefined) this.clearBody();
     else this.showPreview(output, isError ? theme.error : theme.dim);
   }
@@ -1860,17 +2068,23 @@ class ToolCard {
    */
   private showPreview(text: string, color: string): void {
     const preview = toolOutputPreview(text, this.expanded, previewCut(this.toolClass));
+
     if (this.structuredBodies.length > 0) this.clearBody();
+
     if (preview === "") {
       this.clearBody();
+
       return;
     }
+
     this.detail.visible = true;
     this.detail.paddingLeft = 2;
+
     const filetype =
       this.completed && this.toolClass?.kind === "file_read"
         ? pathToFiletype(this.toolClass.path)
         : undefined;
+
     if (this.textBody === undefined) {
       this.textBody = new TranscriptCodeRenderable(this.transcript.renderer, {
         id: this.transcript.nextId("tool-body"),
@@ -1891,6 +2105,7 @@ class ToolCard {
       if (filetype !== undefined && this.textBody.filetype !== filetype) {
         this.textBody.filetype = filetype;
       }
+
       this.textBody.content = preview;
       this.textBody.fg = color;
     }
@@ -1900,8 +2115,10 @@ class ToolCard {
     this.clearBody();
     this.detail.visible = true;
     this.detail.paddingLeft = 0;
+
     if (output.before !== undefined) this.addSupplementalPreview(output.before);
     const diffs: DiffRenderable[] = [];
+
     for (const file of output.files) {
       for (const hunk of file.sections) {
         if (hunk.omittedBefore > 0) {
@@ -1910,10 +2127,13 @@ class ToolCard {
             unchangedLinesLabel(hunk.omittedBefore),
             this.transcript.theme.dim,
           );
+
           this.detail.add(omitted);
           this.structuredBodies.push(omitted);
         }
+
         const filetype = file.path === undefined ? undefined : pathToFiletype(file.path);
+
         const diff = new DiffRenderable(this.transcript.renderer, {
           id: this.transcript.nextId("tool-diff"),
           diff: hunk.patch,
@@ -1936,25 +2156,31 @@ class ToolCard {
           minHeight: hunk.rows > 0 ? hunk.rows : undefined,
           width: "100%",
         });
+
         if (hunk.pair !== undefined) markChangedWords(diff, hunk.pair);
         this.detail.add(diff);
         this.structuredBodies.push(diff);
         diffs.push(diff);
       }
     }
+
     syncDiffGutters(diffs);
+
     if (output.after !== undefined) this.addSupplementalPreview(output.after);
   }
 
   private addSupplementalPreview(text: string): void {
     const preview = toolOutputPreview(text, this.expanded, previewCut(this.toolClass));
+
     if (preview === "") return;
+
     const panel = new BoxRenderable(this.transcript.renderer, {
       id: this.transcript.nextId("tool-output"),
       flexDirection: "column",
       paddingLeft: 2,
       width: "100%",
     });
+
     panel.add(
       new TranscriptCodeRenderable(this.transcript.renderer, {
         id: this.transcript.nextId("tool-output-body"),
@@ -1980,10 +2206,12 @@ class ToolCard {
       this.textBody.destroy();
       this.textBody = undefined;
     }
+
     for (const body of this.structuredBodies.splice(0)) {
       this.detail.remove(body);
       body.destroyRecursively();
     }
+
     this.detail.visible = false;
     this.detail.paddingLeft = 2;
   }
@@ -2043,42 +2271,55 @@ class TurnBlock {
   sync(turn: Extract<Turn, { kind: "turn" }> | undefined, status: TurnStatus): void {
     const progress = new Map<string, ToolProgress>();
     const running = status.kind === "open";
+
     if (status.kind === "open") {
       for (const part of status.live) {
         if (part.kind === "tool") progress.set(part.callId, part.progress);
       }
     }
+
     if (turn !== undefined && turn !== this.lastTurn) {
       this.durationMs = turn.durationMs;
+
       for (const part of turn.parts)
         this.syncPart(part, part.kind === "tool" ? progress.get(part.callId) : undefined, running);
       this.lastTurn = turn;
     }
+
     for (const [callId, card] of this.tools) {
       const part = card.part;
+
       if (part !== undefined) card.sync(part, progress.get(callId), running);
     }
+
     switch (status.kind) {
       case "open": {
         this.syncLive(status.live);
         this.ensureActivity().setMode(activityMode(status), this.runningActivity());
+
         return;
       }
+
       case "unanswered":
         this.syncLive([]);
         this.ensureActivity("unanswered").setMode("unanswered");
+
         return;
       case "compacting": {
         this.syncLive([]);
         this.ensureActivity().setMode("compacting");
+
         return;
       }
+
       case "settled":
         this.syncLive([]);
         this.settle(status.failure);
+
         return;
       default: {
         const _exhaustive: never = status;
+
         return _exhaustive;
       }
     }
@@ -2092,20 +2333,25 @@ class TurnBlock {
 
   private syncPart(part: TurnPart, progress: ToolProgress | undefined, running: boolean): void {
     const id = turnPartId(part);
+
     switch (part.kind) {
       case "user":
         if (this.settled.has(id)) return;
         this.settled.add(id);
         appendUser(this.transcript, part.content, this.root, this.contentAnchor());
+
         return;
       case "assistant": {
         if (this.settled.has(id)) return;
         this.settled.add(id);
         const adopted = this.adoptLive("text", part.contentIndex);
+
         if (adopted?.kind === "text") {
           adopted.block.finish(part.text, id);
+
           return;
         }
+
         void new AssistantPartBlock(
           this.transcript,
           this.root,
@@ -2113,33 +2359,46 @@ class TurnBlock {
           id,
           part.text,
         );
+
         return;
       }
+
       case "thinking": {
         if (this.settled.has(id)) return;
         this.settled.add(id);
         const adopted = this.adoptLive("thinking", part.contentIndex);
+
         if (adopted?.kind === "thinking") {
           adopted.block.finish(part.text, id);
+
           return;
         }
+
         void new ReasoningBlock(this.transcript, this.root, this.contentAnchor(), id, part.text);
+
         return;
       }
+
       case "tool": {
         const card = this.tools.get(part.callId);
+
         if (card === undefined) {
           this.tools.set(
             part.callId,
             new ToolCard(this.transcript, part, this.root, this.contentAnchor(), progress, running),
           );
+
           return;
         }
+
         card.sync(part, progress, running);
+
         return;
       }
+
       default: {
         const _exhaustive: never = part;
+
         return _exhaustive;
       }
     }
@@ -2154,52 +2413,65 @@ class TurnBlock {
     for (const [key, entry] of this.live) {
       if (entry.kind !== kind || entry.contentIndex !== contentIndex) continue;
       this.live.delete(key);
+
       return entry;
     }
+
     return undefined;
   }
 
   private syncLive(parts: readonly LivePart[]): void {
     const keep = new Set<string>();
+
     for (const part of parts) {
       const key = livePartKey(part);
       keep.add(key);
+
       switch (part.kind) {
         case "text": {
           const existing = this.live.get(key);
+
           if (existing?.kind === "text") {
             existing.block.set(part.text);
             break;
           }
+
           const block = new AssistantPartBlock(
             this.transcript,
             this.root,
             this.contentAnchor(),
             key,
           );
+
           block.set(part.text);
           this.live.set(key, { kind: "text", block, contentIndex: part.index });
           break;
         }
+
         case "thinking": {
           const existing = this.live.get(key);
+
           if (existing?.kind === "thinking") {
             existing.block.set(part.text);
             break;
           }
+
           const block = new ReasoningBlock(this.transcript, this.root, this.contentAnchor(), key);
           block.set(part.text);
           this.live.set(key, { kind: "thinking", block, contentIndex: part.index });
           break;
         }
+
         case "tool":
           break;
         default: {
           const _exhaustive: never = part;
+
           return _exhaustive;
         }
       }
     }
+
     for (const [key, entry] of this.live) {
       if (keep.has(key)) continue;
       this.live.delete(key);
@@ -2215,16 +2487,20 @@ class TurnBlock {
 
   private ensureActivity(initial: ActivityMode = "working"): ActivityBlock {
     this.activity ??= new ActivityBlock(this.transcript, this.root, this.durationMs, initial);
+
     return this.activity;
   }
 
   /** Tool calls still without a result, in call order. */
   private runningActivity(): string | undefined {
     const running: ToolTurnPart["class"][] = [];
+
     for (const card of this.tools.values()) {
       const part = card.part;
+
       if (part !== undefined && part.result === undefined) running.push(part.class);
     }
+
     return runningActivityLabel(running);
   }
 
@@ -2249,6 +2525,7 @@ function activityMode(status: Extract<TurnStatus, { kind: "open" }>): ActivityMo
       return "working";
     default: {
       const _exhaustive: never = status.phase;
+
       return _exhaustive;
     }
   }
@@ -2278,11 +2555,13 @@ function settledStatus(
   run: RunInfo | undefined,
 ): Extract<TurnStatus, { kind: "unanswered" | "settled" }> {
   const answered = run !== undefined && run.startedAt >= turn.startedAt;
+
   if (!answered) {
     return isRequestOnly(turn) && turn.failure === undefined
       ? { kind: "unanswered" }
       : { kind: "settled", failure: turn.failure };
   }
+
   switch (run.phase.kind) {
     case "aborted":
       return {
@@ -2299,6 +2578,7 @@ function settledStatus(
       return { kind: "settled", failure: turn.failure };
     default: {
       const _exhaustive: never = run.phase;
+
       return _exhaustive;
     }
   }
@@ -2384,9 +2664,11 @@ function concealChanges(source: string, highlights: SimpleHighlight[]): TextChan
     .toSorted(
       (left, right) => left.offset - right.offset || Number(left.start) - Number(right.start),
     );
+
   const active = new Set<number>();
   const changes: TextChange[] = [];
   let cursor = 0;
+
   for (const boundary of boundaries) {
     if (cursor < boundary.offset) {
       const conceal = [...active]
@@ -2398,11 +2680,13 @@ function concealChanges(source: string, highlights: SimpleHighlight[]): TextChan
               highlight[2] === "conceal" ||
               highlight[2].startsWith("conceal.")),
         );
+
       changes.push({
         value: source.slice(cursor, boundary.offset),
         removed: conceal !== undefined,
         added: false,
       });
+
       if (conceal !== undefined) {
         const replacement =
           conceal[3]?.conceal !== undefined
@@ -2410,15 +2694,19 @@ function concealChanges(source: string, highlights: SimpleHighlight[]): TextChan
             : conceal[2] === "conceal.with.space"
               ? " "
               : "";
+
         if (replacement !== "") changes.push({ value: replacement, added: true, removed: false });
       }
     }
+
     if (boundary.start) active.add(boundary.index);
     else active.delete(boundary.index);
     cursor = boundary.offset;
+
     if (boundary.start) continue;
     const highlight = highlights[boundary.index];
     const meta = highlight?.[3];
+
     if (
       (meta?.concealLines !== undefined && source[cursor] === "\n") ||
       (source[cursor] === " " &&
@@ -2429,8 +2717,10 @@ function concealChanges(source: string, highlights: SimpleHighlight[]): TextChan
       cursor += 1;
     }
   }
+
   if (cursor < source.length)
     changes.push({ value: source.slice(cursor), added: false, removed: false });
+
   return changes;
 }
 
@@ -2447,29 +2737,38 @@ const textMappings = new WeakMap<
 function textOffset(node: TextBufferRenderable, offset: number, toSource: boolean): number {
   if (!(node instanceof CodeRenderable) || node.content === node.plainText) return offset;
   let mapping = textMappings.get(node);
+
   if (mapping?.source !== node.content || mapping.text !== node.plainText) {
     const highlighted = highlightSources.get(node);
+
     const changes =
       node.conceal && highlighted?.source === node.content && highlighted.text === node.plainText
         ? concealChanges(highlighted.source, highlighted.highlights)
         : diffChars(node.content, node.plainText);
+
     mapping = { source: node.content, text: node.plainText, changes };
     textMappings.set(node, mapping);
   }
+
   let from = 0;
   let to = 0;
+
   for (const change of mapping.changes) {
     const removed = toSource ? change.added : change.removed;
     const added = toSource ? change.removed : change.added;
     const length = change.value.length;
+
     if (added) {
       to += length;
       continue;
     }
+
     if (offset < from + length) return to + (removed ? 0 : offset - from);
     from += length;
+
     if (!removed) to += length;
   }
+
   return to;
 }
 
@@ -2557,13 +2856,16 @@ export class TranscriptView {
 
   get openTurn(): TurnBlock | undefined {
     const last = this.mounted.get(this.lastTurnIndex);
+
     return last?.kind === "turn" ? last.block : this.liveTurn?.block;
   }
 
   /** Call after the owning shell updates its theme and syntax styles. */
   retheme(): void {
     this.pendingAnchor ??= this.anchor();
+
     for (const mounted of this.mounted.values()) repaintTree(mounted.root);
+
     if (this.liveTurn !== undefined) repaintTree(this.liveTurn.block.root);
     this.transcript.renderer.requestRender();
   }
@@ -2571,20 +2873,25 @@ export class TranscriptView {
   /** Progress replaces one card; only a new command changes transcript order. */
   syncShell(execution: ShellExecution, note: string | undefined): void {
     const state = this.state;
+
     if (state === undefined) return;
     const entry: ShellEntry = { kind: "shell", execution, note };
     this.shellEntries.set(execution.id, entry);
     const index = this.shellPositions.get(execution.id);
     const item = index === undefined ? undefined : this.items[index];
+
     if (index !== undefined && item !== undefined) {
       this.pendingAnchor ??= this.anchor();
       this.items[index] = { ...item, source: entry, item: entry };
       const mounted = this.mounted.get(index);
+
       if (mounted !== undefined) this.syncMounted(index, mounted);
       this.scheduleLayout();
       this.transcript.renderer.requestRender();
+
       return;
     }
+
     this.shellChanged = true;
     this.sync(state);
   }
@@ -2592,20 +2899,25 @@ export class TranscriptView {
   /** The turns and shell jobs in start order; a job goes before the first item that started after it. */
   private entries(source: readonly Turn[]): readonly (Turn | ShellEntry)[] {
     if (this.shellEntries.size === 0) return source;
+
     const jobs = [...this.shellEntries.values()].toSorted(
       (left, right) =>
         left.execution.startedAt - right.execution.startedAt ||
         left.execution.id.localeCompare(right.execution.id),
     );
+
     const merged: (Turn | ShellEntry)[] = [];
     let next = 0;
+
     for (const item of source) {
       while (next < jobs.length && entryTime(jobs[next] ?? item) < entryTime(item)) {
         merged.push(jobs[next] ?? item);
         next += 1;
       }
+
       merged.push(item);
     }
+
     return [...merged, ...jobs.slice(next)];
   }
 
@@ -2614,6 +2926,7 @@ export class TranscriptView {
     const source = state.transcript.items;
     const changed = previous?.transcript.items !== source || this.shellChanged;
     this.shellChanged = false;
+
     const reset =
       options.reset === true ||
       previous?.sessionId !== state.sessionId ||
@@ -2624,8 +2937,10 @@ export class TranscriptView {
           previous.transcript.items.some(
             (item, index) => itemKey(item) !== itemKey(source[index] ?? item),
           )));
+
     if (reset) this.clear();
     this.state = state;
+
     if (changed || reset) {
       this.pendingAnchor ??= this.anchor();
 
@@ -2633,14 +2948,18 @@ export class TranscriptView {
         this.shellEntries.size === 0
           ? undefined
           : new Map(this.items.map((item) => [item.key, item]));
+
       const next: TranscriptItem[] = [];
+
       for (const item of this.entries(source)) {
         const preceding = next.at(-1);
+
         // A config run is one display item, not one mounted node per commit.
         const merged =
           item.kind === "config" && preceding?.item.kind === "config"
             ? { ...item, body: { ...preceding.item.body, ...item.body } }
             : item;
+
         if (merged !== item) next.pop();
         const key = item.kind === "shell" ? `shell:${item.execution.id}` : itemKey(item);
         const candidate = old === undefined ? this.items[next.length] : old.get(key);
@@ -2657,9 +2976,11 @@ export class TranscriptView {
               },
         );
       }
+
       for (const [index, mounted] of this.mounted) {
         const before = this.items[index];
         const after = next[index];
+
         if (
           before?.key !== after?.key ||
           (mounted.kind === "marker" && before?.source !== after?.source)
@@ -2669,37 +2990,49 @@ export class TranscriptView {
           this.mounted.delete(index);
         }
       }
+
       this.items = next;
       this.shellPositions.clear();
       this.lastTurnIndex = -1;
+
       for (const [index, item] of next.entries()) {
         if (item.item.kind === "shell") this.shellPositions.set(item.item.execution.id, index);
         else if (item.item.kind === "turn" && item.source === source.at(-1))
           this.lastTurnIndex = index;
       }
+
       this.reindex();
     }
+
     this.reconcileWindow();
+
     if (changed || reset) {
       for (const [index, mounted] of this.mounted) this.syncMounted(index, mounted);
     } else {
       const last = this.mounted.get(this.lastTurnIndex);
+
       if (last !== undefined) this.syncMounted(this.lastTurnIndex, last);
     }
+
     const last = source.at(-1);
+
     if (state.compaction !== undefined && (!this.running() || last?.kind !== "turn")) {
       const key = `compaction:${state.compaction.id}`;
+
       if (this.liveTurn?.key !== key) {
         this.liveTurn?.block.remove();
         this.liveTurn = { key, block: new TurnBlock(this.transcript, key, 0) };
       }
+
       this.liveTurn.block.sync(undefined, { kind: "compacting" });
     } else if (this.running() && last?.kind !== "turn" && state.run !== undefined) {
       const key = `live:${state.run.runId}`;
+
       if (this.liveTurn?.key !== key) {
         this.liveTurn?.block.remove();
         this.liveTurn = { key, block: new TurnBlock(this.transcript, key, 0) };
       }
+
       this.liveTurn.block.sync(undefined, {
         kind: "open",
         phase: state.run.phase,
@@ -2710,6 +3043,7 @@ export class TranscriptView {
       this.liveTurn.block.remove();
       this.liveTurn = undefined;
     }
+
     if (reset) this.pendingAnchor = "bottom";
     this.scheduleLayout();
   }
@@ -2719,13 +3053,16 @@ export class TranscriptView {
     const indices = this.items.flatMap((item, index) => (item.item.kind === "turn" ? [index] : []));
     const selected = indices.findIndex((index) => this.items[index]?.key === this.navigationKey);
     const top = this.transcript.container.scrollTop;
+
     const index =
       selected >= 0
         ? indices[selected + (direction === "next" ? 1 : -1)]
         : direction === "next"
           ? indices.find((candidate) => this.offset(candidate) + SPACING.block > top)
           : indices.findLast((candidate) => this.offset(candidate) + SPACING.block < top);
+
     const item = index === undefined ? undefined : this.items[index];
+
     if (index === undefined || item === undefined) return false;
 
     this.setFollowMode("history");
@@ -2739,6 +3076,7 @@ export class TranscriptView {
     this.reconcileWindow(target);
     this.scheduleLayout();
     this.transcript.renderer.requestRender();
+
     return true;
   }
 
@@ -2777,12 +3115,15 @@ export class TranscriptView {
       mounted.root.parent?.remove(mounted.root);
       mounted.root.destroyRecursively();
     }
+
     this.mounted.clear();
     this.heights.clear();
+
     for (const spacer of this.spacers.splice(0)) {
       spacer.parent?.remove(spacer);
       spacer.destroy();
     }
+
     this.endNavigation();
     this.liveTurn?.block.remove();
     this.liveTurn = undefined;
@@ -2814,6 +3155,7 @@ export class TranscriptView {
    */
   private naturalHeight(): number {
     const measuredSlack = this.navigationSpacer.getLayoutNode().getComputedLayout().height || 0;
+
     return this.transcript.container.scrollHeight - measuredSlack;
   }
 
@@ -2821,6 +3163,7 @@ export class TranscriptView {
   private atBottom(): boolean {
     const scroll = this.transcript.container;
     const bottom = this.naturalHeight() + this.navigationSlack - scroll.viewport.height;
+
     return scroll.scrollTop >= Math.max(0, bottom) - 1;
   }
 
@@ -2834,11 +3177,15 @@ export class TranscriptView {
   /** Runs after OpenTUI moved the viewport, unless another owner took over meanwhile. */
   private readonly finishManualScroll = (): void => {
     if (this.followMode !== "history" || this.navigationKey !== undefined) return;
+
     if (this.transcript.container.isDestroyed) return;
+
     if (this.atBottom()) {
       this.returnToLatest();
+
       return;
     }
+
     this.pendingAnchor ??= this.captureReadingAnchor();
     this.reconcileWindow();
     this.scheduleLayout();
@@ -2861,17 +3208,21 @@ export class TranscriptView {
 
   private running(): boolean {
     const run = this.state?.run;
+
     return run !== undefined && !isTerminalPhase(run.phase);
   }
 
   private syncMounted(index: number, mounted: MountedItem): void {
     const item = this.items[index]?.item;
     const state = this.state;
+
     if (mounted.kind === "shell" && item?.kind === "shell") {
       mounted.card.sync(item.execution, undefined, false);
       mounted.card.setNote(item.note);
+
       return;
     }
+
     if (mounted.kind !== "turn" || item?.kind !== "turn" || state === undefined) return;
     const last = index === this.lastTurnIndex;
     mounted.block.sync(
@@ -2896,6 +3247,7 @@ export class TranscriptView {
   private reindex(start = 0): void {
     this.offsets.length = start + 1;
     this.offsets[0] = 0;
+
     for (let index = start; index < this.items.length; index += 1) {
       this.offsets.push(this.offset(index) + (this.items[index]?.height ?? 1));
     }
@@ -2904,18 +3256,23 @@ export class TranscriptView {
   private indexAt(row: number): number {
     let low = 0;
     let high = this.items.length;
+
     while (low < high) {
       const middle = Math.floor((low + high) / 2);
+
       if (this.offset(middle + 1) <= row) low = middle + 1;
       else high = middle;
     }
+
     return Math.min(low, Math.max(0, this.items.length - 1));
   }
 
   private anchor(): ReadingAnchor | "bottom" {
     if (this.followMode === "latest") return "bottom";
     const scroll = this.transcript.container;
+
     if (this.reading?.top === scroll.scrollTop) return this.reading.anchor;
+
     return this.captureReadingAnchor();
   }
 
@@ -2925,6 +3282,7 @@ export class TranscriptView {
     const row = scroll.scrollTop - this.offset(index);
     const root = this.mounted.get(index)?.root;
     const node = root === undefined ? undefined : this.visibleText(root);
+
     if (node === undefined) return { index, row };
     const visualRow = Math.max(0, scroll.viewport.y - node.y + node.scrollY);
     // Native line starts are absolute cell offsets, including preceding newlines.
@@ -2933,8 +3291,10 @@ export class TranscriptView {
     const text = node.plainText;
     const widthMethod = bufferWidths.get(node) ?? this.transcript.renderer.widthMethod;
     let offset = Math.min(column, text.length);
+
     if (!/^[\x20-\x7e\n]*$/.test(text)) {
       const buffer = TextBuffer.create(widthMethod);
+
       try {
         buffer.setText(text);
         offset = buffer.getTextRange(0, column).length;
@@ -2942,6 +3302,7 @@ export class TranscriptView {
         buffer.destroy();
       }
     }
+
     return {
       index,
       row,
@@ -2957,28 +3318,35 @@ export class TranscriptView {
   private visibleText(root: Renderable): TextBufferRenderable | undefined {
     if (!root.visible) return undefined;
     const top = this.transcript.container.viewport.y;
+
     if (root instanceof TextBufferRenderable && root.y <= top && root.y + root.height > top)
       return root;
+
     for (const child of root.getChildren()) {
       const node = this.visibleText(child);
+
       if (node !== undefined) return node;
     }
+
     return undefined;
   }
 
   private textTarget(anchor: ReadingAnchor, measured = false): number | undefined {
     const text = anchor.text;
+
     if (text === undefined || text.node.isDestroyed || !text.node.visible) return undefined;
     const node = text.node;
     const prefix = node.plainText.slice(0, textOffset(node, text.offset, false));
     const column = cellOffset(prefix, prefix.length, text.widthMethod, 4);
     const width = node.getLayoutNode().getComputedLayout().width;
     let info = node.lineInfo;
+
     // Yoga has measured the new width, but OpenTUI applies text viewports later.
     // Measure only this reading buffer before scroll translation is inherited.
     if (measured && width !== node.width) {
       const buffer = TextBuffer.create(text.widthMethod);
       const view = TextBufferView.create(buffer);
+
       try {
         buffer.setText(node.plainText);
         view.setWrapMode(node.wrapMode);
@@ -2989,8 +3357,10 @@ export class TranscriptView {
         buffer.destroy();
       }
     }
+
     const row = info.lineStartCols.findLastIndex((start) => start <= column);
     const scroll = this.transcript.container;
+
     return (
       scroll.scrollTop +
       (measured ? layoutY(node) - layoutY(scroll.viewport) : node.y - scroll.viewport.y) +
@@ -3002,16 +3372,21 @@ export class TranscriptView {
 
   private readonly restoreAnchor = (): void => {
     const anchor = this.pendingAnchor;
+
     if (anchor === undefined || anchor === "bottom") return;
     const scroll = this.transcript.container;
+
     const target =
       anchor.text === undefined ? this.indexTarget(anchor) : this.textTarget(anchor, true);
+
     if (target === undefined) return;
     // Apply the scroll ancestors first. Otherwise viewport resize clamps against
     // the old content height and falsely re-engages the native bottom pin.
     const ancestors: Renderable[] = [];
+
     for (let node: Renderable | null = scroll.content; node !== null; node = node.parent)
       ancestors.unshift(node);
+
     for (const node of ancestors) node.updateFromLayout();
     scroll.scrollTo(target);
   };
@@ -3023,8 +3398,10 @@ export class TranscriptView {
    */
   private indexTarget(anchor: ReadingAnchor): number {
     const root = this.mounted.get(anchor.index)?.root;
+
     if (root === undefined || !root.visible) return this.offset(anchor.index) + anchor.row;
     const scroll = this.transcript.container;
+
     return (
       scroll.scrollTop +
       layoutY(root) -
@@ -3042,6 +3419,7 @@ export class TranscriptView {
       this.pendingAnchor ??= this.anchor();
       this.reconcileWindow();
     }
+
     return Promise.resolve();
   };
 
@@ -3051,25 +3429,31 @@ export class TranscriptView {
     // FRAME is emitted inside the render pass; mutations there lose render requests.
     queueMicrotask(() => {
       this.queued = false;
+
       if (!this.transcript.container.isDestroyed && this.state !== undefined) this.layout();
     });
   };
 
   private layout(): void {
     const scroll = this.transcript.container;
+
     if (scroll.content.width <= 0 || scroll.viewport.height <= 0) return;
     this.changingLayout = true;
+
     try {
       const anchor = this.pendingAnchor ?? this.anchor();
       this.pendingAnchor = undefined;
       const geometry = `${String(scroll.content.width)}:${String(this.transcript.userBlockWidth())}:${String(this.transcript.toolOutput.expanded)}`;
       let firstChanged = this.items.length;
+
       if (geometry !== this.geometry) {
         this.geometry = geometry;
+
         for (const [index, item] of this.items.entries()) {
           const cached = this.heights.get(
             `${geometry}:${item.key}:${String(item.disclosures.revision)}`,
           );
+
           // A different width is an estimate until this item is mounted and measured.
           if (cached?.source === item.source && cached.height !== item.height) {
             item.height = cached.height;
@@ -3077,46 +3461,58 @@ export class TranscriptView {
           }
         }
       }
+
       for (const [index, mounted] of this.mounted) {
         const item = this.items[index];
+
         // A root just mounted outside a frame reads 0 until Yoga measures it;
         // its estimate must stand or every offset below it shifts for one frame.
         if (item === undefined || mounted.root.height === 0) continue;
         const height = mounted.root.height + SPACING.block;
+
         if (item.height !== height) {
           item.height = height;
           firstChanged = Math.min(firstChanged, index);
         }
+
         const key = `${geometry}:${item.key}:${String(item.disclosures.revision)}`;
         this.heights.delete(key);
         this.heights.set(key, { source: item.source, height });
       }
+
       while (this.heights.size > HEIGHT_CACHE_LIMIT) {
         const oldest = this.heights.keys().next();
+
         if (oldest.done) break;
         this.heights.delete(oldest.value);
       }
+
       // A growing live tail changes just the final offset, not the history prefix.
       if (firstChanged < this.items.length) this.reindex(firstChanged);
+
       if (this.navigationKey !== undefined) {
         const navigationIndex = this.items.findIndex(
           (item) => item.key === this.navigationKey && item.item.kind === "turn",
         );
+
         if (navigationIndex === -1) this.endNavigation();
         else
           this.setNavigationSlack(
             this.slackForTarget(this.offset(navigationIndex) + SPACING.block),
           );
       }
+
       // Rebase before deciding the window, otherwise newly measured overscan can
       // evict the very turn the reader was looking at.
       const target =
         anchor === "bottom"
           ? undefined
           : (this.textTarget(anchor) ?? this.offset(anchor.index) + anchor.row);
+
       this.reconcileWindow(
         target ?? Math.max(0, this.offset(this.items.length) - scroll.viewport.height),
       );
+
       if (anchor === "bottom") scroll.scrollTo(Infinity);
       else if (target !== undefined && target !== scroll.scrollTop) scroll.scrollTo(target);
       // beforeFrame re-reads this anchor, so a clamped target is retried before the next frame.
@@ -3134,12 +3530,14 @@ export class TranscriptView {
     const start = this.indexAt(Math.max(0, position - viewport));
     const end = this.indexAt(position + viewport * 2);
     const selection = this.transcript.renderer.getSelection();
+
     if (
       selection !== null &&
       (selection.isDragging || !selection.isStart || selection.behavior !== "cell")
     ) {
       const retained =
         this.selectionRange?.selection === selection ? this.selectionRange : undefined;
+
       this.selectionRange = {
         selection,
         start: selection.isDragging
@@ -3149,7 +3547,9 @@ export class TranscriptView {
       };
     } else this.selectionRange = undefined;
     const keep = new Set<number>();
+
     for (let index = start; index <= end && index < this.items.length; index += 1) keep.add(index);
+
     if (this.selectionRange !== undefined) {
       for (
         let index = this.selectionRange.start;
@@ -3158,19 +3558,26 @@ export class TranscriptView {
       )
         keep.add(index);
     }
+
     if (this.items.length > 0) keep.add(this.items.length - 1);
+
     if (this.lastTurnIndex >= 0) keep.add(this.lastTurnIndex);
+
     for (const [index, mounted] of this.mounted) {
       if (keep.has(index) || mounted.root.hasFocusedDescendant) continue;
       mounted.root.parent?.remove(mounted.root);
       mounted.root.destroyRecursively();
       this.mounted.delete(index);
     }
+
     const owner = this.transcript;
+
     for (const index of keep) {
       if (this.mounted.has(index)) continue;
       const item = this.items[index];
+
       if (item === undefined) continue;
+
       const transcript: Transcript = {
         ...this.transcript,
         disclosures: item.disclosures,
@@ -3182,10 +3589,12 @@ export class TranscriptView {
           return owner.subtleSyntaxStyle;
         },
       };
+
       const mounted: MountedItem =
         item.item.kind === "turn"
           ? (() => {
               const block = new TurnBlock(transcript, item.item.id, item.item.durationMs);
+
               return { kind: "turn", root: block.root, block };
             })()
           : item.item.kind === "shell"
@@ -3196,6 +3605,7 @@ export class TranscriptView {
                   width: "100%",
                   live: false,
                 });
+
                 const card = new ToolCard(
                   transcript,
                   item.item.execution,
@@ -3205,20 +3615,25 @@ export class TranscriptView {
                   false,
                   item.item.note,
                 );
+
                 return { kind: "shell", root, card };
               })()
             : { kind: "marker", root: appendMarker(transcript, item.item) };
+
       this.mounted.set(index, mounted);
       this.syncMounted(index, mounted);
     }
+
     const children: Renderable[] = [];
     let cursor = 0;
     let gaps = 0;
+
     for (const [index, mounted] of [...this.mounted].toSorted(
       (left, right) => left[0] - right[0],
     )) {
       if (index > cursor) {
         let spacer = this.spacers[gaps];
+
         if (spacer === undefined) {
           spacer = new BoxRenderable(this.transcript.renderer, {
             id: this.transcript.nextId("transcript-spacer"),
@@ -3228,27 +3643,34 @@ export class TranscriptView {
           });
           this.spacers.push(spacer);
         }
+
         // The getter reads the last layout, so it cannot dedupe a request; the setter does.
         spacer.height = this.offset(index) - this.offset(cursor);
         children.push(spacer);
         gaps += 1;
       }
+
       children.push(mounted.root);
       cursor = index + 1;
     }
+
     for (const spacer of this.spacers.splice(gaps)) {
       spacer.parent?.remove(spacer);
       spacer.destroy();
     }
+
     if (this.liveTurn !== undefined) children.push(this.liveTurn.block.root);
+
     if (this.tail !== undefined) children.push(this.tail);
     children.push(this.navigationSpacer);
     const current = scroll.getChildren();
+
     if (
       current.length === children.length &&
       children.every((child, index) => current[index] === child)
     )
       return;
+
     // add moves existing children, so changed orders must read back each mutation.
     for (const [index, child] of children.entries()) {
       if (scroll.getChildren()[index] !== child) scroll.add(child, index);

@@ -14,6 +14,7 @@ const VALID_JSON_ESCAPES = new Set(['"', "\\", "/", "b", "f", "n", "r", "t", "u"
 
 function isControlCharacter(char: string): boolean {
   const codePoint = char.codePointAt(0);
+
   return codePoint !== undefined && codePoint >= 0x00 && codePoint <= 0x1f;
 }
 
@@ -48,9 +49,11 @@ export function repairJson(json: string): string {
 
     if (!inString) {
       repaired += char;
+
       if (char === '"') {
         inString = true;
       }
+
       continue;
     }
 
@@ -62,6 +65,7 @@ export function repairJson(json: string): string {
 
     if (char === "\\") {
       const nextChar = json[index + 1];
+
       if (nextChar === undefined) {
         repaired += "\\\\";
         continue;
@@ -69,6 +73,7 @@ export function repairJson(json: string): string {
 
       if (nextChar === "u") {
         const unicodeDigits = json.slice(index + 2, index + 6);
+
         if (/^[0-9a-fA-F]{4}$/.test(unicodeDigits)) {
           repaired += `\\u${unicodeDigits}`;
           index += 5;
@@ -105,10 +110,12 @@ export function parseStreamingJson(
   if (!partialJson || partialJson.trim() === "") return {};
 
   let value: unknown;
+
   try {
     value = JSON.parse(partialJson);
   } catch {
     const repaired = repairJson(partialJson);
+
     try {
       value = JSON.parse(repaired);
     } catch {
@@ -120,5 +127,6 @@ export function parseStreamingJson(
       }
     }
   }
+
   return Value.Check(ToolArgumentsSchema, value) ? value : {};
 }

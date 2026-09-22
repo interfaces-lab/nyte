@@ -71,19 +71,28 @@ type HighlightResult =
   | { readonly kind: "plain" };
 
 const PLAIN_HIGHLIGHT = { kind: "plain" } as const;
+
 const HIGHLIGHT_CACHE_MAX_BYTES = 8 * 1024 * 1024;
+
 // Long enough to span ordinary reading pauses, short enough that grammars do
 // not sit resident through an idle session.
 const HIGHLIGHT_WORKER_IDLE_MS = 30 * 60 * 1000;
+
 const highlightCache = new Map<string, HighlightedCode>();
+
 const pendingHighlights = new Map<number, (html: string | undefined) => void>();
+
 const highlightReply = Type.Object({
   id: Type.Number(),
   html: Type.Union([Type.String(), Type.Null()]),
 });
+
 let highlightCacheBytes = 0;
+
 let worker: Worker | undefined;
+
 let idleRelease: ReturnType<typeof setTimeout> | undefined;
+
 let nextHighlightId = 0;
 
 function clearIdleRelease(): void {
@@ -94,9 +103,11 @@ function clearIdleRelease(): void {
 
 function scheduleIdleRelease(): void {
   clearIdleRelease();
+
   if (worker === undefined || pendingHighlights.size > 0) return;
   idleRelease = setTimeout(() => {
     idleRelease = undefined;
+
     if (worker === undefined || pendingHighlights.size > 0) return;
     worker.terminate();
     worker = undefined;
@@ -112,11 +123,13 @@ function finishHighlight(id: number, html: string | undefined): void {
 
 function cancelHighlight(id: number): void {
   if (!pendingHighlights.delete(id)) return;
+
   try {
     worker?.postMessage({ id, cancel: true } satisfies HighlightCancel);
   } catch {
     // The worker keeps the stale request; its reply finds no listener.
   }
+
   scheduleIdleRelease();
 }
 
@@ -127,6 +140,7 @@ function failWorker(failed: Worker): void {
   clearIdleRelease();
   const pending = [...pendingHighlights.values()];
   pendingHighlights.clear();
+
   for (const settle of pending) settle(undefined);
 }
 
@@ -136,10 +150,12 @@ function enqueueHighlight(
   receive: (html: string | undefined) => void,
 ): number {
   clearIdleRelease();
+
   if (worker === undefined) {
     const created = new Worker(new URL("./syntax-highlighter.worker.ts", import.meta.url), {
       type: "module",
     });
+
     worker = created;
     created.onmessage = (event: MessageEvent<unknown>) => {
       try {
@@ -149,36 +165,45 @@ function enqueueHighlight(
         failWorker(created);
       }
     };
+
     created.onerror = () => failWorker(created);
     created.onmessageerror = () => failWorker(created);
   }
+
   const id = ++nextHighlightId;
   pendingHighlights.set(id, receive);
+
   try {
     worker.postMessage({ id, code, language } satisfies HighlightRequest);
   } catch {
     failWorker(worker);
   }
+
   return id;
 }
 
 function highlightKey(code: string, language: string): string {
   let hash = 2_166_136_261;
+
   for (const text of [language, code]) {
     for (let index = 0; index < text.length; index += 1) {
       hash = Math.imul(hash ^ text.charCodeAt(index), 16_777_619);
     }
+
     hash = Math.imul(hash ^ 0, 16_777_619);
   }
+
   return `${String(language.length)}:${String(code.length)}:${String(hash >>> 0)}`;
 }
 
 function cachedHighlight(code: string, language: string): HighlightedCode | undefined {
   const key = highlightKey(code, language);
   const cached = highlightCache.get(key);
+
   if (cached?.code !== code || cached.language !== language) return undefined;
   highlightCache.delete(key);
   highlightCache.set(key, cached);
+
   return cached;
 }
 
@@ -188,18 +213,23 @@ function highlightBytes(value: HighlightedCode): number {
 
 function rememberHighlight(value: HighlightedCode): void {
   const bytes = highlightBytes(value);
+
   if (bytes > HIGHLIGHT_CACHE_MAX_BYTES) return;
   const key = highlightKey(value.code, value.language);
   const previous = highlightCache.get(key);
+
   if (previous !== undefined) highlightCacheBytes -= highlightBytes(previous);
   highlightCache.delete(key);
   highlightCache.set(key, value);
   highlightCacheBytes += bytes;
+
   while (highlightCacheBytes > HIGHLIGHT_CACHE_MAX_BYTES) {
     const oldest = highlightCache.keys().next().value;
+
     if (oldest === undefined) break;
     const removed = highlightCache.get(oldest);
     highlightCache.delete(oldest);
+
     if (removed !== undefined) highlightCacheBytes -= highlightBytes(removed);
   }
 }
@@ -213,26 +243,34 @@ export function requestHighlight(
   signal: AbortSignal,
 ): Promise<HighlightResult> {
   if (signal.aborted) return Promise.resolve(PLAIN_HIGHLIGHT);
+
   return new Promise((resolve) => {
     let settled = false;
     const request = { id: 0, abort: (): void => {} };
+
     const settle = (html: string | undefined): void => {
       if (settled) return;
       settled = true;
       signal.removeEventListener("abort", request.abort);
+
       if (html === undefined) {
         resolve(PLAIN_HIGHLIGHT);
+
         return;
       }
+
       const value = { code, language, html };
       rememberHighlight(value);
       resolve({ kind: "highlighted", value });
     };
+
     request.abort = (): void => {
       cancelHighlight(request.id);
       settle(undefined);
     };
+
     signal.addEventListener("abort", request.abort, { once: true });
+
     try {
       request.id = enqueueHighlight(code, language, settle);
     } catch {
@@ -248,6 +286,7 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
   const [copiedCode, setCopiedCode] = useState<string>();
   const copied = copiedCode === code;
   const cached = cachedHighlight(code, language);
+
   const { data } = useQuery({
     queryKey: keys.highlight(language, code),
     queryFn: ({ signal }) => requestHighlight(code, language, signal),
@@ -255,11 +294,14 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
     staleTime: Infinity,
     gcTime: 0,
   });
+
   const html = data?.kind === "highlighted" ? data.value.html : cached?.html;
 
   useMountEffect(() => {
     const element = figure.current;
+
     if (element === null) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
@@ -268,7 +310,9 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
       },
       { rootMargin: "300px" },
     );
+
     observer.observe(element);
+
     return () => observer.disconnect();
   });
 

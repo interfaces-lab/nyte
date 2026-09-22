@@ -82,21 +82,30 @@ const FILTER_PLACEHOLDER = "type to filter";
 
 function filterChoices(choices: readonly Choice[], value: string): readonly Choice[] {
   const query = value.toLocaleLowerCase().trim().split(/\s+/u).filter(Boolean);
+
   if (query.length === 0) return choices;
+
   return choices.filter((choice) => {
     const searchable =
       `${choice.label} ${choice.description ?? ""} ${choice.status?.text ?? ""} ${choice.id}`.toLocaleLowerCase();
+
     return query.every((part) => searchable.includes(part));
   });
 }
 
 const MAX_ROWS = 10;
+
 const CHROME_ROWS = 7;
+
 /** The panel's own rows: padding above, the search row, padding below. */
 const PANEL_CHROME_ROWS = 3;
+
 const COUNT_MIN_WIDTH = 48;
+
 const TITLE_MIN_WIDTH = 32;
+
 const PADDING_LEFT = 2;
+
 const PADDING_RIGHT = 1;
 
 /**
@@ -157,6 +166,7 @@ export class InlineMenu {
       flexShrink: 0,
       flexDirection: "row",
     });
+
     this.title = new TextRenderable(options.renderer, {
       id: nextId("menu-title"),
       content: this.titleText(screen.title),
@@ -285,6 +295,7 @@ export class InlineMenu {
   /** Fills a screen from its slow source, dropping results the user moved past. */
   private startLoad(): void {
     const { screen } = this;
+
     if (screen.load === undefined) return;
     this.loading = true;
     this.repaintStatus();
@@ -318,9 +329,12 @@ export class InlineMenu {
         title: action.label,
         run: () => {
           const selected = this.list.selectedItem;
+
           if (selected === undefined) return false;
+
           if (!action.keepOpen) this.screen.onCancel();
           this.run(() => action.run(selected.id));
+
           return true;
         },
       })),
@@ -341,6 +355,7 @@ export class InlineMenu {
 
   private countText(): string {
     const total = this.choices.length;
+
     return this.matches.length === total
       ? ` ${String(total)}`
       : ` ${String(this.matches.length)}/${String(total)}`;
@@ -371,6 +386,7 @@ export class InlineMenu {
 
   private maxVisibleForHeight(height: number): number {
     const cap = Math.max(1, Math.floor(this.screen.maxVisible ?? MAX_ROWS));
+
     return Math.max(1, Math.min(cap, height - CHROME_ROWS));
   }
 
@@ -390,6 +406,7 @@ export class InlineMenu {
     this.matches = filterChoices(this.choices, value);
     this.list.setItems(this.matches);
     const top = this.list.selectedItem;
+
     if (top !== undefined) this.screen.onHighlight?.(top.id);
     this.repaintStatus();
   };
@@ -405,8 +422,10 @@ export class InlineMenu {
 
   private run(handler: () => void | Promise<void>): void {
     if (this.busy) return;
+
     try {
       const applied = handler();
+
       if (applied instanceof Promise) {
         this.busy = true;
         void applied.catch(this.onError).finally(() => {
@@ -420,29 +439,41 @@ export class InlineMenu {
 
   private readonly onKeyPress = (key: KeyEvent): void => {
     if (this.destroyed || !this.container.visible || key.defaultPrevented) return;
+
     if (matchesKeyName("picker.close", key)) {
       consume(key);
+
       if (this.queryInput.value === "") this.screen.onCancel();
       else this.queryInput.value = "";
+
       return;
     }
+
     if (this.busy) {
       consume(key);
+
       return;
     }
+
     const { typed } = this.screen;
     const text = this.queryInput.value;
+
     if (matchesKeyName("picker.accept", key) && typed !== undefined && text.trim() !== "") {
       consume(key);
       this.run(() => typed.onSubmit(text));
+
       return;
     }
+
     if (this.matches.length === 0) return;
+
     if (matchesKeyName("picker.accept", key)) {
       consume(key);
       this.list.selectCurrent();
+
       return;
     }
+
     if (this.list.handleNavigationKey(key)) consume(key);
   };
 }

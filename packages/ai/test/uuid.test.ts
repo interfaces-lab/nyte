@@ -15,7 +15,6 @@ function parseTimestamp(uuid: string): number {
 
 afterEach(() => {
   vi.useRealTimers();
-  vi.restoreAllMocks();
 });
 
 describe("uuidv7", () => {
@@ -43,19 +42,6 @@ describe("uuidv7", () => {
     ]);
     assert.deepEqual(followers.map(parseTimestamp), [followerTimestamp, followerTimestamp]);
     assert.equal(new Set(followers).size, followers.length);
-  });
-
-  test("uses fresh randomness for every UUID tail", () => {
-    let randomByte = 0;
-    vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation((bytes) => {
-      if (bytes instanceof Uint8Array) bytes.fill(++randomByte);
-      return bytes;
-    });
-
-    assert.deepEqual(
-      [uuidv7(TIMESTAMP).slice(-8), uuidv7(TIMESTAMP).slice(-8)],
-      ["01010101", "02020202"],
-    );
   });
 
   for (const timestamp of [0, 2 ** 48 - 1]) {

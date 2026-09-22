@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Type } from "typebox";
 import { stream } from "../src/api/openai-responses.ts";
 import { convertResponsesMessages } from "../src/api/openai-responses-shared.ts";
-import type { Api, AssistantMessage, Context, JsonValue, Model } from "../src/types.ts";
+import type { AssistantMessage, Context, JsonValue, Model } from "../src/types.ts";
 
 const model: Model<"openai-responses"> = {
   id: "gpt-5.4",
@@ -159,7 +159,7 @@ describe("OpenAI Responses tool-call namespaces", () => {
         namespace: "dynamic_tools",
       },
     );
-    const targetModels: Model<Api>[] = [
+    const targetModels: Model<"openai-responses" | "openai-codex-responses">[] = [
       { ...model, id: "gpt-5.2", name: "GPT-5.2" },
       { ...model, provider: "azure-openai-responses" },
       {

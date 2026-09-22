@@ -52,10 +52,12 @@ import type { TrustedWorkspace } from "@nyte-ai/core";
 import type { JsonValue } from "@nyte-ai/schema";
 
 const ModuleNamespace = Type.Object({ default: Type.Optional(Type.Unknown()) });
+
 const PluginDefinition = Type.Object({
   id: Type.String({ minLength: 1 }),
   setup: Type.Function([Type.Unknown()], Type.Unknown()),
 });
+
 const PluginCleanup = Type.Function([], Type.Unknown());
 
 // Local plugins use the host's API and renderable classes, including in a compiled executable.
@@ -102,6 +104,7 @@ plugin({
         },
       ],
     ]);
+
     for (const [specifier, exported] of modules) {
       if (!Value.Check(ModuleNamespace, exported))
         throw new TypeError(`Invalid runtime module: ${specifier}`);
@@ -112,8 +115,10 @@ plugin({
 
 function localSource(spec: string, directory: string) {
   if (spec.startsWith("file://")) return new URL(spec);
+
   if (spec.startsWith("./") || spec.startsWith("../") || isAbsolute(spec))
     return pathToFileURL(resolve(directory, spec));
+
   return undefined;
 }
 
@@ -137,17 +142,22 @@ function createSourceWatcher(onChange: () => void) {
   const arming = new Map<string, Promise<void>>();
   let disposed = false;
   let poll: ReturnType<typeof setInterval> | undefined;
+
   const notify = () => {
     if (!disposed) onChange();
   };
+
   const forget = (dir: string) => {
     watchers.get(dir)?.close();
     watchers.delete(dir);
     watched.delete(dir);
   };
+
   const arm = (target: string, retry: boolean) => {
     const active = arming.get(target);
+
     if (active) return active;
+
     const result = stat(target)
       .then((info) => {
         if (disposed) return;
@@ -156,12 +166,16 @@ function createSourceWatcher(onChange: () => void) {
         // Directories accept every filename (null); files accept their basename.
         const name = info.isDirectory() ? null : basename(target);
         const existing = watched.get(dir);
+
         if (existing !== undefined) {
           if (name === null) watched.set(dir, null);
           else existing?.add(name);
+
           if (appeared) notify();
+
           return;
         }
+
         const watcher = watch(dir, (_event, filename) => {
           // A replaced directory keeps this watcher on the dead inode (Linux
           // emits rename, not error); forget it so a later add() re-arms on
@@ -169,13 +183,17 @@ function createSourceWatcher(onChange: () => void) {
           if (!existsSync(dir)) {
             forget(dir);
             notify();
+
             return;
           }
+
           // A null filename (platform-dependent) always schedules.
           const accept = watched.get(dir);
+
           if (filename && accept && !accept.has(filename.toString())) return;
           notify();
         });
+
         watched.set(dir, name === null ? null : new Set([name]));
         // Reconcile after watcher errors so every source is re-added and any
         // temporarily unavailable target moves into the polling set.
@@ -184,13 +202,15 @@ function createSourceWatcher(onChange: () => void) {
           notify();
         });
         watchers.set(dir, watcher);
+
         if (appeared) notify();
       })
-      .catch((cause: unknown) => {
-        if (!disposed && retry && isMissing(cause)) missing.add(target);
+      .catch(() => {
+        if (!disposed && retry && !existsSync(target)) missing.add(target);
       })
       .finally(() => {
         arming.delete(target);
+
         if (disposed || missing.size === 0) {
           clearInterval(poll);
           poll = undefined;
@@ -203,41 +223,40 @@ function createSourceWatcher(onChange: () => void) {
           poll.unref();
         }
       });
+
     arming.set(target, result);
+
     return result;
   };
+
   const add = async (target: string, retry: boolean) => {
     await arm(target, retry);
     // A symlinked source receives edits at its resolved target.
     await lstat(target)
       .then((info) => {
         if (!info.isSymbolicLink()) return undefined;
+
         return realpath(target).then((resolved) => arm(resolved, retry));
       })
       .catch(() => undefined);
   };
+
   const dispose = () => {
     disposed = true;
     clearInterval(poll);
     poll = undefined;
+
     for (const watcher of watchers.values()) watcher.close();
     watchers.clear();
     watched.clear();
     missing.clear();
   };
+
   return {
     add: (target: string) => add(target, false),
     wait: (target: string) => add(target, true),
     dispose,
   };
-}
-
-function isMissing(cause: unknown): boolean {
-  return (
-    cause instanceof Error &&
-    "code" in cause &&
-    (cause.code === "ENOENT" || cause.code === "ENOTDIR")
-  );
 }
 
 /** Based on https://github.com/anomalyco/opencode/blob/c72b535deeacc2496ea610f1bea1a7661b3c2d93/packages/tui/src/plugin/source.bun.ts */
@@ -247,16 +266,21 @@ async function prepareSource(
   track: (file: string, directory?: boolean) => void,
 ) {
   const files = new Set<string>();
+
   const visit = (file: string, search = "") => {
     if (file.split(sep).includes("node_modules")) return;
+
     if (search) delete require.cache[file + search];
+
     if (files.has(file)) return;
     files.add(file);
     // Bun exposes ESM here too. Delete known keys even when absent: rejected
     // evaluations are not enumerable, but deletion still invalidates them.
     delete require.cache[file];
     track(file);
+
     if (!/\.[cm]?[jt]sx?$/.test(file)) return;
+
     // Scan dependencies only; the normal runtime loader still owns compilation,
     // package resolution, import attributes, and error reporting.
     const imports = (() => {
@@ -275,15 +299,19 @@ async function prepareSource(
         return [];
       }
     })();
+
     for (const item of imports) {
       const local =
         item.path.startsWith("./") || item.path.startsWith("../")
           ? new URL(item.path, pathToFileURL(file))
           : localSource(item.path, dirname(file));
+
       if (!local) continue;
       const requested = fileURLToPath(local);
+
       // Resolving a workspace symlink can erase its node_modules boundary.
       if (requested.split(sep).includes("node_modules")) continue;
+
       try {
         visit(
           item.kind === "require-call"
@@ -298,23 +326,31 @@ async function prepareSource(
       }
     }
   };
+
   visit(fileURLToPath(entrypoint));
+
   return {
     version: randomUUID(),
     load: async (): Promise<Definition> => {
       const exported: unknown = require(fileURLToPath(entrypoint));
+
       if (!Value.Check(ModuleNamespace, exported))
         throw new TypeError("TUI plugin module must export an object");
       const definition = "default" in exported ? exported.default : exported;
+
       if (!Value.Check(PluginDefinition, definition))
         throw new TypeError("TUI plugin must have a non-empty id and a setup function");
+
       return {
         id: definition.id,
         async setup(context) {
           const cleanup = await definition.setup(context);
+
           if (cleanup === undefined) return undefined;
+
           if (!Value.Check(PluginCleanup, cleanup))
             throw new TypeError("Expected cleanup function or undefined");
+
           return async () => {
             await cleanup();
           };
@@ -331,10 +367,12 @@ async function prepareSource(
 function createPluginSources(watchSource: (file: string) => Promise<void>) {
   const sources = new Map<string, Source>();
   const watching = new Set<Promise<void>>();
+
   return {
     read: async (entrypoint: string) => {
       await Promise.all(watching);
       const previous = sources.get(entrypoint);
+
       if (
         previous &&
         [...previous.files].every(([file, item]) => item.digest === digest(file, item.directory))
@@ -342,18 +380,21 @@ function createPluginSources(watchSource: (file: string) => Promise<void>) {
         return previous.loaded;
 
       const files: Source["files"] = new Map();
+
       const track = (file: string, directory = false) => {
         if (files.has(file)) return;
         files.set(file, { digest: digest(file, directory), directory });
         const pending = watchSource(file).finally(() => watching.delete(pending));
         watching.add(pending);
       };
+
       track(fileURLToPath(entrypoint));
       const prepared = await prepareSource(entrypoint, track);
       // Cache the attempt before evaluating it: unchanged failing modules must
       // not repeat import-time effects on every filesystem notification.
       const loaded = prepared.load().then((module) => ({ version: prepared.version, module }));
       sources.set(entrypoint, { loaded, files });
+
       try {
         return await loaded;
       } finally {
@@ -398,12 +439,12 @@ interface Registration {
 
 async function discoverTuiPlugins(target: PluginTarget): Promise<string[]> {
   const directories = pluginDirectories(target).map((directory) => join(directory.path, "tui"));
+
   const entries = await Promise.all(
     directories.map(async (directory) => {
-      const files = await readdir(directory, { withFileTypes: true }).catch((cause: unknown) => {
-        if (isMissing(cause)) return [];
-        throw cause;
-      });
+      if (!existsSync(directory)) return [];
+      const files = await readdir(directory, { withFileTypes: true });
+
       return (
         await Promise.all(
           files
@@ -412,20 +453,26 @@ async function discoverTuiPlugins(target: PluginTarget): Promise<string[]> {
             .map(async (file) => {
               const path = join(directory, file.name);
               const info = await stat(path);
+
               if (info.isFile() && /\.[cm]?[jt]sx?$/.test(file.name))
                 return [pathToFileURL(path).href];
+
               if (!info.isDirectory()) return [];
+
               for (const name of ["index.ts", "index.tsx", "index.js", "index.mjs", "index.mts"]) {
                 const entry = join(path, name);
+
                 if ((await stat(entry).catch(() => undefined))?.isFile())
                   return [pathToFileURL(entry).href];
               }
+
               return [];
             }),
         )
       ).flat();
     }),
   );
+
   return entries.flat();
 }
 
@@ -498,30 +545,37 @@ export class PluginProvider {
           if (!entrypoints.has(target)) retained.delete(target);
         }
       }
+
       const disabled = new Set(
         (await readManifest({ kind: "project", workspace: this.workspace })).plugins?.flatMap(
           (entry) =>
             Value.Check(Type.String(), entry) && entry.startsWith("-") ? [entry.slice(1)] : [],
         ) ?? [],
       );
+
       const desired = new Map<
         string,
         { readonly target: string; readonly version: string; readonly plugin: Definition }
       >();
+
       for (const target of entries) {
         try {
           const loaded = await this.sources.read(target);
           const definition = loaded.module;
+
           if (!disabled.has(definition.id))
             desired.set(definition.id, { target, version: loaded.version, plugin: definition });
         } catch (cause) {
           const previous = [...this.registrations.values()].find((item) => item.target === target);
+
           if (previous !== undefined && !disabled.has(previous.plugin.id))
             desired.set(previous.plugin.id, previous);
           this.report(target, cause);
         }
       }
+
       if (this.disposed) return;
+
       for (const [id, previous] of this.registrations) {
         if (desired.has(id)) continue;
         await this.deactivate(previous);
@@ -529,12 +583,16 @@ export class PluginProvider {
         this.memories.delete(id);
         this.attempts.delete(previous.target);
       }
+
       for (const [id, desiredPlugin] of desired) {
         const previous = this.registrations.get(id);
+
         if (previous?.version === desiredPlugin.version && previous.target === desiredPlugin.target)
           continue;
+
         if (this.attempts.get(desiredPlugin.target) === desiredPlugin.version) continue;
         this.attempts.set(desiredPlugin.target, desiredPlugin.version);
+
         const item: Registration = {
           ...desiredPlugin,
           container: new BoxRenderable(this.shell.renderer, {
@@ -547,13 +605,18 @@ export class PluginProvider {
           slots: new Map(),
           active: false,
         };
+
         try {
           const cleanup = await item.plugin.setup(this.createPluginContext(item));
+
           if (cleanup !== undefined) item.cleanups.push(cleanup);
+
           if (this.disposed) {
             await this.deactivate(item);
+
             return;
           }
+
           if (previous !== undefined) {
             this.container.insertBefore(item.container, previous.container);
             await this.deactivate(previous);
@@ -567,7 +630,9 @@ export class PluginProvider {
         }
       }
     });
+
     this.loading = result.catch(() => undefined);
+
     return result;
   }
 
@@ -587,6 +652,7 @@ export class PluginProvider {
   emit(event: SessionEvent): void {
     for (const [item, listeners] of this.listeners) {
       if (!item.active) continue;
+
       for (const listener of listeners) {
         try {
           listener(event);
@@ -602,6 +668,7 @@ export class PluginProvider {
     clearTimeout(this.pending);
     this.watcher.dispose();
     await this.loading;
+
     for (const item of this.registrations.values()) await this.deactivate(item);
     this.registrations.clear();
     this.sources.dispose();
@@ -616,6 +683,7 @@ export class PluginProvider {
     const { shell } = this;
     const memory = this.memories.get(item.plugin.id) ?? new Map<string, { value: JsonValue }>();
     this.memories.set(item.plugin.id, memory);
+
     return {
       renderer: this.shell.renderer,
       get theme() {
@@ -627,10 +695,13 @@ export class PluginProvider {
           const listeners = this.listeners.get(item) ?? new Set<(event: SessionEvent) => void>();
           this.listeners.set(item, listeners);
           listeners.add(handler);
+
           const cleanup = () => {
             listeners.delete(handler);
           };
+
           item.cleanups.push(cleanup);
+
           return cleanup;
         },
       },
@@ -638,6 +709,7 @@ export class PluginProvider {
         memory: (key, options) => {
           const state = memory.get(key) ?? { value: options.initial };
           memory.set(key, state);
+
           return [
             () => state.value,
             (value) => {
@@ -650,20 +722,25 @@ export class PluginProvider {
         toast: { show: (options) => notice(this.shell, options.message) },
         slot: (name, render) => {
           if (item.slots.has(name)) throw new Error(`Slot already registered: ${name}`);
+
           const container = new BoxRenderable(this.shell.renderer, {
             width: "100%",
             flexDirection: "column",
             flexShrink: 0,
           });
+
           const slot = { render, container };
           item.slots.set(name, slot);
           item.container.add(container);
           this.PluginSlot(container, render);
+
           const cleanup = () => {
             if (item.slots.get(name) === slot) item.slots.delete(name);
             container.destroyRecursively();
           };
+
           item.cleanups.push(cleanup);
+
           return cleanup;
         },
       },
@@ -672,6 +749,7 @@ export class PluginProvider {
 
   private PluginSlot(container: BoxRenderable, render: Slot): void {
     const sessionID = this.sessionID();
+
     if (sessionID === undefined) return;
     container.add(render({ sessionID }));
   }
@@ -679,6 +757,7 @@ export class PluginProvider {
   private async deactivate(item: Registration): Promise<void> {
     item.active = false;
     this.listeners.delete(item);
+
     for (const cleanup of item.cleanups.splice(0).toReversed()) {
       try {
         await cleanup();
@@ -686,6 +765,7 @@ export class PluginProvider {
         this.report(item.target, cause);
       }
     }
+
     try {
       item.container.destroyRecursively();
     } catch (cause) {
@@ -696,6 +776,7 @@ export class PluginProvider {
   private report(target: string, cause: unknown): void {
     if (this.disposed) return;
     const message = cause instanceof Error ? cause.message : String(cause);
+
     if (this.failures.get(target) === message) return;
     this.failures.set(target, message);
     notice(this.shell, `Plugin ${basename(target)}: ${message}`, this.shell.theme.error);
@@ -704,12 +785,15 @@ export class PluginProvider {
   private readonly onRenderError = (event: CliRendererErrorEvent): void => {
     const owner = (node: Renderable | null | undefined): Registration | undefined => {
       if (node === null || node === undefined) return undefined;
+
       return (
         [...this.registrations.values()].find((item) => item.container === node) ??
         owner(node.parent)
       );
     };
+
     const item = owner(event.renderable);
+
     if (item === undefined) throw event.error;
     item.container.visible = false;
     this.report(item.target, event.error);

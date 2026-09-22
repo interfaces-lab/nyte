@@ -11,7 +11,9 @@ import {
   InMemoryModelsStore,
 } from "@nyte-ai/ai";
 import type { Provider } from "@nyte-ai/ai";
-import type { Nyte } from "@nyte-ai/core";
+import type { Nyte, SessionId } from "@nyte-ai/core";
+import { inlinePlugin } from "@nyte-ai/core/plugins";
+import { providerPlugin } from "@nyte-ai/plugin/provider";
 import { SqliteStore } from "@nyte-ai/core/store";
 import type { Api, AssistantMessage, Model } from "@nyte-ai/schema";
 import { InMemoryTelemetryContext } from "@nyte-ai/telemetry";
@@ -48,7 +50,8 @@ async function fixture() {
   vi.stubEnv("NYTE_HOME", join(cwd, "home"));
   vi.stubEnv("HOME", join(cwd, "user"));
   const modelsStore = new InMemoryModelsStore();
-  const models = createModels({ credentials: new InMemoryCredentialStore(), modelsStore });
+  const credentials = new InMemoryCredentialStore();
+  const models = createModels({ credentials, modelsStore });
   const prompts: string[] = [];
   const tools: string[][] = [];
   const stream = (
@@ -99,7 +102,7 @@ async function fixture() {
     stores.push(opened);
     return opened;
   };
-  return { cwd, models, modelsStore, provider, prompts, tools, store };
+  return { cwd, models, modelsStore, credentials, provider, prompts, tools, store };
 }
 
 test("chat answers a message without loading workspace tools or configuration", async () => {
@@ -302,4 +305,170 @@ test("plugin discovery failures stay on onFailure", async () => {
   hosts.push(host);
   assert.equal(failures.length, 1);
   assert.match(failures[0] ?? "", /broken plugin/);
+});
+
+async function answer(host: Nyte, id: SessionId, content: string): Promise<string | undefined> {
+  await host.messages.send({ sessionId: id, content });
+  await host.runs.wait({ sessionId: id });
+  const turns = await host.messages.list({ sessionId: id });
+  return turns
+    .flatMap((turn) =>
+      turn.kind === "turn"
+        ? turn.parts.flatMap((part) => (part.kind === "assistant" ? [part.text] : []))
+        : [],
+    )
+    .at(-1);
+}
+
+test("provider overrides toggle per session, share credentials, and restore the default after removal", async () => {
+  const f = await fixture();
+  await f.credentials.modify(model.provider, async () => ({ type: "api_key", key: "stored-key" }));
+  const keys: (string | undefined)[] = [];
+  const replacement: Provider = {
+    ...f.provider,
+    auth: {
+      apiKey: {
+        name: "Override",
+        resolve: async ({ credential }) => ({ auth: { apiKey: credential?.key } }),
+      },
+    },
+    streamSimple(selected, context, options) {
+      keys.push(options?.apiKey);
+      return f.provider.streamSimple(
+        selected,
+        {
+          ...context,
+          messages: [{ role: "user", content: "override", timestamp: Date.now() }],
+        },
+        options,
+      );
+    },
+  };
+  const loaded = inlinePlugin(providerPlugin({ id: "echo-override", provider: replacement }));
+  const store = f.store("provider-overrides.db");
+  const options = {
+    store,
+    models: f.models,
+    model,
+    plugins: { kind: "custom", plugins: [loaded], env: { cwd: f.cwd } },
+  } satisfies Parameters<typeof createHost>[0];
+  const host = await createHost(options);
+  hosts.push(host);
+  const first = (await host.sessions.create()).sessionId;
+  const second = (await host.sessions.create()).sessionId;
+  host.attach();
+  assert.equal(await answer(host, first, "native"), "override");
+  assert.equal(keys[0], "stored-key");
+  assert.deepEqual(
+    await host.plugins.settings.apply({
+      sessionId: first,
+      id: "echo-override:enabled",
+      choiceId: "off",
+    }),
+    { kind: "applied" },
+  );
+  assert.equal(await answer(host, first, "native"), "native");
+  assert.equal(await answer(host, second, "native"), "override");
+  await host.close();
+
+  const reopened = await createHost(options);
+  hosts.push(reopened);
+  reopened.attach();
+  assert.equal(await answer(reopened, first, "after restart"), "after restart");
+  await reopened.plugins.commands.run({ sessionId: first, name: "echo-override", argument: "on" });
+  assert.equal(await answer(reopened, first, "native"), "override");
+  await reopened.setPlugins([], { sessionId: first });
+  assert.equal(await answer(reopened, first, "removed"), "removed");
+  assert.equal(await answer(reopened, second, "native"), "override");
+  assert.equal(f.models.getProvider(model.provider), f.provider);
+});
+
+test("the last enabled provider plugin wins and override failures do not fall through to the default", async () => {
+  const f = await fixture();
+  const override = (id: string) =>
+    inlinePlugin(
+      providerPlugin({
+        id,
+        provider: {
+          ...f.provider,
+          streamSimple(selected, context, options) {
+            if (id === "broken") throw new Error("override failed");
+            return f.provider.streamSimple(
+              selected,
+              {
+                ...context,
+                messages: [{ role: "user", content: id, timestamp: Date.now() }],
+              },
+              options,
+            );
+          },
+        },
+      }),
+    );
+  const first = override("first");
+  const last = override("last");
+  const host = await createHost({
+    store: f.store("provider-order.db"),
+    models: f.models,
+    model,
+    plugins: { kind: "custom", plugins: [first, last], env: { cwd: f.cwd } },
+  });
+  hosts.push(host);
+  const id = (await host.sessions.create()).sessionId;
+  host.attach();
+  assert.equal(await answer(host, id, "native"), "last");
+  await host.plugins.commands.run({ sessionId: id, name: "last", argument: "off" });
+  assert.equal(await answer(host, id, "native"), "first");
+  await host.setPlugins([override("broken")]);
+  const count = f.prompts.length;
+  await host.messages.send({ sessionId: id, content: "fail" });
+  await host.runs.wait({ sessionId: id });
+  assert.equal((await host.runs.current({ sessionId: id }))?.phase.kind, "failed");
+  assert.equal(f.prompts.length, count);
+});
+
+test("workspace discovery installs a provider plugin into the shared host without client wiring", async () => {
+  const f = await fixture();
+  const directory = join(f.cwd, ".nyte", "plugins");
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    join(directory, "discovered.ts"),
+    `
+    import { createAssistantMessageEventStream } from ${JSON.stringify(new URL("../../ai/src/index.ts", import.meta.url).href)};
+    import { providerPlugin } from ${JSON.stringify(new URL("../../plugin/src/provider.ts", import.meta.url).href)};
+    const model = ${JSON.stringify(model)};
+    const stream = () => {
+      const events = createAssistantMessageEventStream();
+      events.push({ type: "done", reason: "stop", message: {
+        role: "assistant", content: [{ type: "text", text: "discovered provider" }],
+        api: model.api, provider: model.provider, model: model.id, stopReason: "stop", timestamp: Date.now(),
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }
+      } });
+      return events;
+    };
+    export default providerPlugin({ id: "discovered", provider: {
+      id: model.provider, name: "Echo", getModels: () => [model], stream, streamSimple: stream,
+      auth: { apiKey: { name: "Fixture", resolve: async () => ({ auth: {} }) } }
+    } });
+  `,
+  );
+  const workspace = await createWorkspaceStore().trust(f.cwd);
+  const host = await createHost({
+    store: f.store("discovered.db"),
+    models: f.models,
+    model,
+    plugins: { kind: "workspace", target: { kind: "project", workspace } },
+  });
+  hosts.push(host);
+  const id = (await host.sessions.create()).sessionId;
+  host.attach();
+  assert.equal(await answer(host, id, "native"), "discovered provider");
+  assert.ok(
+    (await host.plugins.settings.list({ sessionId: id })).some(
+      (setting) => setting.id === "discovered:enabled",
+    ),
+  );
+  await host.plugins.commands.run({ sessionId: id, name: "discovered", argument: "off" });
+  assert.equal(await answer(host, id, "native"), "native");
 });

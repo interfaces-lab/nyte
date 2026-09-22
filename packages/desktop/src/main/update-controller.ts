@@ -21,10 +21,13 @@ export function createUpdateController(dependencies: UpdateDependencies) {
 
   async function offerRestart(version: string): Promise<void> {
     const current = await dependencies.activity();
+
     if (current.kind === "busy") {
       await message(installBlockedDialog(current));
+
       return;
     }
+
     const answer = await message({
       type: "info",
       message: `Nyte ${version} is ready to install`,
@@ -33,6 +36,7 @@ export function createUpdateController(dependencies: UpdateDependencies) {
       defaultId: 1,
       cancelId: 1,
     });
+
     if (answer.response === 0) updater.quitAndInstall(false, true);
   }
 
@@ -41,6 +45,7 @@ export function createUpdateController(dependencies: UpdateDependencies) {
     busy = true;
     let downloadRequested = false;
     status("Checking for Updates…", false);
+
     try {
       if (dependencies.unavailable !== undefined) {
         if (manual)
@@ -49,13 +54,18 @@ export function createUpdateController(dependencies: UpdateDependencies) {
             message: "Updates unavailable",
             detail: dependencies.unavailable,
           });
+
         return;
       }
+
       if (downloaded !== undefined) {
         if (manual) await offerRestart(downloaded);
+
         return;
       }
+
       const result = await updater.checkForUpdates();
+
       if (result === null) {
         if (manual)
           await message({
@@ -63,8 +73,10 @@ export function createUpdateController(dependencies: UpdateDependencies) {
             message: "Updates unavailable",
             detail: "This installation cannot check for updates.",
           });
+
         return;
       }
+
       if (!result.isUpdateAvailable) {
         if (manual)
           await message({
@@ -72,9 +84,12 @@ export function createUpdateController(dependencies: UpdateDependencies) {
             message: "You're up to date",
             detail: `Nyte ${dependencies.version} is the latest desktop release.`,
           });
+
         return;
       }
+
       const version = result.updateInfo.version;
+
       const answer = await message({
         type: "info",
         message: `Nyte ${version} is available`,
@@ -83,6 +98,7 @@ export function createUpdateController(dependencies: UpdateDependencies) {
         defaultId: 0,
         cancelId: 1,
       });
+
       if (answer.response !== 0) return;
       status("Downloading Update…", false);
       downloadRequested = true;
@@ -92,6 +108,7 @@ export function createUpdateController(dependencies: UpdateDependencies) {
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : String(cause);
       dependencies.logError(detail);
+
       // A background check stays quiet when offline or before the first release.
       // Once a download was requested, failures must be visible.
       if (manual || downloadRequested || downloaded !== undefined) {

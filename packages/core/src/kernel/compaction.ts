@@ -45,6 +45,7 @@ export class CompactionError extends Error {
 
 function withPriorUsage(error: CompactionError, prior: Usage | undefined): CompactionError {
   if (prior === undefined) return error;
+
   return new CompactionError(
     error.code,
     error.message,
@@ -86,6 +87,7 @@ function parseCompactionRecord(value: Obj | undefined, ref: string): CompactionR
   if (value?.kind !== "blob" || !Value.Check(CompactionRecordSchema, value.value)) {
     throw new Error(`Corrupt compaction ref ${ref}`);
   }
+
   return value.value;
 }
 
@@ -99,9 +101,11 @@ export async function activeCompaction(
 ): Promise<CompactionInfo | undefined> {
   const ref = compactionRef(head);
   const oid = await session.refs.read(ref);
+
   if (oid === null) return undefined;
   const record = parseCompactionRecord(await session.objects.get(oid), ref);
   const lease = await session.leases.read(headRef(head));
+
   return lease?.owner === record.leaseOwner && lease.fence === record.leaseFence
     ? publicCompaction(record)
     : undefined;
@@ -112,20 +116,25 @@ export async function startCompaction(
   input: { readonly head: string; readonly lease: Lease; readonly reason: CompactionReason },
 ): Promise<CompactionInfo> {
   if (!(await finishCompaction(session, input))) throw new LeaseLost(input.lease);
+
   const info: CompactionInfo = {
     id: uuidv7(),
     reason: input.reason,
     startedAt: Date.now(),
   };
+
   const value: Blob = {
     kind: "blob",
     value: { ...info, leaseOwner: input.lease.owner, leaseFence: input.lease.fence },
   };
+
   await session.objects.put([value]);
   const oid = hashObject(value);
   const ref = compactionRef(input.head);
+
   for (;;) {
     const current = await session.refs.read(ref);
+
     const outcome = await session.refs.update(
       [
         { name: ref, from: current, to: oid },
@@ -133,17 +142,21 @@ export async function startCompaction(
       ],
       { lease: input.lease, reason: "compaction" },
     );
+
     if (outcome.ok) return info;
+
     switch (outcome.reason) {
       case "conflict":
         if (outcome.name === DELETED_REF) {
           throw new Error("Cannot start compaction after session deletion");
         }
+
         continue;
       case "fenced":
         throw new LeaseLost(input.lease);
       default: {
         const _exhaustive: never = outcome;
+
         return _exhaustive;
       }
     }
@@ -157,6 +170,7 @@ export async function compactionClearUpdates(
 ): Promise<readonly RefUpdate[]> {
   const ref = compactionRef(head);
   const current = await session.refs.read(ref);
+
   return current === null ? [] : [{ name: ref, from: current, to: null }];
 }
 
@@ -166,12 +180,16 @@ export async function finishCompaction(
 ): Promise<boolean> {
   for (;;) {
     const updates = await compactionClearUpdates(session, input.head);
+
     if (updates.length === 0) return true;
+
     const outcome = await session.refs.update(updates, {
       lease: input.lease,
       reason: "compaction",
     });
+
     if (outcome.ok) return true;
+
     switch (outcome.reason) {
       case "conflict":
         continue;
@@ -179,6 +197,7 @@ export async function finishCompaction(
         return false;
       default: {
         const _exhaustive: never = outcome;
+
         return _exhaustive;
       }
     }
@@ -203,6 +222,7 @@ export function shouldCompact(
   settings: CompactionSettings,
 ): boolean {
   if (!settings.enabled) return false;
+
   return contextTokens > contextWindow - settings.reserveTokens;
 }
 
@@ -332,6 +352,7 @@ Use this EXACT format:
 Keep each section concise. Preserve exact file paths, function names, and error messages.`;
 
 const TOOL_RESULT_MAX_CHARS = 2_000;
+
 const DEFAULT_TTL_MS = 30_000;
 
 interface FileOperations {
@@ -351,12 +372,16 @@ function createFileOps(): FileOperations {
 
 function extractFileOpsFromMessage(message: Message, fileOps: FileOperations): void {
   if (message.role !== "assistant") return;
+
   for (const block of message.content) {
     if (block.type !== "toolCall") continue;
+
     const path = Value.Check(Type.String(), block.arguments.path)
       ? block.arguments.path
       : undefined;
+
     if (path === undefined || path === "") continue;
+
     switch (block.name) {
       case "read":
         fileOps.read.add(path);
@@ -377,9 +402,12 @@ function readTaggedPaths(
   target: Set<string>,
 ): void {
   const pattern = new RegExp(`<${tag}>\\n([\\s\\S]*?)\\n</${tag}>`, "g");
+
   for (const match of summary.matchAll(pattern)) {
     const paths = match[1];
+
     if (paths === undefined) continue;
+
     for (const path of paths.split("\n")) {
       if (path !== "") target.add(path);
     }
@@ -394,6 +422,7 @@ function extractTaggedFileOps(summary: string, fileOps: FileOperations): void {
 function computeFileLists(fileOps: FileOperations): FileLists {
   const modified = new Set([...fileOps.edited, ...fileOps.written]);
   const readFiles = [...fileOps.read].filter((path) => !modified.has(path)).sort();
+
   return { readFiles, modifiedFiles: [...modified].sort() };
 }
 
@@ -402,12 +431,15 @@ function formatFileOperations(
   modifiedFiles: readonly string[],
 ): string {
   const sections: string[] = [];
+
   if (readFiles.length > 0) {
     sections.push(`<read-files>\n${readFiles.join("\n")}\n</read-files>`);
   }
+
   if (modifiedFiles.length > 0) {
     sections.push(`<modified-files>\n${modifiedFiles.join("\n")}\n</modified-files>`);
   }
+
   return sections.length === 0 ? "" : `\n\n${sections.join("\n\n")}`;
 }
 
@@ -425,6 +457,7 @@ function summaryStreamOptions(
   thinkingLevel: ThinkingLevel | undefined,
 ): SimpleStreamOptions {
   const options: SimpleStreamOptions = { maxTokens };
+
   return model.reasoning && thinkingLevel !== undefined && thinkingLevel !== "off"
     ? { ...options, reasoning: thinkingLevel }
     : options;
@@ -433,22 +466,27 @@ function summaryStreamOptions(
 function truncateForSummary(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   const truncatedChars = text.length - maxChars;
+
   return `${text.slice(0, maxChars)}\n\n[... ${String(truncatedChars)} more characters truncated]`;
 }
 
 /** Serialize provider messages into plain text, limiting large tool results. */
 export function serializeConversation(messages: readonly Message[]): string {
   const parts: string[] = [];
+
   for (const message of messages) {
     switch (message.role) {
       case "user": {
         const text = contentText(message.content, "");
+
         if (text !== "") parts.push(`[User]: ${text}`);
         break;
       }
+
       case "assistant": {
         const thinkingParts: string[] = [];
         const toolCalls: string[] = [];
+
         for (const block of message.content) {
           switch (block.type) {
             case "thinking":
@@ -458,41 +496,54 @@ export function serializeConversation(messages: readonly Message[]): string {
               const args = Object.entries(block.arguments)
                 .map(([key, value]) => `${key}=${safeJsonStringify(value)}`)
                 .join(", ");
+
               toolCalls.push(`${block.name}(${args})`);
               break;
             }
+
             case "text":
               break;
             default: {
               const _exhaustive: never = block;
+
               return _exhaustive;
             }
           }
         }
+
         if (thinkingParts.length > 0) {
           parts.push(`[Assistant thinking]: ${thinkingParts.join("\n")}`);
         }
+
         if (message.content.some((block) => block.type === "text")) {
           parts.push(`[Assistant]: ${contentText(message.content)}`);
         }
+
         if (toolCalls.length > 0) {
           parts.push(`[Assistant tool calls]: ${toolCalls.join("; ")}`);
         }
+
         break;
       }
+
       case "toolResult": {
         const text = contentText(message.content, "");
+
         if (text !== "") {
           parts.push(`[Tool result]: ${truncateForSummary(text, TOOL_RESULT_MAX_CHARS)}`);
         }
+
         break;
       }
+
       default: {
         const _exhaustive: never = message;
+
         return _exhaustive;
       }
     }
   }
+
   return parts.join("\n\n");
 }
 
@@ -510,19 +561,24 @@ async function completeSimpleWithRetries(input: {
     cacheRetention: "none",
     sessionId: uuidv7(),
   };
+
   let usage: Usage | undefined;
+
   try {
     const response = await retryAssistantCall(
       async () => {
         const response = await (
           await input.streamFn(input.model, input.context, requestOptions)
         ).result();
+
         usage = usage === undefined ? response.usage : addUsage(usage, response.usage);
+
         return response;
       },
       input.retry,
       requestOptions.signal,
     );
+
     // Count provider results, not the retry helper's synthesized backoff abort.
     return { ...response, usage: usage ?? response.usage };
   } catch (cause) {
@@ -566,6 +622,7 @@ async function generateBoundedSummary(
       Math.floor(input.model.contextWindow / 4),
     ),
   );
+
   // Use the same character heuristic as context estimation, reserving room for
   // output and message framing. Provider usage from native history cannot size
   // this portable prompt: that history may span many compacted windows.
@@ -573,8 +630,10 @@ async function generateBoundedSummary(
     Math.floor((input.model.contextWindow - maxTokens) * 4) -
     SUMMARIZATION_SYSTEM_PROMPT.length -
     64;
+
   const instructionsFor = (previousSummary: string | undefined): string => {
     let instructions: string;
+
     switch (kind) {
       case "checkpoint":
         instructions =
@@ -596,14 +655,18 @@ async function generateBoundedSummary(
         break;
       default: {
         const _exhaustive: never = kind;
+
         return _exhaustive;
       }
     }
+
     if (input.customInstructions !== undefined && input.customInstructions !== "") {
       instructions += `\n\nAdditional focus: ${input.customInstructions}`;
     }
+
     return instructions;
   };
+
   const promptFor = (conversation: string, previousSummary: string | undefined): string =>
     `<conversation>\n${conversation}\n</conversation>\n\n` +
     (previousSummary === undefined
@@ -617,19 +680,25 @@ async function generateBoundedSummary(
       : kind === "turn-prefix"
         ? "Turn prefix summarization"
         : "Summarization";
+
   let remaining = serializeConversation(input.currentMessages);
   let previousSummary = input.previousSummary;
+
   // A summary created by a larger model may itself need to be folded in chunks.
   if (previousSummary !== undefined && promptFor("", previousSummary).length >= promptChars) {
     remaining = `[Previous summary]: ${previousSummary}\n\n${remaining}`;
     previousSummary = undefined;
   }
+
   let usage: Usage | undefined;
+
   while (true) {
     if (input.signal?.aborted) {
       return Result.err(new CompactionError("aborted", `${label} aborted`, undefined, usage));
     }
+
     const availableChars = promptChars - promptFor("", previousSummary).length;
+
     if (availableChars <= 0) {
       return Result.err(
         new CompactionError(
@@ -640,16 +709,20 @@ async function generateBoundedSummary(
         ),
       );
     }
+
     const boundary = Math.max(
       remaining.lastIndexOf("\n", availableChars - 1),
       remaining.lastIndexOf(" ", availableChars - 1),
     );
+
     const chunkLength =
       remaining.length > availableChars && boundary > availableChars / 2
         ? boundary + 1
         : availableChars;
+
     const chunk = remaining.slice(0, chunkLength);
     let response: AssistantMessage;
+
     try {
       response = await completeSimpleWithRetries({
         streamFn: input.streamFn,
@@ -666,9 +739,12 @@ async function generateBoundedSummary(
       });
     } catch (cause) {
       if (!(cause instanceof CompactionError)) throw cause;
+
       return Result.err(withPriorUsage(cause, usage));
     }
+
     usage = usage === undefined ? response.usage : addUsage(usage, response.usage);
+
     if (input.signal?.aborted || response.stopReason === "aborted") {
       return Result.err(
         new CompactionError(
@@ -679,6 +755,7 @@ async function generateBoundedSummary(
         ),
       );
     }
+
     if (
       response.stopReason === "error" &&
       isContextOverflow(response, input.model.contextWindow) &&
@@ -689,6 +766,7 @@ async function generateBoundedSummary(
       promptChars = promptFor(chunk, previousSummary).length - Math.ceil(chunk.length / 2);
       continue;
     }
+
     if (response.stopReason === "error") {
       return Result.err(
         new CompactionError(
@@ -699,6 +777,7 @@ async function generateBoundedSummary(
         ),
       );
     }
+
     if (kind === "branch" && response.content.some((block) => block.type === "toolCall")) {
       return Result.err(
         new CompactionError(
@@ -709,8 +788,10 @@ async function generateBoundedSummary(
         ),
       );
     }
+
     remaining = remaining.slice(chunk.length);
     previousSummary = contentText(response.content);
+
     if (remaining.length === 0) return Result.ok({ text: previousSummary, usage });
   }
 }
@@ -723,9 +804,12 @@ interface CutPoint {
 
 function validCutPoints(messages: readonly Message[]): number[] {
   const cutPoints: number[] = [];
+
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
+
     if (message === undefined) continue;
+
     switch (message.role) {
       case "user":
       case "assistant":
@@ -735,10 +819,12 @@ function validCutPoints(messages: readonly Message[]): number[] {
         break;
       default: {
         const _exhaustive: never = message;
+
         return _exhaustive;
       }
     }
   }
+
   return cutPoints;
 }
 
@@ -746,34 +832,42 @@ function turnStartIndex(messages: readonly Message[], entryIndex: number): numbe
   for (let index = entryIndex; index >= 0; index -= 1) {
     if (messages[index]?.role === "user") return index;
   }
+
   return -1;
 }
 
 function findCutPoint(messages: readonly Message[], keepRecentTokens: number): CutPoint {
   const cutPoints = validCutPoints(messages);
+
   if (cutPoints.length === 0) {
     return { firstKeptMessageIndex: 0, turnStartIndex: -1, isSplitTurn: false };
   }
 
   let accumulatedTokens = 0;
   let cutIndex = cutPoints[0] ?? 0;
+
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
+
     if (message === undefined) continue;
     accumulatedTokens += estimateTokens(message);
+
     if (accumulatedTokens < keepRecentTokens) continue;
+
     for (const candidate of cutPoints) {
       if (candidate >= index) {
         cutIndex = candidate;
         break;
       }
     }
+
     break;
   }
 
   const cutMessage = messages[cutIndex];
   const startsTurn = cutMessage?.role === "user";
   const start = startsTurn ? -1 : turnStartIndex(messages, cutIndex);
+
   return {
     firstKeptMessageIndex: cutIndex,
     turnStartIndex: start,
@@ -808,28 +902,36 @@ export function prepareCheckpoint(
   }
 
   let checkpointIndex = -1;
+
   for (let index = commits.length - 1; index >= 0; index -= 1) {
     if (commits[index]?.commit.body.kind === "checkpoint") {
       checkpointIndex = index;
       break;
     }
   }
+
   const contextualCommits = checkpointIndex < 0 ? commits : commits.slice(checkpointIndex);
   const projected = contextMessages(contextualCommits.map((entry) => entry.commit));
   const checkpoint = checkpointIndex < 0 ? undefined : commits[checkpointIndex]?.commit.body;
   const checkpointBody = checkpoint?.kind === "checkpoint" ? checkpoint : undefined;
   const previousSummary = options?.previousSummary ?? checkpointBody?.summary;
+
   const compactableMessages =
     checkpointBody === undefined || checkpointBody.summary === "" ? projected : projected.slice(1);
+
   const cut = findCutPoint(compactableMessages, settings.keepRecentTokens);
   const historyEnd = cut.isSplitTurn ? cut.turnStartIndex : cut.firstKeptMessageIndex;
   const messagesToSummarize = compactableMessages.slice(0, historyEnd);
+
   const turnPrefixMessages = cut.isSplitTurn
     ? compactableMessages.slice(cut.turnStartIndex, cut.firstKeptMessageIndex)
     : [];
+
   const retainedTail = compactableMessages.slice(cut.firstKeptMessageIndex);
   const fileOps = createFileOps();
+
   if (previousSummary !== undefined) extractTaggedFileOps(previousSummary, fileOps);
+
   for (const message of [...messagesToSummarize, ...turnPrefixMessages]) {
     extractFileOpsFromMessage(message, fileOps);
   }
@@ -843,6 +945,7 @@ export function prepareCheckpoint(
     fileOps,
     settings,
   };
+
   return Result.ok(
     previousSummary === undefined ? preparation : { ...preparation, previousSummary },
   );
@@ -898,6 +1001,7 @@ async function summarizePreparedCheckpoint(input: {
   if (preparation.isSplitTurn && preparation.turnPrefixMessages.length > 0) {
     let historyText = preparation.previousSummary ?? "No prior history.";
     let historyUsage: Usage | undefined;
+
     if (preparation.messagesToSummarize.length > 0) {
       const history = await generateSummaryWithUsage({
         currentMessages: preparation.messagesToSummarize,
@@ -910,10 +1014,12 @@ async function summarizePreparedCheckpoint(input: {
         retry: input.retry,
         signal: input.signal,
       });
+
       if (!history.ok) return Result.err(history.error);
       historyText = history.value.text;
       historyUsage = history.value.usage;
     }
+
     const turnPrefix = await generateBoundedSummary(
       {
         currentMessages: preparation.turnPrefixMessages,
@@ -926,6 +1032,7 @@ async function summarizePreparedCheckpoint(input: {
       },
       "turn-prefix",
     );
+
     if (!turnPrefix.ok) return Result.err(withPriorUsage(turnPrefix.error, historyUsage));
     summary = `${historyText}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefix.value.text}`;
     summaryUsage =
@@ -944,12 +1051,14 @@ async function summarizePreparedCheckpoint(input: {
       retry: input.retry,
       signal: input.signal,
     });
+
     if (!generated.ok) return Result.err(generated.error);
     summary = generated.value.text;
     summaryUsage = generated.value.usage;
   }
 
   const files = computeFileLists(preparation.fileOps);
+
   const body: Extract<CommitBody, { kind: "checkpoint" }> = {
     kind: "checkpoint",
     summary: summary + formatFileOperations(files.readFiles, files.modifiedFiles),
@@ -957,6 +1066,7 @@ async function summarizePreparedCheckpoint(input: {
     tokensBefore: preparation.tokensBefore,
     usage: summaryUsage,
   };
+
   return Result.ok(input.material === undefined ? body : { ...body, material: input.material });
 }
 
@@ -971,19 +1081,25 @@ export async function summarizeCheckpoint(
       Math.floor(input.model.contextWindow / 2),
     ),
   });
+
   if (!prepared.ok) return Result.err(prepared.error);
+
   if (prepared.value === undefined) {
     return Result.err(new CompactionError("nothing_to_compact", "Nothing to compact"));
   }
+
   if (input.signal?.aborted) {
     return Result.err(new CompactionError("aborted", "Compaction aborted"));
   }
+
   const commits = input.commits.map((entry) => entry.commit);
+
   const tokensBefore = estimateModelContextTokens(commits, {
     provider: input.model.provider,
     api: input.model.api,
     model: input.model.id,
   }).tokens;
+
   const checkpoint = await input.providerCompaction?.(
     {
       context: {
@@ -1002,11 +1118,13 @@ export async function summarizeCheckpoint(
     },
     input.signal,
   );
+
   if (input.signal?.aborted) {
     return Result.err(
       new CompactionError("aborted", "Compaction aborted", undefined, checkpoint?.usage),
     );
   }
+
   if (checkpoint !== undefined && "material" in checkpoint) {
     // Native context is opaque. Keep portable history for a later model switch;
     // the matching provider replays only material plus messages after this commit.
@@ -1019,6 +1137,7 @@ export async function summarizeCheckpoint(
       usage: checkpoint.usage,
     });
   }
+
   const summarized = await summarizePreparedCheckpoint({
     preparation: { ...prepared.value, tokensBefore },
     streamFn: input.streamFn,
@@ -1029,8 +1148,11 @@ export async function summarizeCheckpoint(
     signal: input.signal,
     retry: input.retry,
   });
+
   if (!summarized.ok) return Result.err(withPriorUsage(summarized.error, checkpoint?.usage));
+
   if (checkpoint?.usage === undefined) return summarized;
+
   return Result.ok({
     ...summarized.value,
     usage:
@@ -1083,11 +1205,13 @@ export async function writeCheckpoint(
   if (input.signal?.aborted) return { kind: "aborted" };
   let lease = input.lease;
   let acquiredHere = false;
+
   if (lease === undefined) {
     const acquired = await session.leases.acquire(
       headRef(input.head),
       input.ttlMs ?? DEFAULT_TTL_MS,
     );
+
     if (!acquired.ok) return { kind: "busy", holder: acquired.holder };
     lease = acquired.lease;
     acquiredHere = true;
@@ -1096,11 +1220,13 @@ export async function writeCheckpoint(
   const failures: unknown[] = [];
   let unrecordedUsage: Usage | undefined;
   let tip: Oid | null = null;
+
   try {
     const refs = await Promise.all([
       session.refs.read(headRef(input.head)),
       session.refs.read(runRef(input.head)),
     ]);
+
     tip = refs[0];
     const runOid = refs[1];
     const commits = await contextCommits(session.objects, tip);
@@ -1109,18 +1235,24 @@ export async function writeCheckpoint(
       lease,
       reason: input.reason,
     });
+
     const summarized = await withLeaseRenewal(
       { session, lease, ttlMs: input.ttlMs ?? DEFAULT_TTL_MS, signal: input.signal },
       async (signal) => {
         const result = await summarizeCheckpoint({ ...input, commits, signal });
         unrecordedUsage = result.ok ? result.value.usage : result.error.usage;
+
         return result;
       },
     );
+
     input.signal?.throwIfAborted();
+
     if (!summarized.ok) {
       failures.push(summarized.error);
+
       if (summarized.error.code === "aborted") return { kind: "aborted" };
+
       return summarized.error.code === "nothing_to_compact"
         ? { kind: "nothing_to_compact" }
         : { kind: "failed", code: "internal", error: summarized.error };
@@ -1132,10 +1264,12 @@ export async function writeCheckpoint(
       body: summarized.value,
       at: Date.now(),
     };
+
     const commitOid = hashObject(commit);
     await session.objects.put([commit]);
     unrecordedUsage = undefined;
     input.signal?.throwIfAborted();
+
     const published = await session.refs.update(
       [
         { name: headRef(input.head), from: tip, to: commitOid },
@@ -1144,7 +1278,9 @@ export async function writeCheckpoint(
       ],
       { lease, reason: input.reason },
     );
+
     if (published.ok) return { kind: "compacted", commit: commitOid };
+
     return {
       kind: "failed",
       code: published.reason,
@@ -1155,28 +1291,35 @@ export async function writeCheckpoint(
     };
   } catch (error) {
     failures.push(error);
+
     if (input.signal?.aborted) return { kind: "aborted" };
+
     if (error instanceof LeaseLost) {
       return { kind: "failed", code: "fenced", error: "Checkpoint publication was fenced" };
     }
+
     return { kind: "failed", code: "internal", error };
   } finally {
     const cleanupFailures: unknown[] = [];
+
     try {
       await retainCompactionUsage(session, { parent: tip, usage: unrecordedUsage });
     } catch (cause) {
       cleanupFailures.push(cause);
     }
+
     try {
       await finishCompaction(session, { head: input.head, lease });
     } catch (cause) {
       cleanupFailures.push(cause);
     }
+
     try {
       if (acquiredHere) await session.leases.release(lease);
     } catch (cause) {
       cleanupFailures.push(cause);
     }
+
     if (cleanupFailures.length > 0) {
       // Throwing here is deliberate: the aggregate carries `failures` too, so the
       // original error survives, and a compaction whose cleanup failed must not
@@ -1189,6 +1332,7 @@ export async function writeCheckpoint(
 
 function branchMessages(commit: Commit): Message[] {
   const body = commit.body;
+
   switch (body.kind) {
     case "message":
       return body.message.role === "toolResult" ? [] : [body.message];
@@ -1205,6 +1349,7 @@ function branchMessages(commit: Commit): Message[] {
       return [];
     default: {
       const _exhaustive: never = body;
+
       return _exhaustive;
     }
   }
@@ -1221,37 +1366,49 @@ function prepareBranchSummary(
   tokenBudget: number,
 ): BranchSummaryPreparation {
   const fileOps = createFileOps();
+
   for (const entry of commits) {
     const body = entry.commit.body;
+
     if (body.kind === "message") extractFileOpsFromMessage(body.message, fileOps);
+
     if (body.kind === "checkpoint") {
       extractTaggedFileOps(body.summary, fileOps);
+
       if (body.summary === "") {
         for (const message of body.retainedTail) {
           extractFileOpsFromMessage(message, fileOps);
+
           if (message.role === "user") extractTaggedFileOps(contentText(message.content), fileOps);
         }
       }
     }
+
     if (body.kind === "summary") extractTaggedFileOps(body.text, fileOps);
   }
 
   // Newest first, so the budget keeps the recent work; reversed once at the end.
   const kept: Message[][] = [];
   let totalTokens = 0;
+
   for (const entry of commits.toReversed()) {
     const contributed = branchMessages(entry.commit);
+
     if (contributed.length === 0) continue;
     const tokens = contributed.reduce((sum, message) => sum + estimateTokens(message), 0);
+
     if (tokenBudget > 0 && totalTokens + tokens > tokenBudget) {
       const kind = entry.commit.body.kind;
       const isSummary = kind === "checkpoint" || kind === "summary";
+
       if (isSummary && totalTokens < tokenBudget * 0.9) kept.push(contributed);
       break;
     }
+
     kept.push(contributed);
     totalTokens += tokens;
   }
+
   return { messages: kept.toReversed().flat(), fileOps };
 }
 
@@ -1270,11 +1427,14 @@ export async function summarizeBranch(
   input: SummarizeBranchInput,
 ): Promise<Result<Extract<CommitBody, { kind: "summary" }>, CompactionError>> {
   const reserveTokens = DEFAULT_COMPACTION_SETTINGS.reserveTokens;
+
   const preparation = prepareBranchSummary(
     input.abandoned,
     Math.max(0, input.model.contextWindow - reserveTokens),
   );
+
   if (preparation.messages.length === 0) return Result.ok({ kind: "summary", text: "" });
+
   const generated = await generateBoundedSummary(
     {
       currentMessages: preparation.messages,
@@ -1288,10 +1448,12 @@ export async function summarizeBranch(
     },
     "branch",
   );
+
   if (!generated.ok) return Result.err(generated.error);
 
   const files = computeFileLists(preparation.fileOps);
   const text = generated.value.text;
+
   return Result.ok({
     kind: "summary",
     text:
@@ -1320,6 +1482,7 @@ export function summaryCommit(input: {
 /** Classify an overflow only when the provider response matches the requested model. */
 export function isOverflow(message: AssistantMessage, model: Model<Api>): boolean {
   const sameModel = message.provider === model.provider && message.model === model.id;
+
   return (
     sameModel &&
     (isContextOverflow(message, model.contextWindow) ||

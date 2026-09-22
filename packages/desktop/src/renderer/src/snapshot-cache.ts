@@ -3,6 +3,7 @@ import type { SessionId, SessionSnapshot } from "@nyte-ai/protocol";
 import { keys } from "./query-keys.ts";
 
 const SNAPSHOT_CACHE_MAX_ENTRIES = 12;
+
 const SNAPSHOT_CACHE_MAX_BYTES = 64 * 1024 * 1024;
 
 /**
@@ -18,6 +19,7 @@ export function installSnapshotCacheBudget(
 
   const enforce = (): void => {
     cancelEnforcement = undefined;
+
     const cached = client
       .getQueryCache()
       .findAll({
@@ -50,11 +52,14 @@ export function installSnapshotCacheBudget(
 
   const scheduleEnforcement = (): void => {
     if (cancelEnforcement !== undefined) return;
-    if (typeof requestIdleCallback === "function") {
+
+    if ("requestIdleCallback" in globalThis) {
       const idle = requestIdleCallback(enforce, { timeout: 1_000 });
       cancelEnforcement = () => cancelIdleCallback(idle);
+
       return;
     }
+
     const timeout = setTimeout(enforce);
     cancelEnforcement = () => clearTimeout(timeout);
   };
@@ -62,21 +67,27 @@ export function installSnapshotCacheBudget(
   const unsubscribe = client.getQueryCache().subscribe((event) => {
     if (event.type === "removed") {
       sizes.delete(event.query.queryHash);
+
       return;
     }
 
     if (event.query.queryKey.length !== 2 || event.query.queryKey[0] !== "snapshot") return;
+
     const dataChanged =
       event.type === "added" ||
       (event.type === "updated" &&
         (event.action.type === "success" ||
           (event.action.type === "setState" && "data" in event.action.state)));
+
     if (dataChanged) sizes.delete(event.query.queryHash);
+
     if (event.query.getObserversCount() !== 0) return;
+
     if ((event.type !== "observerRemoved" && !dataChanged) || event.query.state.data === undefined)
       return;
     scheduleEnforcement();
   });
+
   return () => {
     cancelEnforcement?.();
     cancelEnforcement = undefined;
@@ -88,6 +99,7 @@ export function installSnapshotCacheBudget(
 /** Drop what the cache holds for a session nobody reads anymore; an open pane keeps its own. */
 export function releaseSessionQueries(client: QueryClient, sessionId: SessionId): void {
   const cache = client.getQueryCache();
+
   const owned = [
     ...[
       keys.snapshot(sessionId),
@@ -101,6 +113,7 @@ export function releaseSessionQueries(client: QueryClient, sessionId: SessionId)
     ].flatMap((queryKey) => cache.findAll({ queryKey, exact: true })),
     ...cache.findAll({ queryKey: ["vcs", "run-diff", sessionId] }),
   ];
+
   for (const query of owned) {
     if (query.getObserversCount() === 0) cache.remove(query);
   }

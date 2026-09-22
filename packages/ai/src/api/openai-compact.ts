@@ -4,6 +4,7 @@ import { calculateCost } from "../models.ts";
 import type { Api, JsonValue, Model, Usage } from "../types.ts";
 
 const tokenCount = Type.Number({ minimum: 0 });
+
 const compactResponse = Type.Object({
   output: Type.Array(Type.Object({ type: Type.String({ minLength: 1 }) }), { minItems: 1 }),
   usage: Type.Optional(
@@ -36,14 +37,18 @@ export async function readOpenAICompactResponse(
   model: Model<Api>,
 ): Promise<OpenAICompactResult> {
   const decoded: unknown = await response.json();
+
   if (!Value.Check(compactResponse, decoded)) {
     throw new Error("OpenAI compact response did not contain valid output items and usage");
   }
+
   // Response.json produced these JSON objects; validation establishes their item envelope.
   const data = decoded.output;
+
   if (decoded.usage === undefined) return { data };
   const cached = decoded.usage.input_tokens_details?.cached_tokens ?? 0;
   const written = decoded.usage.input_tokens_details?.cache_write_tokens ?? 0;
+
   const usage: Usage = {
     input: Math.max(0, decoded.usage.input_tokens - cached - written),
     output: decoded.usage.output_tokens,
@@ -53,6 +58,8 @@ export async function readOpenAICompactResponse(
     totalTokens: decoded.usage.total_tokens,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   };
+
   calculateCost(model, usage);
+
   return { data, usage };
 }

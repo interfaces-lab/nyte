@@ -148,8 +148,11 @@ export const LIGHT_THEME: CliTheme = Object.freeze({
 /** `dark`/`light`, plus the `night`/`day` aliases. Anything else is no answer. */
 function byName(raw: string | undefined): ThemeMode | undefined {
   const name = raw?.trim().toLowerCase();
+
   if (name === "dark" || name === "night") return "dark";
+
   if (name === "light" || name === "day") return "light";
+
   return undefined;
 }
 
@@ -159,9 +162,12 @@ function byName(raw: string | undefined): ThemeMode | undefined {
  */
 function byColorFgBg(raw: string | undefined): ThemeMode | undefined {
   const field = raw?.split(";").at(-1)?.trim();
+
   if (field === undefined || !/^\d+$/u.test(field)) return undefined;
   const background = Number(field);
+
   if (background <= 6 || background === 8) return "dark";
+
   return background <= 15 ? "light" : undefined;
 }
 
@@ -179,6 +185,7 @@ export function resolveThemeMode(
   env: NodeJS.ProcessEnv = process.env,
 ): ThemeMode {
   if (choice !== "auto") return choice;
+
   return (
     terminal ??
     byName(env["NYTE_THEME"]) ??
@@ -196,6 +203,7 @@ export function themeForMode(mode: ThemeMode): CliTheme {
       return LIGHT_THEME;
     default: {
       const _exhaustive: never = mode;
+
       return _exhaustive;
     }
   }

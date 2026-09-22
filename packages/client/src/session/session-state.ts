@@ -83,7 +83,9 @@ function settleToolCall(
   callId: string,
 ): ReadonlySet<string> {
   if (runId === undefined || state.run?.runId !== runId) return state.settledToolCalls;
+
   if (state.settledToolCalls.has(callId)) return state.settledToolCalls;
+
   return new Set([...state.settledToolCalls, callId]);
 }
 
@@ -116,8 +118,8 @@ export function snapshotOf(state: SessionState): SessionSnapshot {
     tip: state.transcript.tip,
     transcript: state.transcript.items,
     pending: state.pending,
-    ...(state.run === undefined ? {} : { run: state.run }),
-    ...(state.compaction === undefined ? {} : { compaction: state.compaction }),
+    run: state.run,
+    compaction: state.compaction,
     parked: state.parked,
   };
 }
@@ -127,14 +129,16 @@ export function waitingCall(
   state: Pick<SessionState, "sessionId" | "parked">,
 ): WaitingCall | undefined {
   const call = state.parked.findLast((candidate) => candidate.selection !== undefined);
+
   if (call?.selection === undefined) return undefined;
+
   return {
     sessionId: state.sessionId,
     runId: call.runId,
     callId: call.callId,
     waitId: call.waitId,
     selection: call.selection,
-    ...(call.until === undefined ? {} : { until: call.until }),
+    until: call.until,
   };
 }
 
@@ -173,12 +177,15 @@ function stopping(state: SessionState, runId: string): boolean {
 /** Arrival time chooses between deliveries; each chain keeps its chosen order. */
 function comparePending(left: PendingItem, right: PendingItem): number {
   const byTime = left.at - right.at;
+
   if (byTime !== 0) return byTime;
+
   return left.change < right.change ? -1 : left.change > right.change ? 1 : 0;
 }
 
 function upsertPending(items: readonly PendingItem[], item: PendingItem): PendingItem[] {
   const rest = items.filter((existing) => existing.change !== item.change);
+
   return mergeByDelivery([...rest, item], {
     delivery: (entry) => entry.delivery,
     compare: comparePending,
@@ -190,6 +197,7 @@ function withoutPending(
   change: Oid | undefined,
 ): readonly PendingItem[] {
   if (change === undefined || !items.some((item) => item.change === change)) return items;
+
   return mergeByDelivery(
     items.filter((item) => item.change !== change),
     { delivery: (entry) => entry.delivery, compare: comparePending },
@@ -203,6 +211,7 @@ function withoutPending(
  */
 export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome {
   const base: SessionState = { ...state, seq: Math.max(state.seq, event.seq) };
+
   switch (event.kind) {
     case "activation_changed":
       return {
@@ -212,13 +221,16 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
     case "commit": {
       if (event.head !== state.head) return { kind: "state", state: base };
       const transcript = appendTranscriptCommit(state.transcript, event.item);
+
       if (transcript === undefined) return { kind: "resnapshot" };
       const reached = state.expectedTip === transcript.tip;
       const body = event.item.commit.body;
+
       const settledToolCalls =
         body.kind === "message" && body.message.role === "toolResult"
           ? settleToolCall(state, event.item.commit.run, body.message.toolCallId)
           : state.settledToolCalls;
+
       // The head and the inbox base move in one CAS but arrive as separate
       // frames; the change leaves the queue with the commit that landed it, so
       // no frame shows the message both pending and in the transcript.
@@ -234,8 +246,10 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
         },
       };
     }
+
     case "head_moved":
       if (event.head !== state.head) return { kind: "state", state: base };
+
       return {
         kind: "state",
         state: {
@@ -248,6 +262,7 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
       const terminal = isTerminalPhase(event.run.phase);
       const overlay = foldLiveParts(state.overlay, event);
       const parked = terminal ? [] : state.parked.filter((call) => call.runId === event.run.runId);
+
       return {
         kind: "state",
         state: {
@@ -262,20 +277,24 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
         },
       };
     }
+
     case "compaction":
       if (event.head !== state.head) return { kind: "state", state: base };
+
       return {
         kind: "state",
         state: { ...base, compaction: event.compaction ?? undefined },
       };
     case "queued":
       if (event.head !== state.head) return { kind: "state", state: base };
+
       return {
         kind: "state",
         state: { ...base, pending: upsertPending(state.pending, event.item) },
       };
     case "landed":
       if (event.head !== state.head) return { kind: "state", state: base };
+
       return {
         kind: "state",
         state: { ...base, pending: withoutPending(state.pending, event.change) },
@@ -287,10 +306,12 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
       };
     case "effect": {
       if (state.run?.runId !== event.runId) return { kind: "state", state: base };
+
       switch (event.state) {
         case "waiting": {
           // The snapshot orders concurrent asks and rejects a waiting event older than itself.
           if (event.selection !== undefined) return { kind: "resnapshot" };
+
           // A background wait carries its whole record, so it parks without a read.
           const call: ParkedCall = {
             runId: event.runId,
@@ -298,8 +319,9 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
             waitId: event.waitId,
             tool: event.tool,
             args: event.args,
-            ...(event.until === undefined ? {} : { until: event.until }),
+            until: event.until,
           };
+
           return {
             kind: "state",
             state: {
@@ -308,29 +330,37 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
             },
           };
         }
+
         case "expired":
         case "signal":
         case "result": {
           const parked = state.parked.find((call) => call.callId === event.callId);
+
           if (parked === undefined) return { kind: "state", state: base };
+
           // These carry no wait generation; only the snapshot tells a settled ask from a replay.
           if (parked.selection !== undefined) return { kind: "resnapshot" };
+
           return {
             kind: "state",
             state: { ...base, parked: state.parked.filter((call) => call !== parked) },
           };
         }
+
         case "intent":
           return { kind: "state", state: base };
         default: {
           const _exhaustive: never = event;
+
           return _exhaustive;
         }
       }
     }
+
     case "text_delta":
     case "reasoning_delta":
       if (stopping(state, event.runId)) return { kind: "state", state: base };
+
       return {
         kind: "state",
         state: { ...base, overlay: foldLiveParts(state.overlay, event) },
@@ -343,12 +373,14 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
         state.settledToolCalls.has(event.callId)
       )
         return { kind: "state", state: base };
+
       return {
         kind: "state",
         state: { ...base, overlay: foldLiveParts(state.overlay, event) },
       };
     case "fact":
       if (event.key !== "name") return { kind: "state", state: base };
+
       return {
         kind: "state",
         state: {
@@ -363,6 +395,7 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
         event.job.origin.kind === "user"
       )
         return { kind: "state", state: base };
+
       return {
         kind: "state",
         state: {
@@ -372,6 +405,7 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
         },
       };
     }
+
     case "config_queued":
     case "stack":
     case "deleted":
@@ -383,6 +417,7 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
       return { kind: "state", state: base };
     default: {
       const _exhaustive: never = event;
+
       return _exhaustive;
     }
   }

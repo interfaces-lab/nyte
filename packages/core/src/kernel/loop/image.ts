@@ -48,6 +48,7 @@ const SUPPORTED_MIME_TYPES = new Map<string, string>([
 
 function supportedMimeType(mimeType: string): string | undefined {
   const base = mimeType.split(";")[0]?.trim().toLowerCase() ?? mimeType.toLowerCase();
+
   return SUPPORTED_MIME_TYPES.get(base);
 }
 
@@ -58,6 +59,7 @@ interface Candidate {
 
 function encodeCandidates(image: PhotonImage, width: number, height: number): Candidate[] {
   const resized = resize(image, width, height, SamplingFilter.Lanczos3);
+
   try {
     return [
       { data: Buffer.from(resized.get_bytes()).toString("base64"), mimeType: "image/png" },
@@ -77,16 +79,21 @@ function encodeCandidates(image: PhotonImage, width: number, height: number): Ca
  */
 async function orient(image: PhotonImage, bytes: Uint8Array): Promise<PhotonImage> {
   const orientation = await exifr.orientation(Buffer.from(bytes)).catch(() => undefined);
+
   if (orientation === undefined || orientation === 1) return image;
   let oriented = image;
+
   if (orientation === 5 || orientation === 6 || orientation === 7 || orientation === 8) {
     oriented = rotate(image, orientation <= 6 ? 90 : 270);
     image.free();
   }
+
   if (orientation === 2 || orientation === 3 || orientation === 5 || orientation === 7) {
     fliph(oriented);
   }
+
   if (orientation === 3 || orientation === 4) flipv(oriented);
+
   return oriented;
 }
 
@@ -98,6 +105,7 @@ function dimensionHint(args: {
   readonly height: number;
 }): string {
   const scale = args.originalWidth / args.width;
+
   return `[Image: original ${String(args.originalWidth)}x${String(args.originalHeight)}, displayed at ${String(args.width)}x${String(args.height)}. Multiply coordinates by ${scale.toFixed(2)} to map to original image.]`;
 }
 
@@ -109,9 +117,11 @@ function dimensionHint(args: {
 export async function processImage(bytes: Uint8Array, mimeType: string): Promise<ProcessedImage> {
   const sourceMimeType = supportedMimeType(mimeType);
   let image: PhotonImage | undefined;
+
   try {
     image = PhotonImage.new_from_byteslice(bytes);
     const base64Size = Math.ceil(bytes.byteLength / 3) * 4;
+
     if (
       sourceMimeType !== undefined &&
       image.get_width() <= IMAGE_LIMITS.maxWidth &&
@@ -129,25 +139,32 @@ export async function processImage(bytes: Uint8Array, mimeType: string): Promise
     image = await orient(image, bytes);
     const originalWidth = image.get_width();
     const originalHeight = image.get_height();
+
     const scale = Math.min(
       1,
       IMAGE_LIMITS.maxWidth / originalWidth,
       IMAGE_LIMITS.maxHeight / originalHeight,
     );
+
     let width = Math.max(1, Math.round(originalWidth * scale));
     let height = Math.max(1, Math.round(originalHeight * scale));
+
     while (true) {
       for (const candidate of encodeCandidates(image, width, height)) {
         if (candidate.data.length > IMAGE_LIMITS.maxBase64Bytes) continue;
         const hints: string[] = [];
+
         if (sourceMimeType !== candidate.mimeType) {
           hints.push(`[Image converted from ${mimeType} to ${candidate.mimeType}.]`);
         }
+
         if (width !== originalWidth || height !== originalHeight) {
           hints.push(dimensionHint({ originalWidth, originalHeight, width, height }));
         }
+
         return { kind: "image", data: candidate.data, mimeType: candidate.mimeType, hints };
       }
+
       if (width === 1 && height === 1) break;
       width = Math.max(1, Math.floor(width * 0.75));
       height = Math.max(1, Math.floor(height * 0.75));
@@ -161,6 +178,7 @@ export async function processImage(bytes: Uint8Array, mimeType: string): Promise
   } finally {
     image?.free();
   }
+
   return {
     kind: "omitted",
     message: "[Image omitted: could not be resized below the inline image size limit.]",
@@ -182,20 +200,26 @@ export async function normalizeImageContent(
   if (!content.some((block) => block.type === "image")) return content;
 
   const normalized: (TextContent | ImageContent)[] = [];
+
   for (const block of content) {
     if (block.type !== "image") {
       normalized.push(block);
       continue;
     }
+
     const processed = await processImage(Buffer.from(block.data, "base64"), block.mimeType);
+
     if (processed.kind === "omitted") {
       normalized.push(block);
       continue;
     }
+
     normalized.push({ ...block, data: processed.data, mimeType: processed.mimeType });
+
     if (processed.hints.length > 0) {
       normalized.push({ type: "text", text: processed.hints.join("\n") });
     }
   }
+
   return normalized;
 }

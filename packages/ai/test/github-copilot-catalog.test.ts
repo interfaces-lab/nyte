@@ -9,6 +9,7 @@ import {
   ORIGIN,
   SESSION_TOKEN,
   TOKEN,
+  copilotCatalog,
   copilotModels,
   fakeFetch,
   interaction,
@@ -18,6 +19,11 @@ import {
 } from "./github-copilot-fixture.ts";
 
 const listedModel = (id: string) => ({ id, model_picker_enabled: true });
+const knownModelIds = new Set(copilotCatalog.map((model) => model.id));
+
+function parseCatalog(value: unknown, origin = ORIGIN) {
+  return parseGitHubCopilotCatalog(value, origin, knownModelIds);
+}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -27,7 +33,7 @@ afterEach(() => {
 describe("GitHub Copilot account availability", () => {
   test("accepts account IDs without endpoints, limits, billing, or capability metadata", () => {
     assert.deepEqual(
-      parseGitHubCopilotCatalog(
+      parseCatalog(
         { data: [listedModel("gemini-3.8-flash"), listedModel("claude-sonnet-4.6")] },
         ORIGIN,
       ),
@@ -39,7 +45,7 @@ describe("GitHub Copilot account availability", () => {
   });
 
   test("respects disabled policies, hidden models, and explicit lack of tools", () => {
-    const parsed = parseGitHubCopilotCatalog(
+    const parsed = parseCatalog(
       {
         data: [
           listedModel("gemini-3.8-flash"),
@@ -69,17 +75,15 @@ describe("GitHub Copilot account availability", () => {
         { id: "disabled", model_picker_enabled: false, policy: { state: "disabled" } },
       ],
     };
-    assert.deepEqual(parseGitHubCopilotCatalog(raw, ORIGIN).availableModelIds, [
-      "gemini-3.8-flash",
-    ]);
+    assert.deepEqual(parseCatalog(raw, ORIGIN).availableModelIds, ["gemini-3.8-flash"]);
     assert.deepEqual(
-      parseGitHubCopilotCatalog(raw, "https://api.business.githubcopilot.com").availableModelIds,
+      parseCatalog(raw, "https://api.business.githubcopilot.com").availableModelIds,
       [],
     );
   });
 
   test("malformed availability metadata cannot authorize a model or discard valid peers", () => {
-    const catalog = parseGitHubCopilotCatalog(
+    const catalog = parseCatalog(
       {
         data: [
           listedModel("claude-sonnet-4.6"),
@@ -94,26 +98,32 @@ describe("GitHub Copilot account availability", () => {
   });
 
   test("an actual empty list is valid, but a malformed list fails discovery", () => {
-    assert.deepEqual(parseGitHubCopilotCatalog({ data: [] }, ORIGIN).availableModelIds, []);
-    assert.throws(() => parseGitHubCopilotCatalog({ models: [] }, ORIGIN), /not a model list/);
+    assert.deepEqual(parseCatalog({ data: [] }, ORIGIN).availableModelIds, []);
+    assert.throws(() => parseCatalog({ models: [] }, ORIGIN), /not a model list/);
   });
 });
 
-describe("GitHub Copilot generated provider", () => {
-  test("has baked definitions without signing in but makes none available", async () => {
+describe("GitHub Copilot provider", () => {
+  test("loads hosted definitions without requiring sign-in", async () => {
     vi.stubEnv("COPILOT_GITHUB_TOKEN", "");
     const transport = fakeFetch({});
-    const models = createModels();
+    const models = createModels({
+      catalog: { fetch: async () => json(copilotCatalog) },
+    });
     models.setProvider(githubCopilotProvider({ fetch: transport.fetch }));
+    assert.deepEqual(models.getModels("github-copilot"), []);
+
+    const result = await models.refresh({ providers: ["github-copilot"] });
+
+    assert.equal(result.errors.size, 0);
     assert.ok(models.getModel("github-copilot", "gemini-3.8-flash"));
     assert.ok(models.getModel("github-copilot", "claude-sonnet-4.6"));
     assert.deepEqual(await models.getAvailable("github-copilot"), []);
     assert.equal(await models.checkAuth("github-copilot"), undefined);
-    await models.refresh({ providers: ["github-copilot"] });
     assert.equal(transport.requests.length, 0);
   });
 
-  test("login immediately publishes only account models, with routes supplied by generated definitions", async () => {
+  test("login immediately publishes only account models, with routes supplied by the hosted catalog", async () => {
     const setup = copilotModels({
       [MODELS]: () =>
         json({
@@ -153,7 +163,10 @@ describe("GitHub Copilot generated provider", () => {
     });
     await signIn(setup.models);
     const transport = fakeFetch({});
-    const restarted = createModels({ credentials: setup.credentials });
+    const restarted = createModels({
+      credentials: setup.credentials,
+      modelsStore: setup.modelsStore,
+    });
     restarted.setProvider(githubCopilotProvider({ fetch: transport.fetch }));
     await restarted.refresh({ allowNetwork: false });
     assert.deepEqual(
@@ -163,7 +176,7 @@ describe("GitHub Copilot generated provider", () => {
     assert.equal(transport.requests.length, 0);
   });
 
-  test("malformed stored account IDs do not expose generated subscription models", async () => {
+  test("malformed stored account IDs do not expose subscription models", async () => {
     const setup = copilotModels({});
     await signIn(setup.models);
     await setup.credentials.modify("github-copilot", async (credential) =>
@@ -274,6 +287,7 @@ describe("GitHub Copilot generated provider", () => {
   test("headless hosts can supply a bearer token without interactive OAuth", async () => {
     const setup = copilotModels({});
     vi.stubEnv("COPILOT_GITHUB_TOKEN", "injected-bearer");
+    await setup.models.refresh({ providers: ["github-copilot"], allowNetwork: false });
     assert.equal((await setup.models.checkAuth("github-copilot"))?.type, "api_key");
     assert.equal((await setup.models.getAuth("github-copilot"))?.auth.apiKey, "injected-bearer");
     assert.ok((await setup.models.getAvailable("github-copilot")).length > 0);

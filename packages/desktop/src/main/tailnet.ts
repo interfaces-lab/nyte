@@ -63,21 +63,28 @@ function runFile(executable: string, arguments_: readonly string[]): Promise<str
 /** The 100.64.0.0/10 shared address space Tailscale assigns, checked numerically. */
 export function isTailnetIpv4(value: string): boolean {
   const octets = value.split(".").map(Number);
+
   if (octets.length !== 4) return false;
+
   if (!octets.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)) return false;
   const [first, second] = octets;
+
   return first === 100 && second !== undefined && second >= 64 && second <= 127;
 }
 
 function parseStatus(output: string): TailnetLookup {
   const parsed: unknown = JSON.parse(output);
   const status = Value.Parse(statusSchema, parsed);
+
   if (status.BackendState !== "Running") {
     return { kind: "unavailable", state: status.BackendState };
   }
+
   const ip = status.TailscaleIPs?.find((candidate) => isTailnetIpv4(candidate));
+
   if (ip === undefined) return { kind: "unavailable", state: status.BackendState };
   const dnsName = status.Self?.DNSName?.replace(/\.$/, "");
+
   return {
     kind: "ready",
     address: { ip, name: dnsName === undefined || dnsName === "" ? undefined : dnsName },
@@ -94,18 +101,22 @@ export async function findTailnetAddress(
   run: CommandRunner = runFile,
 ): Promise<TailnetLookup> {
   if (platform === "win32") return { kind: "missing" };
+
   for (const cliPath of CLI_PATHS) {
     let output: string;
+
     try {
       output = await run(cliPath, ["status", "--json"]);
     } catch {
       continue;
     }
+
     try {
       return parseStatus(output);
     } catch {
       return { kind: "unavailable", state: "Unknown" };
     }
   }
+
   return { kind: "missing" };
 }

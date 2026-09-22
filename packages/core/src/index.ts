@@ -7,8 +7,11 @@
  * under `@nyte-ai/core/store`. Neither route is folded into one barrel.
  */
 export { createNyte } from "./kernel/sdk/nyte.ts";
+
 export { dispatch } from "./kernel/sdk/dispatch.ts";
+
 export { bindTool } from "./tools/bind-tool.ts";
+
 export * from "./kernel/sdk/types.ts";
 
 /**
@@ -25,6 +28,7 @@ export {
   type ResolvedPlugins,
   type WatchTarget,
 } from "./plugins/sources.ts";
+
 /**
  * `LoadedPlugin` is a `NyteOptions` field; `PluginInfo` and `SettingInfo` are
  * what the `plugins` namespace returns. Authoring the things behind them is
@@ -34,4 +38,5 @@ export type { LoadedPlugin, PluginInfo, SettingInfo } from "./plugins/types.ts";
 
 /** The remaining `NyteOptions` fields a host names when it composes a `Nyte`. */
 export { isThinkingLevel, type StreamFn, type ThinkingLevel } from "./kernel/loop/types.ts";
+
 export { DEFAULT_COMPACTION_SETTINGS, type CompactionSettings } from "./kernel/compaction.ts";

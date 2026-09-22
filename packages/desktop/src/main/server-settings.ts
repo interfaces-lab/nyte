@@ -13,6 +13,7 @@ const serverType = Type.Object(
   { baseUrl: Type.String({ minLength: 1 }), token: Type.String({ minLength: 1 }) },
   { additionalProperties: false },
 );
+
 const serverFile = Compile(serverType);
 
 export type ServerSettings = Static<typeof serverType>;

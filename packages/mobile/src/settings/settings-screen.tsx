@@ -32,20 +32,25 @@ export function SettingsScreen() {
   const [filterCards, setFilterCards] = useFilterCards();
   const [dateSections, setDateSections] = useDateSections();
   const [twoLinePreview, setTwoLinePreview] = useTwoLinePreview();
+
   const check = useQuery({
     queryKey: ["host-check"],
     retry: false,
     queryFn: async () => {
       await client.info();
+
       return null;
     },
   });
+
   const workspacesQuery = useQuery({
     queryKey: ["workspace-list"],
     retry: false,
     queryFn: () => client.workspace.list(),
   });
+
   const version = Constants.expoConfig?.version ?? "0.0.0";
+
   const status: HostStatus = check.isFetching
     ? "checking"
     : check.isError
@@ -76,8 +81,10 @@ export function SettingsScreen() {
 
   const statusLabel =
     status === "checking" ? "Checking…" : status === "connected" ? "Connected" : "Unreachable";
+
   const statusColor =
     status === "checking" ? theme.muted : status === "connected" ? theme.success : theme.danger;
+
   const workspaceList = workspacesQuery.data;
 
   return (

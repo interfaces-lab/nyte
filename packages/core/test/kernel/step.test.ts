@@ -362,9 +362,8 @@ test("an abort that races the response keeps the response, then ends the run at 
     body: say("hi"),
   });
   await stepMain(session, turn);
-  assert.equal((await stepMain(session, turn)).kind, "continue");
-  assert.equal(await textAt(session, 1), "finished anyway");
   assert.equal((await stepMain(session, turn)).kind, "finished");
+  assert.equal(await textAt(session, 1), "finished anyway");
   const run = await currentRun(session);
   assert.equal(run?.phase.kind, "aborted");
   assert.equal(run?.attempts, 1);
@@ -413,9 +412,8 @@ test("an abort ends the run even with a boundary-delivery message waiting; that 
     body: say("for later"),
   });
 
-  // The abort raced the publish; the interrupted response is kept, and the
-  // boundary ends the run without drain the steer into it.
-  assert.equal((await stepMain(session, turn)).kind, "continue");
+  // The abort raced the publish; the interrupted response is kept and the run
+  // ends in the same step without draining the steer into it.
   assert.equal((await stepMain(session, turn)).kind, "finished");
   const stopped = await currentRun(session);
   assert.equal(stopped?.id, run.id);
@@ -464,9 +462,10 @@ test("an abort flagged during a tool batch settles the batch, then ends the run;
   await stepMain(session, turn);
   const run = await currentRun(session);
   assert.equal(run?.phase.kind, "tools");
-  assert.equal((await stepMain(session, turn)).kind, "continue");
+  assert.equal((await stepMain(session, turn)).kind, "finished");
   assert.deepEqual(await branchBodyRoles(session), ["user", "assistant", "toolResult"]);
   assert.equal((await currentRun(session))?.abortRequested, true);
+  assert.equal((await currentRun(session))?.phase.kind, "aborted");
 
   await submit(session, {
     preparation: { kind: "none" },
@@ -475,8 +474,6 @@ test("an abort flagged during a tool batch settles the batch, then ends the run;
     kind: "user",
     body: say("steer"),
   });
-  assert.equal((await stepMain(session, turn)).kind, "finished");
-  assert.equal((await currentRun(session))?.phase.kind, "aborted");
   assert.equal((await stepMain(session, turn)).kind, "continue");
   assert.notEqual((await currentRun(session))?.id, run?.id);
   assert.equal((await stepMain(session, turn)).kind, "finished");
@@ -571,7 +568,6 @@ test("a completion racing an abort cannot restart the stopped run; it joins the 
   const run = await currentRun(session);
   assert.ok(run !== undefined);
 
-  assert.equal((await stepResults(session, turn)).kind, "continue");
   assert.equal((await stepResults(session, turn)).kind, "finished");
   const stopped = await currentRun(session);
   assert.equal(stopped?.id, run.id);

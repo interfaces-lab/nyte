@@ -25,12 +25,14 @@ const CUSTOMIZE_TABS = [
   ["skills", "Skills"],
   ["settings", "Settings"],
 ] as const satisfies readonly (readonly [CustomizeTab, string])[];
+
 const CUSTOMIZE_TAB_IDS = CUSTOMIZE_TABS.map(([id]) => id);
 
 const EMPTY_INVENTORY: CustomizeInventory = { plugins: [], settings: [], skills: [] };
 
 function matchesQuery(query: string, ...values: readonly string[]): boolean {
   const needle = query.trim().toLocaleLowerCase();
+
   return needle === "" || values.some((value) => value.toLocaleLowerCase().includes(needle));
 }
 
@@ -74,6 +76,7 @@ function tabCount(inventory: CustomizeInventory, tab: CustomizeTab): number {
       return inventory.settings.length;
     default: {
       const _exhaustive: never = tab;
+
       return _exhaustive;
     }
   }
@@ -81,6 +84,7 @@ function tabCount(inventory: CustomizeInventory, tab: CustomizeTab): number {
 
 function pluginDetail(plugin: PluginInfo): string {
   if (plugin.status === "failed") return `Couldn't load this plugin. ${plugin.error}`;
+
   return `${plugin.source} · ${plugin.version}`;
 }
 
@@ -106,12 +110,14 @@ export function PluginSettings({
   const apply = useApplyPluginSetting(sessionId);
 
   if (settings.length === 0) return null;
+
   return (
     <>
       <div {...stylex.props(styles.list)}>
         {settings.map((setting) => {
           const choice = setting.choices.find((choice) => choice.id === setting.current);
           const detail = choice?.status ?? choice?.description;
+
           return (
             <Row key={setting.id} xstyle={styles.row}>
               <Row.Body>
@@ -204,6 +210,7 @@ function Inventory({
       return <PluginSettings sessionId={sessionId} settings={inventory.settings} />;
     default: {
       const _exhaustive: never = tab;
+
       return _exhaustive;
     }
   }
@@ -211,6 +218,7 @@ function Inventory({
 
 function emptyInventoryMessage(tab: CustomizeTab, searching: boolean): string {
   if (searching) return "No installed items match this search.";
+
   switch (tab) {
     case "plugins":
       return "No plugins or MCP servers are available.";
@@ -220,6 +228,7 @@ function emptyInventoryMessage(tab: CustomizeTab, searching: boolean): string {
       return "The active plugins do not expose settings.";
     default: {
       const _exhaustive: never = tab;
+
       return _exhaustive;
     }
   }
@@ -233,23 +242,28 @@ export function CustomizeSurface({
   const [tab, setTab] = useState<CustomizeTab>("plugins");
   const [query, setQuery] = useState("");
   const projectSettings = usePluginSettingsProjection(sessionId);
+
   const inventory = useQuery<CustomizeInventory>({
     queryKey: sessionId === undefined ? keys.pluginCatalog : ["customize", sessionId],
     select: (inventory) => ({ ...inventory, settings: projectSettings(inventory.settings) }),
     queryFn: async () => {
       if (sessionId === undefined) return nyte.plugins.catalog();
+
       const [plugins, settings, skills] = await Promise.all([
         nyte.plugins.list({ sessionId }),
         nyte.plugins.settings.list({ sessionId }),
         nyte.plugins.resources.list({ sessionId }),
       ]);
+
       return { plugins, settings, skills };
     },
   });
+
   const filtered = useMemo(
     () => filterInventory(inventory.data ?? EMPTY_INVENTORY, query),
     [inventory.data, query],
   );
+
   const searching = query.trim() !== "";
 
   return (
@@ -291,6 +305,7 @@ export function CustomizeSurface({
 
         {CUSTOMIZE_TABS.map(([panelTab]) => {
           const visibleCount = tabCount(filtered, panelTab);
+
           return (
             <Tabs.Panel
               key={panelTab}

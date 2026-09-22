@@ -1,6 +1,7 @@
 import { Pool, type PoolConfig } from "pg";
 
 export type PostgresValue = string | number | null | readonly string[];
+
 export type PostgresRow = Readonly<Record<string, unknown>>;
 
 export interface PostgresQuery {
@@ -17,20 +18,26 @@ export function postgresDatabase(pool: Pool): PostgresDatabase {
   return {
     query: async (text, values = []) => {
       const result = await pool.query<Record<string, unknown>>(text, [...values]);
+
       return result.rows;
     },
     transaction: async (run) => {
       const client = await pool.connect();
       let discard = false;
+
       try {
         await client.query("BEGIN");
+
         const result = await run({
           query: async (text, values = []) => {
             const response = await client.query<Record<string, unknown>>(text, [...values]);
+
             return response.rows;
           },
         });
+
         await client.query("COMMIT");
+
         return result;
       } catch (error) {
         try {
@@ -38,6 +45,7 @@ export function postgresDatabase(pool: Pool): PostgresDatabase {
         } catch {
           discard = true;
         }
+
         throw error;
       } finally {
         client.release(discard);
@@ -55,12 +63,15 @@ export function createPostgresDatabase(
   // pg removes an idle connection that fails. Report that failure without an
   // unhandled EventEmitter error terminating otherwise healthy requests.
   pool.on("error", onPoolError ?? ((error) => process.emitWarning(error, "PostgresPoolError")));
+
   return postgresDatabase(pool);
 }
 
 export function stringColumn(row: PostgresRow, name: string): string {
   const value = row[name];
+
   if (typeof value !== "string") throw new TypeError(`PostgreSQL column ${name} is not a string`);
+
   return value;
 }
 
@@ -68,9 +79,11 @@ export function stringColumn(row: PostgresRow, name: string): string {
 export function integerColumn(row: PostgresRow, name: string): number {
   const value = row[name];
   const number = typeof value === "string" && /^-?\d+$/.test(value) ? Number(value) : value;
+
   if (typeof number !== "number" || !Number.isSafeInteger(number)) {
     throw new TypeError(`PostgreSQL column ${name} is not a safe integer`);
   }
+
   return number;
 }
 
@@ -78,7 +91,9 @@ export async function databaseTime(db: PostgresQuery): Promise<number> {
   const [row] = await db.query(
     "SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint AS now",
   );
+
   if (row === undefined) throw new Error("PostgreSQL did not return its clock");
+
   return integerColumn(row, "now");
 }
 
@@ -133,22 +148,26 @@ export async function initializePostgres(db: PostgresDatabase): Promise<void> {
     await transaction.query("SELECT pg_advisory_xact_lock(1853453413)");
     await transaction.query("CREATE TABLE IF NOT EXISTS nyte_schema (version INTEGER PRIMARY KEY)");
     const versions = await transaction.query("SELECT version FROM nyte_schema");
+
     if (
       versions.length > 1 ||
       versions.some((row) => integerColumn(row, "version") !== SCHEMA_VERSION)
     ) {
       throw new Error("Unsupported Nyte PostgreSQL schema version");
     }
+
     if (versions.length === 0) {
       const existing = await transaction.query(
         `SELECT table_name FROM information_schema.tables
          WHERE table_schema = current_schema() AND table_name = ANY($1::text[])`,
         [TABLE_NAMES],
       );
+
       if (existing.length > 0) {
         throw new Error("Unsupported unversioned Nyte PostgreSQL schema");
       }
     }
+
     for (const table of TABLES) await transaction.query(table);
     await transaction.query(
       "INSERT INTO nyte_schema (version) VALUES ($1) ON CONFLICT DO NOTHING",

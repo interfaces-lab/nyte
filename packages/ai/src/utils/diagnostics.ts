@@ -9,29 +9,30 @@ import type { AssistantMessageDiagnostic, DiagnosticErrorInfo } from "@nyte-ai/s
 // Nyte divergence: the diagnostic shapes live in @nyte-ai/schema because AssistantMessage (wire type) carries them; re-exported here so callers that follow pi's layout keep working.
 export type { AssistantMessageDiagnostic, DiagnosticErrorInfo };
 
-export function formatThrownValue(value: unknown): string {
-  if (value instanceof Error) return value.message || value.name;
-  if (typeof value === "string") return value;
-  return String(value);
+export function formatThrownValue(cause: unknown): string {
+  if (cause instanceof Error) return cause.message || cause.name;
+
+  return String(cause);
 }
 
-export function extractDiagnosticError(error: unknown): DiagnosticErrorInfo {
-  if (!(error instanceof Error)) return { name: "ThrownValue", message: formatThrownValue(error) };
-  const code = (error as Error & { code?: unknown }).code;
+export function extractDiagnosticError(cause: unknown): DiagnosticErrorInfo {
+  if (!(cause instanceof Error)) return { name: "ThrownValue", message: formatThrownValue(cause) };
+  const code = "code" in cause ? cause.code : undefined;
+
   return {
-    name: error.name || undefined,
-    message: error.message || error.name,
-    stack: error.stack,
+    name: cause.name || undefined,
+    message: cause.message || cause.name,
+    stack: cause.stack,
     code: typeof code === "string" || typeof code === "number" ? code : undefined,
   };
 }
 
 export function createAssistantMessageDiagnostic(
   type: string,
-  error: unknown,
-  details?: Record<string, unknown>,
+  cause: unknown,
+  details?: AssistantMessageDiagnostic["details"],
 ): AssistantMessageDiagnostic {
-  return { type, timestamp: Date.now(), error: extractDiagnosticError(error), details };
+  return { type, timestamp: Date.now(), error: extractDiagnosticError(cause), details };
 }
 
 export function appendAssistantMessageDiagnostic<

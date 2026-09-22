@@ -18,7 +18,7 @@ import type {
 import { ToolWait } from "../loop/types.ts";
 import { toolResultMessage } from "../loop/agent-loop.ts";
 import { toolErrorResult, toolResultContent, toolResultText } from "../loop/tool-result.ts";
-import { isJsonObject, toJsonValue } from "@nyte-ai/client";
+import { toJsonValue } from "@nyte-ai/client";
 import { factRef, runRef } from "../names.ts";
 import { listEffects, signalEffect } from "../effects.ts";
 import { toolProgress } from "../turn.ts";
@@ -27,12 +27,17 @@ import type { Lease, Oid } from "../model.ts";
 import type { Session } from "../store.ts";
 
 export const JOB_PREFIX = "refs/jobs/";
+
 export const JOBS_CANCELLED_REF = factRef("jobs-cancelled");
+
 const LEASE_MS = 15_000;
+
 const OUTPUT_LIMIT = 50_000;
+
 // A background command parks after its first output or this long, so the receipt
 // can carry a listening address or an immediate failure.
 const BACKGROUND_PEEK_MS = 1_500;
+
 const jobRecord = Type.Object({
   info: schemas.JobInfo,
   result: Type.Optional(schemas.ToolResultMessage),
@@ -43,11 +48,18 @@ const jobRecord = Type.Object({
     Type.Object({ kind: Type.Literal("delivered"), change: schemas.Oid }),
   ]),
 });
+
 type JobRecord = Static<typeof jobRecord>;
+
 const checkJobRecord = Compile(jobRecord);
+
+const checkJobArguments = Compile(
+  Type.Object({ command: Type.String(), background: Type.Optional(Type.Unknown()) }),
+);
 
 export function parseJobRecord(value: JsonValue): JobRecord {
   if (!checkJobRecord.Check(value)) throw new Error("Invalid stored job");
+
   return value;
 }
 
@@ -116,6 +128,7 @@ export function createJobs(input: {
       () => operations.delete(task),
       () => operations.delete(task),
     );
+
     return task;
   };
 
@@ -129,9 +142,12 @@ export function createJobs(input: {
 
   const read = async (id: string) => {
     const oid = await input.session.refs.read(JOB_PREFIX + id);
+
     if (oid === null) return undefined;
     const blob = await input.session.objects.get(oid);
+
     if (blob?.kind !== "blob") throw new Error(`Missing job ${id}`);
+
     return { oid, record: parseJobRecord(blob.value) };
   };
 
@@ -142,18 +158,25 @@ export function createJobs(input: {
   ): Promise<JobRecord | undefined> => {
     for (;;) {
       const current = await read(id);
+
       if (current === undefined) return undefined;
       const next = change(current.record);
+
       if (next === current.record) return next;
+
       const oid = (
         await input.session.objects.put([{ kind: "blob", value: toJsonValue(next) }])
       )[0];
+
       if (oid === undefined) throw new Error("Job write returned no object");
+
       const saved = await input.session.refs.update(
         [{ name: JOB_PREFIX + id, from: current.oid, to: oid }],
         { reason: "job", lease },
       );
+
       if (saved.ok) return next;
+
       if (saved.reason === "fenced") throw new Error("Job ownership was lost");
     }
   };
@@ -162,6 +185,7 @@ export function createJobs(input: {
     if (job.origin.kind === "user") return;
     const oid = await input.session.refs.read(runRef(job.head));
     const run = oid === null ? undefined : await input.session.objects.get(oid);
+
     // Abort already wakes the effect. Changing it underneath that wake would fence settlement.
     if (run?.kind === "run" && run.id === job.origin.runId && run.abortRequested) return;
     await signalEffect(input.session, {
@@ -180,13 +204,16 @@ export function createJobs(input: {
       return Promise.resolve();
     const id = record.info.id;
     const pending = deliveries.get(id);
+
     if (pending !== undefined) return pending;
+
     const task = (async () => {
       const claimed = await update(id, (current) =>
         current.completion.kind === "owed" && current.info.phase.kind !== "running" && !closing
           ? { ...current, completion: { kind: "claimed" } }
           : current,
       );
+
       if (
         claimed === undefined ||
         claimed.completion.kind !== "claimed" ||
@@ -194,6 +221,7 @@ export function createJobs(input: {
         closing
       )
         return;
+
       const change = await input.notify(
         {
           kind: "command",
@@ -204,32 +232,42 @@ export function createJobs(input: {
         },
         claimed.info.head,
       );
+
       await update(id, (current) =>
         current.completion.kind === "claimed"
           ? { ...current, completion: { kind: "delivered", change } }
           : current,
       );
     })().finally(() => deliveries.delete(id));
+
     deliveries.set(id, task);
+
     return task;
   };
 
   const sync = async (id: string) => {
     const stored = await read(id);
+
     if (stored === undefined) return;
     const job = stored.record.info;
+
     if (job.phase.kind !== "running") live.get(id)?.controller.abort();
+
     if (stored.record.completion.kind === "owed" || job.phase.kind !== "running") {
       await signal(job);
     }
+
     await deliver(stored.record);
   };
 
   const promote = async (id: string): Promise<JobActionOutcome> => {
     if (closing) throw new Error("Host is closing");
     const stored = await read(id);
+
     if (stored === undefined) return { kind: "not_found" };
+
     if (stored.record.info.phase.kind !== "running") return { kind: "finished" };
+
     const next = await update(id, (current) =>
       current.info.phase.kind !== "running"
         ? current
@@ -243,7 +281,9 @@ export function createJobs(input: {
             },
           },
     );
+
     await sync(id);
+
     return {
       kind:
         next?.info.phase.kind === "running" && next.info.phase.mode === "background"
@@ -256,6 +296,7 @@ export function createJobs(input: {
     for (;;) {
       const writes = runtime.writes;
       await writes;
+
       if (runtime.writes === writes && !runtime.draining && runtime.pending === undefined) return;
     }
   };
@@ -266,10 +307,12 @@ export function createJobs(input: {
     options?: { readonly lease?: Lease; readonly quiet?: true },
   ) => {
     const runtime = live.get(id);
+
     if (runtime !== undefined) {
       runtime.controller.abort();
       await settleWrites(runtime);
     }
+
     const next = await update(
       id,
       (record) => {
@@ -277,9 +320,11 @@ export function createJobs(input: {
           options?.quiet && record.completion.kind === "owed"
             ? { kind: "none" as const }
             : record.completion;
+
         if (record.info.phase.kind !== "running") {
           return completion === record.completion ? record : { ...record, completion };
         }
+
         return {
           ...record,
           completion,
@@ -288,15 +333,19 @@ export function createJobs(input: {
       },
       options?.lease,
     );
+
     await sync(id);
+
     return next;
   };
 
   let recovering: Promise<void> | undefined;
   // A clean pass leaves nothing for a later one; a deferred lease or a failure unsettles it.
   let settled = false;
+
   const scheduleRecovery = () => {
     settled = false;
+
     if (closing || recoveryTimer !== undefined) return;
     recoveryTimer = setTimeout(() => {
       recoveryTimer = undefined;
@@ -324,6 +373,7 @@ export function createJobs(input: {
           recovering = undefined;
         }),
     );
+
     return recovering;
   };
 
@@ -331,16 +381,21 @@ export function createJobs(input: {
     for (const ref of await input.session.refs.list(JOB_PREFIX)) {
       if (closing) return;
       const id = ref.name.slice(JOB_PREFIX.length);
+
       try {
         const stored = await read(id);
+
         if (stored === undefined || closing) continue;
+
         if (stored.record.info.phase.kind === "running" && !live.has(id)) {
           const acquired = await input.session.leases.acquire(ref.name, LEASE_MS);
+
           if (!acquired.ok) {
             scheduleRecovery();
             await sync(id);
             continue;
           }
+
           try {
             if (!closing) await interrupt(id, "interrupted", { lease: acquired.lease });
           } finally {
@@ -367,6 +422,7 @@ export function createJobs(input: {
 
   const wake = async (id: string, aborted: boolean): Promise<ToolWakeOutcome> => {
     let stored = await read(id);
+
     if (stored === undefined)
       return {
         kind: "settle",
@@ -376,22 +432,28 @@ export function createJobs(input: {
           details: {},
         },
       };
+
     if (aborted && stored.record.info.phase.kind === "running") {
       await interrupt(id, "cancelled");
       stored = (await read(id)) ?? stored;
     }
+
     const { info, result, completion } = stored.record;
+
     if (info.phase.kind === "running") {
       return info.phase.mode === "background"
         ? { kind: "settle", result: receipt(info) }
         : { kind: "wait" };
     }
+
     // Background work already answered its call with the receipt; its end is a completion.
     if (completion.kind !== "none") return { kind: "settle", result: receipt(info) };
+
     if (result !== undefined) {
       const settled = { content: result.content, details: result.details };
       const titled = result.title === undefined ? settled : { ...settled, title: result.title };
       const measured = result.usage === undefined ? titled : { ...titled, usage: result.usage };
+
       return {
         kind: "settle",
         result:
@@ -401,6 +463,7 @@ export function createJobs(input: {
         isError: info.phase.kind !== "completed",
       };
     }
+
     return {
       kind: "settle",
       isError: true,
@@ -428,19 +491,23 @@ export function createJobs(input: {
   ): Promise<Admitted> => {
     if (closing) throw new Error("Host is closing");
     signal?.throwIfAborted();
-    const params = toJsonValue(args);
-    if (!isJsonObject(params)) throw new Error("Job arguments must be an object");
-    const command = params.command;
-    if (typeof command !== "string") throw new Error("Job arguments must name a command");
+
+    if (!checkJobArguments.Check(args)) throw new Error("Job arguments must name a command");
+    const { command } = args;
+
     const id =
       owner.kind === "run" ? jobId(owner.runId, owner.callId) : jobId("user", randomUUID());
+
     const callId = owner.kind === "run" ? owner.callId : id;
+
     if ((await read(id)) !== undefined) throw new Error("Job already exists");
     const acquired = await input.session.leases.acquire(JOB_PREFIX + id, LEASE_MS);
+
     if (!acquired.ok) throw new Error("Job is already running");
     const controller = new AbortController();
     const now = Date.now();
-    const background = params.background === true;
+    const background = args.background === true;
+
     const info: JobInfo = {
       id,
       head: owner.head,
@@ -454,11 +521,13 @@ export function createJobs(input: {
       updatedAt: now,
       output: "",
     };
+
     // Nobody is told when a user job ends; its card reads the job ref.
     const record: JobRecord = {
       info,
       completion: owner.kind === "run" && background ? { kind: "owed" } : { kind: "none" },
     };
+
     const runtime: LiveJob = {
       controller,
       lease: acquired.lease,
@@ -467,18 +536,25 @@ export function createJobs(input: {
       pending: undefined,
       draining: false,
     };
+
     live.set(id, runtime);
+
     try {
       if (closing) throw new Error("Host is closing");
       signal?.throwIfAborted();
+
       const oid = (
         await input.session.objects.put([{ kind: "blob", value: toJsonValue(record) }])
       )[0];
+
       if (oid === undefined) throw new Error("Job write returned no object");
+
       for (;;) {
         const runOid =
           owner.kind === "run" ? await input.session.refs.read(runRef(owner.head)) : null;
+
         const run = runOid === null ? undefined : await input.session.objects.get(runOid);
+
         if (
           (owner.kind === "run" &&
             run !== undefined &&
@@ -489,6 +565,7 @@ export function createJobs(input: {
           (await input.session.refs.read(JOBS_CANCELLED_REF)) !== null
         )
           throw new Error("Job owner was cancelled");
+
         const saved = await input.session.refs.update(
           [
             { name: JOB_PREFIX + id, from: null, to: oid },
@@ -499,8 +576,11 @@ export function createJobs(input: {
           ],
           { reason: "job", lease: acquired.lease },
         );
+
         if (saved.ok) break;
+
         if (saved.reason === "fenced") throw new Error("Job ownership was lost");
+
         if ((await read(id)) !== undefined) throw new Error("Job already exists");
       }
     } catch (cause) {
@@ -508,13 +588,16 @@ export function createJobs(input: {
       await input.session.leases.release(acquired.lease);
       throw cause;
     }
+
     const produced = Promise.withResolvers<void>();
     const watching = new AbortController();
+
     // Job ownership outlives a head runner or attachment. Remote control must still
     // reach the executing tool when the SDK is not watching that head.
     const watch = (async () => {
       const afterSeq = await input.session.events.last();
       await sync(id);
+
       for await (const event of input.session.events.watch({
         afterSeq,
         signal: watching.signal,
@@ -526,14 +609,18 @@ export function createJobs(input: {
       scheduleRecovery();
       await diagnostic(cause);
     });
+
     const context = owner.kind === "run" ? { runId: owner.runId, head: owner.head } : undefined;
+
     const startWrites = (): void => {
       if (runtime.draining) return;
       runtime.draining = true;
+
       const writes = (async () => {
         while (runtime.pending !== undefined) {
           const pending = runtime.pending;
           runtime.pending = undefined;
+
           try {
             const stored = await update(
               id,
@@ -550,6 +637,7 @@ export function createJobs(input: {
                     },
               acquired.lease,
             );
+
             if (
               owner.kind === "run" &&
               stored?.info.phase.kind === "running" &&
@@ -574,14 +662,18 @@ export function createJobs(input: {
         }
       })().finally(() => {
         runtime.draining = false;
+
         if (runtime.pending !== undefined) startWrites();
       });
+
       runtime.writes = writes;
     };
+
     runtime.done = track(
       (async () => {
         let result: AgentToolResult<unknown>;
         let failure: string | undefined;
+
         try {
           result = await withLeaseRenewal(
             {
@@ -596,6 +688,7 @@ export function createJobs(input: {
               jobSignal.throwIfAborted();
               jobSignal.addEventListener("abort", onAbort, { once: true });
               let acceptingUpdates = true;
+
               try {
                 // A tool may ignore cancellation. Observe its eventual rejection, but do not
                 // keep the manager or lease renewal alive waiting for it.
@@ -603,29 +696,29 @@ export function createJobs(input: {
                   aborted.promise,
                   Promise.resolve().then(() => {
                     jobSignal.throwIfAborted();
+
                     return tool.execute(
                       callId,
                       args,
                       jobSignal,
                       (partial: AgentToolResult<unknown>) => {
                         if (!acceptingUpdates || jobSignal.aborted) return;
+
                         if (toolResultText(partial.content) !== "") produced.resolve();
+
                         try {
                           onUpdate?.(partial);
                         } catch (cause) {
                           void track(diagnostic(cause));
                         }
+
                         const progress = toolProgress(partial);
                         runtime.pending = {
                           output: toolResultText(partial.content).slice(-OUTPUT_LIMIT),
-                          ...(owner.kind === "user"
-                            ? {}
-                            : {
-                                progress: {
-                                  ...progress,
-                                  text: progress.text.slice(-OUTPUT_LIMIT),
-                                },
-                              }),
+                          progress:
+                            owner.kind === "user"
+                              ? undefined
+                              : { ...progress, text: progress.text.slice(-OUTPUT_LIMIT) },
                         };
                         startWrites();
                       },
@@ -643,6 +736,7 @@ export function createJobs(input: {
           failure = cause instanceof Error ? cause.message : String(cause);
           result = toolErrorResult(cause);
         }
+
         await settleWrites(runtime);
         const reason = failure;
         await update(
@@ -675,6 +769,7 @@ export function createJobs(input: {
         .finally(async () => {
           watching.abort();
           await watch;
+
           if (live.get(id) === runtime) live.delete(id);
           await input.session.leases.release(acquired.lease);
         })
@@ -683,6 +778,7 @@ export function createJobs(input: {
           await diagnostic(cause);
         }),
     );
+
     return { info, runtime, produced: produced.promise };
   };
 
@@ -696,8 +792,10 @@ export function createJobs(input: {
         return track(
           (async () => {
             let executing = true;
+
             try {
               if (context === undefined) throw new Error("Job execution requires a run context");
+
               const admitted = await admit(
                 { kind: "run", runId: context.runId, callId, head: context.head },
                 tool,
@@ -707,7 +805,9 @@ export function createJobs(input: {
                   if (executing) onUpdate?.(partial);
                 },
               );
+
               const { info, runtime } = admitted;
+
               if (info.phase.kind === "running" && info.phase.mode === "background") {
                 await Promise.race([
                   admitted.produced,
@@ -719,6 +819,7 @@ export function createJobs(input: {
                 ]);
                 await settleWrites(runtime);
               }
+
               // Both modes park first. The runner rechecks jobs after parking, closing the fast-completion race.
               throw new ToolWait();
             } finally {
@@ -729,7 +830,9 @@ export function createJobs(input: {
       },
       wake: (call, context) => track(wake(jobId(call.runId, call.toolCallId), context.aborted)),
     };
+
     commandTool = tool;
+
     return wrapper;
   };
 
@@ -738,6 +841,7 @@ export function createJobs(input: {
     /** Run the command tool as a user-owned job on `head`; progress arrives as `job` events. */
     start(head: string, command: string): Promise<JobInfo> {
       if (commandTool === undefined) return Promise.reject(new Error("This chat has no bash tool"));
+
       return track(
         admit({ kind: "user", head }, commandTool, { command }, undefined, undefined).then(
           (admitted) => admitted.info,
@@ -752,6 +856,7 @@ export function createJobs(input: {
      */
     recheck(runId: string): Promise<void> {
       if (closing) return Promise.resolve();
+
       return track(
         (async () => {
           for (const view of await listEffects(input.session, runId)) {
@@ -772,8 +877,10 @@ export function createJobs(input: {
           for (const ref of await input.session.refs.list(JOB_PREFIX)) {
             const id = ref.name.slice(JOB_PREFIX.length);
             const stored = await read(id);
+
             if (stored === undefined) continue;
             const { origin } = stored.record.info;
+
             if (
               origin.kind === "user" ||
               (options.runId !== undefined && origin.runId !== options.runId)
@@ -781,19 +888,24 @@ export function createJobs(input: {
               continue;
             await interrupt(id, options.kind, { quiet: true });
           }
+
           await Promise.all(deliveries.values());
         })(),
       );
     },
     async list(head?: string): Promise<readonly JobInfo[]> {
       const refs = await input.session.refs.list(JOB_PREFIX);
+
       const jobs = await Promise.all(
         refs.map(async (ref) => {
           const blob = await input.session.objects.get(ref.oid);
+
           if (blob?.kind !== "blob") throw new Error(`Missing job ${ref.name}`);
+
           return parseJobRecord(blob.value).info;
         }),
       );
+
       return jobs
         .filter((job) => head === undefined || job.head === head)
         .sort((a, b) => a.startedAt - b.startedAt || a.id.localeCompare(b.id));
@@ -806,9 +918,12 @@ export function createJobs(input: {
         (async (): Promise<JobActionOutcome> => {
           if (closing) throw new Error("Host is closing");
           const stored = await read(id);
+
           if (stored === undefined) return { kind: "not_found" };
+
           if (stored.record.info.phase.kind !== "running") return { kind: "finished" };
           const next = await interrupt(id, "cancelled");
+
           return { kind: next?.info.phase.kind === "cancelled" ? "applied" : "finished" };
         })(),
       );
@@ -816,6 +931,7 @@ export function createJobs(input: {
     close(): Promise<void> {
       if (closed !== undefined) return closed;
       closing = true;
+
       if (recoveryTimer !== undefined) clearTimeout(recoveryTimer);
       shutdown.abort();
       closed = (async () => {
@@ -825,11 +941,14 @@ export function createJobs(input: {
           } catch (cause) {
             await diagnostic(cause);
           }
+
           await runtime.done;
         });
+
         await Promise.allSettled([...operations, ...stopping]);
         await Promise.all([...live.values()].map((runtime) => runtime.done));
       })();
+
       return closed;
     },
   };

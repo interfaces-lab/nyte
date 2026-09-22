@@ -4,14 +4,21 @@ import { EMPTY_READ_SESSIONS, sessionHasUnreadCompletion } from "../session-read
 import type { ReadSessions } from "../session-read-state.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
+
 const NO_OPTIMISTIC_SESSIONS: ReadonlySet<SessionId> = new Set();
 
 export const GROUPINGS = ["repository", "workspace", "updated", "status", "environment"] as const;
+
 export const ORDERINGS = ["updated", "status"] as const;
+
 export const SHOW_FIELDS = ["updated", "environment", "pr", "branch", "machine"] as const;
+
 export const STATUSES = ["needs-attention", "unread", "working", "draft", "done"] as const;
+
 export const PULL_REQUESTS = ["draft", "open", "merged", "closed", "none"] as const;
+
 export const ENVIRONMENTS = ["cloud", "local"] as const;
+
 export const SOURCES = [
   "desktop",
   "mobile",
@@ -30,11 +37,17 @@ export const SOURCES = [
 ] as const;
 
 type SessionGrouping = (typeof GROUPINGS)[number];
+
 type SessionOrdering = (typeof ORDERINGS)[number];
+
 export type SessionShowField = (typeof SHOW_FIELDS)[number];
+
 export type SessionStatus = (typeof STATUSES)[number];
+
 export type SessionPullRequest = (typeof PULL_REQUESTS)[number];
+
 export type SessionEnvironment = (typeof ENVIRONMENTS)[number];
+
 export type SessionSource = (typeof SOURCES)[number];
 
 const DEFAULT_SOURCES: readonly SessionSource[] = [
@@ -89,6 +102,7 @@ function statusOf(
   optimistic: ReadonlySet<SessionId>,
 ): SessionStatus {
   const mark = sessionActivityMark(session, optimistic.has(session.sessionId));
+
   switch (mark) {
     // `sessionMark` reports `waiting` only for a run parked on a reply; one
     // parked on background work arrives here as `working`.
@@ -100,10 +114,13 @@ function statusOf(
       return "working";
     case "idle":
       if (sessionHasUnreadCompletion(session, read)) return "unread";
+
       if (sessionIsDraft(session)) return "draft";
+
       return "done";
     default: {
       const _exhaustive: never = mark;
+
       return _exhaustive;
     }
   }
@@ -163,15 +180,18 @@ function groupSessions(
         draft: "Draft",
         done: "Done",
       };
+
       return STATUSES.flatMap((status) => {
         const members = sessions.filter(
           (session) => statusOf(session, read, optimistic) === status,
         );
+
         return members.length === 0
           ? []
           : [{ key: status, label: labels[status], sessions: members }];
       });
     }
+
     case "updated": {
       const groups = [
         ["day", "Past day", (session: SessionInfo) => session.lastActivityAt >= now - DAY_MS],
@@ -183,13 +203,17 @@ function groupSessions(
         ],
         ["earlier", "Earlier", (session: SessionInfo) => session.lastActivityAt < now - 7 * DAY_MS],
       ] as const;
+
       return groups.flatMap(([key, label, predicate]) => {
         const members = sessions.filter(predicate);
+
         return members.length === 0 ? [] : [{ key, label, sessions: members }];
       });
     }
+
     default: {
       const _exhaustive: never = grouping;
+
       return _exhaustive;
     }
   }
@@ -221,11 +245,13 @@ export function sessionsForView(
       settings.environments.includes(environment) &&
       settings.sources.includes("desktop"),
   );
+
   const ordered = filtered.toSorted(
     settings.ordering === "updated"
       ? compareUpdated
       : (left, right) => compareStatus(left, right, read, optimistic),
   );
+
   return groupSessions(ordered, settings.grouping, environment, now, read, optimistic);
 }
 
@@ -274,7 +300,9 @@ export function toggleOption<T extends string>(
   checked: boolean,
 ): readonly T[] {
   const next = new Set(selected);
+
   if (checked) next.add(option);
   else next.delete(option);
+
   return all.filter((candidate) => next.has(candidate));
 }

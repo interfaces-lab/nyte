@@ -50,8 +50,10 @@ function orderParkedCalls(
   commits: readonly { readonly commit: Commit }[],
 ): ParkedCall[] {
   const callIds: string[] = [];
+
   for (let index = commits.length - 1; index >= 0; index--) {
     const body = commits[index]?.commit.body;
+
     if (
       body?.kind !== "message" ||
       body.message.role !== "assistant" ||
@@ -59,17 +61,24 @@ function orderParkedCalls(
     ) {
       continue;
     }
+
     for (const part of body.message.content) {
       if (part.type === "toolCall") callIds.push(part.id);
     }
+
     if (callIds.length > 0) break;
   }
+
   const positions = new Map(callIds.map((callId, index) => [callId, index]));
+
   return calls.toSorted((left, right) => {
     const leftPosition = positions.get(left.callId);
     const rightPosition = positions.get(right.callId);
+
     if (leftPosition === undefined) return rightPosition === undefined ? 0 : 1;
+
     if (rightPosition === undefined) return -1;
+
     return leftPosition - rightPosition;
   });
 }
@@ -87,12 +96,15 @@ export function createReads(input: {
   const projectContext = (pooled: Pooled, commits: readonly Commit[], run: RunInfo | undefined) => {
     const config = headConfig(commits, run);
     const model = config.model === undefined ? undefined : resolveModel(config.model);
+
     // Context reads must not instantiate plugins on an observing host.
     const policy =
       model === undefined
         ? undefined
         : pooled.activation?.registries.modelContext.get(`${model.provider}/${model.id}`);
+
     const checkpoint = commits.findLastIndex((commit) => commit.body.kind === "checkpoint");
+
     return {
       config,
       status: projectContextStatus(
@@ -126,9 +138,11 @@ export function createReads(input: {
         }
       }
     }
+
     const facts = await pool.readFacts(pooled.session);
     const info = sessionInfo(await pool.readSession(id, pooled, { facts }));
     pooled.listed = { seq, activation: pooled.activationState, info };
+
     return info;
   };
 
@@ -141,13 +155,17 @@ export function createReads(input: {
     },
   ): Promise<SessionInfo | undefined> => {
     const id = sessionId(stored.id);
+
     try {
       const pooled = await pool.open(id);
       pooled.createdAt ??= stored.createdAt;
       const info = await listedInfo(pooled, id);
+
       if (info.archived && filter.includeArchived !== true) return undefined;
       const parent = info.parent;
+
       if (filter.parent === null && parent !== undefined) return undefined;
+
       if (
         filter.parent !== undefined &&
         filter.parent !== null &&
@@ -155,21 +173,27 @@ export function createReads(input: {
       ) {
         return undefined;
       }
+
       if (filter.search !== undefined && !matches(info, filter.search)) return undefined;
+
       return info;
     } catch (error) {
       if (error instanceof UnknownSession) return undefined;
+
       // One unreadable session leaves the directory; it must not close the workspace.
       if (error instanceof CorruptObject) {
         process.emitWarning(`Session ${id} is unreadable: ${error.message}`, "CorruptSession");
+
         return undefined;
       }
+
       throw error;
     }
   };
 
   const snapshot = async (input: { readonly sessionId: SessionId; readonly head?: HeadName }) => {
     pool.alive();
+
     try {
       const pooled = await pool.open(input.sessionId);
       const { session } = pooled;
@@ -185,18 +209,22 @@ export function createReads(input: {
       // reused across requests: never a mutable ref or pooled cache.
       const selected = data.heads.find((item) => item.head === head);
       const tip = selected === undefined ? await session.refs.read(headRef(head)) : selected.tip;
+
       const [commits, run, compaction] = await Promise.all([
         head === MAIN ? data.commits : branch(session.objects, tip),
         selected === undefined ? pool.currentRun(session, head) : selected.run,
         activeCompaction(session, head),
       ]);
+
       const projected = projectContext(
         pooled,
         head === MAIN ? data.mainCommits : commits.map((item) => item.commit),
         run,
       );
+
       const parked =
         run === undefined ? [] : orderParkedCalls(await pool.parkedCalls(session, run), commits);
+
       const snapshot = {
         seq,
         session: sessionInfo(data),
@@ -207,8 +235,10 @@ export function createReads(input: {
         pending: pendingItems(selectedPending ?? data.pendingChanges),
         context: projected.status,
       };
+
       const withRun = run === undefined ? snapshot : { ...snapshot, run };
       const withCompaction = compaction === undefined ? withRun : { ...withRun, compaction };
+
       return parked.length === 0 ? withCompaction : { ...withCompaction, parked };
     } catch (error) {
       if (error instanceof UnknownSession) return undefined;
@@ -223,6 +253,7 @@ export function createReads(input: {
    */
   const metadata = async (input: { readonly sessionId: SessionId; readonly head?: HeadName }) => {
     pool.alive();
+
     try {
       const pooled = await pool.open(input.sessionId);
       const { session } = pooled;
@@ -234,6 +265,7 @@ export function createReads(input: {
       const commits = items === undefined ? data.mainCommits : items.map((item) => item.commit);
       const run = selected === undefined ? await pool.currentRun(session, head) : selected.run;
       const projected = projectContext(pooled, commits, run);
+
       return {
         session: sessionInfo(data),
         head,
@@ -265,21 +297,27 @@ export function createReads(input: {
     // Rows are examined in listing order, a bounded batch at a time. `next` is
     // the index after the last examined row, where a one-at-a-time walk stops.
     let index = start;
+
     while (index < all.length && items.length < limit) {
       const batch = all.slice(index, index + LIST_BATCH);
+
       // A row past the one that fills the page was read speculatively; its
       // failure is not this page's failure.
       const examined = await Promise.allSettled(
         batch.map((stored) => listedSession(stored, { ...input, search })),
       );
+
       for (const outcome of examined) {
         if (outcome.status === "rejected") throw outcome.reason;
         index += 1;
+
         if (outcome.value === undefined) continue;
         items.push(outcome.value);
+
         if (items.length >= limit) break;
       }
     }
+
     return index < all.length ? { items, next: String(index) } : { items };
   };
 
@@ -289,10 +327,12 @@ export function createReads(input: {
     const { session } = pooled;
     const head = input.head ?? MAIN;
     const tip = await session.refs.read(headRef(head));
+
     const [commits, run] = await Promise.all([
       branch(session.objects, tip),
       pool.currentRun(session, head),
     ]);
+
     return projectContext(
       pooled,
       commits.map((item) => item.commit),
@@ -309,51 +349,66 @@ export function createReads(input: {
     const pooled = await pool.open(input.sessionId);
     const session = pooled.session;
     const storedCwd = await pool.storedCwd(session);
+
     const activation =
       storedCwd === undefined && pooled.activationCwd === undefined
         ? await pool.resolveSessionActivation(input.sessionId, pooled)
         : undefined;
+
     const cwd =
       storedCwd ??
       pooled.activationCwd ??
       (activation?.kind === "active" ? activation.env.cwd : null);
+
     const head = input.head ?? MAIN;
+
     const [tip, currentRun] = await Promise.all([
       session.refs.read(headRef(head)),
       pool.currentRun(session, head),
     ]);
+
     const commits = (await branch(session.objects, tip)).map((item) => item.commit);
+
     return { commits, currentRun, pooled, cwd, head };
   };
 
   const treesForRun = (trees: Awaited<ReturnType<typeof runTrees>>, runId: string) => {
     const commits = trees.commits.filter((commit) => commit.run === runId);
+
     const live =
       trees.currentRun?.runId === runId && !isTerminalPhase(trees.currentRun.phase)
         ? trees.currentRun
         : undefined;
+
     let from: TreeId | undefined;
+
     for (const commit of commits) {
       if ("start" in commit && commit.start.kind === "run") {
         from = commit.start.tree ?? undefined;
         break;
       }
     }
+
     return { ...trees, commits, live, from };
   };
 
   const lastResultTree = (commits: readonly Commit[]): TreeId | undefined => {
     const commit = commits.findLast((candidate) => "call" in candidate && candidate.tree !== null);
+
     return commit !== undefined && "call" in commit ? (commit.tree ?? undefined) : undefined;
   };
 
   const recordedDiff = (commits: readonly Commit[]): readonly FileDiff[] => {
     const files: FileDiff[] = [];
+
     for (const commit of commits) {
       if (commit.body.kind !== "message" || commit.body.message.role !== "toolResult") continue;
+
       if (commit.body.message.isError) continue;
+
       if (!("call" in commit)) continue;
       const settled = commit.call;
+
       if (settled.kind !== "file_patch") continue;
       files.push({
         path: settled.path,
@@ -364,6 +419,7 @@ export function createReads(input: {
         patch: settled.patch,
       });
     }
+
     return files;
   };
 
@@ -372,11 +428,14 @@ export function createReads(input: {
     runId: string,
   ): Promise<RunDiff> => {
     const { commits, live, from, pooled, cwd, head } = treesForRun(trees, runId);
+
     if (commits.length === 0) return { kind: "not_found" };
     const vcs = options.workspace?.vcs;
+
     if (vcs !== undefined && from !== undefined && cwd !== null) {
       const seq = await pooled.session.events.last();
       const cached = liveTrees.get(pooled)?.get(head);
+
       const current =
         live === undefined
           ? undefined
@@ -386,14 +445,19 @@ export function createReads(input: {
                 const trees = liveTrees.get(pooled) ?? new Map();
                 trees.set(head, { seq, cwd, tree });
                 liveTrees.set(pooled, trees);
+
                 return tree;
               });
+
       const to = current?.kind === "tree" ? current.id : lastResultTree(commits);
+
       if (to !== undefined) {
         const files = await vcs.diffTrees({ cwd, from, to });
+
         return { kind: "tree", from, to, files };
       }
     }
+
     return { kind: "recorded", files: recordedDiff(commits) };
   };
 
@@ -402,6 +466,7 @@ export function createReads(input: {
   ): Promise<OperationOutput<"runs.diff">> => {
     pool.alive();
     const trees = await runTrees(input);
+
     return Promise.all(
       input.runs.map(async (run) => ({
         run,
@@ -416,20 +481,26 @@ export function createReads(input: {
     pool.alive();
     const trees = await runTrees(input);
     const { commits, live, from, cwd } = treesForRun(trees, input.runId);
+
     if (commits.length === 0) return { kind: "not_found" };
+
     if (live !== undefined) return { kind: "busy", run: live };
     const vcs = options.workspace?.vcs;
     const to = lastResultTree(commits);
+
     if (vcs === undefined || from === undefined || to === undefined || cwd === null) {
       return { kind: "no_tree" };
     }
+
     const files = await vcs.diffTrees({ cwd, from, to });
+
     const restored = await vcs.restoreTree({
       cwd,
       from,
       expect: input.expect,
       paths: files,
     });
+
     switch (restored.kind) {
       case "restored":
         return { kind: "reverted", files: restored.files };
@@ -438,6 +509,7 @@ export function createReads(input: {
         return restored;
       default: {
         const _exhaustive: never = restored;
+
         return _exhaustive;
       }
     }

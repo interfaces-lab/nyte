@@ -25,6 +25,7 @@ export const statusLabels: Record<SessionMark, string> = {
 
 export function isActive(session: SessionInfo): boolean {
   const mark = sessionMark(session);
+
   return mark === "working" || mark === "retry";
 }
 
@@ -47,7 +48,9 @@ export function hasFailed(session: SessionInfo): boolean {
  */
 export function rowStatus(session: SessionInfo): string {
   const mark = sessionMark(session);
+
   if (mark !== "idle") return statusLabels[mark];
+
   return latestRun(session) === undefined ? "New" : "Finished";
 }
 
@@ -59,27 +62,35 @@ export function latestRun(session: SessionInfo) {
 /** One relative clock for list rows: Now, minutes, hours, days, then a date. */
 export function formatActivity(at: number, now: number): string {
   const minutes = Math.round((now - at) / 60_000);
+
   if (minutes < 1) return "Now";
+
   if (minutes < 60) return `${String(minutes)}m`;
   const hours = Math.round(minutes / 60);
+
   if (hours < 24) return `${String(hours)}h`;
   const days = Math.round(hours / 24);
+
   if (days < 7) return `${String(days)}d`;
+
   return new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 /** Elapsed run time: 42s, 5m, 1h 12m. */
 export function elapsed(at: number, now: number): string {
   const seconds = Math.max(0, Math.floor((now - at) / 1000));
+
   if (seconds < 60) return `${String(seconds)}s`;
   const minutes = Math.floor(seconds / 60);
+
   if (minutes < 60) return `${String(minutes)}m`;
   const hours = Math.floor(minutes / 60);
+
   return `${String(hours)}h ${String(minutes % 60)}m`;
 }
 
 /** The color and fill pair a session mark paints with. */
-export function markTone(mark: SessionMark, theme: Theme): { color: string; fill: string } {
+export function markTone(mark: SessionMark, theme: Theme) {
   switch (mark) {
     case "working":
       return { color: theme.accent, fill: theme.fill };
@@ -103,15 +114,16 @@ export function markTone(mark: SessionMark, theme: Theme): { color: string; fill
 export function useSessionList(client: NyteClient, search = "") {
   const queryClient = useQueryClient();
   const key = ["sessions", search] as const;
+
   const query = useInfiniteQuery({
     queryKey: key,
-    queryFn: ({ pageParam }) =>
-      client.sessions.list({
-        parent: null,
-        limit: 50,
-        ...(pageParam === undefined ? {} : { cursor: pageParam }),
-        ...(search === "" ? {} : { search }),
-      }),
+    queryFn: ({ pageParam }) => {
+      const request = { parent: null, limit: 50 };
+      const paged = pageParam === undefined ? request : { ...request, cursor: pageParam };
+
+      return client.sessions.list(search === "" ? paged : { ...paged, search });
+    },
+    // SAFETY: widens the first page's absent cursor to the cursor type later pages carry.
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next,
     // A debounced search change shows the last list while the new one lands.
@@ -137,10 +149,13 @@ export function useSessionList(client: NyteClient, search = "") {
   const refresh = useCallback(() => {
     void queryClient.resetQueries({ queryKey: ["sessions", search] });
   }, [queryClient, search]);
+
   const { refetch, fetchNextPage } = query;
+
   const reload = useCallback(() => {
     void refetch();
   }, [refetch]);
+
   const more = useCallback(() => {
     void fetchNextPage();
   }, [fetchNextPage]);

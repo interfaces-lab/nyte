@@ -50,6 +50,7 @@ export function getStartupDestination(): StartupDestination {
 export function setStartupDestination(destination: StartupDestination): void {
   startupDestination = destination;
   const storage = localPreferenceStorage();
+
   if (storage !== undefined) {
     try {
       persistStartupDestination(storage, destination);
@@ -57,11 +58,13 @@ export function setStartupDestination(destination: StartupDestination): void {
       // The in-memory choice remains useful when persistence is unavailable.
     }
   }
+
   for (const listener of listeners) listener();
 }
 
 function subscribeStartupDestination(listener: () => void): () => void {
   listeners.add(listener);
+
   return () => listeners.delete(listener);
 }
 

@@ -31,9 +31,7 @@ export type TranscriptRow =
       readonly pending: boolean;
     }
   | { readonly kind: "retry"; readonly key: "row:retry"; readonly message: string }
-  | { readonly kind: "live"; readonly key: "row:live"; readonly working: boolean }
-  /** Selections parked on this session; delegated sessions' are discovered by the row itself. */
-  | { readonly kind: "selections"; readonly key: "row:selections"; readonly selections: number };
+  | { readonly kind: "live"; readonly key: "row:live"; readonly working: boolean };
 
 /**
  * A landing prompt and the turn it commits into are the same row. The outbox
@@ -45,6 +43,7 @@ export type TranscriptRow =
 function turnRowKey(turn: Turn): string {
   if (turn.kind !== "turn") return `turn:${turn.kind}:${turn.commit}`;
   const opening = turn.parts[0];
+
   return opening?.kind === "user" && opening.key !== undefined
     ? `landing:${opening.key}`
     : `turn:${turn.id}`;
@@ -74,18 +73,24 @@ export function conversationMessages({
 }) {
   const running = snapshot?.run !== undefined && !isTerminalPhase(snapshot.run.phase);
   const represented = new Set<string>();
+
   for (const turn of snapshot?.transcript ?? []) {
     if (turn.kind !== "turn") continue;
+
     for (const part of turn.parts) {
       if (part.kind === "user" && part.key !== undefined) represented.add(part.key);
     }
   }
+
   const pending = snapshot?.pending ?? [];
+
   for (const item of pending) {
     if (item.key !== undefined) represented.add(item.key);
   }
+
   // The durable item arrives before its outbox row leaves; one key, one row.
   const local = unsent.filter((row) => !represented.has(row.key));
+
   // Whether a submitted message steers a live run or opens the next turn is
   // read from the snapshot alone, so one coherent read moves each message from
   // the outbox to `pending` to the transcript without a detour through the
@@ -111,6 +116,7 @@ export function conversationMessages({
         pending: running,
       })),
   ];
+
   return {
     running,
     submitted: landing,
@@ -128,7 +134,6 @@ export function transcriptRows({
   landing,
   retrying,
   working,
-  selections,
 }: {
   readonly loading: boolean;
   readonly failed: boolean;
@@ -137,14 +142,16 @@ export function transcriptRows({
   /** The retry banner's title; absent while the run is not retrying. */
   readonly retrying: string | undefined;
   readonly working: boolean;
-  readonly selections: number;
 }): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
   const rendered = turns.filter(rendersInTranscript);
+
   if (loading && rendered.length === 0 && landing.length === 0) {
     rows.push({ kind: "skeleton", key: "row:skeleton" });
   }
+
   if (failed) rows.push({ kind: "error", key: "row:error" });
+
   for (const [index, turn] of rendered.entries()) {
     rows.push({
       kind: "turn",
@@ -153,6 +160,7 @@ export function transcriptRows({
       trailing: index === rendered.length - 1,
     });
   }
+
   for (const message of landing) {
     rows.push({
       kind: "landing",
@@ -161,13 +169,15 @@ export function transcriptRows({
       pending: message.pending,
     });
   }
+
   if (retrying !== undefined) rows.push({ kind: "retry", key: "row:retry", message: retrying });
   rows.push({ kind: "live", key: "row:live", working });
-  rows.push({ kind: "selections", key: "row:selections", selections });
+
   return rows;
 }
 
 const USER_ROW_ESTIMATE = 76;
+
 /**
  * A work group's height depends on the density posture: compact settles to
  * the summary line and clips live work to a preview, detailed leaves the
@@ -179,13 +189,19 @@ const WORK_GROUP_ESTIMATE = {
   balanced: 140,
   detailed: 240,
 } as const satisfies Record<ToolCallDensity, number>;
+
 const PROSE_BASE_ESTIMATE = 40;
+
 const PROSE_LINE_HEIGHT = 22;
+
 const PROSE_CHARS_PER_LINE = 90;
+
 const RECORD_ROW_ESTIMATE = 40;
+
 const LIVE_ROW_ESTIMATE = 60;
-const SELECTION_CARD_ESTIMATE = 120;
+
 const BANNER_ESTIMATE = 28;
+
 const SKELETON_ESTIMATE = 240;
 
 /**
@@ -195,6 +211,7 @@ const SKELETON_ESTIMATE = 240;
  */
 export function estimateRowSize(row: TranscriptRow | undefined, density: ToolCallDensity): number {
   if (row === undefined) return 0;
+
   switch (row.kind) {
     case "skeleton":
       return SKELETON_ESTIMATE;
@@ -205,12 +222,11 @@ export function estimateRowSize(row: TranscriptRow | undefined, density: ToolCal
       return USER_ROW_ESTIMATE;
     case "live":
       return row.working ? LIVE_ROW_ESTIMATE : 0;
-    case "selections":
-      return row.selections * SELECTION_CARD_ESTIMATE;
     case "turn":
       return estimateTurnSize(row.turn, density);
     default: {
       const _exhaustive: never = row;
+
       return _exhaustive;
     }
   }
@@ -221,6 +237,7 @@ function estimateTurnSize(turn: Turn, density: ToolCallDensity): number {
   let size = 0;
   let prose = 0;
   let work = false;
+
   for (const part of turn.parts) {
     switch (part.kind) {
       case "user":
@@ -235,13 +252,17 @@ function estimateTurnSize(turn: Turn, density: ToolCallDensity): number {
         break;
       default: {
         const _exhaustive: never = part;
+
         return _exhaustive;
       }
     }
   }
+
   if (work) size += WORK_GROUP_ESTIMATE[density];
+
   if (prose > 0) {
     size += PROSE_BASE_ESTIMATE + PROSE_LINE_HEIGHT * Math.ceil(prose / PROSE_CHARS_PER_LINE);
   }
+
   return size;
 }

@@ -35,6 +35,7 @@ export class MapDraft<T> implements Draft<T> {
   }
   update(id: string, fn: (current: T) => T): void {
     const current = this.entries.get(id);
+
     if (current === undefined) throw new Error(`no entry "${id}" to update`);
     this.entries.set(id, fn(current));
     this.ownerById.set(id, this.owner);
@@ -95,6 +96,7 @@ export class ContributionRegistry<T, D extends Draft<T>> {
   add(owner: string, order: number, fn: (draft: D) => void): Disposer {
     const contribution: Contribution<D> = { owner, order, fn };
     this.contributions.push(contribution);
+
     return () => {
       this.contributions = this.contributions.filter((candidate) => candidate !== contribution);
     };
@@ -104,8 +106,10 @@ export class ContributionRegistry<T, D extends Draft<T>> {
     const draft = this.makeDraft();
     const errors: { owner: string; message: string }[] = [];
     const ordered = [...this.contributions].sort((a, b) => a.order - b.order);
+
     for (const contribution of ordered) {
       draft.beginOwner(contribution.owner);
+
       try {
         contribution.fn(draft);
       } catch (error) {
@@ -115,10 +119,12 @@ export class ContributionRegistry<T, D extends Draft<T>> {
         });
       }
     }
+
     const next = draft.toMap();
     const diff = diffMaps(this.state, next);
     this.state = next;
     this.ownerById = draft.owners();
+
     return { ...diff, errors };
   }
 
@@ -147,10 +153,13 @@ function diffMaps<T>(
   const added: string[] = [];
   const removed: string[] = [];
   const changed: string[] = [];
+
   for (const [id, value] of after) {
     if (!before.has(id)) added.push(id);
     else if (before.get(id) !== value) changed.push(id);
   }
+
   for (const id of before.keys()) if (!after.has(id)) removed.push(id);
+
   return { added, removed, changed };
 }

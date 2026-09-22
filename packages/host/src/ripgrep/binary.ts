@@ -2,16 +2,27 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { addAbortListener } from "node:events";
-import { constants } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import { access, chmod, mkdir, mkdtemp, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
+import { isFileError } from "../paths.ts";
 
 const VERSION = "15.1.0";
+
 const MINIMUM_MAJOR_VERSION = 12;
+
 const VERSION_PROBE_TIMEOUT_MS = 2_000;
+
 const EXTRACTION_TIMEOUT_MS = 30_000;
+
 const MAX_ARCHIVE_BYTES = 16 * 1024 * 1024;
+
+const GlibcReport = Type.Object({
+  header: Type.Object({ glibcVersionRuntime: Type.String({ minLength: 1 }) }),
+});
 
 type ArchiveConfig = {
   readonly platform: string;
@@ -78,28 +89,19 @@ const ARCHIVES = new Map<string, ArchiveConfig>([
   ],
 ]);
 
-function errorCode(cause: unknown): string | undefined {
-  return cause instanceof Error && "code" in cause && typeof cause.code === "string"
-    ? cause.code
-    : undefined;
-}
-
 async function isFile(path: string): Promise<boolean> {
-  try {
-    return (await stat(path)).isFile();
-  } catch (cause) {
-    if (["ENOENT", "ENOTDIR", "EACCES", "EPERM"].includes(errorCode(cause) ?? "")) return false;
-    throw cause;
-  }
+  return existsSync(path) && (await stat(path)).isFile();
 }
 
 async function isExecutableFile(path: string): Promise<boolean> {
   if (!(await isFile(path))) return false;
+
   try {
     await access(path, process.platform === "win32" ? constants.F_OK : constants.X_OK);
+
     return true;
   } catch (cause) {
-    if (["EACCES", "EPERM"].includes(errorCode(cause) ?? "")) return false;
+    if (isFileError(cause, ["EACCES", "EPERM"])) return false;
     throw cause;
   }
 }
@@ -109,11 +111,14 @@ async function findInPath(
   accept: (candidate: string) => Promise<boolean>,
 ): Promise<string | undefined> {
   const path = process.env.PATH ?? process.env.Path ?? "";
+
   for (const directory of path.split(delimiter)) {
     if (!isAbsolute(directory)) continue;
     const candidate = join(directory, name);
+
     if (await accept(candidate)) return candidate;
   }
+
   return undefined;
 }
 
@@ -143,9 +148,11 @@ function run(executable: string, arguments_: readonly string[], timeout: number)
 
 async function isCompatibleRipgrep(path: string): Promise<boolean> {
   if (!(await isExecutableFile(path))) return false;
+
   try {
     const output = await run(path, ["--version"], VERSION_PROBE_TIMEOUT_MS);
     const version = /^ripgrep (\d+)\./.exec(output);
+
     return version !== null && Number(version[1]) >= MINIMUM_MAJOR_VERSION;
   } catch {
     return false;
@@ -163,12 +170,15 @@ async function extract(
 
   if (config.extension === "tar.gz") {
     const tar = await findExecutable("tar");
+
     if (tar === undefined) throw new Error("tar is required to install ripgrep");
     await run(tar, ["-xzf", archive, "-C", destination, "--", member], EXTRACTION_TIMEOUT_MS);
+
     return;
   }
 
   const powershell = (await findExecutable("powershell.exe")) ?? (await findExecutable("pwsh.exe"));
+
   if (powershell === undefined) throw new Error("PowerShell is required to install ripgrep");
   const quotedArchive = archive.replaceAll("'", "''");
   const quotedExecutable = executable.replaceAll("'", "''");
@@ -196,25 +206,32 @@ async function extract(
 
 async function readArchive(response: Response, url: string): Promise<Buffer> {
   const reader = response.body?.getReader();
+
   try {
     if (!response.ok)
       throw new Error(`failed to download ripgrep from ${url}: HTTP ${response.status}`);
+
     if (Number(response.headers.get("content-length")) > MAX_ARCHIVE_BYTES)
       throw new Error(`ripgrep archive exceeds ${MAX_ARCHIVE_BYTES} bytes`);
 
     const chunks: Uint8Array[] = [];
     let size = 0;
+
     if (reader !== undefined) {
       while (true) {
         const { done, value } = await reader.read();
+
         if (done) break;
         size += value.byteLength;
+
         if (size > MAX_ARCHIVE_BYTES)
           throw new Error(`ripgrep archive exceeds ${MAX_ARCHIVE_BYTES} bytes`);
         chunks.push(value);
       }
     }
+
     if (size === 0) throw new Error(`failed to download ripgrep from ${url}: empty response`);
+
     return Buffer.concat(chunks, size);
   } finally {
     // Release rejected HTTP bodies without replacing the download error with a cancel error.
@@ -227,6 +244,7 @@ async function installRipgrep(target: string, config: ArchiveConfig): Promise<st
   const directory = dirname(target);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const temporary = await mkdtemp(join(directory, ".ripgrep-"));
+
   try {
     const filename = `ripgrep-${VERSION}-${config.platform}.${config.extension}`;
     const url = `https://github.com/BurntSushi/ripgrep/releases/download/${VERSION}/${filename}`;
@@ -234,6 +252,7 @@ async function installRipgrep(target: string, config: ArchiveConfig): Promise<st
     const bytes = await readArchive(response, url);
 
     const digest = createHash("sha256").update(bytes).digest("hex");
+
     if (digest !== config.sha256) {
       throw new Error(
         `failed to verify ripgrep archive ${filename}: expected SHA256 ${config.sha256}, received ${digest}`,
@@ -242,16 +261,21 @@ async function installRipgrep(target: string, config: ArchiveConfig): Promise<st
 
     const archive = join(temporary, filename);
     await writeFile(archive, bytes, { flag: "wx", mode: 0o600 });
+
     const executable = join(
       temporary,
       `ripgrep-${VERSION}-${config.platform}`,
       process.platform === "win32" ? "rg.exe" : "rg",
     );
+
     await extract(archive, temporary, executable, config);
+
     if (!(await isFile(executable))) {
       throw new Error(`ripgrep archive did not contain executable: ${executable}`);
     }
+
     if (process.platform !== "win32") await chmod(executable, 0o755);
+
     if (!(await isCompatibleRipgrep(executable))) {
       throw new Error(`ripgrep archive contained an incompatible executable: ${executable}`);
     }
@@ -259,13 +283,11 @@ async function installRipgrep(target: string, config: ArchiveConfig): Promise<st
     try {
       await rename(executable, target);
     } catch (cause) {
-      if (
-        !["EEXIST", "EPERM"].includes(errorCode(cause) ?? "") ||
-        !(await isCompatibleRipgrep(target))
-      ) {
+      if (!isFileError(cause, ["EEXIST", "EPERM"]) || !(await isCompatibleRipgrep(target))) {
         throw cause;
       }
     }
+
     return target;
   } finally {
     await rm(temporary, { recursive: true, force: true });
@@ -275,32 +297,29 @@ async function installRipgrep(target: string, config: ArchiveConfig): Promise<st
 async function resolveBinary(archives: ReadonlyMap<string, ArchiveConfig>): Promise<string> {
   const executableName = process.platform === "win32" ? "rg.exe" : "rg";
   const system = await findInPath(executableName, isCompatibleRipgrep);
+
   if (system !== undefined) return system;
 
   const nyteHome = resolve(process.env.NYTE_HOME ?? join(homedir(), ".nyte"));
   const target = join(nyteHome, "bin", executableName);
+
   if (await isCompatibleRipgrep(target)) return target;
   await rm(target, { force: true });
 
   const platformKey = `${process.arch}-${process.platform}`;
   const config = archives.get(platformKey);
+
   if (config === undefined) throw new Error(`unsupported platform for ripgrep: ${platformKey}`);
+
   if (platformKey === "arm64-linux") {
     // The pinned release has only a glibc arm64 Linux build, not a musl build.
-    const report = process.report.getReport();
-    if (
-      !("header" in report) ||
-      typeof report.header !== "object" ||
-      report.header === null ||
-      !("glibcVersionRuntime" in report.header) ||
-      typeof report.header.glibcVersionRuntime !== "string" ||
-      report.header.glibcVersionRuntime.length === 0
-    ) {
+    if (!Value.Check(GlibcReport, process.report.getReport())) {
       throw new Error(
         "automatic ripgrep installation on arm64 Linux requires glibc; install ripgrep 12 or later on PATH for musl or unknown libc",
       );
     }
   }
+
   return installRipgrep(target, config);
 }
 
@@ -318,13 +337,16 @@ export function createRipgrepResolver(
       ripgrepPromise = undefined;
       throw cause;
     });
+
     if (signal === undefined) return ripgrepPromise;
 
     // A cancelled search stops waiting without cancelling another search's shared installation.
     let subscription: ReturnType<typeof addAbortListener> | undefined;
+
     const aborted = new Promise<never>((_, reject) => {
       subscription = addAbortListener(signal, () => reject(signal.reason));
     });
+
     try {
       return await Promise.race([ripgrepPromise, aborted]);
     } finally {

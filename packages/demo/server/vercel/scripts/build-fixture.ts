@@ -4,12 +4,17 @@ import { fileURLToPath } from "node:url";
 import manifest from "../package.json" with { type: "json" };
 
 const root = new URL("../", import.meta.url);
+
 const fixture = new URL(".fixtures/echo/", root);
+
 await rm(fixture, { recursive: true, force: true });
+
 await mkdir(fixture, { recursive: true });
+
 for (const path of ["src", "workflows", "nitro.config.ts"]) {
   await cp(new URL(path, root), new URL(path, fixture), { recursive: true });
 }
+
 await writeFile(
   new URL("package.json", fixture),
   JSON.stringify({
@@ -20,8 +25,10 @@ await writeFile(
     devDependencies: manifest.devDependencies,
   }),
 );
+
 // Copy the application fresh on every build; only model composition belongs to the fixture.
 await cp(new URL("fixtures/echo.ts", root), new URL("src/models.ts", fixture));
+
 await writeFile(
   new URL("tsconfig.json", fixture),
   JSON.stringify({
@@ -29,6 +36,7 @@ await writeFile(
     include: ["src", "workflows", "nitro.config.ts"],
   }),
 );
+
 const build = spawnSync(
   "pnpm",
   [
@@ -43,6 +51,8 @@ const build = spawnSync(
   ],
   { cwd: fileURLToPath(root), stdio: "inherit" },
 );
+
 if (build.error) throw build.error;
+
 if (build.status !== 0) process.exitCode = build.status ?? 1;
 else console.log(`Preview fixture built in ${fileURLToPath(fixture)}`);

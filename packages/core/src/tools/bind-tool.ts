@@ -14,7 +14,9 @@ async function boundImages<Details>(
   result: AgentToolResult<Details>,
 ): Promise<AgentToolResult<Details>> {
   const content = await normalizeImageContent(result.content);
+
   if (content === result.content) return result;
+
   return { ...result, content: [...content] };
 }
 
@@ -24,6 +26,7 @@ export function bindTool<T extends TSchema, Details>(
 ): AgentTool<TSchema, Details> {
   const parse = createToolArgumentParser(tool);
   const present = tool.present;
+
   return {
     ...tool,
     present:

@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { gridOverlay } from "./grid-overlay.stylex";
 
 export type GridMetrics = { columns: boolean; rows: boolean; revision: string };
+
 type GuideBox = {
   left: number;
   top: number;
@@ -12,14 +13,18 @@ type GuideBox = {
   kind: "row" | "text" | "surface";
   popup: boolean;
 };
+
 type GuideColumn = { name: string; left: number; top: number; height: number; popup: boolean };
+
 const popupSelector =
   '[role="menu"], [role="listbox"], [role="dialog"], [role="alertdialog"], [role="tooltip"]';
+
 const rowSelector =
   '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"]';
 
 export function GridOverlay({ columns: showColumns, rows, revision }: GridMetrics) {
   const ref = useRef<HTMLDivElement>(null);
+
   const [geometry, setGeometry] = useState<{
     boxes: GuideBox[];
     columns: GuideColumn[];
@@ -29,13 +34,16 @@ export function GridOverlay({ columns: showColumns, rows, revision }: GridMetric
   useLayoutEffect(() => {
     const overlay = ref.current;
     const shell = document.getElementById("lab-shell");
+
     if ((!rows && !showColumns) || overlay === null || shell === null) return;
     let frame = 0;
+
     const measure = () => {
       frame = 0;
       const bounds = shell.getBoundingClientRect();
       const boxes: GuideBox[] = [];
       const columns: GuideColumn[] = [];
+
       const appendBox = (
         element: Element,
         kind: GuideBox["kind"],
@@ -48,9 +56,11 @@ export function GridOverlay({ columns: showColumns, rows, revision }: GridMetric
         const top = Math.max(rect.top, clip.top, scroller.top);
         const right = Math.min(rect.right, clip.right, scroller.right);
         const bottom = Math.min(rect.bottom, clip.bottom, scroller.bottom);
+
         if (right > left && bottom > top)
           boxes.push({ left, top, width: right - left, height: bottom - top, kind, popup });
       };
+
       shell
         .querySelectorAll("[data-grid-row], [data-grid-text]")
         .forEach((element) =>
@@ -60,6 +70,7 @@ export function GridOverlay({ columns: showColumns, rows, revision }: GridMetric
       shell.querySelectorAll<HTMLElement>("[data-grid-column]").forEach((element) => {
         const name = element.dataset.gridColumn;
         const rect = element.getBoundingClientRect();
+
         if (name === undefined || rect.width === 0 || rect.height === 0 || seen.has(name)) return;
         seen.add(name);
         columns.push({
@@ -77,6 +88,7 @@ export function GridOverlay({ columns: showColumns, rows, revision }: GridMetric
           popup: false,
         });
         const glyph = element.querySelector("svg")?.getBoundingClientRect();
+
         if (glyph !== undefined) {
           columns.push({
             name: `${name}.glyph`,
@@ -97,6 +109,7 @@ export function GridOverlay({ columns: showColumns, rows, revision }: GridMetric
       document.querySelectorAll(popupSelector).forEach((popup, index) => {
         const rect = popup.getBoundingClientRect();
         const style = getComputedStyle(popup);
+
         if (
           rect.width === 0 ||
           rect.height === 0 ||
@@ -104,15 +117,20 @@ export function GridOverlay({ columns: showColumns, rows, revision }: GridMetric
           style.display === "none"
         )
           return;
+
         const name =
           popup.getAttribute("aria-label") ?? popup.getAttribute("role") ?? String(index);
+
         appendBox(popup, "surface", rect, true);
         popup.querySelectorAll(rowSelector).forEach((row) => appendBox(row, "row", rect, true));
         const firstRow = popup.querySelector(rowSelector);
+
         const slots =
           firstRow === null ? popup.querySelectorAll("h2, p, input, button") : firstRow.children;
+
         Array.from(slots).forEach((slot, slotIndex) => {
           const box = slot.getBoundingClientRect();
+
           if (box.width === 0 || box.height === 0) return;
           appendBox(slot, "text", rect, true);
           columns.push({
@@ -132,6 +150,7 @@ export function GridOverlay({ columns: showColumns, rows, revision }: GridMetric
         });
       });
       setGeometry({ boxes, columns, dpr: window.devicePixelRatio });
+
       if (
         document
           .getAnimations()
@@ -143,10 +162,13 @@ export function GridOverlay({ columns: showColumns, rows, revision }: GridMetric
       )
         frame = requestAnimationFrame(measure);
     };
+
     const schedule = () => {
       if (frame === 0) frame = requestAnimationFrame(measure);
     };
+
     const resize = new ResizeObserver(schedule);
+
     const observe = () => {
       resize.disconnect();
       resize.observe(shell);
@@ -156,11 +178,13 @@ export function GridOverlay({ columns: showColumns, rows, revision }: GridMetric
         )
         .forEach((element) => resize.observe(element));
     };
+
     const mutation = new MutationObserver((records) => {
       if (
         records.every((record) => {
           const target =
             record.target instanceof Element ? record.target : record.target.parentElement;
+
           return target?.closest("[data-grid-overlay]") != null;
         })
       )
@@ -168,6 +192,7 @@ export function GridOverlay({ columns: showColumns, rows, revision }: GridMetric
       observe();
       schedule();
     });
+
     observe();
     mutation.observe(document.documentElement, {
       childList: true,
@@ -189,6 +214,7 @@ export function GridOverlay({ columns: showColumns, rows, revision }: GridMetric
     document.addEventListener("transitionrun", schedule, true);
     window.addEventListener("resize", schedule);
     measure();
+
     return () => {
       resize.disconnect();
       mutation.disconnect();

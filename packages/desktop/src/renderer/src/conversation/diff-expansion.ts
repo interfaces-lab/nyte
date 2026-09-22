@@ -63,6 +63,7 @@ function textSide(
       throw new Error(`Cannot expand ${path}: the file was read only in part`);
     default: {
       const _exhaustive: never = side;
+
       return _exhaustive;
     }
   }
@@ -79,6 +80,7 @@ export function createDiffFilesLoader(source: DiffExpansionSource): DiffFilesLoa
     const path = fileDiff.name;
     const current = await source.readContents({ scope: source.scope, path });
     const newFile = fileSide(source, path, "new", textSide(current.new, path, "current"));
+
     // A pure rename has no content change, and Pierre wants the old side left
     // out rather than duplicated.
     if (fileDiff.type === "rename-pure") return { oldFile: null, newFile };
@@ -86,11 +88,14 @@ export function createDiffFilesLoader(source: DiffExpansionSource): DiffFilesLoa
     // A rename's previous contents live under the previous path; the new path
     // has no old side there.
     const previousPath = fileDiff.prevName ?? path;
+
     const previous =
       previousPath === path
         ? current
         : await source.readContents({ scope: source.scope, path: previousPath });
+
     const old = textSide(previous.old, previousPath, "previous");
+
     return { oldFile: fileSide(source, previousPath, "old", old), newFile };
   };
 }

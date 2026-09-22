@@ -19,6 +19,7 @@ type ImageAnnotation = {
 };
 
 const store = new Map<string, ImageAnnotation>();
+
 const listeners = new Set<() => void>();
 
 function notify(): void {
@@ -27,6 +28,7 @@ function notify(): void {
 
 function subscribe(onChange: () => void): () => void {
   listeners.add(onChange);
+
   return () => {
     listeners.delete(onChange);
   };
@@ -54,12 +56,11 @@ export function clearAnnotation(imageId: string): void {
  * Resolve a staged image for sending: the annotated capture replaces the raw
  * photo, and numbered comments follow as text so the agent can locate them.
  */
-export function resolveAttachment(staged: StagedImage): {
-  image: StagedImage;
-  note: string | undefined;
-} {
+export function resolveAttachment(staged: StagedImage) {
   const annotation = readAnnotation(staged.id);
+
   if (annotation === undefined) return { image: staged, note: undefined };
+
   const note = annotation.points
     .filter((point) => point.comment.trim() !== "")
     .map(
@@ -69,5 +70,6 @@ export function resolveAttachment(staged: StagedImage): {
         )}%: ${point.comment}`,
     )
     .join("\n");
+
   return { image: annotation.image, note: note === "" ? undefined : `Photo annotations:\n${note}` };
 }

@@ -52,7 +52,9 @@ export class ModelsError extends Error {
 function withCauseDetail(message: string, cause: unknown): string {
   if (cause === undefined || cause === null) return message;
   const detail = formatThrownValue(cause).trim();
+
   if (!detail || message.includes(detail)) return message;
+
   return `${message}: ${detail}`;
 }
 
@@ -69,6 +71,7 @@ export function resolveProviderAuth(
   overrides?: AuthResolutionOverrides,
 ): Promise<AuthResult | undefined> {
   const signal = operationSignal(overrides?.signal);
+
   return raceWithAbortSignal(
     resolveProviderAuthWithSignal(provider, credentials, authContext, overrides, signal),
     signal,
@@ -83,6 +86,7 @@ async function resolveProviderAuthWithSignal(
   signal: AbortSignal,
 ): Promise<AuthResult | undefined> {
   signal.throwIfAborted();
+
   const requestAuthContext = overrides?.env
     ? overlayEnvAuthContext(authContext, overrides.env)
     : authContext;
@@ -102,6 +106,7 @@ async function resolveProviderAuthWithSignal(
   }
 
   const stored = await readCredential(credentials, provider.id, signal);
+
   if (stored) {
     if (stored.type === "oauth" && provider.auth.oauth) {
       return resolveStoredOAuth(
@@ -113,10 +118,12 @@ async function resolveProviderAuthWithSignal(
         overrides?.minOAuthValidityMs,
       );
     }
+
     if (stored.type === "api_key" && provider.auth.apiKey) {
       const credential = overrides?.env
         ? { ...stored, env: { ...stored.env, ...overrides.env } }
         : stored;
+
       return resolveApiKey(
         requestAuthContext,
         provider.auth.apiKey,
@@ -125,6 +132,7 @@ async function resolveProviderAuthWithSignal(
         signal,
       );
     }
+
     return undefined;
   }
 
@@ -142,6 +150,7 @@ function overlayEnvAuthContext(base: AuthContext, env: ProviderEnv): AuthContext
 }
 
 const DEFAULT_OAUTH_MINIMUM_VALIDITY_MS = 5 * 60 * 1000;
+
 /**
  * Cap on one token refresh. Every refresh runs inside `CredentialStore.modify`,
  * so this is also how long a refresh can hold the credential lock other clients
@@ -163,24 +172,30 @@ async function resolveStoredOAuth(
   minOAuthValidityMs?: number,
 ): Promise<AuthResult | undefined> {
   const minimumValidityMs = Math.max(DEFAULT_OAUTH_MINIMUM_VALIDITY_MS, minOAuthValidityMs ?? 0);
+
   const expiresSoon = (credential: OAuthCredential) =>
     Date.now() + minimumValidityMs >= credential.expires;
+
   let credential = stored;
 
   if (expiresSoon(credential)) {
     // Optimistic check said expired; the authoritative check runs under the lock.
     let post: Credential | undefined;
+
     try {
       post = await credentials.modify(
         providerId,
         async (current) => {
           if (current?.type !== "oauth") return undefined; // logged out meanwhile
+
           if (!expiresSoon(current)) return undefined; // another process/request refreshed
+
           try {
             const refreshSignal = AbortSignal.any([
               signal,
               AbortSignal.timeout(DEFAULT_OAUTH_REFRESH_TIMEOUT_MS),
             ]);
+
             return await oauth.refresh(current, refreshSignal);
           } catch (error) {
             throw new ModelsError("oauth", `OAuth refresh failed for ${providerId}`, {
@@ -196,8 +211,10 @@ async function resolveStoredOAuth(
         cause: error,
       });
     }
+
     if (post?.type !== "oauth") return undefined; // logged out meanwhile
     credential = post;
+
     // The normal five-minute window triggers a refresh but does not impose a
     // provider contract. Explicit callers (such as bearer-token export) do
     // require the requested minimum after the refresh.

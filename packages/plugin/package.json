@@ -7,6 +7,7 @@
     "./openai-compaction": "./src/openai-compaction.ts",
     "./openai-astra-context": "./src/openai-astra-context.ts",
     "./mcp": "./src/mcp.ts",
+    "./provider": "./src/provider.ts",
     "./examples/fast-mode": "./examples/fast-mode.ts",
     "./examples/notifications": "./examples/notifications.ts",
     "./examples/question": "./examples/question.ts",

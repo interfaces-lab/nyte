@@ -76,6 +76,7 @@ function visit(
   location: FileLocation,
 ): Pick<FileViewRuntime, "history" | "historyIndex"> {
   const previous = current.history[current.historyIndex];
+
   if (
     previous?.path === location.path &&
     previous.line === location.line &&
@@ -83,6 +84,7 @@ function visit(
   ) {
     return { history: current.history, historyIndex: current.historyIndex };
   }
+
   const history = [
     ...current.history.slice(0, current.historyIndex + 1),
     {
@@ -93,6 +95,7 @@ function visit(
       length: location.length,
     },
   ];
+
   return { history, historyIndex: history.length - 1 };
 }
 
@@ -105,17 +108,22 @@ export function createFileTabStore(
   let revision = 0;
 
   const getRuntimeView = (key: WorkbenchViewKey): FileViewRuntime => views.get(key) ?? EMPTY_VIEW;
+
   const publish = (key: WorkbenchViewKey, next: FileViewRuntime): void => {
     views.set(key, next);
     revision += 1;
+
     for (const listener of listeners) listener();
   };
+
   const fileTabs = (key: WorkbenchViewKey): readonly FileTab[] =>
     controller.getView(key).tabs.flatMap((tab) => {
       if (tab.kind !== "file") return [];
       const runtime = documents.get(tab.id) ?? fallbackRuntime(tab.path);
+
       return [{ id: tab.id, path: tab.path, preview: tab.preview, ...runtime }];
     });
+
   const getView = (key: WorkbenchViewKey): FileTabs => {
     const controllerView = controller.getView(key);
     const runtime = getRuntimeView(key);
@@ -124,6 +132,7 @@ export function createFileTabStore(
     const activeId = activeTab?.kind === "file" ? activeTab.id : null;
     const activePath = tabs.find((tab) => tab.id === activeId)?.path;
     const pendingClosePath = tabs.find((tab) => tab.id === runtime.pendingCloseId)?.path;
+
     return {
       tabs,
       activeId,
@@ -140,14 +149,17 @@ export function createFileTabStore(
   const remove = (key: WorkbenchViewKey, id: WorkbenchTabId): void => {
     const current = getRuntimeView(key);
     const tab = fileTabs(key).find((candidate) => candidate.id === id);
+
     if (tab === undefined) return;
     controller.actions.closeTab({ view: key, id });
     documents.delete(id);
     const history = current.history.filter((location) => location.path !== tab.path);
+
     const historyIndex =
       current.history
         .slice(0, current.historyIndex + 1)
         .filter((location) => location.path !== tab.path).length - 1;
+
     publish(key, {
       ...current,
       history,
@@ -163,18 +175,22 @@ export function createFileTabStore(
   ): WorkbenchTabId => {
     const current = getRuntimeView(key);
     const existing = fileTabs(key).find((tab) => tab.path === location.path);
+
     if (existing === undefined && location.preview === true) {
       const replaceable = fileTabs(key).find((tab) => tab.preview && !tab.dirty && !tab.saving);
+
       if (replaceable !== undefined) {
         controller.actions.closeTab({ view: key, id: replaceable.id });
         documents.delete(replaceable.id);
       }
     }
+
     const id = controller.actions.openTab({
       view: key,
       tab: { kind: "file", path: location.path, preview: location.preview === true },
       activate: true,
     });
+
     const previous = documents.get(id) ?? fallbackRuntime(location.path);
     documents.set(id, {
       ...previous,
@@ -184,20 +200,27 @@ export function createFileTabStore(
       length: location.length,
       navigationRevision: current.navigationRevision + 1,
     });
+
     if (existing !== undefined && location.preview !== true && existing.preview) {
       controller.actions.updateTab({ view: key, id, kind: "file", patch: { preview: false } });
     }
+
+    const { history, historyIndex } = recordHistory ? visit(current, location) : current;
+
     publish(key, {
       ...current,
-      ...(recordHistory ? visit(current, location) : {}),
+      history,
+      historyIndex,
       navigationRevision: current.navigationRevision + 1,
     });
+
     return id;
   };
 
   const navigate = (key: WorkbenchViewKey, historyIndex: number): void => {
     const current = getRuntimeView(key);
     const location = current.history[historyIndex];
+
     if (location === undefined) return;
     open(key, location, false);
     publish(key, { ...getRuntimeView(key), historyIndex });
@@ -223,6 +246,7 @@ export function createFileTabStore(
     select(key: WorkbenchViewKey, path: string): void {
       const current = getRuntimeView(key);
       const tab = fileTabs(key).find((candidate) => candidate.path === path);
+
       if (tab === undefined) return;
       controller.actions.activateTab({ view: key, id: tab.id });
       publish(key, {
@@ -234,28 +258,37 @@ export function createFileTabStore(
     close(key: WorkbenchViewKey, path: string): boolean {
       const current = getRuntimeView(key);
       const tab = fileTabs(key).find((candidate) => candidate.path === path);
+
       if (tab === undefined) return true;
+
       if (tab.dirty || tab.saving) {
         publish(key, { ...current, pendingCloseId: tab.id });
+
         return false;
       }
+
       remove(key, tab.id);
+
       return true;
     },
     cancelClose(key: WorkbenchViewKey): void {
       const current = getRuntimeView(key);
+
       if (current.pendingCloseId === null) return;
       publish(key, { ...current, pendingCloseId: null });
     },
     discardClose(key: WorkbenchViewKey): void {
       const current = getRuntimeView(key);
+
       if (current.pendingCloseId === null) return;
       const tab = documents.get(current.pendingCloseId);
+
       if (tab?.saving !== true) remove(key, current.pendingCloseId);
     },
     setSaving(key: WorkbenchViewKey, path: string, saving: boolean): void {
       const current = getRuntimeView(key);
       const tab = fileTabs(key).find((candidate) => candidate.path === path);
+
       if (tab === undefined || tab.saving === saving) return;
       documents.set(tab.id, { ...tab, saving });
       publish(key, current);
@@ -263,8 +296,10 @@ export function createFileTabStore(
     setDirty(key: WorkbenchViewKey, path: string, dirty: boolean): void {
       const current = getRuntimeView(key);
       const tab = fileTabs(key).find((candidate) => candidate.path === path);
+
       if (tab === undefined || tab.dirty === dirty) return;
       documents.set(tab.id, { ...tab, dirty });
+
       if (dirty && tab.preview) {
         controller.actions.updateTab({
           view: key,
@@ -273,6 +308,7 @@ export function createFileTabStore(
           patch: { preview: false },
         });
       }
+
       publish(key, current);
     },
     setDraft(
@@ -282,6 +318,7 @@ export function createFileTabStore(
     ): void {
       const current = getRuntimeView(key);
       const tab = fileTabs(key).find((candidate) => candidate.path === path);
+
       if (
         tab === undefined ||
         (tab.draft?.contents === draft?.contents &&
@@ -291,12 +328,14 @@ export function createFileTabStore(
       ) {
         return;
       }
+
       documents.set(tab.id, {
         ...tab,
         draft:
           draft === undefined ? undefined : { ...draft, revision: (tab.draft?.revision ?? 0) + 1 },
         dirty: draft !== undefined,
       });
+
       if (draft !== undefined && tab.preview) {
         controller.actions.updateTab({
           view: key,
@@ -305,11 +344,13 @@ export function createFileTabStore(
           patch: { preview: false },
         });
       }
+
       publish(key, current);
     },
     pin(key: WorkbenchViewKey, path: string): void {
       const current = getRuntimeView(key);
       const tab = fileTabs(key).find((candidate) => candidate.path === path);
+
       if (tab === undefined || !tab.preview) return;
       controller.actions.updateTab({
         view: key,
@@ -331,6 +372,7 @@ export function createFileTabStore(
     getView,
     subscribe: (listener: () => void): (() => void) => {
       listeners.add(listener);
+
       return () => listeners.delete(listener);
     },
     getSnapshot: (): number => revision,
@@ -339,9 +381,11 @@ export function createFileTabStore(
 }
 
 const fileStore = createFileTabStore();
+
 export const fileActions = fileStore.actions;
 
 export function useFileTabs(viewKey: WorkbenchViewKey): FileTabs {
   useSyncExternalStore(fileStore.subscribe, fileStore.getSnapshot, fileStore.getSnapshot);
+
   return fileStore.getView(viewKey);
 }

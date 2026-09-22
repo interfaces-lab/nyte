@@ -31,6 +31,7 @@ export function thinkingLevelsFor(
 ): readonly ThinkingLevel[] {
   const supported = option?.thinkingLevels ?? (["off"] as const);
   const ordered = THINKING_ORDER.filter((level) => supported.includes(level));
+
   return ordered.length === 0 ? ["off"] : ordered;
 }
 
@@ -39,12 +40,16 @@ export function supportedThinkingLevel(
   requested: ThinkingLevel | undefined,
 ): ThinkingLevel {
   const levels = thinkingLevelsFor(option);
+
   if (requested !== undefined && levels.includes(requested)) return requested;
+
   if (levels.includes("medium")) return "medium";
+
   return levels[0] ?? "off";
 }
 
 export function thinkingIndex(levels: readonly ThinkingLevel[], value: ThinkingLevel): number {
   const index = levels.indexOf(value);
+
   return index < 0 ? 0 : index;
 }

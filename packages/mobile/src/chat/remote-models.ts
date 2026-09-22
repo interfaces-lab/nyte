@@ -17,14 +17,17 @@ export function useModelCatalog(client: NyteClient, enabled = true) {
         client.provider.models.list(),
         client.provider.models.default(),
       ]);
+
       return { models, defaultModel };
     },
   });
+
   const catalog: ModelCatalogState =
     query.status === "pending"
       ? { kind: "loading" }
       : query.status === "error"
         ? { kind: "failed", message: describeHostError(query.error) }
         : { kind: "ready", models: query.data.models, defaultModel: query.data.defaultModel };
+
   return { catalog, refresh: query.refetch };
 }

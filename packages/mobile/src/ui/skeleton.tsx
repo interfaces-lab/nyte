@@ -14,7 +14,9 @@ import Animated, {
 import { controls, list, radii, spacing, useTheme } from "../theme.ts";
 
 const PULSE_LOW = 0.4;
+
 const PULSE_HIGH = 0.85;
+
 const PULSE_MS = 850;
 
 /** Placeholder block pulsing over the fill tint, like UIKit skeletons. */
@@ -42,9 +44,11 @@ export function Skeleton({
         true,
       ),
     );
+
     return () => cancelAnimation(pulse);
   }, [pulse, reduceMotion]);
   const animatedStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
+
   return (
     <Animated.View
       accessibilityElementsHidden
@@ -60,6 +64,7 @@ export function Skeleton({
 /** Mirrors SessionRow: status dot, title bar, meta bar, hairline under the text. */
 export function SessionRowsSkeleton({ rows = 7 }: { rows?: number }) {
   const theme = useTheme();
+
   return (
     <View>
       {Array.from({ length: rows }, (_, index) => (

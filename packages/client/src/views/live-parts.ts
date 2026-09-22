@@ -37,6 +37,7 @@ export function livePartKey(part: LivePart): string {
       return `tool:${part.callId}`;
     default: {
       const exhaustive: never = part;
+
       return exhaustive;
     }
   }
@@ -44,6 +45,7 @@ export function livePartKey(part: LivePart): string {
 
 function retainParts(parts: LiveParts, keep: (part: LivePart) => boolean): LiveParts {
   const remaining = parts.filter(keep);
+
   return remaining.length === parts.length ? parts : remaining;
 }
 
@@ -63,15 +65,19 @@ export function foldLiveParts(parts: LiveParts, event: SessionEvent): LiveParts 
         index: event.index,
         text: event.delta,
       } satisfies LivePart;
+
       // The part a delta extends is almost always the newest, so search from the end.
       const key = livePartKey(part);
       const index = parts.findLastIndex((existing) => livePartKey(existing) === key);
       const existing = parts[index];
+
       if (existing === undefined || existing.kind === "tool") return [...parts, part];
       const next = [...parts];
       next[index] = { ...part, text: existing.text + event.delta };
+
       return next;
     }
+
     case "tool_progress":
       return [
         ...parts.filter((part) => part.kind !== "tool" || part.callId !== event.callId),
@@ -95,14 +101,19 @@ export function foldLiveParts(parts: LiveParts, event: SessionEvent): LiveParts 
           return parts;
         default: {
           const exhaustive: never = event.run.phase;
+
           return exhaustive;
         }
       }
+
     case "commit": {
       const commit = event.item.commit;
+
       if (commit.body.kind === "checkpoint") return EMPTY_LIVE_PARTS;
+
       if (commit.body.kind !== "message") return parts;
       const message = commit.body.message;
+
       switch (message.role) {
         case "assistant":
           // Responses are serialized within a run. Its deltas flush before the
@@ -119,20 +130,25 @@ export function foldLiveParts(parts: LiveParts, event: SessionEvent): LiveParts 
           return parts;
         default: {
           const exhaustive: never = message;
+
           return exhaustive;
         }
       }
     }
+
     case "job": {
       const job = event.job;
       const origin = job.origin;
+
       if (job.phase.kind === "running" || origin.kind === "user") return parts;
+
       return retainParts(
         parts,
         (part) =>
           part.kind !== "tool" || part.runId !== origin.runId || part.callId !== origin.callId,
       );
     }
+
     case "activation_changed":
     case "synced":
     case "plugins_changed":
@@ -152,6 +168,7 @@ export function foldLiveParts(parts: LiveParts, event: SessionEvent): LiveParts 
       return parts;
     default: {
       const exhaustive: never = event;
+
       return exhaustive;
     }
   }

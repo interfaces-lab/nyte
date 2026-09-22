@@ -27,6 +27,7 @@ export interface ChangesSidebarFile {
 }
 
 type ViewedFilterMode = "all" | "viewed" | "not-viewed";
+
 const STATUS_FILTERS: readonly { readonly value: ChangeStatus; readonly label: string }[] = [
   { value: "added", label: "Added" },
   { value: "modified", label: "Modified" },
@@ -34,11 +35,13 @@ const STATUS_FILTERS: readonly { readonly value: ChangeStatus; readonly label: s
   { value: "untracked", label: "Untracked" },
   { value: "conflicted", label: "Conflicted" },
 ];
+
 const VIEWED_FILTERS: readonly { readonly value: ViewedFilterMode; readonly label: string }[] = [
   { value: "all", label: "All files" },
   { value: "viewed", label: "Viewed" },
   { value: "not-viewed", label: "Not viewed" },
 ];
+
 const styles = create({
   rail: {
     order: 1,
@@ -202,6 +205,7 @@ export function ReviewCheckbox({
 
 export function sidebarCountLabel(total: number, shown: number, filtered: boolean): string {
   if (!filtered || shown === total) return filesChangedLabel(total);
+
   return `${String(shown)} of ${filesChangedLabel(total)}`;
 }
 
@@ -231,6 +235,7 @@ export const ChangesSidebar = memo(function ChangesSidebar({
   }, [fileByPath, onRevealPath]);
   const syncing = useRef(false);
   const paths = useRef<ReadonlySet<string>>(new Set());
+
   const { model } = useFileTree({
     paths: [],
     density: "compact",
@@ -238,11 +243,14 @@ export const ChangesSidebar = memo(function ChangesSidebar({
     onSelectionChange: (selected) => {
       if (syncing.current) return;
       const path = selected.findLast((path) => current.current.fileByPath.has(path));
+
       if (path !== undefined) current.current.onRevealPath(path);
     },
     renderRowDecoration: ({ item }) => {
       const file = current.current.fileByPath.get(item.path);
+
       if (file === undefined) return null;
+
       return {
         text: [file.added > 0 ? `+${file.added}` : "", file.removed > 0 ? `-${file.removed}` : ""]
           .filter(Boolean)
@@ -250,7 +258,9 @@ export const ChangesSidebar = memo(function ChangesSidebar({
       };
     },
   });
+
   const filtering = query.trim() !== "" || statuses.length > 0 || viewedMode !== "all";
+
   const shownPaths = useMemo(
     () =>
       filterChangePaths(files, {
@@ -263,10 +273,12 @@ export const ChangesSidebar = memo(function ChangesSidebar({
       }),
     [files, fileByPath, query, statuses, viewedMode],
   );
+
   useLayoutEffect(() => {
     const next = new Set(
       shownPaths.flatMap((path) => {
         const ancestors = [path];
+
         for (
           let index = path.lastIndexOf("/");
           index > 0;
@@ -274,9 +286,11 @@ export const ChangesSidebar = memo(function ChangesSidebar({
         ) {
           ancestors.push(path.slice(0, index + 1));
         }
+
         return ancestors;
       }),
     );
+
     const changes: FileTreeBatchOperation[] = [
       ...[...paths.current]
         .filter((path) => !next.has(path))
@@ -286,12 +300,16 @@ export const ChangesSidebar = memo(function ChangesSidebar({
         .filter((path) => !paths.current.has(path))
         .map((path) => ({ type: "add" as const, path })),
     ];
+
     syncing.current = true;
+
     if (changes.length > 0) model.batch(changes);
     paths.current = next;
+
     for (const selected of model.getSelectedPaths()) {
       if (selected !== activePath) model.getItem(selected)?.deselect();
     }
+
     if (activePath !== undefined) model.getItem(activePath)?.select();
     syncing.current = false;
   }, [model, shownPaths, activePath]);
@@ -305,14 +323,17 @@ export const ChangesSidebar = memo(function ChangesSidebar({
             : file.removed > 0 && file.added === 0
               ? "deleted"
               : "modified");
+
         return { path: file.path, status: status === "conflicted" ? "modified" : status };
       }),
     );
   }, [model, files]);
+
   const summary = changeSelectionSummary(
     shownPaths,
     (path) => fileByPath.get(path)?.viewed === "viewed",
   );
+
   return (
     <div {...props(styles.rail, !visible && styles.railHidden)}>
       <FileTree
@@ -368,6 +389,7 @@ export const ChangesSidebar = memo(function ChangesSidebar({
                   value={viewedMode}
                   onValueChange={(value) => {
                     const found = VIEWED_FILTERS.find((option) => option.value === value);
+
                     if (found !== undefined) setViewedMode(found.value);
                   }}
                 >

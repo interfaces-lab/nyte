@@ -11,16 +11,22 @@ const LISTS = [
   "https://easylist.to/easylist/easylist.txt",
   "https://easylist.to/easylist/easyprivacy.txt",
 ];
+
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
+
 const desktopRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+
 const output = join(desktopRoot, "resources", "adblock.bin");
+
 const force = process.argv.includes("--force");
 
 async function fresh() {
   try {
     const info = await stat(output);
+
     if (Date.now() - info.mtimeMs > MAX_AGE_MS) return false;
     FiltersEngine.deserialize(await readFile(output));
+
     return true;
   } catch {
     return false;
@@ -33,10 +39,13 @@ if (!force && (await fresh())) {
   const texts = await Promise.all(
     LISTS.map(async (url) => {
       const response = await fetch(url);
+
       if (!response.ok) throw new Error(`${url}: ${response.status}`);
+
       return response.text();
     }),
   );
+
   const engine = parseFilterLists(texts.join("\n"));
   await mkdir(dirname(output), { recursive: true });
   const bytes = engine.serialize();

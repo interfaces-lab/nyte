@@ -9,6 +9,7 @@ import {
   ORIGIN,
   SESSION_TOKEN,
   anthropicSse,
+  copilotCatalog,
   copilotModels,
   fakeFetch,
   json,
@@ -53,9 +54,9 @@ const user = (content: string, timestamp: number): Context["messages"][number] =
 const copilot = githubCopilotProvider();
 const completions = openAICompletionsApi();
 
-function generatedModel(id: string) {
-  const model = copilot.getModels().find((entry) => entry.id === id);
-  assert.ok(model, `Missing generated Copilot model: ${id}`);
+function catalogModel(id: string) {
+  const model = copilotCatalog.find((entry) => entry.id === id);
+  assert.ok(model, `Missing Copilot catalog model: ${id}`);
   return model;
 }
 
@@ -69,7 +70,7 @@ const toolResult = (id: string): Context["messages"][number] => ({
 });
 
 describe("GitHub Copilot transport", () => {
-  test("login exchanges the GitHub token and uses the session token for generated chat inference", async () => {
+  test("login exchanges the GitHub token and uses the session token for catalog-backed chat inference", async () => {
     let turn = 0;
     const setup = copilotModels({
       [MODELS]: () => json({ data: [{ id: "gemini-3.8-flash", model_picker_enabled: true }] }),
@@ -205,7 +206,7 @@ describe("GitHub Copilot transport", () => {
     assert.equal(off.thinking_budget, undefined);
   });
 
-  test("a generated Responses model: encrypted reasoning, tool call, and replay across rotating ids", async () => {
+  test("a catalog Responses model: encrypted reasoning, tool call, and replay across rotating ids", async () => {
     let turn = 0;
     const transport = fakeFetch({
       [`POST ${ORIGIN}/responses`]: () => {
@@ -285,7 +286,7 @@ describe("GitHub Copilot transport", () => {
             ]);
       },
     });
-    const model = generatedModel("gpt-5.5");
+    const model = catalogModel("gpt-5.5");
     assert.ok(hasApi(model, "openai-responses"));
 
     const first = await copilot
@@ -344,7 +345,7 @@ describe("GitHub Copilot transport", () => {
     assert.equal(responseItem(secondBody, "function_call_output").call_id, "call_1");
   });
 
-  test("a generated Messages model: bearer auth at /v1/messages, adaptive effort, and a tool round trip", async () => {
+  test("a catalog Messages model: bearer auth at /v1/messages, adaptive effort, and a tool round trip", async () => {
     let turn = 0;
     const messageStart = {
       type: "message_start",
@@ -396,7 +397,7 @@ describe("GitHub Copilot transport", () => {
             ]);
       },
     });
-    const model = generatedModel("claude-sonnet-4.6");
+    const model = catalogModel("claude-sonnet-4.6");
     assert.ok(hasApi(model, "anthropic-messages"));
 
     const first = await copilot
@@ -481,7 +482,7 @@ describe("GitHub Copilot transport", () => {
           { type: "message_stop" },
         ]),
     });
-    const base = generatedModel("claude-haiku-4.5");
+    const base = catalogModel("claude-haiku-4.5");
     assert.ok(hasApi(base, "anthropic-messages"));
     const model: Model<"anthropic-messages"> = {
       ...base,

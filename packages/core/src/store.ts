@@ -4,8 +4,11 @@
  * exported helpers are pure reads over kernel commits.
  */
 export { SqlStore, SqliteStore, type SqliteStoreOptions } from "./kernel/sqlite.ts";
+
 export type { SqliteConnection, SqlRow, SqliteValue } from "./kernel/sql.ts";
+
 export { WorkerStore, type WorkerStoreOptions } from "./kernel/worker-store.ts";
+
 export {
   UnknownSession,
   type AppendOutcome,
@@ -18,6 +21,9 @@ export {
   type SessionInfo,
   type Store,
 } from "./kernel/store.ts";
+
 export { toJsonValue } from "@nyte-ai/client";
+
 export { branch, contextCommits, history } from "./kernel/graph.ts";
+
 export { branchConfig, contextMessages, modelContext } from "@nyte-ai/client";

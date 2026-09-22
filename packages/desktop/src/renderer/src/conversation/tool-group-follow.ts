@@ -32,5 +32,6 @@ export function scrolledAway(metrics: ScrollMetrics): boolean {
 
 export function followOnScroll(metrics: ScrollMetrics): FollowStep {
   if (!scrolledAway(metrics)) return { paused: false, resumeTimer: "clear" };
+
   return { paused: true, resumeTimer: "arm" };
 }

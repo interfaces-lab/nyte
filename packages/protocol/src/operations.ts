@@ -85,16 +85,24 @@ const operation = <Input extends TSchema, Output extends TSchema>(
 ): OperationSpec<Input, Output> => ({ input, output });
 
 const nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
+
 const none = Type.Undefined();
+
 const sessionOnly = strict({ sessionId: SessionId });
+
 const sessionHead = strict({ sessionId: SessionId, head: Type.Optional(HeadName) });
+
 const modelRef = strict({ provider: Type.String(), id: Type.String() });
+
 /** A session's directory, else the host's own workspace. */
 const workspaceTarget = { target: WorkspaceTarget };
+
 const vcsExpect = strict({ revision: Type.String() });
+
 const vcsPaths = Unsafe<readonly [string, ...string[]]>(
   Type.Array(NonEmptyString, { minItems: 1, maxItems: 1000 }),
 );
+
 const runIds = Unsafe<readonly [string, ...string[]]>(Type.Array(Type.String(), { minItems: 1 }));
 
 export const OPERATIONS = Object.freeze({
@@ -328,11 +336,13 @@ export const OPERATIONS = Object.freeze({
 export type Operation = keyof typeof OPERATIONS;
 
 export type OperationInput<V extends Operation> = Static<(typeof OPERATIONS)[V]["input"]>;
+
 export type OperationOutput<V extends Operation> = Static<(typeof OPERATIONS)[V]["output"]>;
 
 /** Parse a route name without admitting inherited object properties. */
 export function parseOperation(value: string): Operation | undefined {
   if (!Object.hasOwn(OPERATIONS, value)) return undefined;
+
   // SAFETY: the frozen literal table cannot gain keys; the own-key check proves membership.
   return value as Operation;
 }

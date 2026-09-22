@@ -37,6 +37,7 @@ function useHostEvents(): void {
       switch (event.kind) {
         case "workspace_trust_required":
           handleOpenOutcome({ kind: "needs_trust", path: event.path });
+
           return;
         case "workspace_opened":
         case "workspace_closed":
@@ -46,44 +47,56 @@ function useHostEvents(): void {
           void loadLocalResources()
             .then(() => {
               bindRouteToOpenFolder();
+
               return router.invalidate();
             })
             .catch(() => undefined);
+
           return;
         case "catalog_changed":
           void queryClient.invalidateQueries({ queryKey: keys.catalog });
           void queryClient.invalidateQueries({ queryKey: keys.pluginCatalog });
+
           return;
         case "github_changed":
           void queryClient.invalidateQueries({ queryKey: keys.github });
+
           return;
         case "login_progress":
           applyLoginEvent(event);
+
           return;
         case "server_changed":
           void queryClient.invalidateQueries({ queryKey: keys.server });
           void queryClient.invalidateQueries({ queryKey: keys.catalog });
           void queryClient.invalidateQueries({ queryKey: keys.sessionDirectory });
+
           return;
         case "mobile_share_changed":
           void queryClient.invalidateQueries({ queryKey: keys.mobileShare });
+
           return;
         case "status":
           toast(event.message);
+
           return;
         case "browser_changed":
         case "browser_download_refused":
           applyBrowserEvent(event);
+
           return;
         case "browser_agent_opened":
           applyBrowserAgentOpened(event);
+
           return;
         case "terminal_data":
         case "terminal_exit":
           applyTerminalEvent(event);
+
           return;
         default: {
           const _exhaustive: never = event;
+
           return _exhaustive;
         }
       }
@@ -98,8 +111,10 @@ export function App(): ReactElement {
       performance.mark("nyte:shell-ready");
       performance.measure("nyte:startup-to-shell", "nyte:startup", "nyte:shell-ready");
     });
+
     return () => cancelAnimationFrame(frame);
   });
+
   return (
     <QueryClientProvider client={queryClient}>
       <RouterContextProvider router={router}>

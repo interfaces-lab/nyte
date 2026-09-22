@@ -13,6 +13,7 @@ export function validationIssues(errors: ReturnType<typeof Value.Errors>): reado
 /** A parse failure as one line, for an error message. */
 export function describeIssues(issues: readonly Issue[]): string {
   if (issues.length === 0) return "value did not match its schema";
+
   return issues
     .map((issue) => `${issue.path === "" ? "/" : issue.path}: ${issue.message}`)
     .join("; ");

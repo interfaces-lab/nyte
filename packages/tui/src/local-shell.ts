@@ -39,8 +39,10 @@ export function startLocalShell(options: {
     output: "",
     state: "running",
   };
+
   const completion =
     Promise.withResolvers<Exclude<ShellExecution, { readonly state: "running" }>>();
+
   // Leave room for the log notice inside the roughly 50 KB display budget.
   const tail = Buffer.alloc(48 * 1024);
   let cursor = 0;
@@ -61,10 +63,13 @@ export function startLocalShell(options: {
       length < tail.length
         ? tail.subarray(0, length)
         : Buffer.concat([tail.subarray(cursor), tail.subarray(0, cursor)]);
+
     // A byte-limited tail can start partway through a UTF-8 character.
     let start = 0;
+
     while (start < bytes.length && (bytes[start] ?? 0) >> 6 === 2) start++;
     const text = bytes.toString("utf8", start);
+
     return logPath ? `[Output truncated. Full output: ${logPath}]\n${text}` : text;
   }
 
@@ -79,13 +84,16 @@ export function startLocalShell(options: {
     // Revoke ownership before signalling. In particular, cancellation after exit
     // must never send a delayed signal to a recycled process/group ID.
     ownedPid = undefined;
+
     if (pid === undefined) return;
+
     if (process.platform === "win32") {
       cleanup = new Promise((resolve) => {
         const killer = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], {
           stdio: "ignore",
           windowsHide: true,
         });
+
         killer.once("error", (error) => {
           failure ??= error.message;
           child?.kill("SIGKILL");
@@ -95,11 +103,14 @@ export function startLocalShell(options: {
             failure ??= "Could not stop the shell process tree.";
             child?.kill("SIGKILL");
           }
+
           resolve();
         });
       });
+
       return;
     }
+
     try {
       process.kill(-pid, "SIGKILL");
     } catch (error) {
@@ -119,6 +130,7 @@ export function startLocalShell(options: {
   function append(text: string) {
     if (!text) return;
     const bytes = Buffer.from(text);
+
     if (!log && length + bytes.length > tail.length && failure === undefined) {
       logPath = join(tmpdir(), `nyte-shell-${snapshot.id}.log`);
       log = createWriteStream(logPath, { flags: "wx", mode: 0o600 });
@@ -135,10 +147,12 @@ export function startLocalShell(options: {
       });
       log.write(Buffer.from(tail.subarray(0, length)));
     }
+
     if (log && !log.destroyed && !log.write(bytes)) {
       child?.stdout?.pause();
       child?.stderr?.pause();
     }
+
     if (bytes.length >= tail.length) {
       bytes.copy(tail, 0, bytes.length - tail.length);
       cursor = 0;
@@ -148,6 +162,7 @@ export function startLocalShell(options: {
       bytes.copy(tail, 0, first);
       cursor = (cursor + bytes.length) % tail.length;
     }
+
     length = Math.min(tail.length, length + bytes.length);
     notification ??= setTimeout(publish, 100);
   }
@@ -155,6 +170,7 @@ export function startLocalShell(options: {
   async function finish(exitCode: number | null, signal: string | null) {
     exited = true;
     options.signal.removeEventListener("abort", cancel);
+
     if (notification !== undefined) clearTimeout(notification);
     notification = undefined;
     log?.end();
@@ -180,8 +196,10 @@ export function startLocalShell(options: {
   queueMicrotask(() => {
     if (cancelled) {
       void finish(null, null);
+
       return;
     }
+
     try {
       const launched =
         process.platform === "win32"
@@ -207,8 +225,10 @@ export function startLocalShell(options: {
                 stdio: ["ignore", "pipe", "pipe", "pipe"],
               },
             );
+
       child = launched;
       ownedPid = launched.pid;
+
       // Each stream needs its own decoder. A partial stdout character must not
       // consume stderr bytes, and vice versa.
       for (const stream of [launched.stdout, launched.stderr]) {
@@ -221,6 +241,7 @@ export function startLocalShell(options: {
           killOwnedProcesses();
         });
       }
+
       launched.once("error", (error) => {
         failure ??= error.message;
         exited = true;

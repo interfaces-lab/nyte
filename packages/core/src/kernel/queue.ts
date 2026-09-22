@@ -64,17 +64,21 @@ function validateDelivery(delivery: string): void {
 
 function onlyOid(oids: readonly Oid[]): Oid {
   const oid = oids[0];
+
   if (oid === undefined || oids.length !== 1) {
     throw new Error("Putting one queue object did not return exactly one oid");
   }
+
   return oid;
 }
 
 async function readChange(objects: Objects, oid: Oid): Promise<Change> {
   const object = await objects.get(oid);
+
   if (object === undefined || !isChange(object)) {
     throw new Error(`Corrupt change chain at ${oid}: missing or non-change object`);
   }
+
   return object;
 }
 
@@ -86,6 +90,7 @@ async function walkDelivery(
     session.refs.read(inboxBaseRef(options.head, options.delivery)),
     session.refs.read(inboxTipRef(options.head, options.delivery)),
   ]);
+
   const newestFirst: PendingChange[] = [];
   const seen = new Set<Oid>();
   let oid = tip;
@@ -94,14 +99,17 @@ async function walkDelivery(
     if (seen.has(oid)) throw new Error(`Corrupt change chain cycle at ${oid}`);
     seen.add(oid);
     const change = await readChange(session.objects, oid);
+
     if (change.delivery !== options.delivery) {
       throw new Error(`Change ${oid} is in ${options.delivery} but stamped ${change.delivery}`);
     }
+
     newestFirst.push({ oid, change, delivery: options.delivery });
     oid = change.previous;
   }
 
   newestFirst.reverse();
+
   return { delivery: options.delivery, tip, base, changes: newestFirst };
 }
 
@@ -109,15 +117,19 @@ async function walkDelivery(
 export async function listDeliveries(session: Session, head: string): Promise<readonly Delivery[]> {
   const refs = await session.refs.list(inboxPrefix(head));
   const deliveries = new Set<Delivery>();
+
   for (const ref of refs) {
     const parts = parseInboxRef(ref.name);
+
     if (parts !== undefined && parts.head === head) deliveries.add(parts.delivery);
   }
+
   return [...deliveries].sort();
 }
 
 async function walkDeliveries(session: Session, head: string): Promise<readonly DeliveryChain[]> {
   const deliveries = await listDeliveries(session, head);
+
   return Promise.all(deliveries.map((delivery) => walkDelivery(session, { head, delivery })));
 }
 
@@ -127,6 +139,7 @@ function locate(chains: readonly DeliveryChain[], target: Oid): LocatedChange | 
       if (item.oid === target) return { chain, item };
     }
   }
+
   return undefined;
 }
 
@@ -135,6 +148,7 @@ function chainIn(chains: readonly DeliveryChain[], delivery: Delivery): Delivery
   for (const chain of chains) {
     if (chain.delivery === delivery) return chain;
   }
+
   return { delivery, tip: null, base: null, changes: [] };
 }
 
@@ -146,9 +160,11 @@ async function reachableFrom(session: Session, tip: Oid | null, target: Oid): Pr
     if (seen.has(oid)) throw new Error(`Corrupt change chain cycle at ${oid}`);
     seen.add(oid);
     const change = await readChange(session.objects, oid);
+
     if (oid === target) return true;
     oid = change.previous;
   }
+
   return false;
 }
 
@@ -160,12 +176,15 @@ async function wasLanded(
   const reachable = await Promise.all(
     chains.map((chain) => reachableFrom(session, chain.base, target)),
   );
+
   return reachable.some((found) => found);
 }
 
 function comparePending(left: PendingChange, right: PendingChange): number {
   const byTime = left.change.at - right.change.at;
+
   if (byTime !== 0) return byTime;
+
   return left.oid < right.oid ? -1 : left.oid > right.oid ? 1 : 0;
 }
 
@@ -197,11 +216,13 @@ export async function submit(
 
   if (receiptName !== undefined) {
     const existing = await session.refs.read(receiptName);
+
     if (existing !== null) return { kind: "duplicate", change: existing };
   }
 
   for (let attempt = 0; attempt < MAX_SUBMIT_ATTEMPTS; attempt += 1) {
     const tip = await session.refs.read(tipName);
+
     const baseChange: Change = {
       type: "change",
       kind: options.kind,
@@ -210,15 +231,20 @@ export async function submit(
       body: options.body,
       at: Date.now(),
     };
+
     const keyed: Change =
       options.key === undefined ? baseChange : { ...baseChange, key: options.key };
+
     const change: Change =
       options.actor === undefined ? keyed : { ...keyed, author: options.actor };
+
     const oid = onlyOid(await session.objects.put([change]));
     let published = false;
+
     try {
       if (options.preparation.kind === "prepared") await options.preparation.publish(oid);
       const updates: RefUpdate[] = [{ name: tipName, from: tip, to: oid }];
+
       if (receiptName !== undefined) {
         updates.push({ name: receiptName, from: null, to: oid });
       }
@@ -227,21 +253,29 @@ export async function submit(
         options.actor === undefined
           ? { reason: "submit" }
           : { reason: "submit", actor: options.actor };
+
       const outcome = await session.refs.update(updates, updateOptions);
+
       if (outcome.ok) {
         published = true;
+
         return { kind: "queued", change: oid };
       }
+
       if (outcome.reason === "fenced") {
         throw new Error("Unexpected fenced queue submission");
       }
+
       if (outcome.name === tipName) continue;
+
       if (receiptName !== undefined && outcome.name === receiptName) {
         if (outcome.actual === null) {
           throw new Error(`Key ref ${receiptName} conflicted without an existing oid`);
         }
+
         return { kind: "duplicate", change: outcome.actual };
       }
+
       throw new Error(`Unexpected queue submission conflict on ${outcome.name}`);
     } finally {
       if (!published && options.preparation.kind === "prepared") {
@@ -255,6 +289,7 @@ export async function submit(
 
 async function cancelledSet(session: Session): Promise<ReadonlySet<Oid>> {
   const refs = await session.refs.list(CANCELLED_PREFIX);
+
   return new Set(refs.map((ref) => ref.name.slice(CANCELLED_PREFIX.length)));
 }
 
@@ -263,10 +298,12 @@ export async function pendingIn(
   options: { readonly head: string; readonly delivery: Delivery },
 ): Promise<readonly PendingChange[]> {
   validateDelivery(options.delivery);
+
   const [chain, cancelled] = await Promise.all([
     walkDelivery(session, options),
     cancelledSet(session),
   ]);
+
   return chain.changes.filter((item) => !cancelled.has(item.oid));
 }
 
@@ -275,6 +312,7 @@ export async function pending(session: Session, head: string): Promise<readonly 
     walkDeliveries(session, head),
     cancelledSet(session),
   ]);
+
   return mergeByDelivery(
     chains.flatMap((chain) => chain.changes).filter((item) => !cancelled.has(item.oid)),
     { delivery: (item) => item.delivery, compare: comparePending },
@@ -293,24 +331,30 @@ export async function cancel(
 ): Promise<CancelOutcome> {
   validateHeadName(options.head);
   const name = cancelledRef(options.change);
+
   for (let attempt = 0; attempt < MAX_SUBMIT_ATTEMPTS; attempt += 1) {
     const chains = await walkDeliveries(session, options.head);
     const located = locate(chains, options.change);
+
     if (located === undefined) {
       return (await wasLanded(session, chains, options.change))
         ? { kind: "landed" }
         : { kind: "not_found" };
     }
+
     if ((await session.refs.read(name)) !== null) return { kind: "cancelled" };
 
     const tombstone = onlyOid(
       await session.objects.put([{ kind: "blob", value: { at: Date.now() } }]),
     );
+
     const baseName = inboxBaseRef(options.head, located.chain.delivery);
+
     const updateOptions =
       options.actor === undefined
         ? { reason: "cancel" }
         : { reason: "cancel", actor: options.actor };
+
     const outcome = await session.refs.update(
       [
         { name, from: null, to: tombstone },
@@ -318,12 +362,17 @@ export async function cancel(
       ],
       updateOptions,
     );
+
     if (outcome.ok) return { kind: "cancelled" };
+
     if (outcome.reason === "fenced") throw new Error("Unexpected fenced queue cancellation");
+
     if (outcome.name === name && outcome.actual !== null) return { kind: "cancelled" };
+
     if (outcome.name === baseName) continue;
     throw new Error(`Unexpected queue cancellation conflict on ${outcome.name}`);
   }
+
   throw new Error(
     `Queue cancellation did not settle after ${String(MAX_SUBMIT_ATTEMPTS)} attempts`,
   );
@@ -345,20 +394,24 @@ export async function redeliver(
   validateHeadName(options.head);
   validateDelivery(options.delivery);
   const tombstoneName = cancelledRef(options.change);
+
   for (let attempt = 0; attempt < MAX_SUBMIT_ATTEMPTS; attempt += 1) {
     const chains = await walkDeliveries(session, options.head);
     const located = locate(chains, options.change);
+
     if (located === undefined) {
       return (await wasLanded(session, chains, options.change))
         ? { kind: "landed" }
         : { kind: "not_found" };
     }
+
     if ((await session.refs.read(tombstoneName)) !== null) return { kind: "not_found" };
     const target = chainIn(chains, options.delivery);
     const cancelled = await cancelledSet(session);
     const original = target.changes.filter((item) => !cancelled.has(item.oid));
     const sourceIndex = original.findIndex((item) => item.oid === options.change);
     const reordered = original.filter((item) => item.oid !== options.change);
+
     const index =
       options.before === undefined
         ? sourceIndex === -1
@@ -369,7 +422,9 @@ export async function redeliver(
           : options.before === options.change
             ? sourceIndex
             : reordered.findIndex((item) => item.oid === options.before);
+
     if (index < 0) return { kind: "not_found" };
+
     if (
       options.content === undefined &&
       index === sourceIndex &&
@@ -377,18 +432,23 @@ export async function redeliver(
     )
       return { kind: "unchanged" };
     const body = located.item.change.body;
+
     if (options.content !== undefined && (body.kind !== "message" || body.message.role !== "user"))
       return { kind: "not_found" };
     reordered.splice(index, 0, located.item);
     const start = Math.min(sourceIndex === -1 ? original.length : sourceIndex, index);
     const replaced = new Set([options.change, ...original.slice(start).map((item) => item.oid)]);
+
     const tombstone = onlyOid(
       await session.objects.put([{ kind: "blob", value: { at: Date.now() } }]),
     );
+
     let tip = target.tip;
     let copied = options.change;
+
     for (const item of reordered.slice(start)) {
       const change = item.change;
+
       const nextBody =
         item.oid === options.change &&
         options.content !== undefined &&
@@ -396,6 +456,7 @@ export async function redeliver(
         body.message.role === "user"
           ? { ...body, message: { ...body.message, content: options.content } }
           : change.body;
+
       const copy: Change = {
         ...change,
         delivery: options.delivery,
@@ -403,15 +464,20 @@ export async function redeliver(
         supersedes: item.oid,
         body: nextBody,
       };
+
       tip = onlyOid(await session.objects.put([copy]));
+
       if (item.oid === options.change) copied = tip;
     }
+
     const sourceBaseName = inboxBaseRef(options.head, located.chain.delivery);
     const targetTipName = inboxTipRef(options.head, options.delivery);
+
     const updateOptions =
       options.actor === undefined
         ? { reason: "redeliver" }
         : { reason: "redeliver", actor: options.actor };
+
     const outcome = await session.refs.update(
       [
         ...[...replaced].map((oid) => ({ name: cancelledRef(oid), from: null, to: tombstone })),
@@ -433,8 +499,11 @@ export async function redeliver(
       ],
       updateOptions,
     );
+
     if (outcome.ok) return { kind: "redelivered", change: copied };
+
     if (outcome.reason === "fenced") throw new Error("Unexpected fenced queue redelivery");
+
     if (
       [...replaced].some((oid) => outcome.name === cancelledRef(oid)) ||
       outcome.name === sourceBaseName ||
@@ -443,8 +512,10 @@ export async function redeliver(
     ) {
       continue;
     }
+
     throw new Error(`Unexpected queue redelivery conflict on ${outcome.name}`);
   }
+
   throw new Error(`Queue redelivery did not settle after ${String(MAX_SUBMIT_ATTEMPTS)} attempts`);
 }
 
@@ -454,16 +525,20 @@ export async function nextToLand(
   options: { readonly head: string; readonly deliveries: readonly Delivery[] },
 ): Promise<NextChange | undefined> {
   const cancelled = await cancelledSet(session);
+
   for (const delivery of options.deliveries) {
     const chain = await walkDelivery(session, { head: options.head, delivery });
     const skipped: Oid[] = [];
+
     for (const item of chain.changes) {
       if (cancelled.has(item.oid)) {
         skipped.push(item.oid);
         continue;
       }
+
       return { ...item, skipped };
     }
   }
+
   return undefined;
 }

@@ -68,7 +68,9 @@ const SIZE_PROPERTIES = new Set([
 const HAIRLINE_SIZES = new Set([1, 1.5]);
 
 const SCHEMA_PATH = "src/renderer/src/theme/schema.stylex.ts";
+
 const VARS_PATH = "src/renderer/src/theme/vars.stylex.ts";
+
 const TOKENS_PATH = "src/renderer/src/theme/tokens.css";
 
 /**
@@ -107,6 +109,7 @@ const NAMED_COLORS = new Set(
  * allowed, so the boundary after the name has to be part of the match.
  */
 const COLOR_FUNCTION = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\([^)]*\)?/i;
+
 const HEX_COLOR = /#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})\b/i;
 
 /**
@@ -118,12 +121,16 @@ const HEX_COLOR = /#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})\b/i;
  */
 const literalColor = (text) => {
   const hex = HEX_COLOR.exec(text);
+
   if (hex) return hex[0];
   const fn = COLOR_FUNCTION.exec(text);
+
   if (fn) return fn[0];
+
   for (const word of text.split(/[^A-Za-z]+/)) {
     if (NAMED_COLORS.has(word.toLowerCase())) return word;
   }
+
   return null;
 };
 
@@ -133,7 +140,9 @@ const literalColor = (text) => {
  */
 const styleText = (node) => {
   if (node.type === "Literal" && typeof node.value === "string") return [node.value];
+
   if (node.type === "TemplateLiteral") return node.quasis.map((quasi) => quasi.value.cooked ?? "");
+
   return [];
 };
 
@@ -151,9 +160,11 @@ const isLengthProperty = (key) => SPACING_PROPERTIES.has(key) || SIZE_PROPERTIES
 const createBindings = () => {
   const namespaces = new Set();
   const creators = new Set();
+
   return {
     collect(node) {
       if (node.source.value !== "@stylexjs/stylex") return;
+
       for (const specifier of node.specifiers) {
         if (
           specifier.type === "ImportNamespaceSpecifier" ||
@@ -167,6 +178,7 @@ const createBindings = () => {
     },
     isCreateCall(node) {
       if (node.callee.type === "Identifier") return creators.has(node.callee.name);
+
       return (
         node.callee.type === "MemberExpression" &&
         !node.callee.computed &&
@@ -181,8 +193,11 @@ const createBindings = () => {
 
 const keyName = (key, computed) => {
   if (computed) return null;
+
   if (key.type === "Identifier") return key.name;
+
   if (key.type === "Literal" && typeof key.value === "string") return key.value;
+
   return null;
 };
 
@@ -194,32 +209,41 @@ const keyName = (key, computed) => {
  */
 const stringLengths = (text) => {
   const lengths = [];
+
   for (const part of text.trim().split(/\s+/)) {
     if (part === "0") {
       lengths.push(0);
       continue;
     }
+
     const match = /^(-?\d+(?:\.\d+)?)px$/.exec(part);
+
     if (!match) return null;
     lengths.push(Number(match[1]));
   }
+
   return lengths;
 };
 
 /** `gap: 6`, `marginTop: -4`, `padding: "5px 10px"`, and `{ default: 6 }`. */
 const lengthValues = (node) => {
   if (node.type === "Literal" && typeof node.value === "number") return [node.value];
+
   if (node.type === "Literal" && typeof node.value === "string") return stringLengths(node.value);
+
   if (node.type === "UnaryExpression" && node.operator === "-") {
     const inner = lengthValues(node.argument);
+
     return inner === null ? null : inner.map((value) => -value);
   }
+
   return null;
 };
 
 const nearestSteps = (value) => {
   const below = [...SPACING_SCALE].reverse().find((step) => step < value);
   const above = SPACING_SCALE.find((step) => step > value);
+
   return [below, above].filter((step) => step !== undefined);
 };
 
@@ -228,10 +252,13 @@ const spacingAdvice = (value) => {
   const magnitude = Math.abs(value);
   const steps = nearestSteps(magnitude);
   const top = SPACING_SCALE[SPACING_SCALE.length - 1];
+
   if (steps.length === 0 || magnitude > top) {
     return `Name it in ${SCHEMA_PATH} and reference that token; the scale stops at ${top}`;
   }
+
   const signed = steps.map((step) => (value < 0 ? -step : step));
+
   return (
     `Use ${signed.join(" or ")} (scale: ${SPACING_SCALE.join(" ")}). If the value is a ` +
     `structural decision rather than a step, name it in ${SCHEMA_PATH} and reference that token`
@@ -251,14 +278,19 @@ const eachStyleValue = (node, visit, property, governs) => {
       node.body.type === "BlockStatement"
         ? node.body.body.find((statement) => statement.type === "ReturnStatement")?.argument
         : node.body;
+
     if (body) eachStyleValue(body, visit, property, governs);
+
     return;
   }
+
   if (node.type !== "ObjectExpression") return;
+
   for (const member of node.properties) {
     if (member.type !== "Property") continue;
     const key = keyName(member.key, member.computed);
     const governing = key !== null && governs(key) ? key : property;
+
     if (
       member.value.type === "ObjectExpression" ||
       member.value.type === "ArrowFunctionExpression"
@@ -266,6 +298,7 @@ const eachStyleValue = (node, visit, property, governs) => {
       eachStyleValue(member.value, visit, governing, governs);
       continue;
     }
+
     if (governing === undefined) continue;
     visit(governing, member.value, member);
   }
@@ -274,12 +307,14 @@ const eachStyleValue = (node, visit, property, governs) => {
 /** Collect the import bindings, then read the style objects of each create call. */
 const eachCreatedStyle = (governs, visit) => {
   const bindings = createBindings();
+
   return {
     ImportDeclaration(node) {
       bindings.collect(node);
     },
     CallExpression(node) {
       if (!bindings.isCreateCall(node) || node.arguments[0]?.type !== "ObjectExpression") return;
+
       for (const style of node.arguments[0].properties) {
         if (style.type !== "Property") continue;
         eachStyleValue(style.value, visit, undefined, governs);
@@ -294,7 +329,9 @@ const styleValueRule = (description, report) => ({
   create(context) {
     return eachCreatedStyle(isLengthProperty, (property, value, member) => {
       const values = lengthValues(value);
+
       if (values === null) return;
+
       for (const length of values) report(context, property, length, member);
     });
   },
@@ -304,6 +341,7 @@ const spacingScale = styleValueRule(
   "Keep StyleX spacing on the desktop spacing scale.",
   (context, property, value, member) => {
     if (!SPACING_PROPERTIES.has(property)) return;
+
     if (SPACING_SCALE.includes(Math.abs(value))) return;
     context.report({
       node: member,
@@ -317,6 +355,7 @@ const sizeGrid = styleValueRule(
   (context, property, value, member) => {
     if (!SIZE_PROPERTIES.has(property)) return;
     const size = Math.abs(value);
+
     if (HAIRLINE_SIZES.has(size) || size % 2 === 0) return;
     context.report({
       node: member,
@@ -340,8 +379,10 @@ const noRawColors = {
       (key) => !isCondition(key),
       (property, value, member) => {
         if (MASK_PROPERTIES.has(property)) return;
+
         for (const text of styleText(value)) {
           const color = literalColor(text);
+
           if (color === null) continue;
           context.report({
             node: member,
@@ -352,6 +393,7 @@ const noRawColors = {
               `new, add it to ${TOKENS_PATH} for every appearance and expose a handle there. ` +
               `transparent, currentColor, and color-mix() over existing handles are allowed.`,
           });
+
           return;
         }
       },

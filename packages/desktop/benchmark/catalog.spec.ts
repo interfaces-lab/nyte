@@ -9,10 +9,12 @@ const SESSION_SWITCHES = [0, 1, 2, 0, 2, 1, 0, 1, 2, 1, 0, 2];
 
 async function retainedMemory(client: CDPSession, sessionId: string) {
   await client.send("HeapProfiler.collectGarbage");
+
   const [heap, dom] = await Promise.all([
     client.send("Runtime.getHeapUsage"),
     client.send("Memory.getDOMCounters"),
   ]);
+
   return { sessionId, heap, dom };
 }
 
@@ -22,9 +24,12 @@ benchmark("measures retained renderer memory with a large model catalog", async 
     turnsPerSession: 1,
     catalogModelCount: DEFAULT_CATALOG_MODEL_COUNT,
   });
+
   const client = await desktop.page.context().newCDPSession(desktop.page);
+
   try {
     const modelName = "Desktop benchmark model 1200";
+
     const action = await measureOperation(desktop, async () => {
       const trigger = desktop.page.getByRole("button", { name: /^Model:/u }).first();
       await trigger.click();
@@ -38,16 +43,21 @@ benchmark("measures retained renderer memory with a large model catalog", async 
       ).toBeVisible();
 
       const memory = [];
+
       for (const sessionIndex of SESSION_SWITCHES) {
         await openBenchmarkSession(desktop, sessionIndex);
         const session = desktop.fixture.sessions[sessionIndex];
+
         if (session === undefined) throw new Error("Missing catalog benchmark session");
         memory.push(await retainedMemory(client, session.id));
       }
+
       return memory;
     });
+
     const idle = await measureSettledDesktop(desktop);
     const finalSession = desktop.fixture.sessions[2];
+
     if (finalSession === undefined) throw new Error("Missing final catalog benchmark session");
     const finalMemory = await retainedMemory(client, finalSession.id);
     expect(desktop.pageErrors).toEqual([]);

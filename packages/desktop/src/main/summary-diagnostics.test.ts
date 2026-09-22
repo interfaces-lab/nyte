@@ -98,13 +98,13 @@ async function fixture(active: boolean) {
       retain: () => undefined,
       release: () => undefined,
       warm: async () => undefined,
-      dispose: () => undefined,
+      releaseWindow: () => undefined,
       agent: unusedBrowserAgent(),
     },
   });
   hosts.push(host);
-  const info = await host.call("sessions.create", undefined);
-  const open = await host.prepare();
+  const info = await host.call(1, "sessions.create", undefined);
+  const open = await host.prepare(1);
   const session = await open.store.open(info.sessionId);
   try {
     const from = await session.refs.read("refs/heads/main");
@@ -142,7 +142,7 @@ test("desktop retains the SDK summary cause under its public ID and shares IPC e
     assert.ok(failure.correlationId);
     return failure.correlationId;
   });
-  const result = await callIpc(() => host, {
+  const result = await callIpc(() => host, 1, {
     path: "heads.move",
     input: { sessionId, to: null, summary: {} },
   });
@@ -164,7 +164,7 @@ test("desktop retains the SDK summary cause under its public ID and shares IPC e
   assert.ok(diagnostic.cause.message.includes(original.message));
   assert.doesNotMatch(JSON.stringify(result), /synthetic-|cause|TypeError/);
   assert.deepEqual([...ipcDiagnostics.keys()], [...ipcIds.slice(1), diagnostic.correlationId]);
-  const open = await host.prepare();
+  const open = await host.prepare(1);
   const session = await open.store.open(sessionId);
   try {
     assert.equal(await session.refs.read("refs/heads/main"), tip);
@@ -184,12 +184,12 @@ test("inactive summary and missing-head refusal add no desktop diagnostics", asy
   const { host, sessionId, diagnostics } = await fixture(false);
   const retained = ipcFailure(new Error("existing diagnostic"));
   const before = [...ipcDiagnostics];
-  assert.deepEqual(await host.call("heads.move", { sessionId, to: null, summary: {} }), {
+  assert.deepEqual(await host.call(1, "heads.move", { sessionId, to: null, summary: {} }), {
     kind: "failed",
     code: "inactive",
     message: "Session is not active in this host",
   });
-  assert.deepEqual(await host.call("heads.move", { sessionId, head: "missing", to: null }), {
+  assert.deepEqual(await host.call(1, "heads.move", { sessionId, head: "missing", to: null }), {
     kind: "not_found",
   });
   assert.ok(retained.correlationId);

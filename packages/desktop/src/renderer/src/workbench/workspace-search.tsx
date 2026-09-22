@@ -204,6 +204,7 @@ export function WorkspaceSearch({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [include, setInclude] = useState("");
   const [exclude, setExclude] = useState("");
+
   const input = useMemo(
     () => ({
       query,
@@ -222,11 +223,14 @@ export function WorkspaceSearch({
     }),
     [query, caseSensitive, wholeWord, regex, include, exclude, drafts],
   );
+
   const debouncedInput = useDebouncedValue(input, 250);
   const waiting = hashKey([input]) !== hashKey([debouncedInput]);
+
   const search = useWorkspaceSearch(
     !active || query === "" || waiting ? undefined : debouncedInput,
   );
+
   const state: SearchState =
     query === ""
       ? { kind: "idle" }
@@ -353,6 +357,7 @@ export function WorkspaceSearchResults({
   readonly onOpen: WorkspaceSearchProps["onOpen"];
 }): ReactElement {
   if (state.kind === "idle") return <div {...props(styles.results)} />;
+
   if (state.kind !== "ready") {
     return (
       <div {...props(styles.results)}>
@@ -365,7 +370,9 @@ export function WorkspaceSearchResults({
       </div>
     );
   }
+
   const result = state.result;
+
   return (
     <div aria-label="Search results" {...props(styles.results)}>
       <div role="status" {...props(styles.status)}>
@@ -389,6 +396,7 @@ export function WorkspaceSearchResults({
           <ul {...props(styles.group)}>
             {file.matches.map((match) => {
               const start = match.column - match.snippetColumn;
+
               return (
                 <li key={`${String(match.line)}:${String(match.column)}:${String(match.length)}`}>
                   <button

@@ -17,16 +17,19 @@ import { loadLocalResources } from "./queries.ts";
 import { router } from "./router.tsx";
 
 const container = document.getElementById("root");
+
 if (container === null) throw new Error("Missing #root");
 
 focusManager.setEventListener((setFocused) => {
   const update = (): void => {
     setFocused(document.visibilityState !== "hidden" && document.hasFocus());
   };
+
   window.addEventListener("focus", update);
   window.addEventListener("blur", update);
   document.addEventListener("visibilitychange", update);
   update();
+
   return () => {
     window.removeEventListener("focus", update);
     window.removeEventListener("blur", update);
@@ -36,10 +39,13 @@ focusManager.setEventListener((setFocused) => {
 
 // The startup shell in index.html owns the window until the first complete frame.
 const startupShell = document.getElementById("startup");
+
 const startupMessage = document.getElementById("startup-message");
+
 const startupRetry = document.getElementById("startup-retry");
 
 performance.mark("nyte:startup");
+
 startRendererStartup({
   mountShell: () => {
     createRoot(container).render(
@@ -57,6 +63,7 @@ startRendererStartup({
   loadRouter: () => router.load(),
   showError: (retry) => {
     startupShell?.setAttribute("data-state", "error");
+
     if (startupMessage !== null) startupMessage.textContent = "Couldn\u2019t open your workspace.";
     startupRetry?.addEventListener(
       "click",

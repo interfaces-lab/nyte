@@ -6,8 +6,12 @@
  * every provider adapter meets.
  */
 export * from "./message.ts";
+
 export * from "./model.ts";
+
 export * from "./tool.ts";
+
+export { typed } from "./typed.ts";
 
 /**
  * A skill: a folder with a `SKILL.md` whose frontmatter names it and says when

@@ -22,9 +22,11 @@ function Harness(): ReactElement {
     nyte.host.onEvent((event) => {
       if (event.kind === "catalog_changed")
         void queryClient.invalidateQueries({ queryKey: keys.catalog });
+
       if (event.kind === "login_progress") applyLoginEvent(event);
     }),
   );
+
   return (
     <QueryClientProvider client={queryClient}>
       <ModelsSettings />
@@ -34,7 +36,9 @@ function Harness(): ReactElement {
 }
 
 const root = document.getElementById("root");
+
 if (root === null) throw new Error("Missing #root");
+
 createRoot(root).render(
   <StrictMode>
     <Harness />

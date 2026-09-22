@@ -104,12 +104,16 @@ export function keyStrokes(command: ChatCommand): readonly KeyStrokeInput[] {
       parseObjectKey: (key) => {
         const stroke = { ctrl: false, shift: false, meta: false, super: false, ...key };
         const match = stringifyKeyStroke(stroke);
+
         return { stroke, match, display: match };
       },
     });
+
     const part = parsed?.parts[0];
+
     if (part === undefined || parsed?.parts.length !== 1 || parsed.nextIndex !== input.length)
       throw new Error(`Expected a single key stroke for ${command}: ${input}`);
+
     return part.stroke;
   });
 }
@@ -127,37 +131,53 @@ function isKeycapName(name: string): name is keyof typeof KEYCAP_NAMES {
 /** The first of a command's keys, which is the one worth advertising. */
 export function keycap(command: ChatCommand, style?: "symbol"): string {
   const [primary = ""] = CHAT_KEYBINDS[command].split(",");
+
   if (style === "symbol")
     return primary.replace(
       /up|down|left|right|return/gu,
       (name) => ({ up: "↑", down: "↓", left: "←", right: "→", return: "↵" })[name] ?? name,
     );
+
   return primary.replace(/[^+]+$/u, (name) => (isKeycapName(name) ? KEYCAP_NAMES[name] : name));
 }
 
 export const COMPOSER_PLACEHOLDER = "Plan, search, build anything";
+
 /** Enter steers the live run; the hint row names the queue key. */
 export const BUSY_COMPOSER_PLACEHOLDER = "Steer the run";
+
 export const ANSWER_COMPOSER_PLACEHOLDER = `Type an answer, or press ${keycap("picker.accept").replace(/^./u, (letter) => letter.toUpperCase())} to pick one`;
 
 /** Fixed transcript vocabulary and layout values. */
 export const ACTIVITY_WORKING_LABEL = " Working";
+
 export const ACTIVITY_THINKING_LABEL = " Thinking…";
+
 export const ACTIVITY_THOUGHT_LABEL = " Thought";
+
 export const ACTIVITY_WORKED_LABEL = "Worked";
+
 export const ACTIVITY_STOPPED_LABEL = "! Stopped";
+
 export const ACTIVITY_FAILED_LABEL = " Failed";
+
 export const ACTIVITY_WAITING_LABEL = " Waiting for your answer";
+
 export const ACTIVITY_RETRY_LABEL = " Retrying";
+
 /**
  * The resolution of `formatDuration`, which prints tenths of a second. A span
  * under it has no label, so the row carries the word alone.
  */
 export const MIN_REPORTED_DURATION_MS = 50;
+
 export const RESULT_PREVIEW_LINES = 3;
+
 export const RESULT_TAIL_LINES = 3;
+
 /** Rows a tail-only preview keeps; the label sits above them. */
 export const RESULT_TAIL_ONLY_LINES = 6;
+
 export const TOOL_INLINE_PREVIEW_LENGTH = 96;
 
 /**
@@ -184,11 +204,16 @@ function isLegacyWindowsConsole(
   platform: string = process.platform,
 ): boolean {
   const forced = env["NYTE_FORCE_LEGACY_CONSOLE"];
+
   if (forced === "1" || forced === "true") return true;
+
   if (forced === "0" || forced === "false") return false;
+
   if (platform !== "win32") return false;
+
   if (env["WT_SESSION"] !== undefined) return false;
   const brand = (env["TERM_PROGRAM"] ?? "").toLowerCase().replaceAll(/[\s_-]/g, "");
+
   return !MODERN_TERMINALS.has(brand);
 }
 
@@ -223,6 +248,7 @@ export const SPACING = {
 export const TRANSCRIPT_BOTTOM_PADDING = 1;
 
 export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"] as const;
+
 export const SPINNER_INTERVAL_MS = 130;
 
 /**
@@ -238,9 +264,12 @@ export const DELEGATION_ROWS = 3;
  */
 export function pendingHint(hidden: number): string {
   const open = `${keycap("chat.queue.open")} pending`;
+
   return hidden > 0 ? `+${String(hidden)} more · ${open}` : open;
 }
 
 export const WORKSPACE_TRUST_TITLE = "Workspace Trust Required";
+
 export const WORKSPACE_TRUST_MESSAGE = "Nyte can execute code and access files in this directory.";
+
 export const WORKSPACE_TRUST_QUESTION = "Do you trust the contents of this directory?";

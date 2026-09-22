@@ -11,10 +11,16 @@ import type {
 } from "./browser-agent.ts";
 
 const PAGE_MAX_LINES = 800;
+
 const PAGE_MAX_BYTES = 24 * 1024;
+
 const CONSOLE_MAX_ENTRIES = 200;
+
 const CONSOLE_MAX_BYTES = 16 * 1024;
+
 const EVALUATE_MAX_BYTES = 16 * 1024;
+
+type BrowserReport = { content: TextContent[] };
 
 /** Unguessable, so page text can never close the fence it is quoted inside. */
 function randomMarker(): string {
@@ -59,13 +65,21 @@ function escapeName(name: string): string {
 
 function serializeNode(node: BrowserNode): string {
   const parts = [`ref=${sanitizeLine(node.ref)}`];
+
   if (node.value !== undefined) parts.push(`value="${escapeName(node.value)}"`);
+
   if (node.href !== undefined) parts.push(`href="${escapeName(node.href)}"`);
+
   if (node.level !== undefined) parts.push(`level=${String(node.level)}`);
+
   if (node.disabled === true) parts.push("disabled");
+
   if (node.checked === true) parts.push("checked");
+
   if (node.expanded === true) parts.push("expanded");
+
   if (node.editable === true) parts.push("editable");
+
   return `- ${escapeName(node.role)} "${escapeName(node.name)}" ${parts.join(" ")}`;
 }
 
@@ -73,6 +87,7 @@ function truncationNotice(result: TruncationResult, label: string, nextTool: str
   if (!result.truncated) return "";
   const showed = `${String(result.outputLines)}/${String(result.totalLines)} lines`;
   const bytes = `${formatSize(result.outputBytes)}/${formatSize(result.totalBytes)}`;
+
   return `\n[${label} truncated: showed ${showed} (${bytes}). Use \`${nextTool}\` to see more.]`;
 }
 
@@ -100,11 +115,10 @@ export function describeFailure(failure: BrowserActionFailure): string {
 }
 
 /** Page text is quoted between two copies of an unguessable marker, never trusted. */
-export function renderPageReport(input: { readonly state: BrowserPageState }): {
-  content: TextContent[];
-} {
+export function renderPageReport(input: { readonly state: BrowserPageState }): BrowserReport {
   const { state } = input;
   const marker = randomMarker();
+
   const header = [
     `url: ${sanitizeLine(state.url)}`,
     `title: ${sanitizeLine(state.title)}`,
@@ -113,20 +127,25 @@ export function renderPageReport(input: { readonly state: BrowserPageState }): {
     `scroll: ${String(state.scroll.y)}/${String(state.scroll.height)}`,
     state.loading ? "status: loading" : undefined,
     state.blocked > 0 ? `blocked: ${String(state.blocked)} requests` : undefined,
-    state.error && `error: ${String(state.error.code)} ${sanitizeLine(state.error.description)}`,
-  ].filter((line) => typeof line === "string");
+    state.error
+      ? `error: ${String(state.error.code)} ${sanitizeLine(state.error.description)}`
+      : undefined,
+  ].filter((line) => line !== undefined);
 
   const withheld =
     state.totalNodes > state.nodes.length
       ? `\n[${String(state.totalNodes - state.nodes.length)} more elements not shown. Narrow with browser_snapshot ref=<ref>.]`
       : "";
+
   const truncated = truncateHead(state.text, {
     maxLines: PAGE_MAX_LINES,
     maxBytes: PAGE_MAX_BYTES,
   });
+
   const text = fenced(stripControls(truncated.content), marker);
 
   const lines = [header.join("\n"), ""];
+
   if (state.nodes.length > 0) {
     lines.push(
       "Elements:",
@@ -136,39 +155,48 @@ export function renderPageReport(input: { readonly state: BrowserPageState }): {
       withheld,
     );
   }
+
   const notice = truncationNotice(truncated, "Page text", "browser_snapshot");
+
   if (text.length > 0) lines.push("", "Page text:", marker, text, marker, notice);
+
   return { content: [{ type: "text", text: lines.join("\n") }] };
 }
 
-export function renderConsoleReport(entries: readonly BrowserConsoleEntry[]): {
-  content: TextContent[];
-} {
+export function renderConsoleReport(entries: readonly BrowserConsoleEntry[]): BrowserReport {
   if (entries.length === 0) return { content: [{ type: "text", text: "No console entries." }] };
   const marker = randomMarker();
+
   const raw = entries
     .slice(0, CONSOLE_MAX_ENTRIES)
     .map((entry) => `[${entry.level}] ${stripControls(entry.message)} (${entry.source})`)
     .join("\n");
+
   const truncated = truncateHead(raw, {
     maxLines: CONSOLE_MAX_ENTRIES,
     maxBytes: CONSOLE_MAX_BYTES,
   });
+
   const safe = fenced(stripControls(truncated.content), marker);
   const notice = truncationNotice(truncated, "Console", "browser_console");
   const text = `Console entries (newest first):\n${marker}\n${safe}\n${marker}${notice}`;
+
   return { content: [{ type: "text", text }] };
 }
 
-export function renderEvaluateReport(result: BrowserEvaluateResult): { content: TextContent[] } {
+export function renderEvaluateReport(result: BrowserEvaluateResult): BrowserReport {
   if (result.kind === "threw") {
     return { content: [{ type: "text", text: `Page threw: ${stripControls(result.message)}` }] };
   }
+
   const bytes = Buffer.byteLength(result.json, "utf-8");
+
   if (bytes <= EVALUATE_MAX_BYTES) {
     return { content: [{ type: "text", text: `Result:\n${stripControls(result.json)}` }] };
   }
+
   const truncated = truncateHead(result.json, { maxBytes: EVALUATE_MAX_BYTES, maxLines: 2000 });
   const text = `Result (truncated, ${formatSize(bytes)} total):\n${stripControls(truncated.content)}`;
+
   return { content: [{ type: "text", text }] };
 }

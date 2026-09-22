@@ -45,6 +45,7 @@ export function PaneMenu({ surface, onSurface, trigger }: SurfaceProps) {
   const [workspace, setWorkspace] = useState("nyte");
   const [wrap, setWrap] = useState(true);
   const [whitespace, setWhitespace] = useState(false);
+
   return (
     <Menu
       label="Pane actions"
@@ -159,6 +160,7 @@ export function DemoPopover({
   onChoose,
 }: SurfaceProps & { anchor: RefObject<HTMLDivElement | null>; onChoose: (value: string) => void }) {
   const [active, setActive] = useState(0);
+
   return (
     <Popover.Root
       open={surface === "popover"}

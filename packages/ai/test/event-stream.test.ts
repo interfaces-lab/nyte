@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { lazyStream } from "../src/api/lazy.ts";
-import { OPENAI_MODELS } from "../src/providers/openai.models.ts";
-import type { AssistantMessage } from "../src/types.ts";
+import type { AssistantMessage, Model } from "../src/types.ts";
 import { AssistantMessageEventStream, EventStream } from "../src/utils/event-stream.ts";
 
 async function collect<T>(source: AsyncIterable<T>) {
@@ -11,7 +10,18 @@ async function collect<T>(source: AsyncIterable<T>) {
   return values;
 }
 
-const model = OPENAI_MODELS["gpt-5.4"];
+const model: Model<"openai-responses"> = {
+  id: "gpt-test",
+  name: "GPT Test",
+  api: "openai-responses",
+  provider: "openai",
+  baseUrl: "https://api.openai.test/v1",
+  reasoning: true,
+  input: ["text"],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 100_000,
+  maxTokens: 10_000,
+};
 const message: AssistantMessage = {
   role: "assistant",
   api: model.api,

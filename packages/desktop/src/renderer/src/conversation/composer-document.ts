@@ -71,12 +71,14 @@ export class ComposerReferenceNode extends DecoratorNode<MessageReference> {
     element.style.verticalAlign = "baseline";
     element.style.whiteSpace = "nowrap";
     element.style.maxWidth = "100%";
+
     return element;
   }
   /** HTML clipboard carries the token, so a paste anywhere reads as the draft did. */
   exportDOM(): DOMExportOutput {
     const element = document.createElement("span");
     element.textContent = this.getTextContent();
+
     return { element };
   }
   updateDOM(): false {
@@ -148,6 +150,7 @@ export function $composerSubmission(): ComposerSubmission {
     .getChildren()
     .map((block) => {
       if (!$isElementNode(block)) return block.getTextContent();
+
       return block
         .getChildren()
         .map((node) =>
@@ -158,6 +161,7 @@ export function $composerSubmission(): ComposerSubmission {
         .join("");
     })
     .join("\n\n");
+
   return { text, references: $composerReferences() };
 }
 
@@ -165,6 +169,7 @@ export function $composerSubmission(): ComposerSubmission {
 function $pointOffset(point: PointType): number {
   const root = $getRoot();
   const block = root.getFirstChild();
+
   // Plain-text drafts have one paragraph containing text, line breaks and chips.
   // Count those leaves without allocating a root-to-caret string. Keep Lexical's
   // range semantics for other shapes, whose block separators differ from root text.
@@ -172,39 +177,51 @@ function $pointOffset(point: PointType): number {
     let offset = 0;
     let index = 0;
     let child = block.getFirstChild();
+
     while (child !== null) {
       if (point.key === block.getKey() && point.offset === index) return offset;
+
       if (point.key === child.getKey() && $isTextNode(child)) return offset + point.offset;
+
       if ($isElementNode(child)) break;
       offset += child.getTextContentSize();
       index += 1;
       child = child.getNextSibling();
     }
+
     if (child === null) {
       if (point.key === block.getKey()) return offset;
+
       if (point.key === root.getKey()) return point.offset === 0 ? 0 : offset;
     }
   }
+
   const range = $createRangeSelection();
   range.anchor.set($getRoot().getKey(), 0, "element");
   range.focus.set(point.key, point.offset, point.type);
+
   return range.getTextContent().length;
 }
 
 /** The caret when the document has none yet is its end, where seeding and focus put it. */
-export function $composerSelection(): { readonly start: number; readonly end: number } {
+export function $composerSelection() {
   const selection = $getSelection();
+
   if (!$isRangeSelection(selection)) {
     const length = $getRoot().getTextContentSize();
+
     return { start: length, end: length };
   }
+
   const anchor = $pointOffset(selection.anchor);
   const focus = selection.isCollapsed() ? anchor : $pointOffset(selection.focus);
+
   return { start: Math.min(anchor, focus), end: Math.max(anchor, focus) };
 }
 
 export function $readComposerDocument(): ComposerDocumentState {
   const selection = $composerSelection();
+
   return {
     text: $getRoot().getTextContent(),
     selectionStart: selection.start,
@@ -214,15 +231,19 @@ export function $readComposerDocument(): ComposerDocumentState {
 
 export function $composerCompletion(caretOffset?: number): ComposerCompletion | undefined {
   const selection = $getSelection();
+
   if (!$isRangeSelection(selection) || !selection.isCollapsed() || selection.anchor.type !== "text")
     return undefined;
+
   const trigger = completionTrigger(
     selection.anchor.getNode().getTextContent(),
     selection.anchor.offset,
   );
+
   if (trigger === undefined || (trigger.kind === "@" && trigger.query.startsWith("file://")))
     return undefined;
   const offset = (caretOffset ?? $pointOffset(selection.anchor)) - selection.anchor.offset;
+
   return { ...trigger, start: offset + trigger.start, end: offset + trigger.end };
 }
 
@@ -231,24 +252,33 @@ function $setPoint(point: PointType, offset: number): void {
   const root = $getRoot();
   const blocks = root.getChildren();
   let remaining = Math.max(0, offset);
+
   for (const block of blocks) {
     if (!$isElementNode(block)) continue;
     const children = block.getChildren();
+
     for (const [index, child] of children.entries()) {
       const size = child.getTextContentSize();
+
       if (remaining < size || (remaining === size && $isTextNode(child))) {
         if ($isTextNode(child)) point.set(child.getKey(), remaining, "text");
         else point.set(block.getKey(), index + Number(remaining > 0), "element");
+
         return;
       }
+
       remaining -= size;
     }
+
     if (remaining <= 0 || block === blocks.at(-1)) {
       point.set(block.getKey(), children.length, "element");
+
       return;
     }
+
     remaining -= 2;
   }
+
   point.set(root.getKey(), root.getChildrenSize(), "element");
 }
 
@@ -261,11 +291,15 @@ export function $selectComposerRange(start: number, end = start): void {
 
 export function $replaceComposerText(start: number, end: number, text: string): void {
   $selectComposerRange(start, end);
+
   if (text === "") {
     const selection = $getSelection();
+
     if ($isRangeSelection(selection)) selection.removeText();
+
     return;
   }
+
   $getSelection()?.insertRawText(text);
 }
 
@@ -285,6 +319,7 @@ export function $insertComposerReference(
 ): void {
   if (start !== undefined) $selectComposerRange(start, end);
   const selection = $getSelection();
+
   if (selection === null) $getRoot().selectEnd();
   $getSelection()?.insertNodes([
     $applyNodeReplacement(new ComposerReferenceNode(reference)),
@@ -307,30 +342,38 @@ export function registerComposerReferences(
   catalog: ComposerReferenceCatalog,
 ): () => void {
   const files = new Map(catalog.files.map((file) => [file.url, file]));
+
   const unregister = editor.registerNodeTransform(TextNode, (node) => {
     const parts = messageParts(node.getTextContent(), {
       form: "draft",
       files,
       complete: $hasUpdateTag(PASTE_TAG) || $hasUpdateTag(COMPOSER_EXTERNAL_TAG),
     });
+
     if (!parts.some((part) => part.kind === "reference")) return;
     const selection = $getSelection();
     const offsets = $isRangeSelection(selection) ? $composerSelection() : undefined;
+
     const nodes = parts.map((part) =>
       part.kind === "text"
         ? $createTextNode(part.text)
         : $applyNodeReplacement(new ComposerReferenceNode(part.reference)),
     );
+
     const first = nodes[0];
+
     if (first === undefined) return;
     node.replace(first);
     let previous = first;
+
     for (const next of nodes.slice(1)) {
       previous.insertAfter(next);
       previous = next;
     }
+
     if (offsets !== undefined) $selectComposerRange(offsets.start, offsets.end);
   });
+
   // A catalog that arrives after the draft re-reads it. Only a focused editor may touch the DOM selection.
   const root = editor.getRootElement();
   editor.update(
@@ -339,11 +382,14 @@ export function registerComposerReferences(
       for (const node of $inlineNodes()) {
         if (!(node instanceof ComposerReferenceNode)) continue;
         const reference = node.getReference();
+
         if (reference.kind !== "file") continue;
         const file = files.get(reference.file.url);
+
         if (file === undefined || file === reference.file) continue;
         node.setReference({ kind: "file", file });
       }
+
       for (const node of $getRoot().getAllTextNodes()) node.markDirty();
     },
     {
@@ -354,5 +400,6 @@ export function registerComposerReferences(
           : [HISTORY_MERGE_TAG, SKIP_DOM_SELECTION_TAG],
     },
   );
+
   return unregister;
 }

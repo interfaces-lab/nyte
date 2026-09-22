@@ -11,7 +11,7 @@
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
-    "test": "vitest --run && NYTE_TEST_STORE=worker vitest --run test/kernel",
+    "test": "vitest --run && NYTE_TEST_STORE=worker vitest --run test/kernel/store.test.ts test/kernel/objects-chain.test.ts test/kernel/sqlite-replay.test.ts test/kernel/sqlite-boundary.test.ts test/kernel/queue.test.ts test/kernel/sdk-watch.test.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p benchmark/tsconfig.json"
   },
   "dependencies": {

@@ -239,12 +239,15 @@ const commandAnchor = {
   getBoundingClientRect(): DOMRect {
     const x = window.innerWidth / 2;
     const y = Math.min(144, Math.max(72, window.innerHeight * 0.12));
+
     return new DOMRect(x, y, 0, 0);
   },
 };
 
 type MenuSide = Base.Positioner.Props["side"];
+
 type MenuAlign = Base.Positioner.Props["align"];
+
 type MenuAnchor = Base.Positioner.Props["anchor"];
 
 interface MenuProps {
@@ -363,6 +366,7 @@ function ItemBody({
 }: ItemBodyProps): ReactElement {
   const small = size === "small";
   const plain = layout === "plain";
+
   return (
     <>
       {!plain && (
@@ -806,6 +810,7 @@ export function CommandMenu({
   children,
 }: CommandMenuProps): ReactElement {
   const triggerID = useId();
+
   return (
     <Base.Root
       open={open}

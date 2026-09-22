@@ -13,6 +13,7 @@ import {
   type GenerateContentConfig,
   type GenerateContentParameters,
   GoogleGenAI,
+  type HttpOptions,
   type Part,
   type ThinkingConfig,
   ThinkingLevel as GoogleThinkingLevel,
@@ -93,16 +94,22 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
       if (options?.fetch && options.fetch !== globalThis.fetch) {
         throw new Error("Custom fetch is not supported by the Google Generative AI adapter");
       }
+
       const apiKey = options?.apiKey;
+
       if (!apiKey) {
         throw new Error(`No API key for provider: ${model.provider}`);
       }
+
       const client = createClient(model, apiKey, options?.headers);
       let params = buildParams(model, context, options);
       const nextParams = await options?.onPayload?.(params, model);
+
       if (nextParams !== undefined) {
+        // SAFETY: onPayload's contract is to return this provider's request body (possibly mutated); its signature is unknown because each API defines its own shape.
         params = nextParams as GenerateContentParameters;
       }
+
       const googleStream = await retryGoogleRequest(
         () => client.models.generateContentStream(params),
         options,
@@ -112,15 +119,18 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
       let currentBlock: TextContent | ThinkingContent | null = null;
       const blocks = output.content;
       const blockIndex = () => blocks.length - 1;
+
       for await (const chunk of googleStream) {
         // @google/genai documents GenerateContentResponse.responseId as an output-only field
         // used to identify each response. Keep the first non-empty one from the stream.
         output.responseId ||= chunk.responseId;
         const candidate = chunk.candidates?.[0];
+
         if (candidate?.content?.parts) {
           for (const part of candidate.content.parts) {
             if (part.text !== undefined) {
               const isThinking = isThinkingPart(part);
+
               if (
                 !currentBlock ||
                 (isThinking && currentBlock.type !== "thinking") ||
@@ -143,6 +153,7 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
                     });
                   }
                 }
+
                 if (isThinking) {
                   currentBlock = { type: "thinking", thinking: "", thinkingSignature: undefined };
                   output.content.push(currentBlock);
@@ -157,6 +168,7 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
                   stream.push({ type: "text_start", contentIndex: blockIndex(), partial: output });
                 }
               }
+
               if (currentBlock.type === "thinking") {
                 currentBlock.thinking += part.text;
                 currentBlock.thinkingSignature = retainThoughtSignature(
@@ -201,14 +213,17 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
                     partial: output,
                   });
                 }
+
                 currentBlock = null;
               }
 
               // Generate unique ID if not provided or if it's a duplicate
               const providedId = part.functionCall.id;
+
               const needsNewId =
                 !providedId ||
                 output.content.some((b) => b.type === "toolCall" && b.id === providedId);
+
               const toolCallId = needsNewId
                 ? `${part.functionCall.name}_${Date.now()}_${++toolCallCounter}`
                 : providedId;
@@ -242,6 +257,7 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
         if (candidate?.finishReason) {
           output.rawStopReason = candidate.finishReason;
           output.stopReason = mapStopReason(candidate.finishReason);
+
           if (output.content.some((b) => b.type === "toolCall") && output.stopReason === "stop") {
             output.stopReason = "toolUse";
           }
@@ -296,22 +312,18 @@ export const stream: StreamFunction<"google-generative-ai", GoogleOptions> = (
       if (output.stopReason === "pending") {
         throw new Error("Google stream ended without a finish reason");
       }
+
       if (output.stopReason === "aborted" || output.stopReason === "error") {
         const errorMessage = output.rawStopReason
           ? `Provider stopped with: ${output.rawStopReason}`
           : "An unknown error occurred";
+
         throw new Error(errorMessage);
       }
 
       stream.push({ type: "done", reason: output.stopReason, message: output });
       stream.end();
     } catch (error) {
-      // Remove internal index property used during streaming
-      for (const block of output.content) {
-        if ("index" in block) {
-          delete (block as { index?: number }).index;
-        }
-      }
       output.stopReason = options?.signal?.aborted ? "aborted" : "error";
       output.errorMessage = formatProviderError(normalizeProviderError(error));
       stream.push({ type: "error", reason: output.stopReason, error: output });
@@ -328,6 +340,7 @@ export const streamSimple: StreamFunction<"google-generative-ai", SimpleStreamOp
   options?: SimpleStreamOptions,
 ): AssistantMessageEventStream => {
   const apiKey = options?.apiKey;
+
   if (!apiKey) {
     throw new Error(`No API key for provider: ${model.provider}`);
   }
@@ -336,6 +349,7 @@ export const streamSimple: StreamFunction<"google-generative-ai", SimpleStreamOp
     ...buildBaseOptions(model, context, options, apiKey),
     toolChoice: options?.toolChoice,
   } satisfies GoogleOptions;
+
   if (!options?.reasoning) {
     return stream(model, context, {
       ...base,
@@ -370,17 +384,19 @@ function createClient(
   apiKey: string,
   optionsHeaders?: ProviderHeaders,
 ): GoogleGenAI {
-  const httpOptions: { baseUrl?: string; apiVersion?: string; headers?: Record<string, string> } =
-    {};
+  const httpOptions: HttpOptions = {};
+
   if (model.baseUrl) {
     httpOptions.baseUrl = model.baseUrl;
     httpOptions.apiVersion = ""; // baseUrl already includes version path, don't append
   }
+
   const headers = providerHeadersToRecord({
     "User-Agent": getNyteUserAgent(),
     ...model.headers,
     ...optionsHeaders,
   });
+
   if (headers) {
     httpOptions.headers = headers;
   }
@@ -399,17 +415,21 @@ function buildParams(
   const contents = convertMessages(model, context);
 
   const generationConfig: GenerateContentConfig = {};
+
   if (options.temperature !== undefined) {
     generationConfig.temperature = options.temperature;
   }
+
   if (options.maxTokens !== undefined) {
     generationConfig.maxOutputTokens = options.maxTokens;
   }
 
   const supportsStrictMode = supportsGoogleStrictToolSampling(model.id);
+
   const functionCallingMode = context.tools?.length
     ? resolveGoogleFunctionCallingMode(context.tools, options.toolChoice, supportsStrictMode)
     : undefined;
+
   const config: GenerateContentConfig = {
     ...(Object.keys(generationConfig).length > 0 && generationConfig),
     ...(context.systemPrompt && { systemInstruction: sanitizeSurrogates(context.systemPrompt) }),
@@ -424,11 +444,13 @@ function buildParams(
 
   if (options.thinking?.enabled && model.reasoning) {
     const thinkingConfig: ThinkingConfig = { includeThoughts: true };
+
     if (options.thinking.level !== undefined) {
       thinkingConfig.thinkingLevel = options.thinking.level;
     } else if (options.thinking.budgetTokens !== undefined) {
       thinkingConfig.thinkingBudget = options.thinking.budgetTokens;
     }
+
     config.thinkingConfig = thinkingConfig;
   } else if (model.reasoning && options.thinking && !options.thinking.enabled) {
     config.thinkingConfig = getDisabledThinkingConfig(model);
@@ -438,6 +460,7 @@ function buildParams(
     if (options.signal.aborted) {
       throw new Error("Request aborted");
     }
+
     config.abortSignal = options.signal;
   }
 
@@ -460,6 +483,7 @@ function isGemini3ProModel(model: Model<"google-generative-ai">): boolean {
 
 function isGemini3FlashModel(model: Model<"google-generative-ai">): boolean {
   const id = model.id.toLowerCase();
+
   return (
     /gemini-3(?:\.\d+)?-flash/.test(id) ||
     id === "gemini-flash-latest" ||
@@ -474,9 +498,11 @@ function getDisabledThinkingConfig(model: Model<"google-generative-ai">): Thinki
   if (isGemini3ProModel(model)) {
     return { thinkingLevel: GoogleThinkingLevel.LOW };
   }
+
   if (isGemini3FlashModel(model)) {
     return { thinkingLevel: GoogleThinkingLevel.MINIMAL };
   }
+
   if (isGemma4Model(model)) {
     return { thinkingLevel: GoogleThinkingLevel.MINIMAL };
   }
@@ -499,6 +525,7 @@ function getThinkingLevel(
         return GoogleThinkingLevel.HIGH;
     }
   }
+
   if (isGemma4Model(model)) {
     switch (effort) {
       case "minimal":
@@ -509,6 +536,7 @@ function getThinkingLevel(
         return GoogleThinkingLevel.HIGH;
     }
   }
+
   switch (effort) {
     case "minimal":
       return GoogleThinkingLevel.MINIMAL;
@@ -537,6 +565,7 @@ function getGoogleBudget(
       medium: 8192,
       high: 32768,
     };
+
     return budgets[level];
   }
 
@@ -547,6 +576,7 @@ function getGoogleBudget(
       medium: 8192,
       high: 24576,
     };
+
     return budgets[level];
   }
 
@@ -557,6 +587,7 @@ function getGoogleBudget(
       medium: 8192,
       high: 24576,
     };
+
     return budgets[level];
   }
 
@@ -570,7 +601,8 @@ function resolveGoogleThinkingLevel(
   if (level === "off") return "high";
 
   const mapped = model.thinkingLevelMap?.[level];
-  const resolvedLevel = typeof mapped === "string" ? mapped.toLowerCase() : level;
+  const resolvedLevel = mapped?.toLowerCase() ?? level;
+
   switch (resolvedLevel) {
     case "minimal":
     case "low":
@@ -597,7 +629,7 @@ function retainThoughtSignature(
   existing: string | undefined,
   incoming: string | undefined,
 ): string | undefined {
-  return typeof incoming === "string" && incoming.length > 0 ? incoming : existing;
+  return incoming || existing;
 }
 
 const base64SignaturePattern = /^[A-Za-z0-9+/]+={0,2}$/;
@@ -620,23 +652,28 @@ function resolveThoughtSignature(
 
 function getGeminiMajorVersion(modelId: string): number | undefined {
   const match = modelId.toLowerCase().match(/^gemini(?:-live)?-(\d+)/);
+
   return match ? Number.parseInt(match[1], 10) : undefined;
 }
 
 function requiresToolCallId(modelId: string): boolean {
   const majorVersion = getGeminiMajorVersion(modelId);
+
   return majorVersion !== undefined && majorVersion >= 3;
 }
 
 function supportsMultimodalFunctionResponse(modelId: string): boolean {
   const majorVersion = getGeminiMajorVersion(modelId);
+
   return majorVersion === undefined || majorVersion >= 3;
 }
 
 function convertMessages(model: Model<"google-generative-ai">, context: Context): Content[] {
   const contents: Content[] = [];
+
   const normalizeToolCallId = (id: string): string => {
     if (!requiresToolCallId(model.id)) return id;
+
     return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
   };
 
@@ -644,7 +681,7 @@ function convertMessages(model: Model<"google-generative-ai">, context: Context)
 
   for (const message of transformedMessages) {
     if (message.role === "user") {
-      if (typeof message.content === "string") {
+      if (!Array.isArray(message.content)) {
         contents.push({
           role: "user",
           parts: [{ text: sanitizeSurrogates(message.content) }],
@@ -655,15 +692,18 @@ function convertMessages(model: Model<"google-generative-ai">, context: Context)
             ? { text: sanitizeSurrogates(item.text) }
             : { inlineData: { mimeType: item.mimeType, data: item.data } },
         );
+
         if (parts.length > 0) {
           contents.push({ role: "user", parts });
         }
       }
+
       continue;
     }
 
     if (message.role === "assistant") {
       const parts: Part[] = [];
+
       const isSameProviderAndModel =
         message.provider === model.provider && message.model === model.id;
 
@@ -673,6 +713,7 @@ function convertMessages(model: Model<"google-generative-ai">, context: Context)
             isSameProviderAndModel,
             block.textSignature,
           );
+
           if (block.text.trim() === "" && !thoughtSignature) continue;
           parts.push({
             text: sanitizeSurrogates(block.text),
@@ -687,6 +728,7 @@ function convertMessages(model: Model<"google-generative-ai">, context: Context)
               isSameProviderAndModel,
               block.thinkingSignature,
             );
+
             if (block.thinking.trim() === "" && !thoughtSignature) continue;
             parts.push({
               thought: true,
@@ -696,6 +738,7 @@ function convertMessages(model: Model<"google-generative-ai">, context: Context)
           } else if (block.thinking.trim() !== "") {
             parts.push({ text: sanitizeSurrogates(block.thinking) });
           }
+
           continue;
         }
 
@@ -703,6 +746,7 @@ function convertMessages(model: Model<"google-generative-ai">, context: Context)
           isSameProviderAndModel,
           block.thoughtSignature,
         );
+
         parts.push({
           functionCall: {
             name: block.name,
@@ -716,6 +760,7 @@ function convertMessages(model: Model<"google-generative-ai">, context: Context)
       if (parts.length > 0) {
         contents.push({ role: "model", parts });
       }
+
       continue;
     }
 
@@ -723,20 +768,25 @@ function convertMessages(model: Model<"google-generative-ai">, context: Context)
       .filter((content): content is TextContent => content.type === "text")
       .map((content) => content.text)
       .join("\n");
+
     const imageContent = model.input.includes("image")
       ? message.content.filter((content): content is ImageContent => content.type === "image")
       : [];
+
     const hasImages = imageContent.length > 0;
     const supportsMultimodalResponse = supportsMultimodalFunctionResponse(model.id);
+
     const responseValue =
       textResult.length > 0
         ? sanitizeSurrogates(textResult)
         : hasImages
           ? "(see attached image)"
           : "";
+
     const imageParts: Part[] = imageContent.map((image) => ({
       inlineData: { mimeType: image.mimeType, data: image.data },
     }));
+
     const functionResponsePart: Part = {
       functionResponse: {
         name: message.toolName,
@@ -747,6 +797,7 @@ function convertMessages(model: Model<"google-generative-ai">, context: Context)
     };
 
     const lastContent = contents[contents.length - 1];
+
     if (lastContent?.role === "user" && lastContent.parts?.some((part) => part.functionResponse)) {
       lastContent.parts.push(functionResponsePart);
     } else {
@@ -764,15 +815,14 @@ function convertMessages(model: Model<"google-generative-ai">, context: Context)
   return contents;
 }
 
-function convertTools(
-  tools: Tool[],
-  supportsStrictMode: boolean,
-): { functionDeclarations: Record<string, unknown>[] }[] | undefined {
+function convertTools(tools: Tool[], supportsStrictMode: boolean) {
   if (tools.length === 0) return undefined;
+
   return [
     {
       functionDeclarations: tools.map((tool) => {
         const strict = resolveJsonSchemaStrictSampling(tool, supportsStrictMode);
+
         return {
           name: tool.name,
           description: tool.description,
@@ -785,6 +835,7 @@ function convertTools(
 
 function supportsGoogleStrictToolSampling(modelId: string): boolean {
   const majorVersion = getGeminiMajorVersion(modelId);
+
   return majorVersion !== undefined && majorVersion >= 3;
 }
 
@@ -794,10 +845,13 @@ function resolveGoogleFunctionCallingMode(
   supportsStrictMode: boolean,
 ): FunctionCallingConfigMode | undefined {
   if (toolChoice === "none") return FunctionCallingConfigMode.NONE;
+
   if (toolChoice === "any") return FunctionCallingConfigMode.ANY;
+
   if (tools.some((tool) => resolveJsonSchemaStrictSampling(tool, supportsStrictMode))) {
     return FunctionCallingConfigMode.VALIDATED;
   }
+
   return toolChoice === "auto" ? FunctionCallingConfigMode.AUTO : undefined;
 }
 
@@ -842,8 +896,9 @@ function retryGoogleRequest<T>(
         // The Google SDK exposes a status without headers. Add the missing field so the common
         // retry policy can classify the error.
         if (error instanceof Error && "status" in error && !("headers" in error)) {
-          (error as { headers?: Headers }).headers = undefined;
+          Object.assign(error, { headers: undefined });
         }
+
         throw error;
       }
     },

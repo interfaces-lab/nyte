@@ -16,13 +16,16 @@ import type {
   GitHubPullRequestContext,
   GitHubRepository,
 } from "../shared/ipc.ts";
-import { errorCode } from "./errors.ts";
 import { ensureShellEnvironment } from "./shell-environment.ts";
 
 const COMMAND_OUTPUT_LIMIT = 1_000_000;
+
 const DETECTION_TIMEOUT_MS = 3_000;
+
 const QUERY_TIMEOUT_MS = 8_000;
+
 const SIGN_IN_TIMEOUT_MS = 5 * 60_000;
+
 /** `gh pr create` publishes the branch first, so it outlives an ordinary query. */
 const PULL_REQUEST_TIMEOUT_MS = 60_000;
 
@@ -50,9 +53,11 @@ export type CommandRunner = (request: CommandRequest) => Promise<CommandResult>;
 function httpsUrl(value: string, hostname?: string): string | undefined {
   try {
     const url = new URL(value);
+
     if (url.protocol !== "https:" || (hostname !== undefined && url.hostname !== hostname)) {
       return undefined;
     }
+
     return url.toString();
   } catch {
     return undefined;
@@ -61,6 +66,7 @@ function httpsUrl(value: string, hostname?: string): string | undefined {
 
 export const runProviderCommand: CommandRunner = async (request) => {
   await ensureShellEnvironment();
+
   return new Promise((resolveResult) => {
     const child = spawn(request.command, [...request.args], {
       cwd: request.cwd,
@@ -72,10 +78,12 @@ export const runProviderCommand: CommandRunner = async (request) => {
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
+
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let outputBytes = 0;
     let settled = false;
+
     const finish = (result: CommandResult): void => {
       if (settled) return;
       settled = true;
@@ -84,25 +92,32 @@ export const runProviderCommand: CommandRunner = async (request) => {
       stderr.length = 0;
       child.stdout.destroy();
       child.stderr.destroy();
+
       if (result.kind !== "completed") {
         child.kill("SIGKILL");
         child.unref();
       }
+
       resolveResult(result);
     };
+
     const collect = (target: Buffer[], chunk: Buffer): void => {
       if (settled) return;
       outputBytes += chunk.byteLength;
+
       if (outputBytes > COMMAND_OUTPUT_LIMIT) {
         finish({ kind: "output_limit" });
+
         return;
       }
+
       target.push(chunk);
     };
+
     child.stdout.on("data", (chunk: Buffer) => collect(stdout, chunk));
     child.stderr.on("data", (chunk: Buffer) => collect(stderr, chunk));
     child.on("error", (error) => {
-      finish(errorCode(error) === "ENOENT" ? { kind: "missing" } : { kind: "failed" });
+      finish("code" in error && error.code === "ENOENT" ? { kind: "missing" } : { kind: "failed" });
     });
     child.on("close", (code) => {
       if (settled) return;
@@ -113,6 +128,7 @@ export const runProviderCommand: CommandRunner = async (request) => {
         stderr: Buffer.concat(stderr).toString("utf8"),
       });
     });
+
     const timer = setTimeout(() => {
       finish({ kind: "timeout" });
     }, request.timeoutMs);
@@ -130,7 +146,9 @@ function repositoryFromParts(
 ): GitHubRepository | undefined {
   if (owner === undefined || rawName === undefined) return undefined;
   const name = rawName.replace(/\.git$/i, "");
+
   if (!repositoryPart(owner) || !repositoryPart(name)) return undefined;
+
   return {
     owner,
     name,
@@ -143,17 +161,22 @@ function repositoryFromParts(
 function parseGitHubRemote(remoteName: string, rawRemote: string): GitHubRepository | undefined {
   const remote = rawRemote.trim();
   const scp = /^(?:[^@\s]+@)?github\.com:([^/\s]+)\/([^/\s]+)\/?$/i.exec(remote);
+
   if (scp !== null) return repositoryFromParts(remoteName, scp[1], scp[2]);
 
   let url: URL;
+
   try {
     url = new URL(remote);
   } catch {
     return undefined;
   }
+
   if (url.hostname.toLowerCase() !== "github.com") return undefined;
   const segments = url.pathname.split("/").filter((segment) => segment !== "");
+
   if (segments.length !== 2) return undefined;
+
   return repositoryFromParts(remoteName, segments[0], segments[1]);
 }
 
@@ -167,15 +190,19 @@ async function detectRepository(
     cwd,
     timeoutMs: DETECTION_TIMEOUT_MS,
   });
+
   if (remotes.kind !== "completed" || remotes.code !== 0) return undefined;
+
   const names = remotes.stdout
     .split(/\r?\n/u)
     .map((name) => name.trim())
     .filter((name) => name !== "")
     .sort((left, right) => {
       const rank = (name: string): number => (name === "origin" ? 0 : name === "upstream" ? 1 : 2);
+
       return rank(left) - rank(right);
     });
+
   for (const remoteName of names) {
     const remote = await run({
       command: "git",
@@ -183,10 +210,13 @@ async function detectRepository(
       cwd,
       timeoutMs: DETECTION_TIMEOUT_MS,
     });
+
     if (remote.kind !== "completed" || remote.code !== 0) continue;
     const repository = parseGitHubRemote(remoteName, remote.stdout);
+
     if (repository !== undefined) return repository;
   }
+
   return undefined;
 }
 
@@ -198,6 +228,7 @@ const authStatusSchema = Compile(
     }),
   ),
 );
+
 const accountSchema = Compile(
   Type.Object({
     login: Type.String({ minLength: 1 }),
@@ -205,6 +236,7 @@ const accountSchema = Compile(
     avatar_url: Type.Union([Type.String(), Type.Null()]),
   }),
 );
+
 const pullRequestSchema = Compile(
   Type.Object({
     number: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
@@ -221,7 +253,9 @@ export function decodeGitHubAccountOutput(output: string): GitHubAccount | undef
   try {
     const account = accountSchema.Parse(JSON.parse(output));
     const avatarUrl = account.avatar_url ? httpsUrl(account.avatar_url) : undefined;
+
     if (account.avatar_url && avatarUrl === undefined) return undefined;
+
     return { login: account.login, name: account.name || undefined, avatarUrl };
   } catch {
     return undefined;
@@ -232,7 +266,9 @@ export function decodeGitHubPullRequestOutput(output: string): GitHubPullRequest
   try {
     const pull = pullRequestSchema.Parse(JSON.parse(output));
     const url = httpsUrl(pull.url, "github.com");
+
     if (url === undefined) return undefined;
+
     return {
       number: pull.number,
       title: pull.title,
@@ -288,10 +324,13 @@ async function accountState(
     cwd: homedir(),
     timeoutMs: DETECTION_TIMEOUT_MS,
   });
+
   if (auth.kind === "missing") return { kind: "cli_missing", repository };
+
   if (auth.kind !== "completed") {
     return { kind: "error", repository, message: commandFailed(auth, "account") };
   }
+
   if (auth.code !== 0 && /unknown flag: --(?:json|jq)\b/u.test(auth.stderr)) {
     return {
       kind: "error",
@@ -300,16 +339,21 @@ async function accountState(
         "Update the GitHub CLI (gh) to a version that supports `gh auth status --json`, then try again.",
     };
   }
+
   // gh versions differ on the exit code when no accounts are configured.
   if ((auth.code === 0 || auth.code === 1) && auth.stdout.trim() === "") {
     return { kind: "signed_out", repository };
   }
+
   if (auth.code !== 0) {
     return { kind: "error", repository, message: ACTION_RECOVERY.account };
   }
+
   try {
     const active = authStatusSchema.Parse(JSON.parse(auth.stdout)).find((entry) => entry.active);
+
     if (active === undefined) return { kind: "signed_out", repository };
+
     // JSON mode exits zero even for invalid credentials and network failures.
     if (active.state !== "success") {
       return {
@@ -328,6 +372,7 @@ async function accountState(
     cwd: homedir(),
     timeoutMs: QUERY_TIMEOUT_MS,
   });
+
   if (accountResult.kind !== "completed" || accountResult.code !== 0) {
     return {
       kind: "error",
@@ -335,7 +380,9 @@ async function accountState(
       message: commandFailed(accountResult, "account"),
     };
   }
+
   const account = decodeGitHubAccountOutput(accountResult.stdout);
+
   if (account === undefined) {
     return { kind: "error", repository, message: ACTION_RECOVERY.account };
   }
@@ -343,19 +390,23 @@ async function accountState(
   if (repository === undefined) {
     return { kind: "ready", repository, account, pullRequest: { kind: "none" } };
   }
+
   const branch = await run({
     command: "git",
     args: ["symbolic-ref", "--quiet", "--short", "HEAD"],
     cwd,
     timeoutMs: DETECTION_TIMEOUT_MS,
   });
+
   if (branch.kind !== "completed" || branch.code !== 0 || branch.stdout.trim() === "") {
     const pullRequest: GitHubPullRequestContext =
       branch.kind === "completed" && branch.code === 1
         ? { kind: "none" }
         : { kind: "error", message: ACTION_RECOVERY["pull-request"] };
+
     return { kind: "ready", repository, account, pullRequest };
   }
+
   const pullResult = await run({
     command: "gh",
     args: [
@@ -370,7 +421,9 @@ async function accountState(
     cwd,
     timeoutMs: QUERY_TIMEOUT_MS,
   });
+
   let pullRequest: GitHubPullRequestContext;
+
   if (pullResult.kind === "completed" && pullResult.code === 0) {
     const parsed = decodeGitHubPullRequestOutput(pullResult.stdout);
     pullRequest =
@@ -389,6 +442,7 @@ async function accountState(
       message: commandFailed(pullResult, "pull-request"),
     };
   }
+
   return { kind: "ready", repository, account, pullRequest };
 }
 
@@ -408,12 +462,17 @@ export interface GitHubProvider {
 /** The state a pull request request can be refused from, before `gh pr create` runs. */
 function refusal(state: GitHubProviderState): GitHubPullRequestOutcome | undefined {
   if (state.kind === "cli_missing") return { kind: "cli_missing" };
+
   if (state.kind === "signed_out") return { kind: "signed_out" };
+
   if (state.kind === "error") return { kind: "failed", message: state.message };
+
   if (state.repository === undefined) return { kind: "no_remote" };
+
   if (state.pullRequest.kind === "ready") {
     return { kind: "exists", pullRequest: state.pullRequest.pullRequest };
   }
+
   return undefined;
 }
 
@@ -424,10 +483,13 @@ async function createPullRequest(
   run: CommandRunner,
 ): Promise<GitHubPullRequestOutcome> {
   const refused = refusal(state);
+
   if (refused !== undefined) return refused;
+
   if (state.kind !== "ready" || state.repository === undefined) {
     return { kind: "failed", message: ACTION_RECOVERY["create-pull-request"] };
   }
+
   const result = await run({
     command: "gh",
     args: [
@@ -444,26 +506,33 @@ async function createPullRequest(
     cwd,
     timeoutMs: PULL_REQUEST_TIMEOUT_MS,
   });
+
   if (result.kind === "missing") return { kind: "cli_missing" };
+
   if (result.kind !== "completed") {
     return { kind: "failed", message: commandFailed(result, "create-pull-request") };
   }
+
   if (result.code !== 0) {
     // Another client can open one between the state read and this command.
     if (/already exists/iu.test(result.stderr)) {
       const current = await accountState(cwd, state.repository, run);
+
       if (current.kind === "ready" && current.pullRequest.kind === "ready") {
         return { kind: "exists", pullRequest: current.pullRequest.pullRequest };
       }
     }
+
     return { kind: "failed", message: ACTION_RECOVERY["create-pull-request"] };
   }
+
   // `gh` prints the new pull request's URL; nothing else from its output crosses IPC.
   const url = result.stdout
     .split(/\r?\n/u)
     .map((line) => line.trim())
     .map((line) => httpsUrl(line, "github.com"))
     .find((candidate) => candidate !== undefined);
+
   return url === undefined
     ? { kind: "failed", message: ACTION_RECOVERY["create-pull-request"] }
     : { kind: "created", url };
@@ -474,8 +543,10 @@ export function createGitHubProvider(
   run: CommandRunner = runProviderCommand,
 ): GitHubProvider {
   const cwd = workspace ?? homedir();
+
   const repository = () =>
     workspace === undefined ? Promise.resolve(undefined) : detectRepository(cwd, run);
+
   const state = async (): Promise<GitHubProviderState> =>
     accountState(cwd, await repository(), run);
 
@@ -499,18 +570,22 @@ export function createGitHubProvider(
       cwd: homedir(),
       timeoutMs: action === "sign-in" ? SIGN_IN_TIMEOUT_MS : QUERY_TIMEOUT_MS,
     });
+
     if (result.kind === "completed" && result.code === 0) return state();
     const detected = await repository();
+
     return result.kind === "missing"
       ? { kind: "cli_missing", repository: detected }
       : { kind: "error", repository: detected, message: commandFailed(result, action) };
   };
+
   return {
     state,
     signIn: () => changeAuth("sign-in"),
     signOut: () => changeAuth("sign-out"),
     createPullRequest: async (input) => {
       if (workspace === undefined) return { kind: "no_remote" };
+
       return createPullRequest(cwd, await state(), input, run);
     },
   };

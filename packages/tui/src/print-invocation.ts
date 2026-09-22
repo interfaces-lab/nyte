@@ -54,6 +54,7 @@ export class PrintInvocation {
 
   finish(outcome?: PrintOutcome): Promise<number | undefined> {
     this.finishing ??= Promise.resolve().then(() => this.complete(outcome));
+
     return this.finishing;
   }
 
@@ -62,9 +63,11 @@ export class PrintInvocation {
       this.received === undefined
         ? outcome
         : ({ kind: "cancelled", signal: this.received } satisfies PrintOutcome);
+
     for (const cleanup of this.cleanups.toReversed()) {
       try {
         const closed = await cleanup();
+
         if (closed?.kind === "failed") {
           for (const failure of closed.failures) {
             this.recordedFailures.push({ phase: "cleanup", cause: failure.cause });
@@ -74,9 +77,12 @@ export class PrintInvocation {
         this.recordedFailures.push({ phase: "cleanup", cause });
       }
     }
+
     this.handoff();
+
     if (this.recordedFailures.length > 0) {
       terminal = { kind: "failed", code: "cleanup_failed", message: "Resource cleanup failed." };
+
       // A broken diagnostic sink must not prevent cleanup or the machine terminal record.
       try {
         this.output.error("Resource cleanup failed.");
@@ -84,11 +90,14 @@ export class PrintInvocation {
         this.recordedFailures.push({ phase: "diagnostic", cause });
       }
     }
+
     // A signal can arrive while cleanup is pending, but cannot hide cleanup failure.
     if (this.received !== undefined && terminal?.kind !== "failed") {
       terminal = { kind: "cancelled", signal: this.received };
     }
+
     if (terminal === undefined) return undefined;
+
     try {
       return reportPrintOutcome(terminal, {
         sessionId: this.sessionId,

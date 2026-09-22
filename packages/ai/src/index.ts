@@ -6,6 +6,7 @@
  * Synced with pi 7ebf9087e.
  */
 export type { Static, TSchema } from "typebox";
+
 export { Type } from "typebox";
 
 // Provider clients load on first use; only types and deferred calls are exported here.
@@ -14,73 +15,113 @@ export type {
   AnthropicOptions,
   AnthropicThinkingDisplay,
 } from "./api/anthropic-messages.ts";
+
 export * from "./api/deferred.ts";
+
 export type { GoogleOptions } from "./api/google-generative-ai.ts";
+
 export * from "./api/lazy.ts";
+
 export { OpenAICodexCompactionError } from "./api/openai-codex-compaction-error.ts";
+
 export type {
   OpenAICodexCompactResult,
   OpenAICodexResponsesOptions,
   OpenAICodexWebSocketDebugStats,
 } from "./api/openai-codex-responses.ts";
+
 export type { OpenAICompletionsOptions } from "./api/openai-completions.ts";
+
 export type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
+
 export type { OpenAICompactResult } from "./api/openai-compact.ts";
+
 export * from "./auth/context.ts";
+
 export * from "./auth/credential-store.ts";
+
 export * from "./auth/helpers.ts";
+
 export * from "./auth/types.ts";
+
 export { defaultAuthPath, FileCredentialStore } from "./auth/store.ts";
+
 export { defaultModelsStorePath, FileModelsStore } from "./file-models-store.ts";
+
 export {
   ModelsError,
   resolveProviderAuth,
   type AuthResolutionOverrides,
   type ModelsErrorCode,
 } from "./auth/resolve.ts";
+
 export { anthropicOAuth } from "./auth/oauth/anthropic.ts";
+
 export { githubCopilotOAuth, type GitHubCopilotOAuthOptions } from "./auth/oauth/github-copilot.ts";
+
 export { getAccountId, openaiCodexOAuth } from "./auth/oauth/openai-codex.ts";
+
 export { loadAnthropicOAuth, loadOpenAICodexOAuth } from "./auth/oauth/load.ts";
+
 export { oauthErrorHtml, oauthSuccessHtml } from "./auth/oauth/oauth-page.ts";
+
 export { generatePKCE } from "./auth/oauth/pkce.ts";
+
 export {
   abortableSleep,
   pollOAuthDeviceCodeFlow,
   type OAuthDeviceCodePollOptions,
   type OAuthDeviceCodePollResult,
 } from "./auth/oauth/device-code.ts";
+
 export * from "./env-api-keys.ts";
+
 export * from "./models.ts";
+
 export { getFastModeCostMultiplier } from "./model-pricing.ts";
+
 export * from "./models-store.ts";
+
 export * from "./prompt-cache.ts";
+
 export * from "./session-resources.ts";
+
 export * from "./types.ts";
+
 export * from "./utils/assistant-message-frame.ts";
+
 export * from "./utils/diagnostics.ts";
+
 export * from "./utils/estimate.ts";
+
 export * from "./utils/event-stream.ts";
+
 export * from "./utils/json-parse.ts";
+
 export * from "./utils/failure.ts";
+
 export * from "./utils/overflow.ts";
+
 export * from "./utils/retry.ts";
+
 export { contentText } from "./utils/text.ts";
+
 export * from "./utils/typebox-helpers.ts";
+
 export { uuidv7 } from "./utils/uuid.ts";
+
 export * from "./utils/validation.ts";
 
 export { anthropicProvider } from "./providers/anthropic.ts";
+
 export { createNyteModels, defaultModelPerProvider } from "./providers/nyte-catalog.ts";
+
 export { githubCopilotProvider } from "./providers/github-copilot.ts";
-export {
-  parseOpenCodeCatalog,
-  type OpenCodeApi,
-  type OpenCodeCatalogOptions,
-  type OpenCodeGoApi,
-  type OpenCodeProviderId,
-} from "./providers/opencode-catalog.ts";
+
 export { opencodeGoProvider } from "./providers/opencode-go.ts";
+
 export { opencodeProvider } from "./providers/opencode.ts";
+
 export { openaiProvider } from "./providers/openai.ts";
+
 export { openaiCodexProvider } from "./providers/openai-codex.ts";

@@ -63,20 +63,27 @@ interface TerminalSnapshot {
 }
 
 let snapshot: TerminalSnapshot = { tabs: new Map() };
+
 const listeners = new Set<() => void>();
+
 const output = new Map<WorkbenchTabId, TerminalOutput>();
+
 const queued = new Map<WorkbenchTabId, string[]>();
+
 const creating = new Map<WorkbenchTabId, Promise<void>>();
 
 function publish(tabs: ReadonlyMap<WorkbenchTabId, TerminalTab>): void {
   snapshot = { tabs };
+
   for (const listener of listeners) listener();
 }
 
 function update(id: WorkbenchTabId, change: (tab: TerminalTab) => TerminalTab): void {
   const tab = snapshot.tabs.get(id);
+
   if (tab === undefined) return;
   const next = change(tab);
+
   if (next === tab) return;
   output.get(id)?.update(next);
   publish(new Map(snapshot.tabs).set(id, next));
@@ -88,11 +95,13 @@ function getSnapshot(): TerminalSnapshot {
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
+
   return () => listeners.delete(listener);
 }
 
 export function useTerminal(id: WorkbenchTabId): TerminalTab | undefined {
   const current = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
   return current.tabs.get(id);
 }
 
@@ -102,6 +111,7 @@ export function useTerminalRuntime(): ReadonlyMap<WorkbenchTabId, TerminalTab> {
 
 export function useJobTerminals(sessionId: SessionId): readonly TerminalTab[] {
   const current = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
   return [...current.tabs.values()].filter(
     (tab) => isJobTerminal(tab) && tab.source.sessionId === sessionId,
   );
@@ -120,10 +130,13 @@ export function getJobTerminal(jobId: JobInfo["id"]): JobTerminalTab | undefined
 export function attachTerminalOutput(id: WorkbenchTabId, sink: TerminalOutput): void {
   output.set(id, sink);
   const tab = getTerminal(id);
+
   if (tab !== undefined && isJobTerminal(tab)) {
     if (tab.source.output !== "") sink.write(tab.source.output);
+
     return;
   }
+
   for (const data of queued.get(id) ?? []) sink.write(data);
   queued.delete(id);
 }
@@ -132,15 +145,21 @@ export function applyTerminalEvent(
   event: Extract<HostEvent, { kind: "terminal_data" | "terminal_exit" }>,
 ): void {
   const tab = getTerminal(event.id);
+
   if (tab === undefined || isJobTerminal(tab)) return;
+
   if (event.kind === "terminal_exit") {
     update(event.id, (current) => {
       if (isJobTerminal(current)) return current;
+
       return { ...current, state: { kind: "exited", exitCode: event.exitCode } };
     });
+
     return;
   }
+
   const sink = output.get(event.id);
+
   if (sink !== undefined) sink.write(event.data);
   else {
     const pending = queued.get(event.id) ?? [];
@@ -152,11 +171,15 @@ export function applyTerminalEvent(
 function writeJobOutput(id: WorkbenchTabId, previous: string, next: string): void {
   if (previous === next) return;
   const sink = output.get(id);
+
   if (sink === undefined) return;
+
   if (next.startsWith(previous)) {
     sink.write(next.slice(previous.length));
+
     return;
   }
+
   sink.replace(next);
 }
 
@@ -164,10 +187,13 @@ function syncJobs(sessionId: SessionId, jobs: readonly JobInfo[]): void {
   const commands = new Map(jobs.map((job) => [job.id, job]));
   const tabs = new Map(snapshot.tabs);
   let changed = false;
+
   for (const tab of snapshot.tabs.values()) {
     if (!isJobTerminal(tab) || tab.source.sessionId !== sessionId) continue;
     const job = commands.get(tab.source.jobId);
+
     if (job === undefined) continue;
+
     if (
       tab.title === job.command &&
       tab.state.kind === job.phase.kind &&
@@ -175,17 +201,21 @@ function syncJobs(sessionId: SessionId, jobs: readonly JobInfo[]): void {
     ) {
       continue;
     }
+
     changed = true;
+
     const next: JobTerminalTab = {
       ...tab,
       title: job.command,
       source: { ...tab.source, output: job.output },
       state: { kind: job.phase.kind },
     };
+
     tabs.set(tab.id, next);
     output.get(tab.id)?.update(next);
     writeJobOutput(tab.id, tab.source.output, job.output);
   }
+
   if (changed) publish(tabs);
 }
 
@@ -215,11 +245,13 @@ export const terminalActions = {
         state: { kind: "starting" },
       }),
     );
+
     const pending = nyte.host.terminal
       .create({ id, workspacePath })
       .then((info) => {
         update(id, (tab) => {
           if (isJobTerminal(tab)) return tab;
+
           return {
             ...tab,
             ...info,
@@ -231,12 +263,15 @@ export const terminalActions = {
         const message = errorMessage(cause);
         update(id, (tab) => {
           if (isJobTerminal(tab)) return tab;
+
           return { ...tab, state: { kind: "failed", message } };
         });
         toast.error("Couldn't start terminal", { description: message });
       })
       .finally(() => creating.delete(id));
+
     creating.set(id, pending);
+
     return pending;
   },
   openJob({
@@ -249,10 +284,13 @@ export const terminalActions = {
     readonly job: JobInfo;
   }): void {
     const existing = snapshot.tabs.get(id);
+
     if (existing !== undefined && isJobTerminal(existing)) {
       syncJobs(sessionId, [job]);
+
       return;
     }
+
     publish(
       new Map(snapshot.tabs).set(id, {
         id,
@@ -271,25 +309,34 @@ export const terminalActions = {
       .join("")
       .trim()
       .slice(0, 160);
+
     const tab = getTerminal(id);
+
     if (tab === undefined || isJobTerminal(tab) || clean === "" || tab.title === clean) return;
     update(id, (current) => {
       if (isJobTerminal(current)) return current;
+
       return { ...current, title: clean };
     });
   },
   fail(id: WorkbenchTabId, message: string): void {
     const tab = getTerminal(id);
+
     if (tab === undefined) return;
+
     if (isJobTerminal(tab)) {
       update(id, (current) => {
         if (isShellTerminal(current)) return current;
+
         return { ...current, rendering: { kind: "failed", message } };
       });
+
       return;
     }
+
     update(id, (current) => {
       if (isJobTerminal(current)) return current;
+
       return { ...current, state: { kind: "failed", message } };
     });
     void nyte.host.terminal.close({ id }).catch(() => undefined);
@@ -297,15 +344,19 @@ export const terminalActions = {
   retryRender(id: WorkbenchTabId): void {
     update(id, (tab) => {
       if (isShellTerminal(tab)) return tab;
+
       return { ...tab, rendering: { kind: "ready" } };
     });
   },
   async close(id: WorkbenchTabId): Promise<void> {
     const tab = getTerminal(id);
+
     if (tab !== undefined && isJobTerminal(tab)) {
       remove(id);
+
       return;
     }
+
     await creating.get(id);
     await nyte.host.terminal.close({ id });
     remove(id);
@@ -358,6 +409,8 @@ export function openJobTerminal({
     },
     activate,
   });
+
   terminalActions.openJob({ id, sessionId, job });
+
   return id;
 }

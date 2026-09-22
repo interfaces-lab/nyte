@@ -3,8 +3,9 @@ import { vi } from "vitest";
 import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
 import type { AuthEvent, ProviderAuthInteraction } from "../src/auth/types.ts";
 import { createModels } from "../src/models.ts";
+import { InMemoryModelsStore } from "../src/models-store.ts";
 import { githubCopilotProvider } from "../src/providers/github-copilot.ts";
-import type { JsonValue } from "../src/types.ts";
+import type { Api, JsonValue, Model } from "../src/types.ts";
 
 type Captured = { url: string; method: string; headers: Headers; body: string };
 type Routes = Record<string, (request: Captured) => Response | Promise<Response>>;
@@ -73,6 +74,65 @@ export const ORIGIN = "https://api.individual.githubcopilot.com";
 export const SESSION_TOKEN = "tid=test;proxy-ep=proxy.individual.githubcopilot.com";
 export const MODELS = `GET ${ORIGIN}/models`;
 
+export const copilotCatalog: readonly Model<Api>[] = [
+  {
+    id: "gemini-3.8-flash",
+    name: "Gemini 3.8 Flash",
+    api: "openai-completions",
+    provider: "github-copilot",
+    baseUrl: ORIGIN,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: { input: 0.75, output: 3.75, cacheRead: 0.075, cacheWrite: 0 },
+    contextWindow: 1_000_000,
+    maxTokens: 64_000,
+    compat: {
+      supportsStore: false,
+      supportsDeveloperRole: false,
+      supportsReasoningEffort: false,
+    },
+  },
+  {
+    id: "gpt-5.5",
+    name: "GPT-5.5",
+    api: "openai-responses",
+    provider: "github-copilot",
+    baseUrl: ORIGIN,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0 },
+    contextWindow: 1_000_000,
+    maxTokens: 128_000,
+    compat: { supportsOpenAIGrammarTools: true },
+  },
+  {
+    id: "claude-sonnet-4.6",
+    name: "Claude Sonnet 4.6",
+    api: "anthropic-messages",
+    provider: "github-copilot",
+    baseUrl: ORIGIN,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+    contextWindow: 1_000_000,
+    maxTokens: 32_000,
+    compat: { forceAdaptiveThinking: true },
+  },
+  {
+    id: "claude-haiku-4.5",
+    name: "Claude Haiku 4.5",
+    api: "anthropic-messages",
+    provider: "github-copilot",
+    baseUrl: ORIGIN,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
+    contextWindow: 200_000,
+    maxTokens: 64_000,
+    compat: { supportsEagerToolInputStreaming: false },
+  },
+];
+
 export function sessionToken(token = SESSION_TOKEN) {
   return json({ token, expires_at: Math.floor(Date.now() / 1000) + 3600 });
 }
@@ -107,13 +167,16 @@ export function copilotModels(routes: Routes) {
     ...routes,
   });
   const credentials = new InMemoryCredentialStore();
-  const models = createModels({ credentials });
+  const modelsStore = new InMemoryModelsStore();
+  void modelsStore.write("github-copilot", { models: copilotCatalog });
+  const models = createModels({ credentials, modelsStore });
   models.setProvider(githubCopilotProvider({ fetch: transport.fetch, clientId: "c" }));
-  return { models, requests: transport.requests, credentials, fetch: transport.fetch };
+  return { models, requests: transport.requests, credentials, modelsStore, fetch: transport.fetch };
 }
 
 /** Run the device sign-in, skipping the one-second poll interval with fake timers. */
 export async function signIn(models: ReturnType<typeof copilotModels>["models"]) {
+  await models.refresh({ providers: ["github-copilot"], allowNetwork: false });
   vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
   try {
     const login = models.login("github-copilot", "oauth", interaction());

@@ -81,6 +81,7 @@ export function SettingsSelect<T extends string>({
       onValueChange={(candidate) => {
         if (candidate === null) return;
         const option = options.find((entry) => entry.value === candidate);
+
         if (option !== undefined) onValueChange(option.value);
       }}
     >

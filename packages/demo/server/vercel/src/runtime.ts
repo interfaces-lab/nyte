@@ -8,9 +8,11 @@ import { serverModels } from "./models.ts";
 export async function openExecution() {
   const configured = serverModels();
   const connectionString = process.env.DATABASE_URL;
+
   if (connectionString === undefined || connectionString.length === 0) {
     throw new Error("DATABASE_URL is required for the Vercel host");
   }
+
   const pool = new Pool({
     connectionString,
     max: 4,
@@ -18,14 +20,17 @@ export async function openExecution() {
     connectionTimeoutMillis: 10_000,
     allowExitOnIdle: true,
   });
+
   pool.on("error", (error) => {
     console.error(JSON.stringify({ event: "nyte.postgres.pool_error", name: error.name }));
   });
   attachDatabasePool(pool);
   const store = new PostgresStore(postgresDatabase(pool));
+
   try {
     await store.initialize();
     const sdk = await createChatSdk({ ...configured, store });
+
     return {
       ...sdk,
       async close() {
@@ -44,10 +49,13 @@ export async function openExecution() {
 
 export async function openRuntime(wake: WakeSession) {
   const token = process.env.NYTE_TOKEN;
+
   if (!token) throw new Error("NYTE_TOKEN is required for the Vercel host.");
   const sdk = await openExecution();
+
   try {
     const server = createChatServer({ sdk, token, wake });
+
     return {
       fetch: (request: Request) => server.fetch(request),
       async close() {

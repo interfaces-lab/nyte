@@ -2,11 +2,17 @@ import type { VcsDiff, VcsLog, VcsRefs, VcsSnapshot } from "@nyte-ai/protocol";
 import type { NyteBridge } from "../../../shared/ipc.ts";
 
 export const STAGED = "src/staged.ts";
+
 export const WORKING = "src/working.ts";
+
 export const COMMITTED = "src/committed.ts";
+
 export const COMMIT_OID = "c0ffee0badc0ffee";
+
 export const BINARY_OID = "b1a0000";
+
 export const PENDING_OID = "de1a000";
+
 export const pendingCommit = Promise.withResolvers<readonly VcsDiff[]>();
 
 const patchOf = ({
@@ -20,6 +26,7 @@ const patchOf = ({
 }): string => {
   const oldLines = Array.from({ length: removed }, (_, index) => `-old ${String(index + 1)}`);
   const newLines = Array.from({ length: added }, (_, index) => `+new ${String(index + 1)}`);
+
   return [
     `--- a/${path}`,
     `+++ b/${path}`,
@@ -48,6 +55,7 @@ const repository: VcsSnapshot = {
 const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) => {
   if (input.scope.kind === "commit" && input.scope.oid === PENDING_OID)
     return pendingCommit.promise;
+
   if (input.scope.kind === "commit" && input.scope.oid === BINARY_OID) {
     return [
       {
@@ -59,6 +67,7 @@ const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) => {
       },
     ];
   }
+
   const entries =
     input.scope.kind === "commit"
       ? [{ path: COMMITTED, added: 2, removed: 1 }]
@@ -70,10 +79,12 @@ const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) => {
               { path: STAGED, added: 3, removed: 0 },
               { path: WORKING, added: 1, removed: 2 },
             ];
+
   const paths =
     input.paths === undefined
       ? entries
       : entries.filter((entry) => input.paths?.includes(entry.path));
+
   return paths.map((entry) => ({
     path: entry.path,
     status: "modified",
@@ -85,6 +96,7 @@ const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) => {
 };
 
 const log = async (): Promise<VcsLog> => ({ commits: [], hasMore: false });
+
 const refs = async (): Promise<VcsRefs> => ({ local: ["main"], remote: [] });
 
 Object.defineProperty(window, "nyte", {

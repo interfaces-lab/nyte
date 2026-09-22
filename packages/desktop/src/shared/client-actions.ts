@@ -5,6 +5,7 @@ type ActionChord =
   | "control"
   | "control-shift"
   | "none";
+
 type ClientStage = "workspace" | "customize" | "settings";
 
 interface ActionDetails {
@@ -156,9 +157,12 @@ type ClientAction = (typeof clientActions)[keyof typeof clientActions];
 
 export function clientActionAvailable(action: ActionDefinition, stage: ClientStage): boolean {
   if (action.scope === "workspace") return stage === "workspace";
+
   if (action.scope === "outside-settings") return stage !== "settings";
+
   return true;
 }
+
 type ActionKeyEvent = Pick<
   KeyboardEvent,
   | "key"
@@ -177,14 +181,18 @@ export function resolveClientAction(
   stage: ClientStage,
 ): ClientAction | undefined {
   if (event.isComposing) return undefined;
+
   return Object.values(clientActions).find((action) => {
     if (!("chord" in action) || !clientActionAvailable(action, stage)) return false;
     const terminal = action.chord === "control" || action.chord === "control-shift";
+
     // Ghostty prevents the default for the Backquote chord it hands back to the shell.
     // Other consumed events must remain with the editor or terminal that handled them.
     if (event.defaultPrevented && !terminal) return false;
+
     if (terminal ? event.code !== "Backquote" : event.key.toLowerCase() !== action.key)
       return false;
+
     if (terminal) {
       return (
         event.ctrlKey &&
@@ -193,10 +201,14 @@ export function resolveClientAction(
         event.shiftKey === (action.chord === "control-shift")
       );
     }
+
     if (action.chord === "none") return !event.metaKey && !event.ctrlKey && !event.altKey;
+
     if (!(mac ? event.metaKey : event.ctrlKey)) return false;
+
     // The workbench chord has always accepted Shift as well.
     if (action.chord === "primary-alt") return event.altKey;
+
     return !event.altKey && event.shiftKey === (action.chord === "primary-shift");
   });
 }
@@ -206,6 +218,7 @@ export function clientActionKeys(action: ActionDefinition, mac: boolean): string
   const primary = mac ? "⌘" : "Ctrl";
   const shift = mac ? "⇧" : "Shift";
   const key = action.key.toUpperCase();
+
   switch (action.chord) {
     case "none":
       return [key];
@@ -228,6 +241,7 @@ export function clientActionShortcut(
   stage?: ClientStage,
 ): string {
   if (stage !== undefined && !clientActionAvailable(action, stage)) return "";
+
   return clientActionKeys(action, mac).join(mac ? "" : "+");
 }
 
@@ -253,9 +267,11 @@ export function clientActionAriaShortcut(action: ActionDefinition, mac: boolean)
 
 export function clientActionAccelerator(action: ActionDefinition): string {
   if (action.chord === undefined) return "";
+
   if (action.chord === "none") return action.key.toUpperCase();
   const primary = action.chord.startsWith("primary") ? "CommandOrControl" : "Control";
   const shift = action.chord.endsWith("shift") ? "Shift+" : "";
   const alt = action.chord === "primary-alt" ? "Alt+" : "";
+
   return `${shift}${alt}${primary}+${action.key.toUpperCase()}`;
 }

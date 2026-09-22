@@ -21,6 +21,7 @@ function isRequest(value: unknown): value is UsageWorkerRequest {
 }
 
 const port = parentPort;
+
 if (port === null) throw new Error("The usage worker must run on a worker thread.");
 
 let scanner: UsageScanner | undefined;

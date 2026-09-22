@@ -51,12 +51,14 @@ export class UsagePanel implements EphemeralPanel {
       focusable: true,
       paddingX: 1,
     });
+
     const title = new TextRenderable(shell.renderer, {
       content: new StyledText([bold(fg(shell.theme.foreground)("Usage"))]),
       height: 1,
       flexShrink: 0,
       selectable: false,
     });
+
     this.scroll = new ScrollBoxRenderable(shell.renderer, {
       id: shell.nextId("usage-scroll"),
       flexGrow: 1,
@@ -90,6 +92,7 @@ export class UsagePanel implements EphemeralPanel {
       onSizeChange?.call(this.scroll.viewport);
       this.paint();
     };
+
     const unregister = registerChatLayer(shell.keymap, {
       enabled: () => !this.container.isDestroyed,
       commands: {
@@ -97,6 +100,7 @@ export class UsagePanel implements EphemeralPanel {
           title: "Close usage",
           run: () => {
             onClose();
+
             return true;
           },
         },
@@ -104,6 +108,7 @@ export class UsagePanel implements EphemeralPanel {
           title: "Scroll usage up",
           run: () => {
             this.scroll.scrollBy(-1);
+
             return true;
           },
         },
@@ -111,6 +116,7 @@ export class UsagePanel implements EphemeralPanel {
           title: "Scroll usage down",
           run: () => {
             this.scroll.scrollBy(1);
+
             return true;
           },
         },
@@ -118,6 +124,7 @@ export class UsagePanel implements EphemeralPanel {
           title: "Page usage up",
           run: () => {
             this.scroll.scrollBy(-1, "viewport");
+
             return true;
           },
         },
@@ -125,11 +132,13 @@ export class UsagePanel implements EphemeralPanel {
           title: "Page usage down",
           run: () => {
             this.scroll.scrollBy(1, "viewport");
+
             return true;
           },
         },
       },
     });
+
     shell.renderer.on(CliRenderEvents.RESIZE, this.resize);
     this.container.once(RenderableEvents.DESTROYED, () => {
       unregister();
@@ -175,20 +184,25 @@ export class UsagePanel implements EphemeralPanel {
     // the content tree would reset the viewport and discard a text selection.
     // Percent widths can include the scrollbar column and clip a character at each wrap.
     this.text.width = Math.max(1, this.scroll.viewport.width);
+
     switch (this.state.kind) {
       case "loading":
         this.text.content = new StyledText([fg(this.theme.muted)("Reading usage…")]);
+
         return;
       case "ready":
         this.text.content = usageText(this.state.card, this.scroll.viewport.width, this.theme);
+
         return;
       case "failed":
         this.text.content = new StyledText([
           fg(this.theme.error)(`Failed to load usage: ${this.state.message}`),
         ]);
+
         return;
       default: {
         const exhaustive: never = this.state;
+
         return exhaustive;
       }
     }
@@ -199,36 +213,45 @@ function usageText(card: UsageCard, width: number, theme: CliTheme): StyledText 
   const chunks = [
     fg(theme.foreground)("Recorded usage · API cost estimates, not subscription charges\n\n"),
   ];
+
   const line = (text: string): void => {
     chunks.push(fg(theme.foreground)(`${text}\n`));
   };
+
   const heading = (text: string): void => {
     chunks.push(bold(fg(theme.foreground)(`${text}\n`)));
   };
+
   const bar = (share: number, color: string): void => {
     const cells = Math.max(1, Math.min(BAR_CELLS, width - 2));
     const fill = share <= 0 ? 0 : Math.max(1, Math.min(cells, Math.round(share * cells)));
     chunks.push(fg(color)("━".repeat(fill)), fg(theme.muted)(GLYPHS.rule.repeat(cells - fill)));
   };
+
   const rows = (items: readonly UsageCardRow[]): void => {
     const labelCells = Math.max(0, ...items.map((row) => displayWidth(row.label)));
+
     for (const row of items) {
       const amounts = `${row.cost} · ${row.tokens} tokens`;
       const color = row.system ? theme.muted : theme.accent;
+
       if (labelCells + BAR_CELLS + displayWidth(amounts) + 4 <= width) {
         chunks.push(fg(theme.foreground)(`${padDisplay(row.label, labelCells)}  `));
         bar(row.share, color);
         line(`  ${amounts}`);
         continue;
       }
+
       line(row.label);
       line(amounts.trim());
       bar(row.share, color);
       line("");
     }
   };
+
   for (const account of card.accounts) {
     heading(`${account.provider === "anthropic" ? "Claude" : "Codex"} · account limits`);
+
     switch (account.kind) {
       case "unavailable":
         line("Limits unavailable · requires a Nyte subscription login");
@@ -246,7 +269,9 @@ function usageText(card: UsageCard, width: number, theme: CliTheme): StyledText 
                 : window.id.startsWith("seven_day_")
                   ? `Weekly ${window.id.slice("seven_day_".length)}`
                   : window.id;
+
           const used = Math.round(window.usedPercent);
+
           const reset =
             window.resetsAt === undefined
               ? "reset unknown"
@@ -255,28 +280,37 @@ function usageText(card: UsageCard, width: number, theme: CliTheme): StyledText 
                   hour: "2-digit",
                   minute: "2-digit",
                 })}`;
+
           line(`${label} · ${String(used)}% used · ${String(100 - used)}% left · ${reset}`);
           bar(used / 100, used >= 95 ? theme.error : used >= 85 ? theme.warning : theme.accent);
           line("");
         }
+
         break;
       default: {
         const exhaustive: never = account;
+
         return exhaustive;
       }
     }
+
     line("");
   }
+
   const workspace = card.workspace;
+
   if (workspace.kind === "empty") {
     heading(`${workspace.title} · ${workspace.message}`);
   } else {
     heading(`${workspace.title} · ${workspace.total}`);
     rows(workspace.rows);
     line("");
+
     for (const breakdown of workspace.breakdown) line(breakdown);
+
     if (workspace.thisChat !== undefined) line(workspace.thisChat);
   }
+
   for (const [name, history] of [
     ["Claude Code", card.claudeCode],
     ["Codex", card.codex],
@@ -284,15 +318,19 @@ function usageText(card: UsageCard, width: number, theme: CliTheme): StyledText 
     line("");
     heading(`${name} · all local projects`);
     line("All-time local history · separate from this workspace");
+
     if (history.kind === "message") {
       line(history.message);
     } else {
       line(history.total);
       rows(history.rows);
       line("");
+
       for (const breakdown of history.breakdown) line(breakdown);
+
       for (const note of history.notes) line(note);
     }
   }
+
   return new StyledText(chunks);
 }

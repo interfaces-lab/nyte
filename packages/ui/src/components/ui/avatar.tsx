@@ -95,7 +95,9 @@ const toneStyles = stylex.create({
 });
 
 export type AvatarSize = keyof typeof sizeStyles;
+
 export type AvatarShape = keyof typeof shapeStyles;
+
 export type AvatarTone = keyof typeof toneStyles;
 
 export interface AvatarProps extends Omit<AvatarPrimitive.Root.Props, "className" | "style"> {

@@ -222,7 +222,7 @@ async function desktop(): Promise<{
       retain: () => undefined,
       release: () => undefined,
       warm: async () => undefined,
-      dispose: () => undefined,
+      releaseWindow: () => undefined,
       agent: unusedBrowserAgent(),
     },
   });
@@ -236,16 +236,19 @@ async function desktop(): Promise<{
 test("connecting proves the token before saving it", async () => {
   const { baseUrl } = await remoteHost();
   const { host, events } = await desktop();
-  assert.deepEqual(await host.call("host.server.state", undefined), { kind: "none" });
+  assert.deepEqual(await host.call(1, "host.server.state", undefined), { kind: "none" });
 
-  const refused = await host.call("host.server.connect", { baseUrl, token: "wrong-token-000000" });
+  const refused = await host.call(1, "host.server.connect", {
+    baseUrl,
+    token: "wrong-token-000000",
+  });
   assert.equal(refused.kind, "failed");
-  assert.deepEqual(await host.call("host.server.state", undefined), { kind: "none" });
+  assert.deepEqual(await host.call(1, "host.server.state", undefined), { kind: "none" });
   assert.equal(events.length, 0);
 
-  const outcome = await host.call("host.server.connect", { baseUrl, token: TOKEN });
+  const outcome = await host.call(1, "host.server.connect", { baseUrl, token: TOKEN });
   assert.deepEqual(outcome, { kind: "connected", baseUrl, version: "test" });
-  const saved = await host.call("host.server.state", undefined);
+  const saved = await host.call(1, "host.server.state", undefined);
   assert.equal(saved.kind, "connected");
   if (saved.kind === "connected") assert.equal(saved.baseUrl, baseUrl);
   assert.deepEqual(events, [{ kind: "server_changed" }]);
@@ -254,17 +257,17 @@ test("connecting proves the token before saving it", async () => {
 test("a stored server becomes unavailable without erasing its last loaded Cloud chats", async () => {
   const { baseUrl, server } = await remoteHost();
   const { host } = await desktop();
-  await host.call("host.server.connect", { baseUrl, token: TOKEN });
-  const session = await host.call("host.server.createSession", undefined);
-  const first = (await host.call("host.sessionDirectory", undefined)).find(
+  await host.call(1, "host.server.connect", { baseUrl, token: TOKEN });
+  const session = await host.call(1, "host.server.createSession", undefined);
+  const first = (await host.call(1, "host.sessionDirectory", undefined)).find(
     (entry) => entry.environment === "cloud",
   );
   assert.equal(first?.availability.kind, "ready");
   server.close();
 
-  const state = await host.call("host.server.state", undefined);
+  const state = await host.call(1, "host.server.state", undefined);
   assert.equal(state.kind, "unavailable");
-  const directory = (await host.call("host.sessionDirectory", undefined)).find(
+  const directory = (await host.call(1, "host.sessionDirectory", undefined)).find(
     (entry) => entry.environment === "cloud",
   );
   assert.equal(directory?.availability.kind, "unavailable");
@@ -277,32 +280,33 @@ test("a stored server becomes unavailable without erasing its last loaded Cloud 
 test("Cloud model choices come from the server while local model preferences stay local", async () => {
   const { baseUrl } = await remoteHost();
   const { host } = await desktop();
-  await host.call("host.server.connect", { baseUrl, token: TOKEN });
-  const session = await host.call("host.server.createSession", undefined);
-  const local = await host.call("host.catalog", undefined);
+  await host.call(1, "host.server.connect", { baseUrl, token: TOKEN });
+  const session = await host.call(1, "host.server.createSession", undefined);
+  const local = await host.call(1, "host.catalog", undefined);
   assert.equal(local.source, "local");
   assert.deepEqual(
     local.models.map((item) => item.key),
     ["desktop/local-only"],
   );
-  const remote = await host.call("host.catalog", { sessionId: session.sessionId });
+  const remote = await host.call(1, "host.catalog", { sessionId: session.sessionId });
   assert.equal(remote.source, "server");
   assert.deepEqual(
     remote.models.filter((item) => item.listed).map((item) => item.key),
     ["echo/echo", "echo/remote-choice"],
   );
+  assert.ok(remote.defaults);
   assert.equal(remote.defaults.model.id, model.id);
   const choice = remote.models.find((item) => item.id === alternate.id);
   assert.ok(choice);
   assert.equal(choice.cost.input, 3);
   assert.ok(choice.thinkingLevels.includes("high"));
   assert.ok(!choice.thinkingLevels.includes("off"));
-  await host.call("sessions.configure", {
+  await host.call(1, "sessions.configure", {
     sessionId: session.sessionId,
     model: { provider: choice.provider, id: choice.id },
     thinkingLevel: "high",
   });
-  const configured = await host.call("sessions.get", { sessionId: session.sessionId });
+  const configured = await host.call(1, "sessions.get", { sessionId: session.sessionId });
   assert.equal(configured?.config.model?.id, choice.id);
   assert.equal(configured?.config.thinkingLevel, "high");
 });
@@ -312,10 +316,10 @@ test.each(["done", "failed"] as const)(
   async (phase) => {
     const { baseUrl, sdk } = await remoteHost(phase);
     const { host, watchEvents } = await desktop();
-    await host.call("host.server.connect", { baseUrl, token: TOKEN });
+    await host.call(1, "host.server.connect", { baseUrl, token: TOKEN });
 
-    const created = await host.call("host.server.createSession", undefined);
-    const directory = await host.call("host.sessionDirectory", undefined);
+    const created = await host.call(1, "host.server.createSession", undefined);
+    const directory = await host.call(1, "host.sessionDirectory", undefined);
     assert.deepEqual(
       cloudSessions(directory)?.map((session) => session.sessionId),
       [created.sessionId],
@@ -334,7 +338,7 @@ test.each(["done", "failed"] as const)(
       false,
     );
 
-    host.watchStart({ watchId: "cloud", sessionId: created.sessionId, live: true });
+    host.watchStart(1, { watchId: "cloud", sessionId: created.sessionId, live: true });
     // Live watches omit earlier events. Wait for the subscription before the fast fixture replies.
     await vi.waitFor(() => {
       assert.ok(
@@ -343,7 +347,7 @@ test.each(["done", "failed"] as const)(
         ),
       );
     });
-    const receipt = await host.call("messages.send", {
+    const receipt = await host.call(1, "messages.send", {
       sessionId: created.sessionId,
       content: "hello",
     });
@@ -368,7 +372,7 @@ test.each(["done", "failed"] as const)(
             envelope.event.delta === "Hello from the server",
         ),
       );
-      const snapshot = await host.call("sessions.snapshot", { sessionId: created.sessionId });
+      const snapshot = await host.call(1, "sessions.snapshot", { sessionId: created.sessionId });
       assert.deepEqual(
         snapshot?.transcript.flatMap((turn) =>
           turn.kind === "turn"
@@ -379,18 +383,18 @@ test.each(["done", "failed"] as const)(
       );
     }
 
-    await host.call("host.server.disconnect", undefined);
-    assert.equal(cloudSessions(await host.call("host.sessionDirectory", undefined)), undefined);
+    await host.call(1, "host.server.disconnect", undefined);
+    assert.equal(cloudSessions(await host.call(1, "host.sessionDirectory", undefined)), undefined);
   },
 );
 
 test("disconnecting ends a live cloud watch the renderer never stopped", async () => {
   const { baseUrl } = await remoteHost();
   const { host, watchEvents } = await desktop();
-  await host.call("host.server.connect", { baseUrl, token: TOKEN });
-  const created = await host.call("host.server.createSession", undefined);
+  await host.call(1, "host.server.connect", { baseUrl, token: TOKEN });
+  const created = await host.call(1, "host.server.createSession", undefined);
 
-  host.watchStart({ watchId: "cloud", sessionId: created.sessionId, live: true });
+  host.watchStart(1, { watchId: "cloud", sessionId: created.sessionId, live: true });
   await vi.waitFor(() => {
     assert.ok(
       watchEvents.some((envelope) => envelope.kind === "event" && envelope.event.kind === "synced"),
@@ -399,7 +403,7 @@ test("disconnecting ends a live cloud watch the renderer never stopped", async (
 
   // The renderer keeps its subscription across a disconnect, so the host has to
   // end the stream itself rather than leave it reading the old server.
-  await host.call("host.server.disconnect", undefined);
+  await host.call(1, "host.server.disconnect", undefined);
   await vi.waitFor(() => {
     const ended = watchEvents.find((envelope) => envelope.kind === "ended");
     assert.ok(ended, "the watch reported that it ended");
@@ -407,7 +411,7 @@ test("disconnecting ends a live cloud watch the renderer never stopped", async (
   });
 
   const settled = watchEvents.length;
-  await host.call("host.server.createSession", undefined).catch(() => undefined);
+  await host.call(1, "host.server.createSession", undefined).catch(() => undefined);
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.equal(watchEvents.length, settled, "no event arrives after the watch ended");
 });
@@ -432,13 +436,13 @@ test("a stalled server list neither holds the local directory nor loses the last
     return new Promise<void>((resolve) => proxy.close(() => resolve()));
   });
   const { host } = await desktop();
-  await host.call("host.server.connect", {
+  await host.call(1, "host.server.connect", {
     baseUrl: `http://127.0.0.1:${String(address.port)}`,
     token: TOKEN,
   });
-  const session = await host.call("host.server.createSession", undefined);
+  const session = await host.call(1, "host.server.createSession", undefined);
   assert.deepEqual(
-    cloudSessions(await host.call("host.sessionDirectory", undefined))?.map(
+    cloudSessions(await host.call(1, "host.sessionDirectory", undefined))?.map(
       (item) => item.sessionId,
     ),
     [session.sessionId],
@@ -446,7 +450,7 @@ test("a stalled server list neither holds the local directory nor loses the last
 
   stalled = true;
   const startedAt = performance.now();
-  const directory = await host.call("host.sessionDirectory", undefined);
+  const directory = await host.call(1, "host.sessionDirectory", undefined);
   assert.ok(performance.now() - startedAt < 5_000, "the directory answered within its budget");
   assert.ok(directory.some((entry) => entry.environment === "local"));
   const cloud = directory.find((entry) => entry.environment === "cloud");

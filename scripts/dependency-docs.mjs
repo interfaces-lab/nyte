@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const packageNamePattern = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/i;
+
 const controlCharacterPattern = /\p{Cc}/u;
 
 function validatePackageName(value) {
@@ -27,25 +28,33 @@ async function containedPath(root, candidate) {
   ) {
     throw new Error("Invalid declared path in package metadata.");
   }
+
   const parts = candidate.replace(/^\.\//, "").split("/");
+
   if (parts.some((part) => !part || part === "." || part === "..")) {
     throw new Error("Declared path must stay inside the package.");
   }
+
   let path = root;
+
   for (const part of parts) {
     path = join(path, part);
+
     try {
       await lstat(path);
     } catch (error) {
       if (error.code === "ENOENT") return null;
       throw error;
     }
+
     path = await realpath(path);
     const distance = relative(root, path);
+
     if (distance === ".." || distance.startsWith(`..${sep}`) || isAbsolute(distance)) {
       throw new Error("Package path escapes the physical package root.");
     }
   }
+
   return { path, info: await stat(path) };
 }
 
@@ -61,6 +70,7 @@ async function containedPath(root, candidate) {
  */
 export async function discoverDependencyDocs(packageName, workspaceDirectory) {
   validatePackageName(packageName);
+
   if (
     typeof workspaceDirectory !== "string" ||
     !workspaceDirectory.trim() ||
@@ -68,36 +78,48 @@ export async function discoverDependencyDocs(packageName, workspaceDirectory) {
   ) {
     throw new Error("Provide an existing workspace directory.");
   }
+
   const workspace = await realpath(resolve(workspaceDirectory));
+
   if (!(await stat(workspace)).isDirectory()) {
     throw new Error("Workspace must be a directory.");
   }
+
   // This asks for search directories only. No dependency entry or exports is resolved.
   // Use a non-builtin probe so packages named like Node builtins can still be inspected.
   const searchPaths = createRequire(join(workspace, "__dependency_docs__.cjs")).resolve.paths(
     "dependency-docs-package-search",
   );
+
   let packageRoot;
+
   for (const searchPath of searchPaths ?? []) {
     const candidate = join(searchPath, packageName);
+
     try {
       await lstat(candidate);
     } catch (error) {
       if (error.code === "ENOENT") continue;
       throw error;
     }
+
     packageRoot = await realpath(candidate);
     break;
   }
+
   if (!packageRoot) throw new Error("Package not found from the specified workspace.");
   const manifestPath = await containedPath(packageRoot, "package.json");
+
   if (!manifestPath?.info.isFile())
     throw new Error("Package manifest is missing or is not a file.");
   const manifest = JSON.parse(await readFile(manifestPath.path, "utf8"));
+
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
     throw new Error("Package manifest must be an object.");
   }
+
   validatePackageName(manifest.name);
+
   if (
     typeof manifest.version !== "string" ||
     !manifest.version.trim() ||
@@ -108,62 +130,83 @@ export async function discoverDependencyDocs(packageName, workspaceDirectory) {
 
   const documents = [];
   const entries = (await readdir(packageRoot)).sort();
+
   const candidates = entries
     .filter((name) => /^(README|AGENTS)(\.(md|mdx|txt|rst))?$/i.test(name))
     .map((name) => ({ kind: /^AGENTS/i.test(name) ? "agents" : "readme", name }));
+
   for (const name of ["docs", "ai-docs", "docs/ai-docs", "examples"]) {
     candidates.push({ kind: name, name });
   }
+
   for (const candidate of candidates) {
     const found = await containedPath(packageRoot, candidate.name);
+
     if (!found) continue;
     const isFile = candidate.kind === "agents" || candidate.kind === "readme";
+
     if (isFile ? !found.info.isFile() : !found.info.isDirectory()) {
       throw new Error("Package documentation candidate has the wrong filesystem kind.");
     }
+
     documents.push({ kind: candidate.kind, path: found.path, trust: "untrusted-reference" });
   }
 
   const declarations = new Set();
+
   for (const field of ["types", "typings"]) {
     if (Object.hasOwn(manifest, field)) {
       if (typeof manifest[field] !== "string") throw new Error("Invalid package type declaration.");
       declarations.add(manifest[field]);
     }
   }
+
   // Enumerate declared type targets across conditions without choosing a runtime branch.
   const pending = [{ value: manifest.exports, typeTarget: false }];
+
   while (pending.length) {
     const item = pending.pop();
+
     if (typeof item.value === "string") {
       if (item.typeTarget) declarations.add(item.value);
       continue;
     }
+
     if (item.value == null) continue;
+
     if (typeof item.value !== "object") throw new Error("Invalid package exports metadata.");
+
     for (const [key, value] of Object.entries(item.value)) {
       pending.push({ value, typeTarget: item.typeTarget || key === "types" });
     }
   }
+
   const types = [];
+
   for (const declaredPath of [...declarations].sort((left, right) => {
     if (left < right) return -1;
+
     if (left > right) return 1;
+
     return 0;
   })) {
     // Validate wildcard declarations too, without searching or expanding them.
     const found = await containedPath(packageRoot, declaredPath);
+
     if (declaredPath.includes("*")) {
       types.push({ declaredPath, status: "wildcard-not-expanded" });
       continue;
     }
+
     if (!found) {
       types.push({ declaredPath, status: "missing" });
       continue;
     }
+
     if (!found.info.isFile()) throw new Error("Declared type entry must be a file.");
     types.push({ declaredPath, status: "found", path: found.path });
   }
+
   return {
     requestedName: packageName,
     name: manifest.name,
@@ -209,19 +252,24 @@ if (import.meta.main) {
       process.exitCode = 1;
     }
   });
+
   try {
     const args = process.argv.slice(2);
+
     if (args.length === 1 && args[0] === "--help") {
       process.stdout.write(help);
     } else {
       const workspaceIndex = args.indexOf("--workspace");
+
       if (args.length !== 3 || (workspaceIndex !== 0 && workspaceIndex !== 1)) {
         throw new Error("Use --workspace <directory> <package>. See --help.");
       }
+
       const report = await discoverDependencyDocs(
         args[workspaceIndex === 0 ? 2 : 0],
         args[workspaceIndex + 1],
       );
+
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     }
   } catch (error) {

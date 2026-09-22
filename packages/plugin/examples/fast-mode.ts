@@ -49,6 +49,7 @@ export function fastModePlugin({ models, defaultModel }: FastModePluginOptions) 
             .map((model) => model.provider),
         ),
       ];
+
       if (providers.length === 0) return;
 
       api.settings.add((settings) => {
@@ -73,8 +74,10 @@ export function fastModePlugin({ models, defaultModel }: FastModePluginOptions) 
       if (supportsFastMode(defaultModel)) {
         const key = enabledKey(defaultModel.provider);
         const read = async (): Promise<boolean> => (await api.storage.get(key)) === "on";
+
         const write = (enabled: boolean): Promise<void> =>
           api.storage.set(key, enabled ? "on" : "off");
+
         api.commands.add((commands) =>
           commands.set("fast", {
             description: "Toggle fast inference",
@@ -82,6 +85,7 @@ export function fastModePlugin({ models, defaultModel }: FastModePluginOptions) 
               if (argument !== "") throw new Error("/fast takes no argument");
               const enabled = !(await read());
               await write(enabled);
+
               return `Fast mode: ${enabled ? "on" : "off"}`;
             },
           }),
@@ -91,8 +95,10 @@ export function fastModePlugin({ models, defaultModel }: FastModePluginOptions) 
       api.hook("before_request", async (event) => {
         if (event.step !== "assistant") return undefined;
         const model = models.getModel(event.model.provider, event.model.modelId);
+
         if (model === undefined || !supportsFastMode(model)) return undefined;
         const enabled = (await api.storage.get(enabledKey(model.provider))) === "on";
+
         return enabled ? { streamOptions: { fast: true } } : undefined;
       });
     },

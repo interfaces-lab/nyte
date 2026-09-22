@@ -13,6 +13,7 @@ const RAD = Math.PI / 180;
 
 function polar(cx: number, cy: number, r: number, deg: number) {
   "worklet";
+
   return { x: cx + r * Math.sin(deg * RAD), y: cy - r * Math.cos(deg * RAD) };
 }
 
@@ -20,6 +21,7 @@ function arc(cx: number, cy: number, r: number, from: number, to: number) {
   "worklet";
   const a = polar(cx, cy, r, from);
   const b = polar(cx, cy, r, to);
+
   return `M ${a.x} ${a.y} A ${r} ${r} 0 ${to - from > 180 ? 1 : 0} 1 ${b.x} ${b.y}`;
 }
 
@@ -52,6 +54,7 @@ export function GaugeIcon({
       [GAUGE.fillStart, GAUGE.fillEnd],
       Extrapolation.CLAMP,
     );
+
     return { d: arc(c, c, r, arcStart, arcStart + Math.max(0.01, f) * arcSweep) };
   });
 
@@ -62,12 +65,14 @@ export function GaugeIcon({
       [GAUGE.needleStart, GAUGE.needleEnd],
       Extrapolation.CLAMP,
     );
+
     const base = polar(c, c, GAUGE.needleFrom, deg);
     const tip = polar(c, c, r * GAUGE.needleTo, deg);
     const px = Math.cos(deg * RAD);
     const py = Math.sin(deg * RAD);
     const b = GAUGE.needleBase;
     const t = GAUGE.needleTip;
+
     return {
       d:
         `M ${base.x + px * b} ${base.y + py * b} ` +

@@ -74,9 +74,11 @@ export const modelSelection: Scenario = {
       });
 
       await work.release();
+
       const continuation = await provider.waitForRequest(
         (request) => request.script === "original continuation",
       );
+
       await provider.waitForStage(continuation.id, "held");
       assert.equal(continuation.model, FIXTURE_MODEL);
       assert.equal(continuation.payload.reasoning_effort, "low");

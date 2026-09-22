@@ -12,8 +12,11 @@ import { fileURLToPath } from "node:url";
 import solidPlugin from "@opentui/solid/bun-plugin";
 
 const destination = fileURLToPath(new URL("../../../bin/", import.meta.url));
+
 const packages = fileURLToPath(new URL("../../", import.meta.url));
+
 const name = process.platform === "win32" ? "nyte.exe" : "nyte";
+
 const started = performance.now();
 
 /**
@@ -23,16 +26,19 @@ const started = performance.now();
  */
 function describe(cause: unknown): string {
   if (cause instanceof AggregateError) {
-    return [cause.message, ...cause.errors.map((error: unknown) => describe(error))].join("\n");
+    return [cause.message, ...cause.errors.map((error) => describe(error))].join("\n");
   }
+
   return cause instanceof Error ? cause.message : String(cause);
 }
 
 let directory: string | undefined;
+
 try {
   await mkdir(destination, { recursive: true });
   directory = await mkdtemp(join(destination, ".nyte-build-"));
   const executable = join(directory, name);
+
   const result = await Bun.build({
     entrypoints: [
       join(packages, "tui/src/binary.ts"),
@@ -49,18 +55,23 @@ try {
     define: { "process.env.OPENTUI_LIBC": JSON.stringify(process.env["OPENTUI_LIBC"] ?? "glibc") },
     compile: { outfile: executable, autoloadBunfig: false, autoloadDotenv: false },
   });
+
   if (!result.success) {
     throw new Error(
       result.logs.map((log) => log.message).join("\n") || "Bundle failed with empty logs",
     );
   }
+
   if (process.platform === "darwin") {
     const signed = spawnSync("codesign", ["--force", "--sign", "-", executable], {
       stdio: ["ignore", "pipe", "pipe"],
     });
+
     if (signed.error) throw signed.error;
+
     if (signed.status !== 0) throw new Error(`codesign failed: ${signed.stderr.toString()}`);
   }
+
   // Publish only after compilation and signing succeed.
   await rename(executable, join(destination, name));
   process.stdout.write(
@@ -68,6 +79,7 @@ try {
   );
 } catch (cause) {
   process.stderr.write(`Build failed: ${describe(cause)}\n`);
+
   if (directory)
     process.stderr.write(await readFile(join(directory, "build.log"), "utf8").catch(() => ""));
   process.exitCode = 1;

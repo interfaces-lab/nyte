@@ -53,6 +53,7 @@ function AccountRow({
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const signOutRef = useRef<HTMLButtonElement>(null);
   const glyph = <Icon name="github" size={15} />;
+
   if (connecting) {
     return (
       <ConnectionRow
@@ -63,6 +64,7 @@ function AccountRow({
       />
     );
   }
+
   if (query.isError || auth.isError || query.data?.kind === "error") {
     return (
       <ConnectionRow
@@ -90,7 +92,9 @@ function AccountRow({
       />
     );
   }
+
   const account = query.data;
+
   if (account === undefined) {
     return (
       <ConnectionRow
@@ -101,6 +105,7 @@ function AccountRow({
       />
     );
   }
+
   switch (account.kind) {
     case "cli_missing":
       return (
@@ -138,6 +143,7 @@ function AccountRow({
       );
     case "ready": {
       const { login, name, avatarUrl } = account.account;
+
       return (
         <>
           <ConnectionRow
@@ -177,8 +183,10 @@ function AccountRow({
         </>
       );
     }
+
     default: {
       const _exhaustive: never = account;
+
       return _exhaustive;
     }
   }
@@ -205,6 +213,7 @@ function pullRequestIcon(pullRequest: GitHubPullRequest): IconName {
       return "pull-request-closed";
     default: {
       const _exhaustive: never = pullRequest.state;
+
       return _exhaustive;
     }
   }
@@ -224,6 +233,7 @@ function pullRequestStatus(pullRequest: GitHubPullRequest): ReactElement {
       return <ConnectionStatus tone="off">Closed</ConnectionStatus>;
     default: {
       const _exhaustive: never = pullRequest.state;
+
       return _exhaustive;
     }
   }
@@ -247,6 +257,7 @@ function PullRequestRow({
       );
     case "ready": {
       const { pullRequest } = context;
+
       return (
         <ConnectionRow
           glyph={<Icon name={pullRequestIcon(pullRequest)} size={15} />}
@@ -257,6 +268,7 @@ function PullRequestRow({
         />
       );
     }
+
     case "error":
       return (
         <ConnectionRow
@@ -273,6 +285,7 @@ function PullRequestRow({
       );
     default: {
       const _exhaustive: never = context;
+
       return _exhaustive;
     }
   }
@@ -282,6 +295,7 @@ export function AccountsSettings(): ReactElement {
   const account = useGitHubAccount();
   const state = account.query.data;
   const repository = state?.repository;
+
   const refresh = () => {
     account.auth.reset();
     void account.query.refetch();

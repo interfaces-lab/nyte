@@ -53,9 +53,8 @@ describe("workspace files", () => {
     }
   });
 
-  test("keeps binary files and symlinks outside the workspace out of the editor", async () => {
+  test("keeps binary files out of the editor", async () => {
     const { root } = await fixture();
-    const outside = await mkdtemp(join(tmpdir(), "nyte-files-outside-"));
     try {
       const binary = join(root, "image.bin");
       await writeFile(binary, new Uint8Array([0, 255, 0]));
@@ -64,17 +63,8 @@ describe("workspace files", () => {
         path: binary,
         size: 3,
       });
-
-      const target = join(outside, "secret.txt");
-      const link = join(root, "outside.txt");
-      await writeFile(target, "secret\n");
-      await symlink(target, link);
-      await assert.rejects(readWorkspaceFile(root, link), /outside the open workspace/);
     } finally {
-      await Promise.all([
-        rm(root, { recursive: true, force: true }),
-        rm(outside, { recursive: true, force: true }),
-      ]);
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

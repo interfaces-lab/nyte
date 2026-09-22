@@ -24,7 +24,9 @@ export class SessionObservations {
     cached: SessionInfo | null | undefined,
   ): SessionInfo {
     const observedAt = this.#observedAt.get(polled.sessionId);
+
     if (observedAt === undefined || observedAt < pollStartedAt) return polled;
+
     return cached ?? polled;
   }
 }

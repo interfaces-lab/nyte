@@ -43,6 +43,7 @@ export interface UsageCard {
 
 function formatCost(cost: number): string {
   if (cost === 0 || cost >= 0.01) return `$${cost.toFixed(2)}`;
+
   return `$${cost.toFixed(4)}`;
 }
 
@@ -65,8 +66,11 @@ function shares(rows: readonly RawRow[]): number[] {
   const measure: (row: RawRow) => number = rows.some((row) => row.usage.cost.total > 0)
     ? (row) => row.usage.cost.total
     : (row) => row.usage.totalTokens;
+
   const top = Math.max(...rows.map(measure));
+
   if (top <= 0) return rows.map(() => 0);
+
   return rows.map((row) => measure(row) / top);
 }
 
@@ -75,10 +79,12 @@ function formatRows(raw: readonly RawRow[], hasUnpriced = false): UsageCardRow[]
   const costs = raw.map((row) =>
     hasUnpriced && row.usage.cost.total === 0 ? "—" : formatCost(row.usage.cost.total),
   );
+
   const tokens = raw.map((row) => formatTokens(row.usage.totalTokens));
   const costWidth = Math.max(...costs.map((cost) => cost.length));
   const tokenWidth = Math.max(...tokens.map((value) => value.length));
   const rowShares = shares(raw);
+
   return raw.map((row, index) => ({
     label: row.label,
     system: row.system,
@@ -91,18 +97,23 @@ function formatRows(raw: readonly RawRow[], hasUnpriced = false): UsageCardRow[]
 function breakdownLines(total: Usage): readonly [string, ...string[]] {
   const primary = `input ${formatTokens(total.input)} · output ${formatTokens(total.output)}`;
   const cache: string[] = [];
+
   if (total.cacheRead > 0) cache.push(`cache read ${formatTokens(total.cacheRead)}`);
+
   if (total.cacheWrite > 0) cache.push(`cache write ${formatTokens(total.cacheWrite)}`);
+
   return cache.length === 0 ? [primary] : [primary, cache.join(" · ")];
 }
 
 function workspaceCard(report: WorkspaceUsage): WorkspaceUsageCard {
   const { chats, workspace, current } = report;
+
   const empty: WorkspaceUsageCard = {
     kind: "empty",
     title: "workspace",
     message: "No usage recorded",
   };
+
   if (chats === 0) return empty;
 
   const raw: RawRow[] = workspace.models.map((row) => ({
@@ -114,11 +125,14 @@ function workspaceCard(report: WorkspaceUsage): WorkspaceUsageCard {
     system: false,
     usage: row.usage,
   }));
+
   if (hasUsage(workspace.compaction)) {
     raw.push({ label: "compaction", system: true, usage: workspace.compaction });
   }
+
   if (hasUsage(workspace.tools)) raw.push({ label: "tools", system: true, usage: workspace.tools });
   const [first, ...rest] = formatRows(raw);
+
   if (first === undefined) return empty;
 
   const card: WorkspaceUsageCard = {
@@ -128,12 +142,14 @@ function workspaceCard(report: WorkspaceUsage): WorkspaceUsageCard {
     rows: [first, ...rest],
     breakdown: breakdownLines(workspace.total),
   };
+
   if (chats > 1 && hasUsage(current.total)) {
     return {
       ...card,
       thisChat: `this chat · ${formatTokens(current.total.totalTokens)} tokens · ${formatCost(current.total.cost.total)}`,
     };
   }
+
   return card;
 }
 
@@ -146,25 +162,32 @@ function localUsageCard(result: LocalHistoryUsage, name: string): LocalUsageCard
     case "ready": {
       const partial =
         result.unpricedRecords > 0 || result.malformedRecords > 0 || result.unreadableFiles > 0;
+
       if (result.summary.models.length === 0 && !hasUsage(result.summary.total) && !partial) {
         return { kind: "message", message: `No ${name} usage recorded` };
       }
+
       const notes = ["API estimates are not subscription charges."];
+
       if (result.unpricedRecords > 0) {
         notes.push(
           `Cost unavailable for ${count(result.unpricedRecords, "record")}; excluded from the estimate.`,
         );
       }
+
       if (result.malformedRecords > 0) {
         notes.push(`Skipped ${count(result.malformedRecords, "malformed record")}.`);
       }
+
       if (result.unreadableFiles > 0) {
         notes.push(`Could not read ${count(result.unreadableFiles, "history file")}.`);
       }
+
       const estimate =
         partial && result.summary.total.cost.total === 0
           ? "API estimate unavailable"
           : `${partial ? "Known API estimate" : "API estimate"} ${formatCost(result.summary.total.cost.total)}`;
+
       return {
         kind: "usage",
         total: `${formatTokens(result.summary.total.totalTokens)} tokens · ${estimate}`,
@@ -180,8 +203,10 @@ function localUsageCard(result: LocalHistoryUsage, name: string): LocalUsageCard
         notes,
       };
     }
+
     default: {
       const _exhaustive: never = result;
+
       return _exhaustive;
     }
   }

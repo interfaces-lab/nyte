@@ -26,6 +26,7 @@ import type { Api, Model } from "@nyte-ai/schema";
 import { nyteHome } from "./paths.ts";
 import type { PluginTarget } from "./paths.ts";
 import { resolveHostPlugins } from "./plugins.ts";
+import { providerOverrides } from "./provider-plugins.ts";
 import { WorkspaceStore } from "./workspace-store.ts";
 
 export {
@@ -36,15 +37,20 @@ export {
   skillDirectories,
   workspaceStorePath,
 } from "./paths.ts";
+
 export type { PluginTarget } from "./paths.ts";
+
 export { readManifest, resolveHostPlugins, type HostManifest } from "./plugins.ts";
+
 export {
   WorkspaceStore,
   WorkspaceTrustRequired,
   workspaceName,
   type WorkspaceTrustResolution,
 } from "./workspace-store.ts";
+
 export { discoverMentionFiles, rankMentionFiles } from "./mention-files.ts";
+
 export {
   MAX_WORKSPACE_FILE_BYTES,
   readWorkspaceFile,
@@ -52,13 +58,17 @@ export {
   saveWorkspaceFile,
   WorkspaceFileError,
 } from "./workspace-files.ts";
+
 export { searchWorkspaceFiles, WorkspaceSearchError } from "./workspace-search.ts";
+
 export {
   createTreeSnapshot,
   type TreeSnapshot,
   type TreeSnapshotOptions,
 } from "./tree-snapshot.ts";
+
 export { createGitVcs, type GitVcsOptions } from "./git.ts";
+
 export { InvalidRipgrepPattern } from "./ripgrep.ts";
 
 export type DeferredPluginTarget =
@@ -96,31 +106,66 @@ export function createWorkspaceStore(): WorkspaceStore {
   return new WorkspaceStore(join(nyteHome(), "workspaces.json"));
 }
 
-/** `"provider/id"` to a catalog model, restoring the provider's persisted catalog first (no network). */
+/** `"provider/id"` to a catalog model, restoring persisted data before trying the network. */
 export async function resolveModel(models: MutableModels, ref: string): Promise<Model<Api>> {
   const slash = ref.indexOf("/");
+
   if (slash === -1) throw new Error(`Model must be "provider/id": ${ref}`);
   const provider = ref.slice(0, slash);
+  const modelId = ref.slice(slash + 1);
   await models.refresh({ providers: [provider], allowNetwork: false });
-  const model = models.getModel(provider, ref.slice(slash + 1));
-  if (model === undefined) throw new Error(`Unknown model: ${ref}`);
-  return model;
+  const restored = models.getModel(provider, modelId);
+
+  if (restored !== undefined) return restored;
+  await models.refresh({ providers: [provider] });
+  const refreshed = models.getModel(provider, modelId);
+
+  if (refreshed === undefined) throw new Error(`Unknown model: ${ref}`);
+
+  return refreshed;
 }
 
 export async function createHost(options: HostOptions): Promise<Nyte> {
   const { models, plugins, ...base } = options;
+  const providers = providerOverrides(models);
+
+  const create = async (input: NyteOptions): Promise<Nyte> => {
+    const resolveActivation = input.resolveActivation;
+
+    const sdk = await (resolveActivation === undefined
+      ? createNyte({ ...input, plugins: providers.wrap(input.plugins ?? []) })
+      : createNyte({
+          ...input,
+          resolveActivation: async (target) => {
+            const activation = await resolveActivation(target);
+
+            return activation.kind === "active"
+              ? { ...activation, plugins: providers.wrap(activation.plugins) }
+              : activation;
+          },
+        }));
+
+    const setPlugins = sdk.setPlugins.bind(sdk);
+    const relocate = sdk.relocate.bind(sdk);
+    sdk.setPlugins = (next, target) => setPlugins(providers.wrap(next), target);
+    sdk.relocate = (target) => relocate({ ...target, plugins: providers.wrap(target.plugins) });
+
+    return sdk;
+  };
+
   // Delegation can choose a provider other than the parent before any picker opens.
   await models.refresh({ allowNetwork: false });
+
   const shared = {
     ...base,
     models,
     drain: "all",
-    streamFn: (model, context, streamOptions) => models.streamSimple(model, context, streamOptions),
+    streamFn: providers.stream,
   } satisfies Partial<NyteOptions>;
 
   switch (plugins.kind) {
     case "chat":
-      return createNyte({
+      return create({
         ...shared,
         plugins: [
           inlinePlugin(systemPromptPlugin(plugins.system)),
@@ -130,7 +175,7 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
         env: { cwd: process.cwd() },
       });
     case "custom":
-      return createNyte({ ...shared, plugins: plugins.plugins, env: plugins.env });
+      return create({ ...shared, plugins: plugins.plugins, env: plugins.env });
     case "workspace": {
       const activate = async (target: PluginTarget): Promise<ActiveSessionActivation> => {
         const resolved = await resolveHostPlugins(target, {
@@ -138,27 +183,33 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
           model: options.model,
           extra: plugins.extra,
         });
+
         for (const failure of resolved.failures) plugins.onFailure?.(failure);
+
         return {
           kind: "active",
           plugins: resolved.plugins,
           env: { cwd: target.kind === "project" ? target.workspace.cwd : homedir() },
         };
       };
+
       const { target } = plugins;
+
       switch (target.kind) {
         case "home":
         case "project":
           return activate(target).then((active) =>
-            createNyte({ ...shared, plugins: active.plugins, env: active.env }),
+            create({ ...shared, plugins: active.plugins, env: active.env }),
           );
         case "deferred": {
           let active: ActiveSessionActivation | undefined;
           let resolving: Promise<SessionActivation> | undefined;
-          return createNyte({
+
+          return create({
             ...shared,
             resolveActivation: () => {
               if (active !== undefined) return active;
+
               if (resolving !== undefined) return resolving;
               resolving = target
                 .resolve()
@@ -168,13 +219,16 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
                     case "project": {
                       const composition = await activate(resolved);
                       active = composition;
+
                       return composition;
                     }
+
                     case "inactive":
                     case "requires":
                       return resolved;
                     default: {
                       const _exhaustive: never = resolved;
+
                       return _exhaustive;
                     }
                   }
@@ -182,18 +236,23 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
                 .finally(() => {
                   resolving = undefined;
                 });
+
               return resolving;
             },
           });
         }
+
         default: {
           const _exhaustive: never = target;
+
           return _exhaustive;
         }
       }
     }
+
     default: {
       const _exhaustive: never = plugins;
+
       return _exhaustive;
     }
   }

@@ -64,36 +64,46 @@ function validateHead(head: string): void {
 
 function headFromRef(name: RefName, prefix: string): string {
   const head = name.slice(prefix.length);
+
   if (!isHeadName(head)) throw new Error(`Invalid stored head ref: ${name}`);
+
   return head;
 }
 
 async function readStack(session: Session, oid: Oid): Promise<Stack> {
   const object = await session.objects.get(oid);
+
   if (object === undefined || object.kind !== "stack") {
     throw new Error(`Corrupt stack ref at ${oid}: missing or non-stack object`);
   }
+
   return object;
 }
 
 async function readStoredStack(session: Session, head: string): Promise<StoredStack | undefined> {
   const oid = await session.refs.read(stackRef(head));
+
   if (oid === null) return undefined;
   const stack = await readStack(session, oid);
   const parentTip = await session.refs.read(headRef(stack.parent));
+
   return { oid, stack, parentTip };
 }
 
 async function putStack(session: Session, stack: Stack): Promise<Oid> {
   const oids = await session.objects.put([stack]);
   const oid = oids[0];
+
   if (oid === undefined) throw new Error("Store did not return an oid for a stack object");
+
   return oid;
 }
 
 function compareHeads(left: ListedHead, right: ListedHead): number {
   if (left.head < right.head) return -1;
+
   if (left.head > right.head) return 1;
+
   return 0;
 }
 
@@ -106,6 +116,7 @@ export async function listHeads(session: Session): Promise<ListedHead[]> {
     session.refs.list(HEAD_PREFIX),
     session.refs.list(STACK_PREFIX),
   ]);
+
   const heads = new Map<string, ListedHead>();
 
   for (const ref of headRefs) {
@@ -135,18 +146,22 @@ export async function createHead(
   },
 ): Promise<CreateHeadOutcome> {
   validateHead(options.head);
+
   if ("head" in options.from) validateHead(options.from.head);
 
   const targetHeadRef = headRef(options.head);
   const targetStackRef = stackRef(options.head);
+
   const [currentTip, currentStack] = await Promise.all([
     session.refs.read(targetHeadRef),
     session.refs.read(targetStackRef),
   ]);
+
   if (currentTip !== null || currentStack !== null) return { kind: "exists" };
 
   let tip: Oid | null;
   let stack: Stack | undefined;
+
   if ("head" in options.from) {
     // A parent is a name. An unborn parent gives a stack with no base; whether
     // an unlisted name is a mistake is the caller's call, not the kernel's.
@@ -162,7 +177,9 @@ export async function createHead(
   }
 
   const updates: RefUpdate[] = [];
+
   if (tip !== null) updates.push({ name: targetHeadRef, from: null, to: tip });
+
   if (stack !== undefined) {
     const stackOid = await putStack(session, stack);
     updates.push({ name: targetStackRef, from: null, to: stackOid });
@@ -172,7 +189,9 @@ export async function createHead(
     reason: "create",
     actor: options.actor,
   });
+
   if (outcome.ok) return { kind: "created", tip };
+
   if (outcome.reason === "conflict") return { kind: "exists" };
   throw new Error("Participant create was unexpectedly fenced");
 }
@@ -190,12 +209,14 @@ export async function moveHead(
   validateHead(options.head);
   const target = headRef(options.head);
   const current = await session.refs.read(target);
+
   if (options.expect !== undefined && options.expect !== current) {
     return { kind: "moved_since", tip: current };
   }
 
   if (options.to !== null) {
     const object = await session.objects.get(options.to);
+
     if (object === undefined || object.kind !== "commit") return { kind: "not_found" };
   }
 
@@ -203,7 +224,9 @@ export async function moveHead(
     reason: "move",
     actor: options.actor,
   });
+
   if (outcome.ok) return { kind: "moved", from: current };
+
   if (outcome.reason === "conflict") return { kind: "moved_since", tip: outcome.actual };
   throw new Error("Participant move was unexpectedly fenced");
 }
@@ -221,14 +244,18 @@ export async function deleteHead(
 
   for (;;) {
     const inboxRefs = await session.refs.list(inboxPrefix(options.head));
+
     const names = [
       headRef(options.head),
       stackRef(options.head),
       ...inboxRefs.map((ref) => ref.name),
       runRef(options.head),
     ];
+
     const current = await Promise.all(names.map((name) => session.refs.read(name)));
+
     if (current[0] === null && current[1] === null) return { kind: "not_found" };
+
     if ((await session.leases.read(names[0])) !== undefined) return { kind: "busy" };
 
     const updates: RefUpdate[] = names.map((name, index) => ({
@@ -236,11 +263,14 @@ export async function deleteHead(
       from: current[index] ?? null,
       to: null,
     }));
+
     const outcome = await session.refs.update(updates, {
       reason: "delete",
       actor: options.actor,
     });
+
     if (outcome.ok) return { kind: "deleted" };
+
     if (outcome.reason === "fenced") {
       throw new Error("Participant delete was unexpectedly fenced");
     }
@@ -251,8 +281,10 @@ export async function deleteHead(
 export async function stackStatus(session: Session, head: string): Promise<StackStatus> {
   validateHead(head);
   const stored = await readStoredStack(session, head);
+
   if (stored === undefined) return { kind: "no_stack" };
   const status = { base: stored.stack.base, parentTip: stored.parentTip };
+
   return status.base === status.parentTip
     ? { kind: "current", ...status }
     : { kind: "stale", ...status };
@@ -267,9 +299,11 @@ export async function advanceBase(
 
   for (;;) {
     const stored = await readStoredStack(session, options.head);
+
     if (stored === undefined || stored.stack.base === stored.parentTip) {
       return { kind: "unchanged" };
     }
+
     if (
       !(await isAncestor(session.objects, {
         ancestor: stored.stack.base,
@@ -284,12 +318,16 @@ export async function advanceBase(
       parent: stored.stack.parent,
       base: stored.parentTip,
     };
+
     const nextOid = await putStack(session, next);
+
     const outcome = await session.refs.update(
       [{ name: stackRef(options.head), from: stored.oid, to: nextOid }],
       { reason: "restack" },
     );
+
     if (outcome.ok) return { kind: "advanced" };
+
     if (outcome.reason === "fenced") {
       throw new Error("Participant restack was unexpectedly fenced");
     }
@@ -308,8 +346,11 @@ export async function fastForward(
       readStoredStack(session, options.head),
       session.refs.read(headRef(options.head)),
     ]);
+
     if (stored === undefined) return { kind: "no_stack" };
+
     if (stored.stack.base !== stored.parentTip) return { kind: "stale" };
+
     if (childTip === null || childTip === stored.stack.base) return { kind: "empty" };
 
     const next: Stack = {
@@ -317,7 +358,9 @@ export async function fastForward(
       parent: stored.stack.parent,
       base: childTip,
     };
+
     const nextOid = await putStack(session, next);
+
     const outcome = await session.refs.update(
       [
         { name: headRef(stored.stack.parent), from: stored.stack.base, to: childTip },
@@ -325,7 +368,9 @@ export async function fastForward(
       ],
       { reason: "merge", actor: options.actor },
     );
+
     if (outcome.ok) return { kind: "merged", tip: childTip };
+
     if (outcome.reason === "fenced") {
       throw new Error("Participant merge was unexpectedly fenced");
     }

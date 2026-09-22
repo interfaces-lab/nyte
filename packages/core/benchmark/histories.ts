@@ -14,10 +14,12 @@ import { summarize, timed, type Repetitions } from "./measure.ts";
 
 export async function histories(count: number, repetitions: Repetitions) {
   const rows = [];
+
   for (const checkpoint of [false, true]) {
     const fixture = historyFixture(count, checkpoint);
     const store = new SqliteStore(":memory:");
     let nyte: Awaited<ReturnType<typeof createNyte>> | undefined;
+
     try {
       const session = await store.create({ id: SEED });
       assert.deepEqual(
@@ -54,9 +56,11 @@ export async function histories(count: number, repetitions: Repetitions) {
       const initial = await client.sessions.snapshot(input);
       assert.ok(initial);
       assert.deepEqual(initial.transcript, expectedTranscript);
+
       const expectedEntries = checkpoint
         ? fixture.items.slice(fixture.metadata.checkpointAfterMessages ?? 0)
         : fixture.items;
+
       const expectedMessages = checkpoint
         ? [
             {
@@ -69,12 +73,15 @@ export async function histories(count: number, repetitions: Repetitions) {
             ...fixture.messages.slice(fixture.metadata.retainedTailStart ?? 0),
           ]
         : fixture.messages;
+
       const contextSamples = [];
       const snapshotSamples = [];
+
       for (let index = -repetitions.warmups; index < repetitions.samples; index++) {
         const context = await timed(async () => {
           const entries = await contextCommits(session.objects, tip);
           const commits = entries.map((item) => item.commit);
+
           return {
             entries,
             messages: contextMessages(commits),
@@ -85,6 +92,7 @@ export async function histories(count: number, repetitions: Repetitions) {
             }),
           };
         });
+
         assert.deepEqual(context.result.entries, expectedEntries);
         assert.deepEqual(context.result.messages, expectedMessages);
         assert.deepEqual(context.result.model, { messages: expectedMessages });
@@ -98,16 +106,19 @@ export async function histories(count: number, repetitions: Repetitions) {
         assert.deepEqual(snapshot.result.pending, []);
         assert.equal(snapshot.result.transcript.length, count + (checkpoint ? 1 : 0));
         assert.equal((await session.objects.list()).length, fixture.metadata.storedCommits);
+
         if (index >= 0) {
           contextSamples.push(context.measurement);
           snapshotSamples.push(snapshot.measurement);
         }
       }
+
       const metadata = {
         fixture: fixture.metadata,
         memoryMode: "memory",
         warmups: repetitions.warmups,
       };
+
       rows.push({
         operation: "contextCommits + contextMessages + modelContext",
         ...metadata,
@@ -126,5 +137,6 @@ export async function histories(count: number, repetitions: Repetitions) {
       }
     }
   }
+
   return rows;
 }

@@ -62,6 +62,7 @@ export function ThinkingSelector({
     const frame = requestAnimationFrame(() => {
       if (opening.get()) progress.set(withSpring(1, SPRING.open));
     });
+
     return () => cancelAnimationFrame(frame);
   });
   const span = Math.max(levels.length - 1, 0);
@@ -70,6 +71,7 @@ export function ThinkingSelector({
   // Prop changes (a new model's stops, a renamed model) adjust the label here;
   // mid-gesture changes never re-render and are published by the reaction below.
   const wanted = titles[Math.round(clamp(level.get(), 0, span))];
+
   if (wanted !== undefined && wanted !== title) setTitle(wanted);
 
   const openLeft = SELECTOR.trackInset;
@@ -80,21 +82,26 @@ export function ThinkingSelector({
   const trackLeft = useDerivedValue(() =>
     interpolate(progress.get(), [0, 1], [closedLeft, openLeft]),
   );
+
   const trackWidth = useDerivedValue(
     () => interpolate(progress.get(), [0, 1], [closedRight, openRight]) - trackLeft.get(),
   );
+
   const trackHeight = useDerivedValue(() =>
     interpolate(progress.get(), [0, 1], [SELECTOR.closedHeight, SELECTOR.trackHeight]),
   );
+
   const inset = useDerivedValue(() =>
     interpolate(progress.get(), [0, 1], [SELECTOR.closedInset, SELECTOR.inset]),
   );
+
   const fillHeight = useDerivedValue(() => trackHeight.get() - inset.get() * 2);
   const stop0 = useDerivedValue(() => inset.get() + fillHeight.get() / 2);
   const travel = useDerivedValue(() => trackWidth.get() - stop0.get() * 2);
 
   const knobX = useDerivedValue(() => {
     const t = span === 0 ? 0 : level.get() / span;
+
     return interpolate(
       progress.get(),
       [0, 1],
@@ -124,6 +131,7 @@ export function ThinkingSelector({
   const knobStyle = useAnimatedStyle(() => {
     const ring = interpolate(progress.get(), [0, 1], [SELECTOR.closedRing, SELECTOR.knobRing]);
     const size = fillHeight.get() - ring * 2;
+
     return { left: knobX.get() - size / 2, width: size, height: size, borderRadius: size / 2 };
   });
 
@@ -153,12 +161,14 @@ export function ThinkingSelector({
     (index, previous) => {
       if (index === previous) return;
       const next = titles[index];
+
       if (next !== undefined) scheduleOnRN(setTitle, next);
     },
   );
 
   const labelStyle = useAnimatedStyle(() => {
     const p = progress.get();
+
     return {
       bottom: cardDock.get() + ICON_ROW_INSET + SELECTOR.trackHeight / 2 + SELECTOR.labelGap,
       opacity:
@@ -310,10 +320,12 @@ function Tick({
   offset: SharedValue<number> | 0;
 }) {
   const style = useAnimatedStyle(() => {
-    const shift = typeof offset === "number" ? offset : offset.get();
+    const shift = offset === 0 ? 0 : offset.get();
     const x = span === 0 ? stop0.get() : stop0.get() + (travel.get() * index) / span;
+
     return { left: x - shift - SELECTOR.tickSize / 2 };
   });
+
   return <Animated.View style={[styles.tick, { backgroundColor: color }, style]} />;
 }
 

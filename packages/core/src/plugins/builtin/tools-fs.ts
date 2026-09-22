@@ -17,6 +17,7 @@ export function toolsFsPlugin() {
         ...tool,
         replay: SAFE_REPLAY.has(tool.name) ? "safe" : "never",
       }));
+
       api.tools.add((draft) => {
         for (const tool of tools) draft.set(tool.name, tool);
       });

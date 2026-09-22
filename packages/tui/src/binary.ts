@@ -5,5 +5,7 @@ import { ensureSolidTransformPlugin } from "@opentui/solid/bun-plugin";
 // installed before any of them; that is the one reason the app is imported
 // dynamically here. The binary compiled it at build time.
 ensureSolidTransformPlugin();
+
 registerBunOAuthFlows();
+
 await import("./index.ts");

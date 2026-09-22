@@ -79,11 +79,15 @@ import {
 import { ThinkingSelector } from "./thinking-selector.tsx";
 
 const PHOTO_PAGE = 24;
+
 const MODEL_FONT = { size: typography.caption.fontSize, weight: "medium" } as const;
+
 const modelHost = { height: COMPOSER.hit } as const;
+
 const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
 type NewTarget = { kind: "new" };
+
 type SessionTarget = {
   kind: "session";
   sessionId: SessionId;
@@ -154,6 +158,7 @@ export const Composer = memo(function Composer({
   // cursor-scoped on the host, so answers must not outlive the switch.
   const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
   const workspacePending = useRef<Promise<void> | undefined>(undefined);
+
   const { completion, commands } = useCompletions(
     client,
     sessionId,
@@ -162,7 +167,9 @@ export const Composer = memo(function Composer({
     focused,
     workspaceEpoch,
   );
+
   const dictationBase = useRef("");
+
   const dictation = useDictation((transcript) => {
     const base = dictationBase.current;
     setDraft(base === "" || transcript === "" ? base + transcript : `${base} ${transcript}`);
@@ -171,6 +178,7 @@ export const Composer = memo(function Composer({
   // A prefill lands once per nonce; adjusting during render keeps the draft and
   // the seen-mark atomic instead of two passes through the field.
   const [seenPrefill, setSeenPrefill] = useState(prefill?.nonce);
+
   if (prefill !== undefined && prefill.nonce !== seenPrefill) {
     setSeenPrefill(prefill.nonce);
     setDraft(prefill.text);
@@ -180,17 +188,22 @@ export const Composer = memo(function Composer({
   const sending = target.kind === "session" ? target.sending : starting;
   const running = target.kind === "session" ? target.running : false;
   const stopping = target.kind === "session" ? target.stopping : false;
+
   const error =
     localError ?? dictation.error ?? (target.kind === "session" ? target.error : undefined);
+
   const hasContent = draft.trim() !== "" || images.length > 0;
   const sessionModel = target.kind === "session" ? target.config.model : undefined;
   const sessionThinking = target.kind === "session" ? target.config.thinkingLevel : undefined;
+
   const catalogModel = matchCatalogModel(
     catalog.kind === "ready" ? catalog.models : [],
     sessionModel,
   );
+
   const chosenModel =
     model ?? catalogModel ?? (catalog.kind === "ready" ? catalog.defaultModel : undefined);
+
   const thinkingStops = thinkingLevelsFor(chosenModel);
   const chosenThinking = supportedThinkingLevel(chosenModel, thinking ?? sessionThinking);
   const canThink = thinkingStops.length > 1;
@@ -199,6 +212,7 @@ export const Composer = memo(function Composer({
   const gaugeFromRight = running && !dictation.recording ? GAUGE_RIGHT_RUNNING : GAUGE_RIGHT;
 
   const focus = useDerivedValue(() => Math.max(keyboard.progress.get(), focusDrive.get()));
+
   // Distance from the window bottom to the card's bottom edge. OverKeyboardView
   // is a full-screen window, so both overlays park against this instead of
   // measuring — KeyboardStickyView's translate does not show up in layout Y.
@@ -206,16 +220,20 @@ export const Composer = memo(function Composer({
     const lifted = -keyboard.height.get();
     const pad = insets.bottom + (spacing.sm - insets.bottom) * keyboard.progress.get();
     const gap = interpolate(focus.get(), [0, 1], [COMPOSER.collapsed.gap, COMPOSER.expanded.gap]);
+
     return lifted + pad + gap;
   });
+
   const plusLeft = useDerivedValue(() => {
     const inset = interpolate(
       focus.get(),
       [0, 1],
       [COMPOSER.collapsed.inset, COMPOSER.expanded.inset],
     );
+
     return gutters.left + inset + ICON_ROW_INSET - COMPOSER.hit / 2;
   });
+
   const gaugeCenterX = windowWidth - gutters.right - gaugeFromRight;
 
   // A toolbar pick or host-side change lands on target.config; the chips track
@@ -223,14 +241,20 @@ export const Composer = memo(function Composer({
   // fresh objects for the same model and must not clobber an in-flight pick.
   const catalogModelKey =
     catalogModel === undefined ? undefined : `${catalogModel.provider}:${catalogModel.id}`;
+
   const [seenModelKey, setSeenModelKey] = useState(catalogModelKey);
+
   if (seenModelKey !== catalogModelKey) {
     setSeenModelKey(catalogModelKey);
+
     if (catalogModel !== undefined) setModel(catalogModel);
   }
+
   const [seenThinking, setSeenThinking] = useState(sessionThinking);
+
   if (seenThinking !== sessionThinking) {
     setSeenThinking(sessionThinking);
+
     if (sessionThinking !== undefined) setThinking(sessionThinking);
   }
 
@@ -257,6 +281,7 @@ export const Composer = memo(function Composer({
     attachProgress.set(
       withSpring(0, SPRING.open, (finished) => {
         "worklet";
+
         if (finished) {
           attachExtend.set(0);
           scheduleOnRN(setAttachVisible, false);
@@ -267,9 +292,11 @@ export const Composer = memo(function Composer({
 
   function buildContent(): UserContent {
     const text = draft.trim();
+
     const notes = images
       .map((image) => resolveAttachment(image).note)
       .filter((note) => note !== undefined);
+
     return [
       ...(text === "" ? [] : [{ type: "text" as const, text }]),
       ...images.map((image) => resolveAttachment(image).image.image),
@@ -281,6 +308,7 @@ export const Composer = memo(function Composer({
     setLocalError(undefined);
     setDraft((current) => (current === submitted ? "" : current));
     setImages((current) => current.filter((image) => !submittedImages.includes(image)));
+
     for (const image of submittedImages) clearAnnotation(image.id);
   };
 
@@ -291,13 +319,16 @@ export const Composer = memo(function Composer({
     send: (content: UserContent) => Promise<boolean>;
   }): Promise<boolean> => {
     if (input.line === undefined) return input.send(input.content);
+
     const outcome = await client.plugins.commands.run({
       sessionId: input.sessionId,
       ...input.line,
     });
+
     switch (outcome.kind) {
       case "ran":
         setNotice(outcome.output);
+
         return true;
       case "prompt":
         return input.send([{ type: "text", text: outcome.prompt }]);
@@ -305,9 +336,11 @@ export const Composer = memo(function Composer({
         return input.send(input.content);
       case "failed":
         setLocalError(outcome.message);
+
         return false;
       default: {
         const exhaustive: never = outcome;
+
         return exhaustive;
       }
     }
@@ -321,29 +354,39 @@ export const Composer = memo(function Composer({
     },
   ): Promise<boolean> => {
     try {
-      const outcome = await client.sessions.configure({
-        sessionId,
-        ...(next.model === undefined
-          ? {}
-          : { model: { provider: next.model.provider, id: next.model.id } }),
-        ...(next.thinkingLevel === undefined ? {} : { thinkingLevel: next.thinkingLevel }),
-      });
+      const request = { sessionId };
+
+      const withModel =
+        next.model === undefined
+          ? request
+          : { ...request, model: { provider: next.model.provider, id: next.model.id } };
+
+      const outcome = await client.sessions.configure(
+        next.thinkingLevel === undefined
+          ? withModel
+          : { ...withModel, thinkingLevel: next.thinkingLevel },
+      );
+
       switch (outcome.kind) {
         case "queued":
           return true;
         case "unknown_model":
           setLocalError("The host doesn't offer that model.");
+
           return false;
         case "unknown_agent":
           setLocalError("The host doesn't offer that agent.");
+
           return false;
         default: {
           const exhaustive: never = outcome;
+
           return exhaustive;
         }
       }
     } catch (cause: unknown) {
       setLocalError(describeHostError(cause));
+
       return false;
     }
   };
@@ -355,9 +398,11 @@ export const Composer = memo(function Composer({
     const content = buildContent();
     const line = images.length === 0 ? parseCommandLine(draft, commands) : undefined;
     setNotice(undefined);
+
     if (target.kind === "new") {
       setStarting(true);
       setLocalError(undefined);
+
       try {
         // A workspace pick still composing on the host must land first, or the
         // session opens under the share's previous folder.
@@ -365,6 +410,7 @@ export const Composer = memo(function Composer({
         const typed = draft.trim().split("\n")[0]?.slice(0, 48) ?? "";
         const name = line?.name ?? (typed === "" ? "New conversation" : typed);
         const session = await client.sessions.create({ name });
+
         // Only what the user picked is sent; untouched fields keep the host's
         // configured defaults rather than pinning the catalog fallback.
         if (
@@ -372,6 +418,7 @@ export const Composer = memo(function Composer({
           !(await configureSession(session.sessionId, { model, thinkingLevel: thinking }))
         )
           return;
+
         const accepted = await deliver({
           sessionId: session.sessionId,
           content,
@@ -382,9 +429,11 @@ export const Composer = memo(function Composer({
               content: message,
               key: randomUUID(),
             });
+
             return true;
           },
         });
+
         if (!accepted) return;
         clearSubmitted(submitted, submittedImages);
         Keyboard.dismiss();
@@ -394,8 +443,10 @@ export const Composer = memo(function Composer({
       } finally {
         setStarting(false);
       }
+
       return;
     }
+
     try {
       if (await deliver({ sessionId: target.sessionId, content, line, send: target.onSend }))
         clearSubmitted(submitted, submittedImages);
@@ -428,6 +479,7 @@ export const Composer = memo(function Composer({
     attachProgress.set(
       withSpring(0, SPRING.open, (finished) => {
         "worklet";
+
         if (finished) {
           attachExtend.set(0);
           scheduleOnRN(setAttachVisible, false);
@@ -438,6 +490,7 @@ export const Composer = memo(function Composer({
 
   const openAttach = () => {
     if (attachDisabled) return;
+
     if (selectorOpen) closeSelector();
     setAttachVisible(true);
     attachProgress.set(withSpring(1, SPRING.open));
@@ -447,8 +500,10 @@ export const Composer = memo(function Composer({
 
   const openSelector = () => {
     if (!canThink) return;
+
     if (attachVisible) closeAttach();
     opening.set(true);
+
     if (selectorOpen) selector.set(withSpring(1, SPRING.open));
     else setSelectorOpen(true);
   };
@@ -458,6 +513,7 @@ export const Composer = memo(function Composer({
     closeAttach();
     setStaging(true);
     setLocalError(undefined);
+
     try {
       const staged = await stageRecentPhoto(photo);
       setImages((current) => [...current, staged].slice(0, MAX_ATTACHMENTS));
@@ -477,7 +533,9 @@ export const Composer = memo(function Composer({
 
   const chooseModel = (choice: ModelInfo) => {
     setModel(choice);
+
     if (thinkingLevelsFor(choice).length < 2) closeSelector();
+
     if (target.kind !== "session") return;
     void configureSession(target.sessionId, {
       model: choice,
@@ -491,6 +549,7 @@ export const Composer = memo(function Composer({
 
   const chooseThinking = (choice: ThinkingLevel) => {
     setThinking(choice);
+
     if (target.kind !== "session") return;
     void configureSession(target.sessionId, { thinkingLevel: choice }).then((applied) => {
       if (!applied) setThinking(sessionThinking);
@@ -503,11 +562,14 @@ export const Composer = memo(function Composer({
   };
 
   const { collapsed, expanded } = COMPOSER;
+
   const keyboardInset = useAnimatedStyle(() => ({
     paddingBottom: insets.bottom + (spacing.sm - insets.bottom) * keyboard.progress.get(),
   }));
+
   const cardStyle = useAnimatedStyle(() => {
     const amount = focus.get();
+
     return {
       marginHorizontal: interpolate(amount, [0, 1], [collapsed.inset, expanded.inset]),
       marginBottom: interpolate(amount, [0, 1], [collapsed.gap, expanded.gap]),
@@ -515,14 +577,17 @@ export const Composer = memo(function Composer({
       borderRadius: interpolate(amount, [0, 1], [collapsed.radius, expanded.radius]),
     };
   });
+
   const inputStyle = useAnimatedStyle(() => {
     const amount = focus.get();
+
     return {
       left: interpolate(amount, [0, 1], [50, 16]),
       right: interpolate(amount, [0, 1], [80, 16]),
       bottom: interpolate(amount, [0, 1], [24, 66]) - 11,
     };
   });
+
   const revealStyle = useAnimatedStyle(() => ({
     opacity:
       interpolate(focus.get(), [0.35, 1], [0, 1], Extrapolation.CLAMP) *
@@ -534,6 +599,7 @@ export const Composer = memo(function Composer({
       ),
     transform: [{ scale: interpolate(focus.get(), [0.35, 1], [0.6, 1], Extrapolation.CLAMP) }],
   }));
+
   const modelStyle = useAnimatedStyle(() => ({
     opacity: interpolate(focus.get(), [0.35, 1], [0, 1], Extrapolation.CLAMP),
   }));
@@ -837,6 +903,7 @@ export const Composer = memo(function Composer({
           onClose={closeSelector}
           onCommit={(index) => {
             const next = thinkingStops[index];
+
             if (next !== undefined) chooseThinking(next);
           }}
         />
@@ -870,6 +937,7 @@ function matchCatalogModel(
   ref: ModelRef | undefined,
 ): ModelInfo | undefined {
   if (ref === undefined) return undefined;
+
   return models.find(
     (item) => item.id === ref.id && (ref.provider === undefined || item.provider === ref.provider),
   );

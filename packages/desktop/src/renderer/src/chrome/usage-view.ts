@@ -29,6 +29,7 @@ import type { UsageReport, UsageTotals, UsageWindow } from "../nyte.ts";
 export const USAGE_STALE_AFTER_MS = 60_000;
 
 export const USAGE_RANGES = ["7d", "30d", "90d", "all"] as const;
+
 export type UsageRange = (typeof USAGE_RANGES)[number];
 
 export const USAGE_RANGE_LABELS: Readonly<Record<UsageRange, string>> = {
@@ -123,16 +124,21 @@ function group(digits: string): string {
 /** Dollars with cents, so a column of spend lines up on the decimal. */
 export function formatUsd(dollars: number): string {
   if (dollars === 0) return "$0.00";
+
   if (dollars < 0.01) return "<$0.01";
   const fixed = dollars.toFixed(2);
+
   return `$${group(fixed.slice(0, -3))}${fixed.slice(-3)}`;
 }
 
 export function formatTokens(tokens: number): string {
   if (tokens < 1_000) return String(Math.round(tokens));
+
   if (tokens < 1_000_000) return `${(tokens / 1_000).toFixed(tokens < 10_000 ? 1 : 0)}K`;
+
   if (tokens < 1_000_000_000)
     return `${(tokens / 1_000_000).toFixed(tokens < 10_000_000 ? 2 : 1)}M`;
+
   return `${(tokens / 1_000_000_000).toFixed(2)}B`;
 }
 
@@ -142,7 +148,9 @@ function formatCount(value: number): string {
 
 export function formatPercent(fraction: number): string {
   if (fraction <= 0) return "0%";
+
   if (fraction < 0.01) return "<1%";
+
   return `${String(Math.round(fraction * 100))}%`;
 }
 
@@ -155,6 +163,7 @@ export function localDay(at: number): string {
   const date = new Date(at);
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
+
   return `${String(date.getFullYear())}-${month}-${day}`;
 }
 
@@ -170,6 +179,7 @@ export function dayStart(day: string): number {
 export function shiftDay(day: string, delta: number): string {
   const date = new Date(dayStart(day));
   date.setDate(date.getDate() + delta);
+
   return localDay(date.getTime());
 }
 
@@ -194,9 +204,12 @@ export function costChange(
   previous: number | undefined,
 ): { readonly direction: "up" | "down" | "flat"; readonly label: string } | undefined {
   if (previous === undefined) return undefined;
+
   if (previous === 0) return current === 0 ? undefined : { direction: "up", label: "New" };
   const change = (current - previous) / previous;
+
   if (Math.abs(change) < 0.005) return { direction: "flat", label: "No change" };
+
   return {
     direction: change > 0 ? "up" : "down",
     label: `${change > 0 ? "+" : "−"}${formatPercent(Math.abs(change))}`,
@@ -206,6 +219,7 @@ export function costChange(
 /** Cache reads as a share of all prompt tokens, including newly written entries. */
 function cacheHitRate(totals: UsageTotals): number {
   const read = totals.input + totals.cacheRead + totals.cacheWrite;
+
   return read === 0 ? 0 : totals.cacheRead / read;
 }
 
@@ -229,6 +243,7 @@ function absent(text: string): UsageRow["value"] {
 /** The window a range asks the host for. `all` cannot name its own start. */
 export function usageWindow(range: UsageRange, now: number): UsageWindow {
   const untilDay = localDay(now);
+
   return {
     sinceDay: range === "all" ? null : shiftDay(untilDay, -(RANGE_LENGTHS[range] - 1)),
     untilDay,
@@ -237,7 +252,9 @@ export function usageWindow(range: UsageRange, now: number): UsageWindow {
 
 function daySpan(from: string, to: string): readonly string[] {
   const days: string[] = [];
+
   for (let day = from; day <= to; day = shiftDay(day, 1)) days.push(day);
+
   return days;
 }
 
@@ -248,7 +265,9 @@ function bucketLabel(first: string, last: string, grain: UsageGrain): string {
 /** Inclusive day count, which is also how far back the comparison reaches. */
 function daysBetween(from: string, to: string): number {
   let span = 1;
+
   for (let day = from; day < to; day = shiftDay(day, 1)) span += 1;
+
   return span;
 }
 
@@ -263,6 +282,7 @@ function priorWindow(
 ): { readonly from: string; readonly to: string } | undefined {
   if (!bounded) return undefined;
   const priorTo = shiftDay(from, -1);
+
   return { from: shiftDay(priorTo, -(daysBetween(from, to) - 1)), to: priorTo };
 }
 
@@ -270,6 +290,7 @@ function priorWindow(
 function folderLabel(path: string | null): string {
   if (path === null) return "Home";
   const segments = path.split("/").filter((segment) => segment !== "");
+
   return segments.at(-1) ?? path;
 }
 
@@ -277,11 +298,13 @@ function folderLabel(path: string | null): string {
 function folderParent(path: string | null): string | undefined {
   if (path === null) return undefined;
   const segments = path.split("/").filter((segment) => segment !== "");
+
   return segments.at(-2);
 }
 
 function chatLabel(name: string | undefined): string {
   const trimmed = name?.trim();
+
   return trimmed === undefined || trimmed === "" ? "Untitled chat" : trimmed;
 }
 
@@ -305,6 +328,7 @@ function bump<K, V extends Spend>(into: Map<K, V>, key: K, seed: V, totals: Usag
   found.cost += totals.cost;
   found.tokens += totals.tokens;
   into.set(key, found);
+
   return found;
 }
 
@@ -338,6 +362,7 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
       sawPrior = true;
       priorCost += entry.totals.cost;
     }
+
     if (entry.day < from || entry.day > to) continue;
 
     totals = addTotals(totals, entry.totals);
@@ -358,34 +383,43 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
         tokens: 0,
         turns: 0,
       };
+
       const key = JSON.stringify([entry.subject.provider, entry.subject.model]);
       bump(perModel, key, seed, entry.totals).turns += entry.totals.turns;
       continue;
     }
+
     overhead.cost += entry.totals.cost;
     overhead.tokens += entry.totals.tokens;
   }
 
   // Rank by cost while anything is priced; a free local model still ranks by tokens.
   const byCost = totals.cost > 0;
+
   const shareOf = (spend: Spend): number => {
     const whole = byCost ? totals.cost : totals.tokens;
+
     return whole === 0 ? 0 : (byCost ? spend.cost : spend.tokens) / whole;
   };
+
   const ranked = (rows: readonly UsageRow[]): readonly UsageRow[] =>
     rows.toSorted((left, right) => right.share - left.share);
 
   const bucketSize = grain === "day" ? 1 : 7;
   const points: UsagePoint[] = [];
+
   for (let index = 0; index < days.length; index += bucketSize) {
     const bucket = days.slice(index, index + bucketSize);
     const first = bucket[0];
     const last = bucket.at(-1);
+
     if (first === undefined || last === undefined) continue;
+
     const sum = bucket.reduce(
       (running, day) => addTotals(running, perDay.get(day) ?? EMPTY_TOTALS),
       EMPTY_TOTALS,
     );
+
     points.push({
       label: bucketLabel(first, last, grain),
       cost: sum.cost,
@@ -398,6 +432,7 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
   // Two checkouts can end in the same directory name, so a repeated leaf earns
   // the segment above it. Unique names stay short.
   const leafCounts = new Map<string, number>();
+
   for (const folder of perFolder.values()) {
     const leaf = folderLabel(folder.path);
     leafCounts.set(leaf, (leafCounts.get(leaf) ?? 0) + 1);
@@ -410,6 +445,7 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
     value: cost(model.cost),
     share: shareOf(model),
   }));
+
   if (overhead.cost > 0 || overhead.tokens > 0) {
     models.push({
       key: "overhead",
@@ -432,6 +468,7 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
       [...perFolder].map(([key, folder]) => {
         const leaf = folderLabel(folder.path);
         const parent = (leafCounts.get(leaf) ?? 0) > 1 ? folderParent(folder.path) : undefined;
+
         return {
           key,
           label: parent === undefined ? leaf : `${leaf} in ${parent}`,
@@ -444,6 +481,7 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
     chats: ranked(
       report.sessions.flatMap((session) => {
         const spent = perChat.get(session.sessionId);
+
         return spent === undefined
           ? []
           : [
@@ -468,7 +506,7 @@ export function describeEmptyRange(
   report: UsageSnapshot,
   unreadFolders: readonly string[],
   range: UsageRange,
-): { readonly title: string; readonly body: string; readonly offerAllTime: boolean } {
+) {
   if (report.nyteError !== null || unreadFolders.length > 0) {
     return {
       title: "Couldn't read all Nyte usage",
@@ -476,7 +514,9 @@ export function describeEmptyRange(
       offerAllTime: false,
     };
   }
+
   const earliest = report.earliestDay;
+
   if (earliest === undefined) {
     return {
       title: "No recorded Nyte usage",
@@ -484,6 +524,7 @@ export function describeEmptyRange(
       offerAllTime: false,
     };
   }
+
   return {
     title:
       range === "all"
@@ -504,10 +545,12 @@ export function describeEmptyRange(
  * across tools is all-time and Nyte joins it with its all-time sum.
  */
 const USAGE_TOOLS = ["nyte", "claudeCode", "codex"] as const;
+
 type UsageTool = (typeof USAGE_TOOLS)[number];
 
 /** The two tools whose history is a file on this machine rather than Nyte's own. */
 export const LOCAL_TOOLS = ["claudeCode", "codex"] as const;
+
 type LocalTool = (typeof LOCAL_TOOLS)[number];
 
 export const USAGE_TOOL_LABELS: Readonly<Record<UsageTool, string>> = {
@@ -559,6 +602,7 @@ export function deriveLocalHistory(tool: LocalTool, usage: LocalHistory): LocalH
       failed: false,
     };
   }
+
   if (usage.kind === "failed") {
     return {
       kind: "message",
@@ -598,6 +642,7 @@ interface ToolEntry {
 export function deriveTools(report: UsageSnapshot): UsageBreakdown {
   const entries = USAGE_TOOLS.map((tool): ToolEntry => {
     const label = USAGE_TOOL_LABELS[tool];
+
     if (tool === "nyte") {
       if (report.nyteError !== null) {
         return {
@@ -611,6 +656,7 @@ export function deriveTools(report: UsageSnapshot): UsageBreakdown {
           spend: undefined,
         };
       }
+
       const spend = report.entries.reduce<Spend>(
         (sum, entry) => ({
           cost: sum.cost + entry.totals.cost,
@@ -618,7 +664,9 @@ export function deriveTools(report: UsageSnapshot): UsageBreakdown {
         }),
         { cost: 0, tokens: 0 },
       );
+
       const partial = report.sources.some((source) => source.status === "failed");
+
       return {
         row: {
           key: tool,
@@ -632,6 +680,7 @@ export function deriveTools(report: UsageSnapshot): UsageBreakdown {
     }
 
     const history = report[tool];
+
     if (history.kind !== "ready") {
       return {
         row: {
@@ -647,10 +696,12 @@ export function deriveTools(report: UsageSnapshot): UsageBreakdown {
         spend: undefined,
       };
     }
+
     const spend: Spend = {
       cost: history.summary.total.cost.total,
       tokens: history.summary.total.totalTokens,
     };
+
     return {
       row: {
         key: tool,
@@ -690,12 +741,12 @@ const LIMIT_PROVIDER_LABELS: Readonly<Record<AccountUsage["provider"], string>> 
   "openai-codex": "Codex",
 };
 
-const LIMIT_WINDOW_LABELS: Readonly<Record<string, string>> = {
-  five_hour: "5 hours",
-  seven_day: "Weekly",
-  primary: "Current window",
-  secondary: "Secondary window",
-};
+const LIMIT_WINDOW_LABELS = new Map([
+  ["five_hour", "5 hours"],
+  ["seven_day", "Weekly"],
+  ["primary", "Current window"],
+  ["secondary", "Secondary window"],
+]);
 
 const SCOPED_WEEKLY = "seven_day_";
 
@@ -719,9 +770,11 @@ interface AccountView {
 /** A provider's own windows, named the way its own dashboard names them. */
 export function deriveAccount(account: AccountUsage): AccountView {
   const name = LIMIT_PROVIDER_LABELS[account.provider];
+
   if (account.kind === "failed") {
     return { title: name, meters: [], message: account.message, failed: true };
   }
+
   if (account.kind === "unavailable") {
     return {
       title: name,
@@ -730,12 +783,13 @@ export function deriveAccount(account: AccountUsage): AccountView {
       failed: false,
     };
   }
+
   return {
     title: account.limits.plan === undefined ? name : `${name} · ${account.limits.plan}`,
     meters: account.limits.windows.map((window) => ({
       key: window.id,
       label:
-        LIMIT_WINDOW_LABELS[window.id] ??
+        LIMIT_WINDOW_LABELS.get(window.id) ??
         (window.id.startsWith(SCOPED_WEEKLY)
           ? `Weekly · ${window.id.slice(SCOPED_WEEKLY.length)}`
           : window.id),

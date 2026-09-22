@@ -10,12 +10,20 @@
  */
 import { useEffect, useSyncExternalStore } from "react";
 import { sessionId } from "@nyte-ai/protocol";
-import type { Seq, SessionEvent, SessionId, SessionInfo, SessionSnapshot } from "@nyte-ai/protocol";
+import type {
+  RunId,
+  Seq,
+  SessionEvent,
+  SessionId,
+  SessionInfo,
+  SessionSnapshot,
+} from "@nyte-ai/protocol";
 import { isTerminalPhase, SessionObserver, snapshotOf } from "@nyte-ai/client";
 import type { SessionState, SessionUpdate } from "@nyte-ai/client";
 import { IDLE, projectLive } from "./live-fold.ts";
 import type { LiveSnapshot } from "./live-fold.ts";
 import {
+  backgroundJobsOptions,
   cacheSessionInfo,
   childSessionsOptions,
   keys,
@@ -31,6 +39,7 @@ import { outbox } from "./use-outbox.ts";
 import { watchSessionInfo } from "./session-info-watch.ts";
 
 export { livePartKey } from "./live-fold.ts";
+
 export type { LivePartRef, LiveRunState, LiveSnapshot, LiveToolProgress } from "./live-fold.ts";
 
 const RETRY_MS = 1_000;
@@ -66,6 +75,7 @@ class LiveStore {
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
+
     return () => {
       this.listeners.delete(listener);
       scheduleStoreRelease(this);
@@ -84,18 +94,22 @@ class LiveStore {
       this.state === undefined
         ? IDLE
         : projectLive(this.snapshot, this.state.overlay, this.state.run);
+
     return this.snapshot;
   };
 
   getFrame = (): SessionFrame | undefined => {
     const state = this.state;
+
     if (state === undefined) return undefined;
+
     if (this.projection?.state !== state) {
       this.projection = {
         state,
         frame: { snapshot: snapshotOf(state), live: this.getSnapshot() },
       };
     }
+
     return this.projection.frame;
   };
 
@@ -104,10 +118,13 @@ class LiveStore {
     const previous = this.state;
     this.state = state;
     this.dirty = true;
+
     if (durableChanged(previous, state)) {
       queryClient.setQueryData(keys.snapshot(sessionId), snapshotOf(state));
+
       if (previous?.info !== state.info) cacheSessionInfo(state.info);
     }
+
     this.frame ??= window.requestAnimationFrame(() => {
       this.frame = undefined;
       this.notify();
@@ -141,14 +158,18 @@ interface SharedObserver {
 }
 
 const observers = new Map<SessionId, SharedObserver>();
+
 const stores = new Map<SessionId, LiveStore>();
+
 const selectionVersions = new Map<SessionId, number>();
 
 function scheduleStoreRelease(store: LiveStore): void {
   queueMicrotask(() => {
     for (const [sessionId, candidate] of stores) {
       if (candidate !== store) continue;
+
       if (!observers.has(sessionId) && !store.hasListeners()) stores.delete(sessionId);
+
       return;
     }
   });
@@ -156,9 +177,11 @@ function scheduleStoreRelease(store: LiveStore): void {
 
 function storeFor(sessionId: SessionId): LiveStore {
   const existing = stores.get(sessionId);
+
   if (existing !== undefined) return existing;
   const created = new LiveStore();
   stores.set(sessionId, created);
+
   return created;
 }
 
@@ -175,18 +198,24 @@ function storeFor(sessionId: SessionId): LiveStore {
  */
 function react(sessionId: SessionId, state: SessionState, event: SessionEvent | undefined): void {
   const rebase = event === undefined;
+
   if (event?.kind === "activation_changed") requestTrust(state.info.activation);
+
   if (rebase || event.kind === "job" || event.kind === "synced") {
     void queryClient.invalidateQueries({ queryKey: keys.jobs(sessionId) });
   }
+
   const completedTool =
     event?.kind === "commit" &&
     event.item.commit.body.kind === "message" &&
     event.item.commit.body.message.role === "toolResult";
+
   const completedRun = event?.kind === "run" && isTerminalPhase(event.run.phase);
+
   // A failed tool or aborted run can still have written files. Run completion
   // also covers a tool that ended without committing a result.
   if (rebase || completedTool || completedRun) refreshVcs();
+
   if (
     rebase ||
     event.kind === "fact" ||
@@ -197,6 +226,7 @@ function react(sessionId: SessionId, state: SessionState, event: SessionEvent | 
     void queryClient.invalidateQueries({ queryKey: ["customize", sessionId], exact: true });
     void queryClient.invalidateQueries({ queryKey: keys.pluginCatalog, exact: true });
   }
+
   if (rebase || event.kind === "commit" || event.kind === "effect") {
     void queryClient.invalidateQueries({ queryKey: keys.children(sessionId), exact: true });
     void queryClient.invalidateQueries({ queryKey: keys.childSessions(sessionId), exact: true });
@@ -205,9 +235,11 @@ function react(sessionId: SessionId, state: SessionState, event: SessionEvent | 
 
 function observe(sessionId: SessionId): SharedObserver {
   const existing = observers.get(sessionId);
+
   if (existing !== undefined) return existing;
   const store = storeFor(sessionId);
   const failures = new Set<(error: Error) => void>();
+
   const observer = new SessionObserver(sessionClient, {
     sessionId,
     retryMs: RETRY_MS,
@@ -217,6 +249,7 @@ function observe(sessionId: SessionId): SharedObserver {
       for (const fail of Array.from(failures)) fail(error);
     },
   });
+
   // The observer publishes a snapshot for its first read, and again whenever
   // the fold gives up or a watch dies. Its cursor says which of those owes
   // anything: a snapshot past the newest seq this observation has seen holds
@@ -228,13 +261,17 @@ function observe(sessionId: SessionId): SharedObserver {
   observer.subscribe((update) => {
     store.update(sessionId, update.state);
     outbox.observe(update);
+
     if (update.kind === "snapshot") requestTrust(update.state.info.activation);
     const seen = reacted;
     reacted = update.state.seq;
+
     if (update.kind === "event") {
       react(sessionId, update.state, update.event);
+
       return;
     }
+
     if (update.kind === "snapshot" && seen !== undefined && update.state.seq > seen) {
       react(sessionId, update.state, undefined);
     }
@@ -243,6 +280,7 @@ function observe(sessionId: SessionId): SharedObserver {
   observers.set(sessionId, shared);
   // The observer reports and retries a failed read itself; rejection only means the observation stopped.
   void observer.start().catch(() => undefined);
+
   return shared;
 }
 
@@ -263,20 +301,24 @@ function nextUpdate(
       shared.closing.delete(close);
       signal?.removeEventListener("abort", abort);
     };
+
     const stop = shared.observer.subscribe((update) => {
       if (!accept(update)) return;
       done();
       resolve(update.state);
     });
+
     const fail = (error: Error): void => {
       done();
       reject(error);
     };
+
     const close = (): void => fail(new Error("The session is no longer observed"));
     const abort = (): void => fail(new Error("The snapshot read was cancelled"));
     shared.failures.add(fail);
     shared.closing.add(close);
     signal?.addEventListener("abort", abort, { once: true });
+
     if (signal?.aborted) abort();
   });
 }
@@ -284,6 +326,7 @@ function nextUpdate(
 /** The observer's state, or its first snapshot. */
 function ready(shared: SharedObserver, signal?: AbortSignal): Promise<SessionState> {
   const state = shared.observer.state;
+
   return state === undefined ? nextUpdate(shared, () => true, signal) : Promise.resolve(state);
 }
 
@@ -293,6 +336,7 @@ function reload(shared: SharedObserver): Promise<SessionState> {
   const landed = nextUpdate(shared, (update) => update.kind === "snapshot");
   // A superseding rebase publishes the snapshot this waits for; only close or failure ends it.
   void shared.observer.resync().catch(() => undefined);
+
   return landed;
 }
 
@@ -301,6 +345,7 @@ export function watchSessionLive(sessionId: SessionId) {
   const shared = observe(sessionId);
   shared.consumers += 1;
   let disposed = false;
+
   return {
     subscribe: shared.store.subscribe,
     getSnapshot: shared.store.getSnapshot,
@@ -310,9 +355,11 @@ export function watchSessionLive(sessionId: SessionId) {
       if (disposed) return;
       disposed = true;
       shared.consumers -= 1;
+
       if (shared.consumers !== 0) return;
       observers.delete(sessionId);
       shared.observer.close();
+
       for (const settle of Array.from(shared.closing)) settle();
       shared.store.reset();
       scheduleStoreRelease(shared.store);
@@ -325,6 +372,7 @@ export function watchSessionLive(sessionId: SessionId) {
 export function useSessionLive(sessionId: SessionId): LiveSnapshot {
   const store = storeFor(sessionId);
   useEffect(() => watchSessionLive(sessionId).dispose, [sessionId]);
+
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 }
 
@@ -343,6 +391,7 @@ export function useChildrenLive(children: readonly SessionInfo[] | undefined): v
         },
       }),
     );
+
     return () => {
       for (const stop of watches) stop();
     };
@@ -352,6 +401,7 @@ export function useChildrenLive(children: readonly SessionInfo[] | undefined): v
 export function useSessionFrame(sessionId: SessionId): SessionFrame | undefined {
   const store = storeFor(sessionId);
   useEffect(() => watchSessionLive(sessionId).dispose, [sessionId]);
+
   return useSyncExternalStore(store.subscribe, store.getFrame, store.getFrame);
 }
 
@@ -366,6 +416,7 @@ export async function readSessionSnapshot(
   signal: AbortSignal,
 ): Promise<SessionSnapshot> {
   const lease = watchSessionLive(sessionId);
+
   try {
     return snapshotOf(await lease.ready(signal));
   } finally {
@@ -376,10 +427,23 @@ export async function readSessionSnapshot(
 /** Force one coherent read after a mutation that needs its result; the cache holds it when this resolves. */
 export async function loadThread(sessionId: SessionId): Promise<SessionSnapshot> {
   const lease = watchSessionLive(sessionId);
+
   try {
     return snapshotOf(await lease.reload());
   } finally {
     lease.dispose();
+  }
+}
+
+/** Draw the run stopped at once; a failed request rereads the thread, then rejects. */
+export async function requestStop(sessionId: SessionId, runId: RunId): Promise<void> {
+  observers.get(sessionId)?.observer.requestStop(runId);
+
+  try {
+    await nyte.runs.abort({ sessionId, runId });
+  } catch (cause) {
+    refreshThread(sessionId);
+    throw cause;
   }
 }
 
@@ -397,6 +461,7 @@ export function refreshThread(sessionId: SessionId): void {
  */
 function snapshotMatchesSession(snapshot: SessionSnapshot, info: SessionInfo): boolean {
   const head = info.heads.find((candidate) => candidate.head === snapshot.head);
+
   return (
     head !== undefined &&
     head.run === undefined &&
@@ -415,40 +480,52 @@ function snapshotMatchesSession(snapshot: SessionSnapshot, info: SessionInfo): b
 export async function warmThread(sessionId: SessionId): Promise<void> {
   const auxiliaries = Promise.all([
     queryClient.prefetchQuery(childSessionsOptions(sessionId)),
-    queryClient.prefetchQuery({
-      queryKey: keys.jobs(sessionId),
-      queryFn: () => nyte.jobs.list({ sessionId }),
-    }),
-    queryClient.prefetchQuery({
-      queryKey: keys.sessionCatalog(sessionId),
-      queryFn: () => nyte.host.catalog({ sessionId }),
-      staleTime: 15_000,
-    }),
-    queryClient.prefetchQuery({
-      queryKey: keys.pluginSettings(sessionId),
-      queryFn: () => nyte.plugins.settings.list({ sessionId }),
-      staleTime: SNAPSHOT_WARM_MS,
-    }),
+    queryClient.prefetchQuery(backgroundJobsOptions(sessionId)),
+    queryClient
+      .fetchQuery({
+        queryKey: keys.sessionCatalog(sessionId),
+        queryFn: () => nyte.host.catalog({ sessionId }),
+        staleTime: 15_000,
+      })
+      .then((catalog) => {
+        if (!catalog.models.some((model) => model.fastMode.kind === "available")) return;
+
+        return queryClient.prefetchQuery({
+          queryKey: keys.pluginSettings(sessionId),
+          queryFn: () => nyte.plugins.settings.list({ sessionId }),
+          staleTime: SNAPSHOT_WARM_MS,
+        });
+      })
+      .catch(() => undefined),
     queryClient.prefetchQuery(mentionFilesOptions(true)),
   ]).then(() => undefined);
+
   if (observers.has(sessionId)) {
     await auxiliaries;
+
     return;
   }
+
   const cached = queryClient.getQueryData<SessionSnapshot>(keys.snapshot(sessionId));
   const info = queryClient.getQueryData<SessionInfo | null>(keys.session(sessionId));
+
   if (cached !== undefined && info != null && snapshotMatchesSession(cached, info)) {
     await auxiliaries;
+
     return;
   }
+
   await Promise.all([
     queryClient.fetchQuery({
       queryKey: keys.snapshot(sessionId),
       queryFn: async (): Promise<SessionSnapshot> => {
         const snapshot = await sessionClient.sessions.snapshot({ sessionId });
         const observed = observers.get(sessionId)?.observer.state;
+
         if (observed !== undefined) return snapshotOf(observed);
+
         if (snapshot === undefined) throw new Error(`Session not found: ${sessionId}`);
+
         return snapshot;
       },
       staleTime: SNAPSHOT_WARM_MS,
@@ -466,8 +543,10 @@ export function sessionSelection(sessionId: SessionId): SessionSelection {
   const bump = (): number => {
     const version = (selectionVersions.get(sessionId) ?? 0) + 1;
     selectionVersions.set(sessionId, version);
+
     return version;
   };
+
   return {
     request: () => {
       bump();
@@ -475,19 +554,24 @@ export function sessionSelection(sessionId: SessionId): SessionSelection {
     acknowledge: () => {
       const version = bump();
       const shared = observers.get(sessionId);
+
       if (shared === undefined) {
         selectionVersions.delete(sessionId);
+
         return Promise.resolve();
       }
+
       return new Promise((resolve) => {
         const settle = (): void => {
           stop();
           shared.closing.delete(settle);
           resolve();
         };
+
         const stop = shared.observer.subscribe((update) => {
           if (update.selectedVersion !== undefined && update.selectedVersion >= version) settle();
         });
+
         shared.closing.add(settle);
         shared.observer.refresh();
       });

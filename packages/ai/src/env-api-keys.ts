@@ -11,8 +11,11 @@ import type { KnownProvider, ProviderEnv } from "./types.ts";
 import { getProviderEnvValue } from "./utils/provider-env.ts";
 
 export const ANTHROPIC_AUTH_TOKEN_ENV = "ANTHROPIC_AUTH_TOKEN";
+
 export const ANTHROPIC_OAUTH_TOKEN_ENV = "ANTHROPIC_OAUTH_TOKEN";
+
 export const ANTHROPIC_API_KEY_ENV = "ANTHROPIC_API_KEY";
+
 export const ANTHROPIC_ENV_KEYS = [
   ANTHROPIC_AUTH_TOKEN_ENV,
   ANTHROPIC_OAUTH_TOKEN_ENV,
@@ -26,14 +29,11 @@ function getApiKeyEnvVars(provider: string): readonly string[] | undefined {
     return ANTHROPIC_ENV_KEYS;
   }
 
-  const envMap: Record<string, string> = {
-    opencode: "OPENCODE_API_KEY",
-    "opencode-go": "OPENCODE_API_KEY",
-    openai: "OPENAI_API_KEY",
-  };
+  if (provider === "opencode" || provider === "opencode-go") return ["OPENCODE_API_KEY"];
 
-  const envVar = envMap[provider];
-  return envVar ? [envVar] : undefined;
+  if (provider === "openai") return ["OPENAI_API_KEY"];
+
+  return undefined;
 }
 
 /**
@@ -47,9 +47,11 @@ export function findEnvKeys(provider: KnownProvider, env?: ProviderEnv): string[
 export function findEnvKeys(provider: string, env?: ProviderEnv): string[] | undefined;
 export function findEnvKeys(provider: string, env?: ProviderEnv): string[] | undefined {
   const envVars = getApiKeyEnvVars(provider);
+
   if (!envVars) return undefined;
 
   const found = envVars.filter((envVar) => !!getProviderEnvValue(envVar, env));
+
   return found.length > 0 ? found : undefined;
 }
 
@@ -62,11 +64,13 @@ export function getEnvApiKey(provider: KnownProvider, env?: ProviderEnv): string
 export function getEnvApiKey(provider: string, env?: ProviderEnv): string | undefined;
 export function getEnvApiKey(provider: string, env?: ProviderEnv): string | undefined {
   const envKeys = findEnvKeys(provider, env);
+
   if (envKeys?.[0]) {
     const apiKeyEnv =
       provider === "anthropic"
         ? envKeys.find((key) => key !== ANTHROPIC_AUTH_TOKEN_ENV)
         : envKeys[0];
+
     if (apiKeyEnv) return getProviderEnvValue(apiKeyEnv, env);
   }
 

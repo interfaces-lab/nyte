@@ -6,6 +6,8 @@
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/types.ts
  * Synced with pi 7ebf9087e.
  */
+import { typed } from "@nyte-ai/schema";
+import { Type } from "typebox";
 import type { ProviderEnv, ProviderHeaders } from "../types.ts";
 
 /**
@@ -36,6 +38,21 @@ export interface OAuthCredential {
   expires: number;
   [key: string]: unknown;
 }
+
+/** An OAuth token endpoint's answer to a code exchange or a refresh. */
+export interface OAuthTokenResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}
+
+export const OAuthTokenResponseSchema = typed<OAuthTokenResponse>()(
+  Type.Object({
+    access_token: Type.String({ minLength: 1 }),
+    refresh_token: Type.String({ minLength: 1 }),
+    expires_in: Type.Number(),
+  }),
+);
 
 /** One type-tagged credential per provider, the shape of today's auth.json. */
 export type Credential = ApiKeyCredential | OAuthCredential;

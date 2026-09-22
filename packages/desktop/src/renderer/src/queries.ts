@@ -19,7 +19,9 @@ import {
   sessionConfigurationOptions,
 } from "./session-configuration.ts";
 import type { ConfigureSessionPatch, PendingConfiguration } from "./session-configuration.ts";
+
 export { keys } from "./query-keys.ts";
+
 import { toast } from "@nyte-ai/ui/sonner";
 import type { MentionFile } from "@nyte-ai/client";
 import type {
@@ -71,19 +73,24 @@ export const queryClient = new QueryClient({
 });
 
 queryClient.setQueryDefaults(["snapshot"], { structuralSharing: false });
+
 installSnapshotCacheBudget(queryClient);
 
 const sessionActionsByClient = new WeakMap<QueryClient, SessionActions>();
 
 function actionsFor(client: QueryClient): SessionActions {
   const existing = sessionActionsByClient.get(client);
+
   if (existing !== undefined) return existing;
+
   const actions = new SessionActions({
     client,
     sessions: nyte.sessions,
     releaseResources: (sessionId) => releaseSessionRendererMemory(client, sessionId),
   });
+
   sessionActionsByClient.set(client, actions);
+
   return actions;
 }
 
@@ -94,6 +101,7 @@ export function useSessionActions(): SessionActions {
 function useSessionProjection() {
   const actions = useSessionActions();
   const pending = useSyncExternalStore(actions.subscribe, actions.getSnapshot, actions.getSnapshot);
+
   return {
     session: (session: SessionInfo) => actions.projectSession(session, pending),
     list: (sessions: readonly SessionInfo[]) => actions.projectList(sessions, pending),
@@ -101,10 +109,13 @@ function useSessionProjection() {
 }
 
 export const SNAPSHOT_WARM_MS = 1_000;
+
 const OUTBOX_WARM_MS = 250;
 
 const readHost = () => nyte.host.state();
+
 const readWorkspaces = () => nyte.workspace.list();
+
 const sessionObservations = new SessionObservations();
 
 function releaseSessionRendererMemory(client: QueryClient, sessionId: SessionId): void {
@@ -123,14 +134,19 @@ function freshestSessionInfo(polled: SessionInfo, pollStartedAt: number): Sessio
 const readSessionDirectory = async (): Promise<readonly WorkspaceSessionDirectory[]> => {
   const startedAt = performance.now();
   const directories = await nyte.host.sessionDirectory();
+
   return directories.map((directory) => ({
     ...directory,
     sessions: directory.sessions.map((item) => freshestSessionInfo(item, startedAt)),
   }));
 };
+
 const readCatalog = () => nyte.host.catalog();
+
 const readUsage = (input: UsageWindow) => nyte.host.usage(input);
+
 const readPluginCatalog = (): Promise<PluginCatalog> => nyte.plugins.catalog();
+
 const readSession = async (sessionId: SessionId) =>
   (await nyte.sessions.get({ sessionId })) ?? null;
 
@@ -164,6 +180,7 @@ export function useWorkspaces() {
   const pending = useMutationState<MutationState<void, Error, string>>({
     filters: { mutationKey: ["workspace", "forget"], status: "pending" },
   });
+
   return useQuery({
     queryKey: keys.workspaces,
     queryFn: readWorkspaces,
@@ -177,6 +194,7 @@ export function useWorkspaces() {
 /** Drop a workspace from the rail. Forgetting the selected workspace returns the view to Home. */
 export function useForgetWorkspace() {
   const client = useQueryClient();
+
   return useMutation({
     mutationKey: ["workspace", "forget"],
     mutationFn: (path: string) => nyte.workspace.forget({ path }),
@@ -196,6 +214,7 @@ export function useForgetWorkspace() {
 
 export function useWorkspaceSessionDirectory() {
   const projection = useSessionProjection();
+
   return useQuery({
     queryKey: keys.sessionDirectory,
     queryFn: readSessionDirectory,
@@ -211,6 +230,7 @@ export function useWorkspaceSessionDirectory() {
 export function useSessionPreview(enabled = true) {
   const projection = useSessionProjection();
   const host = useHostState();
+
   return useQuery({
     queryKey: keys.sessionDirectory,
     queryFn: readSessionDirectory,
@@ -224,6 +244,7 @@ export function useSessionPreview(enabled = true) {
 export function useSessionSearch(search: string, enabled = true) {
   const projection = useSessionProjection();
   const normalized = search.trim();
+
   return useQuery({
     queryKey: keys.sessionSearch(normalized),
     queryFn: () => nyte.sessions.list({ search: normalized, parent: null, limit: 50 }),
@@ -237,6 +258,7 @@ export function useSessionSearch(search: string, enabled = true) {
 
 export function useSession(sessionId: SessionId) {
   const projection = useSessionProjection();
+
   return useQuery({
     queryKey: keys.session(sessionId),
     queryFn: () => readSession(sessionId),
@@ -246,9 +268,11 @@ export function useSession(sessionId: SessionId) {
 
 export function useSessionSnapshot(sessionId: SessionId) {
   const projection = useSessionProjection();
+
   const pending = useMutationState<PendingConfiguration>({
     filters: { mutationKey: ["session", sessionId, "configure"], status: "pending" },
   });
+
   // Every mount reads through the observer: its state when the session is
   // already open, else the fresh coherent read its watch starts from, so a
   // reopened view never trusts a cache that predates a hidden interval. Cached
@@ -283,16 +307,21 @@ export function childSessionsOptions(sessionId: SessionId | undefined) {
       const first = await nyte.sessions.list({ parent: sessionId });
       const children = [...first.items];
       let cursor = first.next;
+
       while (cursor !== undefined) {
         const page = await nyte.sessions.list({ parent: sessionId, cursor });
         children.push(...page.items);
         cursor = page.next;
       }
+
       const fresh = children.map((child) => freshestSessionInfo(child, startedAt));
+
       for (const child of fresh) queryClient.setQueryData(keys.session(child.sessionId), child);
+
       return fresh;
     },
     enabled: sessionId !== undefined,
+    staleTime: SNAPSHOT_WARM_MS,
   });
 }
 
@@ -300,7 +329,16 @@ export function useChildSessions(sessionId: SessionId | undefined) {
   return useQuery(childSessionsOptions(sessionId));
 }
 
+export function backgroundJobsOptions(sessionId: SessionId) {
+  return queryOptions({
+    queryKey: keys.jobs(sessionId),
+    queryFn: () => nyte.jobs.list({ sessionId }),
+    staleTime: SNAPSHOT_WARM_MS,
+  });
+}
+
 const WORKSPACE_TARGET = { kind: "workspace" } as const;
+
 const readVcsSnapshot = () => nyte.workspace.vcs.snapshot({ target: WORKSPACE_TARGET });
 
 export function refreshVcsSnapshot(): Promise<VcsSnapshot> {
@@ -336,7 +374,8 @@ const vcsKeys = {
   ) => ["vcs", "diffs", root, revision, scopeKey, pathsKey, ignoreWhitespace] as const,
   log: (limit: number, before: string | null) => ["vcs", "log", limit, before] as const,
   refs: ["vcs", "refs"] as const,
-  runDiff: (sessionId: SessionId, runId: RunId) => ["vcs", "run-diff", sessionId, runId] as const,
+  runDiff: (sessionId: SessionId, runId: RunId, live: boolean) =>
+    ["vcs", "run-diff", sessionId, runId, live ? "live" : "settled"] as const,
 };
 
 /**
@@ -351,14 +390,16 @@ export function useRunDiff(input: {
   readonly enabled?: boolean;
 }) {
   const { sessionId, runId, live, enabled = true } = input;
+
   return useQuery<RunDiff>({
     queryKey:
       sessionId === undefined || runId === undefined
         ? (["vcs", "run-diff", "unavailable"] as const)
-        : vcsKeys.runDiff(sessionId, runId),
+        : vcsKeys.runDiff(sessionId, runId, live),
     queryFn: async () => {
       if (sessionId === undefined || runId === undefined) return { kind: "not_found" };
       const [result] = await nyte.runs.diff({ sessionId, runs: [runId] });
+
       return result?.diff ?? { kind: "not_found" };
     },
     enabled: enabled && sessionId !== undefined && runId !== undefined,
@@ -386,6 +427,7 @@ function scopeKey(scope: VcsDiffRequest["scope"]): string {
       return `branch:${scope.base}`;
     default: {
       const _exhaustive: never = scope;
+
       return _exhaustive;
     }
   }
@@ -395,6 +437,7 @@ export function useVcsDiff(read: VcsDiffRead | undefined, enabled: boolean) {
   const request = read?.request;
   const diffScopeKey = request === undefined ? undefined : scopeKey(request.scope);
   const pathsKey = request?.paths === undefined ? "" : [...request.paths].toSorted().join("\0");
+
   return useQuery<readonly VcsDiff[]>({
     queryKey:
       read === undefined
@@ -434,8 +477,8 @@ export function useVcsRefs(enabled: boolean) {
 }
 
 function vcsNeedsRefresh({ queryKey }: { readonly queryKey: readonly unknown[] }): boolean {
-  const scope = queryKey[4];
-  return queryKey[1] !== "diffs" || (typeof scope === "string" && scope.startsWith("branch:"));
+  // A diff key's scope is always a string; see `vcsKeys.diff`.
+  return queryKey[1] !== "diffs" || String(queryKey[4]).startsWith("branch:");
 }
 
 export function refreshVcs(): void {
@@ -457,10 +500,13 @@ export function mentionFilesOptions(enabled: boolean) {
       signal.throwIfAborted();
       const requestId = crypto.randomUUID();
       const pending = nyte.host.files.list({ requestId });
+
       const cancel = () => {
         void nyte.host.files.cancelList({ requestId }).catch(() => undefined);
       };
+
       signal.addEventListener("abort", cancel, { once: true });
+
       try {
         return await pending;
       } finally {
@@ -483,6 +529,7 @@ export function useWorkspaceFile(path: string | undefined) {
     queryKey: keys.workspaceFile(path ?? ""),
     queryFn: () => {
       if (path === undefined) throw new Error("Select a file to open it");
+
       return nyte.host.files.read({ path });
     },
     enabled: path !== undefined,
@@ -496,6 +543,7 @@ export function useWorkspaceSearch(
 ) {
   const host = useHostState();
   const workspacePath = host.data?.workspace?.path;
+
   return useQuery({
     queryKey: keys.workspaceSearch(workspacePath ?? "", input),
     queryFn: async ({ signal }) => {
@@ -504,10 +552,13 @@ export function useWorkspaceSearch(
       signal.throwIfAborted();
       const requestId = crypto.randomUUID();
       const pending = nyte.host.files.search({ ...input, requestId });
+
       const cancel = () => {
         void nyte.host.files.cancelSearch({ requestId }).catch(() => undefined);
       };
+
       signal.addEventListener("abort", cancel, { once: true });
+
       try {
         return await pending;
       } finally {
@@ -524,6 +575,7 @@ export function useWorkspaceSearch(
 
 export function useSaveWorkspaceFile() {
   const client = useQueryClient();
+
   return useMutation({
     mutationKey: ["files", "save"],
     mutationFn: (input: Parameters<typeof nyte.host.files.save>[0]) => nyte.host.files.save(input),
@@ -554,6 +606,7 @@ export function useCatalog(sessionId?: SessionId) {
   const pending = useMutationState<MutationState<DesktopCatalog, Error, PreferenceChange>>({
     filters: { mutationKey: ["catalog", "preference"], status: "pending" },
   });
+
   return useQuery({
     queryKey: sessionId === undefined ? keys.catalog : keys.sessionCatalog(sessionId),
     queryFn: () => (sessionId === undefined ? readCatalog() : nyte.host.catalog({ sessionId })),
@@ -613,6 +666,7 @@ interface UsageQueryView {
 
 export function useUsageReport(untilDay: string): UsageQueryView {
   const query = useQuery(usageReportOptions(untilDay));
+
   return {
     report: query.data,
     error: query.isError
@@ -646,6 +700,7 @@ export function usePluginCatalog() {
 /** Controls show pending choices while the host returns the authoritative catalog. */
 export function useSetPreference() {
   const client = useQueryClient();
+
   return useMutation({
     mutationKey: ["catalog", "preference"],
     scope: { id: "catalog-preference" },
@@ -675,13 +730,16 @@ export function commitHostWorkspace(workspace: WorkspaceInfo | undefined): void 
 /** Refill workspace caches after a host transition, committing host state last. */
 export async function loadLocalResources(): Promise<void> {
   const version = ++localLoadVersion;
+
   const [host, workspaces, catalog, sessionDirectory] = await Promise.all([
     readHost(),
     readWorkspaces(),
     readCatalog(),
     readSessionDirectory(),
   ]);
+
   if (version !== localLoadVersion) return;
+
   if (typeof indexedDB !== "undefined") {
     const activation = activateOutbox(host.workspace?.path).catch(() => undefined);
     await new Promise<void>((resolve) => {
@@ -692,6 +750,7 @@ export async function loadLocalResources(): Promise<void> {
       });
     });
   }
+
   if (version !== localLoadVersion) return;
 
   const workspaceScopes = new Set(["vcs", "files", "github", "plugins", "customize"]);
@@ -705,10 +764,12 @@ export async function loadLocalResources(): Promise<void> {
   queryClient.setQueryData(keys.sessionPreview, {
     items: localSessions(sessionDirectory, host.workspace?.path ?? null) ?? [],
   } satisfies SessionPage);
+
   for (const directory of sessionDirectory) {
     for (const session of directory.sessions)
       queryClient.setQueryData(keys.session(session.sessionId), session);
   }
+
   // Commit host last. Home and projects both find their local session cache filled.
   queryClient.setQueryData(keys.host, host);
   // The plugin catalog activates the folder's plugins on first read; that
@@ -727,8 +788,10 @@ export async function loadLocalResources(): Promise<void> {
  */
 export function cacheSessionInfo(session: SessionInfo): void {
   sessionObservations.observe(session.sessionId, performance.now());
+
   const replace = (sessions: readonly SessionInfo[]): readonly SessionInfo[] =>
     sessions.map((candidate) => (candidate.sessionId === session.sessionId ? session : candidate));
+
   queryClient.setQueryData(keys.session(session.sessionId), session);
   queryClient.setQueryData<SessionPage>(keys.sessionPreview, (preview) =>
     preview === undefined ? preview : { ...preview, items: replace(preview.items) },
@@ -738,6 +801,7 @@ export function cacheSessionInfo(session: SessionInfo): void {
     (directories) =>
       directories?.map((directory) => ({ ...directory, sessions: replace(directory.sessions) })),
   );
+
   if (session.parent !== undefined) {
     queryClient.setQueryData<readonly SessionInfo[]>(
       keys.childSessions(session.parent.sessionId),
@@ -757,10 +821,12 @@ export async function cacheCreatedSession({
     queryClient.cancelQueries({ queryKey: keys.sessionDirectory, exact: true }),
     queryClient.cancelQueries({ queryKey: keys.sessionPreview, exact: true }),
   ]);
+
   const insert = (sessions: readonly SessionInfo[]) => [
     session,
     ...sessions.filter((candidate) => candidate.sessionId !== session.sessionId),
   ];
+
   sessionObservations.observe(session.sessionId, performance.now());
   queryClient.setQueryData(keys.session(session.sessionId), session);
   queryClient.setQueryData<SessionPage>(keys.sessionPreview, (preview) => ({
@@ -816,9 +882,11 @@ export function usePluginSettingsProjection(sessionId: SessionId | undefined) {
   const pending = useMutationState<MutationState<void, Error, ApplyPluginSettingInput>>({
     filters: { mutationKey: ["plugins", "apply", sessionId], status: "pending" },
   });
+
   return (settings: readonly SettingInfo[]): readonly SettingInfo[] =>
     pending.reduce((current, mutation) => {
       const input = mutation.variables;
+
       return input === undefined
         ? current
         : current.map((setting) =>
@@ -829,6 +897,7 @@ export function usePluginSettingsProjection(sessionId: SessionId | undefined) {
 
 export function usePluginSettings(sessionId: SessionId, enabled = true) {
   const project = usePluginSettingsProjection(sessionId);
+
   return useQuery({
     queryKey: keys.pluginSettings(sessionId),
     queryFn: () => nyte.plugins.settings.list({ sessionId }),
@@ -841,13 +910,16 @@ export function usePluginSettings(sessionId: SessionId, enabled = true) {
 
 export function useApplyPluginSetting(sessionId: SessionId | undefined) {
   const client = useQueryClient();
+
   return useMutation({
     mutationKey: ["plugins", "apply", sessionId],
     scope: { id: `plugin-settings:${sessionId}` },
     mutationFn: async ({ id, choiceId }: ApplyPluginSettingInput) => {
       if (sessionId === undefined) throw new Error("Open a chat to change its settings");
       const outcome = await nyte.plugins.settings.apply({ sessionId, id, choiceId });
+
       if (outcome.kind === "not_found") throw new Error("That setting is no longer available");
+
       if (outcome.kind === "invalid_choice") throw new Error("That setting value is not valid");
     },
     onSuccess: async (_result, input) => {
@@ -856,10 +928,12 @@ export function useApplyPluginSetting(sessionId: SessionId | undefined) {
         client.cancelQueries({ queryKey: keys.pluginSettings(sessionId), exact: true }),
         client.cancelQueries({ queryKey: ["customize", sessionId], exact: true }),
       ]);
+
       const update = (settings: readonly SettingInfo[]) =>
         settings.map((setting) =>
           setting.id === input.id ? { ...setting, current: input.choiceId } : setting,
         );
+
       client.setQueryData<readonly SettingInfo[]>(keys.pluginSettings(sessionId), (settings) =>
         settings === undefined ? settings : update(settings),
       );
@@ -873,6 +947,7 @@ export function useApplyPluginSetting(sessionId: SessionId | undefined) {
       toast.error("Couldn't change that setting. Try again.", { id: "plugin-setting-error" }),
     onSettled: () => {
       if (sessionId === undefined) return;
+
       return Promise.all([
         client.invalidateQueries({ queryKey: keys.pluginSettings(sessionId), exact: true }),
         client.invalidateQueries({ queryKey: ["customize", sessionId], exact: true }),
@@ -883,6 +958,7 @@ export function useApplyPluginSetting(sessionId: SessionId | undefined) {
 
 export function useRenameSession() {
   const actions = useSessionActions();
+
   return useMutation({
     mutationFn: (input: { sessionId: SessionId; name: string }) => actions.rename(input),
   });

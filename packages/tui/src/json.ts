@@ -10,8 +10,3 @@ export function isJsonObject(value: JsonValue | undefined): value is JsonObject 
 export function isJsonString(value: JsonValue | undefined): value is string {
   return typeof value === "string";
 }
-
-/** The error `readFile` throws for a path that is not there. */
-export function isMissingFile(cause: unknown): cause is { readonly code: "ENOENT" } {
-  return typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
-}

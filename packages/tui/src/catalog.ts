@@ -17,14 +17,6 @@ import type { ThinkingLevel } from "@nyte-ai/core";
 
 export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 
-/**
- * Restore the provider's persisted catalog on top of its baked models. Local
- * disk only: the boot path must work on a pdelivery.
- */
-export async function loadProviderCatalog(models: Models, providerId: string): Promise<void> {
-  await models.refresh({ providers: [providerId], allowNetwork: false });
-}
-
 type ProviderAuthStatus =
   | { readonly kind: "authenticated"; readonly provider: Provider; readonly auth: AuthCheck }
   | { readonly kind: "unauthenticated"; readonly provider: Provider };
@@ -37,6 +29,7 @@ export function providerAuthStatuses(
   return Promise.all(
     models.getProviders().map(async (provider): Promise<ProviderAuthStatus> => {
       const auth = await models.checkAuth(provider.id, options);
+
       return auth === undefined
         ? { kind: "unauthenticated", provider }
         : { kind: "authenticated", provider, auth };
@@ -49,13 +42,17 @@ async function fetchAuthenticatedModels(
   options: Pick<ModelsRefreshOptions, "force" | "allowNetwork" | "signal">,
 ): Promise<readonly Model<Api>[]> {
   const statuses = await providerAuthStatuses(models, { signal: options.signal });
+
   const providers = statuses.flatMap((status) =>
     status.kind === "authenticated" ? [status.provider] : [],
   );
+
   await models.refresh({ providers: providers.map((provider) => provider.id), ...options });
+
   const available = await Promise.all(
     providers.map((provider) => models.getAvailable(provider.id, { signal: options.signal })),
   );
+
   return available.flat();
 }
 
@@ -68,9 +65,11 @@ const catalogCache = new WeakMap<Models, CatalogCache>();
 
 function cacheFor(models: Models): CatalogCache {
   const existing = catalogCache.get(models);
+
   if (existing !== undefined) return existing;
   const created: CatalogCache = { loaded: undefined, loading: undefined };
   catalogCache.set(models, created);
+
   return created;
 }
 
@@ -93,22 +92,29 @@ export function loadAuthenticatedModels(
 ): Promise<readonly Model<Api>[]> {
   const cache = cacheFor(models);
   const pending = cache.loading;
+
   if (pending !== undefined && options.force !== true) return pending;
+
   const load = fetchAuthenticatedModels(models, options)
     .then((available) => {
       if (cache.loading === load) cache.loaded = available;
+
       return available;
     })
     .finally(() => {
       if (cache.loading === load) cache.loading = undefined;
     });
+
   cache.loading = load;
+
   return load;
 }
 
 export function requireProvider(models: Models, providerId: string): Provider {
   const provider = models.getProvider(providerId);
+
   if (provider === undefined) throw new Error(`Unknown provider: ${providerId}`);
+
   return provider;
 }
 
@@ -119,9 +125,12 @@ export function defaultModel(
 ): Model<Api> {
   const providerModels = modelCandidates.filter((model) => model.provider === providerId);
   const preferredId = defaultModelPerProvider[providerId];
+
   const model =
     providerModels.find((candidate) => candidate.id === preferredId) ?? providerModels.at(0);
+
   if (model === undefined) throw new Error(`${providerId} does not expose any available models`);
+
   return model;
 }
 
@@ -133,6 +142,8 @@ export function requireModel(
   const model = modelCandidates.find(
     (candidate) => candidate.provider === providerId && candidate.id === modelId,
   );
+
   if (model === undefined) throw new Error(`Unavailable ${providerId} model: ${modelId}`);
+
   return model;
 }

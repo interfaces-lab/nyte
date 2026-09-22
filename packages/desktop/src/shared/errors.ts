@@ -1,4 +1,6 @@
 import type { WireError } from "@nyte-ai/protocol";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 
 export type IpcFailure = WireError & { readonly correlationId?: string };
 
@@ -11,14 +13,9 @@ export function bridgeError(error: IpcFailure): Error & { readonly cause: IpcFai
   return { name: "HostError", message: error.message, cause: error };
 }
 
+const describedError = Type.Object({ message: Type.String() });
+
 /** Handles local Errors and plain error data copied across contextBridge. */
 export function errorMessage(cause: unknown): string {
-  if (
-    typeof cause === "object" &&
-    cause !== null &&
-    "message" in cause &&
-    typeof cause.message === "string"
-  )
-    return cause.message;
-  return String(cause);
+  return Value.Check(describedError, cause) ? cause.message : String(cause);
 }

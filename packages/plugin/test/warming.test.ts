@@ -11,7 +11,6 @@ import { inlinePlugin } from "@nyte-ai/plugin";
 import type { Context } from "@nyte-ai/schema";
 import {
   KEEP_ALIVE_PROMPT,
-  nextWarmAt,
   WARMING_SETTING_ID,
   warmingPlugin,
   type WarmingOptions,
@@ -79,14 +78,6 @@ function settleAborted(
     { once: true },
   );
 }
-
-test("the next keep-alive falls one interval after activity and stops once the chat is cold", () => {
-  const activity = { at: 1_000, expires: 2_000 };
-  assert.equal(nextWarmAt(activity, 1_000, 100), 1_100);
-  assert.equal(nextWarmAt(activity, 1_500, 100), 1_500);
-  assert.equal(nextWarmAt({ at: 1_950, expires: 2_000 }, 1_950, 100), undefined);
-  assert.equal(nextWarmAt(activity, 2_000, 100), undefined);
-});
 
 test("switched on, a turn is followed by keep-alives over the same context and tools", async () => {
   const world = TestWorkspace.create("nyte-warming-");

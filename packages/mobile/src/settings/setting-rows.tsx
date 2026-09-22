@@ -23,6 +23,7 @@ export function ChoiceRow<Value extends string>({
   setting: Setting<Value>;
 }) {
   const theme = useTheme();
+
   return (
     <GroupRow>
       {icon === undefined ? null : <IconRing name={icon} />}
@@ -71,6 +72,7 @@ export function SwitchRow({
   onChange: (value: boolean) => void;
 }) {
   const theme = useTheme();
+
   return (
     <GroupRow>
       {icon === undefined ? null : <IconRing name={icon} />}
@@ -88,6 +90,7 @@ export function SwitchRow({
 }
 
 const valueFont = { size: typography.secondary.fontSize } as const;
+
 const menuHost = { height: controls.metaTarget } as const;
 
 const styles = css.create({

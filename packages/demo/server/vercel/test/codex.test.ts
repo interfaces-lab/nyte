@@ -10,7 +10,7 @@ const payload = Buffer.from(
 ).toString("base64url");
 const accessToken = `test.${payload}.signature`;
 
-async function fixture(context: TestContext, access: unknown) {
+async function fixture(context: TestContext, access: string | undefined) {
   const store = new SqliteStore(":memory:");
   const models = createServerModels({ OPENAI_CODEX_ACCESS_TOKEN: access });
   const model = models.getModel("openai-codex", "gpt-5.6-sol");
@@ -131,7 +131,7 @@ test(
   },
 );
 
-for (const access of [undefined, "", 123]) {
+for (const access of [undefined, ""]) {
   test(
     `a missing or invalid Codex access token fails the run without network access: ${String(access)}`,
     { timeout: 10_000 },

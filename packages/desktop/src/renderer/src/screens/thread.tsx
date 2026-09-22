@@ -92,13 +92,12 @@ import { nyte } from "../nyte.ts";
 import type { DesktopModelOption } from "../nyte.ts";
 import { sessionReadState } from "../session-read-state.ts";
 
-import { BackgroundWork } from "../conversation/jobs-panel.tsx";
+import { BackgroundWork } from "../conversation/tray/terminals.tsx";
 import { LiveTurn, liveTurnStyles } from "../conversation/live-turn.tsx";
 import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
 import { TurnView, UserMessageView } from "../conversation/turn-view.tsx";
 import { TranscriptSkeleton } from "./transcript-skeleton.tsx";
-import { Selections } from "../conversation/selection.tsx";
-import { parkedSelections } from "../conversation/selection.ts";
+import { QuestionTray } from "../conversation/tray/questions.tsx";
 import {
   NO_WAITS,
   displayTranscriptParts,
@@ -130,7 +129,7 @@ import type { WorkbenchTarget } from "../workbench/controller.ts";
 import { Workbench } from "../workbench/workbench.tsx";
 import { workbenchReferenceOpener } from "../workbench/open-reference.ts";
 import { openSessionJobTerminal } from "../workbench/terminal-store.ts";
-import { SubagentTray, type SubagentTrayView } from "../conversation/subagent-tray.tsx";
+import { SubagentTray, type SubagentTrayView } from "../conversation/tray/agents.tsx";
 import { SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
 import type { SubagentSession } from "../conversation/subagent-sessions.ts";
 import { focusTerminal } from "../workbench/terminal-runtime.ts";
@@ -138,14 +137,18 @@ import { clientActions, clientActionShortcut } from "../../../shared/client-acti
 import { errorMessage } from "../../../shared/errors.ts";
 
 const EMPTY_TURNS: readonly Turn[] = [];
+
 const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
+
 const NO_LIVE_TOOLS: ReadonlyMap<string, LiveToolProgress> = new Map();
+
 const TRANSCRIPT_OVERSCAN = 4;
 
 type TranscriptVirtualizer = Virtualizer<HTMLDivElement, HTMLDivElement>;
 
 function setDataState(element: HTMLElement, name: string, active: boolean): void {
   const value = active ? "true" : "false";
+
   if (element.dataset[name] !== value) element.dataset[name] = value;
 }
 
@@ -168,12 +171,15 @@ function syncStickyUserMessage(scroll: HTMLDivElement, virtualizer: TranscriptVi
   for (const row of rows) {
     const turn = row.closest<HTMLElement>("[data-sticky-turn='true']");
     const wrapper = row.closest<HTMLDivElement>("[data-index]");
+
     const item =
       wrapper === null
         ? undefined
         : virtualizer.measurementsCache[virtualizer.indexFromElement(wrapper)];
+
     const eligible = turn !== null && item !== undefined && row.offsetHeight < scroll.clientHeight;
     setDataState(row, "stickyDisabled", !eligible);
+
     if (!eligible || turn === null || item === undefined) continue;
     candidates.push({ start: item.start + turn.offsetTop, height: item.size });
     candidateRows.push(row);
@@ -181,6 +187,7 @@ function syncStickyUserMessage(scroll: HTMLDivElement, virtualizer: TranscriptVi
 
   const active = activeStickyCandidate(candidates, scroll.scrollTop, isBottomPinned(scroll));
   const activeRow = active === undefined ? undefined : candidateRows[active];
+
   for (const row of rows) setDataState(row, "stickyActive", row === activeRow);
   setDataState(scroll, "topFade", scroll.scrollTop > 0 && activeRow === undefined);
 }
@@ -219,6 +226,7 @@ const VirtualizedTranscript = memo(function VirtualizedTranscript({
   const viewStore = usePaneViewStateStore();
   const density = useAppearanceSettings().toolCalls;
   const dockHeight = useRef(0);
+
   // What the last visit measured, read once: the virtualizer consults its
   // initial options only until the scrollport reports. Rows already measured
   // take their real height; the rest keep their estimate. Heights remembered
@@ -228,6 +236,7 @@ const VirtualizedTranscript = memo(function VirtualizedTranscript({
     const { transcript, scroll } = viewStore.readSession(sessionId, paneId);
     const measurements = transcript.density === density ? transcript.measurements : [];
     const measured = new Map(measurements.map((item) => [item.key, item.size]));
+
     return {
       measurements: [...measurements],
       rect: transcript.viewport ?? { width: 0, height: 0 },
@@ -238,6 +247,7 @@ const VirtualizedTranscript = memo(function VirtualizedTranscript({
       }),
     };
   });
+
   // The slack under the last row scales with the scrollport, so the container
   // follows it. What the last visit measured carries the first paint until
   // the observer below reports this one.
@@ -245,6 +255,7 @@ const VirtualizedTranscript = memo(function VirtualizedTranscript({
   // The key extractor is a dependency of the virtualizer's measurement memo;
   // a fresh closure per render would rebuild every item's layout.
   const getItemKey = useCallback((index: number) => rows[index]?.key ?? index, [rows]);
+
   // oxlint-disable-next-line react/incompatible-library -- the bailout is the intended behaviour
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: rows.length,
@@ -294,11 +305,13 @@ const VirtualizedTranscript = memo(function VirtualizedTranscript({
   useLayoutEffect(() => {
     // The container is the scrollport's first child; the composer dock is its last.
     const container = scroll?.firstElementChild;
+
     if (scroll === null || !(container instanceof HTMLElement)) return undefined;
     const last = scroll.lastElementChild;
     const dock = last instanceof HTMLElement && last !== container ? last : undefined;
     dockHeight.current = dock?.offsetHeight ?? 0;
     const restored = viewStore.readSession(sessionId, paneId).scroll;
+
     // Restoration must go through the virtualizer so its scroll target moves
     // too; a direct scrollTop write is undone by its initial reconcile.
     if (restored.bottomPinned) virtualizer.scrollToEnd();
@@ -307,6 +320,7 @@ const VirtualizedTranscript = memo(function VirtualizedTranscript({
     // The commit effect below and the observer's initial delivery both sync
     // the sticky prompt, so no explicit sync is needed here.
     const sync = (): void => syncStickyUserMessage(scroll, virtualizer);
+
     // Streamed text, late highlights, a growing composer, and a shrinking
     // scrollport all move the bottom; a reader pinned there follows it. A
     // reader elsewhere keeps what they are looking at: the dock grows over
@@ -314,18 +328,24 @@ const VirtualizedTranscript = memo(function VirtualizedTranscript({
     const observer = new ResizeObserver((entries) => {
       const pinned = viewStore.readSession(sessionId, paneId).scroll.bottomPinned;
       setViewportHeight(scroll.clientHeight);
+
       if (dock !== undefined && entries.some((entry) => entry.target === dock)) {
         const delta = dock.offsetHeight - dockHeight.current;
         dockHeight.current = dock.offsetHeight;
+
         if (!pinned) virtualizer.scrollToOffset(scroll.scrollTop + delta);
       }
+
       if (pinned) virtualizer.scrollToEnd();
       sync();
     });
+
     observer.observe(scroll);
     observer.observe(container);
+
     if (dock !== undefined) observer.observe(dock);
     scroll.addEventListener("scroll", sync, { passive: true });
+
     return () => {
       observer.disconnect();
       scroll.removeEventListener("scroll", sync);
@@ -342,7 +362,9 @@ const VirtualizedTranscript = memo(function VirtualizedTranscript({
     <div ref={virtualizer.containerRef} {...stylex.props(threadStyles.transcript)}>
       {virtualizer.getVirtualItems().map((item) => {
         const row = rows[item.index];
+
         if (row === undefined) return null;
+
         return (
           <div
             key={row.key}
@@ -360,6 +382,7 @@ const VirtualizedTranscript = memo(function VirtualizedTranscript({
 
 function repositoryBranch(snapshot: VcsSnapshot | undefined): string | undefined {
   if (snapshot === undefined || snapshot.kind === "none") return undefined;
+
   return snapshot.head.kind === "attached" ? snapshot.head.branch : undefined;
 }
 
@@ -368,6 +391,7 @@ function displayWorkspacePath(path: string): string {
 }
 
 type BlankViewUpdate = (current: BlankViewState) => BlankViewState;
+
 type SessionDeletionState =
   | { readonly kind: "closed" }
   | { readonly kind: "open"; readonly sessionId: SessionId };
@@ -380,9 +404,11 @@ function useBlankViewBinding(
   const [, redraw] = useReducer((value: number) => value + 1, 0);
   const state = store.readBlank(paneId);
   const draftId = state.id;
+
   const update = useCallback(
     (change: BlankViewUpdate): void => {
       const current = store.readBlank(paneId);
+
       // A detached composer can still commit; its writes belong to the draft it showed.
       if (current.id !== draftId) return;
       store.writeBlank(paneId, change(current));
@@ -390,6 +416,7 @@ function useBlankViewBinding(
     },
     [draftId, paneId, store],
   );
+
   return [state, update];
 }
 
@@ -459,27 +486,34 @@ async function applyBranchChoice({
       sessionId,
       model: { provider: choice.model.provider, id: choice.model.id },
     };
+
     const configured = await nyte.sessions.configure(
       choice.thinkingLevel === undefined
         ? configuration
         : { ...configuration, thinkingLevel: choice.thinkingLevel },
     );
+
     if (configured.kind === "unknown_model") {
       throw new Error("That model is no longer available.");
     }
+
     if (configured.kind === "unknown_agent") {
       throw new Error("The selected mode is no longer available.");
     }
   }
+
   for (const settingId of new Set([...fastEnabled, ...choice.fastEnabled])) {
     const before = fastEnabled.has(settingId);
     const after = choice.fastEnabled.has(settingId);
+
     if (before === after) continue;
+
     const applied = await nyte.plugins.settings.apply({
       sessionId,
       id: settingId,
       choiceId: after ? "on" : "off",
     });
+
     if (applied.kind !== "applied") {
       throw new Error("That model setting is no longer available.");
     }
@@ -510,11 +544,13 @@ async function applyMessageEdit({
   readonly fastEnabled: ReadonlySet<string>;
 }): Promise<void> {
   const outcome = await nyte.heads.move({ sessionId, to: part.commit, expect: tip });
+
   switch (outcome.kind) {
     case "moved":
       if (outcome.restored?.commit !== part.commit) {
         throw new Error("The selected message is no longer editable.");
       }
+
       try {
         await applyBranchChoice({ sessionId, choice, fastEnabled });
         await outbox.submit({ sessionId, content });
@@ -523,8 +559,10 @@ async function applyMessageEdit({
           `The conversation was rewound to this message, but the edit was not sent: ${errorMessage(cause)}`,
         );
       }
+
       void queryClient.invalidateQueries({ queryKey: keys.sessions });
       void queryClient.invalidateQueries({ queryKey: keys.pluginSettings(sessionId) });
+
       return;
     case "busy":
       throw new Error("Wait for the current response before editing this message.");
@@ -536,6 +574,7 @@ async function applyMessageEdit({
       throw new Error(outcome.message);
     default: {
       const _exhaustive: never = outcome;
+
       return _exhaustive;
     }
   }
@@ -592,6 +631,7 @@ const TrailingTurnView = memo(function TrailingTurnView({
   waits: LiveWaits;
 }): ReactElement | null {
   const live = useSessionLive(sessionId);
+
   return (
     <TurnView
       turn={turn}
@@ -619,6 +659,7 @@ const SessionLiveTurn = memo(function SessionLiveTurn({
   cwd: string | undefined;
 }): ReactElement | null {
   const live = useSessionLive(sessionId);
+
   return <LiveTurn live={live} working={working} settledWork={settledWork} cwd={cwd} />;
 });
 
@@ -653,14 +694,18 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
   const [draftName, setDraftName] = useState<string | undefined>();
   const [deletion, setDeletion] = useState<SessionDeletionState>({ kind: "closed" });
   const [navigating, setNavigating] = useState(false);
+
   const [trayView, setTrayView] = useState<SubagentTrayView | { readonly kind: "terminals" }>({
     kind: "closed",
   });
+
   const subagentTray: SubagentTrayView =
     trayView.kind === "terminals" ? { kind: "closed" } : trayView;
+
   const paneMenuTrigger = useRef<HTMLButtonElement>(null);
   const composerRef = useRef<ComposerEditorHandle | null>(null);
   const inputRef = presentation === "full" ? props.inputRef : undefined;
+
   const attachComposer = useCallback(
     (handle: ComposerEditorHandle | null): void => {
       composerRef.current = handle;
@@ -668,17 +713,20 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
     },
     [inputRef],
   );
+
   const snapshot = useSessionSnapshot(sessionId);
   const snapshotSession = snapshot.data?.session;
   useLayoutEffect(() => {
     if (session.data !== undefined && session.data !== null)
       sessionReadState.markRead(session.data);
+
     if (snapshotSession !== undefined) sessionReadState.markRead(snapshotSession);
   }, [session.data, snapshotSession]);
   const turns = snapshot.data?.transcript ?? EMPTY_TURNS;
   const live = useSessionLive(sessionId);
   const viewStore = usePaneViewStateStore();
   const unsent = useOutboxRows(sessionId);
+
   const messages = useMemo(
     () =>
       conversationMessages({
@@ -688,24 +736,29 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
       }),
     [snapshot.data, unsent],
   );
+
   const parentRunning = live.runState !== "idle" || messages.running;
   const working = navigating || parentRunning || messages.submitted.length > 0;
   const cwd = host.data?.workspace?.path;
   // The scrollport arrives as state so everything below it re-runs on the
   // commit that creates the node, not one commit late.
   const [scroll, setScroll] = useState<HTMLDivElement | null>(null);
+
   // The store holds where this chat was left, and the restore puts the
   // scrollport back at that offset, so the two agree until the reader moves
   // and the scroll handler takes over.
   const [bottomPinned, setBottomPinned] = useState(
     () => viewStore.readSession(sessionId, paneId).scroll.bottomPinned,
   );
+
   const ready = snapshot.data !== undefined;
   const modelOptions = catalog.data?.models ?? EMPTY_MODEL_OPTIONS;
+
   const pluginSettings = usePluginSettings(
     sessionId,
     modelOptions.some((option) => option.fastMode.kind === "available"),
   );
+
   const fastEnabled = useMemo(
     () =>
       new Set(
@@ -715,8 +768,10 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
       ),
     [pluginSettings.data],
   );
+
   const configuredModel = snapshot.data?.config.model;
   const thinkingLevel = snapshot.data?.config.thinkingLevel;
+
   const branchModel = useMemo<BranchModelPicker>(
     () => ({
       catalog: catalog.data,
@@ -730,6 +785,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
     }),
     [catalog.data, configuredModel, fastEnabled, modelOptions, thinkingLevel],
   );
+
   // These walk the transcript, so they are keyed on the durable inputs: a
   // streaming frame re-renders this component and must not repeat them.
   // The indicator belongs under the last turn the transcript draws, which is
@@ -740,10 +796,12 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
   // ends in prose needs it below the prose, or the model looks idle while it
   // prepares its next step.
   const parked = snapshot.data?.parked;
+
   const lastWaits = useMemo(
     () => (lastTurn?.kind === "turn" ? liveWaits(lastTurn.parts, parked, working) : NO_WAITS),
     [lastTurn, parked, working],
   );
+
   const settledWork = useMemo(
     () =>
       lastTurn?.kind === "turn" &&
@@ -751,8 +809,9 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
         displayTranscriptParts(lastTurn.parts, lastWaits.hidden).at(-1)?.kind === "work"),
     [lastTurn, lastWaits],
   );
+
   const retrying = live.runState === "retrying" ? live.retry.message : undefined;
-  const selections = parkedSelections(parked).length;
+
   const rows = useMemo(
     () =>
       transcriptRows({
@@ -762,17 +821,8 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
         landing: messages.submitted,
         retrying,
         working,
-        selections,
       }),
-    [
-      snapshot.isLoading,
-      snapshot.isError,
-      turns,
-      messages.submitted,
-      retrying,
-      working,
-      selections,
-    ],
+    [snapshot.isLoading, snapshot.isError, turns, messages.submitted, retrying, working],
   );
 
   const title =
@@ -781,10 +831,12 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
     session.data?.name ??
     session.data?.preview ??
     "New chat";
+
   const commitRename = (): void => {
     if (draftName === undefined) return;
     const name = draftName.replaceAll(/\s+/g, " ").trim();
     setDraftName(undefined);
+
     if (name !== "" && name !== title) renameSession.mutate({ sessionId, name });
   };
 
@@ -799,6 +851,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
       choice: BranchModelChoice,
     ): Promise<void> => {
       setNavigating(true);
+
       return applyMessageEdit({
         sessionId,
         part,
@@ -810,10 +863,13 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
     },
     [fastEnabled, sessionId, snapshot.data?.tip],
   );
+
   const childBySession = useMemo(() => {
     const sessions = new Map<SessionId, SubagentSession>();
+
     for (const turn of turns) {
       if (turn.kind !== "turn" || turn !== lastTurn || !parentRunning) continue;
+
       for (const part of turn.parts) {
         if (
           part.kind !== "tool" ||
@@ -830,37 +886,46 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
         });
       }
     }
+
     for (const child of children.data ?? []) sessions.set(child.sessionId, child);
+
     return sessions;
   }, [children.data, lastTurn, parentRunning, turns]);
+
   const childSessions = useMemo(() => [...childBySession.values()], [childBySession]);
   const forwardSubagentTray = presentation === "tray" ? props.onOpenSubagentTray : undefined;
+
   // A card always opens the tray, whatever the child's state; the tray's own
   // expand action is the way to a full chat.
   const openSubagentTray = useCallback(
     (childSessionId?: SessionId): void => {
       if (forwardSubagentTray !== undefined) {
         forwardSubagentTray(childSessionId);
+
         return;
       }
+
       setTrayView(
         childSessionId === undefined
-          ? { kind: "list" }
+          ? { kind: "list", retainedSessionId: undefined }
           : { kind: "detail", sessionId: childSessionId },
       );
     },
     [forwardSubagentTray],
   );
+
   const subagentSessions = useMemo(
     () => ({ children: childBySession, open: openSubagentTray }),
     [childBySession, openSubagentTray],
   );
+
   const openChanges = useCallback(
     (target: TurnChangesTarget): void => {
       const viewKey = workbenchViewKey({
         paneKey: WORKBENCH_STAGE_PANE_KEY,
         target: { kind: "session", sessionId },
       });
+
       const id = workbenchController.actions.openTab({
         view: viewKey,
         tab: {
@@ -872,9 +937,11 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
         },
         activate: true,
       });
+
       const tab = workbenchController
         .getView(viewKey)
         .tabs.find((candidate) => candidate.id === id);
+
       if (tab?.kind !== "changes") return;
       workbenchController.actions.updateTab({
         view: viewKey,
@@ -891,8 +958,10 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
     },
     [sessionId],
   );
+
   const snapshotError = snapshot.isError;
   const refetchSnapshot = snapshot.refetch;
+
   const renderRow = useCallback(
     (row: TranscriptRow): ReactNode => {
       switch (row.kind) {
@@ -925,6 +994,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
               />
             );
           }
+
           return (
             <SettledTurnView
               turn={row.turn}
@@ -935,6 +1005,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
             />
           );
         }
+
         case "landing":
           return (
             <div
@@ -960,16 +1031,9 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
               cwd={cwd}
             />
           );
-        case "selections":
-          return (
-            <Selections
-              sessionId={sessionId}
-              parked={parked}
-              disabled={snapshotError || navigating}
-            />
-          );
         default: {
           const _exhaustive: never = row;
+
           return _exhaustive;
         }
       }
@@ -979,12 +1043,9 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
       cwd,
       editUserMessage,
       lastWaits,
-      navigating,
       openChanges,
-      parked,
       sessionId,
       settledWork,
-      snapshotError,
       refetchSnapshot,
       working,
     ],
@@ -1016,6 +1077,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
                   onBlur={commitRename}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") commitRename();
+
                     if (event.key === "Escape") setDraftName(undefined);
                   }}
                 />
@@ -1067,6 +1129,12 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
                   backgroundWork={{
                     content: (
                       <>
+                        <QuestionTray
+                          sessionId={sessionId}
+                          parked={parked}
+                          disabled={snapshotError || navigating}
+                          viewport={scroll}
+                        />
                         <SubagentTray
                           parentSessionId={sessionId}
                           agents={childSessions}
@@ -1105,6 +1173,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
                               job,
                               activate,
                             });
+
                             if (activate) focusTerminal(terminalId);
                           }}
                           viewport={scroll}
@@ -1114,6 +1183,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
                     onEscape: () => {
                       if (trayView.kind === "closed") return false;
                       setTrayView({ kind: "closed" });
+
                       return true;
                     },
                   }}
@@ -1176,6 +1246,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
  */
 async function enableFastMode(sessionId: SessionId, settingId: string): Promise<void> {
   const outcome = await nyte.plugins.settings.apply({ sessionId, id: settingId, choiceId: "on" });
+
   if (outcome.kind !== "applied") throw new Error("Fast mode is no longer available");
 }
 
@@ -1205,6 +1276,7 @@ function BlankConversation({
   const [attachmentError, setAttachmentError] = useState<string>();
   const editorRef = useRef<ComposerEditorHandle | null>(null);
   const blankRef = useRef<HTMLDivElement>(null);
+
   const attachInput = useCallback(
     (handle: ComposerEditorHandle | null) => {
       editorRef.current = handle;
@@ -1212,11 +1284,15 @@ function BlankConversation({
     },
     [inputRef],
   );
+
   const branch = workspace === undefined ? undefined : repositoryBranch(vcs.data);
+
   const recentWorkspaces = (workspaces.data ?? []).filter(
     (candidate) => candidate.path !== workspace?.path,
   );
+
   const configuration = draftConfiguration(catalog.data, viewState.configuration);
+
   const current = catalog.data?.models.find(
     (option) =>
       option.provider === configuration?.model.provider && option.id === configuration.model.id,
@@ -1230,53 +1306,65 @@ function BlankConversation({
     if (sending || attachmentReads !== 0) return false;
     // A new chat has no plugin commands active yet; its first message is always a message.
     const plan = composerSendPlan({ submission, attachments, commands: [], delivery });
+
     if (plan.kind !== "message") return false;
     setSending(true);
     setStartFailure(undefined);
+
     const submitted = viewStore.takeBlank(paneId, {
       ...viewStore.readBlank(paneId).composer,
       draft: document.text,
       selectionStart: document.selectionStart,
       selectionEnd: document.selectionEnd,
     });
+
     const submittedConfiguration = draftConfiguration(catalog.data, submitted.configuration);
+
     const submittedModel = catalog.data?.models.find(
       (option) =>
         option.provider === submittedConfiguration?.model.provider &&
         option.id === submittedConfiguration.model.id,
     );
+
     try {
       const session = await nyte.sessions.create();
+
       if (submittedConfiguration !== undefined) {
         await configureSession(session.sessionId, submittedConfiguration);
       }
+
       if (
         submittedModel?.fastMode.kind === "available" &&
         submitted.fastSettings.has(submittedModel.fastMode.settingId)
       ) {
         await enableFastMode(session.sessionId, submittedModel.fastMode.settingId);
       }
+
       await outbox.submit(composerSendInput(session.sessionId, plan));
       await cacheCreatedSession({ session, workspacePath: workspace?.path ?? null });
       setAttachments([]);
       setAttachmentError(undefined);
       actions.openSessionInPane(paneId, session.sessionId);
+
       return true;
     } catch (cause: unknown) {
       viewStore.restoreBlank(paneId, submitted);
       setSending(false);
       setStartFailure(errorMessage(cause));
+
       return false;
     }
   };
 
   const addFiles = useCallback(async (files: readonly File[]): Promise<void> => {
     setAttachmentReads((count) => count + 1);
+
     return attachComposerFiles({ files, editor: editorRef.current })
       .then((result) => {
         if (result.attachments.length > 0) {
           setAttachments((current) => [...current, ...result.attachments]);
         }
+
         setAttachmentError(result.error);
       })
       .finally(() => setAttachmentReads((count) => count - 1));
@@ -1285,7 +1373,9 @@ function BlankConversation({
   const dropDisabled = sending || host.data === undefined;
   useLayoutEffect(() => {
     const element = blankRef.current;
+
     if (element === null) return undefined;
+
     return bindComposerFileDrop({
       element,
       disabled: dropDisabled,
@@ -1450,6 +1540,7 @@ function panePreviewRect(
   const leading = layout.leading === paneId;
   const leadingSize = `${String(layout.ratio * 100)}%`;
   const trailingSize = `${String((1 - layout.ratio) * 100)}%`;
+
   if (layout.direction === "right") {
     return {
       top: 0,
@@ -1458,6 +1549,7 @@ function panePreviewRect(
       height: "100%",
     };
   }
+
   return {
     top: leading ? 0 : leadingSize,
     left: 0,
@@ -1469,6 +1561,7 @@ function panePreviewRect(
 function dropPreviewRect(layout: PaneLayout, target: SessionDropTarget): CSSProperties {
   const leadingSize = layout.kind === "single" ? "50%" : `${String(layout.ratio * 100)}%`;
   const trailingSize = layout.kind === "single" ? "50%" : `${String((1 - layout.ratio) * 100)}%`;
+
   switch (target.placement) {
     case "top":
       return { top: 0, left: 0, width: "100%", height: leadingSize };
@@ -1484,6 +1577,7 @@ function dropPreviewRect(layout: PaneLayout, target: SessionDropTarget): CSSProp
         : panePreviewRect(layout, target.paneId);
     default: {
       const _exhaustive: never = target.placement;
+
       return _exhaustive;
     }
   }
@@ -1516,6 +1610,7 @@ function PaneHost({ pane, position }: { pane: PaneState; position: PanePosition 
   const actions = usePaneActions();
   const { focusRequest, layout } = usePaneControllerSnapshot();
   const viewStore = usePaneViewStateStore();
+
   // The composer key must follow the active draft id through a subscription:
   // a plain readBlank() call in JSX can be frozen by memoization.
   const blankDraftId = useSyncExternalStore(
@@ -1523,13 +1618,17 @@ function PaneHost({ pane, position }: { pane: PaneState; position: PanePosition 
     () => viewStore.readBlank(pane.id).id,
     () => viewStore.readBlank(pane.id).id,
   );
+
   const inputRef = useRef<ComposerEditorHandle | null>(null);
   const attachDropTarget = useSessionPaneDropTarget(pane.id);
+
   const attachInput = useCallback((element: ComposerEditorHandle | null) => {
     inputRef.current = element;
   }, []);
+
   const host = useHostState();
   const workspacePath = host.data?.workspace?.path;
+
   // Pointer-down focuses the pane first, so a chip opens in the workbench this pane shows.
   const referenceOpener = useMemo(
     () =>
@@ -1614,11 +1713,14 @@ function SplitSash({
 
   const ratioFromPointer = (event: PointerEvent<HTMLDivElement>): number | undefined => {
     const container = containerRef.current;
+
     if (container === null) return undefined;
     const bounds = container.getBoundingClientRect();
     const size = direction === "right" ? bounds.width : bounds.height;
+
     if (size <= 0) return undefined;
     const pixels = direction === "right" ? event.clientX - bounds.left : event.clientY - bounds.top;
+
     return clampRatio(pixels / size, bounds.width);
   };
 
@@ -1637,6 +1739,7 @@ function SplitSash({
       )}
       onPointerDown={(event) => {
         const nextRatio = ratioFromPointer(event);
+
         if (nextRatio === undefined) return;
         event.preventDefault();
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -1645,19 +1748,23 @@ function SplitSash({
       onPointerMove={(event) => {
         if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
         const nextRatio = ratioFromPointer(event);
+
         if (nextRatio !== undefined) onDragRatio(nextRatio);
       }}
       onPointerUp={(event) => {
         if (event.currentTarget.hasPointerCapture(event.pointerId)) {
           event.currentTarget.releasePointerCapture(event.pointerId);
         }
+
         onDragRatio(undefined);
+
         if (dragRatio !== undefined) actions.resize(dragRatio);
       }}
       onPointerCancel={() => onDragRatio(undefined)}
       onKeyDown={(event) => {
         const previous = direction === "right" ? "ArrowLeft" : "ArrowUp";
         const next = direction === "right" ? "ArrowRight" : "ArrowDown";
+
         if (event.key !== previous && event.key !== next) return;
         event.preventDefault();
         const step = event.shiftKey ? 0.1 : 0.02;
@@ -1691,6 +1798,7 @@ export function ThreadScreen({
   const trailing = layout.kind === "split" ? panes[1] : undefined;
   const activeSelection = activePane(layout).selection;
   const workspacePath = host.data?.workspace?.path;
+
   const workbenchTarget: WorkbenchTarget =
     activeSelection.kind === "session"
       ? { kind: "session", sessionId: activeSelection.sessionId }
@@ -1704,6 +1812,7 @@ export function ThreadScreen({
     // made before the switch; the route follows it. Only a changed route
     // reselects, and the first run aligns a restored layout with the route.
     const synced = syncedRoute.current;
+
     if (synced !== undefined && synced.sessionId === routeSessionId) return;
     syncedRoute.current = { sessionId: routeSessionId };
     actions.syncRoute(

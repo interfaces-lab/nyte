@@ -19,8 +19,11 @@ import {
 } from "./types.ts";
 
 export const NAME_FACT = "name";
+
 export const PINNED_FACT = "pinned";
+
 export const ARCHIVED_FACT = "archived";
+
 export const PARENT_FACT = "parent";
 
 const SessionParentFact = Type.Object({
@@ -29,11 +32,13 @@ const SessionParentFact = Type.Object({
   callId: Type.String(),
   depth: Type.Number(),
 });
+
 const StringFact = Type.String();
 
 /** Parse the durable parent link without letting malformed fact data escape. */
 export function parentFromFact(value: JsonValue | undefined): SessionParent | undefined {
   if (!Value.Check(SessionParentFact, value)) return undefined;
+
   return {
     sessionId: sessionId(value.sessionId),
     runId: value.runId,
@@ -45,10 +50,12 @@ export function parentFromFact(value: JsonValue | undefined): SessionParent | un
 /** Project a listed head after the caller has read its parent's current tip. */
 export function headInfo(listed: ListedHead, parentTip: Oid | null, run?: RunInfo): HeadInfo {
   const stack = listed.stack;
+
   const base = {
     head: listed.head,
     tip: listed.tip,
   };
+
   const withStack =
     stack === undefined
       ? base
@@ -60,6 +67,7 @@ export function headInfo(listed: ListedHead, parentTip: Oid | null, run?: RunInf
             stale: stack.base !== parentTip,
           },
         };
+
   return run === undefined ? withStack : { ...withStack, run };
 }
 
@@ -75,8 +83,10 @@ export function runInfo(run: Run, lease?: Lease): RunInfo {
     attempts: run.attempts,
     config: clientRunConfig(run.config),
   };
+
   const withAbort =
     run.abortRequested === undefined ? base : { ...base, abortRequested: run.abortRequested };
+
   return lease === undefined
     ? withAbort
     : { ...withAbort, lease: { owner: lease.owner, expiresAt: lease.expiresAt } };
@@ -85,6 +95,7 @@ export function runInfo(run: Run, lease?: Lease): RunInfo {
 /** Only submitted user messages are client-visible queue items; completions and the rest are not. */
 export function pendingItem(item: PendingChange): PendingItem | undefined {
   const body = item.change.body;
+
   switch (body.kind) {
     case "message": {
       const pending = {
@@ -93,15 +104,19 @@ export function pendingItem(item: PendingChange): PendingItem | undefined {
         at: item.change.at,
         content: body.message.content,
       };
+
       const sourced = body.source === undefined ? pending : { ...pending, source: body.source };
       const keyed = item.change.key === undefined ? sourced : { ...sourced, key: item.change.key };
+
       return item.change.author === undefined ? keyed : { ...keyed, author: item.change.author };
     }
+
     case "completion":
     case "config":
       return undefined;
     default: {
       const _exhaustive: never = body;
+
       return _exhaustive;
     }
   }
@@ -109,36 +124,48 @@ export function pendingItem(item: PendingChange): PendingItem | undefined {
 
 export function pendingItems(pending: readonly PendingChange[]): readonly PendingItem[] {
   const items: PendingItem[] = [];
+
   for (const change of pending) {
     const item = pendingItem(change);
+
     if (item !== undefined) items.push(item);
   }
+
   return items;
 }
 
 function clientRunConfig(stored: Run["config"]): RunConfig {
   let config: RunConfig = {};
+
   if (stored.model !== undefined) config = { ...config, model: stored.model };
+
   if (stored.thinkingLevel !== undefined && isThinkingLevel(stored.thinkingLevel)) {
     config = { ...config, thinkingLevel: stored.thinkingLevel };
   }
+
   if (stored.agent !== undefined) config = { ...config, agent: stored.agent };
+
   return config;
 }
 
 /** Shared head read model. An observing host's defaults are not evidence of what ran. */
 export function headConfig(commits: readonly Commit[], run: RunInfo | undefined): RunConfig {
   const declared = clientRunConfig(branchConfig(commits));
+
   const latestIndex = commits.findLastIndex(
     (commit) => commit.body.kind === "message" && commit.body.message.role === "assistant",
   );
+
   const latest = commits[latestIndex];
   const message = latest?.body.kind === "message" ? latest.body.message : undefined;
+
   const observed: RunConfig =
     message?.role === "assistant"
       ? { model: { provider: message.provider, id: message.model } }
       : {};
+
   const onBranch = run !== undefined && commits.some((commit) => commit.run === run.runId);
+
   if (
     onBranch &&
     run.phase.kind !== "done" &&
@@ -147,13 +174,16 @@ export function headConfig(commits: readonly Commit[], run: RunInfo | undefined)
   ) {
     return latest?.run === run.runId ? { ...observed, ...run.config } : run.config;
   }
+
   const recorded = onBranch ? run.config : {};
   // An agent changed since the last response may supply a different default model.
   const responseAgent = branchConfig(commits.slice(0, latestIndex + 1)).agent;
+
   const inherited =
     declared.agent === recorded.agent || declared.agent === responseAgent
       ? { ...observed, ...recorded }
       : {};
+
   return { ...inherited, ...declared };
 }
 
@@ -169,18 +199,22 @@ export function sessionInfo(input: {
 }): SessionInfo {
   const nameFact = input.facts.get(NAME_FACT);
   const name = Value.Check(StringFact, nameFact) ? nameFact : undefined;
+
   const directoryInput = {
     id: input.id,
     createdAt: input.createdAt,
     heads: input.heads.map((head) => head.head),
     commits: input.mainCommits,
   };
+
   const row = sessionDirectoryEntry(
     name === undefined ? directoryInput : { ...directoryInput, name },
   );
+
   const parent = parentFromFact(input.facts.get(PARENT_FACT));
   // A queued choice can land between the queue read and the branch read.
   const landed = new Set(input.mainCommits.map((commit) => commit.change));
+
   const selected = branchConfig([
     ...input.mainCommits,
     ...input.pendingChanges.filter((item) => !landed.has(item.oid)).map((item) => item.change),
@@ -196,7 +230,9 @@ export function sessionInfo(input: {
     heads: input.heads,
     config: clientRunConfig(selected),
   };
+
   const withName = row.name === undefined ? base : { ...base, name: row.name };
   const withPreview = row.preview === undefined ? withName : { ...withName, preview: row.preview };
+
   return parent === undefined ? withPreview : { ...withPreview, parent };
 }

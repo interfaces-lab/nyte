@@ -118,7 +118,9 @@ const INSTANT: Transition = { duration: 0 };
 
 /** Repeats collapse into one settle, the way they collapse into one notification. */
 const ARCHIVE_BURST_MS = 100;
+
 let archiveSettle: "single" | "burst" | undefined;
+
 let lastArchiveAt = -ARCHIVE_BURST_MS;
 
 /** Call before the archive itself, so the render it causes settles the list to match. */
@@ -133,12 +135,15 @@ function sidebarLayoutTransition(node: HTMLElement, durationVariable: string): T
   const durationToken = css.getPropertyValue(durationVariable).trim();
   const duration = Number.parseFloat(durationToken) / (durationToken.endsWith("ms") ? 1000 : 1);
   const curve = css.getPropertyValue("--_sidebar-motion-easing").trim();
+
   const [x1, y1, x2, y2] =
     curve
       .match(/^cubic-bezier\(([^)]+)\)$/)?.[1]
       ?.split(",")
       .map(Number) ?? [];
+
   if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined) return INSTANT;
+
   return { type: "tween", duration, ease: [x1, y1, x2, y2] };
 }
 
@@ -150,9 +155,11 @@ function SidebarContent({ children }: { readonly children: ReactNode }): ReactEl
 
   useLayoutEffect(() => {
     const node = contentRef.current;
+
     if (node === null) return;
     // Motion's useReducedMotion snapshots the preference at mount; this must stay live.
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
     const update = (): void =>
       setTransitions(
         reducedMotion.matches
@@ -162,8 +169,10 @@ function SidebarContent({ children }: { readonly children: ReactNode }): ReactEl
               archive: sidebarLayoutTransition(node, "--_sidebar-archive-duration"),
             },
       );
+
     update();
     reducedMotion.addEventListener("change", update);
+
     return () => reducedMotion.removeEventListener("change", update);
   }, []);
 
@@ -266,15 +275,18 @@ export function Sidebar(): ReactElement {
   const workspaces = useWorkspaces();
   const sessionDirectory = useWorkspaceSessionDirectory();
   const server = useServerState(false);
+
   const cloudDirectory = sessionDirectory.data?.find(
     (directory) => directory.environment === "cloud",
   );
+
   const cloudFailure =
     cloudDirectory?.availability.kind === "unavailable"
       ? cloudDirectory.availability.message
       : server.data?.kind === "unavailable"
         ? server.data.problem.message
         : undefined;
+
   const sessionActions = useSessionActions();
   const removeSession = useSessionRemoval();
   const renameSession = useRenameSession();
@@ -297,50 +309,64 @@ export function Sidebar(): ReactElement {
   const settings = useMatch({ from: "/settings/$section", shouldThrow: false });
   const { stage, homeVisible, sidebarVisible } = useShellState();
   const router = useRouter();
+
   const openSettings = (section: SettingsSection): void => {
     const replace = router.state.matches.some((match) => match.routeId === "/settings/$section");
     void router.navigate({ to: "/settings/$section", params: { section }, replace });
   };
+
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<ReadonlySet<string | null>>(
     () => new Set(),
   );
+
   const setExpanded = (path: string | null, expanded: boolean): void => {
     setCollapsedWorkspaces((current) => {
       const next = new Set(current);
+
       if (expanded) next.delete(path);
       else next.add(path);
+
       return next;
     });
   };
+
   const [cloudCollapsed, setCloudCollapsed] = useState(false);
   const cloudAvailable = server.data?.kind === "connected" && cloudFailure === undefined;
+
   // The rail's Cloud action creates cloud chats; the folder only lists them,
   // so it appears once the first chat exists or when a failure needs showing.
   const cloudFolderVisible =
     cloudFailure !== undefined || (cloudDirectory?.sessions.length ?? 0) > 0;
+
   const [expandedSessionLists, setExpandedSessionLists] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [view, setSessionView] = useState<SessionViewSettings>(DEFAULT_SESSION_VIEW);
   const readSessions = useReadSessions();
   const optimisticSessions = useOptimisticSessionIds();
   const selection = activePane(layout).selection;
   const activeSessionId = selection.kind === "session" ? selection.sessionId : undefined;
+
   const activeDraftId =
     selection.kind === "blank"
       ? paneControllerForWorkspace(workspacePath).viewState.readBlank(activePane(layout).id).id
       : undefined;
+
   const mac = macPlatform(host.data?.platform);
   const completeDirectoryRequired = needsCompleteSessionDirectory(view);
+
   // The next switch is most often to a neighbouring row; its snapshot is warm
   // before the pointer or the arrow key gets there.
   const activeWorkspaceSessions =
     sessionDirectory.data === undefined
       ? undefined
       : localSessions(sessionDirectory.data, workspacePath ?? null);
+
   useEffect(() => {
     if (activeSessionId === undefined || activeWorkspaceSessions === undefined) return;
+
     const ordered = sessionsForView(
       activeWorkspaceSessions,
       view,
@@ -349,8 +375,11 @@ export function Sidebar(): ReactElement {
       readSessions,
       optimisticSessions,
     ).flatMap((group) => group.sessions);
+
     const index = ordered.findIndex((session) => session.sessionId === activeSessionId);
+
     if (index === -1) return;
+
     for (const neighbour of [ordered[index - 1], ordered[index + 1]]) {
       if (neighbour !== undefined)
         void router.preloadRoute({
@@ -359,6 +388,7 @@ export function Sidebar(): ReactElement {
         });
     }
   }, [activeSessionId, activeWorkspaceSessions, optimisticSessions, readSessions, router, view]);
+
   // One fixed, name-ordered column: a click expands a row in place instead of
   // moving the opened workspace to the top.
   const entries: readonly ({ kind: "home" } | ({ kind: "project" } & WorkspaceInfo))[] = [
@@ -367,6 +397,7 @@ export function Sidebar(): ReactElement {
       .toSorted((left, right) => left.name.localeCompare(right.name))
       .map((workspace) => ({ kind: "project", ...workspace }) as const),
   ];
+
   const showSession = async (
     place: SessionPlace,
     sessionId: SessionId,
@@ -375,9 +406,11 @@ export function Sidebar(): ReactElement {
     // A local session selects its folder first. A server session opens in
     // whichever folder's panes are showing; nothing local is selected.
     if (place.kind === "local" && !(await activateWorkspace(place.path))) return;
+
     const controller = paneControllerForWorkspace(
       place.kind === "local" ? (place.path ?? undefined) : workspacePath,
     );
+
     if (beside) controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
     else controller.selectSession(sessionId);
     shellActions.showWorkspace();
@@ -418,37 +451,49 @@ export function Sidebar(): ReactElement {
     // Drafts, drag, and pane bookkeeping belong to the folder whose panes are showing.
     const path = place.kind === "local" ? place.path : (workspacePath ?? null);
     const collapsed = place.kind === "local" ? collapsedWorkspaces.has(place.path) : cloudCollapsed;
+
     const workspaceDrafts =
       place.kind === "local" && path === (workspacePath ?? null) ? activeWorkspaceDrafts : [];
+
     const showDrafts = draftsMatchView(view);
     const drafts = showDrafts ? workspaceDrafts : [];
+
     const sessions =
       sessionDirectory.data === undefined
         ? undefined
         : place.kind === "local"
           ? localSessions(sessionDirectory.data, place.path)
           : cloudSessions(sessionDirectory.data);
+
     if (sessions === undefined && drafts.length === 0) return null;
+
     const sessionGroups =
       sessions === undefined
         ? []
         : sessionsForView(sessions, view, place.kind, undefined, readSessions, optimisticSessions);
+
     const displayedSessionCount = sessionGroups.reduce(
       (count, group) => count + group.sessions.length,
       drafts.length,
     );
+
     const listKey = place.kind === "cloud" ? "cloud" : `local:${place.path ?? ""}`;
     const listExpanded = expandedSessionLists.has(listKey);
     const hasOverflow = displayedSessionCount > COLLAPSED_SESSION_LIMIT + 1;
+
     const visibleLimit =
       listExpanded || !hasOverflow ? displayedSessionCount : COLLAPSED_SESSION_LIMIT;
+
     const visibleDrafts = drafts.slice(0, visibleLimit);
     let remaining = visibleLimit - visibleDrafts.length;
+
     const visibleGroups = sessionGroups.flatMap((group) => {
       const visibleSessions = group.sessions.slice(0, remaining);
       remaining -= visibleSessions.length;
+
       return visibleSessions.length === 0 ? [] : [{ ...group, sessions: visibleSessions }];
     });
+
     const previewContext: SessionPreviewContext =
       place.kind === "cloud"
         ? { kind: "cloud" }
@@ -463,6 +508,7 @@ export function Sidebar(): ReactElement {
                   ? account.query.data.repository
                   : undefined,
             };
+
     return (
       <>
         {visibleDrafts.length > 0 && (
@@ -568,8 +614,10 @@ export function Sidebar(): ReactElement {
             onClick={() =>
               setExpandedSessionLists((current) => {
                 const next = new Set(current);
+
                 if (next.has(listKey)) next.delete(listKey);
                 else next.add(listKey);
+
                 return next;
               })
             }
@@ -583,6 +631,7 @@ export function Sidebar(): ReactElement {
 
   const activeDraftIsListed =
     draftsMatchView(view) && activeWorkspaceDrafts.some((draft) => draft.id === activeDraftId);
+
   const newChatActive =
     stage.kind === "workspace" &&
     selection.kind === "blank" &&
@@ -735,11 +784,14 @@ export function Sidebar(): ReactElement {
                     entries.map((entry) => {
                       const active =
                         entry.kind === "home" ? open === undefined : open?.path === entry.path;
+
                       const path = entry.kind === "home" ? null : entry.path;
+
                       const sessions =
                         sessionDirectory.data === undefined
                           ? undefined
                           : localSessions(sessionDirectory.data, path);
+
                       return (
                         <WorkspaceRow
                           key={entry.kind === "home" ? "home" : entry.path}
@@ -919,6 +971,7 @@ function AccountFooterMenu({
           itemStyle={styles.accountMenuItem}
           onSelect={() => {
             const trigger = triggerRef.current;
+
             if (trigger !== null) onOpenSettings(trigger);
           }}
         >
@@ -1001,7 +1054,7 @@ function WorkspaceRow({
       xstyle={[styles.rowSurface, styles.workspaceRow, !available && styles.workspaceUnavailable]}
     >
       <Row.Primary
-        xstyle={styles.workspacePrimary}
+        xstyle={[styles.rowPrimary, styles.workspacePrimary]}
         render={
           <Collapsible.Trigger
             title={available ? path : `${path} (${unavailableDetail})`}
@@ -1037,6 +1090,7 @@ function WorkspaceRow({
       </Row.Actions>
     </Row>
   );
+
   return (
     <Collapsible.Root
       open={expanded}
@@ -1083,6 +1137,7 @@ function DraftRow({
   readonly onDelete: () => void;
 }): ReactElement {
   const title = draftPreviewText(useDebouncedValue(draft.composer.draft, 100));
+
   const row = (
     <Row
       render={<motion.div layout={layoutEnabled ? "position" : false} initial={false} />}
@@ -1110,6 +1165,7 @@ function DraftRow({
         />
       )}
       <Row.Primary
+        xstyle={styles.rowPrimary}
         render={
           <button
             type="button"
@@ -1194,6 +1250,7 @@ function SessionRow({
   const mark = sessionActivityMark(session, optimistic);
   const title = sessionTitle(session);
   const [draftName, setDraftName] = useState<string | undefined>();
+
   const { isDragging, listeners, setNodeRef } = useSessionDraggable(
     session.sessionId,
     title,
@@ -1204,6 +1261,7 @@ function SessionRow({
     if (draftName === undefined) return;
     const name = draftName.replaceAll(/\s+/g, " ").trim();
     setDraftName(undefined);
+
     if (name !== "" && name !== title) onRename(name);
   };
 
@@ -1250,6 +1308,7 @@ function SessionRow({
             onBlur={commitRename}
             onKeyDown={(event) => {
               if (event.key === "Enter") commitRename();
+
               if (event.key === "Escape") setDraftName(undefined);
             }}
           />
@@ -1296,6 +1355,7 @@ function SessionRow({
         />
       )}
       <Row.Primary
+        xstyle={styles.rowPrimary}
         render={
           <button
             type="button"

@@ -31,5 +31,7 @@ export const bareStyles = create({
 // Known holes, asserted as silent so a future fix is a visible test change:
 // a value the compiler resolves rather than the linter, and a plain object.
 const SPACING = 7;
+
 export const unreadable = create({ indirect: { gap: SPACING } });
+
 export const measurement = { gap: 7, width: 15 };

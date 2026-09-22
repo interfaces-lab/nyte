@@ -25,15 +25,22 @@ import { FIXTURE_CHILD_MODEL, FIXTURE_MODEL, FIXTURE_PROVIDER } from "./workspac
 import type { Scenario, Screen, Terminal } from "./types.ts";
 
 const idle = (screen: Screen) => screen.text.includes("enter send");
+
 /** The provider answers title requests outside the script; they are not user-started runs. */
 const TITLE_SCRIPT = "automatic conversation title";
+
 const emptyComposer = (screen: Screen) => composer(screen, "Plan, search, build anything");
+
 const earlierLines = /… \d+ earlier lines · ctrl\+o expand/u;
+
 const heartbeatRows = (screen: Screen) =>
   screen.lines.filter((line) => line.includes("QA tool heartbeat")).length;
+
 const labelRows = (screen: Screen) => screen.lines.filter((line) => earlierLines.test(line)).length;
+
 const backgrounded = (screen: Screen) =>
   screen.lines.filter((line) => line.includes("Running in background.")).length;
+
 const picker = (screen: Screen, model: string, level: string) =>
   screen.text.includes("Type to search") &&
   screen.text.includes(`${FIXTURE_PROVIDER}/${model} · ${level}`);
@@ -48,11 +55,13 @@ function cursorRow(screen: Screen): number {
 /** Moves the Tasks cursor until its row shows the task's command, then requests cancellation. */
 async function stopTask(terminal: Terminal, rowText: string): Promise<void> {
   const onRow = (screen: Screen) => screen.lines[cursorRow(screen)]?.includes(rowText) ?? false;
+
   for (let presses = 0; !onRow(terminal.screen()); presses++) {
     assert.ok(presses < 20, `${rowText} is reachable in Tasks`);
     const before = cursorRow(terminal.screen());
     await press(terminal, "picker.next", (screen) => cursorRow(screen) !== before);
   }
+
   await press(terminal, "chat.task.stop", (screen) =>
     screen.text.includes("Cancellation requested."),
   );
@@ -67,11 +76,13 @@ async function scrollUntil(
 ): Promise<void> {
   const shows = (text: string) =>
     visible.every((expected) => text.includes(expected)) && !text.includes(hidden);
+
   for (let presses = 0; !shows(terminal.screen().text); presses++) {
     assert.ok(presses < 40, `${visible.join(", ")} appear within 40 ${action} presses`);
     const before = terminal.screen().text;
     await press(terminal, action, (screen) => screen.text !== before);
   }
+
   await terminal.waitForScreen((screen) => shows(screen.text), deadline());
 }
 
@@ -523,11 +534,15 @@ const long: Scenario = {
         const held = async (name: string) => {
           const request = await provider.waitForRequest((item) => item.script === name);
           await provider.waitForStage(request.id, "held");
+
           return request;
         };
+
         const count = (name: string) =>
           provider.requests.filter((item) => item.script === name).length;
+
         const chatRequests = () => provider.requests.filter((item) => item.script !== TITLE_SCRIPT);
+
         /** A finished command waits for the next message; it never starts a run of its own. */
         const assertNoRunAfter = (request: number) =>
           assert.deepEqual(
@@ -618,11 +633,13 @@ const long: Scenario = {
             "chat.submit",
             (screen) => !composer(screen, "run the heartbeat again"),
           );
+
           // The cancelled job's notice is a user message of its own, so it travels with the typed
           // message that carries it to the model instead of asking for an answer by itself.
           const next = await provider.waitForRequest(
             (item) => item.id > answered && item.script !== TITLE_SCRIPT,
           );
+
           assert.equal(next.script, "foreground bash", "The typed message starts the next run");
           const users = next.payload.messages.filter((message) => message.role === "user");
           assert.match(JSON.stringify(users.at(-2)?.content), /run the heartbeat again/u);
@@ -720,13 +737,16 @@ const long: Scenario = {
             await press(terminal, "picker.accept", (screen) =>
               screen.text.includes("QA answer received"),
             );
+
             const continuation = await provider.waitForRequest(
               (item) => item.script === "answer continuation",
             );
+
             // The stopped children's reports ride with the question; the answer adds no message.
             const users = continuation.payload.messages
               .filter((message) => message.role === "user")
               .map((message) => JSON.stringify(message.content));
+
             assert.match(users.at(-1) ?? "", /Background agent .* was cancelled/u);
             assert.match(
               users.findLast((text) => !text.includes("Background agent")) ?? "",
@@ -744,6 +764,7 @@ const long: Scenario = {
               /type your own answer/iu.test(screen.text),
             );
             let typed = "";
+
             for (const character of "!echo my answer") {
               typed += character;
               const input = terminal.text(character);
@@ -757,12 +778,15 @@ const long: Scenario = {
                 input,
               );
             }
+
             await press(terminal, "picker.accept", (screen) =>
               screen.text.includes("Typed answer received"),
             );
+
             const typedContinuation = await provider.waitForRequest(
               (item) => item.script === "typed answer continuation",
             );
+
             assert.equal(typedContinuation.prompt, "ask the QA question again");
             assert.ok(
               typedContinuation.payload.messages.some(
@@ -866,9 +890,11 @@ const long: Scenario = {
               (screen) => screen.text.includes("Edited queue delivered") && idle(screen),
               deadline(),
             );
+
             const delivered = await provider.waitForRequest(
               (item) => item.script === "edited delivery",
             );
+
             assert.equal(delivered.prompt, "queued original revised");
             assert.equal(count("edited delivery"), 1);
             assert.ok(
@@ -906,6 +932,7 @@ const long: Scenario = {
             const requests = provider.requests.length;
             await command(terminal, "model", (screen) => picker(screen, FIXTURE_MODEL, "Off"));
             let query = "";
+
             for (const character of "nyte qa") {
               query += character;
               const input = terminal.text(character);
@@ -918,6 +945,7 @@ const long: Scenario = {
                 input,
               );
             }
+
             await press(terminal, "model.next", (screen) =>
               screen.text.includes("opencode/nyte-qa-child ·"),
             );
@@ -949,11 +977,13 @@ const long: Scenario = {
           "Shift+Tab cycles thinking locally; the level reaches the provider",
           async () => {
             const requests = provider.requests.length;
+
             for (const level of ["minimal", "low", "medium", "high", "off"]) {
               await press(terminal, "chat.thinking.cycle", (screen) =>
                 footer(screen, FIXTURE_CHILD_MODEL, level),
               );
             }
+
             assert.equal(provider.requests.length, requests, "Cycling never touches the network");
             await type(terminal, "cycle probe");
             // A burst with no waits between presses, then an immediate send: the last intent wins.
@@ -1046,6 +1076,7 @@ const long: Scenario = {
               screen.text.includes("Settings") &&
               screen.lines.some((line) => /thinking level/iu.test(line)),
           );
+
           assert.ok(!settings.lines.some((line) => /subagent model/iu.test(line)));
           await press(
             terminal,
@@ -1104,9 +1135,11 @@ const long: Scenario = {
             );
             await sibling.release();
             await sibling.stopped(false);
+
             const completed = await provider.waitForRequest(
               (item) => item.script === "sibling done",
             );
+
             await provider.waitForStage(completed.id, "completed");
             assert.ok(
               completed.payload.messages.some(
@@ -1123,9 +1156,11 @@ const long: Scenario = {
                 screen.text.includes("Parent survived selected cancellation") && idle(screen),
               deadline(),
             );
+
             const continuation = await provider.waitForRequest(
               (item) => item.script === "sibling report continuation",
             );
+
             await provider.waitForStage(continuation.id, "completed");
             await terminal.waitForScreen(
               (screen) => screen.text.includes("Parent received sibling report") && idle(screen),
@@ -1188,9 +1223,11 @@ const long: Scenario = {
             await tail.alive();
             const running = terminal.screen();
             const labelRow = running.lines.findLastIndex((line) => earlierLines.test(line));
+
             const lastHeartbeatRow = running.lines.findLastIndex((line) =>
               line.includes("QA tool heartbeat"),
             );
+
             assert.ok(labelRow < lastHeartbeatRow, "The label sits above the kept tail");
             assert.equal(heartbeatRows(running) - heartbeatsBefore, 6);
             await press(
@@ -1226,6 +1263,7 @@ const long: Scenario = {
           // The rightmost terminal column belongs to the transcript scrollbar, not bash output.
           const rows = shown.lines.map((line) => line.slice(0, shown.columns - 1).trim());
           assert.ok(rows.some((row) => row.includes("… 4 earlier lines · ctrl+o expand")));
+
           for (const kept of ["5", "6", "7", "8", "9", "10"]) assert.ok(rows.includes(kept));
           assert.ok(!rows.includes("1"), "The head is cut");
         });
@@ -1249,9 +1287,11 @@ const long: Scenario = {
             await press(terminal, "chat.submit", (screen) =>
               screen.text.includes("Model still working"),
             );
+
             const running = await provider.waitForRequest(
               (request) => request.script === "parallel shell",
             );
+
             await provider.waitForStage(running.id, "held");
             const requests = provider.requests.length;
             await type(terminal, "!!echo local check");

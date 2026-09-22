@@ -58,6 +58,7 @@ const schemes = {
 } as const;
 
 export type Theme = Record<keyof (typeof schemes)["light"], string>;
+
 export const themes = schemes;
 
 /** Raw colors for the active appearance — re-renders when the scheme flips. */
@@ -95,6 +96,7 @@ export const tokens = css.defineVars({
 });
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, gutter: 20 };
+
 export const radii = {
   sm: 8,
   tile: 8,
@@ -295,6 +297,7 @@ export function markdownStyle(
   // reply reads as one font rather than two.
   const prose =
     transcriptFont === "monospaced" ? { fontFamily: typography.code.fontFamily } : undefined;
+
   return {
     paragraph: {
       ...typography.body,

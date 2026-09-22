@@ -52,7 +52,9 @@ const ACCESS_SELECTION: Selection = {
 
 const closed = <P extends TProperties>(properties: P) =>
   Type.Object(properties, { additionalProperties: false });
+
 const Ref = Type.String({ description: "Element ref from the snapshot" });
+
 const Optional = (description: string) => Type.Optional(Type.String({ description }));
 
 const OpenParams = closed({ url: Type.String({ minLength: 1, description: "URL to open" }) });
@@ -123,7 +125,9 @@ const EvaluateParams = closed({
 });
 
 const CANCELLED = "Browser operation cancelled.";
+
 const OFF = "Browser access is off for this folder.";
+
 const READ_ONLY =
   "Browser access is read-only for this folder, so this tool cannot run. Ask the user to allow full browser access if you need to click, type, or evaluate.";
 
@@ -134,10 +138,12 @@ export function browserToolsPlugin(options: {
   readonly access: BrowserAccessStore;
 }) {
   const { agent, access } = options;
+
   return definePlugin({
     id: BROWSER_TOOLS_PLUGIN_ID,
     async session(api: SessionApi) {
       const info = await api.session.info();
+
       if (info.id === undefined) return;
       const sid = sessionId(info.id);
       const folder = api.env.cwd;
@@ -145,24 +151,30 @@ export function browserToolsPlugin(options: {
 
       const stored = await api.storage.get(BROWSER_GATE_KEY);
       let accessLevel: BrowserAccessLevel | undefined;
+
       if (isBrowserAccessLevel(stored)) {
         accessLevel = stored;
       } else {
         accessLevel = await access.read(folder);
+
         // Seed the session fact from the remembered answer so the settings row
         // and this session's tools agree from the first turn.
         if (accessLevel !== undefined) await api.storage.set(BROWSER_GATE_KEY, accessLevel);
       }
+
       const factName = `${BROWSER_TOOLS_PLUGIN_ID}:${BROWSER_GATE_KEY}`;
       api.events.subscribe((event) => {
         if (event.kind !== "fact") return;
         let key: string;
+
         try {
           key = decodeURIComponent(event.key);
         } catch {
           key = event.key;
         }
+
         if (!key.endsWith(factName)) return;
+
         // Only a level applies. The host writes choice ids it has validated, so
         // anything else is a foreign write, not an instruction to ask again.
         if (isBrowserAccessLevel(event.value)) void applyLevel(event.value);
@@ -188,7 +200,9 @@ export function browserToolsPlugin(options: {
        */
       function requireAccess(writes: boolean): void {
         if (accessLevel === undefined) throw new ToolWait({ selection: ACCESS_SELECTION });
+
         if (accessLevel === "off") throw refuse(OFF);
+
         if (writes && accessLevel !== "full") throw refuse(READ_ONLY);
       }
 
@@ -199,6 +213,7 @@ export function browserToolsPlugin(options: {
        */
       const seenNames = new Map<string, string>();
       const normalizeName = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
+
       /** A description may add or drop a role word, so containment either way counts as a match. */
       const namesAgree = (seen: string, described: string) =>
         seen === described || seen.includes(described) || described.includes(seen);
@@ -210,44 +225,55 @@ export function browserToolsPlugin(options: {
       ): Promise<AgentToolResult<unknown>> {
         if (signal?.aborted) throw signal.reason;
         let result: BrowserActionResult | undefined;
+
         try {
           result = await action();
         } catch (error) {
           if (!signal?.aborted) throw error;
         }
+
         if (result?.kind === "ok") {
           seenNames.clear();
+
           for (const node of result.state.nodes) seenNames.set(node.ref, node.name);
         }
+
         // A cancelled call still reports whatever page state it reached.
         if (signal?.aborted || result === undefined) {
           const parts: (TextContent | ImageContent)[] = [{ type: "text", text: CANCELLED }];
+
           if (result?.kind === "ok")
             parts.push(...renderPageReport({ state: result.state }).content);
           throw new ToolError({ content: parts, details: {}, title });
         }
+
         const content: (TextContent | ImageContent)[] =
           result.kind === "ok"
             ? [...renderPageReport({ state: result.state }).content]
             : [{ type: "text", text: describeFailure(result.failure) }];
+
         return { content, details: {}, title };
       }
 
       /** Refuse a ref whose accessible name is not what the model said it was aiming at. */
       function verifiedRef(ref: string, element: string): void {
         const seen = seenNames.get(ref);
+
         if (seen === undefined) {
           throw new Error(
             `Unknown ref "${sanitizeLine(ref)}": it is not in the snapshot you were last shown. Call browser_snapshot first.`,
           );
         }
+
         const name = normalizeName(seen);
         const described = normalizeName(element);
+
         if (name.length === 0 || described.length === 0) {
           throw new Error(
             `Element "${sanitizeLine(ref)}" has no accessible name to check "${sanitizeLine(element)}" against. Use browser_snapshot and pick a named element.`,
           );
         }
+
         if (namesAgree(name, described)) return;
         throw new Error(
           `Element name mismatch: ref "${sanitizeLine(ref)}" is "${sanitizeLine(seen)}", but you described "${sanitizeLine(element)}". Take a new snapshot and use the ref whose name matches.`,
@@ -279,16 +305,22 @@ export function browserToolsPlugin(options: {
         /** An erased schema cannot prove the argument type; re-check to narrow it. */
         const execute = (callId: string, args: unknown, signal?: AbortSignal) => {
           requireAccess(spec.writes === true);
+
           if (!Value.Check(spec.parameters, args)) {
             throw new Error("Invalid browser tool arguments");
           }
+
           const { action, title } = spec;
+
           if (spec.execute !== undefined) return spec.execute(callId, args, signal);
+
           if (action === undefined || title === undefined) {
             throw new Error(`${spec.name} has neither an action nor an execute`);
           }
+
           return runPageAction(title(args), signal, () => action(args, signal));
         };
+
         return bindTool({
           name: spec.name,
           description: spec.description,
@@ -298,15 +330,16 @@ export function browserToolsPlugin(options: {
           execute,
           async wake(waiting, context) {
             if (context.aborted || context.signal.aborted) throw refuse(CANCELLED);
+
             if (context.reply === undefined) return { kind: "wait" };
 
             const structured = selectionReply(context.reply);
+
             const chosen =
               structured !== undefined && acceptsSelectionReply(ACCESS_SELECTION, structured)
                 ? structured.choices[0]
-                : typeof context.reply === "string"
-                  ? context.reply
-                  : undefined;
+                : context.reply;
+
             if (!isBrowserAccessLevel(chosen)) {
               throw refuse("Browser access was not approved. Choose a browser access option.");
             }
@@ -314,6 +347,7 @@ export function browserToolsPlugin(options: {
             // The fact event lands later; the woken call must see its own answer.
             await applyLevel(chosen);
             await api.storage.set(BROWSER_GATE_KEY, chosen);
+
             // `execute` applies the answer: `off`, and a write tool under
             // `read`, are refused there by the rule every other call meets.
             return {
@@ -342,6 +376,7 @@ export function browserToolsPlugin(options: {
           title: (params) => `browser_click · ${params.element}`,
           action(params, signal) {
             verifiedRef(params.ref, params.element);
+
             return agent.click({ session: sid, ...params, expect: params.element, signal });
           },
         }),
@@ -354,6 +389,7 @@ export function browserToolsPlugin(options: {
           title: (params) => `browser_type · ${params.element}`,
           action(params, signal) {
             verifiedRef(params.ref, params.element);
+
             return agent.type({ session: sid, ...params, expect: params.element, signal });
           },
         }),
@@ -390,9 +426,11 @@ export function browserToolsPlugin(options: {
           replay: "safe",
           async execute(_callId, params, signal) {
             const title = params.ref ? `browser_snapshot · ${params.ref}` : "browser_snapshot";
+
             const report = await runPageAction(title, signal, () =>
               agent.snapshot({ session: sid, ref: params.ref, signal }),
             );
+
             if (params.image !== true) return report;
             const capture = await agent.capture({ session: sid });
             report.content.push(
@@ -404,6 +442,7 @@ export function browserToolsPlugin(options: {
                   }
                 : { type: "text", text: "Screenshot unavailable: the page is not on screen." },
             );
+
             return report;
           },
         }),
@@ -415,6 +454,7 @@ export function browserToolsPlugin(options: {
           execute(_callId, params) {
             const entries = agent.console({ session: sid, ...params, limit: params.limit ?? 50 });
             const content = renderConsoleReport(entries).content;
+
             return Promise.resolve({ content, details: {}, title: "browser_console" });
           },
         }),
@@ -426,8 +466,10 @@ export function browserToolsPlugin(options: {
           async execute(_callId, params, signal) {
             if (signal?.aborted) throw signal.reason;
             const evaluated = await agent.evaluate({ session: sid, ...params, signal });
+
             if (signal?.aborted) throw refuse(CANCELLED);
             const content = renderEvaluateReport(evaluated).content;
+
             return { content, details: {}, title: "browser_evaluate" };
           },
         }),
@@ -436,6 +478,7 @@ export function browserToolsPlugin(options: {
       api.tools.add((tools) => {
         // `off` drops every browser tool on the next rebuild.
         if (accessLevel === "off") return;
+
         for (const tool of browserTools) tools.set(tool.name, tool);
       });
 

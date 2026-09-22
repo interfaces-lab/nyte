@@ -29,9 +29,11 @@ const STREAM_OPTION_KEYS = [
 
 function pickStreamOptions(options: SimpleStreamOptions): StreamOptions {
   const picked: StreamOptions = {};
+
   for (const key of STREAM_OPTION_KEYS) {
     if (options[key] !== undefined) Object.assign(picked, { [key]: options[key] });
   }
+
   return picked;
 }
 
@@ -40,10 +42,12 @@ function withStreamOptions(
   patched: StreamOptions,
 ): SimpleStreamOptions {
   const next: SimpleStreamOptions = { ...options };
+
   for (const key of STREAM_OPTION_KEYS) {
     if (patched[key] === undefined) delete next[key];
     else Object.assign(next, { [key]: patched[key] });
   }
+
   return next;
 }
 
@@ -103,14 +107,17 @@ export function requestStream(
     void (async () => {
       requestOptions?.signal?.throwIfAborted();
       const invocation = options.invocation(requestOptions?.signal);
+
       let streamOptions: SimpleStreamOptions = {
         ...requestOptions,
         sessionId: requestOptions?.sessionId ?? invocation.sessionId,
       };
+
       streamOptions = withStreamOptions(
         streamOptions,
         applyStreamOptionsPatch(options.streamOptions ?? {}, pickStreamOptions(streamOptions)),
       );
+
       if (options.hooks?.has("before_request")) {
         const result = await options.hooks.run(
           "before_request",
@@ -122,6 +129,7 @@ export function requestStream(
           },
           requestOptions?.signal,
         );
+
         if (result?.streamOptions !== undefined) {
           streamOptions = withStreamOptions(
             streamOptions,
@@ -129,6 +137,7 @@ export function requestStream(
           );
         }
       }
+
       const prompt = options.systemPrompt?.(requestOptions?.signal);
       requestOptions?.signal?.throwIfAborted();
       await startSpan(
@@ -144,33 +153,41 @@ export function requestStream(
           const started = performance.now();
           let events = 0;
           let receivedText = false;
+
           try {
             const inner = await options.streamFn(
               model,
               prompt === undefined ? context : { ...context, systemPrompt: prompt },
               { ...streamOptions, telemetryContext: span },
             );
+
             for await (const event of inner) {
               if (events === 0) {
                 span.setAttributes({
                   "nyte.ai.time_to_first_event_ms": performance.now() - started,
                 });
               }
+
               if (!receivedText && event.type === "text_delta" && event.delta.length > 0) {
                 receivedText = true;
                 span.setAttributes({
                   "nyte.ai.time_to_first_text_ms": performance.now() - started,
                 });
               }
+
               events += 1;
+
               if (event.type === "done" || event.type === "error") {
                 span.setAttributes({ "nyte.stop_reason": event.reason });
               }
+
               if (event.type === "error" && event.reason === "error") {
                 span.setStatus({ status: "error" });
               }
+
               out.push(event);
             }
+
             out.end();
           } catch (cause) {
             span.setAttributes({
@@ -184,6 +201,7 @@ export function requestStream(
       );
     })().catch((cause: unknown) => {
       const reason = requestOptions?.signal?.aborted ? "aborted" : "error";
+
       if (options.errorPolicy !== undefined) {
         try {
           options.errorPolicy.capture(cause);
@@ -191,12 +209,14 @@ export function requestStream(
           // Capture is observational; a failure must still terminate the stream.
         }
       }
+
       out.push({
         type: "error",
         reason,
         error: failedAssistant(model, options.errorPolicy?.message ?? cause, reason),
       });
     });
+
     return out;
   };
 }

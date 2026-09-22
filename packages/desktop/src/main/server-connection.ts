@@ -11,31 +11,37 @@ export function serverConnectionProblem(cause: unknown): ServerConnectionProblem
         message: "The server rejected this token. Update the connection token.",
       };
     }
+
     if (cause.code === "not_found" || cause.code === "unknown_operation") {
       return {
         kind: "incompatible",
         message: "This server does not support the desktop's protocol. Check its URL and version.",
       };
     }
+
     return {
       kind: "server",
       message:
         "The server could not complete this request. Check its deployment logs and try again.",
     };
   }
+
   if (cause instanceof NyteTransportError && cause.failure.kind !== "network") {
     const status = "status" in cause.failure ? cause.failure.status : undefined;
+
     if (status === 401 || status === 403) {
       return {
         kind: "authentication",
         message: "The deployment refused access. Check its protection settings and server token.",
       };
     }
+
     return {
       kind: "incompatible",
       message: "The server returned an unexpected response. Check its URL and deployment.",
     };
   }
+
   return {
     kind: "network",
     message: "Cannot reach the server. Check your connection and try again.",

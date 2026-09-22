@@ -9,13 +9,20 @@
  * core (design record, "Plugins").
  */
 export * from "./types.ts";
+
 export { systemPromptPlugin } from "./builtin/system-prompt.ts";
+
 export { contextFilesPlugin } from "./builtin/context-files.ts";
+
 export { SKILLS_PLUGIN_ID, skillsPlugin } from "./builtin/skills.ts";
+
 /** Skill discovery: what a host scans to compose `skillsPlugin`. */
 export { loadSkills } from "./builtin/skills-index.ts";
+
 export type { LoadedSkills, SkillDiagnostic, SkillDiagnosticCode } from "./builtin/skills-index.ts";
+
 export { toolsFsPlugin } from "./builtin/tools-fs.ts";
+
 /**
  * Durable suspension, the mechanism behind asks and subagent waits: a tool
  * throws `ToolWait` and settles on wake (design record, "Wait and wake").
@@ -29,11 +36,17 @@ export {
   type ToolWakeContext,
   type ToolWakeOutcome,
 } from "../kernel/loop/types.ts";
+
 export { acceptsSelectionReply } from "@nyte-ai/protocol";
+
 export { pluginFactKey } from "./storage.ts";
+
 export type { Choice, Selection, SelectionReply } from "@nyte-ai/protocol";
+
 export { ToolError, toolResultContent } from "../kernel/loop/tool-result.ts";
+
 export { bindTool } from "../tools/bind-tool.ts";
+
 /** Shared truncation helpers so tool output notices read identically to `read` and `bash`. */
 export { truncateHead, formatSize, type TruncationResult } from "../tools/support/truncate.ts";
 
@@ -56,6 +69,7 @@ export type {
   AgentToolUpdateCallback,
   ToolExecutionContext,
 } from "../kernel/loop/types.ts";
+
 export { toJsonValue } from "@nyte-ai/client";
 
 /** Skills are plugin contributions; the built-in `skills` plugin reads them. */

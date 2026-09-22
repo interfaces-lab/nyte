@@ -18,13 +18,23 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
+import { Type } from "typebox";
 import type { Api, ProviderId } from "./model.ts";
+import { object, typed } from "./typed.ts";
 
 export interface TextSignatureV1 {
   v: 1;
   id: string;
   phase?: "commentary" | "final_answer";
 }
+
+export const TextSignatureV1Schema = typed<TextSignatureV1>()(
+  object({
+    v: Type.Literal(1),
+    id: Type.String(),
+    phase: Type.Optional(Type.Union([Type.Literal("commentary"), Type.Literal("final_answer")])),
+  }),
+);
 
 export interface TextContent {
   type: "text";

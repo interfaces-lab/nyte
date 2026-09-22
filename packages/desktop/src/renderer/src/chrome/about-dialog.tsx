@@ -97,6 +97,7 @@ const styles = create({
 
 export function AboutDialog({ info, onClose }: { info: AppInfo; onClose: () => void }) {
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+
   return (
     <Dialog.Root
       open

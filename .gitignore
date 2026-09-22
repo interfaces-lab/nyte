@@ -3,6 +3,7 @@ dist/
 /bin/
 .nyte/
 .turbo/
+/packages/ai/catalog/
 
 .DS_Store
 .vercel

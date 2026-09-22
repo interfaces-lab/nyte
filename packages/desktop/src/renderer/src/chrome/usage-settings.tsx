@@ -55,16 +55,21 @@ const MAX_ROWS = 5;
  * window, hot says the next request may not go through.
  */
 const LIMIT_WARM_PERCENT = 70;
+
 const LIMIT_HOT_PERCENT = 90;
+
 type LimitTier = "calm" | "warm" | "hot";
 
 function limitTier(used: number): LimitTier {
   if (used >= LIMIT_HOT_PERCENT) return "hot";
+
   if (used >= LIMIT_WARM_PERCENT) return "warm";
+
   return "calm";
 }
 
 const USAGE_TABS = ["spend", "limits", "where", "tools"] as const;
+
 type UsageTab = (typeof USAGE_TABS)[number];
 
 const WHERE_TABS = ["folders", "chats"] as const;
@@ -214,6 +219,7 @@ function BreakdownSkeleton({
  */
 function TokenCurve({ usage }: { readonly usage: UsageDerived }): ReactElement | null {
   const series = TOKEN_SERIES.filter((kind) => usage.points.some((point) => kind.read(point) > 0));
+
   if (usage.points.length < 2 || series.length === 0) return null;
 
   const last = usage.points.length - 1;
@@ -392,6 +398,7 @@ function SubTabs<Value extends string>({
   readonly children: (value: Value) => ReactNode;
 }): ReactElement {
   const [value, setValue] = useState<Value>(options[0]);
+
   return (
     <Tabs.Root
       value={value}
@@ -425,11 +432,14 @@ export function UsageSettings(): ReactElement {
 
   const { report, error, isFetching, refresh } = useUsageReport(view.untilDay);
   const limits = useAccountLimits();
+
   const usage = useMemo(
     () => (report === undefined ? undefined : deriveUsage(report, view)),
     [report, view],
   );
+
   const tools = useMemo(() => (report === undefined ? undefined : deriveTools(report)), [report]);
+
   const histories = useMemo(
     () =>
       report === undefined
@@ -437,7 +447,9 @@ export function UsageSettings(): ReactElement {
         : LOCAL_TOOLS.map((tool) => ({ tool, history: deriveLocalHistory(tool, report[tool]) })),
     [report],
   );
+
   const plans = useMemo(() => limits.data?.map(deriveAccount), [limits.data]);
+
   // The strip names the one window closest to running out, once it is worth naming.
   const hottest = plans
     ?.flatMap((plan) => plan.meters.map((meter) => ({ plan: plan.title, used: meter.used })))
@@ -445,6 +457,7 @@ export function UsageSettings(): ReactElement {
       (found, meter) => (found === undefined || meter.used > found.used ? meter : found),
       undefined,
     );
+
   const hottestTier = hottest === undefined ? "calm" : limitTier(hottest.used);
 
   const refreshButton = (
@@ -452,6 +465,7 @@ export function UsageSettings(): ReactElement {
       {isFetching ? "Reading…" : "Refresh"}
     </Button>
   );
+
   const rangePicker = (
     <ToggleGroup
       value={[range]}
@@ -460,6 +474,7 @@ export function UsageSettings(): ReactElement {
       onValueChange={(next) => {
         // Keep the current range when its toggle is pressed again.
         const chosen = next.at(-1);
+
         if (chosen !== undefined) setRange(chosen);
       }}
     >
@@ -483,6 +498,7 @@ export function UsageSettings(): ReactElement {
     report === undefined || usage === undefined || report.entries.length > 0
       ? undefined
       : describeEmptyRange(report, usage.unreadFolders, range);
+
   const emptyPanel =
     empty === undefined ? undefined : (
       <EmptyPanel
@@ -499,8 +515,10 @@ export function UsageSettings(): ReactElement {
         }
       />
     );
+
   const change =
     usage === undefined ? undefined : costChange(usage.totals.cost, usage.previousCost);
+
   const rangeHint =
     report === undefined || usage === undefined ? (
       <Bone width={168} height={9} />
@@ -713,7 +731,9 @@ export function UsageSettings(): ReactElement {
         <SubTabs label="Tool by model" options={LOCAL_TOOLS} labels={USAGE_TOOL_LABELS}>
           {(tool) => {
             const history = histories?.find((entry) => entry.tool === tool)?.history;
+
             if (history === undefined) return <BreakdownSkeleton rows={2} />;
+
             if (history.kind === "message") {
               return (
                 <div {...stylex.props(styles.group)}>
@@ -726,6 +746,7 @@ export function UsageSettings(): ReactElement {
                 </div>
               );
             }
+
             return (
               <>
                 <Breakdown

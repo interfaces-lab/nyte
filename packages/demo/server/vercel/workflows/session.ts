@@ -7,6 +7,7 @@ export async function runSession(id: string, head: HeadName): Promise<void> {
 
   for (;;) {
     const outcome = await advanceSession(id, head);
+
     switch (outcome.kind) {
       case "continue":
       case "finished":
@@ -30,6 +31,7 @@ export async function runSession(id: string, head: HeadName): Promise<void> {
         continue;
       default: {
         const _exhaustive: never = outcome;
+
         return _exhaustive;
       }
     }

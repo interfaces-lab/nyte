@@ -51,6 +51,7 @@ export function sessionConfigurationOptions({
     mutationFn: async (patch: ConfigureSessionPatch) => {
       selection.request();
       const outcome = await sessions.configure({ sessionId, ...patch });
+
       if (outcome.kind !== "queued") throw new Error("That model setting is no longer available");
     },
     onSuccess: async (_outcome, patch) => {
@@ -58,10 +59,12 @@ export function sessionConfigurationOptions({
       // this version lands before the pending choice is released.
       await client.cancelQueries({ queryKey: keys.snapshot(sessionId), exact: true });
       await selection.acknowledge();
+
       const update = (session: SessionInfo): SessionInfo => ({
         ...session,
         config: { ...session.config, ...patch },
       });
+
       client.setQueryData<SessionInfo | null>(keys.session(sessionId), (current) =>
         current == null ? current : update(current),
       );

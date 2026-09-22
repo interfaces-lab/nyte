@@ -6,8 +6,8 @@
  * Every call rejects. The lab has no host, and a panel showing its own failed
  * state is a truer audit surface than one wired to invented data.
  */
-const bridge: unknown = new Proxy(function host() {}, {
-  get: (_target, key) => (key === "then" ? undefined : bridge),
+const bridge = new Proxy(function host() {}, {
+  get: (_target, key, receiver) => (key === "then" ? undefined : receiver),
   apply: () => Promise.reject(new Error("The lab has no host bridge")),
 });
 

@@ -23,14 +23,18 @@ import { useReferenceOpener } from "./reference-opener.tsx";
 import { proseStyles } from "./styles.stylex.ts";
 
 type MarkdownPreProps = ComponentProps<"pre"> & ExtraProps;
+
 type MarkdownTableProps = ComponentProps<"table"> & ExtraProps;
 
 const textNode = Type.Union([Type.String(), Type.Number(), Type.BigInt()]);
 
 function nodeText(node: ReactNode): string {
   if (Value.Check(textNode, node)) return String(node);
+
   if (Array.isArray(node)) return node.map(nodeText).join("");
+
   if (isValidElement<{ children?: ReactNode }>(node)) return nodeText(node.props.children);
+
   return "";
 }
 
@@ -38,6 +42,7 @@ function codeLanguage(className: string | undefined): string {
   for (const name of className?.split(/\s+/u) ?? []) {
     if (name.startsWith("language-")) return name.slice("language-".length);
   }
+
   return "";
 }
 
@@ -54,10 +59,13 @@ function MarkdownCode({
 }: ComponentProps<"code"> & ExtraProps): ReactElement {
   const openable = useReferenceOpener() !== undefined;
   const files = useMentionFiles(openable);
+
   const reference = openable
     ? inlineCodeReference(nodeText(elementProps.children), files.data ?? [])
     : undefined;
+
   if (reference === undefined) return <code {...elementProps} {...props(proseStyles.inlineCode)} />;
+
   return <ComposerChipView reference={reference} />;
 }
 
@@ -68,13 +76,17 @@ function MarkdownPre({
   ...elementProps
 }: MarkdownPreProps): ReactElement {
   const child = Children.toArray(children)[0];
+
   if (Children.count(children) === 1 && isValidElement<ComponentProps<"code">>(child)) {
     const raw = nodeText(child.props.children);
     const code = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
     const language = codeLanguage(child.props.className);
+
     if (language.toLocaleLowerCase() === "mermaid") return <MermaidDiagram source={code} />;
+
     return <CodeBlock code={code} lang={language} />;
   }
+
   return (
     <pre {...elementProps} data-nyte-scrollport {...props(proseStyles.fallbackPre)}>
       {children}
@@ -180,6 +192,7 @@ const remarkPlugins = [remarkGfm];
 function subscribeReducedMotion(onChange: () => void): () => void {
   const query = window.matchMedia("(prefers-reduced-motion: reduce)");
   query.addEventListener("change", onChange);
+
   return () => query.removeEventListener("change", onChange);
 }
 
@@ -199,6 +212,7 @@ export const Prose = memo(function Prose({
     prefersReducedMotion,
     () => true,
   );
+
   return (
     <div {...props(proseStyles.root)}>
       {streaming && !reducedMotion ? (

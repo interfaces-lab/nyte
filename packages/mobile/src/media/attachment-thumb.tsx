@@ -14,5 +14,6 @@ export function AttachmentThumb({
   style: ComponentProps<typeof html.img>["style"];
 }) {
   const source = useAnnotation(image.id)?.image.uri ?? image.uri;
+
   return <html.img src={source} alt={alt} style={style} />;
 }

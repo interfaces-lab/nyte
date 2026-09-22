@@ -202,6 +202,7 @@ export interface TurnOptions {
 /** Bind one store-independent agent turn to the kernel's durable effects. */
 export function bindTurn(options: TurnOptions): Turn {
   validateCompactionSettings(options.compaction ?? DEFAULT_COMPACTION_SETTINGS);
+
   return {
     respond: (input) =>
       startSpan(
@@ -216,6 +217,7 @@ export function bindTurn(options: TurnOptions): Turn {
         async (span) => {
           const outcome = await respond(options, { ...input, telemetry: span });
           span.setAttributes({ "nyte.respond.outcome": outcome.kind });
+
           // Checkpoint outcomes carry no assistant; overflow responses are retained separately.
           if (outcome.kind === "checkpoint") return outcome;
           const { usage, stopReason } = outcome.message;
@@ -228,7 +230,9 @@ export function bindTurn(options: TurnOptions): Turn {
             "nyte.usage.total_tokens": usage.totalTokens,
             "nyte.usage.cost": usage.cost.total,
           });
+
           if (stopReason === "error") span.setStatus({ status: "error" });
+
           return outcome;
         },
       ),
@@ -240,6 +244,7 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
   const settings = options.compaction ?? DEFAULT_COMPACTION_SETTINGS;
   const usage = newestAssistantUsage(input.commits);
   const checkpoint = input.commits[0]?.commit.body;
+
   const contextTokens =
     checkpoint?.kind === "checkpoint" && checkpoint.material !== undefined
       ? estimateModelContextTokens(
@@ -249,6 +254,7 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
       : usage === undefined
         ? undefined
         : usageTokens(usage);
+
   if (
     !input.signal.aborted &&
     !newestIsRunCheckpoint(input) &&
@@ -258,10 +264,12 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
       : settings.enabled && contextTokens >= options.compactAt)
   ) {
     const checkpoint = await checkpointOutcome(options, input, settings, "threshold");
+
     if (checkpoint !== undefined) return checkpoint;
   }
 
   const context = agentContext({ options, input, tools: [...options.tools] });
+
   const message = await generateAssistant(
     context,
     agentConfig(options, input.telemetry),
@@ -275,8 +283,10 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
       return { kind: "aborted", message, failure: classifyAssistantFailure(message) };
     case "error": {
       const failure = classifyAssistantFailure(message, options.model);
+
       if (settings.enabled && isOverflow(message, options.model) && !newestIsRunCheckpoint(input)) {
         const checkpoint = await checkpointOutcome(options, input, settings, "overflow");
+
         if (checkpoint !== undefined) {
           // Recovery replaces this response with a checkpoint. Keep the original
           // model spend without adding the failed response to the branch context.
@@ -291,24 +301,29 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
               at: Date.now(),
             },
           ]);
+
           return checkpoint;
         }
       }
+
       const retry = retrySchedule({
         policy: options.retry ?? DEFAULT_RETRY_POLICY,
         run: input.run,
         failure,
       });
+
       return retry === undefined
         ? { kind: "failed", message, failure }
         : { kind: "retry", message, ...retry, failure };
     }
+
     case "toolUse":
     case "stop":
     case "length":
     case "pending":
     case "deferred": {
       const toolCalls = message.content.filter((part) => part.type === "toolCall");
+
       return toolCalls.length > 0
         ? {
             kind: "tools",
@@ -330,8 +345,10 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
           }
         : { kind: "complete", message };
     }
+
     default: {
       const _exhaustive: never = message.stopReason;
+
       return _exhaustive;
     }
   }
@@ -341,18 +358,22 @@ function newestAssistantUsage(
   commits: readonly { readonly oid: Oid; readonly commit: Commit }[],
 ): Usage | undefined {
   let start = 0;
+
   for (let index = commits.length - 1; index >= 0; index -= 1) {
     if (commits[index]?.commit.body.kind === "checkpoint") {
       start = index + 1;
       break;
     }
   }
+
   const messages = contextMessages(commits.slice(start).map((entry) => entry.commit));
+
   return lastAssistantUsageInfo(messages)?.usage;
 }
 
 function newestIsRunCheckpoint(input: TurnInput): boolean {
   const newest = input.commits.at(-1)?.commit;
+
   return newest?.run === input.run.id && newest.body.kind === "checkpoint";
 }
 
@@ -372,6 +393,7 @@ async function checkpointOutcome(
         lease: input.lease,
         reason,
       });
+
       const summarized = await summarizeCheckpoint({
         commits: input.commits,
         streamFn: (model, context, requestOptions) =>
@@ -389,7 +411,9 @@ async function checkpointOutcome(
         systemPrompt: options.systemPrompt,
         tools: [...options.tools],
       });
+
       span.setAttributes({ "nyte.compaction.outcome": summarized.ok ? "summarized" : "skipped" });
+
       if (summarized.ok) return { kind: "checkpoint", body: summarized.value };
       await retainCompactionUsage(input.session, {
         parent: input.commits.at(-1)?.oid ?? null,
@@ -399,6 +423,7 @@ async function checkpointOutcome(
         head: input.run.head,
         lease: input.lease,
       });
+
       return undefined;
     },
   );
@@ -418,25 +443,31 @@ async function runTools(
 ): Promise<ToolBatchOutcome> {
   const toolCalls = input.assistant.content.filter((part) => part.type === "toolCall");
   const effectiveArguments = new Map<string, { readonly value: unknown }>();
+
   const settled = (messages: readonly ToolResultMessage[]): ToolBatchResults => ({
     messages,
     calls: Object.fromEntries(
       messages.flatMap((message) => {
         const call = toolCalls.find((part) => part.id === message.toolCallId);
+
         if (call === undefined) return [];
         const tool = options.tools.find((candidate) => candidate.name === message.toolName);
         const effective = effectiveArguments.get(call.id);
+
         const args: CallArguments =
           effective === undefined
             ? { kind: "invalid" }
             : { kind: "validated", value: effective.value };
+
         const result = message.isError
           ? undefined
           : { content: message.content, details: message.details };
+
         return [[message.toolCallId, presentCall(tool, call, input.run, args, result)]];
       }),
     ),
   });
+
   if (input.assistant.stopReason === "length") {
     return {
       kind: "complete",
@@ -451,14 +482,19 @@ async function runTools(
   const context = agentContext({ options, input, tools });
   const callerBeforeToolCall = options.loop?.beforeToolCall;
   const callerAfterToolCall = options.loop?.afterToolCall;
+
   const config = agentConfig(options, input.telemetry, {
     beforeToolCall: async (hookContext, signal) => {
       const outcome = await callerBeforeToolCall?.(hookContext, signal ?? input.signal);
+
       if (outcome?.args === undefined) {
         effectiveArguments.set(hookContext.toolCall.id, { value: hookContext.args });
+
         return outcome;
       }
+
       const tool = options.tools.find((candidate) => candidate.name === hookContext.toolCall.name);
+
       if (tool === undefined) throw new Error(`Tool ${hookContext.toolCall.name} not found`);
       effectiveArguments.set(hookContext.toolCall.id, {
         value: validateToolArguments(tool, {
@@ -466,10 +502,12 @@ async function runTools(
           arguments: outcome.args,
         }),
       });
+
       return outcome;
     },
     afterToolCall: async (hookContext, signal) => {
       if (state.stopped !== undefined || !settling.has(hookContext.toolCall.id)) return undefined;
+
       return callerAfterToolCall?.(hookContext, signal ?? input.signal);
     },
   });
@@ -483,6 +521,7 @@ async function runTools(
       (event) => emitToolProgress(input, event),
       async ({ toolCall, result, isError }) => {
         const view = settling.get(toolCall.id);
+
         if (state.stopped !== undefined || view === undefined) return;
         await settleCall({
           session: input.session,
@@ -494,16 +533,20 @@ async function runTools(
         });
       },
     );
+
     if (state.stopped !== undefined) return state.stopped;
+
     if (parked.size > 0) {
       return {
         kind: "waiting",
         calls: toolCalls.flatMap((call) => (parked.has(call.id) ? [call.id] : [])),
       };
     }
+
     return { kind: "complete", ...settled(messages) };
   } catch (error) {
     if (state.stopped !== undefined) return state.stopped;
+
     return {
       kind: "failed",
       cause: error,
@@ -525,12 +568,15 @@ type CallArguments =
 
 function callArguments(tool: AgentTool | undefined, call: AgentToolCall): CallArguments {
   if (tool === undefined) return { kind: "invalid" };
+
   try {
     const prepared =
       tool.prepareArguments === undefined ? call.arguments : tool.prepareArguments(call.arguments);
+
     if (typeof prepared !== "object" || prepared === null || Array.isArray(prepared)) {
       return { kind: "invalid" };
     }
+
     return {
       kind: "validated",
       value: validateToolArguments(tool, { ...call, arguments: prepared }),
@@ -548,7 +594,9 @@ function presentCall(
   result?: AgentToolResult<unknown>,
 ): ToolClass {
   const custom: ToolClass = { kind: "custom", label: tool?.label ?? call.name };
+
   if (tool?.present === undefined || args.kind === "invalid") return custom;
+
   try {
     return tool.present(args.value, { runId: run.id, head: run.head, callId: call.id }, result);
   } catch {
@@ -569,11 +617,13 @@ function agentContext(options: {
       model: options.options.model.id,
     },
   );
+
   const context: AgentContext = {
     systemPrompt: options.options.systemPrompt,
     messages: projected.messages,
     tools: options.tools,
   };
+
   return projected.checkpoint === undefined
     ? context
     : { ...context, checkpoint: projected.checkpoint };
@@ -597,6 +647,7 @@ function agentConfig(
 function emitAssistantDelta(input: TurnInput, event: AgentEvent): Promise<void> | void {
   if (event.type !== "message_update") return;
   const update = event.assistantMessageEvent;
+
   if (update.type === "text_delta") {
     return input.emit({
       kind: "delta",
@@ -620,6 +671,7 @@ function emitAssistantDelta(input: TurnInput, event: AgentEvent): Promise<void> 
 
 function emitToolProgress(input: TurnInput, event: AgentEvent): Promise<void> | void {
   if (event.type !== "tool_execution_update") return;
+
   return input.emit({
     kind: "progress",
     runId: input.run.id,
@@ -636,10 +688,13 @@ function retrySchedule(options: {
   readonly failure: Failure;
 }): { readonly at: number; readonly retries: number } | undefined {
   const previousRetries = options.run.phase.kind === "retry" ? options.run.phase.retries : 0;
+
   if (!options.policy.enabled || previousRetries >= options.policy.maxRetries) return undefined;
+
   if (!isRetryableFailureClass(options.failure.class)) return undefined;
   const retries = previousRetries + 1;
   const delay = Math.max(retryDelayMs(options.policy, retries), options.failure.retryAfterMs ?? 0);
+
   return { at: Date.now() + delay, retries };
 }
 
@@ -655,6 +710,7 @@ function durableTools(options: {
       if (options.state.stopped !== undefined) return waitingResult();
       const args = toJsonValue(params);
       let opened;
+
       try {
         opened = await openEffect(options.input.session, {
           lease: options.input.lease,
@@ -672,17 +728,22 @@ function durableTools(options: {
           cause,
           error: cause instanceof Error ? cause.message : String(cause),
         });
+
         return waitingResult();
       }
+
       if (opened.kind === "fenced" || opened.kind === "conflict") {
         stopBatch(options.state, opened);
+
         return waitingResult();
       }
+
       // Another call may have lost ownership while this open was in flight.
       if (options.state.stopped !== undefined) return waitingResult();
       let view = opened.view;
       let recovery = opened.kind === "opened" ? "execute" : decideRecovery(view);
       const executionSignal = signal ?? options.input.signal;
+
       if (
         recovery === "blocked" &&
         view.effect.state === "waiting" &&
@@ -695,17 +756,23 @@ function durableTools(options: {
           view,
           now: options.input.now,
         });
+
         if (expiration.kind !== "expired") {
           stopBatch(options.state, expiration);
+
           return waitingResult();
         }
+
         view = expiration.view;
         recovery = "wake";
       }
+
       if (recovery !== "reuse") options.settling.set(callId, view);
+
       const waiting = (): AgentToolResult<unknown> => {
         options.settling.delete(callId);
         options.parked.add(callId);
+
         return waitingResult();
       };
 
@@ -725,42 +792,52 @@ function durableTools(options: {
               state: options.state,
               ...parkedWait(tool.name, error),
             });
+
             return waiting();
           }
         }
+
         case "interrupted":
           throw new Error(
             `Tool call "${tool.name}" was interrupted before completing and was not replayed.`,
           );
         case "blocked": {
           if (!executionSignal.aborted) return waiting();
+
           if (tool.wake !== undefined) {
             const outcome = await tool.wake(waitingCall(view, options.input.run.head), {
               signal: executionSignal,
               aborted: true,
               expired: false,
             });
+
             if (outcome.kind === "settle") {
               if (outcome.isError === true) throw new ToolError(outcome.result);
+
               return outcome.result;
             }
           }
+
           throw new Error(`Tool call "${tool.name}" was aborted while waiting.`);
         }
+
         case "wake": {
           if (view.effect.state !== "signal" && view.effect.state !== "expired") {
             throw new Error(
               `Effect ${view.ref} was classified for wake without a signal or expiry`,
             );
           }
+
           if (tool.wake === undefined) {
             if (view.effect.state === "expired") {
               throw new Error(`Tool call "${tool.name}" timed out while waiting.`);
             }
+
             throw new Error(
               `Tool call "${tool.name}" cannot resume because it has no wake handler.`,
             );
           }
+
           const outcome = await tool.wake(
             waitingCall(view, options.input.run.head),
             view.effect.state === "expired"
@@ -776,10 +853,13 @@ function durableTools(options: {
                   reply: view.effect.signal,
                 },
           );
+
           if (outcome.kind === "settle") {
             if (outcome.isError === true) throw new ToolError(outcome.result);
+
             return outcome.result;
           }
+
           await parkCall({
             session: options.input.session,
             lease: options.input.lease,
@@ -787,28 +867,38 @@ function durableTools(options: {
             state: options.state,
             ...parkedWait(tool.name, outcome),
           });
+
           return waiting();
         }
+
         case "reuse": {
           if (view.effect.state !== "result") {
             throw new Error(`Effect ${view.ref} was classified for reuse without a result`);
           }
+
           const stored = view.effect.result;
+
           const result: AgentToolResult<unknown> = {
             content: stored.content,
             details: stored.details,
           };
+
           const titled = stored.title === undefined ? result : { ...result, title: stored.title };
           const restored = stored.usage === undefined ? titled : { ...titled, usage: stored.usage };
+
           if (stored.isError) throw new ToolError(restored);
+
           return restored;
         }
+
         default: {
           const _exhaustive: never = recovery;
+
           return _exhaustive;
         }
       }
     };
+
     return {
       ...tool,
       execute: (callId, params, signal, onUpdate) =>
@@ -827,6 +917,7 @@ function durableTools(options: {
                 "nyte.tool.is_error": false,
                 "nyte.tool.parked": options.parked.has(callId),
               });
+
               return result;
             } catch (error) {
               span.setAttributes({ "nyte.tool.is_error": true, "nyte.tool.parked": false });
@@ -856,6 +947,7 @@ async function settleCall(options: {
         options.isError,
       ),
     });
+
     if (outcome.kind !== "settled") stopBatch(options.state, outcome);
   } catch (cause) {
     stopBatch(options.state, {
@@ -869,14 +961,13 @@ async function settleCall(options: {
 }
 
 /** What a tool parked with, checked at the plugin boundary. */
-function parkedWait(
-  tool: string,
-  options: ToolWaitOptions,
-): { readonly selection: Selection | undefined; readonly until: number | undefined } {
-  const until: unknown = options.until;
-  if (until !== undefined && (typeof until !== "number" || !Number.isFinite(until))) {
+function parkedWait(tool: string, options: ToolWaitOptions) {
+  const until = options.until;
+
+  if (until !== undefined && !Number.isFinite(until)) {
     throw new Error(`Tool "${tool}" parked with a malformed deadline`);
   }
+
   return { selection: parkedSelection(tool, options.selection), until };
 }
 
@@ -889,40 +980,56 @@ function parkedWait(
  * selection fails this call as a tool error rather than becoming an effect
  * object no reader can parse.
  */
-function parkedSelection(tool: string, selection: unknown): Selection | undefined {
+function parkedSelection(tool: string, selection: Selection | undefined): Selection | undefined {
   if (selection === undefined) return undefined;
+
   const malformed = (reason: string) =>
     new Error(`Tool "${tool}" parked with a malformed selection: ${reason}`);
+
   let json: JsonValue;
+
   try {
     json = toJsonValue(selection);
   } catch (cause) {
     throw malformed(cause instanceof Error ? cause.message : String(cause));
   }
+
   if (!Value.Check(schemas.Selection, json)) throw malformed("does not match the schema");
+
   if (json.title.trim() === "") throw malformed("the title is blank");
+
   if (json.other !== undefined && json.other.trim() === "") {
     throw malformed("the own-answer prompt is blank");
   }
+
   const ids = new Set<string>();
+
   for (const choice of json.choices) {
     if (choice.id === "") throw malformed("a choice has an empty id");
+
     if (choice.label.trim() === "") throw malformed(`choice "${choice.id}" has a blank label`);
+
     if (choice.description !== undefined && choice.description.trim() === "") {
       throw malformed(`choice "${choice.id}" has a blank description`);
     }
+
     if (ids.has(choice.id)) throw malformed(`choice id "${choice.id}" appears twice`);
     ids.add(choice.id);
   }
+
   const [first, ...rest] = json.choices;
+
   const durable: Selection = {
     title: json.title,
     choices: [durableChoice(first), ...rest.map(durableChoice)],
   };
+
   const withMultiple: Selection =
     json.multiple === undefined ? durable : { ...durable, multiple: true };
+
   if (json.other === undefined) return withMultiple;
   const withOther: Selection = { ...withMultiple, other: json.other };
+
   return withOther;
 }
 
@@ -939,13 +1046,15 @@ async function parkCall(options: {
   readonly until: number | undefined;
 }): Promise<void> {
   if (options.state.stopped !== undefined) return;
+
   try {
     const outcome = await parkEffect(options.session, {
       lease: options.lease,
       view: options.view,
-      ...(options.selection === undefined ? {} : { selection: options.selection }),
-      ...(options.until === undefined ? {} : { until: options.until }),
+      selection: options.selection,
+      until: options.until,
     });
+
     if (outcome.kind !== "parked") stopBatch(options.state, outcome);
   } catch (cause) {
     stopBatch(options.state, {
@@ -973,6 +1082,7 @@ function waitingResult(): AgentToolResult<unknown> {
 }
 
 type ProgressPart = TextContent | ImageContent;
+
 type ToolExecutionUpdate = Extract<AgentEvent, { readonly type: "tool_execution_update" }>;
 
 /** The part of a tool's partial `AgentToolResult` that reaches the event stream. */
@@ -993,14 +1103,18 @@ export function toolProgress(payload: ProgressPayload): ToolProgress {
     .map(partText)
     .filter((part) => part !== "")
     .join("\n");
+
   const details = jsonDetails(payload.details);
+
   const progress: ToolProgress =
     payload.title === undefined ? { text } : { text, title: payload.title };
+
   return details === undefined ? progress : { ...progress, details };
 }
 
 function jsonDetails<Value>(value: Value): ReturnType<typeof toJsonValue> | undefined {
   if (value === undefined) return undefined;
+
   try {
     return toJsonValue(value);
   } catch {
@@ -1016,6 +1130,7 @@ function partText(part: ProgressPart): string {
       return `[image ${part.mimeType}]`;
     default: {
       const _exhaustive: never = part;
+
       return _exhaustive;
     }
   }

@@ -2,7 +2,8 @@
  * Shared search policy for every host. Auto prefers keyed providers and keeps
  * its route in session storage. Only HTTP 429 can move it to another eligible
  * provider; explicit selections never fail over. Anonymous requests require
- * a durable user reply before any query leaves the host.
+ * a durable user reply before any query leaves the host; a child task runs
+ * under the trust its parent was given and never asks.
  *
  * Based on https://github.com/anomalyco/opencode/tree/v2/packages/core/src/websearch.ts
  */
@@ -34,11 +35,16 @@ import {
 } from "./provider.ts";
 
 export const WEB_SEARCH_PLUGIN_ID = "web-search";
+
 export const PROVIDER_KEY = "provider";
+
 const ROUTE_KEY = "route";
+
 const CONSENT_KEY = "anonymous-consent";
+
 /** Pick a keyed provider when there is one, otherwise pick at random. */
 export const WEB_SEARCH_AUTO = "auto";
+
 export const NO_RESULTS = "No search results found. Please try a different query.";
 
 export const webSearchParameters = Type.Object(
@@ -120,14 +126,18 @@ function present(value: string | undefined): string | undefined {
 /** opencode's rendering of a result set, and its wording when there are none. */
 export function formatResults(results: readonly WebSearchResult[]): string {
   if (results.length === 0) return NO_RESULTS;
+
   return results
     .map((result) => {
       const title = result.title ?? result.url;
+
       const published =
         result.time.published === undefined
           ? ""
           : `\nPublished: ${new Date(result.time.published).toISOString()}`;
+
       const content = result.content === undefined ? "" : `\n\n${result.content}`;
+
       return `## [${title}](${result.url})${published}${content}`;
     })
     .join("\n\n");
@@ -173,8 +183,10 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
 
   const credentialFor = async (provider: WebSearchProvider): Promise<SearchCredential> => {
     const stored = present(await credentials?.read(provider.id));
+
     if (stored !== undefined) return { source: "saved key", key: stored };
     const key = present(environment(provider.keyEnvironment));
+
     return key === undefined
       ? { source: "anonymous", key: undefined }
       : { source: "environment key", key };
@@ -185,47 +197,59 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
     async session(api: SessionApi) {
       const selection = async (): Promise<string> =>
         storedSelection(await api.storage.get(PROVIDER_KEY));
+
       let lastRoute: string | undefined;
 
       // Parallel tool calls share one routing decision, but perform HTTP requests
       // independently. Keep the read and first-route write in the same queue.
       let routing: Promise<void> = Promise.resolve();
+
       const planSearch = (query: string) => {
         const plan = routing.then(async () => {
           const chosen = await selection();
+
           if (chosen === WEB_SEARCH_OFF) throw new Error("Web search is off");
           const providers = webSearchProviders(api.tools.list());
           const explicit = providers.find((provider) => provider.id === chosen);
           const mode: WebSearchDetails["mode"] = explicit === undefined ? "auto" : "explicit";
+
           const routes = await Promise.all(
             (explicit === undefined ? providers : [explicit]).map(async (provider) => ({
               provider,
               credential: await credentialFor(provider),
             })),
           );
+
           const keyed = routes.filter((route) => route.credential.source !== "anonymous");
           const eligible = keyed.length === 0 ? routes : keyed;
           const remembered = await api.storage.get(ROUTE_KEY);
+
           const first =
             eligible.find((route) => route.provider.id === remembered) ??
             eligible[Math.floor(random() * eligible.length)] ??
             eligible[0];
+
           if (first === undefined) throw new Error("No web search provider is installed");
           const consent = explicit?.id ?? WEB_SEARCH_AUTO;
+
           if (
             first.credential.source === "anonymous" &&
+            !(await api.session.info()).child &&
             (await api.storage.get(CONSENT_KEY)) !== consent
           ) {
             throw new ToolWait({ selection: webSearchConsent(query, providers) });
           }
 
           if (mode === "auto") await api.storage.set(ROUTE_KEY, first.provider.id);
+
           return { mode, first, remaining: eligible.filter((route) => route !== first) };
         });
+
         routing = plan.then(
           () => undefined,
           () => undefined,
         );
+
         return plan;
       };
 
@@ -238,6 +262,7 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
         providers: [],
         async execute(_toolCallId, params, signal, onUpdate) {
           const query = params.query.trim();
+
           if (query === "") throw new Error("Web search needs a non-empty query");
           signal?.throwIfAborted();
           const { mode, first, remaining } = await planSearch(query);
@@ -245,8 +270,10 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
           // anonymous access during failover, and try each provider at most once.
           const rateLimited: string[] = [];
           let route = first;
+
           for (;;) {
             signal?.throwIfAborted();
+
             if ((await selection()) === WEB_SEARCH_OFF) throw new Error("Web search is off");
             const summary = `${mode === "auto" ? "Auto" : "Selected"} · ${route.provider.name} · ${route.credential.source}`;
             lastRoute = summary;
@@ -254,6 +281,7 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
             // Lead with the query like other tools lead with their subject; routing
             // detail stays in the progress text and settings summary.
             const title = `${query} · ${route.provider.name}`;
+
             const details: WebSearchDetails = {
               provider: route.provider.id,
               results: [],
@@ -261,21 +289,26 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
               credential: route.credential.source,
               rateLimited: [...rateLimited],
             };
+
             const failover =
               rateLimited.length === 0 ? "" : `Rate limited: ${rateLimited.join(", ")}. `;
+
             onUpdate?.({
               content: [{ type: "text", text: `${failover}Searching with ${summary}…` }],
               details,
               title,
             });
+
             try {
               signal?.throwIfAborted();
+
               const results = await route.provider.execute({
                 query,
                 key: route.credential.key,
                 fetch: options.fetch ?? globalThis.fetch,
                 signal,
               });
+
               return {
                 content: [{ type: "text", text: `${failover}${formatResults(results)}` }],
                 details: { ...details, results },
@@ -289,22 +322,27 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
                   title,
                 });
               }
+
               const message =
                 error instanceof WebSearchRequestError
                   ? failureMessage(error, query)
                   : `Unable to search the web for ${query}`;
+
               // Provider errors can contain authenticated URLs or echoed keys.
               api.diagnostics.warn(`${route.provider.name}: ${message}`);
+
               const next =
                 mode === "auto" && error instanceof WebSearchRequestError && error.status === 429
                   ? remaining.shift()
                   : undefined;
+
               if (next !== undefined) {
                 rateLimited.push(route.provider.id);
                 await api.storage.set(ROUTE_KEY, next.provider.id);
                 route = next;
                 continue;
               }
+
               throw new ToolError({
                 content: [{ type: "text", text: `${failover}${message}` }],
                 details,
@@ -320,23 +358,28 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
               details: {},
             });
           }
+
           if (context.reply === undefined) return { kind: "wait" };
+
           if (!Value.Check(webSearchParameters, waiting.args))
             throw new Error("Invalid web search arguments");
           const providers = webSearchProviders(api.tools.list());
           const consent = webSearchConsent(waiting.args.query, providers);
           const structured = selectionReply(context.reply);
+
           const chosen =
             structured !== undefined && acceptsSelectionReply(consent, structured)
               ? structured.choices[0]
               : typeof context.reply === "string"
                 ? context.reply
                 : undefined;
+
           const reply = [
             WEB_SEARCH_AUTO,
             WEB_SEARCH_OFF,
             ...providers.map((provider) => provider.id),
           ].find((choice) => choice === chosen);
+
           if (reply === undefined) {
             throw new ToolError({
               content: [
@@ -348,14 +391,17 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
               details: {},
             });
           }
+
           await api.storage.set(PROVIDER_KEY, reply);
           await api.storage.set(CONSENT_KEY, reply === WEB_SEARCH_OFF ? null : reply);
+
           if (reply === WEB_SEARCH_OFF) {
             throw new ToolError({
               content: [{ type: "text", text: "Web search is off" }],
               details: {},
             });
           }
+
           return {
             kind: "settle",
             result: await tool.execute(waiting.toolCallId, waiting.args, context.signal),
@@ -370,6 +416,7 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
       api.events.subscribe((event) => {
         if (event.kind !== "fact" || !factKey(event.key).endsWith(factName)) return;
         const next = storedSelection(event.value) === WEB_SEARCH_OFF;
+
         if (next === disabled) return;
         disabled = next;
         api.tools.rebuild();
@@ -416,6 +463,7 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
             const [id, ...rest] = argument.trim().split(/\s+/u);
             const providers = webSearchProviders(api.tools.list());
             const provider = providers.find((candidate) => candidate.id === id);
+
             if (provider === undefined) {
               const known = providers.map((candidate) => candidate.id).join(", ");
               throw new Error(
@@ -424,10 +472,12 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
                   : `/websearch-key must name one of: ${known}`,
               );
             }
+
             const key = rest.join(" ").trim();
             await credentials.write(provider.id, key === "" ? undefined : key);
             lastRoute = undefined;
             api.settings.rebuild();
+
             return key === ""
               ? `Removed the ${provider.name} API key.`
               : `Saved the ${provider.name} API key.`;
@@ -460,9 +510,13 @@ export {
   type WebSearchProviderInput,
   type WebSearchResult,
 } from "./provider.ts";
+
 export { exaPlugin, exaProvider } from "./exa.ts";
+
 export { firecrawlPlugin, firecrawlProvider } from "./firecrawl.ts";
+
 export { parallelPlugin, parallelProvider } from "./parallel.ts";
+
 export { tavilyPlugin, tavilyProvider } from "./tavily.ts";
 
 export default webSearchPlugin();

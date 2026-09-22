@@ -58,6 +58,7 @@ export interface WorkerStoreOptions {
 }
 
 const NullableString = Type.Union([Type.String(), Type.Null()]);
+
 const result = {
   null: Compile(Type.Null()),
   number: Compile(Type.Number()),
@@ -99,19 +100,25 @@ const WATCH_WINDOW = 256;
 function toError(error: WireError): Error {
   if (error.name === "UnknownSession" && error.id !== undefined)
     return new UnknownSession(error.id);
+
   if (error.name === "CursorExpired" && error.floor !== undefined)
     return new CursorExpired(error.floor);
+
   if (error.name === "CorruptObject" && error.oid !== undefined)
     return new CorruptObject(error.oid, error.message.slice(`Stored object ${error.oid} `.length));
+
   if (error.name === "RangeError") return new RangeError(error.message);
+
   if (error.name === "TypeError") return new TypeError(error.message);
   const rebuilt = new Error(error.message);
   rebuilt.name = error.name;
+
   return rebuilt;
 }
 
 function commitOf(object: Obj, oid: Oid): Commit {
   if (object.kind !== "commit") throw new TypeError(`Stored object ${oid} is not a commit`);
+
   return object;
 }
 
@@ -129,9 +136,7 @@ class Bridge {
     this.worker = new Worker(options.worker, {
       workerData: {
         path: options.path,
-        ...(options.watchPollIntervalMs === undefined
-          ? {}
-          : { watchPollIntervalMs: options.watchPollIntervalMs }),
+        watchPollIntervalMs: options.watchPollIntervalMs,
       },
     });
     this.ready = new Promise<void>((resolve, reject) => {
@@ -145,6 +150,7 @@ class Bridge {
           resolve();
         }
       };
+
       this.worker.on("message", onReady);
       this.worker.once("error", (cause: unknown) => {
         const failure = cause instanceof Error ? cause : new Error(String(cause));
@@ -166,8 +172,10 @@ class Bridge {
     if (this.failure !== undefined) return;
     this.failure = cause;
     this.outgoing.length = 0;
+
     for (const call of this.pending.values()) call.reject(cause);
     this.pending.clear();
+
     // A closed store ends its watches; only a crashed worker fails them.
     for (const watch of this.watches.values()) watch.end(this.closing ? undefined : cause);
     this.watches.clear();
@@ -176,6 +184,7 @@ class Bridge {
   private receive(message: unknown): void {
     if (!checkResponses.Check(message)) {
       this.fail(new TypeError("Store worker sent a malformed response"));
+
       return;
     }
 
@@ -251,15 +260,19 @@ class Bridge {
     validate: Validator<T>,
   ): Promise<T> {
     await this.ready;
+
     if (this.failure !== undefined) throw this.failure;
     const id = this.nextId++;
+
     const value = await new Promise<unknown>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
       this.send({ kind: "call", id, session, method, args: [...args] });
     });
+
     if (!validate.Check(value)) {
       throw new TypeError(`Store worker returned a malformed ${method} result`);
     }
+
     return value;
   }
 
@@ -269,16 +282,20 @@ class Bridge {
     signal: AbortSignal | undefined,
   ): AsyncIterable<Event> {
     await this.ready;
+
     if (this.failure !== undefined) throw this.failure;
+
     if (signal?.aborted || this.closing) return;
     const id = this.nextId++;
     const queue: Event[] = [];
     let finished: { cause?: Error } | undefined;
     let wake: (() => void) | undefined;
+
     const notify = (): void => {
       wake?.();
       wake = undefined;
     };
+
     this.watches.set(id, {
       session,
       push: (events) => {
@@ -292,31 +309,42 @@ class Bridge {
         notify();
       },
     });
+
     const abort = (): void => {
       if (this.watches.delete(id)) this.send({ kind: "unwatch", id });
       finished ??= {};
       queue.length = 0;
       notify();
     };
+
     signal?.addEventListener("abort", abort, { once: true });
     let consumed = 0;
+
     try {
       this.send({ kind: "watch", id, session, afterSeq, credit: WATCH_WINDOW });
+
       for (;;) {
         if (finished !== undefined) {
           if (finished.cause !== undefined) throw finished.cause;
+
           return;
         }
+
         const event = queue.shift();
+
         if (event !== undefined) {
           consumed += 1;
+
           if (consumed === WATCH_WINDOW / 2) {
             consumed = 0;
+
             if (this.watches.has(id)) this.send({ kind: "credit", id, credit: WATCH_WINDOW / 2 });
           }
+
           yield event;
           continue;
         }
+
         await new Promise<void>((resolve) => {
           wake = resolve;
         });
@@ -330,6 +358,7 @@ class Bridge {
   /** Closing ends watches before the worker answers, as the backend ends its own iterators. */
   endWatches(session: number | undefined): void {
     if (session === undefined) this.closing = true;
+
     for (const [id, watch] of this.watches) {
       if (session !== undefined && watch.session !== session) continue;
       this.watches.delete(id);
@@ -361,14 +390,17 @@ class WorkerSession implements Session {
     this.bridge = bridge;
     this.handle = handle;
     this.id = id;
+
     const call = async <T>(
       method: StoreMethod,
       args: readonly unknown[],
       validate: Validator<T>,
     ): Promise<T> => {
       this.assertOpen();
+
       return bridge.call(handle, method, args, validate);
     };
+
     this.objects = {
       put: (objects: readonly Obj[]) => call("objects.put", [objects], result.oids),
       get: async (oid: Oid) => (await call("objects.get", [oid], result.object)) ?? undefined,
@@ -400,6 +432,7 @@ class WorkerSession implements Session {
         call("events.append", [events, options], result.append),
       read: async (options: { readonly afterSeq: Seq; readonly limit?: number }) => {
         validateLimit(options.limit);
+
         return call("events.read", [options], result.events);
       },
       last: () => call("events.last", [], result.number),
@@ -409,10 +442,12 @@ class WorkerSession implements Session {
       },
       watch: (options: { readonly afterSeq: Seq; readonly signal?: AbortSignal }) => {
         this.assertOpen();
+
         const signal =
           options.signal === undefined
             ? this.closedController.signal
             : AbortSignal.any([options.signal, this.closedController.signal]);
+
         return bridge.watch(handle, options.afterSeq, signal);
       },
     };
@@ -422,10 +457,13 @@ class WorkerSession implements Session {
     if (this.closing !== undefined) return this.closing;
     this.closedController.abort();
     this.bridge.endWatches(this.handle);
+
     const closing = this.bridge.closed
       ? Promise.resolve()
       : this.bridge.call(this.handle, "session.close", [], result.null).then(() => undefined);
+
     this.closing = closing;
+
     return closing;
   }
 
@@ -449,11 +487,13 @@ export class WorkerStore implements Store {
 
   async create(options?: { readonly id?: string }): Promise<Session> {
     const opened = await this.bridge.call(null, "store.create", [options], result.handle);
+
     return new WorkerSession(this.bridge, opened.handle, opened.id);
   }
 
   async open(id: string): Promise<Session> {
     const opened = await this.bridge.call(null, "store.open", [id], result.handle);
+
     return new WorkerSession(this.bridge, opened.handle, opened.id);
   }
 
@@ -469,6 +509,7 @@ export class WorkerStore implements Store {
     if (this.closed) return;
     this.closed = true;
     this.bridge.endWatches(undefined);
+
     try {
       await this.bridge.call(null, "store.close", [], result.null);
     } finally {

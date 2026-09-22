@@ -165,8 +165,10 @@ export function Toaster(): ReactElement {
   useEffect(() => {
     if (toasts.length === 0) return;
     const list = host.current?.querySelector("ol");
+
     return list === null || list === undefined ? undefined : registerOverlay(list);
   }, [toasts.length]);
+
   return (
     <div ref={host}>
       <Sonner

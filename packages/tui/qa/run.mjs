@@ -9,21 +9,29 @@ import process from "node:process";
 try {
   const args = process.argv.slice(2);
   const seen = new Set();
+
   for (let index = 0; index < args.length; index++) {
     const flag = args[index];
+
     if (!["--filter", "--show", "--binary"].includes(flag) || seen.has(flag))
       throw new Error(`Unknown or repeated argument: ${flag}`);
     seen.add(flag);
+
     if (flag === "--show") continue;
     const value = args[++index];
+
     if (!value || value.startsWith("--")) throw new Error(`${flag} requires a value.`);
+
     if (flag === "--binary") args[index] = resolve(value);
   }
+
   if (seen.has("--show") && (!process.stdin.isTTY || !process.stdout.isTTY))
     throw new Error("--show requires terminal stdin and stdout. Run it directly in a terminal.");
   let bun;
+
   for (const directory of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
     const candidate = resolve(directory, "bun");
+
     try {
       await access(candidate, constants.X_OK);
       bun = candidate;
@@ -32,12 +40,14 @@ try {
       /* Try the next PATH entry. */
     }
   }
+
   if (!bun) throw new Error("Bun was not found on PATH. Install the version in mise.toml.");
   const root = await mkdtemp(join(tmpdir(), "nyte-terminal-qa-"));
   const home = join(root, "driver-home");
   const guards = join(root, "bin");
   await mkdir(home);
   await mkdir(guards);
+
   // Never let automated clipboard/editor/browser actions reach the user's desktop.
   for (const command of [
     "pbcopy",
@@ -55,6 +65,7 @@ try {
       { mode: 0o700 },
     );
   }
+
   const env = {
     PATH: `${guards}${delimiter}${process.env.PATH ?? "/usr/bin:/bin"}`,
     HOME: home,
@@ -79,7 +90,9 @@ try {
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_GLOBAL: "/dev/null",
   };
+
   process.stderr.write(`Terminal QA evidence: ${root}\n`);
+
   // No Bun module is loaded until HOME and the environment allowlist are installed.
   const child = spawn(
     bun,
@@ -95,6 +108,7 @@ try {
       stdio: "inherit",
     },
   );
+
   for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => child.kill(signal));
   child.on("error", (error) => {
     process.stderr.write(`${error.message}\n`);

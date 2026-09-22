@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
@@ -20,29 +21,33 @@ Run pnpm run deploy afterward. Repeat when the deployed access token expires.`);
 } else {
   try {
     const root = new URL("../", import.meta.url);
+
     const project: unknown = JSON.parse(
       await readFile(new URL(".vercel/project.json", root), "utf8"),
     );
-    if (
-      typeof project !== "object" ||
-      project === null ||
-      !("projectName" in project) ||
-      project.projectName !== "nyte-server"
-    )
-      throw new Error("Link this package to the nyte-server Vercel project before syncing Codex.");
+
+    assert.partialDeepStrictEqual(
+      project,
+      { projectName: "nyte-server" },
+      new Error("Link this package to the nyte-server Vercel project before syncing Codex."),
+    );
 
     const credentials = new FileCredentialStore();
     const models = createModels({ credentials });
     models.setProvider(openaiCodexProvider());
+
     if (!models.getModel("openai-codex", values.model))
       throw new Error("The selected Codex model is not in Nyte's catalog.");
+
     // Refresh under the local store lock before copying only the short-lived access token.
     const auth = await models
       .getAuth("openai-codex", { signal: AbortSignal.timeout(30_000) })
       .catch(() => {
         throw new Error("Could not refresh the local Codex sign-in. Sign in again in Nyte.");
       });
+
     const credential = await credentials.read("openai-codex");
+
     if (!auth?.auth.apiKey || credential?.type !== "oauth")
       throw new Error("Sign in to OpenAI Codex in the local Nyte desktop before syncing.");
 
@@ -76,6 +81,7 @@ async function setProductionVariable(root: URL, name: string, value: string, sen
       ],
       { cwd: root, stdio: ["pipe", "ignore", "pipe"], timeout: 30_000 },
     );
+
     // Do not forward CLI output: authentication errors may contain submitted secret values.
     child.stderr.resume();
     child.stdin.on("error", () => {});

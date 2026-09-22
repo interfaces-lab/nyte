@@ -18,6 +18,7 @@ import type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
 import type { AssistantMessageEventStream } from "./utils/event-stream.ts";
 
 export type { AssistantMessageEventStream } from "./utils/event-stream.ts";
+
 export type {
   KnownProvider,
   OpenAICompletionsCompat,
@@ -77,6 +78,7 @@ export interface ThinkingBudgets {
 
 // Base options all providers share
 export type CacheRetention = "none" | "short" | "long";
+
 export type CachedRetention = Exclude<CacheRetention, "none">;
 
 /** Provider-owned lower bounds for prompt-cache lifetime after a confirmed read or write. */
@@ -88,7 +90,9 @@ export type Transport = "sse" | "websocket" | "websocket-cached" | "auto";
 
 /** Provider-scoped environment overrides. Values take precedence over process.env. */
 export type ProviderEnv = Record<string, string>;
+
 export type ProviderHeaders = Record<string, string | null>;
+
 export type FetchFunction = typeof globalThis.fetch;
 
 export interface ProviderResponse {

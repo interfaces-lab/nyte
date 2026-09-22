@@ -9,6 +9,7 @@ import "react-grab";
 import "dialkit/styles.css";
 
 const host = document.createElement("div");
+
 document.body.append(host);
 
 createRoot(host).render(

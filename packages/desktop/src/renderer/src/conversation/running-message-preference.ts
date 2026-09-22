@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 export type RunningMessagePreference = "queue" | "steer";
 
 const STORAGE_KEY = "nyte:running-message:v1";
+
 const listeners = new Set<() => void>();
 
 function readPreference(): RunningMessagePreference {
@@ -21,6 +22,7 @@ function getPreference(): RunningMessagePreference {
 
 export function setRunningMessagePreference(value: RunningMessagePreference): void {
   preference = value;
+
   try {
     window.localStorage.setItem(STORAGE_KEY, value);
   } catch {
@@ -32,6 +34,7 @@ export function setRunningMessagePreference(value: RunningMessagePreference): vo
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
+
   return () => listeners.delete(listener);
 }
 

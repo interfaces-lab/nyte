@@ -45,24 +45,28 @@ function SelectionForm({ waiting, onReply }: WaitingSelectionProps): ReactElemen
   // One wake per deadline; the target time arrives as a prop.
   useEffect(() => {
     if (until === undefined || until <= now) return;
+
     // Long-lived waits exceed the timer's signed 32-bit delay; recheck on each wake.
     const timer = setTimeout(
       () => setNow(Date.now()),
       Math.min(2_147_483_647, Math.max(0, until - Date.now())),
     );
+
     return () => clearTimeout(timer);
   }, [now, until]);
 
   const blocked = expired || answerState.kind === "sending" || answerState.kind === "settled";
-  const answer: SelectionReply = {
-    choices: selected,
-    ...(other.trim() === "" ? {} : { other: other.trim() }),
-  };
+
+  const answer: SelectionReply =
+    other.trim() === "" ? { choices: selected } : { choices: selected, other: other.trim() };
+
   const canSubmit = acceptsSelectionReply(selection, answer);
+
   const submit = async (): Promise<void> => {
     if (blocked || sending.current || !canSubmit) return;
     sending.current = true;
     setAnswerState({ kind: "sending" });
+
     try {
       const outcome = await onReply(answer);
       setAnswerState(outcome === undefined ? { kind: "failed" } : { kind: "settled", outcome });
@@ -91,6 +95,7 @@ function SelectionForm({ waiting, onReply }: WaitingSelectionProps): ReactElemen
         >
           {selection.choices.map((choice, index) => {
             const chosen = selected.includes(choice.id);
+
             return (
               <html.button
                 key={choice.id}
@@ -111,6 +116,7 @@ function SelectionForm({ waiting, onReply }: WaitingSelectionProps): ReactElemen
                         : [...current, choice.id]
                       : [choice.id],
                   );
+
                   if (!multiple) setOther("");
                 }}
                 style={[
@@ -144,6 +150,7 @@ function SelectionForm({ waiting, onReply }: WaitingSelectionProps): ReactElemen
             editable={!blocked}
             onChangeText={(text) => {
               setOther(text);
+
               if (!multiple && text.trim() !== "") setSelected([]);
             }}
             returnKeyType="send"

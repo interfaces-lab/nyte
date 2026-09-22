@@ -38,11 +38,13 @@ export type ComposerSubmission =
 function isAsciiLetter(character: string | undefined): boolean {
   if (character === undefined) return false;
   const code = character.charCodeAt(0);
+
   return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 }
 
 function isSlashCommandNameCharacter(character: string): boolean {
   const code = character.charCodeAt(0);
+
   return isAsciiLetter(character) || (code >= 48 && code <= 57) || character === "-";
 }
 
@@ -50,6 +52,7 @@ function isSlashCommandNameCharacter(character: string): boolean {
 function parseSlashCommand(input: string): ParsedSlashCommand | undefined {
   const value = input.trim();
   const first = value[1];
+
   if (
     !value.startsWith("/") ||
     first === undefined ||
@@ -58,12 +61,16 @@ function parseSlashCommand(input: string): ParsedSlashCommand | undefined {
   ) {
     return undefined;
   }
+
   if (value.includes("\n") || value.includes("\r")) return undefined;
 
   let nameEnd = 2;
+
   while (nameEnd < value.length) {
     const character = value[nameEnd];
+
     if (character === undefined || character.trim() === "") break;
+
     if (!isSlashCommandNameCharacter(character)) return undefined;
     nameEnd += 1;
   }
@@ -77,14 +84,19 @@ function parseSlashCommand(input: string): ParsedSlashCommand | undefined {
 /** Classify composer text once at the chat-or-command boundary. */
 export function parseComposerSubmission(input: string): ComposerSubmission {
   const text = input.trim();
+
   if (text === "") return { kind: "empty" };
+
   // Shell execution is positional, unlike slash completion within a draft.
   if (input.startsWith("!")) {
     const retain = !input.startsWith("!!");
     const command = input.slice(retain ? 1 : 2).trim();
+
     if (command !== "") return { kind: "shell", command, retain };
   }
+
   const command = parseSlashCommand(text);
+
   return command === undefined ? { kind: "prompt", text } : { kind: "command", command };
 }
 
@@ -128,6 +140,7 @@ export const SLASH_COMMANDS = [
 ] as const satisfies readonly SlashCommand[];
 
 type BuiltinSlashCommand = (typeof SLASH_COMMANDS)[number];
+
 export type BuiltinSlashName = BuiltinSlashCommand["name"];
 
 function aliasesFor(command: SlashCommand): readonly string[] {
@@ -152,38 +165,49 @@ export function availableSlashCommands(
   const builtins: readonly SlashCommand[] = SLASH_COMMANDS;
   const reserved = new Set(builtins.flatMap((command) => [command.name, ...aliasesFor(command)]));
   const claimed: SlashCommand[] = [...builtins];
+
   const claim = (command: SlashCommand): void => {
     if (reserved.has(command.name)) return;
     reserved.add(command.name);
     claimed.push(command);
   };
+
   for (const setting of settings) {
     claim({ name: setting.id, description: setting.label, kind: "setting" });
   }
+
   for (const [name, command] of pluginCommands) {
     claim({ name, description: command.description, kind: "action" });
   }
+
   for (const [name, skill] of skills) {
     claim({ name, description: skill.description, kind: "prompt" });
   }
+
   return claimed;
 }
 
 // Namespace arrays are immutable snapshots. A new namespace gets a new array.
 const sortedCommands = new WeakMap<readonly SlashCommand[], SlashCommand[]>();
+
 const MAX_SUGGESTIONS = 10;
+
 /** Under this a description only matched by coincidence, the way `/usage` finds "Use for…". */
 const DESCRIPTION_MATCH = 0.5;
+
 /** Shorter than this, a query is being typed toward a name, not searched for a topic. */
 const DESCRIPTION_QUERY = 3;
 
 /** Length of the shortest name or alias the query is a prefix of. */
 function prefixLength(command: SlashCommand, query: string): number | undefined {
   let shortest: number | undefined;
+
   for (const name of [command.name, ...aliasesFor(command)]) {
     if (!name.toLowerCase().startsWith(query)) continue;
+
     if (shortest === undefined || name.length < shortest) shortest = name.length;
   }
+
   return shortest;
 }
 
@@ -194,35 +218,44 @@ function prefixLength(command: SlashCommand, query: string): number | undefined 
  */
 function commandSuggestions(query: string, commands: readonly SlashCommand[]): SlashCommand[] {
   let sorted = sortedCommands.get(commands);
+
   if (sorted === undefined) {
     sorted = commands.toSorted((left, right) => left.name.localeCompare(right.name));
     sortedCommands.set(commands, sorted);
   }
+
   if (query === "") return [...sorted];
 
   const needle = query.toLowerCase();
   const prefixed: { command: SlashCommand; length: number }[] = [];
   const rest: SlashCommand[] = [];
+
   for (const command of sorted) {
     const length = prefixLength(command, needle);
+
     if (length === undefined) rest.push(command);
     else prefixed.push({ command, length });
   }
+
   // Stable, so an exact match leads and equal-length names stay A–Z.
   prefixed.sort((left, right) => left.length - right.length);
 
   if (prefixed.length >= MAX_SUGGESTIONS) {
     return prefixed.slice(0, MAX_SUGGESTIONS).map((entry) => entry.command);
   }
+
   const fuzzy = fuzzysort.go(needle, rest, {
     keys: [(command) => command.name, (command) => aliasesFor(command).join(" "), "description"],
     limit: MAX_SUGGESTIONS - prefixed.length,
     threshold: 0.001,
     scoreFn(results) {
       const named = Math.max(results[0]?.score ?? 0, results[1]?.score ?? 0);
+
       if (named > 0) return 1 + named;
+
       if (needle.length < DESCRIPTION_QUERY) return 0;
       const described = results[2]?.score ?? 0;
+
       return described >= DESCRIPTION_MATCH ? described : 0;
     },
   });
@@ -255,7 +288,9 @@ export function slashCompletion(
   cursor = value.length,
 ): SlashCompletion | undefined {
   const trigger = completionTrigger(value, cursor);
+
   if (trigger?.kind !== "/") return undefined;
+
   return {
     start: trigger.start,
     end: trigger.end,
@@ -275,11 +310,14 @@ interface SkillToken {
 
 function skillTokens(text: string, skills: ReadonlyMap<string, Skill>): SkillToken[] {
   const tokens: SkillToken[] = [];
+
   for (const match of text.matchAll(INLINE_SKILL_PATTERN)) {
     const skill = skills.get(match[1] ?? "");
+
     if (skill === undefined) continue;
     tokens.push({ start: match.index, end: match.index + match[0].length, skill });
   }
+
   return tokens;
 }
 
@@ -296,10 +334,12 @@ export function hasInlineSkills(text: string, skills: ReadonlyMap<string, Skill>
 export function expandInlineSkills(text: string, skills: ReadonlyMap<string, Skill>): string {
   let expanded = "";
   let cursor = 0;
+
   for (const token of skillTokens(text, skills)) {
     expanded += text.slice(cursor, token.start) + formatSkillInvocation(token.skill);
     cursor = token.end;
   }
+
   return expanded + text.slice(cursor);
 }
 
@@ -327,11 +367,14 @@ function unescapeXml(value: string): string {
 
 export function extractSkillInvocations(text: string): SkillInvocation[] {
   const invocations: SkillInvocation[] = [];
+
   for (const match of text.matchAll(SKILL_INVOCATION_PATTERN)) {
     const [source, name, path] = match;
+
     if (name === undefined || path === undefined) continue;
     invocations.push({ source, name: unescapeXml(name), path: unescapeXml(path) });
   }
+
   return invocations;
 }
 
@@ -362,8 +405,10 @@ export function acceptSlashCommand(
   rest = "",
 ): SlashAcceptance {
   if (rest !== "") return { action: "complete", token: `/${command.name}` };
+
   if (via === "tab" || command.kind === "prompt" || command.name === "cd") {
     return { action: "complete", token: `/${command.name} ` };
   }
+
   return { action: "execute" };
 }

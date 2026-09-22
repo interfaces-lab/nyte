@@ -196,9 +196,8 @@ continuations cannot both spend the last attempt.
 Every publish also expects `refs/deleted` absent and carries the lease. A head
 moved by a participant or a deletion makes the publish fail; the runner re-reads
 and ends the run instead of forcing its output. An abort flag set during a step
-also fails its publish; the runner keeps the step's output and carries the flag
-to the next response boundary (through the tool batch when one is due), where
-the run ends `aborted`.
+also fails its publish; the runner keeps the step's output and ends the run
+`aborted` in the retried publish, or after the tool batch when one is due.
 
 ## Who starts model work
 

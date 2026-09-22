@@ -12,11 +12,14 @@ export function draftConfiguration(
   configuration: DesktopCatalog["defaults"] | undefined,
 ): DesktopCatalog["defaults"] | undefined {
   if (catalog === undefined) return configuration;
+
   if (configuration === undefined) return catalog.defaults;
+
   const listed = catalog.models.some(
     (option) =>
       option.provider === configuration.model.provider && option.id === configuration.model.id,
   );
+
   return listed ? configuration : catalog.defaults;
 }
 
@@ -31,6 +34,7 @@ export function updateDraftModel({
   readonly change: ModelPickerChange;
 }): BlankViewState {
   const selected = state.configuration ?? defaults;
+
   switch (change.kind) {
     case "model":
       return {
@@ -46,12 +50,16 @@ export function updateDraftModel({
         : { ...state, configuration: { ...selected, thinkingLevel: change.thinkingLevel } };
     case "fast": {
       const fastSettings = new Set(state.fastSettings);
+
       if (change.enabled) fastSettings.add(change.settingId);
       else fastSettings.delete(change.settingId);
+
       return { ...state, configuration: selected, fastSettings };
     }
+
     default: {
       const _exhaustive: never = change;
+
       return _exhaustive;
     }
   }

@@ -22,6 +22,7 @@ class SecretInput extends InputRenderable {
 
   override insertText(text: string): void {
     const inserted = Array.from(text.replace(/[\r\n]/g, ""));
+
     if (inserted.length === 0) return;
     const selection = this.getSelection();
     const start = selection === null ? this.cursorOffset : Math.min(selection.start, selection.end);
@@ -37,9 +38,11 @@ class SecretInput extends InputRenderable {
 
   override handleKeyPress(key: KeyEvent): boolean {
     const handled = super.handleKeyPress(key);
+
     if (this.isDestroyed) return handled;
     // Native movement and deletion operate on one bullet per code point. Never retain undo.
     const removed = this.secret.length - this.plainText.length;
+
     if (removed > 0) {
       const nextCursor = this.cursorOffset;
       // The native caret lands at the removed range's start, including line deletion
@@ -49,12 +52,14 @@ class SecretInput extends InputRenderable {
       this.setText("•".repeat(this.secret.length));
       this.cursorOffset = nextCursor;
     }
+
     return handled;
   }
 
   override destroy(): void {
     this.secret.fill("");
     this.secret.length = 0;
+
     if (!this.isDestroyed) this.setText("");
     super.destroy();
   }
@@ -67,14 +72,18 @@ export function readAuthPrompt(
   signal: AbortSignal,
 ): Promise<string> {
   const abort = prompt.signal === undefined ? signal : AbortSignal.any([signal, prompt.signal]);
+
   if (abort.aborted || shell.renderer.isDestroyed) return Promise.reject(new PickerCancelled());
   shell.dismissInfoPanel?.();
+
   if (shell.ui.selecting || shell.ui.prompting) {
     return Promise.reject(new Error("Another prompt or panel is already open"));
   }
+
   const previousFocus = shell.renderer.currentFocusedRenderable;
   const previousFocusable = shell.input.focusable;
   const previousHints = shell.ui.hints;
+
   const container = new BoxRenderable(shell.renderer, {
     id: shell.nextId("auth-prompt"),
     flexDirection: "column",
@@ -82,6 +91,7 @@ export function readAuthPrompt(
     paddingRight: 2,
     paddingTop: 1,
   });
+
   container.add(
     new TextRenderable(shell.renderer, {
       content: prompt.message,
@@ -92,6 +102,7 @@ export function readAuthPrompt(
     }),
   );
   const Input = prompt.type === "secret" ? SecretInput : InputRenderable;
+
   const input = new Input(shell.renderer, {
     id: shell.nextId("auth-input"),
     width: "100%",
@@ -107,10 +118,12 @@ export function readAuthPrompt(
     selectionFg: shell.theme.selectionForeground,
     selectionOccupancy: "boundary",
   });
+
   container.add(input);
 
   return new Promise<string>((resolve, reject) => {
     let settled = false;
+
     const panel = {
       container,
       rows: 3,
@@ -122,37 +135,47 @@ export function readAuthPrompt(
         container.destroyRecursively();
       },
     };
+
     const finish = (value?: string): void => {
       if (settled) return;
       settled = true;
       abort.removeEventListener("abort", onAbort);
       unregister();
       input.off(InputRenderableEvents.ENTER, onSubmit);
+
       if (shell.root.isDestroyed) {
         panel.destroy();
         shell.setUi("selecting", false);
       } else {
         closePanel(shell, panel);
         shell.input.focusable = previousFocusable;
+
         if (previousFocus !== null && !previousFocus.isDestroyed) shell.focus.use(previousFocus);
         else shell.input.blur();
         setHints(shell, previousHints);
       }
+
       shell.setUi("prompting", false);
+
       if (value === undefined) reject(new PickerCancelled());
       else resolve(value);
     };
+
     const onAbort = (): void => finish();
+
     const onSubmit = (): void =>
       finish(input instanceof SecretInput ? input.readSecret() : input.value);
+
     const unregister = shell.keymap.registerLayer({
       commands: [{ name: "auth.cancel", run: onAbort }],
       bindings: commandBindings({ "auth.cancel": CHAT_KEYBINDS["auth.cancel"] }),
     });
+
     shell.setUi("prompting", true);
     openPanel(shell, panel);
     input.on(InputRenderableEvents.ENTER, onSubmit);
     abort.addEventListener("abort", onAbort, { once: true });
+
     if (abort.aborted) onAbort();
   });
 }

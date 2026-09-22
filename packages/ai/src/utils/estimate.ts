@@ -5,12 +5,12 @@
  * Synced with pi 7ebf9087e.
  */
 import type {
-  AssistantMessage,
   Context,
   ImageContent,
   Message,
   TextContent,
   Tool,
+  ToolCall,
   Usage,
 } from "@nyte-ai/schema";
 
@@ -26,13 +26,14 @@ export interface ContextUsageEstimate {
 }
 
 const CHARS_PER_TOKEN = 4;
+
 const ESTIMATED_IMAGE_CHARS = 4800;
 
 export function calculateContextTokens(usage: Usage): number {
   return usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
 }
 
-function safeJsonStringify(value: unknown): string {
+function safeJsonStringify(value: ToolCall["arguments"] | readonly Tool[]): string {
   try {
     return JSON.stringify(value) ?? "undefined";
   } catch {
@@ -43,11 +44,13 @@ function safeJsonStringify(value: unknown): string {
 function estimateTextAndImageContentChars(
   content: string | Array<TextContent | ImageContent>,
 ): number {
-  if (typeof content === "string") return content.length;
+  if (!Array.isArray(content)) return content.length;
 
   let chars = 0;
+
   for (const block of content)
     chars += block.type === "text" ? block.text.length : ESTIMATED_IMAGE_CHARS;
+
   return chars;
 }
 
@@ -65,6 +68,7 @@ export function estimateMessageTokens(message: Message): number {
   let chars = 0;
 
   if (message.role === "user") return estimateTextAndImageContentTokens(message.content);
+
   if (message.role === "toolResult") return estimateTextAndImageContentTokens(message.content);
 
   for (const block of message.content) {
@@ -76,6 +80,7 @@ export function estimateMessageTokens(message: Message): number {
       chars += block.name.length + safeJsonStringify(block.arguments).length;
     }
   }
+
   return Math.ceil(chars / CHARS_PER_TOKEN);
 }
 
@@ -87,20 +92,22 @@ function getLastAssistantUsageInfo(
 
   for (let i = 0; i < messages.length; i++) {
     const message = messages[i];
+
     if (message.role === "assistant") {
-      const assistant = message as AssistantMessage;
       // A newer prefix message was inserted after this response (for example, a
       // compaction summary), so its usage cannot describe the current prefix.
-      const usageAppliesToPrefix = assistant.timestamp >= latestPrefixTimestamp;
+      const usageAppliesToPrefix = message.timestamp >= latestPrefixTimestamp;
+
       if (
         usageAppliesToPrefix &&
-        assistant.stopReason !== "aborted" &&
-        assistant.stopReason !== "error" &&
-        calculateContextTokens(assistant.usage) > 0
+        message.stopReason !== "aborted" &&
+        message.stopReason !== "error" &&
+        calculateContextTokens(message.usage) > 0
       ) {
-        usageInfo = { usage: assistant.usage, index: i };
+        usageInfo = { usage: message.usage, index: i };
       }
     }
+
     latestPrefixTimestamp = Math.max(latestPrefixTimestamp, message.timestamp);
   }
 
@@ -109,12 +116,15 @@ function getLastAssistantUsageInfo(
 
 function estimateMessages(messages: readonly Message[]): ContextUsageEstimate {
   const usageInfo = getLastAssistantUsageInfo(messages);
+
   if (usageInfo) {
     const usageTokens = calculateContextTokens(usageInfo.usage);
     let trailingTokens = 0;
+
     for (let i = usageInfo.index + 1; i < messages.length; i++) {
       trailingTokens += estimateMessageTokens(messages[i]);
     }
+
     return {
       tokens: usageTokens + trailingTokens,
       usageTokens,
@@ -124,12 +134,15 @@ function estimateMessages(messages: readonly Message[]): ContextUsageEstimate {
   }
 
   let tokens = 0;
+
   for (const message of messages) tokens += estimateMessageTokens(message);
+
   return { tokens, usageTokens: 0, trailingTokens: tokens, lastUsageIndex: null };
 }
 
 function estimateToolsTokens(tools: readonly Tool[] | undefined): number {
   if (!tools || tools.length === 0) return 0;
+
   return estimateTextTokens(safeJsonStringify(tools));
 }
 
@@ -141,6 +154,7 @@ export function estimateContextTokens(context: Context | readonly Message[]): Co
   if (isMessageArray(context)) return estimateMessages(context);
 
   const estimate = estimateMessages(context.messages);
+
   if (estimate.lastUsageIndex !== null) {
     const addedNames = new Set(
       context.messages
@@ -148,9 +162,11 @@ export function estimateContextTokens(context: Context | readonly Message[]): Co
         .filter((message) => message.role === "toolResult")
         .flatMap((message) => message.addedToolNames ?? []),
     );
+
     const addedToolTokens = estimateToolsTokens(
       context.tools?.filter((tool) => addedNames.has(tool.name)),
     );
+
     return {
       tokens: estimate.tokens + addedToolTokens,
       usageTokens: estimate.usageTokens,

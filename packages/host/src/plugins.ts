@@ -1,9 +1,9 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { Type, Unsafe } from "typebox";
 import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
-import { Value } from "typebox/value";
 import { FileCredentialStore } from "@nyte-ai/ai";
 import type { MutableModels } from "@nyte-ai/ai";
 import { resolvePlugins } from "@nyte-ai/core";
@@ -45,7 +45,9 @@ export async function resolveHostPlugins(
     readManifest(target),
     loadSkills(skillDirectories(target)),
   ]);
+
   const mcp = manifest.mcp ?? {};
+
   return resolvePlugins({
     builtins: [
       systemPromptPlugin(),
@@ -65,29 +67,34 @@ export async function resolveHostPlugins(
     manifest,
     builtinVersions: {
       // Identity, not a counter: a rescan that finds the same skills leaves the plugin alone.
-      [SKILLS_PLUGIN_ID]: `builtin:${digest(skills)}`,
-      [MCP_PLUGIN_ID]: `builtin:${digest(mcp)}`,
+      [SKILLS_PLUGIN_ID]: `builtin:${digest(JSON.stringify(skills))}`,
+      [MCP_PLUGIN_ID]: `builtin:${digest(JSON.stringify(mcp))}`,
     },
   });
 }
 
-function digest(value: unknown): string {
-  return createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 16);
+function digest(text: string): string {
+  return createHash("sha256").update(text).digest("hex").slice(0, 16);
 }
 
 function webSearchCredentials(): WebSearchCredentials {
   const store = new FileCredentialStore();
+
   return {
     async read(provider) {
       const credential = await store.read(webSearchCredentialId(provider));
+
       return credential?.type === "api_key" ? credential.key : undefined;
     },
     async write(provider, key) {
       const id = webSearchCredentialId(provider);
+
       if (key === undefined) {
         await store.delete(id);
+
         return;
       }
+
       await store.modify(id, () => Promise.resolve({ type: "api_key", key }));
     },
   };
@@ -111,8 +118,8 @@ const manifestSchema = Type.Object(
   },
   { additionalProperties: false },
 );
+
 const manifestFile = Compile(manifestSchema);
-const missingFile = Type.Object({ code: Type.Literal("ENOENT") });
 
 export type HostManifest = Static<typeof manifestSchema>;
 
@@ -123,36 +130,31 @@ export type HostManifest = Static<typeof manifestSchema>;
  */
 export async function readManifest(target: PluginTarget): Promise<HostManifest> {
   const files = await Promise.all(manifestPaths(target).map(readManifestFile));
-  return files.reduce<HostManifest>(
-    (merged, file) =>
-      file === undefined
-        ? merged
-        : {
-            ...(merged.plugins === undefined && file.plugins === undefined
-              ? {}
-              : { plugins: [...(merged.plugins ?? []), ...(file.plugins ?? [])] }),
-            ...(merged.mcp === undefined && file.mcp === undefined
-              ? {}
-              : { mcp: { ...merged.mcp, ...file.mcp } }),
-          },
-    {},
-  );
+
+  const merged: HostManifest = {};
+
+  for (const file of files) {
+    if (file?.plugins !== undefined) merged.plugins = [...(merged.plugins ?? []), ...file.plugins];
+
+    if (file?.mcp !== undefined) merged.mcp = { ...merged.mcp, ...file.mcp };
+  }
+
+  return merged;
 }
 
 async function readManifestFile(path: string): Promise<HostManifest | undefined> {
-  let text: string;
-  try {
-    text = await readFile(path, "utf8");
-  } catch (error) {
-    if (Value.Check(missingFile, error)) return undefined;
-    throw error;
-  }
+  if (!existsSync(path)) return undefined;
+  const text = await readFile(path, "utf8");
+
   try {
     const parsed: unknown = JSON.parse(text);
+
     if (manifestFile.Check(parsed)) return parsed;
+
     const problems = manifestFile
       .Errors(parsed)
       .map((error) => `${error.instancePath || "/"}: ${error.message}`);
+
     throw new Error(problems.join("; "));
   } catch (cause) {
     throw new Error(`${path}: ${cause instanceof Error ? cause.message : String(cause)}`, {

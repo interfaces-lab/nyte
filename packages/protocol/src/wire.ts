@@ -21,8 +21,11 @@ import { typed } from "./schemas.ts";
 import type { SessionEvent } from "./sdk.ts";
 
 export const WIRE_VERSION = 1;
+
 export const INFO_ROUTE = "/v1/info";
+
 export const CALL_ROUTE_PREFIX = "/v1/call/";
+
 export const WATCH_ROUTE = "/v1/watch";
 
 // ---------------------------------------------------------------------------
@@ -39,6 +42,7 @@ const serverDescriptionProperties = {
   capabilities: Type.Object({ workspace: Type.Boolean() }, { additionalProperties: false }),
   persistence: Type.Enum(["durable", "ephemeral", "unknown"]),
 };
+
 export const ServerDescriptionSchema = typed<ServerDescription>()(
   Type.Object(serverDescriptionProperties, { additionalProperties: false }),
 );
@@ -159,6 +163,7 @@ export function statusFor(code: ErrorCode): number {
       return 503;
     default: {
       const _exhaustive: never = code;
+
       return _exhaustive;
     }
   }
@@ -192,12 +197,14 @@ export const CallReplySchema = typed<CallReply>()(
 );
 
 export const JSON_MEDIA_TYPE = "application/json";
+
 export const EVENT_STREAM_MEDIA_TYPE = "text/event-stream";
 
 /** The media type of a `content-type` header, without parameters; undefined when the header is absent. */
 export function mediaType(header: string | null): string | undefined {
   if (header === null) return undefined;
   const semicolon = header.indexOf(";");
+
   return (semicolon === -1 ? header : header.slice(0, semicolon)).trim().toLowerCase();
 }
 

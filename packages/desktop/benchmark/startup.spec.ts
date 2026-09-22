@@ -6,6 +6,7 @@ import { DEFAULT_ASSISTANT_MARKDOWN } from "./fixtures.ts";
 import { measureSettledDesktop } from "./measure.ts";
 
 const LARGE_TRANSCRIPT_TURNS = 160;
+
 const LARGE_ASSISTANT_MARKDOWN = Array.from(
   { length: 8 },
   (_, index) => `## Transcript section ${String(index + 1)}\n\n${DEFAULT_ASSISTANT_MARKDOWN}`,
@@ -17,6 +18,7 @@ async function measureStartup(
   backgroundReady?: (desktop: LaunchedDesktop) => Promise<void>,
 ) {
   const desktop = await launchDesktop(options);
+
   try {
     await ready(desktop);
     const usefulScreenMs = desktop.startupElapsedMs();
@@ -24,6 +26,7 @@ async function measureStartup(
     const settledScreenMs = desktop.startupElapsedMs();
     const idle = await measureSettledDesktop(desktop);
     expect(desktop.pageErrors).toEqual([]);
+
     return {
       metrics: {
         startup: { ...desktop.startup, usefulScreenMs, settledScreenMs },
@@ -53,6 +56,7 @@ benchmark("opens a cold desktop on empty Home", async ({ report }) => {
       await expect(desktop.page.getByText("No sessions yet", { exact: true })).toHaveCount(1);
     },
   );
+
   report(result.metrics, result.context);
 });
 
@@ -65,6 +69,7 @@ benchmark("opens Home with 50 saved workspaces", async ({ report }) => {
       expect(directories).toHaveLength(51);
     },
   );
+
   report(result.metrics, result.context);
 });
 
@@ -79,6 +84,7 @@ benchmark("restores a 160-turn transcript", async ({ report }) => {
     async (desktop) => {
       await expectComposer(desktop);
       const session = desktop.fixture.sessions[0];
+
       if (session === undefined) throw new Error("Missing restored benchmark session");
       const pane = desktop.page.getByRole("region", { name: "Active chat pane" });
       await expect(
@@ -89,6 +95,7 @@ benchmark("restores a 160-turn transcript", async ({ report }) => {
       ).toBeVisible();
     },
   );
+
   report(result.metrics, result.context);
 });
 
@@ -103,6 +110,7 @@ benchmark("restores a project while the login shell takes two seconds", async ({
     },
     expectComposer,
   );
+
   report(result.metrics, result.context);
 });
 
@@ -117,5 +125,6 @@ benchmark("opens while a configured loopback server never responds", async ({ re
     },
     expectComposer,
   );
+
   report(result.metrics, result.context);
 });

@@ -13,7 +13,9 @@ import type { Commit, CommitBody } from "@nyte-ai/protocol";
 import { rememberWorkspace } from "../src/main/workspaces.ts";
 
 export const DESKTOP_BENCHMARK_SEED = "nyte-desktop-benchmark-v1";
+
 export const DESKTOP_BENCHMARK_EPOCH_MS = 1_700_000_000_000;
+
 export const DEFAULT_CATALOG_MODEL_COUNT = 1_200;
 
 export const DEFAULT_ASSISTANT_MARKDOWN = `# Benchmark result
@@ -94,12 +96,14 @@ export interface DesktopBenchmarkMetadata {
   readonly server: "none" | "delayed-loopback";
 }
 
+interface DesktopBenchmarkEnvironment {
+  HOME: string;
+  NYTE_HOME: string;
+  SHELL?: string;
+}
+
 export interface DesktopBenchmarkFixture {
-  readonly env: {
-    readonly HOME: string;
-    readonly NYTE_HOME: string;
-    readonly SHELL?: string;
-  };
+  readonly env: Readonly<DesktopBenchmarkEnvironment>;
   readonly paths: DesktopBenchmarkPaths;
   readonly sessions: readonly DesktopBenchmarkSession[];
   readonly sessionIds: readonly string[];
@@ -116,6 +120,7 @@ interface EnvironmentSnapshot {
 function restoreEnvironment(snapshot: EnvironmentSnapshot): void {
   if (snapshot.home === undefined) delete process.env.HOME;
   else process.env.HOME = snapshot.home;
+
   if (snapshot.nyteHome === undefined) delete process.env.NYTE_HOME;
   else process.env.NYTE_HOME = snapshot.nyteHome;
 }
@@ -128,9 +133,11 @@ async function closeServer(server: Server | undefined): Promise<void> {
 
 function integer(value: number | undefined, fallback: number, name: string, minimum = 1): number {
   const resolved = value ?? fallback;
+
   if (!Number.isSafeInteger(resolved) || resolved < minimum) {
     throw new RangeError(`${name} must be a safe integer of at least ${String(minimum)}`);
   }
+
   return resolved;
 }
 
@@ -140,6 +147,7 @@ function numbered(value: number): string {
 
 function catalogModel(index: number): Model<"openai-responses"> {
   const suffix = numbered(index);
+
   return {
     id: `${MODEL_ID_PREFIX}${suffix}`,
     name: `Desktop benchmark model ${suffix}`,
@@ -156,7 +164,9 @@ function catalogModel(index: number): Model<"openai-responses"> {
 
 async function appendCommit(session: Session, commit: Commit): Promise<string> {
   const [oid] = await session.objects.put([commit]);
+
   if (oid === undefined) throw new Error("SQLite did not return an object id for a commit");
+
   return oid;
 }
 
@@ -171,17 +181,22 @@ async function seedSession(
   const id = `desktop-benchmark-session-${suffix}`;
   const name = `Desktop benchmark session ${suffix}`;
   const session = await store.create({ id });
+
   try {
     const [nameOid, cwdOid] = await session.objects.put([
       { kind: "blob", value: name },
       { kind: "blob", value: workspace },
     ]);
+
     if (nameOid === undefined || cwdOid === undefined) {
       throw new Error("SQLite did not return object ids for the session facts");
     }
+
     let tip: string | null = null;
+
     for (let turnIndex = 0; turnIndex < turnsPerSession; turnIndex += 1) {
       const at = DESKTOP_BENCHMARK_EPOCH_MS + sessionIndex * turnsPerSession * 2 + turnIndex * 2;
+
       const userBody = {
         kind: "message",
         message: {
@@ -190,6 +205,7 @@ async function seedSession(
           timestamp: at,
         },
       } satisfies CommitBody;
+
       tip = await appendCommit(session, {
         kind: "commit",
         parent: tip,
@@ -197,6 +213,7 @@ async function seedSession(
         start: { kind: "none" },
         at,
       });
+
       const assistantBody = {
         kind: "message",
         message: {
@@ -217,6 +234,7 @@ async function seedSession(
           },
         },
       } satisfies CommitBody;
+
       tip = await appendCommit(session, {
         kind: "commit",
         parent: tip,
@@ -226,7 +244,9 @@ async function seedSession(
         at: at + 1,
       });
     }
+
     if (tip === null) throw new Error("A benchmark session must contain at least one turn");
+
     const outcome = await session.refs.update(
       [
         { name: "refs/facts/name", from: null, to: nameOid },
@@ -235,7 +255,9 @@ async function seedSession(
       ],
       { reason: "benchmark-seed" },
     );
+
     if (!outcome.ok) throw new Error(`Could not publish benchmark session ${id}`);
+
     return { id, name, tip, turnCount: turnsPerSession };
   } finally {
     await session.close();
@@ -256,15 +278,20 @@ export async function createDesktopBenchmarkFixture(
   const workspaceCount = integer(options.workspaceCount, 1, "workspaceCount", 0);
   const loginShellDelayMs = integer(options.loginShellDelayMs, 0, "loginShellDelayMs", 0);
   const rememberSelectedWorkspace = options.rememberWorkspace ?? workspaceCount > 0;
+
   if (workspaceCount === 0 && (sessionCount > 0 || rememberSelectedWorkspace)) {
     throw new RangeError("workspaceCount must be positive when seeding or remembering a workspace");
   }
+
   const assistantMarkdown = options.assistantMarkdown ?? DEFAULT_ASSISTANT_MARKDOWN;
-  if (typeof assistantMarkdown !== "string" || assistantMarkdown.trim() === "") {
+
+  if (assistantMarkdown.trim() === "") {
     throw new RangeError("assistantMarkdown must be a non-empty string");
   }
+
   const totalTurns = sessionCount * turnsPerSession;
   const totalCommits = totalTurns * 2;
+
   if (
     !Number.isSafeInteger(totalTurns) ||
     !Number.isSafeInteger(totalCommits) ||
@@ -279,9 +306,11 @@ export async function createDesktopBenchmarkFixture(
   const home = join(root, "home");
   const nyteHome = join(root, "nyte-home");
   const workspaceDirectory = join(root, "workspace");
+
   const workspaceDirectories = Array.from({ length: workspaceCount }, (_, index) =>
     index === 0 ? workspaceDirectory : join(root, `workspace-${numbered(index)}`),
   );
+
   await Promise.all(
     [home, nyteHome, workspaceDirectory, ...workspaceDirectories].map((path) =>
       mkdir(path, { recursive: true }),
@@ -292,19 +321,23 @@ export async function createDesktopBenchmarkFixture(
     home: process.env.HOME,
     nyteHome: process.env.NYTE_HOME,
   };
+
   process.env.HOME = home;
   process.env.NYTE_HOME = nyteHome;
 
   let store: SqliteStore | undefined;
   let delayedServer: Server | undefined;
+
   try {
     const workspaces = createWorkspaceStore();
+
     for (const [index, directory] of workspaceDirectories.entries()) {
       await workspaces.trust(directory);
       await workspaces.touch(directory, DESKTOP_BENCHMARK_EPOCH_MS - index);
       const emptyStore = new SqliteStore(await workspaceStorePath(directory));
       await emptyStore.close();
     }
+
     const workspace = workspaceDirectory;
     await rememberWorkspace(rememberSelectedWorkspace ? workspace : null);
 
@@ -320,15 +353,18 @@ export async function createDesktopBenchmarkFixture(
     const workspaceStore = await workspaceStorePath(workspace);
     store = new SqliteStore(workspaceStore);
     const sessions: DesktopBenchmarkSession[] = [];
+
     for (let sessionIndex = 0; sessionIndex < sessionCount; sessionIndex += 1) {
       sessions.push(
         await seedSession(store, workspace, sessionIndex, turnsPerSession, assistantMarkdown),
       );
     }
+
     await store.close();
     store = undefined;
 
     const serverSettings = join(nyteHome, "server.json");
+
     if (options.server === "delayed-loopback") {
       delayedServer = createServer(() => undefined);
       const server = delayedServer;
@@ -341,9 +377,11 @@ export async function createDesktopBenchmarkFixture(
         });
       });
       const address = server.address();
+
       if (address === null || typeof address === "string") {
         throw new Error("Delayed benchmark server did not bind a TCP port");
       }
+
       await writeFile(
         serverSettings,
         `${JSON.stringify(
@@ -358,10 +396,11 @@ export async function createDesktopBenchmarkFixture(
       );
     }
 
-    const env: { HOME: string; NYTE_HOME: string; SHELL?: string } = {
+    const env: DesktopBenchmarkEnvironment = {
       HOME: home,
       NYTE_HOME: nyteHome,
     };
+
     if (loginShellDelayMs > 0) {
       const loginShell = join(root, "login-shell.sh");
       await writeFile(
@@ -373,6 +412,7 @@ export async function createDesktopBenchmarkFixture(
     }
 
     let cleaned = false;
+
     const fixture: DesktopBenchmarkFixture = {
       env,
       paths: {
@@ -411,6 +451,7 @@ export async function createDesktopBenchmarkFixture(
       cleanup: async () => {
         if (cleaned) return;
         cleaned = true;
+
         try {
           try {
             await closeServer(delayedServer);
@@ -422,6 +463,7 @@ export async function createDesktopBenchmarkFixture(
         }
       },
     };
+
     return fixture;
   } catch (error) {
     if (store !== undefined) await store.close().catch(() => undefined);

@@ -1,7 +1,9 @@
 import { create } from "@stylexjs/stylex";
 
 const horizontal = "repeating-linear-gradient(to right, currentColor 0 3px, transparent 3px 6px)";
+
 const vertical = "repeating-linear-gradient(to bottom, currentColor 0 3px, transparent 3px 6px)";
+
 const solid = "linear-gradient(currentColor, currentColor)";
 
 export const gridOverlay = create({

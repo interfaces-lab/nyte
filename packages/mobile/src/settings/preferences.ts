@@ -43,16 +43,19 @@ const transcriptFontChoices = [
 
 function useChoice<Value extends string>(key: string, choices: Choices<Value>): Setting<Value> {
   const [stored, setStored] = useMMKVString(key, store);
+
   return { ...resolveChoice(choices, stored), choices, select: setStored };
 }
 
 function useFlag(key: string, fallback: boolean): [boolean, (value: boolean) => void] {
   const [stored, setStored] = useMMKVBoolean(key, store);
+
   return [stored ?? fallback, setStored];
 }
 
 export function useAppearance() {
   const setting = useChoice("appearance", appearanceChoices);
+
   // Choosing is the only way the value changes, so the OS scheme moves with
   // the tap rather than a render pass behind it.
   return {

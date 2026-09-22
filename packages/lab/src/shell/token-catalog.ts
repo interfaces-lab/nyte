@@ -41,7 +41,6 @@ export const lengths = [
   ["--nyte-dialog-padding", "Dialog padding"],
   ["--nyte-dialog-gap", "Dialog gap"],
   ["--nyte-dialog-radius", "Dialog radius"],
-  ["--nyte-suggestion-padding", "Popover padding"],
   ["--nyte-suggestion-item-height", "Popover row minimum"],
   ["--nyte-suggestion-item-gap", "Popover column gap"],
   ["--nyte-menu-width", "Menu width"],
@@ -56,6 +55,7 @@ export const lengths = [
   ["--nyte-model-menu-width", "Model menu width"],
   ["--nyte-parameter-menu-width", "Parameter menu width"],
 ] as const;
+
 export const colors = [
   ["--nyte-base", "Palette ink"],
   ["--nyte-chrome-base", "Window color"],
@@ -97,7 +97,9 @@ export const strings = [["--nyte-font-family-sans", "font-family"]] as const;
  * they are on.
  */
 export const shadowColors = [["--nyte-shadow-primary", "Shadow ink"]] as const;
+
 export const shadowScales = [["--lab-shadow-depth", "Shadow depth"]] as const;
+
 export const shadowStrings = [
   ["--nyte-shadow-popover", "box-shadow"],
   ["--nyte-shadow-modal", "box-shadow"],
@@ -105,9 +107,11 @@ export const shadowStrings = [
 ] as const;
 
 export const opacityToken = "--nyte-sidebar-material-opacity";
+
 const calendarNames = new Set(
   Array.from(calendarCss.matchAll(/(--nyte-[\w-]+)\s*:/g), (match) => match[1]),
 );
+
 const tokenNames: string[] = [
   ...[...lengths, ...colors, ...strings, ...shadowColors, ...shadowScales, ...shadowStrings].map(
     ([name]) => name,
@@ -115,7 +119,11 @@ const tokenNames: string[] = [
   opacityToken,
 ];
 
-export type TokenBaseline = Record<string, string | number>;
+export interface TokenBaseline {
+  readonly numbers: Map<string, number>;
+  readonly texts: Map<string, string>;
+}
+
 export type TokenBaselines = Record<TokenSet, TokenBaseline>;
 
 type NumberControl = {
@@ -123,73 +131,99 @@ type NumberControl = {
   override: boolean;
   value: [number, number, number, number];
 };
+
 type ScaleControl = [number, number, number, number];
+
 type ColorControl = { _collapsed: boolean; override: boolean; value: ColorConfig };
+
 type StringControl = { _collapsed: boolean; override: boolean; value: TextConfig };
 
 function pickerColor(value: string): string {
   const match =
     /^color\(srgb\s+([\d.e+-]+)\s+([\d.e+-]+)\s+([\d.e+-]+)(?:\s*\/\s*([\d.e+-]+))?\)$/.exec(value);
+
   if (match === null) return value;
   const [, red, green, blue, alpha] = match;
+
   if (red === undefined || green === undefined || blue === undefined) return value;
+
   return `rgb(${Number(red) * 255} ${Number(green) * 255} ${Number(blue) * 255} / ${alpha ?? "1"})`;
 }
 
 export function readTokenBaselines(preview: Document, appearance: Appearance): TokenBaselines {
   const view = preview.defaultView;
+
   if (view === null) throw new Error("Preview has no window");
   const root = preview.documentElement;
+
   const attributes = ["data-theme", "data-appearance", "data-lab-reference"].map((name) => ({
     name,
     value: root.getAttribute(name),
   }));
+
   const inline = tokenNames.map((name) => ({
     name,
     value: root.style.getPropertyValue(name),
     priority: root.style.getPropertyPriority(name),
   }));
+
   const probe = preview.createElement("i");
   probe.style.cssText =
     "position:absolute;visibility:hidden;pointer-events:none;display:block;height:0";
-  const result: TokenBaselines = { nyte: {}, calendar: {} };
+
+  const result: TokenBaselines = {
+    nyte: { numbers: new Map(), texts: new Map() },
+    calendar: { numbers: new Map(), texts: new Map() },
+  };
+
   preview.body.append(probe);
+
   try {
     for (const { name } of inline) root.style.removeProperty(name);
     root.setAttribute("data-theme", appearance);
     root.setAttribute("data-appearance", appearance);
+
     for (const set of ["nyte", "calendar"] as const) {
       root.setAttribute("data-lab-reference", set);
       const computed = view.getComputedStyle(root);
+
       for (const [name] of lengths) {
         probe.style.width = `var(${name})`;
         const value = parseFloat(view.getComputedStyle(probe).width);
+
         if (!Number.isFinite(value)) throw new Error(`Cannot resolve ${name}`);
-        result[set][name] = value;
+        result[set].numbers.set(name, value);
       }
-      result[set][opacityToken] = parseFloat(computed.getPropertyValue(opacityToken));
+
+      result[set].numbers.set(opacityToken, parseFloat(computed.getPropertyValue(opacityToken)));
+
       for (const [name] of shadowScales) {
         const value = parseFloat(computed.getPropertyValue(name));
-        result[set][name] = Number.isFinite(value) ? value : 1;
+        result[set].numbers.set(name, Number.isFinite(value) ? value : 1);
       }
+
       for (const [name] of [...colors, ...shadowColors]) {
         probe.style.color = `var(${name})`;
-        result[set][name] = pickerColor(view.getComputedStyle(probe).color);
+        result[set].texts.set(name, pickerColor(view.getComputedStyle(probe).color));
       }
+
       for (const [name] of [...strings, ...shadowStrings])
-        result[set][name] = computed.getPropertyValue(name).trim();
+        result[set].texts.set(name, computed.getPropertyValue(name).trim());
     }
   } finally {
     probe.remove();
+
     for (const { name, value, priority } of inline) {
       if (value === "") root.style.removeProperty(name);
       else root.style.setProperty(name, value, priority);
     }
+
     for (const { name, value } of attributes) {
       if (value === null) root.removeAttribute(name);
       else root.setAttribute(name, value);
     }
   }
+
   return result;
 }
 
@@ -200,9 +234,12 @@ export function tokenConfig(baseline: TokenBaseline, set: TokenSet) {
   const ink: Record<string, ColorControl> = {};
   const depth: Record<string, ScaleControl> = {};
   const stacks: Record<string, StringControl> = {};
+
   for (const [name] of lengths) {
-    const value = baseline[name];
-    if (typeof value !== "number") continue;
+    const value = baseline.numbers.get(name);
+
+    if (value === undefined) continue;
+
     const max = /measure|dialog-width/.test(name)
       ? 1600
       : /max-height/.test(name)
@@ -212,62 +249,72 @@ export function tokenConfig(baseline: TokenBaseline, set: TokenSet) {
           : /font-size/.test(name)
             ? 48
             : 128;
+
     geometry[name] = {
       _collapsed: true,
       override: set === "calendar" && calendarNames.has(name),
       value: [value, 0, max, 0.01],
     };
   }
+
   for (const [name] of colors) {
-    const value = baseline[name];
-    if (typeof value !== "string") continue;
+    const value = baseline.texts.get(name);
+
+    if (value === undefined) continue;
     palette[name] = {
       _collapsed: true,
       override: set === "calendar" && calendarNames.has(name),
       value: { type: "color", default: value },
     };
   }
+
   for (const [name] of strings) {
-    const value = baseline[name];
-    if (typeof value !== "string") continue;
+    const value = baseline.texts.get(name);
+
+    if (value === undefined) continue;
     typography[name] = {
       _collapsed: true,
       override: set === "calendar" && calendarNames.has(name),
       value: { type: "text", default: value },
     };
   }
+
   for (const [name] of shadowColors) {
-    const value = baseline[name];
-    if (typeof value !== "string") continue;
+    const value = baseline.texts.get(name);
+
+    if (value === undefined) continue;
     ink[name] = {
       _collapsed: true,
       override: set === "calendar" && calendarNames.has(name),
       value: { type: "color", default: value },
     };
   }
+
   /* Depth has no override toggle. It rests at the shipped 1, so the slider is
    * the whole control and a second switch beside it would say nothing. */
   for (const [name] of shadowScales) {
-    const value = baseline[name];
-    depth[name] = [typeof value === "number" ? value : 1, 0, 4, 0.05];
+    depth[name] = [baseline.numbers.get(name) ?? 1, 0, 4, 0.05];
   }
+
   for (const [name] of shadowStrings) {
-    const value = baseline[name];
-    if (typeof value !== "string") continue;
+    const value = baseline.texts.get(name);
+
+    if (value === undefined) continue;
     stacks[name] = {
       _collapsed: true,
       override: set === "calendar" && calendarNames.has(name),
       value: { type: "text", default: value },
     };
   }
-  const opacity = baseline[opacityToken];
-  const material: Record<string, NumberControl> = {
+
+  const material = {
     [opacityToken]: {
       _collapsed: true,
       override: set === "calendar",
-      value: [typeof opacity === "number" ? opacity : 100, 0, 100, 0.1],
+      value: [baseline.numbers.get(opacityToken) ?? 100, 0, 100, 0.1],
     },
-  };
+  } satisfies Record<string, NumberControl>;
+
   return {
     geometry,
     palette,

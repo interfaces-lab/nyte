@@ -28,6 +28,7 @@ import type { LiveWaits } from "./transcript-presentation.ts";
 
 function tidyPath(path: string, cwd: string | undefined): string {
   if (cwd !== undefined && path.startsWith(`${cwd}/`)) return path.slice(cwd.length + 1);
+
   return path;
 }
 
@@ -46,8 +47,10 @@ function toolDetail(toolClass: ToolClass, cwd: string | undefined): ToolDetail |
     case "file_write":
     case "file_patch": {
       const title = tidyPath(toolClass.path, cwd);
+
       return { text: basename(title), title };
     }
+
     case "file_read":
     case "list":
       return { text: tidyPath(toolClass.path, cwd) };
@@ -58,6 +61,7 @@ function toolDetail(toolClass: ToolClass, cwd: string | undefined): ToolDetail |
       return undefined;
     default: {
       const _exhaustive: never = toolClass;
+
       return _exhaustive;
     }
   }
@@ -76,14 +80,18 @@ function OutputPreview({ text }: { text: string }): ReactElement {
   useLayoutEffect(() => {
     const root = rootRef.current;
     const content = textRef.current;
+
     if (root === null || content === null) return undefined;
+
     const sync = (): void => {
       root.toggleAttribute("data-overflow", content.scrollHeight > root.clientHeight);
     };
+
     sync();
     const observer = new ResizeObserver(sync);
     observer.observe(root);
     observer.observe(content);
+
     return () => observer.disconnect();
   }, []);
 
@@ -122,13 +130,16 @@ export const ToolCallView = memo(function ToolCallView({
   waits?: LiveWaits;
 }): ReactElement {
   const phase = toolPhase(part, active);
+
   // Hunks are parsed once per part; the counts beside them are the class's own.
   const facts = useMemo(
     () => (part.class.kind === "file_patch" ? parsePatchFacts(part.class.patch) : undefined),
     [part],
   );
+
   const { class: toolClass, result } = part;
   const text = result === undefined ? (progress?.text ?? "") : result.output;
+
   const body: ToolBody =
     toolClass.kind === "file_patch" && facts !== undefined
       ? {
@@ -139,6 +150,7 @@ export const ToolCallView = memo(function ToolCallView({
       : text.trim() === ""
         ? { kind: "none" }
         : { kind: "output", text };
+
   // One card per child: its create. Every other call on it is a line.
   if (toolClass.kind === "delegate") {
     return toolClass.role === "create" ? (
@@ -147,7 +159,6 @@ export const ToolCallView = memo(function ToolCallView({
         title={toolClass.title}
         phase={phase}
         density={density}
-        awaited={waits?.awaited.has(toolClass.target.session) ?? false}
       />
     ) : (
       <SubagentLineView
@@ -158,10 +169,12 @@ export const ToolCallView = memo(function ToolCallView({
       />
     );
   }
+
   const verb = toolVerb(toolClass, phase);
   const detail = toolDetail(toolClass, cwd);
   const expandable = body.kind !== "none";
   const editDiff = body.kind === "diff";
+
   const lineContent = (
     <>
       <span {...stylex.props(toolCallStyles.verb, phase === "running" && activityStyles.shimmer)}>

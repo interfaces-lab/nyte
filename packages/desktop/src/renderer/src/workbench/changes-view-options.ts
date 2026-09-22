@@ -15,14 +15,18 @@ const changesViewOptionsSchema = Type.Object(
   },
   { additionalProperties: false },
 );
+
 const scopedOptionsSchema = Type.Object(
   { options: changesViewOptionsSchema, updatedAt: Type.Number() },
   { additionalProperties: false },
 );
+
 const storedOptionsSchema = Type.Record(Type.String(), scopedOptionsSchema);
 
 export type ChangesLayout = Static<typeof changesViewOptionsSchema>["layout"];
+
 export type ChangesViewOptions = Static<typeof changesViewOptionsSchema>;
+
 export type StoredChangesViewOptions = Static<typeof storedOptionsSchema>;
 
 /** Today's Changes tab: one unified column, whitespace shown, stacked diffs wrapped. */
@@ -44,8 +48,10 @@ export interface ChangesViewOptionsStoreOptions {
 
 export function decodeChangesViewOptions(serialized: string | null): StoredChangesViewOptions {
   if (serialized === null) return EMPTY_CHANGES_VIEW_OPTIONS;
+
   try {
     const parsed: unknown = JSON.parse(serialized);
+
     return Value.Check(storedOptionsSchema, parsed) ? parsed : EMPTY_CHANGES_VIEW_OPTIONS;
   } catch {
     return EMPTY_CHANGES_VIEW_OPTIONS;
@@ -67,6 +73,7 @@ export class ChangesViewOptionsStore {
     this.#storage = options.storage;
     this.#now = options.now ?? Date.now;
     this.#maxScopes = options.maxScopes ?? MAX_SCOPES;
+
     try {
       this.#stored = decodeChangesViewOptions(this.#storage?.getItem(STORAGE_KEY) ?? null);
     } catch {
@@ -78,6 +85,7 @@ export class ChangesViewOptionsStore {
 
   subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
+
     return () => this.#listeners.delete(listener);
   };
 
@@ -88,6 +96,7 @@ export class ChangesViewOptionsStore {
   setOptions(scopeId: string, changes: Partial<ChangesViewOptions>): void {
     const current = this.options(scopeId);
     const next = { ...current, ...changes };
+
     if (
       next.layout === current.layout &&
       next.ignoreWhitespace === current.ignoreWhitespace &&
@@ -96,6 +105,7 @@ export class ChangesViewOptionsStore {
     ) {
       return;
     }
+
     this.#commit({ ...this.#stored, [scopeId]: { options: next, updatedAt: this.#now() } });
   }
 
@@ -108,20 +118,25 @@ export class ChangesViewOptionsStore {
 
   #commit(stored: StoredChangesViewOptions): void {
     this.#stored = this.#evictOldest(stored);
+
     try {
       this.#storage?.setItem(STORAGE_KEY, JSON.stringify(this.#stored));
     } catch {
       // Keep the chosen view for this window even when persistence is unavailable.
     }
+
     for (const listener of this.#listeners) listener();
   }
 
   #evictOldest(stored: StoredChangesViewOptions): StoredChangesViewOptions {
     const entries = Object.entries(stored);
+
     if (entries.length <= this.#maxScopes) return stored;
+
     const kept = entries
       .toSorted(([, left], [, right]) => right.updatedAt - left.updatedAt)
       .slice(0, this.#maxScopes);
+
     return Object.fromEntries(kept);
   }
 }

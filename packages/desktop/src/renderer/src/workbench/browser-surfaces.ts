@@ -19,12 +19,14 @@ const EMPTY: BrowserSurfaceView = Object.freeze({
 });
 
 let views: ReadonlyMap<string, BrowserSurfaceView> = new Map();
+
 const listeners = new Set<() => void>();
 
 function set(surface: string, view: BrowserSurfaceView): void {
   const next = new Map(views);
   next.set(surface, Object.freeze(view));
   views = next;
+
   for (const listener of listeners) listener();
 }
 
@@ -36,8 +38,10 @@ function browserTab(
     const tab = state.tabs.find(
       (candidate) => candidate.id === surface && candidate.kind === "browser",
     );
+
     if (tab !== undefined) return { view, id: tab.id };
   }
+
   return undefined;
 }
 
@@ -52,16 +56,21 @@ export function applyBrowserEvent(
 ): void {
   const current = views.get(event.surface);
   const tab = browserTab(event.surface);
+
   if (event.kind === "browser_download_refused") {
     if (current === undefined && tab === undefined) return;
     set(event.surface, { ...(current ?? EMPTY), refusedDownload: event.url });
+
     return;
   }
+
   const { state } = event;
+
   if (current === undefined && tab === undefined && state.agentHolders === 0) return;
   const held = current ?? EMPTY;
   const refusedDownload = state.loading ? undefined : held.refusedDownload;
   const latest = held.history[0];
+
   const history =
     !state.loading &&
     state.error === undefined &&
@@ -72,7 +81,9 @@ export function applyBrowserEvent(
           ...held.history.filter((entry) => entry.url !== state.url),
         ]
       : held.history;
+
   set(event.surface, { ...held, state, refusedDownload, history });
+
   if (tab !== undefined && state.url !== "") {
     workbenchController.actions.updateTab({
       view: tab.view,
@@ -85,6 +96,7 @@ export function applyBrowserEvent(
 
 export function dismissRefusedDownload(surface: string): void {
   const current = views.get(surface);
+
   if (current?.refusedDownload !== undefined)
     set(surface, { ...current, refusedDownload: undefined });
 }
@@ -113,12 +125,15 @@ export function applyBrowserAgentOpened(
   const revealed = { ...current, state: event.state, refusedDownload: undefined };
   set(event.surface, revealed);
   const view = workbenchController.getSnapshot().views.get(event.surface);
+
   if (view === undefined) return;
+
   const id = workbenchController.actions.openTab({
     view: event.surface,
     tab: { kind: "browser", url: event.url },
     activate: view.active === null,
   });
+
   set(id, revealed);
 }
 
@@ -127,11 +142,13 @@ export function forgetBrowserSurface(surface: string): void {
   const next = new Map(views);
   next.delete(surface);
   views = next;
+
   for (const listener of listeners) listener();
 }
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
+
   return () => listeners.delete(listener);
 }
 

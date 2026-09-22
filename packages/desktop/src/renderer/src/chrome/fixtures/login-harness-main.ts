@@ -6,8 +6,11 @@ import { join } from "node:path";
 import { app, BrowserWindow } from "electron";
 
 const directory = process.env["NYTE_LOGIN_HARNESS_DIR"];
+
 if (directory === undefined) throw new Error("NYTE_LOGIN_HARNESS_DIR is required");
+
 app.setPath("userData", join(directory, "profile"));
+
 app.setPath("sessionData", join(directory, "session"));
 
 void app.whenReady().then(() => {
@@ -17,5 +20,6 @@ void app.whenReady().then(() => {
     height: 900,
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
   });
+
   void window.loadFile(join(directory, "login-harness.html"));
 });

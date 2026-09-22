@@ -63,7 +63,9 @@ type PatchChangeRow = PatchChange &
 type ChangeRow = WorkingChangeRow | PatchChangeRow;
 
 const EMPTY_TURNS: readonly Turn[] = [];
+
 const EMPTY_ROWS: readonly WorkingChangeRow[] = [];
+
 const UNCOMMITTED_SCOPE: WorkbenchChangesScope = { kind: "uncommitted" };
 
 const NO_COLLAPSED_PATHS: readonly string[] = [];
@@ -95,6 +97,7 @@ const styles = create({
 function queryError(error: Error | null): string | undefined {
   if (error === null) return undefined;
   const message = error.message;
+
   return message.length > 160 ? `${message.slice(0, 159)}…` : message;
 }
 
@@ -103,8 +106,11 @@ function uncommittedPatchState(
   diffs: { readonly isLoading: boolean; readonly isError: boolean },
 ): UncommittedPatch {
   if (patch !== undefined && patch.trim() !== "") return { kind: "ready", patch };
+
   if (diffs.isError) return { kind: "failed" };
+
   if (diffs.isLoading) return { kind: "pending" };
+
   return { kind: "empty" };
 }
 
@@ -122,6 +128,7 @@ function emptyScopeText(scope: WorkbenchChangesScope): string {
       return "This commit changed no files";
     default: {
       const _exhaustive: never = scope;
+
       return _exhaustive;
     }
   }
@@ -138,12 +145,7 @@ export interface RevertTarget {
  * untracked file has no committed state to return to, so it is trashed instead
  * and the copy says so rather than claiming the change is unrecoverable.
  */
-export function revertConfirmation(target: RevertTarget): {
-  readonly title: string;
-  readonly description: string;
-  readonly confirmLabel: string;
-  readonly pendingLabel: string;
-} {
+export function revertConfirmation(target: RevertTarget) {
   if (target.untracked) {
     return {
       title: "Move to Trash?",
@@ -152,6 +154,7 @@ export function revertConfirmation(target: RevertTarget): {
       pendingLabel: "Moving…",
     };
   }
+
   return {
     title: "Revert changes?",
     description: `${target.path} goes back to the last commit, and its changes are lost. This can’t be undone.`,
@@ -223,6 +226,7 @@ function ChangesPanelView({
   const [reverting, setReverting] = useState(false);
   const [revertError, setRevertError] = useState<string | undefined>(undefined);
   const [appliedReveal, setAppliedReveal] = useState({ scope: "", revision: 0 });
+
   // Collapse state belongs to the panel so the toolbar can command it, but it
   // describes one scope's files: switching scope starts over rather than
   // collapsing same-named files in the scope that replaced them.
@@ -230,22 +234,27 @@ function ChangesPanelView({
     readonly scope: string;
     readonly paths: readonly string[];
   }>({ scope: "", paths: NO_COLLAPSED_PATHS });
+
   const selectedTurn =
     scope.kind === "turn"
       ? turnOptions.find((option) => option.scope.turnId === scope.turnId)
       : undefined;
+
   // A stored turn the transcript no longer holds collapses to the working tree.
   const activeScope: WorkbenchChangesScope =
     scope.kind === "turn" && selectedTurn === undefined ? UNCOMMITTED_SCOPE : scope;
+
   const activeScopeValue = changesScopeValue(activeScope);
   const root = snapshot.data?.kind === "repository" ? snapshot.data.root : undefined;
   const revision = snapshot.data?.kind === "repository" ? snapshot.data.revision : undefined;
   const repository = root === undefined || revision === undefined ? undefined : { root, revision };
+
   const viewedSnapshot = useSyncExternalStore(
     changesViewed.subscribe,
     changesViewed.getSnapshot,
     changesViewed.getSnapshot,
   );
+
   useSyncExternalStore(
     changesViewOptions.subscribe,
     changesViewOptions.getSnapshot,
@@ -258,6 +267,7 @@ function ChangesPanelView({
   const options = changesViewOptions.options(optionsScopeId);
 
   const workingScope = activeScope.kind !== "turn" && activeScope.kind !== "commit";
+
   const statusFiles = useMemo(
     () =>
       activeScope.kind === "turn" || activeScope.kind === "commit"
@@ -265,6 +275,7 @@ function ChangesPanelView({
         : scopeFiles(snapshot.data, activeScope.kind),
     [snapshot.data, activeScope.kind],
   );
+
   const workingRows = useMemo(
     () =>
       statusFiles === undefined
@@ -278,32 +289,40 @@ function ChangesPanelView({
             .sort((left, right) => left.path.localeCompare(right.path)),
     [statusFiles],
   );
+
   const workingPaths = useMemo(() => workingRows.map((row) => row.path), [workingRows]);
+
   const diffRequest = diffRequestForScope(activeScope, {
     paths: workingScope ? workingPaths : undefined,
     ignoreWhitespace: options.ignoreWhitespace,
   });
+
   const diffs = useVcsDiff(
     repository === undefined || diffRequest === undefined
       ? undefined
       : { ...repository, request: diffRequest },
     visible && (!workingScope || workingPaths.length > 0),
   );
+
   const diffByPath = useMemo(
     () => new Map((diffs.data ?? []).map((item) => [item.path, item])),
     [diffs.data],
   );
+
   const selectedRun = selectedTurn?.run.kind === "run" ? selectedTurn.run.id : undefined;
+
   const runDiff = useRunDiff({
     sessionId,
     runId: selectedRun,
     live: selectedRun !== undefined && selectedRun === liveRun,
     enabled: visible,
   });
+
   const runFiles =
     runDiff.data === undefined || runDiff.data.kind === "not_found"
       ? undefined
       : runDiff.data.files;
+
   const patchRows = useMemo(
     (): readonly PatchChangeRow[] =>
       selectedTurn !== undefined
@@ -337,31 +356,40 @@ function ChangesPanelView({
           : [],
     [selectedTurn, runFiles, activeScope.kind, diffs.data],
   );
+
   const rows: readonly ChangeRow[] = workingScope ? workingRows : patchRows;
   const rowByPath = useMemo(() => new Map(rows.map((row) => [row.path, row])), [rows]);
   const stackOrder = useMemo(() => rows.map((row) => row.path), [rows]);
+
   const collapsedPaths =
     collapsedSections.scope === activeScopeValue ? collapsedSections.paths : NO_COLLAPSED_PATHS;
+
   const allCollapsed =
     stackOrder.length > 0 && stackOrder.every((path) => collapsedPaths.includes(path));
+
   const activePath = stackOrder.includes(selectedPath ?? "") ? selectedPath : stackOrder[0];
   const diffsLoading = diffs.isLoading;
   const diffsError = diffs.isError;
+
   const sections = useMemo(
     () =>
       rows.map((row): ChangesStackItem => {
         const path = row.path;
         const diff = diffByPath.get(path);
+
         if (diff?.kind === "binary") {
           return { kind: "raw", path, text: diff.patch, added: 0, removed: 0 };
         }
+
         if (row.source === "patch") {
           const section: ChangeStackSection =
             row.patch.trim() === ""
               ? { kind: "notice", path, text: EMPTY_PATCH }
               : { kind: "diff", path, patch: row.patch };
+
           return { ...section, added: row.added, removed: row.removed };
         }
+
         const section = uncommittedStackSection({
           path,
           state: uncommittedPatchState(diff?.patch, {
@@ -369,6 +397,7 @@ function ChangesPanelView({
             isError: diffsError,
           }),
         });
+
         return {
           ...section,
           added: diff?.added ?? 0,
@@ -377,6 +406,7 @@ function ChangesPanelView({
       }),
     [rows, diffByPath, diffsLoading, diffsError],
   );
+
   // A review mark records the patch that was read, so the digest is taken from
   // the section the stack renders rather than from the raw working-tree diff.
   const viewedFiles = useMemo(
@@ -389,12 +419,15 @@ function ChangesPanelView({
       })),
     [sections],
   );
+
   const digestByPath = useMemo(
     () => new Map(viewedFiles.map((file) => [file.path, file.digest])),
     [viewedFiles],
   );
+
   const vcsError = queryError(snapshot.error);
   const transcriptError = queryError(turnsError);
+
   // Each scope blames its own source first and falls back to the other, so no
   // failure is ever dropped. Turn options depend on the transcript; working-tree
   // rows depend on Git status.
@@ -405,17 +438,21 @@ function ChangesPanelView({
           text: "Couldn't read changes. Check that this folder is a Git repository.",
           detail: vcsError,
         };
+
   const transcriptFailure =
     transcriptError === undefined
       ? undefined
       : { text: "Couldn't read this conversation's changes.", detail: transcriptError };
+
   const diffFailure = diffs.isError
     ? { text: "Couldn't read changes.", detail: queryError(diffs.error) }
     : undefined;
+
   const readFailure =
     scope.kind === "turn"
       ? (transcriptFailure ?? vcsFailure)
       : (diffFailure ?? vcsFailure ?? transcriptFailure);
+
   // The turn's own files are loaded, so its emptiness is a fact that a stale
   // background failure cannot change.
   const emptyState: { readonly text: string; readonly detail?: string } =
@@ -427,23 +464,29 @@ function ChangesPanelView({
               ? "Loading changes…"
               : emptyScopeText(activeScope),
         });
+
   const viewedScopeId = `${optionsScopeId}\u0000${activeScopeValue}`;
+
   const viewedByPath = useMemo(
     () =>
       new Map(
         viewedFiles.map((file) => {
           const mark = viewedSnapshot[viewedScopeId]?.files[file.path];
+
           const state: ViewedState =
             mark === undefined ? "unviewed" : mark.digest === file.digest ? "viewed" : "changed";
+
           return [file.path, state];
         }),
       ),
     [viewedFiles, viewedSnapshot, viewedScopeId],
   );
+
   const viewedState = useCallback(
     (path: string): ViewedState => viewedByPath.get(path) ?? "unviewed",
     [viewedByPath],
   );
+
   const setViewed = useCallback(
     (paths: readonly string[], viewed: boolean): void => {
       if (viewed) {
@@ -451,24 +494,30 @@ function ChangesPanelView({
           viewedScopeId,
           paths.flatMap((path) => {
             const digest = digestByPath.get(path);
+
             return digest === undefined ? [] : [{ path, digest }];
           }),
         );
+
         return;
       }
+
       changesViewed.clearAllViewed(viewedScopeId, paths);
     },
     [viewedScopeId, digestByPath],
   );
+
   const setFileViewed = useCallback(
     (path: string, viewed: boolean): void => {
       setViewed([path], viewed);
     },
     [setViewed],
   );
+
   // Only a working tree has both sides of a file to widen a gap with. A turn's
   // patch and a commit's are records of an edit, and the files have moved on.
   const expandable = repository !== undefined && workingScope;
+
   const loadDiffFiles = useMemo(
     () =>
       expandable && root !== undefined && revision !== undefined
@@ -482,23 +531,28 @@ function ChangesPanelView({
         : undefined,
     [expandable, root, revision],
   );
+
   const sidebarFiles = useMemo(
     (): readonly ChangesSidebarFile[] =>
       sections.map((section) => {
         const row = rowByPath.get(section.path);
+
         const file = {
           path: section.path,
           added: section.added,
           removed: section.removed,
           viewed: viewedState(section.path),
         };
+
         if (row?.source === "working" || (row?.source === "patch" && row.origin === "vcs")) {
           return { ...file, status: row.status };
         }
+
         return file;
       }),
     [sections, rowByPath, viewedState],
   );
+
   const scopeStats = sections.reduce(
     (total, section) => ({
       added: total.added + section.added,
@@ -518,6 +572,7 @@ function ChangesPanelView({
   const askToRevert = useCallback(
     (path: string): void => {
       const row = rowByPath.get(path);
+
       if (row === undefined || row.source !== "working") return;
       const opener = document.activeElement;
       revertReturnRef.current = opener instanceof HTMLButtonElement ? opener : null;
@@ -526,36 +581,49 @@ function ChangesPanelView({
     },
     [rowByPath],
   );
+
   const revertPath = workingScope ? (onRevertPath ?? askToRevert) : undefined;
+
   const confirmRevert = async (target: RevertTarget): Promise<void> => {
     setReverting(true);
     setRevertError(undefined);
+
     try {
       if (revision === undefined) {
         setRevertError("Refresh changes and try again.");
+
         return;
       }
+
       const result = await nyte.workspace.vcs.discard({
         target: { kind: "workspace" },
         paths: [target.path],
         expect: { revision },
       });
+
       if (result.kind === "stale") {
         refreshVcs();
         setRevertError("Changes changed. Review them and try again.");
+
         return;
       }
+
       if (result.kind !== "applied") {
         setRevertError(
           result.kind === "failed" ? result.reason : "A run is still writing to this workspace.",
         );
+
         return;
       }
+
       const skipped = result.skipped.find((entry) => entry.path === target.path);
+
       if (skipped !== undefined) {
         setRevertError(skipped.reason);
+
         return;
       }
+
       // The file no longer has the patch its review mark was filed under.
       changesViewed.clearViewed(viewedScopeId, target.path);
       refreshVcs();
@@ -566,38 +634,49 @@ function ChangesPanelView({
       setReverting(false);
     }
   };
+
   const revertCopy = revertConfirmation(revertTarget ?? { path: "", untracked: false });
+
   const toggleCollapseAll = (): void => {
     setCollapsedSections({
       scope: activeScopeValue,
       paths: allCollapsed ? NO_COLLAPSED_PATHS : stackOrder,
     });
   };
+
   const toggleCollapsedPath = (path: string): void => {
     setCollapsedSections((current) => {
       const paths = current.scope === activeScopeValue ? current.paths : NO_COLLAPSED_PATHS;
+
       return {
         scope: activeScopeValue,
         paths: paths.includes(path) ? paths.filter((entry) => entry !== path) : [...paths, path],
       };
     });
   };
+
   return (
     <section
       {...props(styles.panel)}
       aria-label="Workspace changes"
       onKeyDown={(event) => {
         const action = changesShortcutAction(event.nativeEvent, macPlatform(undefined));
+
         if (action === undefined) return;
         event.preventDefault();
+
         if (action === "filter-files") {
           filterFiles();
+
           return;
         }
+
         if (action === "refresh") {
           refreshVcs();
+
           return;
         }
+
         changesViewOptions.setOptions(optionsScopeId, {
           ignoreWhitespace: !options.ignoreWhitespace,
         });
@@ -697,6 +776,7 @@ function SessionChangesPanel(
 ): ReactElement {
   const snapshot = useSessionSnapshot(props.sessionId);
   const run = snapshot.data?.run;
+
   return (
     <ChangesPanelView
       {...props}

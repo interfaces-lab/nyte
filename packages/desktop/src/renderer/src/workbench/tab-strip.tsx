@@ -24,6 +24,7 @@ import {
   defaultWorkbenchTab,
   workbenchController,
   workbenchTabAvailable,
+  workbenchKindLabel,
   workbenchTabLabel,
   workbenchTabs,
 } from "./controller.ts";
@@ -184,6 +185,7 @@ function newTerminal(view: WorkbenchViewKey, workspacePath: string | null): void
     tab: { kind: "terminal", owner: { kind: "user" } },
     activate: true,
   });
+
   void terminalActions.create({ id, workspacePath });
 }
 
@@ -211,12 +213,15 @@ export function WorkbenchTabStrip({
   const focusSelectedTab = (): void => {
     requestAnimationFrame(() => {
       const selected = stripRef.current?.querySelector('[role="tab"][aria-selected="true"]');
+
       if (selected instanceof HTMLElement) selected.focus();
       else document.getElementById("workbench-toggle")?.focus();
     });
   };
+
   const closeTerminal = async (tab: WorkbenchTab, terminal: TerminalTab): Promise<void> => {
     setTerminalClose({ kind: "closing", tab, terminal });
+
     try {
       await terminalActions.close(terminal.id);
       workbenchController.actions.closeTab({ view: viewKey, id: tab.id });
@@ -226,33 +231,43 @@ export function WorkbenchTabStrip({
       setTerminalClose({ kind: "confirming", tab, terminal, error: errorMessage(cause) });
     }
   };
+
   const requestTerminalClose = async (tab: WorkbenchTab, terminal: TerminalTab): Promise<void> => {
     if (isJobTerminal(terminal)) {
       await closeTerminal(tab, terminal);
+
       return;
     }
+
     const idle =
       terminal.state.kind === "running"
         ? await nyte.host.terminal.idle({ id: terminal.id }).catch(() => false)
         : true;
+
     if (idle) await closeTerminal(tab, terminal);
     else setTerminalClose({ kind: "confirming", tab, terminal, error: undefined });
   };
+
   const closeTab = (tab: WorkbenchTab): void => {
     if (tab.kind === "file") {
       if (fileActions.close(viewKey, tab.path)) focusSelectedTab();
+
       return;
     }
+
     if (tab.kind === "terminal") {
       const terminal = terminals.get(tab.id);
+
       if (terminal === undefined) {
         workbenchController.actions.closeTab({ view: viewKey, id: tab.id });
         focusSelectedTab();
       } else {
         void requestTerminalClose(tab, terminal);
       }
+
       return;
     }
+
     workbenchController.actions.closeTab({ view: viewKey, id: tab.id });
     focusSelectedTab();
   };
@@ -268,15 +283,20 @@ export function WorkbenchTabStrip({
           {tabs.map((tab) => {
             const file =
               tab.kind === "file" ? files.tabs.find((item) => item.id === tab.id) : undefined;
+
             const terminal = tab.kind === "terminal" ? terminals.get(tab.id) : undefined;
+
             const label =
               file?.displayPath.split(/[\\/]/).at(-1) ?? terminal?.title ?? workbenchTabLabel(tab);
+
             const icon =
               file === undefined
                 ? tabIcons[tab.kind]
                 : (fileIcons.get(file.displayPath.split(".").at(-1) ?? "") ?? "file-text");
+
             const agentTerminal = terminal !== undefined && isJobTerminal(terminal);
             const running = agentTerminal && terminal.state.kind === "running";
+
             const trigger = (
               <div
                 key={tab.id}
@@ -360,6 +380,7 @@ export function WorkbenchTabStrip({
                   {...stylex.props(styles.close, focus.ringInset)}
                   onClick={(event) => {
                     if (tab.kind === "terminal") terminalCloseRef.current = event.currentTarget;
+
                     if (tab.kind === "file") fileCloseRef.current = event.currentTarget;
                     closeTab(tab);
                   }}
@@ -368,6 +389,7 @@ export function WorkbenchTabStrip({
                 </Button>
               </div>
             );
+
             return terminal === undefined ? (
               trigger
             ) : (
@@ -404,8 +426,10 @@ export function WorkbenchTabStrip({
             onSelect={() => {
               if (kind === "terminal") {
                 newTerminal(viewKey, workspacePath);
+
                 return;
               }
+
               workbenchController.actions.openTab({
                 view: viewKey,
                 tab: defaultWorkbenchTab(kind),
@@ -413,7 +437,7 @@ export function WorkbenchTabStrip({
               });
             }}
           >
-            {workbenchTabLabel(kind)}
+            {workbenchKindLabel(kind)}
           </MenuItem>
         ))}
       </Menu>

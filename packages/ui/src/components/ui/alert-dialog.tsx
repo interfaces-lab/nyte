@@ -6,7 +6,9 @@ import { mergeStyleProps, type StyledProps } from "../../style.ts";
 import { dialogStyles } from "./dialog.tsx";
 
 export const AlertDialog = AlertDialogPrimitive.Root;
+
 export const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
+
 export const AlertDialogClose = AlertDialogPrimitive.Close;
 
 export type AlertDialogContentProps = StyledProps<AlertDialogPrimitive.Popup.Props>;

@@ -89,11 +89,13 @@ function ConnectForm({
   const [baseUrl, setBaseUrl] = useState("");
   const [token, setToken] = useState("");
   const ready = baseUrl.trim() !== "" && token.trim() !== "";
+
   return (
     <form
       {...stylex.props(styles.keyForm)}
       onSubmit={(event) => {
         event.preventDefault();
+
         if (ready) onSubmit({ baseUrl: baseUrl.trim(), token: token.trim() });
       }}
     >
@@ -144,14 +146,17 @@ function ConnectForm({
 function serverDetail(state: Exclude<ServerState, { kind: "none" }>): string {
   if (state.kind === "unavailable") return state.problem.message;
   const host = state.info.host;
+
   if (host.kind === "unspecified")
     return "The server responds, but does not report its tools or history storage.";
+
   const persistence =
     host.persistence === "durable"
       ? "Chat history uses durable storage."
       : host.persistence === "ephemeral"
         ? "Chat history is temporary and can disappear when the server restarts."
         : "The server has not reported how chat history is stored.";
+
   return `${host.capabilities.workspace ? "Workspace tools available." : "Chat only."} ${persistence}`;
 }
 
@@ -159,13 +164,16 @@ export function CloudServerSettings({ active }: { readonly active: boolean }): R
   const client = useQueryClient();
   const server = useServerState(active);
   const [editing, setEditing] = useState(false);
+
   const connect = useMutation({
     mutationFn: (input: { baseUrl: string; token: string }) => nyte.host.server.connect(input),
     onSuccess: (outcome) => {
       if (outcome.kind === "failed") {
         toast.error(`Couldn't reach the server: ${outcome.message}`, { id: "server-connect" });
+
         return;
       }
+
       setEditing(false);
       toast.success(`Connected to ${outcome.baseUrl} (v${outcome.version})`, {
         id: "server-connect",
@@ -174,12 +182,15 @@ export function CloudServerSettings({ active }: { readonly active: boolean }): R
     onError: () => toast.error("Couldn't reach the server.", { id: "server-connect" }),
     onSettled: () => client.invalidateQueries({ queryKey: keys.server }),
   });
+
   const disconnect = useMutation({
     mutationFn: () => nyte.host.server.disconnect(),
     onSettled: () => client.invalidateQueries({ queryKey: keys.server }),
   });
+
   const state = server.data;
   const pending = connect.isPending || disconnect.isPending;
+
   const form = (
     <ConnectForm
       pending={connect.isPending}
@@ -257,6 +268,7 @@ export function CloudServerSettings({ active }: { readonly active: boolean }): R
 
 function CopyButton({ label, value }: { label: string; value: string }): ReactElement {
   const [copied, setCopied] = useState(false);
+
   return (
     <IconButton
       icon={copied ? "checkmark" : "copy"}
@@ -287,8 +299,10 @@ function SharePanel({ state }: { state: Extract<MobileShareState, { kind: "shari
   const [revealed, setRevealed] = useState(false);
   const [step, setStep] = useState<"scan" | "details">("scan");
   const reducedMotion = useReducedMotion();
+
   const transition: Transition =
     reducedMotion === true ? { duration: 0 } : { type: "spring", duration: 0.28, bounce: 0 };
+
   // Forward and back read as movement in opposite directions.
   const offset = step === "scan" ? -8 : 8;
   const payload = pairingPayload({ address: state.address, token: state.token });
@@ -383,25 +397,30 @@ function SharePanel({ state }: { state: Extract<MobileShareState, { kind: "shari
 
 function tailnetDetail(tailnet: TailnetAvailability): string {
   if (tailnet.kind === "missing") return "Tailscale isn't installed on this Mac.";
+
   if (tailnet.kind === "unavailable") return "Tailscale isn't running. Start it, then share again.";
+
   return `Reachable at ${tailnet.name ?? tailnet.ip} from your signed-in devices, on any network.`;
 }
 
 function MobileShareSettings({ active }: { readonly active: boolean }): ReactElement {
   const client = useQueryClient();
   const share = useMobileShareState(active);
+
   const start = useMutation({
     mutationFn: (reach: MobileShareReach) => nyte.host.mobile.start({ reach }),
     onError: (cause) =>
       toast.error(`Couldn't start sharing: ${errorMessage(cause)}`, { id: "mobile-share" }),
     onSettled: () => client.invalidateQueries({ queryKey: keys.mobileShare }),
   });
+
   const stop = useMutation({
     mutationFn: () => nyte.host.mobile.stop(),
     onError: (cause) =>
       toast.error(`Couldn't stop sharing: ${errorMessage(cause)}`, { id: "mobile-share" }),
     onSettled: () => client.invalidateQueries({ queryKey: keys.mobileShare }),
   });
+
   const state = share.data;
   const pending = start.isPending || stop.isPending;
 
@@ -472,10 +491,12 @@ function MobileShareSettings({ active }: { readonly active: boolean }): ReactEle
 }
 
 const subscribeToWindowFocus = (notify: () => void): (() => void) => focusManager.subscribe(notify);
+
 const readWindowFocus = (): boolean => focusManager.isFocused();
 
 export function ServerSettings(): ReactElement {
   const active = useSyncExternalStore(subscribeToWindowFocus, readWindowFocus, readWindowFocus);
+
   return (
     <>
       <CloudServerSettings active={active} />

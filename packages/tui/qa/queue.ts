@@ -32,6 +32,7 @@ export const queueFollowUps: Scenario = {
   ],
   run: (context) => {
     const followUps = ["follow-up one", "follow-up two", "follow-up three", "follow-up four"];
+
     return session(
       context,
       {
@@ -66,16 +67,20 @@ export const queueFollowUps: Scenario = {
               (screen) => !composer(screen, text) && gutterRow(screen, text) !== -1,
             );
           }
+
           const screen = terminal.screen();
           const rows = followUps.map((text) => gutterRow(screen, text));
+
           for (const [index, row] of rows.entries()) {
             assert.equal(
               screen.lines.filter((line) => line.includes(followUps[index] ?? "")).length,
               1,
               "A queued follow-up is drawn once",
             );
+
             if (index > 0) assert.equal(row, (rows[index - 1] ?? 0) + 1, "Rows are adjacent");
           }
+
           const last = screen.lines[rows[3] ?? 0] ?? "";
           assert.ok(last.includes("next · ctrl+q pending"), "The last row carries the key");
           assert.ok(!screen.text.includes("more ·"), "Nothing is hidden at this height");
@@ -85,6 +90,7 @@ export const queueFollowUps: Scenario = {
 
         await beat("a short terminal caps the gutter and counts the hidden rest", async () => {
           const shrink = terminal.resize(80, 13);
+
           const short = await terminal.waitForScreen(
             (screen) =>
               screen.rows === 13 &&
@@ -93,6 +99,7 @@ export const queueFollowUps: Scenario = {
             deadline(),
             shrink,
           );
+
           assert.equal(gutterRow(short, "follow-up four"), -1, "The row past the cap is hidden");
           assert.notEqual(gutterRow(short, "follow-up one"), -1);
           const grow = terminal.resize(80, 24);
@@ -197,16 +204,18 @@ export const queueFollowUps: Scenario = {
               ready(screen),
             deadline(),
           );
+
           const delivered = provider.requests.find(
             (item) => item.script === "delivered follow-ups",
           );
+
           assert.ok(delivered !== undefined);
           assert.deepEqual(
             delivered.payload.messages
               .slice(-2)
               .map((message) =>
-                message.role === "user" && typeof message.content === "string"
-                  ? message.content
+                message.role === "user" && !Array.isArray(message.content)
+                  ? (message.content ?? "")
                   : "",
               ),
             ["follow-up one edited", "follow-up three"],

@@ -9,9 +9,11 @@ import { installBlockedDialog, runRelaunchCleanup } from "./update-relaunch.ts";
 import type { DesktopUpdateActivity } from "./host.ts";
 
 const CHECK_LABEL = "Check for Updates…";
+
 const UPDATE_INTERVAL_MS = 6 * 60 * 60_000;
 
 type UpdateLogValue = boolean | number | string;
+
 type UpdateLogDetails = Readonly<Record<string, UpdateLogValue>>;
 
 export function registerUpdates({
@@ -25,11 +27,14 @@ export function registerUpdates({
 }): void {
   const logPath = join(app.getPath("userData"), "updates.log");
   let logTail = Promise.resolve();
+
   const log = (event: string, details: UpdateLogDetails = {}): void => {
     const line = `${JSON.stringify({ time: new Date().toISOString(), event, ...details })}\n`;
     logTail = logTail.then(() => appendFile(logPath, line)).catch(() => undefined);
   };
+
   const logError = (message: string): void => log("error", { message });
+
   const unavailable = !app.isPackaged
     ? "This is a development build. Install the packaged Nyte app to receive updates."
     : process.env["NYTE_OFFLINE"] !== undefined
@@ -39,9 +44,11 @@ export function registerUpdates({
         : undefined;
 
   let resumeInstall: (() => void) | undefined;
+
   if (process.platform === "darwin" && unavailable === undefined) {
     updater.setBeforeRelaunchHandler(async (update) => {
       const current = await activity();
+
       if (current.kind === "busy") {
         log("install-blocked", {
           tasks: current.taskCount,
@@ -56,6 +63,7 @@ export function registerUpdates({
           resumeInstall = resolve;
         });
       }
+
       item.label = "Preparing to Restart…";
       item.enabled = false;
       log("relaunch-requested", {
@@ -63,6 +71,7 @@ export function registerUpdates({
         targetVersion: update.displayVersion,
       });
       const cleanup = await runRelaunchCleanup({ cleanup: beforeRelaunch });
+
       if (cleanup.kind === "completed") log("relaunch-cleanup-completed");
       else if (cleanup.kind === "timed-out") log("relaunch-cleanup-timed-out");
       else log("relaunch-cleanup-failed", { message: cleanup.message });
@@ -102,6 +111,7 @@ export function registerUpdates({
   };
 
   let controller: ReturnType<typeof createUpdateController> | undefined;
+
   const load = () => {
     const { autoUpdater } = electronUpdater;
     autoUpdater.autoDownload = false;
@@ -113,6 +123,7 @@ export function registerUpdates({
     autoUpdater.signals.progress((info) => {
       item.label = `Downloading Update… ${Math.floor(info.percent)}%`;
     });
+
     return createUpdateController({
       updater: autoUpdater,
       message: (options) => dialog.showMessageBox(options),
@@ -126,22 +137,28 @@ export function registerUpdates({
       unavailable,
     });
   };
+
   async function check(manual: boolean): Promise<void> {
     try {
       if (process.platform === "darwin") {
         if (resumeInstall !== undefined) {
           if (!manual) return;
           const current = await activity();
+
           if (current.kind === "busy") {
             await dialog.showMessageBox(installBlockedDialog(current));
+
             return;
           }
+
           const resume = resumeInstall;
           resumeInstall = undefined;
           log("install-resumed");
           resume();
+
           return;
         }
+
         if (unavailable !== undefined) {
           if (manual)
             await dialog.showMessageBox({
@@ -149,20 +166,26 @@ export function registerUpdates({
               message: "Updates unavailable",
               detail: unavailable,
             });
+
           return;
         }
+
         await updater.start();
         // Nyte owns the schedule and environment flags on every platform.
         updater.setAutomaticallyChecksForUpdates(false);
         updater.setAutomaticallyDownloadsUpdates(false);
+
         if (!updater.getState().canCheckForUpdates) return;
         item.label = "Checking for Updates…";
         item.enabled = false;
         log("check-started", { manual });
+
         if (manual) updater.checkForUpdates();
         else updater.checkForUpdatesInBackground();
+
         return;
       }
+
       controller ??= load();
       await controller.check(manual);
     } catch (cause) {
@@ -171,6 +194,7 @@ export function registerUpdates({
       logError(detail);
       item.label = CHECK_LABEL;
       item.enabled = true;
+
       if (manual)
         await dialog.showMessageBox({
           type: "error",
@@ -179,6 +203,7 @@ export function registerUpdates({
         });
     }
   }
+
   if (
     !app.isPackaged ||
     process.env["NYTE_OFFLINE"] !== undefined ||

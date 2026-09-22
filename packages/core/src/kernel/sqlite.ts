@@ -38,7 +38,9 @@ import type {
 
 /** Oids per DELETE statement; SQLite binds at most 32 766 parameters. */
 const DELETE_CHUNK = 500;
+
 const DEFAULT_WATCH_POLL_INTERVAL_MS = 25;
+
 const WATCH_REPLAY_PAGE_SIZE = 256;
 
 const SCHEMA = `
@@ -91,7 +93,9 @@ CREATE TABLE IF NOT EXISTS events (
 const SCHEMA_VERSION = 4;
 
 const WAL_ATTEMPTS = 40;
+
 const WAL_RETRY_MS = 25;
+
 const MAX_STATEMENTS = 128;
 
 /**
@@ -103,6 +107,7 @@ function enableWal(db: DatabaseSync): void {
   for (let attempt = 1; ; attempt += 1) {
     try {
       db.exec("PRAGMA journal_mode=WAL");
+
       return;
     } catch (error) {
       if (attempt >= WAL_ATTEMPTS) throw error;
@@ -113,9 +118,11 @@ function enableWal(db: DatabaseSync): void {
 
 function transaction<T>(db: DatabaseSync, begin: string, fn: () => T): T {
   db.exec(begin);
+
   try {
     const result = fn();
     db.exec("COMMIT");
+
     return result;
   } catch (error) {
     try {
@@ -123,6 +130,7 @@ function transaction<T>(db: DatabaseSync, begin: string, fn: () => T): T {
     } catch {
       // A failed COMMIT has already rolled back.
     }
+
     throw error;
   }
 }
@@ -133,18 +141,25 @@ function openNodeSqlite(path: string): SqliteConnection {
   mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   const statements = new Map<string, StatementSync>();
+
   const statement = (text: string): StatementSync => {
     const existing = statements.get(text);
+
     if (existing !== undefined) return existing;
     const prepared = db.prepare(text);
+
     // Bound dynamic query shapes without caching mutable database results.
     if (statements.size === MAX_STATEMENTS) {
       const oldest = statements.keys().next();
+
       if (!oldest.done) statements.delete(oldest.value);
     }
+
     statements.set(text, prepared);
+
     return prepared;
   };
+
   try {
     db.exec("PRAGMA busy_timeout=5000");
     enableWal(db);
@@ -152,20 +167,24 @@ function openNodeSqlite(path: string): SqliteConnection {
     transaction(db, "BEGIN IMMEDIATE", () => {
       const versionRow = db.prepare("PRAGMA user_version").get();
       const version = versionRow === undefined ? 0 : numberColumn(versionRow, "user_version");
+
       const fresh =
         db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' LIMIT 1").get() ===
         undefined;
+
       if (version !== SCHEMA_VERSION && !(version === 0 && fresh)) {
         throw new Error(
           `${path} was written by another nyte schema (${String(version)}, this build reads ${String(SCHEMA_VERSION)}). Delete it to start over.`,
         );
       }
+
       db.exec(`PRAGMA user_version = ${String(SCHEMA_VERSION)}`);
     });
   } catch (error) {
     db.close();
     throw error;
   }
+
   return {
     run: (text, params) => {
       statement(text).run(...params);
@@ -176,7 +195,9 @@ function openNodeSqlite(path: string): SqliteConnection {
     read: (fn) => transaction(db, "BEGIN", fn),
     dataVersion: () => {
       const row = db.prepare("PRAGMA data_version").get();
+
       if (row === undefined) throw new Error("Could not read SQLite data_version");
+
       return numberColumn(row, "data_version");
     },
     close: () => db.close(),
@@ -185,23 +206,29 @@ function openNodeSqlite(path: string): SqliteConnection {
 
 function stringColumn(row: SqlRow, name: string): string {
   const value = row[name];
+
   if (typeof value !== "string") {
     throw new TypeError(`SQLite column ${name} is not a string`);
   }
+
   return value;
 }
 
 function numberColumn(row: SqlRow, name: string): number {
   const value = row[name];
+
   if (typeof value !== "number" || !Number.isSafeInteger(value)) {
     throw new TypeError(`SQLite column ${name} is not a safe integer`);
   }
+
   return value;
 }
 
 function parseEventBody(raw: string): EventBody {
   const value: unknown = JSON.parse(raw);
+
   if (!checkEventBody.Check(value)) throw new TypeError("Stored event is not a known event body");
+
   return value;
 }
 
@@ -211,22 +238,28 @@ function allocateSeq(options: {
   readonly count: number;
 }): Seq {
   const row = sql`SELECT next_seq FROM sessions WHERE id = ${options.sessionId}`.get(options.db);
+
   if (row === undefined) throw new UnknownSession(options.sessionId);
   const nextSeq = numberColumn(row, "next_seq");
   sql`UPDATE sessions SET next_seq = ${nextSeq + options.count}
     WHERE id = ${options.sessionId}`.run(options.db);
+
   return nextSeq;
 }
 
 function readLastSeq(db: SqliteConnection, sessionId: string): Seq {
   const row = sql`SELECT next_seq FROM sessions WHERE id = ${sessionId}`.get(db);
+
   if (row === undefined) throw new UnknownSession(sessionId);
+
   return numberColumn(row, "next_seq") - 1;
 }
 
 function readEventFloor(db: SqliteConnection, sessionId: string): Seq {
   const row = sql`SELECT event_floor FROM sessions WHERE id = ${sessionId}`.get(db);
+
   if (row === undefined) throw new UnknownSession(sessionId);
+
   return numberColumn(row, "event_floor");
 }
 
@@ -236,13 +269,16 @@ function writeEvents(options: {
   readonly bodies: readonly EventBody[];
 }): Seq {
   if (options.bodies.length === 0) return readLastSeq(options.db, options.sessionId);
+
   const firstSeq = allocateSeq({
     db: options.db,
     sessionId: options.sessionId,
     count: options.bodies.length,
   });
+
   for (let index = 0; index < options.bodies.length; index++) {
     const body = options.bodies[index];
+
     if (body === undefined) continue;
     const seq = firstSeq + index;
     sql`INSERT INTO events (session_id, seq, at, body)
@@ -250,6 +286,7 @@ function writeEvents(options: {
       options.db,
     );
   }
+
   return firstSeq + options.bodies.length - 1;
 }
 
@@ -281,8 +318,10 @@ export function validateLimit(limit: number | undefined): void {
 function validateUpdates(updates: readonly RefUpdate[]): void {
   if (updates.length === 0) throw new TypeError("refs.update requires at least one update");
   const names = new Set<string>();
+
   for (const update of updates) {
     if (!isRefName(update.name)) throw new TypeError(`Invalid ref name: ${update.name}`);
+
     if (names.has(update.name)) throw new TypeError(`Duplicate ref name: ${update.name}`);
     names.add(update.name);
   }
@@ -299,10 +338,13 @@ class ChangeSubscription {
   constructor(sessionId: string, signals: readonly AbortSignal[], onClose: () => void) {
     this.sessionId = sessionId;
     this.onClose = onClose;
+
     if (signals.some((signal) => signal.aborted)) {
       this.stopped = true;
+
       return;
     }
+
     for (const signal of signals) {
       const listener = (): void => this.close();
       this.abortListeners.push([signal, listener]);
@@ -317,20 +359,26 @@ class ChangeSubscription {
   wake(): void {
     if (this.stopped) return;
     const resolve = this.resolver;
+
     if (resolve === undefined) {
       this.pending = true;
+
       return;
     }
+
     this.resolver = undefined;
     resolve();
   }
 
   wait(): Promise<void> {
     if (this.stopped) return Promise.resolve();
+
     if (this.pending) {
       this.pending = false;
+
       return Promise.resolve();
     }
+
     return new Promise((resolve) => {
       this.resolver = resolve;
     });
@@ -339,9 +387,11 @@ class ChangeSubscription {
   close(): void {
     if (this.stopped) return;
     this.stopped = true;
+
     for (const [signal, listener] of this.abortListeners) {
       signal.removeEventListener("abort", listener);
     }
+
     this.abortListeners.length = 0;
     const resolve = this.resolver;
     this.resolver = undefined;
@@ -368,16 +418,19 @@ class SqliteChangeTracker {
     let subscription: ChangeSubscription;
     subscription = new ChangeSubscription(sessionId, signals, () => {
       this.subscriptions.delete(subscription);
+
       if (this.subscriptions.size === 0 && this.timer !== undefined) {
         clearTimeout(this.timer);
         this.timer = undefined;
         this.dataVersion = undefined;
       }
     });
+
     if (!this.closed && !subscription.closed) {
       this.subscriptions.add(subscription);
       this.startPolling();
     }
+
     return subscription;
   }
 
@@ -390,14 +443,18 @@ class SqliteChangeTracker {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+
     if (this.timer !== undefined) clearTimeout(this.timer);
     this.timer = undefined;
+
     for (const subscription of this.subscriptions) subscription.close();
   }
 
   private startPolling(): void {
     if (this.db.dataVersion === undefined) return;
+
     if (this.timer !== undefined || this.closed || this.subscriptions.size === 0) return;
+
     if (this.dataVersion === undefined) this.dataVersion = this.db.dataVersion();
     this.timer = setTimeout(() => this.poll(), this.pollIntervalMs);
     this.timer.unref();
@@ -405,11 +462,15 @@ class SqliteChangeTracker {
 
   private poll(): void {
     this.timer = undefined;
+
     if (this.closed || this.subscriptions.size === 0) return;
+
     try {
       const next = this.db.dataVersion?.();
+
       if (next !== undefined && this.dataVersion !== next) {
         this.dataVersion = next;
+
         for (const subscription of this.subscriptions) subscription.wake();
       }
     } catch {
@@ -470,11 +531,13 @@ class SqliteObjects implements Objects {
         );
       }
     });
+
     return encoded.map((item) => item.oid);
   }
 
   async get(oid: Oid): Promise<Obj | undefined> {
     this.state.assertOpen();
+
     const row = sql`SELECT body FROM objects
       WHERE session_id = ${this.state.id} AND oid = ${oid}`.get(this.state.db);
 
@@ -487,7 +550,9 @@ class SqliteObjects implements Objects {
   ): Promise<readonly { readonly oid: Oid; readonly object: Obj }[]> {
     this.state.assertOpen();
     validateLimit(options.limit);
+
     if (options.limit === 0) return [];
+
     // The depth bound ends the recursion even when stored parents loop.
     const rows = sql`WITH RECURSIVE chain(oid, body, depth) AS (
         SELECT oid, body, 0 FROM objects
@@ -500,6 +565,7 @@ class SqliteObjects implements Objects {
           WHERE chain.depth + 1 < ${options.limit}
       )
       SELECT oid, body FROM chain ORDER BY depth`.all(this.state.db);
+
     return rows.map((row) => {
       const oid = stringColumn(row, "oid");
 
@@ -509,6 +575,7 @@ class SqliteObjects implements Objects {
 
   async list(): Promise<readonly { readonly oid: Oid; readonly at: number }[]> {
     this.state.assertOpen();
+
     return sql`SELECT oid, at FROM objects WHERE session_id = ${this.state.id} ORDER BY oid`
       .all(this.state.db)
       .map((row) => ({ oid: stringColumn(row, "oid"), at: numberColumn(row, "at") }));
@@ -517,13 +584,17 @@ class SqliteObjects implements Objects {
   async commits(): Promise<readonly { readonly oid: Oid; readonly commit: Commit }[]> {
     this.state.assertOpen();
     const commits: { readonly oid: Oid; readonly commit: Commit }[] = [];
+
     const rows = sql`SELECT oid, body FROM objects
       WHERE session_id = ${this.state.id} AND kind = 'commit'`.all(this.state.db);
+
     for (const row of rows) {
       const oid = stringColumn(row, "oid");
       const object = parseStoredObject(stringColumn(row, "body"), oid);
+
       if (object.kind === "commit") commits.push({ oid, commit: object });
     }
+
     return commits.sort(
       (left, right) => left.commit.at - right.commit.at || left.oid.localeCompare(right.oid),
     );
@@ -531,16 +602,20 @@ class SqliteObjects implements Objects {
 
   async delete(oids: readonly Oid[]): Promise<number> {
     this.state.assertOpen();
+
     if (oids.length === 0) return 0;
+
     // One statement per chunk keeps a large sweep under SQLite's bound-parameter ceiling.
     return this.state.db.transact(() => {
       let deleted = 0;
+
       for (let index = 0; index < oids.length; index += DELETE_CHUNK) {
         const chunk = oids.slice(index, index + DELETE_CHUNK);
         deleted += sql`DELETE FROM objects
           WHERE session_id = ${this.state.id} AND oid IN (${sqlList(chunk)})
           RETURNING 1`.count(this.state.db);
       }
+
       return deleted;
     });
   }
@@ -555,13 +630,16 @@ class SqliteRefs implements Refs {
 
   async read(name: RefName): Promise<Oid | null> {
     this.state.assertOpen();
+
     const row = sql`SELECT oid FROM refs
       WHERE session_id = ${this.state.id} AND name = ${name}`.get(this.state.db);
+
     return row === undefined ? null : stringColumn(row, "oid");
   }
 
   async list(prefix: string): Promise<readonly { readonly name: RefName; readonly oid: Oid }[]> {
     this.state.assertOpen();
+
     return sql`SELECT name, oid FROM refs
       WHERE session_id = ${this.state.id} AND substr(name, 1, length(${prefix})) = ${prefix}
       ORDER BY name`
@@ -578,6 +656,7 @@ class SqliteRefs implements Refs {
   ): Promise<RefUpdateOutcome> {
     this.state.assertOpen();
     validateUpdates(updates);
+
     const outcome = this.state.db.transact((): RefUpdateOutcome => {
       if (
         options.lease !== undefined &&
@@ -593,7 +672,9 @@ class SqliteRefs implements Refs {
       for (const update of updates) {
         const row = sql`SELECT oid FROM refs
           WHERE session_id = ${this.state.id} AND name = ${update.name}`.get(this.state.db);
+
         const actual = row === undefined ? null : stringColumn(row, "oid");
+
         if (actual !== update.from) {
           return { ok: false, reason: "conflict", name: update.name, actual };
         }
@@ -602,6 +683,7 @@ class SqliteRefs implements Refs {
       // An update whose `to` equals `from` asserts the ref and writes nothing:
       // no row change, no event. Every publish asserts `refs/deleted` this way.
       const writes = updates.filter((update) => update.to !== update.from);
+
       for (const update of writes) {
         if (update.to === null) {
           sql`DELETE FROM refs
@@ -631,14 +713,18 @@ class SqliteRefs implements Refs {
               actor: options.actor,
             },
       );
+
       const seq = writeEvents({
         db: this.state.db,
         sessionId: this.state.id,
         bodies: [...refEvents, ...(options.events ?? [])],
       });
+
       return { ok: true, seq };
     });
+
     if (outcome.ok) this.state.changes.notify(this.state.id);
+
     return outcome;
   }
 }
@@ -659,9 +745,11 @@ class SqliteLeases implements Leases {
     this.state.assertOpen();
     const now = Date.now();
     validateTtl(ttlMs, now);
+
     return this.state.db.transact(() => {
       const row = sql`SELECT owner, fence, expires_at FROM leases
         WHERE session_id = ${this.state.id} AND name = ${name}`.get(this.state.db);
+
       if (row !== undefined) {
         const holder: Lease = {
           name,
@@ -669,6 +757,7 @@ class SqliteLeases implements Leases {
           fence: numberColumn(row, "fence"),
           expiresAt: numberColumn(row, "expires_at"),
         };
+
         if (holder.expiresAt > now) return { ok: false, holder };
 
         const lease: Lease = {
@@ -677,9 +766,11 @@ class SqliteLeases implements Leases {
           fence: holder.fence + 1,
           expiresAt: now + ttlMs,
         };
+
         sql`UPDATE leases SET owner = ${lease.owner}, fence = ${lease.fence},
             expires_at = ${lease.expiresAt}
           WHERE session_id = ${this.state.id} AND name = ${name}`.run(this.state.db);
+
         return { ok: true, lease };
       }
 
@@ -689,9 +780,11 @@ class SqliteLeases implements Leases {
         fence: 1,
         expiresAt: now + ttlMs,
       };
+
       sql`INSERT INTO leases (session_id, name, owner, fence, expires_at)
         VALUES (${this.state.id}, ${name}, ${lease.owner}, ${lease.fence},
                 ${lease.expiresAt})`.run(this.state.db);
+
       return { ok: true, lease };
     });
   }
@@ -700,6 +793,7 @@ class SqliteLeases implements Leases {
     this.state.assertOpen();
     const now = Date.now();
     validateTtl(ttlMs, now);
+
     return this.state.db.transact(() => {
       return (
         sql`UPDATE leases SET expires_at = ${now + ttlMs}
@@ -712,6 +806,7 @@ class SqliteLeases implements Leases {
 
   async release(lease: Lease): Promise<boolean> {
     this.state.assertOpen();
+
     return this.state.db.transact(() => {
       return (
         sql`DELETE FROM leases
@@ -724,10 +819,13 @@ class SqliteLeases implements Leases {
 
   async read(name: string): Promise<Lease | undefined> {
     this.state.assertOpen();
+
     const row = sql`SELECT owner, fence, expires_at FROM leases
       WHERE session_id = ${this.state.id} AND name = ${name}
         AND expires_at > ${Date.now()}`.get(this.state.db);
+
     if (row === undefined) return undefined;
+
     return {
       name,
       owner: stringColumn(row, "owner"),
@@ -749,6 +847,7 @@ class SqliteEvents implements Events {
     options?: { readonly lease?: Lease },
   ): Promise<AppendOutcome> {
     this.state.assertOpen();
+
     const outcome = this.state.db.transact((): AppendOutcome => {
       if (
         options?.lease !== undefined &&
@@ -760,12 +859,15 @@ class SqliteEvents implements Events {
       ) {
         return { ok: false, reason: "fenced" };
       }
+
       return {
         ok: true,
         seq: writeEvents({ db: this.state.db, sessionId: this.state.id, bodies: events }),
       };
     });
+
     if (outcome.ok && events.length > 0) this.state.changes.notify(this.state.id);
+
     return outcome;
   }
 
@@ -775,9 +877,12 @@ class SqliteEvents implements Events {
   }): Promise<readonly Event[]> {
     this.state.assertOpen();
     validateLimit(options.limit);
+
     return this.state.db.read(() => {
       const floor = readEventFloor(this.state.db, this.state.id);
+
       if (options.afterSeq < floor) throw new CursorExpired(floor);
+
       const rows =
         options.limit === undefined
           ? sql`SELECT seq, at, body FROM events
@@ -786,6 +891,7 @@ class SqliteEvents implements Events {
           : sql`SELECT seq, at, body FROM events
               WHERE session_id = ${this.state.id} AND seq > ${options.afterSeq}
               ORDER BY seq LIMIT ${options.limit}`.all(this.state.db);
+
       return rows.map((row): Event => ({
         ...parseEventBody(stringColumn(row, "body")),
         seq: numberColumn(row, "seq"),
@@ -796,11 +902,13 @@ class SqliteEvents implements Events {
 
   async last(): Promise<Seq> {
     this.state.assertOpen();
+
     return readLastSeq(this.state.db, this.state.id);
   }
 
   async floor(): Promise<Seq> {
     this.state.assertOpen();
+
     return readEventFloor(this.state.db, this.state.id);
   }
 
@@ -821,24 +929,29 @@ class SqliteEvents implements Events {
 
   watch(options: { readonly afterSeq: Seq; readonly signal?: AbortSignal }): AsyncIterable<Event> {
     this.state.assertOpen();
+
     const signals =
       options.signal === undefined
         ? [this.state.closeController.signal]
         : [this.state.closeController.signal, options.signal];
+
     return this.stream(options.afterSeq, signals);
   }
 
   private async *stream(afterSeq: Seq, signals: readonly AbortSignal[]): AsyncIterable<Event> {
     const subscription = this.state.changes.subscribe(this.state.id, signals);
     let cursor = afterSeq;
+
     try {
       while (!subscription.closed) {
         const events = await this.read({ afterSeq: cursor, limit: WATCH_REPLAY_PAGE_SIZE });
+
         for (const event of events) {
           if (subscription.closed) return;
           cursor = event.seq;
           yield event;
         }
+
         // A full page may leave a backlog even when no new write wakes us.
         if (events.length < WATCH_REPLAY_PAGE_SIZE) await subscription.wait();
       }
@@ -886,9 +999,11 @@ export class SqlStore implements Store {
 
   constructor(db: SqliteConnection, options?: SqliteStoreOptions) {
     const watchPollIntervalMs = options?.watchPollIntervalMs ?? DEFAULT_WATCH_POLL_INTERVAL_MS;
+
     if (!Number.isSafeInteger(watchPollIntervalMs) || watchPollIntervalMs <= 0) {
       throw new RangeError("watchPollIntervalMs must be a positive safe integer");
     }
+
     db.transact(() => db.exec(SCHEMA));
     this.db = db;
     this.changes = new SqliteChangeTracker(db, watchPollIntervalMs);
@@ -901,20 +1016,25 @@ export class SqlStore implements Store {
     this.db.transact(() => {
       const inserted = sql`INSERT OR IGNORE INTO sessions (id, created_at, next_seq, event_floor)
         VALUES (${id}, ${createdAt}, 1, 0) RETURNING 1`.count(this.db);
+
       if (inserted !== 1) throw new Error(`Session already exists: ${id}`);
     });
+
     return this.session(id);
   }
 
   async open(id: string): Promise<Session> {
     this.assertOpen();
     const row = sql`SELECT id FROM sessions WHERE id = ${id}`.get(this.db);
+
     if (row === undefined) throw new UnknownSession(id);
+
     return this.session(stringColumn(row, "id"));
   }
 
   async list(): Promise<readonly SessionInfo[]> {
     this.assertOpen();
+
     return sql`SELECT id, created_at FROM sessions ORDER BY created_at, id`
       .all(this.db)
       .map((row) => ({

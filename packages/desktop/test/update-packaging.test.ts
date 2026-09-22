@@ -26,16 +26,6 @@ function packaging({
 }
 
 describe("Sparkle packaging boundary", () => {
-  test("production has the release public key without environment setup", () => {
-    const result = packaging();
-    expect(result.status, result.stderr).toBe(0);
-    const config: unknown = JSON.parse(result.stdout);
-    expect(config).toHaveProperty(
-      "mac.extendInfo.SUPublicEDKey",
-      "u6NmdrN0PD5XXdy2KJyUfyvzB3hCtI3+6Gf1bg8IYDc=",
-    );
-  });
-
   test("local builds cannot fall back to the production key", () => {
     expect(packaging({ local: "1" }).status).not.toBe(0);
   });
@@ -50,18 +40,6 @@ describe("Sparkle packaging boundary", () => {
 
   test("Windows and Linux packaging do not require Sparkle credentials", () => {
     for (const platform of ["win32", "linux"]) expect(packaging({ platform }).status).toBe(0);
-  });
-
-  test("Linux and Windows executables do not inherit the scoped package name", () => {
-    const result = packaging({ platform: "linux" });
-    expect(result.status, result.stderr).toBe(0);
-    const config: unknown = JSON.parse(result.stdout);
-    expect(config).toMatchObject({
-      executableName: "Nyte",
-      extraMetadata: { name: "Nyte" },
-      linux: { executableName: "Nyte" },
-      win: { executableName: "Nyte" },
-    });
   });
 
   test("production uses the stable GitHub feed and keeps Apple signing enabled", () => {

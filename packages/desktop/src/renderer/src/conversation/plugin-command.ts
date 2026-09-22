@@ -11,10 +11,12 @@ export function parsePluginCommand(
   commands: readonly CommandInfo[],
 ): ParsedPluginCommand | undefined {
   const input = draft.trim();
+
   if (!input.startsWith("/")) return undefined;
 
   const separator = input.search(/\s/);
   const name = input.slice(1, separator === -1 ? undefined : separator);
+
   if (name === "" || !commands.some((command) => command.name === name)) return undefined;
 
   return {

@@ -37,6 +37,7 @@ export interface UsageCommit {
 
 export function usageCommit(commit: Commit): UsageCommit | undefined {
   const spend = commitUsage(commit);
+
   return spend === undefined ? undefined : { at: commit.at, ...spend };
 }
 
@@ -97,6 +98,7 @@ export function localDay(at: number): string {
   const date = new Date(at);
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
+
   return `${String(date.getFullYear())}-${month}-${day}`;
 }
 
@@ -112,13 +114,16 @@ function dayStart(day: string): number {
 export function shiftDay(day: string, delta: number): string {
   const date = new Date(dayStart(day));
   date.setDate(date.getDate() + delta);
+
   return localDay(date.getTime());
 }
 
 /** Inclusive day count, which is also how far back the comparison window reaches. */
 function daysBetween(sinceDay: string, untilDay: string): number {
   let span = 1;
+
   for (let day = sinceDay; day < untilDay; day = shiftDay(day, 1)) span += 1;
+
   return span;
 }
 
@@ -133,6 +138,7 @@ function priorWindow(
   if (sinceDay === null) return undefined;
   const priorUntil = shiftDay(sinceDay, -1);
   const span = daysBetween(sinceDay, untilDay);
+
   return { sinceDay: shiftDay(priorUntil, -(span - 1)), untilDay: priorUntil };
 }
 
@@ -156,6 +162,7 @@ export function projectUsageReport(
     string,
     { readonly entry: Omit<UsageEntry, "totals">; totals: UsageTotals }
   >();
+
   const sessions = new Map<SessionId, UsageSession>();
   const sources: UsageSource[] = [];
   let priorCost = 0;
@@ -178,6 +185,7 @@ export function projectUsageReport(
       for (const spend of session.commits) {
         if (!reported(spend.usage)) continue;
         const day = localDay(spend.at);
+
         if (earliestDay === undefined || day < earliestDay) earliestDay = day;
 
         if (prior !== undefined && day >= prior.sinceDay && day <= prior.untilDay) {
@@ -187,10 +195,12 @@ export function projectUsageReport(
         }
 
         if (day > untilDay) continue;
+
         if (requestedSince !== null && day < requestedSince) continue;
 
         const key = JSON.stringify([day, store.workspacePath, session.sessionId, spend.subject]);
         const cell = cells.get(key);
+
         if (cell === undefined) {
           cells.set(key, {
             entry: {
@@ -204,6 +214,7 @@ export function projectUsageReport(
         } else {
           cell.totals = add(cell.totals, spend.usage);
         }
+
         spentInWindow = true;
         lastActivityAt = Math.max(lastActivityAt, spend.at);
       }

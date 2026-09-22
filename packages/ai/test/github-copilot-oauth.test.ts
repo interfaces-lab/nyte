@@ -500,7 +500,10 @@ describe("GitHub Copilot device sign-in", () => {
         }),
     });
     const ui = interaction();
-    const login = githubCopilotOAuth({ fetch: transport.fetch, clientId: "c" }).login(ui);
+    const login = githubCopilotOAuth(
+      { fetch: transport.fetch, clientId: "c" },
+      () => new Set(["claude-sonnet-4.6"]),
+    ).login(ui);
     await vi.advanceTimersByTimeAsync(1000);
     assert.deepEqual((await login).availableModelIds, []);
     assert.ok(

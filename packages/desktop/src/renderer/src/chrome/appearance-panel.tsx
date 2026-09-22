@@ -178,6 +178,7 @@ function DensityControl({
   readonly onValueChange: (value: ToolCallDensity) => void;
 }): ReactElement {
   const index = TOOL_CALL_DENSITIES.indexOf(value);
+
   return (
     <span {...stylex.props(styles.density)}>
       <Slider.Root
@@ -189,6 +190,7 @@ function DensityControl({
         {...stylex.props(styles.densitySlider)}
         onValueChange={(nextIndex) => {
           const next = TOOL_CALL_DENSITIES[nextIndex];
+
           if (next !== undefined) onValueChange(next);
         }}
       >
@@ -217,6 +219,7 @@ export function AppearanceSettings(): ReactElement {
   const systemTransparency = systemReducesTransparency();
   // `-webkit-font-smoothing` only does anything on macOS.
   const mac = macPlatform(undefined);
+
   const uiFontGroups = fontSelectGroups(
     UI_FONT_OPTIONS,
     fonts.data?.sans ?? [],
@@ -225,6 +228,7 @@ export function AppearanceSettings(): ReactElement {
     uiFontFamily,
     UI_FONT_CATALOG_TITLE,
   );
+
   const codeFontGroups = fontSelectGroups(
     CODE_FONT_OPTIONS,
     fonts.data?.monospace ?? [],

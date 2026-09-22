@@ -47,6 +47,7 @@ function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
   const panes = usePaneActions();
   const parentSessionId = session.data?.parent?.sessionId;
   const title = session.data?.name ?? session.data?.preview ?? "New chat";
+
   return (
     <span {...stylex.props(titlebarStyles.sessionTitleGroup)}>
       {parentSessionId !== undefined && (
@@ -76,17 +77,21 @@ export function Titlebar(): ReactElement {
   const mac = macPlatform(host.data?.platform);
   const selection = activePane(layout).selection;
   const workspacePath = host.data?.workspace?.path;
+
   const target: WorkbenchTarget =
     selection.kind === "session"
       ? { kind: "session", sessionId: selection.sessionId }
       : workspacePath === undefined
         ? { kind: "home" }
         : { kind: "workspace", workspacePath };
+
   const viewKey = workbenchViewKey({ paneKey: WORKBENCH_STAGE_PANE_KEY, target });
   const view = workbench.views.get(viewKey) ?? workbenchController.getView(viewKey);
+
   const userTerminals = view.tabs.filter(
     (tab) => tab.kind === "terminal" && tab.owner.kind === "user",
   );
+
   const terminalWorkspacePath = target.kind === "home" ? null : (workspacePath ?? null);
   const scope = workbenchScopeForTarget(target, workspacePath);
   const activeTab = activeWorkbenchTab(view, scope);
@@ -104,6 +109,7 @@ export function Titlebar(): ReactElement {
       tab: { kind: "terminal", owner: { kind: "user" } },
       activate: true,
     });
+
     void terminalActions.create({ id, workspacePath: terminalWorkspacePath });
   }, [terminalWorkspacePath, viewKey]);
 
@@ -112,22 +118,29 @@ export function Titlebar(): ReactElement {
       if (settingsOpen) shellRouter.history.back();
       shellActions.showWorkspace();
     };
+
     return nyte.host.onMenuCommand((command) => {
       if (command.kind === "about") {
         shellActions.showAbout(command.info);
+
         return;
       }
+
       shellActions.showAbout(undefined);
+
       switch (command.action) {
         case clientActions.newChat.id:
           panes.newChat();
+
           return;
         case clientActions.openFolder.id:
           void nyte.host.pickWorkspace().then(handleOpenOutcome);
+
           return;
         case clientActions.newTerminal.id:
           showWorkspace();
           openTerminal();
+
           return;
         case clientActions.newBrowser.id:
           showWorkspace();
@@ -136,6 +149,7 @@ export function Titlebar(): ReactElement {
             tab: defaultWorkbenchTab("browser"),
             activate: true,
           });
+
           return;
         case clientActions.settings.id:
           if (settingsOpen) return;
@@ -143,9 +157,11 @@ export function Titlebar(): ReactElement {
             to: "/settings/$section",
             params: { section: "general" },
           });
+
           return;
         default: {
           const _exhaustive: never = command.action;
+
           return _exhaustive;
         }
       }
@@ -156,8 +172,10 @@ export function Titlebar(): ReactElement {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!workspaceVisible) return;
       const action = resolveClientAction(event, mac, "workspace");
+
       if (action?.id === "terminal" || action?.id === "new-terminal") {
         event.preventDefault();
+
         if (action.id === "terminal" && workbenchOpen && activeTab?.kind === "terminal") {
           workbenchController.actions.toggle({ view: viewKey });
         } else if (action.id === "terminal" && userTerminals[0] !== undefined) {
@@ -165,13 +183,17 @@ export function Titlebar(): ReactElement {
         } else {
           openTerminal();
         }
+
         return;
       }
+
       if (action?.id !== "workbench") return;
       event.preventDefault();
       workbenchController.actions.toggleWorkbench({ view: viewKey, scope });
     };
+
     window.addEventListener("keydown", onKeyDown);
+
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
     activeTab,
@@ -222,8 +244,10 @@ export function Titlebar(): ReactElement {
             onClick={() => {
               if (stage.kind === "customize") {
                 shellActions.showWorkspace();
+
                 return;
               }
+
               shellRouter.history.back();
             }}
           />

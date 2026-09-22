@@ -12,17 +12,21 @@ export function prepareDevElectron() {
   // Mission Control reads the bundle icon, not the runtime Dock override.
   // A fresh path also avoids reusing macOS's cached icon after an artwork change.
   const icon = readFileSync(new URL("../build/icon.icns", import.meta.url));
+
   const fingerprint = createHash("sha256")
     .update(readFileSync(fileURLToPath(import.meta.url)))
     .update(icon)
     .digest("hex");
+
   const cache = join(
     import.meta.dirname,
     "../node_modules/.cache/nyte-electron",
     `${electronMetadata.version}-${process.arch}-${fingerprint}`,
   );
+
   const bundle = join(cache, "Nyte (Dev).app");
   const ready = join(cache, "ready");
+
   if (!existsSync(ready)) {
     mkdirSync(cache, { recursive: true });
     // Retry interrupted preparation from a clean copy. Keep pnpm's Electron intact.
@@ -32,9 +36,11 @@ export function prepareDevElectron() {
       verbatimSymlinks: true,
     });
     const plist = join(bundle, "Contents/Info.plist");
+
     for (const key of ["CFBundleName", "CFBundleDisplayName"]) {
       execFileSync("/usr/bin/plutil", ["-replace", key, "-string", "Nyte (Dev)", plist]);
     }
+
     execFileSync("/usr/bin/plutil", [
       "-replace",
       "CFBundleIdentifier",
@@ -53,6 +59,7 @@ export function prepareDevElectron() {
     execFileSync("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", bundle]);
     writeFileSync(ready, "");
   }
+
   return join(bundle, "Contents/MacOS/Electron");
 }
 
@@ -66,6 +73,7 @@ if (import.meta.main) {
     ],
     { stdio: "inherit", env: { ...process.env, ELECTRON_EXEC_PATH: prepareDevElectron() } },
   );
+
   const interrupt = () => child.kill("SIGINT");
   const terminate = () => child.kill("SIGTERM");
   process.once("SIGINT", interrupt);
@@ -77,6 +85,7 @@ if (import.meta.main) {
   child.on("exit", (code, signal) => {
     process.removeListener("SIGINT", interrupt);
     process.removeListener("SIGTERM", terminate);
+
     if (signal) process.kill(process.pid, signal);
     else process.exitCode = code ?? 1;
   });

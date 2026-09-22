@@ -16,6 +16,7 @@ import type { SessionViewStateStore } from "./session-view-state.ts";
 import { shellActions } from "../chrome/shell-state.ts";
 
 const controllerCache = new Map<string, PaneController>();
+
 const PaneControllerContext = createContext<PaneController | undefined>(undefined);
 
 function browserStorage(): Storage | undefined {
@@ -29,12 +30,16 @@ function browserStorage(): Storage | undefined {
 export function paneControllerForWorkspace(workspacePath: string | undefined): PaneController {
   const workspaceKey = workspacePath ?? "no-workspace";
   const existing = controllerCache.get(workspaceKey);
+
   if (existing !== undefined) return existing;
+
   const controller = new PaneController({
     storage: browserStorage(),
     storageKey: `nyte.desktop.panes.v1:${workspaceKey}`,
   });
+
   controllerCache.set(workspaceKey, controller);
+
   return controller;
 }
 
@@ -46,6 +51,7 @@ export function PaneControllerProvider({
   children: ReactNode;
 }): ReactElement {
   const controller = useMemo(() => paneControllerForWorkspace(workspaceKey), [workspaceKey]);
+
   return (
     <PaneControllerContext.Provider value={controller}>{children}</PaneControllerContext.Provider>
   );
@@ -53,12 +59,15 @@ export function PaneControllerProvider({
 
 function useController(): PaneController {
   const controller = useContext(PaneControllerContext);
+
   if (controller === undefined) throw new Error("Pane controller is missing");
+
   return controller;
 }
 
 export function usePaneControllerSnapshot(): PaneControllerSnapshot {
   const controller = useController();
+
   return useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
 }
 
@@ -68,12 +77,14 @@ function windowWidth(): number {
 
 function subscribeWindowWidth(listener: () => void): () => void {
   window.addEventListener("resize", listener);
+
   return () => window.removeEventListener("resize", listener);
 }
 
 export function useCanSplitPane(): boolean {
   const { layout } = usePaneControllerSnapshot();
   const width = useSyncExternalStore(subscribeWindowWidth, windowWidth, windowWidth);
+
   return canSplitPane(layout, width);
 }
 
@@ -83,6 +94,7 @@ export function usePaneViewStateStore(): SessionViewStateStore {
 
 function activePath(layout: PaneLayout): string {
   const selection = activeSelection(layout);
+
   return selection.kind === "blank" ? "/" : `/session/${selection.sessionId}`;
 }
 
@@ -107,8 +119,10 @@ export function usePaneActions(): PaneActions {
   const navigateToActive = useCallback(
     (layout: PaneLayout): void => {
       const path = activePath(layout);
+
       if (router.state.location.pathname === path) return;
       const selection = activeSelection(layout);
+
       if (selection.kind === "blank") {
         void router.navigate({ to: "/" });
       } else {
@@ -146,14 +160,17 @@ export function usePaneActions(): PaneActions {
       focus(paneId) {
         const current = controller.getSnapshot().layout;
         const layout = controller.focus(paneId);
+
         if (layout !== current) navigateToActive(layout);
       },
       focusNext() {
         const layout = controller.getSnapshot().layout;
+
         if (layout.kind !== "split") return false;
         navigateToActive(
           controller.focus(activePane(layout).id === "primary" ? "secondary" : "primary"),
         );
+
         return true;
       },
       resize(ratio) {

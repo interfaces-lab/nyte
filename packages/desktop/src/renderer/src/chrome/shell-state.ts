@@ -12,23 +12,30 @@ import { Value } from "typebox/value";
 import type { AppInfo } from "../../../shared/app-menu.ts";
 
 type WorkspaceStage = { readonly kind: "workspace" };
+
 type CustomizeStage = { readonly kind: "customize"; readonly sessionId: SessionId | undefined };
 
 type ShellStage = WorkspaceStage | CustomizeStage;
 
 const SIDEBAR_WIDTH_DEFAULT = 220;
+
 export const SIDEBAR_WIDTH_MIN = 190;
+
 export const SIDEBAR_WIDTH_MAX = 400;
+
 export const SIDEBAR_WIDTH_STEP = 8;
 
 const SIDEBAR_KEY = "nyte.desktop.sidebar.v3";
+
 const SIDEBAR_WIDTH_VARIABLE = "--nyte-sidebar-width";
+
 /** A field of the wrong type reads as unset; the record survives. */
 const persistedSidebarSchema = Type.Object({
   visible: Type.Optional(Type.Unknown()),
   width: Type.Optional(Type.Unknown()),
   homeVisible: Type.Optional(Type.Unknown()),
 });
+
 const widthSchema = Type.Number();
 
 interface ShellState {
@@ -41,6 +48,7 @@ interface ShellState {
 
 export function clampSidebarWidth(width: number): number {
   if (!Number.isFinite(width)) return SIDEBAR_WIDTH_DEFAULT;
+
   return Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, Math.round(width)));
 }
 
@@ -54,12 +62,16 @@ function storage(): Storage | undefined {
 
 function readPersisted(): Pick<ShellState, "sidebarVisible" | "sidebarWidth" | "homeVisible"> {
   const fallback = { sidebarVisible: true, sidebarWidth: SIDEBAR_WIDTH_DEFAULT, homeVisible: true };
+
   try {
     const raw = storage()?.getItem(SIDEBAR_KEY);
+
     if (raw === null || raw === undefined) return fallback;
     const parsed: unknown = JSON.parse(raw);
+
     if (!Value.Check(persistedSidebarSchema, parsed)) return fallback;
     const { visible, width } = parsed;
+
     return {
       sidebarVisible: visible !== false,
       homeVisible: parsed.homeVisible !== false,
@@ -96,16 +108,20 @@ let state: ShellState = {
   stage: { kind: "workspace" },
   about: undefined,
 };
+
 applyWidth(state.sidebarWidth);
+
 const listeners = new Set<() => void>();
 
 function publish(next: ShellState): void {
   state = next;
+
   for (const listener of listeners) listener();
 }
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
+
   return () => {
     listeners.delete(listener);
   };
@@ -136,6 +152,7 @@ export const shellActions = Object.freeze({
   },
   setSidebarWidth(width: number): void {
     const sidebarWidth = clampSidebarWidth(width);
+
     if (state.sidebarWidth === sidebarWidth) return;
     const next = { ...state, sidebarWidth };
     applyWidth(sidebarWidth);

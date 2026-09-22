@@ -147,17 +147,20 @@ export function FilesPanel({
     hostState.current = host.data;
   }, [host.data]);
   const activeFile = tabs.tabs.find((file) => file.path === tabs.activePath);
+
   const showSearch = (): void => {
     setSearchOpened(true);
     setSidebar("search");
     requestAnimationFrame(() => searchRef.current?.querySelector("input")?.focus());
   };
+
   const copyPath = (value: string): void => {
     void navigator.clipboard
       .writeText(value)
       .then(() => setCopyError(undefined))
       .catch((cause: unknown) => setCopyError(errorMessage(cause)));
   };
+
   /**
    * Serves the row's menu button and its right-click. The tree keeps its own
    * open state, so close it before the native menu takes over the pointer.
@@ -169,8 +172,10 @@ export function FilesPanel({
     // Directories are not in the file list, so their location comes from the root.
     const separator = hostState.current?.platform === "win32" ? "\\" : "/";
     const relative = item.path.replace(/\/$/, "");
+
     const absolutePath =
       file?.path ?? (root === undefined ? undefined : `${root}${separator}${relative}`);
+
     void showContextMenu({ clientX: context.anchorRect.left, clientY: context.anchorRect.bottom }, [
       file !== undefined && {
         kind: "item",
@@ -195,6 +200,7 @@ export function FilesPanel({
       { kind: "item", label: "Refresh Explorer", run: refreshVcs },
     ]);
   };
+
   const { model } = useFileTree({
     paths: [],
     density: "compact",
@@ -214,10 +220,13 @@ export function FilesPanel({
       const path = paths.findLast((candidate) => !candidate.endsWith("/"));
       // useFileTree keeps its creation-time listeners; file discovery finishes later.
       const file = fileEntries.current?.find((candidate) => candidate.displayPath === path);
+
       if (file !== undefined) fileActions.open(viewKey, file);
     },
   });
+
   const paths = useMemo(() => (files.data ?? []).map((file) => file.displayPath), [files.data]);
+
   const drafts = useMemo(
     () =>
       tabs.tabs.flatMap((file) =>
@@ -230,10 +239,13 @@ export function FilesPanel({
   // The file list may arrive after the reveal; retry until the entry exists.
   useLayoutEffect(() => {
     model.resetPaths(paths);
+
     if (tabs.revealPath === undefined || revealed.current === tabs.revealRevision) return;
     const item = model.getItem(tabs.revealPath);
+
     if (item === null) return;
     revealed.current = tabs.revealRevision;
+
     if ("expand" in item) item.expand();
     item.select();
     model.scrollToPath(tabs.revealPath, { offset: "nearest" });
@@ -253,8 +265,10 @@ export function FilesPanel({
   const discard = async (): Promise<void> => {
     if (discardPath === undefined) return;
     setDiscarding(true);
+
     try {
       const editor = editors.current.get(discardPath);
+
       if (editor === undefined) throw new Error("The file is not ready to reload.");
       await editor.discard();
       setDiscardPath(undefined);
@@ -273,10 +287,13 @@ export function FilesPanel({
       onKeyDownCapture={(event) => {
         if (!(event.metaKey || event.ctrlKey)) return;
         const key = event.key.toLowerCase();
+
         if (key === "s") {
           event.preventDefault();
+
           if (activeFile !== undefined) void editors.current.get(activeFile.path)?.save();
         }
+
         if (key === "f") {
           event.preventDefault();
           showSearch();

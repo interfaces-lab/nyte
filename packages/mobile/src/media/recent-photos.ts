@@ -22,15 +22,19 @@ export type PhotoAccess =
 
 export async function readRecentPhotos(limit: number): Promise<PhotoAccess> {
   const permission: PermissionResponse = await requestPermissionsAsync();
+
   if (!permission.granted) return { kind: "denied" };
+
   const assets = await new Query()
     .eq(AssetField.MEDIA_TYPE, MediaType.IMAGE)
     .orderBy({ key: AssetField.CREATION_TIME, ascending: false })
     .limit(limit)
     .exe();
+
   const photos = await Promise.all(
     assets.map(async (asset) => ({ id: asset.id, uri: await asset.getUri() })),
   );
+
   return permission.accessPrivileges === "limited"
     ? { kind: "limited", photos }
     : { kind: "granted", photos };

@@ -10,6 +10,7 @@ import type {
 import type { NyteBridge } from "../../../shared/ipc.ts";
 
 export const TRACKED = "src/working.ts";
+
 export const UNTRACKED = "scratch.txt";
 
 const patchOf = (path: string): string =>
@@ -40,6 +41,7 @@ export const revertScript: RevertScript = {
 
 const vcsSnapshot = async (): Promise<VcsSnapshot> => {
   revertScript.snapshotReads += 1;
+
   return {
     kind: "repository",
     root: "changes-revert-repo",
@@ -58,6 +60,7 @@ const vcsSnapshot = async (): Promise<VcsSnapshot> => {
 
 const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) => {
   revertScript.diffReads += 1;
+
   return (input.paths ?? revertScript.files.map((file) => file.path)).map((path) => ({
     path,
     status: "modified",
@@ -73,17 +76,22 @@ const discard: NyteBridge["workspace"]["vcs"]["discard"] = async (
 ): Promise<VcsDiscardOutcome> => {
   revertScript.reverts.push({ paths: input.paths });
   const reason = revertScript.skipReason;
+
   if (reason !== undefined) {
     revertScript.skipReason = undefined;
+
     return { kind: "applied", paths: [], skipped: input.paths.map((path) => ({ path, reason })) };
   }
+
   // A discarded file leaves the working tree, which the next status read reports.
   revertScript.files = revertScript.files.filter((file) => !input.paths.includes(file.path));
   revertScript.revision += 1;
+
   return { kind: "applied", paths: [...input.paths], skipped: [] };
 };
 
 const log = async (): Promise<VcsLog> => ({ commits: [], hasMore: false });
+
 const refs = async (): Promise<VcsRefs> => ({ local: ["main"], remote: [] });
 
 Object.defineProperty(window, "nyte", {

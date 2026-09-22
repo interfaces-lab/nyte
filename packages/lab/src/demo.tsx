@@ -18,6 +18,7 @@ import { queryClient } from "../../desktop/src/renderer/src/queries.ts";
 function subscribe(onChange: () => void) {
   const observer = new MutationObserver(onChange);
   observer.observe(document.documentElement, { attributes: true });
+
   return () => observer.disconnect();
 }
 
@@ -31,10 +32,13 @@ function snapshot() {
 function Demo() {
   const revision = useSyncExternalStore(subscribe, snapshot);
   const root = document.documentElement;
+
   const revealValue = Number(
     root.dataset.labSidebarReveal ?? (root.dataset.labSidebar === "false" ? "0" : "1"),
   );
+
   const reveal = Number.isFinite(revealValue) ? Math.max(0, Math.min(1, revealValue)) : 1;
+
   return (
     <QueryClientProvider client={queryClient}>
       <Tooltip.Provider delay={400}>
@@ -64,6 +68,7 @@ function Demo() {
 
 document.addEventListener("keydown", (event) => {
   if (!event.altKey || event.ctrlKey || event.metaKey) return;
+
   if (event.code === "Digit1" || event.code === "Digit2") {
     event.preventDefault();
     document.documentElement.dataset.labTokens = event.code === "Digit1" ? "nyte" : "calendar";
@@ -71,7 +76,9 @@ document.addEventListener("keydown", (event) => {
 });
 
 const root = document.getElementById("root");
+
 if (root === null) throw new Error("Missing demo root");
+
 createRoot(root).render(
   <StrictMode>
     <Demo />

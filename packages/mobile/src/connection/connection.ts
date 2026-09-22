@@ -22,35 +22,55 @@ export type Connection = Static<typeof ConnectionSchema>;
  */
 function isPrivateHost(hostname: string): boolean {
   if (hostname === "localhost" || hostname === "[::1]" || hostname.endsWith(".local")) return true;
+
   if (hostname.endsWith(".ts.net")) return true;
   const octets = hostname.split(".").map(Number);
+
   if (octets.length !== 4) return false;
+
   if (!octets.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)) return false;
   const [a, b] = octets;
+
   if (a === undefined || b === undefined) return false;
+
   if (a === 100 && b >= 64 && b <= 127) return true;
+
   return a === 10 || a === 127 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
 }
 
-export function parseConnection(value: unknown): Connection {
+/** Decode a connection saved as JSON, then apply the same checks as a typed one. */
+export function parseStoredConnection(text: string): Connection {
+  const value: unknown = JSON.parse(text);
+
   if (!Value.Check(ConnectionSchema, value))
     throw new Error("Enter a name, the address and the token.");
+
+  return parseConnection(value);
+}
+
+export function parseConnection(value: Connection): Connection {
   const name = value.name.trim();
   const token = value.token.trim();
-  if (!name || !token) throw new Error("Enter a name, the address and the token.");
+
+  if (!name || !token || value.url === "")
+    throw new Error("Enter a name, the address and the token.");
   let url: URL;
+
   try {
     url = new URL(value.url.trim());
   } catch {
     throw new Error("Enter the full address, including http:// or https://.");
   }
+
   if (url.protocol !== "https:" && !(url.protocol === "http:" && isPrivateHost(url.hostname))) {
     throw new Error("Use HTTPS, or HTTP with your Mac's local or Tailscale address.");
   }
+
   if (url.username || url.password || url.search || url.hash)
     throw new Error("Enter only the address. The token has its own field.");
   url.search = "";
   url.hash = "";
+
   return { name, url: url.href.replace(/\/$/, ""), token };
 }
 
@@ -67,19 +87,24 @@ export function displayAddress(connection: Connection): string {
 export function parseConnectionPayload(text: string): Connection {
   const trimmed = text.trim();
   let link: URL;
+
   try {
     link = new URL(trimmed);
   } catch {
     throw new Error("That code isn't a Nyte connection.");
   }
+
   if (link.protocol !== "nyte:" || link.host !== "connect") {
     throw new Error("That code isn't a Nyte connection.");
   }
+
   const url = link.searchParams.get("url");
   const token = link.searchParams.get("token");
+
   if (url === null || token === null) {
     throw new Error("That code is missing the address or the token.");
   }
+
   return parseConnection({ name: link.searchParams.get("name") ?? "My Mac", url, token });
 }
 
@@ -87,14 +112,19 @@ export function describeHostError(cause: unknown): string {
   if (cause instanceof NyteWireError) {
     if (cause.code === "unauthorized" || cause.code === "forbidden")
       return "Your Mac refused the token. Copy it again from Settings › Server.";
+
     if (cause.code === "unknown_session") return "This conversation is no longer available.";
+
     if (cause.code === "closed") return "Nyte is closed on your Mac.";
+
     // The one error a version difference produces: the app asked for something
     // this Mac's Nyte does not serve yet.
     if (cause.code === "unknown_operation")
       return "Your Mac is running an older Nyte than this app. Update it there.";
+
     return "Your Mac couldn't complete the request.";
   }
+
   if (cause instanceof NyteTransportError) {
     switch (cause.failure.kind) {
       case "network":
@@ -107,9 +137,11 @@ export function describeHostError(cause: unknown): string {
         return "That address answered, but not as a Nyte server.";
       default: {
         const exhaustive: never = cause.failure;
+
         return exhaustive;
       }
     }
   }
+
   return "Couldn't reach your Mac. Check that Nyte is running.";
 }

@@ -146,10 +146,15 @@ const RETRY_DELAY_PATTERN =
 
 function classForStatus(status: number): FailureClass | undefined {
   if (status === 429) return "rate_limit";
+
   if (status === 401 || status === 403) return "auth";
+
   if (status === 402) return "quota";
+
   if (status === 413) return "context_window";
+
   if (status >= 500 && status <= 599) return "overloaded";
+
   return undefined;
 }
 
@@ -166,11 +171,14 @@ function structuredClass(message: AssistantMessage): FailureClass | undefined {
           : typeof value === "string" && /^\d{3}$/u.test(value)
             ? Number(value)
             : Number.NaN;
+
       if (!Number.isInteger(status)) continue;
       const failureClass = classForStatus(status);
+
       if (failureClass !== undefined) return failureClass;
     }
   }
+
   return undefined;
 }
 
@@ -178,12 +186,19 @@ function classOf(text: string): FailureClass {
   if (!NOT_CONTEXT_WINDOW_PATTERN.test(text) && CONTEXT_WINDOW_PATTERNS.some((p) => p.test(text))) {
     return "context_window";
   }
+
   if (RATE_LIMIT_PATTERN.test(text)) return "rate_limit";
+
   if (OVERLOADED_PATTERN.test(text)) return "overloaded";
+
   if (NETWORK_PATTERN.test(text)) return "network";
+
   if (QUOTA_PATTERN.test(text)) return "quota";
+
   if (AUTH_PATTERN.test(text)) return "auth";
+
   if (/\b429\b/u.test(text)) return "rate_limit";
+
   return "provider";
 }
 
@@ -191,13 +206,17 @@ function retryAfterMs(message: AssistantMessage): number | undefined {
   for (const diagnostic of message.diagnostics ?? []) {
     for (const key of ["retryAfterMs", "retryDelayMs"]) {
       const value = diagnostic.details?.[key];
+
       if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
     }
   }
+
   const match = message.errorMessage?.match(RETRY_DELAY_PATTERN);
   const seconds = match === null || match === undefined ? Number.NaN : Number(match[1]);
   const maximum = match === null || match === undefined ? Number.NaN : Number(match[2]);
+
   if (!Number.isFinite(seconds) || seconds < 0) return undefined;
+
   return Number.isFinite(maximum) && maximum > 0 && seconds > maximum ? undefined : seconds * 1_000;
 }
 
@@ -205,7 +224,9 @@ function retryAfterMs(message: AssistantMessage): number | undefined {
 function silentOverflow(message: AssistantMessage, contextWindow: number | undefined): boolean {
   if (contextWindow === undefined || contextWindow === 0) return false;
   const inputTokens = message.usage.input + message.usage.cacheRead;
+
   if (message.stopReason === "stop") return inputTokens > contextWindow;
+
   return (
     message.stopReason === "length" &&
     message.usage.output === 0 &&
@@ -225,15 +246,18 @@ export function classifyAssistantFailure(
   if (message.stopReason === "aborted") {
     return { class: "aborted", message: message.errorMessage ?? "Aborted" };
   }
+
   if (message.stopReason !== "error") {
     return {
       class: silentOverflow(message, model?.contextWindow) ? "context_window" : "provider",
       message: message.errorMessage ?? "",
     };
   }
+
   const text = message.errorMessage ?? "Unknown error";
   const failure: Failure = { class: structuredClass(message) ?? classOf(text), message: text };
   const delay = retryAfterMs(message);
+
   return delay === undefined ? failure : { ...failure, retryAfterMs: delay };
 }
 
@@ -253,6 +277,7 @@ export function isRetryableFailureClass(failureClass: FailureClass): boolean {
       return false;
     default: {
       const _exhaustive: never = failureClass;
+
       return _exhaustive;
     }
   }

@@ -20,6 +20,7 @@ function referenceIcon(reference: MessageReference): IconName {
       return "copy";
     default: {
       const exhaustive: never = reference;
+
       return exhaustive;
     }
   }
@@ -37,6 +38,7 @@ export function ComposerChipView({
   const label = referenceLabel(reference);
   const open = useReferenceOpener()?.(reference);
   const inEditor = onRemove !== undefined;
+
   const chip = (
     <span
       data-composer-chip={reference.kind}
@@ -95,9 +97,12 @@ export function ComposerChipView({
       {label}
     </span>
   );
+
   if (reference.kind === "clipboard") {
     return <HoverPreview content={reference.body} trigger={chip} side="top" />;
   }
+
   const title = referenceTitle(reference);
+
   return title === undefined ? chip : <Hint content={title} trigger={chip} side="top" />;
 }

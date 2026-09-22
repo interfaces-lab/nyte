@@ -47,25 +47,31 @@ export function turnChangeOptions(turns: readonly Turn[]): readonly TurnChangeOp
   const turnCount = turns.reduce((count, turn) => (turn.kind === "turn" ? count + 1 : count), 0);
   const options: TurnChangeOption[] = [];
   let ordinal = 0;
+
   for (const turn of turns) {
     if (turn.kind !== "turn") continue;
     ordinal += 1;
     const patches = new Map<string, string[]>();
     const folded = new Set<string>();
+
     for (const part of turn.parts) {
       if (part.kind !== "tool" || part.class.kind !== "file_patch") continue;
+
       if (part.result === undefined || part.result.isError || folded.has(part.result.commit))
         continue;
       folded.add(part.result.commit);
       const { path, patch } = part.class;
       const previous = patches.get(path);
+
       if (previous === undefined) patches.set(path, [patch]);
       else previous.push(patch);
     }
+
     const files = changesFromTurns([turn]).map((change) => ({
       change,
       patch: (patches.get(change.path) ?? []).join("\n"),
     }));
+
     options.push({
       scope: { kind: "turn", turnId: turn.id },
       run: turn.run,
@@ -80,6 +86,7 @@ export function turnChangeOptions(turns: readonly Turn[]): readonly TurnChangeOp
       files,
     });
   }
+
   return options.reverse();
 }
 
@@ -94,6 +101,7 @@ export function visibleTurnOptions(
   selectedTurnId: TurnChangesScope["turnId"] | undefined,
 ): readonly TurnChangeOption[] {
   if (showAll) return options;
+
   return options.filter(
     (option) => turnHasChanges(option) || option.scope.turnId === selectedTurnId,
   );
@@ -111,6 +119,7 @@ export function changesScopeValue(scope: WorkbenchChangesScope): string {
       return `commit:${scope.oid}`;
     default: {
       const _exhaustive: never = scope;
+
       return _exhaustive;
     }
   }
@@ -128,7 +137,9 @@ export function diffRequestForScope(
     target: { kind: "workspace" } as const,
     ignoreWhitespace: options?.ignoreWhitespace ?? false,
   };
+
   const narrowing = options?.paths === undefined ? base : { ...base, paths: [...options.paths] };
+
   switch (scope.kind) {
     case "uncommitted":
       return { scope: { kind: "worktree" }, ...narrowing };
@@ -142,6 +153,7 @@ export function diffRequestForScope(
       return undefined;
     default: {
       const _exhaustive: never = scope;
+
       return _exhaustive;
     }
   }
@@ -162,6 +174,7 @@ export function scopeFiles(
   scope: "uncommitted" | "staged" | "unstaged",
 ): readonly VcsFile[] | undefined {
   if (snapshot === undefined || snapshot.kind !== "repository") return undefined;
+
   switch (scope) {
     case "uncommitted":
       return worktreeFiles(snapshot);
@@ -171,6 +184,7 @@ export function scopeFiles(
       return snapshot.unstaged;
     default: {
       const _exhaustive: never = scope;
+
       return _exhaustive;
     }
   }
@@ -253,7 +267,9 @@ export function changesScopeLabel(
   const listed = options.find(
     (option) => changesScopeValue(option.scope) === changesScopeValue(scope),
   );
+
   if (listed !== undefined) return listed.label;
+
   switch (scope.kind) {
     case "uncommitted":
       return "Uncommitted";
@@ -267,6 +283,7 @@ export function changesScopeLabel(
       return scope.oid.slice(0, 7);
     default: {
       const _exhaustive: never = scope;
+
       return _exhaustive;
     }
   }
@@ -286,6 +303,7 @@ export type BranchReadout =
 export function branchReadout(snapshot: VcsSnapshot | undefined): BranchReadout | undefined {
   if (snapshot === undefined || snapshot.kind !== "repository") return undefined;
   const head = snapshot.head;
+
   switch (head.kind) {
     case "detached":
       return { kind: head.kind, label: head.oid.slice(0, 7) };
@@ -301,6 +319,7 @@ export function branchReadout(snapshot: VcsSnapshot | undefined): BranchReadout 
       };
     default: {
       const _exhaustive: never = head;
+
       return _exhaustive;
     }
   }

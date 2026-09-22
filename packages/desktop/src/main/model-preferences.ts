@@ -29,6 +29,7 @@ const preferencesType = Type.Object({
     }),
   ),
 });
+
 const preferencesFile = Compile(preferencesType);
 
 export type ModelPreferences = Required<Static<typeof preferencesType>>;
@@ -41,6 +42,7 @@ export const EMPTY_MODEL_PREFERENCES: ModelPreferences = {
 export function parseModelPreferences(text: string): ModelPreferences {
   try {
     const { providers = {}, defaults = {} } = preferencesFile.Parse(JSON.parse(text));
+
     return { providers, defaults };
   } catch {
     return EMPTY_MODEL_PREFERENCES;
@@ -54,6 +56,7 @@ export function applyPreferenceChange(
   switch (change.kind) {
     case "provider": {
       const current = preferences.providers[change.provider] ?? {};
+
       return {
         ...preferences,
         providers: {
@@ -62,16 +65,20 @@ export function applyPreferenceChange(
         },
       };
     }
+
     case "models": {
       const current = preferences.providers[change.provider] ?? {};
       const changed = new Set(change.ids);
       const hiddenModels = (current.hiddenModels ?? []).filter((id) => !changed.has(id));
+
       if (change.hidden) hiddenModels.push(...changed);
+
       return {
         ...preferences,
         providers: { ...preferences.providers, [change.provider]: { ...current, hiddenModels } },
       };
     }
+
     case "defaults":
       return {
         ...preferences,
@@ -82,6 +89,7 @@ export function applyPreferenceChange(
       };
     default: {
       const _exhaustive: never = change;
+
       return _exhaustive;
     }
   }
@@ -105,6 +113,7 @@ export class ModelPreferencesStore {
       const next = applyPreferenceChange(await this.load(), change);
       await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
       await writeFile(this.path, `${JSON.stringify(next, null, 2)}\n`);
+
       return next;
     });
   }
@@ -123,6 +132,7 @@ export class ModelPreferencesStore {
       () => undefined,
       () => undefined,
     );
+
     return result;
   }
 }

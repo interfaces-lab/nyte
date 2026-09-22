@@ -104,6 +104,7 @@ export function ChangesStack({
   const [codeItems] = useState(createChangesCodeViewItems);
   const model = useMemo(() => codeItems(items, collapsedPaths), [codeItems, items, collapsedPaths]);
   const collapsed = useMemo(() => new Set(collapsedPaths), [collapsedPaths]);
+
   const options = useMemo(
     () =>
       ({
@@ -118,6 +119,7 @@ export function ChangesStack({
 
   useLayoutEffect(() => {
     const pending = restore.current;
+
     if (pending === undefined || viewer.current?.getInstance() === undefined) return;
     viewer.current.scrollTo({ type: "position", position: pending, behavior: "instant" });
     restore.current = undefined;
@@ -132,6 +134,7 @@ export function ChangesStack({
     ) {
       return;
     }
+
     appliedFocusRevision.current = focusRevision;
     viewer.current.scrollTo({
       type: "item",
@@ -145,7 +148,9 @@ export function ChangesStack({
   const renderHeader = useCallback(
     (codeItem: CodeViewItem<string>): ReactElement | null => {
       const item = model.sourceById.get(codeItem.id);
+
       if (item === undefined) return null;
+
       return (
         <StackHeader
           item={item}
@@ -178,17 +183,24 @@ export function ChangesStack({
         onScroll={(top, instance) => {
           onScrollTop(top);
           const last = items.at(-1);
+
           if (last === undefined) return;
+
           if (top + instance.getHeight() >= instance.getScrollHeight() - 2) {
             onActivePath(last.path);
+
             return;
           }
+
           let active = items[0]?.path;
+
           for (const [id, source] of model.sourceById) {
             const itemTop = instance.getTopForItem(id);
+
             if (itemTop === undefined || itemTop > top + 1) break;
             active = source.path;
           }
+
           if (active !== undefined) onActivePath(active);
         }}
       />

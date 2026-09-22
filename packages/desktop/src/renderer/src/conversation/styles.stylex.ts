@@ -20,9 +20,12 @@ const activityShine = stylex.keyframes({
 });
 
 const ACTIVITY_SHIMMER = `linear-gradient(90deg, ${t.shimmerBase} 0%, ${t.shimmerBase} 28%, ${t.shimmerHighlight} 58%, ${t.shimmerBase} 76%, ${t.shimmerBase} 100%)`;
+
 const CODE_RING = `inset 0 0 0 1px ${t.conversationTechnicalRing}`;
+
 // Full-bleed preview covers an inset ring on the tile; ::after paints it above.
 const ATTACHMENT_RING = `inset 0 0 0 1px ${t.strokeSecondary}, inset 0 0 0 1px ${t.bgElevated}`;
+
 const COMPOSER_RING_DROP = `0 0 0 2px ${t.fillAccentSubtle}`;
 
 export const proseStyles = stylex.create({
@@ -265,6 +268,16 @@ export const composerStyles = stylex.create({
     paddingInline: conversation.gutter,
     paddingTop: 8,
     paddingBottom: conversation.composerInset,
+  },
+  inputStack: { position: "relative", minWidth: 0 },
+  preComposerOverlay: {
+    position: "absolute",
+    insetInline: 0,
+    bottom: `calc(100% + ${tray.gap})`,
+    zIndex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: tray.gap,
   },
   queueList: { maxHeight: 200 },
   queueRow: {
@@ -764,11 +777,8 @@ export const composerStyles = stylex.create({
   suggestionMenu: {
     display: "flex",
     flexDirection: "column",
-    width: "min(var(--anchor-width), calc(100dvw - 16px))",
-    maxWidth: "min(var(--anchor-width), calc(100dvw - 16px))",
+    width: "var(--anchor-width)",
     maxHeight: "min(280px, var(--available-height))",
-    paddingBlock: "var(--nyte-suggestion-padding)",
-    paddingInline: "var(--nyte-suggestion-padding)",
     borderStyle: "none",
     borderRadius: t.radiusXl,
     outline: "none",
@@ -802,11 +812,9 @@ export const composerStyles = stylex.create({
     alignItems: "center",
     columnGap: "var(--nyte-suggestion-item-gap)",
     minHeight: "var(--nyte-suggestion-item-height)",
-    marginBlockEnd: 1,
     paddingBlock: 4,
-    paddingInline: 8,
+    paddingInline: 12,
     borderStyle: "none",
-    borderRadius: t.radiusBase,
     outline: "none",
     backgroundColor: {
       default: "transparent",
@@ -868,7 +876,7 @@ export const composerStyles = stylex.create({
   },
   suggestionGroupStart: {
     marginBlockStart: pane.dividerGap,
-    // A section divider sits in the gap, independent of the rounded row highlight.
+    // A section divider sits in the gap, independent of the row highlight.
     "::before": {
       content: '""',
       position: "absolute",

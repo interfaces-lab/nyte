@@ -6,7 +6,9 @@ import packageMetadata from "../package.json" with { type: "json" };
 import { isJsonObject, isJsonString } from "./json.ts";
 
 export const REPO = "interfaces-lab/nyte";
+
 const LATEST_RELEASE_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
+
 const RELEASES_URL = `https://github.com/${REPO}/releases/latest`;
 
 export const VERSION = packageMetadata.version;
@@ -20,6 +22,7 @@ interface ReleaseInfo {
 export function isNewerVersion(candidate: string, current: string): boolean {
   const candidateVersion = valid(candidate.trim());
   const currentVersion = valid(current.trim());
+
   return (
     candidateVersion !== null && currentVersion !== null && gt(candidateVersion, currentVersion)
   );
@@ -42,18 +45,24 @@ export async function fetchLatestRelease(
       headers: githubHeaders(),
       signal: AbortSignal.timeout(10_000),
     });
+
     if (!response.ok) return undefined;
     const data = toJsonValue(await response.json());
+
     if (!isJsonObject(data)) return undefined;
     const tag = data["tag_name"];
+
     if (!isJsonString(tag)) return undefined;
     const version = valid(tag.trim().replace(/^v/u, ""));
+
     if (version === null) return undefined;
     const html = data["html_url"];
+
     const url =
       isJsonString(html) && html.startsWith(`https://github.com/${REPO}/releases/`)
         ? html
         : RELEASES_URL;
+
     return { version, url };
   } catch {
     return undefined;
@@ -70,7 +79,10 @@ export async function checkForUpdate(
   ) {
     return undefined;
   }
+
   const latest = await fetchLatestRelease(fetchFn);
+
   if (latest === undefined || !isNewerVersion(latest.version, VERSION)) return undefined;
+
   return latest;
 }

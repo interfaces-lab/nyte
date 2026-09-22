@@ -79,6 +79,7 @@ export function retryDelayMs(attempts: number): number {
 
 function scheduleWithTimeout(run: () => void, delayMs: number): () => void {
   const timer = setTimeout(run, delayMs);
+
   return () => clearTimeout(timer);
 }
 
@@ -107,10 +108,13 @@ function drawn(update: SessionUpdate): readonly Named[] {
         default:
           return [];
       }
+
     case "metadata":
+    case "stop":
       return [];
     default: {
       const _exhaustive: never = update;
+
       return _exhaustive;
     }
   }
@@ -118,19 +122,24 @@ function drawn(update: SessionUpdate): readonly Named[] {
 
 function drawnBy(state: SessionState): Named[] {
   const names: Named[] = [...state.pending];
+
   for (const turn of state.transcript.items) {
     if (turn.kind !== "turn") continue;
+
     for (const part of turn.parts) {
       if (part.kind === "user" && part.key !== undefined) names.push({ key: part.key });
     }
   }
+
   return names;
 }
 
 interface Flight {
   row: OutboxRow;
   observed: boolean;
+  withdrawing: boolean;
   cancelRetry: (() => void) | undefined;
+  stored: PromiseWithResolvers<void>;
   settled: PromiseWithResolvers<OutboxOutcome>;
 }
 
@@ -143,7 +152,13 @@ export function createOutbox(options: OutboxOptions): Outbox {
   let rows: readonly OutboxRow[] = [];
 
   const refresh = (): void => {
-    rows = [...flights.values()].map((flight) => flight.row).sort((a, b) => a.at - b.at);
+    rows = flights
+      .values()
+      .filter((flight) => !flight.withdrawing)
+      .map((flight) => flight.row)
+      .toArray()
+      .sort((a, b) => a.at - b.at);
+
     for (const listener of listeners) listener();
   };
 
@@ -166,28 +181,34 @@ export function createOutbox(options: OutboxOptions): Outbox {
     const { key, input } = flight.row;
     draw(flight, { kind: "sending", attempts });
     let receipt: SendReceipt;
+
     try {
       receipt = await options.send({ ...input, key });
     } catch (cause) {
-      if (!current(flight)) {
+      if (!current(flight) || flight.withdrawing) {
         flight.row = {
           ...flight.row,
           state: { kind: "retrying", attempts, reason: errorMessage(cause) },
         };
         flight.settled.resolve({ kind: "withdrawn" });
+
         return;
       }
+
       draw(flight, { kind: "retrying", attempts, reason: errorMessage(cause) });
       flight.cancelRetry = schedule(() => {
         flight.cancelRetry = undefined;
         void attempt(flight, attempts + 1);
       }, retryDelayMs(attempts));
+
       return;
     }
+
     // `queued` and `duplicate` both say the store has the message.
     void options.storage?.remove(key).catch(() => undefined);
     const durable: OutboxOutcome = { kind: "durable", change: receipt.change };
-    if (!current(flight)) {
+
+    if (!current(flight) || flight.withdrawing) {
       flight.row = { ...flight.row, state: durable };
       flight.settled.resolve(durable);
     } else if (flight.observed) {
@@ -197,15 +218,23 @@ export function createOutbox(options: OutboxOptions): Outbox {
     }
   };
 
-  const open = (record: OutboxRecord): Flight => {
+  const open = (record: OutboxRecord, persisted: boolean): Flight => {
+    const stored = Promise.withResolvers<void>();
+
+    if (persisted) stored.resolve();
+
     const flight: Flight = {
       row: { ...record, state: { kind: "storing" } },
       observed: false,
+      withdrawing: false,
       cancelRetry: undefined,
+      stored,
       settled: Promise.withResolvers(),
     };
+
     flights.set(record.key, flight);
     refresh();
+
     return flight;
   };
 
@@ -213,16 +242,23 @@ export function createOutbox(options: OutboxOptions): Outbox {
     options.storage?.remove(key) ?? Promise.resolve();
 
   const restoreWithdrawal = (flight: Flight): void => {
-    if (flights.has(flight.row.key)) return;
+    const held = flights.get(flight.row.key);
+
+    if (held !== undefined && held !== flight) return;
+    flight.withdrawing = false;
     flight.settled = Promise.withResolvers();
     flights.set(flight.row.key, flight);
     const state = flight.row.state;
-    if (state.kind === "retrying") {
+
+    if (state.kind === "storing") {
+      void attempt(flight, 1);
+    } else if (state.kind === "retrying") {
       flight.cancelRetry = schedule(() => {
         flight.cancelRetry = undefined;
         void attempt(flight, state.attempts + 1);
       }, retryDelayMs(state.attempts));
     }
+
     refresh();
   };
 
@@ -231,44 +267,71 @@ export function createOutbox(options: OutboxOptions): Outbox {
   return {
     submit: async (input) => {
       const record: OutboxRecord = { key: mintKey(), input, at: now() };
-      const flight = open(record);
+      const flight = open(record, false);
+
       try {
         await options.storage?.put(record);
+        flight.stored.resolve();
       } catch (cause) {
+        flight.stored.resolve();
         settle(flight, { kind: "withdrawn" });
         throw cause;
       }
-      // Withdrawn while the write was landing: take the write back.
+
+      // Activation may have replaced this flight while its write was landing.
       if (!current(flight)) void options.storage?.remove(record.key).catch(() => undefined);
-      else void attempt(flight, 1);
+      else if (!flight.withdrawing) void attempt(flight, 1);
+
       return record.key;
     },
     withdraw: (key) => {
       const flight = flights.get(key);
+
       if (flight === undefined) return undefined;
+
+      if (flight.withdrawing) return undefined;
       const { state } = flight.row;
       flight.cancelRetry?.();
       flight.cancelRetry = undefined;
-      flights.delete(key);
+      flight.withdrawing = true;
       refresh();
+
       switch (state.kind) {
         case "storing":
-          settle(flight, { kind: "withdrawn" });
-          return flight.settled.promise;
+          return flight.stored.promise
+            .then(() => removeStored(key))
+            .then(() => {
+              const outcome = { kind: "withdrawn" } as const;
+              settle(flight, outcome);
+
+              return outcome;
+            })
+            .catch((cause: unknown) => {
+              if (!current(flight)) return { kind: "withdrawn" } as const;
+              restoreWithdrawal(flight);
+              throw cause;
+            });
         case "sending": {
           const outcome = flight.settled.promise;
+
           return Promise.all([outcome, removeStored(key)])
-            .then(([settled]) => settled)
+            .then(([settled]) => {
+              settle(flight, settled);
+
+              return settled;
+            })
             .catch((cause: unknown) => {
               restoreWithdrawal(flight);
               throw cause;
             });
         }
+
         case "retrying":
           return removeStored(key)
             .then(() => {
               const outcome = { kind: "withdrawn" } as const;
-              flight.settled.resolve(outcome);
+              settle(flight, outcome);
+
               return outcome;
             })
             .catch((cause: unknown) => {
@@ -279,7 +342,8 @@ export function createOutbox(options: OutboxOptions): Outbox {
           return removeStored(key)
             .then(() => {
               const outcome = { kind: "durable", change: state.change } as const;
-              flight.settled.resolve(outcome);
+              settle(flight, outcome);
+
               return outcome;
             })
             .catch((cause: unknown) => {
@@ -288,22 +352,28 @@ export function createOutbox(options: OutboxOptions): Outbox {
             });
         default: {
           const _exhaustive: never = state;
+
           return _exhaustive;
         }
       }
     },
     observe: (update) => {
       const names = drawn(update);
+
       if (names.length === 0) return;
+
       for (const flight of flights.values()) {
         if (flight.row.input.sessionId !== update.state.sessionId) continue;
         const { state } = flight.row;
+
         const shown = names.some(
           (name) =>
             name.key === flight.row.key ||
             (state.kind === "durable" && name.change === state.change),
         );
+
         if (!shown) continue;
+
         if (state.kind === "durable") {
           settle(flight, { kind: "durable", change: state.change });
         } else {
@@ -313,16 +383,20 @@ export function createOutbox(options: OutboxOptions): Outbox {
     },
     activate: async () => {
       const generation = ++activation;
+
       for (const flight of flights.values()) flight.cancelRetry?.();
       flights.clear();
       refresh();
       const records = (await options.storage?.load()) ?? [];
+
       if (generation !== activation) return;
-      for (const record of records) void attempt(open(record), 1);
+
+      for (const record of records) void attempt(open(record, true), 1);
     },
     rows: () => rows,
     subscribe: (listener) => {
       listeners.add(listener);
+
       return () => {
         listeners.delete(listener);
       };

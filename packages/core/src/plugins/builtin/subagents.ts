@@ -24,15 +24,21 @@ import { ToolError, toolResultContent } from "../../kernel/loop/tool-result.ts";
 import { definePlugin } from "../types.ts";
 
 export const SUBAGENTS_PLUGIN_ID = "subagents";
+
 export const TASK_TOOL = "task";
 
 const DEFAULT_TASK_MODEL = "openai-codex/gpt-5.6-sol";
+
 const DEFAULT_TASK_THINKING_LEVEL = "high";
+
 const DEFAULT_TASK_WAIT_MS = 120_000;
+
 const DEFAULT_READ_TURNS = 5;
+
 const TITLE_LIMIT = 60;
 
 export type AgentReport = Extract<JobReport, { readonly kind: "delegate" }>;
+
 /** Where a child stands when it has no ended request: never sent to, sent to but not yet answering, or its run's phase. */
 export type AgentPhase = "idle" | "queued" | RunPhase["kind"];
 
@@ -91,19 +97,23 @@ export interface SubagentHost {
 }
 
 const modelDescription = `Exact provider/model. Omit to use ${DEFAULT_TASK_MODEL}. Use an explicit value when the user requests another model. Unavailable models fail without substitution.`;
+
 const modelParameter = Type.Optional(
   Type.String({ pattern: "^[^/]+/.+$", description: modelDescription }),
 );
+
 const thinkingParameter = Type.Optional(
   Type.Enum(MODEL_THINKING_LEVELS, {
     description: `Thinking level for the agent. Omit to use ${DEFAULT_TASK_THINKING_LEVEL}.`,
   }),
 );
+
 const agentParameter = Type.Unsafe<SessionId>({
   type: "string",
   minLength: 1,
   description: "The agent's session id, as returned by create or task.",
 });
+
 const waitParameter = (description: string) =>
   Type.Optional(Type.Integer({ minimum: 0, description }));
 
@@ -129,6 +139,7 @@ const taskParameters = Type.Object(
   },
   { additionalProperties: false },
 );
+
 export type TaskInput = Static<typeof taskParameters>;
 
 const createParameters = Type.Object(
@@ -215,6 +226,7 @@ export interface AwaitDetails {
 export function taskTitle(input: TaskInput): string {
   if (input.title !== undefined) return input.title;
   const line = input.prompt.split("\n", 1)[0]?.trim() ?? "";
+
   return line.length > TITLE_LIMIT
     ? `${line.slice(0, TITLE_LIMIT - 1)}…`
     : line || DEFAULT_TASK_MODEL;
@@ -262,6 +274,7 @@ export function awaitedAgents(
 /** Whether what is known satisfies the wait: one report in `any`, every one in `all`. */
 export function satisfied(statuses: readonly AgentStatus[], mode: "any" | "all"): boolean {
   const reported = statuses.map((status) => status.kind === "report");
+
   return mode === "any" ? reported.some(Boolean) : reported.every(Boolean);
 }
 
@@ -275,6 +288,7 @@ function statusTitle(status: AgentStatus): string {
       return status.session;
     default: {
       const _exhaustive: never = status;
+
       return _exhaustive;
     }
   }
@@ -290,6 +304,7 @@ function statusText(status: AgentStatus): string {
       return `No agent ${status.session} belongs to this session.`;
     default: {
       const _exhaustive: never = status;
+
       return _exhaustive;
     }
   }
@@ -312,6 +327,7 @@ interface WaitOutcome<Details> {
 
 function awaitResult(statuses: readonly AgentStatus[], end: WaitEnd): WaitOutcome<AwaitDetails> {
   const first = statuses[0];
+
   const result: AgentToolResult<AwaitDetails> = {
     content: toolResultContent(
       [...statuses.map(statusText), ...(end === "settled" ? [] : [WAIT_END_TEXT[end]])].join(
@@ -319,8 +335,9 @@ function awaitResult(statuses: readonly AgentStatus[], end: WaitEnd): WaitOutcom
       ),
     ),
     details: { agents: statuses },
-    ...(first === undefined ? {} : { title: statusTitle(first) }),
+    title: first === undefined ? undefined : statusTitle(first),
   };
+
   const failed =
     end === "cancelled" ||
     statuses.some((status) => status.kind === "not_found") ||
@@ -328,6 +345,7 @@ function awaitResult(statuses: readonly AgentStatus[], end: WaitEnd): WaitOutcom
       statuses.every(
         (status) => status.kind === "report" && status.report.end.kind !== "completed",
       ));
+
   return { result, isError: failed };
 }
 
@@ -342,6 +360,7 @@ export function subagentsPlugin(host: SubagentHost) {
       session: host.childOf(context.head, context.runId, context.callId),
     },
   });
+
   /** Park on `agents` until `mode` is satisfied, `timeoutMs` passes, or the user's input needs the turn. */
   const awaitAgents = async (
     agents: readonly SessionId[],
@@ -350,12 +369,16 @@ export function subagentsPlugin(host: SubagentHost) {
     head: string,
   ) => {
     const statuses = await host.status(agents);
+
     if (satisfied(statuses, mode) || statuses.some((status) => status.kind === "not_found"))
       return awaitResult(statuses, "settled");
+
     if (timeoutMs === 0) return awaitResult(statuses, "timeout");
+
     if (await host.inputPending(head)) return awaitResult(statuses, "yield");
     throw new ToolWait({ until: Date.now() + timeoutMs });
   };
+
   const wakeAgents = async (agents: readonly SessionId[], context: ToolWakeContext) =>
     awaitResult(
       await host.status(agents),
@@ -367,10 +390,13 @@ export function subagentsPlugin(host: SubagentHost) {
             ? "yield"
             : "settled",
     );
+
   const settle = <Details>(outcome: WaitOutcome<Details>): AgentToolResult<Details> => {
     if (outcome.isError) throw new ToolError(outcome.result);
+
     return outcome.result;
   };
+
   const forAgent = (
     outcome: WaitOutcome<AwaitDetails>,
     agent: SessionId,
@@ -393,11 +419,13 @@ If the user sends something while you wait, this returns early so you can answer
           "Task arguments are invalid. Provide a nonempty prompt. If set, model must be an exact provider/model; only title, model, thinkingLevel, and waitMs are optional.",
         );
       }
+
       return value;
     },
     async execute(callId, input, signal, _onUpdate, context) {
       if (context === undefined) throw new Error("Task execution requires a run context");
       const title = taskTitle(input);
+
       const agent = await host.create({
         title,
         model: input.model ?? DEFAULT_TASK_MODEL,
@@ -407,6 +435,7 @@ If the user sends something while you wait, this returns early so you can answer
         head: context.head,
         signal,
       });
+
       const sent = await host.send({
         agent,
         message: input.prompt,
@@ -414,7 +443,9 @@ If the user sends something while you wait, this returns early so you can answer
         callId,
         head: context.head,
       });
+
       if (sent.kind === "not_found") throw new Error(`Agent ${agent} was not created`);
+
       return settle(
         forAgent(
           await awaitAgents([agent], "all", input.waitMs ?? DEFAULT_TASK_WAIT_MS, context.head),
@@ -424,6 +455,7 @@ If the user sends something while you wait, this returns early so you can answer
     },
     wake: async (call, context) => {
       const agent = host.childOf(call.head, call.runId, call.toolCallId);
+
       return { kind: "settle", ...forAgent(await wakeAgents([agent], context), agent) };
     },
   };
@@ -440,20 +472,23 @@ If the user sends something while you wait, this returns early so you can answer
           "Create arguments are invalid. Provide a nonempty title. If set, model must be an exact provider/model; only model, thinkingLevel, and system are optional.",
         );
       }
+
       return value;
     },
     async execute(callId, input, signal, _onUpdate, context) {
       if (context === undefined) throw new Error("Create execution requires a run context");
+
       const agent = await host.create({
         title: input.title,
         model: input.model ?? DEFAULT_TASK_MODEL,
         thinkingLevel: input.thinkingLevel ?? DEFAULT_TASK_THINKING_LEVEL,
-        ...(input.system === undefined ? {} : { system: input.system }),
+        system: input.system,
         runId: context.runId,
         callId,
         head: context.head,
         signal,
       });
+
       return {
         content: toolResultContent(
           `Created agent ${input.title} as ${agent}. Send it a message to start it.`,
@@ -480,10 +515,12 @@ If the user sends something while you wait, this returns early so you can answer
           "Send arguments are invalid. Provide an agent id and a nonempty message; waitMs is optional.",
         );
       }
+
       return value;
     },
     async execute(callId, input, _signal, _onUpdate, context) {
       if (context === undefined) throw new Error("Send execution requires a run context");
+
       const sent = await host.send({
         agent: input.agent,
         message: input.message,
@@ -491,12 +528,14 @@ If the user sends something while you wait, this returns early so you can answer
         callId,
         head: context.head,
       });
+
       if (sent.kind === "not_found") {
         throw new ToolError({
           content: toolResultContent(`No agent ${input.agent} belongs to this session.`),
           details: { agent: input.agent, agents: [] },
         });
       }
+
       if (sent.kind === "stopped") {
         throw new ToolError({
           content: toolResultContent(
@@ -505,6 +544,7 @@ If the user sends something while you wait, this returns early so you can answer
           details: { agent: input.agent, agents: [] },
         });
       }
+
       if (input.waitMs === undefined) {
         return {
           content: toolResultContent(
@@ -514,6 +554,7 @@ If the user sends something while you wait, this returns early so you can answer
           title: sent.title,
         };
       }
+
       return settle(
         forAgent(await awaitAgents([input.agent], "all", input.waitMs, context.head), input.agent),
       );
@@ -521,6 +562,7 @@ If the user sends something while you wait, this returns early so you can answer
     wake: async (call, context) => {
       if (!Value.Check(sendParameters, call.args)) throw new Error("Send arguments are invalid");
       const { agent } = call.args;
+
       return { kind: "settle", ...forAgent(await wakeAgents([agent], context), agent) };
     },
   };
@@ -532,7 +574,9 @@ If the user sends something while you wait, this returns early so you can answer
     replay: "never",
     present: (input) => {
       const [first, ...rest] = input.agents;
+
       if (first === undefined) throw new Error("Await names no agent");
+
       return {
         kind: "delegate",
         role: "await",
@@ -545,15 +589,18 @@ If the user sends something while you wait, this returns early so you can answer
           "Await arguments are invalid. Provide at least one agent id, mode any or all, and timeoutMs.",
         );
       }
+
       return value;
     },
     async execute(_callId, input, _signal, _onUpdate, context) {
       if (context === undefined) throw new Error("Await execution requires a run context");
+
       return settle(await awaitAgents(input.agents, input.mode, input.timeoutMs, context.head));
     },
     wake: async (call, context) => {
       if (!Value.Check(awaitParameters, call.args)) throw new Error("Await arguments are invalid");
       const outcome = await wakeAgents(call.args.agents, context);
+
       return { kind: "settle", result: outcome.result, isError: outcome.isError };
     },
   };
@@ -572,6 +619,7 @@ If the user sends something while you wait, this returns early so you can answer
       if (!Value.Check(readParameters, value)) {
         throw new Error("Read arguments are invalid. Provide an agent id; turns is optional.");
       }
+
       return value;
     },
     async execute(_callId, input) {
@@ -579,12 +627,14 @@ If the user sends something while you wait, this returns early so you can answer
         agent: input.agent,
         turns: input.turns ?? DEFAULT_READ_TURNS,
       });
+
       if (outcome.kind === "not_found") {
         throw new ToolError({
           content: toolResultContent(`No agent ${input.agent} belongs to this session.`),
           details: { agent: input.agent, phase: "idle" },
         });
       }
+
       return {
         content: toolResultContent(
           `Agent ${outcome.title} (${input.agent}) is ${outcome.phase}.\n\n${outcome.text === "" ? "(no turns yet)" : outcome.text}`,
@@ -610,17 +660,20 @@ If the user sends something while you wait, this returns early so you can answer
       if (!Value.Check(stopParameters, value)) {
         throw new Error("Stop arguments are invalid. Provide an agent id.");
       }
+
       return value;
     },
     async execute(_callId, input, signal) {
       signal?.throwIfAborted();
       const outcome = await host.stop(input.agent);
+
       if (outcome.kind === "not_found") {
         throw new ToolError({
           content: toolResultContent(`No agent ${input.agent} belongs to this session.`),
           details: { agent: input.agent },
         });
       }
+
       return {
         content: toolResultContent(`Agent ${outcome.title} (${input.agent}) stopped.`),
         details: { agent: input.agent },

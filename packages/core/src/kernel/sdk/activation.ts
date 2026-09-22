@@ -96,7 +96,9 @@ function isStringFact(value: JsonValue | undefined): value is string {
 
 async function blobValue(session: Session, oid: string, ref: string): Promise<JsonValue> {
   const object = await session.objects.get(oid);
+
   if (!isBlob(object)) throw new Error(`Corrupt fact ref ${ref} at ${oid}`);
+
   return object.value;
 }
 
@@ -109,20 +111,27 @@ function factsFor(session: Session): FactsShim {
     getFact: async (key) => {
       const ref = storedFactRef(key);
       const oid = await session.refs.read(ref);
+
       return oid === null ? undefined : blobValue(session, oid, ref);
     },
     setFact: async (key, value) => {
       const ref = storedFactRef(key);
+
       const blob: Blob | undefined =
         value === undefined ? undefined : { kind: "blob", value: toJsonValue(value) };
+
       const written = blob === undefined ? undefined : await session.objects.put([blob]);
       const next = written?.[0] ?? null;
+
       for (;;) {
         const current = await session.refs.read(ref);
+
         const outcome = await session.refs.update([{ name: ref, from: current, to: next }], {
           reason: "fact",
         });
+
         if (outcome.ok) return;
+
         switch (outcome.reason) {
           case "conflict":
             continue;
@@ -130,6 +139,7 @@ function factsFor(session: Session): FactsShim {
             throw new Error(`Fact update was fenced: ${ref}`);
           default: {
             const _exhaustive: never = outcome;
+
             return _exhaustive;
           }
         }
@@ -139,6 +149,7 @@ function factsFor(session: Session): FactsShim {
       const refs = await session.refs.list(
         prefix === "" ? FACT_PREFIX : factRef(encodeFactKey(prefix)),
       );
+
       return Promise.all(
         refs.map(async (ref) => ({
           fact: decodeFactKey(ref.name.slice(FACT_PREFIX.length)),
@@ -151,18 +162,22 @@ function factsFor(session: Session): FactsShim {
 
 function transientFacts(): FactsShim {
   const facts = new Map<string, JsonValue>();
+
   return {
     getFact: (key) => Promise.resolve(facts.get(key)),
     setFact: (key, value) => {
       if (value === undefined) facts.delete(key);
       else facts.set(key, value);
+
       return Promise.resolve();
     },
     listFacts: (prefix) =>
       Promise.resolve(
-        [...facts]
+        facts
+          .entries()
           .filter(([fact]) => fact.startsWith(prefix))
-          .map(([fact, value]) => ({ fact, value })),
+          .map(([fact, value]) => ({ fact, value }))
+          .toArray(),
       ),
   };
 }
@@ -213,6 +228,7 @@ export async function activate(input: {
           (left.item.order ?? 100) - (right.item.order ?? 100) || left.index - right.index,
       )
       .map(({ item }) => item.text);
+
   let shownStatuses = statuses().join("\u0000");
 
   const rebuildAll = (): void => {
@@ -226,8 +242,10 @@ export async function activate(input: {
         });
       }
     }
+
     const items = statuses();
     const signature = items.join("\u0000");
+
     if (signature === shownStatuses) return;
     shownStatuses = signature;
     void emit({ kind: "status_changed", items });
@@ -238,6 +256,7 @@ export async function activate(input: {
   // and the stream goes on: an observer cannot stop what it observes.
   const eventListeners = new Set<(event: SessionEvent) => void>();
   let eventLoop: AbortController | undefined;
+
   const startEventLoop = (): void => {
     if (session === undefined || eventLoop !== undefined) return;
     const loop = new AbortController();
@@ -245,8 +264,10 @@ export async function activate(input: {
     void (async () => {
       const afterSeq = await session.events.last();
       const events = session.events.watch({ afterSeq, signal: loop.signal });
+
       for await (const event of events) {
         if (loop.signal.aborted) return;
+
         for (const projected of await projectEvent(event, session.objects)) {
           for (const listener of eventListeners) {
             try {
@@ -267,16 +288,19 @@ export async function activate(input: {
       void emit({ kind: "diagnostic", level: "error", owner: "events", message: cause.message });
     });
   };
+
   const events = {
     subscribe: (listener: (event: SessionEvent) => void): Disposer => {
       eventListeners.add(listener);
       startEventLoop();
+
       return () => eventListeners.delete(listener);
     },
   };
 
   const subscribe = (listener: (notice: Notice) => void | Promise<void>): Disposer => {
     listeners.add(listener);
+
     return () => listeners.delete(listener);
   };
 
@@ -289,6 +313,7 @@ export async function activate(input: {
         const name = await facts.getFact(NAME_FACT);
         const child = (await facts.getFact(PARENT_FACT)) !== undefined;
         const base = isStringFact(name) ? { name, child } : { child };
+
         return session === undefined ? base : { id: session.id, ...base };
       },
       rename: (name) => facts.setFact(NAME_FACT, name),
@@ -296,6 +321,7 @@ export async function activate(input: {
         if (session === undefined) return { systemPrompt: systemPrompt(), messages: [] };
         const tip = await session.refs.read(headRef(MAIN));
         const commits = await contextCommits(session.objects, tip);
+
         return {
           systemPrompt: systemPrompt(),
           messages: contextMessages(commits.map((item) => item.commit)),
@@ -308,6 +334,7 @@ export async function activate(input: {
     rebuildAll,
     emit,
   };
+
   const plugins = new PluginHost(target);
 
   const systemPrompt = (): string =>
@@ -336,30 +363,40 @@ export async function activate(input: {
       const settings = await Promise.all(
         [...registries.settings.current()].map(async ([id, setting]): Promise<SettingInfo[]> => {
           const owner = registries.settings.owner(id);
+
           if (owner === undefined) return [];
           const stored = await facts.getFact(pluginFactKey(owner, setting.key));
+
           const current =
             isStringFact(stored) && setting.choices.some((choice) => choice.id === stored)
               ? stored
               : (setting.fallback ?? setting.choices[0].id);
+
           return [{ id, owner, label: setting.label, choices: setting.choices, current }];
         }),
       );
+
       return settings.flat();
     },
     applySetting: async (id, choiceId) => {
       const setting = registries.settings.get(id);
       const owner = registries.settings.owner(id);
+
       if (setting === undefined || owner === undefined) return { kind: "not_found" };
+
       if (!setting.choices.some((choice) => choice.id === choiceId)) {
         return { kind: "invalid_choice" };
       }
+
       await facts.setFact(pluginFactKey(owner, setting.key), choiceId);
+
       return { kind: "applied" };
     },
     runCommand: async (name, argument = "") => {
       const command = registries.commands.get(name);
+
       if (command === undefined) throw new Error(`unknown command: ${name}`);
+
       return (await command.run(argument)) ?? undefined;
     },
     setPlugins: (next) => plugins.activate(next),
@@ -369,22 +406,27 @@ export async function activate(input: {
       closePromise = (async () => {
         const errors: unknown[] = [];
         await plugins.close().catch((cause: unknown) => errors.push(cause));
+
         try {
           hooks.close(new Error("activation is closed"));
         } catch (error) {
           errors.push(error);
         }
+
         listeners.clear();
         eventLoop?.abort();
         eventListeners.clear();
+
         if (errors.length > 0) throw new AggregateError(errors, "Failed to close activation");
       })();
+
       return closePromise;
     },
   };
 
   try {
     await plugins.activate(input.plugins);
+
     return activation;
   } catch (error) {
     await activation.close().catch(() => undefined);
@@ -437,13 +479,16 @@ export function resolveTurnConfig(
       : activation
           .agents()
           .find((candidate) => candidate.id === config.agent && candidate.disabled !== true);
+
   const model =
     config.model !== undefined
       ? (defaults.resolveModel?.(config.model) ?? defaults.model)
       : agent?.model !== undefined
         ? (defaults.resolveModel?.(agent.model) ?? defaults.model)
         : defaults.model;
+
   const policy = activation.registries.modelContext.get(`${model.provider}/${model.id}`);
+
   const thinkingLevel =
     config.thinkingLevel !== undefined && isThinkingLevel(config.thinkingLevel)
       ? config.thinkingLevel
@@ -452,6 +497,7 @@ export function resolveTurnConfig(
   const basePrompt = activation.systemPrompt();
   const allowed = agent?.tools === undefined ? undefined : new Set(agent.tools);
   const tools = activation.tools();
+
   return {
     catalogModel: model,
     model: policy === undefined ? model : { ...model, contextWindow: policy.contextWindow },
@@ -486,7 +532,9 @@ function invocationFor(
 ): InvocationState {
   if (signal === undefined) throw new Error("Activation hook ran without a turn signal");
   const invocation = invocations.get(signal);
+
   if (invocation === undefined) throw new Error("Activation hook ran outside a turn invocation");
+
   return invocation;
 }
 
@@ -496,6 +544,7 @@ async function duringInvocation<T>(
   call: () => Promise<T>,
 ): Promise<T> {
   invocations.set(state.input.signal, state);
+
   try {
     return await call();
   } finally {
@@ -505,6 +554,7 @@ async function duringInvocation<T>(
 
 function toolArguments(toolName: string, args: JsonValue): Record<string, JsonValue> {
   if (!isJsonObject(args)) throw new Error(`tool ${toolName} received non-object arguments`);
+
   return args;
 }
 
@@ -524,10 +574,12 @@ export function turnFor(
   const invocations = new WeakMap<AbortSignal, InvocationState>();
   const policyFailures = new Map<string, string>();
   const cache = new Map<string, CachedTurn>();
+
   const requests = {
     hooks: activation.hooks,
     invocation: (signal: AbortSignal | undefined) => {
       const { input } = invocationFor(invocations, signal);
+
       return {
         head: input.run.head,
         runId: input.run.id,
@@ -538,24 +590,29 @@ export function turnFor(
     streamFn: defaults.streamFn,
     streamOptions: defaults.streamOptions,
   };
+
   const streamFn = requestStream({
     ...requests,
     step: "assistant",
     systemPrompt: (signal) => invocationFor(invocations, signal).systemPrompt,
   });
+
   const compactionStreamFn = requestStream({ ...requests, step: "compaction" });
   const providerCompaction = providerCompactionFor(requests);
 
   const cachedTurn = (resolved: TurnResolution): Turn => {
     const key = `${resolved.model.provider}/${resolved.model.id}\u0000${resolved.agent?.id ?? ""}`;
     const cached = cache.get(key);
+
     if (cached !== undefined && sameResolution(cached, resolved)) return cached.turn;
 
     const loop: NonNullable<TurnOptions["loop"]> = {
       transformContext: async (messages, signal) => {
         const invocation = invocationFor(invocations, signal);
         invocation.systemPrompt = resolved.systemPrompt;
+
         if (!activation.hooks.has("transform_context")) return messages;
+
         const result = await activation.hooks.run(
           "transform_context",
           {
@@ -566,15 +623,20 @@ export function turnFor(
           },
           invocation.input.signal,
         );
+
         invocation.systemPrompt = result?.systemPrompt ?? resolved.systemPrompt;
+
         return result?.messages ?? messages;
       },
       beforeToolCall: async ({ toolCall, args }, signal) => {
         const invocation = invocationFor(invocations, signal);
         const priorFailure = policyFailures.get(invocation.input.run.id);
+
         if (priorFailure !== undefined) return { block: true, reason: priorFailure };
         const effectiveArgs = toolArguments(toolCall.name, toJsonValue(args));
+
         if (!activation.hooks.has("before_tool")) return undefined;
+
         const decision = await activation.hooks.run(
           "before_tool",
           {
@@ -586,6 +648,7 @@ export function turnFor(
           },
           invocation.input.signal,
         );
+
         switch (decision.action) {
           case "continue":
             return undefined;
@@ -595,16 +658,20 @@ export function turnFor(
             return { block: true, reason: decision.message };
           case "error":
             policyFailures.set(invocation.input.run.id, decision.message);
+
             return { block: true, reason: decision.message };
           default: {
             const _exhaustive: never = decision;
+
             return _exhaustive;
           }
         }
       },
       afterToolCall: async ({ toolCall, args, result, isError }, signal) => {
         const invocation = invocationFor(invocations, signal);
+
         if (!activation.hooks.has("after_tool")) return undefined;
+
         const hookInput = {
           head: invocation.input.run.head,
           runId: invocation.input.run.id,
@@ -615,20 +682,26 @@ export function turnFor(
           details: toJsonValue(result.details),
           isError,
         };
+
         const patch = await activation.hooks.run(
           "after_tool",
           result.usage === undefined ? hookInput : { ...hookInput, usage: result.usage },
           invocation.input.signal,
         );
+
         if (patch === undefined) return undefined;
         const content = patch.content === undefined ? {} : { content: patch.content };
+
         const details =
           patch.details === undefined ? content : { ...content, details: patch.details };
+
         const error =
           patch.isError === undefined ? details : { ...details, isError: patch.isError };
+
         return patch.usage === undefined ? error : { ...error, usage: patch.usage };
       },
     };
+
     const turn = bindTurn({
       streamFn,
       model: resolved.model,
@@ -642,6 +715,7 @@ export function turnFor(
       compactionStreamFn,
       providerCompaction,
     });
+
     cache.set(key, {
       catalogModel: resolved.catalogModel,
       model: resolved.model,
@@ -652,6 +726,7 @@ export function turnFor(
       tools: resolved.tools,
       turn,
     });
+
     return turn;
   };
 
@@ -659,6 +734,7 @@ export function turnFor(
     respond: async (input) => {
       const resolved = resolveTurnConfig(activation, defaults, input.run.config);
       const bound = cachedTurn(resolved);
+
       return duringInvocation(invocations, { input, systemPrompt: resolved.systemPrompt }, () =>
         bound.respond(input),
       );
@@ -667,6 +743,7 @@ export function turnFor(
       policyFailures.delete(input.run.id);
       const resolved = resolveTurnConfig(activation, defaults, input.run.config);
       const bound = cachedTurn(resolved);
+
       return duringInvocation(invocations, { input, systemPrompt: resolved.systemPrompt }, () =>
         bound.tools(input),
       );
@@ -677,6 +754,7 @@ export function turnFor(
     turn,
     resolveConfig: (config: RunConfig): RunConfig => {
       const resolved = resolveTurnConfig(activation, defaults, config);
+
       return {
         ...config,
         model: { provider: resolved.model.provider, id: resolved.model.id },

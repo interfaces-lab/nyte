@@ -12,7 +12,9 @@ import { measureOperation, measureSettledDesktop } from "./measure.ts";
 import { readProcessTree } from "./process-metrics.ts";
 
 const OUTPUT_LINE_COUNT = 12_000;
+
 const TAB_SWITCH_CYCLES = 5;
+
 const FILE_WAIT_TIMEOUT_MS = 60_000;
 
 type TerminalProcessObservation =
@@ -33,27 +35,33 @@ async function createTerminalBenchmarkPaths(fixture: DesktopBenchmarkFixture) {
     terminalPid: join(fixture.paths.workspace, ".terminal-process-pid"),
     switchedResponsive: join(fixture.paths.workspace, ".terminal-switched-responsive"),
   };
+
   const contents =
     Array.from(
       { length: OUTPUT_LINE_COUNT },
       (_, index) => `nyte-terminal-benchmark-line-${String(index + 1).padStart(5, "0")}`,
     ).join("\n") + "\n";
+
   await writeFile(paths.output, contents, "utf8");
+
   return paths;
 }
 
 async function waitForPath(path: string): Promise<void> {
   const deadline = performance.now() + FILE_WAIT_TIMEOUT_MS;
   let latestError: unknown;
+
   while (performance.now() < deadline) {
     try {
       await access(path);
+
       return;
     } catch (cause: unknown) {
       latestError = cause;
       await setTimeout(50);
     }
   }
+
   throw new Error(`Timed out waiting for terminal sentinel ${path}`, { cause: latestError });
 }
 
@@ -75,6 +83,7 @@ async function openTerminal(desktop: LaunchedDesktop) {
   const canvas = terminal.locator("canvas").first();
   await expect(input).toBeAttached();
   await expect(canvas).toBeVisible();
+
   return { canvas, input };
 }
 
@@ -82,6 +91,7 @@ async function markCanvas(canvas: Locator, marker: string): Promise<Locator> {
   await canvas.evaluate((element, value) => {
     element.setAttribute("data-nyte-benchmark-canvas", value);
   }, marker);
+
   return canvas.page().locator(`canvas[data-nyte-benchmark-canvas="${marker}"]`);
 }
 
@@ -94,16 +104,21 @@ async function observeTerminalProcess(
   await sendShellCommand(input, `printf '%s\\n' "$$" > ${quoteShellPath(pidPath)}`);
   await waitForPath(pidPath);
   const value = (await readFile(pidPath, "utf8")).trim();
+
   if (!/^\d+$/u.test(value)) throw new Error(`Terminal returned an invalid PID: ${value}`);
   const pid = Number(value);
+
   if (!Number.isSafeInteger(pid) || pid <= 0) {
     throw new Error(`Terminal returned an invalid PID: ${value}`);
   }
+
   const tree = await readProcessTree(desktop.processId);
   const terminalProcess = tree.find((candidate) => candidate.pid === pid);
+
   if (terminalProcess === undefined) {
     throw new Error(`Terminal process ${String(pid)} was not in the Nyte process tree`);
   }
+
   return {
     kind: "observed",
     pid,
@@ -115,6 +130,7 @@ async function observeTerminalProcess(
 
 benchmark("hidden-output", async ({ report }) => {
   const desktop = await launchDesktop({ sessionCount: 1, turnsPerSession: 1 });
+
   try {
     const paths = await createTerminalBenchmarkPaths(desktop.fixture);
     await openBenchmarkSession(desktop, 0);
@@ -142,6 +158,7 @@ benchmark("hidden-output", async ({ report }) => {
       await sendShellCommand(terminal.input, `touch ${quoteShellPath(paths.hiddenResponsive)}`);
       await waitForPath(paths.hiddenResponsive);
     });
+
     const settleEnergy = await measureSettledDesktop(desktop);
 
     expect(desktop.pageErrors).toEqual([]);
@@ -159,10 +176,12 @@ benchmark("hidden-output", async ({ report }) => {
 
 benchmark("full-scrollback-teardown", async ({ report }) => {
   const desktop = await launchDesktop({ sessionCount: 1, turnsPerSession: 1 });
+
   try {
     const paths = await createTerminalBenchmarkPaths(desktop.fixture);
     await openBenchmarkSession(desktop, 0);
     const terminal = await openTerminal(desktop);
+
     const processObservation = await observeTerminalProcess(
       desktop,
       terminal.input,
@@ -181,6 +200,7 @@ benchmark("full-scrollback-teardown", async ({ report }) => {
       await expect
         .poll(async () => (await terminal.input.count()) === 0 || (await confirm.isVisible()))
         .toBe(true);
+
       if (await confirm.isVisible()) await confirm.click();
       await expect(terminal.canvas).toHaveCount(0);
       await expect(terminal.input).toHaveCount(0);
@@ -189,11 +209,13 @@ benchmark("full-scrollback-teardown", async ({ report }) => {
         await expect
           .poll(async () => {
             const tree = await readProcessTree(desktop.processId);
+
             return tree?.some((candidate) => candidate.pid === processObservation.pid) ?? false;
           })
           .toBe(false);
       }
     });
+
     const settleEnergy = await measureSettledDesktop(desktop);
 
     expect(desktop.pageErrors).toEqual([]);
@@ -217,11 +239,13 @@ benchmark(
   "keeps terminal visibility per tab and the PTY alive across tab switches",
   async ({ report }) => {
     const desktop = await launchDesktop({ sessionCount: 2, turnsPerSession: 1 });
+
     try {
       const paths = await createTerminalBenchmarkPaths(desktop.fixture);
       await openBenchmarkSession(desktop, 0);
       const terminal = await openTerminal(desktop);
       const markedCanvas = await markCanvas(terminal.canvas, "tab-switch");
+
       const processObservation = await observeTerminalProcess(
         desktop,
         terminal.input,
@@ -236,6 +260,7 @@ benchmark(
           await openBenchmarkSession(desktop, 0);
           await expect(markedCanvas).toBeVisible();
         }
+
         await expect(desktop.page.getByRole("textbox", { name: "Terminal input" })).toHaveCount(1);
         await sendShellCommand(terminal.input, `touch ${quoteShellPath(paths.switchedResponsive)}`);
         await waitForPath(paths.switchedResponsive);
@@ -248,6 +273,7 @@ benchmark(
           ).toBe(processObservation.matchingProcessCount);
         }
       });
+
       const settleEnergy = await measureSettledDesktop(desktop);
 
       expect(desktop.pageErrors).toEqual([]);

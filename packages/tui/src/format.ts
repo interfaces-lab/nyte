@@ -15,18 +15,24 @@ export function toolHeading(toolName: string, title: string | undefined): string
 /** How long an operation took, read as a duration rather than a clock. */
 export function formatDuration(ms: number): string {
   const seconds = ms / 1000;
+
   if (seconds < 10) return `${seconds.toFixed(1)}s`;
+
   if (seconds < 60) return `${String(Math.floor(seconds))}s`;
   const minutes = Math.floor(seconds / 60);
+
   if (minutes < 60) return `${String(minutes)}m${String(Math.floor(seconds % 60))}s`;
+
   return `${String(Math.floor(minutes / 60))}h${String(minutes % 60)}m`;
 }
 
 /** What a finished tool produced, for the dim tail of its heading. */
 export function resultSummary(text: string): string | undefined {
   const trimmed = text.replace(/\n+$/, "");
+
   if (trimmed === "") return undefined;
   const lines = trimmed.split("\n").length;
+
   return lines === 1 ? undefined : `${String(lines)} lines`;
 }
 
@@ -47,11 +53,14 @@ export type PreviewCut =
  */
 export function previewLines(text: string, cut: PreviewCut): Preview {
   const trimmed = text.replace(/\n+$/, "");
+
   if (trimmed === "") return { text: "", omitted: 0 };
   const lines = trimmed.split("\n");
   const kept = cut.kind === "head-tail" ? cut.head + cut.tail : cut.max;
+
   if (lines.length <= kept) return { text: trimmed, omitted: 0 };
   const omitted = lines.length - kept;
+
   switch (cut.kind) {
     case "head":
       return { text: lines.slice(0, cut.max).join("\n"), omitted };
@@ -88,6 +97,7 @@ export function unchangedLinesLabel(omitted: number): string {
 /** Flatten user content parts to display text; images become a marker. */
 export function userText(content: UserMessage["content"]): string {
   if (!Array.isArray(content)) return content;
+
   return content
     .map((part) => {
       switch (part.type) {
@@ -97,6 +107,7 @@ export function userText(content: UserMessage["content"]): string {
           return "[image]";
         default: {
           const _exhaustive: never = part;
+
           return _exhaustive;
         }
       }
@@ -114,11 +125,14 @@ const MAX_RETRY_CAUSE_CHARS = 80;
 /** A provider error trimmed to one transcript line and punctuated. */
 export function retryCause(errorMessage: string): string {
   const collapsed = errorMessage.replaceAll(/\s+/gu, " ").trim();
+
   if (collapsed === "") return "Request failed.";
+
   const bounded =
     collapsed.length <= MAX_RETRY_CAUSE_CHARS
       ? collapsed
       : `${collapsed.slice(0, MAX_RETRY_CAUSE_CHARS - 1).trimEnd()}…`;
+
   return /[.!?…]$/u.test(bounded) ? bounded : `${bounded}.`;
 }
 
@@ -157,23 +171,29 @@ export type PowerlineSegment =
 /** Strict thresholds: past 70 % warns, past 90 % alarms. */
 function usageLevel(pct: number): UsageLevel {
   if (pct > 90) return "error";
+
   if (pct > 70) return "warning";
+
   return "ok";
 }
 
 /** `42_000` → `42s`, `258_000` → `4m18s`, `3_720_000` → `1h02m`. */
 export function clockDuration(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
+
   if (seconds < 60) return `${String(seconds)}s`;
   const minutes = Math.floor(seconds / 60);
   const restSeconds = seconds % 60;
+
   if (minutes < 60) {
     return restSeconds === 0
       ? `${String(minutes)}m`
       : `${String(minutes)}m${String(restSeconds).padStart(2, "0")}s`;
   }
+
   const hours = Math.floor(minutes / 60);
   const restMinutes = minutes % 60;
+
   return restMinutes === 0
     ? `${String(hours)}h`
     : `${String(hours)}h${String(restMinutes).padStart(2, "0")}m`;
@@ -186,7 +206,9 @@ export function shortId(id: string): string {
 /** `12340` → `12.3k`; whole counts below a thousand stay bare. */
 export function formatTokens(tokens: number): string {
   if (tokens < 1000) return String(tokens);
+
   if (tokens < 1_000_000) return `${(tokens / 1000).toFixed(1)}k`;
+
   return `${(tokens / 1_000_000).toFixed(1)}m`;
 }
 
@@ -197,14 +219,18 @@ export function powerlineSegments(state: Partial<PowerlineState>): PowerlineSegm
       : state.branch === undefined
         ? ""
         : ` ${state.branch}${state.dirty ? "*" : ""}`;
+
   const badges = [...(state.effort === undefined ? [] : [state.effort]), ...(state.statuses ?? [])];
+
   const segments: PowerlineSegment[] = [
     { text: `${state.workspace ?? "workspace loading"}${branch}`, tone: "workspace" },
     { text: state.model ?? "model loading", tone: "model" },
   ];
+
   if (badges.length > 0) segments.push({ text: badges.join(" "), tone: "effort" });
   const tokens = state.tokens ?? 0;
   const window = state.window ?? 0;
+
   if (tokens > 0) {
     const pct = state.pct ?? 0;
     segments.push(
@@ -217,8 +243,10 @@ export function powerlineSegments(state: Partial<PowerlineState>): PowerlineSegm
         : { text: `${formatTokens(tokens)} tokens`, tone: "usage", level: "ok" },
     );
   }
+
   if (state.queued !== undefined && state.queued > 0)
     segments.push({ text: `${String(state.queued)} queued`, tone: "queue" });
+
   return segments;
 }
 
@@ -233,10 +261,12 @@ export function fitPowerlineSegments(
 ): PowerlineSegment[] {
   let kept = [...segments];
   const droppable: readonly PowerlineTone[] = ["usage", "workspace", "queue", "effort"];
+
   for (const tone of droppable) {
     if (displayWidth(joinSegments(kept)) <= maxWidth) break;
     kept = kept.filter((segment) => segment.tone !== tone);
   }
+
   return kept;
 }
 
@@ -254,25 +284,33 @@ const HINT_SEPARATOR = " · ";
  */
 export function hintGroups(text: string): HintGroup[] {
   const groups: HintGroup[] = [];
+
   for (const chunk of text.split(HINT_SEPARATOR)) {
     const trimmed = chunk.trim();
+
     if (trimmed === "") continue;
     const space = trimmed.indexOf(" ");
+
     if (space < 0) groups.push({ key: trimmed, label: "" });
     else groups.push({ key: trimmed.slice(0, space), label: trimmed.slice(space + 1) });
   }
+
   return groups;
 }
 
 export const TERMINAL_TITLE_BASE = "nyte";
+
 const TERMINAL_TITLE_MAX_CHARS = 72;
+
 /** C0 and C1, which is where the OSC terminator and the bell live. */
 const CONTROL_CHARACTERS = /\p{Cc}/gu;
 
 /** `nyte` until the chat has a name, then `nyte - <name>`, with control characters stripped. */
 export function terminalTitle(name: string | undefined): string {
   const clean = (name ?? "").replaceAll(CONTROL_CHARACTERS, " ").replaceAll(/\s+/gu, " ").trim();
+
   if (clean === "") return TERMINAL_TITLE_BASE;
   const room = TERMINAL_TITLE_MAX_CHARS - TERMINAL_TITLE_BASE.length - " - ".length;
+
   return `${TERMINAL_TITLE_BASE} - ${truncateDisplay(clean, room, "…")}`;
 }

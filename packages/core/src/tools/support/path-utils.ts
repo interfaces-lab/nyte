@@ -33,26 +33,33 @@ function normalizeWindowsShellPath(filePath: string): string {
   if (!filePath.startsWith("/") || filePath.startsWith("//") || filePath.includes("\\"))
     return filePath;
   const match = filePath.match(/^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/(.*))?$/i);
+
   if (!match) return filePath;
   const suffix = match[2]?.replaceAll("/", "\\");
+
   return `${match[1].toUpperCase()}:\\${suffix ?? ""}`;
 }
 
 function normalizePath(input: string, options: PathInputOptions = {}): string {
   let normalized = options.trim ? input.trim() : input;
+
   if (options.normalizeUnicodeSpaces) {
     normalized = normalized.replace(UNICODE_SPACES, " ");
   }
+
   if (options.stripAtPrefix && normalized.startsWith("@")) {
     normalized = normalized.slice(1);
   }
+
   if (process.platform === "win32") {
     normalized = normalizeWindowsShellPath(normalized);
   }
 
   if (options.expandTilde ?? true) {
     const home = options.homeDir ?? homedir();
+
     if (normalized === "~") return home;
+
     if (
       normalized.startsWith("~/") ||
       (process.platform === "win32" && normalized.startsWith("~\\"))
@@ -75,6 +82,7 @@ function resolvePath(
 ): string {
   const normalized = normalizePath(input, options);
   const normalizedBaseDir = normalizePath(baseDir);
+
   return isAbsolute(normalized)
     ? nodeResolvePath(normalized)
     : nodeResolvePath(normalizedBaseDir, normalized);
@@ -102,6 +110,7 @@ function tryCurlyQuoteVariant(filePath: string): string {
 export async function pathExists(filePath: string): Promise<boolean> {
   try {
     await access(filePath, constants.F_OK);
+
     return true;
   } catch {
     return false;
@@ -125,24 +134,28 @@ export async function resolveReadPathAsync(filePath: string, cwd: string): Promi
 
   // Try macOS AM/PM variant (narrow no-break space before AM/PM)
   const amPmVariant = tryMacOSScreenshotPath(resolved);
+
   if (amPmVariant !== resolved && (await pathExists(amPmVariant))) {
     return amPmVariant;
   }
 
   // Try NFD variant (macOS stores filenames in NFD form)
   const nfdVariant = tryNFDVariant(resolved);
+
   if (nfdVariant !== resolved && (await pathExists(nfdVariant))) {
     return nfdVariant;
   }
 
   // Try curly quote variant (macOS uses U+2019 in screenshot names)
   const curlyVariant = tryCurlyQuoteVariant(resolved);
+
   if (curlyVariant !== resolved && (await pathExists(curlyVariant))) {
     return curlyVariant;
   }
 
   // Try combined NFD + curly quote (for French macOS screenshots like "Capture d'écran")
   const nfdCurlyVariant = tryCurlyQuoteVariant(nfdVariant);
+
   if (nfdCurlyVariant !== resolved && (await pathExists(nfdCurlyVariant))) {
     return nfdCurlyVariant;
   }

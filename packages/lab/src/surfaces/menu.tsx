@@ -62,15 +62,20 @@ function ItemRow({
       onClick={disabled === true ? undefined : onActivate}
       onKeyDown={(event) => {
         if (disabled === true) return;
+
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onActivate?.();
+
           return;
         }
+
         if (event.key === "ArrowRight") {
           onExpand?.();
+
           return;
         }
+
         if (event.key === "ArrowLeft") {
           onCollapse?.();
         }
@@ -137,6 +142,7 @@ type MenuGroupProps = {
 
 export function MenuGroup({ label, children }: MenuGroupProps) {
   const headingId = useId();
+
   return (
     <div
       role="group"

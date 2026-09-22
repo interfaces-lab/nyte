@@ -32,29 +32,40 @@ type Disposer = () => void;
 
 /** Editor work is cancellable and owned by the window, rather than a session host. */
 export const WORKSPACE_EDITOR_CHANNEL = "nyte:workspace-editor";
+
 export type WorkspaceEditorOperation = keyof WorkspaceEditorBridge;
+
 export type WorkspaceEditorInput<P extends WorkspaceEditorOperation> = Parameters<
   WorkspaceEditorBridge[P]
 >[0];
+
 export type WorkspaceEditorOutput<P extends WorkspaceEditorOperation> = Awaited<
   ReturnType<WorkspaceEditorBridge[P]>
 >;
+
 export type WorkspaceEditorRequest = {
   [P in WorkspaceEditorOperation]: {
     readonly operation: P;
     readonly input: WorkspaceEditorInput<P>;
   };
 }[WorkspaceEditorOperation];
+
 export type WorkspaceEditorReply<P extends WorkspaceEditorOperation> = IpcResult<
   WorkspaceEditorOutput<P>
 >;
 
 export const CALL_CHANNEL = "nyte:call";
+
 export const WATCH_START_CHANNEL = "nyte:watch-start";
+
 export const WATCH_STOP_CHANNEL = "nyte:watch-stop";
+
 export const WATCH_EVENT_CHANNEL = "nyte:watch-event";
+
 export const HOST_EVENT_CHANNEL = "nyte:host-event";
+
 export const THEME_PREFERENCE_CHANNEL = "nyte:theme-preference";
+
 export const BROWSER_BOUNDS_CHANNEL = "nyte:browser-bounds";
 
 export type ThemePreference = "system" | "light" | "dark";
@@ -402,8 +413,8 @@ export interface DesktopCatalog {
   readonly source: "local" | "server";
   readonly providers: readonly ProviderStatus[];
   readonly models: readonly DesktopModelOption[];
-  /** What a new chat starts with. */
-  readonly defaults: {
+  /** What a new chat starts with, absent until the catalog has a model. */
+  readonly defaults?: {
     readonly model: { readonly provider: string; readonly id: string };
     readonly thinkingLevel: ModelThinkingLevel;
   };
@@ -446,6 +457,7 @@ export interface UsageTotals {
 }
 
 export type { UsageSubject } from "@nyte-ai/client";
+
 export type { AccountUsage } from "@nyte-ai/host/usage";
 
 /**
@@ -560,7 +572,9 @@ export const BROWSER_ACTIONS = [
   "clear-cookies",
   "clear-cache",
 ] as const;
+
 export type BrowserAction = (typeof BROWSER_ACTIONS)[number];
+
 export type BrowserMenuAction = BrowserAction | "toggle-bookmarks";
 
 export type BrowserNavigationAction = "back" | "forward" | "reload" | "stop";
@@ -570,6 +584,7 @@ export type BrowserNavigationAction = "back" | "forward" | "reload" | "stop";
  * paste keeps the formats a renderer-side clipboard read cannot reach.
  */
 export const CONTEXT_MENU_ROLES = ["cut", "copy", "paste", "selectAll"] as const;
+
 export type ContextMenuRole = (typeof CONTEXT_MENU_ROLES)[number];
 
 export type ContextMenuTemplateItem =

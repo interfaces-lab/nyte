@@ -38,6 +38,7 @@ export async function generateAssistant(
     signal?.aborted || config.transformContext === undefined
       ? context.messages
       : await config.transformContext(context.messages, signal);
+
   if (signal?.aborted) {
     const message: AssistantMessage = {
       role: "assistant",
@@ -56,21 +57,27 @@ export async function generateAssistant(
       stopReason: "aborted",
       timestamp: Date.now(),
     };
+
     await emit({ type: "message_start", message });
     await emit({ type: "message_end", message });
+
     return message;
   }
+
   const llmContext: Context = {
     systemPrompt: context.systemPrompt,
     messages,
     tools: context.tools,
   };
+
   if (context.checkpoint !== undefined) llmContext.checkpoint = context.checkpoint;
   const response = await streamFn(config.model, llmContext, { ...config, signal });
 
   let partial: AssistantMessage | undefined;
+
   for await (const event of response) {
     if (event.type === "done" || event.type === "error") break;
+
     if (event.type === "start") {
       partial = event.partial;
       await emit({ type: "message_start", message: { ...partial } });
@@ -79,9 +86,12 @@ export async function generateAssistant(
       await emit({ type: "message_update", assistantMessageEvent: event, message: { ...partial } });
     }
   }
+
   const finalMessage = await response.result();
+
   if (partial === undefined) await emit({ type: "message_start", message: { ...finalMessage } });
   await emit({ type: "message_end", message: finalMessage });
+
   return finalMessage;
 }
 
@@ -97,8 +107,10 @@ export async function failToolCallsFromTruncatedMessage(
   emit: AgentEventSink,
 ): Promise<ToolResultMessage[]> {
   const messages: ToolResultMessage[] = [];
+
   for (const toolCall of toolCalls) {
     await emitToolExecutionStart(toolCall, emit);
+
     const finalized: FinalizedToolCallOutcome = {
       toolCall,
       result: createErrorToolResult(
@@ -106,9 +118,11 @@ export async function failToolCallsFromTruncatedMessage(
       ),
       isError: true,
     };
+
     await emitToolExecutionEnd(finalized, emit);
     messages.push(await emitToolResultMessage(finalized, emit));
   }
+
   return messages;
 }
 
@@ -130,8 +144,10 @@ export async function executeToolCalls(
 ): Promise<ToolResultMessage[]> {
   const toolCalls = assistantMessage.content.filter((c) => c.type === "toolCall");
   const finalizedCalls: Promise<FinalizedToolCallOutcome>[] = [];
+
   for (const toolCall of toolCalls) {
     await emitToolExecutionStart(toolCall, emit);
+
     const preparation = await prepareToolCall(
       currentContext,
       assistantMessage,
@@ -139,6 +155,7 @@ export async function executeToolCalls(
       config,
       signal,
     );
+
     if (preparation.kind === "immediate") {
       const finalized = { toolCall, result: preparation.result, isError: preparation.isError };
       await emitToolExecutionEnd(finalized, emit);
@@ -146,6 +163,7 @@ export async function executeToolCalls(
     } else {
       const completion = (async () => {
         const executed = await executePreparedToolCall(preparation, signal, emit);
+
         const finalized = await finalizeExecutedToolCall(
           currentContext,
           assistantMessage,
@@ -154,21 +172,28 @@ export async function executeToolCalls(
           config,
           signal,
         );
+
         await onFinalized?.(finalized);
         await emitToolExecutionEnd(finalized, emit);
+
         return finalized;
       })();
+
       // Later policy decisions may await input. Observe failures now; the
       // original promise still rejects the awaited batch below.
       void completion.catch(() => undefined);
       finalizedCalls.push(completion);
     }
+
     if (signal?.aborted) break;
   }
+
   const messages: ToolResultMessage[] = [];
+
   for (const finalized of await Promise.all(finalizedCalls)) {
     messages.push(await emitToolResultMessage(finalized, emit));
   }
+
   return messages;
 }
 
@@ -207,13 +232,17 @@ function prepareToolCallArguments(tool: AgentTool, toolCall: AgentToolCall): Age
   if (!tool.prepareArguments) {
     return toolCall;
   }
+
   const preparedArguments = tool.prepareArguments(toolCall.arguments);
+
   if (preparedArguments === toolCall.arguments) {
     return toolCall;
   }
+
   if (!isAgentToolArguments(preparedArguments)) {
     throw new Error("Prepared tool arguments must be an object");
   }
+
   return {
     ...toolCall,
     arguments: preparedArguments,
@@ -228,6 +257,7 @@ async function prepareToolCall(
   signal: AbortSignal | undefined,
 ): Promise<PreparedToolCall | ImmediateToolCallOutcome> {
   const tool = currentContext.tools?.find((t) => t.name === toolCall.name);
+
   if (!tool) {
     return {
       kind: "immediate",
@@ -239,6 +269,7 @@ async function prepareToolCall(
   try {
     const preparedToolCall = prepareToolCallArguments(tool, toolCall);
     let validatedArgs = validateToolArguments(tool, preparedToolCall);
+
     if (config.beforeToolCall) {
       const beforeResult = await config.beforeToolCall(
         {
@@ -249,6 +280,7 @@ async function prepareToolCall(
         },
         signal,
       );
+
       if (signal?.aborted) {
         return {
           kind: "immediate",
@@ -256,6 +288,7 @@ async function prepareToolCall(
           isError: true,
         };
       }
+
       if (beforeResult?.block) {
         return {
           kind: "immediate",
@@ -263,6 +296,7 @@ async function prepareToolCall(
           isError: true,
         };
       }
+
       if (beforeResult?.args !== undefined) {
         validatedArgs = validateToolArguments(tool, {
           ...preparedToolCall,
@@ -270,6 +304,7 @@ async function prepareToolCall(
         });
       }
     }
+
     if (signal?.aborted) {
       return {
         kind: "immediate",
@@ -277,6 +312,7 @@ async function prepareToolCall(
         isError: true,
       };
     }
+
     return {
       kind: "prepared",
       toolCall,
@@ -318,12 +354,15 @@ async function executePreparedToolCall(
         ),
       );
     });
+
     acceptingUpdates = false;
     await Promise.all(updateEvents);
+
     return { result, isError: false };
   } catch (error) {
     acceptingUpdates = false;
     await Promise.all(updateEvents);
+
     // The settlement is self-contained: an abort or crash keeps the last
     // progress the tool reported instead of losing it.
     return { result: toolErrorResult(error, lastPartial), isError: true };
@@ -356,6 +395,7 @@ async function finalizeExecutedToolCall(
         },
         signal,
       );
+
       if (afterResult) {
         result = {
           ...result,
@@ -431,11 +471,15 @@ export function toolResultMessage(
     isError,
     timestamp: Date.now(),
   };
+
   if (result.title !== undefined) message.title = result.title;
+
   if (result.usage !== undefined) message.usage = result.usage;
+
   if (result.addedToolNames !== undefined && result.addedToolNames.length > 0) {
     message.addedToolNames = result.addedToolNames;
   }
+
   return message;
 }
 
@@ -448,7 +492,9 @@ async function emitToolResultMessage(
     finalized.result,
     finalized.isError,
   );
+
   await emit({ type: "message_start", message });
   await emit({ type: "message_end", message });
+
   return message;
 }

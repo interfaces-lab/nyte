@@ -38,6 +38,7 @@ export interface MobileShare {
 }
 
 const LOOPBACK = "127.0.0.1";
+
 /** Time for ended responses to flush before remaining connections are destroyed. */
 const DRAIN_MS = 500;
 
@@ -46,6 +47,7 @@ export async function startMobileShare(options: MobileShareOptions): Promise<Mob
   const host = options.host ?? LOOPBACK;
   // 256 bits, URL-safe so it pastes anywhere a bearer can go; never written to disk or logs.
   const token = randomBytes(32).toString("base64url");
+
   const server = createNyteServer({
     sdk: {
       ...sdk,
@@ -53,10 +55,12 @@ export async function startMobileShare(options: MobileShareOptions): Promise<Mob
         ...sdk.messages,
         send(input) {
           attach(input.sessionId);
+
           return sdk.messages.send(input);
         },
         redeliver(input) {
           attach(input.sessionId);
+
           return sdk.messages.redeliver(input);
         },
       },
@@ -64,6 +68,7 @@ export async function startMobileShare(options: MobileShareOptions): Promise<Mob
         ...sdk.jobs,
         start(input) {
           attach(input.sessionId);
+
           return sdk.jobs.start(input);
         },
       },
@@ -71,11 +76,13 @@ export async function startMobileShare(options: MobileShareOptions): Promise<Mob
         ...sdk.runs,
         reply(input) {
           attach(input.sessionId);
+
           return sdk.runs.reply(input);
         },
       },
       watch(input) {
         attach(input.sessionId);
+
         return sdk.watch(input);
       },
     },
@@ -86,12 +93,14 @@ export async function startMobileShare(options: MobileShareOptions): Promise<Mob
     }),
     auth: { kind: "token", token },
   });
+
   const listener = createServer(
     getRequestListener((request) => server.fetch(request), {
       hostname: host,
       overrideGlobalObjects: false,
     }),
   );
+
   await new Promise<void>((resolve, reject) => {
     listener.once("error", reject);
     listener.listen(0, host, () => {
@@ -100,11 +109,13 @@ export async function startMobileShare(options: MobileShareOptions): Promise<Mob
     });
   });
   const bound = listener.address();
+
   if (bound === null || typeof bound === "string") {
     listener.close();
     server.close();
     throw new Error("The share listener has no TCP address");
   }
+
   return {
     address: `http://${host}:${String(bound.port)}`,
     token,
@@ -114,6 +125,7 @@ export async function startMobileShare(options: MobileShareOptions): Promise<Mob
       const closed = new Promise<void>((resolve) => listener.close(() => resolve()));
       // A client that stopped reading would hold the listener open; cut what remains.
       const timer = setTimeout(() => listener.closeAllConnections(), DRAIN_MS);
+
       try {
         await closed;
       } finally {

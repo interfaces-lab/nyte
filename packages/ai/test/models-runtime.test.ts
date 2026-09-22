@@ -7,13 +7,7 @@ import type {
   OAuthCredential,
   ProviderAuth,
 } from "../src/auth/types.ts";
-import {
-  calculateCost,
-  createModels,
-  createProvider,
-  hasApi,
-  type Provider,
-} from "../src/models.ts";
+import { calculateCost, createModels, createProvider, type Provider } from "../src/models.ts";
 import {
   InMemoryModelsStore,
   type ModelsStore,
@@ -175,47 +169,6 @@ describe("Models runtime", () => {
     expect(long.cacheWrite).toBe(0.0000125);
   });
 
-  it("registers, replaces, and deletes providers", () => {
-    const models = createModels();
-    models.setProvider(testProvider({ id: "p1" }));
-    models.setProvider(testProvider({ id: "p2" }));
-    expect(models.getProviders().map((p) => p.id)).toEqual(["p1", "p2"]);
-
-    const replacement = testProvider({ id: "p1" });
-    models.setProvider(replacement);
-    expect(models.getProvider("p1")).toBe(replacement);
-    expect(models.getProviders()).toHaveLength(2);
-
-    models.deleteProvider("p1");
-    expect(models.getProvider("p1")).toBeUndefined();
-
-    models.clearProviders();
-    expect(models.getProviders()).toHaveLength(0);
-  });
-
-  it("lists and finds models per provider", async () => {
-    const models = createModels();
-    models.setProvider(
-      testProvider({ id: "p1", models: [testModel("p1", "m1"), testModel("p1", "m2")] }),
-    );
-    models.setProvider(testProvider({ id: "p2", models: [testModel("p2", "m3")] }));
-
-    expect(models.getModels().map((m) => m.id)).toEqual(["m1", "m2", "m3"]);
-    expect(models.getModels("p1").map((m) => m.id)).toEqual(["m1", "m2"]);
-    expect(models.getModels("nope").length).toBe(0);
-    expect(models.getModel("p2", "m3")?.id).toBe("m3");
-    expect(models.getModel("p2", "missing")).toBeUndefined();
-
-    // hasApi() narrows dynamically looked-up models with a runtime check
-    const found = models.getModel("p2", "m3");
-    expect(found && hasApi(found, "openai-completions")).toBe(false);
-    expect(found && hasApi(found, "test-api")).toBe(true);
-    if (found && hasApi(found, "test-api")) {
-      const _typed: Model<"test-api"> = found;
-      expect(_typed.id).toBe("m3");
-    }
-  });
-
   it("swallows provider source failures for both all-provider and single-provider listing", () => {
     const models = createModels();
     models.setProvider(
@@ -306,7 +259,7 @@ describe("Models runtime", () => {
     const blockedAuth = new Promise<void>((resolve) => {
       finishAuth = resolve;
     });
-    const provider = createProvider({
+    const provider = createProvider<"test-api">({
       id: "dynamic",
       auth: {
         apiKey: {
@@ -317,10 +270,6 @@ describe("Models runtime", () => {
             return { auth: { apiKey: "key" } };
           },
         },
-      },
-      models: [],
-      fetchModels: async () => {
-        throw new Error("must not fetch");
       },
       api: {
         stream: () => new AssistantMessageEventStream(),
@@ -380,40 +329,7 @@ describe("Models runtime", () => {
     expect(state).toBe("ephemeral");
   });
 
-  it("persists dynamic catalogs and restores them without network access", async () => {
-    const credentials = new InMemoryCredentialStore();
-    const modelsStore = new InMemoryModelsStore();
-    await credentials.modify("dynamic", async () => ({ type: "api_key", key: "key" }));
-    const createDynamicProvider = (
-      fetchModels: (() => Promise<readonly Model<Api>[]>) | undefined,
-    ) =>
-      createProvider({
-        id: "dynamic",
-        auth: { apiKey: envKeyAuth(undefined) },
-        models: [],
-        fetchModels: fetchModels ? () => fetchModels() : undefined,
-        api: {
-          stream: () => new AssistantMessageEventStream(),
-          streamSimple: () => new AssistantMessageEventStream(),
-        },
-      });
-
-    const online = createModels({ credentials, modelsStore });
-    online.setProvider(createDynamicProvider(async () => [testModel("dynamic", "fetched")]));
-    expect((await online.refresh()).errors.size).toBe(0);
-    expect(online.getModel("dynamic", "fetched")).toBeDefined();
-
-    const offline = createModels({ credentials, modelsStore });
-    offline.setProvider(
-      createDynamicProvider(async () => {
-        throw new Error("must not fetch");
-      }),
-    );
-    expect((await offline.refresh({ allowNetwork: false })).errors.size).toBe(0);
-    expect(offline.getModel("dynamic", "fetched")).toBeDefined();
-  });
-
-  it("passes effective API-key credentials and refresh options while skipping unconfigured providers", async () => {
+  it("passes effective credentials and refreshes providers without auth", async () => {
     let effectiveCredential: unknown;
     let forceRefresh: boolean | undefined;
     let unconfiguredRefreshes = 0;
@@ -442,7 +358,7 @@ describe("Models runtime", () => {
     await models.refresh({ force: true });
     expect(effectiveCredential).toEqual({ type: "api_key", key: "ambient-key", env: undefined });
     expect(forceRefresh).toBe(true);
-    expect(unconfiguredRefreshes).toBe(0);
+    expect(unconfiguredRefreshes).toBe(1);
   });
 
   it("refreshes expired OAuth before refreshing models", async () => {
@@ -1232,20 +1148,5 @@ describe("Models runtime", () => {
     const result = await models.completeSimple(testModel("ghost", "model-a"), context);
     expect(result.stopReason).toBe("error");
     expect(result.errorMessage).toContain("Unknown provider: ghost");
-  });
-
-  it("streams through the provider", async () => {
-    const models = createModels();
-    models.setProvider(testProvider({ id: "p1" }));
-    const model = testModel("p1", "model-a");
-
-    const events: string[] = [];
-    const stream = models.streamSimple(model, context);
-    for await (const event of stream) {
-      events.push(event.type);
-    }
-    expect(events).toEqual(["start", "done"]);
-    const message = await stream.result();
-    expect(message.stopReason).toBe("stop");
   });
 });

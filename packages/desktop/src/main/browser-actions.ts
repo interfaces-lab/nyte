@@ -14,12 +14,14 @@ export async function showBrowserMenu({
   readonly input: Parameters<HostBridge["browser"]["menu"]>[0];
 }): Promise<BrowserMenuAction | undefined> {
   if (window === undefined || window.isDestroyed()) return undefined;
+
   const action = await new Promise<BrowserMenuAction | undefined>((resolve) => {
     const item = (label: string, action: BrowserMenuAction, enabled = true) => ({
       label,
       enabled,
       click: () => resolve(action),
     });
+
     const menu = Menu.buildFromTemplate([
       item("Take Screenshot", "screenshot", hasPage),
       { type: "separator" },
@@ -36,6 +38,7 @@ export async function showBrowserMenu({
       item("Clear Cookies", "clear-cookies"),
       item("Clear Cache", "clear-cache"),
     ]);
+
     menu.popup({ window, x, y, callback: () => resolve(undefined) });
   });
 
@@ -51,7 +54,9 @@ export async function showBrowserMenu({
       },
       "clear-cache": { title: "Clear Cache", detail: "Clear the cache used by Nyte browser tabs?" },
     };
+
     const choice = labels[action];
+
     const result = await dialog.showMessageBox(window, {
       type: "question",
       message: choice.title,
@@ -61,8 +66,10 @@ export async function showBrowserMenu({
       cancelId: 0,
       noLink: true,
     });
+
     if (result.response !== 1) return undefined;
   }
+
   return action;
 }
 
@@ -74,13 +81,17 @@ async function saveBrowserScreenshot({
   readonly window: BrowserWindow | undefined;
 }): Promise<void> {
   const image = await contents.capturePage();
+
   if (image.isEmpty()) throw new Error("The page has no image to capture");
+
   if (window === undefined || window.isDestroyed()) return;
+
   const result = await dialog.showSaveDialog(window, {
     title: "Save Browser Screenshot",
     defaultPath: join(app.getPath("pictures"), "Nyte Screenshot.png"),
     filters: [{ name: "PNG image", extensions: ["png"] }],
   });
+
   if (!result.canceled && result.filePath !== undefined)
     await writeFile(result.filePath, image.toPNG());
 }
@@ -98,26 +109,35 @@ export async function performBrowserAction({
 }): Promise<void> {
   if (action === "clear-cookies") {
     await guest.clearStorageData({ storages: ["cookies"] });
+
     return;
   }
+
   if (action === "clear-cache") {
     await guest.clearCache();
+
     return;
   }
+
   if (contents === undefined || contents.isDestroyed())
     throw new Error("This browser tab is closed");
+
   switch (action) {
     case "hard-reload":
       contents.reloadIgnoringCache();
+
       return;
     case "copy-url":
       await clipboard.writeText(contents.getURL());
+
       return;
     case "screenshot":
       await saveBrowserScreenshot({ contents, window });
+
       return;
     default: {
       const _exhaustive: never = action;
+
       return _exhaustive;
     }
   }

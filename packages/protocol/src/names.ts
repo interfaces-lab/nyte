@@ -7,7 +7,7 @@ export const HEAD_NAME_PATTERN = String.raw`^(?!\.)(?!@(?![\s\S]))(?![\s\S]*(?:\
 
 export const HeadName = Type.String({ pattern: HEAD_NAME_PATTERN });
 
-export function isHeadName(value: unknown): boolean {
+export function isHeadName(value: string): boolean {
   return Value.Check(HeadName, value);
 }
 

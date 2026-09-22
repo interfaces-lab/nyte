@@ -62,7 +62,9 @@ export const parallelProvider: WebSearchProvider = {
   keyEnvironment: "PARALLEL_API_KEY",
   async execute({ query, key, fetch, signal }) {
     const headers = new Headers({ "User-Agent": USER_AGENT });
+
     if (key !== undefined) headers.set("Authorization", `Bearer ${key}`);
+
     const result = await callMcpTool(
       PARALLEL_ENDPOINT,
       "web_search",
@@ -70,7 +72,9 @@ export const parallelProvider: WebSearchProvider = {
       Output,
       { fetch, signal, headers },
     );
+
     if (result === undefined) return [];
+
     return result.structuredContent.results.map((item) =>
       webSearchResult(item.url, {
         title: item.title,

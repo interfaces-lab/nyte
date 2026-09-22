@@ -48,36 +48,37 @@ type BlockState =
   | { kind: "thinking"; ended: boolean }
   | { kind: "toolCall"; ended: boolean; json: string };
 
-function cloneTextContent(content: TextContent): TextContent {
-  return {
-    type: "text",
-    text: content.text,
-    ...(content.textSignature === undefined ? {} : { textSignature: content.textSignature }),
-  };
+function cloneTextContent(content: TextContent) {
+  const clone: TextContent = { type: "text", text: content.text };
+
+  if (content.textSignature !== undefined) clone.textSignature = content.textSignature;
+
+  return clone;
 }
 
-function cloneThinkingContent(content: ThinkingContent): ThinkingContent {
-  return {
-    type: "thinking",
-    thinking: content.thinking,
-    ...(content.thinkingSignature === undefined
-      ? {}
-      : { thinkingSignature: content.thinkingSignature }),
-    ...(content.redacted === undefined ? {} : { redacted: content.redacted }),
-  };
+function cloneThinkingContent(content: ThinkingContent) {
+  const clone: ThinkingContent = { type: "thinking", thinking: content.thinking };
+
+  if (content.thinkingSignature !== undefined) clone.thinkingSignature = content.thinkingSignature;
+
+  if (content.redacted !== undefined) clone.redacted = content.redacted;
+
+  return clone;
 }
 
-function cloneToolCall(toolCall: ToolCall): ToolCall {
-  return {
+function cloneToolCall(toolCall: ToolCall) {
+  const clone: ToolCall = {
     type: "toolCall",
     id: toolCall.id,
     name: toolCall.name,
     arguments: structuredClone(toolCall.arguments),
-    ...(toolCall.thoughtSignature === undefined
-      ? {}
-      : { thoughtSignature: toolCall.thoughtSignature }),
-    ...(toolCall.namespace === undefined ? {} : { namespace: toolCall.namespace }),
   };
+
+  if (toolCall.thoughtSignature !== undefined) clone.thoughtSignature = toolCall.thoughtSignature;
+
+  if (toolCall.namespace !== undefined) clone.namespace = toolCall.namespace;
+
+  return clone;
 }
 
 function cloneContentBlock(
@@ -93,26 +94,33 @@ function cloneContentBlock(
   }
 }
 
-function cloneAssistantMessage(message: AssistantMessage): AssistantMessage {
-  return {
+function cloneAssistantMessage(message: AssistantMessage) {
+  const clone: AssistantMessage = {
     role: "assistant",
     content: message.content.map(cloneContentBlock),
     api: message.api,
     provider: message.provider,
     model: message.model,
-    ...(message.responseModel === undefined ? {} : { responseModel: message.responseModel }),
-    ...(message.responseId === undefined ? {} : { responseId: message.responseId }),
-    ...(message.diagnostics === undefined
-      ? {}
-      : { diagnostics: structuredClone(message.diagnostics) }),
     usage: structuredClone(message.usage),
     stopReason: message.stopReason,
-    ...(message.deferred === undefined ? {} : { deferred: structuredClone(message.deferred) }),
-    ...(message.errorMessage === undefined ? {} : { errorMessage: message.errorMessage }),
-    ...(message.rawStopReason === undefined ? {} : { rawStopReason: message.rawStopReason }),
-    ...(message.endTurn === undefined ? {} : { endTurn: message.endTurn }),
     timestamp: message.timestamp,
   };
+
+  if (message.responseModel !== undefined) clone.responseModel = message.responseModel;
+
+  if (message.responseId !== undefined) clone.responseId = message.responseId;
+
+  if (message.diagnostics !== undefined) clone.diagnostics = structuredClone(message.diagnostics);
+
+  if (message.deferred !== undefined) clone.deferred = structuredClone(message.deferred);
+
+  if (message.errorMessage !== undefined) clone.errorMessage = message.errorMessage;
+
+  if (message.rawStopReason !== undefined) clone.rawStopReason = message.rawStopReason;
+
+  if (message.endTurn !== undefined) clone.endTurn = message.endTurn;
+
+  return clone;
 }
 
 function assertContentIndex(contentIndex: number): void {
@@ -124,9 +132,11 @@ function assertContentIndex(contentIndex: number): void {
 function eventBlock(event: Exclude<AssistantMessageEvent, { type: "start" | "done" | "error" }>) {
   assertContentIndex(event.contentIndex);
   const block = event.partial.content[event.contentIndex];
+
   if (!block) {
     throw new Error(`${event.type} event has no content block at index ${event.contentIndex}`);
   }
+
   return block;
 }
 
@@ -139,102 +149,131 @@ export function assistantMessageEventToFrame(
       return { type: "start", partial: cloneAssistantMessage(event.partial) };
     case "text_start": {
       const content = eventBlock(event);
+
       if (content.type !== "text") {
         throw new Error(
           `text_start event points to ${content.type} block at index ${event.contentIndex}`,
         );
       }
+
       return {
         type: "text_start",
         contentIndex: event.contentIndex,
         content: cloneTextContent(content),
       };
     }
+
     case "text_delta":
       return { type: "text_delta", contentIndex: event.contentIndex, delta: event.delta };
     case "text_end": {
       const content = eventBlock(event);
+
       if (content.type !== "text") {
         throw new Error(
           `text_end event points to ${content.type} block at index ${event.contentIndex}`,
         );
       }
-      return {
+
+      const frame: Extract<AssistantMessageFrame, { type: "text_end" }> = {
         type: "text_end",
         contentIndex: event.contentIndex,
         content: event.content,
-        ...(content.textSignature === undefined ? {} : { textSignature: content.textSignature }),
       };
+
+      if (content.textSignature !== undefined) frame.textSignature = content.textSignature;
+
+      return frame;
     }
+
     case "thinking_start": {
       const content = eventBlock(event);
+
       if (content.type !== "thinking") {
         throw new Error(
           `thinking_start event points to ${content.type} block at index ${event.contentIndex}`,
         );
       }
+
       return {
         type: "thinking_start",
         contentIndex: event.contentIndex,
         content: cloneThinkingContent(content),
       };
     }
+
     case "thinking_delta":
       return { type: "thinking_delta", contentIndex: event.contentIndex, delta: event.delta };
     case "thinking_end": {
       const content = eventBlock(event);
+
       if (content.type !== "thinking") {
         throw new Error(
           `thinking_end event points to ${content.type} block at index ${event.contentIndex}`,
         );
       }
-      return {
+
+      const frame: Extract<AssistantMessageFrame, { type: "thinking_end" }> = {
         type: "thinking_end",
         contentIndex: event.contentIndex,
         content: event.content,
-        ...(content.thinkingSignature === undefined
-          ? {}
-          : { thinkingSignature: content.thinkingSignature }),
-        ...(content.redacted === undefined ? {} : { redacted: content.redacted }),
       };
+
+      if (content.thinkingSignature !== undefined)
+        frame.thinkingSignature = content.thinkingSignature;
+
+      if (content.redacted !== undefined) frame.redacted = content.redacted;
+
+      return frame;
     }
+
     case "toolcall_start": {
       const content = eventBlock(event);
+
       if (content.type !== "toolCall") {
         throw new Error(
           `toolcall_start event points to ${content.type} block at index ${event.contentIndex}`,
         );
       }
+
       return {
         type: "toolcall_start",
         contentIndex: event.contentIndex,
         toolCall: cloneToolCall(content),
       };
     }
+
     case "toolcall_delta":
       return { type: "toolcall_delta", contentIndex: event.contentIndex, delta: event.delta };
     case "toolcall_end": {
       const content = eventBlock(event);
+
       if (content.type !== "toolCall") {
         throw new Error(
           `toolcall_end event points to ${content.type} block at index ${event.contentIndex}`,
         );
       }
+
       if (event.toolCall.type !== "toolCall") {
         throw new Error(`toolcall_end event has invalid tool call at index ${event.contentIndex}`);
       }
-      return {
+
+      const frame: Extract<AssistantMessageFrame, { type: "toolcall_end" }> = {
         type: "toolcall_end",
         contentIndex: event.contentIndex,
         id: event.toolCall.id,
         name: event.toolCall.name,
         arguments: structuredClone(event.toolCall.arguments),
-        ...(event.toolCall.thoughtSignature === undefined
-          ? {}
-          : { thoughtSignature: event.toolCall.thoughtSignature }),
-        ...(event.toolCall.namespace === undefined ? {} : { namespace: event.toolCall.namespace }),
       };
+
+      if (event.toolCall.thoughtSignature !== undefined) {
+        frame.thoughtSignature = event.toolCall.thoughtSignature;
+      }
+
+      if (event.toolCall.namespace !== undefined) frame.namespace = event.toolCall.namespace;
+
+      return frame;
     }
+
     case "done":
     case "error":
       return undefined;
@@ -249,10 +288,12 @@ function appendBlock(
   state: BlockState,
 ): void {
   assertContentIndex(contentIndex);
+
   if (contentIndex !== message.content.length) {
     const reason = contentIndex < message.content.length ? "already exists" : "would leave a gap";
     throw new Error(`Cannot start assistant message block at index ${contentIndex}: ${reason}`);
   }
+
   message.content.push(structuredClone(block));
   states.set(contentIndex, state);
 }
@@ -263,21 +304,25 @@ function activeBlock(
   contentIndex: number,
   expectedKind: BlockState["kind"],
   frameType: AssistantMessageFrame["type"],
-): { block: TextContent | ThinkingContent | ToolCall; state: BlockState } {
+) {
   assertContentIndex(contentIndex);
   const state = states.get(contentIndex);
   const block = message.content[contentIndex];
+
   if (!state || !block) {
     throw new Error(`${frameType} frame has no started block at index ${contentIndex}`);
   }
+
   if (state.kind !== expectedKind || block.type !== expectedKind) {
     throw new Error(
       `${frameType} frame expected ${expectedKind} block at index ${contentIndex}, found ${block.type}`,
     );
   }
+
   if (state.ended) {
     throw new Error(`${frameType} frame follows the end of block at index ${contentIndex}`);
   }
+
   return { block, state };
 }
 
@@ -290,6 +335,7 @@ export function reduceAssistantMessageFrames(
   frames: Iterable<AssistantMessageFrame>,
 ): AssistantMessage | undefined {
   const replayFrames = [...frames];
+
   if (!replayFrames.some((frame) => frame.type === "start")) return undefined;
 
   let message: AssistantMessage | undefined;
@@ -300,9 +346,11 @@ export function reduceAssistantMessageFrames(
       if (message) {
         throw new Error("Assistant message frame sequence contains more than one start frame");
       }
+
       message = structuredClone(frame.partial);
       continue;
     }
+
     if (!message) {
       throw new Error(`${frame.type} frame appears before the start frame`);
     }
@@ -313,6 +361,7 @@ export function reduceAssistantMessageFrames(
           // oxlint-disable-next-line restrict-template-expressions -- exhaustive narrowing leaves never; the message reports the runtime value
           throw new Error(`text_start frame contains ${frame.content.type} content`);
         }
+
         appendBlock(message, states, frame.contentIndex, frame.content, {
           kind: "text",
           ended: false,
@@ -320,10 +369,12 @@ export function reduceAssistantMessageFrames(
         break;
       case "text_delta": {
         const { block } = activeBlock(message, states, frame.contentIndex, "text", frame.type);
+
         if (block.type !== "text") throw new Error("Unreachable text frame state");
         block.text += frame.delta;
         break;
       }
+
       case "text_end": {
         const { block, state } = activeBlock(
           message,
@@ -332,18 +383,22 @@ export function reduceAssistantMessageFrames(
           "text",
           frame.type,
         );
+
         if (block.type !== "text") throw new Error("Unreachable text frame state");
         block.text = frame.content;
         delete block.textSignature;
+
         if (frame.textSignature !== undefined) block.textSignature = frame.textSignature;
         state.ended = true;
         break;
       }
+
       case "thinking_start":
         if (frame.content.type !== "thinking") {
           // oxlint-disable-next-line restrict-template-expressions -- exhaustive narrowing leaves never; the message reports the runtime value
           throw new Error(`thinking_start frame contains ${frame.content.type} content`);
         }
+
         appendBlock(message, states, frame.contentIndex, frame.content, {
           kind: "thinking",
           ended: false,
@@ -351,10 +406,12 @@ export function reduceAssistantMessageFrames(
         break;
       case "thinking_delta": {
         const { block } = activeBlock(message, states, frame.contentIndex, "thinking", frame.type);
+
         if (block.type !== "thinking") throw new Error("Unreachable thinking frame state");
         block.thinking += frame.delta;
         break;
       }
+
       case "thinking_end": {
         const { block, state } = activeBlock(
           message,
@@ -363,21 +420,26 @@ export function reduceAssistantMessageFrames(
           "thinking",
           frame.type,
         );
+
         if (block.type !== "thinking") throw new Error("Unreachable thinking frame state");
         block.thinking = frame.content;
         delete block.thinkingSignature;
         delete block.redacted;
+
         if (frame.thinkingSignature !== undefined)
           block.thinkingSignature = frame.thinkingSignature;
+
         if (frame.redacted !== undefined) block.redacted = frame.redacted;
         state.ended = true;
         break;
       }
+
       case "toolcall_start":
         if (frame.toolCall.type !== "toolCall") {
           // oxlint-disable-next-line restrict-template-expressions -- exhaustive narrowing leaves never; the message reports the runtime value
           throw new Error(`toolcall_start frame contains ${frame.toolCall.type} content`);
         }
+
         appendBlock(message, states, frame.contentIndex, frame.toolCall, {
           kind: "toolCall",
           ended: false,
@@ -392,12 +454,15 @@ export function reduceAssistantMessageFrames(
           "toolCall",
           frame.type,
         );
+
         if (block.type !== "toolCall" || state.kind !== "toolCall") {
           throw new Error("Unreachable tool-call frame state");
         }
+
         state.json += frame.delta;
         break;
       }
+
       case "toolcall_end": {
         const { block, state } = activeBlock(
           message,
@@ -406,13 +471,16 @@ export function reduceAssistantMessageFrames(
           "toolCall",
           frame.type,
         );
+
         if (block.type !== "toolCall") throw new Error("Unreachable tool-call frame state");
         block.id = frame.id;
         block.name = frame.name;
         block.arguments = structuredClone(frame.arguments);
         delete block.thoughtSignature;
         delete block.namespace;
+
         if (frame.thoughtSignature !== undefined) block.thoughtSignature = frame.thoughtSignature;
+
         if (frame.namespace !== undefined) block.namespace = frame.namespace;
         state.ended = true;
         break;
@@ -421,9 +489,11 @@ export function reduceAssistantMessageFrames(
   }
 
   if (!message) return undefined;
+
   for (const [contentIndex, state] of states) {
     if (state.kind !== "toolCall" || state.ended || state.json.length === 0) continue;
     const block = message.content[contentIndex];
+
     if (block?.type !== "toolCall") throw new Error("Unreachable tool-call frame state");
     block.arguments = parseStreamingJson(state.json);
   }

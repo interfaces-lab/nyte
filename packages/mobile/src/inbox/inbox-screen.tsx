@@ -44,6 +44,7 @@ const SEARCH_DEBOUNCE_MS = 250;
 function isToday(session: SessionInfo, now: number): boolean {
   const then = new Date(session.lastActivityAt);
   const date = new Date(now);
+
   return (
     then.getFullYear() === date.getFullYear() &&
     then.getMonth() === date.getMonth() &&
@@ -100,6 +101,7 @@ export function InboxScreen() {
   const sessions = (list.kind === "ready" ? list.sessions : []).filter(
     (session) => !session.archived,
   );
+
   const working = sessions.filter(isActive);
   const attention = sessions.filter((session) => needsInput(session) && !isActive(session));
   const failed = sessions.filter((session) => hasFailed(session) && !isActive(session));
@@ -119,6 +121,7 @@ export function InboxScreen() {
           { title: "Earlier", sessions: rest.filter((session) => !isToday(session, now)) },
         ]
       : [{ sessions: rest }];
+
   const groups: readonly {
     title?: string;
     filter?: Exclude<Filter, "all">;
@@ -130,9 +133,11 @@ export function InboxScreen() {
     { title: "Pinned", filter: "pinned", sessions: pinned },
     ...settledGroups,
   ];
+
   // Hiding the filter cards also hides the only way back out of a filter, so
   // the list falls back to showing everything while they are off.
   const activeFilter = filterCards ? filter : "all";
+
   const visible = groups.filter(
     (group) =>
       group.sessions.length > 0 && (activeFilter === "all" || group.filter === activeFilter),
@@ -151,6 +156,7 @@ export function InboxScreen() {
   // Relative times age on their own; the query polls for data changes itself.
   useMountEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 10_000);
+
     return () => clearInterval(timer);
   });
 

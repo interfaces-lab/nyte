@@ -25,6 +25,7 @@ function assistantUsage(message: Message): Usage | undefined {
       return undefined;
     default: {
       const _exhaustive: never = message;
+
       return _exhaustive;
     }
   }
@@ -46,6 +47,7 @@ function estimateTextAndImageContentChars(
   if (!Array.isArray(content)) return content.length;
 
   let chars = 0;
+
   for (const part of content) {
     switch (part.type) {
       case "text":
@@ -56,16 +58,19 @@ function estimateTextAndImageContentChars(
         break;
       default: {
         const _exhaustive: never = part;
+
         return _exhaustive;
       }
     }
   }
+
   return chars;
 }
 
 /** Estimate one message with the compaction code's character heuristic. */
 export function estimateTokens(message: Message): number {
   let chars = 0;
+
   switch (message.role) {
     case "user":
       return Math.ceil(estimateTextAndImageContentChars(message.content) / 4);
@@ -83,15 +88,18 @@ export function estimateTokens(message: Message): number {
             break;
           default: {
             const _exhaustive: never = part;
+
             return _exhaustive;
           }
         }
       }
+
       return Math.ceil(chars / 4);
     case "toolResult":
       return Math.ceil(estimateTextAndImageContentChars(message.content) / 4);
     default: {
       const _exhaustive: never = message;
+
       return _exhaustive;
     }
   }
@@ -107,15 +115,19 @@ export function lastAssistantUsageInfo(
 ): AssistantUsageInfo | undefined {
   let latestPrefixTimestamp = Number.NEGATIVE_INFINITY;
   let latest: AssistantUsageInfo | undefined;
+
   for (const [index, message] of messages.entries()) {
     const usage = assistantUsage(message);
+
     // A replacement prefix, such as a compaction summary, invalidates usage
     // reported before that prefix existed.
     if (usage !== undefined && message.timestamp >= latestPrefixTimestamp) {
       latest = { usage, index };
     }
+
     latestPrefixTimestamp = Math.max(latestPrefixTimestamp, message.timestamp);
   }
+
   return latest;
 }
 
@@ -136,15 +148,19 @@ function estimateContextTokensFromUsage(
 ): ContextUsageEstimate {
   if (usageInfo === undefined) {
     const tokens = messages.reduce((sum, message) => sum + estimateTokens(message), 0);
+
     return { tokens, usageTokens: 0, trailingTokens: tokens, lastUsageIndex: null };
   }
 
   const measuredTokens = usageTokens(usageInfo.usage);
   let trailingTokens = 0;
+
   for (let index = usageInfo.index + 1; index < messages.length; index += 1) {
     const message = messages[index];
+
     if (message !== undefined) trailingTokens += estimateTokens(message);
   }
+
   return {
     tokens: measuredTokens + trailingTokens,
     usageTokens: measuredTokens,
@@ -159,6 +175,7 @@ export function estimateModelContextTokens(
   target: Parameters<typeof modelContext>[1],
 ): ContextUsageEstimate {
   const context = modelContext(commits, target);
+
   return estimateProjectedModelContextTokens(commits, target, context, () =>
     lastAssistantUsageInfo(context.messages),
   );
@@ -171,16 +188,21 @@ function estimateProjectedModelContextTokens(
   getUsageInfo: () => AssistantUsageInfo | undefined,
 ): ContextUsageEstimate {
   const first = commits[0];
+
   if (first?.body.kind !== "checkpoint" || first.body.material === undefined) {
     return estimateContextTokensFromUsage(context.messages, getUsageInfo());
   }
+
   // Native context already is the normalized post-checkpoint tail. Portable
   // context includes backup history, whose usage must be checked separately.
   const afterCheckpoint =
     context.checkpoint === undefined ? contextMessages(commits.slice(1)) : context.messages;
+
   const latest =
     context.checkpoint === undefined ? lastAssistantUsageInfo(afterCheckpoint) : getUsageInfo();
+
   const assistant = latest === undefined ? undefined : afterCheckpoint[latest.index];
+
   if (
     assistant?.role === "assistant" &&
     assistant.provider === target.provider &&
@@ -192,23 +214,28 @@ function estimateProjectedModelContextTokens(
       context.checkpoint === undefined ? getUsageInfo() : latest,
     );
   }
+
   const trailingTokens = context.messages.reduce(
     (sum, message) => sum + estimateTokens(message),
     0,
   );
+
   if (context.checkpoint === undefined) {
     // A different model receives the expanded portable backup; native usage
     // reports inside it describe an entirely different representation.
     return { tokens: trailingTokens, usageTokens: 0, trailingTokens, lastUsageIndex: null };
   }
+
   // The compact operation's input describes the old window. Its output is the
   // best available baseline until the next assistant reports actual usage.
   // Without usage, opaque JSON can only provide a rough character estimate.
   const usageTokens = first.body.usage?.output ?? 0;
+
   const opaqueTokens =
     first.body.usage === undefined
       ? Math.ceil(safeJsonStringify(context.checkpoint.data).length / 4)
       : 0;
+
   return {
     tokens: usageTokens + opaqueTokens + trailingTokens,
     usageTokens,
@@ -225,20 +252,26 @@ export function projectContextStatus(
 ): ContextStatus {
   const context =
     target === undefined ? { messages: contextMessages(commits) } : modelContext(commits, target);
+
   const usageInfo = lastAssistantUsageInfo(context.messages);
+
   const estimate =
     target === undefined
       ? estimateContextTokensFromUsage(context.messages, usageInfo)
       : estimateProjectedModelContextTokens(commits, target, context, () => usageInfo);
+
   const lastUsage = usageInfo?.usage;
+
   const base: ContextStatus = {
     estimatedTokens: estimate.tokens,
     usageTokens: estimate.usageTokens,
     trailingTokens: estimate.trailingTokens,
     contextWindow,
   };
+
   const withLastUsage: ContextStatus =
     lastUsage === undefined ? base : { ...base, lastTurnTokens: usageTokens(lastUsage) };
+
   return contextWindow > 0
     ? { ...withLastUsage, percent: Math.round((estimate.tokens / contextWindow) * 100) }
     : withLastUsage;

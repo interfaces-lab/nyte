@@ -60,8 +60,10 @@ export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> 
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(new RetrySleepAbortError());
+
       return;
     }
+
     const timeout = setTimeout(resolve, ms);
     signal?.addEventListener(
       "abort",
@@ -102,18 +104,21 @@ export async function retryAssistantCall(
 
   let attempt = 0;
   let lastRetry: { attempt: number; errorMessage: string } | undefined;
+
   for (;;) {
     const response = await produce();
 
     // Abort: terminal but not successful. Never retry an aborted message.
     if (response.stopReason === "aborted") {
       if (lastRetry) await callbacks?.onRetryFinished?.(false, lastRetry.attempt);
+
       return response;
     }
 
     // Success: non-error, non-abort responses return as-is.
     if (response.stopReason !== "error") {
       if (lastRetry) await callbacks?.onRetryFinished?.(true, lastRetry.attempt);
+
       return response;
     }
 
@@ -121,6 +126,7 @@ export async function retryAssistantCall(
     if (attempt >= maxAttempts || !isRetryableAssistantError(response)) {
       if (lastRetry)
         await callbacks?.onRetryFinished?.(false, lastRetry.attempt, response.errorMessage);
+
       return response;
     }
 
@@ -135,11 +141,14 @@ export async function retryAssistantCall(
       await abortableSleep(delayMs, signal);
     } catch (error) {
       await callbacks?.onRetryFinished?.(false, attempt, lastRetry.errorMessage);
+
       if (error instanceof RetrySleepAbortError) {
         return { ...response, stopReason: "aborted", errorMessage: undefined };
       }
+
       throw error;
     }
+
     await callbacks?.onRetryAttemptStart?.();
   }
 }

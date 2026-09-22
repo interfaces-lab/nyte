@@ -9,12 +9,17 @@ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 export function detectSupportedImageMimeType(buffer: Uint8Array): string | undefined {
   if (startsWith(buffer, [0xff, 0xd8, 0xff])) return buffer[3] === 0xf7 ? undefined : "image/jpeg";
+
   if (startsWith(buffer, PNG_SIGNATURE)) {
     return isPng(buffer) && !isAnimatedPng(buffer) ? "image/png" : undefined;
   }
+
   if (startsWithAscii(buffer, 0, "GIF")) return "image/gif";
+
   if (startsWithAscii(buffer, 0, "RIFF") && startsWithAscii(buffer, 8, "WEBP")) return "image/webp";
+
   if (startsWithAscii(buffer, 0, "BM") && isBmp(buffer)) return "image/bmp";
+
   return undefined;
 }
 
@@ -28,15 +33,20 @@ function isPng(buffer: Uint8Array): boolean {
 
 function isAnimatedPng(buffer: Uint8Array): boolean {
   let offset = PNG_SIGNATURE.length;
+
   while (offset + 8 <= buffer.length) {
     const chunkLength = readUint32BE(buffer, offset);
     const chunkTypeOffset = offset + 4;
+
     if (startsWithAscii(buffer, chunkTypeOffset, "acTL")) return true;
+
     if (startsWithAscii(buffer, chunkTypeOffset, "IDAT")) return false;
     const nextOffset = offset + 8 + chunkLength + 4;
+
     if (nextOffset <= offset || nextOffset > buffer.length) return false;
     offset = nextOffset;
   }
+
   return false;
 }
 
@@ -45,12 +55,16 @@ function isBmp(buffer: Uint8Array): boolean {
   const declaredFileSize = readUint32LE(buffer, 2);
   const pixelDataOffset = readUint32LE(buffer, 10);
   const dibHeaderSize = readUint32LE(buffer, 14);
+
   if (declaredFileSize !== 0 && declaredFileSize < 26) return false;
+
   if (pixelDataOffset < 14 + dibHeaderSize) return false;
+
   if (declaredFileSize !== 0 && pixelDataOffset >= declaredFileSize) return false;
 
   let colorPlanes: number;
   let bitsPerPixel: number;
+
   if (dibHeaderSize === 12) {
     colorPlanes = readUint16LE(buffer, 22);
     bitsPerPixel = readUint16LE(buffer, 24);
@@ -61,6 +75,7 @@ function isBmp(buffer: Uint8Array): boolean {
   } else {
     return false;
   }
+
   return colorPlanes === 1 && [1, 4, 8, 16, 24, 32].includes(bitsPerPixel);
 }
 
@@ -88,13 +103,16 @@ function readUint32LE(buffer: Uint8Array, offset: number): number {
 
 function startsWith(buffer: Uint8Array, bytes: number[]): boolean {
   if (buffer.length < bytes.length) return false;
+
   return bytes.every((byte, index) => buffer[index] === byte);
 }
 
 function startsWithAscii(buffer: Uint8Array, offset: number, text: string): boolean {
   if (buffer.length < offset + text.length) return false;
+
   for (let index = 0; index < text.length; index++) {
     if (buffer[offset + index] !== text.charCodeAt(index)) return false;
   }
+
   return true;
 }

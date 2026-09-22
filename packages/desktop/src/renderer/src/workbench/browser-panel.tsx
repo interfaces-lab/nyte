@@ -283,11 +283,14 @@ function useSurfaceBounds(
   const lastRef = useRef<BrowserBoundsMessage | undefined>(undefined);
   useLayoutEffect(() => {
     const element = slot.current;
+
     if (element === null) return;
     let frame: number | undefined;
+
     const measure = (): void => {
       frame = undefined;
       const rect = element.getBoundingClientRect();
+
       // The page composites above the renderer, so it has to step aside while a
       // menu or a dialog overlaps it.
       const overlapped = overlayCovers({
@@ -296,42 +299,53 @@ function useSurfaceBounds(
         right: rect.right,
         bottom: rect.bottom,
       });
+
       setCovered(overlapped);
+
       const message: BrowserBoundsMessage = {
         surface,
         bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
         visible: visible && !overlapped && rect.width > 0 && rect.height > 0,
       };
+
       if (lastRef.current !== undefined && sameBounds(lastRef.current, message)) return;
       lastRef.current = message;
       nyte.host.browser.setBounds(message);
     };
+
     const schedule = (): void => {
       frame ??= requestAnimationFrame(measure);
     };
+
     const observer = new ResizeObserver(schedule);
+
     for (let node: Element | null = element; node !== null; node = node.parentElement) {
       observer.observe(node);
     }
+
     window.addEventListener("resize", schedule);
     document.addEventListener("scroll", schedule, { capture: true, passive: true });
     // The overlay store already batches to a frame, so this applies at once
     // rather than a frame after the popup painted.
     const unsubscribe = subscribeOverlayRects(measure);
     measure();
+
     return () => {
       observer.disconnect();
       unsubscribe();
       window.removeEventListener("resize", schedule);
       document.removeEventListener("scroll", schedule, { capture: true });
+
       if (frame !== undefined) cancelAnimationFrame(frame);
       const last = lastRef.current;
+
       if (last !== undefined && last.visible) {
         lastRef.current = { ...last, visible: false };
         nyte.host.browser.setBounds(lastRef.current);
       }
     };
   }, [slot, surface, visible]);
+
   return covered;
 }
 
@@ -351,6 +365,7 @@ function usePageFrame(surface: string, url: string, covered: boolean): string | 
     // A frame is page-sized pixels; nothing shows one from a url the panel left.
     gcTime: 0,
   });
+
   return frame.data;
 }
 
@@ -395,6 +410,7 @@ export function BrowserPanel({
   useEffect(() => {
     const hold: SurfaceHold = { opened: false, url: undefined, released: false };
     holdRef.current = hold;
+
     return () => {
       hold.released = true;
       holdRef.current = undefined;
@@ -408,18 +424,24 @@ export function BrowserPanel({
   // itself (a link, back, forward, a redirect) is already where it points.
   useEffect(() => {
     const hold = holdRef.current;
+
     if (hold === undefined) return;
+
     if (hold.opened && (url === stateUrl || url === hold.url)) {
       hold.url = url;
+
       return;
     }
+
     hold.opened = true;
     hold.url = url;
     let superseded = false;
+
     const owner =
       workspacePath === null
         ? ({ kind: "home" } as const)
         : ({ kind: "project", path: workspacePath } as const);
+
     claimBrowserSurface(surface, workspacePath);
     void nyte.host.browser.open({ surface, url, owner }).then(
       (openState) => {
@@ -431,6 +453,7 @@ export function BrowserPanel({
         setFailure(errorMessage(cause));
       },
     );
+
     return () => {
       superseded = true;
     };
@@ -443,10 +466,12 @@ export function BrowserPanel({
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
     const target = resolveBrowserAddress(draft ?? "");
+
     if (target === undefined) return;
     setDraft(undefined);
     setFailure(undefined);
     inputRef.current?.blur();
+
     if (target === url) navigate("reload");
     else onUrlChange(target);
   };
@@ -463,11 +488,15 @@ export function BrowserPanel({
       })
       .then(async (action) => {
         if (action === undefined) return;
+
         if (action === "toggle-bookmarks") {
           toggleBookmarkBar();
+
           return;
         }
+
         await nyte.host.browser.perform({ surface, action });
+
         if (action === "clear-history") clearBrowserHistory(workspacePath);
       })
       .catch((cause) => setFailure(errorMessage(cause)));

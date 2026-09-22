@@ -6,8 +6,11 @@ import { hashObject } from "../src/kernel/hash.ts";
 import { changesFromTurns, transcriptFromCommits } from "@nyte-ai/client";
 
 export const SEED = "nyte-core-j-v1";
+
 export const EPOCH = 1_700_000_000_000;
+
 export const TEXT = `${SEED}:`.padEnd(256, "x");
+
 export const MODEL: Model<Api> = {
   id: "synthetic",
   name: "Synthetic",
@@ -25,6 +28,7 @@ type FixtureBody = Extract<CommitBody, { readonly kind: "message" | "checkpoint"
 
 function chain(bodies: readonly FixtureBody[], patches = new Map<number, string>()) {
   let parent: string | null = null;
+
   return bodies.map((body, index) => {
     const base = { kind: "commit", parent, at: EPOCH + index } as const;
 
@@ -74,8 +78,10 @@ function chain(bodies: readonly FixtureBody[], patches = new Map<number, string>
         }
       }
     })();
+
     const oid = hashObject(commit);
     parent = oid;
+
     return { oid, commit };
   });
 }
@@ -89,6 +95,7 @@ export function projectionFixture(count: number, workload: Workload) {
   const bodies: FixtureBody[] = [];
   const expectedFiles = new Map<string, FileChange>();
   const resultPaths = new Map<number, string>();
+
   const assistant = (
     content: AssistantMessage["content"],
     stopReason: AssistantMessage["stopReason"],
@@ -109,11 +116,13 @@ export function projectionFixture(count: number, workload: Workload) {
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     },
   });
+
   for (let turn = 0; turn < count / width; turn++) {
     bodies.push({
       kind: "message",
       message: { role: "user", content: TEXT, timestamp: EPOCH + bodies.length },
     });
+
     for (let pair = 0; pair < pairs; pair++) {
       const id = `${SEED}-${turn}-${pair}`;
       const path = `fixture-${(turn * pairs + pair) % 8}.txt`;
@@ -145,10 +154,12 @@ export function projectionFixture(count: number, workload: Workload) {
         },
       });
     }
+
     bodies.push({ kind: "message", message: assistant([{ type: "text", text: TEXT }], "stop") });
   }
 
   const items = chain(bodies, resultPaths);
+
   for (const [index, path] of resultPaths) {
     const item = items[index];
     assert.ok(item);
@@ -159,6 +170,7 @@ export function projectionFixture(count: number, workload: Workload) {
       removed: (previous?.removed ?? 0) + 1,
     });
   }
+
   return {
     items,
     expectedFiles: [...expectedFiles.values()],
@@ -183,8 +195,10 @@ export function checkTranscript(
   turns: ReturnType<typeof transcriptFromCommits>,
 ) {
   assert.equal(turns.length, fixture.metadata.turns);
+
   for (const [index, turn] of turns.entries()) {
     assert.equal(turn.kind, "turn");
+
     if (turn.kind !== "turn") assert.fail("Expected conversation turn");
     assert.equal(turn.failure, undefined);
     assert.equal(turn.startedAt, EPOCH + index * (fixture.metadata.pairsPerTurn * 2 + 2));
@@ -193,14 +207,17 @@ export function checkTranscript(
     const user = turn.parts[0];
     assert.ok(user?.kind === "user");
     assert.equal(user.content, TEXT);
+
     for (const part of turn.parts) {
       if (part.kind === "assistant") assert.equal(part.text, TEXT);
+
       if (part.kind === "tool") {
         assert.ok(part.result);
         assert.equal(part.result.output, TEXT);
         assert.equal(part.result.isError, false);
       }
     }
+
     for (let pair = 0; pair < fixture.metadata.pairsPerTurn; pair++) {
       const tool: TurnPart | undefined = turn.parts[2 + pair * 2];
       assert.ok(tool?.kind === "tool");
@@ -212,6 +229,7 @@ export function checkTranscript(
       assert.equal(tool.result?.commit, fixture.items[resultIndex]?.oid);
     }
   }
+
   assert.deepEqual(changesFromTurns(turns), fixture.expectedFiles);
 }
 
@@ -221,9 +239,11 @@ export function historyFixture(count: number, checkpoint: boolean) {
     content: `${String(index).padStart(6, "0")}:${TEXT}`.slice(0, 256),
     timestamp: EPOCH + index,
   }));
+
   const boundary = Math.floor(count * 0.8);
   const retained = 4;
   const bodies: FixtureBody[] = [];
+
   for (const [index, message] of messages.entries()) {
     if (checkpoint && index === boundary)
       bodies.push({
@@ -234,6 +254,7 @@ export function historyFixture(count: number, checkpoint: boolean) {
       });
     bodies.push({ kind: "message", message });
   }
+
   return {
     items: chain(bodies),
     messages,

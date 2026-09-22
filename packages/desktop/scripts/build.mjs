@@ -19,9 +19,13 @@ import {
 } from "./terminal.mjs";
 
 const desktopRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+
 const args = process.argv.slice(2);
+
 const packageIndex = args.indexOf("--package");
+
 const shouldPackage = packageIndex !== -1;
+
 const builderArgs = shouldPackage ? args.slice(packageIndex + 1) : [];
 
 // A terminal gets a live tail of each long stage. Turbo's stream output
@@ -29,14 +33,19 @@ const builderArgs = shouldPackage ? args.slice(packageIndex + 1) : [];
 // Anything else (CI, a piped log) gets every line the tools print, folded per
 // stage on GitHub Actions.
 const turboStream = process.env.TURBO_HASH !== undefined && process.env.TURBO_IS_TUI === undefined;
+
 const live = process.stdout.isTTY === true && !turboStream;
+
 const githubActions = process.env.GITHUB_ACTIONS === "true";
+
 let panel;
 
 // Under Turbo, package depends on build, so out/ is already current or was
 // restored from cache. Ad-block lists are not cached and stay in both paths.
 const compiled = shouldPackage && process.env.TURBO_HASH !== undefined;
+
 const stages = [{ title: "Ad-block lists", run: () => node("scripts/build-adblock.mjs") }];
+
 if (!compiled) {
   stages.push(
     {
@@ -47,6 +56,7 @@ if (!compiled) {
     { title: "Startup budgets", run: () => node("scripts/check-startup-bundle.mjs") },
   );
 }
+
 if (shouldPackage) {
   stages.push({
     title: `Package ${builderArgs.length > 0 ? builderArgs.join(" ") : "for this platform"}`,
@@ -56,13 +66,18 @@ if (shouldPackage) {
 }
 
 const outputDir = join(desktopRoot, shouldPackage ? "dist" : "out");
+
 process.stdout.write(
   `${bold(`${packageMetadata.name} ${packageMetadata.version}`)} ${dim(`→ ${relative(process.cwd(), outputDir) || "."}`)}\n`,
 );
+
 const started = performance.now();
+
 const packageStartedAt = Date.now();
+
 for (const [index, stage] of stages.entries()) {
   const step = `${index + 1}/${stages.length}`;
+
   if (githubActions) process.stdout.write(`::group::${step} ${stage.title}\n`);
   else heading(step, stage.title);
   const stageStarted = performance.now();
@@ -70,22 +85,28 @@ for (const [index, stage] of stages.entries()) {
     stage.tail === true ? (live ? livePanel() : turboStream ? lineLog() : undefined) : undefined;
   const { code, output } = await stage.run();
   const elapsed = formatDuration(performance.now() - stageStarted);
+
   if (githubActions) process.stdout.write("::endgroup::\n");
+
   if (code !== 0) {
     if (output !== undefined) process.stdout.write(output);
     failure(`${stage.title} failed ${dim(`(exit ${code}, ${elapsed})`)}`);
     process.exit(code);
   }
+
   success(`${stage.title} ${dim(elapsed)}`);
 }
 
 process.stdout.write(`\n${green("Done")} ${dim(formatDuration(performance.now() - started))}\n`);
+
 process.stdout.write(`${outputDir}\n`);
+
 if (shouldPackage) {
   const rows = artifacts(outputDir, packageStartedAt).map(({ name, size }) => [
     name,
     size === undefined ? "" : dim(formatBytes(size)),
   ]);
+
   process.stdout.write(table(rows, { align: ["left", "right"] }));
 }
 
@@ -110,18 +131,22 @@ function run(command, commandArgs, options) {
       env: { ...process.env, FORCE_COLOR: live ? "1" : process.env.FORCE_COLOR },
       ...options,
     });
+
     const push = (chunk) => panel?.push(chunk.toString());
     child.stdout?.on("data", push);
     child.stderr?.on("data", push);
     const interrupt = () => child.kill("SIGINT");
     process.once("SIGINT", interrupt);
+
     const finish = (code, signal) => {
       process.removeListener("SIGINT", interrupt);
       const output = panel?.stop();
       panel = undefined;
+
       if (signal !== null) process.kill(process.pid, signal);
       resolve({ code, output });
     };
+
     child.on("error", (error) => {
       failure(error.message);
       finish(1, null);

@@ -58,10 +58,12 @@ export function LiveTurn({
   const appearance = useAppearanceSettings();
   const textParts = live.order.filter((ref) => ref.kind === "text");
   const hasText = textParts.length > 0;
+
   const hasLiveWork =
     live.order.some((ref) => ref.kind === "thinking") ||
     live.tools.size > 0 ||
     (!hasText && working);
+
   if (!hasText && !hasLiveWork && !working) return null;
 
   return (
@@ -82,7 +84,10 @@ export function LiveTurn({
       {textParts.map((ref) => {
         const key = livePartKey(ref.runId, ref.attempt, ref.index);
         const text = live.text.get(key) ?? "";
-        return text === "" ? null : <Prose key={`text:${key}`} markdown={text} streaming />;
+
+        return text === "" ? null : (
+          <Prose key={`text:${key}`} markdown={text} streaming={live.runState !== "stopping"} />
+        );
       })}
     </div>
   );

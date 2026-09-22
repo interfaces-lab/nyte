@@ -39,14 +39,20 @@ export interface SelectionReply {
 /** Whether a parsed reply obeys this selection's choice and own-answer rules. */
 export function acceptsSelectionReply(selection: Selection, reply: SelectionReply): boolean {
   const selected = new Set(reply.choices);
+
   if (selected.size !== reply.choices.length) return false;
+
   if (reply.choices.some((id) => !selection.choices.some((choice) => choice.id === id))) {
     return false;
   }
+
   const other = reply.other?.trim();
+
   if (reply.other !== undefined && (selection.other === undefined || other === "")) return false;
+
   if (selection.multiple !== true) {
     return reply.choices.length + (other === undefined ? 0 : 1) === 1;
   }
+
   return reply.choices.length > 0 || other !== undefined;
 }

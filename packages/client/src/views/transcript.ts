@@ -2,16 +2,22 @@ import type { ToolTurnPart, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protoc
 import type { Commit, CommitBody, MessageSource, Oid, ToolClass } from "@nyte-ai/protocol";
 
 type MessageBody = Extract<CommitBody, { kind: "message" }>;
+
 type UserMessage = Extract<MessageBody["message"], { role: "user" }>;
+
 type AssistantMessage = Extract<MessageBody["message"], { role: "assistant" }>;
+
 type ToolResultMessage = Extract<MessageBody["message"], { role: "toolResult" }>;
+
 type AssistantCommit = Extract<Commit, { readonly calls: Readonly<Record<string, ToolClass>> }>;
+
 type ToolResultCommit = Extract<Commit, { readonly call: ToolClass }>;
 
 /** The turn shapes are wire types: a snapshot carries them. Declared in `@nyte-ai/protocol`. */
 export type { ToolTurnPart, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
 
 type ConversationTurn = Extract<Turn, { kind: "turn" }>;
+
 type CommitItem = { readonly oid: Oid; readonly commit: Commit };
 
 interface TranscriptBuilder {
@@ -32,6 +38,7 @@ export function turnPartId(part: TurnPart): string {
       return `tool:${part.callId}`;
     default: {
       const _exhaustive: never = part;
+
       return _exhaustive;
     }
   }
@@ -55,6 +62,7 @@ function toolResultText(message: ToolResultMessage): string {
           return "[image]";
         default: {
           const _exhaustive: never = part;
+
           return _exhaustive;
         }
       }
@@ -77,6 +85,7 @@ function hasVisibleAssistantContent(message: AssistantMessage): boolean {
         return part.thinking.trim() !== "";
       default: {
         const _exhaustive: never = part;
+
         return _exhaustive;
       }
     }
@@ -90,15 +99,20 @@ function hasVisibleAssistantContent(message: AssistantMessage): boolean {
  */
 function landingTurn(builder: TranscriptBuilder, item: CommitItem): ConversationTurn {
   const last = builder.items.at(-1);
+
   if (last?.kind === "turn") {
     const turn = last === builder.sharedTail ? { ...last, parts: [...last.parts] } : last;
     turn.durationMs = Math.max(turn.durationMs, item.commit.at - turn.startedAt);
+
     if (turn.run.kind === "none" && item.commit.run !== undefined) {
       turn.run = { kind: "run", id: item.commit.run };
     }
+
     builder.items[builder.items.length - 1] = turn;
+
     return turn;
   }
+
   const turn: ConversationTurn = {
     kind: "turn",
     id: item.oid,
@@ -110,6 +124,7 @@ function landingTurn(builder: TranscriptBuilder, item: CommitItem): Conversation
 
   builder.toolCalls?.clear();
   builder.items.push(turn);
+
   return turn;
 }
 
@@ -127,6 +142,7 @@ function appendUser(
     content: message.content,
     at: item.commit.at,
   };
+
   const sourced = source === undefined ? part : { ...part, source };
   const keyed = item.commit.key === undefined ? sourced : { ...sourced, key: item.commit.key };
   items.push({
@@ -145,9 +161,12 @@ function appendAssistant(
   message: AssistantMessage,
 ): void {
   const failure = item.commit.outcome.kind === "failed" ? item.commit.outcome.failure : undefined;
+
   if (!hasVisibleAssistantContent(message) && failure === undefined) return;
   const turn = landingTurn(builder, item);
+
   if (failure !== undefined) turn.failure = failure;
+
   for (const [contentIndex, part] of message.content.entries()) {
     switch (part.type) {
       case "text":
@@ -160,6 +179,7 @@ function appendAssistant(
             at: item.commit.at,
           });
         }
+
         break;
       case "thinking":
         if (part.thinking.trim() !== "") {
@@ -171,9 +191,11 @@ function appendAssistant(
             at: item.commit.at,
           });
         }
+
         break;
       case "toolCall": {
         const toolClass = item.commit.calls[part.id];
+
         if (toolClass === undefined)
           throw new Error(`Assistant commit has no class for ${part.id}`);
 
@@ -186,8 +208,10 @@ function appendAssistant(
         });
         break;
       }
+
       default: {
         const _exhaustive: never = part;
+
         return _exhaustive;
       }
     }
@@ -201,20 +225,25 @@ function appendToolResult(
   message: ToolResultMessage,
 ): void {
   const turn = landingTurn(builder, item);
+
   const result: ToolTurnPart["result"] = {
     commit: item.oid,
     output: toolResultText(message),
     isError: message.isError,
   };
+
   const settled = item.commit.call;
 
   const index =
     builder.toolCalls === undefined
       ? turn.parts.findIndex((part) => part.kind === "tool" && part.callId === message.toolCallId)
       : (builder.toolCalls.get(message.toolCallId) ?? -1);
+
   const call = turn.parts[index];
+
   if (call?.kind === "tool") {
     turn.parts[index] = { ...call, class: settled, result, at: item.commit.at };
+
     return;
   }
 
@@ -240,10 +269,12 @@ export function appendTranscriptCommit(
   item: { readonly oid: Oid; readonly commit: Commit },
 ): TranscriptState | undefined {
   if (item.oid === state.tip) return state;
+
   if (item.commit.parent !== state.tip) return undefined;
 
   const items = [...state.items];
   appendTranscriptItem({ items, sharedTail: state.items.at(-1) }, item);
+
   return { items, tip: item.oid };
 }
 
@@ -251,6 +282,7 @@ export function appendTranscriptCommit(
 function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): void {
   const items = builder.items;
   const { body } = item.commit;
+
   switch (body.kind) {
     case "message": {
       switch (body.message.role) {
@@ -268,11 +300,14 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
           break;
         default: {
           const _exhaustive: never = body.message;
+
           return _exhaustive;
         }
       }
+
       break;
     }
+
     case "completion":
       builder.toolCalls?.clear();
       // A background result answers the model, not the user. It opens its own
@@ -299,6 +334,7 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
       break;
     default: {
       const _exhaustive: never = body;
+
       return _exhaustive;
     }
   }
@@ -310,13 +346,17 @@ export function transcriptFromCommits(
 ): Turn[] {
   const builder: TranscriptBuilder = { items: [], toolCalls: new Map() };
   let tip: Oid | null = null;
+
   for (const item of commits) {
     if (item.oid === tip) continue;
+
     if (item.commit.parent !== tip) {
       throw new Error("Commits do not form an oldest-first branch");
     }
+
     appendTranscriptItem(builder, item);
     tip = item.oid;
   }
+
   return builder.items;
 }

@@ -12,6 +12,7 @@ import { motion, useReducedMotion } from "motion/react";
 import type { ComponentType, ReactElement, ReactNode } from "react";
 
 type Glyph = ComponentType<CentralIconBaseProps>;
+
 type IconVariant = "outlined" | "filled";
 
 type GlyphPair = Readonly<Record<IconVariant, Glyph>>;
@@ -161,6 +162,7 @@ interface IconFrameProps {
 
 function IconFrame({ label, children }: IconFrameProps): ReactElement {
   const a11y = label === undefined ? { "aria-hidden": true } : { role: "img", "aria-label": label };
+
   return (
     <span {...a11y} data-nyte-icon="" {...stylex.props(styles.frame)}>
       {children}
@@ -177,6 +179,7 @@ interface IconProps {
 
 export function Icon({ name, size = 16, label, variant = "outlined" }: IconProps): ReactElement {
   const Glyph = GLYPHS[name][variant];
+
   return (
     <IconFrame label={label}>
       <Glyph size={size} mode="raw" ariaHidden={true} />
@@ -199,6 +202,7 @@ const DIVIDER_X: Readonly<Record<PanelSide, Readonly<Record<"visible" | "hidden"
 // Both paths keep three points so the two shapes can morph into each other.
 function panelDividerPath(side: PanelSide, visible: boolean): string {
   const x = String(DIVIDER_X[side][visible ? "visible" : "hidden"]);
+
   return visible ? `M${x} 5V12V19` : `M${x} 9V12V15`;
 }
 
@@ -217,6 +221,7 @@ interface PanelToggleIconProps {
  */
 export function PanelToggleIcon({ side, visible, size = 15 }: PanelToggleIconProps): ReactElement {
   const reducedMotion = useReducedMotion();
+
   return (
     <IconFrame>
       <svg

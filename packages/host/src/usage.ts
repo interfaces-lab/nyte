@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { constants } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import { lstat, open, opendir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -71,7 +71,9 @@ export type LocalHistoryUsage =
 export type ClaudeCodeUsage = LocalHistoryUsage;
 
 const tokens = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
+
 const envelope = Type.Object({ type: Type.String() });
+
 const assistantRecord = Type.Object({
   type: Type.Literal("assistant"),
   requestId: Type.Optional(Type.String()),
@@ -93,6 +95,7 @@ const assistantRecord = Type.Object({
     }),
   }),
 });
+
 const reportedCost = Type.Number({ minimum: 0, maximum: Number.MAX_VALUE });
 
 export interface Snapshot {
@@ -108,6 +111,7 @@ export interface Snapshot {
 function betterSnapshot(previous: Snapshot | undefined, next: Snapshot): boolean {
   if (previous === undefined) return true;
   const usage = next.usage;
+
   return (
     usage.totalTokens > previous.usage.totalTokens ||
     (usage.totalTokens === previous.usage.totalTokens &&
@@ -129,8 +133,10 @@ async function scanClaudeCodeFile(
 
   for await (const line of historyLines(path, signal)) {
     signal?.throwIfAborted();
+
     if (!line.text.trim()) continue;
     let value: unknown;
+
     try {
       value = JSON.parse(line.text);
     } catch {
@@ -138,22 +144,28 @@ async function scanClaudeCodeFile(
       if (line.terminated) malformedRecords++;
       continue;
     }
+
     if (!Value.Check(envelope, value)) {
       malformedRecords++;
       continue;
     }
+
     if (value.type !== "assistant") continue;
+
     if (!Value.Check(assistantRecord, value)) {
       malformedRecords++;
       continue;
     }
+
     const raw = value.message.usage;
     const cacheWrite = raw.cache_creation_input_tokens ?? 0;
     const cacheWrite1h = raw.cache_creation?.ephemeral_1h_input_tokens;
+
     if ((cacheWrite1h ?? 0) + (raw.cache_creation?.ephemeral_5m_input_tokens ?? 0) > cacheWrite) {
       malformedRecords++;
       continue;
     }
+
     const usage: Usage = {
       ...emptyUsageSummary().total,
       input: raw.input_tokens,
@@ -163,21 +175,28 @@ async function scanClaudeCodeFile(
       totalTokens:
         raw.input_tokens + raw.output_tokens + (raw.cache_read_input_tokens ?? 0) + cacheWrite,
     };
+
     if (cacheWrite1h !== undefined) usage.cacheWrite1h = cacheWrite1h;
+
     const snapshot: Snapshot = {
       model: value.message.model,
       usage,
       costUSD: Value.Check(reportedCost, value.costUSD) ? value.costUSD : undefined,
     };
+
     const messageId = value.message.id?.trim() || null;
     const requestId = value.requestId?.trim() || null;
+
     if (messageId === null && requestId === null) {
       anonymous.push(snapshot);
       continue;
     }
+
     const identity = JSON.stringify([messageId, requestId]);
+
     if (betterSnapshot(keyed.get(identity), snapshot)) keyed.set(identity, snapshot);
   }
+
   return { keyed: [...keyed], anonymous, malformedRecords };
 }
 
@@ -193,19 +212,24 @@ async function scanCached<T>(
   parse: () => Promise<T>,
 ): Promise<T> {
   seen.add(path);
+
   if (cache === undefined) return parse();
   const info = await lstat(path);
+
   if (!info.isFile()) throw new Error("History is not a regular file.");
   const hit = cache.get(path);
+
   if (hit !== undefined && hit.size === info.size && hit.mtimeMs === info.mtimeMs) return hit.scan;
   const scan = await parse();
   cache.set(path, { size: info.size, mtimeMs: info.mtimeMs, scan });
+
   return scan;
 }
 
 /** After a complete walk, whatever the walk did not visit is gone. */
 function pruneCache<T>(cache: UsageScanCache<T> | undefined, seen: Set<string>): void {
   if (cache === undefined) return;
+
   for (const path of cache.keys()) if (!seen.has(path)) cache.delete(path);
 }
 
@@ -214,22 +238,26 @@ export async function readClaudeCodeUsage(
   options: ClaudeCodeUsageOptions,
 ): Promise<ClaudeCodeUsage> {
   options.signal?.throwIfAborted();
+
   const projects = join(
     resolve(
       options.configDir ?? (process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude")),
     ),
     "projects",
   );
+
+  if (!existsSync(projects)) return { kind: "missing" };
+
   try {
     // Configured roots may be symlinks, as may system ancestors such as macOS /tmp.
     const root = await stat(projects);
     options.signal?.throwIfAborted();
+
     if (!root.isDirectory())
       return { kind: "failed", message: "Claude Code history path is not a directory." };
-  } catch (error) {
+  } catch {
     options.signal?.throwIfAborted();
-    if (error instanceof Error && "code" in error && error.code === "ENOENT")
-      return { kind: "missing" };
+
     return { kind: "failed", message: "Could not open Claude Code local history." };
   }
 
@@ -241,26 +269,34 @@ export async function readClaudeCodeUsage(
 
   try {
     const directories = [projects];
+
     for (const directory of directories) {
       options.signal?.throwIfAborted();
+
       try {
         // Follow the configured root, but skip child links to avoid loops and duplicate history.
         if (directory !== projects && (await lstat(directory)).isSymbolicLink()) continue;
         const entries = await opendir(directory);
+
         for await (const entry of entries) {
           options.signal?.throwIfAborted();
           const path = join(directory, entry.name);
+
           if (entry.isDirectory()) {
             directories.push(path);
             continue;
           }
+
           if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+
           try {
             const scan = await scanCached(path, options.cache, seen, () =>
               scanClaudeCodeFile(path, options.signal),
             );
+
             malformedRecords += scan.malformedRecords;
             anonymous.push(...scan.anonymous);
+
             for (const [identity, snapshot] of scan.keyed) {
               if (betterSnapshot(keyed.get(identity), snapshot)) keyed.set(identity, snapshot);
             }
@@ -271,34 +307,44 @@ export async function readClaudeCodeUsage(
         }
       } catch (error) {
         options.signal?.throwIfAborted();
+
         if (directory === projects) throw error;
         unreadableFiles++;
       }
     }
+
     options.signal?.throwIfAborted();
     pruneCache(options.cache, seen);
+
     const catalog = options.models
       .getModels("anthropic")
       .filter((model) => model.provider === "anthropic");
+
     const rows: ModelUsage[] = [];
     let unpricedRecords = 0;
+
     for (const snapshot of [...keyed.values(), ...anonymous]) {
       options.signal?.throwIfAborted();
       // Cached usage is priced on every read, since the catalog can change
       // between reads while the transcript does not. Copy before writing.
       const usage: Usage = { ...snapshot.usage, cost: { ...snapshot.usage.cost } };
+
       if (snapshot.costUSD !== undefined) {
         // History reports a total, not a cost breakdown. Do not invent allocations.
         usage.cost.total = snapshot.costUSD;
       } else {
         const matches = catalog.filter((model) => model.id === snapshot.model);
         const model = matches.length === 1 ? matches[0] : undefined;
+
         if (model) calculateCost(model, usage);
         else unpricedRecords++;
       }
+
       rows.push({ provider: "anthropic", model: snapshot.model, turns: 1, usage });
     }
+
     options.signal?.throwIfAborted();
+
     return {
       kind: "ready",
       summary: mergeUsageSummaries(emptyUsageSummary(), { ...emptyUsageSummary(), models: rows }),
@@ -308,6 +354,7 @@ export async function readClaudeCodeUsage(
     };
   } catch {
     options.signal?.throwIfAborted();
+
     return { kind: "failed", message: "Could not read Claude Code local history." };
   }
 }
@@ -402,6 +449,7 @@ function codexUsage(raw: CodexTokens): Usage {
   const cacheWrite = raw.cache_write_input_tokens ?? 0;
   const output = raw.output_tokens ?? 0;
   const uncached = Math.max(0, input - cacheRead - cacheWrite);
+
   return {
     ...emptyUsageSummary().total,
     input: uncached,
@@ -423,26 +471,33 @@ const FORK_COPY_MAX_GAP_MS = 1000;
 function parseMs(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   const parsed = Date.parse(value);
+
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
 export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexUsage> {
   options.signal?.throwIfAborted();
+
   const home = resolve(
     options.homeDir ?? (process.env.CODEX_HOME?.trim() || join(homedir(), ".codex")),
   );
+
   // Archived rollouts are history too, and they are where the legacy format lives.
   const roots = [join(home, "sessions"), join(home, "archived_sessions")];
   const present: string[] = [];
+
   for (const root of roots) {
+    if (!existsSync(root)) continue;
+
     try {
       if ((await stat(root)).isDirectory()) present.push(root);
-    } catch (error) {
+    } catch {
       options.signal?.throwIfAborted();
-      if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
+
       return { kind: "failed", message: "Could not open Codex local history." };
     }
   }
+
   if (present.length === 0) return { kind: "missing" };
 
   // `response_id` is unique across files, so a forked rollout that repeats its
@@ -460,7 +515,9 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
           const scan = await scanCached(path, options.cache, seen, () =>
             scanCodexRollout(path, options.signal),
           );
+
           malformedRecords += scan.malformedRecords;
+
           // The legacy event is still written beside the modern record, so a
           // file that has both must be counted only once.
           if (scan.modern.length > 0) {
@@ -477,23 +534,28 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
 
     options.signal?.throwIfAborted();
     pruneCache(options.cache, seen);
+
     // Codex writes the ChatGPT-backend model ids, which is the `openai-codex`
     // provider's catalog, not the API provider's.
     const catalog = options.models
       .getModels("openai-codex")
       .filter((model) => model.provider === "openai-codex");
+
     const rows: ModelUsage[] = [];
     let unpricedRecords = 0;
+
     for (const row of [...responses.values(), ...legacy]) {
       options.signal?.throwIfAborted();
       // Priced on a copy: the cached usage outlives this read and this catalog.
       const usage: Usage = { ...row.usage, cost: { ...row.usage.cost } };
       const matches = catalog.filter((model) => model.id === row.model);
       const model = matches.length === 1 ? matches[0] : undefined;
+
       if (model) calculateCost(model, usage);
       else unpricedRecords++;
       rows.push({ provider: "openai-codex", model: row.model, turns: 1, usage });
     }
+
     return {
       kind: "ready",
       summary: mergeUsageSummaries(emptyUsageSummary(), { ...emptyUsageSummary(), models: rows }),
@@ -503,6 +565,7 @@ export async function readCodexUsage(options: CodexUsageOptions): Promise<CodexU
     };
   } catch {
     options.signal?.throwIfAborted();
+
     return { kind: "failed", message: "Could not read Codex local history." };
   }
 }
@@ -523,14 +586,17 @@ async function scanCodexRollout(
 
   for await (const line of historyLines(path, signal)) {
     signal?.throwIfAborted();
+
     if (!line.text.trim()) continue;
     let value: unknown;
+
     try {
       value = JSON.parse(line.text);
     } catch {
       if (line.terminated) malformedRecords++;
       continue;
     }
+
     if (!Value.Check(envelope, value)) {
       malformedRecords++;
       continue;
@@ -546,36 +612,47 @@ async function scanCodexRollout(
       // metas straight after, and letting those through would move the anchor.
       if (sawMeta) continue;
       sawMeta = true;
+
       const forked =
         value.payload.forked_from_id !== undefined || value.payload.parent_thread_id !== undefined;
+
       if (forked) forkAnchorMs = parseMs(value.timestamp);
       continue;
     }
 
     if (Value.Check(usageRecord, value)) {
       const id = value.payload.response_id;
+
       if (id === undefined || model === "") continue;
       const usage = codexUsage(value.payload.usage);
+
       if (usage.totalTokens > 0 && !modern.has(id)) modern.set(id, { model, usage });
       continue;
     }
 
     if (!Value.Check(tokenCount, value)) continue;
     const last = value.payload.info.last_token_usage;
+
     if (last === undefined || model === "") continue;
     // Codex re-emits an unchanged token_count on some stream boundaries.
     const next = JSON.stringify(last);
+
     if (next === signature) continue;
     signature = next;
+
     if (forkAnchorMs !== undefined) {
       const at = parseMs(value.timestamp);
+
       if (at !== undefined && at - forkAnchorMs < FORK_COPY_MAX_GAP_MS) {
         forkAnchorMs = at;
         continue;
       }
+
       forkAnchorMs = undefined;
     }
+
     const usage = codexUsage(last);
+
     if (usage.totalTokens > 0) legacy.push({ model, usage });
   }
 
@@ -585,13 +662,17 @@ async function scanCodexRollout(
 /** Every `.jsonl` under a root, following the root but not links beneath it. */
 async function* jsonlFiles(root: string, signal: AbortSignal | undefined): AsyncGenerator<string> {
   const directories = [root];
+
   for (const directory of directories) {
     signal?.throwIfAborted();
+
     try {
       if (directory !== root && (await lstat(directory)).isSymbolicLink()) continue;
+
       for await (const entry of await opendir(directory)) {
         signal?.throwIfAborted();
         const path = join(directory, entry.name);
+
         if (entry.isDirectory()) directories.push(path);
         else if (entry.isFile() && entry.name.endsWith(".jsonl")) yield path;
       }
@@ -604,33 +685,42 @@ async function* jsonlFiles(root: string, signal: AbortSignal | undefined): Async
 /** Bounded reads preserve UTF-8 and distinguish an unfinished tail from complete JSONL lines. */
 async function* historyLines(path: string, signal: AbortSignal | undefined) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+
   try {
     const stat = await file.stat();
+
     if (!stat.isFile()) throw new Error("History is not a regular file.");
     const buffer = Buffer.alloc(64 * 1024);
     const decoder = new StringDecoder("utf8");
     let pending = "";
     let position = 0;
+
     // Stop at the size observed on open, even if Claude keeps appending.
     while (position < stat.size) {
       signal?.throwIfAborted();
+
       const { bytesRead } = await file.read(
         buffer,
         0,
         Math.min(buffer.length, stat.size - position),
         position,
       );
+
       if (bytesRead === 0) break;
       position += bytesRead;
       pending += decoder.write(buffer.subarray(0, bytesRead));
       let start = 0;
+
       for (let end = pending.indexOf("\n"); end !== -1; end = pending.indexOf("\n", start)) {
         yield { text: pending.slice(start, end), terminated: true };
         start = end + 1;
       }
+
       pending = pending.slice(start);
     }
+
     pending += decoder.end();
+
     if (pending) yield { text: pending, terminated: false };
   } finally {
     await file.close();
@@ -655,7 +745,9 @@ export function createUsageScanCaches(): UsageScanCaches {
 const USAGE_SCAN_CACHE_VERSION = 1;
 
 const cachedTokens = Type.Number({ minimum: 0 });
+
 const nullableTokens = Type.Union([cachedTokens, Type.Null()]);
+
 /** model, input, output, cacheRead, cacheWrite, cacheWrite1h, reasoning, costUSD. */
 const usageRow = Type.Tuple([
   Type.String(),
@@ -667,8 +759,10 @@ const usageRow = Type.Tuple([
   nullableTokens,
   Type.Union([reportedCost, Type.Null()]),
 ]);
+
 const fileScan = <T extends ReturnType<typeof Type.Object>>(scan: T) =>
   Type.Object({ size: cachedTokens, mtimeMs: Type.Number(), scan });
+
 const scanCacheFile = Type.Object({
   version: Type.Literal(USAGE_SCAN_CACHE_VERSION),
   claudeCode: Type.Record(
@@ -692,6 +786,7 @@ const scanCacheFile = Type.Object({
     ),
   ),
 });
+
 type UsageRow = Static<typeof usageRow>;
 
 function encodeRow(model: string, usage: Usage, costUSD: number | undefined): UsageRow {
@@ -709,6 +804,7 @@ function encodeRow(model: string, usage: Usage, costUSD: number | undefined): Us
 
 function decodeRow(row: UsageRow): Snapshot {
   const [model, input, output, cacheRead, cacheWrite, cacheWrite1h, reasoning, costUSD] = row;
+
   const usage: Usage = {
     ...emptyUsageSummary().total,
     input,
@@ -717,13 +813,17 @@ function decodeRow(row: UsageRow): Snapshot {
     cacheWrite,
     totalTokens: input + output + cacheRead + cacheWrite,
   };
+
   if (cacheWrite1h !== null) usage.cacheWrite1h = cacheWrite1h;
+
   if (reasoning !== null) usage.reasoning = reasoning;
+
   return { model, usage, costUSD: costUSD ?? undefined };
 }
 
 export function encodeUsageScanCaches(caches: UsageScanCaches): string {
   const claudeCode: Record<string, Static<typeof scanCacheFile>["claudeCode"][string]> = {};
+
   for (const [path, entry] of caches.claudeCode) {
     claudeCode[path] = {
       size: entry.size,
@@ -740,7 +840,9 @@ export function encodeUsageScanCaches(caches: UsageScanCaches): string {
       },
     };
   }
+
   const codex: Record<string, Static<typeof scanCacheFile>["codex"][string]> = {};
+
   for (const [path, entry] of caches.codex) {
     codex[path] = {
       size: entry.size,
@@ -755,6 +857,7 @@ export function encodeUsageScanCaches(caches: UsageScanCaches): string {
       },
     };
   }
+
   return JSON.stringify({
     version: USAGE_SCAN_CACHE_VERSION,
     claudeCode,
@@ -766,12 +869,15 @@ export function encodeUsageScanCaches(caches: UsageScanCaches): string {
 export function decodeUsageScanCaches(text: string): UsageScanCaches {
   const caches = createUsageScanCaches();
   let parsed: unknown;
+
   try {
     parsed = JSON.parse(text);
   } catch {
     return caches;
   }
+
   if (!Value.Check(scanCacheFile, parsed)) return caches;
+
   for (const [path, entry] of Object.entries(parsed.claudeCode)) {
     caches.claudeCode.set(path, {
       size: entry.size,
@@ -783,6 +889,7 @@ export function decodeUsageScanCaches(text: string): UsageScanCaches {
       },
     });
   }
+
   for (const [path, entry] of Object.entries(parsed.codex)) {
     caches.codex.set(path, {
       size: entry.size,
@@ -790,16 +897,19 @@ export function decodeUsageScanCaches(text: string): UsageScanCaches {
       scan: {
         modern: entry.scan.modern.map(([id, row]) => {
           const { model, usage } = decodeRow(row);
+
           return [id, { model, usage }];
         }),
         legacy: entry.scan.legacy.map((row) => {
           const { model, usage } = decodeRow(row);
+
           return { model, usage };
         }),
         malformedRecords: entry.scan.malformedRecords,
       },
     });
   }
+
   return caches;
 }
 
@@ -817,8 +927,10 @@ export async function readLocalUsage(options: {
 }): Promise<LocalUsage> {
   const failed = (message: string): LocalHistoryUsage => {
     options.signal?.throwIfAborted();
+
     return { kind: "failed", message };
   };
+
   const [claudeCode, codex] = await Promise.all([
     readClaudeCodeUsage({
       models: options.models,
@@ -831,7 +943,9 @@ export async function readLocalUsage(options: {
       cache: options.caches?.codex,
     }).catch(() => failed("Could not read Codex history.")),
   ]);
+
   options.signal?.throwIfAborted();
+
   return { claudeCode, codex };
 }
 
@@ -851,6 +965,7 @@ export async function readAccountUsage(options: {
   readonly signal: AbortSignal;
 }): Promise<AccountUsage> {
   const { models, provider, signal } = options;
+
   try {
     const model = models
       .getModels(provider)
@@ -859,19 +974,24 @@ export async function readAccountUsage(options: {
           ? hasApi(candidate, "anthropic-messages")
           : hasApi(candidate, "openai-codex-responses"),
       );
+
     if (model === undefined) return { provider, kind: "unavailable" };
     const auth = await models.getAuth(model, { signal });
     const apiKey = auth?.auth.apiKey;
+
     if (apiKey === undefined || (provider === "anthropic" && !apiKey.includes("sk-ant-oat"))) {
       return { provider, kind: "unavailable" };
     }
+
     const request = { apiKey, headers: auth?.auth.headers, signal, timeoutMs: 10_000 };
     const selected = { ...model, baseUrl: auth?.auth.baseUrl ?? model.baseUrl };
+
     const limits = hasApi(selected, "anthropic-messages")
       ? await fetchAnthropicAccountLimits(selected, request)
       : hasApi(selected, "openai-codex-responses")
         ? await fetchOpenAICodexAccountLimits(selected, request)
         : undefined;
+
     return limits === undefined || limits.windows.length === 0
       ? { provider, kind: "unavailable" }
       : { provider, kind: "ready", limits };
@@ -882,6 +1002,7 @@ export async function readAccountUsage(options: {
     ) {
       signal.throwIfAborted();
     }
+
     return { provider, kind: "failed", message: "Could not read account limits. Try again." };
   }
 }

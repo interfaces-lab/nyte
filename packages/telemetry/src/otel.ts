@@ -35,6 +35,7 @@ export function createOtelTelemetry(tracer: Tracer): TelemetryContext {
       });
       let ended = false;
       let status: SpanStatus | undefined;
+
       const span: TelemetrySpan = {
         startSpan: (child, callback) =>
           ended
@@ -53,6 +54,7 @@ export function createOtelTelemetry(tracer: Tracer): TelemetryContext {
           if (!ended) status = next;
         },
       };
+
       try {
         return await fn(span);
       } catch (error) {
@@ -60,12 +62,15 @@ export function createOtelTelemetry(tracer: Tracer): TelemetryContext {
         throw error;
       } finally {
         ended = true;
+
         const code =
           (status ?? { status: "ok" }).status === "ok" ? SpanStatusCode.OK : SpanStatusCode.ERROR;
+
         record(() => backend?.setStatus({ code }));
         record(() => backend?.end());
       }
     },
   });
+
   return contextUnder();
 }

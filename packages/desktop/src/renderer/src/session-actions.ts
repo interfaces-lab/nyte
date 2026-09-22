@@ -34,6 +34,7 @@ function applyChange(session: SessionInfo, change: SessionChange): SessionInfo |
       return null;
     default: {
       const exhaustive: never = change;
+
       return exhaustive;
     }
   }
@@ -74,6 +75,7 @@ export class SessionActions {
 
   readonly subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
+
     return () => this.#listeners.delete(listener);
   };
 
@@ -81,16 +83,19 @@ export class SessionActions {
 
   projectSession(session: SessionInfo, changes = this.#pending): SessionInfo | null {
     let projected: SessionInfo | null = session;
+
     for (const pending of changes) {
       if (pending.sessionId === session.sessionId && projected !== null)
         projected = applyChange(projected, pending.change);
     }
+
     return projected;
   }
 
   projectList(sessions: readonly SessionInfo[], changes = this.#pending): readonly SessionInfo[] {
     return sessions.flatMap((session) => {
       const projected = this.projectSession(session, changes);
+
       return projected === null ? [] : [projected];
     });
   }
@@ -106,18 +111,22 @@ export class SessionActions {
   archive(sessionIds: readonly SessionId[], archived: boolean, hide?: HideSession): void {
     for (const sessionId of new Set(sessionIds)) {
       const session = this.#find(sessionId);
+
       if (session === undefined || session.archived === archived) continue;
       this.#archiveNotifications.get(sessionId)?.();
       const pending = this.#add(sessionId, { kind: "archive", archived });
       this.#archiveVersions.set(sessionId, pending);
       const closed = Promise.withResolvers<void>();
       const restore = archived ? hide?.(sessionId) : undefined;
+
       const removeToastEntry = this.#toasts.add(archived ? "archived" : "restored", {
         undo: () => {
           if (this.#archiveVersions.get(sessionId) !== pending) {
             closed.resolve();
+
             return;
           }
+
           const inverse = this.#add(sessionId, { kind: "archive", archived: session.archived });
           this.#archiveVersions.set(sessionId, inverse);
           const restoreUndo = session.archived ? hide?.(sessionId) : undefined;
@@ -125,29 +134,37 @@ export class SessionActions {
           void this.#run(inverse).then((saved) => {
             if (this.#archiveVersions.get(sessionId) === inverse) {
               this.#archiveVersions.delete(sessionId);
+
               if (!saved && this.#find(sessionId)?.archived === archived) {
                 if (session.archived) restoreUndo?.();
                 else hide?.(sessionId);
               }
             }
+
             closed.resolve();
           });
         },
         commit: () => closed.resolve(),
       });
+
       const discard = (): void => {
         removeToastEntry();
         closed.resolve();
       };
+
       this.#archiveNotifications.set(sessionId, discard);
+
       const work = this.#run(pending).then((saved) => {
         if (saved) return;
         discard();
+
         if (this.#archiveVersions.get(sessionId) === pending) restore?.();
       });
+
       void Promise.all([work, closed.promise]).then(() => {
         if (this.#archiveNotifications.get(sessionId) === discard)
           this.#archiveNotifications.delete(sessionId);
+
         if (this.#archiveVersions.get(sessionId) === pending)
           this.#archiveVersions.delete(sessionId);
       });
@@ -189,6 +206,7 @@ export class SessionActions {
       this.#client
         .getQueryData<SessionPage>(keys.sessionPreview)
         ?.items.find((item) => item.sessionId === sessionId);
+
     return session === undefined ? undefined : (this.projectSession(session) ?? undefined);
   }
 
@@ -196,6 +214,7 @@ export class SessionActions {
     const pending = { sessionId, change };
     this.#pending = [...this.#pending, pending];
     this.#emit();
+
     return pending;
   }
 
@@ -210,9 +229,11 @@ export class SessionActions {
 
   #run(pending: PendingChange): Promise<boolean> {
     const previous = this.#queues.get(pending.sessionId) ?? Promise.resolve(true);
+
     const work = previous.then(async () => {
       try {
         const { sessionId, change } = pending;
+
         switch (change.kind) {
           case "archive":
             await this.#sessions.setArchived({ sessionId, archived: change.archived });
@@ -228,9 +249,11 @@ export class SessionActions {
             break;
           default: {
             const exhaustive: never = change;
+
             return exhaustive;
           }
         }
+
         // Discard reads started before the write before removing its projection.
         await Promise.all([
           this.#client.cancelQueries({ queryKey: keys.sessions }),
@@ -238,6 +261,7 @@ export class SessionActions {
           this.#client.cancelQueries({ queryKey: keys.snapshot(sessionId), exact: true }),
         ]);
         this.#commit(pending);
+
         if (
           change.kind === "delete" ||
           (change.kind === "archive" &&
@@ -246,20 +270,24 @@ export class SessionActions {
         ) {
           this.#releaseResources?.(sessionId);
         }
+
         return true;
       } catch {
         const verb =
           pending.change.kind === "archive" && !pending.change.archived
             ? "restore"
             : pending.change.kind;
+
         toast.error(`Couldn't ${verb} this chat. Try again.`, {
           id: `session-action-error-${verb}`,
         });
+
         return false;
       } finally {
         this.#remove(pending);
       }
     });
+
     this.#queues.set(pending.sessionId, work);
     void work.then(() => {
       if (this.#queues.get(pending.sessionId) !== work) return;
@@ -269,12 +297,14 @@ export class SessionActions {
         queryKey: keys.session(pending.sessionId),
         exact: true,
       });
+
       if (pending.change.kind !== "delete")
         void this.#client.invalidateQueries({
           queryKey: keys.snapshot(pending.sessionId),
           exact: true,
         });
     });
+
     return work;
   }
 
@@ -283,8 +313,10 @@ export class SessionActions {
       sessions.flatMap((session) => {
         if (session.sessionId !== sessionId) return [session];
         const changed = applyChange(session, change);
+
         return changed === null ? [] : [changed];
       });
+
     this.#client.setQueryData<readonly WorkspaceSessionDirectory[]>(
       keys.sessionDirectory,
       (directories) =>
@@ -301,10 +333,13 @@ export class SessionActions {
     this.#client.setQueryData<SessionInfo | null>(keys.session(sessionId), (session) =>
       session === null || session === undefined ? session : applyChange(session, change),
     );
+
     if (change.kind === "delete") {
       this.#client.removeQueries({ queryKey: keys.snapshot(sessionId), exact: true });
+
       return;
     }
+
     this.#client.setQueryData<SessionSnapshot>(keys.snapshot(sessionId), (snapshot) =>
       snapshot === undefined
         ? snapshot

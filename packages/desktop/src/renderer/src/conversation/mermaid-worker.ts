@@ -1,19 +1,10 @@
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { renderDiagram } from "./mermaid-render.ts";
 
-function isRenderRequest(
-  value: unknown,
-): value is { readonly id: string; readonly source: string } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "id" in value &&
-    typeof value.id === "string" &&
-    "source" in value &&
-    typeof value.source === "string"
-  );
-}
+const renderRequest = Type.Object({ id: Type.String(), source: Type.String() });
 
 self.addEventListener("message", (event: MessageEvent<unknown>) => {
-  if (!isRenderRequest(event.data)) return;
+  if (!Value.Check(renderRequest, event.data)) return;
   self.postMessage({ id: event.data.id, result: renderDiagram(event.data.source) });
 });

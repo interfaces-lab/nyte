@@ -7,6 +7,7 @@ export default function Annotate() {
   const { imageId, uri } = useLocalSearchParams<{ imageId: string; uri: string }>();
   const id = Array.isArray(imageId) ? imageId[0] : imageId;
   const source = Array.isArray(uri) ? uri[0] : uri;
+
   if (id === undefined || id === "" || source === undefined || source === "") {
     return (
       <EmptyState title="No photo to mark up" description="Attach a photo first, then open markup.">
@@ -14,5 +15,6 @@ export default function Annotate() {
       </EmptyState>
     );
   }
+
   return <AnnotateScreen imageId={id} uri={source} />;
 }

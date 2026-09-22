@@ -28,6 +28,7 @@ export function FilterGrid<Filter extends string>({
   const rows = cards.reduce<FilterCard<Filter>[][]>((acc, card, index) => {
     if (index % 2 === 0) acc.push([card]);
     else acc[acc.length - 1]?.push(card);
+
     return acc;
   }, []);
 

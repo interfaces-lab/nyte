@@ -88,7 +88,7 @@ async function desktop(): Promise<{ host: DesktopHost; events: HostEvent[]; root
       retain: () => undefined,
       release: () => undefined,
       warm: async () => undefined,
-      dispose: () => undefined,
+      releaseWindow: () => undefined,
       agent: unusedBrowserAgent(),
     },
   });
@@ -107,11 +107,11 @@ function sharing(state: MobileShareState): Extract<MobileShareState, { kind: "sh
 
 test("a phone on the share address reads and drives the desktop's own Home store", async () => {
   const { host } = await desktop();
-  const mine = await host.call("sessions.create", { name: "from the desktop" });
+  const mine = await host.call(1, "sessions.create", { name: "from the desktop" });
 
   const [first, concurrent] = await Promise.all([
-    host.call("host.mobile.start", { reach: "simulator" }),
-    host.call("host.mobile.start", { reach: "simulator" }),
+    host.call(1, "host.mobile.start", { reach: "simulator" }),
+    host.call(1, "host.mobile.start", { reach: "simulator" }),
   ]);
   const state = sharing(first);
   assert.equal(sharing(concurrent).address, state.address);
@@ -132,7 +132,7 @@ test("a phone on the share address reads and drives the desktop's own Home store
     [mine.sessionId],
   );
   const theirs = await phone.sessions.create({ name: "from the phone" });
-  const directory = await host.call("host.sessionDirectory", undefined);
+  const directory = await host.call(1, "host.sessionDirectory", undefined);
   assert.deepEqual(
     localSessions(directory, null)
       ?.map((session) => session.sessionId)
@@ -141,7 +141,7 @@ test("a phone on the share address reads and drives the desktop's own Home store
   );
   await phone.sessions.rename({ sessionId: theirs.sessionId, name: "renamed on the phone" });
   assert.equal(
-    (await host.call("sessions.get", { sessionId: theirs.sessionId }))?.name,
+    (await host.call(1, "sessions.get", { sessionId: theirs.sessionId }))?.name,
     "renamed on the phone",
   );
 
@@ -149,7 +149,7 @@ test("a phone on the share address reads and drives the desktop's own Home store
   const receipt = await phone.messages.send({ sessionId: theirs.sessionId, content: "hello" });
   assert.equal(receipt.kind, "queued");
   await vi.waitFor(async () => {
-    const info = await host.call("sessions.get", { sessionId: theirs.sessionId });
+    const info = await host.call(1, "sessions.get", { sessionId: theirs.sessionId });
     assert.ok(
       info?.heads.some((head) => head.run?.phase.kind === "failed"),
       "the desktop's runner drove the phone's message to its provider failure",
@@ -159,7 +159,7 @@ test("a phone on the share address reads and drives the desktop's own Home store
 
 test("a missing or wrong token is refused before anything is read", async () => {
   const { host } = await desktop();
-  const state = sharing(await host.call("host.mobile.start", { reach: "simulator" }));
+  const state = sharing(await host.call(1, "host.mobile.start", { reach: "simulator" }));
 
   const anonymous = await fetch(`${state.address}/v1/info`);
   assert.equal(anonymous.status, 401);
@@ -174,26 +174,26 @@ test("a missing or wrong token is refused before anything is read", async () => 
 
 test("phone model choices follow desktop provider and model preferences", async () => {
   const { host } = await desktop();
-  const state = sharing(await host.call("host.mobile.start", { reach: "simulator" }));
+  const state = sharing(await host.call(1, "host.mobile.start", { reach: "simulator" }));
   const phone = createNyteClient({ baseUrl: state.address, token: state.token });
   assert.deepEqual(
     (await phone.provider.models.list()).map((entry) => entry.id),
     [model.id],
   );
-  await host.call("host.setPreference", {
+  await host.call(1, "host.setPreference", {
     kind: "models",
     provider: model.provider,
     ids: [model.id],
     hidden: true,
   });
   assert.deepEqual(await phone.provider.models.list(), []);
-  await host.call("host.setPreference", {
+  await host.call(1, "host.setPreference", {
     kind: "models",
     provider: model.provider,
     ids: [model.id],
     hidden: false,
   });
-  await host.call("host.setPreference", {
+  await host.call(1, "host.setPreference", {
     kind: "provider",
     provider: model.provider,
     enabled: false,
@@ -203,7 +203,7 @@ test("phone model choices follow desktop provider and model preferences", async 
 
 test("unfinished uploads are refused without waiting for the remaining body", async () => {
   const { host } = await desktop();
-  const state = sharing(await host.call("host.mobile.start", { reach: "simulator" }));
+  const state = sharing(await host.call(1, "host.mobile.start", { reach: "simulator" }));
   for (const input of [
     { token: undefined, body: "{", status: 401 },
     { token: state.token, body: "x".repeat(8_388_608 + 1), status: 413 },
@@ -232,12 +232,12 @@ test("unfinished uploads are refused without waiting for the remaining body", as
       upload.destroy();
     }
   }
-  assert.deepEqual((await host.call("sessions.list", {})).items, []);
+  assert.deepEqual((await host.call(1, "sessions.list", {})).items, []);
 });
 
 test("disconnecting before a watch's first event aborts its pending SDK read", async () => {
   const { host } = await desktop();
-  const { sdk } = await host.prepare();
+  const { sdk } = await host.prepare(1);
   const session = await sdk.sessions.create({});
   const started = Promise.withResolvers<AbortSignal | undefined>();
   const release = Promise.withResolvers<void>();
@@ -274,8 +274,8 @@ test("disconnecting before a watch's first event aborts its pending SDK read", a
 
 test("stopping ends the phone's streams and connections while the desktop keeps working", async () => {
   const { host, events } = await desktop();
-  const session = await host.call("sessions.create", {});
-  const first = sharing(await host.call("host.mobile.start", { reach: "simulator" }));
+  const session = await host.call(1, "sessions.create", {});
+  const first = sharing(await host.call(1, "host.mobile.start", { reach: "simulator" }));
   const phone = createNyteClient({ baseUrl: first.address, token: first.token });
 
   const received: string[] = [];
@@ -290,19 +290,19 @@ test("stopping ends the phone's streams and connections while the desktop keeps 
   );
   await vi.waitFor(() => assert.ok(received.includes("synced")));
 
-  await host.call("host.mobile.stop", undefined);
+  await host.call(1, "host.mobile.stop", undefined);
   // Only the share is asserted here; the tailnet reading depends on the machine.
-  assert.equal((await host.call("host.mobile.state", undefined)).kind, "off");
+  assert.equal((await host.call(1, "host.mobile.state", undefined)).kind, "off");
   assert.match(await watchEnd, /closed/);
   await assert.rejects(fetch(`${first.address}/v1/info`));
   assert.deepEqual(events.filter((event) => event.kind === "mobile_share_changed").length, 2);
 
   // The desktop SDK is untouched: it still answers, and a restart mints a new token.
   assert.equal(
-    (await host.call("sessions.get", { sessionId: session.sessionId }))?.sessionId,
+    (await host.call(1, "sessions.get", { sessionId: session.sessionId }))?.sessionId,
     session.sessionId,
   );
-  const second = sharing(await host.call("host.mobile.start", { reach: "simulator" }));
+  const second = sharing(await host.call(1, "host.mobile.start", { reach: "simulator" }));
   assert.notEqual(second.token, first.token);
   assert.equal(
     (await createNyteClient({ baseUrl: second.address, token: second.token }).info()).version,
@@ -312,15 +312,15 @@ test("stopping ends the phone's streams and connections while the desktop keeps 
 
 test("the share stays on the folder selected when it started", async () => {
   const { host, root } = await desktop();
-  const home = sharing(await host.call("host.mobile.start", { reach: "simulator" }));
+  const home = sharing(await host.call(1, "host.mobile.start", { reach: "simulator" }));
   const phone = createNyteClient({ baseUrl: home.address, token: home.token });
 
-  const opened = await host.call("host.openWorkspace", { path: root });
+  const opened = await host.call(1, "host.openWorkspace", { path: root });
   assert.equal(opened.kind, "opened");
-  const inProject = await host.call("sessions.create", { name: "project chat" });
+  const inProject = await host.call(1, "sessions.create", { name: "project chat" });
 
   // Selection moved; the share did not, and nothing from the folder leaks through it.
-  const state = await host.call("host.mobile.state", undefined);
+  const state = await host.call(1, "host.mobile.state", undefined);
   assert.deepEqual(sharing(state).target, { kind: "home" });
   const seen = await phone.sessions.list({ parent: null, includeArchived: true });
   assert.equal(
@@ -338,21 +338,21 @@ async function listedRepo(
   const project = join(root, "repo");
   await mkdir(project);
   await writeFile(join(project, "share-target-marker.txt"), "marker");
-  const opened = await host.call("host.openWorkspace", { path: project });
+  const opened = await host.call(1, "host.openWorkspace", { path: project });
   assert.equal(opened.kind, "opened");
   if (opened.kind !== "opened") throw new Error("openWorkspace did not open");
-  if (trusted) await host.call("host.trustWorkspace", { path: project });
-  await host.call("host.closeWorkspace", undefined);
+  if (trusted) await host.call(1, "host.trustWorkspace", { path: project });
+  await host.call(1, "host.closeWorkspace", undefined);
   return { project, workspace: opened.workspace };
 }
 
 test("phone workspace.select retargets the share and leaves Mac selection alone", async () => {
   const { host, root, events } = await desktop();
-  const home = sharing(await host.call("host.mobile.start", { reach: "simulator" }));
+  const home = sharing(await host.call(1, "host.mobile.start", { reach: "simulator" }));
   const phone = createNyteClient({ baseUrl: home.address, token: home.token });
   const { workspace } = await listedRepo(host, root, true);
   const early = await phone.sessions.create({ name: "before select" });
-  const mac = await host.call("host.state", undefined);
+  const mac = await host.call(1, "host.state", undefined);
   assert.equal(mac.workspace, undefined);
   assert.deepEqual(await phone.workspace.current(), { kind: "home" });
   const shareChanges = () => events.filter((event) => event.kind === "mobile_share_changed").length;
@@ -365,8 +365,8 @@ test("phone workspace.select retargets the share and leaves Mac selection alone"
   if (first.selection.kind !== "project") throw new Error("selection was not a project");
   assert.equal(first.selection.workspace.path, workspace.path);
   assert.deepEqual(first, second);
-  assert.deepEqual(await host.call("host.state", undefined), mac);
-  assert.deepEqual(sharing(await host.call("host.mobile.state", undefined)).target, {
+  assert.deepEqual(await host.call(1, "host.state", undefined), mac);
+  assert.deepEqual(sharing(await host.call(1, "host.mobile.state", undefined)).target, {
     kind: "project",
     workspace: first.selection.workspace,
   });
@@ -420,7 +420,7 @@ test("phone workspace.select retargets the share and leaves Mac selection alone"
 
 test("share sessions.list and create follow the parent session's workspace", async () => {
   const { host, root } = await desktop();
-  const state = sharing(await host.call("host.mobile.start", { reach: "simulator" }));
+  const state = sharing(await host.call(1, "host.mobile.start", { reach: "simulator" }));
   const phone = createNyteClient({ baseUrl: state.address, token: state.token });
   const { workspace } = await listedRepo(host, root, true);
 
@@ -448,7 +448,7 @@ test("share sessions.list and create follow the parent session's workspace", asy
 
 test("phone workspace.forget drops the folder and re-seats the share on Home", async () => {
   const { host, root, events } = await desktop();
-  const state = sharing(await host.call("host.mobile.start", { reach: "simulator" }));
+  const state = sharing(await host.call(1, "host.mobile.start", { reach: "simulator" }));
   const phone = createNyteClient({ baseUrl: state.address, token: state.token });
   const { workspace } = await listedRepo(host, root, true);
   const selected = await phone.workspace.select({ kind: "project", path: workspace.path });
@@ -456,7 +456,7 @@ test("phone workspace.forget drops the folder and re-seats the share on Home", a
 
   await phone.workspace.forget({ path: workspace.path });
   assert.deepEqual(await phone.workspace.current(), { kind: "home" });
-  assert.deepEqual(sharing(await host.call("host.mobile.state", undefined)).target, {
+  assert.deepEqual(sharing(await host.call(1, "host.mobile.state", undefined)).target, {
     kind: "home",
   });
   assert.deepEqual(await phone.workspace.list(), []);
@@ -470,15 +470,15 @@ test("phone workspace.forget drops the folder and re-seats the share on Home", a
 test("phone workspace.forget of the Mac's open folder closes it on both sides", async () => {
   const { host, root, events } = await desktop();
   const { workspace } = await listedRepo(host, root, true);
-  const opened = await host.call("host.openWorkspace", { path: workspace.path });
+  const opened = await host.call(1, "host.openWorkspace", { path: workspace.path });
   assert.equal(opened.kind, "opened");
-  const state = sharing(await host.call("host.mobile.start", { reach: "simulator" }));
+  const state = sharing(await host.call(1, "host.mobile.start", { reach: "simulator" }));
   assert.deepEqual(state.target, { kind: "project", workspace });
   const phone = createNyteClient({ baseUrl: state.address, token: state.token });
 
   await phone.workspace.forget({ path: workspace.path });
-  assert.equal((await host.call("host.state", undefined)).workspace, undefined);
-  assert.deepEqual(sharing(await host.call("host.mobile.state", undefined)).target, {
+  assert.equal((await host.call(1, "host.state", undefined)).workspace, undefined);
+  assert.deepEqual(sharing(await host.call(1, "host.mobile.state", undefined)).target, {
     kind: "home",
   });
   assert.deepEqual(await phone.workspace.current(), { kind: "home" });
@@ -487,7 +487,7 @@ test("phone workspace.forget of the Mac's open folder closes it on both sides", 
 
 test("phone workspace.select of an untrusted listed project is untrusted", async () => {
   const { host, root } = await desktop();
-  const home = sharing(await host.call("host.mobile.start", { reach: "simulator" }));
+  const home = sharing(await host.call(1, "host.mobile.start", { reach: "simulator" }));
   const phone = createNyteClient({ baseUrl: home.address, token: home.token });
   const { workspace } = await listedRepo(host, root, false);
   assert.deepEqual(await phone.workspace.select({ kind: "project", path: workspace.path }), {
@@ -495,12 +495,12 @@ test("phone workspace.select of an untrusted listed project is untrusted", async
     path: workspace.path,
   });
   assert.deepEqual(await phone.workspace.current(), { kind: "home" });
-  assert.equal((await host.call("host.state", undefined)).workspace, undefined);
+  assert.equal((await host.call(1, "host.state", undefined)).workspace, undefined);
 });
 
 test("phone workspace.select of a missing listed project is unavailable", async () => {
   const { host, root } = await desktop();
-  const home = sharing(await host.call("host.mobile.start", { reach: "simulator" }));
+  const home = sharing(await host.call(1, "host.mobile.start", { reach: "simulator" }));
   const phone = createNyteClient({ baseUrl: home.address, token: home.token });
   const { project, workspace } = await listedRepo(host, root, true);
   await rm(project, { recursive: true, force: true });
@@ -513,7 +513,7 @@ test("phone workspace.select of a missing listed project is unavailable", async 
 
 test("a share call queued behind close fails instead of composing after teardown", async () => {
   const { host, root } = await desktop();
-  const home = sharing(await host.call("host.mobile.start", { reach: "simulator" }));
+  const home = sharing(await host.call(1, "host.mobile.start", { reach: "simulator" }));
   const phone = createNyteClient({ baseUrl: home.address, token: home.token });
   const { workspace } = await listedRepo(host, root, true);
 

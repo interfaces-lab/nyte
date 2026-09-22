@@ -60,11 +60,13 @@ type ThinkingKeyInput =
 
 function createThinkingKey(parts: readonly WorkTurnPart[]): (input: ThinkingKeyInput) => string {
   const settled = new Map<string, string>();
+
   for (const part of parts) {
     if (part.kind !== "thinking") continue;
     const key = workEntryKey(part);
     settled.set(key, key);
   }
+
   const pending = new Map<
     string,
     {
@@ -81,13 +83,17 @@ function createThinkingKey(parts: readonly WorkTurnPart[]): (input: ThinkingKeyI
         const identity = livePartKey(input.runId, input.attempt, input.contentIndex);
         const key = `thinking:${identity}`;
         pending.set(identity, { ...input, key });
+
         return key;
       }
+
       case "settled": {
         const durable = workEntryKey(input.part);
         const existing = settled.get(durable);
+
         if (existing !== undefined) return existing;
         let runId: RunId | undefined;
+
         switch (input.run.kind) {
           case "none":
             runId = undefined;
@@ -97,29 +103,40 @@ function createThinkingKey(parts: readonly WorkTurnPart[]): (input: ThinkingKeyI
             break;
           default: {
             const _exhaustive: never = input.run;
+
             return _exhaustive;
           }
         }
+
         if (runId === undefined) {
           settled.set(durable, durable);
+
           return durable;
         }
+
         const matches = [...pending].filter(
           ([, candidate]) =>
             candidate.runId === runId && candidate.contentIndex === input.part.contentIndex,
         );
+
         const match = matches.length === 1 ? matches[0] : undefined;
+
         if (match === undefined) {
           settled.set(durable, durable);
+
           return durable;
         }
+
         const [identity, candidate] = match;
         pending.delete(identity);
         settled.set(durable, candidate.key);
+
         return candidate.key;
       }
+
       default: {
         const _exhaustive: never = input;
+
         return _exhaustive;
       }
     }
@@ -149,7 +166,9 @@ function WorkEntryView({
       </div>
     );
   }
+
   const { part } = entry;
+
   switch (part.kind) {
     case "thinking":
       return (
@@ -171,6 +190,7 @@ function WorkEntryView({
       );
     default: {
       const _exhaustive: never = part;
+
       return _exhaustive;
     }
   }
@@ -203,6 +223,7 @@ export function WorkGroupView({
   const liveOrder = live?.order;
   const liveThoughts = live?.thinking;
   const presentationTools = live?.tools;
+
   const presentationLive = useMemo(
     () =>
       liveOrder === undefined || presentationTools === undefined
@@ -210,17 +231,21 @@ export function WorkGroupView({
         : { order: liveOrder, tools: presentationTools },
     [liveOrder, presentationTools],
   );
+
   const awaited = waits?.awaited ?? NO_WAITS.awaited;
   const [now] = useState(() => Date.now());
   const firstPart = parts[0];
+
   const durationMs =
     firstPart === undefined
       ? 0
       : Math.max(0, (running ? now : (parts.at(-1)?.at ?? firstPart.at)) - firstPart.at);
+
   const durablePresentation = useMemo(
     () => durableWorkGroupPresentation({ parts, durationMs, added, removed, running }),
     [added, durationMs, parts, removed, running],
   );
+
   const presentation = useMemo(
     () =>
       liveWorkGroupPresentation({
@@ -230,31 +255,39 @@ export function WorkGroupView({
       }),
     [awaited, durablePresentation, presentationLive],
   );
+
   const { active, summary } = presentation;
   const waitingSessions = presentation.active ? presentation.waiting : [];
   const openSubagentTray = useOpenSubagentTray();
+
   const openWaitingTray =
     openSubagentTray === undefined || waitingSessions.length === 0
       ? undefined
       : (): void => openSubagentTray(waitingSessions.length === 1 ? waitingSessions[0] : undefined);
+
   const [joinEntries] = useState(() => createWorkGroupEntries<WorkEntry>());
   const [thinkingKey] = useState(() => createThinkingKey(parts));
+
   const liveThinking = useMemo(
     () =>
       liveOrder?.flatMap((ref): WorkEntry[] => {
         if (ref.kind !== "thinking") return [];
         const liveKey = livePartKey(ref.runId, ref.attempt, ref.index);
+
         const key = thinkingKey({
           kind: "live",
           runId: ref.runId,
           attempt: ref.attempt,
           contentIndex: ref.index,
         });
+
         const text = liveThoughts?.get(liveKey) ?? "";
+
         return text === "" ? [] : [{ key, kind: "live-thinking", text }];
       }) ?? [],
     [liveOrder, liveThoughts, thinkingKey],
   );
+
   const settledEntries = useMemo(
     () =>
       parts.map((part): WorkEntry => ({
@@ -267,18 +300,21 @@ export function WorkGroupView({
       })),
     [parts, run, thinkingKey],
   );
+
   const entries = joinEntries(settledEntries, liveThinking);
   // The first settled part names the group; later parts append after it.
   const first = parts[0];
   const groupKey = first === undefined ? undefined : workEntryKey(first);
   const [reveal, setReveal] = useState<WorkGroupReveal>("default");
   const hasContent = entries.count > 0;
+
   const body = workGroupBody({
     density,
     active,
     reveal,
     hasContent,
   });
+
   const preview = body === "preview";
   const listed = body === "list";
   const panelId = useId();
@@ -288,36 +324,45 @@ export function WorkGroupView({
   const viewportRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
+
     if (viewport === null || !preview) return undefined;
 
     let paused = false;
     let resumeTimer = 0;
+
     const clearResume = (): void => {
       if (resumeTimer === 0) return;
       window.clearTimeout(resumeTimer);
       resumeTimer = 0;
     };
+
     const follow = (): void => {
       clearResume();
       paused = false;
       viewport.scrollTop = viewport.scrollHeight;
     };
+
     const sync = (): void => {
       viewport.toggleAttribute("data-overflow", overflows(viewport));
+
       if (!paused) viewport.scrollTop = viewport.scrollHeight;
     };
+
     const onScroll = (): void => {
       const step = followOnScroll(viewport);
       paused = step.paused;
       clearResume();
+
       if (step.resumeTimer === "arm") resumeTimer = window.setTimeout(follow, FOLLOW_RESUME_MS);
     };
 
     sync();
     const observer = new ResizeObserver(sync);
     observer.observe(viewport);
+
     for (const child of viewport.children) observer.observe(child);
     viewport.addEventListener("scroll", onScroll, { passive: true });
+
     return () => {
       clearResume();
       observer.disconnect();
@@ -380,11 +425,13 @@ export function WorkGroupView({
   // the trigger; opening from either state shows the list, and closing the
   // list returns the group to whatever the density shows by default.
   const toggleList = (): void => setReveal(listed ? "closed" : "open");
+
   const chevron = (
     <span {...stylex.props(toolGroupStyles.chevron, listed && toolGroupStyles.chevronOpen)}>
       <Icon name="chevron-right" size={11} />
     </span>
   );
+
   const disclosure = {
     "aria-expanded": listed,
     "aria-controls": listed ? panelId : undefined,

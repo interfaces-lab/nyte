@@ -40,6 +40,7 @@ import {
 } from "../theme.ts";
 
 const MARK_COLOR = "#FF453A";
+
 const TAP_TOLERANCE = 8;
 
 type Spot = { x: number; y: number };
@@ -79,6 +80,7 @@ function createAnnotateResponder(deps: ResponderDeps) {
   const { size, saving, nextNumber, addMark, setDrawing, setSelected } = deps;
   let start: Spot | null = null;
   let stroke: readonly Spot[] | null = null;
+
   return PanResponder.create({
     onStartShouldSetPanResponder: () => !saving,
     onMoveShouldSetPanResponder: () => false,
@@ -90,12 +92,15 @@ function createAnnotateResponder(deps: ResponderDeps) {
     onPanResponderMove: (event) => {
       if (start === null || size === undefined) return;
       const at = spotOf(event.nativeEvent.locationX, event.nativeEvent.locationY, size);
+
       if (stroke === null) {
         const dx = (at.x - start.x) * size.width;
         const dy = (at.y - start.y) * size.height;
+
         if (Math.hypot(dx, dy) < TAP_TOLERANCE) return;
         stroke = [start];
       }
+
       stroke = [...stroke, at];
       setDrawing(stroke);
     },
@@ -104,12 +109,16 @@ function createAnnotateResponder(deps: ResponderDeps) {
       const began = start;
       start = null;
       stroke = null;
+
       if (began === null || size === undefined) return;
       setDrawing(undefined);
+
       if (drawn !== null) {
         addMark({ kind: "stroke", points: drawn });
+
         return;
       }
+
       const at = spotOf(event.nativeEvent.locationX, event.nativeEvent.locationY, size);
       addMark({ kind: "point", point: { n: nextNumber, ...at, comment: "" } });
       setSelected(nextNumber);
@@ -131,9 +140,11 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
   const [existing] = useState(() => readAnnotation(imageId));
   const baseUri = existing?.image.uri ?? uri;
   const [size, setSize] = useState<Canvas | undefined>(undefined);
+
   const [marks, setMarks] = useState<Mark[]>(() =>
     (existing?.points ?? []).map((point) => ({ kind: "point", point })),
   );
+
   // The stroke under the finger, promoted to a mark on release.
   const [drawing, setDrawing] = useState<readonly Spot[] | undefined>(undefined);
   const [selected, setSelected] = useState<number | undefined>(undefined);
@@ -145,6 +156,7 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
   const strokes = marks.flatMap((mark) => (mark.kind === "stroke" ? [mark.points] : []));
   const selectedPoint = points.find((point) => point.n === selected);
   const hasMarks = marks.length > 0;
+
   const nextNumber =
     marks.reduce((max, mark) => (mark.kind === "point" ? Math.max(max, mark.point.n) : max), 0) + 1;
 
@@ -175,8 +187,10 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
 
   function undo() {
     const last = marks[marks.length - 1];
+
     if (last === undefined) return;
     setMarks(marks.slice(0, -1));
+
     if (last.kind === "point" && last.point.n === selected) {
       setSelected(undefined);
       Keyboard.dismiss();
@@ -186,8 +200,10 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
   function discard() {
     if (!hasMarks) {
       router.back();
+
       return;
     }
+
     Alert.alert("Discard markup?", "Your points and marks on this photo are removed.", [
       { text: "Keep editing", style: "cancel" },
       { text: "Discard", style: "destructive", onPress: () => router.back() },
@@ -203,12 +219,15 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
     if (saving) return;
     setSaving(true);
     setError(undefined);
+
     try {
       if (!hasMarks) {
         clearAnnotation(imageId);
         router.back();
+
         return;
       }
+
       const captured = await captureRef(canvasRef, { format: "jpg", quality: 0.9 });
       const image = await prepareImage(captured);
       writeAnnotation(imageId, {

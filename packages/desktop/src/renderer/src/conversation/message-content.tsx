@@ -17,10 +17,12 @@ export function UserMessageText({ text }: { readonly text: string }): ReactEleme
 /** The text parts of a message, as the composer would send them again. */
 export function userMessageText(content: UserMessage["content"]): string {
   if (!Array.isArray(content)) return content;
+
   return content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
 }
 
 export function messageImages(content: UserMessage["content"]): readonly ImageContent[] {
   if (!Array.isArray(content)) return [];
+
   return content.flatMap((part) => (part.type === "image" ? [part] : []));
 }

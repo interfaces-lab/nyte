@@ -18,7 +18,7 @@ import { definePlugin, pluginFactKey } from "@nyte-ai/core/plugins";
 import type { AgentTool, Disposer } from "@nyte-ai/core/plugins";
 import type { ImageContent, JsonValue, TextContent } from "@nyte-ai/schema";
 import { Type, Unsafe } from "typebox";
-import type { Static } from "typebox";
+import type { Static, TUnsafe } from "typebox";
 
 export const MCP_PLUGIN_ID = "mcp";
 
@@ -31,6 +31,7 @@ async function importSdk() {
     import("@modelcontextprotocol/sdk/client/streamableHttp.js"),
     import("@modelcontextprotocol/sdk/types.js"),
   ]);
+
   return {
     Client: client.Client,
     StdioClientTransport: stdio.StdioClientTransport,
@@ -40,11 +41,14 @@ async function importSdk() {
     ToolListChangedNotificationSchema: types.ToolListChangedNotificationSchema,
   };
 }
+
 type Sdk = Awaited<ReturnType<typeof importSdk>>;
 
 let sdk: Promise<Sdk> | undefined;
+
 function loadSdk(): Promise<Sdk> {
   sdk ??= importSdk();
+
   return sdk;
 }
 
@@ -70,28 +74,38 @@ export const McpServerConfig = Type.Union([
     { additionalProperties: false },
   ),
 ]);
+
 export type McpServerConfig = Static<typeof McpServerConfig>;
+
 export type McpConfig = Readonly<Record<string, McpServerConfig>>;
 
 const STARTUP_TIMEOUT_MS = 30_000;
+
 /**
  * How long session activation waits for servers to connect. A healthy server answers
  * well inside it; past it the session opens without those tools rather than holding the
  * first message behind a slow or broken server, and they arrive with its status change.
  */
 const ACTIVATION_WAIT_MS = 2_000;
+
 const CATALOG_TIMEOUT_MS = 30_000;
+
 /** Tool calls run as long as the model's turn does; the turn's signal ends them. */
 const CALL_TIMEOUT_MS = 12 * 60 * 60 * 1_000;
+
 /** A reload disposes a session's handle just before the next one acquires it. */
 const LINGER_MS = 1_000;
+
 const STDERR_TAIL_BYTES = 2_048;
+
+/** The registry validates arguments against the server's `inputSchema`, an object schema. */
+type BridgedTool = AgentTool<TUnsafe<Record<string, JsonValue>>>;
 
 export type McpServerStatus =
   | { readonly kind: "connecting" }
   | {
       readonly kind: "connected";
-      readonly tools: readonly AgentTool[];
+      readonly tools: readonly BridgedTool[];
       readonly instructions: string | undefined;
     }
   | { readonly kind: "failed"; readonly error: string };
@@ -135,6 +149,7 @@ class Slot {
 export function connectionKey(name: string, config: McpServerConfig, cwd: string): string {
   const resolved =
     "command" in config ? { ...config, cwd: resolve(cwd, config.cwd ?? ".") } : config;
+
   return `${name}\u0000${JSON.stringify(resolved)}`;
 }
 
@@ -145,6 +160,7 @@ export class McpServers {
     const key = connectionKey(name, config, cwd);
     const held = this.slots.get(key) ?? new Slot(name, config, cwd);
     this.slots.set(key, held);
+
     // A config change re-acquires; give a failed server another try then.
     if (held.connection.status.kind === "failed") held.connection = openConnection(held);
     held.refs += 1;
@@ -152,6 +168,7 @@ export class McpServers {
     held.linger = undefined;
     let released = false;
     const listeners = new Set<() => void>();
+
     return {
       name,
       status: () => held.connection.status,
@@ -159,6 +176,7 @@ export class McpServers {
       subscribe: (listener) => {
         held.listeners.add(listener);
         listeners.add(listener);
+
         return () => {
           held.listeners.delete(listener);
         };
@@ -166,11 +184,14 @@ export class McpServers {
       release: () => {
         if (released) return;
         released = true;
+
         for (const listener of listeners) held.listeners.delete(listener);
         held.refs -= 1;
+
         if (held.refs > 0) return;
         held.linger = setTimeout(() => {
           if (held.refs > 0) return;
+
           if (this.slots.get(key) === held) this.slots.delete(key);
           void closeConnection(held.connection);
         }, LINGER_MS);
@@ -189,6 +210,7 @@ export class McpServers {
   async close(): Promise<void> {
     const all = [...this.slots.values()];
     this.slots.clear();
+
     for (const slot of all) clearTimeout(slot.linger);
     await Promise.all(all.map((slot) => closeConnection(slot.connection)));
   }
@@ -196,18 +218,21 @@ export class McpServers {
 
 function openConnection(slot: Slot): Connection {
   const { promise: ready, resolve: settle } = Promise.withResolvers<void>();
+
   const connection: Connection = {
     status: { kind: "connecting" },
     client: undefined,
     ready,
     settle,
   };
+
   notify(slot);
   void connectServer(slot, connection)
     .catch((cause: unknown) => {
       fail(slot, connection, errorMessage(cause));
     })
     .finally(() => connection.settle());
+
   return connection;
 }
 
@@ -215,6 +240,7 @@ function openConnection(slot: Slot): Connection {
 async function closeConnection(connection: Connection): Promise<void> {
   const { client } = connection;
   connection.client = "ended";
+
   if (client === undefined || client === "ended") return;
   await client.close().catch(() => undefined);
 }
@@ -229,6 +255,7 @@ function fail(slot: Slot, connection: Connection, error: string): void {
   connection.status = { kind: "failed", error };
   void closeConnection(connection);
   connection.settle();
+
   if (slot.connection === connection) notify(slot);
 }
 
@@ -237,13 +264,16 @@ async function connectServer(slot: Slot, connection: Connection): Promise<void> 
   // `closeConnection` reassigns the property while this function awaits; reading it through a
   // closure keeps the declared type, which the compiler's flow analysis would otherwise narrow away.
   const ended = (): boolean => connection.client === "ended";
+
   const { Client, StdioClientTransport, getDefaultEnvironment, StreamableHTTPClientTransport } =
     await loadSdk();
+
   // Loading the SDK is the only window where a close finds no client to shut down. Past it,
   // `connection.client` is set before `connect` spawns the server, so a close reaches it.
   if (ended()) return;
   const client = new Client({ name: "nyte", version: "0" });
   let stderrTail = "";
+
   const transport =
     "command" in config
       ? new StdioClientTransport({
@@ -257,13 +287,16 @@ async function connectServer(slot: Slot, connection: Connection): Promise<void> 
       : new StreamableHTTPClientTransport(new URL(config.url), {
           requestInit: config.headers === undefined ? undefined : { headers: config.headers },
         });
+
   if (transport instanceof StdioClientTransport) {
     transport.stderr?.on("data", (chunk: Buffer | string) => {
       stderrTail = (stderrTail + String(chunk)).slice(-STDERR_TAIL_BYTES);
     });
   }
+
   const describe = (message: string): string =>
     stderrTail.trim() === "" ? message : `${message}\n${stderrTail.trim()}`;
+
   connection.client = client;
   // The MCP client exposes callback properties, not an EventTarget.
   // oxlint-disable-next-line unicorn/prefer-add-event-listener
@@ -271,23 +304,29 @@ async function connectServer(slot: Slot, connection: Connection): Promise<void> 
     if (connection.client !== client) return;
     fail(slot, connection, describe("connection closed"));
   };
+
   // oxlint-disable-next-line unicorn/prefer-add-event-listener
   client.onerror = () => undefined;
+
   try {
     await client.connect(transport, { timeout: STARTUP_TIMEOUT_MS });
   } catch (cause) {
     throw new Error(describe(errorMessage(cause)), { cause });
   }
+
   const refresh = async (): Promise<void> => {
     const tools = await listTools(client, slot.name);
+
     if (connection.client !== client) return;
     connection.status = {
       kind: "connected",
       tools,
       instructions: client.getInstructions()?.trim() || undefined,
     };
+
     if (slot.connection === connection) notify(slot);
   };
+
   const { ToolListChangedNotificationSchema } = await loadSdk();
   client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
     void refresh().catch((cause: unknown) => {
@@ -297,17 +336,20 @@ async function connectServer(slot: Slot, connection: Connection): Promise<void> 
   await refresh();
 }
 
-async function listTools(client: Client, server: string): Promise<AgentTool[]> {
+async function listTools(client: Client, server: string): Promise<BridgedTool[]> {
   if (client.getServerCapabilities()?.tools === undefined) return [];
   const tools: Tool[] = [];
   let cursor: string | undefined;
+
   do {
     const page = await client.listTools(cursor === undefined ? undefined : { cursor }, {
       timeout: CATALOG_TIMEOUT_MS,
     });
+
     tools.push(...page.tools);
     cursor = page.nextCursor;
   } while (cursor !== undefined);
+
   return tools.map((tool) => bridgeTool(client, server, tool));
 }
 
@@ -316,8 +358,9 @@ export function bridgedToolName(server: string, tool: string): string {
   return `${server}_${tool}`.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
 }
 
-function bridgeTool(client: Client, server: string, tool: Tool): AgentTool {
+function bridgeTool(client: Client, server: string, tool: Tool): BridgedTool {
   const name = bridgedToolName(server, tool.name);
+
   return {
     name,
     label: `${server}: ${tool.name}`,
@@ -325,17 +368,18 @@ function bridgeTool(client: Client, server: string, tool: Tool): AgentTool {
     parameters: Unsafe<Record<string, JsonValue>>({ ...tool.inputSchema }),
     replay: "never",
     async execute(_toolCallId, params, signal) {
-      // The registry validated `params` against `inputSchema`, an object schema.
-      if (!isRecord(params)) throw new Error(`${name} expects an object`);
       // The client's return type is a union with the legacy shape; parse the modern one.
       const { CallToolResultSchema } = await loadSdk();
+
       const result = CallToolResultSchema.parse(
         await client.callTool({ name: tool.name, arguments: params }, CallToolResultSchema, {
           signal,
           timeout: CALL_TIMEOUT_MS,
         }),
       );
+
       const content = toolContent(result.content);
+
       if (result.isError === true) {
         throw new Error(
           content
@@ -344,13 +388,10 @@ function bridgeTool(client: Client, server: string, tool: Tool): AgentTool {
             .trim() || `${tool.name} failed`,
         );
       }
+
       return { content, details: { server, tool: tool.name }, title: tool.name };
     },
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function toolContent(content: CallToolResult["content"]): (TextContent | ImageContent)[] {
@@ -374,6 +415,7 @@ function toolContent(content: CallToolResult["content"]): (TextContent | ImageCo
         return [{ type: "text", text: `[resource ${block.uri}]` }];
       default: {
         const _exhaustive: never = block;
+
         return _exhaustive;
       }
     }
@@ -392,6 +434,7 @@ function errorMessage(cause: unknown): string {
 export function mcpConfigVersion(config: McpConfig): string {
   const names = Object.keys(config).toSorted();
   const canonical = JSON.stringify(names.map((name) => [name, config[name]]));
+
   return `mcp:${createHash("sha256").update(canonical).digest("hex").slice(0, 16)}`;
 }
 
@@ -437,18 +480,23 @@ export function mcpPlugin(input: { readonly servers: McpServers; readonly config
       // 2. One pool handle per server that is on; a failure is warned once.
       const active = new Map<string, McpServerHandle>();
       const reported = new Map<string, string>();
+
       const refresh = (): void => {
         for (const handle of active.values()) {
           const status = handle.status();
+
           if (status.kind !== "failed" || reported.get(handle.name) === status.error) continue;
           reported.set(handle.name, status.error);
           api.diagnostics.warn(`MCP server ${handle.name}: ${status.error}`);
         }
+
         api.tools.rebuild();
         api.prompt.rebuild();
       };
+
       const apply = (name: string, config: McpServerConfig, enabled: boolean): void => {
         const current = active.get(name);
+
         if (enabled && current === undefined) {
           const handle = input.servers.acquire(name, config, api.env.cwd);
           handle.subscribe(refresh);
@@ -459,15 +507,18 @@ export function mcpPlugin(input: { readonly servers: McpServers; readonly config
           current.release();
         }
       };
+
       // 3. A choice is a session fact, so its event carries the new value.
       const byFact = new Map(
         configured.map((entry) => [pluginFactKey(MCP_PLUGIN_ID, enabledKey(entry[0])), entry]),
       );
+
       api.signal.addEventListener(
         "abort",
         api.events.subscribe((event) => {
           if (event.kind !== "fact") return;
           const entry = byFact.get(event.key);
+
           if (entry === undefined) return;
           const [name, config] = entry;
           apply(name, config, isEnabled(event.value, config));
@@ -482,13 +533,16 @@ export function mcpPlugin(input: { readonly servers: McpServers; readonly config
       api.tools.add((draft) => {
         for (const handle of active.values()) {
           const status = handle.status();
+
           if (status.kind !== "connected") continue;
+
           for (const tool of status.tools) draft.set(tool.name, tool);
         }
       });
       api.prompt.add((draft) => {
         for (const handle of active.values()) {
           const status = handle.status();
+
           if (status.kind !== "connected" || status.instructions === undefined) continue;
           draft.set(`mcp:${handle.name}`, {
             text: `## ${handle.name} (MCP)\n\n${status.instructions}`,
@@ -499,6 +553,7 @@ export function mcpPlugin(input: { readonly servers: McpServers; readonly config
       api.status.add((draft) => {
         const handles = [...active.values()];
         const connected = handles.filter((handle) => handle.status().kind === "connected").length;
+
         if (connected === handles.length) return;
         draft.set("mcp", { text: `MCP ${String(connected)}/${String(handles.length)}` });
       });
@@ -508,12 +563,16 @@ export function mcpPlugin(input: { readonly servers: McpServers; readonly config
           run: (argument) => {
             if (argument.trim() === "reconnect") {
               input.servers.reconnectFailed();
+
               return "Reconnecting failed MCP servers.";
             }
+
             if (configured.length === 0) return "No MCP servers configured.";
+
             return configured
               .map(([name]) => {
                 const handle = active.get(name);
+
                 return handle === undefined ? `${name}: off` : describeStatus(handle);
               })
               .join("\n");
@@ -547,6 +606,7 @@ function activationDeadline(): Promise<void> {
 
 function describeStatus(handle: McpServerHandle): string {
   const status = handle.status();
+
   switch (status.kind) {
     case "connecting":
       return `${handle.name}: connecting`;
@@ -556,6 +616,7 @@ function describeStatus(handle: McpServerHandle): string {
       return `${handle.name}: failed (${firstLine(status.error)})`;
     default: {
       const _exhaustive: never = status;
+
       return _exhaustive;
     }
   }

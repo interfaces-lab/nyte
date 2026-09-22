@@ -8,7 +8,6 @@ import {
   ANTHROPIC_OAUTH_TOKEN_ENV,
 } from "../env-api-keys.ts";
 import { createProvider, type Provider } from "../models.ts";
-import { ANTHROPIC_MODELS } from "./anthropic.models.ts";
 
 function anthropicApiKeyAuth(): ApiKeyAuth {
   return {
@@ -17,10 +16,12 @@ function anthropicApiKeyAuth(): ApiKeyAuth {
       interaction.signal.throwIfAborted();
       const key = await interaction.prompt({ type: "secret", message: "Enter Anthropic API key" });
       interaction.signal.throwIfAborted();
+
       return { type: "api_key", key };
     },
     resolve: async ({ ctx, credential, signal }) => {
       signal.throwIfAborted();
+
       if (credential?.key) {
         return {
           auth: { apiKey: credential.key },
@@ -31,6 +32,7 @@ function anthropicApiKeyAuth(): ApiKeyAuth {
 
       const authToken = await ctx.env(ANTHROPIC_AUTH_TOKEN_ENV);
       signal.throwIfAborted();
+
       if (authToken) {
         return {
           auth: { headers: { Authorization: `Bearer ${authToken}` } },
@@ -41,15 +43,17 @@ function anthropicApiKeyAuth(): ApiKeyAuth {
       for (const envVar of [ANTHROPIC_OAUTH_TOKEN_ENV, ANTHROPIC_API_KEY_ENV]) {
         const apiKey = await ctx.env(envVar);
         signal.throwIfAborted();
+
         if (apiKey) return { auth: { apiKey }, source: envVar };
       }
+
       return undefined;
     },
   };
 }
 
 export function anthropicProvider(): Provider<"anthropic-messages"> {
-  return createProvider({
+  return createProvider<"anthropic-messages">({
     id: "anthropic",
     name: "Anthropic",
     baseUrl: "https://api.anthropic.com",
@@ -64,7 +68,6 @@ export function anthropicProvider(): Provider<"anthropic-messages"> {
         load: loadAnthropicOAuth,
       }),
     },
-    models: Object.values(ANTHROPIC_MODELS),
-    api: anthropicMessagesApi(),
+    api: { "anthropic-messages": anthropicMessagesApi() },
   });
 }

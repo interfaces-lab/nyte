@@ -9,6 +9,8 @@
  * and those sentences read back as chips.
  */
 import type { MentionFile } from "@nyte-ai/client";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 
 export type MessageReference =
   | { readonly kind: "file"; readonly file: MentionFile }
@@ -26,16 +28,22 @@ export const CONVERSATION_MENTION: MessageReference = {
   kind: "mention",
   id: "current-conversation",
 };
+
 const CONVERSATION_MENTION_TEXT = "@current-conversation";
+
 const CLIPBOARD_PASTE_MAX_INLINE_CHARS = 10_000;
+
 const CLIPBOARD_TOKEN_PREFIX = "@clipboard/";
 
 /** `[$name](path)`: the persisted skill link the transcript already hides. */
 const SKILL_LINK_PATTERN = /\[\$(?<name>[^\]\r\n]+)\]\((?<path>[^)\r\n]*)\)/gu;
+
 /** The expanded form persisted by clients that load skill instructions before sending. */
 const SKILL_INVOCATION_PATTERN =
   /<skill name="(?<invocationName>[^"\r\n]*)" location="(?<invocationPath>[^"\r\n]*)">\n[\s\S]*?\n<\/skill>(?:\n\n)?/gu;
+
 const FILE_URL_PATTERN = /@file:\/\/[^\s<>"]+/gu;
+
 const DRAFT_TOKEN_PATTERN = new RegExp(
   [
     FILE_URL_PATTERN.source,
@@ -45,15 +53,19 @@ const DRAFT_TOKEN_PATTERN = new RegExp(
   ].join("|"),
   "gu",
 );
+
 const SKILL_INSTRUCTION_PATTERN = /Use the (?<instructionName>\S+) skill\./gu;
 
 export function skillInstruction(name: string): string {
   return `Use the ${name} skill.`;
 }
 
+const clipboardBody = Type.String({ minLength: 1 });
+
 /** Length-prefixed JSON so a body with newlines stays one TextNode. */
 function encodeClipboardToken(body: string): string {
   const payload = JSON.stringify(body);
+
   return `${CLIPBOARD_TOKEN_PREFIX}${String(payload.length)}:${payload}`;
 }
 
@@ -64,21 +76,27 @@ function decodeClipboardToken(
   if (!text.startsWith(CLIPBOARD_TOKEN_PREFIX, start)) return undefined;
   const lengthStart = start + CLIPBOARD_TOKEN_PREFIX.length;
   const colon = text.indexOf(":", lengthStart);
+
   if (colon <= lengthStart) return undefined;
   const lengthText = text.slice(lengthStart, colon);
+
   if (!/^[0-9]+$/u.test(lengthText)) return undefined;
   const length = Number(lengthText);
   const payloadStart = colon + 1;
   const payloadEnd = payloadStart + length;
+
   if (payloadEnd > text.length) return undefined;
   const payload = text.slice(payloadStart, payloadEnd);
   let parsed: unknown;
+
   try {
     parsed = JSON.parse(payload);
   } catch {
     return undefined;
   }
-  if (typeof parsed !== "string" || parsed === "") return undefined;
+
+  if (!Value.Check(clipboardBody, parsed)) return undefined;
+
   return { end: payloadEnd, body: parsed };
 }
 
@@ -87,19 +105,25 @@ function nextClipboardToken(
   from: number,
 ): { readonly start: number; readonly end: number; readonly body: string } | undefined {
   let search = from;
+
   while (search < text.length) {
     const start = text.indexOf(CLIPBOARD_TOKEN_PREFIX, search);
+
     if (start === -1) return undefined;
     const decoded = decodeClipboardToken(text, start);
+
     if (decoded !== undefined) return { start, end: decoded.end, body: decoded.body };
     search = start + 1;
   }
+
   return undefined;
 }
 
 export function clipboardReferenceFromPaste(text: string): ClipboardReference | undefined {
   const normalized = text.replace(/\r\n/gu, "\n").replace(/\n+$/u, "");
+
   if (normalized.length <= CLIPBOARD_PASTE_MAX_INLINE_CHARS) return undefined;
+
   return { kind: "clipboard", body: normalized };
 }
 
@@ -116,6 +140,7 @@ export function referenceText(reference: MessageReference): string {
       return encodeClipboardToken(reference.body);
     default: {
       const exhaustive: never = reference;
+
       return exhaustive;
     }
   }
@@ -131,10 +156,13 @@ export function referenceLabel(reference: MessageReference): string {
       return "Current conversation";
     case "clipboard": {
       const lines = reference.body.split("\n").length;
+
       return `Clipboard (${String(lines)} ${lines === 1 ? "line" : "lines"})`;
     }
+
     default: {
       const exhaustive: never = reference;
+
       return exhaustive;
     }
   }
@@ -153,6 +181,7 @@ export function referenceTitle(reference: MessageReference): string | undefined 
       return "Pasted text";
     default: {
       const exhaustive: never = reference;
+
       return exhaustive;
     }
   }
@@ -170,6 +199,7 @@ export function referencePromptText(reference: MessageReference): string {
       return "";
     default: {
       const exhaustive: never = reference;
+
       return exhaustive;
     }
   }
@@ -187,6 +217,7 @@ export function sameReference(left: MessageReference, right: MessageReference): 
       return right.kind === "clipboard" && right.body === left.body;
     default: {
       const exhaustive: never = left;
+
       return exhaustive;
     }
   }
@@ -199,20 +230,25 @@ export function isFolder(file: MentionFile): boolean {
 /** A canonical `file:` URL describes its file well enough to draw without a workspace catalog. */
 export function fileFromUrl(url: string): MentionFile | undefined {
   let parsed: URL;
+
   try {
     parsed = new URL(url);
   } catch {
     return undefined;
   }
+
   if (parsed.protocol !== "file:") return undefined;
   let path: string;
+
   try {
     path = decodeURIComponent(parsed.pathname);
   } catch {
     return undefined;
   }
+
   const directory = path.endsWith("/");
   const name = path.replace(/\/$/u, "").split("/").at(-1) ?? "";
+
   return {
     path,
     url,
@@ -250,15 +286,20 @@ function draftReference(
 ): MessageReference | undefined {
   const token = match[0];
   const groups = match.groups ?? {};
+
   if (token.startsWith("@file://")) {
     const url = token.slice(1);
     const file = options.files?.get(url) ?? fileFromUrl(url);
+
     return file === undefined ? undefined : { kind: "file", file };
   }
+
   if (groups["name"] !== undefined) {
     return { kind: "skill", name: groups["name"], path: groups["path"] ?? "" };
   }
+
   if (token === CONVERSATION_MENTION_TEXT) return CONVERSATION_MENTION;
+
   return undefined;
 }
 
@@ -267,14 +308,18 @@ function draftParts(text: string, options: DraftParseOptions): readonly MessageP
   let cursor = 0;
   const tokens = [...text.matchAll(DRAFT_TOKEN_PATTERN)];
   let tokenIndex = 0;
+
   while (cursor < text.length) {
     const clipboard = nextClipboardToken(text, cursor);
+
     while (tokenIndex < tokens.length && (tokens[tokenIndex]?.index ?? 0) < cursor) {
       tokenIndex += 1;
     }
+
     const token = tokens[tokenIndex];
     const clipboardStart = clipboard?.start;
     const tokenStart = token?.index;
+
     if (
       clipboard !== undefined &&
       clipboardStart !== undefined &&
@@ -283,6 +328,7 @@ function draftParts(text: string, options: DraftParseOptions): readonly MessageP
       if (clipboard.start > cursor) {
         parts.push({ kind: "text", text: text.slice(cursor, clipboard.start) });
       }
+
       parts.push({
         kind: "reference",
         reference: { kind: "clipboard", body: clipboard.body },
@@ -291,28 +337,36 @@ function draftParts(text: string, options: DraftParseOptions): readonly MessageP
       cursor = clipboard.end;
       continue;
     }
+
     if (token === undefined || tokenStart === undefined) {
       parts.push({ kind: "text", text: text.slice(cursor) });
+
       return parts;
     }
+
     const reference = draftReference(token, options);
+
     if (reference === undefined) {
       tokenIndex += 1;
       continue;
     }
+
     const end = token.index + token[0].length;
     // A skill link closes itself; the other tokens only end at a delimiter.
     const open = reference.kind !== "skill" && end === text.length;
     const known = reference.kind === "file" && options.files?.has(reference.file.url) === true;
+
     if (open && options.complete === false && !known) {
       tokenIndex += 1;
       continue;
     }
+
     if (token.index > cursor) parts.push({ kind: "text", text: text.slice(cursor, token.index) });
     parts.push({ kind: "reference", reference, source: token[0] });
     cursor = end;
     tokenIndex += 1;
   }
+
   return parts;
 }
 
@@ -328,6 +382,7 @@ export function messageParts(
   if (options.form === "draft") return draftParts(text, options);
   const parts: MessagePart[] = [];
   let cursor = 0;
+
   const pattern = new RegExp(
     [
       FILE_URL_PATTERN.source,
@@ -337,9 +392,11 @@ export function messageParts(
     ].join("|"),
     "gu",
   );
+
   for (const match of text.matchAll(pattern)) {
     const groups = match.groups ?? {};
     let reference: MessageReference | undefined;
+
     if (match[0].startsWith("@file://")) {
       const file = fileFromUrl(match[0].slice(1));
       reference = file === undefined ? undefined : { kind: "file", file };
@@ -354,12 +411,16 @@ export function messageParts(
     } else if (groups["instructionName"] !== undefined) {
       reference = { kind: "skill", name: groups["instructionName"], path: "" };
     }
+
     if (reference === undefined) continue;
+
     if (match.index > cursor) parts.push({ kind: "text", text: text.slice(cursor, match.index) });
     parts.push({ kind: "reference", reference, source: match[0] });
     cursor = match.index + match[0].length;
   }
+
   if (cursor < text.length) parts.push({ kind: "text", text: text.slice(cursor) });
+
   return parts;
 }
 
@@ -376,6 +437,7 @@ export function draftPreviewText(text: string): string {
     .map((part) => (part.kind === "text" ? part.text : referenceLabel(part.reference)))
     .join("")
     .trim();
+
   return visible.split(/\r?\n/u)[0] || "Draft";
 }
 
@@ -399,14 +461,18 @@ function workspaceFileIndex(files: readonly MentionFile[]): WorkspaceFileIndex {
   const byPath = new Map<string, MentionFile>();
   const byLabel = new Map<string, MentionFile>();
   const ambiguous = new Set<string>();
+
   for (const file of files) {
     byPath.set(file.displayPath, file);
+
     if (byLabel.has(file.label)) ambiguous.add(file.label);
     byLabel.set(file.label, file);
   }
+
   for (const label of ambiguous) byLabel.delete(label);
   const index = { byPath, byLabel };
   indexed = { files, index };
+
   return index;
 }
 
@@ -421,10 +487,13 @@ export function inlineCodeReference(
   files: readonly MentionFile[],
 ): MessageReference | undefined {
   const candidate = text.trim().replace(/^\.\//u, "");
+
   if (candidate === "" || /[\s*?{}[\]]/u.test(candidate)) return undefined;
   const index = workspaceFileIndex(files);
+
   const file =
     index.byPath.get(candidate) ??
     (candidate.includes("/") ? undefined : index.byLabel.get(candidate));
+
   return file === undefined ? undefined : { kind: "file", file };
 }

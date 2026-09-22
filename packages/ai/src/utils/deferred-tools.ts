@@ -15,13 +15,16 @@ export function splitDeferredTools(
   context: Context,
   enabled: boolean,
   normalizeName: ToolNameNormalizer = identityToolName,
-): { immediate: Tool[]; deferred: Map<string, Tool> } {
+) {
   const uniqueTools = new Map<string, Tool>();
+
   for (const tool of context.tools ?? []) uniqueTools.set(normalizeName(tool.name), tool);
-  if (!enabled) return { immediate: [...uniqueTools.values()], deferred: new Map() };
+
+  if (!enabled) return { immediate: [...uniqueTools.values()], deferred: new Map<string, Tool>() };
 
   const deferredNames = new Set<string>();
   const usedNames = new Set<string>();
+
   for (const message of context.messages) {
     if (message.role === "assistant") {
       for (const block of message.content) {
@@ -30,6 +33,7 @@ export function splitDeferredTools(
     } else if (message.role === "toolResult") {
       for (const name of message.addedToolNames ?? []) {
         const normalizedName = normalizeName(name);
+
         if (!usedNames.has(normalizedName)) deferredNames.add(normalizedName);
       }
     }
@@ -37,9 +41,11 @@ export function splitDeferredTools(
 
   const immediate: Tool[] = [];
   const deferred = new Map<string, Tool>();
+
   for (const [name, tool] of uniqueTools) {
     if (deferredNames.has(name)) deferred.set(name, tool);
     else immediate.push(tool);
   }
+
   return { immediate, deferred };
 }

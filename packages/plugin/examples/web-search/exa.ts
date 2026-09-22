@@ -28,7 +28,9 @@ function field(value: string | undefined): string | undefined {
 export function parseExaResults(text: string): WebSearchResult[] {
   return text.split(/\n\n---\n\n/).flatMap((block) => {
     const url = block.match(/^URL:\s*(.+)$/m)?.[1]?.trim();
+
     if (url === undefined || url === "") return [];
+
     return [
       webSearchResult(url, {
         title: field(block.match(/^Title:\s*(.+)$/m)?.[1]?.trim()),
@@ -45,7 +47,9 @@ export const exaProvider: WebSearchProvider = {
   keyEnvironment: "EXA_API_KEY",
   async execute({ query, key, fetch, signal }) {
     const url = new URL(EXA_ENDPOINT);
+
     if (key !== undefined) url.searchParams.set("exaApiKey", key);
+
     const result = await callMcpTool(
       url.toString(),
       "web_search_exa",
@@ -53,7 +57,9 @@ export const exaProvider: WebSearchProvider = {
       Output,
       { fetch, signal },
     );
+
     const content = result?.content.find((item) => item.text !== "");
+
     return content === undefined ? [] : parseExaResults(content.text);
   },
 };

@@ -15,9 +15,11 @@ function isCommit(object: Obj): object is Commit {
 
 async function readCommit(objects: Pick<Objects, "get">, oid: Oid): Promise<Commit> {
   const object = await objects.get(oid);
+
   if (object === undefined || !isCommit(object)) {
     throw new Error(`Corrupt commit graph at ${oid}: missing or non-commit object`);
   }
+
   return object;
 }
 
@@ -34,17 +36,22 @@ export async function* history(
   while (oid !== null && (options?.limit === undefined || count < options.limit)) {
     const limit =
       options?.limit === undefined ? PAGE_SIZE : Math.min(PAGE_SIZE, options.limit - count);
+
     const page = await objects.chain(oid, { limit });
+
     for (const entry of page) {
       if (seen.has(entry.oid)) throw new Error(`Commit graph cycle at ${entry.oid}`);
       seen.add(entry.oid);
+
       if (!isCommit(entry.object)) {
         throw new Error(`Corrupt commit graph at ${entry.oid}: missing or non-commit object`);
       }
+
       yield { oid: entry.oid, commit: entry.object };
       oid = entry.object.parent;
       count += 1;
     }
+
     // A short page means the store stopped: the next parent is not there.
     if (page.length < limit && oid !== null) {
       throw new Error(`Corrupt commit graph at ${oid}: missing or non-commit object`);
@@ -58,8 +65,10 @@ export async function branch(
   tip: Oid | null,
 ): Promise<{ readonly oid: Oid; readonly commit: Commit }[]> {
   const commits: { readonly oid: Oid; readonly commit: Commit }[] = [];
+
   for await (const entry of history(objects, tip)) commits.push(entry);
   commits.reverse();
+
   return commits;
 }
 
@@ -73,11 +82,15 @@ export async function contextCommits(
   tip: Oid | null,
 ): Promise<{ readonly oid: Oid; readonly commit: Commit }[]> {
   const commits: { readonly oid: Oid; readonly commit: Commit }[] = [];
+
   for await (const entry of history(objects, tip)) {
     commits.push(entry);
+
     if (entry.commit.body.kind === "checkpoint") break;
   }
+
   commits.reverse();
+
   return commits;
 }
 
@@ -88,12 +101,15 @@ export async function isAncestor(
 ): Promise<boolean> {
   if (options.ancestor === null) {
     if (options.descendant !== null) await readCommit(objects, options.descendant);
+
     return true;
   }
+
   await readCommit(objects, options.ancestor);
 
   for await (const entry of history(objects, options.descendant)) {
     if (entry.oid === options.ancestor) return true;
   }
+
   return false;
 }

@@ -1,10 +1,7 @@
-/**
- * What a plugin author imports: the author-facing name for
- * `@nyte-ai/core/plugins`, plus the local TUI setup contract.
- * so one process never holds two copies of the plugin types. A loader maps
- * this package to the host's copy of core.
- */
+/** The core session-plugin contract and shared host provider helpers. */
 export * from "@nyte-ai/core/plugins";
+
+export { providerPlugin, type ProviderPlugin } from "./provider.ts";
 
 import type { CliRenderer, Renderable, TextOptions } from "@opentui/core";
 import type { JsonValue } from "@nyte-ai/schema";
@@ -12,7 +9,9 @@ import type { Nyte, SessionEvent, SessionId } from "@nyte-ai/core";
 
 /** Based on OpenCode's V2 TUI plugin definition and context, merged in #39776. */
 export type Cleanup = () => Promise<void> | void;
+
 export type SlotName = "session.composer.top";
+
 export type Slot = (props: { readonly sessionID: SessionId }) => Renderable;
 
 export interface Context {

@@ -207,14 +207,23 @@ const overlayDefaults = {
 } as const;
 
 export const colorVars = stylex.defineVars(colorDefaults);
+
 export const fontVars = stylex.defineVars(fontDefaults);
+
 export const radiusVars = stylex.defineVars(radiusDefaults);
+
 export const controlVars = stylex.defineVars(controlDefaults);
+
 export const borderVars = stylex.defineVars(borderDefaults);
+
 export const avatarVars = stylex.defineVars(avatarDefaults);
+
 export const spaceVars = stylex.defineVars(spaceDefaults);
+
 export const motionVars = stylex.defineVars(motionDefaults);
+
 export const elevationVars = stylex.defineVars(elevationDefaults);
+
 export const overlayVars = stylex.defineVars(overlayDefaults);
 
 // Components read the group exports above, not this object. StyleX resolves

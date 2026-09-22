@@ -71,8 +71,11 @@ function completionReason(
   name: ComposerActionName,
 ): string | undefined {
   if (state.blocked !== undefined) return state.blocked;
+
   if (state.completion === undefined || name === "chat.quit") return undefined;
+
   if (name === "chat.interrupt") return "Completion owns the composer";
+
   return state.completion.accepting && (name !== "chat.queue.submit" || !state.completion.queueable)
     ? "Completion owns the composer"
     : undefined;
@@ -86,7 +89,9 @@ function projectComposerActions(
   const primaryDelivery =
     state.editingDelivery ??
     (state.waiting ? roles.steer : state.busy ? roles[state.followUp] : roles.queue);
+
   const submission = state.editingDelivery === undefined ? "submit" : "save-edit";
+
   const alternate =
     state.editingDelivery !== undefined ||
     !state.busy ||
@@ -94,6 +99,7 @@ function projectComposerActions(
     state.followUp === "queue"
       ? roles.steer
       : roles.queue;
+
   const interrupt: ComposerAction =
     state.editingDelivery !== undefined
       ? {
@@ -114,6 +120,7 @@ function projectComposerActions(
               (state.draft === "message" ? "Clear the draft before opening the tree" : undefined),
             operation: { kind: "tree" },
           };
+
   return {
     primaryDelivery,
     actions: {
@@ -188,16 +195,21 @@ export class ComposerActions {
         },
         get placement() {
           if (name === "chat.submit") return "primary";
+
           if (name === "chat.interrupt") return "cancel";
+
           if (name === "chat.quit" && action("chat.interrupt").reason !== undefined)
             return "cancel";
+
           return "secondary";
         },
         enabled: () => action(name).reason === undefined,
         run: () => {
           const resolved = action(name);
+
           if (resolved.reason !== undefined) return false;
           invoke(resolved.operation);
+
           return true;
         },
       })),
@@ -210,9 +222,11 @@ export class ComposerActions {
   /** The projection for the state as read now. */
   current(): ComposerActionSet {
     const state = this.read();
+
     if (this.last !== undefined && sameActionState(this.last.state, state)) return this.last.set;
     const set = projectComposerActions(state, this.roles);
     this.last = { state, set };
+
     return set;
   }
 
@@ -231,10 +245,12 @@ function actionEntries(shell: Shell) {
     visibility: "active",
     namespace: ["composer", "completion", "chat"],
   });
+
   const bindings = shell.keymap.getCommandBindings({
     visibility: "active",
     commands: entries.map(({ command }) => command.name),
   });
+
   return entries.map(({ command }) => ({
     command,
     keycaps:
@@ -253,9 +269,11 @@ export async function openActionPalette(
   onReportClose: () => void,
 ): Promise<string | undefined> {
   const actions = actionEntries(shell);
+
   const shortcuts = actions.map(
     ({ command, keycaps }) => `${keycaps} ${String(command.hint ?? command.title)}`,
   );
+
   const selected = await selectChoice(shell, "Commands", [
     {
       id: "shortcuts",
@@ -273,14 +291,18 @@ export async function openActionPalette(
       description: String(command.title),
     })),
   ]).finally(restore);
+
   if (selected === "shortcuts") {
     openDiagnosticReport(shell, "Keyboard shortcuts", shortcuts, onReportClose);
+
     return undefined;
   }
+
   if (selected.startsWith("action:")) {
     const result = shell.keymap.dispatchCommand(selected.slice("action:".length), {
       includeCommand: true,
     });
+
     if (!result.ok) {
       const reason = "command" in result ? result.command?.unavailable : undefined;
       notice(
@@ -288,8 +310,10 @@ export async function openActionPalette(
         Value.Check(Type.String(), reason) ? reason : "That shortcut is no longer available.",
       );
     }
+
     return undefined;
   }
+
   return selected;
 }
 
@@ -298,15 +322,20 @@ export function composerHints(shell: Shell): string {
   // Wrapping different controls during a drag moves the text under the pointer.
   if (shell.renderer.getSelection()?.isDragging) return shell.ui.hints;
   const entries = actionEntries(shell);
+
   const required = entries.filter(({ command }) =>
     ["primary", "cancel", "help"].includes(String(command.placement)),
   );
+
   const secondary = entries.filter(({ command }) => command.placement === "secondary");
   const hints = required.map(actionLabel);
+
   for (const entry of secondary) {
     const next = actionLabel(entry);
+
     if (displayWidth([...hints, next].join(" · ")) <= shell.renderer.width - 6) hints.push(next);
   }
+
   return hints.join(" · ");
 }
 

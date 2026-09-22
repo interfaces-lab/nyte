@@ -55,6 +55,7 @@ export function rowContent(row: GutterRow): UserMessage["content"] {
 
 /** The gutter never takes more than this share of the terminal. */
 const MAX_ROW_SHARE = 0.3;
+
 const MIN_ROWS = 1;
 
 function gutterRowLimit(terminalHeight: number): number {
@@ -63,20 +64,25 @@ function gutterRowLimit(terminalHeight: number): number {
 
 /** Below this the message is a stub, so the row sheds chrome to keep the text. */
 const MIN_TEXT_COLUMNS = 12;
+
 /** Leading space, glyph, trailing space. */
 const LEAD_COLUMNS = 3;
+
 const GAP_COLUMNS = 2;
 
 export function queuedPromptText(content: UserMessage["content"]): string {
   const text = userText(content);
   const attachments = extractFileAttachments(text);
+
   const compact = attachments.reduce(
     (value, file) => value.replace(file.source, `[File ${basename(file.path)}]`),
     text,
   );
+
   const images = Array.isArray(content)
     ? content.filter((part) => part.type === "image").length
     : 0;
+
   return `${compact.replaceAll(/\s+/gu, " ").trim()}${images === 0 ? "" : ` · ${images} ${images === 1 ? "image" : "images"}`}`;
 }
 
@@ -89,6 +95,7 @@ export interface RowMark {
 /** The glyph and word for a delivery. */
 export function deliveryMark(delivery: Delivery, roles: DeliveryChoices, theme: CliTheme): RowMark {
   if (delivery === roles.steer) return { glyph: GLYPHS.steer, label: delivery, tone: theme.accent };
+
   return { glyph: GLYPHS.queue, label: delivery, tone: theme.warning };
 }
 
@@ -99,14 +106,17 @@ export function rowMark(row: GutterRow, roles: DeliveryChoices, theme: CliTheme)
     case "sending": {
       const { state } = row.row;
       const attempts = "attempts" in state ? state.attempts : 1;
+
       return {
         glyph: GLYPHS.sending,
         label: attempts > 1 ? `sending (retry ${String(attempts - 1)})` : "sending",
         tone: theme.dim,
       };
     }
+
     default: {
       const _exhaustive: never = row;
+
       return _exhaustive;
     }
   }
@@ -126,14 +136,19 @@ function pendingRow(
 ): StyledText {
   const room = Math.max(0, Math.floor(width));
   const lead = ` ${mark.glyph} `;
+
   if (room <= LEAD_COLUMNS) {
     return new StyledText([fg(mark.tone)(padDisplay(truncateDisplay(lead, room), room))]);
   }
+
   const fixed = LEAD_COLUMNS + 1;
+
   const fits = (right: string): boolean =>
     room - fixed - GAP_COLUMNS - displayWidth(right) >= MIN_TEXT_COLUMNS;
+
   const showLabel = fits(mark.label);
   const showHint = hint !== undefined && fits(`${mark.label} · ${hint}`);
+
   const textRoom = Math.max(
     0,
     room -
@@ -141,13 +156,17 @@ function pendingRow(
       (showLabel ? GAP_COLUMNS + displayWidth(mark.label) : 0) -
       (showHint ? displayWidth(` · ${hint}`) : 0),
   );
+
   const chunks = [
     fg(mark.tone)(lead),
     fg(theme.user)(padDisplay(truncateDisplay(text, textRoom, GLYPHS.ellipsis), textRoom)),
   ];
+
   if (showLabel) chunks.push(fg(theme.muted)("  "), fg(mark.tone)(mark.label));
+
   if (showHint) chunks.push(fg(theme.muted)(" · "), fg(theme.dim)(hint));
   chunks.push(fg(theme.muted)(" "));
+
   return new StyledText(chunks);
 }
 
@@ -210,10 +229,13 @@ export class PendingGutter {
   private setRowCount(count: number): void {
     while (this.rows.length > count) {
       const row = this.rows.pop();
+
       if (row === undefined) continue;
       this.container.remove(row);
+
       if (!row.isDestroyed) row.destroyRecursively();
     }
+
     while (this.rows.length < count) {
       const row = new TextRenderable(this.renderer, {
         id: this.nextId("pending-row"),
@@ -222,63 +244,83 @@ export class PendingGutter {
         wrapMode: "none",
         selectable: false,
       });
+
       this.rows.push(row);
       this.container.add(row);
       row.onMouseOver = () => {
         row.bg = this.theme.hover;
       };
+
       row.onMouseOut = () => {
         row.bg = this.theme.terminal;
       };
+
       row.onMouseDown = (event) => {
         if (event.button !== 0) return;
         const index = this.rows.indexOf(row);
         const item = this.items[index];
+
         if (item === undefined) return;
         event.preventDefault();
         event.stopPropagation();
+
         if (item.kind === "pending" && event.x < row.x + LEAD_COLUMNS) {
           this.drag = { item: item.item, index, moving: false };
+
           return;
         }
+
         this.onOpen?.(item);
       };
+
       row.onMouseDrag = (event) => {
         if (this.drag === undefined) return;
         this.drag.moving = true;
         event.preventDefault();
         event.stopPropagation();
       };
+
       row.onMouseUp = () => {
         const drag = this.drag;
         this.drag = undefined;
+
         if (drag !== undefined && !drag.moving) this.onOpen?.({ kind: "pending", item: drag.item });
       };
+
       row.onMouseDragEnd = (event) => {
         const drag = this.drag;
         this.drag = undefined;
+
         if (drag === undefined || !drag.moving) return;
+
         const index = this.rows.findIndex(
           (candidate) => event.y >= candidate.y && event.y < candidate.y + candidate.height,
         );
+
         const target = this.items[index];
+
         if (target?.kind === "pending" && target.item.delivery !== drag.item.delivery) return;
+
         if (index === drag.index) return;
         this.onReorder?.(drag.item, target?.kind === "pending" ? target.item : null);
         event.preventDefault();
         event.stopPropagation();
       };
     }
+
     this.container.visible = count > 0;
   }
 
   private readonly repaint = (): void => {
     const width =
       this.container.width > 0 ? this.container.width : Math.max(0, this.renderer.width - 2);
+
     const shown = this.rows.length;
     const hidden = this.items.length - shown;
+
     for (const [index, row] of this.rows.entries()) {
       const item = this.items[index];
+
       if (item === undefined) continue;
       const last = index === shown - 1;
       const text = queuedPromptText(rowContent(item));

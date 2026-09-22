@@ -126,7 +126,7 @@ export async function run(): Promise<string> {
   const text = (element: Element | null): string | null =>
     element === null ? null : (element.textContent ?? "");
   const trigger = (): HTMLElement => {
-    const found = container.querySelector('[aria-label^="Showing "]');
+    const found = container.querySelector('[aria-label^="Select scope, showing "]');
     if (!(found instanceof HTMLElement)) throw new Error("Missing scope trigger");
     return found;
   };

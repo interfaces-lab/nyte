@@ -27,6 +27,7 @@ import { Value } from "typebox/value";
 import { sanitizeLine } from "./browser-report.ts";
 
 const REF_PREFIX = "s";
+
 const SEP = "e";
 
 /** Refs reach generated page code, so only this exact shape is ever accepted. */
@@ -40,17 +41,23 @@ function decodeRef(
   ref: string,
 ): { readonly generation: number; readonly index: number } | undefined {
   const matched = REF_PATTERN.exec(ref);
+
   if (matched === null) return undefined;
   const generation = Number(matched[1]);
   const index = Number(matched[2]);
+
   if (!Number.isSafeInteger(generation) || !Number.isSafeInteger(index)) return undefined;
+
   return { generation, index };
 }
 
 function classifyRef(ref: string, currentGeneration: number): "unknown_ref" | undefined {
   const decoded = decodeRef(ref);
+
   if (decoded === undefined) return "unknown_ref";
+
   if (decoded.generation !== currentGeneration) return "unknown_ref";
+
   return undefined;
 }
 
@@ -58,12 +65,15 @@ const NAME_CAP = 200;
 
 function escapeName(raw: string): string {
   const escaped = sanitizeLine(raw).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+
   if (escaped.length <= NAME_CAP) return escaped;
+
   return escaped.slice(0, NAME_CAP) + "\u2026";
 }
 
 function snapshotScript(generation: number, maxNodes: number, subtreeRef?: string): string {
   const sub = subtreeRef !== undefined ? JSON.stringify(subtreeRef) : "null";
+
   return `(function() {
   var G = ${generation}, M = ${maxNodes}, SUB = ${sub};
   if (!window.__nyte_doc_token) window.__nyte_doc_token = Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -186,6 +196,7 @@ function focusScript(index: number, clear: boolean): string {
 function waitScript(until: "text" | "gone", text: string): string {
   const escaped = JSON.stringify(text);
   const check = until === "text" ? `text.includes(${escaped})` : `!text.includes(${escaped})`;
+
   return `(function() {
   var text = (document.body || document.documentElement || {}).innerText || "";
   return JSON.stringify({ cmd: "wait", found: ${check} });
@@ -256,31 +267,29 @@ const PageResultSchema = Type.Union([
 ]);
 
 type PageResult = Static<typeof PageResultSchema>;
+
 type SnapshotResult = Extract<PageResult, { cmd: "snapshot" }>;
 
-function parsePageResult(json: string): PageResult {
+/** Page scripts answer in JSON text; anything else means the document went away mid-call. */
+const PageJsonSchema = Type.String();
+
+async function runPageScript(contents: WebContents, code: string): Promise<PageResult | undefined> {
+  const json: unknown = await contents.executeJavaScriptInIsolatedWorld(ISOLATED_WORLD_ID, [
+    { code },
+  ]);
+
+  if (!Value.Check(PageJsonSchema, json)) return undefined;
   const raw: unknown = JSON.parse(json);
+
   return Value.Parse(PageResultSchema, raw);
 }
 
 function buildNodes(generation: number, rawNodes: SnapshotResult["nodes"]): readonly BrowserNode[] {
-  return rawNodes.map((raw) => {
-    const node: BrowserNode = {
-      ref: encodeRef(generation, raw.index),
-      role: raw.role,
-      name: escapeName(raw.name),
-      tag: raw.tag,
-      rect: raw.rect,
-      ...(raw.value !== undefined ? { value: raw.value } : {}),
-      ...(raw.href !== undefined ? { href: raw.href } : {}),
-      ...(raw.level !== undefined ? { level: raw.level } : {}),
-      ...(raw.disabled !== undefined ? { disabled: raw.disabled } : {}),
-      ...(raw.checked !== undefined ? { checked: raw.checked } : {}),
-      ...(raw.expanded !== undefined ? { expanded: raw.expanded } : {}),
-      ...(raw.editable !== undefined ? { editable: raw.editable } : {}),
-    };
-    return node;
-  });
+  return rawNodes.map(({ index, name, ...fields }) => ({
+    ...fields,
+    ref: encodeRef(generation, index),
+    name: escapeName(name),
+  }));
 }
 
 interface CdpKeyDescriptor {
@@ -322,19 +331,25 @@ function parseKeyExpression(
 ): { readonly modifiers: number; readonly key: string } | undefined {
   const parts = expression.split("+");
   const keyPart = parts[parts.length - 1];
+
   if (keyPart === undefined || keyPart === "") return undefined;
   let modifiers = 0;
+
   for (let i = 0; i < parts.length - 1; i += 1) {
     const bit = MODIFIER_BITS.get(parts[i] ?? "");
+
     if (bit === undefined) return undefined;
     modifiers |= bit;
   }
+
   return { modifiers, key: keyPart };
 }
 
 function cdpMouseButton(button: string): string {
   if (button === "right") return "right";
+
   if (button === "middle") return "middle";
+
   return "left";
 }
 
@@ -344,9 +359,10 @@ function scrollDelta(
   scrollHeight: number,
   scrollY: number,
   pages?: number,
-): { readonly deltaX: number; readonly deltaY: number } {
+) {
   const perPage = viewportHeight > 0 ? viewportHeight : 600;
   const count = pages ?? 1;
+
   switch (direction) {
     case "up":
       return { deltaX: 0, deltaY: -(perPage * count) };
@@ -360,8 +376,11 @@ function scrollDelta(
 }
 
 const ISOLATED_WORLD_ID = 999;
+
 const MAX_SNAPSHOT_NODES = 500;
+
 const CONSOLE_RING_SIZE = 200;
+
 const CAPTURE_SCALE = 0.5;
 
 const CLOSED = { kind: "failed", failure: { kind: "closed" } } as const;
@@ -396,7 +415,9 @@ export function attachConsoleCapture(contents: WebContents, runtime: SurfaceRunt
       source: sourceId.slice(0, 200),
       at: Date.now(),
     };
+
     runtime.consoleBuffer.unshift(entry);
+
     if (runtime.consoleBuffer.length > CONSOLE_RING_SIZE) {
       runtime.consoleBuffer.length = CONSOLE_RING_SIZE;
     }
@@ -405,17 +426,21 @@ export function attachConsoleCapture(contents: WebContents, runtime: SurfaceRunt
 
 function ensureDebugger(contents: WebContents, runtime: SurfaceRuntime): void {
   if (runtime.debuggerAttached) return;
+
   if (contents.isDestroyed()) return;
+
   try {
     contents.debugger.attach("1.3");
   } catch {
     // DevTools or another client holds it; isAttached below decides whether we can send.
   }
+
   runtime.debuggerAttached = contents.debugger.isAttached();
 }
 
 function emptyState(contents: WebContents, runtime: SurfaceRuntime, gen: number): BrowserPageState {
   const dead = contents.isDestroyed();
+
   return {
     url: dead ? "" : contents.getURL(),
     title: dead ? "" : contents.getTitle(),
@@ -431,14 +456,6 @@ function emptyState(contents: WebContents, runtime: SurfaceRuntime, gen: number)
   };
 }
 
-async function cdpSend(
-  contents: WebContents,
-  method: string,
-  params: Record<string, unknown>,
-): Promise<unknown> {
-  return contents.debugger.sendCommand(method, params);
-}
-
 async function cdpClick(
   contents: WebContents,
   x: number,
@@ -446,14 +463,14 @@ async function cdpClick(
   button: string,
   clickCount: number,
 ): Promise<void> {
-  await cdpSend(contents, "Input.dispatchMouseEvent", {
+  await contents.debugger.sendCommand("Input.dispatchMouseEvent", {
     type: "mousePressed",
     x,
     y,
     button,
     clickCount,
   });
-  await cdpSend(contents, "Input.dispatchMouseEvent", {
+  await contents.debugger.sendCommand("Input.dispatchMouseEvent", {
     type: "mouseReleased",
     x,
     y,
@@ -472,7 +489,7 @@ async function cdpKey(
   },
   modifiers?: number,
 ): Promise<void> {
-  await cdpSend(contents, "Input.dispatchKeyEvent", {
+  await contents.debugger.sendCommand("Input.dispatchKeyEvent", {
     type: "keyDown",
     key: descriptor.key,
     code: descriptor.code,
@@ -481,7 +498,7 @@ async function cdpKey(
     text: descriptor.text ?? "",
     modifiers: modifiers ?? 0,
   });
-  await cdpSend(contents, "Input.dispatchKeyEvent", {
+  await contents.debugger.sendCommand("Input.dispatchKeyEvent", {
     type: "keyUp",
     key: descriptor.key,
     code: descriptor.code,
@@ -500,23 +517,22 @@ export async function takeSnapshot(
   const gen = runtime.generation;
 
   let subtreeIndex: string | undefined;
+
   if (subtreeRef !== undefined) {
     const decoded = decodeRef(subtreeRef);
+
     if (decoded !== undefined) subtreeIndex = String(decoded.index);
   }
 
   const script = snapshotScript(gen, MAX_SNAPSHOT_NODES, subtreeIndex);
-  const resultJson: unknown = await contents.executeJavaScriptInIsolatedWorld(ISOLATED_WORLD_ID, [
-    { code: script },
-  ]);
 
-  if (typeof resultJson !== "string") return emptyState(contents, runtime, gen);
+  const result = await runPageScript(contents, script);
 
-  const result = parsePageResult(resultJson);
-  if (result.cmd !== "snapshot") return emptyState(contents, runtime, gen);
+  if (result?.cmd !== "snapshot") return emptyState(contents, runtime, gen);
 
   runtime.lastSnapshot = result;
   runtime.documentToken = result.documentToken;
+
   return {
     url: contents.getURL(),
     title: contents.getTitle(),
@@ -541,27 +557,26 @@ async function checkElement(
   | { readonly kind: "failed"; readonly failure: BrowserActionFailure }
 > {
   const decoded = decodeRef(ref);
+
   if (decoded === undefined) return { kind: "failed", failure: { kind: "unknown_ref", ref } };
 
   const classification = classifyRef(ref, runtime.generation);
+
   if (classification === "unknown_ref")
     return { kind: "failed", failure: { kind: "unknown_ref", ref } };
 
   const script = checkScript(decoded.index);
-  const resultJson: unknown = await contents.executeJavaScriptInIsolatedWorld(ISOLATED_WORLD_ID, [
-    { code: script },
-  ]);
-  if (typeof resultJson !== "string") {
-    return { kind: "failed", failure: { kind: "stale_document", ref } };
-  }
 
-  const check = parsePageResult(resultJson);
-  if (check.cmd !== "check") return { kind: "failed", failure: { kind: "stale_document", ref } };
+  const check = await runPageScript(contents, script);
+
+  if (check?.cmd !== "check") return { kind: "failed", failure: { kind: "stale_document", ref } };
 
   if (check.kind !== "ok") {
     if (check.kind === "not_found" || check.kind === "no_refs")
       return { kind: "failed", failure: { kind: "unknown_ref", ref } };
+
     if (check.kind === "detached") return { kind: "failed", failure: { kind: "detached", ref } };
+
     return { kind: "failed", failure: { kind: "not_visible", ref } };
   }
 
@@ -575,6 +590,7 @@ async function checkElement(
       },
     };
   }
+
   return { kind: "ok", rect: check.rect };
 }
 
@@ -588,17 +604,21 @@ export async function performClick(
   signal?: AbortSignal,
 ): Promise<BrowserActionResult> {
   if (contents.isDestroyed()) return CLOSED;
+
   if (!windowShown) return { kind: "failed", failure: { kind: "no_window" } };
   ensureDebugger(contents, runtime);
 
   const check = await checkElement(contents, runtime, ref);
+
   if (check.kind === "failed") return check;
+
   if (signal?.aborted) return CLOSED;
 
   const cx = check.rect.x + check.rect.width / 2;
   const cy = check.rect.y + check.rect.height / 2;
   await cdpClick(contents, cx, cy, cdpMouseButton(button), double ? 2 : 1);
   await sleep(100, signal);
+
   return { kind: "ok", state: await takeSnapshot(contents, runtime) };
 }
 
@@ -613,39 +633,42 @@ export async function performType(
   signal?: AbortSignal,
 ): Promise<BrowserActionResult> {
   if (contents.isDestroyed()) return CLOSED;
+
   if (!windowShown) return { kind: "failed", failure: { kind: "no_window" } };
   ensureDebugger(contents, runtime);
 
   const check = await checkElement(contents, runtime, ref);
+
   if (check.kind === "failed") return check;
+
   if (signal?.aborted) return CLOSED;
 
   const decoded = decodeRef(ref);
+
   if (decoded === undefined) return { kind: "failed", failure: { kind: "unknown_ref", ref } };
 
   const focusCode = focusScript(decoded.index, clear);
-  const focusJson: unknown = await contents.executeJavaScriptInIsolatedWorld(ISOLATED_WORLD_ID, [
-    { code: focusCode },
-  ]);
-  if (typeof focusJson === "string") {
-    const focusResult = parsePageResult(focusJson);
-    if (focusResult.cmd !== "focus" || focusResult.kind !== "ok") {
-      return { kind: "failed", failure: { kind: "detached", ref } };
-    }
+
+  const focusResult = await runPageScript(contents, focusCode);
+
+  if (focusResult !== undefined && (focusResult.cmd !== "focus" || focusResult.kind !== "ok")) {
+    return { kind: "failed", failure: { kind: "detached", ref } };
   }
 
   // insertText goes to whatever the page has focused, and only a click moves focus reliably.
   const cx = check.rect.x + check.rect.width / 2;
   const cy = check.rect.y + check.rect.height / 2;
   await cdpClick(contents, cx, cy, "left", 1);
-  await cdpSend(contents, "Input.insertText", { text });
+  await contents.debugger.sendCommand("Input.insertText", { text });
 
   if (submit) {
     const enterKey = resolveKey("Enter");
+
     if (enterKey !== undefined) await cdpKey(contents, enterKey);
   }
 
   await sleep(100, signal);
+
   return { kind: "ok", state: await takeSnapshot(contents, runtime) };
 }
 
@@ -658,12 +681,15 @@ export async function performPress(
   signal?: AbortSignal,
 ): Promise<BrowserActionResult> {
   if (contents.isDestroyed()) return CLOSED;
+
   if (!windowShown) return { kind: "failed", failure: { kind: "no_window" } };
   ensureDebugger(contents, runtime);
 
   if (ref !== undefined) {
     const check = await checkElement(contents, runtime, ref);
+
     if (check.kind === "failed") return check;
+
     if (signal?.aborted) return CLOSED;
     const cx = check.rect.x + check.rect.width / 2;
     const cy = check.rect.y + check.rect.height / 2;
@@ -671,12 +697,15 @@ export async function performPress(
   }
 
   const parsed = parseKeyExpression(keyExpression);
+
   if (parsed !== undefined) {
     const descriptor = resolveKey(parsed.key);
+
     if (descriptor !== undefined) await cdpKey(contents, descriptor, parsed.modifiers);
   }
 
   await sleep(100, signal);
+
   return { kind: "ok", state: await takeSnapshot(contents, runtime) };
 }
 
@@ -688,13 +717,16 @@ export async function performScroll(
   signal?: AbortSignal,
 ): Promise<BrowserActionResult> {
   if (contents.isDestroyed()) return CLOSED;
+
   if (!windowShown) return { kind: "failed", failure: { kind: "no_window" } };
   ensureDebugger(contents, runtime);
 
   let targetX = 400;
   let targetY = 300;
+
   if (input.ref !== undefined) {
     const check = await checkElement(contents, runtime, input.ref);
+
     if (check.kind === "failed") return check;
     targetX = check.rect.x + check.rect.width / 2;
     targetY = check.rect.y + check.rect.height / 2;
@@ -706,7 +738,7 @@ export async function performScroll(
   const delta = scrollDelta(input.direction, vh, sh, sy, input.pages);
 
   if (delta.deltaY !== 0 || delta.deltaX !== 0) {
-    await cdpSend(contents, "Input.dispatchMouseEvent", {
+    await contents.debugger.sendCommand("Input.dispatchMouseEvent", {
       type: "mouseWheel",
       x: targetX,
       y: targetY,
@@ -716,6 +748,7 @@ export async function performScroll(
   }
 
   await sleep(200, signal);
+
   return { kind: "ok", state: await takeSnapshot(contents, runtime) };
 }
 
@@ -729,29 +762,33 @@ export async function performWait(
 
   if (input.until === "load") {
     await waitForLoad(contents, signal);
+
     if (contents.isDestroyed()) return CLOSED;
+
     return { kind: "ok", state: await takeSnapshot(contents, runtime) };
   }
 
   if (input.until === "time") {
     await sleep(input.seconds * 1000, signal);
+
     if (contents.isDestroyed()) return CLOSED;
+
     return { kind: "ok", state: await takeSnapshot(contents, runtime) };
   }
 
   const deadline = Date.now() + 15_000;
   let delay = 200;
+
   while (Date.now() < deadline) {
     if (signal?.aborted) break;
+
     if (contents.isDestroyed()) return CLOSED;
     const script = waitScript(input.until, input.text);
-    const resultJson: unknown = await contents.executeJavaScriptInIsolatedWorld(ISOLATED_WORLD_ID, [
-      { code: script },
-    ]);
-    if (typeof resultJson === "string") {
-      const result = parsePageResult(resultJson);
-      if (result.cmd === "wait" && result.found) break;
-    }
+
+    const result = await runPageScript(contents, script);
+
+    if (result?.cmd === "wait" && result.found) break;
+
     await sleep(delay, signal);
     delay = Math.min(delay * 1.5, 2000);
   }
@@ -766,6 +803,7 @@ function waitForLoad(contents: WebContents, signal?: AbortSignal): Promise<void>
   if (contents.isDestroyed() || !contents.isLoading() || signal?.aborted === true) {
     return Promise.resolve();
   }
+
   return new Promise<void>((resolve) => {
     const done = () => {
       clearTimeout(timer);
@@ -774,6 +812,7 @@ function waitForLoad(contents: WebContents, signal?: AbortSignal): Promise<void>
       signal?.removeEventListener("abort", done);
       resolve();
     };
+
     const timer = setTimeout(done, LOAD_LIMIT_MS);
     contents.on("did-stop-loading", done);
     contents.on("destroyed", done);
@@ -796,8 +835,10 @@ export async function performEvaluate(
   ensureDebugger(contents, runtime);
 
   let wrapped = expression;
+
   if (ref !== undefined) {
     const decoded = decodeRef(ref);
+
     if (decoded === undefined)
       return { kind: "threw", message: `Unknown ref: ${sanitizeLine(ref)}` };
     wrapped = `(function() {
@@ -813,10 +854,13 @@ export async function performEvaluate(
         code: `JSON.stringify((function() { try { return { v: (${wrapped}) }; } catch(e) { return { e: String(e) }; } })())`,
       },
     ]);
-    if (typeof result !== "string")
+
+    if (!Value.Check(PageJsonSchema, result))
       return { kind: "threw", message: "Evaluation returned no result" };
     const parsed = Value.Parse(EvalResultSchema, JSON.parse(result));
+
     if ("e" in parsed) return { kind: "threw", message: parsed.e };
+
     return { kind: "value", json: JSON.stringify(parsed.v) };
   } catch (error) {
     return { kind: "threw", message: error instanceof Error ? error.message : String(error) };
@@ -825,12 +869,15 @@ export async function performEvaluate(
 
 export async function performCapture(contents: WebContents): Promise<Uint8Array | undefined> {
   if (contents.isDestroyed()) return undefined;
+
   try {
     const image = await contents.capturePage(undefined, { stayHidden: true });
+
     if (image.isEmpty()) return undefined;
     const size = image.getSize();
     const w = Math.max(1, Math.round(size.width * CAPTURE_SCALE));
     const h = Math.max(1, Math.round(size.height * CAPTURE_SCALE));
+
     return new Uint8Array(image.resize({ width: w, height: h }).toPNG());
   } catch {
     return undefined;
@@ -839,15 +886,18 @@ export async function performCapture(contents: WebContents): Promise<Uint8Array 
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) return Promise.resolve();
+
   return new Promise<void>((resolve) => {
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
       resolve();
     }, ms);
+
     const onAbort = () => {
       clearTimeout(timer);
       resolve();
     };
+
     signal?.addEventListener("abort", onAbort, { once: true });
   });
 }

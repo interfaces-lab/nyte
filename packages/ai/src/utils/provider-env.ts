@@ -29,14 +29,13 @@ function getBunSandboxEnvValue(name: string): string | undefined {
 
   if (procEnvCache === null) {
     procEnvCache = new Map();
+
     try {
-      // oxlint-disable-next-line unbound-method -- readFileSync does not use this
-      const { readFileSync } = require("node:fs") as {
-        readFileSync(path: string, encoding: BufferEncoding): string;
-      };
-      const data = readFileSync("/proc/self/environ", "utf-8");
+      const data = process.getBuiltinModule("node:fs").readFileSync("/proc/self/environ", "utf-8");
+
       for (const entry of data.split("\0")) {
         const idx = entry.indexOf("=");
+
         if (idx > 0) {
           procEnvCache.set(entry.slice(0, idx), entry.slice(idx + 1));
         }

@@ -83,6 +83,7 @@ const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) =>
 const commit: NyteBridge["workspace"]["vcs"]["commit"] = async (input) => {
   if (commitScript.refuseCommit) {
     commitScript.refuseCommit = false;
+
     // The bridge rejects with plain error data, exactly as the preload does.
     return Promise.reject(
       bridgeError({
@@ -91,21 +92,26 @@ const commit: NyteBridge["workspace"]["vcs"]["commit"] = async (input) => {
       }),
     );
   }
+
   commitScript.commits.push({ message: input.message, target: input.files });
+
   const result = nextAnswer<VcsCommitOutcome>(commitScript.commitResults, {
     kind: "committed",
     oid: "1234567890abcdef",
     summary: input.message,
   });
+
   if (result.kind === "committed") {
     commitScript.files = [];
     commitScript.revision += 1;
   }
+
   return result;
 };
 
 const push: NyteBridge["workspace"]["vcs"]["push"] = async (input) => {
   commitScript.pushes.push({ setUpstream: input.setUpstream });
+
   return nextAnswer<VcsPushOutcome>(commitScript.pushResults, {
     kind: "pushed",
     remote: "origin",
@@ -115,11 +121,13 @@ const push: NyteBridge["workspace"]["vcs"]["push"] = async (input) => {
 
 const createBranch: NyteBridge["workspace"]["vcs"]["createBranch"] = async (input) => {
   commitScript.branches.push({ name: input.name, checkout: input.checkout });
+
   return nextAnswer<VcsBranchOutcome>(commitScript.branchResults, { kind: "created" });
 };
 
 const createPullRequest: NyteBridge["host"]["github"]["createPullRequest"] = async (input) => {
   commitScript.pullRequests.push({ title: input.title });
+
   return nextAnswer<GitHubPullRequestOutcome>(commitScript.pullRequestResults, {
     kind: "created",
     url: "https://github.com/nyte/nyte/pull/7",
@@ -127,6 +135,7 @@ const createPullRequest: NyteBridge["host"]["github"]["createPullRequest"] = asy
 };
 
 const log = async (): Promise<VcsLog> => ({ commits: [], hasMore: false });
+
 const refs = async (): Promise<VcsRefs> => ({ local: ["main"], remote: [] });
 
 Object.defineProperty(window, "nyte", {

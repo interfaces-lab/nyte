@@ -5,8 +5,10 @@ export type SessionMark = "waiting" | "retry" | "working" | "failed" | "idle";
 /** Summarize execution across a session's heads, in the SDK's head order. */
 export function sessionMark(session: Pick<SessionInfo, "heads">): SessionMark {
   let failed = false;
+
   for (const head of session.heads) {
     const kind = head.run?.phase.kind;
+
     switch (kind) {
       // A run parked on background work is still in flight. Only one parked on a
       // participant's reply is waiting on the person reading the list.
@@ -26,9 +28,11 @@ export function sessionMark(session: Pick<SessionInfo, "heads">): SessionMark {
         break;
       default: {
         const exhaustive: never = kind;
+
         return exhaustive;
       }
     }
   }
+
   return failed ? "failed" : "idle";
 }

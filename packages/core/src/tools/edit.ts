@@ -10,6 +10,7 @@
 import { readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { relative } from "node:path";
 import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 import type { AgentTool, AgentToolCall, AgentToolResult } from "../kernel/loop/types.ts";
 import { toolResultContent } from "../kernel/loop/tool-result.ts";
 import {
@@ -21,7 +22,9 @@ import {
   restoreLineEndings,
   stripBom,
 } from "./edit-diff.ts";
+
 export type { Edit } from "./edit-diff.ts";
+
 import { argumentParser } from "./support/arguments.ts";
 import { withFileMutationQueue } from "./support/file-mutation-queue.ts";
 import { resolveToCwd } from "./support/path-utils.ts";
@@ -44,18 +47,18 @@ const editParameters = Type.Object({
 });
 
 export type EditToolInput = Static<typeof editParameters>;
+
 export type EditToolDetails = FileMutationDetails;
 
-interface ErrorWithCode {
-  readonly code: unknown;
-}
+const ErrorWithCode = Type.Object({ code: Type.Unknown() });
 
-function hasErrorCode(value: unknown): value is ErrorWithCode {
-  return typeof value === "object" && value !== null && "code" in value;
-}
+const EditsText = Type.Object({ edits: Type.String() });
+
+const SingleEdit = Type.Object({ oldText: Type.String(), newText: Type.String() });
 
 function editAccessError(path: string, cause: unknown): Error {
-  const code = hasErrorCode(cause) ? String(cause.code) : String(cause);
+  const code = Value.Check(ErrorWithCode, cause) ? String(cause.code) : String(cause);
+
   return new Error(`Could not edit file: ${path}. Error code: ${code}.`, {
     cause: cause instanceof Error ? cause : undefined,
   });
@@ -65,26 +68,25 @@ const parseEditArguments = argumentParser(editParameters);
 
 /** Models sometimes send `edits` as a JSON string, or one replacement at the top level; both fold into `edits`. */
 function prepareEditInput(input: AgentToolCall["arguments"]): EditToolInput {
-  const raw: unknown = input.edits;
-  let listed: unknown = raw;
-  if (typeof raw === "string") {
+  let listed: unknown = input.edits;
+
+  if (Value.Check(EditsText, input)) {
     try {
-      listed = JSON.parse(raw);
+      listed = JSON.parse(input.edits);
     } catch {
       // The strict check below reports the malformed value.
     }
   }
-  const single: unknown = input.oldText;
-  const singleNew: unknown = input.newText;
+
   const edits: unknown[] = [
     ...(Array.isArray(listed) ? listed : []),
-    ...(typeof single === "string" && typeof singleNew === "string"
-      ? [{ oldText: single, newText: singleNew }]
-      : []),
+    ...(Value.Check(SingleEdit, input) ? [{ oldText: input.oldText, newText: input.newText }] : []),
   ];
+
   if (edits.length === 0) {
     throw new Error("Invalid arguments: edits must contain at least one replacement");
   }
+
   return parseEditArguments({ ...input, edits });
 }
 
@@ -115,45 +117,54 @@ export function createEditTool(cwd: string): AgentTool<typeof editParameters, Ed
 
         // Check that the target exists and is an editable file.
         let info: Awaited<ReturnType<typeof fsStat>>;
+
         try {
           info = await fsStat(absolutePath);
         } catch (error: unknown) {
           throwIfAborted();
           throw editAccessError(path, error);
         }
+
         if (!info.isFile()) {
           throw new Error(`Could not edit file: ${path}. Path is not a file.`);
         }
+
         throwIfAborted();
 
         // Read the file.
         let rawContent: string;
+
         try {
           rawContent = await fsReadFile(absolutePath, "utf-8");
         } catch (error: unknown) {
           throwIfAborted();
           throw editAccessError(path, error);
         }
+
         throwIfAborted();
 
         // Strip BOM before matching. The model will not include an invisible BOM in oldText.
         const { bom, text: content } = stripBom(rawContent);
         const originalEnding = detectLineEnding(content);
         const normalizedContent = normalizeToLF(content);
+
         const { baseContent, newContent } = applyEditsToNormalizedContent(
           normalizedContent,
           edits,
           path,
         );
+
         throwIfAborted();
 
         const finalContent = bom + restoreLineEndings(newContent, originalEnding);
+
         try {
           await fsWriteFile(absolutePath, finalContent, "utf-8");
         } catch (error: unknown) {
           throwIfAborted();
           throw editAccessError(path, error);
         }
+
         throwIfAborted();
 
         return {

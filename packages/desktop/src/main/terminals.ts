@@ -5,6 +5,7 @@ import type { IPty } from "@lydell/node-pty";
 import type { HostEvent, TerminalInfo } from "../shared/ipc.ts";
 
 const HIGH_WATER = 128 * 1024;
+
 const LOW_WATER = 32 * 1024;
 
 interface TerminalProcess {
@@ -33,8 +34,10 @@ export class TerminalSessions {
 
   create(input: { readonly id: string; readonly cwd: string }): TerminalInfo {
     if (this.processes.has(input.id)) throw new Error("Terminal already exists");
+
     if (this.processes.size >= 32) throw new Error("Close a terminal before opening another");
     const shell = this.shell;
+
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       TERM: "xterm-256color",
@@ -42,8 +45,10 @@ export class TerminalSessions {
       TERM_PROGRAM: "Nyte",
       SHELL: shell,
     };
+
     delete env["ELECTRON_RUN_AS_NODE"];
     delete env["NODE_OPTIONS"];
+
     const pty = spawn(shell, process.platform === "win32" ? [] : ["-i", "-l"], {
       name: "xterm-256color",
       cols: 80,
@@ -51,34 +56,44 @@ export class TerminalSessions {
       cwd: input.cwd,
       env,
     });
+
     const output = pty.onData((data) => {
       const entry = this.processes.get(input.id);
+
       if (entry === undefined) return;
       entry.pending += data.length;
+
       if (!entry.paused && entry.pending >= HIGH_WATER) {
         entry.paused = true;
         pty.pause();
       }
+
       this.emit({ kind: "terminal_data", id: input.id, data });
     });
+
     const exit = pty.onExit(({ exitCode }) => {
       const entry = this.processes.get(input.id);
+
       if (entry === undefined) return;
       this.processes.delete(input.id);
+
       for (const subscription of entry.subscriptions) subscription.dispose();
       this.emit({ kind: "terminal_exit", id: input.id, exitCode });
     });
+
     this.processes.set(input.id, {
       process: pty,
       subscriptions: [output, exit],
       pending: 0,
       paused: false,
     });
+
     return { id: input.id, title: basename(shell), cwd: input.cwd };
   }
 
   write(input: { readonly id: string; readonly data: string }): void {
     const entry = this.processes.get(input.id);
+
     if (entry === undefined) throw new Error("This terminal has exited");
     entry.process.write(input.data);
   }
@@ -93,21 +108,26 @@ export class TerminalSessions {
    */
   idle(input: { readonly id: string }): boolean {
     const entry = this.processes.get(input.id);
+
     return entry === undefined || this.processIsIdle(entry);
   }
 
   busyCount(): number {
     let count = 0;
+
     for (const entry of this.processes.values()) {
       if (!this.processIsIdle(entry)) count++;
     }
+
     return count;
   }
 
   acknowledge(input: { readonly id: string; readonly length: number }): void {
     const entry = this.processes.get(input.id);
+
     if (entry === undefined) return;
     entry.pending = Math.max(0, entry.pending - input.length);
+
     if (entry.paused && entry.pending <= LOW_WATER) {
       entry.paused = false;
       entry.process.resume();
@@ -116,8 +136,10 @@ export class TerminalSessions {
 
   close(input: { readonly id: string }): void {
     const entry = this.processes.get(input.id);
+
     if (entry === undefined) return;
     this.processes.delete(input.id);
+
     for (const subscription of entry.subscriptions) subscription.dispose();
     entry.process.kill();
   }
@@ -128,6 +150,7 @@ export class TerminalSessions {
 
   private processIsIdle(entry: TerminalProcess): boolean {
     if (process.platform === "win32") return false;
+
     return basename(entry.process.process) === basename(this.shell);
   }
 }

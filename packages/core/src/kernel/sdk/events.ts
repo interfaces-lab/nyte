@@ -19,25 +19,34 @@ import type { SessionEvent } from "./types.ts";
 
 /** A backward head move walks toward the root looking for `from`; past this it is reported as a bare move. */
 const MAX_WALK = 10_000;
+
 const RUN_PREFIX = "refs/runs/";
+
 const EFFECT_PREFIX = "refs/effects/";
+
 const KEY_PREFIX = "refs/keys/";
 
 type ReadObject = Pick<Objects, "get" | "chain">;
+
 type CommitItem = { readonly oid: Oid; readonly commit: Commit };
+
 type ChangeItem = { readonly oid: Oid; readonly change: Change };
+
 type EffectIntent = Extract<Effect, { readonly state: "intent" }>;
 
 function suffix(name: RefName, prefix: string): string | undefined {
   if (!name.startsWith(prefix)) return undefined;
   const value = name.slice(prefix.length);
+
   return value === "" ? undefined : value;
 }
 
 function hasEffectParts(name: RefName): boolean {
   const value = suffix(name, EFFECT_PREFIX);
+
   if (value === undefined) return false;
   const separator = value.indexOf("/");
+
   return separator > 0 && separator < value.length - 1;
 }
 
@@ -47,6 +56,7 @@ async function readChange(read: ReadObject, oid: Oid): Promise<Change> {
   if (object === undefined || !("type" in object) || object.type !== "change") {
     throw new Error(`Corrupt queue ref at ${oid}`);
   }
+
   return object;
 }
 
@@ -76,8 +86,10 @@ async function commitsBetween(
 
     if (oid === from) break;
   }
+
   if (oid !== from) return undefined;
   newestFirst.reverse();
+
   return newestFirst;
 }
 
@@ -100,6 +112,7 @@ async function changesBetween(
 
   if (oid !== from) return undefined;
   newestFirst.reverse();
+
   return newestFirst;
 }
 
@@ -116,10 +129,13 @@ async function effectIntent(read: ReadObject, oid: Oid, effect: Effect): Promise
       if (intent?.kind !== "effect" || intent.state !== "intent") {
         throw new Error(`Corrupt effect intent at ${effect.intent} from ${oid}`);
       }
+
       return intent;
     }
+
     default: {
       const _exhaustive: never = effect;
+
       return _exhaustive;
     }
   }
@@ -138,10 +154,14 @@ async function projectHeadRef(
     to: event.to,
     reason: event.reason,
   } satisfies SessionEvent;
+
   const moved: SessionEvent =
     event.actor === undefined ? movedBase : { ...movedBase, actor: event.actor };
+
   const commits = await commitsBetween(read, event.from, event.to);
+
   if (commits === undefined) return [moved];
+
   return [
     moved,
     ...commits.map((item): SessionEvent => ({ seq: event.seq, kind: "commit", head, item })),
@@ -156,19 +176,24 @@ async function projectQueueRef(
   switch (parts.position) {
     case "tip": {
       const changes = await changesBetween(read, event.from, event.to);
+
       return (changes ?? []).flatMap(({ oid, change }): SessionEvent[] => {
         // A queued choice already counts among the session's selected inputs; the event names it so a client re-reads them.
         if (change.body.kind === "config") {
           return [{ seq: event.seq, kind: "config_queued", head: parts.head, change: oid }];
         }
+
         const item = pendingItem({ oid, change, delivery: parts.delivery });
+
         return item === undefined
           ? []
           : [{ seq: event.seq, kind: "queued", head: parts.head, item }];
       });
     }
+
     case "base": {
       const changes = await changesBetween(read, event.from, event.to);
+
       return (
         changes?.map((item): SessionEvent => ({
           seq: event.seq,
@@ -178,8 +203,10 @@ async function projectQueueRef(
         })) ?? []
       );
     }
+
     default: {
       const _exhaustive: never = parts.position;
+
       return _exhaustive;
     }
   }
@@ -194,6 +221,7 @@ async function projectEffectRef(
 
   if (effect?.kind !== "effect") throw new Error(`Corrupt effect ref at ${event.to}`);
   const intent = await effectIntent(read, event.to, effect);
+
   const base = {
     seq: event.seq,
     kind: "effect",
@@ -202,10 +230,13 @@ async function projectEffectRef(
     tool: intent.tool,
     args: intent.args,
   } as const;
+
   if (effect.state !== "waiting") return [{ ...base, state: effect.state }];
   const waiting = { ...base, state: effect.state, waitId: event.to };
+
   const selected =
     effect.selection === undefined ? waiting : { ...waiting, selection: effect.selection };
+
   return [effect.until === undefined ? selected : { ...selected, until: effect.until }];
 }
 
@@ -217,15 +248,20 @@ async function projectRef(
     const blob = await read.get(event.to);
 
     if (blob?.kind !== "blob") throw new Error(`Corrupt job ref at ${event.to}`);
+
     return [{ seq: event.seq, kind: "job", job: parseJobRecord(blob.value).info }];
   }
+
   const head = suffix(event.name, HEAD_PREFIX);
+
   if (head !== undefined && !head.includes("/")) return projectHeadRef(event, head, read);
 
   const queue = parseInboxRef(event.name);
+
   if (queue !== undefined) return projectQueueRef(event, queue, read);
 
   const cancelled = suffix(event.name, CANCELLED_PREFIX);
+
   if (cancelled !== undefined && event.to !== null) {
     return [{ seq: event.seq, kind: "queue_cancelled", change: cancelled }];
   }
@@ -233,15 +269,18 @@ async function projectRef(
   if (hasEffectParts(event.name)) return projectEffectRef(event, read);
 
   const runHead = suffix(event.name, RUN_PREFIX);
+
   if (runHead !== undefined && !runHead.includes("/")) {
     if (event.to === null) return [];
     const run = await read.get(event.to);
 
     if (run?.kind !== "run") throw new Error(`Corrupt run ref at ${event.to}`);
+
     return [{ seq: event.seq, kind: "run", head: runHead, run: runInfo(run) }];
   }
 
   const compactionHead = parseCompactionRef(event.name);
+
   if (compactionHead !== undefined) {
     return [
       {
@@ -255,11 +294,13 @@ async function projectRef(
   }
 
   const stackHead = suffix(event.name, STACK_PREFIX);
+
   if (stackHead !== undefined && !stackHead.includes("/")) {
     if (event.to === null) return [];
     const stack = await read.get(event.to);
 
     if (stack?.kind !== "stack") throw new Error(`Corrupt stack ref at ${event.to}`);
+
     return [
       {
         seq: event.seq,
@@ -272,22 +313,28 @@ async function projectRef(
   }
 
   const factRefKey = suffix(event.name, FACT_PREFIX);
+
   if (factRefKey !== undefined) {
     // Plugin storage escapes its keys; clients and plugins see the key they wrote.
     const key = decodeFactKey(factRefKey);
+
     if (event.to === null) {
       return [{ seq: event.seq, kind: "fact", key, value: undefined }];
     }
+
     const fact = await read.get(event.to);
 
     if (fact?.kind !== "blob") throw new Error(`Corrupt fact ref at ${event.to}`);
+
     return [{ seq: event.seq, kind: "fact", key, value: fact.value }];
   }
 
   if (event.name === DELETED_REF) {
     return event.to === null ? [] : [{ seq: event.seq, kind: "deleted" }];
   }
+
   if (event.name.startsWith(KEY_PREFIX)) return [];
+
   return [];
 }
 
@@ -325,9 +372,11 @@ export async function projectEvent(
           ];
         default: {
           const _exhaustive: never = event.part;
+
           return _exhaustive;
         }
       }
+
     case "progress":
       return [
         {
@@ -350,6 +399,7 @@ export async function projectEvent(
       ];
     default: {
       const _exhaustive: never = event;
+
       return _exhaustive;
     }
   }

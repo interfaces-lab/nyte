@@ -1,6 +1,7 @@
 import type { ToolCallDensity } from "../theme/boot.ts";
 
 export type WorkGroupReveal = "default" | "open" | "closed";
+
 type WorkGroupBody = "none" | "preview" | "list";
 
 /**
@@ -14,7 +15,10 @@ export function workGroupBody(input: {
   readonly hasContent: boolean;
 }): WorkGroupBody {
   if (input.reveal === "open") return "list";
+
   if (input.active && input.density === "compact") return input.hasContent ? "preview" : "none";
+
   if (input.reveal === "closed") return "none";
+
   return input.active || input.density === "detailed" ? "list" : "none";
 }

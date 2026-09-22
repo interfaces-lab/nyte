@@ -17,12 +17,15 @@ export function placementInRect(
   if (rect.width <= 0 || rect.height <= 0) return undefined;
   const x = (point.x - rect.left) / rect.width;
   const y = (point.y - rect.top) / rect.height;
+
   const distances: readonly (readonly [Exclude<DropPlacement, "center">, number])[] = [
     ["left", x],
     ["right", 1 - x],
     ["top", y],
     ["bottom", 1 - y],
   ];
+
   const [placement, distance] = distances.reduce((best, next) => (next[1] < best[1] ? next : best));
+
   return allowCenter && distance > 0.375 ? "center" : placement;
 }

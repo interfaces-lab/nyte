@@ -22,16 +22,19 @@ function Meta({
 }) {
   const mark = sessionMark(session);
   const run = latestRun(session);
+
   const clock =
     mark === "working" || mark === "retry"
       ? run === undefined
         ? undefined
         : elapsed(run.startedAt, now)
       : formatActivity(session.lastActivityAt, now);
+
   const lead =
     mark === "idle" && run === undefined && session.preview !== undefined && session.preview !== ""
       ? session.preview
       : rowStatus(session);
+
   return (
     <html.span
       style={[
@@ -50,6 +53,7 @@ function Meta({
 function Status({ session }: { session: SessionInfo }) {
   const theme = useTheme();
   const mark = sessionMark(session);
+
   if (mark === "working" || mark === "retry") {
     return (
       <ActivityIndicator
@@ -59,9 +63,11 @@ function Status({ session }: { session: SessionInfo }) {
       />
     );
   }
+
   if (mark === "failed") {
     return <SymbolView name="xmark" size={controls.iconXs} tintColor={theme.danger} />;
   }
+
   if (mark === "idle" && latestRun(session) !== undefined) {
     return (
       <SymbolView
@@ -72,6 +78,7 @@ function Status({ session }: { session: SessionInfo }) {
       />
     );
   }
+
   return <html.div style={[styles.dot, mark === "waiting" ? styles.dotWaiting : styles.dotIdle]} />;
 }
 

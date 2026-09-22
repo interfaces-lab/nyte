@@ -10,9 +10,12 @@ export interface MeasuredOperation<Result> {
 
 function positiveEnvironmentNumber(name: string, fallback: number): number {
   const raw = process.env[name];
+
   if (raw === undefined) return fallback;
   const value = Number(raw);
+
   if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be positive`);
+
   return value;
 }
 
@@ -28,9 +31,12 @@ export async function measureOperation<Result>(
     desktop.application,
     benchmarkSampleIntervalMs(),
   );
+
   const started = performance.now();
+
   try {
     const result = await operation();
+
     return {
       result,
       durationMs: performance.now() - started,
@@ -50,6 +56,8 @@ export async function measureSettledDesktop(
     desktop.application,
     benchmarkSampleIntervalMs(),
   );
+
   await delay(durationMs);
+
   return sampling.stop();
 }

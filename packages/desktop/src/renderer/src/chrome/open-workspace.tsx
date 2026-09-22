@@ -58,12 +58,15 @@ const styles = stylex.create({
 });
 
 let prompt: string | undefined;
+
 /** Folders the user declined this session; a replayed activation must not nag. */
 const declined = new Set<string>();
+
 const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
+
   return () => {
     listeners.delete(listener);
   };
@@ -75,6 +78,7 @@ function snapshot(): string | undefined {
 
 function setPrompt(next: string | undefined): void {
   prompt = next;
+
   for (const listener of listeners) listener();
 }
 
@@ -84,6 +88,7 @@ export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
     case "needs_trust":
       toast.dismiss("workspace-open");
       setPrompt(outcome.path);
+
       return;
     case "failed":
       setPrompt(undefined);
@@ -92,14 +97,17 @@ export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
         description: outcome.message,
         duration: Infinity,
       });
+
       return;
     case "opened":
     case "cancelled":
       toast.dismiss("workspace-open");
       setPrompt(undefined);
+
       return;
     default: {
       const _exhaustive: never = outcome;
+
       return _exhaustive;
     }
   }
@@ -109,6 +117,7 @@ export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
 export function requestTrust(activation: SessionActivationState): void {
   if (activation.kind !== "requires") return;
   const path = activation.requirement.cwd;
+
   if (declined.has(path)) return;
   toast.dismiss("workspace-open");
   setPrompt(path);
@@ -153,6 +162,7 @@ function Modal({
 /** Mounted once in the shell; renders whichever prompt is live. */
 export function WorkspaceDialogHost(): ReactElement | null {
   const current = useSyncExternalStore(subscribe, snapshot);
+
   if (current === undefined) return null;
 
   return (

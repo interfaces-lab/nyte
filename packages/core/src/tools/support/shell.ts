@@ -29,6 +29,7 @@ export interface ShellConfig {
  */
 function isLegacyWslBashPath(path: string): boolean {
   const normalized = path.replace(/\//g, "\\").toLowerCase();
+
   return /^[a-z]:\\windows\\(?:system32|sysnative)\\bash\.exe$/.test(normalized);
 }
 
@@ -47,8 +48,10 @@ function findBashOnPath(): string | null {
         timeout: 5000,
         windowsHide: true,
       });
+
       if (result.status === 0 && result.stdout) {
         const firstMatch = result.stdout.trim().split(/\r?\n/)[0];
+
         if (firstMatch && existsSync(firstMatch)) {
           return firstMatch;
         }
@@ -56,14 +59,17 @@ function findBashOnPath(): string | null {
     } catch {
       // Ignore errors
     }
+
     return null;
   }
 
   // Unix: Use 'which' and trust its output (handles Termux and special filesystems)
   try {
     const result = spawnSync("which", ["bash"], { encoding: "utf-8", timeout: 5000 });
+
     if (result.status === 0 && result.stdout) {
       const firstMatch = result.stdout.trim().split(/\r?\n/)[0];
+
       if (firstMatch) {
         return firstMatch;
       }
@@ -71,6 +77,7 @@ function findBashOnPath(): string | null {
   } catch {
     // Ignore errors
   }
+
   return null;
 }
 
@@ -87,6 +94,7 @@ export function getShellConfig(customShellPath?: string): ShellConfig {
     if (existsSync(customShellPath)) {
       return getBashShellConfig(customShellPath);
     }
+
     throw new Error(`Custom shell path not found: ${customShellPath}`);
   }
 
@@ -94,10 +102,13 @@ export function getShellConfig(customShellPath?: string): ShellConfig {
     // 2. Try Git Bash in known locations
     const paths: string[] = [];
     const programFiles = process.env.ProgramFiles;
+
     if (programFiles) {
       paths.push(`${programFiles}\\Git\\bin\\bash.exe`);
     }
+
     const programFilesX86 = process.env["ProgramFiles(x86)"];
+
     if (programFilesX86) {
       paths.push(`${programFilesX86}\\Git\\bin\\bash.exe`);
     }
@@ -110,6 +121,7 @@ export function getShellConfig(customShellPath?: string): ShellConfig {
 
     // 3. Fallback: search bash.exe on PATH (Cygwin, MSYS2, WSL, etc.)
     const bashOnPath = findBashOnPath();
+
     if (bashOnPath) {
       return getBashShellConfig(bashOnPath);
     }
@@ -129,6 +141,7 @@ export function getShellConfig(customShellPath?: string): ShellConfig {
   }
 
   const bashOnPath = findBashOnPath();
+
   if (bashOnPath) {
     return getBashShellConfig(bashOnPath);
   }
@@ -242,6 +255,7 @@ export function waitForChildProcess(child: ChildProcess): Promise<number | null>
         clearTimeout(postExitTimer);
         postExitTimer = undefined;
       }
+
       child.removeListener("error", onError);
       child.removeListener("exit", onExit);
       child.removeListener("close", onClose);
@@ -262,6 +276,7 @@ export function waitForChildProcess(child: ChildProcess): Promise<number | null>
 
     const maybeFinalizeAfterExit = () => {
       if (!exited || settled) return;
+
       if (stdoutEnded && stderrEnded) {
         finalize(exitCode);
       }
@@ -272,8 +287,10 @@ export function waitForChildProcess(child: ChildProcess): Promise<number | null>
       postExitTimer = setTimeout(() => {
         if (child.stdout?.isPaused() || child.stderr?.isPaused()) {
           armIdleTimer();
+
           return;
         }
+
         finalize(exitCode);
       }, EXIT_STDIO_GRACE_MS);
     };
@@ -305,6 +322,7 @@ export function waitForChildProcess(child: ChildProcess): Promise<number | null>
       exited = true;
       exitCode = code;
       maybeFinalizeAfterExit();
+
       if (!settled) {
         armIdleTimer();
       }

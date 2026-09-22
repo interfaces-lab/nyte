@@ -75,9 +75,11 @@ export async function readDelegation(
   prefix: string,
 ): Promise<StoredDelegation> {
   const blob = await session.objects.get(entry.oid);
+
   if (blob?.kind !== "blob" || !Value.Check(delegationRecordSchema, blob.value)) {
     throw new Error(`Corrupt delegation record ${entry.name}`);
   }
+
   return {
     ref: entry.name,
     oid: entry.oid,
@@ -91,7 +93,9 @@ export async function putDelegationRecord(
   record: DelegationRecord,
 ): Promise<Oid> {
   const oid = (await session.objects.put([{ kind: "blob", value: toJsonValue(record) }]))[0];
+
   if (oid === undefined) throw new Error("Delegation record write returned no object");
+
   return oid;
 }
 
@@ -112,12 +116,16 @@ export async function authorizedContinuation(
 ): Promise<AuthorizedContinuation | undefined> {
   if (item.change.kind !== "answer") return undefined;
   const body = item.change.body;
+
   if (body.kind !== "completion" || body.job.kind !== "delegate") {
     throw new Error(`Answer change ${item.oid} has no delegate completion`);
   }
+
   const prefix = delegationPrefix(body.job.session);
+
   for (const entry of await session.refs.list(prefix)) {
     const stored = await readDelegation(session, entry, prefix);
+
     if (
       stored.record.continuation.kind !== "authorized" ||
       stored.record.answer.kind !== "ready" ||
@@ -125,11 +133,14 @@ export async function authorizedContinuation(
     ) {
       continue;
     }
+
     const consumed: DelegationRecord = {
       ...stored.record,
       continuation: { kind: "consumed" },
     };
+
     const oid = await putDelegationRecord(session, consumed);
+
     return {
       session: body.job.session,
       request: body.job.request,
@@ -137,6 +148,7 @@ export async function authorizedContinuation(
       consume: { name: stored.ref, from: stored.oid, to: oid },
     };
   }
+
   return undefined;
 }
 
@@ -145,20 +157,25 @@ export async function revokeDelegations(
   runId: string,
 ): Promise<readonly RefUpdate[]> {
   const updates: RefUpdate[] = [];
+
   for (const entry of await session.refs.list(DELEGATION_PREFIX)) {
     const slash = entry.name.lastIndexOf("/");
     const prefix = slash === -1 ? DELEGATION_PREFIX : entry.name.slice(0, slash + 1);
     const stored = await readDelegation(session, entry, prefix);
+
     if (stored.record.runId !== runId || stored.record.continuation.kind !== "authorized") continue;
+
     const revoked: DelegationRecord = {
       ...stored.record,
       continuation: { kind: "input" },
     };
+
     updates.push({
       name: stored.ref,
       from: stored.oid,
       to: await putDelegationRecord(session, revoked),
     });
   }
+
   return updates;
 }

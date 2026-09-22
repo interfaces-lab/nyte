@@ -34,9 +34,11 @@ interface Parser<T> {
 
 const strict = <P extends TProperties>(properties: P) =>
   Type.Object(properties, { additionalProperties: false });
+
 /** Only request-schema failures are invalid input; internal parser failures remain diagnostics. */
 function compile<T extends TSchema>(schema: T) {
   const validator = Compile(schema);
+
   return {
     Parse(value) {
       try {
@@ -51,6 +53,7 @@ function compile<T extends TSchema>(schema: T) {
             const path = error.schemaPath.split("/");
             const index = path.indexOf("properties");
             const field = index < 0 ? undefined : path[index + 1];
+
             return {
               path: field === undefined ? "" : `/${field}`,
               message: "Invalid request field",
@@ -63,13 +66,20 @@ function compile<T extends TSchema>(schema: T) {
 }
 
 const id = Type.String();
+
 const nonEmpty = Type.String({ minLength: 1 });
+
 /** A renderer-chosen correlation ID; bounded so it cannot carry a payload. */
 const loginAttempt = Type.String({ minLength: 1, maxLength: 64 });
+
 const thinkingLevel = schemas.ThinkingLevel;
+
 const noInput = Type.Optional(Type.Undefined());
+
 const model = strict({ provider: nonEmpty, id: nonEmpty });
+
 const fileVersion = Type.String({ pattern: "^[a-f0-9]{64}$" });
+
 /** A local calendar day. Anything else would fold history onto the wrong dates. */
 const usageDay = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
 
@@ -301,14 +311,18 @@ const callRequest = compile(
     input: Type.Unknown(),
   }),
 );
+
 const watchStart = compile(
   Type.Union([
     strict({ watchId: nonEmpty, sessionId, live: Type.Literal(true) }),
     strict({ watchId: nonEmpty, sessionId, afterSeq: Type.Optional(Type.Integer()) }),
   ]),
 );
+
 const watchStop = compile(strict({ watchId: nonEmpty }));
+
 const size = Type.Number({ minimum: 0 });
+
 const browserBounds = compile(
   strict({
     surface: nonEmpty,
@@ -320,6 +334,7 @@ const browserBounds = compile(
 /** Preserve the caller's correlated type after its boundary schema accepts it. */
 function checked<T>(validator: Parser<unknown>, value: T): T {
   validator.Parse(value);
+
   return value;
 }
 

@@ -31,21 +31,26 @@ function assertSingleLine(field: string, value: string): void {
 
 export function encodeSseFrame(frame: SseFrameInput): string {
   let out = "";
+
   if (frame.id !== undefined) {
     assertSingleLine("id", frame.id);
     out += `id: ${frame.id}\n`;
   }
+
   if (frame.event !== undefined) {
     assertSingleLine("event", frame.event);
     out += `event: ${frame.event}\n`;
   }
+
   for (const line of frame.data.split(/\r\n|\r|\n/)) out += `data: ${line}\n`;
+
   return `${out}\n`;
 }
 
 /** A comment frame: keeps a connection warm, dispatches nothing. */
 export function encodeSseComment(text: string): string {
   assertSingleLine("comment", text);
+
   return `: ${text}\n\n`;
 }
 
@@ -85,9 +90,11 @@ export interface SseParser {
 
 export function createSseParser(options: SseParserOptions = {}): SseParser {
   const limit = options.maxFrameChars ?? DEFAULT_MAX_FRAME_CHARS;
+
   if (!Number.isSafeInteger(limit) || limit <= 0) {
     throw new RangeError("maxFrameChars must be a positive integer");
   }
+
   // The decoder drops one leading byte order mark itself, as the stream format asks.
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
@@ -120,10 +127,12 @@ export function createSseParser(options: SseParserOptions = {}): SseParser {
           id: lastId,
         }
       : undefined;
+
     data = "";
     hasData = false;
     eventType = "";
     frameChars = 0;
+
     return frame;
   };
 
@@ -132,17 +141,22 @@ export function createSseParser(options: SseParserOptions = {}): SseParser {
     const colon = line.indexOf(":");
     const name = colon === -1 ? line : line.slice(0, colon);
     let value = colon === -1 ? "" : line.slice(colon + 1);
+
     if (value.startsWith(" ")) value = value.slice(1);
+
     switch (name) {
       case "event":
         eventType = value;
+
         return;
       case "data":
         data += `${value}\n`;
         hasData = true;
+
         return;
       case "id":
         if (!value.includes("\0")) lastId = value;
+
         return;
       default:
         return;
@@ -152,16 +166,20 @@ export function createSseParser(options: SseParserOptions = {}): SseParser {
   const drain = (final: boolean): SseFrame[] => {
     const frames: SseFrame[] = [];
     let start = 0;
+
     for (;;) {
       let end = -1;
       let next = 0;
+
       for (let index = Math.max(start, scanned); index < buffer.length; index += 1) {
         const char = buffer.charCodeAt(index);
+
         if (char === 10) {
           end = index;
           next = index + 1;
           break;
         }
+
         if (char === 13) {
           // A CR at the very end may be the first half of a CRLF still in flight.
           if (index === buffer.length - 1 && !final) break;
@@ -170,25 +188,34 @@ export function createSseParser(options: SseParserOptions = {}): SseParser {
           break;
         }
       }
+
       if (end === -1) break;
       frameChars += next - start;
+
       if (frameChars > limit) {
         overflowFrame();
+
         return frames;
       }
+
       const line = buffer.slice(start, end);
       start = next;
+
       if (line === "") {
         const frame = dispatch();
+
         if (frame !== undefined) frames.push(frame);
       } else {
         field(line);
       }
     }
+
     buffer = buffer.slice(start);
     // Everything up to the last character was searched; the last one may be a CR awaiting its LF.
     scanned = Math.max(0, buffer.length - 1);
+
     if (frameChars + buffer.length > limit) overflowFrame();
+
     return frames;
   };
 
@@ -199,6 +226,7 @@ export function createSseParser(options: SseParserOptions = {}): SseParser {
     feed(chunk) {
       if (overflow !== undefined) return [];
       buffer += decoder.decode(chunk, { stream: true });
+
       return drain(false);
     },
     end() {
@@ -208,6 +236,7 @@ export function createSseParser(options: SseParserOptions = {}): SseParser {
       buffer = "";
       scanned = 0;
       dispatch();
+
       return frames;
     },
   };

@@ -40,6 +40,7 @@ export function workspaceSelectCaption(outcome: WorkspaceSelectOutcome): string 
       return outcome.message;
     default: {
       const exhaustive: never = outcome;
+
       return exhaustive;
     }
   }
@@ -50,5 +51,6 @@ export function selectionMatches(
   input: WorkspaceSelectInput,
 ): boolean {
   if (input.kind === "home") return selection.kind === "home";
+
   return selection.kind === "project" && selection.workspace.path === input.path;
 }

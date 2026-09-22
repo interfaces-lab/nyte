@@ -33,6 +33,7 @@ export function WorkspacePicker({
 }) {
   const theme = useTheme();
   const queryClient = useQueryClient();
+
   const menuQuery = useQuery({
     queryKey: ["workspace-picker"],
     queryFn: async (): Promise<{
@@ -40,14 +41,18 @@ export function WorkspacePicker({
       items: readonly WorkspaceInfo[];
     } | null> => {
       const info = await client.info();
+
       if (!workspaceMenuAvailable(info)) return null;
+
       const [selection, items] = await Promise.all([
         client.workspace.current(),
         client.workspace.list(),
       ]);
+
       return { selection, items: listedWorkspaces(items) };
     },
   });
+
   const switching = useRef(false);
   const [caption, setCaption] = useState<string>();
 
@@ -64,7 +69,9 @@ export function WorkspacePicker({
 
   const choose = (input: WorkspaceSelectInput) => {
     const data = menuQuery.data;
+
     if (data == null || switching.current) return;
+
     if (selectionMatches(data.selection, input)) return;
     // One flight at a time: the ref latches before the host call starts, so a
     // second tap can never enter while a select is in flight.
@@ -75,6 +82,7 @@ export function WorkspacePicker({
     void flight
       .then((outcome) => {
         switching.current = false;
+
         if (outcome.kind === "opened") {
           queryClient.setQueryData(
             ["workspace-picker"],
@@ -93,6 +101,7 @@ export function WorkspacePicker({
   };
 
   if (menu.kind === "hidden") return null;
+
   if (menu.kind === "failed") {
     return (
       <html.p role="alert" style={textStyles.error}>
@@ -100,7 +109,9 @@ export function WorkspacePicker({
       </html.p>
     );
   }
+
   const selected = menu.selection;
+
   return (
     <html.div style={styles.row}>
       <Host matchContents={{ horizontal: true }} style={chipHost} ignoreSafeArea="all">
@@ -148,6 +159,7 @@ export function WorkspacePicker({
 }
 
 const chipFont = { size: typography.caption.fontSize, weight: "medium" } as const;
+
 const chipHost = { height: controls.metaTarget } as const;
 
 const styles = css.create({

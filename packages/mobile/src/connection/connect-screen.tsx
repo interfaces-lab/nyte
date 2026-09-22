@@ -66,6 +66,7 @@ export function ConnectScreen({
     if (attempt.current !== undefined) return;
     setStage({ kind: "idle" });
     let target: Connection;
+
     try {
       target = scanned ?? parseConnection({ name, url, token });
     } catch (cause) {
@@ -73,21 +74,28 @@ export function ConnectScreen({
         kind: "rejected",
         reason: cause instanceof Error ? cause.message : "Check the connection details.",
       });
+
       return;
     }
+
     const address = displayAddress(target);
     const controller = new AbortController();
     let timedOut = false;
+
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
     }, VERIFY_TIMEOUT_MS);
+
     attempt.current = controller;
     setBusy(true);
     setStage({ kind: "verifying", address });
+
     try {
       const failure = await onConnect(target, controller.signal);
+
       if (attempt.current !== controller) return;
+
       // Only the form knows its own deadline, so it renames its own timeout.
       if (failure !== undefined)
         setStage(failure.kind === "cancelled" && timedOut ? { kind: "silent", address } : failure);
@@ -100,6 +108,7 @@ export function ConnectScreen({
         });
     } finally {
       clearTimeout(timer);
+
       if (attempt.current === controller) {
         attempt.current = undefined;
         setBusy(false);
@@ -110,20 +119,24 @@ export function ConnectScreen({
   /** The permission prompt belongs to the tap that opens the camera. */
   async function openScanner() {
     setStage({ kind: "idle" });
+
     if (!hasPermission && canRequestPermission) {
       try {
         await requestPermission();
       } catch {
         setStage({ kind: "rejected", reason: "Couldn't request camera access." });
+
         return;
       }
     }
+
     setScanning(true);
   }
 
   const intro = introCopy(edit !== undefined);
   const failure = stage.kind === "idle" || stage.kind === "verifying" ? undefined : stage;
   const alert = failure === undefined ? undefined : connectCopy(failure);
+
   return (
     <>
       <ScanSheet

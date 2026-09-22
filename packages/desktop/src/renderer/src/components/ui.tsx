@@ -195,6 +195,7 @@ const styles = stylex.create({
 });
 
 type HintSide = Tooltip.Positioner.Props["side"];
+
 type HintAlign = Tooltip.Positioner.Props["align"];
 
 export function Hint({
@@ -408,6 +409,7 @@ function statusMarkStyle(mark: SessionMark) {
       return styles.statusIdle;
     default: {
       const _exhaustive: never = mark;
+
       return _exhaustive;
     }
   }
@@ -426,6 +428,7 @@ export function StatusDot({
   unread?: boolean;
 }): ReactElement | null {
   if (mark === "idle" && !unread) return null;
+
   return (
     <span
       role="img"
@@ -462,11 +465,16 @@ export function Kbd({
 export function formatTimeAgo(timestamp: number, now = Date.now()): string {
   const elapsed = Math.max(0, now - timestamp);
   const minutes = Math.floor(elapsed / 60_000);
+
   if (minutes < 1) return "now";
+
   if (minutes < 60) return `${String(minutes)}m`;
   const hours = Math.floor(minutes / 60);
+
   if (hours < 24) return `${String(hours)}h`;
   const days = Math.floor(hours / 24);
+
   if (days < 7) return `${String(days)}d`;
+
   return new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }

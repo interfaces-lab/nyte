@@ -7,6 +7,7 @@ export function resolveCacheRetention(
   env?: ProviderEnv,
 ): CacheRetention {
   if (retention !== undefined) return retention;
+
   return getProviderEnvValue("PI_CACHE_RETENTION", env) === "long" ? "long" : "short";
 }
 
@@ -16,5 +17,6 @@ export function promptCacheMinimumTtlMs(
   retention: CacheRetention,
 ): number | undefined {
   if (policy === undefined || retention === "none") return undefined;
+
   return policy.minimumRetentionMs[retention];
 }

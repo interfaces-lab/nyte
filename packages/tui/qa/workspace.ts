@@ -5,10 +5,14 @@ import { fileURLToPath } from "node:url";
 import type { Model } from "@nyte-ai/schema";
 
 export const FIXTURE_PROVIDER = "opencode";
+
 export const FIXTURE_MODEL = "nyte-qa";
+
 export const FIXTURE_CHILD_MODEL = "nyte-qa-child";
+
 // The production rename plugin prefers this exact model before the session model.
 export const FIXTURE_TITLE_MODEL = "gpt-5.6-luna";
+
 export const FIXTURE_API_KEY = "nyte-qa-loopback-only";
 
 export interface Workspace {
@@ -34,17 +38,21 @@ export async function createWorkspace(options: {
   readonly reasoning?: Model<"openai-completions">["reasoning"];
 }): Promise<Workspace> {
   const endpoint = new URL(options.baseUrl);
+
   if (endpoint.protocol !== "http:" || endpoint.hostname !== "127.0.0.1") {
     throw new Error("The QA provider must use HTTP on 127.0.0.1");
   }
+
   const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-terminal-qa-")));
   const cwd = join(root, "workspace");
   const home = join(root, "home");
   const nyteHome = join(home, ".nyte");
+
   try {
     for (const directory of [cwd, nyteHome, join(root, "tmp"), join(cwd, "evidence")]) {
       await mkdir(directory, { recursive: true, mode: 0o700 });
     }
+
     const models = [FIXTURE_MODEL, FIXTURE_CHILD_MODEL, FIXTURE_TITLE_MODEL].map(
       (id) =>
         ({
@@ -66,6 +74,7 @@ export async function createWorkspace(options: {
           compat: { supportsStore: false, supportsDeveloperRole: false },
         }) satisfies Model<"openai-completions">,
     );
+
     const files = {
       "auth.json": { [FIXTURE_PROVIDER]: { type: "api_key", key: FIXTURE_API_KEY } },
       // Freshness prevents background catalog discovery. NYTE_OFFLINE only disables updates.
@@ -82,11 +91,14 @@ export async function createWorkspace(options: {
       "workspaces.json":
         options.trusted === false ? {} : { [cwd]: { trusted: true, lastOpenedAt: Date.now() } },
     };
+
     for (const [name, value] of Object.entries(files)) {
       await writeFile(join(nyteHome, name), `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
     }
+
     if (options.question === true) {
       const plugins = join(cwd, ".nyte", "plugins");
+
       // Bundle the public example's dependencies, but use the binary's plugin API.
       const built = await Bun.build({
         entrypoints: [fileURLToPath(import.meta.resolve("@nyte-ai/plugin/examples/question"))],
@@ -96,9 +108,11 @@ export async function createWorkspace(options: {
         format: "esm",
         external: ["@nyte-ai/plugin"],
       });
+
       if (!built.success)
         throw new AggregateError(built.logs, "Could not build QA question plugin");
     }
+
     await copyFile(new URL("./fixtures/heartbeat.sh", import.meta.url), join(cwd, "heartbeat.sh"));
     const image = join(cwd, "pixel.png");
     await writeFile(
@@ -116,6 +130,7 @@ export async function createWorkspace(options: {
     );
     const tools = join(root, "bin");
     await mkdir(tools, { mode: 0o700 });
+
     for (const command of [
       "pbcopy",
       "pbpaste",
@@ -132,7 +147,8 @@ export async function createWorkspace(options: {
         { mode: 0o700 },
       );
     }
-    const env: Record<string, string> = {
+
+    const env = {
       HOME: home,
       NYTE_HOME: nyteHome,
       NYTE_OFFLINE: "1",
@@ -160,6 +176,7 @@ export async function createWorkspace(options: {
       all_proxy: endpoint.origin,
       no_proxy: "127.0.0.1,localhost,::1",
     };
+
     return {
       root,
       cwd,

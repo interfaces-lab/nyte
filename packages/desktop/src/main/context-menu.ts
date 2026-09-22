@@ -15,6 +15,7 @@ export async function showContextMenu({
   readonly input: Parameters<HostBridge["contextMenu"]>[0];
 }): Promise<number | undefined> {
   if (window === undefined || window.isDestroyed() || items.length === 0) return undefined;
+
   return new Promise<number | undefined>((resolve) => {
     const template = items.map<MenuItemConstructorOptions>((item, index) => {
       switch (item.kind) {
@@ -33,10 +34,12 @@ export async function showContextMenu({
           };
         default: {
           const _exhaustive: never = item;
+
           return _exhaustive;
         }
       }
     });
+
     Menu.buildFromTemplate(template).popup({
       window,
       x: Math.round(x),

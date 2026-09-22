@@ -2,6 +2,8 @@ import * as stylex from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { focus } from "../components/ui.tsx";
 import { keys } from "../query-keys.ts";
 import { t } from "../theme/vars.stylex.ts";
@@ -71,24 +73,13 @@ const styles = stylex.create({
 
 type DiagramState = DiagramResult | { readonly kind: "pending" };
 
-function isDiagramResult(value: unknown): value is DiagramResult {
-  if (typeof value !== "object" || value === null || !("kind" in value)) return false;
-  if (value.kind === "source") return true;
-  return value.kind === "diagram" && "svg" in value && typeof value.svg === "string";
-}
-
-function isRenderResponse(
-  value: unknown,
-): value is { readonly id: string; readonly result: DiagramResult } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "id" in value &&
-    typeof value.id === "string" &&
-    "result" in value &&
-    isDiagramResult(value.result)
-  );
-}
+const renderResponse = Type.Object({
+  id: Type.String(),
+  result: Type.Union([
+    Type.Object({ kind: Type.Literal("diagram"), svg: Type.String() }),
+    Type.Object({ kind: Type.Literal("source") }),
+  ]),
+});
 
 /**
  * Render one diagram in a dedicated worker. The protocol's `id` field is moot
@@ -100,9 +91,11 @@ function isRenderResponse(
  */
 export function renderMermaid(source: string, signal: AbortSignal): Promise<DiagramResult> {
   if (signal.aborted) return Promise.resolve({ kind: "source" });
+
   return new Promise((resolve) => {
     const worker = new Worker(new URL("./mermaid-worker.ts", import.meta.url), { type: "module" });
     let finished = false;
+
     const settle = (result: DiagramResult): void => {
       if (finished) return;
       finished = true;
@@ -110,13 +103,15 @@ export function renderMermaid(source: string, signal: AbortSignal): Promise<Diag
       worker.terminate();
       resolve(result);
     };
+
     const cancel = (): void => settle({ kind: "source" });
     worker.addEventListener("message", (event: MessageEvent<unknown>) => {
-      if (isRenderResponse(event.data)) settle(event.data.result);
+      if (Value.Check(renderResponse, event.data)) settle(event.data.result);
     });
     worker.addEventListener("error", cancel, { once: true });
     worker.addEventListener("messageerror", cancel, { once: true });
     signal.addEventListener("abort", cancel, { once: true });
+
     try {
       worker.postMessage({ id: "render", source });
     } catch {
@@ -138,6 +133,7 @@ export function MermaidDiagram({ source }: { readonly source: string }): ReactEl
     staleTime: Infinity,
     gcTime: 0,
   });
+
   const [sourceVisible, setSourceVisible] = useState(false);
   const rendered: DiagramState = render.data ?? { kind: "pending" };
 

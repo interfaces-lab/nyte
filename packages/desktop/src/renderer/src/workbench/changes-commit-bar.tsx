@@ -13,6 +13,8 @@
 import * as stylex from "@stylexjs/stylex";
 import { Fragment, useState } from "react";
 import type { ReactElement } from "react";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import type {
   VcsBranchOutcome,
   VcsCommitOutcome,
@@ -60,6 +62,7 @@ export interface CommitActionPlan {
 
 export function commitActionPlan(action: CommitAction): CommitActionPlan {
   const steps = { branch: false, commit: false, push: false, pullRequest: false };
+
   switch (action) {
     case "branch-commit":
       return { ...steps, branch: true, commit: true };
@@ -103,9 +106,13 @@ export function commitActionLabel(action: CommitAction): string {
 
 function commitActionIcon(action: CommitAction): IconName {
   const plan = commitActionPlan(action);
+
   if (plan.branch) return "git-branch";
+
   if (plan.pullRequest) return "pull-request";
+
   if (plan.commit) return "git";
+
   return "arrow-up";
 }
 
@@ -132,18 +139,25 @@ export function commitActionDisabledReason(
   state: CommitBarState,
 ): string | undefined {
   const plan = commitActionPlan(action);
+
   if (plan.commit) {
     if (state.fileCount === 0) return "Nothing to commit in this scope";
+
     if (state.message.trim() === "") return "Write a commit message first";
   }
+
   if (plan.pullRequest && !isWorkingTreeScope(state.scope))
     return "Pull requests apply to the working tree";
+
   if (plan.branch) return undefined;
   const remoteStep = plan.push || plan.pullRequest;
+
   if (remoteStep && state.branch?.kind === "detached")
     return "HEAD is detached, so there is no branch";
+
   if (remoteStep && !plan.commit && state.branch?.kind === "unborn")
     return "This branch has no commits yet";
+
   return undefined;
 }
 
@@ -246,20 +260,15 @@ export function pullRequestResultMessage(result: GitHubPullRequestOutcome): Comm
 }
 
 /** A trust refusal crosses IPC as a `forbidden` failure, not as an outcome. */
-function isTrustRefusal(cause: unknown): boolean {
-  if (typeof cause !== "object" || cause === null || !("cause" in cause)) return false;
-  const inner = cause.cause;
-  return (
-    typeof inner === "object" && inner !== null && "code" in inner && inner.code === "forbidden"
-  );
-}
+const trustRefusal = Type.Object({ cause: Type.Object({ code: Type.Literal("forbidden") }) });
 
 export function actionFailureMessage(cause: unknown): CommitBarResult {
-  if (isTrustRefusal(cause))
+  if (Value.Check(trustRefusal, cause))
     return {
       tone: "error",
       text: "Trust this workspace to let Nyte write to Git, then try again.",
     };
+
   return { tone: "error", text: "The action didn’t go through.", detail: errorMessage(cause) };
 }
 
@@ -274,7 +283,9 @@ export function commitTargetFor(scope: WorkbenchChangesScope): VcsCommitTarget {
 /** A pull request needs a title; the message's first line is it, then the branch. */
 export function pullRequestTitle(message: string, branch: BranchReadout | undefined): string {
   const firstLine = message.split("\n")[0]?.trim() ?? "";
+
   if (firstLine !== "") return firstLine;
+
   return branch?.label ?? "";
 }
 
@@ -282,6 +293,7 @@ function readStoredAction(): CommitAction {
   try {
     if (typeof window === "undefined") return DEFAULT_COMMIT_ACTION;
     const stored = window.localStorage.getItem(STORAGE_KEY);
+
     return COMMIT_ACTIONS.find((action) => action === stored) ?? DEFAULT_COMMIT_ACTION;
   } catch {
     return DEFAULT_COMMIT_ACTION;
@@ -401,6 +413,7 @@ export function ChangesCommitBar({
     setResult(undefined);
     setInterrupted(undefined);
     const reported: string[] = [];
+
     const settle = (outcome: CommitBarResult): void => {
       setResult(
         reported.length === 0
@@ -408,36 +421,48 @@ export function ChangesCommitBar({
           : { ...outcome, text: `${reported.join(" ")} ${outcome.text}` },
       );
     };
+
     try {
       if (plan.branch && options.skipBranch !== true) {
         const name = options.branchName ?? "";
+
         const created = await nyte.workspace.vcs.createBranch({
           target: { kind: "workspace" },
           name,
           checkout: true,
           expect,
         });
+
         const outcome = createBranchResultMessage(created, name);
+
         if (created.kind !== "created") {
           if (created.kind === "stale") refreshVcs();
           settle(outcome);
+
           return;
         }
+
         refreshVcs();
+
         if (plan.commit || plan.push) {
           const snapshot = await refreshVcsSnapshot();
+
           if (snapshot.kind !== "repository") {
             settle({ tone: "error", text: "This workspace is no longer a Git repository." });
+
             return;
           }
+
           expect = { revision: snapshot.revision };
         }
+
         // The prompt stays until the branch exists, so a taken or invalid name
         // can be corrected without retyping either field.
         setBranchPrompt(undefined);
         setBranchName("");
         reported.push(outcome.text);
       }
+
       if (plan.commit && options.skipCommit !== true) {
         const committed = await nyte.workspace.vcs.commit({
           target: { kind: "workspace" },
@@ -445,49 +470,68 @@ export function ChangesCommitBar({
           files: commitTargetFor(scope),
           expect,
         });
+
         const outcome = commitResultMessage(committed);
+
         if (committed.kind !== "committed") {
           if (committed.kind === "stale") refreshVcs();
           settle(outcome);
+
           return;
         }
+
         refreshVcs();
+
         if (plan.push) {
           const snapshot = await refreshVcsSnapshot();
+
           if (snapshot.kind !== "repository") {
             settle({ tone: "error", text: "This workspace is no longer a Git repository." });
+
             return;
           }
+
           expect = { revision: snapshot.revision };
         }
+
         setMessage("");
         reported.push(outcome.text);
       }
+
       if (plan.push) {
         const pushed = await nyte.workspace.vcs.push({
           target: { kind: "workspace" },
           setUpstream: options.setUpstream === true,
           expect,
         });
+
         const outcome = pushResultMessage(pushed);
+
         if (outcome.tone === "error") {
           if (pushed.kind === "stale") refreshVcs();
           else setInterrupted(chosen);
           settle(outcome);
+
           return;
         }
+
         refreshVcs();
         reported.push(outcome.text);
       }
+
       if (plan.pullRequest) {
         const opened = await nyte.host.github.createPullRequest({
           title: pullRequestTitle(message, branch),
         });
+
         const outcome = pullRequestResultMessage(opened);
+
         if (outcome.tone === "success") refreshVcs();
         settle(outcome);
+
         return;
       }
+
       settle({ tone: "success", text: "" });
     } catch (cause) {
       settle(actionFailureMessage(cause));
@@ -500,16 +544,20 @@ export function ChangesCommitBar({
     setAction(chosen);
     storeAction(chosen);
     setResult(undefined);
+
     if (commitActionPlan(chosen).branch) {
       setBranchPrompt(chosen);
+
       return;
     }
+
     setBranchPrompt(undefined);
     void run(chosen);
   };
 
   const confirmBranch = (): void => {
     const pending = branchPrompt;
+
     if (pending === undefined || branchName.trim() === "") return;
     void run(pending, { branchName: branchName.trim() });
   };
@@ -557,6 +605,7 @@ export function ChangesCommitBar({
                   event.preventDefault();
                   confirmBranch();
                 }
+
                 if (event.key === "Escape") setBranchPrompt(undefined);
               }}
               {...stylex.props(styles.input)}
@@ -595,6 +644,7 @@ export function ChangesCommitBar({
         >
           {COMMIT_ACTIONS.map((candidate, index) => {
             const reason = commitActionDisabledReason(candidate, state);
+
             return (
               <Fragment key={candidate}>
                 {(index === 3 || index === 6) && <MenuSeparator />}

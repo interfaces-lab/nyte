@@ -16,9 +16,12 @@ import { definePlugin } from "@nyte-ai/plugin";
 import type { AgentTool, Plugin } from "@nyte-ai/plugin";
 
 export const WEB_SEARCH_TOOL_NAME = "websearch";
+
 export const WEB_SEARCH_SETTING_ID = "websearch-provider";
+
 /** The routing choice that hides the tool, opencode's `false` selection. */
 export const WEB_SEARCH_OFF = "off";
+
 /** opencode sends `App.useragent`; the routes only need to know who is calling. */
 export const USER_AGENT = "nyte/web-search";
 
@@ -40,16 +43,21 @@ export function webSearchResult(
   },
 ): WebSearchResult {
   let result: WebSearchResult = { url, time: {} };
+
   if (fields.title !== undefined && fields.title !== null && fields.title !== "") {
     result = { ...result, title: fields.title };
   }
+
   if (fields.content !== undefined && fields.content !== null && fields.content !== "") {
     result = { ...result, content: fields.content };
   }
+
   if (fields.published !== undefined && fields.published !== null && fields.published !== "") {
     const published = Date.parse(fields.published);
+
     if (Number.isFinite(published)) result = { ...result, time: { published } };
   }
+
   return result;
 }
 
@@ -104,21 +112,25 @@ export function isWebSearchProviderCarrier(
   tool: AgentTool,
 ): tool is AgentTool & WebSearchProviderCarrier {
   if (!("providers" in tool) || !Array.isArray(tool.providers)) return false;
+
   return tool.providers.every(isWebSearchProvider);
 }
 
 /** The providers on the materialized `websearch` tool; none when the tool is hidden or absent. */
 export function webSearchProviders(tools: readonly AgentTool[]): readonly WebSearchProvider[] {
   const tool = tools.find((candidate) => candidate.name === WEB_SEARCH_TOOL_NAME);
+
   return tool !== undefined && isWebSearchProviderCarrier(tool) ? tool.providers : [];
 }
 
 function withProvider(tool: AgentTool, provider: WebSearchProvider): AgentTool {
   const current = isWebSearchProviderCarrier(tool) ? tool.providers : [];
+
   const joined: AgentTool & WebSearchProviderCarrier = {
     ...tool,
     providers: [...current.filter((entry) => entry.id !== provider.id), provider],
   };
+
   return joined;
 }
 

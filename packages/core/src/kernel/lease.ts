@@ -21,8 +21,10 @@ export async function withLeaseRenewal<T>(
 ): Promise<T> {
   const stop = new AbortController();
   const lost = new AbortController();
+
   const signal =
     input.signal === undefined ? lost.signal : AbortSignal.any([input.signal, lost.signal]);
+
   const renewal = (async () => {
     while (!stop.signal.aborted) {
       try {
@@ -33,14 +35,17 @@ export async function withLeaseRenewal<T>(
         if (stop.signal.aborted) return;
         throw cause;
       }
+
       if (!(await input.session.leases.renew(input.lease, input.ttlMs))) {
         throw new LeaseLost(input.lease);
       }
     }
   })().catch((cause: unknown) => lost.abort(cause));
+
   try {
     const result = await run(signal);
     lost.signal.throwIfAborted();
+
     return result;
   } catch (cause) {
     lost.signal.throwIfAborted();

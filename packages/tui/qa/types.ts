@@ -2,8 +2,11 @@ import type { EmbeddedTerminalScreen, KeyEvent, MouseEvent } from "@opentui/core
 import type { ChatCommand } from "../src/constants.ts";
 
 export type Screen = EmbeddedTerminalScreen;
+
 export type Gesture = ConstructorParameters<typeof KeyEvent>[0];
+
 export type MouseGesture = ConstructorParameters<typeof MouseEvent>[1];
+
 export type InputRecord = {
   before: Screen;
   action: string;
@@ -11,6 +14,7 @@ export type InputRecord = {
   matchedAt?: number;
   latencyMs?: number;
 };
+
 export type TerminalOptions = {
   binary: string;
   cwd: string;
@@ -20,6 +24,7 @@ export type TerminalOptions = {
   show?: boolean;
   args?: string[];
 };
+
 export type Terminal = {
   key(action: ChatCommand): InputRecord;
   gesture(key: Gesture): InputRecord;
@@ -49,6 +54,7 @@ export type Terminal = {
   chunks: { at: number; base64: string }[];
   close(): Promise<void>;
 };
+
 export type BinaryIdentity = {
   path: string;
   sha256: string;
@@ -56,6 +62,7 @@ export type BinaryIdentity = {
   revision: string;
   opentui: string;
 };
+
 export type ScenarioContext = {
   binary: BinaryIdentity;
   cwd: string;
@@ -64,6 +71,7 @@ export type ScenarioContext = {
   show: boolean;
   open(options?: Partial<Omit<TerminalOptions, "binary" | "show">>): Promise<Terminal>;
 };
+
 export type Scenario = {
   name: string;
   covers: string[];

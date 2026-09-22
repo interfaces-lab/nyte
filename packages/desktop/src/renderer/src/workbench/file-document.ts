@@ -6,6 +6,7 @@ import type {
 } from "../../../shared/workspace-editor.ts";
 
 type TextFile = Extract<WorkspaceFileDocument, { readonly kind: "text" }>;
+
 type FileSaveState =
   | { readonly kind: "idle" }
   | { readonly kind: "saving" }
@@ -30,15 +31,20 @@ export function createFileDocument(document: TextFile, draft?: string) {
     revision: 0,
     status: { kind: "idle" },
   };
+
   const listeners = new Set<() => void>();
+
   const publish = (next: FileDocumentSnapshot): void => {
     snapshot = next;
+
     for (const listener of listeners) listener();
   };
+
   return {
     getSnapshot: (): FileDocumentSnapshot => snapshot,
     subscribe: (listener: () => void): (() => void) => {
       listeners.add(listener);
+
       return () => {
         listeners.delete(listener);
       };
@@ -55,6 +61,7 @@ export function createFileDocument(document: TextFile, draft?: string) {
     /** Refetches cannot move the save baseline underneath an unsaved draft. */
     observeDisk(next: TextFile): void {
       if (snapshot.status.kind === "saving" || snapshot.contents !== snapshot.savedContents) return;
+
       if (snapshot.version === next.version) return;
       publish({
         contents: next.contents,
@@ -81,13 +88,16 @@ export function createFileDocument(document: TextFile, draft?: string) {
       if (snapshot.status.kind === "saving") return;
       const captured = snapshot;
       publish({ ...snapshot, status: { kind: "saving" } });
+
       try {
         const input = {
           path: document.path,
           contents: captured.contents,
           version: captured.version,
         };
+
         const formatted = await operations.format?.(input);
+
         if (formatted !== undefined && formatted.kind !== "formatted") {
           publish({
             ...snapshot,
@@ -96,22 +106,31 @@ export function createFileDocument(document: TextFile, draft?: string) {
                 ? { kind: "conflict" }
                 : { kind: "error", message: formatted.message },
           });
+
           return;
         }
+
         // Formatting may take seconds. Do not replace text typed in the meantime.
         if (snapshot.revision !== captured.revision) {
           publish({ ...snapshot, status: { kind: "idle" } });
+
           return;
         }
+
         const contents = formatted?.contents ?? captured.contents;
+
         if (contents !== snapshot.contents) {
           publish({ ...snapshot, contents, revision: snapshot.revision + 1 });
         }
+
         const outcome = await operations.write({ ...input, contents });
+
         if (outcome.kind === "conflict") {
           publish({ ...snapshot, status: { kind: "conflict" } });
+
           return;
         }
+
         publish({
           ...snapshot,
           savedContents: contents,

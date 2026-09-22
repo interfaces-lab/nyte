@@ -7,13 +7,16 @@ export default function Review() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const rawId = Array.isArray(id) ? id[0] : id;
   let parsed: SessionId | undefined;
+
   try {
     parsed = sessionId(rawId);
   } catch {
     parsed = undefined;
   }
+
   if (parsed === undefined) {
     return <EmptyState title="Chat not found" description="This conversation doesn't exist." />;
   }
+
   return <ReviewScreen sessionId={parsed} />;
 }

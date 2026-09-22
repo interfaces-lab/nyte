@@ -199,12 +199,15 @@ function ModelPickerView({
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const currentOptionRef = useRef<HTMLDivElement>(null);
+
   const groups = useMemo(
     () => (catalog === undefined ? [] : pickerGroups(catalog, current, search)),
     [catalog, current, search],
   );
+
   const connected =
     catalog?.providers.some((provider) => provider.connection.kind !== "disconnected") ?? false;
+
   const levels = thinkingLevelsFor(current);
   const level = supportedThinkingLevel(current, thinkingLevel);
   const fast = current?.fastMode;
@@ -264,6 +267,7 @@ function ModelPickerView({
             value={level}
             onValueChange={(value) => {
               const next = levels.find((candidate) => candidate === value);
+
               if (next !== undefined) onChange({ kind: "thinking", thinkingLevel: next });
             }}
           >
@@ -287,8 +291,10 @@ function ModelPickerView({
         onOpenChangeComplete={(modelOpen) => {
           if (!modelOpen) {
             setSearch("");
+
             return;
           }
+
           window.requestAnimationFrame(() => {
             currentOptionRef.current?.scrollIntoView({ block: "nearest" });
             searchRef.current?.focus({ preventScroll: true });

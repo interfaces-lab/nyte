@@ -60,9 +60,13 @@ interface TokenSpan {
 }
 
 const MAX_ROWS = 10;
+
 const CHROME_ROWS = 6;
+
 const PANEL_CHROME_ROWS = 2;
+
 const PADDING_LEFT = 2;
+
 const PADDING_RIGHT = 1;
 
 export class SlashAutocomplete {
@@ -126,6 +130,7 @@ export class SlashAutocomplete {
     });
     this.container.add(this.list.container);
     this.container.add(this.empty);
+
     const actions = [
       {
         name: "completion.accept",
@@ -173,18 +178,23 @@ export class SlashAutocomplete {
         run: () => this.list.navigate("page-down"),
       },
     ] as const;
+
     const readText = options.readText ?? (() => this.input.plainText);
+
     const refresh = options.keymap.intercept("key", ({ event }) => {
       if (!options.enabled()) return;
       const text = readText();
+
       // A clear and the next text key can precede the coalesced native content notification.
       if (this.dismissed && isComposerTextKey(event) && text === "") this.close();
+
       // Native content notifications can trail keys in the same input batch.
       // Synchronize before keymap resolution, including rebound navigation and acceptance.
       // An unchanged query supplied without a cursor still means end-of-text.
       if (text === this.value && this.rawCursor === undefined) return;
       this.update(text, this.commands, this.files, this.cwd, this.input.cursorOffset);
     });
+
     const unregister = options.keymap.registerLayer({
       priority: 5,
       enabled: () => options.enabled() && this.visible,
@@ -193,6 +203,7 @@ export class SlashAutocomplete {
           action.name === "completion.close" || this.hasMatches
             ? undefined
             : "No completion matches";
+
         return {
           name: action.name,
           namespace: "completion",
@@ -210,10 +221,12 @@ export class SlashAutocomplete {
         Object.fromEntries(actions.map((action) => [action.name, CHAT_KEYBINDS[action.name]])),
       ),
     });
+
     this.unregister = () => {
       refresh();
       unregister();
     };
+
     this.renderer.on(CliRenderEvents.RESIZE, this.onResize);
   }
 
@@ -229,13 +242,16 @@ export class SlashAutocomplete {
   /** Based on OpenCode #46414: complete a prompt before admitting it to the queue. */
   completeQueueableCommand(): boolean {
     this.update(this.input.plainText, this.commands, this.files, this.cwd, this.input.cursorOffset);
+
     if (!this.queueable) return false;
     this.run(this.suggestions[this.list.selectedIndex], COMPLETION_METHODS.fill);
+
     return true;
   }
 
   get rows(): number {
     if (!this.container.visible) return 0;
+
     return (
       PANEL_CHROME_ROWS +
       Math.max(1, Math.min(this.suggestions.length, this.maxVisibleForHeight(this.renderer.height)))
@@ -268,6 +284,7 @@ export class SlashAutocomplete {
     ) {
       return;
     }
+
     const request = ++this.completionRequest;
     this.commands = commands;
     this.value = value;
@@ -278,31 +295,41 @@ export class SlashAutocomplete {
     // Most drafts cannot complete. Avoid allocating a native prefix just to rule them out.
     if (!value.includes("/") && !value.includes("@")) {
       this.hide();
+
       return;
     }
+
     const index =
       cursor === undefined ? value.length : this.input.editBuffer.getTextRange(0, cursor).length;
+
     const directory = directoryCompletionQuery(value, index);
+
     if (this.dismissed) {
       if (directory === undefined && completionTrigger(value, index) === undefined) this.hide();
+
       return;
     }
+
     if (directory !== undefined) {
       this.span = directory;
       this.suggestions = [];
       this.renderSuggestions("loading directories…");
       void this.loadDirectories(directory, cwd, request);
+
       return;
     }
 
     this.directoryListing.clear();
     const slash = slashCompletion(value, commands, index);
+
     if (slash !== undefined) {
       // Mid-prompt, an empty menu is just a path or a fraction being typed.
       if (!slash.leading && slash.commands.length === 0) {
         this.hide();
+
         return;
       }
+
       this.span = { start: slash.start, end: slash.end };
       this.suggestions = slash.commands.map((command) => ({
         kind: "command",
@@ -310,14 +337,18 @@ export class SlashAutocomplete {
         leading: slash.leading,
       }));
       this.renderSuggestions("no matching commands");
+
       return;
     }
 
     const mention = fileMentionSuggestions(value, files, index);
+
     if (mention === undefined) {
       this.hide();
+
       return;
     }
+
     this.span = { start: mention.query.start, end: mention.query.end };
     this.suggestions = mention.files.map((file) => ({ kind: "file", file }));
     this.renderSuggestions("no matching files or folders");
@@ -331,7 +362,9 @@ export class SlashAutocomplete {
   ): Promise<void> {
     if (request !== this.completionRequest) return;
     const file = await explicitMentionFile(mention.query.query, cwd);
+
     if (request !== this.completionRequest || file === undefined) return;
+
     if (mention.files.some((match) => match.path === file.path)) return;
     this.suggestions = [file, ...mention.files].map((match) => ({ kind: "file", file: match }));
     this.renderSuggestions("no matching files or folders");
@@ -344,6 +377,7 @@ export class SlashAutocomplete {
   ): Promise<void> {
     if (request !== this.completionRequest) return;
     const paths = await directorySuggestions({ path: query.path, cwd }, this.directoryListing);
+
     if (request !== this.completionRequest) return;
     this.suggestions = paths.map((path) => ({ kind: "directory", path }));
     this.renderSuggestions("no matching directories");
@@ -351,6 +385,7 @@ export class SlashAutocomplete {
 
   get queueable(): boolean {
     const selected = this.suggestions[this.list.selectedIndex];
+
     return this.accepting && selected?.kind === "command" && selected.command.kind === "prompt";
   }
 
@@ -384,6 +419,7 @@ export class SlashAutocomplete {
         };
       default: {
         const _exhaustive: never = suggestion;
+
         return _exhaustive;
       }
     }
@@ -394,35 +430,49 @@ export class SlashAutocomplete {
     via: (typeof COMPLETION_METHODS)[keyof typeof COMPLETION_METHODS],
   ): void {
     const span = this.span;
+
     if (suggestion === undefined || span === undefined) return;
+
     if (suggestion.kind === "file") {
       this.splice(span, `${this.onFile(suggestion.file.path)} `);
+
       return;
     }
+
     if (suggestion.kind === "directory") {
       this.splice(span, suggestion.path);
+
       if (via === COMPLETION_METHODS.fill) this.browseDirectories();
+
       return;
     }
+
     if (suggestion.command.name === "cd") {
       this.splice(span, "/cd ");
       this.browseDirectories();
+
       return;
     }
+
     const acceptance = acceptSlashCommand(
       suggestion.command,
       via,
       suggestion.leading ? this.input.plainText.slice(span.end).trim() : "",
     );
+
     if (acceptance.action === "complete") {
       this.splice(span, acceptance.token);
+
       return;
     }
+
     if (!suggestion.leading) {
       this.removeInlineToken(span);
       this.onCommand(suggestion.command);
+
       return;
     }
+
     this.close();
     this.value = "";
     this.rawCursor = 0;
@@ -438,14 +488,19 @@ export class SlashAutocomplete {
   /** Remove an inline action and one redundant horizontal separator. */
   private removeInlineToken(span: TokenSpan): void {
     const value = this.input.plainText;
+
     if (/^[ \t]$/.test(value[span.end] ?? "")) {
       this.splice({ start: span.start, end: span.end + 1 }, "");
+
       return;
     }
+
     if (/^[ \t]$/.test(value[span.start - 1] ?? "")) {
       this.splice({ start: span.start - 1, end: span.end }, "");
+
       return;
     }
+
     this.splice(span, "");
   }
 
@@ -455,12 +510,14 @@ export class SlashAutocomplete {
     const tail = value.slice(span.end);
     const text = insert.endsWith(" ") && /^\s/.test(tail) ? insert.slice(0, -1) : insert;
     const next = `${value.slice(0, span.start)}${text}${tail}`;
+
     const cursor = cellOffset(
       next,
       span.start + text.length,
       this.widthMethod,
       this.input.editBuffer.getTabWidth(),
     );
+
     this.close();
     this.value = next;
     this.rawCursor = cursor;
@@ -475,6 +532,7 @@ export class SlashAutocomplete {
     const cursor = this.input.cursorOffset;
     const commands = this.commands;
     const selected = this.list.selectedIndex;
+
     return () => {
       if (this.container.isDestroyed) return;
       this.update(
@@ -484,6 +542,7 @@ export class SlashAutocomplete {
         this.cwd,
         this.input.cursorOffset,
       );
+
       if (
         this.visible &&
         this.input.plainText === value &&
@@ -505,6 +564,7 @@ export class SlashAutocomplete {
     this.directoryListing.clear();
     this.span = undefined;
     this.dismissed = false;
+
     if (!this.container.visible) return;
     this.container.visible = false;
     this.onRows(0);

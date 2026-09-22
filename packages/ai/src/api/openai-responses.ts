@@ -3,7 +3,6 @@ import type { ResponseCreateParamsStreaming } from "openai/resources/responses/r
 import { clampThinkingLevel } from "../models.ts";
 import { getServiceTierCostMultiplier } from "../model-pricing.ts";
 import type {
-  Api,
   AssistantMessage,
   CacheRetention,
   Context,
@@ -29,20 +28,24 @@ import {
   convertResponsesMessages,
   convertResponsesTools,
   processResponsesStream,
+  stripStreamingScratchState,
 } from "./openai-responses-shared.ts";
 import { readOpenAICompactResponse, type OpenAICompactResult } from "./openai-compact.ts";
 import { buildBaseOptions } from "./simple-options.ts";
 
 const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
+
 // OpenAI Responses rejects max_output_tokens below 16: https://github.com/earendil-works/pi/issues/6265
 const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
 
 function hasHeader(headers: ProviderHeaders | undefined, name: string): boolean {
   if (!headers) return false;
   const expected = name.toLowerCase();
+
   for (const [key, value] of Object.entries(headers)) {
     if (key.toLowerCase() === expected && value !== null && value.trim().length > 0) return true;
   }
+
   return false;
 }
 
@@ -52,6 +55,7 @@ function getClientApiKey(
   headers: ProviderHeaders | undefined,
 ): string {
   if (apiKey) return apiKey;
+
   if (hasHeader(headers, "authorization") || hasHeader(headers, "cf-aig-authorization"))
     return "unused";
   throw new Error(`No API key for provider: ${provider}`);
@@ -86,10 +90,6 @@ function getPromptCacheRetention(
   return cacheRetention === "long" && compat.supportsLongCacheRetention ? "24h" : undefined;
 }
 
-function formatOpenAIResponsesError(error: unknown): string {
-  return formatProviderError(normalizeProviderError(error), "OpenAI API error");
-}
-
 // OpenAI Responses-specific options
 export interface OpenAIResponsesOptions extends StreamOptions {
   reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -110,6 +110,7 @@ export async function compactOpenAIResponsesContext(
   const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
   const compat = getCompat(model);
   const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
+
   const client = createClient({
     model,
     context,
@@ -118,6 +119,7 @@ export async function compactOpenAIResponsesContext(
     compat,
     cacheRetention,
   });
+
   // Instructions travel separately so the request does not duplicate the system message.
   const input = buildParams(
     model,
@@ -126,11 +128,15 @@ export async function compactOpenAIResponsesContext(
     compat,
     cacheRetention,
   ).input;
+
   const requestOptions: NonNullable<Parameters<typeof client.responses.compact>[1]> = {
     maxRetries: 0,
   };
+
   if (options?.signal !== undefined) requestOptions.signal = options.signal;
+
   if (options?.timeoutMs !== undefined) requestOptions.timeout = options.timeoutMs;
+
   const response = await retryProviderRequest(
     () =>
       client.responses
@@ -142,10 +148,12 @@ export async function compactOpenAIResponsesContext(
       signal: options?.signal,
     },
   );
+
   await options?.onResponse?.(
     { status: response.status, headers: headersToRecord(response.headers) },
     model,
   );
+
   return readOpenAICompactResponse(response, model);
 }
 
@@ -164,7 +172,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
     const output: AssistantMessage = {
       role: "assistant",
       content: [],
-      api: model.api as Api,
+      api: model.api,
       provider: model.provider,
       model: model.id,
       usage: {
@@ -184,11 +192,14 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
       const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
       const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
       const compat = getCompat(model);
+
       const grammarToolInputProperties = createGrammarToolInputProperties(
         context.tools,
         compat.supportsOpenAIGrammarTools,
       );
+
       const client = createClient({ model, context, apiKey, options, cacheRetention, compat });
+
       let params = buildParams(
         model,
         context,
@@ -197,15 +208,20 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
         cacheRetention,
         grammarToolInputProperties,
       );
+
       const nextParams = await options?.onPayload?.(params, model);
+
       if (nextParams !== undefined) {
+        // SAFETY: onPayload's contract is to return this provider's request body (possibly mutated); its signature is unknown because each API defines its own shape.
         params = nextParams as ResponseCreateParamsStreaming;
       }
-      const requestOptions = {
-        ...(options?.signal ? { signal: options.signal } : {}),
-        ...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
-        maxRetries: 0,
-      };
+
+      const requestOptions: OpenAI.RequestOptions = { maxRetries: 0 };
+
+      if (options?.signal) requestOptions.signal = options.signal;
+
+      if (options?.timeoutMs !== undefined) requestOptions.timeout = options.timeoutMs;
+
       const result = await retryProviderRequest(
         () => client.responses.create(params, requestOptions).withResponse(),
         {
@@ -214,6 +230,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
           signal: options?.signal,
         },
       );
+
       await options?.onResponse?.(
         { status: result.response.status, headers: headersToRecord(result.response.headers) },
         model,
@@ -234,6 +251,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
       if (output.stopReason === "pending") {
         throw new Error("OpenAI Responses stream ended without a stop reason");
       }
+
       if (output.stopReason === "aborted" || output.stopReason === "error") {
         throw new Error(output.errorMessage || "An unknown error occurred");
       }
@@ -241,14 +259,10 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
       stream.push({ type: "done", reason: output.stopReason, message: output });
       stream.end();
     } catch (error) {
-      for (const block of output.content) {
-        delete (block as { index?: number }).index;
-        // Streaming scratch buffers are only used during parsing; never persist them.
-        delete (block as { partialJson?: string }).partialJson;
-        delete (block as { customInput?: unknown }).customInput;
-      }
+      stripStreamingScratchState(output.content);
+
       output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-      output.errorMessage = formatOpenAIResponsesError(error);
+      output.errorMessage = formatProviderError(normalizeProviderError(error), "OpenAI API error");
       stream.push({ type: "error", reason: output.stopReason, error: output });
       stream.end();
     }
@@ -269,9 +283,11 @@ export const streamSimple: StreamFunction<"openai-responses", SimpleStreamOption
     toolChoice: options?.toolChoice,
     serviceTier: options?.fast === true ? "priority" : undefined,
   } satisfies OpenAIResponsesOptions;
+
   const clampedReasoning = options?.reasoning
     ? clampThinkingLevel(model, options.reasoning)
     : undefined;
+
   const reasoningEffort = clampedReasoning === "off" ? undefined : clampedReasoning;
 
   return stream(model, context, {
@@ -289,15 +305,18 @@ function createClient(input: {
   compat: Required<OpenAIResponsesCompat>;
 }) {
   const headers: ProviderHeaders = { "User-Agent": getNyteUserAgent(), ...input.model.headers };
+
   if (input.model.provider === "github-copilot") {
     const copilotHeaders = buildCopilotDynamicHeaders({
       messages: input.context.messages,
       sessionId: input.options?.sessionId,
     });
+
     Object.assign(headers, copilotHeaders);
   }
 
   const cacheSessionId = input.cacheRetention === "none" ? undefined : input.options?.sessionId;
+
   if (cacheSessionId) {
     if (input.compat.sessionAffinityFormat === "openrouter") {
       headers["x-session-id"] = cacheSessionId;
@@ -305,6 +324,7 @@ function createClient(input: {
       if (input.compat.sessionAffinityFormat === "openai") {
         headers.session_id = cacheSessionId;
       }
+
       headers["x-client-request-id"] = cacheSessionId;
     }
   }
@@ -339,7 +359,9 @@ function buildParams(
     : compat.supportsToolSearch
       ? "tool-search"
       : undefined;
+
   const toolPlacement = splitDeferredTools(context, deferredToolsMode !== undefined);
+
   const messages = convertResponsesMessages(model, context, OPENAI_TOOL_CALL_PROVIDERS, {
     grammarToolInputProperties,
     deferredTools: toolPlacement.deferred,
@@ -352,6 +374,7 @@ function buildParams(
 
   const disableImplicitPromptCache =
     cacheRetention === "none" && compat.supportsExplicitPromptCacheMode;
+
   const params: ResponseCreateParamsStreaming & { prompt_cache_options?: { mode: "explicit" } } = {
     model: model.id,
     input: messages,
@@ -391,18 +414,23 @@ function buildParams(
       const effort = options?.reasoningEffort
         ? (model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort)
         : "medium";
+
       params.reasoning = {
+        // SAFETY: effort is the caller's level or the model's mapped level; the API accepts
+        // levels such as "max" that the SDK's ReasoningEffort union does not list yet.
         effort: effort as NonNullable<typeof params.reasoning>["effort"],
         summary: options?.reasoningSummary || "auto",
       };
       params.include = ["reasoning.encrypted_content"];
     } else if (model.provider !== "github-copilot" && model.thinkingLevelMap?.off !== null) {
       params.reasoning = {
+        // SAFETY: the off level comes from model metadata written for this API.
         effort: (model.thinkingLevelMap?.off ?? "none") as NonNullable<
           typeof params.reasoning
         >["effort"],
       };
     }
+
     // Stateless (store: false) providers can only continue reasoning across
     // turns when every response carries its encrypted reasoning back.
     if (model.provider === "xai" || model.provider === "github-copilot") {
@@ -424,6 +452,7 @@ function applyServiceTierPricing(
   model: Pick<Model<"openai-responses">, "id">,
 ) {
   const multiplier = getServiceTierCostMultiplier(model, serviceTier ?? undefined);
+
   if (multiplier === 1) return;
 
   usage.cost.input *= multiplier;

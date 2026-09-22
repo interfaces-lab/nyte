@@ -44,8 +44,11 @@ async function call<P extends CallPath>(path: P, input: CallInput<P>): Promise<C
   // SAFETY: only Nyte's main process handles CALL_CHANNEL; it decodes the path-specific
   // request and echoes that path in the matching CallReplyFor<P> envelope.
   const result = (await ipcRenderer.invoke(CALL_CHANNEL, { path, input })) as CallReplyFor<P>;
+
   if (!result.ok) return Promise.reject(bridgeError(result.error));
+
   if (result.path !== path) throw new Error("Malformed reply from the host: path mismatch");
+
   return result.value;
 }
 
@@ -70,7 +73,9 @@ function editorOperation<P extends WorkspaceEditorOperation>(operation: P) {
       operation,
       input,
     })) as WorkspaceEditorReply<P>;
+
     if (!result.ok) return Promise.reject(bridgeError(result.error));
+
     return result.value;
   };
 }
@@ -148,6 +153,7 @@ const bridge = {
   ) {
     const watchId = crypto.randomUUID();
     let ended = false;
+
     const fail = (error: Error): void => {
       if (ended) return;
       ended = true;
@@ -155,23 +161,30 @@ const bridge = {
       ipcRenderer.removeListener(WATCH_EVENT_CHANNEL, listener);
       onError?.(error);
     };
+
     // WATCH_EVENT_CHANNEL is private to Nyte main and emits only WatchEnvelope.
     const listener = (_event: Electron.IpcRendererEvent, frame: WatchEnvelope): void => {
       if (frame.watchId !== watchId || ended) return;
+
       if (frame.kind === "event") {
         onEvent(frame.event);
+
         return;
       }
+
       if (frame.error !== undefined) fail(bridgeError(frame.error));
       else fail(new Error("Watch ended unexpectedly"));
     };
+
     ipcRenderer.on(WATCH_EVENT_CHANNEL, listener);
+
     const start: WatchStartInput =
       "live" in input
         ? { watchId, sessionId: input.sessionId, live: true }
         : input.afterSeq === undefined
           ? { watchId, sessionId: input.sessionId }
           : { watchId, sessionId: input.sessionId, afterSeq: input.afterSeq };
+
     // A refused start (bad cursor, no workspace) is a watch that ended before it began.
     const started = ipcRenderer
       .invoke(WATCH_START_CHANNEL, start)
@@ -179,6 +192,7 @@ const bridge = {
         if (!result.ok) fail(bridgeError(result.error));
       })
       .catch(() => fail(new Error("The host watch could not start.")));
+
     return () => {
       ended = true;
       ipcRenderer.removeListener(WATCH_EVENT_CHANNEL, listener);
@@ -195,8 +209,10 @@ const bridge = {
       const wrapped = (_event: Electron.IpcRendererEvent, command: AppMenuCommand): void => {
         listener(command);
       };
+
       ipcRenderer.on(APP_MENU_COMMAND_CHANNEL, wrapped);
       ipcRenderer.send(APP_MENU_READY_CHANNEL);
+
       return () => ipcRenderer.removeListener(APP_MENU_COMMAND_CHANNEL, wrapped);
     },
     setThemePreference: (preference) => ipcRenderer.send(THEME_PREFERENCE_CHANNEL, preference),
@@ -268,7 +284,9 @@ const bridge = {
       const wrapped = (_event: Electron.IpcRendererEvent, event: HostEvent): void => {
         listener(event);
       };
+
       ipcRenderer.on(HOST_EVENT_CHANNEL, wrapped);
+
       return () => {
         ipcRenderer.removeListener(HOST_EVENT_CHANNEL, wrapped);
       };
@@ -277,6 +295,7 @@ const bridge = {
 } satisfies NyteBridge;
 
 contextBridge.exposeInMainWorld("nyte", bridge);
+
 window.addEventListener(
   "DOMContentLoaded",
   () => {

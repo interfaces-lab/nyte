@@ -1,5 +1,6 @@
 module.exports = function (api) {
   const platform = api.caller((caller) => caller?.platform ?? "ios");
+
   const dev = api.caller(
     (caller) =>
       caller?.isDev ??

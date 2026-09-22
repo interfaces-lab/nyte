@@ -22,6 +22,7 @@ function phased(
       return words.interrupted ?? `${words.noun} stopped`;
     default: {
       const _exhaustive: never = phase;
+
       return _exhaustive;
     }
   }
@@ -49,6 +50,7 @@ function delegateVerb(
       });
     default: {
       const _exhaustive: never = role;
+
       return _exhaustive;
     }
   }
@@ -80,6 +82,7 @@ export function toolVerb(toolClass: ToolClass, phase: ToolPhase): string {
       });
     default: {
       const _exhaustive: never = toolClass;
+
       return _exhaustive;
     }
   }
@@ -89,16 +92,20 @@ const NOTICE_LIMIT = 180;
 
 function oneLine(message: string): string | undefined {
   const compact = message.replaceAll(/\s+/gu, " ").trim();
+
   if (compact === "") return undefined;
+
   return compact.length <= NOTICE_LIMIT
     ? compact
     : `${compact.slice(0, NOTICE_LIMIT - 3).trimEnd()}…`;
 }
 
-export function failureNotice(failure: Failure): {
+type FailureNotice = {
   readonly text: string;
   readonly tone: "neutral" | "danger";
-} {
+};
+
+export function failureNotice(failure: Failure): FailureNotice {
   switch (failure.class) {
     case "aborted":
       return { text: "Run stopped.", tone: "neutral" };
@@ -119,6 +126,7 @@ export function failureNotice(failure: Failure): {
       return { text: oneLine(failure.message) ?? "Request failed.", tone: "danger" };
     default: {
       const _exhaustive: never = failure.class;
+
       return _exhaustive;
     }
   }

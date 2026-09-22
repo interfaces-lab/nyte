@@ -1,7 +1,9 @@
 import { renderMermaidSVG } from "beautiful-mermaid";
 
 const MAX_SOURCE_LENGTH = 8_000;
+
 const MAX_SOURCE_LINES = 120;
+
 const MAX_SVG_LENGTH = 500_000;
 
 export type DiagramResult =
@@ -12,6 +14,7 @@ export function renderDiagram(source: string): DiagramResult {
   if (source.length > MAX_SOURCE_LENGTH || source.split("\n").length > MAX_SOURCE_LINES) {
     return { kind: "source" };
   }
+
   try {
     const svg = renderMermaidSVG(source, {
       bg: "var(--nyte-conversation-technical-background)",
@@ -24,6 +27,7 @@ export function renderDiagram(source: string): DiagramResult {
       padding: 24,
       transparent: true,
     });
+
     return svg.length > MAX_SVG_LENGTH ? { kind: "source" } : { kind: "diagram", svg };
   } catch {
     return { kind: "source" };

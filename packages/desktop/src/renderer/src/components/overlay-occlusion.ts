@@ -25,8 +25,11 @@ export interface OverlayRect {
 const NONE: readonly OverlayRect[] = Object.freeze([]);
 
 const elements = new Set<Element>();
+
 const listeners = new Set<() => void>();
+
 let rects: readonly OverlayRect[] = NONE;
+
 let frame: number | undefined;
 
 function sameRects(a: readonly OverlayRect[], b: readonly OverlayRect[]): boolean {
@@ -34,6 +37,7 @@ function sameRects(a: readonly OverlayRect[], b: readonly OverlayRect[]): boolea
     a.length === b.length &&
     a.every((rect, index) => {
       const other = b[index];
+
       return (
         other !== undefined &&
         rect.left === other.left &&
@@ -52,28 +56,35 @@ function sameRects(a: readonly OverlayRect[], b: readonly OverlayRect[]): boolea
  */
 function isPainted(element: Element): boolean {
   if (!element.isConnected) return false;
+
   if (element.hasAttribute("data-ending-style") || element.hasAttribute("data-closed"))
     return false;
   const style = getComputedStyle(element);
+
   return style.visibility !== "hidden" && style.opacity !== "0";
 }
 
 function publish(): void {
   const next: OverlayRect[] = [];
+
   for (const element of elements) {
     if (!isPainted(element)) continue;
     const rect = element.getBoundingClientRect();
+
     if (rect.width <= 0 || rect.height <= 0) continue;
     next.push({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
   }
+
   if (sameRects(rects, next)) return;
   rects = next.length === 0 ? NONE : Object.freeze(next);
+
   for (const listener of listeners) listener();
 }
 
 function measure(): void {
   frame = undefined;
   publish();
+
   if (listeners.size > 0 && elements.size > 0) frame = requestAnimationFrame(measure);
 }
 
@@ -89,10 +100,13 @@ export function registerOverlay(element: Element): () => void {
   // frame from landing behind a page that has not been told to step aside yet.
   publish();
   schedule();
+
   return () => {
     elements.delete(element);
     publish();
+
     if (elements.size > 0) return;
+
     if (frame !== undefined) cancelAnimationFrame(frame);
     frame = undefined;
   };
@@ -110,13 +124,17 @@ export function getOverlayRects(): readonly OverlayRect[] {
 /** Only a native surface subscribes, and only then is anything measured. */
 export function subscribeOverlayRects(listener: () => void): () => void {
   listeners.add(listener);
+
   if (listeners.size === 1) {
     publish();
     schedule();
   }
+
   return () => {
     listeners.delete(listener);
+
     if (listeners.size > 0) return;
+
     if (frame !== undefined) cancelAnimationFrame(frame);
     frame = undefined;
     rects = NONE;

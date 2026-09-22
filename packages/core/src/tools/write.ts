@@ -5,6 +5,7 @@
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/agent/src/harness/tools/write.ts
  */
+import { existsSync } from "node:fs";
 import {
   mkdir as fsMkdir,
   readFile as fsReadFile,
@@ -24,14 +25,6 @@ const writeParameters = Type.Object({
   content: Type.String({ description: "Content to write to the file" }),
 });
 
-interface MissingFileError extends Error {
-  readonly code: "ENOENT";
-}
-
-function isMissingFile(cause: unknown): cause is MissingFileError {
-  return cause instanceof Error && "code" in cause && cause.code === "ENOENT";
-}
-
 export function createWriteTool(
   cwd: string,
 ): AgentTool<typeof writeParameters, FileMutationDetails> {
@@ -47,6 +40,7 @@ export function createWriteTool(
         : { kind: "file_patch", op: "write", path, ...result.details },
     async execute(_toolCallId, { path, content }, signal?, _onUpdate?) {
       const absolutePath = resolveToCwd(path, cwd);
+
       return withFileMutationQueue(absolutePath, async () => {
         // Do not reject from an abort event listener here: that would release the
         // mutation queue while an in-flight filesystem operation may still finish.
@@ -58,13 +52,10 @@ export function createWriteTool(
 
         throwIfAborted();
 
-        let previousContent = "";
-        try {
-          previousContent = await fsReadFile(absolutePath, "utf-8");
-        } catch (error: unknown) {
-          throwIfAborted();
-          if (!isMissingFile(error)) throw error;
-        }
+        const previousContent = existsSync(absolutePath)
+          ? await fsReadFile(absolutePath, "utf-8")
+          : "";
+
         throwIfAborted();
 
         // Create parent directories if needed.
