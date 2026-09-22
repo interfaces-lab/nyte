@@ -5,16 +5,17 @@ import { AnimatePresence, motion, useIsPresent, useReducedMotion } from "motion/
 import type { TargetAndTransition, Transition } from "motion/react";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/protocol";
 import { Icon } from "../components/icons.tsx";
-import { Spinner } from "../components/spinner.tsx";
-import { focus } from "../components/ui.tsx";
+import { focus, StatusDot } from "../components/ui.tsx";
+import { warmThread } from "../live.ts";
 import { nyte } from "../nyte.ts";
 import { keys, useSession } from "../queries.ts";
-import { tray } from "../theme/schema.stylex.ts";
+import { glyph, tray } from "../theme/schema.stylex.ts";
 import { trayStyles } from "../theme/tray.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { subagentTrayState } from "./agent-status.ts";
+import type { SubagentSession } from "./subagent-sessions.ts";
 
 export type SubagentTrayView =
   | { readonly kind: "closed" }
@@ -62,12 +63,10 @@ const styles = create({
     display: "grid",
     placeItems: "center",
     flexShrink: 0,
-    width: 10,
-    height: 10,
-    color: t.iconSecondary,
+    width: glyph.box,
+    height: glyph.box,
     lineHeight: 0,
   },
-  spinnerScale: { display: "inline-flex", transform: "scale(0.6667)" },
   attentionDot: {
     display: "block",
     width: 6,
@@ -99,34 +98,23 @@ const styles = create({
   }),
   row: {
     "--nyte-row-height": tray.rowHeight,
-    "--nyte-row-gap": "8px",
-    "--nyte-row-padding-inline": "6px",
-    "--nyte-row-leading-size": "10px",
+    "--nyte-row-gap": "6px",
+    "--nyte-row-padding-inline": tray.rowInset,
+    "--nyte-row-leading-size": glyph.box,
     "--_row-fill": {
       default: "transparent",
       ":hover": `color-mix(in srgb, ${t.fillGhostHover} 50%, transparent)`,
       ":focus-within": `color-mix(in srgb, ${t.fillGhostHover} 50%, transparent)`,
     },
-    minHeight: 28,
-    paddingInlineEnd: 4,
     borderRadius: t.radiusBase,
     color: t.textPrimary,
     fontSize: t.fontBase,
-    lineHeight: "18px",
-  },
-  runningIndicator: {
-    display: "grid",
-    placeItems: "center",
-    width: 10,
-    height: 10,
-    color: t.iconSecondary,
-    lineHeight: 0,
+    lineHeight: tray.lineHeight,
   },
   state: {
-    flexShrink: 0,
     color: t.textTertiary,
-    fontSize: t.fontBase,
-    lineHeight: "18px",
+    fontSize: t.fontSm,
+    lineHeight: tray.lineHeight,
   },
   action: {
     display: "inline-flex",
@@ -178,8 +166,14 @@ const styles = create({
   error: { color: t.textDanger },
 });
 
-function agentTitle(agent: SessionInfo | undefined, sessionId: SessionId): string {
-  return agent?.name ?? agent?.preview ?? sessionId;
+function agentTitle(agent: SubagentSession | undefined, sessionId: SessionId): string {
+  if (agent === undefined) return sessionId;
+  if ("kind" in agent) return agent.title;
+  return agent.name ?? agent.preview ?? sessionId;
+}
+
+function agentActivityAt(agent: SubagentSession): number {
+  return "kind" in agent ? agent.startedAt : agent.lastActivityAt;
 }
 
 function PresenceContent({ children }: { readonly children: ReactNode }): ReactElement {
@@ -202,7 +196,7 @@ export function SubagentTray({
   detail,
 }: {
   readonly parentSessionId: SessionId;
-  readonly agents: readonly SessionInfo[];
+  readonly agents: readonly SubagentSession[];
   readonly view: SubagentTrayView;
   readonly onViewChange: (view: SubagentTrayView) => void;
   readonly onExpand: (sessionId: SessionId) => void;
@@ -216,6 +210,10 @@ export function SubagentTray({
   const reducedMotion = useReducedMotion();
   const [availableHeight, setAvailableHeight] = useState(260);
   const [stopCandidates, setStopCandidates] = useState<readonly SessionId[]>();
+  const [pinned, setPinned] = useState<SessionId>();
+  const pinnedId =
+    view.kind === "detail" ? view.sessionId : view.kind === "closed" ? undefined : pinned;
+  if (pinnedId !== pinned) setPinned(pinnedId);
   const stop = useMutation({
     mutationFn: (sessionId: SessionId) => nyte.runs.abort({ sessionId }),
     onSettled: () => client.invalidateQueries({ queryKey: keys.childSessions(parentSessionId) }),
@@ -235,14 +233,17 @@ export function SubagentTray({
             Number(subagentTrayState(right) !== "attention");
           return (
             attention ||
-            right.lastActivityAt - left.lastActivityAt ||
+            agentActivityAt(right) - agentActivityAt(left) ||
             left.sessionId.localeCompare(right.sessionId)
           );
         }),
     [agents],
   );
   const running = active.filter((agent) => subagentTrayState(agent) !== "attention");
-  const stoppable = active;
+  const settled = agents.find(
+    (agent) => agent.sessionId === pinnedId && subagentTrayState(agent) === "inactive",
+  );
+  const listed = settled === undefined ? active : [...active, settled];
   const selectedId = view.kind === "detail" ? view.sessionId : undefined;
   const selectedSession = useSession(selectedId ?? parentSessionId);
   const selected =
@@ -264,11 +265,11 @@ export function SubagentTray({
   }, [view.kind]);
 
   useLayoutEffect(() => {
-    if (view.kind !== "list" || active.length > 0) return;
+    if (view.kind !== "list" || listed.length > 0) return;
     const held = rootRef.current?.contains(document.activeElement) === true;
     onViewChange({ kind: "closed" });
     if (held) onRelease();
-  }, [active.length, onRelease, onViewChange, view.kind]);
+  }, [listed.length, onRelease, onViewChange, view.kind]);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -297,7 +298,8 @@ export function SubagentTray({
     if (held) onRelease();
   };
 
-  if ((view.kind === "closed" || view.kind === "list") && active.length === 0) return null;
+  if (view.kind === "closed" && active.length === 0) return null;
+  if (view.kind === "list" && listed.length === 0) return null;
 
   return (
     <div ref={rootRef} {...props(styles.root)}>
@@ -311,11 +313,9 @@ export function SubagentTray({
             {...props(styles.pill, focus.ring)}
             onClick={() => onViewChange({ kind: "list" })}
           >
-            <span {...props(styles.pillIndicator)}>
+            <span aria-hidden="true" {...props(styles.pillIndicator)}>
               {running.length > 0 ? (
-                <span {...props(styles.spinnerScale)}>
-                  <Spinner />
-                </span>
+                <StatusDot mark="working" />
               ) : (
                 <span {...props(styles.attentionDot)} />
               )}
@@ -330,7 +330,7 @@ export function SubagentTray({
         </div>
       )}
       <AnimatePresence initial={false}>
-        {view.kind !== "closed" && (view.kind === "detail" || active.length > 0) && (
+        {view.kind !== "closed" && (view.kind === "detail" || listed.length > 0) && (
           <motion.section
             key="surface"
             id={trayId}
@@ -357,34 +357,32 @@ export function SubagentTray({
               {view.kind === "list" && (
                 <>
                   <div {...props(trayStyles.header, styles.listHeader)}>
-                    <span {...props(trayStyles.title, styles.title)}>
-                      {running.length > 0 ? "Working" : "Agents"}
-                    </span>
-                    {stoppable.length > 0 && (
+                    <span {...props(trayStyles.title, styles.title)}>Agents</span>
+                    {active.length > 0 && (
                       <button
                         type="button"
                         aria-label={
                           stopCandidates === undefined
-                            ? "Stop all running agents"
-                            : `Confirm stopping ${String(stopCandidates.length)} running agents`
+                            ? "Stop all active agents"
+                            : `Confirm stopping ${String(stopCandidates.length)} active agents`
                         }
                         disabled={pendingAction}
                         {...props(styles.action, focus.ringInset)}
                         onClick={() => {
                           if (stopCandidates === undefined) {
-                            setStopCandidates(stoppable.map((agent) => agent.sessionId));
+                            setStopCandidates(active.map((agent) => agent.sessionId));
                             return;
                           }
                           const candidates = new Set(stopCandidates);
                           stopAll.mutate(
-                            stoppable
+                            active
                               .filter((agent) => candidates.has(agent.sessionId))
                               .map((agent) => agent.sessionId),
                           );
                           setStopCandidates(undefined);
                         }}
                       >
-                        {stopCandidates === undefined ? "Stop All" : "Confirm"}
+                        {stopCandidates === undefined ? "Stop all" : "Confirm"}
                       </button>
                     )}
                     <button
@@ -401,7 +399,7 @@ export function SubagentTray({
                     data-nyte-scrollport
                     {...props(trayStyles.list, styles.list, styles.listHeight(availableHeight))}
                   >
-                    {active.map((agent) => {
+                    {listed.map((agent) => {
                       const state = subagentTrayState(agent);
                       return (
                         <Row key={agent.sessionId} xstyle={styles.row} interactive>
@@ -410,6 +408,9 @@ export function SubagentTray({
                               <button
                                 type="button"
                                 aria-label={`Open ${agentTitle(agent, agent.sessionId)}`}
+                                onPointerEnter={() => void warmThread(agent.sessionId)}
+                                onFocus={() => void warmThread(agent.sessionId)}
+                                onPointerDown={() => void warmThread(agent.sessionId)}
                                 onClick={() => {
                                   setStopCandidates(undefined);
                                   onViewChange({ kind: "detail", sessionId: agent.sessionId });
@@ -421,18 +422,12 @@ export function SubagentTray({
                               {state === "attention" ? (
                                 <span {...props(styles.attentionDot)} />
                               ) : (
-                                <span {...props(styles.runningIndicator)}>
-                                  <span {...props(styles.spinnerScale)}>
-                                    <Spinner />
-                                  </span>
-                                </span>
+                                state === "working" && <StatusDot mark="working" />
                               )}
                             </Row.Leading>
                             <Row.Label>{agentTitle(agent, agent.sessionId)}</Row.Label>
                           </Row.Primary>
-                          <Row.Meta>
-                            <span {...props(styles.state)}>{TRAY_STATE_LABEL[state]}</span>
-                          </Row.Meta>
+                          <Row.Meta xstyle={styles.state}>{TRAY_STATE_LABEL[state]}</Row.Meta>
                         </Row>
                       );
                     })}

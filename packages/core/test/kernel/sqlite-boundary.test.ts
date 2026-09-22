@@ -23,6 +23,35 @@ test("a matching content hash does not make an incomplete stored object valid", 
   }
 });
 
+test("invalid serialized writes leave object and event batches untouched", async () => {
+  const session = await openStore(storePath()).create({ id: "invalid-writes" });
+  for (const timestamp of [NaN, Infinity, -Infinity]) {
+    await assert.rejects(
+      session.objects.put([
+        { kind: "blob", value: "must not be saved" },
+        {
+          kind: "commit",
+          parent: null,
+          body: { kind: "message", message: { role: "user", content: "test", timestamp } },
+          start: { kind: "none" },
+          at: 0,
+        },
+      ]),
+    );
+    assert.deepEqual(await session.objects.list(), []);
+    await assert.rejects(
+      session.events.append([
+        { kind: "notice", level: "info", owner: "test", message: "must not be saved" },
+        { kind: "delta", runId: "run", attempt: 0, index: timestamp, part: "text", delta: "x" },
+      ]),
+    );
+    assert.equal(await session.events.last(), 0);
+    assert.deepEqual(await session.events.read({ afterSeq: 0 }), []);
+  }
+  await session.events.append([{ kind: "notice", level: "info", owner: "test", message: "ok" }]);
+  assert.equal(await session.events.last(), 1);
+});
+
 test("stored events reject malformed payloads before replay", async () => {
   const path = storePath();
   const session = await openStore(path).create({ id: "events" });

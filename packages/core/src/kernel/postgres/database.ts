@@ -121,8 +121,10 @@ const TABLES = [
   )`,
 ];
 
-/** Bumped whenever the tables or a stored object's shape change; another version is refused. */
-const SCHEMA_VERSION = 2;
+const TABLE_NAMES = ["nyte_sessions", "nyte_objects", "nyte_refs", "nyte_leases", "nyte_events"];
+
+/** Bumped whenever the tables or a stored object or event shape changes; another version is refused. */
+const SCHEMA_VERSION = 3;
 
 export async function initializePostgres(db: PostgresDatabase): Promise<void> {
   await db.transaction(async (transaction) => {
@@ -136,6 +138,16 @@ export async function initializePostgres(db: PostgresDatabase): Promise<void> {
       versions.some((row) => integerColumn(row, "version") !== SCHEMA_VERSION)
     ) {
       throw new Error("Unsupported Nyte PostgreSQL schema version");
+    }
+    if (versions.length === 0) {
+      const existing = await transaction.query(
+        `SELECT table_name FROM information_schema.tables
+         WHERE table_schema = current_schema() AND table_name = ANY($1::text[])`,
+        [TABLE_NAMES],
+      );
+      if (existing.length > 0) {
+        throw new Error("Unsupported unversioned Nyte PostgreSQL schema");
+      }
     }
     for (const table of TABLES) await transaction.query(table);
     await transaction.query(

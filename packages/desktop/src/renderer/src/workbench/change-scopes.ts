@@ -1,4 +1,4 @@
-import { worktreeFiles } from "@nyte-ai/client";
+import { changesFromTurns, worktreeFiles } from "@nyte-ai/client";
 import type {
   FileChange,
   Turn,
@@ -36,20 +36,10 @@ export interface ChangesScopeOption {
 
 export interface TurnChangeOption {
   readonly scope: TurnChangesScope;
-  /** The run whose exact diff `runs.diff` answers; a turn of only a request has none yet. */
   readonly run: TurnRun;
   readonly label: string;
   readonly stats: { readonly added: number; readonly removed: number };
   readonly files: readonly { readonly change: FileChange; readonly patch: string }[];
-}
-
-function addChange(changes: Map<string, FileChange>, change: FileChange): void {
-  const previous = changes.get(change.path);
-  changes.set(change.path, {
-    path: change.path,
-    added: (previous?.added ?? 0) + change.added,
-    removed: (previous?.removed ?? 0) + change.removed,
-  });
 }
 
 /** Newest first; each file carries the exact patches that produced its counts, in order. */
@@ -61,20 +51,18 @@ export function turnChangeOptions(turns: readonly Turn[]): readonly TurnChangeOp
     if (turn.kind !== "turn") continue;
     ordinal += 1;
     const patches = new Map<string, string[]>();
-    const turnChanges = new Map<string, FileChange>();
     const folded = new Set<string>();
     for (const part of turn.parts) {
       if (part.kind !== "tool" || part.class.kind !== "file_patch") continue;
       if (part.result === undefined || part.result.isError || folded.has(part.result.commit))
         continue;
       folded.add(part.result.commit);
-      const { path, patch, added, removed } = part.class;
+      const { path, patch } = part.class;
       const previous = patches.get(path);
       if (previous === undefined) patches.set(path, [patch]);
       else previous.push(patch);
-      addChange(turnChanges, { path, added, removed });
     }
-    const files = [...turnChanges.values()].map((change) => ({
+    const files = changesFromTurns([turn]).map((change) => ({
       change,
       patch: (patches.get(change.path) ?? []).join("\n"),
     }));
@@ -111,7 +99,6 @@ export function visibleTurnOptions(
   );
 }
 
-/** A stable menu value and cache key for one scope. */
 export function changesScopeValue(scope: WorkbenchChangesScope): string {
   switch (scope.kind) {
     case "uncommitted":
@@ -160,7 +147,6 @@ export function diffRequestForScope(
   }
 }
 
-/** Totals over a scope's patches. */
 export function diffScopeStats(diffs: readonly VcsDiff[]): ChangeScopeStats {
   return diffs.reduce<ChangeScopeStats>(
     (total, diff) => ({
@@ -171,7 +157,6 @@ export function diffScopeStats(diffs: readonly VcsDiff[]): ChangeScopeStats {
   );
 }
 
-/** The files a working-tree scope lists. */
 export function scopeFiles(
   snapshot: VcsSnapshot | undefined,
   scope: "uncommitted" | "staged" | "unstaged",
@@ -215,7 +200,6 @@ function workingTreeOption(
   };
 }
 
-/** Uncommitted, then the index split. */
 export function workingTreeScopeOptions(
   snapshot: VcsSnapshot | undefined,
   diffs: WorkingTreeDiffs = {},
@@ -253,7 +237,6 @@ export function commitScopeOptions(
   }));
 }
 
-/** A turn option in the shared menu shape; the turn's files stay on the option itself. */
 export function turnScopeOption(option: TurnChangeOption): ChangesScopeOption {
   return {
     scope: option.scope,
@@ -263,7 +246,6 @@ export function turnScopeOption(option: TurnChangeOption): ChangesScopeOption {
   };
 }
 
-/** What the trigger says when the scope is not one of the listed options. */
 export function changesScopeLabel(
   scope: WorkbenchChangesScope,
   options: readonly ChangesScopeOption[],
@@ -290,7 +272,6 @@ export function changesScopeLabel(
   }
 }
 
-/** The branch line above the scope menu, preserving HEAD's protocol variant. */
 export type BranchReadout =
   | { readonly kind: "detached"; readonly label: string }
   | { readonly kind: "unborn"; readonly label: string }

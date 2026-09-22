@@ -1219,7 +1219,11 @@ export const toolCallStyles = stylex.create({
     },
   },
   editLine: { minHeight: 30 },
-  lineStatic: { cursor: "default" },
+  lineStatic: {
+    cursor: "default",
+    "--_verb-color": t.textSecondary,
+    "--_detail-color": t.textTertiary,
+  },
   lineDetailed: {
     width: "100%",
     minHeight: 32,
@@ -1335,19 +1339,23 @@ export const toolCallStyles = stylex.create({
   },
 });
 
-/**
- * A task call stacks a status line under its title, so its trigger is a
- * column where other tools are one line. Title and model reuse the verb and
- * detail colours; the shimmer moves to the status.
- */
 export const subagentCallStyles = stylex.create({
   line: {
-    flexDirection: "column",
-    alignItems: "flex-start",
-    gap: 0,
-    paddingBlock: 2,
+    display: "grid",
+    gridTemplateColumns: "16px minmax(0, 1fr)",
+    alignItems: "center",
+    columnGap: 12,
+    rowGap: 4,
+    paddingBlock: 6,
   },
-  lineDetailed: { paddingBlock: 6 },
+  lineDetailed: { paddingBlock: 8 },
+  dot: {
+    width: 6,
+    height: 6,
+    justifySelf: "center",
+    borderRadius: t.radiusFull,
+    backgroundColor: t.textTertiary,
+  },
   head: {
     display: "flex",
     alignItems: "center",
@@ -1355,11 +1363,14 @@ export const subagentCallStyles = stylex.create({
     maxWidth: "100%",
     minWidth: 0,
   },
+  title: { color: t.textPrimary, flexShrink: 0 },
   status: {
+    gridColumn: 2,
     color: t.textTertiary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
   },
+  failed: { backgroundColor: t.textDanger },
 });
 
 /** The compact streaming window: about six conversation rows. */

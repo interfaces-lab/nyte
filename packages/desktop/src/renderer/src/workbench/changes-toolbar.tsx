@@ -513,7 +513,7 @@ export function ChangesToolbar({
             <Button
               unstyled
               type="button"
-              aria-label={`Showing ${scopeLabel}`}
+              aria-label={`Select scope, showing ${scopeLabel}`}
               {...stylex.props(styles.scopeTrigger, focus.ring)}
             >
               <Icon name={scopeIcon(scope)} size={14} />

@@ -7,8 +7,7 @@
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/ui/src/work-group.tsx
  */
 import * as stylex from "@stylexjs/stylex";
-import { Collapsible } from "@nyte-ai/ui/collapsible";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import type { RunId, TurnRun } from "@nyte-ai/protocol";
 import { turnPartId } from "@nyte-ai/client";
@@ -24,9 +23,10 @@ import { useOpenSubagentTray } from "./subagent-sessions.ts";
 import { ToolCallView } from "./tool-call.tsx";
 import { Countdown } from "./countdown.tsx";
 import { Prose } from "./prose.tsx";
+import { NO_WAITS } from "./transcript-presentation.ts";
 import type { LiveWaits, WorkTurnPart } from "./transcript-presentation.ts";
 import { FOLLOW_RESUME_MS, followOnScroll, overflows } from "./tool-group-follow.ts";
-import { WorkGroupWindow, opensWorkGroup, workGroupScrollport } from "./work-group-window.tsx";
+import { WorkGroupWindow, opensWorkGroup } from "./work-group-window.tsx";
 import { workGroupBody } from "./work-group-body.ts";
 import { createWorkGroupEntries } from "./work-group-entries.ts";
 import {
@@ -176,9 +176,6 @@ function WorkEntryView({
   }
 }
 
-/** Silence this long with nothing streaming reads as stuck, so the label says so. */
-const STALE_AFTER_MS = 15_000;
-
 export function WorkGroupView({
   parts,
   run,
@@ -203,9 +200,6 @@ export function WorkGroupView({
   /** The trailing group carries the run's live waits on its children. */
   waits?: LiveWaits;
 }): ReactElement {
-  // The timer marks the frame it saw; any newer live frame makes that mark stale.
-  const [staleFrame, setStaleFrame] = useState<LiveSnapshot | undefined>();
-  const stale = live !== undefined && staleFrame === live;
   const liveOrder = live?.order;
   const liveThoughts = live?.thinking;
   const presentationTools = live?.tools;
@@ -216,7 +210,7 @@ export function WorkGroupView({
         : { order: liveOrder, tools: presentationTools },
     [liveOrder, presentationTools],
   );
-  const awaiting = waits?.awaited.size ?? 0;
+  const awaited = waits?.awaited ?? NO_WAITS.awaited;
   const [now] = useState(() => Date.now());
   const firstPart = parts[0];
   const durationMs =
@@ -227,39 +221,22 @@ export function WorkGroupView({
     () => durableWorkGroupPresentation({ parts, durationMs, added, removed, running }),
     [added, durationMs, parts, removed, running],
   );
-  const waitingSessions = useMemo(() => {
-    if (!durablePresentation.active) return [];
-    const sessions = new Set(waits?.awaited ?? []);
-    for (const toolClass of durablePresentation.runningClasses) {
-      if (toolClass.kind !== "delegate") continue;
-      if (toolClass.target.kind === "one") {
-        sessions.add(toolClass.target.session);
-        continue;
-      }
-      for (const session of toolClass.target.sessions) sessions.add(session);
-    }
-    return [...sessions];
-  }, [durablePresentation, waits?.awaited]);
+  const presentation = useMemo(
+    () =>
+      liveWorkGroupPresentation({
+        durable: durablePresentation,
+        live: presentationLive,
+        awaited,
+      }),
+    [awaited, durablePresentation, presentationLive],
+  );
+  const { active, summary } = presentation;
+  const waitingSessions = presentation.active ? presentation.waiting : [];
   const openSubagentTray = useOpenSubagentTray();
   const openWaitingTray =
     openSubagentTray === undefined || waitingSessions.length === 0
       ? undefined
       : (): void => openSubagentTray(waitingSessions.length === 1 ? waitingSessions[0] : undefined);
-  const { active, summary } = useMemo(
-    () =>
-      liveWorkGroupPresentation({
-        durable: durablePresentation,
-        live: presentationLive,
-        stale,
-        awaiting,
-      }),
-    [awaiting, durablePresentation, presentationLive, stale],
-  );
-  useEffect(() => {
-    if (!active || live === undefined) return undefined;
-    const timer = window.setTimeout(() => setStaleFrame(live), STALE_AFTER_MS);
-    return () => window.clearTimeout(timer);
-  }, [active, live]);
   const [joinEntries] = useState(() => createWorkGroupEntries<WorkEntry>());
   const [thinkingKey] = useState(() => createThinkingKey(parts));
   const liveThinking = useMemo(
@@ -303,14 +280,15 @@ export function WorkGroupView({
     hasContent,
   });
   const preview = body === "preview";
-  const openedWindow = reveal === "open" && density === "compact" && active;
+  const listed = body === "list";
+  const panelId = useId();
 
-  // The preview follows new output. Scrolling away or opening the full list
-  // pauses that; ten seconds without another input returns to the window.
+  // The preview follows new output. Scrolling away pauses that; ten seconds
+  // without another input, or a return to the bottom, resumes it.
   const viewportRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
-    if (viewport === null || (!preview && !openedWindow)) return undefined;
+    if (viewport === null || !preview) return undefined;
 
     let paused = false;
     let resumeTimer = 0;
@@ -320,53 +298,32 @@ export function WorkGroupView({
       resumeTimer = 0;
     };
     const follow = (): void => {
+      clearResume();
       paused = false;
       viewport.scrollTop = viewport.scrollHeight;
     };
-    const resume = (): void => {
-      clearResume();
-      if (openedWindow) {
-        setReveal("default");
-        return;
-      }
-      follow();
-    };
-    const arm = (): void => {
-      clearResume();
-      resumeTimer = window.setTimeout(resume, FOLLOW_RESUME_MS);
-    };
     const sync = (): void => {
       viewport.toggleAttribute("data-overflow", overflows(viewport));
-      if (preview && !paused) viewport.scrollTop = viewport.scrollHeight;
+      if (!paused) viewport.scrollTop = viewport.scrollHeight;
     };
     const onScroll = (): void => {
-      const step = followOnScroll(openedWindow ? "opened" : "preview", paused, viewport);
+      const step = followOnScroll(viewport);
       paused = step.paused;
-      if (step.resumeTimer === "arm") arm();
-      else clearResume();
+      clearResume();
+      if (step.resumeTimer === "arm") resumeTimer = window.setTimeout(follow, FOLLOW_RESUME_MS);
     };
 
-    const scrollport = openedWindow ? workGroupScrollport(viewport) : viewport;
-    if (openedWindow) {
-      arm();
-      scrollport.addEventListener("pointerdown", arm);
-      scrollport.addEventListener("keydown", arm);
-      scrollport.addEventListener("wheel", arm, { passive: true });
-    }
     sync();
     const observer = new ResizeObserver(sync);
     observer.observe(viewport);
     for (const child of viewport.children) observer.observe(child);
-    scrollport.addEventListener("scroll", onScroll, { passive: true });
+    viewport.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       clearResume();
       observer.disconnect();
-      scrollport.removeEventListener("scroll", onScroll);
-      scrollport.removeEventListener("pointerdown", arm);
-      scrollport.removeEventListener("keydown", arm);
-      scrollport.removeEventListener("wheel", arm);
+      viewport.removeEventListener("scroll", onScroll);
     };
-  }, [openedWindow, preview]);
+  }, [preview]);
 
   const summaryLine = (
     <>
@@ -418,26 +375,29 @@ export function WorkGroupView({
     );
   }
 
+  // The disclosure controls the full list alone. The preview is the group's
+  // own window onto live work, so it neither reads as expanded nor closes on
+  // the trigger; opening from either state shows the list, and closing the
+  // list returns the group to whatever the density shows by default.
+  const toggleList = (): void => setReveal(listed ? "closed" : "open");
   const chevron = (
-    <span
-      {...stylex.props(toolGroupStyles.chevron, body === "list" && toolGroupStyles.chevronOpen)}
-    >
+    <span {...stylex.props(toolGroupStyles.chevron, listed && toolGroupStyles.chevronOpen)}>
       <Icon name="chevron-right" size={11} />
     </span>
   );
+  const disclosure = {
+    "aria-expanded": listed,
+    "aria-controls": listed ? panelId : undefined,
+    onClick: toggleList,
+  };
 
   return (
-    <Collapsible.Root
-      open={body !== "none"}
-      onOpenChange={() => setReveal(body === "list" ? "closed" : "open")}
-      aria-busy={active || undefined}
-      {...stylex.props(toolGroupStyles.root)}
-    >
+    <div aria-busy={active || undefined} {...stylex.props(toolGroupStyles.root)}>
       {openWaitingTray === undefined ? (
-        <Collapsible.Trigger {...stylex.props(toolGroupStyles.toggle, focus.ring)}>
+        <button type="button" {...disclosure} {...stylex.props(toolGroupStyles.toggle, focus.ring)}>
           {summaryLine}
           {chevron}
-        </Collapsible.Trigger>
+        </button>
       ) : (
         <div {...stylex.props(toolGroupStyles.status)}>
           <button
@@ -447,47 +407,52 @@ export function WorkGroupView({
           >
             {summaryLine}
           </button>
-          <Collapsible.Trigger
-            aria-label={body === "list" ? "Hide work details" : "Show work details"}
+          <button
+            type="button"
+            aria-label={listed ? "Hide work details" : "Show work details"}
+            {...disclosure}
             {...stylex.props(toolGroupStyles.toggle, focus.ring)}
           >
             {chevron}
-          </Collapsible.Trigger>
+          </button>
         </div>
       )}
-      <Collapsible.Panel
-        ref={viewportRef}
-        data-nyte-scrollport={preview || undefined}
-        onClick={
-          preview
-            ? (event) => {
-                if (opensWorkGroup(event.target, window.getSelection()?.toString() ?? ""))
-                  setReveal("open");
-              }
-            : undefined
-        }
-        {...stylex.props(preview && toolGroupStyles.preview)}
-      >
-        <div {...stylex.props(toolGroupStyles.calls)}>
-          <WorkGroupWindow
-            groupKey={groupKey}
-            density={density}
-            entries={entries}
-            viewportRef={viewportRef}
-            preview={preview}
-            renderEntry={(entry) => (
-              <WorkEntryView
-                entry={entry}
-                liveTools={liveTools}
-                cwd={cwd}
-                active={active}
-                density={density}
-                waits={waits}
-              />
-            )}
-          />
+      {body !== "none" && (
+        <div
+          id={panelId}
+          ref={viewportRef}
+          data-nyte-scrollport={preview || undefined}
+          onClick={
+            preview
+              ? (event) => {
+                  if (opensWorkGroup(event.target, window.getSelection(), event.currentTarget))
+                    setReveal("open");
+                }
+              : undefined
+          }
+          {...stylex.props(preview && toolGroupStyles.preview)}
+        >
+          <div {...stylex.props(toolGroupStyles.calls)}>
+            <WorkGroupWindow
+              groupKey={groupKey}
+              density={density}
+              entries={entries}
+              viewportRef={viewportRef}
+              preview={preview}
+              renderEntry={(entry) => (
+                <WorkEntryView
+                  entry={entry}
+                  liveTools={liveTools}
+                  cwd={cwd}
+                  active={active}
+                  density={density}
+                  waits={waits}
+                />
+              )}
+            />
+          </div>
         </div>
-      </Collapsible.Panel>
-    </Collapsible.Root>
+      )}
+    </div>
   );
 }

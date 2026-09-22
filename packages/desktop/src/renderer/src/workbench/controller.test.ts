@@ -200,7 +200,7 @@ describe("workbench tab reducer", () => {
     });
   });
 
-  test("persistence normalizes transient Changes scopes instead of dropping the tab", () => {
+  test("persistence keeps the Changes scope and drops terminals", () => {
     let stored: string | undefined;
     const persistence: WorkbenchPersistence = {
       read: () => (stored === undefined ? undefined : decodePersistedWorkbenchSnapshot(stored)),
@@ -221,7 +221,7 @@ describe("workbench tab reducer", () => {
       id: change,
       kind: "changes",
       patch: {
-        scope: { kind: "staged" },
+        scope: { kind: "commit", oid: "abc123" },
         selectedPath: "src/a.ts",
         pathRevealRevision: 4,
         scrollTop: 80,
@@ -250,7 +250,7 @@ describe("workbench tab reducer", () => {
       {
         id: change,
         kind: "changes",
-        scope: { kind: "uncommitted" },
+        scope: { kind: "commit", oid: "abc123" },
         selectedPath: "src/a.ts",
         pathRevealRevision: 4,
         scrollTop: 80,

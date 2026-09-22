@@ -33,13 +33,24 @@ export function workGroupScrollport(viewport: HTMLElement): HTMLElement {
   return outer instanceof HTMLElement ? outer : viewport;
 }
 
-/** Ignore controls and text selections: one gesture must not also open the group. */
-export function opensWorkGroup(target: EventTarget | null, selection: string): boolean {
+/**
+ * Ignore controls, open tool bodies, and a text selection that touches the
+ * preview: reading or selecting inside it must not also open the group.
+ */
+export function opensWorkGroup(
+  target: EventTarget | null,
+  selection: Selection | null,
+  viewport: Element,
+): boolean {
+  if (selection !== null && !selection.isCollapsed) {
+    for (let index = 0; index < selection.rangeCount; index += 1) {
+      if (selection.getRangeAt(index).intersectsNode(viewport)) return false;
+    }
+  }
   return (
-    selection === "" &&
     target instanceof Element &&
     target.closest(
-      "button, a, input, textarea, select, summary, [role=button], [contenteditable]",
+      "button, a, input, textarea, select, summary, [role=button], [contenteditable], [data-tool-body]",
     ) === null
   );
 }

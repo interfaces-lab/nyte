@@ -20,7 +20,7 @@ import {
 import type { CSSProperties, PointerEvent, ReactElement, ReactNode, RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Virtualizer } from "@tanstack/react-virtual";
-import type { Oid, RunDiff, SessionId, SessionInfo, Turn, UserTurnPart } from "@nyte-ai/protocol";
+import type { Oid, SessionId, Turn, UserTurnPart } from "@nyte-ai/protocol";
 import type { VcsSnapshot } from "@nyte-ai/protocol";
 import type { Delivery } from "@nyte-ai/protocol";
 import { Composer, ComposerFrame } from "../conversation/composer.tsx";
@@ -79,7 +79,6 @@ import {
   usePluginCatalog,
   usePluginSettings,
   useRenameSession,
-  useRunDiffs,
   useSession,
   useSessionSnapshot,
   useVcsSnapshot,
@@ -131,9 +130,9 @@ import type { WorkbenchTarget } from "../workbench/controller.ts";
 import { Workbench } from "../workbench/workbench.tsx";
 import { workbenchReferenceOpener } from "../workbench/open-reference.ts";
 import { openSessionJobTerminal } from "../workbench/terminal-store.ts";
-import { subagentTrayState } from "../conversation/agent-status.ts";
 import { SubagentTray, type SubagentTrayView } from "../conversation/subagent-tray.tsx";
 import { SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
+import type { SubagentSession } from "../conversation/subagent-sessions.ts";
 import { focusTerminal } from "../workbench/terminal-runtime.ts";
 import { clientActions, clientActionShortcut } from "../../../shared/client-actions.ts";
 import { errorMessage } from "../../../shared/errors.ts";
@@ -446,10 +445,53 @@ function PaneHeader({
   );
 }
 
+async function applyBranchChoice({
+  sessionId,
+  choice,
+  fastEnabled,
+}: {
+  readonly sessionId: SessionId;
+  readonly choice: BranchModelChoice;
+  readonly fastEnabled: ReadonlySet<string>;
+}): Promise<void> {
+  if (choice.model !== undefined) {
+    const configuration = {
+      sessionId,
+      model: { provider: choice.model.provider, id: choice.model.id },
+    };
+    const configured = await nyte.sessions.configure(
+      choice.thinkingLevel === undefined
+        ? configuration
+        : { ...configuration, thinkingLevel: choice.thinkingLevel },
+    );
+    if (configured.kind === "unknown_model") {
+      throw new Error("That model is no longer available.");
+    }
+    if (configured.kind === "unknown_agent") {
+      throw new Error("The selected mode is no longer available.");
+    }
+  }
+  for (const settingId of new Set([...fastEnabled, ...choice.fastEnabled])) {
+    const before = fastEnabled.has(settingId);
+    const after = choice.fastEnabled.has(settingId);
+    if (before === after) continue;
+    const applied = await nyte.plugins.settings.apply({
+      sessionId,
+      id: settingId,
+      choiceId: after ? "on" : "off",
+    });
+    if (applied.kind !== "applied") {
+      throw new Error("That model setting is no longer available.");
+    }
+  }
+}
+
 /**
  * Rewinds the head to a user message and resubmits it with the chosen model.
  * It lives outside the component because the React Compiler cannot lower
  * `try`/`finally`, and one bailout costs the whole component its memoization.
+ * A failure before the move leaves the conversation untouched; one after it
+ * says so, because the rewind stays.
  */
 async function applyMessageEdit({
   sessionId,
@@ -473,37 +515,14 @@ async function applyMessageEdit({
       if (outcome.restored?.commit !== part.commit) {
         throw new Error("The selected message is no longer editable.");
       }
-      if (choice.model !== undefined) {
-        const configuration = {
-          sessionId,
-          model: { provider: choice.model.provider, id: choice.model.id },
-        };
-        const configured = await nyte.sessions.configure(
-          choice.thinkingLevel === undefined
-            ? configuration
-            : { ...configuration, thinkingLevel: choice.thinkingLevel },
+      try {
+        await applyBranchChoice({ sessionId, choice, fastEnabled });
+        await outbox.submit({ sessionId, content });
+      } catch (cause: unknown) {
+        throw new Error(
+          `The conversation was rewound to this message, but the edit was not sent: ${errorMessage(cause)}`,
         );
-        if (configured.kind === "unknown_model") {
-          throw new Error("That model is no longer available.");
-        }
-        if (configured.kind === "unknown_agent") {
-          throw new Error("The selected mode is no longer available.");
-        }
       }
-      for (const settingId of new Set([...fastEnabled, ...choice.fastEnabled])) {
-        const before = fastEnabled.has(settingId);
-        const after = choice.fastEnabled.has(settingId);
-        if (before === after) continue;
-        const applied = await nyte.plugins.settings.apply({
-          sessionId,
-          id: settingId,
-          choiceId: after ? "on" : "off",
-        });
-        if (applied.kind !== "applied") {
-          throw new Error("That model setting is no longer available.");
-        }
-      }
-      await outbox.submit({ sessionId, content });
       void queryClient.invalidateQueries({ queryKey: keys.sessions });
       void queryClient.invalidateQueries({ queryKey: keys.pluginSettings(sessionId) });
       return;
@@ -530,14 +549,12 @@ type EditUserMessage = (
 
 const SettledTurnView = memo(function SettledTurnView({
   turn,
-  runDiff,
   cwd,
   onEditUser,
   branchModel,
   onOpenChanges,
 }: {
   turn: RenderedTurn;
-  runDiff: RunDiff | undefined;
   cwd: string | undefined;
   onEditUser: EditUserMessage;
   branchModel: BranchModelPicker;
@@ -546,7 +563,6 @@ const SettledTurnView = memo(function SettledTurnView({
   return (
     <TurnView
       turn={turn}
-      runDiff={runDiff}
       liveTools={NO_LIVE_TOOLS}
       cwd={cwd}
       onEditUser={onEditUser}
@@ -561,7 +577,6 @@ const SettledTurnView = memo(function SettledTurnView({
 const TrailingTurnView = memo(function TrailingTurnView({
   sessionId,
   turn,
-  runDiff,
   cwd,
   onEditUser,
   branchModel,
@@ -570,7 +585,6 @@ const TrailingTurnView = memo(function TrailingTurnView({
 }: {
   sessionId: SessionId;
   turn: RenderedTurn;
-  runDiff: RunDiff | undefined;
   cwd: string | undefined;
   onEditUser: EditUserMessage;
   branchModel: BranchModelPicker;
@@ -581,7 +595,6 @@ const TrailingTurnView = memo(function TrailingTurnView({
   return (
     <TurnView
       turn={turn}
-      runDiff={runDiff}
       liveTools={live.tools}
       live={live}
       cwd={cwd}
@@ -663,14 +676,6 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
     if (snapshotSession !== undefined) sessionReadState.markRead(snapshotSession);
   }, [session.data, snapshotSession]);
   const turns = snapshot.data?.transcript ?? EMPTY_TURNS;
-  const runIds = useMemo(
-    () =>
-      turns.flatMap((turn) =>
-        turn.kind === "turn" && turn.run.kind === "run" ? [turn.run.id] : [],
-      ),
-    [turns],
-  );
-  const runDiffs = useRunDiffs(sessionId, runIds);
   const live = useSessionLive(sessionId);
   const viewStore = usePaneViewStateStore();
   const unsent = useOutboxRows(sessionId);
@@ -683,8 +688,8 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
       }),
     [snapshot.data, unsent],
   );
-  const working =
-    navigating || live.runState !== "idle" || messages.running || messages.submitted.length > 0;
+  const parentRunning = live.runState !== "idle" || messages.running;
+  const working = navigating || parentRunning || messages.submitted.length > 0;
   const cwd = host.data?.workspace?.path;
   // The scrollport arrives as state so everything below it re-runs on the
   // commit that creates the node, not one commit late.
@@ -805,21 +810,35 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
     },
     [fastEnabled, sessionId, snapshot.data?.tip],
   );
-  const childBySession = useMemo(
-    () =>
-      new Map<SessionId, SessionInfo>(
-        (children.data ?? []).map((child) => [child.sessionId, child]),
-      ),
-    [children.data],
-  );
+  const childBySession = useMemo(() => {
+    const sessions = new Map<SessionId, SubagentSession>();
+    for (const turn of turns) {
+      if (turn.kind !== "turn" || turn !== lastTurn || !parentRunning) continue;
+      for (const part of turn.parts) {
+        if (
+          part.kind !== "tool" ||
+          part.class.kind !== "delegate" ||
+          part.class.role !== "create" ||
+          part.result?.isError === true
+        )
+          continue;
+        sessions.set(part.class.target.session, {
+          kind: "provisional",
+          sessionId: part.class.target.session,
+          title: part.class.title,
+          startedAt: part.at,
+        });
+      }
+    }
+    for (const child of children.data ?? []) sessions.set(child.sessionId, child);
+    return sessions;
+  }, [children.data, lastTurn, parentRunning, turns]);
+  const childSessions = useMemo(() => [...childBySession.values()], [childBySession]);
   const forwardSubagentTray = presentation === "tray" ? props.onOpenSubagentTray : undefined;
+  // A card always opens the tray, whatever the child's state; the tray's own
+  // expand action is the way to a full chat.
   const openSubagentTray = useCallback(
     (childSessionId?: SessionId): void => {
-      const child = childSessionId === undefined ? undefined : childBySession.get(childSessionId);
-      if (child !== undefined && subagentTrayState(child) === "inactive") {
-        paneActions.openSessionInPane(paneId, child.sessionId);
-        return;
-      }
       if (forwardSubagentTray !== undefined) {
         forwardSubagentTray(childSessionId);
         return;
@@ -830,7 +849,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
           : { kind: "detail", sessionId: childSessionId },
       );
     },
-    [childBySession, forwardSubagentTray, paneActions, paneId],
+    [forwardSubagentTray],
   );
   const subagentSessions = useMemo(
     () => ({ children: childBySession, open: openSubagentTray }),
@@ -893,16 +912,11 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
             </div>
           );
         case "turn": {
-          const runDiff =
-            row.turn.kind === "turn" && row.turn.run.kind === "run"
-              ? runDiffs.get(row.turn.run.id)
-              : undefined;
           if (row.trailing && working) {
             return (
               <TrailingTurnView
                 sessionId={sessionId}
                 turn={row.turn}
-                runDiff={runDiff}
                 cwd={cwd}
                 onEditUser={editUserMessage}
                 branchModel={branchModel}
@@ -914,7 +928,6 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
           return (
             <SettledTurnView
               turn={row.turn}
-              runDiff={runDiff}
               cwd={cwd}
               onEditUser={editUserMessage}
               branchModel={branchModel}
@@ -969,7 +982,6 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
       navigating,
       openChanges,
       parked,
-      runDiffs,
       sessionId,
       settledWork,
       snapshotError,
@@ -1057,7 +1069,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
                       <>
                         <SubagentTray
                           parentSessionId={sessionId}
-                          agents={children.data ?? []}
+                          agents={childSessions}
                           view={subagentTray}
                           onViewChange={setTrayView}
                           onExpand={(childSessionId) => {
@@ -1105,7 +1117,6 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
                       return true;
                     },
                   }}
-                  working={working}
                   run={snapshot.data?.run}
                   // The boundary delivery draws in the transcript; the tray keeps the rest.
                   pending={messages.queued}
@@ -1353,7 +1364,6 @@ function BlankConversation({
                 </span>
               )}
               <span
-                title="This Mac"
                 {...stylex.props(
                   threadStyles.workspaceContextItem,
                   threadStyles.workspaceContextStatic,
@@ -1384,7 +1394,7 @@ function BlankConversation({
               }))
             }
             onSubmit={start}
-            placeholder="Plan, Build, / for skills, @ for context"
+            placeholder="Ask Nyte, or type / for skills and @ for context"
             disabled={sending || host.data === undefined}
             suggestionCatalog={composerSource(pluginCatalog.data, pluginCatalog.isError)}
             mentionFiles={

@@ -23,7 +23,6 @@ import type { DiffFacts } from "./diff-view.tsx";
 import { activityStyles, toolCallStyles } from "./styles.stylex.ts";
 import { SubagentCallView, SubagentLineView } from "./subagent-call.tsx";
 import { toolVerb } from "./tool-copy.ts";
-import type { ToolPhase } from "./tool-copy.ts";
 import { toolPhase } from "./transcript-presentation.ts";
 import type { LiveWaits } from "./transcript-presentation.ts";
 
@@ -69,13 +68,6 @@ type ToolBody =
   | { readonly kind: "output"; readonly text: string }
   | { readonly kind: "diff"; readonly path: string; readonly diff: DiffFacts };
 
-const PHASE_LABEL = {
-  running: "Running",
-  done: "Done",
-  failed: "Failed",
-  interrupted: "Stopped",
-} satisfies Readonly<Record<ToolPhase, string>>;
-
 // A second trigger: only rendered while closed, so pressing it always opens.
 function OutputPreview({ text }: { text: string }): ReactElement {
   const rootRef = useRef<HTMLButtonElement>(null);
@@ -98,7 +90,7 @@ function OutputPreview({ text }: { text: string }): ReactElement {
   return (
     <Collapsible.Trigger
       ref={rootRef}
-      aria-label="Show full command output"
+      aria-label="Show full output"
       {...stylex.props(toolCallStyles.outputPreview, focus.ring)}
     >
       <span ref={textRef} {...stylex.props(toolCallStyles.outputPreviewText)}>
@@ -175,7 +167,10 @@ export const ToolCallView = memo(function ToolCallView({
       <span {...stylex.props(toolCallStyles.verb, phase === "running" && activityStyles.shimmer)}>
         {verb}
       </span>
-      {phase !== "done" && <span {...stylex.props(srOnly)}>{PHASE_LABEL[phase]}</span>}
+      {/* A custom label is a name, not a verb; the phase words already say failed or stopped. */}
+      {phase === "running" && toolClass.kind === "custom" && (
+        <span {...stylex.props(srOnly)}>Running</span>
+      )}
       {detail !== undefined && (
         <Hint
           content={detail.title ?? detail.text}
@@ -239,15 +234,16 @@ export const ToolCallView = memo(function ToolCallView({
           {body.kind === "output" && (
             <Collapsible.Panel
               role="region"
-              aria-label={`${verb} output`}
+              aria-label="Tool output"
               data-nyte-scrollport
+              data-tool-body
               {...stylex.props(toolCallStyles.output)}
             >
               {body.text}
             </Collapsible.Panel>
           )}
           {body.kind === "diff" && (
-            <Collapsible.Panel keepMounted>
+            <Collapsible.Panel keepMounted data-tool-body>
               <DiffView path={body.path} diff={body.diff} variant="inline" />
             </Collapsible.Panel>
           )}

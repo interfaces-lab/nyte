@@ -136,7 +136,7 @@ export async function attachComposerFiles(args: {
     attachments.length !== images.length
       ? "Some images could not be read."
       : unreachable.length > 0
-        ? `Save ${unreachable.join(", ")} to disk first: Nyte references files by path.`
+        ? `Save ${unreachable.join(", ")} to disk, then attach ${unreachable.length === 1 ? "it" : "them"} again.`
         : undefined;
   return { attachments, error };
 }

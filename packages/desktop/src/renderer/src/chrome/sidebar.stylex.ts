@@ -361,6 +361,7 @@ export const sidebarStyles = stylex.create({
     justifyContent: "flex-end",
     gap: 2,
     width: sidebar.trailingWidth,
+    pointerEvents: "none",
   },
   /** On a timed row the lane stops a row gap short of the time's column. */
   rowActionsBesideMeta: {
@@ -408,6 +409,7 @@ export const sidebarStyles = stylex.create({
     width: sidebar.actionSize,
     height: sidebar.actionSize,
     padding: 0,
+    pointerEvents: "var(--_row-actions-pointer-events, auto)",
     borderStyle: "none",
     borderRadius: t.radiusBase,
     backgroundColor: "transparent",
@@ -422,6 +424,7 @@ export const sidebarStyles = stylex.create({
     width: sidebar.actionSize,
     height: sidebar.actionSize,
     padding: 0,
+    pointerEvents: "var(--_row-actions-pointer-events, auto)",
     borderStyle: "none",
     borderRadius: t.radiusBase,
     backgroundColor: {
@@ -441,6 +444,7 @@ export const sidebarStyles = stylex.create({
    * transition without desynchronising from a title.
    */
   workspaceActions: {
+    pointerEvents: "none",
     transitionProperty: "opacity",
     transitionDuration: t.durationFast,
     transitionTimingFunction: t.easeOut,

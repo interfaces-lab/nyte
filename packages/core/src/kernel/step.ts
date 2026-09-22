@@ -528,7 +528,16 @@ function responseProvenance(
     case "retry":
     case "failed":
     case "aborted":
-      return { calls: {}, outcome: { kind: "failed", failure: outcome.failure } };
+      return {
+        calls: Object.fromEntries(
+          outcome.message.content.flatMap((part) =>
+            part.type === "toolCall"
+              ? [[part.id, { kind: "custom", label: part.name } as const]]
+              : [],
+          ),
+        ),
+        outcome: { kind: "failed", failure: outcome.failure },
+      };
     default: {
       const _exhaustive: never = outcome;
       return _exhaustive;

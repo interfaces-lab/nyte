@@ -15,10 +15,18 @@ import { isTerminalPhase, SessionObserver, snapshotOf } from "@nyte-ai/client";
 import type { SessionState, SessionUpdate } from "@nyte-ai/client";
 import { IDLE, projectLive } from "./live-fold.ts";
 import type { LiveSnapshot } from "./live-fold.ts";
-import { cacheSessionInfo, keys, queryClient, refreshVcs, SNAPSHOT_WARM_MS } from "./queries.ts";
+import {
+  cacheSessionInfo,
+  childSessionsOptions,
+  keys,
+  mentionFilesOptions,
+  queryClient,
+  refreshVcs,
+  SNAPSHOT_WARM_MS,
+} from "./queries.ts";
 import type { SessionSelection } from "./session-configuration.ts";
 import { requestTrust } from "./chrome/open-workspace.tsx";
-import { sessionClient } from "./nyte.ts";
+import { nyte, sessionClient } from "./nyte.ts";
 import { outbox } from "./use-outbox.ts";
 
 export { livePartKey } from "./live-fold.ts";
@@ -395,31 +403,53 @@ function snapshotMatchesSession(snapshot: SessionSnapshot, info: SessionInfo): b
 }
 
 /**
- * Refresh old local data on intent without making navigation wait for it:
- * one passive read, no watch, so a hover never attaches the host to the
- * session. An observed session's cache is already current, and so is a cached
- * snapshot the directory row still agrees with. Resolves once the cache holds
- * a snapshot, or when there is nothing to read.
+ * Warm the durable thread frame from route intent without attaching a watch.
+ * Observed sessions already own current snapshots; cached settled snapshots
+ * stay valid while their directory rows still agree.
  */
-export function warmThread(sessionId: SessionId): Promise<void> {
-  if (observers.has(sessionId)) return Promise.resolve();
+export async function warmThread(sessionId: SessionId): Promise<void> {
+  const auxiliaries = Promise.all([
+    queryClient.prefetchQuery(childSessionsOptions(sessionId)),
+    queryClient.prefetchQuery({
+      queryKey: keys.jobs(sessionId),
+      queryFn: () => nyte.jobs.list({ sessionId }),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: keys.sessionCatalog(sessionId),
+      queryFn: () => nyte.host.catalog({ sessionId }),
+      staleTime: 15_000,
+    }),
+    queryClient.prefetchQuery({
+      queryKey: keys.pluginSettings(sessionId),
+      queryFn: () => nyte.plugins.settings.list({ sessionId }),
+      staleTime: SNAPSHOT_WARM_MS,
+    }),
+    queryClient.prefetchQuery(mentionFilesOptions(true)),
+  ]).then(() => undefined);
+  if (observers.has(sessionId)) {
+    await auxiliaries;
+    return;
+  }
   const cached = queryClient.getQueryData<SessionSnapshot>(keys.snapshot(sessionId));
   const info = queryClient.getQueryData<SessionInfo | null>(keys.session(sessionId));
   if (cached !== undefined && info != null && snapshotMatchesSession(cached, info)) {
-    return Promise.resolve();
+    await auxiliaries;
+    return;
   }
-  return queryClient.prefetchQuery({
-    queryKey: keys.snapshot(sessionId),
-    queryFn: async (): Promise<SessionSnapshot> => {
-      const snapshot = await sessionClient.sessions.snapshot({ sessionId });
-      // A screen that opened during the read observes the session now; its state is the newer.
-      const observed = observers.get(sessionId)?.observer.state;
-      if (observed !== undefined) return snapshotOf(observed);
-      if (snapshot === undefined) throw new Error(`Session not found: ${sessionId}`);
-      return snapshot;
-    },
-    staleTime: SNAPSHOT_WARM_MS,
-  });
+  await Promise.all([
+    queryClient.prefetchQuery({
+      queryKey: keys.snapshot(sessionId),
+      queryFn: async (): Promise<SessionSnapshot> => {
+        const snapshot = await sessionClient.sessions.snapshot({ sessionId });
+        const observed = observers.get(sessionId)?.observer.state;
+        if (observed !== undefined) return snapshotOf(observed);
+        if (snapshot === undefined) throw new Error(`Session not found: ${sessionId}`);
+        return snapshot;
+      },
+      staleTime: SNAPSHOT_WARM_MS,
+    }),
+    auxiliaries,
+  ]);
 }
 
 /**

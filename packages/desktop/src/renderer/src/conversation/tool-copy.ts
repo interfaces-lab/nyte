@@ -4,7 +4,12 @@ export type ToolPhase = "running" | "done" | "failed" | "interrupted";
 
 function phased(
   phase: ToolPhase,
-  words: { readonly running: string; readonly done: string; readonly noun: string },
+  words: {
+    readonly running: string;
+    readonly done: string;
+    readonly noun: string;
+    readonly interrupted?: string;
+  },
 ): string {
   switch (phase) {
     case "running":
@@ -14,7 +19,7 @@ function phased(
     case "failed":
       return `${words.noun} failed`;
     case "interrupted":
-      return `${words.noun} stopped`;
+      return words.interrupted ?? `${words.noun} stopped`;
     default: {
       const _exhaustive: never = phase;
       return _exhaustive;
@@ -36,7 +41,12 @@ function delegateVerb(
     case "read":
       return phased(phase, { running: "Reading", done: "Read", noun: "Read" });
     case "stop":
-      return phased(phase, { running: "Stopping", done: "Stopped", noun: "Stop" });
+      return phased(phase, {
+        running: "Stopping",
+        done: "Stopped",
+        noun: "Stop",
+        interrupted: "Stop interrupted",
+      });
     default: {
       const _exhaustive: never = role;
       return _exhaustive;

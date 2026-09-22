@@ -1,18 +1,7 @@
-/**
- * One delegation. A `create` is the subagent's card from its first frame:
- * the title the call named over the child's status, with the model beside the
- * title once the child session is listed. The status comes from the chat's
- * child sessions, since a create settles while its subagent keeps working;
- * until the child is listed the card says nothing about it, except that a
- * failed create failed. Every other call on a child (`send`, `await`, `read`, `stop`) is one compact line
- * for the same child, never a second card; while the run is blocked
- * on it, the line's place is taken by the card's "Waiting" status. Same law as
- * other tool calls: no status icon, the shimmer is the running state.
- */
 import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import type { RunConfig, SessionId, ToolClass } from "@nyte-ai/protocol";
-import { focus, Hint, srOnly } from "../components/ui.tsx";
+import { focus, Hint } from "../components/ui.tsx";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { useCatalog } from "../queries.ts";
 import { AGENT_STATE_LABEL, agentState } from "./agent-status.ts";
@@ -24,13 +13,6 @@ import { toolVerb } from "./tool-copy.ts";
 import type { ToolPhase } from "./tool-copy.ts";
 
 export type DelegateToolClass = Extract<ToolClass, { readonly kind: "delegate" }>;
-
-const PHASE_STATUS = {
-  running: "Working",
-  done: "Completed",
-  failed: "Failed",
-  interrupted: "Stopped",
-} satisfies Readonly<Record<ToolPhase, string>>;
 
 /** The model a subagent runs on, in muted text; nothing until the child session is listed. */
 function SubagentModel({
@@ -69,15 +51,21 @@ export function SubagentCallView({
     ? "Waiting"
     : state === undefined
       ? phase === "failed"
-        ? PHASE_STATUS.failed
+        ? "Failed"
         : undefined
       : AGENT_STATE_LABEL[state];
   const running = blocking || state === "working";
   const content = (
     <>
+      <span
+        aria-hidden="true"
+        {...props(subagentCallStyles.dot, failed && subagentCallStyles.failed)}
+      />
       <span {...props(subagentCallStyles.head)}>
-        <span {...props(toolCallStyles.verb)}>{title}</span>
-        {child !== undefined && <SubagentModel session={session} model={child.config.model} />}
+        <span {...props(subagentCallStyles.title)}>{title}</span>
+        {child !== undefined && !("kind" in child) && (
+          <SubagentModel session={session} model={child.config.model} />
+        )}
       </span>
       {status !== undefined && (
         <span {...props(subagentCallStyles.status, running && activityStyles.shimmer)}>
@@ -89,9 +77,7 @@ export function SubagentCallView({
   const lineStyles = [
     toolCallStyles.line,
     subagentCallStyles.line,
-    density === "detailed" && toolCallStyles.lineDetailed,
     density === "detailed" && subagentCallStyles.lineDetailed,
-    failed && toolCallStyles.failed,
   ];
 
   return openTray === undefined ? (
@@ -123,7 +109,13 @@ export function SubagentLineView({
 }): ReactElement {
   const session =
     toolClass.target.kind === "one" ? toolClass.target.session : toolClass.target.sessions[0];
-  const child = useChildSession(session)?.name;
+  const childSession = useChildSession(session);
+  const child =
+    childSession === undefined
+      ? undefined
+      : "kind" in childSession
+        ? childSession.title
+        : childSession.name;
   const openTray = useOpenSubagentTray();
   const others = toolClass.target.kind === "many" ? toolClass.target.sessions.length - 1 : 0;
   const label =
@@ -133,7 +125,6 @@ export function SubagentLineView({
       <span {...props(toolCallStyles.verb, phase === "running" && activityStyles.shimmer)}>
         {toolVerb(toolClass, phase)}
       </span>
-      {phase !== "done" && <span {...props(srOnly)}>{PHASE_STATUS[phase]}</span>}
       {label !== undefined && (
         <Hint content={label} trigger={<span {...props(toolCallStyles.detail)}>{label}</span>} />
       )}
@@ -144,14 +135,11 @@ export function SubagentLineView({
       )}
     </>
   );
-  const lineStyles = [
-    toolCallStyles.line,
-    density === "detailed" && toolCallStyles.lineDetailed,
-    phase === "failed" && toolCallStyles.failed,
-  ];
+  const failed = phase === "failed" && toolCallStyles.failed;
+  const lineStyles = [toolCallStyles.line, density === "detailed" && toolCallStyles.lineDetailed];
   if (openTray === undefined) {
     return (
-      <div data-tool-status={phase} {...props(...lineStyles, toolCallStyles.lineStatic)}>
+      <div data-tool-status={phase} {...props(...lineStyles, toolCallStyles.lineStatic, failed)}>
         {content}
       </div>
     );
@@ -160,7 +148,7 @@ export function SubagentLineView({
     <button
       type="button"
       data-tool-status={phase}
-      {...props(...lineStyles, focus.ring)}
+      {...props(...lineStyles, failed, focus.ring)}
       onClick={() =>
         toolClass.target.kind === "many" && toolClass.target.sessions.length > 1
           ? openTray()

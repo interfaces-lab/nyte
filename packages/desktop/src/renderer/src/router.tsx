@@ -42,7 +42,6 @@ import { sessionId } from "@nyte-ai/protocol";
 import type { SessionId } from "@nyte-ai/protocol";
 import { nyte } from "./nyte.ts";
 import { macPlatform } from "./platform.ts";
-import { activateOutbox } from "./use-outbox.ts";
 import { resolveClientAction } from "../../shared/client-actions.ts";
 
 import { CustomizeSurface } from "./chrome/customize.tsx";
@@ -88,13 +87,6 @@ const styles = stylex.create({
 
 export function Shell(): ReactElement {
   const host = useHostState();
-  const workspacePath = host.data?.workspace?.path;
-  const hostLoaded = host.data !== undefined;
-
-  useEffect(() => {
-    if (!hostLoaded) return;
-    void activateOutbox(workspacePath);
-  }, [hostLoaded, workspacePath]);
 
   return (
     <Tooltip.Provider delay={600} closeDelay={0} timeout={400}>
@@ -274,12 +266,9 @@ const threadRoute = createRoute({
     if (session === null) throw redirect({ to: indexRoute.to, replace: true });
   },
   errorComponent: ThreadRouteError,
-  // Route intent and navigation both warm the coherent snapshot. The loader
-  // deliberately returns now: local data may finish later and never gates the
-  // pending route commit. Startup alone waits for the warm, behind its shell.
-  loader: ({ params }) => {
-    void warmThread(params.sessionId);
-  },
+  // Route intent starts this before navigation. Direct navigation keeps the
+  // current screen until the complete thread frame is ready.
+  loader: ({ params }) => warmThread(params.sessionId),
 });
 
 export const settingsRoute = createRoute({

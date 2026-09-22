@@ -1,5 +1,7 @@
 import type { Delivery, PendingItem } from "@nyte-ai/protocol";
 
+import type { RunningMessagePreference } from "./running-message-preference.ts";
+
 interface DeliveryChoices {
   readonly steer: Delivery;
   readonly queue: Delivery;
@@ -29,8 +31,14 @@ export function submissionDelivery(
   action: SubmitAction,
   choices: DeliveryChoices,
   current?: Delivery,
+  preference: RunningMessagePreference = "queue",
 ): Delivery {
-  if (current === undefined) return action === "submit" ? choices.queue : choices.steer;
+  if (current === undefined)
+    return action === "submit"
+      ? choices[preference]
+      : preference === "queue"
+        ? choices.steer
+        : choices.queue;
   if (action === "submit") return current;
   return current === choices.steer ? choices.queue : choices.steer;
 }

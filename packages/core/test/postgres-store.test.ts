@@ -59,6 +59,64 @@ async function nextEvent(iterator: AsyncIterator<Event>): Promise<Event> {
   return result.value;
 }
 
+test("PostgreSQL refuses old and unversioned existing stores without adopting them", async () => {
+  for (const version of [undefined, 2]) {
+    const pg = await PGlite.create();
+    try {
+      await pg.exec("CREATE TABLE nyte_sessions (id TEXT PRIMARY KEY)");
+      if (version !== undefined) {
+        await pg.exec("CREATE TABLE nyte_schema (version INTEGER PRIMARY KEY)");
+        await pg.query("INSERT INTO nyte_schema VALUES ($1)", [version]);
+      }
+      const store = new PostgresStore(connection(pg));
+      await assert.rejects(store.list(), /schema/i);
+      const tables = await pg.query(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
+      );
+      assert.deepEqual(
+        tables.rows,
+        version === undefined
+          ? [{ table_name: "nyte_sessions" }]
+          : [{ table_name: "nyte_schema" }, { table_name: "nyte_sessions" }],
+      );
+      if (version !== undefined) {
+        assert.deepEqual((await pg.query("SELECT version FROM nyte_schema")).rows, [{ version }]);
+      }
+    } finally {
+      await pg.close();
+    }
+  }
+});
+
+test("invalid serialized writes leave PostgreSQL object and event batches untouched", async () => {
+  const { first, second } = await sessions();
+  for (const timestamp of [NaN, Infinity, -Infinity]) {
+    await assert.rejects(
+      first.objects.put([
+        { kind: "blob", value: "must not be saved" },
+        {
+          kind: "commit",
+          parent: null,
+          body: { kind: "message", message: { role: "user", content: "test", timestamp } },
+          start: { kind: "none" },
+          at: 0,
+        },
+      ]),
+    );
+    assert.deepEqual(await second.objects.list(), []);
+    await assert.rejects(
+      first.events.append([
+        notice("must not be saved"),
+        { kind: "delta", runId: "run", attempt: 0, index: timestamp, part: "text", delta: "x" },
+      ]),
+    );
+    assert.equal(await second.events.last(), 0);
+    assert.deepEqual(await second.events.read({ afterSeq: 0 }), []);
+  }
+  await first.events.append([notice("ok")]);
+  assert.equal(await second.events.last(), 1);
+});
+
 test("independent PostgreSQL stores see canonical objects, chains, refs, and session lifecycle", async () => {
   const { firstStore, secondStore, first, second } = await sessions();
   const object = { kind: "blob", value: { x: 1, y: 2 } } satisfies Parameters<

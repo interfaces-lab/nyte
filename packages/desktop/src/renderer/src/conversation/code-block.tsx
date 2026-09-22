@@ -71,11 +71,10 @@ type HighlightResult =
   | { readonly kind: "plain" };
 
 const PLAIN_HIGHLIGHT = { kind: "plain" } as const;
-const HIGHLIGHT_CACHE_LIMIT = 64;
 const HIGHLIGHT_CACHE_MAX_BYTES = 8 * 1024 * 1024;
-// Long enough to span a scroll through a stretch of fences, short enough
-// that grammars do not sit resident through an idle session.
-const HIGHLIGHT_WORKER_IDLE_MS = 10_000;
+// Long enough to span ordinary reading pauses, short enough that grammars do
+// not sit resident through an idle session.
+const HIGHLIGHT_WORKER_IDLE_MS = 30 * 60 * 1000;
 const highlightCache = new Map<string, HighlightedCode>();
 const pendingHighlights = new Map<number, (html: string | undefined) => void>();
 const highlightReply = Type.Object({
@@ -196,10 +195,7 @@ function rememberHighlight(value: HighlightedCode): void {
   highlightCache.delete(key);
   highlightCache.set(key, value);
   highlightCacheBytes += bytes;
-  while (
-    highlightCache.size > HIGHLIGHT_CACHE_LIMIT ||
-    highlightCacheBytes > HIGHLIGHT_CACHE_MAX_BYTES
-  ) {
+  while (highlightCacheBytes > HIGHLIGHT_CACHE_MAX_BYTES) {
     const oldest = highlightCache.keys().next().value;
     if (oldest === undefined) break;
     const removed = highlightCache.get(oldest);

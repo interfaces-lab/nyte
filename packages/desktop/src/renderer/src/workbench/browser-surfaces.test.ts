@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, test } from "vitest";
 import type { BrowserSurfaceState } from "../../../shared/ipc.ts";
-import { applyBrowserEvent, forgetBrowserSurface } from "./browser-surfaces.ts";
+import {
+  applyBrowserAgentOpened,
+  applyBrowserEvent,
+  forgetBrowserSurface,
+} from "./browser-surfaces.ts";
 import { workbenchController, workbenchViewKey } from "./controller.ts";
 
 const first = workbenchViewKey({ paneKey: "browser-events-first", target: { kind: "home" } });
@@ -41,8 +45,51 @@ afterEach(() => {
       workbenchController.actions.closeTab({ view, id: tab.id });
       forgetBrowserSurface(tab.id);
     }
+    forgetBrowserSurface(view);
   }
   forgetBrowserSurface("unknown-surface");
+});
+
+describe("agent-opened pages", () => {
+  test("reveal a browser tab without displacing the tab the user is viewing", () => {
+    const terminal = workbenchController.actions.openTab({
+      view: first,
+      tab: { kind: "terminal", owner: { kind: "user" } },
+      activate: true,
+    });
+
+    applyBrowserAgentOpened({
+      kind: "browser_agent_opened",
+      surface: first,
+      url: "https://example.com/agent",
+      state: page("https://example.com/agent"),
+    });
+
+    const view = workbenchController.getView(first);
+    const browser = view.tabs.find((tab) => tab.kind === "browser");
+    assert.ok(browser !== undefined);
+    assert.equal(browserUrl(first, browser.id), "https://example.com/agent");
+    assert.equal(view.active, terminal);
+  });
+
+  test("activate the browser tab when the view shows nothing yet", () => {
+    const closed = openBrowser(second, "https://example.com/closed");
+    workbenchController.actions.closeTab({ view: second, id: closed });
+    forgetBrowserSurface(closed);
+    assert.equal(workbenchController.getView(second).active, null);
+
+    applyBrowserAgentOpened({
+      kind: "browser_agent_opened",
+      surface: second,
+      url: "https://example.com/first",
+      state: page("https://example.com/first"),
+    });
+
+    const view = workbenchController.getView(second);
+    const browser = view.tabs.find((tab) => tab.kind === "browser");
+    assert.ok(browser !== undefined);
+    assert.equal(view.active, browser.id);
+  });
 });
 
 describe("browser navigation state", () => {

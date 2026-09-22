@@ -16,6 +16,7 @@ import { keys } from "../queries.ts";
 import { displayAddress, resolveBrowserAddress } from "./browser-address.ts";
 import {
   applyBrowserEvent,
+  claimBrowserSurface,
   clearBrowserHistory,
   dismissRefusedDownload,
   forgetBrowserSurface,
@@ -419,6 +420,7 @@ export function BrowserPanel({
       workspacePath === null
         ? ({ kind: "home" } as const)
         : ({ kind: "project", path: workspacePath } as const);
+    claimBrowserSurface(surface, workspacePath);
     void nyte.host.browser.open({ surface, url, owner }).then(
       (openState) => {
         if (hold.released || superseded) return;
@@ -466,7 +468,7 @@ export function BrowserPanel({
           return;
         }
         await nyte.host.browser.perform({ surface, action });
-        if (action === "clear-history") clearBrowserHistory();
+        if (action === "clear-history") clearBrowserHistory(workspacePath);
       })
       .catch((cause) => setFailure(errorMessage(cause)));
   };
@@ -534,7 +536,7 @@ export function BrowserPanel({
             title={
               state.blocking
                 ? `${String(state.blocked)} requests blocked on this page`
-                : "No filter lists in this build; run pnpm adblock"
+                : "Ad blocking is off in this build"
             }
           >
             <Icon name="shield" size={12} />
@@ -627,10 +629,6 @@ export function BrowserPanel({
           {!hasPage && failure === undefined && (
             <div {...stylex.props(styles.message)}>
               <span {...stylex.props(styles.messageTitle)}>Nothing open</span>
-              <span {...stylex.props(styles.messageDetail)}>
-                Enter an address or search above. Pages cannot ask for permissions, open popups, or
-                download files here.
-              </span>
             </div>
           )}
           {state?.error !== undefined && (

@@ -2,12 +2,16 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import { hashCanonicalJson, hashObject } from "./hash.ts";
-import { canonicalJson } from "@nyte-ai/client";
+import { hashObject } from "./hash.ts";
 import { CursorExpired } from "@nyte-ai/protocol";
 import { isRefName, newOwnerId } from "./names.ts";
 import { sql, sqlList, type SqliteConnection, type SqlRow } from "./sql.ts";
-import { checkEventBody, checkObject } from "./store-schemas.ts";
+import {
+  checkEventBody,
+  checkObject,
+  serializeEventBody,
+  serializeObject,
+} from "./store-schemas.ts";
 import { CorruptObject, UnknownSession } from "./store.ts";
 import type {
   Commit,
@@ -81,11 +85,11 @@ CREATE TABLE IF NOT EXISTS events (
 `;
 
 /**
- * Bumped whenever the tables change shape. There is no migration: a file an
- * earlier schema wrote is refused with a message that says to delete it, since
- * `CREATE TABLE IF NOT EXISTS` would keep the old shape and fail later.
+ * Bumped whenever the tables or a stored object or event shape changes. There
+ * is no migration: an earlier schema is refused because accepting it would
+ * defer an incompatibility until a stored value is read.
  */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const WAL_ATTEMPTS = 40;
 const WAL_RETRY_MS = 25;
@@ -210,12 +214,6 @@ function parseEventBody(raw: string): EventBody {
   return value;
 }
 
-function encodeEventBody(body: EventBody): string {
-  const encoded = JSON.stringify(body);
-  if (encoded === undefined) throw new TypeError("Event body is not JSON serializable");
-  return encoded;
-}
-
 function allocateSeq(options: {
   readonly db: SqliteConnection;
   readonly sessionId: string;
@@ -257,7 +255,7 @@ function writeEvents(options: {
     if (body === undefined) continue;
     const seq = firstSeq + index;
     sql`INSERT INTO events (session_id, seq, at, body)
-      VALUES (${options.sessionId}, ${seq}, ${Date.now()}, ${encodeEventBody(body)})`.run(
+      VALUES (${options.sessionId}, ${seq}, ${Date.now()}, ${serializeEventBody(body)})`.run(
       options.db,
     );
   }
@@ -471,15 +469,12 @@ class SqliteObjects implements Objects {
 
   async put(objects: readonly Obj[]): Promise<readonly Oid[]> {
     this.state.assertOpen();
-    const encoded = objects.map((object) => {
-      const body = canonicalJson(object);
-      return { object, oid: hashCanonicalJson(body), body };
-    });
+    const encoded = objects.map(serializeObject);
     const at = Date.now();
     this.state.db.transact(() => {
       for (const item of encoded) {
         sql`INSERT OR IGNORE INTO objects (session_id, oid, kind, body, at)
-          VALUES (${this.state.id}, ${item.oid}, ${item.object.kind}, ${item.body}, ${at})`.run(
+          VALUES (${this.state.id}, ${item.oid}, ${item.kind}, ${item.body}, ${at})`.run(
           this.state.db,
         );
       }

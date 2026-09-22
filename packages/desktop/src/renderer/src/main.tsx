@@ -14,11 +14,8 @@ import { App } from "./app.tsx";
 import { startRendererStartup } from "./startup.ts";
 
 import { loadLocalResources } from "./queries.ts";
-import { currentRouteSession, router, settingsRoute } from "./router.tsx";
+import { currentRouteSession, router } from "./router.tsx";
 import { warmThread } from "./live.ts";
-import { nyte } from "./nyte.ts";
-import { shellActions } from "./chrome/shell-state.ts";
-import { clientActionAvailable, clientActions } from "../../shared/client-actions.ts";
 
 const container = document.getElementById("root");
 if (container === null) throw new Error("Missing #root");
@@ -57,7 +54,12 @@ startRendererStartup({
   // The last chat is the initial route; its snapshot is in the cache before the transcript mounts.
   warmInitialScreen: () => {
     const sessionId = currentRouteSession();
-    return sessionId === undefined ? Promise.resolve() : warmThread(sessionId);
+    const thread = sessionId === undefined ? Promise.resolve() : warmThread(sessionId);
+    const fonts = Promise.all([
+      document.fonts.load('13px "Inter Variable"'),
+      document.fonts.load('12px "JetBrains Mono Variable"'),
+    ]);
+    return Promise.all([thread, fonts]).then(() => undefined);
   },
   showError: (retry) => {
     startupShell?.setAttribute("data-state", "error");
@@ -73,17 +75,3 @@ startRendererStartup({
   },
   onReady: () => performance.mark("nyte:resources-ready"),
 });
-
-const stopMenuCommands = nyte.host.onMenuCommand((command) => {
-  if (command.kind === "about") {
-    shellActions.showAbout(command.info);
-    return;
-  }
-  shellActions.showAbout(undefined);
-  const stage = router.state.matches.some((match) => match.routeId === settingsRoute.id)
-    ? "settings"
-    : "workspace";
-  if (!clientActionAvailable(clientActions.settings, stage)) return;
-  void router.navigate({ to: "/settings/$section", params: { section: "general" } });
-});
-import.meta.hot?.dispose(stopMenuCommands);

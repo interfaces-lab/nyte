@@ -5,7 +5,7 @@ import { titlebarStyles } from "./titlebar.stylex.ts";
  */
 import * as stylex from "@stylexjs/stylex";
 import { useMatch, useRouter } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/protocol";
 import { PanelToggleIcon } from "../components/icons.tsx";
@@ -17,11 +17,13 @@ import {
   usePaneControllerSnapshot,
 } from "../layout/pane-context.tsx";
 import { activePane } from "../layout/pane-layout.ts";
+import { nyte } from "../nyte.ts";
 import { macPlatform } from "../platform.ts";
 import { useHostState, useSession } from "../queries.ts";
 import {
   WORKBENCH_STAGE_PANE_KEY,
   activeWorkbenchTab,
+  defaultWorkbenchTab,
   workbenchScopeForTarget,
   workbenchController,
   workbenchViewKey,
@@ -29,6 +31,7 @@ import {
 } from "../workbench/controller.ts";
 import type { WorkbenchTarget } from "../workbench/controller.ts";
 import { terminalActions } from "../workbench/terminal-store.ts";
+import { handleOpenOutcome } from "./open-workspace.tsx";
 import { shellActions, useShellState } from "./shell-state.ts";
 import {
   clientActionAriaShortcut,
@@ -95,6 +98,60 @@ export function Titlebar(): ReactElement {
   const historyIndex = shellRouter.history.location.state.__TSR_index;
   const canGoForward = historyIndex < shellRouter.history.length - 1;
 
+  const openTerminal = useCallback((): void => {
+    const id = workbenchController.actions.openTab({
+      view: viewKey,
+      tab: { kind: "terminal", owner: { kind: "user" } },
+      activate: true,
+    });
+    void terminalActions.create({ id, workspacePath: terminalWorkspacePath });
+  }, [terminalWorkspacePath, viewKey]);
+
+  useEffect(() => {
+    const showWorkspace = (): void => {
+      if (settingsOpen) shellRouter.history.back();
+      shellActions.showWorkspace();
+    };
+    return nyte.host.onMenuCommand((command) => {
+      if (command.kind === "about") {
+        shellActions.showAbout(command.info);
+        return;
+      }
+      shellActions.showAbout(undefined);
+      switch (command.action) {
+        case clientActions.newChat.id:
+          panes.newChat();
+          return;
+        case clientActions.openFolder.id:
+          void nyte.host.pickWorkspace().then(handleOpenOutcome);
+          return;
+        case clientActions.newTerminal.id:
+          showWorkspace();
+          openTerminal();
+          return;
+        case clientActions.newBrowser.id:
+          showWorkspace();
+          workbenchController.actions.openTab({
+            view: viewKey,
+            tab: defaultWorkbenchTab("browser"),
+            activate: true,
+          });
+          return;
+        case clientActions.settings.id:
+          if (settingsOpen) return;
+          void shellRouter.navigate({
+            to: "/settings/$section",
+            params: { section: "general" },
+          });
+          return;
+        default: {
+          const _exhaustive: never = command.action;
+          return _exhaustive;
+        }
+      }
+    });
+  }, [openTerminal, panes, settingsOpen, shellRouter, viewKey]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!workspaceVisible) return;
@@ -106,12 +163,7 @@ export function Titlebar(): ReactElement {
         } else if (action.id === "terminal" && userTerminals[0] !== undefined) {
           workbenchController.actions.activateTab({ view: viewKey, id: userTerminals[0].id });
         } else {
-          const id = workbenchController.actions.openTab({
-            view: viewKey,
-            tab: { kind: "terminal", owner: { kind: "user" } },
-            activate: true,
-          });
-          void terminalActions.create({ id, workspacePath: terminalWorkspacePath });
+          openTerminal();
         }
         return;
       }
@@ -122,14 +174,14 @@ export function Titlebar(): ReactElement {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
+    activeTab,
     mac,
-    workspaceVisible,
+    openTerminal,
+    scope,
+    userTerminals,
     viewKey,
     workbenchOpen,
-    activeTab,
-    userTerminals,
-    terminalWorkspacePath,
-    scope,
+    workspaceVisible,
   ]);
 
   if (settingsOpen) {
@@ -266,8 +318,8 @@ export function Titlebar(): ReactElement {
           <HintToggleIconButton
             id="workbench-toggle"
             icon={<PanelToggleIcon side="right" visible={workbenchOpen} />}
-            label={workbenchOpen ? "Hide workbench" : "Show workbench"}
-            hint={`${workbenchOpen ? "Hide Workbench" : "Show Workbench"} ${clientActionShortcut(clientActions.workbench, mac)}`}
+            label={workbenchOpen ? "Close workbench panel" : "Open workbench panel"}
+            hint={`${workbenchOpen ? "Close Workbench Panel" : "Open Workbench Panel"} ${clientActionShortcut(clientActions.workbench, mac)}`}
             pressed={workbenchOpen}
             aria-keyshortcuts={clientActionAriaShortcut(clientActions.workbench, mac)}
             onPressedChange={() =>

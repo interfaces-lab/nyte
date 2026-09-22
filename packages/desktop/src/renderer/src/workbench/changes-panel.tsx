@@ -1,8 +1,8 @@
-/** Local working-tree, commit and per-turn declared changes. GitHub never participates in this path. */
 import { create, props } from "@stylexjs/stylex";
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
-import type { SessionId, Turn, VcsFileKind } from "@nyte-ai/protocol";
+import { isTerminalPhase } from "@nyte-ai/protocol";
+import type { RunId, SessionId, Turn, VcsFileKind } from "@nyte-ai/protocol";
 import { FileTypeIconSprite } from "../components/file-type-icon";
 import { ConfirmDialog } from "../components/confirm-dialog.tsx";
 import { createDiffFilesLoader } from "../conversation/diff-expansion.ts";
@@ -193,6 +193,7 @@ interface ChangesPanelProps {
 interface ChangesPanelViewProps extends ChangesPanelProps {
   readonly turns: readonly Turn[];
   readonly turnsError: Error | null;
+  readonly liveRun: RunId | undefined;
 }
 
 function ChangesPanelView({
@@ -211,6 +212,7 @@ function ChangesPanelView({
   onRevertPath,
   turns,
   turnsError,
+  liveRun,
 }: ChangesPanelViewProps): ReactElement {
   const turnOptions = useMemo(() => turnChangeOptions(turns), [turns]);
   const snapshot = useVcsSnapshot(visible);
@@ -291,13 +293,13 @@ function ChangesPanelView({
     () => new Map((diffs.data ?? []).map((item) => [item.path, item])),
     [diffs.data],
   );
-  // The exact per-run diff, from the trees the run's commits recorded; the
-  // turn's own file_patch facts stand in until it answers.
-  const runDiff = useRunDiff(
+  const selectedRun = selectedTurn?.run.kind === "run" ? selectedTurn.run.id : undefined;
+  const runDiff = useRunDiff({
     sessionId,
-    selectedTurn?.run.kind === "run" ? selectedTurn.run.id : undefined,
-    visible,
-  );
+    runId: selectedRun,
+    live: selectedRun !== undefined && selectedRun === liveRun,
+    enabled: visible,
+  });
   const runFiles =
     runDiff.data === undefined || runDiff.data.kind === "not_found"
       ? undefined
@@ -694,18 +696,20 @@ function SessionChangesPanel(
   props: ChangesPanelProps & { readonly sessionId: SessionId },
 ): ReactElement {
   const snapshot = useSessionSnapshot(props.sessionId);
+  const run = snapshot.data?.run;
   return (
     <ChangesPanelView
       {...props}
       turns={snapshot.data?.transcript ?? EMPTY_TURNS}
       turnsError={snapshot.error}
+      liveRun={run !== undefined && !isTerminalPhase(run.phase) ? run.runId : undefined}
     />
   );
 }
 
 export function ChangesPanel(props: ChangesPanelProps): ReactElement {
   return props.sessionId === undefined ? (
-    <ChangesPanelView {...props} turns={EMPTY_TURNS} turnsError={null} />
+    <ChangesPanelView {...props} turns={EMPTY_TURNS} turnsError={null} liveRun={undefined} />
   ) : (
     <SessionChangesPanel {...props} sessionId={props.sessionId} />
   );

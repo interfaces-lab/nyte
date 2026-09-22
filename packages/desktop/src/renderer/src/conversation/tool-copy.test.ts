@@ -45,6 +45,13 @@ test("a verb names the class and its phase", () => {
     toolVerb({ kind: "delegate", role: "stop", target: { kind: "one", session: child } }, "failed"),
     "Stop failed",
   );
+  assert.equal(
+    toolVerb(
+      { kind: "delegate", role: "stop", target: { kind: "one", session: child } },
+      "interrupted",
+    ),
+    "Stop interrupted",
+  );
 });
 
 test("a failure reads as product copy by class; only provider text reaches the reader", () => {

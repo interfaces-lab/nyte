@@ -80,12 +80,51 @@ export async function run() {
     check(outer.querySelectorAll("input").length < 50, "Large preview only mounts a window");
     const newest = row("9999");
     if (!(newest instanceof HTMLInputElement)) throw new Error("Preview follows the newest row");
+    const preview = outer.querySelector("#preview");
+    if (!(preview instanceof HTMLElement)) throw new Error("Missing preview viewport");
+    const selection = window.getSelection();
+    if (selection === null) throw new Error("Missing selection");
+    const elsewhere = document.createElement("p");
+    elsewhere.textContent = "elsewhere";
+    document.body.append(elsewhere);
+    // Form controls hold no selectable text, so the preview gets a prose body to select.
+    const toolBody = document.createElement("div");
+    toolBody.dataset.toolBody = "";
+    toolBody.textContent = "tool output";
+    preview.append(toolBody);
+    const range = document.createRange();
+    try {
+      check(
+        !opensWorkGroup(newest, selection, preview),
+        "Tool controls do not also expand the group",
+      );
+      check(
+        !opensWorkGroup(toolBody, selection, preview),
+        "An open tool body does not expand the group",
+      );
+      range.selectNodeContents(elsewhere);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      check(
+        opensWorkGroup(preview, selection, preview),
+        "A selection elsewhere does not block opening",
+      );
+      range.selectNodeContents(toolBody);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      check(
+        !opensWorkGroup(preview, selection, preview),
+        "Selecting in the preview does not expand it",
+      );
+      selection.removeAllRanges();
+      check(opensWorkGroup(preview, selection, preview), "Background click still opens the group");
+    } finally {
+      elsewhere.remove();
+      toolBody.remove();
+    }
     newest.focus();
     newest.value = "selected content";
     newest.setSelectionRange(2, 6);
-    check(!opensWorkGroup(newest, ""), "Tool controls do not also expand the group");
-    check(!opensWorkGroup(outer, "selected text"), "Text selection does not expand the group");
-    check(opensWorkGroup(outer, ""), "Background click still opens the group");
     const initialMounts = mounts;
     for (let cycle = 0; cycle < 3; cycle += 1) {
       render(false);
@@ -154,13 +193,24 @@ export async function run() {
       outer.querySelector("[data-nyte-scrollport]") === null,
       "Opened group uses transcript scrolling",
     );
+    check(toggle.getAttribute("aria-expanded") === "true", "Opened group reads as expanded");
     await new Promise<void>((resolve) => window.setTimeout(resolve, FOLLOW_RESUME_MS + 250));
     await settle();
     check(
-      outer.querySelector("[data-nyte-scrollport]") !== null,
-      "Quiet spell restores preview follow",
+      outer.querySelector("[data-nyte-scrollport]") === null,
+      "A quiet spell leaves an explicitly opened group open",
     );
-    check(lastParagraph() === paragraph, "Quiet-spell folding does not remount the newest prose");
+    toggle.click();
+    await settle();
+    check(
+      outer.querySelector("[data-nyte-scrollport]") !== null,
+      "Closing the list returns the live group to its preview",
+    );
+    check(
+      toggle.getAttribute("aria-expanded") === "false",
+      "The preview does not read as expanded",
+    );
+    check(lastParagraph() === paragraph, "Folding back does not remount the newest prose");
 
     const firstThought: WorkTurnPart = {
       kind: "thinking",
@@ -185,6 +235,8 @@ export async function run() {
       tools: IDLE.tools,
       order: [{ kind: "thinking", runId: "run", attempt: 2, index: 0 }],
     } satisfies LiveSnapshot;
+    // A fresh group: the one above was closed by hand and stays closed.
+    flushSync(() => root.render(null));
     flushSync(() =>
       root.render(
         <WorkGroupView

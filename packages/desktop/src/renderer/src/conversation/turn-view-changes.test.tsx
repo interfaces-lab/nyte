@@ -4,8 +4,6 @@ import { NO_WAITS } from "./transcript-presentation.ts";
 import type { RenderedTurn } from "./transcript-rows.ts";
 import { TurnView } from "./turn-view.tsx";
 import { WorkGroupView } from "./tool-group.tsx";
-import { treeId } from "@nyte-ai/protocol";
-import type { RunDiff } from "@nyte-ai/protocol";
 
 // Read-only transcript rendering does not use the browser's message outbox.
 vi.mock("../outbox-storage.ts", () => ({
@@ -44,11 +42,10 @@ vi.hoisted(() => {
 });
 afterAll(() => vi.unstubAllGlobals());
 
-function render(turn: RenderedTurn, running: boolean, runDiff?: RunDiff): string {
+function render(turn: RenderedTurn, running: boolean): string {
   return renderToStaticMarkup(
     <TurnView
       turn={turn}
-      runDiff={runDiff}
       liveTools={new Map()}
       cwd={undefined}
       onOpenChanges={() => {}}
@@ -97,30 +94,6 @@ test("a settled turn offers its changed files for review", () => {
   expect(html).toContain("Open src/app.ts in Changes");
 });
 
-test("an exact run diff replaces recorded edits with deleted files and totals", () => {
-  const runDiff = {
-    kind: "tree",
-    from: treeId("0".repeat(40)),
-    to: treeId("1".repeat(40)),
-    files: [
-      {
-        kind: "deleted",
-        path: "src/removed.ts",
-        added: 0,
-        removed: 1_755,
-        patch: "--- a/src/removed.ts\n+++ /dev/null",
-      },
-    ],
-  } satisfies RunDiff;
-  const html = render(editing, false, runDiff);
-  expect(html).toContain('aria-label="1 File Changed"');
-  expect(html).toContain("Open src/removed.ts in Changes");
-  expect(html).toContain('aria-label="0 added, 1755 removed"');
-  expect(html.indexOf(">1755<")).toBeLessThan(html.indexOf('aria-label="1 File Changed"'));
-  expect(html).not.toContain("Open src/app.ts in Changes");
-  expect(html).not.toContain('aria-label="1 added, 1 removed"');
-});
-
 test("two work groups in one turn use their own episode spans", () => {
   const html = render(
     {
@@ -143,27 +116,20 @@ test("two work groups in one turn use their own episode spans", () => {
         {
           kind: "tool",
           callId: "two",
-          class: { kind: "file_read", path: "two.ts" },
+          class: {
+            kind: "file_patch",
+            op: "edit",
+            path: "src/episodes.ts",
+            added: 7,
+            removed: 3,
+            patch,
+          },
           result: { commit: "two-result", output: "done", isError: false },
           at: 15_000,
         },
       ],
     },
     false,
-    {
-      kind: "tree",
-      from: treeId("2".repeat(40)),
-      to: treeId("3".repeat(40)),
-      files: [
-        {
-          kind: "modified",
-          path: "src/episodes.ts",
-          added: 7,
-          removed: 3,
-          patch,
-        },
-      ],
-    },
   );
   expect(html).toContain("for 2s");
   expect(html).toContain("for 5s");

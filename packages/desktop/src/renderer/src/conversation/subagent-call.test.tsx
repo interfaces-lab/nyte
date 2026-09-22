@@ -113,7 +113,6 @@ test("a create draws one agent card; its settled await folds into the work", () 
       >
         <TurnView
           turn={turn}
-          runDiff={undefined}
           liveTools={new Map()}
           cwd={undefined}
           onOpenChanges={() => {}}
@@ -209,7 +208,6 @@ function render(
             durationMs: 0,
             parts: [...parts],
           }}
-          runDiff={undefined}
           liveTools={new Map()}
           cwd={undefined}
           onOpenChanges={() => {}}
@@ -252,12 +250,13 @@ test("the settled await is the compact line, with no countdown", () => {
   expect(html).not.toContain("· ");
 });
 
-test("a live await on a child from an earlier turn keeps its line and counts down", () => {
+test("a live await on children from an earlier turn keeps its line and counts down", () => {
   vi.useFakeTimers();
   vi.setSystemTime(1_000_000);
   const html = render([prose, awaitAll], { running: true, parked: [parkedWait] });
   vi.useRealTimers();
   expect(html.match(/>Waiting for</g)?.length).toBe(1);
   expect(html).toContain("· 1:23");
-  expect(html).not.toContain(">Waiting for subagents<");
+  // One call, four children: the header counts the children it waits on.
+  expect(html).toContain(">Waiting for subagents<");
 });

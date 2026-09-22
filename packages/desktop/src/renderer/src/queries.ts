@@ -6,13 +6,12 @@ import {
   queryOptions,
   useMutation,
   useMutationState,
-  useQueries,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import type { MutationState } from "@tanstack/react-query";
 import { projectPreference } from "./preference-projection.ts";
-import { useMemo, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { keys } from "./query-keys.ts";
 import { SessionActions } from "./session-actions.ts";
 import {
@@ -22,8 +21,6 @@ import {
 import type { ConfigureSessionPatch, PendingConfiguration } from "./session-configuration.ts";
 export { keys } from "./query-keys.ts";
 import { toast } from "@nyte-ai/ui/sonner";
-import { sessionId } from "@nyte-ai/protocol";
-import { isTerminalPhase } from "@nyte-ai/client";
 import type { MentionFile } from "@nyte-ai/client";
 import type {
   PluginCatalog,
@@ -31,7 +28,6 @@ import type {
   RunId,
   SessionId,
   SessionInfo,
-  SessionSnapshot,
   SettingInfo,
   VcsDiff,
   VcsLog,
@@ -56,7 +52,7 @@ import { loadSessionDirectory, type SessionPage } from "./session-directory.ts";
 // this cache; neither module touches the other while it evaluates.
 import { readSessionSnapshot, sessionSelection } from "./live.ts";
 import { nyte } from "./nyte.ts";
-import { RunDiffFreshness } from "./run-diff-freshness.ts";
+import { activateOutbox } from "./use-outbox.ts";
 import { SessionObservations } from "./session-freshness.ts";
 import { installSnapshotCacheBudget, releaseSessionQueries } from "./snapshot-cache.ts";
 import { USAGE_STALE_AFTER_MS } from "./chrome/usage-view.ts";
@@ -104,15 +100,14 @@ function useSessionProjection() {
 }
 
 export const SNAPSHOT_WARM_MS = 1_000;
+const OUTBOX_WARM_MS = 250;
 
 const readHost = () => nyte.host.state();
 const readWorkspaces = () => nyte.workspace.list();
 const sessionObservations = new SessionObservations();
-const runDiffFreshness = new RunDiffFreshness();
 
 function releaseSessionRendererMemory(client: QueryClient, sessionId: SessionId): void {
   sessionObservations.release(sessionId);
-  runDiffFreshness.release(sessionId);
   releaseSessionQueries(client, sessionId);
 }
 
@@ -282,8 +277,8 @@ export function useSessionSnapshot(sessionId: SessionId) {
 }
 
 /** The child sessions one chat delegated to. Parent commits invalidate this; an observed child updates its own row. */
-export function useChildSessions(sessionId: SessionId | undefined) {
-  return useQuery({
+export function childSessionsOptions(sessionId: SessionId | undefined) {
+  return queryOptions({
     queryKey: keys.childSessions(sessionId),
     queryFn: async (): Promise<readonly SessionInfo[]> => {
       if (sessionId === undefined) return [];
@@ -296,10 +291,16 @@ export function useChildSessions(sessionId: SessionId | undefined) {
         children.push(...page.items);
         cursor = page.next;
       }
-      return children.map((child) => freshestSessionInfo(child, startedAt));
+      const fresh = children.map((child) => freshestSessionInfo(child, startedAt));
+      for (const child of fresh) queryClient.setQueryData(keys.session(child.sessionId), child);
+      return fresh;
     },
     enabled: sessionId !== undefined,
   });
+}
+
+export function useChildSessions(sessionId: SessionId | undefined) {
+  return useQuery(childSessionsOptions(sessionId));
 }
 
 const WORKSPACE_TARGET = { kind: "workspace" } as const;
@@ -328,7 +329,7 @@ export function useVcsSnapshot(enabled: boolean) {
  * Scope-aware VCS keys. They nest under the `["vcs"]` prefix `refreshVcs`
  * invalidates, so a run or a save refreshes history and refs with the status.
  */
-export const vcsKeys = {
+const vcsKeys = {
   diff: (
     root: string,
     revision: string,
@@ -341,101 +342,18 @@ export const vcsKeys = {
   runDiff: (sessionId: SessionId, runId: RunId) => ["vcs", "run-diff", sessionId, runId] as const,
 };
 
-function createRunDiffReader(sessionId: SessionId): (runId: RunId) => Promise<RunDiff> {
-  let waiting = new Map<RunId, PromiseWithResolvers<RunDiff>>();
-  let scheduled = false;
-
-  const flush = async (): Promise<void> => {
-    const readers = waiting;
-    waiting = new Map();
-    scheduled = false;
-    const first = readers.keys().next().value;
-    if (first === undefined) return;
-    const runs = [first, ...[...readers.keys()].slice(1)] satisfies readonly [RunId, ...RunId[]];
-    try {
-      const results = await nyte.runs.diff({ sessionId, runs });
-      for (const [runId, reader] of readers) {
-        const result = results.find((candidate) => candidate.run === runId);
-        reader.resolve(result?.diff ?? { kind: "not_found" });
-      }
-    } catch (cause) {
-      for (const reader of readers.values()) reader.reject(cause);
-    }
-  };
-
-  return (runId) => {
-    const pending = waiting.get(runId);
-    if (pending !== undefined) return pending.promise;
-    const reader = Promise.withResolvers<RunDiff>();
-    waiting.set(runId, reader);
-    if (!scheduled) {
-      scheduled = true;
-      queueMicrotask(() => void flush());
-    }
-    return reader.promise;
-  };
-}
-
-function terminalForRunDiff(sessionId: SessionId, runId: RunId): boolean {
-  const current = queryClient.getQueryData<SessionSnapshot>(keys.snapshot(sessionId))?.run;
-  return current === undefined || current.runId !== runId || isTerminalPhase(current.phase);
-}
-
-async function checkedRunDiff(
-  sessionId: SessionId,
-  runId: RunId,
-  read: () => Promise<RunDiff>,
-): Promise<RunDiff> {
-  const terminal = terminalForRunDiff(sessionId, runId);
-  const diff = await read();
-  runDiffFreshness.recordCheck(sessionId, runId, terminal);
-  return diff;
-}
-
-/** Read several exact run diffs in one operation while caching each run under its own key. */
-export function useRunDiffs(
-  sessionId: SessionId,
-  runIds: readonly RunId[],
-): ReadonlyMap<RunId, RunDiff | undefined> {
-  const unique = [...new Set(runIds)];
-  const current = queryClient.getQueryData<SessionSnapshot>(keys.snapshot(sessionId))?.run;
-  const liveRun =
-    current !== undefined && !isTerminalPhase(current.phase) ? current.runId : undefined;
-  const read = useMemo(() => createRunDiffReader(sessionId), [sessionId]);
-  const results = useQueries({
-    queries: unique.map((runId) => {
-      const terminal = runId !== liveRun;
-      const cached = queryClient.getQueryData<RunDiff>(vcsKeys.runDiff(sessionId, runId));
-      const needsRefresh = runDiffFreshness.needsRefresh(sessionId, runId, terminal, cached);
-      return {
-        queryKey: vcsKeys.runDiff(sessionId, runId),
-        queryFn: () => checkedRunDiff(sessionId, runId, () => read(runId)),
-        staleTime: needsRefresh ? 0 : Infinity,
-        refetchOnMount: needsRefresh,
-      };
-    }),
-  });
-  const diffs = new Map<RunId, RunDiff | undefined>();
-  for (const [index, runId] of unique.entries()) diffs.set(runId, results[index]?.data);
-  return diffs;
-}
-
-/** One run's file diff, exact from its recorded trees when the host has them; refreshed with the VCS state. */
-export function useRunDiff(
-  sessionId: SessionId | undefined,
-  runId: RunId | undefined,
-  enabled = true,
-) {
-  const terminal =
-    sessionId === undefined || runId === undefined ? true : terminalForRunDiff(sessionId, runId);
-  const cached =
-    sessionId === undefined || runId === undefined
-      ? undefined
-      : queryClient.getQueryData<RunDiff>(vcsKeys.runDiff(sessionId, runId));
-  const needsRefresh =
-    sessionId !== undefined &&
-    runId !== undefined &&
-    runDiffFreshness.needsRefresh(sessionId, runId, terminal, cached);
+/**
+ * One run's file diff, exact from its recorded trees. A settled run diffs two
+ * recorded trees, so its answer can never change: `static` keeps it out of
+ * every refetch and invalidation. Only the live run still moves.
+ */
+export function useRunDiff(input: {
+  readonly sessionId: SessionId | undefined;
+  readonly runId: RunId | undefined;
+  readonly live: boolean;
+  readonly enabled?: boolean;
+}) {
+  const { sessionId, runId, live, enabled = true } = input;
   return useQuery<RunDiff>({
     queryKey:
       sessionId === undefined || runId === undefined
@@ -443,14 +361,11 @@ export function useRunDiff(
         : vcsKeys.runDiff(sessionId, runId),
     queryFn: async () => {
       if (sessionId === undefined || runId === undefined) return { kind: "not_found" };
-      return checkedRunDiff(sessionId, runId, async () => {
-        const [result] = await nyte.runs.diff({ sessionId, runs: [runId] });
-        return result?.diff ?? { kind: "not_found" };
-      });
+      const [result] = await nyte.runs.diff({ sessionId, runs: [runId] });
+      return result?.diff ?? { kind: "not_found" };
     },
     enabled: enabled && sessionId !== undefined && runId !== undefined,
-    staleTime: needsRefresh ? 0 : Infinity,
-    refetchOnMount: needsRefresh,
+    staleTime: live ? 0 : "static",
   });
 }
 
@@ -522,21 +437,6 @@ export function useVcsRefs(enabled: boolean) {
 }
 
 function vcsNeedsRefresh({ queryKey }: { readonly queryKey: readonly unknown[] }): boolean {
-  if (queryKey[1] === "run-diff") {
-    const sessionKey = queryKey[2];
-    const runId = queryKey[3];
-    if (typeof sessionKey !== "string" || typeof runId !== "string") return false;
-    const run = queryClient.getQueryData<SessionSnapshot>(
-      keys.snapshot(sessionId(sessionKey)),
-    )?.run;
-    const terminal = run === undefined || run.runId !== runId || isTerminalPhase(run.phase);
-    return runDiffFreshness.needsRefresh(
-      sessionId(sessionKey),
-      runId,
-      terminal,
-      queryClient.getQueryData<RunDiff>(queryKey),
-    );
-  }
   const scope = queryKey[4];
   return queryKey[1] !== "diffs" || (typeof scope === "string" && scope.startsWith("branch:"));
 }
@@ -784,6 +684,17 @@ export async function loadLocalResources(): Promise<void> {
     readCatalog(),
     readSessionDirectory(),
   ]);
+  if (version !== localLoadVersion) return;
+  if (typeof indexedDB !== "undefined") {
+    const activation = activateOutbox(host.workspace?.path).catch(() => undefined);
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, OUTBOX_WARM_MS);
+      void activation.then(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+  }
   if (version !== localLoadVersion) return;
 
   const workspaceScopes = new Set(["vcs", "files", "github", "plugins", "customize"]);

@@ -140,15 +140,15 @@ export function referenceLabel(reference: MessageReference): string {
   }
 }
 
-/** The full reference behind a compact label. */
-export function referenceTitle(reference: MessageReference): string {
+/** The full reference behind a compact label; none when the label already is the whole of it. */
+export function referenceTitle(reference: MessageReference): string | undefined {
   switch (reference.kind) {
     case "file":
       return reference.file.path;
     case "skill":
       return reference.path === "" ? skillInstruction(reference.name) : reference.path;
     case "mention":
-      return "Use this conversation as context";
+      return undefined;
     case "clipboard":
       return "Pasted text";
     default: {

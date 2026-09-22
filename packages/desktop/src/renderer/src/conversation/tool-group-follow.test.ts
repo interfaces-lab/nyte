@@ -26,27 +26,10 @@ describe("overflows", () => {
 
 describe("followOnScroll", () => {
   test("the preview pauses when the reader scrolls up and arms a resume", () => {
-    assert.deepEqual(followOnScroll("preview", false, scrolledUp), {
-      paused: true,
-      resumeTimer: "arm",
-    });
+    assert.deepEqual(followOnScroll(scrolledUp), { paused: true, resumeTimer: "arm" });
   });
 
   test("the preview follows again as soon as the reader returns to the bottom", () => {
-    assert.deepEqual(followOnScroll("preview", true, atBottom), {
-      paused: false,
-      resumeTimer: "clear",
-    });
-  });
-
-  test("the opened window only restarts its quiet-spell timer", () => {
-    assert.deepEqual(followOnScroll("opened", false, scrolledUp), {
-      paused: false,
-      resumeTimer: "arm",
-    });
-    assert.deepEqual(followOnScroll("opened", true, atBottom), {
-      paused: true,
-      resumeTimer: "arm",
-    });
+    assert.deepEqual(followOnScroll(atBottom), { paused: false, resumeTimer: "clear" });
   });
 });

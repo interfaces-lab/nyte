@@ -43,7 +43,6 @@ function render(turn: RenderedTurn): string {
   return renderToStaticMarkup(
     <TurnView
       turn={turn}
-      runDiff={undefined}
       liveTools={new Map()}
       cwd={undefined}
       onOpenChanges={() => {}}

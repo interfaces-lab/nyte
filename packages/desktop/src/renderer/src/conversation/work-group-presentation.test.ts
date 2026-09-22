@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { sessionId } from "@nyte-ai/protocol";
-import type { ToolClass, ToolTurnPart } from "@nyte-ai/protocol";
+import type { SessionId, ToolClass, ToolTurnPart } from "@nyte-ai/protocol";
 import { IDLE } from "../live-fold.ts";
 import { presentWorkGroup } from "./work-group-presentation.ts";
 import type { WorkGroupPresentationInput } from "./work-group-presentation.ts";
@@ -12,17 +12,18 @@ const defaults = {
   added: 0,
   removed: 0,
   running: false,
-  stale: false,
-  awaiting: 0,
+  awaited: new Set<SessionId>(),
 } satisfies WorkGroupPresentationInput;
 
+const child = sessionId("child");
+const other = sessionId("other");
 const read: ToolClass = { kind: "file_read", path: "/project/src/a.ts" };
 const shell: ToolClass = { kind: "shell", command: "pwd" };
 const spawn: ToolClass = {
   kind: "delegate",
   role: "create",
   title: "Child",
-  target: { kind: "one", session: sessionId("child") },
+  target: { kind: "one", session: child },
 };
 const patch: ToolClass = {
   kind: "file_patch",
@@ -94,33 +95,40 @@ test("live activity names the newest running call and lets delegations win", () 
     "Waiting for subagent",
   );
   assert.equal(
-    presentWorkGroup({ ...input, parts: [task, bash, { ...task, callId: "task2" }] }).summary.verb,
-    "Waiting for subagents",
-  );
-  assert.equal(
-    presentWorkGroup({ ...input, parts: [bash], awaiting: 4 }).summary.verb,
-    "Waiting for subagents",
-  );
-  assert.equal(presentWorkGroup({ ...input, awaiting: 1 }).summary.verb, "Waiting for subagent");
-  assert.equal(
     presentWorkGroup({ ...input, parts: [pending("web", { kind: "custom", label: "Web search" })] })
       .summary.verb,
     "Running Web search",
   );
 });
 
-test("between-step labels retain live order and the slow-response cue", () => {
+test("waits count the children they name, not the calls that name them", () => {
   const input = { ...defaults, running: true };
-  assert.equal(presentWorkGroup(input).summary.verb, "Preparing next move");
+  const task = pending("task", spawn);
+  const again = pending("task2", spawn);
+  const elsewhere = pending("task3", { ...spawn, target: { kind: "one", session: other } });
+  const sameChild = presentWorkGroup({ ...input, parts: [task, again], awaited: new Set([child]) });
+  assert.equal(sameChild.summary.verb, "Waiting for subagent");
+  assert.deepEqual(sameChild.active && sameChild.waiting, [child]);
+  const twoChildren = presentWorkGroup({ ...input, parts: [task, elsewhere] });
+  assert.equal(twoChildren.summary.verb, "Waiting for subagents");
+  assert.deepEqual(twoChildren.active && twoChildren.waiting, [child, other]);
   assert.equal(
-    presentWorkGroup({ ...input, stale: true }).summary.verb,
-    "This is taking a bit longer",
+    presentWorkGroup({ ...input, awaited: new Set([child, other]) }).summary.verb,
+    "Waiting for subagents",
   );
+  assert.equal(
+    presentWorkGroup({ ...input, awaited: new Set([child]) }).summary.verb,
+    "Waiting for subagent",
+  );
+});
+
+test("between-step labels follow the live order", () => {
+  const input = { ...defaults, running: true };
+  assert.equal(presentWorkGroup(input).summary.verb, "Working");
   const thinking = { kind: "thinking", runId: "run", attempt: 0, index: 0 } as const;
   const text = { ...thinking, kind: "text" } as const;
   assert.equal(
-    presentWorkGroup({ ...input, live: { ...IDLE, order: [text, thinking] }, stale: true }).summary
-      .verb,
+    presentWorkGroup({ ...input, live: { ...IDLE, order: [text, thinking] } }).summary.verb,
     "Thinking",
   );
   assert.equal(

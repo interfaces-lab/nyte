@@ -7,12 +7,15 @@ interface BrowserSurfaceView {
   readonly state: BrowserSurfaceState | undefined;
   readonly refusedDownload: string | undefined;
   readonly history: readonly Pick<BrowserSurfaceState, "url" | "title">[];
+  /** The cookie jar the panel opened this surface in: a workspace path, or null for home. */
+  readonly owner: string | null | undefined;
 }
 
 const EMPTY: BrowserSurfaceView = Object.freeze({
   state: undefined,
   refusedDownload: undefined,
   history: [],
+  owner: undefined,
 });
 
 let views: ReadonlyMap<string, BrowserSurfaceView> = new Map();
@@ -69,7 +72,7 @@ export function applyBrowserEvent(
           ...held.history.filter((entry) => entry.url !== state.url),
         ]
       : held.history;
-  set(event.surface, { state, refusedDownload, history });
+  set(event.surface, { ...held, state, refusedDownload, history });
   if (tab !== undefined && state.url !== "") {
     workbenchController.actions.updateTab({
       view: tab.view,
@@ -86,47 +89,37 @@ export function dismissRefusedDownload(surface: string): void {
     set(surface, { ...current, refusedDownload: undefined });
 }
 
-export function clearBrowserHistory(): void {
-  for (const [surface, view] of views) set(surface, { ...view, history: [] });
+export function claimBrowserSurface(surface: string, owner: string | null): void {
+  set(surface, { ...(views.get(surface) ?? EMPTY), owner });
+}
+
+/** Main clears history per cookie jar, so the displayed history follows the same owner. */
+export function clearBrowserHistory(owner: string | null): void {
+  for (const [surface, view] of views) {
+    if (view.owner === owner) set(surface, { ...view, history: [] });
+  }
 }
 
 /**
- * An agent opened a page on a surface. Open the Browser tab for the matching
- * view key so the user sees the page. The page already exists in main — the
- * renderer is only revealing it, not creating a new one.
+ * An agent opened a page on a surface. Open or update the Browser tab for the
+ * matching view key without displacing what the user is viewing; only an empty
+ * view activates it, so the first Browser tab is not invisible. The page
+ * already exists in main — the renderer is only revealing it.
  */
 export function applyBrowserAgentOpened(
   event: Extract<HostEvent, { kind: "browser_agent_opened" }>,
 ): void {
-  // Apply the surface state so the panel adopts the already-live page.
   const current = views.get(event.surface) ?? EMPTY;
-  set(event.surface, {
-    ...current,
-    state: event.state,
-    refusedDownload: undefined,
-    history: current.history,
+  const revealed = { ...current, state: event.state, refusedDownload: undefined };
+  set(event.surface, revealed);
+  const view = workbenchController.getSnapshot().views.get(event.surface);
+  if (view === undefined) return;
+  const id = workbenchController.actions.openTab({
+    view: event.surface,
+    tab: { kind: "browser", url: event.url },
+    activate: view.active === null,
   });
-
-  const snapshot = workbenchController.getSnapshot();
-  for (const [viewKey] of snapshot.views) {
-    if (viewKey === event.surface) {
-      const id = workbenchController.actions.openTab({
-        view: viewKey,
-        tab: { kind: "browser", url: event.url },
-        activate: true,
-      });
-      set(id, {
-        ...current,
-        state: event.state,
-        refusedDownload: undefined,
-        history: current.history,
-      });
-      return;
-    }
-  }
-  // The view may not exist yet (the user never opened this session's pane).
-  // That is fine — when they navigate to the session, the controller will
-  // create the view and the panel will adopt the surface.
+  set(id, revealed);
 }
 
 export function forgetBrowserSurface(surface: string): void {

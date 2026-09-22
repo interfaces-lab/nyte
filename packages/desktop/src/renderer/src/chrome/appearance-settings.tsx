@@ -7,6 +7,11 @@ import {
   useStartupDestination,
   type StartupDestination,
 } from "../startup-preference.ts";
+import {
+  setRunningMessagePreference,
+  useRunningMessagePreference,
+  type RunningMessagePreference,
+} from "../conversation/running-message-preference.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { appearanceSettingsStyles as styles } from "./appearance-settings.stylex.ts";
 import { AccountsSettings } from "./accounts-settings.tsx";
@@ -19,6 +24,7 @@ import { settingsTitle, type SettingsSection } from "./settings-navigation.tsx";
 
 function GeneralSettings(): ReactElement {
   const destination = useStartupDestination();
+  const runningMessagePreference = useRunningMessagePreference();
 
   return (
     <section {...stylex.props(settingsPatterns.section)}>
@@ -35,6 +41,25 @@ function GeneralSettings(): ReactElement {
               { value: "last-session", label: "Last chat" },
             ]}
             onValueChange={setStartupDestination}
+          />
+        </SettingsRow>
+      </div>
+      <div {...stylex.props(settingsPatterns.sectionHeader)}>
+        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Chat</h2>
+      </div>
+      <div {...stylex.props(settingsPatterns.group)}>
+        <SettingsRow
+          title="Messages while running"
+          description="Choose what Enter does while the agent is working"
+        >
+          <SettingsSelect<RunningMessagePreference>
+            label="Messages while running"
+            value={runningMessagePreference}
+            options={[
+              { value: "queue", label: "Queue" },
+              { value: "steer", label: "Steer" },
+            ]}
+            onValueChange={setRunningMessagePreference}
           />
         </SettingsRow>
       </div>

@@ -26,7 +26,11 @@ interface SectionInfo {
 }
 
 const SECTIONS = {
-  general: { icon: "settings", title: "General", keywords: ["startup", "window restoration"] },
+  general: {
+    icon: "settings",
+    title: "General",
+    keywords: ["startup", "window restoration", "chat", "messages", "queue", "steer"],
+  },
   appearance: {
     icon: "canvas-grid",
     title: "Appearance",

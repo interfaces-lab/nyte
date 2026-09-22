@@ -190,7 +190,11 @@ function registerIpc(): void {
 
   ipcMain.on(BROWSER_BOUNDS_CHANNEL, (event, message) => {
     assertMainFrame(event);
-    browserSurfaces.setBounds(decodeBrowserBounds(message));
+    try {
+      browserSurfaces.setBounds(decodeBrowserBounds(message));
+    } catch {
+      return;
+    }
   });
 
   ipcMain.handle(WORKSPACE_EDITOR_CHANNEL, async (event, request) => {
@@ -216,6 +220,7 @@ function registerIpc(): void {
 
 function createWindow(): void {
   if (mainWindow !== undefined) return;
+  windowHasBeenShown = false;
   const options: Electron.BrowserWindowConstructorOptions = {
     width: 1200,
     height: 800,
@@ -296,7 +301,10 @@ function createWindow(): void {
     releaseRendererWork();
     nativeTheme.off("updated", updateWindowBackground);
     browserSurfaces.dispose();
-    if (mainWindow === created) mainWindow = undefined;
+    if (mainWindow === created) {
+      mainWindow = undefined;
+      windowHasBeenShown = false;
+    }
   });
 }
 
@@ -337,19 +345,15 @@ if (!hasSingleInstanceLock) {
       applicationMenuTemplate({
         platform: process.platform,
         name: app.getName(),
-        settings: () => menuCommands.dispatch({ kind: "settings" }),
-        about: () =>
-          menuCommands.dispatch({
-            kind: "about",
-            info: {
-              name: app.getName(),
-              version: app.getVersion(),
-              electron: process.versions.electron,
-              chrome: process.versions.chrome,
-              os: `${process.platform === "darwin" ? "macOS" : process.platform} ${process.getSystemVersion()}`,
-              arch: process.arch,
-            },
-          }),
+        dispatch: menuCommands.dispatch,
+        appInfo: () => ({
+          name: app.getName(),
+          version: app.getVersion(),
+          electron: process.versions.electron,
+          chrome: process.versions.chrome,
+          os: `${process.platform === "darwin" ? "macOS" : process.platform} ${process.getSystemVersion()}`,
+          arch: process.arch,
+        }),
       }),
     );
     const updateItem = menu.getMenuItemById("check-for-updates");

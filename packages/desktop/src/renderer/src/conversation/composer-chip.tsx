@@ -95,8 +95,9 @@ export function ComposerChipView({
       {label}
     </span>
   );
-  if (reference.kind !== "clipboard") {
-    return <Hint content={referenceTitle(reference)} trigger={chip} side="top" />;
+  if (reference.kind === "clipboard") {
+    return <HoverPreview content={reference.body} trigger={chip} side="top" />;
   }
-  return <HoverPreview content={reference.body} trigger={chip} side="top" />;
+  const title = referenceTitle(reference);
+  return title === undefined ? chip : <Hint content={title} trigger={chip} side="top" />;
 }

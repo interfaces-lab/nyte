@@ -190,7 +190,7 @@ function suggestionPreviewTitle(suggestion: ComposerSuggestion): string {
     .join(" ");
 }
 
-function suggestionAttribution(suggestion: ComposerSuggestion): string {
+function suggestionAttribution(suggestion: ComposerSuggestion): string | undefined {
   switch (suggestion.kind) {
     case "plugin-command":
       return NYTE_COMMAND_OWNERS.has(suggestion.command.owner)
@@ -199,7 +199,7 @@ function suggestionAttribution(suggestion: ComposerSuggestion): string {
     case "skill":
       return suggestion.skill.filePath;
     case "mention":
-      return "Conversation context";
+      return undefined;
     case "file":
       return isFolder(suggestion.file) ? "Workspace folder" : "Workspace file";
     default: {
@@ -295,23 +295,28 @@ function SuggestionPreview({
 }: {
   readonly suggestion: ComposerSuggestion;
 }): ReactElement {
+  const attribution = suggestionAttribution(suggestion);
   return (
     <>
       <div {...stylex.props(composerStyles.suggestionPreviewTitle)}>
         {suggestionPreviewTitle(suggestion)}
       </div>
-      <div {...stylex.props(composerStyles.suggestionPreviewAttribution)}>
-        <span aria-hidden="true" {...stylex.props(composerStyles.suggestionPreviewIcon)}>
-          <Icon name={suggestion.icon} size={12} />
-        </span>
-        {suggestionAttribution(suggestion)}
-      </div>
+      {attribution !== undefined && (
+        <div {...stylex.props(composerStyles.suggestionPreviewAttribution)}>
+          <span aria-hidden="true" {...stylex.props(composerStyles.suggestionPreviewIcon)}>
+            <Icon name={suggestion.icon} size={12} />
+          </span>
+          {attribution}
+        </div>
+      )}
       {suggestion.kind === "file" ? (
         <MentionPathPreview file={suggestion.file} />
       ) : (
-        <div {...stylex.props(composerStyles.suggestionPreviewDescription)}>
-          {suggestion.description}
-        </div>
+        suggestion.kind !== "mention" && (
+          <div {...stylex.props(composerStyles.suggestionPreviewDescription)}>
+            {suggestion.description}
+          </div>
+        )
       )}
     </>
   );

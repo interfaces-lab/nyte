@@ -72,6 +72,9 @@ export function CoreReview() {
             <a href="#fixes">Prioritized fixes</a>
           </li>
           <li>
+            <a href="#comparison">Pi, OpenCode v2 and Cursor</a>
+          </li>
+          <li>
             <a href="#quiz">Knowledge check</a>
           </li>
         </ol>
@@ -1629,6 +1632,148 @@ plugins.settings.apply
             by relative source path, and mounted mobile completion refreshes after plugin change.
           </li>
         </ol>
+      </section>
+      <section id="comparison">
+        <h2 {...props(styles.heading)}>Pi, OpenCode v2 and Cursor</h2>
+        <p>Source review. Changes below are proposals, not tested fixes.</p>
+        <pre {...props(styles.trace)}>{`send → durable input
+host → execution
+watch → display`}</pre>
+        <p>Keep atomic queue edits, leases, replay safety and run-targeted Stop.</p>
+        <h3 {...props(styles.heading)}>Remove</h3>
+        <ol>
+          <li>
+            <a href="cursor://file/Users/workgyver/Developer/nyte/packages/plugin/src/mcp.ts:524">
+              Catalog-triggered MCP startup.
+            </a>{" "}
+            Keep declarations; connect only for real sessions.
+          </li>
+          <li>
+            <a href="cursor://file/Users/workgyver/Developer/nyte/packages/core/src/kernel/sdk/activation.ts:572">
+              Lossy policy adapter.
+            </a>{" "}
+            Preserve reject/error outcomes; remove the failure side-map.
+          </li>
+          <li>
+            <a href="cursor://file/Users/workgyver/Developer/nyte/packages/protocol/src/schemas.ts:744">
+              Duplicate wire types.
+            </a>{" "}
+            Derive from schemas. Allow reply-wait metadata only while waiting.
+          </li>
+          <li>
+            <a href="cursor://file/Users/workgyver/Developer/nyte/packages/desktop/src/renderer/src/live.ts:81">
+              Active transcript mirror.
+            </a>{" "}
+            Only if selectors preserve render isolation and warm navigation.
+          </li>
+          <li>
+            <a href="cursor://file/Users/workgyver/Developer/nyte/packages/core/src/kernel/loop/types.ts:310">
+              Unused identity field.
+            </a>{" "}
+            Check external plugin consumers, then delete. No alias.
+          </li>
+        </ol>
+        <h3 {...props(styles.heading)}>Copy</h3>
+        <table {...props(styles.table)}>
+          <thead>
+            <tr>
+              <th {...props(styles.cell)}>Current</th>
+              <th {...props(styles.cell)}>Replace with</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td {...props(styles.cell)}>Preparing next move</td>
+              <td {...props(styles.cell)}>Working</td>
+            </tr>
+            <tr>
+              <td {...props(styles.cell)}>Send now · Enter</td>
+              <td {...props(styles.cell)}>Queue · Enter; Steer · Cmd/Ctrl+Enter</td>
+            </tr>
+            <tr>
+              <td {...props(styles.cell)}>Repeated subagent status and model</td>
+              <td {...props(styles.cell)}>Title and activity; keep attention/errors.</td>
+            </tr>
+            <tr>
+              <td {...props(styles.cell)}>Duplicate file inventories</td>
+              <td {...props(styles.cell)}>Review N changed files</td>
+            </tr>
+            <tr>
+              <td {...props(styles.cell)}>This Mac</td>
+              <td {...props(styles.cell)}>Cut.</td>
+            </tr>
+          </tbody>
+        </table>
+        <details>
+          <summary {...props(styles.question)}>Evidence and limits</summary>
+          <ul>
+            <li>
+              <a href="https://github.com/earendil-works/pi/blob/1a584a7a56eb5e7b4ff8ccbd46430f1533282eed/packages/coding-agent/src/experimental/services/transcript-provider.ts#L20-L74">
+                Pi: watch → reducer → selected state.
+              </a>{" "}
+              Experimental implementation, not its default CLI.
+            </li>
+            <li>
+              <a href="https://github.com/anomalyco/opencode/blob/07d48e1ffb4ec5fa4f48fe06e931506a7fc47ab8/packages/core/src/permission.ts#L231-L260">
+                OpenCode v2: distinct permission outcomes.
+              </a>{" "}
+              <a href="https://github.com/anomalyco/opencode/blob/07d48e1ffb4ec5fa4f48fe06e931506a7fc47ab8/packages/schema/src/session-inbox.ts#L37-L78">
+                Schema-derived inbox types.
+              </a>{" "}
+              Its{" "}
+              <a href="https://github.com/anomalyco/opencode/blob/07d48e1ffb4ec5fa4f48fe06e931506a7fc47ab8/packages/app/src/session/composer/queue.ts#L100-L130">
+                reorder path
+              </a>{" "}
+              recreates and cancels entries. Keep Nyte's atomic mutation.
+            </li>
+            <li>
+              Cursor 3.21.16,{" "}
+              <a href="file:///Applications/Cursor.app/Contents/Resources/app/out/vs/workbench/workbench.desktop.main.js">
+                desktop bundle
+              </a>
+              : <code>showLoadingPreview:</code> at byte 10974001; conditional model metadata at
+              27046529. Its{" "}
+              <a href="file:///Applications/Cursor.app/Contents/Resources/app/out/vs/workbench/workbench.glass.main.css">
+                Glass stylesheet
+              </a>{" "}
+              declares 15px/24px type at byte 1101178. Nyte already matches it.
+            </li>
+            <li>
+              <a href="cursor://file/Users/workgyver/Developer/nyte/packages/core/src/kernel/sdk/session-pool.ts:475">
+                Catalog activation
+              </a>{" "}
+              invokes plugin factories. Guard MCP acquisition, not declarations. Verify discovery
+              starts no process and preserves real sessions' shared connections.
+            </li>
+            <li>
+              Policy reject/error both become blocked-tool results. The traced path can continue
+              after policy failure; it does not execute the blocked tool. Preserve the distinction
+              before removing the side-map.
+            </li>
+            <li>
+              Both{" "}
+              <a href="cursor://file/Users/workgyver/Developer/nyte/packages/protocol/src/sdk.ts:217">
+                type
+              </a>{" "}
+              and schema permit terminal runs with <code>awaitingReply</code>. Producers guard this
+              today. Keep external-data validation.
+            </li>
+            <li>
+              <code>resultEntryId</code> has three repository references and no reader. Its value is
+              an effect ref, not a waiting generation. The exported type needs an explicit API-break
+              decision.
+            </li>
+            <li>
+              Preserve accessible status and transcript-turn review scope. Stop and submit share a
+              compact grid cell; hiding Stop while drafting needs an interaction decision.
+            </li>
+          </ul>
+          <p>
+            Nyte evidence uses worktree <code>c04c8db</code> plus active edits. No runtime or visual
+            verification. MCP, remote clients and an in-process SDK already exist; packaging was not
+            established as the priority.
+          </p>
+        </details>
       </section>
       <section id="quiz">
         <h2 {...props(styles.heading)}>Knowledge check</h2>

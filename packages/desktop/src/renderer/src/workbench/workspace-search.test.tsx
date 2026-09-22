@@ -52,7 +52,6 @@ test("search starts idle with named matching controls and no replace or ignore o
     assert.match(html, /<button[^>]*aria-label="Search filters"[^>]*aria-expanded="false"/);
     assert.match(html, /Files to include/);
     assert.match(html, /Files to exclude/);
-    assert.match(html, /Search file contents across your workspace/);
     assert.doesNotMatch(html, /Searching…|No matches found|[Rr]eplace|Respect ignore files/);
   } finally {
     client.clear();
@@ -162,7 +161,7 @@ test("file contents and transport errors are text, never executable markup", () 
 });
 
 test("idle, loading and completed empty states make different announcements", () => {
-  assert.match(renderResults({ kind: "idle" }), /role="status"[^>]*>Search file contents/);
+  assert.doesNotMatch(renderResults({ kind: "idle" }), /role="status"/);
   const loading = renderResults({ kind: "loading" });
   assert.match(loading, /role="status"[^>]*>Searching…/);
   assert.doesNotMatch(loading, /No matches/);

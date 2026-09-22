@@ -10,7 +10,7 @@ import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { changesFromTurns, turnPartId } from "@nyte-ai/client";
-import type { FileChange, RunDiff, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
+import type { FileChange, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
 import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import type { RenderedTurn } from "./transcript-rows.ts";
 import { filesChangedLabel } from "../workbench/change-tree.ts";
@@ -570,25 +570,8 @@ const ResponseView = memo(function ResponseView({
   return markdown === "" ? null : <Prose markdown={markdown} />;
 });
 
-function changesForTurn(turn: RenderedTurn, runDiff: RunDiff | undefined): readonly FileChange[] {
-  const recorded = changesFromTurns([turn]);
-  if (runDiff === undefined) return recorded;
-  switch (runDiff.kind) {
-    case "tree":
-      return runDiff.files;
-    case "recorded":
-    case "not_found":
-      return recorded;
-    default: {
-      const _exhaustive: never = runDiff;
-      return _exhaustive;
-    }
-  }
-}
-
 export const TurnView = memo(function TurnView({
   turn,
-  runDiff,
   liveTools,
   live,
   cwd,
@@ -599,7 +582,6 @@ export const TurnView = memo(function TurnView({
   waits,
 }: {
   turn: RenderedTurn;
-  runDiff: RunDiff | undefined;
   liveTools: ReadonlyMap<string, LiveToolProgress>;
   live?: LiveSnapshot;
   cwd: string | undefined;
@@ -614,7 +596,7 @@ export const TurnView = memo(function TurnView({
   waits: LiveWaits;
 }): ReactElement | null {
   const appearance = useAppearanceSettings();
-  const changes = useMemo(() => changesForTurn(turn, runDiff), [runDiff, turn]);
+  const changes = useMemo(() => changesFromTurns([turn]), [turn]);
   const changeTotals = useMemo(
     () =>
       changes.reduce(

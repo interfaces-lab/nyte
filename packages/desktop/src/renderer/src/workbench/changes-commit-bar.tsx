@@ -182,10 +182,7 @@ export function commitResultMessage(result: VcsCommitOutcome): CommitBarResult {
     case "committed":
       return { tone: "success", text: `Committed ${result.oid.slice(0, 7)}: ${result.summary}` };
     case "nothing_to_commit":
-      return {
-        tone: "error",
-        text: "Nothing to commit. The working tree matches the last commit.",
-      };
+      return { tone: "error", text: "Nothing to commit." };
     case "failed":
       return { tone: "error", text: "The commit didn’t go through.", detail: result.reason };
     case "stale":
@@ -198,7 +195,7 @@ export function pushResultMessage(result: VcsPushOutcome): CommitBarResult {
     case "pushed":
       return { tone: "success", text: `Pushed ${result.branch} to ${result.remote}.` };
     case "up_to_date":
-      return { tone: "success", text: "Nothing to push. The remote already has these commits." };
+      return { tone: "success", text: "Nothing to push." };
     case "no_upstream":
       return {
         tone: "error",
@@ -261,7 +258,7 @@ export function actionFailureMessage(cause: unknown): CommitBarResult {
   if (isTrustRefusal(cause))
     return {
       tone: "error",
-      text: "Nyte needs trust for this workspace before it can write to Git. Trust the workspace, then try again.",
+      text: "Trust this workspace to let Nyte write to Git, then try again.",
     };
   return { tone: "error", text: "The action didn’t go through.", detail: errorMessage(cause) };
 }

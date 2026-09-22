@@ -72,6 +72,7 @@ const styles = stylex.create({
   primary: {
     display: "flex",
     alignItems: "center",
+    alignSelf: "stretch",
     gap: "inherit",
     flex: 1,
     minWidth: 0,
@@ -90,6 +91,8 @@ const styles = stylex.create({
     textAlign: "start",
     textDecoration: "none",
     appearance: "none",
+    // Extend through the row's inline padding without nesting sibling actions.
+    "::before": { content: "''", position: "absolute", inset: 0 },
     // A row sits flush in a scroll container, where an outset ring would clip.
     outlineColor: colorVars["--nyte-color-focus-ring"],
     outlineStyle: { default: "none", ":focus-visible": "solid" },

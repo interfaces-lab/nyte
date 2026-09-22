@@ -6,9 +6,11 @@ import { headRef, runRef } from "../../src/kernel/names.ts";
 import { submit } from "../../src/kernel/queue.ts";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { NyteClosed, sessionId } from "../../src/kernel/sdk/types.ts";
+import { step } from "../../src/kernel/step.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
+import type { Turn } from "../../src/kernel/turn.ts";
 import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
-import { assistant, message, openStore, seedHead, setHead, user } from "./helpers.ts";
+import { assistant, call, drain, message, openStore, seedHead, setHead, user } from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "test-model",
@@ -203,6 +205,49 @@ for (const checkpoints of [0, 2]) {
     });
   }
 }
+
+test("a failed response snapshot preserves partial tool-call classes", async () => {
+  const f = await fixture();
+  try {
+    const turn: Turn = {
+      async respond() {
+        return {
+          kind: "failed",
+          message: assistant("", {
+            calls: [call("partial-call", "read", { path: "README.md" })],
+            stop: "error",
+            error: "stream failed",
+          }),
+          failure: { class: "network", message: "stream failed" },
+        };
+      },
+      async tools() {
+        assert.fail("failed response must not execute tools");
+      },
+    };
+    await submit(f.session, {
+      preparation: { kind: "none" },
+      head: "main",
+      delivery: "steer",
+      kind: "user",
+      body: message(user("go")),
+    });
+
+    assert.equal((await step(f.session, turn, { head: "main", drain })).kind, "continue");
+    assert.equal((await step(f.session, turn, { head: "main", drain })).kind, "finished");
+
+    const snapshot = await f.nyte.sessions.snapshot({ sessionId: f.id });
+    assert.ok(snapshot);
+    const failed = snapshot.transcript.findLast((item) => item.kind === "turn");
+    assert.ok(failed?.kind === "turn");
+    assert.deepEqual(failed.failure, { class: "network", message: "stream failed" });
+    const tool = failed.parts.find((part) => part.kind === "tool");
+    assert.ok(tool?.kind === "tool");
+    assert.deepEqual(tool.class, { kind: "custom", label: "read" });
+  } finally {
+    await f.nyte.close();
+  }
+});
 
 test("empty and missing snapshots preserve observer defaults and entry errors", async () => {
   const f = await fixture();

@@ -30,38 +30,56 @@ import yaml from "shiki/langs/yaml.mjs";
 import githubDark from "shiki/themes/github-dark.mjs";
 import githubLight from "shiki/themes/github-light.mjs";
 
+const languageAliases = new Map([
+  ["sh", "bash"],
+  ["shell", "bash"],
+  ["zsh", "bash"],
+  ["c++", "cpp"],
+  ["cs", "csharp"],
+  ["dockerfile", "docker"],
+  ["js", "javascript"],
+  ["md", "markdown"],
+  ["ps1", "powershell"],
+  ["py", "python"],
+  ["rb", "ruby"],
+  ["rs", "rust"],
+  ["ts", "typescript"],
+  ["yml", "yaml"],
+]);
+const languageRegistrations = new Map([
+  ["bash", bash],
+  ["c", c],
+  ["cpp", cpp],
+  ["csharp", csharp],
+  ["css", css],
+  ["diff", diff],
+  ["docker", docker],
+  ["go", go],
+  ["html", html],
+  ["java", java],
+  ["javascript", javascript],
+  ["json", json],
+  ["jsonc", jsonc],
+  ["jsx", jsx],
+  ["markdown", markdown],
+  ["mdx", mdx],
+  ["php", php],
+  ["powershell", powershell],
+  ["python", python],
+  ["ruby", ruby],
+  ["rust", rust],
+  ["sql", sql],
+  ["toml", toml],
+  ["tsx", tsx],
+  ["typescript", typescript],
+  ["xml", xml],
+  ["yaml", yaml],
+]);
+
 function createHighlighter() {
   return createHighlighterCoreSync({
     themes: [githubLight, githubDark],
-    langs: [
-      bash,
-      c,
-      cpp,
-      csharp,
-      css,
-      diff,
-      docker,
-      go,
-      html,
-      java,
-      javascript,
-      json,
-      jsonc,
-      jsx,
-      markdown,
-      mdx,
-      php,
-      powershell,
-      python,
-      ruby,
-      rust,
-      sql,
-      toml,
-      tsx,
-      typescript,
-      xml,
-      yaml,
-    ],
+    langs: [],
     engine: createJavaScriptRegexEngine(),
   });
 }
@@ -70,8 +88,13 @@ let highlighter: ReturnType<typeof createHighlighter> | undefined;
 
 /** Shiki escapes code content before returning this HTML. */
 export function highlightCode(code: string, language: string): string | undefined {
+  const canonicalLanguage = languageAliases.get(language) ?? language;
+  const registration = languageRegistrations.get(canonicalLanguage);
+  if (registration === undefined) return undefined;
   highlighter ??= createHighlighter();
-  if (!highlighter.getLoadedLanguages().includes(language)) return undefined;
+  if (!highlighter.getLoadedLanguages().includes(language)) {
+    highlighter.loadLanguageSync(registration);
+  }
   try {
     return highlighter.codeToHtml(code, {
       lang: language,

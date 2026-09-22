@@ -136,6 +136,7 @@ export function BackgroundWork({
   });
   const rootRef = useRef<HTMLDivElement>(null);
   const pillRef = useRef<HTMLButtonElement>(null);
+  const trayRef = useRef<HTMLElement>(null);
   const openedJobIds = useRef(new Set<JobInfo["id"]>());
   const trayId = useId();
   const [stopCandidates, setStopCandidates] = useState<readonly JobInfo["id"][]>();
@@ -171,6 +172,10 @@ export function BackgroundWork({
   }, [hasTerminals, onOpenChange, open]);
 
   useLayoutEffect(() => {
+    if (trayOpen) trayRef.current?.focus({ preventScroll: true });
+  }, [trayOpen]);
+
+  useLayoutEffect(() => {
     const root = rootRef.current;
     if (root === null || viewport === null) return undefined;
     const measure = () =>
@@ -188,8 +193,9 @@ export function BackgroundWork({
   }, [hasTerminals, viewport]);
 
   const close = () => {
+    const held = rootRef.current?.contains(document.activeElement) === true;
     onOpenChange(false);
-    requestAnimationFrame(() => pillRef.current?.focus());
+    if (held) requestAnimationFrame(() => pillRef.current?.focus());
   };
 
   // Until the list lands there is nothing to say: most chats have no jobs, and
@@ -235,7 +241,9 @@ export function BackgroundWork({
       )}
       {trayOpen && (
         <section
+          ref={trayRef}
           id={trayId}
+          tabIndex={-1}
           aria-label="Terminals"
           {...props(trayStyles.surface)}
           onKeyDown={(event) => {
@@ -246,7 +254,7 @@ export function BackgroundWork({
           }}
         >
           <div {...props(trayStyles.header)}>
-            <span {...props(trayStyles.title)}>{`${count} ${noun} Running`}</span>
+            <span {...props(trayStyles.title)}>{`${count} ${noun.toLowerCase()}`}</span>
             <button
               type="button"
               aria-label={
@@ -265,12 +273,12 @@ export function BackgroundWork({
                 setStopCandidates(undefined);
               }}
             >
-              {stopCandidates !== undefined ? "Confirm" : "Stop All"}
+              {stopCandidates !== undefined ? "Confirm" : "Stop all"}
             </button>
             <button
               type="button"
-              aria-label="Close background work"
-              title="Close background work"
+              aria-label="Close terminal list"
+              title="Close terminal list"
               {...props(styles.action, styles.iconAction, focus.ringInset)}
               onClick={close}
             >

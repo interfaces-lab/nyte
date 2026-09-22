@@ -131,7 +131,7 @@ interface Flight {
   row: OutboxRow;
   observed: boolean;
   cancelRetry: (() => void) | undefined;
-  readonly settled: PromiseWithResolvers<OutboxOutcome>;
+  settled: PromiseWithResolvers<OutboxOutcome>;
 }
 
 export function createOutbox(options: OutboxOptions): Outbox {
@@ -170,6 +170,10 @@ export function createOutbox(options: OutboxOptions): Outbox {
       receipt = await options.send({ ...input, key });
     } catch (cause) {
       if (!current(flight)) {
+        flight.row = {
+          ...flight.row,
+          state: { kind: "retrying", attempts, reason: errorMessage(cause) },
+        };
         flight.settled.resolve({ kind: "withdrawn" });
         return;
       }
@@ -184,6 +188,7 @@ export function createOutbox(options: OutboxOptions): Outbox {
     void options.storage?.remove(key).catch(() => undefined);
     const durable: OutboxOutcome = { kind: "durable", change: receipt.change };
     if (!current(flight)) {
+      flight.row = { ...flight.row, state: durable };
       flight.settled.resolve(durable);
     } else if (flight.observed) {
       settle(flight, durable);
@@ -202,6 +207,23 @@ export function createOutbox(options: OutboxOptions): Outbox {
     flights.set(record.key, flight);
     refresh();
     return flight;
+  };
+
+  const removeStored = (key: string): Promise<void> =>
+    options.storage?.remove(key) ?? Promise.resolve();
+
+  const restoreWithdrawal = (flight: Flight): void => {
+    if (flights.has(flight.row.key)) return;
+    flight.settled = Promise.withResolvers();
+    flights.set(flight.row.key, flight);
+    const state = flight.row.state;
+    if (state.kind === "retrying") {
+      flight.cancelRetry = schedule(() => {
+        flight.cancelRetry = undefined;
+        void attempt(flight, state.attempts + 1);
+      }, retryDelayMs(state.attempts));
+    }
+    refresh();
   };
 
   let activation = 0;
@@ -225,29 +247,50 @@ export function createOutbox(options: OutboxOptions): Outbox {
       const flight = flights.get(key);
       if (flight === undefined) return undefined;
       const { state } = flight.row;
+      flight.cancelRetry?.();
+      flight.cancelRetry = undefined;
+      flights.delete(key);
+      refresh();
       switch (state.kind) {
-        // `submit` takes the write back once it lands.
         case "storing":
           settle(flight, { kind: "withdrawn" });
-          break;
-        // The row leaves now; the attempt in flight answers with what the store did.
-        case "sending":
-          flights.delete(key);
-          refresh();
-          break;
+          return flight.settled.promise;
+        case "sending": {
+          const outcome = flight.settled.promise;
+          return Promise.all([outcome, removeStored(key)])
+            .then(([settled]) => settled)
+            .catch((cause: unknown) => {
+              restoreWithdrawal(flight);
+              throw cause;
+            });
+        }
         case "retrying":
-          void options.storage?.remove(key).catch(() => undefined);
-          settle(flight, { kind: "withdrawn" });
-          break;
+          return removeStored(key)
+            .then(() => {
+              const outcome = { kind: "withdrawn" } as const;
+              flight.settled.resolve(outcome);
+              return outcome;
+            })
+            .catch((cause: unknown) => {
+              restoreWithdrawal(flight);
+              throw cause;
+            });
         case "durable":
-          settle(flight, { kind: "durable", change: state.change });
-          break;
+          return removeStored(key)
+            .then(() => {
+              const outcome = { kind: "durable", change: state.change } as const;
+              flight.settled.resolve(outcome);
+              return outcome;
+            })
+            .catch((cause: unknown) => {
+              restoreWithdrawal(flight);
+              throw cause;
+            });
         default: {
           const _exhaustive: never = state;
           return _exhaustive;
         }
       }
-      return flight.settled.promise;
     },
     observe: (update) => {
       const names = drawn(update);

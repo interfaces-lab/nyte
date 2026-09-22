@@ -352,6 +352,7 @@ export function WorkspaceSearchResults({
   readonly state: SearchState;
   readonly onOpen: WorkspaceSearchProps["onOpen"];
 }): ReactElement {
+  if (state.kind === "idle") return <div {...props(styles.results)} />;
   if (state.kind !== "ready") {
     return (
       <div {...props(styles.results)}>
@@ -359,11 +360,7 @@ export function WorkspaceSearchResults({
           role={state.kind === "error" ? "alert" : "status"}
           {...props(styles.status, state.kind === "error" && styles.error)}
         >
-          {state.kind === "idle"
-            ? "Search file contents across your workspace."
-            : state.kind === "loading"
-              ? "Searching…"
-              : state.message}
+          {state.kind === "loading" ? "Searching…" : state.message}
         </p>
       </div>
     );

@@ -34,8 +34,8 @@ function withSortedKeys(_key: string, member: JsonValue | undefined): JsonValue 
   return Object.fromEntries(entries);
 }
 
-export function canonicalJson<Value>(value: Value): string {
-  const text: string | undefined = JSON.stringify(value, withSortedKeys);
+export function canonicalJson(value: unknown) {
+  const text = JSON.stringify(value, withSortedKeys);
   if (text === undefined) throw new TypeError("Value has no JSON representation");
   return text;
 }

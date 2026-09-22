@@ -392,6 +392,18 @@ test("a store another schema wrote is refused with a message, never read", async
   legacy.close();
   assert.throws(() => new SqliteStore(path), /Delete it to start over/u);
 
+  const oldVersionPath = storePath();
+  const oldVersion = new DatabaseSync(oldVersionPath);
+  oldVersion.exec("PRAGMA user_version = 3");
+  oldVersion.close();
+  assert.throws(() => new SqliteStore(oldVersionPath), /another nyte schema/u);
+  const unchanged = new DatabaseSync(oldVersionPath, { readOnly: true });
+  try {
+    assert.equal(unchanged.prepare("PRAGMA user_version").get()?.user_version, 3);
+  } finally {
+    unchanged.close();
+  }
+
   const written = storePath();
   await openStore(written).list();
   await openStore(written).list();

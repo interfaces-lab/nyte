@@ -5,9 +5,12 @@
  * Checkers are compiled once: the interpreted checker walks the cyclic JSON
  * schema per value and is two orders of magnitude slower on a hot read path.
  */
+import { canonicalJson } from "@nyte-ai/client";
 import { schemas } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
+import { hashCanonicalJson } from "./hash.ts";
+import type { EventBody, Obj } from "./model.ts";
 
 const NullableString = Type.Union([Type.String(), Type.Null()]);
 
@@ -176,3 +179,22 @@ export const StoreSessionInfoSchema = Type.Object({ id: Type.String(), createdAt
 
 export const checkObject = Compile(ObjectSchema);
 export const checkEventBody = Compile(EventBodySchema);
+
+export function serializeObject(object: Obj) {
+  const body = canonicalJson(object);
+  const value: unknown = JSON.parse(body);
+  if (!checkObject.Check(value)) {
+    throw new TypeError("Object is not valid after JSON serialization");
+  }
+  return { body, kind: value.kind, oid: hashCanonicalJson(body) };
+}
+
+export function serializeEventBody(body: EventBody): string {
+  const serialized = JSON.stringify(body);
+  if (serialized === undefined) throw new TypeError("Event body is not JSON serializable");
+  const value: unknown = JSON.parse(serialized);
+  if (!checkEventBody.Check(value)) {
+    throw new TypeError("Event body is not valid after JSON serialization");
+  }
+  return serialized;
+}

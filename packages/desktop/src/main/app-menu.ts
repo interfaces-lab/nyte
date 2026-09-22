@@ -1,19 +1,44 @@
 import type { MenuItemConstructorOptions } from "electron";
-import type { AppMenuCommand } from "../shared/app-menu.ts";
+import type { AppInfo, AppMenuCommand } from "../shared/app-menu.ts";
 import { clientActionAccelerator, clientActions } from "../shared/client-actions.ts";
 
 export function applicationMenuTemplate(options: {
   platform: NodeJS.Platform;
   name: string;
-  settings: () => void;
-  about: () => void;
+  appInfo: () => AppInfo;
+  dispatch: (command: AppMenuCommand) => void;
 }): MenuItemConstructorOptions[] {
-  const about = { label: `About ${options.name}`, click: options.about };
+  const about = {
+    label: `About ${options.name}`,
+    click: () => options.dispatch({ kind: "about", info: options.appInfo() }),
+  };
   const settings = {
     label: "Settings…",
     accelerator: clientActionAccelerator(clientActions.settings),
-    click: options.settings,
+    click: () => options.dispatch({ kind: "action", action: clientActions.settings.id }),
   };
+  const fileActions = [
+    {
+      label: "New Chat",
+      accelerator: clientActionAccelerator(clientActions.newChat),
+      click: () => options.dispatch({ kind: "action", action: clientActions.newChat.id }),
+    },
+    {
+      label: "Open Folder…",
+      accelerator: clientActionAccelerator(clientActions.openFolder),
+      click: () => options.dispatch({ kind: "action", action: clientActions.openFolder.id }),
+    },
+    { type: "separator" },
+    {
+      label: "New Terminal",
+      accelerator: clientActionAccelerator(clientActions.newTerminal),
+      click: () => options.dispatch({ kind: "action", action: clientActions.newTerminal.id }),
+    },
+    {
+      label: "New Browser",
+      click: () => options.dispatch({ kind: "action", action: clientActions.newBrowser.id }),
+    },
+  ] satisfies MenuItemConstructorOptions[];
   const update = { id: "check-for-updates", label: "Check for Updates…" };
   return [
     ...(options.platform === "darwin"
@@ -37,9 +62,19 @@ export function applicationMenuTemplate(options: {
           } satisfies MenuItemConstructorOptions,
         ]
       : []),
-    options.platform === "darwin"
-      ? { role: "fileMenu" }
-      : { label: "File", submenu: [settings, { type: "separator" }, { role: "quit" }] },
+    {
+      label: "File",
+      submenu:
+        options.platform === "darwin"
+          ? [...fileActions, { type: "separator" }, { role: "close" }]
+          : [
+              ...fileActions,
+              { type: "separator" },
+              settings,
+              { type: "separator" },
+              { role: "quit" },
+            ],
+    },
     { role: "editMenu" },
     { role: "viewMenu" },
     { role: "windowMenu" },
@@ -53,19 +88,16 @@ export function createMenuCommandDelivery(options: {
   send: (command: AppMenuCommand) => void;
 }) {
   let ready = false;
-  let pending: AppMenuCommand | undefined;
+  const pending: AppMenuCommand[] = [];
   return {
-    dispatch(command: AppMenuCommand): void {
+    dispatch: (command: AppMenuCommand): void => {
       options.openWindow();
       if (ready) options.send(command);
-      else pending = command;
+      else pending.push(command);
     },
     ready(): void {
       ready = true;
-      if (pending === undefined) return;
-      const command = pending;
-      pending = undefined;
-      options.send(command);
+      for (const command of pending.splice(0)) options.send(command);
     },
     reset(): void {
       ready = false;

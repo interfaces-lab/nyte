@@ -12,11 +12,12 @@ import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { MutableModels } from "@nyte-ai/ai";
-import { dispatch, watchPluginDirectories } from "@nyte-ai/core";
+import { createNyte, dispatch, watchPluginDirectories } from "@nyte-ai/core";
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import type {
   Disposer,
   ResolvedPlugins,
+  SessionActivation,
   SessionId,
   SessionInfo,
   Nyte,
@@ -175,6 +176,8 @@ interface OpenProjectTarget extends OpenTargetBase {
   readonly workspace: WorkspaceInfo;
 }
 
+type LocalSessionDirectory = Extract<WorkspaceSessionDirectory, { environment: "local" }>;
+
 type CloudAvailability = Extract<
   WorkspaceSessionDirectory,
   { environment: "cloud" }
@@ -233,12 +236,12 @@ function serverTarget(settings: ServerSettings): OpenServerTarget {
 }
 
 /**
- * How long a directory read waits for the server's list before answering with
- * the last one. Local folders answer in milliseconds; a slow or unreachable
- * server must not hold the sidebar, startup, or a folder switch behind its
- * 15s request timeout. The read keeps going and the next poll reports it.
+ * How long a directory read waits for a fresh server list before using its
+ * cached list. The read keeps going so the next poll sees the result.
  */
-const DIRECTORY_SERVER_BUDGET_MS = 1_500;
+const DIRECTORY_SERVER_BUDGET_MS = 100;
+const CLOSED_DIRECTORY_MAX_AGE_MS = 60_000;
+const CLOSED_DIRECTORY_REFRESH_BATCH = 4;
 
 /** The share's own cursor; Mac `this.open` may move without it. */
 interface ShareCursor {
@@ -288,7 +291,12 @@ export class DesktopHost {
   private serverDirectoryRead: Promise<WorkspaceSessionDirectory | undefined> | undefined;
   /** In flight from start until stopped, so two Start presses share one listener. */
   private mobileShare: Promise<ActiveMobileShare> | undefined;
-  private readonly sessionOwners = new Map<SessionId, OpenTarget>();
+  private readonly sessionOwners = new Map<SessionId, OpenTarget | WorkspaceTarget>();
+  private readonly closedDirectories = new Map<
+    string | null,
+    { readonly directory: LocalSessionDirectory; readonly refreshedAt: number }
+  >();
+  private sessionDirectoryRead: Promise<readonly WorkspaceSessionDirectory[]> | undefined;
   private lifecycle: Promise<void> = Promise.resolve();
   private readonly mentionRequests = new Map<string, AbortController>();
   private readonly watches = new Map<string, WatchLifetime>();
@@ -704,6 +712,7 @@ export class DesktopHost {
     for (const controller of this.mentionRequests.values()) controller.abort();
     try {
       await this.closeTerminals();
+      await this.sessionDirectoryRead?.catch(() => undefined);
       await this.serialize(() => this.teardownOpen());
     } finally {
       await Promise.all([this.otel.shutdown(), this.usageScan.close()]);
@@ -906,7 +915,19 @@ export class DesktopHost {
   /** The workspace that owns a known session; the selected one for anything else. */
   private owner(sessionId: SessionId | undefined): Promise<OpenTarget> {
     const owner = sessionId === undefined ? undefined : this.sessionOwners.get(sessionId);
-    return owner === undefined ? this.prepare() : Promise.resolve(owner);
+    if (owner === undefined) return this.prepare();
+    if ("sdk" in owner) return Promise.resolve(owner);
+    return this.serialize(async () => {
+      if (sessionId === undefined) return this.compose(this.target);
+      const current = this.sessionOwners.get(sessionId);
+      if (current === undefined) {
+        throw new ExpectedHostError({ code: "not_found", message: "Session not found" });
+      }
+      if ("sdk" in current) return current;
+      const open = await this.compose(current);
+      this.sessionOwners.set(sessionId, open);
+      return open;
+    });
   }
 
   private models(): Promise<MutableModels> {
@@ -1021,6 +1042,12 @@ export class DesktopHost {
     const key = target.kind === "home" ? null : target.workspace.path;
     const existing = this.openTargets.get(key);
     if (existing !== undefined) return existing;
+    const open = await this.createTarget(target);
+    this.openTargets.set(key, open);
+    return open;
+  }
+
+  private async createTarget(target: WorkspaceTarget): Promise<OpenLocalTarget> {
     const models = await this.models();
     const { catalog, defaultModel: fallback } = await this.catalog();
     const projectCwd = target.kind === "project" ? target.workspace.path : undefined;
@@ -1028,7 +1055,6 @@ export class DesktopHost {
       path: await storePath(target),
       worker: this.dependencies.storeWorker,
     });
-    await store.ready();
     const trashPath = this.dependencies.trashPath;
     const vcs =
       projectCwd === undefined
@@ -1040,6 +1066,7 @@ export class DesktopHost {
     let sdk: Nyte | undefined;
     let stopPluginWatch: Disposer | undefined;
     try {
+      await store.ready();
       const extraPlugins = [
         browserToolsPlugin({
           agent: this.dependencies.browser.agent,
@@ -1115,7 +1142,6 @@ export class DesktopHost {
       };
       if (target.kind === "home") {
         const open = { ...base, kind: "home" } satisfies OpenHomeTarget;
-        this.openTargets.set(null, open);
         return open;
       }
       const open = {
@@ -1123,7 +1149,6 @@ export class DesktopHost {
         kind: "project",
         workspace: target.workspace,
       } satisfies OpenProjectTarget;
-      this.openTargets.set(target.workspace.path, open);
       return open;
     } catch (error) {
       stopPluginWatch?.();
@@ -1140,25 +1165,35 @@ export class DesktopHost {
     if (this.open?.kind === "project" && this.open.workspace.path === target) {
       await this.closeWorkspace();
     }
+    await this.sessionDirectoryRead?.catch(() => undefined);
     await this.serialize(() => this.retireForgottenTarget(target));
   }
 
   private async retireForgottenTarget(path: string): Promise<void> {
     const open = this.openTargets.get(path);
+    if (this.sessionDirectoryRead !== undefined) {
+      const retry = (): Promise<void> => this.serialize(() => this.retireForgottenTarget(path));
+      void this.sessionDirectoryRead.then(retry, retry).catch(() => undefined);
+      return;
+    }
     if (
-      open === undefined ||
-      open === this.open ||
-      open.sessionAttachments.size > 0 ||
-      this.watches.size > 0 ||
-      this.mobileShare !== undefined ||
-      (await this.updateTaskCount(open)) > 0
+      open !== undefined &&
+      (open === this.open ||
+        open.sessionAttachments.size > 0 ||
+        this.watches.size > 0 ||
+        this.mobileShare !== undefined ||
+        (await this.updateTaskCount(open)) > 0)
     ) {
       return;
     }
+    this.closedDirectories.delete(path);
     this.openTargets.delete(path);
     for (const [sessionId, owner] of this.sessionOwners) {
-      if (owner === open) this.sessionOwners.delete(sessionId);
+      if (owner === open || (owner.kind === "project" && owner.workspace.path === path)) {
+        this.sessionOwners.delete(sessionId);
+      }
     }
+    if (open === undefined) return;
     open.stopPluginWatch();
     await open.sdk.close().catch(() => undefined);
     await open.store.close().catch(() => undefined);
@@ -1173,46 +1208,145 @@ export class DesktopHost {
     });
   }
 
-  /**
-   * Read every folder without selecting it or stopping another folder's work.
-   * Only composing a store needs the lifecycle lock, and each store composes
-   * once; the list reads run outside it so a poll never blocks a folder
-   * switch, and the server read runs beside them on its own budget.
-   */
-  private async sessionDirectory(): Promise<readonly WorkspaceSessionDirectory[]> {
-    const server = this.serverDirectory();
-    const opens = await this.serialize(async () => {
-      const workspaces = await this.workspaces.list();
-      const targets: WorkspaceTarget[] = [
-        { kind: "home" },
-        ...workspaces.map(
-          (workspace) => ({ kind: "project", workspace }) satisfies WorkspaceTarget,
-        ),
-      ];
-      return Promise.all(
-        targets.map(async (target) => ({ target, open: await this.compose(target) })),
-      );
+  private async readClosedDirectory(target: WorkspaceTarget): Promise<readonly SessionInfo[]> {
+    const models = await this.models();
+    const { defaultModel } = await this.catalog();
+    const store = new WorkerStore({
+      path: await storePath(target),
+      worker: this.dependencies.storeWorker,
     });
-    const local = opens.map(async ({ target, open }): Promise<WorkspaceSessionDirectory> => {
-      // Roots only; a subagent child shows inside its parent's task call.
-      const { items } = await open.sdk.sessions.list({ parent: null, includeArchived: true });
-      for (const session of items) {
-        this.sessionOwners.set(session.sessionId, open);
-        if (session.archived) {
-          await this.releaseSessionIfIdle(open, session.sessionId).catch(() => undefined);
-        }
-      }
-      return {
-        environment: "local",
-        workspacePath: target.kind === "home" ? null : target.workspace.path,
-        sessions: items,
-      };
-    });
-    const directories = await Promise.all([...local, server]);
-    return directories.filter((directory) => directory !== undefined);
+    let sdk: Nyte | undefined;
+    try {
+      await store.ready();
+      sdk = await createNyte({
+        store,
+        models,
+        model: defaultModel,
+        drain: "all",
+        streamFn: (model, context, options) => models.streamSimple(model, context, options),
+        telemetry: this.otel.telemetry,
+        resolveActivation: async (): Promise<SessionActivation> => {
+          const resolved = await this.pluginTarget(target);
+          switch (resolved.kind) {
+            case "home":
+              return { kind: "active", plugins: [], env: { cwd: homedir() } };
+            case "project":
+              return { kind: "active", plugins: [], env: { cwd: resolved.workspace.cwd } };
+            case "inactive":
+            case "requires":
+              return resolved;
+            default: {
+              const _exhaustive: never = resolved;
+              return _exhaustive;
+            }
+          }
+        },
+      });
+      const { items } = await sdk.sessions.list({ parent: null, includeArchived: true });
+      return items;
+    } finally {
+      await sdk?.close().catch(() => undefined);
+      await store.close().catch(() => undefined);
+    }
   }
 
-  /** The server's list within the budget, else its last known one; the read continues for the next poll. */
+  private sessionDirectory(): Promise<readonly WorkspaceSessionDirectory[]> {
+    if (this.closed)
+      return Promise.reject(
+        new ExpectedHostError({ code: "closed", message: "The window is closed" }),
+      );
+    return (this.sessionDirectoryRead ??= this.readSessionDirectory().finally(() => {
+      this.sessionDirectoryRead = undefined;
+    }));
+  }
+
+  private async readSessionDirectory(): Promise<readonly WorkspaceSessionDirectory[]> {
+    const server = this.serverDirectory();
+    const local = (async () => {
+      const targets = await this.serialize(async () => {
+        const workspaces = await this.workspaces.list();
+        return [
+          { kind: "home" },
+          ...workspaces.map(
+            (workspace) => ({ kind: "project", workspace }) satisfies WorkspaceTarget,
+          ),
+        ] satisfies WorkspaceTarget[];
+      });
+      const directories: LocalSessionDirectory[] = [];
+      const now = Date.now();
+      const refreshClosed = new Set(
+        targets
+          .map((target) => (target.kind === "home" ? null : target.workspace.path))
+          .filter((workspacePath) => {
+            if (this.openTargets.has(workspacePath)) return false;
+            const cached = this.closedDirectories.get(workspacePath);
+            return cached !== undefined && now - cached.refreshedAt >= CLOSED_DIRECTORY_MAX_AGE_MS;
+          })
+          .sort(
+            (left, right) =>
+              (this.closedDirectories.get(left)?.refreshedAt ?? 0) -
+              (this.closedDirectories.get(right)?.refreshedAt ?? 0),
+          )
+          .slice(0, CLOSED_DIRECTORY_REFRESH_BATCH),
+      );
+      for (let index = 0; index < targets.length; index += 4) {
+        const reads = await Promise.allSettled(
+          targets.slice(index, index + 4).map(async (target): Promise<LocalSessionDirectory> => {
+            const workspacePath = target.kind === "home" ? null : target.workspace.path;
+            const existing = this.openTargets.get(workspacePath);
+            const cached = this.closedDirectories.get(workspacePath);
+            if (
+              existing === undefined &&
+              cached !== undefined &&
+              !refreshClosed.has(workspacePath)
+            ) {
+              return cached.directory;
+            }
+            const items =
+              existing === undefined
+                ? await this.readClosedDirectory(target)
+                : (
+                    await existing.sdk.sessions.list({
+                      parent: null,
+                      includeArchived: true,
+                    })
+                  ).items;
+            for (const session of items) {
+              if (!this.sessionOwners.has(session.sessionId)) {
+                this.sessionOwners.set(session.sessionId, existing ?? target);
+              }
+              if (existing !== undefined && session.archived) {
+                await this.releaseSessionIfIdle(existing, session.sessionId).catch(() => undefined);
+              }
+            }
+            const directory = {
+              environment: "local",
+              workspacePath,
+              sessions: items,
+            } satisfies LocalSessionDirectory;
+            if (existing === undefined) {
+              this.closedDirectories.set(workspacePath, {
+                directory,
+                refreshedAt: Date.now(),
+              });
+            }
+            return directory;
+          }),
+        );
+        for (const read of reads) {
+          if (read.status === "rejected") throw read.reason;
+          directories.push(read.value);
+        }
+      }
+      return directories;
+    })();
+    const [directories, remote] = await Promise.allSettled([local, server]);
+    if (directories.status === "rejected") throw directories.reason;
+    if (remote.status === "rejected") throw remote.reason;
+    return remote.value === undefined ? directories.value : [...directories.value, remote.value];
+  }
+
+  /** Use a fresh server list when it is fast, otherwise answer from the cache. */
   private async serverDirectory(): Promise<WorkspaceSessionDirectory | undefined> {
     const server = await this.openServer();
     if (server === undefined) return undefined;
@@ -1220,7 +1354,7 @@ export class DesktopHost {
       this.serverDirectoryRead = undefined;
     }));
     let budget: ReturnType<typeof setTimeout> | undefined;
-    const lastKnown = new Promise<WorkspaceSessionDirectory>((resolve) => {
+    const cached = new Promise<WorkspaceSessionDirectory>((resolve) => {
       budget = setTimeout(
         () =>
           resolve({
@@ -1232,7 +1366,7 @@ export class DesktopHost {
       );
     });
     try {
-      return await Promise.race([read, lastKnown]);
+      return await Promise.race([read, cached]);
     } finally {
       clearTimeout(budget);
     }
@@ -1791,6 +1925,7 @@ export class DesktopHost {
     for (const watch of this.watches.values()) watch.controller.abort();
     this.watches.clear();
     this.sessionOwners.clear();
+    this.closedDirectories.clear();
     for (const open of this.openTargets.values()) {
       open.stopPluginWatch();
       for (const attachment of open.sessionAttachments.values()) attachment.detach();

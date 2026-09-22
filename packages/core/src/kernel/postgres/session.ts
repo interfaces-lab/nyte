@@ -1,10 +1,14 @@
 import { setTimeout } from "node:timers/promises";
-import { hashCanonicalJson, hashObject } from "../hash.ts";
-import { canonicalJson } from "@nyte-ai/client";
+import { hashObject } from "../hash.ts";
 import { CursorExpired } from "@nyte-ai/protocol";
 import { type Commit, type Event, type EventBody, type Lease, type Obj } from "../model.ts";
 import { isRefName, newOwnerId } from "../names.ts";
-import { checkEventBody, checkObject } from "../store-schemas.ts";
+import {
+  checkEventBody,
+  checkObject,
+  serializeEventBody,
+  serializeObject,
+} from "../store-schemas.ts";
 import {
   CorruptObject,
   UnknownSession,
@@ -140,7 +144,7 @@ class SessionState {
        SELECT $1, $2::bigint + ordinal - 1,
          floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint, body
        FROM json_array_elements_text($3::json) WITH ORDINALITY AS batch(body, ordinal)`,
-      [this.id, firstSeq, JSON.stringify(bodies.map((body) => JSON.stringify(body)))],
+      [this.id, firstSeq, JSON.stringify(bodies.map(serializeEventBody))],
     );
     return nextSeq - 1;
   }
@@ -158,10 +162,7 @@ class PostgresObjects implements Objects {
   }
 
   async put(objects: readonly Obj[]): Promise<readonly string[]> {
-    const encoded = objects.map((object) => {
-      const body = canonicalJson(object);
-      return { oid: hashCanonicalJson(body), kind: object.kind, body };
-    });
+    const encoded = objects.map(serializeObject);
     await this.state.transact(async (transaction) => {
       if (encoded.length === 0) return;
       await transaction.query(

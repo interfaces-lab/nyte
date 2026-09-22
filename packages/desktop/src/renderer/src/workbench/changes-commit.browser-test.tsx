@@ -208,7 +208,7 @@ export async function run(): Promise<string> {
     commitScript.branchResults = [{ kind: "created" }];
     await type("New branch name", "feature/second");
     buttonNamed("Create branch and commit").click();
-    await until(() => report().includes("Nyte needs trust"), `trust refusal: ${report()}`);
+    await until(() => report().includes("Trust this workspace"), `trust refusal: ${report()}`);
 
     // A pull request without the GitHub CLI says what is missing.
     commitScript.pullRequestResults = [{ kind: "cli_missing" }];

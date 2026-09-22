@@ -245,7 +245,13 @@ const persistedChangesTab = Type.Object(
   {
     id: nonEmpty,
     kind: Type.Literal("changes"),
-    scope: Type.Object({ kind: Type.Literal("uncommitted") }, strict),
+    scope: Type.Union([
+      Type.Object({ kind: Type.Literal("uncommitted") }, strict),
+      Type.Object({ kind: Type.Literal("staged") }, strict),
+      Type.Object({ kind: Type.Literal("unstaged") }, strict),
+      Type.Object({ kind: Type.Literal("turn"), turnId: nonEmpty }, strict),
+      Type.Object({ kind: Type.Literal("commit"), oid: nonEmpty }, strict),
+    ]),
     selectedPath: Type.Union([nonEmpty, Type.Null()]),
     pathRevealRevision: Type.Integer({ minimum: 0 }),
     scrollTop: Type.Number({ minimum: 0 }),
@@ -287,9 +293,8 @@ function persistedTabFor(tab: WorkbenchTab): PersistedTab | undefined {
     case "file":
     case "browser":
     case "files":
-      return tab;
     case "changes":
-      return { ...tab, scope: { kind: "uncommitted" } };
+      return tab;
     case "terminal":
       return undefined;
     default: {

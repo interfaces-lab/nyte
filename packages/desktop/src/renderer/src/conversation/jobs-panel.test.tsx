@@ -61,10 +61,10 @@ describe("composer background work", () => {
       [command, { ...command, id: "done", phase: { kind: "completed" }, command: "Finished" }],
       true,
     );
-    expect(html).toContain("1 Terminal Running");
+    expect(html).toContain("1 terminal");
     expect(html).toContain('aria-label="Open terminal for Run tests"');
     expect(html).toContain('aria-label="Stop Run tests"');
-    expect(html).toContain('aria-label="Close background work"');
+    expect(html).toContain('aria-label="Close terminal list"');
     expect(html).toContain("<section");
     expect(html).not.toContain("Finished");
     expect(html).not.toContain('aria-label="Open terminals');

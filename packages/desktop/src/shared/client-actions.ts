@@ -37,6 +37,8 @@ export const clientActions = {
   openFolder: {
     id: "open-folder",
     label: "Open folder…",
+    key: "o",
+    chord: "primary",
     scope: "window",
     palette: {
       keywords: "workspace project directory choose",
@@ -134,6 +136,11 @@ export const clientActions = {
     label: "New terminal",
     key: "`",
     chord: "control-shift",
+    scope: "workspace",
+  },
+  newBrowser: {
+    id: "new-browser",
+    label: "New browser",
     scope: "workspace",
   },
   focusPane: {

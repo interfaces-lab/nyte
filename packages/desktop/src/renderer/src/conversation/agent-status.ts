@@ -1,9 +1,13 @@
 import { sessionMark } from "@nyte-ai/client";
 import type { SessionInfo } from "@nyte-ai/protocol";
+import type { ProvisionalSubagentSession } from "./subagent-sessions.ts";
 
 export type AgentState = "idle" | "working" | "completed" | "failed" | "stopped";
 
-export function agentState(session: Pick<SessionInfo, "heads">): AgentState {
+type AgentStatusSource = Pick<SessionInfo, "heads"> | ProvisionalSubagentSession;
+
+export function agentState(session: AgentStatusSource): AgentState {
+  if ("kind" in session) return "working";
   const run = session.heads[0]?.run;
   if (run === undefined) return "idle";
   switch (run.phase.kind) {
@@ -35,7 +39,8 @@ export const AGENT_STATE_LABEL = {
 
 export type SubagentTrayState = "working" | "attention" | "inactive";
 
-export function subagentTrayState(session: Pick<SessionInfo, "heads">): SubagentTrayState {
+export function subagentTrayState(session: AgentStatusSource): SubagentTrayState {
+  if ("kind" in session) return "working";
   const mark = sessionMark(session);
   switch (mark) {
     case "waiting":
