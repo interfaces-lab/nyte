@@ -22,13 +22,15 @@ Sparkle's archive signature does not replace Apple code signing. Production macO
 
 ## Build and publish
 
-1. Increment `packages/desktop/package.json`. Versions must increase. When publishing alongside the TUI, use the same version and `v<version>` tag.
+1. Increment the CLI, TUI, and desktop versions together and tag `v<version>`. Development versions use `0.0.9-dev.1`, `0.0.9-dev.2`, etc. Sparkle uses `GITHUB_RUN_NUMBER` as the build number; the package version is the display version.
 2. Run:
 
    ```sh
-   pnpm --dir packages/desktop package:mac
+   pnpm --dir packages/desktop package:mac --config.mac.bundleVersion=<build-number>
    pnpm --dir packages/desktop update:appcast dist/Nyte-<version>-mac-arm64.zip
    ```
+
+   Manual build numbers must exceed the published appcast's `sparkle:version` and stay below the next CI run number.
 
    The second command uses the default Sparkle Keychain key. For CI, append `--key-file /secure/path/to/sparkle-key`. It stages only the specified ZIP, generates its signed appcast with versioned GitHub download URLs, and writes `appcast.xml` beside the ZIP. Neither command publishes.
 3. Upload the DMG, ZIP, blockmaps, and `latest-mac.yml` from that build to the public versioned release `v<version>`. Upload Windows/Linux artifacts and their builder metadata when releasing those platforms. Do not overwrite metadata with artifacts from a partial build.

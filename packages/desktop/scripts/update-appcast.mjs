@@ -45,8 +45,13 @@ try {
   const appcast = join(directory, "appcast.xml");
   const generated = await readFile(appcast, "utf8");
   if (
-    generated.match(/<sparkle:shortVersionString>([^<]+)<\/sparkle:shortVersionString>/u)?.[1] !==
-      version ||
+    process.env.GITHUB_RUN_NUMBER !== undefined &&
+    !generated.includes(`<sparkle:version>${process.env.GITHUB_RUN_NUMBER}</sparkle:version>`)
+  ) {
+    throw new Error("The archive build number must match the release workflow run number.");
+  }
+  if (
+    !generated.includes(`<sparkle:shortVersionString>${version}</sparkle:shortVersionString>`) ||
     !generated.includes('sparkle:edSignature="')
   ) {
     throw new Error(

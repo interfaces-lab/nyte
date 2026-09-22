@@ -43,6 +43,7 @@ export default {
   asarUnpack: ["node_modules/@lydell/**/*"],
   extraResources: [{ from: "resources/adblock.bin", to: "adblock.bin" }],
   mac: {
+    bundleVersion: process.env.GITHUB_RUN_NUMBER,
     category: "public.app-category.developer-tools",
     icon: "build/icon.icns",
     target: [
