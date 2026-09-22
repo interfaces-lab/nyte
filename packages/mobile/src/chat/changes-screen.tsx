@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactElement } from "react";
+import { useCallback, useMemo, useState, type ReactElement } from "react";
 import type { RefreshControlProps } from "react-native";
 import { ActivityIndicator, RefreshControl, SectionList } from "react-native";
 import { useQuery } from "@tanstack/react-query";
@@ -30,7 +30,8 @@ type FileSection = {
   added: number;
   removed: number;
   subtitle: string | undefined;
-  lines: Line[];
+  file: PatchFile;
+  lineCount: number;
 };
 
 /** Long patches render their head first; the rest waits for a tap. */
@@ -40,18 +41,25 @@ const LINE_LIMIT = 400;
 type FileView = "collapsed" | "head" | "whole";
 
 /** Parsed patch → display lines with new-side (or old-side) line numbers. */
-function linesOf(file: PatchFile): Line[] {
+function linesOf(file: PatchFile, limit: number): Line[] {
   const out: Line[] = [];
+
   for (const hunk of file.hunks) {
+    if (out.length === limit) return out;
+
     out.push({
       kind: "hunk",
       text: `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
     });
     let oldLine = hunk.oldStart;
     let newLine = hunk.newStart;
+
     for (const raw of hunk.lines) {
+      if (out.length === limit) return out;
+
       const marker = raw[0];
       const text = raw.slice(1);
+
       if (marker === "+") {
         out.push({ kind: "added", gutter: newLine, text });
         newLine += 1;
@@ -67,6 +75,7 @@ function linesOf(file: PatchFile): Line[] {
       }
     }
   }
+
   return out;
 }
 
@@ -78,7 +87,8 @@ function fileSection(file: PatchFile, path: string, subtitle: string | undefined
     added: file.added,
     removed: file.removed,
     subtitle,
-    lines: linesOf(file),
+    file,
+    lineCount: file.hunks.reduce((count, hunk) => count + hunk.oldLines + 1, file.added),
   };
 }
 
@@ -96,6 +106,7 @@ function vcsStatus(kind: VcsFileKind): FileSection["status"] {
       return "R";
     default: {
       const _exhaustive: never = kind;
+
       return _exhaustive;
     }
   }
@@ -119,7 +130,12 @@ export function ChangesScreen({
   const [views, setViews] = useState<ReadonlyMap<string, FileView>>(new Map());
   const [pulling, setPulling] = useState(false);
   const chat = useRemoteChat(client, sessionId);
-  const edits = useMemo(() => recordedEdits(chat.state?.transcript.items ?? []), [chat.state]);
+
+  const edits = useMemo(
+    () => recordedEdits(chat.state?.transcript.items ?? []),
+    [chat.state?.transcript.items],
+  );
+
   const conversationPaths = useMemo(() => [...edits.keys()], [edits]);
 
   const macDiffsQuery = useQuery({
@@ -133,11 +149,13 @@ export function ChangesScreen({
         ignoreWhitespace: false,
       }),
   });
+
   const snapshotQuery = useQuery({
     queryKey: ["vcs-snapshot", sessionId],
     enabled: source === "uncommitted",
     queryFn: () => client.workspace.vcs.snapshot({ target: { kind: "session", sessionId } }),
   });
+
   const uncommitted =
     snapshotQuery.data?.kind === "repository"
       ? [
@@ -145,6 +163,7 @@ export function ChangesScreen({
           ...snapshotQuery.data.unstaged.map((file) => ({ ...file, where: "Unstaged" })),
         ]
       : [];
+
   const macDiffs:
     | { kind: "loading" }
     | { kind: "failed"; message: string }
@@ -158,6 +177,7 @@ export function ChangesScreen({
   const sections = useMemo<FileSection[]>(() => {
     if (source === "agent") {
       const out: FileSection[] = [];
+
       for (const [path, group] of edits) {
         group.forEach((edit: RecordedEdit, index: number) => {
           out.push(
@@ -169,26 +189,36 @@ export function ChangesScreen({
           );
         });
       }
+
       return out;
     }
+
     if (macDiffsQuery.data === undefined) return [];
     const out: FileSection[] = [];
+
     for (const diff of macDiffsQuery.data) {
       if (diff.kind === "binary") continue;
       const facts = parsePatchFacts(diff.patch);
+
       if (facts === undefined) continue;
+
       for (const file of facts.files) {
         const path = file.path ?? diff.path;
         out.push({ ...fileSection(file, path, undefined), status: vcsStatus(diff.status) });
       }
     }
+
     return out;
   }, [source, edits, macDiffsQuery.data]);
 
   // Past three files, only the one the user arrived on starts open.
-  const viewOf = (section: FileSection): FileView =>
-    views.get(section.key) ??
-    (sections.length > 3 && section.path !== initialPath ? "collapsed" : "head");
+  const viewOf = useCallback(
+    (section: FileSection): FileView =>
+      views.get(section.key) ??
+      (sections.length > 3 && section.path !== initialPath ? "collapsed" : "head"),
+    [views, sections.length, initialPath],
+  );
+
   const setView = (key: string, view: FileView) =>
     setViews((current) => new Map(current).set(key, view));
 
@@ -302,20 +332,26 @@ function DiffSections({
   refreshControl?: ReactElement<RefreshControlProps>;
 }) {
   const theme = useTheme();
-  return (
-    <SectionList<Line, FileSection>
-      sections={sections.map((section) => {
+
+  const visibleSections = useMemo(
+    () =>
+      sections.map((section) => {
         const view = viewOf(section);
+
         return {
           ...section,
           data:
             view === "collapsed"
               ? []
-              : view === "whole"
-                ? section.lines
-                : section.lines.slice(0, LINE_LIMIT),
+              : linesOf(section.file, view === "head" ? LINE_LIMIT : Number.POSITIVE_INFINITY),
         };
-      })}
+      }),
+    [sections, viewOf],
+  );
+
+  return (
+    <SectionList<Line, FileSection>
+      sections={visibleSections}
       keyExtractor={(item: Line, index: number) =>
         item.kind === "hunk"
           ? `hunk-${String(index)}-${item.text}`
@@ -326,6 +362,7 @@ function DiffSections({
       contentContainerStyle={{ paddingBottom: spacing.xl }}
       renderSectionHeader={({ section }) => {
         const collapsed = viewOf(section) === "collapsed";
+
         return (
           <html.button
             aria-expanded={!collapsed}
@@ -356,8 +393,10 @@ function DiffSections({
         );
       }}
       renderSectionFooter={({ section }) => {
-        const hidden = section.lines.length - LINE_LIMIT;
+        const hidden = section.lineCount - LINE_LIMIT;
+
         if (viewOf(section) !== "head" || hidden <= 0) return null;
+
         return (
           <html.button onClick={() => onSetView(section.key, "whole")} style={styles.showRest}>
             <html.span style={textStyles.secondary}>
@@ -369,6 +408,7 @@ function DiffSections({
       renderItem={({ item }) => {
         if (item.kind === "hunk")
           return <html.p style={[textStyles.caption, styles.hunk]}>{item.text}</html.p>;
+
         return (
           <html.div
             style={[

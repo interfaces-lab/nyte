@@ -7,7 +7,7 @@ import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { SessionId } from "@nyte-ai/protocol";
 import { isTerminalPhase } from "@nyte-ai/protocol";
-import { sessionMark, waitingCall } from "@nyte-ai/client";
+import { changesFromTurns, sessionMark, waitingCall } from "@nyte-ai/client";
 import { useHost } from "../connection/host-context.tsx";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
@@ -16,7 +16,7 @@ import { Group, GroupRow } from "../ui/group.tsx";
 import { IconTile } from "../ui/icon-tile.tsx";
 import { describeHostError } from "../connection/connection.ts";
 import { statusLabels, formatActivity, markTone } from "../chat/sessions.ts";
-import { conversationChanges, formatDuration, latestChangedTurn } from "../chat/turn-changes.ts";
+import { formatDuration, latestChangedTurn } from "../chat/turn-changes.ts";
 import { confirmMergeRequest, MERGE_PROMPT } from "../chat/merge-request.ts";
 import { useRemoteChat } from "../chat/remote-chat.ts";
 import { Markdown } from "../chat/messages.tsx";
@@ -33,11 +33,13 @@ import {
 
 function folderOf(path: string): string {
   const slash = path.lastIndexOf("/");
+
   return slash <= 0 ? "" : path.slice(0, slash);
 }
 
 function basenameOf(path: string): string {
   const slash = path.lastIndexOf("/");
+
   return slash < 0 ? path : path.slice(slash + 1);
 }
 
@@ -52,19 +54,19 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
   const summaryWidth = useWindowDimensions().width - list.gutter * 2;
 
   const changes = useMemo(
-    () => conversationChanges(chat.state?.transcript.items ?? []),
-    [chat.state],
+    () => changesFromTurns(chat.state?.transcript.items ?? []),
+    [chat.state?.transcript.items],
   );
+
   const changedTurn = useMemo(
     () => latestChangedTurn(chat.state?.transcript.items ?? []),
-    [chat.state],
+    [chat.state?.transcript.items],
   );
+
   const summary = useMemo(() => {
     if (changedTurn === undefined || changedTurn.kind !== "turn") return undefined;
-    const texts = changedTurn.parts
-      .filter((part) => part.kind === "assistant")
-      .map((part) => (part.kind === "assistant" ? part.text : ""));
-    return texts.length === 0 ? undefined : texts[texts.length - 1];
+
+    return changedTurn.parts.findLast((part) => part.kind === "assistant")?.text;
   }, [changedTurn]);
 
   const info = chat.state?.info;
@@ -75,6 +77,7 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
   const added = changes.reduce((total, file) => total + file.added, 0);
   const removed = changes.reduce((total, file) => total + file.removed, 0);
   const tone = markTone(mark, theme);
+
   const outcome =
     run?.phase.kind === "done"
       ? "completed"
@@ -135,6 +138,7 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
     if (merging) return;
     setMerging(true);
     setMergeError(undefined);
+
     try {
       await client.messages.send({ sessionId, content: MERGE_PROMPT, key: randomUUID() });
       router.back();
@@ -262,7 +266,6 @@ const styles = css.create({
   page: {
     display: "flex",
     flexDirection: "column",
-    flexGrow: 1,
     paddingInline: list.gutter,
     paddingTop: spacing.md,
     gap: spacing.lg,
@@ -286,6 +289,7 @@ const styles = css.create({
     gap: spacing.sm,
   },
   pill: (tone: { color: string; fill: string }) => ({
+    display: "flex",
     height: 26,
     paddingInline: 10,
     borderRadius: radii.pill,

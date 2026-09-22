@@ -14,6 +14,7 @@ import { HostProvider, useHostConnection } from "../connection/host-context.tsx"
 import { useAppliedAppearance } from "../settings/preferences.ts";
 import { useTheme, spacing, tokens, typography } from "../theme.ts";
 import { Toaster } from "../ui/toast.tsx";
+import { DevelopmentMenu } from "../development/development-menu.ts";
 
 export const unstable_settings = { anchor: "index" };
 
@@ -22,6 +23,7 @@ focusManager.setEventListener((handleFocus) => {
   const subscription = AppState.addEventListener("change", (state) =>
     handleFocus(state === "active"),
   );
+
   return () => subscription.remove();
 });
 
@@ -29,6 +31,7 @@ export default function RootLayout() {
   useAppliedAppearance();
   // A new host means a new cache: another Mac's sessions are not this one's.
   const [queryClient] = useState(() => new QueryClient());
+
   return (
     <QueryClientProvider client={queryClient}>
       <Gate />
@@ -41,6 +44,7 @@ function Gate() {
   const dark = useColorScheme() === "dark";
   const { host, connect, edit, cancelEdit, disconnect } = useHostConnection();
   const base = dark ? DarkTheme : DefaultTheme;
+
   const navigationTheme = {
     ...base,
     colors: {
@@ -52,11 +56,15 @@ function Gate() {
       border: theme.border,
     },
   };
+
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={layoutRoot.fill}>
         <KeyboardProvider>
           <ThemeProvider value={navigationTheme}>
+            {__DEV__ ? (
+              <DevelopmentMenu client={host.kind === "connected" ? host.client : undefined} />
+            ) : null}
             <StatusBar barStyle={dark ? "light-content" : "dark-content"} />
             {host.kind === "loading" ? (
               <html.div style={[styles.root, styles.centered]}>
@@ -110,6 +118,7 @@ function Connected({
 }) {
   const theme = useTheme();
   const [queryClient] = useState(() => new QueryClient());
+
   return (
     <QueryClientProvider client={queryClient}>
       <HostProvider session={session}>

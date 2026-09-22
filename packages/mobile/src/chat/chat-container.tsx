@@ -7,14 +7,13 @@ import { Stack } from "expo-router/stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { SessionId } from "@nyte-ai/protocol";
-import { waitingCall } from "@nyte-ai/client";
+import { changesFromTurns, waitingCall } from "@nyte-ai/client";
 import { useHost } from "../connection/host-context.tsx";
 import { describeHostError } from "../connection/connection.ts";
 import { toast } from "../ui/toast.tsx";
 import { TranscriptSkeleton } from "../ui/skeleton.tsx";
 import { spacing, textStyles, tokens } from "../theme.ts";
 import { useRemoteChat } from "./remote-chat.ts";
-import { conversationChanges } from "./turn-changes.ts";
 import { confirmMergeRequest, MERGE_PROMPT } from "./merge-request.ts";
 import { ModelPickerSheet } from "./model-selector.tsx";
 import { ChatScreen } from "./chat-screen.tsx";
@@ -25,33 +24,40 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   const insets = useSafeAreaInsets();
   const chat = useRemoteChat(client, sessionId);
   const run = chat.state?.run;
+
   const childSessions = useQuery({
     queryKey: ["child-sessions", sessionId],
     queryFn: async () => {
       const first = await client.sessions.list({ parent: sessionId });
       const children = [...first.items];
       let cursor = first.next;
+
       while (cursor !== undefined) {
         const page = await client.sessions.list({ parent: sessionId, cursor });
         children.push(...page.items);
         cursor = page.next;
       }
+
       return children;
     },
     refetchInterval: run !== undefined && !isTerminalPhase(run.phase) ? 2_000 : false,
   });
+
   const delegateNames = useMemo(
     () => indexDelegateNames(childSessions.data ?? []),
     [childSessions.data],
   );
+
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [prefill, setPrefill] = useState<{ text: string; nonce: number }>();
   const finished = run !== undefined && isTerminalPhase(run.phase);
   const waiting = chat.state === undefined ? undefined : waitingCall(chat.state);
+
   const changes = useMemo(
-    () => conversationChanges(chat.state?.transcript.items ?? []),
-    [chat.state],
+    () => changesFromTurns(chat.state?.transcript.items ?? []),
+    [chat.state?.transcript.items],
   );
+
   const review = finished && waiting === undefined && changes.length > 0 ? changes : undefined;
   const info = chat.state?.info;
 
@@ -103,6 +109,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
               undefined,
               (entered) => {
                 const trimmed = entered?.trim();
+
                 if (trimmed === undefined || trimmed === "") return;
                 void client.sessions
                   .rename({ sessionId, name: trimmed })

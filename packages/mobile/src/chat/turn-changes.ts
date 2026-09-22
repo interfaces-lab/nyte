@@ -1,15 +1,5 @@
 import type { Turn } from "@nyte-ai/protocol";
-import {
-  changesFromTurns,
-  parsePatchFacts,
-  type FileChange,
-  type PatchFile,
-} from "@nyte-ai/client";
-
-/** Change evidence from the transcript itself — live, with no second read. */
-export function conversationChanges(items: readonly Turn[]): readonly FileChange[] {
-  return changesFromTurns(items);
-}
+import { parsePatchFacts, type PatchFile } from "@nyte-ai/client";
 
 /** The turn variant of the transcript's `Turn` union. */
 export type ConversationTurn = Extract<Turn, { kind: "turn" }>;
@@ -18,9 +8,21 @@ export type ConversationTurn = Extract<Turn, { kind: "turn" }>;
 export function latestChangedTurn(items: readonly Turn[]): ConversationTurn | undefined {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const turn = items[index];
+
     if (turn === undefined || turn.kind !== "turn") continue;
-    if (changesFromTurns([turn]).length > 0) return turn;
+
+    if (
+      turn.parts.some(
+        (part) =>
+          part.kind === "tool" &&
+          part.class.kind === "file_patch" &&
+          part.result !== undefined &&
+          !part.result.isError,
+      )
+    )
+      return turn;
   }
+
   return undefined;
 }
 
@@ -33,25 +35,33 @@ export interface RecordedEdit {
 /** One edit per settled patch, grouped by file in order, for the diff view. */
 export function recordedEdits(items: readonly Turn[]): Map<string, RecordedEdit[]> {
   const groups = new Map<string, RecordedEdit[]>();
+
   for (const turn of items) {
     if (turn.kind !== "turn") continue;
+
     for (const part of turn.parts) {
       if (part.kind !== "tool" || part.result === undefined || part.result.isError) continue;
+
       if (part.class.kind !== "file_patch") continue;
       const facts = parsePatchFacts(part.class.patch);
+
       if (facts === undefined) continue;
+
       for (const file of facts.files) {
         const edit: RecordedEdit = {
           turnId: turn.id,
           commit: part.result.commit,
           file,
         };
+
         const group = groups.get(part.class.path);
+
         if (group === undefined) groups.set(part.class.path, [edit]);
         else group.push(edit);
       }
     }
   }
+
   return groups;
 }
 
@@ -59,21 +69,27 @@ type FileStatus = "A" | "M" | "D" | "R";
 
 export function fileStatus(file: PatchFile): FileStatus {
   if (file.oldFileName === "/dev/null") return "A";
+
   if (file.newFileName === "/dev/null") return "D";
+
   if (
     file.oldFileName !== undefined &&
     file.newFileName !== undefined &&
     file.oldFileName !== file.newFileName
   )
     return "R";
+
   return "M";
 }
 
 /** A turn's runtime: 42s, 5m, 1h 12m. Zero means nothing followed the commit. */
 export function formatDuration(ms: number): string {
   const seconds = Math.round(ms / 1000);
+
   if (seconds < 60) return `${String(seconds)}s`;
   const minutes = Math.floor(seconds / 60);
+
   if (minutes < 60) return `${String(minutes)}m`;
+
   return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60)}m`;
 }

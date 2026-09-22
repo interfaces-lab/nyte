@@ -62,10 +62,12 @@ export function ChatScreen({
   const window = useWindowDimensions();
   // The list spans the window; rows and the composer share one measured column.
   const [viewportWidth, setViewportWidth] = useState(window.width);
+
   const layout = useMemo(
     () => conversationLayout(viewportWidth, { left: insets.left, right: insets.right }),
     [viewportWidth, insets.left, insets.right],
   );
+
   const listRef = useRef<LegendListRef>(null);
   const composerRef = useRef<View>(null);
   const [following, setFollowing] = useState(true);
@@ -77,59 +79,76 @@ export function ChatScreen({
   const waiting = waitingCall(state);
   // The jump pill doubles as the way back to an off-screen question.
   const answerable = waiting !== undefined;
+
   const { contentInsetEndAdjustment, onComposerLayout } = useKeyboardChatComposerInset(
     listRef,
     composerRef,
   );
+
   const { freeze, scrollMessageToEnd } = useKeyboardScrollToEnd({ listRef });
 
-  // Turns render as user parts, one work row, then assistant and note parts.
-  const lastTurnId = useMemo(() => {
-    for (let index = state.transcript.items.length - 1; index >= 0; index -= 1) {
-      const item = state.transcript.items[index];
-      if (item !== undefined && item.kind === "turn") return item.id;
-    }
-    return undefined;
-  }, [state.transcript.items]);
+  const transcriptRows = useMemo(() => {
+    const items = state.transcript.items;
+    const lastTurnId = items.findLast((item) => item.kind === "turn")?.id;
+    const rows: ChatRow[] = [];
 
-  const rows: ChatRow[] = state.transcript.items.flatMap<ChatRow>((item) => {
-    if (item.kind !== "turn") return [item];
-    const work: ConversationTurn["parts"] = item.parts.filter(
-      (part) => part.kind === "tool" || part.kind === "thinking",
-    );
-    const visible = item.parts.filter((part) => part.kind !== "tool" && part.kind !== "thinking");
-    const emitted: ChatRow[] = [];
-    let userSeen = false;
-    for (const part of visible) {
-      if (part.kind === "user") {
-        emitted.push(part);
-        userSeen = true;
+    for (const item of items) {
+      if (item.kind !== "turn") {
+        rows.push(item);
+        continue;
+      }
+
+      const work: ConversationTurn["parts"] = [];
+      let userSeen = false;
+
+      for (const part of item.parts) {
+        if (part.kind === "user") {
+          rows.push(part);
+          userSeen = true;
+        } else if (part.kind === "tool" || part.kind === "thinking") {
+          work.push(part);
+        }
+      }
+
+      if (userSeen || work.length > 0 || item.failure !== undefined || item.durationMs > 0) {
+        rows.push({
+          kind: "work",
+          turn: item,
+          parts: work,
+          live: running && item.id === lastTurnId,
+        });
+      }
+
+      for (const part of item.parts) {
+        if (part.kind === "assistant") rows.push(part);
       }
     }
-    if (userSeen || work.length > 0 || item.failure !== undefined || item.durationMs > 0) {
-      emitted.push({
-        kind: "work",
-        turn: item,
-        parts: work,
-        live: running && item.id === lastTurnId,
-      });
-    }
-    for (const part of visible) {
-      if (part.kind !== "user") emitted.push(part);
-    }
-    return emitted;
-  });
-  if (streamingText !== "") rows.push({ kind: "stream", text: streamingText });
-  rows.push(...state.pending);
+
+    return rows;
+  }, [state.transcript.items, running]);
+
+  const rows = useMemo(() => {
+    const rows = [...transcriptRows];
+
+    if (streamingText !== "") rows.push({ kind: "stream", text: streamingText });
+
+    rows.push(...state.pending);
+
+    return rows;
+  }, [transcriptRows, streamingText, state.pending]);
+
   const nextMessageIndex = rows.length;
+
   const send = useCallback(
     async (content: Parameters<typeof onSend>[0]) => {
       const accepted = await onSend(content);
+
       if (accepted) {
         pendingAnchorScroll.current = true;
         setAnchorIndex(nextMessageIndex);
         setFollowing(true);
       }
+
       return accepted;
     },
     [onSend, nextMessageIndex],
@@ -151,6 +170,8 @@ export function ChatScreen({
         <KeyboardAwareLegendList
           ref={listRef}
           data={rows}
+          getItemType={(item) => ("change" in item ? "pending" : item.kind)}
+          recycleItems={false}
           extraData={layout}
           renderItem={({ item }) => (
             <MessageRow
@@ -202,6 +223,7 @@ export function ChatScreen({
           onScrollBeginDrag={() => setFollowing(false)}
           onEndVisible={(visible) => {
             setAtEnd(visible);
+
             if (visible) setFollowing(true);
           }}
           ListEmptyComponent={

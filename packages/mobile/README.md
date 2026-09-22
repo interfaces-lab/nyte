@@ -156,6 +156,22 @@ use the SDK from the selected Xcode:
 SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" pod install
 ```
 
+## Development shortcuts
+
+In a development build, open Expo's developer menu with the floating gear or a
+device shake. Nyte adds shortcuts for Agents, Settings, conversation, review,
+and changed files. Conversation shortcuts use the current session when one is
+open, or the host's most recent session. Connect a host first.
+
+The Live Activity preview controls show the working or needs-input appearance
+using sample data and the same renderer as real work. Go to the Home Screen or
+Lock Screen to see the activity; long-press the Dynamic Island to expand it.
+The preview has its own activity identity and a stop control, so it does not
+replace an activity for real sessions. These controls are available only in
+development builds and do not start a host task.
+
+The menu uses Expo's [custom developer menu items](https://docs.expo.dev/versions/latest/sdk/dev-menu/#extending-the-dev-menu).
+
 ## Builds and variants
 
 `app.json` holds everything the builds share. [`app.config.ts`](app.config.ts)
@@ -436,9 +452,19 @@ the reply outcome; the app never fabricates one from its local clock. Desktop
 and iOS use the same `sessionMark` projection for execution status.
 
 `SessionObserver` owns bootstrap, watch recovery, and metadata refreshes. iOS
-subscribes to updates and closes observation in the background. Model choices
-refresh metadata; answering a selection refreshes the snapshot so parked calls
-remain ordered by core.
+shares one observer per host client and session across the conversation, review,
+and changed-files screens. Opening another screen reuses the current state;
+closing the last consumer or backgrounding the app closes observation. Model
+choices share a selection version and refresh metadata; answering a selection
+refreshes the snapshot so parked calls remain ordered by core.
+
+Transcript rows and change summaries depend on the committed transcript, so
+text deltas do not rebuild them. Change totals use the shared client's projection
+of core's file classifications. The diff screen creates display rows only for
+expanded files, capped at 400 until the user asks for the remaining lines.
+Vercel's [list guidance](https://github.com/vercel-labs/agent-skills/blob/main/skills/react-native-skills/rules/list-performance-item-types.md)
+informs message types for per-kind size estimates. Recycling stays off because
+disclosure rows hold local state.
 
 The model picker calls `provider.models.list()`; the Mac
 filters credentials, account restrictions, and its hidden/disabled model
