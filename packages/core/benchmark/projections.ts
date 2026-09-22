@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { transcriptFromCommits } from "../src/kernel/views/transcript.ts";
-import { changesFromTurns } from "../src/kernel/views/changes.ts";
+import { changesFromTurns, transcriptFromCommits } from "@nyte-ai/client";
 import { checkTranscript, projectionFixture } from "./fixtures.ts";
 import { summarize, timed, type Repetitions } from "./measure.ts";
 

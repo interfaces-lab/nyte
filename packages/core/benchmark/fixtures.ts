@@ -1,14 +1,9 @@
 import assert from "node:assert/strict";
-import type { AssistantMessage, Message, Model, Api } from "@nyte-ai/schema";
+import type { AssistantMessage, UserMessage, Model, Api } from "@nyte-ai/schema";
 import type { FileChange, TurnPart } from "@nyte-ai/protocol";
 import type { Commit, CommitBody } from "../src/kernel/model.ts";
 import { hashObject } from "../src/kernel/hash.ts";
-import {
-  appendTranscriptCommit,
-  EMPTY_TRANSCRIPT,
-  transcriptFromCommits,
-} from "../src/kernel/views/transcript.ts";
-import { appendTurnChanges, changesFromTurns, EMPTY_CHANGES } from "../src/kernel/views/changes.ts";
+import { changesFromTurns, transcriptFromCommits } from "@nyte-ai/client";
 
 export const SEED = "nyte-core-j-v1";
 export const EPOCH = 1_700_000_000_000;
@@ -26,10 +21,59 @@ export const MODEL: Model<Api> = {
   maxTokens: 1024,
 };
 
-export function chain(bodies: readonly CommitBody[]) {
+type FixtureBody = Extract<CommitBody, { readonly kind: "message" | "checkpoint" }>;
+
+function chain(bodies: readonly FixtureBody[], patches = new Map<number, string>()) {
   let parent: string | null = null;
   return bodies.map((body, index) => {
-    const commit: Commit = { kind: "commit", parent, body, at: EPOCH + index };
+    const base = { kind: "commit", parent, at: EPOCH + index } as const;
+
+    const commit = ((): Commit => {
+      if (body.kind === "checkpoint") return { ...base, body };
+      const message = body.message;
+
+      switch (message.role) {
+        case "user":
+          return { ...base, body: { ...body, message }, start: { kind: "none" } };
+        case "assistant":
+          return {
+            ...base,
+            body: { ...body, message },
+            calls: Object.fromEntries(
+              message.content.flatMap((part) =>
+                part.type === "toolCall"
+                  ? [[part.id, { kind: "custom", label: part.name }] as const]
+                  : [],
+              ),
+            ),
+            outcome: { kind: "ok" },
+          };
+        case "toolResult": {
+          const path = patches.get(index);
+          assert.ok(path);
+
+          return {
+            ...base,
+            body: { ...body, message },
+            call: {
+              kind: "file_patch",
+              op: "edit",
+              path,
+              added: 2,
+              removed: 1,
+              patch: `--- a/${path}\n+++ b/${path}\n@@ -1 +1,2 @@\n-old\n+new\n+extra\n`,
+            },
+            tree: null,
+          };
+        }
+
+        default: {
+          const exhaustive: never = message;
+
+          return exhaustive;
+        }
+      }
+    })();
     const oid = hashObject(commit);
     parent = oid;
     return { oid, commit };
@@ -42,13 +86,13 @@ export function projectionFixture(count: number, workload: Workload) {
   const width = workload === "many-turns" ? 4 : 20;
   assert.equal(count % width, 0);
   const pairs = (width - 2) / 2;
-  const bodies: CommitBody[] = [];
+  const bodies: FixtureBody[] = [];
   const expectedFiles = new Map<string, FileChange>();
   const resultPaths = new Map<number, string>();
   const assistant = (
     content: AssistantMessage["content"],
     stopReason: AssistantMessage["stopReason"],
-  ): Message => ({
+  ): AssistantMessage => ({
     role: "assistant",
     content,
     stopReason,
@@ -98,13 +142,13 @@ export function projectionFixture(count: number, workload: Workload) {
           isError: false,
           content: [{ type: "text", text: TEXT }],
           timestamp: EPOCH + bodies.length,
-          details: { patch: `--- a/${path}\n+++ b/${path}\n@@ -1 +1,2 @@\n-old\n+new\n+extra\n` },
         },
       });
     }
     bodies.push({ kind: "message", message: assistant([{ type: "text", text: TEXT }], "stop") });
   }
-  const items = chain(bodies);
+
+  const items = chain(bodies, resultPaths);
   for (const [index, path] of resultPaths) {
     const item = items[index];
     assert.ok(item);
@@ -142,7 +186,7 @@ export function checkTranscript(
   for (const [index, turn] of turns.entries()) {
     assert.equal(turn.kind, "turn");
     if (turn.kind !== "turn") assert.fail("Expected conversation turn");
-    assert.equal(turn.outcome, "completed");
+    assert.equal(turn.failure, undefined);
     assert.equal(turn.startedAt, EPOCH + index * (fixture.metadata.pairsPerTurn * 2 + 2));
     assert.equal(turn.durationMs, fixture.metadata.pairsPerTurn * 2 + 1);
     assert.equal(turn.parts.length, 2 + fixture.metadata.pairsPerTurn * 2);
@@ -155,16 +199,15 @@ export function checkTranscript(
         assert.ok(part.result);
         assert.equal(part.result.output, TEXT);
         assert.equal(part.result.isError, false);
-        assert.ok(part.args);
       }
     }
     for (let pair = 0; pair < fixture.metadata.pairsPerTurn; pair++) {
       const tool: TurnPart | undefined = turn.parts[2 + pair * 2];
       assert.ok(tool?.kind === "tool");
       assert.equal(tool.callId, `${SEED}-${index}-${pair}`);
-      assert.equal(tool.toolName, "edit");
       const path = `fixture-${(index * fixture.metadata.pairsPerTurn + pair) % 8}.txt`;
-      assert.deepEqual(tool.args, { path, oldText: "old", newText: "new\nextra" });
+      assert.equal(tool.class.kind, "file_patch");
+      assert.ok("path" in tool.class && tool.class.path === path);
       const resultIndex = index * (fixture.metadata.pairsPerTurn * 2 + 2) + 2 + pair * 2;
       assert.equal(tool.result?.commit, fixture.items[resultIndex]?.oid);
     }
@@ -172,36 +215,15 @@ export function checkTranscript(
   assert.deepEqual(changesFromTurns(turns), fixture.expectedFiles);
 }
 
-export function checkIncremental(fixture: ReturnType<typeof projectionFixture>) {
-  let transcript = EMPTY_TRANSCRIPT;
-  let changes = EMPTY_CHANGES;
-  for (const item of fixture.items) {
-    const before = structuredClone(transcript);
-    const oldChanges = changes;
-    const previousChanges = structuredClone(changes);
-    const next = appendTranscriptCommit(transcript, item);
-    assert.ok(next);
-    for (const turn of next.items) changes = appendTurnChanges(changes, turn);
-    assert.deepEqual(transcript, before);
-    assert.deepEqual(oldChanges, previousChanges);
-    transcript = next;
-  }
-  assert.deepEqual(transcript.items, transcriptFromCommits(fixture.items));
-  assert.deepEqual(changes.files, fixture.expectedFiles);
-  const before = structuredClone(changes);
-  for (const turn of transcript.items) changes = appendTurnChanges(changes, turn);
-  assert.deepEqual(changes, before);
-}
-
 export function historyFixture(count: number, checkpoint: boolean) {
-  const messages: Message[] = Array.from({ length: count }, (_, index) => ({
+  const messages: UserMessage[] = Array.from({ length: count }, (_, index) => ({
     role: "user",
     content: `${String(index).padStart(6, "0")}:${TEXT}`.slice(0, 256),
     timestamp: EPOCH + index,
   }));
   const boundary = Math.floor(count * 0.8);
   const retained = 4;
-  const bodies: CommitBody[] = [];
+  const bodies: FixtureBody[] = [];
   for (const [index, message] of messages.entries()) {
     if (checkpoint && index === boundary)
       bodies.push({

@@ -3,8 +3,12 @@ import { sessionId } from "@nyte-ai/protocol";
 import { SqliteStore } from "../src/kernel/sqlite.ts";
 import { createNyte } from "../src/kernel/sdk/nyte.ts";
 import { contextCommits } from "../src/kernel/graph.ts";
-import { COMPACTION_SUMMARY_PREFIX, contextMessages, modelContext } from "../src/kernel/context.ts";
-import { transcriptFromCommits } from "../src/kernel/views/transcript.ts";
+import {
+  COMPACTION_SUMMARY_PREFIX,
+  contextMessages,
+  modelContext,
+  transcriptFromCommits,
+} from "@nyte-ai/client";
 import { historyFixture, MODEL, SEED } from "./fixtures.ts";
 import { summarize, timed, type Repetitions } from "./measure.ts";
 

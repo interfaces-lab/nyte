@@ -12,7 +12,7 @@
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
     "test": "vitest --run && NYTE_TEST_STORE=worker vitest --run test/kernel",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p benchmark/tsconfig.json"
   },
   "dependencies": {
     "@cf-wasm/photon": "0.4.0",

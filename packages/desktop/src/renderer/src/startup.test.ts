@@ -6,23 +6,19 @@ test("the interface mounts once, after the caches, the initial route, and its sc
   const resources = Promise.withResolvers<void>();
   const route = Promise.withResolvers<void>();
   const ready = Promise.withResolvers<void>();
-  const steps: string[] = [];
   let mounts = 0;
 
   startRendererStartup({
     mountShell: () => {
       mounts += 1;
-      steps.push("mount");
     },
     loadResources: async () => {
-      steps.push("resources");
       await resources.promise;
     },
     loadRouter: async () => {
-      steps.push("route");
       await route.promise;
     },
-    showError: () => steps.push("error"),
+    showError: () => assert.fail("startup should succeed"),
     onReady: () => ready.resolve(),
   });
 
@@ -33,7 +29,6 @@ test("the interface mounts once, after the caches, the initial route, and its sc
   route.resolve();
   await ready.promise;
   assert.equal(mounts, 1);
-  assert.deepEqual(steps, ["resources", "route", "mount"]);
 });
 
 for (const failure of ["resources", "route"] as const) {

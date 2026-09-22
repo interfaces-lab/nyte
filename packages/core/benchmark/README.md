@@ -21,7 +21,7 @@ pnpm exec node packages/core/benchmark/run.ts --suite sqlite --count 100 --sampl
 pnpm exec node packages/core/benchmark/run.ts --suite watch --events 300 --samples 3 --warmups 1
 ```
 
-The smoke suite passed all 4 tests on Node 26.7.0 and Bun 1.4.0.
+The smoke suite checks CLI output, input validation, and fixture determinism.
 `node:sqlite` compatibility is required for both runtimes. The runner uses
 no Bun-only APIs. Run the smoke checks before collecting measurements on a
 different runtime or source revision.
@@ -52,10 +52,10 @@ filesystem history. No filesystem tools execute.
 
 `transcriptFromCommits` and `changesFromTurns` are timed separately. Changes
 receives a prebuilt transcript. Checks outside timing compare expected turns,
-text, durations, call identities, arguments, result commits, and per-file patch
-totals. They also compare input values before and after projection. The small
-smoke checks incremental agreement and preservation of previous transcript and
-changes states, including repeated changes folds. No repeated incremental
+text, durations, call identities, stamped classes, result commits, and per-file
+patch totals. They also compare input values before and after projection.
+The kernel view tests cover incremental agreement and preservation of previous
+transcript and changes states, including repeated changes folds. No repeated incremental
 10,000-commit fold runs in the measurement suite.
 
 ## Stored histories and snapshots
