@@ -26,11 +26,11 @@
   },
   "devDependencies": {
     "@oxlint/plugins": "1.81.0",
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.2",
     "oxfmt": "^0.67.0",
     "oxlint": "1.81.0",
-    "oxlint-tsgolint": "^7.0.2001",
-    "turbo": "^2.10.12",
+    "oxlint-tsgolint": "^7.0.2002",
+    "turbo": "^2.11.2",
     "typescript": "^7.0.2"
   },
   "packageManager": "pnpm@12.4.1",

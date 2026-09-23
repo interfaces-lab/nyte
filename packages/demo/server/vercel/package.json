@@ -30,11 +30,11 @@
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",
     "@nyte-ai/client": "workspace:*",
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.2",
     "@types/pg": "8.23.1",
     "nitro": "3.0.260903-beta",
     "typescript": "^7.0.2",
-    "vercel": "^59.16.0",
-    "vitest": "^5.0.0"
+    "vercel": "^59.25.0",
+    "vitest": "^5.0.1"
   }
 }

@@ -13,9 +13,9 @@ export function bridgeError(error: IpcFailure): Error & { readonly cause: IpcFai
   return { name: "HostError", message: error.message, cause: error };
 }
 
-const describedError = Type.Object({ message: Type.String() });
-
 /** Handles local Errors and plain error data copied across contextBridge. */
 export function errorMessage(cause: unknown): string {
-  return Value.Check(describedError, cause) ? cause.message : String(cause);
+  return Value.Check(Type.Object({ message: Type.String() }), cause)
+    ? cause.message
+    : String(cause);
 }

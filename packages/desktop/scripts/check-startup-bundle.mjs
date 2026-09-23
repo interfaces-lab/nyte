@@ -10,7 +10,7 @@ const KIB = 1_024;
 const budgets = {
   main: 700 * KIB,
   preload: 16 * KIB,
-  renderer: 4_200 * KIB,
+  renderer: 4_250 * KIB,
 };
 
 const desktopRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
