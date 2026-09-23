@@ -26,6 +26,7 @@ allowBuilds:
   react-native-enriched-markdown@1.0.2: true
   workerd: true
 minimumReleaseAgeExclude:
+  - "@anthropic-ai/sdk@0.128.0"
   - "@base-ui/react@1.8.0"
   - "@base-ui/utils@0.4.0"
   - "@tanstack/react-router@1.170.27"
