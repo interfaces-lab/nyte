@@ -18,7 +18,7 @@ export type DurableWorkGroupPresentation =
   | {
       readonly active: false;
       readonly summary: {
-        readonly verb: "Worked";
+        readonly verb: string;
         readonly detail: string | undefined;
         readonly added: number;
         readonly removed: number;
@@ -82,6 +82,103 @@ function activityLabel(running: readonly ToolClass[], waiting: number): string |
   }
 }
 
+function basename(path: string): string {
+  return path.split(/[\\/]/u).at(-1) ?? path;
+}
+
+function count(n: number, noun: string, plural = `${noun}s`): string {
+  return `${String(n)} ${n === 1 ? noun : plural}`;
+}
+
+/** One changed or read file is named; more are counted. */
+function settledSummary(
+  parts: readonly WorkTurnPart[],
+  durationMs: number,
+): { readonly verb: string; readonly detail: string | undefined } {
+  const changed = new Set<string>();
+  const read = new Set<string>();
+  const listed = new Set<string>();
+  let commands = 0;
+  let tools = 0;
+
+  for (const part of parts) {
+    if (part.kind !== "tool") continue;
+
+    switch (part.class.kind) {
+      case "file_patch":
+        changed.add(part.class.path);
+        break;
+      case "file_read":
+        read.add(part.class.path);
+        break;
+      case "list":
+        listed.add(part.class.path);
+        break;
+      case "shell":
+        commands += 1;
+        break;
+      // A mutation still classed as its call never settled into a change.
+      case "file_edit":
+      case "file_write":
+      case "delegate":
+      case "custom":
+        tools += 1;
+        break;
+      default: {
+        const _exhaustive: never = part.class;
+
+        return _exhaustive;
+      }
+    }
+  }
+
+  if (changed.size + read.size + listed.size + commands + tools === 0) {
+    const duration = formatRunDuration(durationMs);
+
+    return { verb: "Thought", detail: duration === undefined ? undefined : `for ${duration}` };
+  }
+
+  const explored = read.size + listed.size > 0;
+  const verb = changed.size > 0 ? "Edited" : explored ? "Explored" : "Ran";
+  const details: string[] = [];
+
+  if (changed.size > 0) {
+    const [only] = changed;
+
+    details.push(
+      changed.size === 1 && only !== undefined ? basename(only) : count(changed.size, "file"),
+    );
+  }
+
+  if (explored) {
+    const [only] = read;
+
+    const files =
+      read.size === 1 && listed.size === 0 && only !== undefined
+        ? basename(only)
+        : read.size > 0
+          ? count(read.size, "file")
+          : undefined;
+
+    const directories =
+      listed.size > 0 ? count(listed.size, "directory", "directories") : undefined;
+    const first = [directories, files].filter((text) => text !== undefined).join(", ");
+
+    details.push(verb === "Edited" ? `explored ${first}` : first);
+  }
+
+  const ran = [
+    commands > 0 ? count(commands, "command") : undefined,
+    tools > 0 ? count(tools, "tool") : undefined,
+  ]
+    .filter((text) => text !== undefined)
+    .join(", ");
+
+  if (ran !== "") details.push(verb === "Ran" ? ran : `ran ${ran}`);
+
+  return { verb, detail: details.join(", ") };
+}
+
 export function durableWorkGroupPresentation({
   parts,
   durationMs,
@@ -101,16 +198,9 @@ export function durableWorkGroupPresentation({
   }
 
   if (!running) {
-    const duration = formatRunDuration(durationMs);
-
     return {
       active: false,
-      summary: {
-        verb: "Worked",
-        detail: duration === undefined ? undefined : `for ${duration}`,
-        added,
-        removed,
-      },
+      summary: { ...settledSummary(parts, durationMs), added, removed },
     };
   }
 

@@ -663,6 +663,23 @@ export const TurnView = memo(function TurnView({
               // settled history, and the run's indicator belongs below the
               // prose that follows it.
               const trailing = index === display.length - 1;
+              const active = running && trailing;
+
+              // One settled call has nothing to fold; its own line says more
+              // than a header counting it.
+              if (!active && item.parts.length === 1 && first?.kind === "tool") {
+                return (
+                  <TurnPartView
+                    key={turnPartId(first)}
+                    part={first}
+                    liveTools={liveTools}
+                    cwd={cwd}
+                    toolCalls={appearance.toolCalls}
+                    running={false}
+                    waits={waits}
+                  />
+                );
+              }
 
               return (
                 <WorkGroupView
@@ -674,7 +691,7 @@ export const TurnView = memo(function TurnView({
                   cwd={cwd}
                   added={trailing ? changeTotals.added : 0}
                   removed={trailing ? changeTotals.removed : 0}
-                  running={running && trailing}
+                  running={active}
                   density={appearance.toolCalls}
                   waits={trailing ? waits : undefined}
                 />

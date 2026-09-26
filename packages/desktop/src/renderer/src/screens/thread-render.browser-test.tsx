@@ -243,7 +243,7 @@ export async function runTest(): Promise<string> {
     await until(
       () =>
         Array.from(container.querySelectorAll("button")).some((button) =>
-          button.textContent?.includes("Worked"),
+          button.textContent?.includes("Thought"),
         ),
       "the run to settle",
     );

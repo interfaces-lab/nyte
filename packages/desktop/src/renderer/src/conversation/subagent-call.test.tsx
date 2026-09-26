@@ -109,7 +109,7 @@ const turn: RenderedTurn = {
   ],
 };
 
-test("a create draws one agent card; its settled await folds into the work", () => {
+test("a create draws one agent card; its settled await stands as its own line", () => {
   const client = new QueryClient();
   client.setQueryData(["sessions", "children", parent], [childSession]);
   const html = renderToStaticMarkup(
@@ -129,11 +129,10 @@ test("a create draws one agent card; its settled await folds into the work", () 
     </QueryClientProvider>,
   );
   client.clear();
-  // The card is the only place the child is named and its state spelled out;
-  // the await is a step inside the settled work that followed.
+  // The card is the only place the child's state is spelled out; the await
+  // is one settled call, so it draws as its own line rather than a group.
   expect(html.match(/>Completed</g)?.length).toBe(1);
-  expect(html.match(/>Map the workbench</g)?.length).toBe(1);
-  expect(html).toContain(">Worked<");
+  expect(html).toContain(">Waited for<");
 });
 
 const agents = [
