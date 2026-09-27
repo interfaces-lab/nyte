@@ -17,7 +17,7 @@ interface Contribution<D> {
 
 export class MapDraft<T> implements Draft<T> {
   protected readonly entries = new Map<string, T>();
-  /** Entry id to the plugin that last wrote it. Stamped by the registry as it replays. */
+  /** Entry id to the plugin that set it. Stamped by the registry as it replays; an update keeps it. */
   private readonly ownerById = new Map<string, string>();
   private owner = "";
 
@@ -38,7 +38,6 @@ export class MapDraft<T> implements Draft<T> {
 
     if (current === undefined) throw new Error(`no entry "${id}" to update`);
     this.entries.set(id, fn(current));
-    this.ownerById.set(id, this.owner);
   }
   delete(id: string): void {
     this.entries.delete(id);
@@ -87,6 +86,7 @@ export class ContributionRegistry<T, D extends Draft<T>> {
   private contributions: Contribution<D>[] = [];
   private state = new Map<string, T>();
   private ownerById = new Map<string, string>();
+  private rebuilding = false;
   private readonly makeDraft: () => D & OwnedDraft<T>;
 
   constructor(makeDraft: () => D & OwnedDraft<T>) {
@@ -103,21 +103,31 @@ export class ContributionRegistry<T, D extends Draft<T>> {
   }
 
   rebuild(): RegistryDiff {
+    if (this.rebuilding) throw new Error("rebuild() cannot run inside a contribution");
+    this.rebuilding = true;
     const draft = this.makeDraft();
     const errors: { owner: string; message: string }[] = [];
     const ordered = [...this.contributions].sort((a, b) => a.order - b.order);
 
-    for (const contribution of ordered) {
-      draft.beginOwner(contribution.owner);
+    try {
+      for (const contribution of ordered) {
+        draft.beginOwner(contribution.owner);
 
-      try {
-        contribution.fn(draft);
-      } catch (error) {
-        errors.push({
-          owner: contribution.owner,
-          message: error instanceof Error ? error.message : String(error),
-        });
+        try {
+          const returned: unknown = contribution.fn(draft);
+
+          if (returned instanceof Promise) {
+            throw new Error("contributions are synchronous; this one returned a promise");
+          }
+        } catch (error) {
+          errors.push({
+            owner: contribution.owner,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
+    } finally {
+      this.rebuilding = false;
     }
 
     const next = draft.toMap();

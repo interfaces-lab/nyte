@@ -30,6 +30,12 @@ const PluginExport = Type.Object({
   session: Type.Function([], Type.Unknown()),
 });
 
+/** Storage keys are `plugin:<id>:<key>`, so an id is one lowercase word with hyphens. */
+const PLUGIN_ID = /^[a-z0-9][a-z0-9-]*$/;
+
+/** Ids the delegation host contributes itself for every session. */
+const RESERVED_PLUGIN_IDS = new Set(["subagents", "jobs"]);
+
 function isPlugin(value: unknown): value is Plugin {
   return Value.Check(PluginExport, value);
 }
@@ -148,6 +154,17 @@ async function loadPluginFile(
 ): Promise<LoadedPlugin | LoadFailure> {
   const absolute = resolve(path);
   const id = pluginIdForPath(absolute);
+
+  if (!PLUGIN_ID.test(id)) {
+    return {
+      path: absolute,
+      error: `plugin id "${id}" must be lowercase letters, digits, and hyphens`,
+    };
+  }
+
+  if (RESERVED_PLUGIN_IDS.has(id)) {
+    return { path: absolute, error: `plugin id "${id}" is reserved for a built-in` };
+  }
 
   try {
     const files = await pluginFiles(absolute);

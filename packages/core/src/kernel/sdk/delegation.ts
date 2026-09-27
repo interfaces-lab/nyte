@@ -10,7 +10,6 @@ import { isTerminalPhase, type JobEnd, type RunPhase } from "@nyte-ai/protocol";
 import type { JsonValue } from "@nyte-ai/schema";
 import { definePlugin, inlinePlugin, type LoadedPlugin } from "../../plugins/types.ts";
 import {
-  SUBAGENTS_PLUGIN_ID,
   awaitedAgents,
   satisfied,
   subagentsPlugin,
@@ -117,15 +116,11 @@ export function createDelegation(input: {
   }): readonly LoadedPlugin[] => {
     const { id, pooled, plugins } = target;
 
-    const hostPlugins = plugins.filter(
-      (plugin) => plugin.id !== SUBAGENTS_PLUGIN_ID && plugin.id !== "jobs",
-    );
-
     const roleAware =
       pooled.parent === undefined
-        ? [...hostPlugins, inlinePlugin(subagentsPlugin(subagentHost(id, pooled)))]
+        ? [...plugins, inlinePlugin(subagentsPlugin(subagentHost(id, pooled)))]
         : [
-            ...hostPlugins,
+            ...plugins,
             inlinePlugin(
               definePlugin({
                 id: "delegate-system",
