@@ -60,7 +60,7 @@ export class PluginScope {
 
     for (const disposer of disposers) {
       try {
-        await withBudget(Promise.resolve(disposer()), this.budgetMs);
+        await withBudget({ what: "disposer", ms: this.budgetMs }, () => disposer());
       } catch (error) {
         this.report(normalize(error));
       }
@@ -72,18 +72,36 @@ function normalize(cause: unknown): Error {
   return cause instanceof Error ? cause : new Error(String(cause));
 }
 
-function withBudget(promise: Promise<void>, ms: number): Promise<void> {
+/**
+ * Run plugin code under a wall-clock budget. The signal handed to `call`
+ * aborts when the budget runs out and whenever `signal` does; the rejection
+ * names `what`. A synchronous throw rejects the same way.
+ */
+export function withBudget<T>(
+  options: { readonly what: string; readonly ms: number; readonly signal?: AbortSignal },
+  call: (signal: AbortSignal) => T | Promise<T>,
+): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`disposer exceeded ${ms}ms`)), ms);
-    promise.then(
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      (cause: unknown) => {
-        clearTimeout(timer);
-        reject(cause);
-      },
-    );
+    const controller = new AbortController();
+
+    const signal =
+      options.signal === undefined
+        ? controller.signal
+        : AbortSignal.any([options.signal, controller.signal]);
+
+    const timer = setTimeout(() => {
+      const error = new Error(`${options.what} exceeded ${options.ms}ms`);
+      controller.abort(error);
+      reject(error);
+    }, options.ms);
+
+    try {
+      Promise.resolve(call(signal))
+        .then(resolve, reject)
+        .finally(() => clearTimeout(timer));
+    } catch (error) {
+      clearTimeout(timer);
+      reject(error);
+    }
   });
 }

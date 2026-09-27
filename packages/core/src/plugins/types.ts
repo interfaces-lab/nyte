@@ -123,8 +123,11 @@ export function isCommandPrompt(result: NonNullable<CommandResult>): result is C
 
 export interface Command {
   readonly description: string;
-  /** Runs on the host that owns the command, at once: a command never waits in the composer. */
-  run(argument: string): Promise<CommandResult> | CommandResult;
+  /**
+   * Runs on the host that owns the command, at once: a command never waits in
+   * the composer. `signal` aborts when the host's budget for the call runs out.
+   */
+  run(argument: string, signal: AbortSignal): Promise<CommandResult> | CommandResult;
 }
 
 /**
@@ -192,9 +195,13 @@ export interface StatusItem {
   readonly order?: number;
 }
 
-/** The session's own event stream, the same one a client folds. Observation only: nothing returned is read. */
+/**
+ * The session's own event stream, the same one a client folds. Observation
+ * only: nothing returned is read, but a returned promise is awaited under the
+ * host's budget so its rejection is reported rather than unhandled.
+ */
 export interface PluginEvents {
-  subscribe(listener: (event: SessionEvent) => void): Disposer;
+  subscribe(listener: (event: SessionEvent) => void | Promise<void>): Disposer;
 }
 
 export interface SessionApi {

@@ -10,6 +10,7 @@ import {
   type PluginHostTarget,
   type PluginNotice,
 } from "../../plugins/host.ts";
+import { withBudget } from "../../plugins/scope.ts";
 import { pluginFactKey } from "../../plugins/storage.ts";
 import type {
   Agent,
@@ -19,6 +20,7 @@ import type {
   Disposer,
   LoadedPlugin,
   PluginEnv,
+  PluginEvents,
   PluginInfo,
   SettingInfo,
 } from "../../plugins/types.ts";
@@ -55,6 +57,9 @@ const REGISTRY_PROPERTIES = [
 ] satisfies readonly (keyof PluginRegistries)[];
 
 export type Notice = PluginNotice;
+
+/** Wall-clock budget for a plugin command or event listener, like a disposer's. */
+const PLUGIN_CALL_BUDGET_MS = 5_000;
 
 export interface Activation {
   readonly registries: PluginRegistries;
@@ -254,7 +259,7 @@ export async function activate(input: {
   // One watch over the session's events, started by the first subscriber and
   // fanned out to every plugin listener. A listener that throws is reported
   // and the stream goes on: an observer cannot stop what it observes.
-  const eventListeners = new Set<(event: SessionEvent) => void>();
+  const eventListeners = new Set<(event: SessionEvent) => void | Promise<void>>();
   let eventLoop: AbortController | undefined;
 
   const startEventLoop = (): void => {
@@ -270,16 +275,16 @@ export async function activate(input: {
 
         for (const projected of await projectEvent(event, session.objects)) {
           for (const listener of eventListeners) {
-            try {
-              listener(projected);
-            } catch (error) {
-              void emit({
+            void withBudget({ what: "event listener", ms: PLUGIN_CALL_BUDGET_MS }, () =>
+              listener(projected),
+            ).catch((error: unknown) =>
+              emit({
                 kind: "diagnostic",
                 level: "error",
                 owner: "events",
                 message: error instanceof Error ? error.message : String(error),
-              });
-            }
+              }),
+            );
           }
         }
       }
@@ -289,8 +294,8 @@ export async function activate(input: {
     });
   };
 
-  const events = {
-    subscribe: (listener: (event: SessionEvent) => void): Disposer => {
+  const events: PluginEvents = {
+    subscribe: (listener): Disposer => {
       eventListeners.add(listener);
       startEventLoop();
 
@@ -397,7 +402,12 @@ export async function activate(input: {
 
       if (command === undefined) throw new Error(`unknown command: ${name}`);
 
-      return (await command.run(argument)) ?? undefined;
+      const result = await withBudget(
+        { what: `command ${name}`, ms: PLUGIN_CALL_BUDGET_MS },
+        (signal) => command.run(argument, signal),
+      );
+
+      return result ?? undefined;
     },
     setPlugins: (next) => plugins.activate(next),
     subscribe,

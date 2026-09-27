@@ -66,7 +66,7 @@ export function bindSessionApi(
     modelContext: registry(target.registries.modelContext),
 
     hook<TName extends HookName>(name: TName, handler: HookHandler<TName>): Disposer {
-      return scope.track(target.hooks.on(name, handler, { id: plugin.id }));
+      return scope.track(target.hooks.on(name, handler, { id: plugin.id, order }));
     },
 
     events: { subscribe: (listener) => scope.track(target.events.subscribe(listener)) },

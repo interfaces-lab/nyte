@@ -2,8 +2,9 @@
  * Hooks: the points where plugin code intercepts a run and returns a typed
  * result. This file holds the contract (which hooks exist, what each sees,
  * what each may return, how results combine) and the `HookRegistry` that runs
- * handlers in registration order, applies the combining rule, and contains
- * failures.
+ * handlers in plugin order, applies the combining rule, and contains
+ * failures. Every handler runs under a wall-clock budget: one that never
+ * settles is a failure like any other, not a run that never moves.
  *
  * Hooks are a separate list from events (`events.ts`). An event listener has
  * no return value the runner reads; a hook handler does. That split is what
@@ -12,7 +13,7 @@
  * Combining rules, per hook:
  * - `transform_context`: chained replacement of messages and system prompt.
  * - `before_request`: each patch applied in order over the stream options.
- * - `before_tool`: policies run in registration order; `modify` decisions
+ * - `before_tool`: policies run in plugin order; `modify` decisions
  *   chain and `continue` is not terminal, so no decision bypasses a later
  *   policy. The first `reject` or `error` stops the chain. A throwing handler
  *   becomes `error` (fail-closed).
@@ -31,6 +32,7 @@ import { Value } from "typebox/value";
 import { isJsonObject, toJsonValue, type JsonObject } from "@nyte-ai/client";
 import { addUsage } from "@nyte-ai/client";
 import type { AgentToolResult, StreamOptions, StreamOptionsPatch } from "../kernel/loop/types.ts";
+import { withBudget } from "./scope.ts";
 
 /**
  * The model a request is about. pi carries its full `Model<Api>` here; Nyte's
@@ -168,19 +170,41 @@ export type HookHandler<TName extends HookName> = (
   signal?: AbortSignal,
 ) => Promise<HookMap[TName]["result"]> | HookMap[TName]["result"];
 
+/** Who registered a handler and where its plugin sits in the activation order. */
+export interface HookOptions {
+  id?: string;
+  /** Handlers run sorted by it, then by registration. Default 0. */
+  order?: number;
+}
+
 /** The registration half of the hook API, as a plugin sees it. */
 export interface Hooks {
   on<TName extends HookName>(
     name: TName,
     handler: HookHandler<TName>,
-    options?: { id?: string },
+    options?: HookOptions,
   ): () => void;
 }
 
 interface HookRegistration<TName extends HookName> {
   id?: string;
+  order: number;
   handler: HookHandler<TName>;
 }
+
+/**
+ * Wall-clock budget per handler. Compaction is a provider request and gets
+ * the room one takes; the rest are process-local decisions.
+ */
+export type HookBudgets = Readonly<Record<HookName, number>>;
+
+export const HOOK_BUDGETS_MS: HookBudgets = {
+  transform_context: 5_000,
+  before_compaction: 300_000,
+  before_request: 5_000,
+  before_tool: 5_000,
+  after_tool: 5_000,
+};
 
 type HookRegistrations = {
   [TName in HookName]: HookRegistration<TName>[];
@@ -218,10 +242,12 @@ export class HookRegistry implements Hooks {
   };
   private readonly runners: HookRunners;
   private readonly reportError: HookErrorReporter;
+  private readonly budgets: HookBudgets;
   private closedError: Error | undefined;
 
-  constructor(reportError: HookErrorReporter) {
+  constructor(reportError: HookErrorReporter, budgets: HookBudgets = HOOK_BUDGETS_MS) {
     this.reportError = reportError;
+    this.budgets = budgets;
     this.runners = {
       transform_context: (event, signal) => this.transformContext(event, signal),
       before_compaction: (event, signal) => this.beforeCompaction(event, signal),
@@ -234,15 +260,17 @@ export class HookRegistry implements Hooks {
   on<TName extends HookName>(
     name: TName,
     handler: HookHandler<TName>,
-    options: { id?: string } = {},
+    options: HookOptions = {},
   ): () => void {
     if (this.closedError !== undefined) throw this.closedError;
     const registrations = this.registrations[name];
+    const order = options.order ?? 0;
 
     const registration: HookRegistration<TName> =
-      options.id === undefined ? { handler } : { id: options.id, handler };
+      options.id === undefined ? { order, handler } : { id: options.id, order, handler };
 
-    registrations.push(registration);
+    const at = registrations.findLastIndex((existing) => existing.order <= order) + 1;
+    registrations.splice(at, 0, registration);
 
     return () => {
       const index = registrations.indexOf(registration);
@@ -280,7 +308,12 @@ export class HookRegistry implements Hooks {
 
     for (const registration of this.registrationsFor("transform_context")) {
       try {
-        const result = await registration.handler({ ...event, messages, systemPrompt }, signal);
+        const result = await this.call(
+          "transform_context",
+          registration,
+          { ...event, messages, systemPrompt },
+          signal,
+        );
 
         if (result?.messages !== undefined) messages = result.messages;
 
@@ -304,7 +337,7 @@ export class HookRegistry implements Hooks {
       if (signal?.aborted) break;
 
       try {
-        const result = await registration.handler(event, signal);
+        const result = await this.call("before_compaction", registration, event, signal);
 
         if (result === undefined) continue;
 
@@ -342,7 +375,12 @@ export class HookRegistry implements Hooks {
 
     for (const registration of this.registrationsFor("before_request")) {
       try {
-        const result = await registration.handler({ ...event, streamOptions }, signal);
+        const result = await this.call(
+          "before_request",
+          registration,
+          { ...event, streamOptions },
+          signal,
+        );
 
         if (result?.streamOptions !== undefined) {
           streamOptions = applyStreamOptionsPatch(streamOptions, result.streamOptions);
@@ -369,7 +407,12 @@ export class HookRegistry implements Hooks {
 
       try {
         const result = toJsonValue(
-          await registration.handler({ ...event, args: modified ?? event.args }, signal),
+          await this.call(
+            "before_tool",
+            registration,
+            { ...event, args: modified ?? event.args },
+            signal,
+          ),
         );
 
         if (!isToolCallDecision(result)) {
@@ -414,7 +457,9 @@ export class HookRegistry implements Hooks {
 
     for (const registration of this.registrationsFor("after_tool")) {
       try {
-        const result = await registration.handler(
+        const result = await this.call(
+          "after_tool",
+          registration,
           afterToolInvocation(event, content, details, isError, usage),
           signal,
         );
@@ -442,6 +487,19 @@ export class HookRegistry implements Hooks {
 
   private registrationsFor<TName extends HookName>(name: TName): HookRegistration<TName>[] {
     return [...this.registrations[name]];
+  }
+
+  private call<TName extends HookName>(
+    name: TName,
+    registration: HookRegistration<TName>,
+    event: HookInvocation<TName>,
+    signal: AbortSignal | undefined,
+  ): Promise<HookMap[TName]["result"]> {
+    const what = `${name} hook${registration.id === undefined ? "" : ` ${registration.id}`}`;
+
+    return withBudget({ what, ms: this.budgets[name], signal }, (budgeted) =>
+      registration.handler(event, budgeted),
+    );
   }
 }
 

@@ -2,8 +2,10 @@
  * The plugin host owns one map: plugin id to live scope. `activate(list)` is
  * the only mutation; reload, add, remove, and option changes are all
  * `activate` with a different list. Plugins whose (id, version) did not change
- * are left alone. A plugin whose factory throws is recorded as failed and its
- * previous version, if any, is put back.
+ * are left alone. A changed plugin is loaded beside its previous version and
+ * only then replaces it, so its hooks never lapse; a plugin whose factory
+ * throws or outlives its budget is recorded as failed and the previous
+ * version, if any, stays.
  *
  * Modeled on opencode v2 `Plugin.activate` (packages/core/src/plugin.ts).
  */
@@ -13,7 +15,7 @@ import type { AgentTool } from "../kernel/loop/types.ts";
 import { bindSessionApi, type PluginSessionStorage } from "./api.ts";
 import type { Hooks } from "./hooks.ts";
 import { ContributionRegistry, MapDraft, ToolMapDraft } from "./registry.ts";
-import { PluginScope } from "./scope.ts";
+import { PluginScope, withBudget } from "./scope.ts";
 import { ModelContextDraft } from "./model-context.ts";
 import type {
   Agent,
@@ -95,9 +97,11 @@ export class PluginHost {
   private inventory: PluginInfo[] = [];
   private tail: Promise<unknown> = Promise.resolve();
   private closed = false;
+  private readonly budgetMs: number;
 
-  constructor(target: PluginHostTarget) {
+  constructor(target: PluginHostTarget, budgetMs = 5_000) {
     this.target = target;
+    this.budgetMs = budgetMs;
   }
 
   list(): readonly PluginInfo[] {
@@ -132,26 +136,16 @@ export class PluginHost {
       }
 
       changed = true;
-
-      if (previous !== undefined) {
-        this.active.delete(plugin.id);
-        await previous.scope.dispose();
-      }
-
       const loaded = await this.load(plugin, index);
 
-      if (loaded.ok) {
-        this.active.set(plugin.id, loaded.value);
-        info.push(activeInfo(plugin));
+      if (!loaded.ok) {
+        info.push({ ...activeInfo(plugin), status: "failed", error: loaded.error });
         continue;
       }
 
-      info.push({ ...activeInfo(plugin), status: "failed", error: loaded.error });
-
-      if (previous === undefined) continue;
-      const restored = await this.load(previous.plugin, index);
-
-      if (restored.ok) this.active.set(plugin.id, restored.value);
+      this.active.set(plugin.id, loaded.value);
+      info.push(activeInfo(plugin));
+      await previous?.scope.dispose();
     }
 
     for (const [id, entry] of [...this.active].reverse()) {
@@ -182,7 +176,9 @@ export class PluginHost {
     const api = bindSessionApi(this.target, plugin, scope, order);
 
     try {
-      await plugin.module.session(api);
+      await withBudget({ what: `plugin ${plugin.id} session()`, ms: this.budgetMs }, () =>
+        plugin.module.session(api),
+      );
 
       return Result.ok({ plugin, scope });
     } catch (error) {
