@@ -17,7 +17,7 @@ import { headRef, runRef } from "../../src/kernel/names.ts";
 import { submit } from "../../src/kernel/queue.ts";
 import { step } from "../../src/kernel/step.ts";
 import { bindTurn, type TurnOptions } from "../../src/kernel/turn.ts";
-import { ToolWait, type AgentTool } from "../../src/kernel/loop/types.ts";
+import { backgroundWait, ToolWait, type AgentTool } from "../../src/kernel/loop/types.ts";
 import {
   assistant,
   call,
@@ -238,14 +238,14 @@ for (const boundary of ["park", "settle", "repark", "wake-settle"] as const) {
             assert.ok(intent?.effect.state === "intent", "intent precedes side effects");
             if (boundary === "park") {
               await lose();
-              throw new ToolWait();
+              throw new ToolWait(backgroundWait);
             }
             return result;
           },
           wake: async () => {
             if (boundary === "repark") {
               await lose();
-              return { kind: "wait" };
+              return { kind: "wait", ...backgroundWait };
             }
             return { kind: "settle", result };
           },

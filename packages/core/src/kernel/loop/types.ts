@@ -268,12 +268,36 @@ export type AgentToolUpdateCallback<T = unknown> = (partialResult: AgentToolResu
  * the run past it wakes the call with `expired` set, so a human who never
  * answers does not hold the run forever. Like a retry's `at`, the deadline is
  * durable state, never a timer in a process.
+ *
+ * A plugin's wait names at least one of the two, so every parked call can
+ * end: someone can answer it, or the runner expires it. Only the kernel parks
+ * with neither, for work it wakes itself (`backgroundWait`).
  */
 const TOOL_WAIT_BRAND = Symbol.for("nyte.toolWait");
 
-export interface ToolWaitOptions {
-  readonly selection?: Selection;
-  readonly until?: number;
+export type ToolWaitOptions =
+  | { readonly selection: Selection; readonly until?: number }
+  | { readonly selection?: Selection; readonly until: number };
+
+const BACKGROUND_WAIT: unique symbol = Symbol("nyte.toolWait.background");
+
+/** Kernel-only: a wait with nothing to ask and no deadline, woken by the runner itself. */
+export interface BackgroundWait {
+  readonly [BACKGROUND_WAIT]: true;
+}
+
+export const backgroundWait: BackgroundWait = { [BACKGROUND_WAIT]: true };
+
+type WaitOptions = ToolWaitOptions | BackgroundWait;
+
+/** The selection and deadline a wait parks with; none for a background wait. */
+export function waitTerms(options: WaitOptions): {
+  readonly selection: Selection | undefined;
+  readonly until: number | undefined;
+} {
+  if (BACKGROUND_WAIT in options) return { selection: undefined, until: undefined };
+
+  return { selection: options.selection, until: options.until };
 }
 
 export class ToolWait {
@@ -282,9 +306,10 @@ export class ToolWait {
   readonly selection: Selection | undefined;
   readonly until: number | undefined;
 
-  constructor(options: ToolWaitOptions = {}) {
-    this.selection = options.selection;
-    this.until = options.until;
+  constructor(options: WaitOptions) {
+    const terms = waitTerms(options);
+    this.selection = terms.selection;
+    this.until = terms.until;
   }
 }
 
@@ -332,7 +357,7 @@ export interface ToolWakeContext {
 export type ToolWakeOutcome =
   | { kind: "settle"; result: AgentToolResult<unknown>; isError?: boolean }
   /** Park again, with what the new wait asks and when it expires, as `ToolWait` takes them. */
-  | ({ kind: "wait" } & ToolWaitOptions);
+  | ({ kind: "wait" } & WaitOptions);
 
 /**
  * Settle a waiting call on wake, or keep waiting. Runs on whichever host

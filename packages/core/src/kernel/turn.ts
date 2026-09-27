@@ -47,8 +47,7 @@ import type {
   ThinkingLevel,
   WaitingCall,
 } from "./loop/types.ts";
-import { isToolWait } from "./loop/types.ts";
-import type { ToolWaitOptions } from "./loop/types.ts";
+import { isToolWait, waitTerms } from "./loop/types.ts";
 import { ToolError, toolResultContent } from "./loop/tool-result.ts";
 import {
   DEFAULT_COMPACTION_SETTINGS,
@@ -865,7 +864,7 @@ function durableTools(options: {
             lease: options.input.lease,
             view,
             state: options.state,
-            ...parkedWait(tool.name, outcome),
+            ...parkedWait(tool.name, waitTerms(outcome)),
           });
 
           return waiting();
@@ -961,7 +960,7 @@ async function settleCall(options: {
 }
 
 /** What a tool parked with, checked at the plugin boundary. */
-function parkedWait(tool: string, options: ToolWaitOptions) {
+function parkedWait(tool: string, options: ReturnType<typeof waitTerms>) {
   const until = options.until;
 
   if (until !== undefined && !Number.isFinite(until)) {

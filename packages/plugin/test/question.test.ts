@@ -202,7 +202,9 @@ test.each(Object.entries(MALFORMED))(
             parameters: Type.Object({}),
             replay: "never",
             execute: async () => {
-              throw Object.assign(new ToolWait(), { selection: build() });
+              throw Object.assign(new ToolWait({ until: Date.now() + 60_000 }), {
+                selection: build(),
+              });
             },
           }),
         );
@@ -239,7 +241,7 @@ test("only the selection's own fields reach the ref", async () => {
           parameters: Type.Object({}),
           replay: "never",
           execute: async () => {
-            throw Object.assign(new ToolWait(), {
+            throw Object.assign(new ToolWait({ until: Date.now() + 60_000 }), {
               selection: {
                 title: "x",
                 choices: [{ id: "a", label: "A", weight: 3 }],

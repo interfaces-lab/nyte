@@ -10,7 +10,7 @@ import { headRef, runRef } from "../../src/kernel/names.ts";
 import type { Run } from "../../src/kernel/model.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
 import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
-import { ToolWait } from "../../src/kernel/loop/types.ts";
+import { backgroundWait, ToolWait } from "../../src/kernel/loop/types.ts";
 import {
   assistant,
   call,
@@ -56,7 +56,7 @@ async function fixture(store: Store = openStore(), existingId?: string) {
                 description: "Ask a question",
                 parameters: Type.Object({}),
                 execute: async () => {
-                  throw new ToolWait();
+                  throw new ToolWait(backgroundWait);
                 },
                 wake: async () => ({
                   kind: "settle",

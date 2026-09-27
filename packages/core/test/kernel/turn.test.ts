@@ -23,7 +23,12 @@ import type { Commit, EventBody, Lease, Run } from "../../src/kernel/model.ts";
 import { effectPrefix, headRef } from "../../src/kernel/names.ts";
 import type { Session } from "../../src/kernel/store.ts";
 import { bindTurn, type Turn, type TurnInput, type TurnOptions } from "../../src/kernel/turn.ts";
-import { ToolWait, type AgentTool, type StreamFn } from "../../src/kernel/loop/types.ts";
+import {
+  backgroundWait,
+  ToolWait,
+  type AgentTool,
+  type StreamFn,
+} from "../../src/kernel/loop/types.ts";
 import {
   assistant,
   call,
@@ -347,7 +352,7 @@ test("after-tool patches survive a waiting sibling and recovery without running 
   const tools = [
     tool(
       async (id, params) => {
-        if (id === "waiting") throw new ToolWait();
+        if (id === "waiting") throw new ToolWait(backgroundWait);
         executions += 1;
         assert.equal(params.value, "approved");
         return { content: [{ type: "text", text: "private output" }], details: { private: true } };
@@ -569,7 +574,7 @@ test("a tool that waits parks its call, wakes with the reply, and settles exactl
   const asking = turnWith(scripted([]).streamFn, [
     tool(
       async () => {
-        throw new ToolWait();
+        throw new ToolWait(backgroundWait);
       },
       {
         wake: async (_call, context) => {
@@ -638,7 +643,7 @@ test("an abort settles a parked call as an error so the run can end", async () =
   const b = await bench();
   const asking = turnWith(scripted([]).streamFn, [
     tool(async () => {
-      throw new ToolWait();
+      throw new ToolWait(backgroundWait);
     }),
   ]);
   await asking.tools({ ...b.input(), assistant: askTool() });

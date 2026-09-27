@@ -331,7 +331,7 @@ export function browserToolsPlugin(options: {
           async wake(waiting, context) {
             if (context.aborted || context.signal.aborted) throw refuse(CANCELLED);
 
-            if (context.reply === undefined) return { kind: "wait" };
+            if (context.reply === undefined) return { kind: "wait", selection: ACCESS_SELECTION };
 
             const structured = selectionReply(context.reply);
 

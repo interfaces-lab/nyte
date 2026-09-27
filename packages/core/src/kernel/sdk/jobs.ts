@@ -15,7 +15,7 @@ import type {
   AgentToolUpdateCallback,
   ToolWakeOutcome,
 } from "../loop/types.ts";
-import { ToolWait } from "../loop/types.ts";
+import { backgroundWait, ToolWait } from "../loop/types.ts";
 import { toolResultMessage } from "../loop/agent-loop.ts";
 import { toolErrorResult, toolResultContent, toolResultText } from "../loop/tool-result.ts";
 import { toJsonValue } from "@nyte-ai/client";
@@ -443,7 +443,7 @@ export function createJobs(input: {
     if (info.phase.kind === "running") {
       return info.phase.mode === "background"
         ? { kind: "settle", result: receipt(info) }
-        : { kind: "wait" };
+        : { kind: "wait", ...backgroundWait };
     }
 
     // Background work already answered its call with the receipt; its end is a completion.
@@ -821,7 +821,7 @@ export function createJobs(input: {
               }
 
               // Both modes park first. The runner rechecks jobs after parking, closing the fast-completion race.
-              throw new ToolWait();
+              throw new ToolWait(backgroundWait);
             } finally {
               executing = false;
             }

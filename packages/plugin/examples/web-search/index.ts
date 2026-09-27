@@ -359,12 +359,12 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
             });
           }
 
-          if (context.reply === undefined) return { kind: "wait" };
-
           if (!Value.Check(webSearchParameters, waiting.args))
             throw new Error("Invalid web search arguments");
           const providers = webSearchProviders(api.tools.list());
           const consent = webSearchConsent(waiting.args.query, providers);
+
+          if (context.reply === undefined) return { kind: "wait", selection: consent };
           const structured = selectionReply(context.reply);
 
           const chosen =

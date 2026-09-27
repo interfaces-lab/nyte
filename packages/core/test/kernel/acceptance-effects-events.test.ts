@@ -5,7 +5,7 @@ import { CursorExpired } from "@nyte-ai/protocol";
 import type { SessionEvent } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import { trimStream } from "../../src/kernel/gc.ts";
-import { ToolWait } from "../../src/kernel/loop/types.ts";
+import { backgroundWait, ToolWait } from "../../src/kernel/loop/types.ts";
 import { headRef } from "../../src/kernel/names.ts";
 import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
 import { driveToIdle, openAcceptanceNyte, scripted } from "./acceptance-helpers.ts";
@@ -138,7 +138,7 @@ test("A waiting effect survives its host and accepts only the first signal", asy
             description: "Ask once",
             parameters: emptyParameters,
             execute: async () => {
-              throw new ToolWait();
+              throw new ToolWait(backgroundWait);
             },
             wake: async (_call, context) => ({
               kind: "settle",
