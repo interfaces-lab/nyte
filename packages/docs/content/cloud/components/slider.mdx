@@ -1,13 +1,20 @@
 ---
 title: Slider
-description: "A range input you style yourself, with one thumb or several"
+description: "A value picked by dragging a thumb along a track"
 ---
 
 ```ts title="Import"
+import { Slider } from "@nyte-ai/ui";
+```
+
+The same `Slider` is exported from its own subpath. Pick one path per file.
+
+```ts title="Subpath"
 import { Slider } from "@nyte-ai/ui/slider";
 ```
 
-A value picked by dragging along a track. No Nyte styling here.
+A value picked by dragging along a 6px track. Every part carries its Nyte styling. The thumb is a
+14px inverse disc, and `Slider.Indicator` fills the track up to it in the accent color.
 
 ## Usage
 
@@ -21,6 +28,8 @@ A value picked by dragging along a track. No Nyte styling here.
 - Set `orientation="vertical"` on `Slider.Root` for a vertical slider.
 - Render tick marks yourself, positioning each along the track as a percentage of the value range.
   Pair them with `step` so the thumb lands on each one.
+- `Slider.Root` has no size of its own. Give it a width through `xstyle` or the parent.
+- Recolor a thumb through its `xstyle`, for example to paint the value it picks.
 
 ## Anatomy
 
@@ -46,9 +55,9 @@ A value picked by dragging along a track. No Nyte styling here.
 </Preview>
 
 ```tsx
-<Slider.Root defaultValue={0.7} min={0} max={1} step={0.1}>
+<Slider.Root defaultValue={40} thumbAlignment="edge">
   <div>
-    <Slider.Label>Temperature</Slider.Label>
+    <Slider.Label>Intensity</Slider.Label>
     <Slider.Value />
   </div>
   <Slider.Control>
@@ -127,6 +136,9 @@ and `max`, instead of overflowing the control the way the default `"center"` doe
 
 ## Props
 
+Every part takes its Base UI props, with `className` and `style` replaced by the styled versions,
+plus `xstyle`. See [Theming](/cloud/foundations/theming).
+
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Root
@@ -168,3 +180,4 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
   over it.
 - `Slider.Value` renders an `<output>` element.
 - The root reflects `data-dragging` and `data-orientation`.
+- The thumb shows the focus ring on keyboard focus. See [Focus](/cloud/foundations/focus).

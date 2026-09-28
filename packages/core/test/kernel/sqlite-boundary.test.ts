@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "vitest";
-import { canonicalJson } from "@nyte-ai/client";
 import { openStore, storePath } from "./helpers.ts";
 
 test("a matching content hash does not make an incomplete stored object valid", async () => {
@@ -11,7 +10,7 @@ test("a matching content hash does not make an incomplete stored object valid", 
   const db = new DatabaseSync(path);
   try {
     for (const kind of ["commit", "change", "run", "effect", "stack", "blob"]) {
-      const body = canonicalJson({ kind });
+      const body = JSON.stringify({ kind });
       const oid = createHash("sha256").update(body).digest("hex");
       db.prepare(
         "INSERT INTO objects (session_id, oid, kind, body, at) VALUES (?, ?, ?, ?, ?)",

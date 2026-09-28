@@ -1,5 +1,6 @@
 // node scripts/build.mjs [--package <electron-builder args>]
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import packageMetadata from "../package.json" with { type: "json" };
@@ -51,17 +52,28 @@ if (!compiled) {
     {
       title: "Compile main, preload, renderer",
       tail: true,
-      run: () => pnpm("electron-vite", "build", "--logLevel", "info"),
+      run: () => pnpm("exec", "electron-vite", "build", "--logLevel", "info"),
     },
     { title: "Startup budgets", run: () => node("scripts/check-startup-bundle.mjs") },
   );
+}
+
+// The package ships the web app for Remote access. Under Turbo, ^build made it.
+if (shouldPackage && !compiled) {
+  stages.push({ title: "Web app", tail: true, run: () => pnpm("--dir", "../app", "build") });
+}
+
+if (compiled && !existsSync(join(desktopRoot, "..", "app", "dist", "index.html"))) {
+  failure("packages/app/dist is missing. Run `pnpm --dir packages/app build` first.");
+  process.exit(1);
 }
 
 if (shouldPackage) {
   stages.push({
     title: `Package ${builderArgs.length > 0 ? builderArgs.join(" ") : "for this platform"}`,
     tail: true,
-    run: () => pnpm("electron-builder", "--config", "electron-builder.config.ts", ...builderArgs),
+    run: () =>
+      pnpm("exec", "electron-builder", "--config", "electron-builder.config.ts", ...builderArgs),
   });
 }
 
@@ -117,10 +129,8 @@ function node(script, ...rest) {
 function pnpm(...rest) {
   // spawn() does not resolve `.cmd` shims; npm_execpath is a native binary, not JS.
   // Windows additionally refuses to launch a `.cmd` without a shell, so ask for
-  // one there. Every argument below is a bare flag, so shell quoting is moot.
-  return process.platform === "win32"
-    ? run("pnpm.cmd", ["exec", ...rest], { shell: true })
-    : run("pnpm", ["exec", ...rest]);
+  // one there. Every argument below is a bare word or relative path, so shell quoting is moot.
+  return process.platform === "win32" ? run("pnpm.cmd", rest, { shell: true }) : run("pnpm", rest);
 }
 
 function run(command, commandArgs, options) {

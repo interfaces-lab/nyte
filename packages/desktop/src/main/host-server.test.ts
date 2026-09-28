@@ -23,10 +23,11 @@ import type { Nyte } from "@nyte-ai/core";
 import { SqliteStore } from "@nyte-ai/core/store";
 import { createNyteServer } from "@nyte-ai/server";
 import type { NyteServer } from "@nyte-ai/server";
-import type { ServerDescription } from "@nyte-ai/protocol";
+import type { ServerDescription, SessionInfo } from "@nyte-ai/protocol";
 import type { Api, AssistantMessage, Model } from "@nyte-ai/schema";
-import { cloudSessions } from "../shared/ipc.ts";
-import type { HostEvent, WatchEnvelope } from "../shared/ipc.ts";
+import { cloudSessions } from "@nyte-ai/app/bridge.ts";
+import type { WatchEnvelope } from "../shared/ipc.ts";
+import type { HostEvent } from "@nyte-ai/app/bridge.ts";
 import { DesktopHost } from "./host.ts";
 import { unusedBrowserAgent } from "./browser-stub.ts";
 
@@ -86,12 +87,11 @@ afterEach(async () => {
   vi.unstubAllEnvs();
 });
 
-/** Bridge one Node request to the Web handler, streaming the response so SSE frames arrive as sent. */
-async function serve(server: NyteServer, req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function toRequest(req: IncomingMessage): Promise<Request> {
   const url = `http://${req.headers.host ?? "127.0.0.1"}${req.url ?? "/"}`;
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(Buffer.from(chunk));
-  const request = new Request(url, {
+  return new Request(url, {
     method: req.method,
     headers: Object.entries(req.headers).flatMap(([name, value]) =>
       value === undefined
@@ -102,7 +102,25 @@ async function serve(server: NyteServer, req: IncomingMessage, res: ServerRespon
     ),
     body: req.method === "GET" || req.method === "HEAD" ? undefined : Buffer.concat(chunks),
   });
-  const response = await server.fetch(request);
+}
+
+/** Answer now but deliver later: the reply is what the server said when asked, however stale by then. */
+async function capture(
+  server: NyteServer,
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<() => void> {
+  const response = await server.fetch(await toRequest(req));
+  const body = await response.text();
+  return () => {
+    res.writeHead(response.status, Object.fromEntries(response.headers));
+    res.end(body);
+  };
+}
+
+/** Bridge one Node request to the Web handler, streaming the response so SSE frames arrive as sent. */
+async function serve(server: NyteServer, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const response = await server.fetch(await toRequest(req));
   res.writeHead(response.status, Object.fromEntries(response.headers));
   if (response.body === null) {
     res.end();
@@ -207,6 +225,7 @@ async function desktop(): Promise<{
     openExternal: () => undefined,
     revealPath: () => undefined,
     showContextMenu: () => Promise.resolve(undefined),
+    confirmExternal: () => Promise.resolve("cancel"),
     pickFolder: async () => undefined,
     listFonts: async () => ({ sans: [], monospace: [] }),
     browser: {
@@ -259,7 +278,7 @@ test("a stored server becomes unavailable without erasing its last loaded Cloud 
   const { host } = await desktop();
   await host.call(1, "host.server.connect", { baseUrl, token: TOKEN });
   const session = await host.call(1, "host.server.createSession", undefined);
-  const first = (await host.call(1, "host.sessionDirectory", undefined)).find(
+  const first = (await host.call(1, "host.sessionDirectory", undefined)).directories.find(
     (entry) => entry.environment === "cloud",
   );
   assert.equal(first?.availability.kind, "ready");
@@ -267,10 +286,15 @@ test("a stored server becomes unavailable without erasing its last loaded Cloud 
 
   const state = await host.call(1, "host.server.state", undefined);
   assert.equal(state.kind, "unavailable");
-  const directory = (await host.call(1, "host.sessionDirectory", undefined)).find(
-    (entry) => entry.environment === "cloud",
-  );
-  assert.equal(directory?.availability.kind, "unavailable");
+  // The snapshot answers from the model; the sweep it starts reports the failure when it lands.
+  const directory = await vi.waitFor(async () => {
+    const cloud = (await host.call(1, "host.sessionDirectory", undefined)).directories.find(
+      (entry) => entry.environment === "cloud",
+    );
+    assert.equal(cloud?.availability.kind, "unavailable");
+
+    return cloud;
+  });
   assert.deepEqual(
     directory?.sessions.map((item) => item.sessionId),
     [session.sessionId],
@@ -319,9 +343,9 @@ test.each(["done", "failed"] as const)(
     await host.call(1, "host.server.connect", { baseUrl, token: TOKEN });
 
     const created = await host.call(1, "host.server.createSession", undefined);
-    const directory = await host.call(1, "host.sessionDirectory", undefined);
+    const { directories } = await host.call(1, "host.sessionDirectory", undefined);
     assert.deepEqual(
-      cloudSessions(directory)?.map((session) => session.sessionId),
+      cloudSessions(directories)?.map((session) => session.sessionId),
       [created.sessionId],
     );
     // The server owns it: the desktop's own stores never see it.
@@ -330,7 +354,7 @@ test.each(["done", "failed"] as const)(
       created.sessionId,
     );
     assert.equal(
-      directory.some(
+      directories.some(
         (entry) =>
           entry.environment === "local" &&
           entry.sessions.some((session) => session.sessionId === created.sessionId),
@@ -384,7 +408,10 @@ test.each(["done", "failed"] as const)(
     }
 
     await host.call(1, "host.server.disconnect", undefined);
-    assert.equal(cloudSessions(await host.call(1, "host.sessionDirectory", undefined)), undefined);
+    assert.equal(
+      cloudSessions((await host.call(1, "host.sessionDirectory", undefined)).directories),
+      undefined,
+    );
   },
 );
 
@@ -416,14 +443,14 @@ test("disconnecting ends a live cloud watch the renderer never stopped", async (
   assert.equal(watchEvents.length, settled, "no event arrives after the watch ended");
 });
 
-test("a stalled server list neither holds the local directory nor loses the last Cloud chats", async () => {
+test("a stalled server list neither holds the snapshot nor undoes a row a watch already moved", async () => {
   const { server } = await remoteHost();
-  // A proxy in front of the real server: session lists are held until released.
-  const held: ServerResponse[] = [];
+  // A proxy in front of the real server: session lists are answered at once but delivered on release.
+  const held: Promise<() => void>[] = [];
   let stalled = false;
   const proxy = createServer((req, res) => {
     if (stalled && req.url?.endsWith("/sessions.list") === true) {
-      held.push(res);
+      held.push(capture(server, req, res));
       return;
     }
     void serve(server, req, res);
@@ -431,18 +458,18 @@ test("a stalled server list neither holds the local directory nor loses the last
   await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
   const address = proxy.address();
   if (address === null || typeof address === "string") throw new Error("No address");
-  cleanups.push(() => {
-    for (const res of held) res.destroy();
-    return new Promise<void>((resolve) => proxy.close(() => resolve()));
+  cleanups.push(async () => {
+    for (const release of await Promise.all(held)) release();
+    await new Promise<void>((resolve) => proxy.close(() => resolve()));
   });
-  const { host } = await desktop();
+  const { host, events } = await desktop();
   await host.call(1, "host.server.connect", {
     baseUrl: `http://127.0.0.1:${String(address.port)}`,
     token: TOKEN,
   });
   const session = await host.call(1, "host.server.createSession", undefined);
   assert.deepEqual(
-    cloudSessions(await host.call(1, "host.sessionDirectory", undefined))?.map(
+    cloudSessions((await host.call(1, "host.sessionDirectory", undefined)).directories)?.map(
       (item) => item.sessionId,
     ),
     [session.sessionId],
@@ -450,14 +477,71 @@ test("a stalled server list neither holds the local directory nor loses the last
 
   stalled = true;
   const startedAt = performance.now();
-  const directory = await host.call(1, "host.sessionDirectory", undefined);
-  assert.ok(performance.now() - startedAt < 5_000, "the directory answered within its budget");
-  assert.ok(directory.some((entry) => entry.environment === "local"));
-  const cloud = directory.find((entry) => entry.environment === "cloud");
+  const { directories } = await host.call(1, "host.sessionDirectory", undefined);
+  assert.ok(performance.now() - startedAt < 1_000, "the snapshot answered from the model");
+  assert.ok(directories.some((entry) => entry.environment === "local"));
+  const cloud = directories.find((entry) => entry.environment === "cloud");
   assert.equal(cloud?.availability.kind, "ready");
   assert.deepEqual(
     cloud?.sessions.map((item) => item.sessionId),
     [session.sessionId],
   );
-  assert.equal(held.length, 1, "the stalled read stays in flight for the next poll");
+  await vi.waitFor(() => assert.equal(held.length, 1, "the stalled list stays in flight"));
+
+  // The server's runner moves the session while its list is held; the desktop's
+  // watch pushes the change, and the stale list must not put the old row back.
+  const finished = (row: SessionInfo) => row.heads.some((head) => head.run?.phase.kind === "done");
+  await host.call(1, "messages.send", { sessionId: session.sessionId, content: "hello" });
+  await vi.waitFor(() => {
+    const pushed = events.flatMap((event) =>
+      event.kind === "session_directory"
+        ? event.changes.flatMap((change) =>
+            change.kind === "upsert" && change.session.sessionId === session.sessionId
+              ? [change.session]
+              : [],
+          )
+        : [],
+    );
+    assert.ok(pushed.some(finished), "the finished run was pushed");
+  });
+  stalled = false;
+  for (const release of await Promise.all(held.splice(0))) release();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const fresh = cloudSessions((await host.call(1, "host.sessionDirectory", undefined)).directories);
+  assert.equal(fresh?.length, 1);
+  assert.ok(fresh?.[0] !== undefined && finished(fresh[0]), "the stale list did not undo the row");
+});
+
+test("reconnecting removes a Cloud chat deleted while disconnected", async () => {
+  const { baseUrl, sdk } = await remoteHost();
+  const { host } = await desktop();
+  await host.call(1, "host.server.connect", { baseUrl, token: TOKEN });
+  const kept = await host.call(1, "host.server.createSession", undefined);
+  const doomed = await host.call(1, "host.server.createSession", undefined);
+  assert.deepEqual(
+    new Set(
+      cloudSessions((await host.call(1, "host.sessionDirectory", undefined)).directories)?.map(
+        (item) => item.sessionId,
+      ),
+    ),
+    new Set([kept.sessionId, doomed.sessionId]),
+  );
+
+  await host.call(1, "host.server.disconnect", undefined);
+  assert.equal(
+    cloudSessions((await host.call(1, "host.sessionDirectory", undefined)).directories),
+    undefined,
+  );
+  await sdk.sessions.delete({ sessionId: doomed.sessionId });
+
+  await host.call(1, "host.server.connect", { baseUrl, token: TOKEN });
+  await vi.waitFor(async () => {
+    const cloud = cloudSessions(
+      (await host.call(1, "host.sessionDirectory", undefined)).directories,
+    );
+    assert.deepEqual(
+      cloud?.map((item) => item.sessionId),
+      [kept.sessionId],
+    );
+  });
 });

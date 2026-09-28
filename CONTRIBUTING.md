@@ -28,6 +28,8 @@ To start a client yourself, run `pnpm dev:tui` or `pnpm dev:desktop`. The docume
 | [cli](packages/cli/README.md) | npm distribution and installer for the Nyte binary |
 | [tui](packages/tui/README.md) | Terminal client and native binary |
 | [desktop](packages/desktop/README.md) | Electron desktop client |
+| [renderer](packages/app/README.md) | React interface for the desktop and a future browser client |
+| [serve](packages/serve/README.md) | One trusted folder and the web app from a local address |
 | [mobile](packages/mobile/README.md) | Native iOS companion for a remote host |
 | [ui](packages/ui/README.md) | Shared UI components and design tokens |
 | [telemetry](packages/telemetry/README.md) | Runtime telemetry |

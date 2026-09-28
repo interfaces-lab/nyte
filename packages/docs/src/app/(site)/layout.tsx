@@ -1,8 +1,6 @@
-import * as stylex from "@stylexjs/stylex";
 import { NextProvider } from "fumadocs-core/framework/next";
 import { ThemeProvider } from "next-themes";
-import { SiteNav } from "~/components/site-nav";
-import { shell } from "~/shell.stylex";
+import { SiteNav } from "~/components/site-nav/site-nav";
 
 /*
  * Marketing and core docs share one navbar. Search is a client island.
@@ -15,7 +13,7 @@ export default function Layout({ children }: LayoutProps<"/">) {
     <NextProvider>
       <ThemeProvider attribute="class" disableTransitionOnChange enableColorScheme>
         <SiteNav />
-        <div {...stylex.props(shell.fillScroll)}>{children}</div>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">{children}</div>
       </ThemeProvider>
     </NextProvider>
   );

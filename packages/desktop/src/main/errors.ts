@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { NyteClosed, UnknownSession } from "@nyte-ai/core";
 import { CursorExpired } from "@nyte-ai/protocol";
 import type { NyteOptions } from "@nyte-ai/core";
-import type { IpcFailure, IpcResult } from "../shared/errors.ts";
+import type { IpcFailure, IpcResult } from "@nyte-ai/app/errors.ts";
 import type { WireError } from "@nyte-ai/protocol";
 
 /** Local-only, bounded diagnostics. Never export original exceptions to telemetry or IPC. */

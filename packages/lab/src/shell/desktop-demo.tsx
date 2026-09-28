@@ -1,21 +1,46 @@
 import { create, props } from "@stylexjs/stylex";
 import { Row } from "@nyte-ai/ui/row";
-import { Button } from "@nyte-ai/ui";
-import { useRef, useState } from "react";
-import { sidebarStyles } from "../../../desktop/src/renderer/src/chrome/sidebar.stylex.ts";
-import { titlebarStyles } from "../../../desktop/src/renderer/src/chrome/titlebar.stylex.ts";
-import { threadStyles } from "../../../desktop/src/renderer/src/screens/thread.stylex.ts";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { sidebarStyles } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
+import { titlebarStyles } from "@nyte-ai/app/chrome/titlebar.stylex.ts";
+import { threadStyles } from "@nyte-ai/app/screens/thread.stylex.ts";
+import { composerStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
+import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
+import { Button } from "@nyte-ai/ui/button";
+import { Hint } from "@nyte-ai/ui/tooltip";
+import { Kbd } from "@nyte-ai/ui/kbd";
+import { Toggle } from "@nyte-ai/ui/toggle";
+import { t } from "@nyte-ai/ui/vars.stylex";
+import { Spinner } from "@nyte-ai/ui/spinner";
+import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
+import { NO_WAITS } from "@nyte-ai/app/conversation/transcript-presentation.ts";
 import {
-  composerStyles,
-  proseStyles,
-  turnStyles,
-} from "../../../desktop/src/renderer/src/conversation/styles.stylex.ts";
-import { Icon, PanelToggleIcon } from "../../../desktop/src/renderer/src/components/icons.tsx";
-import { Hint, IconButton, Kbd, focus } from "../../../desktop/src/renderer/src/components/ui.tsx";
-import { t } from "../../../desktop/src/renderer/src/theme/vars.stylex.ts";
-import { Spinner } from "../../../desktop/src/renderer/src/components/spinner.tsx";
-import { PaneMenu, SessionContext, DemoPopover, DemoDialog } from "./demo-surfaces";
-import { WorkbenchDemo, PanelToggle } from "./workbench-demo";
+  activeStickyCandidate,
+  isBottomPinned,
+} from "@nyte-ai/app/conversation/transcript-scroll.ts";
+import type { StickyCandidate } from "@nyte-ai/app/conversation/transcript-scroll.ts";
+import { SubagentTray } from "@nyte-ai/app/conversation/tray/agents.tsx";
+import type { SubagentTrayView } from "@nyte-ai/app/conversation/tray/agents.tsx";
+import { Workbench } from "@nyte-ai/app/workbench/workbench.tsx";
+import { WorkbenchTabStrip } from "@nyte-ai/app/workbench/tab-strip.tsx";
+import {
+  activeWorkbenchTab,
+  defaultWorkbenchTab,
+  useWorkbenchSnapshot,
+  workbenchController,
+  workbenchViewKey,
+} from "@nyte-ai/app/workbench/controller.ts";
+import type { WorkbenchViewState } from "@nyte-ai/app/workbench/controller.ts";
+import { clientActionShortcut, clientActions } from "@nyte-ai/app/client-actions.ts";
+import {
+  PaneMenu,
+  SessionContext,
+  DemoPopover,
+  DemoDialog,
+  DemoModelPicker,
+} from "./demo-surfaces";
+import { parentSessionId, subagents, turns } from "./fixtures";
+import { workspace } from "./host-stub";
 import type { AuditSurface, WorkbenchState } from "./audit-state";
 import { GridOverlay } from "./grid-overlay";
 import type { GridMetrics } from "./grid-overlay";
@@ -43,7 +68,7 @@ const fixture = create({
   red: { backgroundColor: "#ff5f57" },
   yellow: { backgroundColor: "#febc2e" },
   green: { backgroundColor: "#28c840" },
-  main: { backgroundColor: t.bgBase },
+  main: { backgroundColor: t.bgPage },
   transcript: { paddingBlockStart: 16, paddingBlockEnd: 8 },
   flowRow: { position: "relative" },
   sidebarSeat: {
@@ -106,12 +131,86 @@ const fixture = create({
       insetBlock: 0,
       insetInlineEnd: 0,
       width: 1,
-      backgroundColor: t.strokeQuaternary,
+      backgroundColor: t.strokeTertiary,
       pointerEvents: "none",
     },
   },
   activity: { color: t.textAccent },
 });
+
+const workbenchScope = { kind: "project" } as const;
+
+const workbenchView = workbenchViewKey(workspace.path);
+
+const noLiveTools = new Map<string, never>();
+
+function workbenchStateOf(view: WorkbenchViewState): WorkbenchState {
+  if (view.expanded && activeWorkbenchTab(view, workbenchScope) !== null) return "panel";
+
+  return view.collapsed === "compact" ? "compact" : "rail";
+}
+
+function applyWorkbenchState(state: WorkbenchState) {
+  const { actions } = workbenchController;
+  const view = workbenchController.getView(workbenchView);
+
+  if (workbenchStateOf(view) === state) return;
+
+  if (state === "panel") {
+    const changes = view.tabs.find((tab) => tab.kind === "changes");
+
+    if (changes === undefined)
+      actions.openTab({ view: workbenchView, tab: defaultWorkbenchTab("changes"), activate: true });
+    else actions.activateTab({ view: workbenchView, id: changes.id });
+
+    return;
+  }
+
+  if (view.expanded) actions.toggle({ view: workbenchView });
+
+  if (
+    (workbenchController.getView(workbenchView).collapsed === "compact") !==
+    (state === "compact")
+  )
+    actions.toggleCollapsed({ view: workbenchView });
+}
+
+function setDataState(element: HTMLElement, name: string, active: boolean) {
+  const value = active ? "true" : "false";
+
+  if (element.dataset[name] !== value) element.dataset[name] = value;
+}
+
+/*
+ * The desktop's sticky prompt sync, measured from rects: the fixture lays its
+ * turns out in flow instead of through the virtualizer the thread reads.
+ */
+function syncStickyUserMessage(scroll: HTMLElement) {
+  const rows = scroll.querySelectorAll<HTMLElement>("[data-sticky-user-message]");
+  const top = scroll.getBoundingClientRect().top - scroll.scrollTop;
+  const candidates: StickyCandidate[] = [];
+  const candidateRows: HTMLElement[] = [];
+
+  for (const row of rows) {
+    const turn = row.closest<HTMLElement>("[data-sticky-turn='true']");
+    const wrapper = row.closest<HTMLElement>("[data-lab-turn]");
+    const eligible = turn !== null && wrapper !== null && row.offsetHeight < scroll.clientHeight;
+    setDataState(row, "stickyDisabled", !eligible);
+
+    if (!eligible || turn === null || wrapper === null) continue;
+    candidates.push({
+      start: turn.getBoundingClientRect().top - top,
+      height: wrapper.offsetHeight,
+    });
+    candidateRows.push(row);
+  }
+
+  const active = activeStickyCandidate(candidates, scroll.scrollTop, isBottomPinned(scroll));
+  const activeRow = active === undefined ? undefined : candidateRows[active];
+
+  for (const row of rows) setDataState(row, "stickyActive", row === activeRow);
+  setDataState(scroll, "topFade", scroll.scrollTop > 0 && activeRow === undefined);
+}
 
 const sessionTitles = [
   "Audit Fable desktop layout",
@@ -164,6 +263,54 @@ export function DesktopDemo({
   };
 
   const [reply, setReply] = useState("");
+  const replyRef = useRef<HTMLTextAreaElement>(null);
+  const [trayView, setTrayView] = useState<SubagentTrayView>({ kind: "closed" });
+  const [scroll, setScroll] = useState<HTMLDivElement | null>(null);
+  const workbenchSnapshot = useWorkbenchSnapshot();
+
+  const view =
+    workbenchSnapshot.views.get(workbenchView) ?? workbenchController.getView(workbenchView);
+
+  const workbenchOpen = workbenchStateOf(view) === "panel";
+
+  useLayoutEffect(() => applyWorkbenchState(workbench), [workbench]);
+
+  useEffect(
+    () =>
+      workbenchController.subscribe(() => {
+        const next = workbenchStateOf(workbenchController.getView(workbenchView));
+
+        if (document.documentElement.dataset.labWorkbench !== next) onWorkbench(next);
+      }),
+    [onWorkbench],
+  );
+
+  useLayoutEffect(() => {
+    if (scroll === null) return undefined;
+    let pinned = true;
+
+    const follow = () => {
+      if (pinned) scroll.scrollTo({ top: scroll.scrollHeight });
+      syncStickyUserMessage(scroll);
+    };
+
+    const track = () => {
+      pinned = isBottomPinned(scroll);
+      syncStickyUserMessage(scroll);
+    };
+
+    follow();
+    const observer = new ResizeObserver(follow);
+    observer.observe(scroll);
+
+    for (const child of scroll.children) observer.observe(child);
+    scroll.addEventListener("scroll", track, { passive: true });
+
+    return () => {
+      observer.disconnect();
+      scroll.removeEventListener("scroll", track);
+    };
+  }, [scroll]);
 
   return (
     <div id="lab-shell" data-desktop-demo="" {...props(fixture.root)}>
@@ -181,22 +328,21 @@ export function DesktopDemo({
           <i {...props(fixture.light, fixture.green)} />
         </span>
         <span {...props(titlebarStyles.actionTrack)}>
-          <IconButton
-            label="Toggle sidebar"
-            onClick={onSidebar}
-            icon={<PanelToggleIcon side="left" visible={sidebarVisible} />}
-          />
+          <Button size="icon" aria-label="Toggle sidebar" onClick={onSidebar}>
+            <PanelToggleIcon side="left" visible={sidebarVisible} />
+          </Button>
         </span>
         <span
           inert={!sidebarVisible}
           {...props(titlebarStyles.navigationTrack, fixture.historySlide)}
         >
-          <IconButton icon="arrow-left" label="Back" />
-          <IconButton icon="arrow-right" label="Forward" disabled />
+          <Button size="icon" icon="arrow-left" aria-label="Back" />
+          <Button size="icon" icon="arrow-right" aria-label="Forward" disabled />
         </span>
         <span
           {...props(
             titlebarStyles.titleSlot,
+            workbenchOpen && titlebarStyles.titleSlotWorkbenchOpen,
             !sidebarVisible && titlebarStyles.titleSlotSidebarHiddenMac,
             fixture.titleSlide,
           )}
@@ -206,19 +352,69 @@ export function DesktopDemo({
           </span>
         </span>
         <span {...props(titlebarStyles.spacer)} />
-        <span {...props(titlebarStyles.actionTrack)}>
-          <PaneMenu
-            surface={surface}
-            onSurface={onSurface}
-            trigger={<IconButton ref={menuRef} icon="more" label="Pane actions" />}
-          />
-        </span>
-        <span {...props(titlebarStyles.actionTrack)}>
+        {!(workbenchOpen && view.maximized) && (
+          <span {...props(titlebarStyles.actionTrack)}>
+            <PaneMenu
+              surface={surface}
+              onSurface={onSurface}
+              trigger={<Button size="icon" ref={menuRef} icon="more" aria-label="Pane actions" />}
+            />
+          </span>
+        )}
+        {workbenchOpen && (
+          <span aria-hidden="true" {...props(titlebarStyles.workbenchReservation)} />
+        )}
+        <div
+          {...props(
+            workbenchOpen ? titlebarStyles.workbenchTrack : titlebarStyles.actionTrack,
+            workbenchOpen && !sidebarVisible && titlebarStyles.workbenchTrackSidebarHiddenMac,
+          )}
+        >
+          {workbenchOpen && (
+            <>
+              <WorkbenchTabStrip
+                viewKey={workbenchView}
+                view={view}
+                scope={workbenchScope}
+                workspacePath={workspace.path}
+              />
+              <Hint
+                content={view.maximized ? "Restore Workbench Width" : "Expand Workbench"}
+                trigger={
+                  <Toggle
+                    size="icon"
+                    icon={view.maximized ? "minimize" : "expand"}
+                    aria-label={view.maximized ? "Restore workbench width" : "Expand workbench"}
+                    pressed={view.maximized}
+                    onPressedChange={() =>
+                      workbenchController.actions.toggleMaximized({ view: workbenchView })
+                    }
+                    title={undefined}
+                  />
+                }
+              />
+            </>
+          )}
           <Hint
-            content="Toggle workbench"
-            trigger={<PanelToggle state={workbench} onState={onWorkbench} />}
+            content={`${workbenchOpen ? "Close Workbench Panel" : "Open Workbench Panel"} ${clientActionShortcut(clientActions.workbench, true)}`}
+            trigger={
+              <Toggle
+                size="icon"
+                aria-label={workbenchOpen ? "Close workbench panel" : "Open workbench panel"}
+                pressed={workbenchOpen}
+                onPressedChange={() =>
+                  workbenchController.actions.toggleWorkbench({
+                    view: workbenchView,
+                    scope: workbenchScope,
+                  })
+                }
+                title={undefined}
+              >
+                <PanelToggleIcon side="right" visible={workbenchOpen} />
+              </Toggle>
+            }
           />
-        </span>
+        </div>
       </header>
       <div {...props(threadStyles.body)}>
         <div
@@ -233,9 +429,9 @@ export function DesktopDemo({
             {...props(sidebarStyles.rail, fixture.sidebar, fixture.sidebarSlide)}
           >
             <div {...props(sidebarStyles.primaryActions)}>
-              <button
-                type="button"
-                {...props(sidebarStyles.navRow)}
+              <Row
+                variant="nav"
+                xstyle={sidebarStyles.navRow}
                 onClick={() => {
                   setSessions((current) => [
                     "New chat",
@@ -244,45 +440,33 @@ export function DesktopDemo({
                   setSelected("New chat");
                 }}
               >
-                <span {...props(sidebarStyles.navIcon)}>
+                <Row.Leading>
                   <Icon name="new-chat" size={14} />
-                </span>
-                <span {...props(sidebarStyles.navLabel)}>New Chat</span>
+                </Row.Leading>
+                <Row.Label>New Chat</Row.Label>
                 <span {...props(sidebarStyles.shortcutSlot, sidebarStyles.shortcutPersistent)}>
                   <Kbd keys={["⌘", "N"]} />
                 </span>
-              </button>
-              <button type="button" {...props(sidebarStyles.navRow)}>
-                <span {...props(sidebarStyles.navIcon)}>
+              </Row>
+              <Row variant="nav" xstyle={sidebarStyles.navRow}>
+                <Row.Leading>
                   <Icon name="search" size={14} />
-                </span>
-                <span {...props(sidebarStyles.navLabel)}>Search</span>
-              </button>
-              <button type="button" {...props(sidebarStyles.navRow)}>
-                <span {...props(sidebarStyles.navIcon)}>
+                </Row.Leading>
+                <Row.Label>Search</Row.Label>
+              </Row>
+              <Row variant="nav" xstyle={sidebarStyles.navRow}>
+                <Row.Leading>
                   <Icon name="customize" size={14} />
-                </span>
-                <span {...props(sidebarStyles.navLabel)}>Customize</span>
-              </button>
+                </Row.Leading>
+                <Row.Label>Customize</Row.Label>
+              </Row>
             </div>
             <div {...props(sidebarStyles.scroll)} data-grid-scroll="">
               <section {...props(sidebarStyles.section)}>
                 <div {...props(sidebarStyles.sectionHeader)}>
                   <span {...props(sidebarStyles.sectionToggle)}>Workspaces</span>
-                  <button
-                    type="button"
-                    aria-label="Filter workspaces"
-                    {...props(sidebarStyles.action)}
-                  >
-                    <Icon name="filters" size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Add workspace"
-                    {...props(sidebarStyles.workspaceCreateAction)}
-                  >
-                    <Icon name="folder-add" size={14} />
-                  </button>
+                  <Button size="icon-sm" icon="filters" aria-label="Filter workspaces" />
+                  <Button size="icon-sm" icon="folder-add" aria-label="Add workspace" />
                 </div>
                 <Row xstyle={[sidebarStyles.rowSurface, sidebarStyles.workspaceRow]}>
                   <Row.Leading xstyle={sidebarStyles.rowIcon}>
@@ -314,9 +498,7 @@ export function DesktopDemo({
                           {title === selected && (
                             <Row.Backdrop xstyle={sidebarStyles.sessionSelection} />
                           )}
-                          <Row.Primary
-                            render={<button type="button" onClick={() => setSelected(title)} />}
-                          >
+                          <Row.Primary onClick={() => setSelected(title)}>
                             <Row.Leading
                               data-grid-column="sidebar.icons"
                               xstyle={[sidebarStyles.rowIcon, index < 2 && fixture.activity]}
@@ -345,32 +527,21 @@ export function DesktopDemo({
                             placement="overlay"
                             xstyle={[sidebarStyles.rowActions, sidebarStyles.rowActionsBesideMeta]}
                           >
-                            <button
-                              type="button"
+                            <Button
+                              size="icon-xs"
+                              icon="pin"
                               aria-label={`${pinned.has(title) ? "Unpin" : "Pin"} ${title}`}
                               onClick={() => togglePin(title)}
-                              {...props(
-                                sidebarStyles.action,
-                                sidebarStyles.sessionAction,
-                                focus.ringInset,
-                              )}
-                            >
-                              <Icon name="pin" size={12} />
-                            </button>
-                            <button
-                              type="button"
+                            />
+                            <Button
+                              size="icon-xs"
                               aria-label={`Archive ${title}`}
                               onClick={() => archive(title)}
-                              {...props(
-                                sidebarStyles.action,
-                                sidebarStyles.sessionAction,
-                                focus.ringInset,
-                              )}
                             >
                               <span {...props(sidebarStyles.actionGlyphArchive)}>
                                 <Icon name="archive" size={12} />
                               </span>
-                            </button>
+                            </Button>
                           </Row.Actions>
                         </Row>
                       ))}
@@ -381,138 +552,161 @@ export function DesktopDemo({
             </div>
             <div {...props(sidebarStyles.footer)}>
               <div {...props(sidebarStyles.footerRow)}>
-                <button type="button" {...props(sidebarStyles.navRow, sidebarStyles.accountButton)}>
-                  <span {...props(sidebarStyles.navIcon)}>
+                <Row variant="nav" xstyle={[sidebarStyles.navRow, sidebarStyles.accountButton]}>
+                  <Row.Leading>
                     <Icon name="user" size={14} />
-                  </span>
-                  <span {...props(sidebarStyles.navLabel)}>Itsnotaka</span>
-                </button>
+                  </Row.Leading>
+                  <Row.Label>Itsnotaka</Row.Label>
+                </Row>
                 <Hint
                   content="Settings"
                   side="top"
                   trigger={
-                    <button
-                      type="button"
+                    <Button
+                      size="icon"
+                      icon="settings"
                       aria-label="Settings"
-                      {...props(sidebarStyles.footerSettings)}
                       onClick={() => onSurface("menu")}
-                    >
-                      <Icon name="settings" size={14} />
-                    </button>
+                      title={undefined}
+                    />
                   }
                 />
               </div>
             </div>
           </aside>
         </div>
-        <main {...props(threadStyles.conversation, fixture.main)}>
-          <div data-grid-scroll="" {...props(threadStyles.scroll)}>
-            <div {...props(threadStyles.transcript, fixture.transcript)}>
-              <div
-                data-grid-row="assistant"
-                {...props(threadStyles.row, threadStyles.rowFirst, fixture.flowRow)}
-              >
-                <div
-                  data-grid-column="conversation"
-                  {...props(proseStyles.root, proseStyles.measure)}
-                >
-                  <p data-grid-text="" {...props(proseStyles.paragraph)}>
-                    I checked VS Code's actual browser, trust, and chat-storage source, plus
-                    Cursor's cleanup code. Trust checks remain intact.
-                  </p>
-                  <p data-grid-text="" {...props(proseStyles.paragraph)}>
-                    Targeted tests and the full client suite pass. Broader typecheck/lint checks
-                    still hit unrelated changes currently underway.
-                  </p>
-                  <p data-grid-text="" {...props(proseStyles.paragraph)}>
-                    <strong {...props(proseStyles.strong)}>Still outstanding:</strong> repeated
-                    full-history scans and some core session/plugin state retained until workspace
-                    shutdown.
-                    <br />
-                    This is not yet a complete performance fix, and I haven't measured savings in a
-                    rebuilt desktop app.
-                  </p>
-                </div>
-              </div>
-              <div data-grid-row="user" {...props(threadStyles.row, fixture.flowRow)}>
-                <div {...props(turnStyles.userRow)}>
-                  <div {...props(turnStyles.userPromptShell)}>
-                    <div data-grid-column="conversation" {...props(turnStyles.userPrompt)}>
-                      <span {...props(composerStyles.mentionChip, composerStyles.mentionChipSkill)}>
-                        <span {...props(composerStyles.mentionChipLeading)}>
-                          <Icon name="skills" size={12} />
-                        </span>
-                        /bro
-                      </span>{" "}
-                      no, we should improve those logic if needed. and archive stop resources is
-                      just what I made up, keep
-                    </div>
+        <div {...props(threadStyles.stage)}>
+          <main {...props(threadStyles.conversation, fixture.main)}>
+            <div
+              ref={setScroll}
+              data-grid-scroll=""
+              data-nyte-scrollport="balanced"
+              {...props(threadStyles.scroll)}
+            >
+              <div {...props(threadStyles.transcript, fixture.transcript)}>
+                {turns.map((turn, index) => (
+                  <div
+                    key={turn.kind === "turn" ? turn.id : index}
+                    data-lab-turn=""
+                    data-grid-row="turn"
+                    {...props(
+                      threadStyles.row,
+                      index === 0 && threadStyles.rowFirst,
+                      fixture.flowRow,
+                    )}
+                  >
+                    <TurnView
+                      turn={turn}
+                      liveTools={noLiveTools}
+                      cwd={workspace.path}
+                      onOpenChanges={() => applyWorkbenchState("panel")}
+                      running={false}
+                      waits={NO_WAITS}
+                    />
                   </div>
-                </div>
+                ))}
               </div>
-            </div>
-            <div {...props(composerStyles.dock)}>
-              <div {...props(composerStyles.region)}>
+              <div {...props(composerStyles.dock)}>
                 <div
-                  ref={composerRef}
-                  data-grid-row="composer"
-                  {...props(composerStyles.frame, composerStyles.frameFollowUpCompact)}
+                  role="region"
+                  aria-label="Conversation input"
+                  {...props(composerStyles.region)}
                 >
-                  <div {...props(composerStyles.layout, composerStyles.layoutCompact)}>
-                    <div {...props(composerStyles.editor, composerStyles.editorCompact)}>
-                      <textarea
-                        aria-label="Message Nyte"
-                        placeholder="Message Nyte"
-                        rows={1}
-                        value={reply}
-                        onChange={(event) => setReply(event.currentTarget.value)}
-                        {...props(composerStyles.input, composerStyles.inputCompact)}
-                      />
-                    </div>
-                    <div {...props(composerStyles.controls, composerStyles.controlsCompact)}>
-                      <DemoPopover
-                        surface={surface}
-                        onSurface={onSurface}
-                        anchor={composerRef}
-                        onChoose={setReply}
-                        trigger={
-                          <Button
-                            unstyled
-                            aria-label="Add agents, context, tools"
-                            {...props(
-                              composerStyles.addButton,
-                              composerStyles.controlHitArea,
-                              composerStyles.addButtonCompact,
-                              focus.ring,
-                            )}
-                          >
-                            <Icon name="plus" />
-                          </Button>
+                  <div {...props(composerStyles.inputStack)}>
+                    <div {...props(composerStyles.preComposerOverlay)}>
+                      <SubagentTray
+                        parentSessionId={parentSessionId}
+                        agents={subagents}
+                        view={trayView}
+                        onViewChange={setTrayView}
+                        onExpand={() => setTrayView({ kind: "closed" })}
+                        onRelease={() => replyRef.current?.focus({ preventScroll: true })}
+                        viewport={scroll}
+                        detail={
+                          trayView.kind === "detail" ? (
+                            <div {...props(threadStyles.scroll)}>
+                              <div {...props(threadStyles.transcript, fixture.transcript)}>
+                                <div
+                                  {...props(
+                                    threadStyles.row,
+                                    threadStyles.rowFirst,
+                                    fixture.flowRow,
+                                  )}
+                                >
+                                  <TurnView
+                                    turn={turns[0]}
+                                    liveTools={noLiveTools}
+                                    cwd={workspace.path}
+                                    onOpenChanges={() => {}}
+                                    running={false}
+                                    waits={NO_WAITS}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ) : null
                         }
                       />
-                      <span {...props(composerStyles.modelSlot, composerStyles.modelSlotCompact)} />
-                      <Button
-                        unstyled
-                        aria-label="Send message"
-                        disabled={reply.length === 0}
-                        onClick={() => setReply("")}
-                        {...props(
-                          composerStyles.send,
-                          composerStyles.controlHitArea,
-                          composerStyles.sendCompact,
-                          focus.ring,
-                        )}
-                      >
-                        <Icon name="arrow-up" />
-                      </Button>
+                    </div>
+                    <div
+                      ref={composerRef}
+                      data-grid-row="composer"
+                      {...props(composerStyles.frame, composerStyles.frameFollowUpCompact)}
+                    >
+                      <div {...props(composerStyles.layout, composerStyles.layoutCompact)}>
+                        <div {...props(composerStyles.editor, composerStyles.editorCompact)}>
+                          <textarea
+                            ref={replyRef}
+                            aria-label="Message Nyte"
+                            placeholder="Message Nyte"
+                            rows={1}
+                            value={reply}
+                            onChange={(event) => setReply(event.currentTarget.value)}
+                            {...props(composerStyles.input, composerStyles.inputCompact)}
+                          />
+                        </div>
+                        <div {...props(composerStyles.controls, composerStyles.controlsCompact)}>
+                          <DemoPopover
+                            surface={surface}
+                            onSurface={onSurface}
+                            anchor={composerRef}
+                            onChoose={setReply}
+                            trigger={
+                              <Button
+                                size="icon"
+                                icon="plus"
+                                aria-label="Add agents, context, tools"
+                                variant="secondary"
+                                round
+                                xstyle={composerStyles.addButtonCompact}
+                              />
+                            }
+                          />
+                          <span
+                            {...props(composerStyles.modelSlot, composerStyles.modelSlotCompact)}
+                          >
+                            <DemoModelPicker />
+                          </span>
+                          <Button
+                            size="icon"
+                            icon="arrow-up"
+                            aria-label="Send message"
+                            variant="inverse"
+                            round
+                            disabled={reply.length === 0}
+                            onClick={() => setReply("")}
+                            xstyle={composerStyles.sendCompact}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </main>
-        <WorkbenchDemo state={workbench} onState={onWorkbench} />
+          </main>
+          <Workbench workspacePath={workspace.path} sessionId={undefined} />
+        </div>
       </div>
       <DemoDialog
         surface={surface}

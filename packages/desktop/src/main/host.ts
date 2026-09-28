@@ -15,6 +15,7 @@ import { join, resolve } from "node:path";
 import type { MutableModels } from "@nyte-ai/ai";
 import { createNyte, dispatch, watchPluginDirectories } from "@nyte-ai/core";
 import { isTerminalPhase } from "@nyte-ai/protocol";
+import type { Environment, OperationInput } from "@nyte-ai/protocol";
 import type {
   Disposer,
   ResolvedPlugins,
@@ -22,89 +23,92 @@ import type {
   SessionId,
   SessionInfo,
   Nyte,
+  WorkspaceBackend,
   WorkspaceInfo,
   WorkspaceSelectInput,
   WorkspaceSelectOutcome,
   WorkspaceSelection,
 } from "@nyte-ai/core";
-import { createNyteClient } from "@nyte-ai/client";
+import { createNyteClient, sessionMark } from "@nyte-ai/client";
 import type { NyteClient } from "@nyte-ai/client";
 // Hosts name their storage backend through the store entry; the worker keeps
 // SQLite off Electron's main thread.
 import { WorkerStore } from "@nyte-ai/core/store";
 import type { Store } from "@nyte-ai/core/store";
 import {
+  createGitHubService,
   createGitVcs,
   createHost,
+  createWorkspaceBackend,
   createWorkspaceStore,
-  discoverMentionFiles,
   nyteHome,
   pluginWatchTargets,
-  rankMentionFiles,
-  readWorkspaceFile,
   resolveHostPlugins,
-  saveWorkspaceFile,
+  runGitHubCommand,
   workspaceStorePath,
   WorkspaceTrustRequired,
 } from "@nyte-ai/host";
-import type { DeferredPluginTarget, PluginTarget } from "@nyte-ai/host";
+import type {
+  DeferredPluginTarget,
+  GitHubCommandResult,
+  GitHubCommandRunner,
+  PluginTarget,
+} from "@nyte-ai/host";
+import { createModelPreferencesStore, readCatalog } from "@nyte-ai/host/catalog";
+import type { ResolvedCatalog } from "@nyte-ai/host/catalog";
+import { createProviderEnvironment } from "@nyte-ai/host/environment";
 import { createOtelExport } from "@nyte-ai/host/otel";
+import { catalogForUsage, projectUsageReport, UsageScanner } from "@nyte-ai/host/store-usage";
+import type {
+  StoreLocation,
+  StoreRead,
+  UsageScan,
+  UsageScanReader,
+} from "@nyte-ai/host/store-usage";
 import { SDK_OPERATION_PATHS } from "../shared/ipc.ts";
 import type {
   CallInput,
   CallOutput,
   CallPath,
-  DesktopCatalog,
+  SdkOperationPath,
+  WatchEnvelope,
+  WatchStartInput,
+} from "../shared/ipc.ts";
+import type {
   LoginOutcome,
+  LoginProgress,
   HostEvent,
   HostState,
-  GitHubProviderState,
   HostBridge,
   LocalFontCatalog,
-  MobileShareReach,
-  MobileShareState,
   OpenWorkspaceOutcome,
-  PreferenceChange,
-  SdkOperationPath,
+  RemoteAccessState,
+  RemoteReach,
   ServerConnectOutcome,
   ServerState,
+  SessionDirectorySnapshot,
+  SessionDirectorySource,
   TailnetAvailability,
   UsageSnapshot,
   UsageWindow,
-  WatchEnvelope,
-  WatchStartInput,
-  WorkspaceSessionDirectory,
-} from "../shared/ipc.ts";
-import { loadPersistedCatalog, login, readCatalog } from "./catalog.ts";
-import type { ResolvedCatalog } from "./catalog.ts";
+} from "@nyte-ai/app/bridge.ts";
 import { safeExternalUrl } from "./external-url.ts";
 import type { BrowserSurfaces } from "./browser.ts";
 import { browserToolsPlugin } from "./browser-tools.ts";
 import { TerminalSessions } from "./terminals.ts";
-import { createGitHubProvider, runProviderCommand } from "./github.ts";
-import type { CommandRunner, CommandResult, GitHubProvider } from "./github.ts";
 import { CALL_INPUT_SCHEMAS } from "./ipc-inputs.ts";
 import { ExpectedHostError, ipcFailure, retainDiagnostic } from "./errors.ts";
-import type { IpcFailure } from "../shared/errors.ts";
+import type { IpcFailure } from "@nyte-ai/app/errors.ts";
 import { ensureShellEnvironment } from "./shell-environment.ts";
-import { catalogForUsage, UsageScanner } from "./usage-scan.ts";
-import type { StoreLocation, UsageScan, UsageScanReader } from "./usage-scan.ts";
 import { readAccountUsage } from "@nyte-ai/host/usage";
 import type { AccountUsage } from "@nyte-ai/host/usage";
-import { projectUsageReport } from "./usage.ts";
-import type { StoreRead } from "./usage.ts";
-import { startMobileShare } from "./mobile-share.ts";
-import type { MobileShare } from "./mobile-share.ts";
-import { findTailnetAddress } from "./tailnet.ts";
+import { findTailnetAddress, randomToken, startServe } from "@nyte-ai/serve";
+import type { Serving } from "@nyte-ai/serve";
 import { ServerSettingsStore } from "./server-settings.ts";
 import type { ServerSettings } from "./server-settings.ts";
-import { serverCatalog, serverConnectionProblem } from "./server-connection.ts";
-import {
-  createBrowserAccessStore,
-  createModelPreferencesStore,
-  readLastWorkspace,
-  rememberWorkspace,
-} from "./workspaces.ts";
+import { serverCatalog, serverConnectionProblem } from "@nyte-ai/app/server-connection.ts";
+import { SessionDirectory } from "./session-directory.ts";
+import { createBrowserAccessStore, readLastWorkspace, rememberWorkspace } from "./workspaces.ts";
 
 export type DesktopUpdateActivity =
   | { readonly kind: "idle" }
@@ -119,18 +123,22 @@ export interface DesktopHostDependencies {
   createModels(): MutableModels;
   /** The release a shared SDK reports on `/v1/info`; absent outside the packaged app. */
   readonly appVersion?: string;
+  /** The built web app remote access serves beside the API; API only when absent or unbuilt. */
+  readonly appRoot?: string;
   /** Where usage history is scanned. The app uses a worker thread. */
   readonly usageScan?: UsageScanReader;
   readonly createHost?: typeof createHost;
   /** The store's worker thread module, so SQLite work never runs on the main thread. */
   readonly storeWorker: URL;
-  readonly runGitHubCommand?: CommandRunner;
+  readonly runGitHubCommand?: GitHubCommandRunner;
   readonly createOtelExport?: typeof createOtelExport;
   /** Push a host event to one window, or to every window when `window` is omitted. */
   emitHostEvent(event: HostEvent, window?: HostWindow): void;
   /** Push one watch envelope to the subscribing window. */
   emitWatchEvent(envelope: WatchEnvelope, window: HostWindow): void;
   openExternal(url: string): void;
+  /** Native prompt before a conversation link leaves the app. */
+  confirmExternal(url: string, window: HostWindow): ReturnType<HostBridge["confirmExternal"]>;
   /** Show a file or folder in the system file manager. */
   revealPath(path: string): void;
   /** Where a discarded untracked file goes; the app uses the OS trash. Absent, the host's own trash. */
@@ -149,14 +157,6 @@ export interface DesktopHostDependencies {
 /** The renderer a request came from; each window selects its own workspace. */
 export type HostWindow = number;
 
-interface LoginAttempt {
-  readonly window: HostWindow;
-  readonly provider: string;
-  readonly controller: AbortController;
-  /** Resolves once the flow has stopped, whichever way it ended. */
-  readonly settled: Promise<void>;
-}
-
 interface WatchLifetime {
   readonly window: HostWindow;
   readonly controller: AbortController;
@@ -168,8 +168,15 @@ interface SessionAttachment {
   generation: number;
 }
 
+/** A main-side status watch: no attach, events only mark the row dirty for a re-read. */
+interface TrackedSession {
+  readonly open: OpenTarget;
+  readonly controller: AbortController;
+}
+
 interface OpenTargetBase {
   readonly sdk: Nyte;
+  readonly workspaceBackend: WorkspaceBackend;
   readonly store: Store;
   readonly sessionAttachments: Map<SessionId, SessionAttachment>;
   /** Stops watching the plugin sources this target resolves from. */
@@ -185,13 +192,6 @@ interface OpenProjectTarget extends OpenTargetBase {
   readonly workspace: WorkspaceInfo;
 }
 
-type LocalSessionDirectory = Extract<WorkspaceSessionDirectory, { environment: "local" }>;
-
-type CloudAvailability = Extract<
-  WorkspaceSessionDirectory,
-  { environment: "cloud" }
->["availability"];
-
 /** The configured server: its own store, its own runner; the desktop only speaks the wire to it. */
 interface OpenServerTarget {
   readonly kind: "server";
@@ -203,9 +203,6 @@ interface OpenServerTarget {
    * for its watches to end with it.
    */
   readonly closing: AbortController;
-  sessions: readonly SessionInfo[];
-  /** What the last completed list read said; a read still in flight does not change it. */
-  availability: CloudAvailability;
 }
 
 type OpenLocalTarget = OpenHomeTarget | OpenProjectTarget;
@@ -241,31 +238,56 @@ function serverTarget(settings: ServerSettings): OpenServerTarget {
         return fetch(input, { ...init, signal });
       },
     }),
-    sessions: [],
-    availability: { kind: "ready" },
   };
 }
 
-/**
- * How long a directory read waits for a fresh server list before using its
- * cached list. The read keeps going so the next poll sees the result.
- */
-const DIRECTORY_SERVER_BUDGET_MS = 100;
+const CLOUD_SOURCE = { environment: "cloud" } as const satisfies SessionDirectorySource;
+
+function sourceOf(open: OpenTarget): SessionDirectorySource {
+  if (open.kind === "server") return CLOUD_SOURCE;
+
+  return {
+    environment: "local",
+    workspacePath: open.kind === "home" ? null : open.workspace.path,
+  };
+}
+
+/** Nothing runs in a settled session, so only an attachment keeps its status watch. */
+function isSettled(session: SessionInfo): boolean {
+  const mark = sessionMark(session);
+
+  return mark === "idle" || mark === "failed";
+}
+
+/** How often open stores and the server are listed for changes no watch can see. */
+const SWEEP_INTERVAL_MS = 5_000;
 
 const CLOSED_DIRECTORY_MAX_AGE_MS = 60_000;
 
 const CLOSED_DIRECTORY_REFRESH_BATCH = 4;
 
-/** The share's own cursor; a window's selection may move without it. */
+/** Server status watches are SSE connections; beyond this the sweep answers. */
+const SERVER_TRACK_LIMIT = 16;
+
+/** Operations whose reply leaves the session row changed without an event this host watches. */
+const ROW_MUTATIONS: ReadonlySet<string> = new Set([
+  "sessions.rename",
+  "sessions.setPinned",
+  "sessions.configure",
+]);
+
+/** Remote access's own cursor; a window's selection may move without it. */
 interface ShareCursor {
   open: OpenLocalTarget;
   readonly sessionOwners: Map<SessionId, OpenLocalTarget>;
 }
 
-/** The share listener and the local target it currently serves. */
-interface ActiveMobileShare extends ShareCursor {
-  readonly share: MobileShare;
-  readonly reach: MobileShareReach;
+/** The remote access listener and the local target it currently serves. */
+interface ActiveRemoteAccess extends ShareCursor {
+  readonly serving: Serving;
+  readonly reach: RemoteReach;
+  /** Ends the sign-ins remote clients started; runs once the listener is closed. */
+  readonly closeEnvironment: () => void;
 }
 
 /** A store the page will read, with what only the SDK can say about it. */
@@ -290,6 +312,7 @@ function isSdkOperation(path: CallPath): path is SdkOperationPath {
 export class DesktopHost {
   private readonly dependencies: DesktopHostDependencies;
   private readonly workspaces = createWorkspaceStore();
+  private readonly workspaceBackend = createWorkspaceBackend(this.workspaces);
   private readonly preferences = createModelPreferencesStore();
   private readonly browserAccess = createBrowserAccessStore();
   private readonly serverSettings = new ServerSettingsStore(join(nyteHome(), "server.json"));
@@ -300,27 +323,60 @@ export class DesktopHost {
   private readonly selections = new Map<HostWindow, OpenLocalTarget>();
   private readonly openTargets = new Map<string | null, OpenLocalTarget>();
   private server: OpenServerTarget | undefined;
-  /** One server list read at a time; overlapping directory reads share it. */
-  private serverDirectoryRead: Promise<WorkspaceSessionDirectory | undefined> | undefined;
   /** In flight from start until stopped, so two Start presses share one listener. */
-  private mobileShare: Promise<ActiveMobileShare> | undefined;
+  private remoteAccess: Promise<ActiveRemoteAccess> | undefined;
   private readonly sessionOwners = new Map<SessionId, OpenTarget | WorkspaceTarget>();
-  private readonly closedDirectories = new Map<
-    string | null,
-    { readonly directory: LocalSessionDirectory; readonly refreshAttemptedAt: number }
-  >();
-  private sessionDirectoryRead: Promise<readonly WorkspaceSessionDirectory[]> | undefined;
+  /** When each closed store was last listed; the rows themselves live in the directory. */
+  private readonly closedDirectories = new Map<string | null, number>();
+  private readonly directory = new SessionDirectory((event) =>
+    this.dependencies.emitHostEvent(event),
+  );
+  private readonly tracked = new Map<SessionId, TrackedSession>();
+  private sweepTimer: ReturnType<typeof setInterval> | undefined;
+  private localSweep: Promise<void> | undefined;
+  private localSweepAgain = false;
+  private serverSweep: Promise<void> | undefined;
+  private serverSweepAgain = false;
+  /** The first local sweep: the snapshot waits for it so a new window never starts empty. */
+  private hydrated: Promise<void> | undefined;
   private lifecycle: Promise<void> = Promise.resolve();
-  private readonly mentionRequests = new Map<string, AbortController>();
   private readonly watches = new Map<string, WatchLifetime>();
   /**
-   * Sign-ins by the renderer's attempt ID, kept until the flow has settled so
-   * a cancelled attempt's cleanup can never erase a newer entry and an ID
-   * cannot be reused while its first flow still winds down.
+   * This Mac's provider environment: the catalog, preferences, credentials,
+   * and usage. Renderer calls and remote clients share it, so a sign-in from
+   * either side supersedes the other's and a sign-out waits for both. Each
+   * side still owns what it started: a released window and a stopped share
+   * cancel their own sign-ins.
    */
-  private readonly loginAttempts = new Map<string, LoginAttempt>();
+  private readonly environment = createProviderEnvironment({
+    catalog: async () => (await this.catalog()).catalog,
+    setPreference: async (change) => {
+      await this.preferences.update(change);
+      this.catalogChanged();
+    },
+    usage: (window) => this.usage(window),
+    accountLimits: () => this.accountLimits(),
+    login: async (...input) => (await this.models()).login(...input),
+    refresh: async (provider, signal) => {
+      try {
+        const refreshed = await (
+          await this.models()
+        ).refresh({ providers: [provider], force: true, signal });
+
+        return !refreshed.aborted && refreshed.errors.size === 0;
+      } finally {
+        this.catalogChanged();
+      }
+    },
+    logout: async (provider) => {
+      await (await this.models()).logout(provider);
+      this.catalogChanged();
+    },
+  });
   private closed = false;
   private readonly terminalSessions = new Map<HostWindow, TerminalSessions>();
+  /** Aborts with the window, cancelling the sign-ins it started. */
+  private readonly windowSignIns = new Map<HostWindow, AbortController>();
 
   constructor(dependencies: DesktopHostDependencies) {
     this.dependencies = dependencies;
@@ -399,72 +455,37 @@ export class DesktopHost {
       case "host.login":
         return this.login(window, CALL_INPUT_SCHEMAS[path].Parse(input));
       case "host.cancelLogin":
-        this.cancelLogin(CALL_INPUT_SCHEMAS[path].Parse(input).attempt);
-
-        return undefined;
+        return this.environment.operations["environment.cancelLogin"](
+          CALL_INPUT_SCHEMAS[path].Parse(input),
+        );
       case "host.logout":
-        return this.logout(CALL_INPUT_SCHEMAS[path].Parse(input).provider);
+        return this.environment.operations["environment.logout"](
+          CALL_INPUT_SCHEMAS[path].Parse(input),
+        );
       case "host.setPreference":
-        return this.setPreference(CALL_INPUT_SCHEMAS[path].Parse(input));
+        return this.environment.operations["environment.setPreference"](
+          CALL_INPUT_SCHEMAS[path].Parse(input),
+        );
       case "host.github.createPullRequest": {
         const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
         const project = this.requireProject(window);
         await this.requireTrust(project.workspace.path, window);
 
-        return this.github(window).createPullRequest(decoded);
-      }
-
-      case "host.files.list": {
-        const { requestId } = CALL_INPUT_SCHEMAS[path].Parse(input);
-        const cwd = this.requireProject(window).workspace.path;
-
-        if (this.mentionRequests.has(requestId) || this.mentionRequests.size >= 4)
-          throw new ExpectedHostError({
-            code: "invalid_input",
-            message: "Mention request is already active or the request limit was reached.",
-            issues: [],
-          });
-        const controller = new AbortController();
-        this.mentionRequests.set(requestId, controller);
-
-        try {
-          return await discoverMentionFiles(cwd, controller.signal);
-        } finally {
-          this.mentionRequests.delete(requestId);
-        }
-      }
-
-      case "host.files.cancelList":
-        this.mentionRequests.get(CALL_INPUT_SCHEMAS[path].Parse(input).requestId)?.abort();
-
-        return undefined;
-      case "host.files.read": {
-        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
-        const project = this.requireProject(window);
-
-        return readWorkspaceFile(project.workspace.path, decoded.path);
-      }
-
-      case "host.files.save": {
-        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
-        const project = this.requireProject(window);
-        await this.requireTrust(project.workspace.path, window);
-
-        return saveWorkspaceFile(project.workspace.path, decoded);
+        return this.github.createPullRequest(decoded, project.workspace.path);
       }
 
       case "host.github.state":
         CALL_INPUT_SCHEMAS[path].Parse(input);
 
-        return this.github(window).state();
+        return this.github.state(this.githubWorkspace(window));
       case "host.github.signIn":
         CALL_INPUT_SCHEMAS[path].Parse(input);
 
-        return this.changeGitHubAuth(window, "signIn");
+        return this.github.signIn(this.githubWorkspace(window)).then(this.githubChanged);
       case "host.github.signOut":
         CALL_INPUT_SCHEMAS[path].Parse(input);
 
-        return this.changeGitHubAuth(window, "signOut");
+        return this.github.signOut(this.githubWorkspace(window)).then(this.githubChanged);
       case "host.server.state":
         CALL_INPUT_SCHEMAS[path].Parse(input);
 
@@ -483,24 +504,25 @@ export class DesktopHost {
           throw new ExpectedHostError({ code: "not_found", message: "No server is connected" });
         const session = await server.sdk.sessions.create({});
         this.sessionOwners.set(session.sessionId, server);
+        this.directory.upsert(CLOUD_SOURCE, session);
 
         return session;
       }
 
-      case "host.mobile.state":
+      case "host.remote.state":
         CALL_INPUT_SCHEMAS[path].Parse(input);
 
-        return this.mobileShareState();
-      case "host.mobile.start": {
+        return this.remoteAccessState();
+      case "host.remote.start": {
         const { reach } = CALL_INPUT_SCHEMAS[path].Parse(input);
 
-        return this.startMobileShare(window, reach);
+        return this.startRemoteAccess(window, reach);
       }
 
-      case "host.mobile.stop":
+      case "host.remote.stop":
         CALL_INPUT_SCHEMAS[path].Parse(input);
 
-        return this.stopMobileShare();
+        return this.stopRemoteAccess();
       case "host.openExternal": {
         const { url } = CALL_INPUT_SCHEMAS[path].Parse(input);
         this.dependencies.openExternal(safeExternalUrl(url));
@@ -508,6 +530,11 @@ export class DesktopHost {
         return undefined;
       }
 
+      case "host.confirmExternal":
+        return this.dependencies.confirmExternal(
+          safeExternalUrl(CALL_INPUT_SCHEMAS[path].Parse(input).url),
+          window,
+        );
       case "host.revealPath": {
         const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
         this.dependencies.revealPath(decoded.path);
@@ -573,6 +600,23 @@ export class DesktopHost {
     }
   }
 
+  private async workspaceOperationCwd(
+    project: OpenProjectTarget,
+    target: OperationInput<"workspace.read">["target"],
+  ): Promise<string> {
+    const cwd =
+      target.kind === "workspace"
+        ? project.workspace.path
+        : await project.sdk.sessionCwd({ sessionId: target.sessionId });
+
+    if (cwd !== undefined) return cwd;
+
+    throw new ExpectedHostError({
+      code: "not_found",
+      message: "The session workspace could not be resolved",
+    });
+  }
+
   /**
    * Route an SDK operation to the workspace that owns its session. The cases are
    * the operations that answer without a workspace open or that record ownership;
@@ -611,6 +655,7 @@ export class DesktopHost {
         const open = await this.prepare(window);
         const session = await open.sdk.sessions.create(decoded);
         this.sessionOwners.set(session.sessionId, open);
+        this.directory.upsert(sourceOf(open), session);
 
         return session;
       }
@@ -634,6 +679,8 @@ export class DesktopHost {
           await this.releaseSessionIfIdle(open, decoded.sessionId).catch(() => undefined);
         }
 
+        await this.refreshRow(open, decoded.sessionId);
+
         return;
       }
 
@@ -641,8 +688,7 @@ export class DesktopHost {
         const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
         const open = await this.owner(window, decoded.sessionId);
         await open.sdk.sessions.delete(decoded);
-        this.releaseSessionAttachment(open, decoded.sessionId);
-        this.sessionOwners.delete(decoded.sessionId);
+        this.forgetSession(open, decoded.sessionId);
 
         return;
       }
@@ -653,6 +699,70 @@ export class DesktopHost {
         this.attachSession(open, decoded.sessionId);
 
         return open.sdk.messages.send(decoded);
+      }
+
+      case "workspace.files": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const project = this.requireProject(window);
+        const cwd =
+          decoded.target.kind === "workspace"
+            ? project.workspace.path
+            : await project.sdk.sessionCwd({ sessionId: decoded.target.sessionId });
+
+        if (cwd === undefined) return [];
+
+        return this.workspaceBackend.files({ cwd, query: decoded.query });
+      }
+
+      case "workspace.read": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const project = this.requireProject(window);
+        const cwd = await this.workspaceOperationCwd(project, decoded.target);
+
+        return project.workspaceBackend.read({ cwd, path: decoded.path });
+      }
+
+      case "workspace.save": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const project = this.requireProject(window);
+        const cwd = await this.workspaceOperationCwd(project, decoded.target);
+
+        return project.workspaceBackend.save({
+          cwd,
+          path: decoded.path,
+          contents: decoded.contents,
+          version: decoded.version,
+        });
+      }
+
+      case "workspace.format": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const project = this.requireProject(window);
+        const cwd = await this.workspaceOperationCwd(project, decoded.target);
+
+        return project.workspaceBackend.format({
+          cwd,
+          path: decoded.path,
+          contents: decoded.contents,
+          version: decoded.version,
+        });
+      }
+
+      case "workspace.search": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const project = this.requireProject(window);
+        const { target, ...request } = decoded;
+        const cwd = await this.workspaceOperationCwd(project, target);
+
+        return project.workspaceBackend.search({ cwd, ...request });
+      }
+
+      case "workspace.blame": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const project = this.requireProject(window);
+        const cwd = await this.workspaceOperationCwd(project, decoded.target);
+
+        return project.workspaceBackend.blame({ cwd, path: decoded.path });
       }
 
       case "workspace.vcs.snapshot":
@@ -716,7 +826,13 @@ export class DesktopHost {
           await this.requireTrust(cwd, window);
         }
 
-        return dispatch(open.sdk, path, decoded);
+        const output = await dispatch(open.sdk, path, decoded);
+
+        if (ROW_MUTATIONS.has(path) && sessionId !== undefined) {
+          await this.refreshRow(open, sessionId);
+        }
+
+        return output;
       }
     }
   }
@@ -823,9 +939,8 @@ export class DesktopHost {
       this.watches.delete(watchId);
     }
 
-    for (const attempt of this.loginAttempts.values()) {
-      if (attempt.window === window) attempt.controller.abort();
-    }
+    this.windowSignIns.get(window)?.abort();
+    this.windowSignIns.delete(window);
 
     const terminals = this.terminalSessions.get(window);
     this.terminalSessions.delete(window);
@@ -842,15 +957,19 @@ export class DesktopHost {
     if (this.closed) return;
     this.closed = true;
 
-    for (const attempt of this.loginAttempts.values()) attempt.controller.abort();
-
-    for (const controller of this.mentionRequests.values()) controller.abort();
-
     for (const terminals of this.terminalSessions.values()) terminals.dispose();
     this.terminalSessions.clear();
+    clearInterval(this.sweepTimer);
+    this.directory.close();
+
+    for (const tracked of this.tracked.values()) tracked.controller.abort();
+    this.tracked.clear();
 
     try {
-      await this.sessionDirectoryRead?.catch(() => undefined);
+      this.github.close();
+      await this.environment.close();
+      // The server list may sit behind a stalled connection; the local sweep is the one worth waiting for.
+      await this.localSweep?.catch(() => undefined);
       await this.serialize(() => this.teardownOpen());
     } finally {
       await Promise.all([this.otel.shutdown(), this.usageScan.close()]);
@@ -988,6 +1107,8 @@ export class DesktopHost {
 
   /** Volunteer this process as the session's runner. A server runs its own sessions. */
   private attachSession(open: OpenTarget, sessionId: SessionId): void {
+    this.track(open, sessionId);
+
     if (open.kind === "server") return;
     const existing = open.sessionAttachments.get(sessionId);
 
@@ -1017,6 +1138,17 @@ export class DesktopHost {
   private releaseSessionResources(open: OpenTarget, sessionId: SessionId): void {
     if (!this.releaseSessionAttachment(open, sessionId)) return;
     this.dependencies.browser.agent.release({ session: sessionId });
+    const row = this.directory.get(sessionId);
+
+    if (row !== undefined && isSettled(row)) this.tracked.get(sessionId)?.controller.abort();
+  }
+
+  /** A deleted session leaves every host structure at once. */
+  private forgetSession(open: OpenTarget, sessionId: SessionId): void {
+    this.releaseSessionAttachment(open, sessionId);
+    this.tracked.get(sessionId)?.controller.abort();
+    this.sessionOwners.delete(sessionId);
+    this.directory.remove(sessionId);
   }
 
   private async releaseSessionIfIdle(open: OpenTarget, sessionId: SessionId): Promise<void> {
@@ -1027,6 +1159,8 @@ export class DesktopHost {
     const generation = attachment.generation;
     const session = await open.sdk.sessions.get({ sessionId });
     const descendants = new Set<SessionId>();
+
+    if (session !== undefined) this.directory.upsert(sourceOf(open), session);
 
     if (session !== undefined && (await this.sessionTreeHasLiveWork(open, session, descendants))) {
       return;
@@ -1123,14 +1257,17 @@ export class DesktopHost {
   private models(): Promise<MutableModels> {
     this.modelsPromise ??= (async () => {
       const models = this.dependencies.createModels();
-      await loadPersistedCatalog(models);
+      // Restore persisted catalogs from disk. Boot must work offline.
+      await models.refresh({
+        providers: models.getProviders().map((provider) => provider.id),
+        allowNetwork: false,
+      });
       const empty = models.getModels().length === 0;
       const refreshed = models
         .refresh(empty ? { signal: AbortSignal.timeout(10_000) } : undefined)
         .then((result) => {
           if (result.aborted) return;
-          this.invalidateCatalog();
-          this.dependencies.emitHostEvent({ kind: "catalog_changed" });
+          this.catalogChanged();
         });
 
       if (empty) await refreshed.catch(() => undefined);
@@ -1156,8 +1293,10 @@ export class DesktopHost {
     return reading;
   }
 
-  private invalidateCatalog(): void {
+  /** After a sign-in, sign-out, or preference change. The next read is fresh, and windows re-read. */
+  private catalogChanged(): void {
     this.catalogPromise = undefined;
+    this.dependencies.emitHostEvent({ kind: "catalog_changed" });
   }
 
   /** Serialize workspace lifecycle so a double-click cannot compose twice. */
@@ -1269,6 +1408,9 @@ export class DesktopHost {
     const open = await this.createTarget(target);
     this.openTargets.set(key, open);
 
+    if (this.sweepTimer === undefined) this.startSweeping();
+    else void this.requestLocalSweep();
+
     return open;
   }
 
@@ -1292,15 +1434,35 @@ export class DesktopHost {
 
     const trashPath = this.dependencies.trashPath;
 
-    const vcs =
-      projectCwd === undefined
-        ? undefined
-        : createGitVcs(
-            projectCwd,
-            trashPath === undefined
-              ? { beforeCommand: ensureShellEnvironment }
-              : { beforeCommand: ensureShellEnvironment, discard: trashPath },
-          );
+    const workspaceBackend = this.workspaceBackend;
+    const shellEnvironment = ensureShellEnvironment();
+    const configuredWorkspaceBackend = {
+      ...workspaceBackend,
+      save: async (input: Parameters<typeof workspaceBackend.save>[0]) => {
+        await this.requireTrust(input.cwd);
+
+        return workspaceBackend.save(input);
+      },
+      format: async (input: Parameters<typeof workspaceBackend.format>[0]) => {
+        await this.requireTrust(input.cwd);
+        await shellEnvironment;
+
+        return workspaceBackend.format(input);
+      },
+      blame: async (input: Parameters<typeof workspaceBackend.blame>[0]) => {
+        await shellEnvironment;
+
+        return workspaceBackend.blame(input);
+      },
+      vcs:
+        projectCwd === undefined
+          ? undefined
+          : createGitVcs(
+              trashPath === undefined
+                ? { beforeCommand: ensureShellEnvironment }
+                : { beforeCommand: ensureShellEnvironment, discard: trashPath },
+            ),
+    };
 
     let sdk: Nyte | undefined;
     let stopPluginWatch: Disposer | undefined;
@@ -1354,14 +1516,7 @@ export class DesktopHost {
         thinkingLevel: catalog.defaults.thinkingLevel,
         telemetry: this.otel.telemetry,
         onDiagnostic: retainDiagnostic,
-        workspace: {
-          list: () => this.workspaces.list(),
-          touch: (path, now) => this.workspaces.touch(path, now),
-          forget: (path) => this.workspaces.forget(path),
-          files: async ({ cwd, query, signal }) =>
-            rankMentionFiles(await discoverMentionFiles(cwd, signal), query ?? ""),
-          vcs,
-        },
+        workspace: configuredWorkspaceBackend,
         plugins: {
           kind: "workspace",
           // Storage opens before trust; project code loads once the user has granted it.
@@ -1385,6 +1540,7 @@ export class DesktopHost {
 
       const base = {
         sdk,
+        workspaceBackend: configuredWorkspaceBackend,
         store,
         sessionAttachments: new Map<SessionId, SessionAttachment>(),
         stopPluginWatch: () => stopPluginWatch?.(),
@@ -1422,16 +1578,16 @@ export class DesktopHost {
       }
     }
 
-    await this.sessionDirectoryRead?.catch(() => undefined);
+    await this.localSweep?.catch(() => undefined);
     await this.serialize(() => this.retireForgottenTarget(target));
   }
 
   private async retireForgottenTarget(path: string): Promise<void> {
     const open = this.openTargets.get(path);
 
-    if (this.sessionDirectoryRead !== undefined) {
+    if (this.localSweep !== undefined) {
       const retry = (): Promise<void> => this.serialize(() => this.retireForgottenTarget(path));
-      void this.sessionDirectoryRead.then(retry, retry).catch(() => undefined);
+      void this.localSweep.then(retry, retry).catch(() => undefined);
 
       return;
     }
@@ -1441,7 +1597,7 @@ export class DesktopHost {
       ([...this.selections.values()].includes(open) ||
         open.sessionAttachments.size > 0 ||
         this.watches.size > 0 ||
-        this.mobileShare !== undefined ||
+        this.remoteAccess !== undefined ||
         (await this.updateTaskCount(open)) > 0)
     ) {
       return;
@@ -1456,7 +1612,16 @@ export class DesktopHost {
       }
     }
 
+    this.directory.drop({ environment: "local", workspacePath: path });
+
     if (open === undefined) return;
+
+    for (const [sessionId, tracked] of this.tracked) {
+      if (tracked.open !== open) continue;
+      tracked.controller.abort();
+      this.tracked.delete(sessionId);
+    }
+
     open.stopPluginWatch();
     await open.sdk.close().catch(() => undefined);
     await open.store.close().catch(() => undefined);
@@ -1531,204 +1696,376 @@ export class DesktopHost {
     }
   }
 
-  private sessionDirectory(): Promise<readonly WorkspaceSessionDirectory[]> {
+  private async sessionDirectory(): Promise<SessionDirectorySnapshot> {
     if (this.closed)
-      return Promise.reject(
-        new ExpectedHostError({ code: "closed", message: "The window is closed" }),
-      );
+      throw new ExpectedHostError({ code: "closed", message: "The window is closed" });
 
-    return (this.sessionDirectoryRead ??= this.readSessionDirectory().finally(() => {
-      this.sessionDirectoryRead = undefined;
-    }));
+    if (this.sweepTimer === undefined) this.startSweeping();
+    else this.requestSweep();
+    await this.hydrated;
+
+    return this.directory.snapshot();
   }
 
-  private async readSessionDirectory(): Promise<readonly WorkspaceSessionDirectory[]> {
-    const server = this.serverDirectory();
+  /** Sweeps run for the host's lifetime, not a window's: a hidden or closed window still hears status. */
+  private startSweeping(): void {
+    if (this.sweepTimer !== undefined || this.closed) return;
+    this.sweepTimer = setInterval(() => this.requestSweep(), SWEEP_INTERVAL_MS);
+    this.sweepTimer.unref();
+    this.hydrated = this.requestLocalSweep();
+    this.requestServerSweep();
+  }
 
-    const local = (async () => {
-      const targets = await this.serialize(async () => {
-        const workspaces = await this.workspaces.list();
+  private requestSweep(): void {
+    void this.requestLocalSweep();
+    this.requestServerSweep();
+  }
 
-        return [
-          { kind: "home" },
-          ...workspaces.map(
-            (workspace) => ({ kind: "project", workspace }) satisfies WorkspaceTarget,
-          ),
-        ] satisfies WorkspaceTarget[];
+  /** One local sweep at a time; a request during one runs once more after it. */
+  private requestLocalSweep(): Promise<void> {
+    if (this.localSweep !== undefined) {
+      this.localSweepAgain = true;
+
+      return this.localSweep;
+    }
+
+    const sweep = this.sweepLocal()
+      .catch((cause: unknown) => retainDiagnostic({ correlationId: "session-directory", cause }))
+      .finally(() => {
+        this.localSweep = undefined;
+
+        if (!this.localSweepAgain) return;
+        this.localSweepAgain = false;
+        void this.requestLocalSweep();
       });
 
-      const directories: LocalSessionDirectory[] = [];
-      const now = Date.now();
+    this.localSweep = sweep;
 
-      const refreshClosed = new Set(
-        targets
-          .map((target) => (target.kind === "home" ? null : target.workspace.path))
-          .filter((workspacePath) => {
-            if (this.openTargets.has(workspacePath)) return false;
-            const cached = this.closedDirectories.get(workspacePath);
-
-            return (
-              cached !== undefined && now - cached.refreshAttemptedAt >= CLOSED_DIRECTORY_MAX_AGE_MS
-            );
-          })
-          .sort(
-            (left, right) =>
-              (this.closedDirectories.get(left)?.refreshAttemptedAt ?? 0) -
-              (this.closedDirectories.get(right)?.refreshAttemptedAt ?? 0),
-          )
-          .slice(0, CLOSED_DIRECTORY_REFRESH_BATCH),
-      );
-
-      for (let index = 0; index < targets.length; index += 4) {
-        const reads = await Promise.allSettled(
-          targets.slice(index, index + 4).map(async (target): Promise<LocalSessionDirectory> => {
-            const workspacePath = target.kind === "home" ? null : target.workspace.path;
-            const existing = this.openTargets.get(workspacePath);
-            const cached = this.closedDirectories.get(workspacePath);
-
-            if (
-              existing === undefined &&
-              cached !== undefined &&
-              !refreshClosed.has(workspacePath)
-            ) {
-              return cached.directory;
-            }
-
-            if (existing === undefined && cached !== undefined) {
-              this.closedDirectories.set(workspacePath, {
-                directory: cached.directory,
-                refreshAttemptedAt: Date.now(),
-              });
-            }
-
-            const items =
-              existing === undefined
-                ? await this.readClosedDirectory(target)
-                : (
-                    await existing.sdk.sessions.list({
-                      parent: null,
-                      includeArchived: true,
-                    })
-                  ).items;
-
-            if (existing === undefined && cached !== undefined) {
-              const current = new Set(items.map((session) => session.sessionId));
-
-              for (const session of cached.directory.sessions) {
-                if (current.has(session.sessionId)) continue;
-                const owner = this.sessionOwners.get(session.sessionId);
-
-                if (
-                  owner !== undefined &&
-                  !("sdk" in owner) &&
-                  (owner.kind === "home"
-                    ? workspacePath === null
-                    : owner.workspace.path === workspacePath)
-                ) {
-                  this.sessionOwners.delete(session.sessionId);
-                }
-              }
-            }
-
-            for (const session of items) {
-              if (!this.sessionOwners.has(session.sessionId)) {
-                this.sessionOwners.set(session.sessionId, existing ?? target);
-              }
-
-              if (existing !== undefined && session.archived) {
-                await this.releaseSessionIfIdle(existing, session.sessionId).catch(() => undefined);
-              }
-            }
-
-            const directory = {
-              environment: "local",
-              workspacePath,
-              sessions: items,
-            } satisfies LocalSessionDirectory;
-
-            if (existing === undefined) {
-              this.closedDirectories.set(workspacePath, {
-                directory,
-                refreshAttemptedAt: Date.now(),
-              });
-            }
-
-            return directory;
-          }),
-        );
-
-        for (const read of reads) {
-          if (read.status === "rejected") throw read.reason;
-          directories.push(read.value);
-        }
-      }
-
-      return directories;
-    })();
-
-    const [directories, remote] = await Promise.allSettled([local, server]);
-
-    if (directories.status === "rejected") throw directories.reason;
-
-    if (remote.status === "rejected") throw remote.reason;
-
-    return remote.value === undefined ? directories.value : [...directories.value, remote.value];
+    return sweep;
   }
 
-  /** Use a fresh server list when it is fast, otherwise answer from the cache. */
-  private async serverDirectory(): Promise<WorkspaceSessionDirectory | undefined> {
-    const server = await this.openServer();
+  private requestServerSweep(): void {
+    if (this.serverSweep !== undefined) {
+      this.serverSweepAgain = true;
 
-    if (server === undefined) return undefined;
+      return;
+    }
 
-    const read = (this.serverDirectoryRead ??= this.readServerDirectory(server).finally(() => {
-      this.serverDirectoryRead = undefined;
-    }));
+    this.serverSweep = this.sweepServer()
+      .catch(() => undefined)
+      .finally(() => {
+        this.serverSweep = undefined;
 
-    let budget: ReturnType<typeof setTimeout> | undefined;
+        if (!this.serverSweepAgain) return;
+        this.serverSweepAgain = false;
+        this.requestServerSweep();
+      });
+  }
 
-    const cached = new Promise<WorkspaceSessionDirectory>((resolve) => {
-      budget = setTimeout(
-        () =>
-          resolve({
-            environment: "cloud",
-            sessions: server.sessions,
-            availability: server.availability,
-          }),
-        DIRECTORY_SERVER_BUDGET_MS,
-      );
+  /**
+   * List every local store into the directory. Open stores are listed each
+   * time; closed ones only once they are stale, a few per sweep, since each
+   * read composes a store of its own.
+   */
+  private async sweepLocal(): Promise<void> {
+    const targets = await this.serialize(async () => {
+      const workspaces = await this.workspaces.list();
+
+      return [
+        { kind: "home" },
+        ...workspaces.map(
+          (workspace) => ({ kind: "project", workspace }) satisfies WorkspaceTarget,
+        ),
+      ] satisfies WorkspaceTarget[];
     });
 
-    try {
-      return await Promise.race([read, cached]);
-    } finally {
-      clearTimeout(budget);
+    if (this.closed) return;
+    const now = Date.now();
+
+    const refreshClosed = new Set(
+      targets
+        .map((target) => (target.kind === "home" ? null : target.workspace.path))
+        .filter((workspacePath) => {
+          if (this.openTargets.has(workspacePath)) return false;
+          const attemptedAt = this.closedDirectories.get(workspacePath);
+
+          return attemptedAt !== undefined && now - attemptedAt >= CLOSED_DIRECTORY_MAX_AGE_MS;
+        })
+        .sort(
+          (left, right) =>
+            (this.closedDirectories.get(left) ?? 0) - (this.closedDirectories.get(right) ?? 0),
+        )
+        .slice(0, CLOSED_DIRECTORY_REFRESH_BATCH),
+    );
+
+    for (let index = 0; index < targets.length; index += 4) {
+      const reads = await Promise.allSettled(
+        targets.slice(index, index + 4).map(async (target) => {
+          const workspacePath = target.kind === "home" ? null : target.workspace.path;
+          const existing = this.openTargets.get(workspacePath);
+
+          if (existing !== undefined) {
+            await this.sweepOpen(existing);
+
+            return;
+          }
+
+          if (this.closedDirectories.has(workspacePath) && !refreshClosed.has(workspacePath)) {
+            return;
+          }
+
+          this.closedDirectories.set(workspacePath, Date.now());
+          const startedAt = this.directory.clock();
+          const items = await this.readClosedDirectory(target);
+
+          // Composed meanwhile: its own listing answers for it now.
+          if (this.closed || this.openTargets.has(workspacePath)) return;
+          const source = { environment: "local", workspacePath } as const;
+          const current = new Set(items.map((session) => session.sessionId));
+
+          for (const session of this.directory.rows(source)) {
+            if (current.has(session.sessionId)) continue;
+            const owner = this.sessionOwners.get(session.sessionId);
+
+            if (
+              owner !== undefined &&
+              !("sdk" in owner) &&
+              (owner.kind === "home"
+                ? workspacePath === null
+                : owner.workspace.path === workspacePath)
+            ) {
+              this.sessionOwners.delete(session.sessionId);
+            }
+          }
+
+          for (const session of items) {
+            if (!this.sessionOwners.has(session.sessionId)) {
+              this.sessionOwners.set(session.sessionId, target);
+            }
+          }
+
+          this.directory.replace(source, items, startedAt);
+        }),
+      );
+
+      for (const read of reads) {
+        if (read.status === "rejected") {
+          retainDiagnostic({ correlationId: "session-directory", cause: read.reason });
+        }
+      }
+    }
+  }
+
+  private async sweepOpen(open: OpenLocalTarget): Promise<void> {
+    const startedAt = this.directory.clock();
+    const { items } = await open.sdk.sessions.list({ parent: null, includeArchived: true });
+    const workspacePath = open.kind === "home" ? null : open.workspace.path;
+
+    if (this.closed || this.openTargets.get(workspacePath) !== open) return;
+
+    for (const session of items) {
+      if (!this.sessionOwners.has(session.sessionId)) {
+        this.sessionOwners.set(session.sessionId, open);
+      }
+
+      if (session.archived) {
+        await this.releaseSessionIfIdle(open, session.sessionId).catch(() => undefined);
+      }
+    }
+
+    this.directory.replace(sourceOf(open), items, startedAt);
+
+    for (const session of items) {
+      if (!isSettled(session)) this.track(open, session.sessionId);
     }
   }
 
   /** Keep the last known chats visible when a remote read fails, with its failure shown separately. */
-  private async readServerDirectory(
-    server: OpenServerTarget,
-  ): Promise<WorkspaceSessionDirectory | undefined> {
+  private async sweepServer(): Promise<void> {
+    const server = await this.openServer();
+
+    if (server === undefined) return;
+    const startedAt = this.directory.clock();
+
     try {
       const { items } = await server.sdk.sessions.list({ parent: null, includeArchived: true });
 
       // The server was replaced or disconnected during the read; its list is nobody's.
-      if (this.server !== server) return undefined;
+      if (this.server !== server) return;
 
       for (const session of items) this.sessionOwners.set(session.sessionId, server);
-      server.sessions = items;
-      server.availability = { kind: "ready" };
+      this.directory.replace(CLOUD_SOURCE, items, startedAt);
+      this.directory.setAvailability({ kind: "ready" });
+
+      for (const session of items) {
+        if (!isSettled(session)) this.track(server, session.sessionId);
+      }
     } catch (cause) {
-      if (this.server !== server) return undefined;
+      if (this.server !== server) return;
       retainDiagnostic({ correlationId: `server:${server.baseUrl}`, cause });
-      server.availability = {
+      this.directory.setAvailability({
         kind: "unavailable",
         message: serverConnectionProblem(cause).message,
-      };
+      });
+    }
+  }
+
+  /** One row read after a mutation, so the directory never waits for a sweep to show it. */
+  private async refreshRow(open: OpenTarget, sessionId: SessionId): Promise<void> {
+    // The mutation already landed; a failed read leaves the row to the next sweep.
+    const session = await open.sdk.sessions.get({ sessionId }).catch(() => null);
+
+    if (this.closed || session === null) return;
+
+    if (session === undefined) {
+      this.directory.remove(sessionId);
+
+      return;
     }
 
-    return { environment: "cloud", sessions: server.sessions, availability: server.availability };
+    this.directory.upsert(sourceOf(open), session);
+
+    if (!isSettled(session)) this.track(open, sessionId);
+  }
+
+  /**
+   * Watch a session's status from main without attaching: events mark the
+   * row dirty, one `sessions.get` is in flight at a time, and a read that
+   * lands dirty reads again. A parent's delegation events list its children,
+   * which are tracked in turn while they run. The watch ends once the row
+   * settles with nothing attached, or with the session.
+   */
+  private track(open: OpenTarget, sessionId: SessionId): void {
+    if (this.closed || this.tracked.has(sessionId)) return;
+
+    if (
+      open.kind === "server" &&
+      [...this.tracked.values()].filter((tracked) => tracked.open.kind === "server").length >=
+        SERVER_TRACK_LIMIT
+    ) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const tracked: TrackedSession = { open, controller };
+    this.tracked.set(sessionId, tracked);
+    void this.trackSession(open, sessionId, controller)
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.tracked.get(sessionId) === tracked) this.tracked.delete(sessionId);
+      });
+  }
+
+  private async trackSession(
+    open: OpenTarget,
+    sessionId: SessionId,
+    controller: AbortController,
+  ): Promise<void> {
+    const source = sourceOf(open);
+
+    const signal =
+      open.kind === "server"
+        ? AbortSignal.any([controller.signal, open.closing.signal])
+        : controller.signal;
+
+    let reading = false;
+    let rowDirty = false;
+    let childrenDirty = false;
+
+    const attached = (): boolean =>
+      open.kind !== "server" && open.sessionAttachments.has(sessionId);
+
+    const readChildren = async (): Promise<void> => {
+      let page = await open.sdk.sessions.list({ parent: sessionId, includeArchived: true });
+
+      for (;;) {
+        if (signal.aborted) return;
+
+        for (const child of page.items) {
+          this.directory.upsert(source, child);
+
+          if (!isSettled(child)) this.track(open, child.sessionId);
+        }
+
+        if (page.next === undefined) return;
+        page = await open.sdk.sessions.list({
+          parent: sessionId,
+          includeArchived: true,
+          cursor: page.next,
+        });
+      }
+    };
+
+    const read = async (): Promise<void> => {
+      if (reading) return;
+      reading = true;
+
+      try {
+        while ((rowDirty || childrenDirty) && !signal.aborted) {
+          const row = rowDirty;
+          const children = childrenDirty;
+          rowDirty = false;
+          childrenDirty = false;
+
+          if (row) {
+            const session = await open.sdk.sessions.get({ sessionId });
+
+            if (signal.aborted) return;
+
+            if (session === undefined) {
+              this.directory.remove(sessionId);
+              controller.abort();
+
+              return;
+            }
+
+            this.directory.upsert(source, session);
+
+            if (isSettled(session) && !attached()) {
+              controller.abort();
+
+              return;
+            }
+          }
+
+          if (children) await readChildren();
+        }
+      } catch {
+        // The sweep re-tracks a session whose row still says it runs.
+        controller.abort();
+      } finally {
+        reading = false;
+      }
+    };
+
+    for await (const event of open.sdk.watch({ sessionId, live: true, signal })) {
+      if (signal.aborted) return;
+
+      switch (event.kind) {
+        case "synced":
+        case "activation_changed":
+        case "run":
+        case "head_moved":
+        case "stack":
+        case "fact":
+        case "config_queued":
+        case "queued":
+        case "landed":
+        case "queue_cancelled":
+        case "deleted":
+          rowDirty = true;
+          break;
+        case "commit":
+        case "effect":
+          rowDirty = true;
+          childrenDirty = true;
+          break;
+        default:
+          continue;
+      }
+
+      void read();
+    }
   }
 
   private async openServer(): Promise<OpenServerTarget | undefined> {
@@ -1737,6 +2074,7 @@ export class DesktopHost {
 
     if (settings === undefined) return undefined;
     this.server = serverTarget(settings);
+    this.directory.setAvailability({ kind: "ready" });
 
     return this.server;
   }
@@ -1769,7 +2107,11 @@ export class DesktopHost {
       await this.serverSettings.write(settings);
       this.forgetServerSessions();
       this.server = candidate;
+      this.directory.setAvailability({ kind: "ready" });
       this.dependencies.emitHostEvent({ kind: "server_changed" });
+
+      if (this.sweepTimer === undefined) this.startSweeping();
+      else this.requestServerSweep();
 
       return { kind: "connected", baseUrl: candidate.baseUrl, version: info.version };
     } catch (cause) {
@@ -1786,15 +2128,16 @@ export class DesktopHost {
     this.dependencies.emitHostEvent({ kind: "server_changed" });
   }
 
-  private async mobileShareState(): Promise<MobileShareState> {
-    const active = await this.activeMobileShare();
+  private async remoteAccessState(): Promise<RemoteAccessState> {
+    const active = await this.activeRemoteAccess();
 
     if (active === undefined) return { kind: "off", tailnet: await this.tailnetAvailability() };
 
     return {
-      kind: "sharing",
-      address: active.share.address,
-      token: active.share.token,
+      kind: "serving",
+      address: active.serving.address,
+      token: active.serving.token,
+      pairingUrl: active.serving.pairingUrl,
       reach: active.reach,
       target:
         active.open.kind === "home"
@@ -1813,7 +2156,7 @@ export class DesktopHost {
   }
 
   /**
-   * The address a tailnet share binds. Resolved at start rather than reused
+   * The address a tailnet reach binds. Resolved at start rather than reused
    * from a cached reading: binding an address whose interface went down fails
    * with a message that explains nothing.
    */
@@ -1826,20 +2169,20 @@ export class DesktopHost {
       message:
         lookup.kind === "missing"
           ? "Tailscale isn't installed on this Mac"
-          : "Tailscale isn't running. Start it, then share again.",
+          : "Tailscale isn't running. Start it, then try again.",
     });
   }
 
-  /** The running share, or nothing once a start has failed. */
-  private async activeMobileShare(): Promise<ActiveMobileShare | undefined> {
-    const pending = this.mobileShare;
+  /** The running listener, or nothing once a start has failed. */
+  private async activeRemoteAccess(): Promise<ActiveRemoteAccess | undefined> {
+    const pending = this.remoteAccess;
 
     if (pending === undefined) return undefined;
 
     try {
       return await pending;
     } catch {
-      if (this.mobileShare === pending) this.mobileShare = undefined;
+      if (this.remoteAccess === pending) this.remoteAccess = undefined;
 
       return undefined;
     }
@@ -1864,7 +2207,7 @@ export class DesktopHost {
       }
 
       cursor.open = await this.compose({ kind: "home" });
-      this.dependencies.emitHostEvent({ kind: "mobile_share_changed" });
+      this.dependencies.emitHostEvent({ kind: "remote_access_changed" });
 
       return { kind: "opened", selection: { kind: "home" } };
     }
@@ -1901,7 +2244,7 @@ export class DesktopHost {
     }
 
     cursor.open = await this.compose({ kind: "project", workspace });
-    this.dependencies.emitHostEvent({ kind: "mobile_share_changed" });
+    this.dependencies.emitHostEvent({ kind: "remote_access_changed" });
 
     return {
       kind: "opened",
@@ -1909,7 +2252,7 @@ export class DesktopHost {
     };
   }
 
-  /** The phone's forget is the Mac's; a cursor on the forgotten folder re-seats on Home. */
+  /** A client's forget is the Mac's; a cursor on the forgotten folder re-seats on Home. */
   private async forgetShareWorkspace(
     cursor: ShareCursor,
     input: { readonly path: string },
@@ -1921,7 +2264,7 @@ export class DesktopHost {
 
       if (cursor.open.kind !== "project" || cursor.open.workspace.path !== target) return;
       cursor.open = await this.compose({ kind: "home" });
-      this.dependencies.emitHostEvent({ kind: "mobile_share_changed" });
+      this.dependencies.emitHostEvent({ kind: "remote_access_changed" });
     });
   }
 
@@ -1970,6 +2313,7 @@ export class DesktopHost {
 
           const session = await open.sdk.sessions.create(input);
           remember(session.sessionId, open);
+          this.directory.upsert(sourceOf(open), session);
 
           return session;
         },
@@ -1988,8 +2332,14 @@ export class DesktopHost {
 
           return page;
         },
-        rename: (input) => sdk(input.sessionId).sessions.rename(input),
-        setPinned: (input) => sdk(input.sessionId).sessions.setPinned(input),
+        rename: async (input) => {
+          await sdk(input.sessionId).sessions.rename(input);
+          await this.refreshRow(owner(input.sessionId), input.sessionId);
+        },
+        setPinned: async (input) => {
+          await sdk(input.sessionId).sessions.setPinned(input);
+          await this.refreshRow(owner(input.sessionId), input.sessionId);
+        },
         setArchived: async (input) => {
           const open = owner(input.sessionId);
           await open.sdk.sessions.setArchived(input);
@@ -1997,15 +2347,21 @@ export class DesktopHost {
           if (input.archived) {
             await this.releaseSessionIfIdle(open, input.sessionId).catch(() => undefined);
           }
+
+          await this.refreshRow(open, input.sessionId);
         },
         delete: async (input) => {
           const open = owner(input.sessionId);
           await open.sdk.sessions.delete(input);
-          this.releaseSessionAttachment(open, input.sessionId);
+          this.forgetSession(open, input.sessionId);
           cursor.sessionOwners.delete(input.sessionId);
-          this.sessionOwners.delete(input.sessionId);
         },
-        configure: (input) => sdk(input.sessionId).sessions.configure(input),
+        configure: async (input) => {
+          const outcome = await sdk(input.sessionId).sessions.configure(input);
+          await this.refreshRow(owner(input.sessionId), input.sessionId);
+
+          return outcome;
+        },
       },
       messages: {
         send: (input) => sdk(input.sessionId).messages.send(input),
@@ -2050,6 +2406,26 @@ export class DesktopHost {
         forget: (input) => this.forgetShareWorkspace(cursor, input),
         files: (input) =>
           sdk(input.target.kind === "session" ? input.target.sessionId : undefined).workspace.files(
+            input,
+          ),
+        read: (input) =>
+          sdk(input.target.kind === "session" ? input.target.sessionId : undefined).workspace.read(
+            input,
+          ),
+        save: (input) =>
+          sdk(input.target.kind === "session" ? input.target.sessionId : undefined).workspace.save(
+            input,
+          ),
+        format: (input) =>
+          sdk(
+            input.target.kind === "session" ? input.target.sessionId : undefined,
+          ).workspace.format(input),
+        search: (input) =>
+          sdk(
+            input.target.kind === "session" ? input.target.sessionId : undefined,
+          ).workspace.search(input),
+        blame: (input) =>
+          sdk(input.target.kind === "session" ? input.target.sessionId : undefined).workspace.blame(
             input,
           ),
         vcs: {
@@ -2143,20 +2519,54 @@ export class DesktopHost {
   }
 
   /**
+   * This Mac's environment for remote clients: the provider environment and
+   * GitHub service the desktop itself uses, GitHub scoped to the folder the
+   * share currently serves. A client's sign-in shows its link or code to that
+   * client; nothing opens on the Mac.
+   */
+  private shareEnvironment(cursor: ShareCursor): {
+    readonly operations: Environment;
+    readonly close: () => void;
+  } {
+    const owner = new AbortController();
+    const github = this.github.owned(owner.signal);
+
+    const workspace = (): string | undefined =>
+      cursor.open.kind === "project" ? cursor.open.workspace.path : undefined;
+
+    return {
+      operations: {
+        ...this.environment.owned(owner.signal),
+        "environment.github.state": () => github.state(workspace()),
+        "environment.github.signIn": () => github.signIn(workspace()).then(this.githubChanged),
+        "environment.github.signOut": () => github.signOut(workspace()).then(this.githubChanged),
+        "environment.github.createPullRequest": async (input) => {
+          const path = workspace();
+
+          if (path !== undefined) await this.requireTrust(path);
+
+          return github.createPullRequest(input, path);
+        },
+      },
+      close: () => owner.abort(),
+    };
+  }
+
+  /**
    * Serve the selected local target as it stands now. Mac selection may move
-   * later; the share cursor stays until the phone calls `workspace.select`.
+   * later; the cursor stays until a client calls `workspace.select`.
    * A folder is served only once trusted; the server target is never a
    * candidate because selection is always local.
    */
-  private async startMobileShare(
+  private async startRemoteAccess(
     window: HostWindow,
-    reach: MobileShareReach,
-  ): Promise<MobileShareState> {
+    reach: RemoteReach,
+  ): Promise<RemoteAccessState> {
     if (this.closed)
-      throw new ExpectedHostError({ code: "closed", message: "The window closed before sharing" });
+      throw new ExpectedHostError({ code: "closed", message: "The window closed before serving" });
 
-    if (this.mobileShare === undefined) {
-      const pending = (async (): Promise<ActiveMobileShare> => {
+    if (this.remoteAccess === undefined) {
+      const pending = (async (): Promise<ActiveRemoteAccess> => {
         const host = reach === "tailnet" ? await this.requireTailnetHost() : undefined;
 
         // Bail before prepare, not after it: teardown waits on this pending,
@@ -2164,7 +2574,7 @@ export class DesktopHost {
         if (this.closed)
           throw new ExpectedHostError({
             code: "closed",
-            message: "The window closed before sharing",
+            message: "The window closed before serving",
           });
         const open = await this.prepare(window);
 
@@ -2173,45 +2583,56 @@ export class DesktopHost {
         if (this.closed)
           throw new ExpectedHostError({
             code: "closed",
-            message: "The window closed before sharing",
+            message: "The window closed before serving",
           });
         const cursor: ShareCursor = { open, sessionOwners: new Map() };
+        const environment = this.shareEnvironment(cursor);
+        const { appRoot } = this.dependencies;
 
-        const share = await startMobileShare({
+        const serving = await startServe({
           host,
           sdk: this.shareCursor(cursor),
+          environment: environment.operations,
           version: this.dependencies.appVersion ?? "dev",
+          describe: () => ({ capabilities: { workspace: true }, persistence: "durable" }),
+          token: randomToken(),
+          appRoot:
+            appRoot !== undefined && existsSync(join(appRoot, "index.html")) ? appRoot : undefined,
           attach: (sessionId) => {
             this.attachSession(cursor.sessionOwners.get(sessionId) ?? cursor.open, sessionId);
           },
+        }).catch((cause: unknown) => {
+          environment.close();
+          throw cause;
         });
 
-        return Object.assign(cursor, { share, reach });
+        return Object.assign(cursor, { serving, reach, closeEnvironment: environment.close });
       })();
 
-      this.mobileShare = pending;
+      this.remoteAccess = pending;
 
       try {
         await pending;
       } catch (cause) {
-        if (this.mobileShare === pending) this.mobileShare = undefined;
+        if (this.remoteAccess === pending) this.remoteAccess = undefined;
         throw cause;
       }
     }
 
-    const state = await this.mobileShareState();
-    this.dependencies.emitHostEvent({ kind: "mobile_share_changed" });
+    const state = await this.remoteAccessState();
+    this.dependencies.emitHostEvent({ kind: "remote_access_changed" });
 
     return state;
   }
 
-  private async stopMobileShare(): Promise<void> {
-    const active = await this.activeMobileShare();
+  private async stopRemoteAccess(): Promise<void> {
+    const active = await this.activeRemoteAccess();
 
     if (active === undefined) return;
-    this.mobileShare = undefined;
-    await active.share.stop();
-    this.dependencies.emitHostEvent({ kind: "mobile_share_changed" });
+    this.remoteAccess = undefined;
+    await active.serving.close();
+    active.closeEnvironment();
+    this.dependencies.emitHostEvent({ kind: "remote_access_changed" });
   }
 
   /** Watches on the old server end; the renderer resumes them against the new one or not at all. */
@@ -2222,6 +2643,12 @@ export class DesktopHost {
     for (const [sessionId, owner] of this.sessionOwners) {
       if (owner === this.server) this.sessionOwners.delete(sessionId);
     }
+
+    for (const [sessionId, tracked] of this.tracked) {
+      if (tracked.open === this.server) this.tracked.delete(sessionId);
+    }
+
+    this.directory.drop(CLOUD_SOURCE);
   }
 
   /**
@@ -2335,11 +2762,14 @@ export class DesktopHost {
 
   private async teardownOpen(): Promise<void> {
     this.selections.clear();
-    // The phone's streams end before the SDK they read from closes.
-    await this.stopMobileShare();
+    // Remote clients' streams end before the SDK they read from closes.
+    await this.stopRemoteAccess();
 
     for (const watch of this.watches.values()) watch.controller.abort();
     this.watches.clear();
+
+    for (const tracked of this.tracked.values()) tracked.controller.abort();
+    this.tracked.clear();
     this.sessionOwners.clear();
     this.closedDirectories.clear();
 
@@ -2356,168 +2786,136 @@ export class DesktopHost {
     this.server = undefined;
   }
 
-  private async login(
-    window: HostWindow,
-    input: {
-      provider: string;
-      method: { kind: "browser" } | { kind: "api_key"; key: string };
-      attempt: string;
-    },
-  ): Promise<LoginOutcome> {
-    const { provider, method, attempt } = input;
+  /**
+   * Start the attempt on the shared environment and follow it to its end.
+   * Device codes and messages reach the renderer as they land; a sign-in
+   * link opens on this Mac instead of being shown.
+   */
+  private async login(window: HostWindow, input: CallInput<"host.login">): Promise<LoginOutcome> {
+    const { provider, attempt } = input;
+    const { operations } = this.environment;
 
     if (this.closed)
       throw new ExpectedHostError({ code: "closed", message: "The window closed before sign-in" });
 
-    if (this.loginAttempts.has(attempt))
+    if ((await operations["environment.loginAttempt"]({ attempt })).kind !== "unknown")
       throw new ExpectedHostError({
         code: "invalid_input",
-        message: "A sign-in with this attempt ID is already running.",
+        message: "A sign-in with this attempt ID already exists.",
         issues: [{ path: "/attempt", message: "Attempt IDs must be unique" }],
       });
 
-    // A new sign-in for the same provider supersedes one the renderer lost
-    // track of. Its flow must settle first: a credential it was already
-    // committing would otherwise land beside the new attempt's.
-    const superseded = [...this.loginAttempts.values()].filter(
-      (running) => running.provider === provider,
-    );
+    const report = (progress: LoginProgress): void =>
+      this.dependencies.emitHostEvent(
+        { kind: "login_progress", attempt, provider, progress },
+        window,
+      );
 
-    for (const running of superseded) running.controller.abort();
-    const controller = new AbortController();
+    let opened = false;
+    let shown = "";
+    const owner = this.windowSignIns.get(window) ?? new AbortController();
+    this.windowSignIns.set(window, owner);
+    await this.environment.owned(owner.signal)["environment.login"](input);
 
-    const running = (async (): Promise<LoginOutcome> => {
-      await Promise.all(superseded.map((previous) => previous.settled));
+    for await (const state of this.environment.follow(attempt)) {
+      if (state.kind === "settled") return state.outcome;
 
-      // Superseded in turn, or the window closed, while waiting its turn.
-      if (controller.signal.aborted) return { kind: "cancelled" };
+      if (state.kind !== "running") break;
 
-      return login(await this.models(), provider, method, {
-        signal: controller.signal,
-        openExternal: (url) => this.dependencies.openExternal(url),
-        report: (progress) =>
-          this.dependencies.emitHostEvent(
-            { kind: "login_progress", attempt, provider, progress },
-            window,
-          ),
-      });
-    })();
+      if (state.browser !== undefined && !opened) {
+        opened = true;
 
-    const entry: LoginAttempt = {
-      window,
-      provider,
-      controller,
-      settled: running.then(
-        () => undefined,
-        () => undefined,
-      ),
-    };
+        try {
+          this.dependencies.openExternal(safeExternalUrl(state.browser.url));
+        } catch {
+          report({
+            kind: "message",
+            message: "The provider sent a sign-in link that isn't a web address.",
+          });
+        }
+      }
 
-    this.loginAttempts.set(attempt, entry);
-    void entry.settled.then(() => {
-      if (this.loginAttempts.get(attempt) === entry) this.loginAttempts.delete(attempt);
-    });
-    const outcome = await running;
+      const progress: LoginProgress[] = [];
 
-    if (outcome.kind === "connected") {
-      this.invalidateCatalog();
-      this.dependencies.emitHostEvent({ kind: "catalog_changed" });
+      if (state.deviceCode !== undefined)
+        progress.push({ kind: "device_code", ...state.deviceCode });
+
+      if (state.message !== undefined) progress.push({ kind: "message", message: state.message });
+      // A device code resets the message it replaces, so any change replays both.
+      const key = JSON.stringify(progress);
+
+      if (key === shown) continue;
+      shown = key;
+
+      for (const item of progress) report(item);
     }
 
-    return outcome;
+    throw new ExpectedHostError({ code: "internal", message: "The sign-in failed." });
   }
 
-  /** Abort the attempt; its entry stays until the flow has actually stopped. */
-  private cancelLogin(attempt: string): void {
-    this.loginAttempts.get(attempt)?.controller.abort();
-  }
+  private readonly githubCommand: GitHubCommandRunner = (request) => {
+    // Only command verbs may label spans. Never include branch names or other operands.
+    const candidate = [request.command, ...request.args.slice(0, 2)].join(".");
+
+    const operation =
+      [
+        "git.remote",
+        "git.symbolic-ref",
+        "gh.api",
+        "gh.pr.view",
+        "gh.pr.create",
+        "gh.auth.status",
+        "gh.auth.login",
+        "gh.auth.logout",
+      ].find((allowed) => candidate === allowed || candidate.startsWith(`${allowed}.`)) ??
+      `${request.command}.other`;
+
+    return this.otel.telemetry.startSpan(
+      { name: "desktop.github.command", attributes: { operation } },
+      async (span) => {
+        const started = performance.now();
+        let result: GitHubCommandResult;
+
+        try {
+          result = await (this.dependencies.runGitHubCommand ?? runGitHubCommand)(request);
+        } catch {
+          // Some adapters record thrown exceptions, which can contain credentials or paths.
+          result = { kind: "failed" };
+        }
+
+        span.setAttributes({
+          outcome: result.kind,
+          code: result.kind === "completed" ? result.code : undefined,
+          duration_ms: performance.now() - started,
+        });
+        span.setStatus({
+          status: result.kind === "completed" && result.code === 0 ? "ok" : "error",
+        });
+
+        return result;
+      },
+    );
+  };
 
   /**
-   * Abort every attempt for the provider and wait until each has settled. A
-   * commit that already started finishes before the caller touches the store.
+   * This Mac's GitHub CLI login. Renderer windows and remote clients share
+   * it, so a sign-in from either side is the one the other sees; a stopped
+   * share still cancels only the sign-in it started.
    */
-  private async settleLogins(provider: string): Promise<void> {
-    const pending = [...this.loginAttempts.values()].filter(
-      (running) => running.provider === provider,
-    );
+  private readonly github = createGitHubService({
+    beforeCommand: ensureShellEnvironment,
+    run: this.githubCommand,
+  });
 
-    for (const running of pending) running.controller.abort();
-    await Promise.all(pending.map((running) => running.settled));
-  }
-
-  private async logout(provider: string): Promise<void> {
-    // A sign-in mid-approval must not save a credential after this delete.
-    await this.settleLogins(provider);
-    await (await this.models()).logout(provider);
-    this.invalidateCatalog();
-    this.dependencies.emitHostEvent({ kind: "catalog_changed" });
-  }
-
-  private async setPreference(change: PreferenceChange): Promise<DesktopCatalog> {
-    await this.preferences.update(change);
-    this.invalidateCatalog();
-    this.dependencies.emitHostEvent({ kind: "catalog_changed" });
-
-    return (await this.catalog()).catalog;
-  }
-
-  private github(window: HostWindow): GitHubProvider {
-    const run: CommandRunner = (request) => {
-      // Only command verbs may label spans. Never include branch names or other operands.
-      const candidate = [request.command, ...request.args.slice(0, 2)].join(".");
-
-      const operation =
-        [
-          "git.remote",
-          "git.symbolic-ref",
-          "gh.api",
-          "gh.pr.view",
-          "gh.pr.create",
-          "gh.auth.status",
-          "gh.auth.login",
-          "gh.auth.logout",
-        ].find((allowed) => candidate === allowed || candidate.startsWith(`${allowed}.`)) ??
-        `${request.command}.other`;
-
-      return this.otel.telemetry.startSpan(
-        { name: "desktop.github.command", attributes: { operation } },
-        async (span) => {
-          const started = performance.now();
-          let result: CommandResult;
-
-          try {
-            result = await (this.dependencies.runGitHubCommand ?? runProviderCommand)(request);
-          } catch {
-            // Some adapters record thrown exceptions, which can contain credentials or paths.
-            result = { kind: "failed" };
-          }
-
-          span.setAttributes({
-            outcome: result.kind,
-            code: result.kind === "completed" ? result.code : undefined,
-            duration_ms: performance.now() - started,
-          });
-          span.setStatus({
-            status: result.kind === "completed" && result.code === 0 ? "ok" : "error",
-          });
-
-          return result;
-        },
-      );
-    };
-
+  private githubWorkspace(window: HostWindow): string | undefined {
     const open = this.selections.get(window);
 
-    return createGitHubProvider(open?.kind === "project" ? open.workspace.path : undefined, run);
+    return open?.kind === "project" ? open.workspace.path : undefined;
   }
 
-  private async changeGitHubAuth(
-    window: HostWindow,
-    operation: "signIn" | "signOut",
-  ): Promise<GitHubProviderState> {
-    const state = await this.github(window)[operation]();
+  private readonly githubChanged = <T>(state: T): T => {
     this.dependencies.emitHostEvent({ kind: "github_changed" });
 
     return state;
-  }
+  };
 }

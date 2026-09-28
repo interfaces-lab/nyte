@@ -1,129 +1,89 @@
 ---
 title: Tooltip
-description: "A popup that appears when an element is hovered or focused, showing a hint for sighted users"
+description: "A short hint on hover or keyboard focus"
 ---
 
 ```ts title="Import"
-import { Tooltip } from "@nyte-ai/ui/tooltip";
+import { Hint, HintProvider, HoverPreview } from "@nyte-ai/ui";
 ```
 
-A hint that appears on hover or focus. Reach for it to label an icon-only control in a dense
-interface.
+The same names are exported from their own subpath. Pick one path per file.
 
-No Nyte styling here.
+```ts title="Subpath"
+import { Hint, HintProvider, HoverPreview } from "@nyte-ai/ui/tooltip";
+```
+
+`Hint` shows a short label beside a control on hover or keyboard focus. Reach for it to name an
+icon-only control in a dense interface. `HoverPreview` is the same popup sized for a long block of
+monospace text, such as a pasted snippet, and scrolls past its bounds.
 
 ## Usage
 
-- Give the trigger an `aria-label` that closely matches the tooltip text. The tooltip does not
-  label the trigger.
-- Tooltips are disabled on touch devices. Never put information there that a user would miss.
-- If the trigger exists to open the popup, use [Popover](/cloud/components/popover) with
-  `openOnHover` instead. If the trigger does something else, it is a tooltip.
+- `trigger` is the element that opens the hint. It receives the hover and focus handlers, so pass a
+  real control.
+- Give the trigger an `aria-label` that matches `content`. The hint does not label the trigger. An
+  icon-size [Button](/cloud/components/button) also sets its label as the native `title`, so pass
+  `title={undefined}` to keep one tooltip on screen.
+- Wrap the app in `HintProvider` to share one delay. Once one hint is visible, the next opens
+  instantly, for `timeout` milliseconds after the last one closed.
+- Hints are disabled on touch devices. Never put information there that a user would miss.
 - For feedback after an action, use [Toast](/cloud/components/toast).
-- The tooltip opens after `delay`, which is 600ms, and closes after `closeDelay`, which is 0.
-  Both live on the trigger.
-- Wrap a group in `Tooltip.Provider` to share one delay. Once one tooltip is visible, the next
-  opens instantly, for `timeout` milliseconds after the last one closed.
-- `Tooltip.Positioner` places the popup. It defaults to `side="top"` and `align="center"`. Pass
-  `sideOffset` for the gap.
-- `Tooltip.Arrow` only works inside the positioner.
-- Set `trackCursorAxis` on the root to follow the pointer along `x`, `y`, or `both`.
-
-## Anatomy
-
-```tsx
-<Tooltip.Provider>
-  <Tooltip.Root>
-    <Tooltip.Trigger />
-    <Tooltip.Portal>
-      <Tooltip.Positioner>
-        <Tooltip.Popup>
-          <Tooltip.Arrow />
-          <Tooltip.Viewport />
-        </Tooltip.Popup>
-      </Tooltip.Positioner>
-    </Tooltip.Portal>
-  </Tooltip.Root>
-</Tooltip.Provider>
-```
+- The popup attaches the ref from [Overlays](/cloud/foundations/overlays), so a host can keep it
+  above native views.
 
 ## Examples
-
-An icon button with a matching label.
 
 <Preview>
   <TooltipDemo />
 </Preview>
 
 ```tsx
-<Tooltip.Root>
-  <Tooltip.Trigger render={<Button size="icon-sm" variant="ghost" />} aria-label="Copy output">
-    <IconClipboard size={14} />
-  </Tooltip.Trigger>
-  <Tooltip.Portal>
-    <Tooltip.Positioner sideOffset={6}>
-      <Tooltip.Popup>Copy output</Tooltip.Popup>
-    </Tooltip.Positioner>
-  </Tooltip.Portal>
-</Tooltip.Root>
+<Hint
+  content="Copy output"
+  trigger={<Button size="icon" icon="copy" aria-label="Copy output" title={undefined} />}
+/>
+<HoverPreview
+  content={"const answer = 42;\nconsole.log(answer);"}
+  trigger={<Button variant="secondary">Snippet</Button>}
+/>
 ```
 
-A toolbar of triggers sharing one delay, so moving along the row does not re-wait.
+One shared delay for the whole app.
 
 ```tsx
-<Tooltip.Provider delay={400} closeDelay={100}>
-  <Tooltip.Root>…</Tooltip.Root>
-  <Tooltip.Root>…</Tooltip.Root>
-</Tooltip.Provider>
+<HintProvider delay={600} closeDelay={0} timeout={400}>
+  <App />
+</HintProvider>
 ```
-
-Animate the popup's position with CSS transitions on `left`, `right`, `top`, and `bottom` of the
-positioner, and its size with `width` and `height` on the popup.
 
 ## Props
 
-The part tables below come from Base UI, MIT, © Material-UI SAS.
+### Hint
 
-### Provider
+| Prop      | Type                                                                       | Default    | Description                                 |
+| --------- | -------------------------------------------------------------------------- | ---------- | ------------------------------------------- |
+| `content` | `React.ReactNode`                                                          |            | The hint. Line breaks in a string are kept. |
+| `trigger` | `React.ReactElement`                                                       |            | The element that opens it.                  |
+| `side`    | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"` | Side of the trigger to open on.             |
+| `align`   | `"start" \| "center" \| "end"`                                             | `"center"` | Alignment along that side.                  |
+| `xstyle`  | `XStyle`                                                                   |            | Merged last onto the popup.                 |
+
+The popup sits 6px from the trigger and keeps 8px from the viewport edge.
+
+### HoverPreview
+
+Takes `content`, `trigger`, and `side` as `Hint` does.
+
+### HintProvider
+
+The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
 <include>../../base-ui-reference/tooltip/Provider.md</include>
 
-### Root
-
-<include>../../base-ui-reference/tooltip/Root.md</include>
-
-### Trigger
-
-<include>../../base-ui-reference/tooltip/Trigger.md</include>
-
-### Portal
-
-<include>../../base-ui-reference/tooltip/Portal.md</include>
-
-### Positioner
-
-<include>../../base-ui-reference/tooltip/Positioner.md</include>
-
-### Popup
-
-<include>../../base-ui-reference/tooltip/Popup.md</include>
-
-### Arrow
-
-<include>../../base-ui-reference/tooltip/Arrow.md</include>
-
-### Viewport
-
-<include>../../base-ui-reference/tooltip/Viewport.md</include>
-
 ## Accessibility
 
-- The tooltip is a visual aid. Screen reader users get the trigger's `aria-label`, so write the
-  two to match.
-- The tooltip opens on hover and on keyboard focus of the trigger.
-- Escape closes it. Outside press closes it. Pressing the trigger closes it, unless you set
-  `closeOnClick={false}`.
-- The popup can be hovered without closing. Set `disableHoverablePopup` on the root to change
-  that.
-- The trigger carries `data-popup-open` while the tooltip is open, and `data-trigger-disabled`
-  when it is disabled.
+- The hint is a visual aid. Screen reader users get the trigger's `aria-label`, so write the two to
+  match.
+- It opens on hover and on keyboard focus of the trigger.
+- Escape closes it. Outside press and pressing the trigger close it.
+- The popup can be hovered without closing.

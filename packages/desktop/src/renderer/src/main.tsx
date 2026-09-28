@@ -1,24 +1,30 @@
 // Bundled faces: Inter with its optical-size axis for UI text, JetBrains Mono
-// for code. tokens.css names both in its `--nyte-*-font-*` stacks.
+// for code. @nyte-ai/ui/tokens.stylex names both in its `--nyte-*-font-*` stacks.
 import "@fontsource-variable/inter/opsz.css";
 import "@fontsource-variable/inter/opsz-italic.css";
 import "@fontsource-variable/jetbrains-mono/wght.css";
-import "@nyte-ai/ui/platform-tokens.css";
-import "./theme/boot.ts";
-import "./theme/focus-modality.ts";
-import "./theme/global.css";
+import "./install-bridge.ts";
+import "@nyte-ai/app/theme/boot.ts";
+import "@nyte-ai/app/theme/focus-modality.ts";
+import "@nyte-ai/app/theme/global.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { focusManager } from "@tanstack/react-query";
-import { App } from "./app.tsx";
-import { startRendererStartup } from "./startup.ts";
-
-import { loadLocalResources } from "./queries.ts";
-import { router } from "./router.tsx";
+import {
+  App,
+  connectSessionDirectory,
+  loadLocalResources,
+  router,
+  startRendererStartup,
+} from "@nyte-ai/app";
+import appIcon from "../../../build/icon-macos.svg";
 
 const container = document.getElementById("root");
 
 if (container === null) throw new Error("Missing #root");
+
+// Directory changes are pushed; listen before the first snapshot is read so none slips between.
+connectSessionDirectory();
 
 focusManager.setEventListener((setFocused) => {
   const update = (): void => {
@@ -50,7 +56,7 @@ startRendererStartup({
   mountShell: () => {
     createRoot(container).render(
       <StrictMode>
-        <App />
+        <App appIcon={appIcon} />
       </StrictMode>,
     );
   },

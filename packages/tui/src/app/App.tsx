@@ -1,7 +1,7 @@
 /**
- * The screen: a transcript, a one-row latest control, and an opaque live
- * column with the pending gutter, composer, status rule, ephemeral slot, and
- * hints. Every region has its own rows. Opening a notice or picker shrinks the
+ * The screen: a transcript with a welcome over it while empty, a one-row
+ * latest control, and an opaque live column with the pending gutter, composer,
+ * status rule, ephemeral slot, and hints. Every region has its own rows. Opening a notice or picker shrinks the
  * transcript viewport, whose exact text anchor keeps history in place.
  */
 import {
@@ -13,7 +13,7 @@ import {
   type TextRenderable,
 } from "@opentui/core";
 import { onBlur, onFocus, render, useTerminalDimensions } from "@opentui/solid";
-import { createEffect, createMemo, createSignal, For, on, onMount } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount } from "solid-js";
 import { createStore } from "solid-js/store";
 import {
   COMPOSER_PLACEHOLDER,
@@ -28,13 +28,9 @@ import type { DeliveryChoices } from "../lanes.ts";
 import { PendingGutter } from "../pending-gutter.ts";
 import { PendingTail } from "../pending-tail.ts";
 import type { ActiveCliTheme, CliTheme } from "../theme.ts";
-import {
-  createSubtleSyntaxStyle,
-  createSyntaxStyle,
-  ToolOutputExpansion,
-  TranscriptView,
-  type Transcript,
-} from "../transcript.ts";
+import { ToolOutputExpansion, type Transcript } from "../surface.ts";
+import { Timeline } from "../timeline.ts";
+import { createSubtleSyntaxStyle, createSyntaxStyle } from "../transcript.ts";
 import {
   createUiStore,
   FocusController,
@@ -45,12 +41,20 @@ import {
   type Shell,
   type Slot,
 } from "./ui.ts";
+import { MOON_FRAMES, MOON_RAMP } from "./moon.ts";
 
 const MAX_COMPOSER_ROWS = 8;
 
 const COMPOSER_CHROME_ROWS = 4;
 
 const MAX_NOTICE_SHARE = 0.4;
+
+const MOON_FRAME_MS = 250;
+
+/** The smallest screen that fits the moon beside the welcome and above the composer. */
+const MOON_MIN_WIDTH = 80;
+
+const MOON_MIN_HEIGHT = 30;
 
 function composerRowsForHeight(height: number): number {
   return Math.max(1, Math.min(MAX_COMPOSER_ROWS, height - COMPOSER_CHROME_ROWS));
@@ -77,6 +81,99 @@ function slotRows(slot: Slot, height: number): number {
 function Spans(props: { readonly chunks: readonly Chunk[] }) {
   return (
     <For each={props.chunks}>{(chunk) => <span style={{ fg: chunk.fg }}>{chunk.text}</span>}</For>
+  );
+}
+
+/** A color between two `#rrggbb` colors. */
+function mix(from: string, to: string, amount: number): string {
+  const channels = [1, 3, 5].map((start) => {
+    const low = Number.parseInt(from.slice(start, start + 2), 16);
+    const high = Number.parseInt(to.slice(start, start + 2), 16);
+
+    return Math.round(low + (high - low) * amount)
+      .toString(16)
+      .padStart(2, "0");
+  });
+
+  return `#${channels.join("")}`;
+}
+
+/** The empty screen: the moon turning beside the ways in. */
+function Welcome(props: { readonly theme: ActiveCliTheme; readonly visible: boolean }) {
+  const dimensions = useTerminalDimensions();
+  const [frame, setFrame] = createSignal(0);
+
+  const showMoon = createMemo(
+    () => dimensions().width >= MOON_MIN_WIDTH && dimensions().height >= MOON_MIN_HEIGHT,
+  );
+
+  createEffect(() => {
+    if (!props.visible || !showMoon()) return;
+
+    const timer = setInterval(
+      () => setFrame((index) => (index + 1) % MOON_FRAMES.length),
+      MOON_FRAME_MS,
+    );
+
+    onCleanup(() => clearInterval(timer));
+  });
+
+  // Earthshine grain takes the muted role; the brightest ground takes the moon's.
+  const shades = createMemo(() =>
+    Array.from({ length: MOON_RAMP.length }, (_, level) =>
+      mix(props.theme.muted, props.theme.moon, (level / (MOON_RAMP.length - 1)) ** 0.7),
+    ),
+  );
+
+  const rows = createMemo(() =>
+    (MOON_FRAMES[frame()] ?? "").split("\n").map((line) => {
+      const chunks: Chunk[] = [];
+
+      for (const character of line) {
+        const fg = shades()[MOON_RAMP.indexOf(character)] ?? props.theme.muted;
+        const last = chunks.at(-1);
+
+        if (last?.fg === fg) chunks[chunks.length - 1] = { fg, text: last.text + character };
+        else chunks.push({ fg, text: character });
+      }
+
+      return chunks;
+    }),
+  );
+
+  return (
+    <box
+      id="welcome"
+      position="absolute"
+      top={0}
+      right={0}
+      bottom={0}
+      left={0}
+      flexDirection="row"
+      alignItems="center"
+      justifyContent="center"
+      gap={5}
+      visible={props.visible}
+    >
+      <box flexDirection="column" flexShrink={0} visible={showMoon()}>
+        <For each={rows()}>
+          {(chunks) => (
+            <text height={1} wrapMode="none" selectable={false}>
+              <Spans chunks={chunks} />
+            </text>
+          )}
+        </For>
+      </box>
+      <box flexDirection="column" flexShrink={0}>
+        <text fg={props.theme.moon}>Welcome to Nyte</text>
+        <text wrapMode="none">
+          <span style={{ fg: props.theme.foreground }}>@</span>
+          <span style={{ fg: props.theme.dim }}> for files · </span>
+          <span style={{ fg: props.theme.foreground }}>!</span>
+          <span style={{ fg: props.theme.dim }}> for shell</span>
+        </text>
+      </box>
+    </box>
   );
 }
 
@@ -117,6 +214,7 @@ function App(props: AppProps): BoxRenderable {
   const [inputFocused, setInputFocused] = createSignal(true);
   const [followingLatest, setFollowingLatest] = createSignal(true);
   const [latestHovered, setLatestHovered] = createSignal(false);
+  const [transcriptEmpty, setTranscriptEmpty] = createSignal(true);
   const inputWidthMethod = renderer.widthMethod;
   const pendingGutter = new PendingGutter(renderer, theme, roles, nextId);
 
@@ -129,7 +227,7 @@ function App(props: AppProps): BoxRenderable {
   let panelHost!: BoxRenderable;
   let screenHost!: BoxRenderable;
   let overlayHost!: BoxRenderable;
-  let view!: TranscriptView;
+  let view!: Timeline;
   let acceleratedScrolling = false;
   const newScrollAcceleration = () => createScrollAcceleration(acceleratedScrolling);
 
@@ -182,28 +280,30 @@ function App(props: AppProps): BoxRenderable {
         flexDirection="column"
         visible={ui.screen !== undefined}
       />
-      <scrollbox
-        ref={(box) => (scroll = box)}
-        id="transcript"
-        flexGrow={1}
-        minHeight={0}
-        visible={ui.screen === undefined}
-        stickyScroll
-        stickyStart="bottom"
-        scrollX={false}
-        scrollY
-        paddingLeft={1}
-        paddingRight={1}
-        paddingBottom={TRANSCRIPT_BOTTOM_PADDING}
-        onMouseScroll={() => view.beginManualScroll()}
-        scrollAcceleration={newScrollAcceleration()}
-        verticalScrollbarOptions={{
-          trackOptions: {
-            backgroundColor: theme.scrollbarTrack,
-            foregroundColor: theme.scrollbarThumb,
-          },
-        }}
-      />
+      <box id="conversation" flexGrow={1} minHeight={0} visible={ui.screen === undefined}>
+        <scrollbox
+          ref={(box) => (scroll = box)}
+          id="transcript"
+          flexGrow={1}
+          minHeight={0}
+          stickyScroll
+          stickyStart="bottom"
+          scrollX={false}
+          scrollY
+          paddingLeft={1}
+          paddingRight={1}
+          paddingBottom={TRANSCRIPT_BOTTOM_PADDING}
+          onMouseScroll={() => view.beginManualScroll()}
+          scrollAcceleration={newScrollAcceleration()}
+          verticalScrollbarOptions={{
+            trackOptions: {
+              backgroundColor: theme.scrollbarTrack,
+              foregroundColor: theme.scrollbarThumb,
+            },
+          }}
+        />
+        <Welcome theme={theme} visible={transcriptEmpty()} />
+      </box>
       <box
         id="latest"
         width="100%"
@@ -223,7 +323,7 @@ function App(props: AppProps): BoxRenderable {
           onMouseUp={(event) => {
             if (event.button !== 0) return;
             event.preventDefault();
-            view.returnToLatest();
+            view.scrollToEnd();
           }}
         >
           <text
@@ -410,6 +510,7 @@ function App(props: AppProps): BoxRenderable {
     nextId,
     openPath,
     onFollowModeChange: setFollowingLatest,
+    onEmptyChange: setTranscriptEmpty,
     tasks: () => [],
     userBlocks,
     userBlockWidth,
@@ -417,7 +518,7 @@ function App(props: AppProps): BoxRenderable {
 
   // Steer messages draw at the transcript's tail, in the shape of the turns they become.
   const pendingTail = new PendingTail(transcript, roles);
-  view = new TranscriptView(transcript, { tail: pendingTail.container });
+  view = new Timeline(transcript, { tail: pendingTail.container });
   // Syntax styles are built from theme roles, so a retheme rebuilds them and recolors the view.
   createEffect(
     on(

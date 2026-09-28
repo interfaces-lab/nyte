@@ -1,59 +1,61 @@
 /*
- * The core docs' own surfaces. The shell shared with /cloud — frame,
- * sidebar, article, prose, code, rail, pager — lives in src/shell.css,
+ * The core docs' own surfaces. What it shares with /cloud — frame,
+ * sidebar, article, prose, code, rail, pager — lives in ../_layout/layout.css,
  * which loads first. Only what Cloud has no counterpart for belongs here,
  * cards and the TUI figures.
  */
 
-.shell-prose figure:has(img[src^="/tui/"]) {
-  margin-block: 1.25rem 1.5rem;
-}
+@layer components {
+  .doc-prose figure:has(img[src^="/tui/"]) {
+    margin-block: 1.25rem 1.5rem;
+  }
 
-.shell-prose img[src^="/tui/"] {
-  border-radius: 8px;
-  border: 1px solid var(--nyte-color-border);
-  background: #0a0a0a;
-}
+  .doc-prose img[src^="/tui/"] {
+    border-radius: 8px;
+    border: 1px solid var(--nyte-stroke-secondary);
+    background: #0a0a0a;
+  }
 
-.shell-prose figure:has(img[src^="/tui/"]) figcaption {
-  margin-top: 8px;
-  font-size: 13px;
-  color: var(--nyte-color-muted-foreground);
-}
+  .doc-prose figure:has(img[src^="/tui/"]) figcaption {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--nyte-text-tertiary);
+  }
 
-.docs-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 13px;
-  margin: 0 0 21px;
-}
+  .docs-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 13px;
+    margin: 0 0 21px;
+  }
 
-.docs-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 16px;
-  border: 0.5px solid var(--nyte-color-border);
-  border-radius: 13px;
-  transition: border-color 120ms var(--nyte-motion-ease-out);
-}
+  .docs-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+    border: 0.5px solid var(--nyte-stroke-secondary);
+    border-radius: 13px;
+    transition: border-color 120ms var(--nyte-easing-out);
+  }
 
-.docs-card:hover {
-  border-color: var(--nyte-color-tertiary-foreground);
-}
+  .docs-card:hover {
+    border-color: var(--nyte-text-quaternary);
+  }
 
-.docs-card-icon {
-  display: inline-flex;
-  color: var(--nyte-color-foreground);
-}
+  .docs-card-icon {
+    display: inline-flex;
+    color: var(--nyte-text-primary);
+  }
 
-.docs-card strong {
-  font-size: 14px;
-  font-weight: 600;
-}
+  .docs-card strong {
+    font-size: 14px;
+    font-weight: 600;
+  }
 
-.docs-card span:last-child {
-  color: var(--nyte-color-muted-foreground);
-  font-size: 13px;
-  line-height: 20px;
+  .docs-card span:last-child {
+    color: var(--nyte-text-tertiary);
+    font-size: 13px;
+    line-height: 20px;
+  }
 }

@@ -5,27 +5,40 @@ description: "The focus ring, the pointer and keyboard modality switch, and the 
 
 ## The ring
 
-Every focusable primitive draws the same ring on `:focus-visible`.
-`@nyte-ai/ui/styles.css` restates the rule globally, so ad-hoc focusables in an app land on the
-same ring.
+A focusable component draws a 1px outline in `--nyte-focus-ring` on `:focus-visible`. The token
+defaults to the accent. The same styles are exported for your own focusable elements.
 
-```css
-:focus-visible {
-  outline: var(--nyte-control-focus-width) solid var(--nyte-color-focus-ring);
-  outline-offset: var(--nyte-control-focus-offset);
-}
+```ts title="Import"
+import { focus, srOnly } from "@nyte-ai/ui/a11y.stylex";
 ```
 
-`Input` and `Textarea` use a 2px `box-shadow` in `--nyte-color-focus-ring` plus a
-`--nyte-color-ring` border instead of an outline, so the ring hugs the field's radius.
+| Style             | Use                                                                                     |
+| ----------------- | --------------------------------------------------------------------------------------- |
+| `focus.ring`      | A standalone control. The outline sits on the element's edge.                           |
+| `focus.ringInset` | A row or menu item flush inside a scroll container or popup, where an outer ring clips. |
+| `srOnly`          | Visually hidden and still announced, for a label on a control that reads by shape.      |
+
+```tsx
+<a href="/settings" {...stylex.props(styles.link, focus.ring)}>
+  Settings
+</a>
+```
+
+`Input`, `InputGroup`, and `Textarea` draw no ring. Their border takes `--nyte-stroke-focused` on
+focus in the `raised` variant and `--nyte-stroke-primary` in the `quiet` one.
 
 ## Focus modality
 
 Chromium matches `:focus-visible` on every text field focus, pointer clicks included, so the ring
 color is the gate. The host marks the document with `data-nyte-focus-modality="pointer"` when the
-last focus move came from a pointer and `"keyboard"` when it came from a key.
-`@nyte-ai/ui/styles.css` sets `--nyte-color-focus-ring: transparent` while the attribute reads
-`pointer`.
+last focus move came from a pointer and `"keyboard"` when it came from a key, and clears the ring
+while the attribute reads `pointer`.
+
+```css
+:root[data-nyte-focus-modality="pointer"] {
+  --nyte-focus-ring: transparent;
+}
+```
 
 Start the document at `pointer`, so a window that autofocuses a field does not open ringed. Inside
 a text field, count only Tab as a keyboard move, since letters and Cmd+A are edits. Elsewhere,
@@ -41,7 +54,7 @@ Base UI owns keyboard behavior and the primitives do not intercept it.
 
 | Component            | Keys                                                                                                                                                                                                           |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Button               | Enter and Space activate. A `render`-replaced non-button needs `nativeButton={false}` to keep this.                                                                                                            |
+| Button, Toggle       | Enter and Space activate. Toggle flips `aria-pressed`.                                                                                                                                                         |
 | Dialog, Alert dialog | Focus moves into the popup on open and returns to the trigger on close. Tab is trapped inside. Escape closes a Dialog. Alert dialog ignores outside press and Escape unless its dismissal props say otherwise. |
 | Dropdown menu        | Arrow Down and Up move the highlight, Home and End jump, type-ahead matches item text, Enter and Space activate, Escape closes, Arrow Right opens a submenu and Arrow Left closes it.                          |
 | Input                | Native.                                                                                                                                                                                                        |
@@ -50,7 +63,6 @@ The full key tables are on the [component pages](/cloud/components), reproduced 
 
 ## Disabled
 
-A disabled control drops to `--nyte-control-disabled-opacity` (0.56) and, for `Button`, sets
-`pointer-events: none`. When a button enters a loading state after activation, pass
-`focusableWhenDisabled` so focus stays on it. Otherwise focus falls to `<body>` and a screen reader
-loses its place.
+`Button` and `Toggle` drop to half opacity when disabled, except the `inverse` variant, which
+switches to `--nyte-fill-strong` behind `--nyte-text-quaternary`. A disabled menu item takes
+`--nyte-text-quaternary`.

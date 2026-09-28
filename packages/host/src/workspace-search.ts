@@ -1,10 +1,6 @@
 import { realpath } from "node:fs/promises";
 import { matchesGlob, relative, resolve, sep } from "node:path";
-import type {
-  WorkspaceSearchInput,
-  WorkspaceSearchMatch,
-  WorkspaceSearchResult,
-} from "@nyte-ai/protocol";
+import type { OperationInput, OperationOutput, WorkspaceSearchMatch } from "@nyte-ai/protocol";
 import { findRipgrepFiles, grepRipgrep, InvalidRipgrepPattern, resolveRipgrep } from "./ripgrep.ts";
 import {
   MAX_WORKSPACE_FILE_BYTES,
@@ -12,11 +8,10 @@ import {
   WorkspaceFileError,
 } from "./workspace-files.ts";
 
-export {
-  WorkspaceSearchSchema,
-  type WorkspaceSearchInput,
-  type WorkspaceSearchMatch,
-  type WorkspaceSearchResult,
+export type {
+  WorkspaceSearchInput,
+  WorkspaceSearchMatch,
+  WorkspaceSearchResult,
 } from "@nyte-ai/protocol";
 
 export class WorkspaceSearchError extends Error {
@@ -34,9 +29,9 @@ export class WorkspaceSearchError extends Error {
  */
 export async function searchWorkspaceFiles(
   workspacePath: string,
-  input: WorkspaceSearchInput,
+  input: Omit<OperationInput<"workspace.search">, "target">,
   signal: AbortSignal = new AbortController().signal,
-): Promise<WorkspaceSearchResult> {
+): Promise<OperationOutput<"workspace.search">> {
   signal.throwIfAborted();
 
   if (input.query.includes("\0") || /[\r\n]/u.test(input.query))

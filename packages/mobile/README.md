@@ -47,7 +47,7 @@ discovery are not implemented.
 
 ## Connecting
 
-Nyte desktop exposes the connection under Settings › Server › iOS app. It offers
+Nyte desktop exposes the connection under Environments › Remote access. It offers
 two reaches. **Simulator on this Mac** binds `127.0.0.1`; **Over Tailscale** binds
 this machine's tailnet address, read from `tailscale status --json`, and is offered
 only while that daemon reports `Running`. Either way the listener takes an ephemeral
@@ -65,7 +65,7 @@ The connect screen can also read a pairing code: `nyte://connect?name=…&url=�
 scanned with the back camera through VisionCamera's `useObjectOutput`, which
 reads QR codes through AVFoundation without an ML dependency. A scanned address
 goes through the same `parseConnection` policy as a typed one, so a public HTTP
-host is refused either way. Desktop Settings › Server › iOS app shows that
+host is refused either way. Desktop Environments › Remote access shows that
 pairing QR. A simulator has no camera, so the scan button only appears on a
 device with one.
 
@@ -347,9 +347,9 @@ keeps one dictate control. Message content stays on solid surfaces.
 
 React Strict DOM supplies the StyleX-compatible `css` API for native layout,
 with no WebView bridge. All screens consume colors, typography, spacing, radii,
-and control metrics from `src/theme.ts`. Colors are generated from the canonical
-`packages/ui/src/platform-tokens.stylex.ts` through `@nyte-ai/ui/platform-colors`;
-`pnpm --dir packages/ui check:tokens` rejects stale CSS or native color output.
+and control metrics from `src/theme.ts`. Colors are generated from the shared
+palette in `packages/ui/src/tokens.stylex.ts` through `@nyte-ai/ui/platform-colors`;
+`pnpm --dir packages/ui check:tokens` rejects stale native color output.
 The app follows the system appearance by default: `userInterfaceStyle` is
 `automatic`, RSD `css` tokens resolve light and dark values through
 `prefers-color-scheme`, and native controls read the active palette through

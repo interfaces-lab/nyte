@@ -4,24 +4,31 @@ description: "Switches between related panels on the same page"
 ---
 
 ```ts title="Import"
+import { Tabs } from "@nyte-ai/ui";
+```
+
+The same `Tabs` is exported from its own subpath. Pick one path per file.
+
+```ts title="Subpath"
 import { Tabs } from "@nyte-ai/ui/tabs";
 ```
 
 One list of tabs, one panel visible at a time. Reach for it when the panels are peers and the reader
-only needs one of them at a time. No Nyte styling here.
+only needs one of them at a time.
 
 ## Usage
 
+- `variant` on `Tabs.Root` sets the look of its list and every tab in it. A nested `Tabs.Root` sets
+  its own.
 - Each `Tabs.Tab` and each `Tabs.Panel` needs a matching `value`. Without `defaultValue` on the
   root, the first tab starts active.
+- `value` with `onValueChange` controls the root. `value={null}` leaves no tab active.
 - Tabs activate on Enter or Space. `activateOnFocus` on the list activates them on arrow key focus
   instead.
-- `value` with `onValueChange` controls the root. `value={null}` leaves no tab active.
-- `Tabs.Indicator` is optional. Position it from the `--active-tab-*` CSS variables it publishes.
-- A panel carries `data-starting-style` and `data-ending-style` while it animates.
-  `data-activation-direction` says where the newly active tab sits relative to the previous one, so
-  a panel can slide in from the matching side.
-- A hidden panel unmounts unless you pass `keepMounted`.
+- A hidden panel unmounts unless you pass `keepMounted`. A kept panel carries `hidden`, so a panel
+  whose `xstyle` sets `display` has to hide itself under `[hidden]`.
+- `Tabs.Root` and `Tabs.Panel` bring no look of their own. Lay them out with `xstyle`.
+- `Tabs.Indicator` is optional. It sits over the active tab and follows it. Paint it with `xstyle`.
 
 ## Anatomy
 
@@ -45,35 +52,81 @@ only needs one of them at a time. No Nyte styling here.
 
 ```tsx
 <Tabs.Root defaultValue="overview">
-  <Tabs.List>
+  <Tabs.List aria-label="Session">
     <Tabs.Tab value="overview">Overview</Tabs.Tab>
     <Tabs.Tab value="activity">Activity</Tabs.Tab>
-    <Tabs.Indicator />
   </Tabs.List>
   <Tabs.Panel value="overview">Three heads, two of them running.</Tabs.Panel>
   <Tabs.Panel value="activity">Last run finished 2 minutes ago.</Tabs.Panel>
 </Tabs.Root>
 ```
 
-### Links
+### Segmented
 
-To render a tab as an anchor, pass the element to `render` and set `nativeButton={false}`.
+The tabs share a track and split its width. The active tab is raised.
+
+<Preview>
+  <TabsSegmentedDemo />
+</Preview>
 
 ```tsx
-<Tabs.Root>
-  <Tabs.List>
-    <Tabs.Tab nativeButton={false} render={<a href="/overview" />} value="overview">
-      Overview
-    </Tabs.Tab>
+<Tabs.Root variant="segmented" defaultValue="spend">
+  <Tabs.List aria-label="Usage">
+    <Tabs.Tab value="spend">Spend</Tabs.Tab>
+    <Tabs.Tab value="limits">Limits</Tabs.Tab>
+    <Tabs.Tab value="tools">All tools</Tabs.Tab>
+  </Tabs.List>
+</Tabs.Root>
+```
+
+### Underline
+
+For a strip nested inside another tab.
+
+<Preview>
+  <TabsUnderlineDemo />
+</Preview>
+
+```tsx
+<Tabs.Root variant="underline" defaultValue="models">
+  <Tabs.List aria-label="Breakdown">
+    <Tabs.Tab value="models">Models</Tabs.Tab>
+    <Tabs.Tab value="tools">Tools</Tabs.Tab>
+    <Tabs.Tab value="folders">Folders</Tabs.Tab>
+  </Tabs.List>
+</Tabs.Root>
+```
+
+### Pill
+
+For filtering one list by kind.
+
+<Preview>
+  <TabsPillDemo />
+</Preview>
+
+```tsx
+<Tabs.Root variant="pill" defaultValue="plugins">
+  <Tabs.List aria-label="Inventory">
+    <Tabs.Tab value="plugins">Plugins</Tabs.Tab>
+    <Tabs.Tab value="skills">Skills</Tabs.Tab>
+    <Tabs.Tab value="settings">Settings</Tabs.Tab>
   </Tabs.List>
 </Tabs.Root>
 ```
 
 ## Props
 
-The reference tables below come from Base UI, MIT, © Material-UI SAS.
+Every part takes `xstyle`, and `className` and `style` as plain values, not functions of state.
+See [Theming](/cloud/foundations/theming).
 
 ### Root
+
+| Prop      | Type                                              | Default   | Description                         |
+| --------- | ------------------------------------------------- | --------- | ----------------------------------- |
+| `variant` | `"plain" \| "segmented" \| "underline" \| "pill"` | `"plain"` | The look of the list and every tab. |
+
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 <include>../../base-ui-reference/tabs/Root.md</include>
 
@@ -102,4 +155,4 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 - Enter and Space activate the focused tab, unless `activateOnFocus` activates it on focus.
 - A disabled first tab is skipped and the next enabled tab is selected. Server rendering does not
   know which tabs are disabled, so set `defaultValue` or `value` to an enabled tab.
-- The focus ring is yours to draw. See [Focus](/cloud/foundations/focus).
+- The focus ring appears on keyboard focus. See [Focus](/cloud/foundations/focus).

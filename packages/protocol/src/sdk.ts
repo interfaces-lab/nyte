@@ -237,6 +237,8 @@ export interface RunInfo {
    * the session and reading its `parked` calls.
    */
   readonly awaitingReply?: true;
+  /** What that participant is asked: the parked call's selection title. Set only with `awaitingReply`. */
+  readonly question?: string;
   readonly lease?: { readonly owner: string; readonly expiresAt: number };
 }
 

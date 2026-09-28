@@ -195,8 +195,6 @@ no `NOTICE` file, so no additional attribution text is carried.
   renderer integration, queued-message editing, and local plugin reloads also
   adapt merged V2 PRs #45758, #41603, #39920, #41113, #44683, #39776, and #47388.
   Source functions retain upstream names; the source comments pin the merge commits.
-- The desktop working indicator (`packages/desktop/src/renderer/src/components/spinner.tsx`)
-  adapts OpenCode v2's pixel-grid spinner and opacity animations to React and StyleX.
 - The 10 desktop scenarios in `packages/desktop/benchmark/` port OpenCode v2's
   startup, navigation, streaming, retained-memory, terminal, workspace-cycle,
   transport-reconnect, and Markdown-lifetime tests. Nyte runs them against the

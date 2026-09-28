@@ -1,4 +1,4 @@
-import { TextBuffer } from "@opentui/core";
+import { TextBuffer, TextBufferView } from "@opentui/core";
 import type { WidthMethod } from "@opentui/core";
 import stringWidth from "string-width";
 
@@ -35,6 +35,23 @@ export function truncateDisplay(text: string, width: number, ellipsis = ""): str
   }
 
   return `${kept}${displayWidth(ellipsis) <= width ? ellipsis : ""}`;
+}
+
+/** Rows `text` takes word-wrapped to `width` cells, counted by the renderer's own wrap. */
+export function wrappedRows(text: string, width: number, widthMethod: WidthMethod): number {
+  const buffer = TextBuffer.create(widthMethod);
+  const view = TextBufferView.create(buffer);
+
+  try {
+    buffer.setText(text);
+    view.setWrapMode("word");
+    view.setWrapWidth(Math.max(1, width));
+
+    return view.getVirtualLineCount();
+  } finally {
+    view.destroy();
+    buffer.destroy();
+  }
 }
 
 /** Measure a string prefix in the editor's native cell space. */

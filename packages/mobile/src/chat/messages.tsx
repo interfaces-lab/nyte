@@ -32,6 +32,9 @@ import { toast } from "../ui/toast.tsx";
 import { elapsed } from "./sessions.ts";
 import { formatDuration, type ConversationTurn } from "./turn-changes.ts";
 import { delegateTitle } from "./delegate-names.ts";
+import { Bubble } from "./bubble.tsx";
+import { Marker } from "./marker.tsx";
+import { Message, MessageFooter } from "./message.tsx";
 
 export type ChatRow =
   | TurnPart
@@ -106,13 +109,8 @@ function UserMessage({
   return (
     <Row layout={layout}>
       <Pressable onLongPress={() => copySheet(text)}>
-        <html.div style={styles.userRow}>
-          <html.div
-            style={[
-              styles.userBubble,
-              styles.bubbleWidth(Math.floor(layout.contentWidth * media.bubbleMaxWidthRatio)),
-            ]}
-          >
+        <Message align="end">
+          <Bubble maxWidth={Math.floor(layout.contentWidth * media.bubbleMaxWidthRatio)}>
             {Array.isArray(content) ? (
               content.map((part, index) =>
                 part.type === "text" ? (
@@ -131,9 +129,9 @@ function UserMessage({
             ) : (
               <html.p style={textStyles.body}>{content}</html.p>
             )}
-          </html.div>
-          {note ? <html.span style={textStyles.caption}>{note}</html.span> : null}
-        </html.div>
+          </Bubble>
+          {note ? <MessageFooter>{note}</MessageFooter> : null}
+        </Message>
       </Pressable>
     </Row>
   );
@@ -155,13 +153,15 @@ function AssistantMessage({
           if (!streaming) copySheet(text);
         }}
       >
-        <html.div style={styles.assistant}>
-          <Markdown
-            text={text}
-            width={layout.contentWidth - conversation.textInset * 2}
-            streaming={streaming}
-          />
-        </html.div>
+        <Message>
+          <Bubble variant="ghost">
+            <Markdown
+              text={text}
+              width={layout.contentWidth - conversation.textInset * 2}
+              streaming={streaming}
+            />
+          </Bubble>
+        </Message>
       </Pressable>
     </Row>
   );
@@ -374,14 +374,6 @@ function WorkRow({
   );
 }
 
-function Notice({ text, layout }: { text: string; layout: ConversationLayout }) {
-  return (
-    <Row layout={layout}>
-      <html.p style={[textStyles.secondary, styles.notice]}>{text}</html.p>
-    </Row>
-  );
-}
-
 export const MessageRow = memo(function MessageRow({
   item,
   layout,
@@ -417,10 +409,16 @@ export const MessageRow = memo(function MessageRow({
     case "summary":
       return <Disclosure title="Conversation summary" text={item.body.text} layout={layout} />;
     case "checkpoint":
-      return <Notice text="Earlier context summarized" layout={layout} />;
+      return (
+        <Row layout={layout}>
+          <Marker>Earlier context summarized</Marker>
+        </Row>
+      );
     case "config":
       return item.body.model ? (
-        <Notice text={`Model changed to ${item.body.model.id}`} layout={layout} />
+        <Row layout={layout}>
+          <Marker>{`Model changed to ${item.body.model.id}`}</Marker>
+        </Row>
       ) : null;
     case "tool":
     case "thinking":
@@ -437,35 +435,11 @@ const styles = css.create({
   // Block divs stretch to the list width; an explicit 100% plus padding overflows under content-box sizing.
   row: {},
   gutters: (left: number, right: number) => ({ paddingLeft: left, paddingRight: right }),
-  userRow: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-end",
-    gap: spacing.xs,
-    marginTop: spacing.lg,
-    paddingBlock: spacing.xs,
-  },
-  userBubble: {
-    display: "flex",
-    flexDirection: "column",
-    backgroundColor: tokens.raised,
-    borderRadius: radii.bubble,
-    paddingInline: 14,
-    paddingBlock: 10,
-    gap: spacing.sm,
-  },
-  bubbleWidth: (maxWidth: number) => ({ maxWidth }),
   image: {
     width: media.thumbnailWidth,
     height: media.thumbnailHeight,
     borderRadius: radii.control,
     objectFit: "cover",
-  },
-  assistant: {
-    display: "flex",
-    flexDirection: "column",
-    paddingInline: conversation.textInset,
-    paddingBlock: 6,
   },
   disclosure: { paddingInline: conversation.textInset, paddingBlock: 6 },
   disclosureButton: {
@@ -482,7 +456,6 @@ const styles = css.create({
     transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
   }),
   disclosureBody: { display: "flex", flexDirection: "column" },
-  notice: { paddingInline: conversation.textInset, paddingBlock: 6 },
   work: {
     paddingInline: conversation.textInset,
     paddingBlock: 6,

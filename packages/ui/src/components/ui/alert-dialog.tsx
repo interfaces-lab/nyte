@@ -1,79 +1,104 @@
 import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
-import * as stylex from "@stylexjs/stylex";
-import type * as React from "react";
+import { create, props } from "@stylexjs/stylex";
+import { useRef } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
 
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { dialogStyles } from "./dialog.tsx";
+import { t } from "../../vars.stylex.ts";
+import { Button } from "./button.tsx";
+import { Dialog } from "./dialog.tsx";
 
-export const AlertDialog = AlertDialogPrimitive.Root;
+const styles = create({
+  error: { margin: 0, color: t.textDanger, fontSize: t.fontBase, lineHeight: t.leadingBase },
+});
 
-export const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
+export type AlertDialogRootProps = AlertDialogPrimitive.Root.Props;
 
-export const AlertDialogClose = AlertDialogPrimitive.Close;
+export type AlertDialogTriggerProps = StyledProps<AlertDialogPrimitive.Trigger.Props>;
 
-export type AlertDialogContentProps = StyledProps<AlertDialogPrimitive.Popup.Props>;
-
-export function AlertDialogContent({
-  children,
+function AlertDialogTrigger({
+  xstyle,
   className,
   style,
-  xstyle,
-  ...props
-}: AlertDialogContentProps) {
+  ...rest
+}: AlertDialogTriggerProps): ReactElement {
   return (
-    <AlertDialogPrimitive.Portal>
-      <AlertDialogPrimitive.Backdrop
-        data-slot="alert-dialog-overlay"
-        {...stylex.props(dialogStyles.overlay)}
-      />
-      <AlertDialogPrimitive.Popup
-        data-slot="alert-dialog-content"
-        {...mergeStyleProps(stylex.props(dialogStyles.popup, xstyle), className, style)}
-        {...props}
-      >
-        {children}
-      </AlertDialogPrimitive.Popup>
-    </AlertDialogPrimitive.Portal>
+    <AlertDialogPrimitive.Trigger {...rest} {...mergeStyleProps(props(xstyle), className, style)} />
   );
 }
 
-export type AlertDialogTitleProps = StyledProps<AlertDialogPrimitive.Title.Props>;
+/** The dialog's parts under a root that ignores outside presses and announces as `alertdialog`. */
+export const AlertDialog = {
+  Root: AlertDialogPrimitive.Root,
+  Trigger: AlertDialogTrigger,
+  Popup: Dialog.Popup,
+  Header: Dialog.Header,
+  Title: Dialog.Title,
+  Description: Dialog.Description,
+  Footer: Dialog.Footer,
+  Close: Dialog.Close,
+};
 
-export function AlertDialogTitle({ className, style, xstyle, ...props }: AlertDialogTitleProps) {
-  return (
-    <AlertDialogPrimitive.Title
-      data-slot="alert-dialog-title"
-      {...mergeStyleProps(stylex.props(dialogStyles.title, xstyle), className, style)}
-      {...props}
-    />
-  );
+export interface ConfirmDialogProps {
+  readonly open: boolean;
+  readonly title: string;
+  readonly description: ReactNode;
+  readonly confirmLabel?: string;
+  readonly pendingLabel?: string;
+  /** Disables both actions and keeps the dialog open until it settles. */
+  readonly pending?: boolean;
+  readonly error?: string;
+  /** Where focus lands on close when the dialog has no trigger. */
+  readonly returnFocusRef?: RefObject<HTMLElement | null>;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onConfirm: () => void;
 }
 
-export type AlertDialogDescriptionProps = StyledProps<AlertDialogPrimitive.Description.Props>;
+/** A destructive yes-or-no question. Focus starts on Cancel. */
+export function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel = "Delete",
+  pendingLabel = "Deleting…",
+  pending = false,
+  error,
+  returnFocusRef,
+  onOpenChange,
+  onConfirm,
+}: ConfirmDialogProps): ReactElement {
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
-export function AlertDialogDescription({
-  className,
-  style,
-  xstyle,
-  ...props
-}: AlertDialogDescriptionProps) {
   return (
-    <AlertDialogPrimitive.Description
-      data-slot="alert-dialog-description"
-      {...mergeStyleProps(stylex.props(dialogStyles.description, xstyle), className, style)}
-      {...props}
-    />
-  );
-}
-
-export type AlertDialogFooterProps = StyledProps<React.ComponentProps<"div">>;
-
-export function AlertDialogFooter({ className, style, xstyle, ...props }: AlertDialogFooterProps) {
-  return (
-    <div
-      data-slot="alert-dialog-footer"
-      {...mergeStyleProps(stylex.props(dialogStyles.footer, xstyle), className, style)}
-      {...props}
-    />
+    <AlertDialog.Root
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !pending) onOpenChange(false);
+      }}
+    >
+      <AlertDialog.Popup initialFocus={cancelRef} finalFocus={returnFocusRef} aria-busy={pending}>
+        <AlertDialog.Header>
+          <AlertDialog.Title>{title}</AlertDialog.Title>
+          <AlertDialog.Description>{description}</AlertDialog.Description>
+        </AlertDialog.Header>
+        {error !== undefined && (
+          <p role="alert" {...props(styles.error)}>
+            {error}
+          </p>
+        )}
+        <AlertDialog.Footer>
+          <AlertDialog.Close
+            ref={cancelRef}
+            disabled={pending}
+            render={<Button variant="secondary" />}
+          >
+            Cancel
+          </AlertDialog.Close>
+          <Button variant="danger" disabled={pending} onClick={onConfirm}>
+            {pending ? pendingLabel : confirmLabel}
+          </Button>
+        </AlertDialog.Footer>
+      </AlertDialog.Popup>
+    </AlertDialog.Root>
   );
 }

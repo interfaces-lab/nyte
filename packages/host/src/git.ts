@@ -1323,12 +1323,8 @@ export interface GitVcsOptions {
   readonly discard?: Discard;
 }
 
-/**
- * Git for the SDK's `workspace.vcs`. `cwd` is the workspace whose run
- * provenance the tree snapshot records; every other operation runs at the
- * directory it is called with.
- */
-export function createGitVcs(cwd: string, options: GitVcsOptions = {}): VcsBackend {
+/** Git for the SDK's `workspace.vcs`; every operation runs at the directory it receives. */
+export function createGitVcs(options: GitVcsOptions = {}): VcsBackend {
   const snapshots = createTreeSnapshot(options);
 
   const run = async <Output>(operation: () => Promise<Output>): Promise<Output> => {

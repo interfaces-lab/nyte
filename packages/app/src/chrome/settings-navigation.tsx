@@ -31,7 +31,17 @@ const SECTIONS = {
   general: {
     icon: "settings",
     title: "General",
-    keywords: ["startup", "window restoration", "chat", "messages", "queue", "steer"],
+    keywords: [
+      "startup",
+      "window restoration",
+      "chat",
+      "messages",
+      "queue",
+      "steer",
+      "links",
+      "browser",
+      "external",
+    ],
   },
   appearance: {
     icon: "canvas-grid",
@@ -68,32 +78,14 @@ const SECTIONS = {
     keywords: ["tokens", "cost", "spend", "billing", "cache", "activity", "charts", "history"],
   },
   accounts: { icon: "user-key", title: "Accounts", keywords: ["github", "sign out"] },
-  server: {
-    icon: "cloud",
-    title: "Server",
-    keywords: [
-      "cloud",
-      "remote",
-      "deploy",
-      "token",
-      "vercel",
-      "cloudflare",
-      "ios",
-      "iphone",
-      "browser",
-      "tailscale",
-      "mobile",
-    ],
-  },
 } as const satisfies Record<string, SectionInfo>;
 
 export type SettingsSection = keyof typeof SECTIONS;
 
-/** The app itself, then the agent's providers and spend, then remote hosting. */
+/** The app itself, then the agent's providers and spend. */
 const SECTION_GROUPS: readonly (readonly SettingsSection[])[] = [
   ["general", "appearance"],
   ["models", "usage", "accounts"],
-  ["server"],
 ];
 
 const WEB_SECTION_GROUPS: readonly (readonly SettingsSection[])[] = [["general", "appearance"]];

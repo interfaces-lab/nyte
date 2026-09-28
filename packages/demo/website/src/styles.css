@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "@nyte-ai/ui/platform-tokens.css";
 
 @theme {
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;

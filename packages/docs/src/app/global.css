@@ -1,1653 +1,278 @@
+@layer properties, theme, base, nyte-ui, stylex, components, utilities;
 @import "tailwindcss";
-@import "@nyte-ai/ui/platform-tokens.css";
+@import "@nyte-ai/ui/ui.css";
+@import "@nyte-ai/ui/tailwind.css";
 @stylex;
 
 /*
- * Site chrome reads @nyte-ai/ui platform tokens. Those are light-dark() pairs,
- * so appearance follows color-scheme. Landing figures use --nyte-color-*
- * directly. Components that need tokens in JS import colorVars from
- * @nyte-ai/ui/platform-tokens.stylex. Fumadocs UI theme CSS is not loaded;
+ * Site chrome reads the @nyte-ai/ui tokens, which ui.css declares on :root.
+ * Colours are light-dark() pairs, so appearance follows color-scheme. Fumadocs UI theme CSS is not loaded;
  * docs and Cloud paint with their own sheets.
  *
- * /hero-2 keeps its own cut tokens. It is a fixed dark editorial surface, not
- * the product theme.
- *
- * Landing hosts: StyleX owns stack/row/sticky.
+ * Layer order: StyleX from @nyte-ai/ui sits above preflight and below
+ * components and utilities, so a Tailwind class on an element wins, as does
+ * any rule here. Hand-written rules stay inside a layer; unlayered CSS would
+ * beat every utility.
  */
 
 :root {
   color-scheme: light;
-  --nyte-font-family-ui: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --nyte-font-family-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --nyte-radius-surface: 16px;
+  --nyte-radius-row: 12px;
 }
 
 .dark {
   color-scheme: dark;
 }
 
-@theme {
-  --font-sans: var(--nyte-font-family-ui);
-  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
-
-  /*
-   * /hero-2. A fixed dark surface, no theme switch. Two signal colours only:
-   * intent (pending, not yet true) and result (landed, durable). Every other
-   * colour on the page is a tint of the ink.
-   */
-  --color-cut-bg: #090817;
-  --color-cut-panel: #0e0d1f;
-  --color-cut-raised: #14132a;
-  --color-cut-ink: #ecebe6;
-  --color-cut-dim: #8b8aa3;
-  --color-cut-faint: #55546b;
-  --color-cut-rule: #ecebe614;
-  --color-cut-rule-strong: #ecebe630;
-  --color-cut-result: #a3fead;
-  --color-cut-intent: #ed4da7;
-
-  --font-cut-serif: var(--font-newsreader), Georgia, "Times New Roman", serif;
-  --font-cut-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
-}
-
-html {
-  overflow: hidden;
-}
-
-/* The plate has to reach the canvas, or overscroll shows the white page under it. */
-html:has(.hero-plate),
-body:has(.hero-plate) {
-  background: var(--hero-blue);
-}
-
-body {
-  min-width: 0;
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-html > body[data-scroll-locked] {
-  margin-right: 0px !important;
-  --removed-body-scroll-bar-size: 0px !important;
-}
-
-.shiki {
-  font-variant-ligatures: none;
-  tab-size: 2;
-}
-
-.prose :where(code):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
-  font-family: var(--font-mono);
-}
-
-.nyte-mono {
-  font-family: var(--font-mono);
-  font-variant-ligatures: none;
-}
-
-.docs-mermaid {
-  margin: 16px 0;
-  overflow-x: auto;
-}
-
-.docs-mermaid svg {
-  display: block;
-  margin-inline: auto;
-  height: auto;
-  max-width: 100%;
-}
-
-/* ---------------------------------------------------------- site nav --- */
-
-:root {
-  --site-inner: 1072px;
-  --site-pad: 24px;
-  --site-nav-height: 94px;
-
-  /* One radius family: controls are pills, surfaces and rows are soft. */
-  --nyte-radius-pill: 999px;
-  --nyte-radius-card: 24px;
-  --nyte-radius-surface: 16px;
-  --nyte-radius-row: 12px;
-}
-
-@media (max-width: 1023px) {
+@layer base {
   :root {
-    --site-nav-height: 70px;
-    --site-pad: 20px;
+    --site-inner: 1072px;
+    --site-pad: 24px;
+    /* 4 + 32 + 4: the same pad sits above the controls, below them, and before a dropdown. */
+    --site-nav-height: 40px;
+    --site-nav-pad: 4px;
+    --site-nav-control: calc(var(--site-nav-height) - 2 * var(--site-nav-pad));
+
+    --hero-blue: #2222dd;
+    --hero-sky: var(--hero-blue);
+    --hero-moon: var(--hero-blue);
+    --hero-glow: rgb(255 255 255 / 0.14);
+
+    --plate-inset: 12px;
+    --plate-radius: 28px;
+    /* Header top below the plate edge, so nav pills sit concentric in its corner. */
+    --plate-nav-drop: calc(var(--plate-inset) - var(--site-nav-pad));
+    --plate-ink: #0e0e5c;
+  }
+
+  /* Midnight: a dark sky with only the stars. The moon turns a darker blue. */
+  .dark {
+    --hero-sky: #07071a;
+    --hero-moon: #0e0e5c;
+    --hero-glow: rgb(72 72 255 / 0.3);
+  }
+
+  /* Set by viewport only, never by page, so the nav keeps its edges across routes. */
+  @media (min-width: 1400px) {
+    :root {
+      --site-inner: 1312px;
+    }
+  }
+
+  @media (max-width: 1023px) {
+    :root {
+      --site-pad: 20px;
+    }
+  }
+
+  @media (max-width: 639px) {
+    :root {
+      --plate-inset: 8px;
+      --plate-radius: 24px;
+    }
   }
 }
 
-/* Stays under --nyte-layer-dialog (50) so a dialog scrim covers the bar too. */
-.site-nav {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  width: 100%;
-  min-width: 0;
-  height: var(--site-nav-height);
-  background: var(--nyte-color-background);
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-}
+@theme {
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --font-display: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
 
-.site-nav-inner {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 20px;
-  height: 100%;
-  width: min(100%, var(--site-inner));
-  min-width: 0;
-  margin-inline: auto;
-  padding-inline: var(--site-pad);
-}
+  --ease-nav: cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-nav-panel-in: nav-panel-in 420ms var(--ease-nav) both;
+  --animate-nav-panel-content-in: nav-panel-content-in 360ms var(--ease-nav) both;
+  --animate-nav-panel-row-in: nav-panel-row-in 380ms var(--ease-nav) both;
 
-.site-nav-brand {
-  display: inline-flex;
-  align-items: center;
-  color: var(--nyte-color-foreground);
-}
+  @keyframes nav-panel-in {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+  }
 
-.site-nav-brand:hover {
-  opacity: 0.6;
-}
+  @keyframes nav-panel-content-in {
+    from {
+      opacity: 0;
+      transform: translateX(var(--enter-x, 0));
+    }
+  }
 
-.site-sections {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  justify-self: start;
-}
+  @keyframes nav-panel-row-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
 
-.site-sections-item {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  height: 33px;
-  padding: 11px 10px;
-  border-radius: var(--nyte-radius-pill);
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--nyte-color-foreground);
-}
+  --animate-plate-rise: plate-rise 900ms var(--ease-nav) both;
+  --animate-host-in: plate-rise 520ms var(--ease-nav) both;
 
-.site-sections-item:hover,
-.site-sections-item[data-open] {
-  opacity: 1;
-}
-
-.site-indicator {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 33px;
-  border-radius: var(--nyte-radius-pill);
-  background: color-mix(in srgb, currentColor 10%, transparent);
-  opacity: 0;
-  transition:
-    transform 520ms cubic-bezier(0.22, 1, 0.36, 1),
-    width 520ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 220ms ease;
-  pointer-events: none;
-}
-
-.site-indicator[data-on] {
-  opacity: 1;
-}
-
-.site-panel {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 31;
-  padding-top: 8px;
-  width: max-content;
-  max-width: min(316px, calc(100vw - 48px));
-  animation: site-panel-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-@keyframes site-panel-in {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
+  @keyframes plate-rise {
+    from {
+      opacity: 0;
+      transform: translateY(var(--rise, 12px));
+    }
   }
 }
 
-@keyframes site-panel-content-in {
-  from {
-    opacity: 0;
-    transform: translateX(var(--enter-x, 0));
+/* The landing hero plate repaints the shared site nav. */
+@custom-variant hero (body:has(.hero-plate, .landing-plate) &);
+@custom-variant plate (body:has(.landing-plate) &);
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  /* The plate has to reach the canvas, or overscroll shows the white page under it. */
+  html:has(.hero-plate),
+  body:has(.hero-plate) {
+    background: var(--hero-sky);
+  }
+
+  html > body[data-scroll-locked] {
+    margin-right: 0px !important;
+    --removed-body-scroll-bar-size: 0px !important;
   }
 }
 
-@keyframes site-panel-row-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
+@layer components {
+  .shiki {
+    font-variant-ligatures: none;
+    tab-size: 2;
+  }
+
+  .docs-mermaid {
+    margin: 16px 0;
+    overflow-x: auto;
+  }
+
+  .docs-mermaid svg {
+    display: block;
+    margin-inline: auto;
+    height: auto;
+    max-width: 100%;
+  }
+
+  /* ------------------------------------------------------- landing sky --- */
+
+  /* Opacity only, so the twinkle stays on the compositor. */
+  .sky-twinkle {
+    animation: sky-twinkle 6s ease-in-out infinite alternate;
+  }
+
+  @keyframes sky-twinkle {
+    from {
+      opacity: 0.12;
+    }
+    to {
+      opacity: 0.5;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sky-twinkle {
+      animation: none;
+    }
+  }
+
+  /* ----------------------------------------------------- landing plate --- */
+
+  .landing-plate {
+    --plate-top: #0a0a6e;
+    --plate-blue: var(--hero-blue);
+    --plate-lift: #4a5af2;
+    --plate-haze: #aab4ff;
+
+    background:
+      radial-gradient(90% 55% at 50% 0%, rgb(255 255 255 / 0.1), transparent 70%),
+      linear-gradient(
+        to bottom,
+        var(--plate-top),
+        var(--plate-blue) 42%,
+        var(--plate-lift) 70%,
+        var(--plate-haze)
+      );
+  }
+
+  .dark .landing-plate {
+    --plate-top: #03030f;
+    --plate-blue: #12127e;
+    --plate-lift: #1a1f8a;
+    --plate-haze: #1b2266;
+  }
+
+  .landing-plate-grain {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode: overlay;
+    opacity: 0.32;
+  }
+
+  /* Anchored to the product window, so the plate turns to paper behind it at every width. */
+  .landing-plate-fade {
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      color-mix(in oklab, var(--plate-haze) 70%, transparent) 22%,
+      var(--nyte-bg-page) 56%
+    );
+  }
+
+  /* A pastel aura seen through a 4px halftone screen. */
+  .install-halo {
+    background:
+      radial-gradient(38% 60% at 28% 42%, rgb(244 114 182 / 0.95), transparent 75%),
+      radial-gradient(40% 60% at 50% 36%, rgb(167 139 250 / 0.9), transparent 75%),
+      radial-gradient(38% 60% at 72% 56%, rgb(96 165 250 / 0.95), transparent 75%);
+    mask-image:
+      radial-gradient(circle, black 1.1px, transparent 1.5px),
+      radial-gradient(closest-side, black 20%, transparent);
+    mask-size:
+      4px 4px,
+      100% 100%;
+    mask-composite: intersect;
+  }
+
+  .dark .install-halo {
+    opacity: 0.55;
+  }
+
+  /* UIActivityIndicatorView turns in eight spoke-sized steps. */
+  @keyframes ios-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Pierre's host variables, as conversation/styles.stylex.ts sets them on a receipt. */
+  .desktop-diff {
+    display: block;
+    --diffs-light-bg: transparent;
+    --diffs-dark-bg: transparent;
+    --diffs-light: var(--nyte-text-primary);
+    --diffs-dark: var(--nyte-text-primary);
+    --diffs-bg-buffer-override: var(--nyte-bg-page);
+    --diffs-bg-context-override: var(--nyte-bg-page);
+    --diffs-bg-context-gutter-override: var(--nyte-bg-page);
+    --diffs-bg-addition-override: var(--nyte-diff-added-line-bg);
+    --diffs-bg-deletion-override: var(--nyte-diff-removed-line-bg);
+    --diffs-bg-addition-emphasis-override: var(--nyte-diff-added-text-bg);
+    --diffs-bg-deletion-emphasis-override: var(--nyte-diff-removed-text-bg);
+    --diffs-gap-style: none;
+    --diffs-gap-block: 0px;
+    --diffs-min-number-column-width: calc(4ch + 8px);
+    --diffs-font-family: var(--font-mono);
+    --diffs-header-font-family: var(--font-sans);
+    --diffs-font-size: 12px;
+    --diffs-line-height: 20px;
+    --diffs-tab-size: 4;
   }
 }
 
-/* Own its colors: the bar inherits page chrome, which on the hero is white. */
-.site-panel-card {
-  width: 316px;
-  max-width: 100%;
-  padding: 4px;
-  background: var(--nyte-color-popover);
-  color: var(--nyte-color-popover-foreground);
-  border: 1px solid var(--nyte-color-border);
-  border-radius: var(--nyte-radius-surface);
-  box-shadow: 0 8px 30px color-mix(in srgb, var(--nyte-color-foreground) 10%, transparent);
-  animation: site-panel-content-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.site-panel-row {
-  animation: site-panel-row-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  animation-delay: var(--enter-delay, 0ms);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .site-indicator,
-  .site-panel,
-  .site-panel-card,
-  .site-panel-row {
-    animation: none;
-    transition: none;
-  }
-}
-
-.site-feature {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px;
-  border-radius: var(--nyte-radius-row);
-}
-
-.site-feature:hover {
-  background-color: color-mix(in srgb, var(--nyte-color-foreground) 5%, transparent);
-}
-
-.site-feature-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  flex-shrink: 0;
-  color: var(--nyte-color-foreground);
-}
-
-.site-feature-title {
-  min-width: 0;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 20px;
-  color: var(--nyte-color-popover-foreground);
-}
-
-.site-nav-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  justify-self: end;
-}
-
-.site-nav .site-nav-search {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: auto;
-  height: 32px;
-  border: 0;
-  background: var(--nyte-color-muted-hover);
-  border-radius: var(--nyte-radius-pill);
-  padding: 0 14px;
-  gap: 0;
-  color: var(--nyte-color-foreground);
-  cursor: pointer;
-  font-size: 15px;
-  font-weight: 500;
-  letter-spacing: -0.44px;
-}
-
-.site-nav .site-nav-search svg,
-.site-nav .site-nav-search .cloud-kbd {
-  display: none;
-}
-
-.docs-search-input {
-  border-color: transparent !important;
-  border-radius: 0 !important;
-  border-bottom: 1px solid var(--nyte-color-border) !important;
-  box-shadow: none !important;
-  padding-inline: 16px !important;
-  min-height: 48px !important;
-  font-size: 15px !important;
-  background: transparent !important;
-}
-
-.docs-search-list {
-  max-height: 360px;
-  margin: 0;
-  padding: 8px;
-  overflow-y: auto;
-  list-style: none;
-}
-
-.docs-search-list a {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 14px;
-  line-height: 20px;
-}
-
-.docs-search-list a:hover,
-.docs-search-list a[data-active="true"] {
-  background: var(--nyte-color-muted-hover);
-}
-
-.docs-search-list a[data-type="page"] {
-  font-weight: 500;
-}
-
-.docs-search-list a[data-type="heading"],
-.docs-search-list a[data-type="text"] {
-  padding-left: 24px;
-  color: var(--nyte-color-muted-foreground);
-}
-
-.docs-search-list small {
-  color: var(--nyte-color-muted-foreground);
-  font-size: 12px;
-}
-
-.docs-search-empty {
-  padding: 24px 16px;
-  color: var(--nyte-color-muted-foreground);
-  font-size: 14px;
-  text-align: center;
-}
-
-.cloud-kbd {
-  display: inline-flex;
-  gap: 3px;
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 11px;
-}
-
-.cloud-kbd kbd {
-  min-width: 18px;
-  padding: 0 4px;
-  border: 1px solid var(--nyte-color-border);
-  border-radius: 5px;
-  font: inherit;
-  text-align: center;
-  line-height: 18px;
-}
-
-.site-nav-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--nyte-color-foreground);
-  cursor: pointer;
-}
-
-.site-nav-icon:hover {
-  opacity: 0.6;
-}
-
-.site-nav-menu {
-  display: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--nyte-color-muted-hover);
-}
-
-.site-nav-icon.site-nav-menu:hover {
-  opacity: 1;
-  background: color-mix(in srgb, var(--nyte-color-foreground) 10%, transparent);
-}
-
-.site-nav-menu-close {
-  display: none;
-}
-
-.site-nav-menu[data-popup-open] .site-nav-menu-bars {
-  display: none;
-}
-
-.site-nav-menu[data-popup-open] .site-nav-menu-close {
-  display: inline-flex;
-}
-
-.site-nav-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-.site-nav-backdrop {
-  position: fixed;
-  top: var(--site-nav-height);
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 20;
-  background: transparent;
-}
-
-.site-nav-viewport {
-  position: fixed;
-  inset: 0;
-  top: var(--site-nav-height);
-  z-index: 29;
-  box-sizing: border-box;
-  padding: 8px var(--site-pad) 24px;
-  pointer-events: none;
-}
-
-.site-nav-popup {
-  width: 100%;
-  max-height: 100%;
-  outline: none;
-  pointer-events: none;
-  transform-origin: top center;
-  opacity: 1;
-  translate: 0 0;
-  scale: calc(1 - 0.04 * var(--nested-dialogs, 0));
-  transition:
-    opacity var(--nyte-motion-normal) var(--nyte-motion-ease-out),
-    translate var(--nyte-motion-normal) var(--nyte-motion-ease-out),
-    scale var(--nyte-motion-normal) var(--nyte-motion-ease-out);
-}
-
-.site-nav-popup[data-starting-style],
-.site-nav-popup[data-ending-style] {
-  opacity: 0;
-  translate: 0 -8px;
-  scale: 0.98;
-}
-
-.site-nav-popup[data-nested][data-starting-style],
-.site-nav-popup[data-nested][data-ending-style] {
-  opacity: 0;
-  translate: 16px 0;
-  scale: 1;
-}
-
-.site-nav-popup[data-nested-dialog-open] {
-  opacity: 0;
-}
-
-.site-nav-card {
-  pointer-events: auto;
-  box-sizing: border-box;
-  max-height: min(72dvh, calc(100dvh - var(--site-nav-height) - 32px));
-  padding: 8px;
-  overflow: auto;
-  overscroll-behavior: contain;
-  background: var(--nyte-color-popover);
-  color: var(--nyte-color-popover-foreground);
-  border-radius: var(--nyte-radius-dialog);
-  box-shadow: 0 8px 40px color-mix(in srgb, var(--nyte-color-foreground) 12%, transparent);
-}
-
-.site-nav-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.site-nav-row {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: 56px;
-  padding: 16px 16px;
-  border: 0;
-  background: transparent;
-  color: var(--nyte-color-foreground);
-  font: inherit;
-  font-size: 16px;
-  font-weight: 500;
-  letter-spacing: -0.2px;
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-  border-radius: 10px;
-}
-
-.site-nav-row:hover,
-.site-nav-row[data-popup-open] {
-  background: color-mix(in srgb, var(--nyte-color-foreground) 5%, transparent);
-}
-
-.site-nav-chevron {
-  display: inline-flex;
-  margin-left: auto;
-  color: var(--nyte-color-muted-foreground);
-}
-
-.site-nav-nested-head {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 56px;
-  padding: 8px 8px 4px;
-}
-
-.site-nav-back {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--nyte-color-foreground);
-  cursor: pointer;
-}
-
-.site-nav-nested-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 500;
-  letter-spacing: -0.2px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .site-nav-popup {
-    transition-duration: 0s;
-  }
-}
-
-@media (max-width: 1023px) {
-  .site-sections,
-  .site-nav .site-nav-search {
-    display: none;
-  }
-
-  .site-nav-menu {
-    display: inline-flex;
-  }
-}
-
-/* ------------------------------------------------------- landing page --- */
-
-/*
- * The landing reads --nyte-* tokens. Inter is the one identity override, set
- * on :root as --nyte-font-family-ui. The terminal screenshot is the TUI's own
- * palette and stays dark.
- */
-.landing {
-  min-width: 0;
-  --tui-bg: #0a0a0a;
-  --tui-terminal: #171717;
-  --tui-fg: #fafafa;
-  --tui-dim: #737373;
-  --tui-muted: #525252;
-  --tui-user-bg: #1d1d1d;
-  --tui-thinking: #9d6afb;
-  --tui-ok: #07c480;
-  --tui-error: #ff2e3f;
-  --tui-running: #08c0ef;
-  --tui-accent: #009fff;
-  --tui-path: #ffa359;
-  --tui-code: #ff678d;
-  --tui-prompt-border: #2c2c2c;
-  --tui-diff-add: #273628;
-  --tui-diff-del: #402725;
-
-  background-color: var(--nyte-color-background);
-  color: var(--nyte-color-foreground);
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.landing :where(code, pre, kbd, samp) {
-  font-family: var(--font-sans);
-}
-
-.site-container {
-  width: 100%;
-  max-width: var(--site-inner);
-  min-width: 0;
-  margin-inline: auto;
-  padding-inline: var(--site-pad);
-}
-
-.section {
-  padding-block: 64px;
-}
-
-.section + .section {
-  padding-top: 0;
-}
-
-@media (min-width: 768px) {
-  .section {
-    padding-block: 96px;
-  }
-}
-
-.t-display {
-  margin: 0;
-  max-width: 18em;
-  font-size: clamp(32px, 1.5rem + 1.5vw, 48px);
-  line-height: 1.12;
-  font-weight: 500;
-  letter-spacing: -0.045em;
-  text-wrap: balance;
-}
-
-.t-section {
-  margin: 0 0 12px;
-  font-size: 24px;
-  line-height: 1.25;
-  font-weight: 400;
-  letter-spacing: -0.022em;
-}
-
-.t-prose {
-  margin: 0;
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  font-size: 16px;
-  line-height: 1.5;
-  color: var(--nyte-color-muted-foreground);
-}
-
-.t-label {
-  margin: 0;
-  font-family: var(--font-sans);
-  font-size: 11px;
-  line-height: 1;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-  color: var(--nyte-color-muted-foreground);
-  font-variant-ligatures: none;
-  font-variant-numeric: tabular-nums;
-}
-
-.t-code {
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-variant-ligatures: none;
-}
-
-.cite {
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
-  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
-  transition: color var(--nyte-motion-normal) var(--nyte-motion-ease-out);
-}
-
-.cite:hover {
-  color: var(--nyte-color-accent);
-}
-
-/* square, 1px, no radius */
-.btn,
-.btn-solid {
-  display: inline-flex;
-  align-items: center;
-  height: 34px;
-  padding: 0 0.75rem;
-  border: 1px solid currentColor;
-  font-size: 0.9375rem;
-  line-height: 1.3;
-  user-select: none;
-  transition:
-    background-color var(--nyte-motion-normal) var(--nyte-motion-ease-out),
-    color var(--nyte-motion-normal) var(--nyte-motion-ease-out);
-}
-
-.btn:hover {
-  background-color: var(--nyte-color-foreground);
-  color: var(--nyte-color-background);
-}
-
-.btn-solid {
-  border-color: var(--nyte-color-foreground);
-  background-color: var(--nyte-color-foreground);
-  color: var(--nyte-color-background);
-}
-
-.btn-solid:hover {
-  background-color: transparent;
-  color: var(--nyte-color-foreground);
-}
-
-.landing :focus-visible {
-  outline: 2px solid var(--nyte-color-accent);
-  outline-offset: 2px;
-}
-
-/* 01 */
-.hero {
-  display: grid;
-  gap: 24px;
-}
-
-.hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-/* Host windows. Layout (stack / row / sticky) lives in landing.stylex.ts. */
-.host {
-  position: relative;
-  overflow: hidden;
-  margin: 0;
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 320px;
-  border: 1px solid var(--nyte-color-border);
-}
-
-.twin-cap {
-  margin: 12px 0 0;
-  max-width: 62ch;
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--nyte-color-muted-foreground);
-}
-
-.lights {
-  display: flex;
-  gap: 8px;
-  margin-right: 6px;
-}
-
-.lights i {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-}
-
-/* desktop client */
-.shot {
-  background-color: var(--nyte-color-chrome);
-  color: var(--nyte-color-base);
-  font-size: 13px;
-  line-height: 18px;
-  letter-spacing: -0.08px;
-}
-
-.shot svg {
-  display: block;
-  flex-shrink: 0;
-}
-
-.app-titlebar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 35px;
-  padding-inline: 12px;
-  background-color: var(--nyte-color-chrome);
-  border-bottom: 1px solid color-mix(in srgb, var(--nyte-color-base) 8%, transparent);
-  color: color-mix(in srgb, var(--nyte-color-base) 74%, transparent);
-}
-
-.app-titlebar .lights i {
-  background-color: color-mix(in srgb, var(--nyte-color-base) 14%, transparent);
-}
-
-.app-titlebar .t {
-  flex: 1;
-  text-align: center;
-}
-
-/*
- * sidebar.stylex.ts + theme/tokens.css:
- * width 220 · compact row 28 · gutter 8 · row padding-inline 4 · row gap 6
- * icon slot 20 · trailing 44 · list gap 1 · nav radius-lg 8 · row radius-base 6
- * text secondary 74% · tertiary 60% · icon tertiary 52% · ghost-selected 7%
- */
-.app-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  height: calc(100% - 35px);
-}
-
-.app-sidebar {
-  display: none;
-}
-
-.app-sidebar .primary,
-.app-sidebar .scroll {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.app-sidebar .primary {
-  padding-block-start: 6px;
-}
-
-.app-sidebar .nav,
-.app-sidebar .row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding-inline: 4px;
-  color: color-mix(in srgb, var(--nyte-color-base) 74%, transparent);
-}
-
-.app-sidebar .nav {
-  border-radius: 8px;
-}
-
-.app-sidebar .row {
-  border-radius: 6px;
-}
-
-.app-sidebar .ic {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  color: color-mix(in srgb, var(--nyte-color-base) 52%, transparent);
-}
-
-.app-sidebar .nav .ic {
-  color: inherit;
-}
-
-.app-sidebar .l {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-sidebar .tr {
-  min-width: 44px;
-  text-align: right;
-  font-size: 11px;
-  color: color-mix(in srgb, var(--nyte-color-base) 60%, transparent);
-  font-variant-numeric: tabular-nums;
-}
-
-.app-sidebar .row.on {
-  background-color: color-mix(in srgb, var(--nyte-color-base) 7%, transparent);
-  color: var(--nyte-color-base);
-}
-
-/* sectionHeader: 28 tall, tertiary, base size; chevron hidden until hover */
-.app-sidebar .sh {
-  display: flex;
-  align-items: center;
-  height: 28px;
-  padding-inline-start: 4px;
-  color: color-mix(in srgb, var(--nyte-color-base) 60%, transparent);
-}
-
-/* components/ui.tsx StatusDot: 8px, fill accent, 1.6s ease-in-out pulse */
-.app-sidebar .dot {
-  display: block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: var(--nyte-color-accent-base);
-  animation: status-working 1.6s ease-in-out infinite;
-}
-
-@keyframes status-working {
-  50% {
-    opacity: 0.35;
-  }
-}
-
-.app-sidebar .sp {
-  flex: 1;
-}
-
-.app-sidebar .gear {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  color: color-mix(in srgb, var(--nyte-color-base) 52%, transparent);
-}
-
-/* the desktop thickens Central Icons to 1.875 units (theme/global.css) */
-.shot [data-nyte-icon] {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 0;
-}
-
-.shot [data-nyte-icon] svg [stroke]:not([stroke="none"]) {
-  stroke-width: 1.875;
-}
-
-.app-main {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 0;
-  min-height: 0;
-  padding-inline: 24px;
-}
-
-/* both transcripts scroll and are pinned to the newest row, like the hosts */
-.tx,
-.term-tx {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-width: none;
-  display: flex;
-  flex-direction: column;
-}
-
-.tx::-webkit-scrollbar,
-.term-tx::-webkit-scrollbar {
-  display: none;
-}
-
-.tx > *,
-.term-tx > * {
-  flex-shrink: 0;
-}
-
-.tx {
-  width: min(100%, 40rem);
-  padding: 20px 20px 8px;
-  gap: 10px;
-  font-size: 14px;
-  line-height: 22px;
-  letter-spacing: -0.15px;
-  min-width: 0;
-}
-
-.tx p {
-  margin: 0;
-}
-
-.tx code {
-  font-family: var(--font-sans);
-  font-size: 12px;
-  padding: 1.5px 2px;
-  border-radius: 5px;
-  background-color: color-mix(in srgb, var(--nyte-color-base) 8%, transparent);
-  font-variant-ligatures: none;
-}
-
-.tx .ucard {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 14px 16px;
-  border: 1px solid color-mix(in srgb, var(--nyte-color-base) 12%, transparent);
-  border-radius: 14px;
-  background-color: color-mix(in srgb, var(--nyte-color-editor) 90%, var(--nyte-color-sidebar));
-}
-
-.term-tx .u {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-
-.ln {
-  display: flex;
-  gap: 4px;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.ln .v {
-  flex-shrink: 0;
-  color: color-mix(in srgb, var(--nyte-color-base) 74%, transparent);
-}
-
-.ln .d {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: color-mix(in srgb, var(--nyte-color-base) 60%, transparent);
-}
-
-.ln .st {
-  display: inline-flex;
-  gap: 6px;
-  font-variant-numeric: tabular-nums;
-}
-
-.ln .chev {
-  display: inline-flex;
-  align-items: center;
-  width: 16px;
-  color: color-mix(in srgb, var(--nyte-color-base) 52%, transparent);
-}
-
-.ln[data-state="failed"] .v,
-.ln[data-state="failed"] .d {
-  color: var(--nyte-color-destructive);
-}
-
-.add {
-  color: var(--nyte-color-success);
-}
-
-.rem {
-  color: var(--nyte-color-destructive);
-}
-
-/* running verbs shimmer (conversation/styles.stylex.ts activityStyles.shimmer) */
-.ln[data-state="running"] .v {
-  color: transparent;
-  background-clip: text;
-  -webkit-background-clip: text;
-  background-image: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--nyte-color-base) 45%, transparent) 0%,
-    color-mix(in srgb, var(--nyte-color-base) 45%, transparent) 28%,
-    var(--nyte-color-base) 58%,
-    color-mix(in srgb, var(--nyte-color-base) 45%, transparent) 76%,
-    color-mix(in srgb, var(--nyte-color-base) 45%, transparent) 100%
-  );
-  background-size: 200% 100%;
-  animation: activity-shine 2.4s linear infinite;
-}
-
-@keyframes activity-shine {
-  from {
-    background-position: 100% 0;
-  }
-  to {
-    background-position: -100% 0;
-  }
-}
-
-.meta {
-  color: color-mix(in srgb, var(--nyte-color-base) 60%, transparent);
-}
-
-/* composer: 28px round controls, plus at 17, arrow-up at 15 (composer.tsx) */
-.composer {
-  width: min(100%, 40rem);
-  padding: 8px 16px 14px;
-}
-
-.composer .frame {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 28px;
-  gap: 8px;
-  align-items: center;
-  min-height: 40px;
-  padding: 5px 8px 5px 10px;
-  border: 1px solid color-mix(in srgb, var(--nyte-color-base) 8%, transparent);
-  border-radius: 9999px;
-  background-color: var(--nyte-color-editor);
-  color: color-mix(in srgb, var(--nyte-color-base) 60%, transparent);
-  font-size: 14px;
-}
-
-.composer .frame .ph {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.composer .frame i {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background-color: color-mix(in srgb, var(--nyte-color-base) 4%, transparent);
-  color: color-mix(in srgb, var(--nyte-color-base) 66%, transparent);
-}
-
-.composer .frame i.send {
-  background-color: var(--nyte-color-base);
-  color: var(--nyte-color-editor);
-}
-
-@media (max-width: 1100px) {
-  .app-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .app-sidebar {
-    display: none;
-  }
-}
-
-/* terminal client */
-.term {
-  display: flex;
-  flex-direction: column;
-  background-color: var(--tui-bg);
-  color: var(--tui-fg);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-  font-variant-ligatures: none;
-}
-
-.term-titlebar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 35px;
-  padding-inline: 12px;
-  background-color: var(--tui-terminal);
-  border-bottom: 1px solid #222;
-  color: var(--tui-dim);
-  font-family: var(--nyte-font-family-ui);
-  font-size: 13px;
-}
-
-.term-titlebar .lights i {
-  background-color: #333;
-}
-
-.term-titlebar .t {
-  flex: 1;
-  text-align: center;
-}
-
-.term-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  padding: 1lh 1ch 0;
-}
-
-.term .u {
-  padding: 1lh 3ch;
-  margin-inline: 1ch;
-  margin-bottom: 1lh;
-  background-color: var(--tui-user-bg);
-  color: #d4d4d4;
-  white-space: pre-wrap;
-}
-
-.term .row {
-  display: flex;
-  padding-inline: 2ch 1ch;
-  white-space: pre;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.term .g {
-  flex-shrink: 0;
-  width: 2ch;
-}
-
-.term .row .n {
-  color: var(--tui-fg);
-}
-
-.term .row .s {
-  color: var(--tui-dim);
-}
-
-.term .row[data-state="running"] .g {
-  color: var(--tui-running);
-}
-
-.term .row[data-state="done"] .g {
-  color: var(--tui-ok);
-}
-
-.term .row[data-state="failed"] .g,
-.term .row[data-state="failed"] .s {
-  color: var(--tui-error);
-}
-
-.term .row.think .g,
-.term .row.think .n {
-  color: var(--tui-thinking);
-}
-
-.term .diff {
-  margin: 0 1ch 1lh 4ch;
-  overflow-x: auto;
-  white-space: pre;
-}
-
-.term .diff .del {
-  background-color: var(--tui-diff-del);
-}
-
-.term .diff .ins {
-  background-color: var(--tui-diff-add);
-}
-
-.term .diff .ln-no {
-  display: inline-block;
-  width: 4ch;
-  color: var(--tui-muted);
-}
-
-.term .ans {
-  margin-top: 1lh;
-  padding-inline: 2ch 1ch;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.term .ans code {
-  font: inherit;
-  color: var(--tui-code);
-}
-
-.term .act {
-  display: flex;
-  margin-top: 1lh;
-  padding-inline: 2ch 1ch;
-  color: var(--tui-dim);
-}
-
-.term .act[data-state="working"] .g {
-  color: var(--tui-running);
-}
-
-.term .act[data-state="thinking"] {
-  color: var(--tui-thinking);
-}
-
-/* composer frame: prompt border #2c2c2c, status labels ride the bottom rule */
-.term-composer {
-  position: relative;
-  margin: 1lh 1ch 0;
-  padding: 0.5lh 1.5ch;
-  border: 1px solid var(--tui-prompt-border);
-  border-radius: 0.5ch / 0.25lh;
-  color: var(--tui-dim);
-}
-
-.term-composer .p {
-  margin-right: 1ch;
-  color: #d4d4d4;
-}
-
-.term-status {
-  position: absolute;
-  left: 1.5ch;
-  bottom: -0.5lh;
-  max-width: calc(100% - 3ch);
-  overflow: hidden;
-  display: flex;
-  padding-inline: 1ch;
-  background-color: var(--tui-bg);
-  white-space: pre;
-}
-
-.term-status .sep {
-  color: var(--tui-prompt-border);
-}
-
-.term-status .ws {
-  color: var(--tui-path);
-}
-
-.term-status .model {
-  color: var(--tui-accent);
-}
-
-.term-status .lvl {
-  color: var(--tui-thinking);
-}
-
-.term-hints {
-  margin-top: 0.5lh;
-  padding-inline: 2ch;
-  color: var(--tui-dim);
-  white-space: pre;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.term-hints b {
-  font-weight: 400;
-  color: var(--tui-fg);
-}
-
-.term :where(code, pre, kbd, samp) {
-  font-family: inherit;
-}
-
-/* 03: the package wall. A generated figure beside a name and a role. */
-.two {
-  display: grid;
-  gap: 24px 64px;
-}
-
-@media (min-width: 900px) {
-  .two {
-    grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
-    align-items: start;
-  }
-}
-
-.wall {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  border: 1px solid var(--nyte-color-border);
-  background-color: var(--nyte-color-popover);
-}
-
-@media (min-width: 640px) {
-  .wall {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-.wall li {
-  display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
-  gap: 16px;
-  align-items: center;
-  min-width: 0;
-  padding: 18px 22px;
-  outline: 1px solid var(--nyte-color-border);
-  outline-offset: -0.5px;
-}
-
-/* Transparent technical assemblies sit directly beside the package descriptions. */
-.wall .fig {
-  width: 112px;
-  aspect-ratio: 180 / 156;
-  color: var(--nyte-color-accent);
-}
-
-.wall .fig svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.wall .n {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 1.3;
-  letter-spacing: -0.01em;
-}
-
-.wall .role {
-  display: block;
-  margin-top: 3px;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--nyte-color-muted-foreground);
-  text-wrap: pretty;
-}
-
-/* 04 */
-.three {
-  max-width: 62ch;
-}
-
-.three .t-prose {
-  margin-bottom: 24px;
-}
-
-/* footer */
-.foot {
-  border-top: 1px solid var(--nyte-color-border);
-  padding-block: 40px;
-  color: var(--nyte-color-muted-foreground);
-}
-
-.foot-inner {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px 48px;
-  align-items: flex-start;
-}
-
-.foot-col {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-family: var(--font-sans);
-  font-size: 12px;
-  font-variant-ligatures: none;
-}
-
-.foot-col h2 {
-  margin: 0 0 4px;
-  font-size: inherit;
-  font-weight: 400;
-  color: var(--nyte-color-foreground);
-}
-
-.foot-col a {
-  transition: color 150ms;
-}
-
-.foot-col a:hover {
-  color: var(--nyte-color-foreground);
-}
-
-.foot-brand {
-  margin-left: auto;
-  color: var(--nyte-color-foreground);
-}
-
-@media (max-width: 767px) {
-  .foot-brand {
-    margin-left: 0;
-    width: 100%;
-  }
-}
-
-/* ------------------------------------------------------------ /hero-2 --- */
-
-.cut-page {
-  background-color: var(--color-cut-bg);
-  color: var(--color-cut-ink);
-  font-family: var(--font-cut-sans);
-  color-scheme: dark;
-}
-
-/*
- * The display face is the serif, run at its largest optical size so the
- * descenders and the italic get room. Hierarchy comes from the change of
- * face, not from weight; nothing on the page is bolder than 500.
- */
-.cut-display {
-  font-family: var(--font-cut-serif);
-  font-optical-sizing: auto;
-  font-variation-settings: "opsz" 72;
-  font-size: clamp(2.5rem, 1.4rem + 4.2vw, 4.75rem);
-  line-height: 1.02;
-  font-weight: 400;
-  letter-spacing: -0.025em;
-  text-wrap: balance;
-}
-
-.cut-title {
-  font-family: var(--font-cut-serif);
-  font-variation-settings: "opsz" 36;
-  font-size: clamp(1.625rem, 1.2rem + 1.4vw, 2.25rem);
-  line-height: 1.12;
-  font-weight: 400;
-  letter-spacing: -0.02em;
-  text-wrap: balance;
-}
-
-.cut-mono {
-  font-family: var(--font-mono);
-  font-variant-ligatures: none;
-  font-variant-numeric: tabular-nums;
-}
-
-.cut-label {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  line-height: 1;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  font-variant-numeric: tabular-nums;
-}
-
-.cut-page :focus-visible {
-  outline: 2px solid var(--color-cut-result);
-  outline-offset: 3px;
-}
-
-.cut-page ::selection {
-  background-color: var(--color-cut-intent);
-  color: var(--color-cut-bg);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .cite,
-  .btn,
-  .btn-solid {
-    transition: none;
-  }
-
-  .ln[data-state="running"] .v {
-    animation: none;
-  }
-}
-
-.bento-thread {
-  clip-path: inset(0 100% 0 0);
-  transition: clip-path 2.2s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.bento-thread[data-shown] {
-  clip-path: inset(0 0 0 0);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bento-thread {
-    clip-path: inset(0 0 0 0);
-    transition: none;
-  }
-}
-
-/* --------------------------------------------------------- hero plate --- */
-
-:root {
-  --hero-blue: #2222dd;
-}
-
-/*
- * The hero is one blue plane, so the shared bar joins it: same ground, same
- * button shape as the page's own. Scoped to the route that opts in.
- */
-body:has(.hero-plate) .site-nav {
-  background: var(--hero-blue);
-}
-
-body:has(.hero-plate) .site-nav-brand,
-body:has(.hero-plate) .site-sections-item {
-  color: #fff;
-}
-
-body:has(.hero-plate) .site-nav .site-nav-search {
-  height: 36px;
-  border-radius: var(--nyte-radius-pill);
-  padding-inline: 14px;
-  gap: 8px;
-  background: rgb(255 255 255 / 0.12);
-  color: #fff;
-}
-
-body:has(.hero-plate) .site-nav .site-nav-search:hover {
-  background: rgb(255 255 255 / 0.2);
-}
-
-body:has(.hero-plate) .site-nav .site-nav-search svg {
-  display: inline-flex;
-}
-
-body:has(.hero-plate) .site-nav-icon {
-  color: #fff;
-}
-
-/* ------------------------------------------------- collaborator cursors --- */
-
-.mock-cursor {
-  animation-name: mock-cursor-drift;
-  animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1);
-  animation-iteration-count: infinite;
-  will-change: transform;
-}
-
-@keyframes mock-cursor-drift {
-  0% {
-    transform: translate(0, 0);
-  }
-  25% {
-    transform: translate(var(--dx), calc(var(--dy) * -1));
-  }
-  50% {
-    transform: translate(calc(var(--dx) * 0.35), var(--dy));
-  }
-  75% {
-    transform: translate(calc(var(--dx) * -0.7), calc(var(--dy) * 0.4));
-  }
-  100% {
-    transform: translate(0, 0);
-  }
-}
-
-.mock-cursor-typing {
-  width: 2px;
-  height: 9px;
-  background: currentColor;
-  border-radius: 1px;
-  animation: mock-cursor-caret 1.1s steps(1, end) infinite;
-}
-
-@keyframes mock-cursor-caret {
-  0%,
-  49% {
-    opacity: 1;
-  }
-  50%,
-  100% {
-    opacity: 0.15;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mock-cursor,
-  .mock-cursor-typing {
-    animation: none;
+@layer utilities {
+  /* The plate scrolls the document, so the nav painted on it leaves with it. */
+  html:has(.landing-plate),
+  html:has(.landing-plate) body {
+    height: auto;
+    overflow: visible;
   }
 }

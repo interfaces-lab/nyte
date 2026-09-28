@@ -42,6 +42,8 @@ export type { PluginTarget } from "./paths.ts";
 
 export { readManifest, resolveHostPlugins, type HostManifest } from "./plugins.ts";
 
+export { createWorkspaceBackend } from "./workspace-backend.ts";
+
 export {
   WorkspaceStore,
   WorkspaceTrustRequired,
@@ -52,6 +54,8 @@ export {
 export { discoverMentionFiles, rankMentionFiles } from "./mention-files.ts";
 
 export {
+  blameWorkspaceFile,
+  formatWorkspaceFile,
   MAX_WORKSPACE_FILE_BYTES,
   readWorkspaceFile,
   resolveWorkspaceFile,
@@ -68,6 +72,17 @@ export {
 } from "./tree-snapshot.ts";
 
 export { createGitVcs, type GitVcsOptions } from "./git.ts";
+
+export {
+  createGitHubService,
+  runGitHubCommand,
+  type GitHubCommandRequest,
+  type GitHubCommandResult,
+  type GitHubCommandRunner,
+  type GitHubOperations,
+  type GitHubService,
+  type GitHubServiceOptions,
+} from "./github.ts";
 
 export { InvalidRipgrepPattern } from "./ripgrep.ts";
 

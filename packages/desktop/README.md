@@ -1,6 +1,6 @@
 # @nyte-ai/desktop
 
-The Electron desktop client embeds the Nyte host. Main-process code lives in `src/main`, the preload bridge in `src/preload`, and the React interface in `src/renderer`. Shared session behavior belongs in core.
+The Electron desktop client embeds the Nyte host. Main-process code lives in `src/main`, the preload bridge in `src/preload`, and the renderer entry in `src/renderer`. The React interface itself is [`@nyte-ai/app`](../renderer/README.md). Shared session behavior belongs in core.
 
 ## Development
 
@@ -25,9 +25,9 @@ Photon is also listed as a desktop runtime dependency so Electron externalizes c
 
 ## Design scale
 
-Colour, type, radius, shadow, and motion change with the appearance, so they live in `src/renderer/src/theme/tokens.css` behind the typed handles in `vars.stylex.ts`. Spacing and sizing do not change with the appearance: a gap is the same 6px in every theme, and wrapping that in `space.x6` would add a name without adding a decision. So the scale is enforced by `lint/design-scale.js` rather than tokenised, and its messages name the steps and the escape hatch.
+Colour, type, radius, shadow, and motion change with the appearance, so they live in `@nyte-ai/ui/tokens.stylex` behind the typed handles in `@nyte-ai/ui/vars.stylex`. Colours there are oklch with an `rgb()` fallback, and both appearances share one declaration through `light-dark()`; `theme/appearance.css` sets the `color-scheme` it follows and holds the overrides keyed on `<html>` attributes: the dark material filter, the workspace tint, reduced transparency, and pointer focus. Spacing and sizing do not change with the appearance: a gap is the same 6px in every theme, and wrapping that in `space.x6` would add a name without adding a decision. So the scale is enforced by `packages/app/lint/design-scale.js` rather than tokenised, and its messages name the steps and the escape hatch.
 
-A measurement that carries a decision, such as a traffic-light lane, a row height, a panel width, or a toast's close lane, is not a step. Name it in `theme/schema.stylex.ts`, back it with a `--nyte-*` custom property, and reference the token. A `defineConsts` value used as a length must be that `"var(--nyte-*)"` string and never a bare number: `defineConsts` emits no declarations and works only by inlining, so a number resolves to an undeclared variable wherever a file is transformed alone. Glyph sizes are the standing exception to the grid, not to that rule; icons and the spinner are drawn on an odd grid, so `schema.stylex.ts` names them in `glyph`.
+A measurement that carries a decision, such as a traffic-light lane, a row height, a panel width, or a toast's close lane, is not a step. Name it in `theme/schema.stylex.ts` for app layout or `@nyte-ai/ui/schema.stylex` for component geometry, back it with a `--nyte-*` value in the `tokens.stylex.ts` beside it, and reference the token. A `defineConsts` value used as a length must be that `"var(--nyte-*)"` string and never a bare number: `defineConsts` emits no declarations and works only by inlining, so a number resolves to an undeclared variable wherever a file is transformed alone. Glyph sizes are the standing exception to the grid, not to that rule; icons and the spinner are drawn on an odd grid, so `@nyte-ai/ui/schema.stylex` names them in `glyph`.
 
 The rules read style objects, not the rendered page. Anything the compiler resolves, anything computed, and anything passed as a prop is on the scale by convention rather than by check, so a green lint is not proof the tree is on it.
 
@@ -49,7 +49,7 @@ Providers that use a device code, such as GitHub Copilot, show the code in the r
 
 After the credential is saved the host applies any account-specific model availability and refreshes the provider's hosted catalog. On startup, the host restores cached models before refreshing the feed in the background. A connected provider only lists models permitted by the current credential. Settings still lists provider sign-in options when no catalog has been cached, including on a fresh offline install. If discovery fails after sign-in, the row still shows the provider as connected and the toast says the model list could not be updated. Only web links from a provider are opened; anything else is reported in the row instead. Sign-in flows that would need a terminal prompt fail with a message to run `nyte login` instead.
 
-The main-process side is covered by `src/main/host-login.test.ts`. `src/renderer/src/chrome/models-settings-login.electron.test.ts` drives the settings row with real clicks in Electron's Chromium over a recorded bridge; it builds the harness in `src/renderer/src/chrome/fixtures/` and needs an environment where Electron can open a window.
+The main-process side is covered by `src/main/host-login.test.ts`. `packages/app/src/chrome/models-settings-login.electron.test.ts` drives the settings row with real clicks in Electron's Chromium over a recorded bridge; it builds the harness in `packages/app/src/chrome/fixtures/` and needs an environment where Electron can open a window.
 
 Read [AGENTS.md](AGENTS.md) for process boundaries, [UPDATES.md](UPDATES.md) for updates, [PERFORMANCE.md](PERFORMANCE.md) and the [benchmark guide](benchmark/README.md) for performance work, and [build/ICONS.md](build/ICONS.md) for icons.
 
@@ -60,10 +60,10 @@ and provider credentials. For an existing Nyte Codex OAuth sign-in, use the
 example's `sync:codex` command, then `run deploy`. Test from this checkout:
 
 1. Run `pnpm dev:desktop` from the repository root.
-2. Open Settings › Server, enter the production domain and its `NYTE_TOKEN`, and
+2. Open Environments › Connections, enter the production domain and its `NYTE_TOKEN`, and
    click **Connect**. The desktop checks authentication before saving the
    connection in `~/.nyte/server.json`.
-3. Click the new-chat button beside **Cloud** in the sidebar. Send a short
+3. Start a new chat and pick **Cloud** in its environment menu. Send a short
    message and confirm that an assistant response appears.
 4. Open another chat, then return to the Cloud chat and confirm its response
    is still visible.
@@ -101,44 +101,55 @@ deployments, and server-specific model choices:
 pnpm --dir packages/desktop exec vitest run src/main/host-server.test.ts
 ```
 
-## Mobile connection
+## Remote access
 
-Settings › Server has two connections that point opposite ways. **Server** is
-outbound: a deployed Nyte host whose chats appear under Cloud. **iOS app** is
-inbound: the desktop serves one of its own local stores to the Nyte
-iOS app over the v1 wire, using `@nyte-ai/server` on a Node listener in the
-Electron main process.
+Environments has two tabs that point opposite ways. **Connections** is
+outbound: a deployed Nyte host whose chats carry a Cloud badge in the sidebar.
+**Remote access** is inbound: the desktop serves one of its own local stores over the
+v1 wire through `@nyte-ai/serve`, on a Node listener in the Electron main
+process, with the built web app on the same origin (the app at `/`, the API at
+`/v1`). A browser and the Nyte iOS app both connect to it.
 
-**Start sharing** serves the folder selected at that moment, Home or a trusted
-project. The share is frozen to that target: switching folders on the desktop
-does not move it, and the row names what is being served. A project must be
-trusted first. The Cloud server is never a candidate; only local targets are
-served.
+**Start** serves the folder selected at that moment, Home or a trusted
+project. Switching folders on the desktop afterwards does not move it; a
+connected client's `workspace.select` does, and the row names what is being
+served. A project must be trusted first. The Cloud server is never a
+candidate; only local targets are served.
 
-A share has one of two reaches, picked when it starts. **Simulator on this Mac**
-binds `127.0.0.1` on an ephemeral port, so it reaches the iOS Simulator on this
-machine and nothing else. **Over Tailscale** binds this machine's tailnet
-address, so a physical phone signed into the same tailnet can reach it from any
-network and nothing off the tailnet can route to it; it needs the Tailscale CLI
-installed and the backend running. Neither reach binds the local network
-broadly, opens a tunnel, or terminates TLS. The row shows the exact address.
-Each share generates a random 256-bit bearer token, shown masked with
-**Reveal**, **Copy token**, and **Copy address**. The token is never written to
-disk or logged. **Stop sharing** closes the listener, drops its connections, and
-ends open watches with a `closed` frame; starting again generates a new token
-and address.
+Remote access has one of two reaches, picked when it starts. **This Mac only**
+binds `127.0.0.1` on an ephemeral port, so a browser or the iOS Simulator on
+this machine can reach it and nothing else can. **Over Tailscale** binds this
+machine's tailnet address, so a device signed into the same tailnet can reach
+it from any network and nothing off the tailnet can route to it; it needs the
+Tailscale CLI installed and the backend running. Neither reach binds the local
+network broadly, opens a tunnel, or terminates TLS.
 
-The phone and the desktop read and write the same SDK and store, so root
+The row shows a pairing link, `<address>/pair?host=…&token=…`, with **Copy
+link** and **Open**; opening it signs the web app in without a form. The QR code
+carries the same address and token as `nyte://connect?url=…&token=…` for the
+iOS app, and the address and token are also shown on their own, the token
+masked behind **Reveal**. Each start generates a new random 256-bit bearer
+token; it is never written to disk or logged. **Stop** closes the listener,
+drops its connections, and ends open watches with a `closed` frame; starting
+again generates a new token and address.
+
+In development the web app is `packages/app/dist`, so run
+`pnpm --dir packages/app build` first; without it only the API is served and
+the link points at the hosted web app. A packaged build ships it under
+`Resources/app`, and `pnpm --dir packages/desktop package` builds it before
+packaging.
+
+Clients and the desktop read and write the same SDK and store, so root
 conversations and updates match on both. Runs still execute on the desktop:
-a message the phone sends attaches the session through the same per-session
-attachment the desktop uses for its own sends. Stopping the share does not
-abort accepted work or close the desktop SDK. Sessions the phone creates
-appear in the desktop sidebar on the session directory's regular refresh.
+a message a client sends attaches the session through the same per-session
+attachment the desktop uses for its own sends. Stopping does not abort
+accepted work or close the desktop SDK. Sessions a client creates appear in
+the desktop sidebar on the session directory's regular refresh.
 
-The main-process side is covered by `src/main/host-mobile-share.test.ts`:
+The main-process side is covered by `src/main/host-remote-access.test.ts`:
 
 ```sh
-pnpm --dir packages/desktop exec vitest run src/main/host-mobile-share.test.ts
+pnpm --dir packages/desktop exec vitest run src/main/host-remote-access.test.ts
 ```
 
 ## Recorded usage
@@ -164,7 +175,7 @@ itself, so a signed-out or slow provider leaves the other's windows on the page.
 
 A message sent with Enter while a run is live steers it: the message draws at the transcript's tail, muted until it lands at the next response boundary. Cmd/Ctrl+Enter queues a follow-up for an idle head, and the queue tray previews those pending messages above the composer. Hover or focus a row to edit it, send it now with the up arrow, or remove it with the trash button. Enter on an empty composer sends the first queued message now. Sending and error states remain visible in the row.
 
-Queue, agent, and terminal trays share their surface, header, and list styles in `src/renderer/src/theme/tray.stylex.ts`. Their geometry and appearance come from the `--nyte-tray-*` tokens in `tokens.css`, including the same 12px radius and soft shadow in both themes. A tray takes the composer's fill and a hairline edge, so the stack above the composer reads as one surface and a hovered row is a lift inside it rather than a bar on the page. `src/renderer/src/theme/tray-surface.test.ts` checks that in a real renderer. Row height grows with message or status content.
+Queue, agent, and terminal trays share their surface, header, and list styles in `packages/app/src/theme/tray.stylex.ts`. Their geometry and appearance come from the `--nyte-tray-*` tokens in `tokens.stylex.ts`, including the same 12px radius and soft shadow in both themes. A tray takes the composer's raised fill and a hairline edge, so the stack above the composer reads as one surface and a hovered row is a lift inside it rather than a bar on the page. `packages/app/src/theme/tray-surface.test.ts` checks that in a real renderer. Row height grows with message or status content.
 
 Pinned user messages use separate `--nyte-conversation-user-*` tokens: a faint border, a stronger hover border, and a small 5% black shadow only while pinned. Their opaque fill keeps scrolling messages from showing through.
 
@@ -198,7 +209,7 @@ Settings switches use Cursor's flat regular geometry: a 30×18px track and a 14p
 
 Right-click menus are native. `host.contextMenu` takes a small template from the
 renderer and pops an Electron menu; each entry carries the work it performs, so
-`renderer/src/components/context-menu.ts` runs the chosen one and no call site
+`packages/app/src/components/context-menu.ts` runs the chosen one and no call site
 matches choices back up. Native menus float above the `WebContentsView`s that
 browser panels composite over the renderer, so they need no overlay-occlusion
 registration, and clipboard items use Electron roles so a paste keeps formats a

@@ -20,9 +20,9 @@ Each one is a defect that shipped.
 - **Never write an export that does not exist.** A page showed
   `import { Button as ButtonPrimitive }`. There is no `ButtonPrimitive`. The alias was invented to
   make a sentence read well, and readers would have imported a name that is not there.
-- **Rename only to resolve a collision in the same file.** Dialog earns one, because the root
-  exports `Dialog` with no Trigger or Close and the subpath exports `Dialog` as the namespace. Say
-  in the page that the alias is the reader's local name. Nothing else earns one.
+- **Rename only to resolve a collision in the same file.** The root and every subpath export the
+  same names, so no page needs an alias today. Dialog once earned one, when the subpath exported a
+  different `Dialog` than the root.
 - **Enumerate a union from the type, not from a neighbouring page.** Button shipped five variants
   while the page documented four, because the demo rendered four and the page copied the demo.
 - **Teach the common path first.** Alert dialog led with `createHandle()`, an API the repo calls

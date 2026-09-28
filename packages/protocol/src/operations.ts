@@ -64,7 +64,14 @@ import {
   VcsRefs,
   VcsScope,
   VcsSnapshot,
+  WorkspaceBlameResult,
+  WorkspaceFileDocument,
+  WorkspaceFileSaveOutcome,
+  WorkspaceFormatInput,
+  WorkspaceFormatResult,
   WorkspaceInfo,
+  WorkspaceSearchResult,
+  WorkspaceSearchSchema,
   WorkspaceSelectInput,
   WorkspaceSelectOutcome,
   WorkspaceSelection,
@@ -99,8 +106,11 @@ const workspaceTarget = { target: WorkspaceTarget };
 
 const vcsExpect = strict({ revision: Type.String() });
 
+/** Paths one VCS call may name; a client with more splits them across calls. */
+export const VCS_PATHS_MAX = 1000;
+
 const vcsPaths = Unsafe<readonly [string, ...string[]]>(
-  Type.Array(NonEmptyString, { minItems: 1, maxItems: 1000 }),
+  Type.Array(NonEmptyString, { minItems: 1, maxItems: VCS_PATHS_MAX }),
 );
 
 const runIds = Unsafe<readonly [string, ...string[]]>(Type.Array(Type.String(), { minItems: 1 }));
@@ -255,7 +265,7 @@ export const OPERATIONS = Object.freeze({
     strict({
       ...workspaceTarget,
       scope: VcsScope,
-      paths: Type.Optional(Type.Array(NonEmptyString, { maxItems: 1000 })),
+      paths: Type.Optional(Type.Array(NonEmptyString, { maxItems: VCS_PATHS_MAX })),
       ignoreWhitespace: Type.Boolean(),
     }),
     list(VcsDiff),
@@ -312,6 +322,26 @@ export const OPERATIONS = Object.freeze({
   "workspace.files": operation(
     strict({ ...workspaceTarget, query: Type.Optional(Type.String()) }),
     list(MentionFile),
+  ),
+  "workspace.read": operation(
+    strict({ ...workspaceTarget, path: NonEmptyString }),
+    WorkspaceFileDocument,
+  ),
+  "workspace.save": operation(
+    strict({ ...workspaceTarget, ...WorkspaceFormatInput.properties }),
+    WorkspaceFileSaveOutcome,
+  ),
+  "workspace.format": operation(
+    strict({ ...workspaceTarget, ...WorkspaceFormatInput.properties }),
+    WorkspaceFormatResult,
+  ),
+  "workspace.search": operation(
+    strict({ ...workspaceTarget, ...WorkspaceSearchSchema.properties }),
+    WorkspaceSearchResult,
+  ),
+  "workspace.blame": operation(
+    strict({ ...workspaceTarget, path: NonEmptyString }),
+    WorkspaceBlameResult,
   ),
 
   "provider.models.list": operation(none, list(ModelInfo)),

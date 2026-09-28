@@ -1,18 +1,29 @@
 ---
 title: Collapsible
-description: "A panel that a button opens and closes"
+description: "A panel that a trigger opens and closes"
 ---
 
 ```ts title="Import"
+import { Collapsible } from "@nyte-ai/ui";
+```
+
+The same `Collapsible` is exported from its own subpath. Pick one path per file.
+
+```ts title="Subpath"
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 ```
 
 One trigger, one panel. Reach for it when a section of a surface is worth hiding until the reader
-asks for it. No Nyte styling here.
+asks for it.
 
 ## Usage
 
 - `defaultOpen` leaves the panel uncontrolled. `open` with `onOpenChange` controls it.
+- The trigger's default `disclosure` look is a quiet inline toggle, tertiary text that brightens on
+  hover. `variant="plain"` resets the button and adds nothing else, for a trigger rendered as another
+  styled part such as `Row.Primary`.
+- Put `Collapsible.Chevron` inside the trigger. It turns a quarter while the panel is open.
+- `Collapsible.Root` and `Collapsible.Panel` bring no look of their own. Lay them out with `xstyle`.
 - The closed panel unmounts unless you pass `keepMounted` or `hiddenUntilFound`.
 - Animate the panel from `--collapsible-panel-height` and `--collapsible-panel-width`, which the
   panel publishes while it transitions.
@@ -22,7 +33,9 @@ asks for it. No Nyte styling here.
 
 ```tsx
 <Collapsible.Root>
-  <Collapsible.Trigger />
+  <Collapsible.Trigger>
+    <Collapsible.Chevron />
+  </Collapsible.Trigger>
   <Collapsible.Panel />
 </Collapsible.Root>
 ```
@@ -38,11 +51,11 @@ asks for it. No Nyte styling here.
 ```tsx
 <Collapsible.Root>
   <Collapsible.Trigger>
-    <IconChevronRightSmall size={12} />
+    <Collapsible.Chevron />
     Advanced settings
   </Collapsible.Trigger>
   <Collapsible.Panel>
-    <div>Tools run without a confirmation prompt while this session is trusted.</div>
+    Tools run without a confirmation prompt while this session is trusted.
   </Collapsible.Panel>
 </Collapsible.Root>
 ```
@@ -53,11 +66,31 @@ asks for it. No Nyte styling here.
 const [open, setOpen] = useState(false);
 
 <Collapsible.Root open={open} onOpenChange={setOpen}>
-  <Collapsible.Trigger>Advanced settings</Collapsible.Trigger>
-  <Collapsible.Panel>
-    <div>Tools run without a confirmation prompt while this session is trusted.</div>
-  </Collapsible.Panel>
+  <Collapsible.Trigger>
+    Earlier messages
+    <Collapsible.Chevron />
+  </Collapsible.Trigger>
+  <Collapsible.Panel>{messages}</Collapsible.Panel>
 </Collapsible.Root>;
+```
+
+### A row that opens a panel
+
+`render` on `Row.Primary` makes the row the trigger. `variant="plain"` keeps the trigger from
+restyling the row.
+
+```tsx
+<Collapsible.Root open={expanded} onOpenChange={setExpanded}>
+  <Row>
+    <Row.Primary render={<Collapsible.Trigger variant="plain" />}>
+      <Row.Leading>
+        <Icon name={expanded ? "folder-open" : "folder"} size={14} />
+      </Row.Leading>
+      <Row.Label>{name}</Row.Label>
+    </Row.Primary>
+  </Row>
+  <Collapsible.Panel>{sessions}</Collapsible.Panel>
+</Collapsible.Root>
 ```
 
 ### Hidden until found
@@ -76,6 +109,26 @@ trigger opens it, and find-in-page skips it.
 ```
 
 ## Props
+
+Every part takes `xstyle`, and `className` and `style` as plain values, not functions of state.
+See [Theming](/cloud/foundations/theming).
+
+### Trigger
+
+| Prop      | Type                      | Default        | Description                                      |
+| --------- | ------------------------- | -------------- | ------------------------------------------------ |
+| `variant` | `"disclosure" \| "plain"` | `"disclosure"` | The quiet inline toggle, or a bare button reset. |
+
+`CollapsibleTriggerVariant` is the exported type for `variant`.
+
+### Chevron
+
+Renders a `<span>` with `aria-hidden`, holding a `chevron-right` [icon](/cloud/components/icon).
+It takes every `<span>` prop, plus:
+
+| Prop   | Type     | Default | Description                 |
+| ------ | -------- | ------- | --------------------------- |
+| `size` | `number` | `11`    | The icon's size, in pixels. |
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
@@ -98,4 +151,5 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 - Rendering the trigger as something other than a `<button>` needs `nativeButton={false}`.
 - Open state lands on `data-panel-open` on the trigger, and `data-open` or `data-closed` on the root
   and the panel.
-- The focus ring is yours to draw. See [Focus](/cloud/foundations/focus).
+- The `disclosure` trigger draws the focus ring on keyboard focus. A `plain` trigger draws none, so
+  the part it renders as owns it. See [Focus](/cloud/foundations/focus).

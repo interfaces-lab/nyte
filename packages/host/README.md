@@ -185,3 +185,31 @@ NYTE_OTEL_ENDPOINT=http://127.0.0.1:4318 nyte
 
 Any OTLP/HTTP collector works for dogfooding, e.g. `otel-desktop-viewer` or
 Jaeger all-in-one.
+
+## Provider environment
+
+`@nyte-ai/host/environment` exports `createProviderEnvironment`. It answers every
+`environment.*` operation except GitHub's. The host passes callbacks for the
+catalog read, preference writes, usage and account-limit reads, `Models.login`,
+the model refresh after a saved credential, and logout. The service owns sign-in
+attempts: a new attempt for a provider starts after the one it supersedes has
+stopped, logout waits for running attempts, and a finished attempt answers polls
+for five minutes. `owned(signal)` is the same environment for one caller: the
+attempts it starts are cancelled when the signal aborts, while every attempt
+stays in the one shared registry. `close()` cancels running attempts and waits
+for them to stop.
+
+## GitHub
+
+`createGitHubService` answers the `environment.github.*` operations through an
+installed `gh`. One service serves every workspace on a machine: the login is
+machine-wide, and `workspace` on each call picks the repository and the
+checked-out branch. `signIn` starts `gh auth login` or joins the one already
+running, answers `signing_in` with its one-time code, and answers `ready`
+without starting anything when an account is already signed in. `signOut`
+cancels a sign-in still waiting for its code and otherwise removes the CLI
+login. `createPullRequest` opens one for the branch the caller has pushed, and
+answers `exists` instead when the branch already has one. `owned(signal)` is
+the same service for one caller: a sign-in it starts ends when the signal
+aborts, while one it only joined stays running. `close()` ends a running
+sign-in.

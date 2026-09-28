@@ -19,7 +19,7 @@ export function mergeStyleProps(
   base: ReturnType<typeof stylex.props>,
   className?: string,
   style?: React.CSSProperties,
-) {
+): Pick<React.HTMLAttributes<HTMLElement>, "className" | "style"> {
   return {
     className: [base.className, className].filter(Boolean).join(" ") || undefined,
     style: { ...base.style, ...style },

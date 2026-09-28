@@ -2,7 +2,7 @@ import stylex from "@stylexjs/unplugin";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "electron-vite";
 import { resolve } from "node:path";
-import type { Plugin } from "vite";
+import { defaultClientConditions, type Plugin } from "vite";
 import packageMetadata from "./package.json" with { type: "json" };
 
 const esbuild = { tsconfigRaw: { compilerOptions: { target: "ES2024" } } };
@@ -72,7 +72,7 @@ export default defineConfig(({ command }) => {
       esbuild,
       build: {
         watch,
-        externalizeDeps: { exclude: ["@nyte-ai/core", "@nyte-ai/protocol"] },
+        externalizeDeps: { exclude: ["@nyte-ai/core", "@nyte-ai/protocol", "@nyte-ai/app"] },
         minify: true,
         reportCompressedSize: false,
         target: "node24",
@@ -98,8 +98,13 @@ export default defineConfig(({ command }) => {
         react({ babel: { plugins: ["babel-plugin-react-compiler"] } }),
         serveDevtools(),
       ],
-      optimizeDeps: { exclude: ["@nyte-ai/ui"], include: ["react", "react-dom/client"] },
+      optimizeDeps: {
+        exclude: ["@nyte-ai/ui", "@nyte-ai/app"],
+        include: ["react", "react-dom/client"],
+      },
+      /* StyleX compiles @nyte-ai/ui from source here, so resolve its `nyte-source` condition. */
       resolve: {
+        conditions: ["nyte-source", ...defaultClientConditions],
         dedupe: ["react", "react-dom"],
       },
       build: {

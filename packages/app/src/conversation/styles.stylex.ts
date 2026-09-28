@@ -1226,7 +1226,7 @@ export const subagentCallStyles = stylex.create({
   headerDetailed: { paddingBlock: 8 },
   nested: { display: "flex", flexDirection: "column", marginTop: 10 },
   nestedRow: { paddingBlock: 2, paddingInlineStart: 12 },
-  // One text line tall, so a 10px loader and a 6px dot both centre on the title.
+  // One text line tall, so a moon and a 6px dot both centre on the title.
   indicator: {
     display: "flex",
     alignItems: "center",
@@ -1240,7 +1240,6 @@ export const subagentCallStyles = stylex.create({
   dot: { width: 6, height: 6, borderRadius: t.radiusFull },
   attention: { backgroundColor: t.yellow },
   failed: { backgroundColor: t.fillDanger },
-  unread: { backgroundColor: t.accent },
   done: { backgroundColor: t.iconTertiary },
   text: {
     display: "flex",

@@ -139,7 +139,7 @@ function ScanSession({ onClose, onScan }: Omit<ScanSheetProps, "visible">) {
         {error === undefined ? (
           scanning ? (
             <html.p style={[textStyles.body, styles.hint]}>
-              Point at the code in Nyte › Settings › Server on your Mac.
+              Point at the code in Nyte › Environments › Remote access on your Mac.
             </html.p>
           ) : null
         ) : (

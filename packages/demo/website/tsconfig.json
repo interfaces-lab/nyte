@@ -7,7 +7,8 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "skipLibCheck": true,
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "customConditions": ["nyte-source"]
   },
   "include": ["src", "vite.config.ts"],
   "exclude": [".output"]

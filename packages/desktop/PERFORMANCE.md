@@ -52,7 +52,7 @@ large transcript paints behind the mounted screen instead of holding it.
 copy or wordmark. A visually hidden "Loading" provides screen-reader status. Fourteen frames share one
 CSS grid cell and switch every 120 ms, waxing from crescent to full and back without an empty phase.
 The 23-column by 12-row disc uses 12 px system monospace at 1.15 line-height. Reduced motion pins the
-first, near-quarter frame. The moon is amber `#ff9800` in light mode and yellow `#ffc663` in dark mode.
+first, near-quarter frame. The moon uses the app icon colours: plate ink `#232a44` in light mode and the lit face `#c1d0f6` in dark mode.
 Inline CSS supplies fallback app colors until the theme tokens load; the OS color scheme applies
 until the boot module reads the stored preference. No shell scripts, fonts, or external assets are
 needed for this first paint.

@@ -1,55 +1,180 @@
 {
   "name": "@nyte-ai/ui",
   "private": true,
-  "description": "Raw-source Base UI primitives styled with StyleX and themed by consumers.",
+  "description": "Base UI primitives styled with StyleX. The default entries are compiled; StyleX consumers opt into src with the `nyte-source` condition.",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./alert-dialog": "./src/alert-dialog.ts",
-    "./autocomplete": "./src/autocomplete.ts",
-    "./button": "./src/button.ts",
-    "./collapsible": "./src/collapsible.ts",
-    "./context-menu": "./src/context-menu.ts",
-    "./dialog": "./src/dialog.ts",
-    "./menu": "./src/menu.ts",
-    "./number-field": "./src/number-field.ts",
-    "./popover": "./src/popover.ts",
-    "./preview-card": "./src/preview-card.ts",
-    "./row": "./src/row.ts",
-    "./select": "./src/select.ts",
-    "./slider": "./src/slider.ts",
-    "./sonner": "./src/sonner.ts",
-    "./switch": "./src/switch.ts",
-    "./tabs": "./src/tabs.ts",
-    "./toggle": "./src/toggle.ts",
-    "./toggle-group": "./src/toggle-group.ts",
-    "./toolbar": "./src/toolbar.ts",
-    "./tooltip": "./src/tooltip.ts",
+    ".": {
+      "nyte-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./alert-dialog": {
+      "nyte-source": "./src/alert-dialog.ts",
+      "types": "./dist/alert-dialog.d.ts",
+      "default": "./dist/alert-dialog.js"
+    },
+    "./autocomplete": {
+      "nyte-source": "./src/autocomplete.ts",
+      "types": "./dist/autocomplete.d.ts",
+      "default": "./dist/autocomplete.js"
+    },
+    "./button": {
+      "nyte-source": "./src/button.ts",
+      "types": "./dist/button.d.ts",
+      "default": "./dist/button.js"
+    },
+    "./checkbox": {
+      "nyte-source": "./src/checkbox.ts",
+      "types": "./dist/checkbox.d.ts",
+      "default": "./dist/checkbox.js"
+    },
+    "./collapsible": {
+      "nyte-source": "./src/collapsible.ts",
+      "types": "./dist/collapsible.d.ts",
+      "default": "./dist/collapsible.js"
+    },
+    "./context-menu": {
+      "nyte-source": "./src/context-menu.ts",
+      "types": "./dist/context-menu.d.ts",
+      "default": "./dist/context-menu.js"
+    },
+    "./dialog": {
+      "nyte-source": "./src/dialog.ts",
+      "types": "./dist/dialog.d.ts",
+      "default": "./dist/dialog.js"
+    },
+    "./icon": {
+      "nyte-source": "./src/icon.ts",
+      "types": "./dist/icon.d.ts",
+      "default": "./dist/icon.js"
+    },
+    "./input": {
+      "nyte-source": "./src/input.ts",
+      "types": "./dist/input.d.ts",
+      "default": "./dist/input.js"
+    },
+    "./kbd": {
+      "nyte-source": "./src/kbd.ts",
+      "types": "./dist/kbd.d.ts",
+      "default": "./dist/kbd.js"
+    },
+    "./menu": {
+      "nyte-source": "./src/menu.ts",
+      "types": "./dist/menu.d.ts",
+      "default": "./dist/menu.js"
+    },
+    "./number-field": {
+      "nyte-source": "./src/number-field.ts",
+      "types": "./dist/number-field.d.ts",
+      "default": "./dist/number-field.js"
+    },
+    "./overlay": {
+      "nyte-source": "./src/overlay.ts",
+      "types": "./dist/overlay.d.ts",
+      "default": "./dist/overlay.js"
+    },
+    "./popover": {
+      "nyte-source": "./src/popover.ts",
+      "types": "./dist/popover.d.ts",
+      "default": "./dist/popover.js"
+    },
+    "./preview-card": {
+      "nyte-source": "./src/preview-card.ts",
+      "types": "./dist/preview-card.d.ts",
+      "default": "./dist/preview-card.js"
+    },
+    "./row": {
+      "nyte-source": "./src/row.ts",
+      "types": "./dist/row.d.ts",
+      "default": "./dist/row.js"
+    },
+    "./select": {
+      "nyte-source": "./src/select.ts",
+      "types": "./dist/select.d.ts",
+      "default": "./dist/select.js"
+    },
+    "./slider": {
+      "nyte-source": "./src/slider.ts",
+      "types": "./dist/slider.d.ts",
+      "default": "./dist/slider.js"
+    },
+    "./spinner": {
+      "nyte-source": "./src/spinner.ts",
+      "types": "./dist/spinner.d.ts",
+      "default": "./dist/spinner.js"
+    },
+    "./switch": {
+      "nyte-source": "./src/switch.ts",
+      "types": "./dist/switch.d.ts",
+      "default": "./dist/switch.js"
+    },
+    "./tabs": {
+      "nyte-source": "./src/tabs.ts",
+      "types": "./dist/tabs.d.ts",
+      "default": "./dist/tabs.js"
+    },
+    "./textarea": {
+      "nyte-source": "./src/textarea.ts",
+      "types": "./dist/textarea.d.ts",
+      "default": "./dist/textarea.js"
+    },
+    "./toast": {
+      "nyte-source": "./src/toast.ts",
+      "types": "./dist/toast.d.ts",
+      "default": "./dist/toast.js"
+    },
+    "./toggle": {
+      "nyte-source": "./src/toggle.ts",
+      "types": "./dist/toggle.d.ts",
+      "default": "./dist/toggle.js"
+    },
+    "./toggle-group": {
+      "nyte-source": "./src/toggle-group.ts",
+      "types": "./dist/toggle-group.d.ts",
+      "default": "./dist/toggle-group.js"
+    },
+    "./toolbar": {
+      "nyte-source": "./src/toolbar.ts",
+      "types": "./dist/toolbar.d.ts",
+      "default": "./dist/toolbar.js"
+    },
+    "./tooltip": {
+      "nyte-source": "./src/tooltip.ts",
+      "types": "./dist/tooltip.d.ts",
+      "default": "./dist/tooltip.js"
+    },
     "./platform-colors": "./src/platform-colors.ts",
-    "./platform-tokens.stylex": "./src/platform-tokens.stylex.ts",
-    "./platform-tokens.css": "./src/platform-tokens.css",
+    "./tokens.stylex": "./src/tokens.stylex.ts",
+    "./vars.stylex": "./src/vars.stylex.ts",
+    "./schema.stylex": "./src/schema.stylex.ts",
+    "./floating-surface.stylex": "./src/floating-surface.stylex.ts",
+    "./a11y.stylex": "./src/a11y.stylex.ts",
     "./tailwind.css": "./src/tailwind.css",
-    "./styles.css": "./src/index.css"
+    "./ui.css": "./dist/ui.css"
   },
   "scripts": {
-    "clean": "rm -rf node_modules .turbo",
-    "check:tokens": "node scripts/sync-platform-tokens.mjs --check",
-    "sync:tokens": "node scripts/sync-platform-tokens.mjs",
+    "build": "node scripts/build.mjs && tsc -p tsconfig.build.json",
+    "dev": "node scripts/build.mjs --watch",
+    "clean": "rm -rf node_modules .turbo dist",
+    "check:tokens": "node scripts/sync-platform-colors.mjs --check",
+    "sync:tokens": "node scripts/sync-platform-colors.mjs",
     "typecheck": "pnpm check:tokens && tsc --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
     "@stylexjs/stylex": "0.19.0",
-    "central-icons": "npm:@central-icons-react/round-outlined-radius-1-stroke-1.5@^1.1.319",
+    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.1.319",
+    "central-icons-filled": "npm:@central-icons-react/round-filled-radius-2-stroke-1.5@^1.1.319",
     "cn": "^0.3.2",
-    "sonner": "^2.0.8",
-    "tailwindcss": "^4.3.3",
-    "tw-animate-css": "^1.4.0"
+    "motion": "12.43.0",
+    "sonner": "^2.0.8"
   },
   "devDependencies": {
     "@stylexjs/unplugin": "0.19.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "esbuild": "^0.28.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "typescript": "^7.0.2"

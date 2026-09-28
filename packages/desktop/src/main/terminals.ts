@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import { userInfo } from "node:os";
 import { spawn } from "@lydell/node-pty";
 import type { IPty } from "@lydell/node-pty";
-import type { HostEvent, TerminalInfo } from "../shared/ipc.ts";
+import type { HostEvent, TerminalInfo } from "@nyte-ai/app/bridge.ts";
 
 const HIGH_WATER = 128 * 1024;
 

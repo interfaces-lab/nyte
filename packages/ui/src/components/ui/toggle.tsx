@@ -1,0 +1,56 @@
+import { Toggle as TogglePrimitive } from "@base-ui/react/toggle";
+import type { ReactElement } from "react";
+
+import {
+  buttonGlyphSize,
+  buttonStyle,
+  tooltipTitle,
+  type ButtonAppearance,
+  type ButtonElementProps,
+  type ButtonSizing,
+} from "./button.tsx";
+import { Icon } from "./icon.tsx";
+
+export type ToggleProps = Omit<
+  ButtonElementProps,
+  "aria-pressed" | "onClick" | "value" | "defaultValue"
+> &
+  ButtonSizing &
+  ButtonAppearance &
+  Pick<TogglePrimitive.Props, "pressed" | "defaultPressed" | "onPressedChange" | "value"> & {
+    /** `glyph` drops the pressed fill, for a glyph that already draws its state. */
+    readonly indicator?: "fill" | "glyph";
+  };
+
+export function Toggle({
+  pressed,
+  defaultPressed,
+  onPressedChange,
+  value,
+  indicator = "fill",
+  size = "default",
+  round,
+  icon,
+  xstyle,
+  className,
+  style,
+  children,
+  type = "button",
+  disabled,
+  ...rest
+}: ToggleProps): ReactElement {
+  return (
+    <TogglePrimitive
+      pressed={pressed}
+      defaultPressed={defaultPressed}
+      value={value}
+      disabled={disabled}
+      onPressedChange={onPressedChange}
+      render={<button type={type} title={tooltipTitle(size, rest["aria-label"])} {...rest} />}
+      {...buttonStyle("primary", size, { round, xstyle, className, style }, indicator === "glyph")}
+    >
+      {icon !== undefined && <Icon name={icon} size={buttonGlyphSize[size]} />}
+      {children}
+    </TogglePrimitive>
+  );
+}

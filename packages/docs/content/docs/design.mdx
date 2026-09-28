@@ -92,7 +92,7 @@ borrowed and which were changed on purpose.
 
 | git                           | core                                                                             |
 | ----------------------------- | -------------------------------------------------------------------------------- |
-| object database               | `objects`: immutable values addressed by the SHA-256 hash of canonical JSON      |
+| object database               | `objects`: immutable values addressed by the SHA-256 hash of their body          |
 | commit with parent            | conversation commit with exactly one context parent                              |
 | extra parent or provenance    | `imports`: provenance that never joins model context                             |
 | branch ref                    | `refs/heads/<head>`                                                              |
@@ -131,9 +131,13 @@ A session has four authorities. Everything else is a helper or a projection over
 
 ### Objects
 
-Objects are content-addressed and immutable. `hashObject` is a SHA-256 hex digest over the object's
-canonical JSON. Writing the same value twice returns the same oid and rewrites nothing. Any field
-change produces a different oid.
+Objects are content-addressed and immutable. An object's body is its JSON with keys sorted and no
+whitespace, per RFC 8785. `hashObject` returns the SHA-256 hex of the body. The store keeps the
+body and checks it against the oid on every read. Any field change produces a different oid.
+
+Putting an identical value again returns the same oid and rewrites nothing. Most objects carry a
+write time, so a retried write usually creates a new object. Retries stay safe through
+`refs/keys/<key>`, not through hashing.
 
 There are six object kinds:
 
@@ -184,6 +188,9 @@ or none do.
 An update with `to === from` is an assertion. The store checks it, but writes no row and emits no
 event. Runner publishes use this to assert that `refs/deleted` is absent. Cancellation and
 redelivery use assertions to close races with landing.
+
+A publish is a runner's `refs.update` that moves head or run refs. It carries the runner's lease
+and the `refs/deleted` assertion.
 
 The ref namespace is:
 
@@ -692,7 +699,7 @@ Two backends ship. The SQLite backend uses five tables:
 | Table      | Holds                                                            |
 | ---------- | ---------------------------------------------------------------- |
 | `sessions` | Session id, creation time, next event sequence, and event floor. |
-| `objects`  | Session, oid, object kind, canonical body, and write time.       |
+| `objects`  | Session, oid, object kind, body, and write time.                 |
 | `refs`     | Session and ref name to oid.                                     |
 | `leases`   | Session and lease name to owner, fence, and expiry.              |
 | `events`   | Session and sequence to time and event body.                     |
@@ -1024,12 +1031,12 @@ never reused. A superseded number stays here with one line saying why.
 Storage and session:
 
 1. **Superseded.** Entries and records no longer exist. All six object kinds are immutable and
-   addressed by canonical-content hash.
+   addressed by the hash of their body.
 2. **Superseded.** `seq` orders events only. Objects, refs, and leases do not receive a shared log
    position.
 3. **Superseded.** Heads and facts are not the only mutable state. Every domain register is a ref,
    including queues, runs, effects, stacks, keys, cancellation, and deletion.
-4. **Superseded.** The object store canonicalizes typed objects directly. `toJsonValue` remains a
+4. **Superseded.** The object store serializes typed objects directly. `toJsonValue` remains a
    boundary for unknown effect and progress payloads, not every durable write.
 5. **Superseded.** Admission no longer chooses placed or queued by reading a claim. Every submit
    appends a change to one of the two inbox chains without taking a lease.

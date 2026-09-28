@@ -9,12 +9,7 @@ import { isAbsolute, join } from "node:path";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { nyteHome } from "@nyte-ai/host";
-import { ModelPreferencesStore } from "./model-preferences.ts";
 import { BrowserAccessStore } from "./browser-access.ts";
-
-export function createModelPreferencesStore(): ModelPreferencesStore {
-  return new ModelPreferencesStore(join(nyteHome(), "model-preferences.json"));
-}
 
 export function createBrowserAccessStore(): BrowserAccessStore {
   return new BrowserAccessStore(join(nyteHome(), "browser-access.json"));

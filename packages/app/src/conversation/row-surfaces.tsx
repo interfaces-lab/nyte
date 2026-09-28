@@ -1,0 +1,56 @@
+/**
+ * Row surfaces after shadcn's Message, Bubble and Marker. Each draws one
+ * look the transcript already uses and knows nothing about scrolling.
+ */
+import * as stylex from "@stylexjs/stylex";
+import type { ComponentProps, ReactElement, ReactNode } from "react";
+import { bubbleStyles, markerStyles, messageStyles } from "./styles.stylex.ts";
+
+/** Only the user's side is drawn as a message; it spans the measure. */
+export function Message({
+  align,
+  children,
+}: {
+  readonly align: "end";
+  readonly children: ReactNode;
+}): ReactElement {
+  return <div {...stylex.props(messageStyles[align])}>{children}</div>;
+}
+
+export function Bubble({
+  variant = "default",
+  children,
+}: {
+  /** `editable` lifts on hover and rings on focus: the bubble holds an edit trigger. */
+  readonly variant?: "default" | "editable";
+  readonly children: ReactNode;
+}): ReactElement {
+  return (
+    <div {...stylex.props(bubbleStyles.default, variant === "editable" && bubbleStyles.editable)}>
+      {children}
+    </div>
+  );
+}
+
+export function Marker({
+  variant = "default",
+  role,
+  title,
+  children,
+}: Pick<ComponentProps<"div">, "role" | "title" | "children"> & {
+  /** `default` is a muted status line, `destructive` its failure tone, `warning` a filled banner. */
+  readonly variant?: "default" | "destructive" | "warning";
+}): ReactElement {
+  return (
+    <div
+      role={role}
+      title={title}
+      {...stylex.props(
+        variant === "warning" ? markerStyles.warning : markerStyles.default,
+        variant === "destructive" && markerStyles.destructive,
+      )}
+    >
+      {children}
+    </div>
+  );
+}

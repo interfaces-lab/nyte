@@ -15,11 +15,12 @@ import { BoxRenderable, fg, StyledText, TextRenderable } from "@opentui/core";
 import type { PendingItem } from "@nyte-ai/core";
 import { pendingHint, SPACING } from "./constants.ts";
 import type { DeliveryChoices } from "./lanes.ts";
+import { appendMessage } from "./message.ts";
 import { rowContent, rowMark } from "./pending-gutter.ts";
 import type { GutterRow, RowMark } from "./pending-gutter.ts";
+import { repaintTree } from "./surface.ts";
+import type { Transcript } from "./surface.ts";
 import type { CliTheme } from "./theme.ts";
-import { appendUser, repaintTree } from "./transcript.ts";
-import type { Transcript } from "./transcript.ts";
 
 /** Every name a row answers to; a pending item also answers to the key it was submitted under. */
 function rowIds(row: GutterRow): readonly string[] {
@@ -119,7 +120,7 @@ export class PendingTail {
 
     if (before === undefined) this.container.add(root);
     else this.container.insertBefore(root, before);
-    appendUser(this.transcript, rowContent(item), root);
+    appendMessage(this.transcript, { align: "end", content: rowContent(item) }, root);
 
     // The same box the turn's activity row takes: block margin, one row, the transcript inset.
     const statusRow = new BoxRenderable(renderer, {

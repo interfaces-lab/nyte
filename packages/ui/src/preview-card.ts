@@ -1,1 +1,6 @@
-export { PreviewCard } from "@base-ui/react/preview-card";
+export { PreviewCard } from "./components/ui/preview-card.tsx";
+
+export type {
+  PreviewCardPopupProps,
+  PreviewCardPositionerProps,
+} from "./components/ui/preview-card.tsx";

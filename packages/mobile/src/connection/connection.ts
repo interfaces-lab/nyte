@@ -111,7 +111,7 @@ export function parseConnectionPayload(text: string): Connection {
 export function describeHostError(cause: unknown): string {
   if (cause instanceof NyteWireError) {
     if (cause.code === "unauthorized" || cause.code === "forbidden")
-      return "Your Mac refused the token. Copy it again from Settings › Server.";
+      return "Your Mac refused the token. Copy it again from Environments › Remote access.";
 
     if (cause.code === "unknown_session") return "This conversation is no longer available.";
 

@@ -17,6 +17,14 @@ we re-exported unstyled. That split describes our implementation. A reader impor
 from `@nyte-ai/ui/popover` is using our component either way. Merged into Components, one page per
 import path, both paths shown on the page.
 
+## 2026-09-25, every export is styled
+
+The subpaths used to re-export Base UI namespaces unstyled, and desktop kept its own styled copies
+of the same components. Desktop's copies moved into `@nyte-ai/ui`, every subpath now exports the
+styled component the root does, and apps extend it through `xstyle`, `className`, or `style`.
+Pages no longer teach an unstyled path or a Base UI import. Lint forbids importing `@base-ui/react`
+or `sonner` outside `packages/ui`.
+
 ## 2026-09-18, include Base UI's tables, do not vendor their pages
 
 The headless pages were 11,600 lines of Base UI documentation reproduced verbatim by a generator.

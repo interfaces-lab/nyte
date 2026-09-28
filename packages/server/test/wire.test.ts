@@ -263,7 +263,22 @@ test("workspace.vcs.snapshot dispatches over HTTP against the host's repository"
     touch: async () => undefined,
     forget: async () => undefined,
     files: async () => [],
-    vcs: createGitVcs(cwd),
+    read: async () => {
+      throw new Error("File reads are not configured for this fixture");
+    },
+    save: async () => {
+      throw new Error("File saves are not configured for this fixture");
+    },
+    format: async () => {
+      throw new Error("File formatting is not configured for this fixture");
+    },
+    search: async () => {
+      throw new Error("File search is not configured for this fixture");
+    },
+    blame: async () => {
+      throw new Error("File blame is not configured for this fixture");
+    },
+    vcs: createGitVcs(),
   };
   const { client } = await fixture({ workspace: { cwd, backend } });
 

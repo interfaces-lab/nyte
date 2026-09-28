@@ -1,0 +1,128 @@
+@import "./appearance.css";
+
+/*
+ * StyleX emits every rule inside `@layer priority1..6` (`useCSSLayers` in the
+ * vite config), and unlayered author styles outrank every layer. So the resets
+ * here live in a `base` layer pinned below StyleX's: this file is the first
+ * stylesheet the entry imports, which makes this statement the first layer
+ * declaration, and first declaration fixes the order. Component styles win
+ * over the resets again; the resets still win over user-agent styles.
+ */
+@layer base, priority1, priority2, priority3, priority4, priority5, priority6;
+
+@layer base {
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  :root {
+    color: var(--nyte-text-primary);
+    background: transparent;
+    font-family: var(--nyte-font-family-sans);
+    font-size: var(--nyte-font-size-base);
+    line-height: var(--nyte-line-height-base);
+    font-weight: 400;
+    font-optical-sizing: auto;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: var(--nyte-font-smoothing, antialiased);
+    -moz-osx-font-smoothing: var(--nyte-moz-font-smoothing, grayscale);
+    user-select: none;
+  }
+
+  [data-nyte-session-drag-active],
+  [data-nyte-session-drag-active] * {
+    cursor: grabbing !important;
+    user-select: none !important;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  /*
+   * Central Icons draw a 1.5-unit stroke on a 24-unit grid. The desktop only
+   * renders them at 10–17px, where 1.875 units (1.25px at 16px) reads right.
+   */
+  [data-nyte-icon] svg [stroke]:not([stroke="none"]) {
+    stroke-width: 1.875;
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  dialog::backdrop {
+    background: var(--nyte-bg-scrim);
+  }
+
+  ::selection {
+    background: var(--nyte-selection);
+  }
+
+  /*
+   * Native scrolling is one cross-tree browser contract, rather than a
+   * pseudo-element recipe repeated by every StyleX component. Chromium drops
+   * every `::-webkit-scrollbar` rule on a scroller that sets `scrollbar-width`
+   * or `scrollbar-color`, so the standard properties are the whole contract.
+   * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/index.css
+   */
+  [data-nyte-scrollport] {
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    overscroll-behavior: contain;
+  }
+
+  /*
+   * A pane holds its scroll at the edge; a block inside one hands the rest
+   * back, so a code block, diff, or tool output cannot stop the conversation.
+   */
+  [data-nyte-scrollport] [data-nyte-scrollport] {
+    overscroll-behavior: auto;
+  }
+
+  [data-nyte-scrollport="balanced"] {
+    scrollbar-gutter: stable both-edges;
+  }
+
+  [data-nyte-scrollport]:hover {
+    scrollbar-color: var(--nyte-scrollbar-thumb) transparent;
+  }
+
+  /* Shiki dual-theme output: pick the palette side by the html attribute. */
+  .shiki,
+  .shiki span {
+    color: var(--shiki-light);
+  }
+
+  :root[data-theme="dark"] .shiki,
+  :root[data-theme="dark"] .shiki span {
+    color: var(--shiki-dark);
+  }
+
+  .shiki {
+    margin: 0;
+    background: transparent !important;
+  }
+}
+
+/* Preference overrides intentionally sit above StyleX's cascade layers. */
+:root[data-nyte-code-block-word-wrap="true"] figure [data-nyte-scrollport] {
+  overflow-x: hidden;
+}
+
+:root[data-nyte-code-block-word-wrap="true"] figure [data-nyte-scrollport] :is(pre, code) {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

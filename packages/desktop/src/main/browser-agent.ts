@@ -14,10 +14,9 @@
 import type { SessionId } from "@nyte-ai/core";
 
 /**
- * The workbench view key for a chat session's browser stage pane. The renderer
- * builds the same key, so an agent-opened page and the user's Browser tab are one
- * surface. Both sides import this; a second copy of the rule would let them drift
- * and make an agent's page silently invisible.
+ * The surface an agent session's pages live on. One per session, so a chat's
+ * agent keeps its own page across calls; the renderer reveals it as a Browser
+ * tab in the workbench of the workspace the page belongs to.
  */
 export function sessionSurfaceId(sessionId: SessionId): string {
   return `stage:session:${encodeURIComponent(sessionId)}`;
@@ -184,6 +183,6 @@ export interface BrowserAgent {
   /** Drop this session's hold. The page closes unless a panel is still showing it. */
   release(input: { readonly session: SessionId }): void;
 
-  /** `stage:session:<encoded id>`, the same workbench view key the user's Browser tab shows. */
+  /** `stage:session:<encoded id>`, the surface this session's agent pages live on. */
   sessionSurfaceId(sessionId: SessionId): string;
 }

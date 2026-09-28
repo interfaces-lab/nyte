@@ -19,6 +19,7 @@
 import {
   CALL_ROUTE_PREFIX,
   CallReplySchema,
+  ENVIRONMENT_OPERATIONS,
   EVENT_STREAM_MEDIA_TYPE,
   INFO_ROUTE,
   JSON_MEDIA_TYPE,
@@ -35,6 +36,9 @@ import {
   schemas,
   validationIssues,
   type CallReply,
+  type EnvironmentInput,
+  type EnvironmentOperation,
+  type EnvironmentOutput,
   type Issue,
   type RemoteNyte,
   type RemoteWatchInput,
@@ -142,6 +146,15 @@ export interface NyteClientOptions {
 export type NyteClient = RemoteNyte & {
   /** What is answering: the host's release and the wire version this client already speaks. */
   info(): Promise<ServerInfo>;
+  /**
+   * One operation on the serving machine's environment, its reply checked
+   * against the environment table. A server whose info lacks `environment`
+   * refuses it with `unknown_operation`.
+   */
+  environment<V extends EnvironmentOperation>(
+    operation: V,
+    input: EnvironmentInput<V>,
+  ): Promise<EnvironmentOutput<V>>;
 };
 
 export function createNyteClient(options: NyteClientOptions): NyteClient {
@@ -226,24 +239,43 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
     return value;
   };
 
-  /** `input` is optional here for operations that take none; `RemoteNyte` requires it where the operation does. */
-  async function call<V extends Operation>(
-    operation: V,
-    input: OperationInput<V> | undefined,
-  ): Promise<OperationOutput<V>> {
+  /** One `POST /v1/call/{name}`, its value checked against `schema`. No input sends `{}`. */
+  const post = async <S extends TSchema>(
+    name: string,
+    input: unknown,
+    schema: S,
+  ): Promise<Static<S>> => {
     const headers = headersFor(JSON_MEDIA_TYPE);
     headers.set("content-type", JSON_MEDIA_TYPE);
 
-    const response = await send(`${base}${CALL_ROUTE_PREFIX}${operation}`, {
+    const response = await send(`${base}${CALL_ROUTE_PREFIX}${name}`, {
       method: "POST",
       headers,
       body: JSON.stringify(input === undefined ? {} : { input }),
     });
 
+    return checkedValue(response, schema, name);
+  };
+
+  /** `input` is optional here for operations that take none; `RemoteNyte` requires it where the operation does. */
+  async function call<V extends Operation>(
+    operation: V,
+    input: OperationInput<V> | undefined,
+  ): Promise<OperationOutput<V>> {
     const schema: (typeof OPERATIONS)[V]["output"] = OPERATIONS[operation].output;
 
-    return checkedValue(response, schema, operation);
+    return post(operation, input, schema);
   }
+
+  const environment = <V extends EnvironmentOperation>(
+    operation: V,
+    input: EnvironmentInput<V>,
+  ): Promise<EnvironmentOutput<V>> => {
+    const schema: (typeof ENVIRONMENT_OPERATIONS)[V]["output"] =
+      ENVIRONMENT_OPERATIONS[operation].output;
+
+    return post(operation, input, schema);
+  };
 
   /** A refused watch carries a JSON error, never a successful call reply. */
   const refusal = async (response: Response): Promise<never> => {
@@ -292,6 +324,7 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
 
   return {
     info,
+    environment,
     sessions: {
       create: operation("sessions.create"),
       get: operation("sessions.get"),
@@ -331,6 +364,11 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
       select: operation("workspace.select"),
       forget: operation("workspace.forget"),
       files: operation("workspace.files"),
+      read: operation("workspace.read"),
+      save: operation("workspace.save"),
+      format: operation("workspace.format"),
+      search: operation("workspace.search"),
+      blame: operation("workspace.blame"),
       vcs: {
         snapshot: operation("workspace.vcs.snapshot"),
         diff: operation("workspace.vcs.diff"),
@@ -733,13 +771,7 @@ export {
   type ModelContext,
 } from "./context.ts";
 
-export {
-  canonicalJson,
-  isJsonObject,
-  toJsonValue,
-  type JsonObject,
-  type JsonValue,
-} from "./json.ts";
+export { isJsonObject, toJsonValue, type JsonObject, type JsonValue } from "./json.ts";
 
 export { mergeByDelivery } from "./queue-order.ts";
 

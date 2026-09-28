@@ -2,18 +2,15 @@ import "./shell/host-stub";
 import { StrictMode, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Tooltip } from "@nyte-ai/ui/tooltip";
+import { HintProvider } from "@nyte-ai/ui/tooltip";
 import "@fontsource-variable/inter/opsz.css";
 import "@fontsource-variable/inter/opsz-italic.css";
-import "@nyte-ai/ui/platform-tokens.css";
-import "../../desktop/src/renderer/src/theme/global.css";
+import "@nyte-ai/app/theme/global.css";
 import "./tokens/palette.css";
-import "./tokens/calendar.css";
-import "./tokens/shadow.css";
 import "./tokens/demo.css";
 import { DesktopDemo } from "./shell/desktop-demo";
 import { auditSurface, workbenchState } from "./shell/audit-state";
-import { queryClient } from "../../desktop/src/renderer/src/queries.ts";
+import { queryClient } from "@nyte-ai/app/queries.ts";
 
 function subscribe(onChange: () => void) {
   const observer = new MutationObserver(onChange);
@@ -41,7 +38,7 @@ function Demo() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Tooltip.Provider delay={400}>
+      <HintProvider delay={400}>
         <DesktopDemo
           sidebarVisible={reveal > 0}
           onSidebar={() => {
@@ -61,7 +58,7 @@ function Demo() {
             revision,
           }}
         />
-      </Tooltip.Provider>
+      </HintProvider>
     </QueryClientProvider>
   );
 }

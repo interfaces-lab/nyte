@@ -1,72 +1,82 @@
 ---
 title: Toast
-description: "Notification stack from sonner, unstyled, with the tokens left to you"
+description: "A notification stack for outcomes the user did not just watch happen"
 ---
 
 ```ts title="Import"
-import { Toaster, toast, useSonner } from "@nyte-ai/ui/sonner";
+import { Toaster, toast } from "@nyte-ai/ui";
 ```
 
-Transient notifications. `@nyte-ai/ui/sonner` re-exports [sonner](https://sonner.emilkowal.ski),
-so sonner owns the lifecycle and the API below is sonner's.
+The same names are exported from their own subpath. Pick one path per file.
 
-No Nyte styling here. Pass `toastOptions={{ unstyled: true }}` to
-`Toaster` and supply your own classes.
+```ts title="Subpath"
+import { Toaster, toast } from "@nyte-ai/ui/toast";
+```
+
+`Toaster` renders the notification stack, and `toast` opens a notification in it. Reach for it
+when a background task finishes or fails, such as a folder that could not open. A form's own error
+stays in the form. The lifecycle comes from [sonner](https://sonner.emilkowal.ski), so the `toast`
+API is sonner's.
 
 ## Usage
 
-- Mount `Toaster` near the root of the app. One unnamed toaster renders every toast. Give it an
-  `id` and route toasts to it with `toasterId` when you need more than one.
+- Mount one `Toaster` near the app root. It stacks toasts in the bottom-right corner, 16px from
+  the edges, expanded, each with a close button.
 - Call `toast` from anywhere, including outside React. It is a plain function, not a hook.
+- `toast.success` shows a checkmark, `toast.error` and `toast.warning` show a warning triangle,
+  each tinted to match.
+- The look is fixed. `Toaster` takes no `icons` or `toastOptions`. `xstyle`, `className`, and
+  `style` land on the toast list.
 - Give a repeated notification a stable `id` so a second call updates the open toast instead of
   stacking another one.
 - Every call that opens a toast returns its id. Pass it to `toast.dismiss` to close that one, or
   call `toast.dismiss()` with no argument to close all of them.
-
-## Exports
-
-| Export          | Kind      | Description                                                  |
-| --------------- | --------- | ------------------------------------------------------------ |
-| `Toaster`       | component | The list that renders the open toasts.                       |
-| `toast`         | function  | Opens a toast. Also carries the variant and control methods. |
-| `useSonner`     | hook      | Returns `{ toasts }`, the currently open toasts.             |
-| `ExternalToast` | type      | The options object every `toast.*` call takes.               |
-| `ToasterProps`  | type      | The props of `Toaster`.                                      |
+- The list attaches the ref from [Overlays](/cloud/foundations/overlays) while a toast is open, so
+  a host can keep it above native views.
 
 ## Examples
 
-### Mounting the toaster
+<Preview>
+  <ToastDemo />
+</Preview>
 
 ```tsx
-<Toaster
-  position="bottom-right"
-  offset={16}
-  gap={8}
-  expand
-  closeButton
-  containerAriaLabel="Notifications"
-  icons={{ success: <CheckIcon />, error: <WarningIcon />, close: <XIcon /> }}
-  toastOptions={{
-    unstyled: true,
-    closeButtonAriaLabel: "Dismiss notification",
-    classNames: {
-      toast: styles.toast,
-      title: styles.title,
-      description: styles.description,
-      actionButton: styles.action,
-      closeButton: styles.close,
-    },
-  }}
-/>
+<Button variant="secondary" onClick={() => toast("Workspace saved")}>
+  Default
+</Button>
+<Button
+  variant="secondary"
+  onClick={() =>
+    toast.success("3 chats archived", {
+      action: { label: "Undo", onClick: () => toast("Chats restored") },
+    })
+  }
+>
+  Success
+</Button>
+<Button
+  variant="secondary"
+  onClick={() =>
+    toast.error("Could not reach the server", {
+      description: "The request timed out after 30 seconds.",
+    })
+  }
+>
+  Error
+</Button>
+<Toaster />
 ```
 
-### Opening a toast
+### A toast that stays
+
+A failure the user has to read stays until dismissed. The `id` makes a retry replace it.
 
 ```ts
-toast("Workspace saved");
-toast.success("3 chats archived");
-toast.error("Could not reach the server", { description: error.message });
-toast.warning("This model is deprecated");
+toast.error("Couldn't open folder", {
+  id: "workspace-open",
+  duration: Infinity,
+  description: reason,
+});
 ```
 
 ### An action, and undo
@@ -82,14 +92,6 @@ toast.success("3 chats archived", {
 `action` and `cancel` take `{ label, onClick }` or a React node when you want to render the button
 yourself.
 
-### Replacing an open toast
-
-The same `id` updates the open toast in place.
-
-```ts
-toast.success(`${count} chats archived`, { id: "archive" });
-```
-
 ### A pending operation
 
 ```ts
@@ -100,15 +102,30 @@ toast.promise(save(), {
 });
 ```
 
-### Reading the open toasts
-
-```tsx
-const { toasts } = useSonner();
-```
-
 ## Props
 
-The API below is sonner's.
+### Toaster
+
+| Prop                 | Type                                         | Default              | Description                                                           |
+| -------------------- | -------------------------------------------- | -------------------- | --------------------------------------------------------------------- |
+| `position`           | `Position`                                   | `"bottom-right"`     | Corner the stack grows from.                                          |
+| `offset`             | `Offset`                                     | `16`                 | Distance from the viewport edge.                                      |
+| `mobileOffset`       | `Offset`                                     | `16`                 | Same, at small viewports.                                             |
+| `gap`                | `number`                                     | `8`                  | Space between stacked toasts.                                         |
+| `expand`             | `boolean`                                    | `true`               | Shows the stack expanded instead of collapsed.                        |
+| `closeButton`        | `boolean`                                    | `true`               | Shows a close button on every toast.                                  |
+| `containerAriaLabel` | `string`                                     | `"Notifications"`    | Names the list. Sonner appends the hotkey.                            |
+| `theme`              | `"light" \| "dark" \| "system"`              | `"light"`            | Color scheme sonner marks the list with.                              |
+| `visibleToasts`      | `number`                                     | `3`                  | How many toasts render at once.                                       |
+| `duration`           | `number`                                     | `4000`               | Default milliseconds for every toast.                                 |
+| `hotkey`             | `string[]`                                   | `["altKey", "KeyT"]` | Keys that expand the stack and move focus to it.                      |
+| `swipeDirections`    | `("top" \| "right" \| "bottom" \| "left")[]` |                      | Directions a toast can be swiped away.                                |
+| `dir`                | `"rtl" \| "ltr" \| "auto"`                   | document direction   | Text direction.                                                       |
+| `customAriaLabel`    | `string`                                     |                      | Replaces the whole list name, hotkey included.                        |
+| `id`                 | `string`                                     |                      | Names this toaster, for `toasterId` on a toast.                       |
+| `xstyle`             | `XStyle`                                     |                      | Merged last onto the list. See [Theming](/cloud/foundations/theming). |
+| `className`          | `string`                                     |                      | See [Theming](/cloud/foundations/theming).                            |
+| `style`              | `React.CSSProperties`                        |                      | See [Theming](/cloud/foundations/theming).                            |
 
 ### toast
 
@@ -131,71 +148,33 @@ The API below is sonner's.
 
 ### ExternalToast
 
-| Prop                   | Type                                                        | Description                                                       |
-| ---------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------- |
-| `id`                   | `number \| string`                                          | Stable identity. A second call with the same id updates in place. |
-| `description`          | `React.ReactNode \| (() => React.ReactNode)`                | Second line under the title.                                      |
-| `duration`             | `number`                                                    | Milliseconds before it closes on its own.                         |
-| `icon`                 | `React.ReactNode`                                           | Overrides the variant icon for this toast.                        |
-| `action`               | `{ label, onClick, actionButtonStyle? } \| React.ReactNode` | Trailing button.                                                  |
-| `cancel`               | `{ label, onClick, actionButtonStyle? } \| React.ReactNode` | Dismiss button beside the action.                                 |
-| `dismissible`          | `boolean`                                                   | Whether the user can swipe it away. Defaults to `true`.           |
-| `closeButton`          | `boolean`                                                   | Shows the close button for this toast.                            |
-| `onDismiss`            | `(toast: ToastT) => void`                                   | Fires when the user closes it.                                    |
-| `onAutoClose`          | `(toast: ToastT) => void`                                   | Fires when the duration runs out.                                 |
-| `position`             | `Position`                                                  | Overrides the toaster position for this toast.                    |
-| `richColors`           | `boolean`                                                   | Variant-tinted background.                                        |
-| `invert`               | `boolean`                                                   | Inverts the theme for this toast.                                 |
-| `unstyled`             | `boolean`                                                   | Drops sonner's own toast CSS.                                     |
-| `className`            | `string`                                                    | Class on the toast element.                                       |
-| `classNames`           | `ToastClassnames`                                           | Per-part classes.                                                 |
-| `descriptionClassName` | `string`                                                    | Class on the description.                                         |
-| `style`                | `React.CSSProperties`                                       | Inline style on the toast.                                        |
-| `actionButtonStyle`    | `React.CSSProperties`                                       | Inline style on the action button.                                |
-| `cancelButtonStyle`    | `React.CSSProperties`                                       | Inline style on the cancel button.                                |
-| `toasterId`            | `string`                                                    | Routes the toast to a specific `Toaster`.                         |
-| `testId`               | `string`                                                    | Sets `data-testid` on the toast element.                          |
-
-### ToasterProps
-
-| Prop                 | Type                                         | Default              | Description                                                                   |
-| -------------------- | -------------------------------------------- | -------------------- | ----------------------------------------------------------------------------- |
-| `id`                 | `string`                                     |                      | Names this toaster, for `toasterId` on a toast.                               |
-| `position`           | `Position`                                   | `"bottom-right"`     | Corner the stack grows from.                                                  |
-| `theme`              | `"light" \| "dark" \| "system"`              | `"light"`            | Color scheme sonner applies.                                                  |
-| `offset`             | `Offset`                                     |                      | Distance from the viewport edge.                                              |
-| `mobileOffset`       | `Offset`                                     |                      | Same, at small viewports.                                                     |
-| `gap`                | `number`                                     | `14`                 | Space between stacked toasts.                                                 |
-| `expand`             | `boolean`                                    |                      | Shows the stack expanded instead of collapsed.                                |
-| `visibleToasts`      | `number`                                     | `3`                  | How many toasts render at once.                                               |
-| `duration`           | `number`                                     | `4000`               | Default milliseconds for every toast.                                         |
-| `closeButton`        | `boolean`                                    |                      | Shows a close button on every toast.                                          |
-| `richColors`         | `boolean`                                    |                      | Variant-tinted backgrounds.                                                   |
-| `invert`             | `boolean`                                    |                      | Inverts the theme.                                                            |
-| `icons`              | `ToastIcons`                                 |                      | Your icons for `success`, `info`, `warning`, `error`, `loading`, and `close`. |
-| `toastOptions`       | `ToastOptions`                               |                      | Defaults applied to every toast, including `unstyled` and `classNames`.       |
-| `hotkey`             | `string[]`                                   | `["altKey", "KeyT"]` | Keys that expand the stack and move focus to it.                              |
-| `swipeDirections`    | `("top" \| "right" \| "bottom" \| "left")[]` |                      | Directions a toast can be swiped away.                                        |
-| `dir`                | `"rtl" \| "ltr" \| "auto"`                   | document direction   | Text direction.                                                               |
-| `containerAriaLabel` | `string`                                     | `"Notifications"`    | Names the list. Sonner appends the hotkey.                                    |
-| `customAriaLabel`    | `string`                                     |                      | Replaces the whole list name, hotkey included.                                |
-| `className`          | `string`                                     |                      | Class on the list container.                                                  |
-| `style`              | `React.CSSProperties`                        |                      | Inline style on the list container.                                           |
+| Prop          | Type                                                        | Description                                                       |
+| ------------- | ----------------------------------------------------------- | ----------------------------------------------------------------- |
+| `id`          | `number \| string`                                          | Stable identity. A second call with the same id updates in place. |
+| `description` | `React.ReactNode \| (() => React.ReactNode)`                | Second line under the title.                                      |
+| `duration`    | `number`                                                    | Milliseconds before it closes on its own.                         |
+| `icon`        | `React.ReactNode`                                           | Overrides the variant icon for this toast.                        |
+| `action`      | `{ label, onClick, actionButtonStyle? } \| React.ReactNode` | Trailing button.                                                  |
+| `cancel`      | `{ label, onClick, actionButtonStyle? } \| React.ReactNode` | Dismiss button beside the action.                                 |
+| `dismissible` | `boolean`                                                   | Whether the user can swipe it away. Defaults to `true`.           |
+| `closeButton` | `boolean`                                                   | Shows or hides the close button for this toast.                   |
+| `onDismiss`   | `(toast: ToastT) => void`                                   | Fires when the user closes it.                                    |
+| `onAutoClose` | `(toast: ToastT) => void`                                   | Fires when the duration runs out.                                 |
+| `position`    | `Position`                                                  | Overrides the toaster position for this toast.                    |
+| `toasterId`   | `string`                                                    | Routes the toast to a specific `Toaster`.                         |
+| `testId`      | `string`                                                    | Sets `data-testid` on the toast element.                          |
 
 ### Shapes
 
-`@nyte-ai/ui/sonner` exports the types `ExternalToast` and `ToasterProps`. The names below appear
-in those types and are not exported.
+The package exports the types `ToasterProps` and `ExternalToast`. The names below appear in those
+types and are not exported.
 
-| Name              | Shape                                                                                                                                                                            |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Position`        | `"top-left" \| "top-right" \| "bottom-left" \| "bottom-right" \| "top-center" \| "bottom-center"`                                                                                |
-| `Offset`          | `number \| string \| { top?, right?, bottom?, left? }`                                                                                                                           |
-| `ToastIcons`      | `success`, `info`, `warning`, `error`, `loading`, `close`, each a React node                                                                                                     |
-| `ToastOptions`    | `className`, `closeButton`, `descriptionClassName`, `style`, `cancelButtonStyle`, `actionButtonStyle`, `duration`, `unstyled`, `classNames`, `closeButtonAriaLabel`, `toasterId` |
-| `ToastClassnames` | `toast`, `title`, `description`, `content`, `icon`, `loader`, `closeButton`, `cancelButton`, `actionButton`, `success`, `error`, `info`, `warning`, `loading`, `default`         |
-| `ToastT`          | The open toast, with its `id`, `title`, `type`, and the options it was given                                                                                                     |
-| `ToastToDismiss`  | `{ id, dismiss }`                                                                                                                                                                |
+| Name             | Shape                                                                                             |
+| ---------------- | ------------------------------------------------------------------------------------------------- |
+| `Position`       | `"top-left" \| "top-right" \| "bottom-left" \| "bottom-right" \| "top-center" \| "bottom-center"` |
+| `Offset`         | `number \| string \| { top?, right?, bottom?, left? }`                                            |
+| `ToastT`         | The open toast, with its `id`, `title`, `type`, and the options it was given                      |
+| `ToastToDismiss` | `{ id, dismiss }`                                                                                 |
 
 ## Accessibility
 
@@ -205,6 +184,7 @@ in those types and are not exported.
   hears how to reach the stack. `customAriaLabel` replaces that whole name.
 - The hotkey expands the stack and moves focus to the list. Escape collapses it again while focus
   is still inside.
-- A close button needs a name. Set `closeButtonAriaLabel` in `toastOptions`.
+- Every close button is named "Dismiss notification". The action, cancel, and close buttons show a
+  focus ring on keyboard focus.
 - A loading toast carries no close button and no timer. Replace it or dismiss it by id.
 - A toast is not a dialog. Do not put the only path to an action in one, since it closes on a timer.

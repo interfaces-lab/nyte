@@ -85,6 +85,7 @@ async function fixture(active: boolean) {
     openExternal: () => assert.fail("External browser is unused"),
     revealPath: () => undefined,
     showContextMenu: () => Promise.resolve(undefined),
+    confirmExternal: () => Promise.resolve("cancel"),
     pickFolder: async () => undefined,
     listFonts: async () => ({ sans: [], monospace: [] }),
     browser: {

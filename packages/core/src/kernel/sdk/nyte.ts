@@ -768,6 +768,59 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
 
         return (await options.workspace?.files({ cwd, query: input.query })) ?? [];
       },
+      async read(input) {
+        pool.alive();
+        const cwd = await workspaceCwd(input.target);
+
+        if (cwd === undefined || options.workspace === undefined) {
+          throw new Error("No workspace is active on this host");
+        }
+
+        return options.workspace.read({ cwd, path: input.path });
+      },
+      async save(input) {
+        pool.alive();
+        const { target, ...request } = input;
+        const cwd = await workspaceCwd(target);
+
+        if (cwd === undefined || options.workspace === undefined) {
+          throw new Error("No workspace is active on this host");
+        }
+
+        return options.workspace.save({ ...request, cwd });
+      },
+      async format(input) {
+        pool.alive();
+        const { target, ...request } = input;
+        const cwd = await workspaceCwd(target);
+
+        if (cwd === undefined || options.workspace === undefined) {
+          throw new Error("No workspace is active on this host");
+        }
+
+        return options.workspace.format({ ...request, cwd });
+      },
+      async search(input) {
+        pool.alive();
+        const { target, ...request } = input;
+        const cwd = await workspaceCwd(target);
+
+        if (cwd === undefined || options.workspace === undefined) {
+          throw new Error("No workspace is active on this host");
+        }
+
+        return options.workspace.search({ ...request, cwd });
+      },
+      async blame(input) {
+        pool.alive();
+        const cwd = await workspaceCwd(input.target);
+
+        if (cwd === undefined || options.workspace === undefined) {
+          throw new Error("No workspace is active on this host");
+        }
+
+        return options.workspace.blame({ cwd, path: input.path });
+      },
       vcs: {
         async snapshot(input) {
           const at = await vcsAt(input.target);

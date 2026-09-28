@@ -5,7 +5,7 @@
  */
 import { Menu } from "electron";
 import type { BrowserWindow, MenuItemConstructorOptions } from "electron";
-import type { HostBridge } from "../shared/ipc.ts";
+import type { HostBridge } from "@nyte-ai/app/bridge.ts";
 
 export async function showContextMenu({
   window,

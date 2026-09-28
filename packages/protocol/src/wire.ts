@@ -8,6 +8,9 @@
  *   POST {base}/v1/call/{operation}          body `{ "input": <operation input> }`; omit `input` for none
  *   GET  {base}/v1/watch?sessionId=…    `&after=<seq>` to replay, `&live=1` to start at the tip
  *
+ * `{operation}` is an SDK operation, or an `environment.*` operation when info
+ * reports `environment: true`.
+ *
  * The session id is a query parameter, not a path segment: ids are any
  * non-empty string, and `.` or `..` in a path segment would be normalized away.
  *
@@ -54,6 +57,11 @@ export const ServerDescriptionSchema = typed<ServerDescription>()(
 export interface ServerInfo {
   readonly version: string;
   readonly wireVersion: typeof WIRE_VERSION;
+  /**
+   * Present when the server answers `environment.*` calls. It sits at the top
+   * level because released clients reject unknown keys under `host`.
+   */
+  readonly environment?: true;
   readonly host:
     | { readonly kind: "unspecified" }
     | ({ readonly kind: "described" } & ServerDescription);
@@ -63,6 +71,7 @@ export const ServerInfoSchema = typed<ServerInfo>()(
   Type.Object({
     version: Type.String(),
     wireVersion: Type.Literal(WIRE_VERSION),
+    environment: Type.Optional(Type.Literal(true)),
     host: Type.Union([
       Type.Object({ kind: Type.Literal("unspecified") }),
       Type.Object(

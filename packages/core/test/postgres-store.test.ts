@@ -117,7 +117,7 @@ test("invalid serialized writes leave PostgreSQL object and event batches untouc
   assert.equal(await second.events.last(), 1);
 });
 
-test("independent PostgreSQL stores see canonical objects, chains, refs, and session lifecycle", async () => {
+test("independent PostgreSQL stores see objects, chains, refs, and session lifecycle", async () => {
   const { firstStore, secondStore, first, second } = await sessions();
   const object = { kind: "blob", value: { x: 1, y: 2 } } satisfies Parameters<
     typeof first.objects.put

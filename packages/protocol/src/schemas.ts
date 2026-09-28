@@ -759,6 +759,7 @@ export const RunInfo = typed<RunInfoType>()(
     config: RunConfig,
     abortRequested: Type.Optional(Type.Literal(true)),
     awaitingReply: Type.Optional(Type.Literal(true)),
+    question: Type.Optional(Type.String()),
     lease: Type.Optional(open({ owner: Type.String(), expiresAt: Type.Number() })),
   }),
 );
@@ -1189,6 +1190,116 @@ export const WorkspaceTarget = typed<WorkspaceTargetType>()(
     strict({ kind: Type.Literal("session"), sessionId: SessionId }),
   ]),
 );
+
+export const WorkspaceFileDocument = Type.Union([
+  strict({
+    kind: Type.Literal("text"),
+    path: NonEmptyString,
+    contents: Type.String(),
+    version: NonEmptyString,
+  }),
+  strict({
+    kind: Type.Literal("binary"),
+    path: NonEmptyString,
+    size: Type.Integer({ minimum: 0 }),
+  }),
+  strict({
+    kind: Type.Literal("too_large"),
+    path: NonEmptyString,
+    size: Type.Integer({ minimum: 0 }),
+  }),
+]);
+
+export const WorkspaceFileSaveOutcome = Type.Union([
+  open({ kind: Type.Literal("saved"), version: NonEmptyString }),
+  open({ kind: Type.Literal("conflict") }),
+]);
+
+const workspaceGlobPatterns = Type.Optional(
+  Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 20 }),
+);
+
+export const WorkspaceSearchSchema = strict({
+  query: Type.String({ minLength: 1, maxLength: 1000 }),
+  caseSensitive: Type.Optional(Type.Boolean()),
+  wholeWord: Type.Optional(Type.Boolean()),
+  regex: Type.Optional(Type.Boolean()),
+  include: workspaceGlobPatterns,
+  exclude: workspaceGlobPatterns,
+  maxMatches: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
+  drafts: Type.Optional(
+    Type.Array(
+      strict({
+        path: NonEmptyString,
+        contents: Type.String({ maxLength: 200_000 }),
+      }),
+      { maxItems: 10 },
+    ),
+  ),
+});
+
+export const WorkspaceSearchMatch = open({
+  line: Type.Integer({ minimum: 1 }),
+  column: Type.Integer({ minimum: 1 }),
+  length: Type.Integer({ minimum: 0 }),
+  snippet: Type.String(),
+  snippetColumn: Type.Integer({ minimum: 1 }),
+});
+
+const WorkspaceSearchFile = open({
+  path: NonEmptyString,
+  displayPath: NonEmptyString,
+  source: literals(["disk", "draft"]),
+  matches: list(WorkspaceSearchMatch),
+});
+
+export const WorkspaceSearchResult = open({
+  files: list(WorkspaceSearchFile),
+  matchCount: Type.Integer({ minimum: 0 }),
+  truncated: Type.Boolean(),
+  skipped: Type.Null(),
+});
+
+export const WorkspaceBlameLine = open({
+  line: Type.Integer({ minimum: 1 }),
+  originalLine: Type.Integer({ minimum: 1 }),
+  commit: NonEmptyString,
+  author: Type.String(),
+  authorMail: Type.String(),
+  authorTime: Type.Integer(),
+  summary: Type.String(),
+  contents: Type.String(),
+  uncommitted: Type.Boolean(),
+});
+
+export const WorkspaceBlameResult = Type.Union([
+  open({
+    kind: Type.Literal("blame"),
+    path: NonEmptyString,
+    lines: list(WorkspaceBlameLine),
+    truncated: Type.Boolean(),
+  }),
+  open({ kind: Type.Literal("unsupported"), message: Type.String() }),
+  open({ kind: Type.Literal("error"), message: Type.String() }),
+]);
+
+export const WorkspaceFormatInput = strict({
+  path: NonEmptyString,
+  contents: Type.String({ maxLength: 2_000_000 }),
+  version: NonEmptyString,
+});
+
+export const WorkspaceFormatResult = Type.Union([
+  open({
+    kind: Type.Literal("formatted"),
+    contents: Type.String(),
+    version: NonEmptyString,
+    formatter: literals(["prettier", "biome", "oxfmt"]),
+  }),
+  open({ kind: Type.Literal("conflict") }),
+  open({ kind: Type.Literal("unsupported"), message: Type.String() }),
+  open({ kind: Type.Literal("error"), message: Type.String() }),
+]);
 
 /** A commit-ish a caller names. A leading `-` would read as a git option. */
 export const Revision = Type.String({

@@ -3,7 +3,8 @@
  * loaded once and reused across every read the main process sends.
  */
 import { parentPort } from "node:worker_threads";
-import { UsageScanner, type UsageWorkerReply, type UsageWorkerRequest } from "./usage-scan.ts";
+import { UsageScanner } from "@nyte-ai/host/store-usage";
+import type { UsageWorkerReply, UsageWorkerRequest } from "./usage-scan.ts";
 
 function isRequest(value: unknown): value is UsageWorkerRequest {
   return (

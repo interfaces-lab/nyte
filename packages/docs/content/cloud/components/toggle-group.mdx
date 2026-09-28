@@ -4,19 +4,27 @@ description: "Shared pressed state across a series of toggle buttons"
 ---
 
 ```ts title="Import"
+import { ToggleGroup } from "@nyte-ai/ui";
+```
+
+The same `ToggleGroup` is exported from its own subpath. Pick one path per file.
+
+```ts title="Subpath"
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 ```
 
-Holds the pressed state for a row of [Toggle](/cloud/components/toggle) buttons and moves focus
-between them with the arrow keys. No Nyte styling here.
+A track that holds the pressed state for a row of [Toggle](/cloud/components/toggle) buttons and
+moves focus between them with the arrow keys. Reach for it to pick one option in place, like a
+range.
 
 ## Usage
 
 - Every child toggle needs a `value`. The group's `value` is the array of pressed ones.
 - One item at a time by default. `multiple` lets several stay pressed.
 - `value` with `onValueChange` controls the group. `defaultValue` leaves it uncontrolled.
-- `orientation="vertical"` switches arrow key navigation to the vertical axis. The group reflects
-  the current axis in `data-orientation`.
+- The group draws a track around its toggles. Size them `sm` or `icon-sm` so the track stands 28px.
+- `orientation="vertical"` stacks the toggles and switches arrow key navigation to the vertical
+  axis.
 
 ## Anatomy
 
@@ -39,10 +47,16 @@ import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 </Preview>
 
 ```tsx
-<ToggleGroup defaultValue={["medium"]}>
-  <Toggle value="low">Low</Toggle>
-  <Toggle value="medium">Medium</Toggle>
-  <Toggle value="high">High</Toggle>
+<ToggleGroup defaultValue={["medium"]} aria-label="Effort">
+  <Toggle value="low" size="sm">
+    Low
+  </Toggle>
+  <Toggle value="medium" size="sm">
+    Medium
+  </Toggle>
+  <Toggle value="high" size="sm">
+    High
+  </Toggle>
 </ToggleGroup>
 ```
 
@@ -55,16 +69,10 @@ import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 </Preview>
 
 ```tsx
-<ToggleGroup multiple defaultValue={["bold"]}>
-  <Toggle value="bold" aria-label="Bold">
-    <IconBold size={14} />
-  </Toggle>
-  <Toggle value="italic" aria-label="Italic">
-    <IconItalic size={14} />
-  </Toggle>
-  <Toggle value="underline" aria-label="Underline">
-    <IconUnderline size={14} />
-  </Toggle>
+<ToggleGroup multiple defaultValue={["sidebar"]} aria-label="Panels">
+  <Toggle value="sidebar" size="icon-sm" icon="panel-left" aria-label="Sidebar" />
+  <Toggle value="terminal" size="icon-sm" icon="console" aria-label="Terminal" />
+  <Toggle value="inspector" size="icon-sm" icon="panel-right" aria-label="Inspector" />
 </ToggleGroup>
 ```
 
@@ -76,13 +84,22 @@ The value is an array even when one item is pressed at a time.
 const [range, setRange] = useState(["week"]);
 
 <ToggleGroup value={range} onValueChange={setRange} aria-label="Usage range">
-  <Toggle value="day">Day</Toggle>
-  <Toggle value="week">Week</Toggle>
-  <Toggle value="month">Month</Toggle>
+  <Toggle value="day" size="sm">
+    Day
+  </Toggle>
+  <Toggle value="week" size="sm">
+    Week
+  </Toggle>
+  <Toggle value="month" size="sm">
+    Month
+  </Toggle>
 </ToggleGroup>;
 ```
 
 ## Props
+
+`xstyle` places and sizes the track. `className` and `style` take plain values, not functions of
+state. See [Theming](/cloud/foundations/theming).
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 

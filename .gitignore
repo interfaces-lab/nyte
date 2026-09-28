@@ -21,3 +21,7 @@ share/
 # scratch artifacts
 /output/
 /*.html
+
+# Playwright e2e output
+/packages/app/e2e/test-results/
+/packages/app/e2e/playwright-report/

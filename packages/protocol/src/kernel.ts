@@ -21,7 +21,7 @@ import type { JobReport, SessionId } from "./sdk.ts";
 
 export type { Failure, FailureClass } from "@nyte-ai/schema";
 
-/** SHA-256 hex over the object's canonical JSON. */
+/** SHA-256 hex of the object's stored body: its JSON with keys sorted. */
 export type Oid = string;
 
 /** Position in a session's event stream. The first event is 1. */

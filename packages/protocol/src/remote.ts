@@ -57,6 +57,11 @@ export interface RemoteWorkspace {
   readonly select: OperationFn<"workspace.select">;
   readonly forget: OperationFn<"workspace.forget">;
   readonly files: OperationFn<"workspace.files">;
+  readonly read: OperationFn<"workspace.read">;
+  readonly save: OperationFn<"workspace.save">;
+  readonly format: OperationFn<"workspace.format">;
+  readonly search: OperationFn<"workspace.search">;
+  readonly blame: OperationFn<"workspace.blame">;
   readonly vcs: {
     readonly snapshot: OperationFn<"workspace.vcs.snapshot">;
     readonly diff: OperationFn<"workspace.vcs.diff">;

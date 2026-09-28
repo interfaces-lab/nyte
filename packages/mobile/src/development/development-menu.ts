@@ -3,6 +3,7 @@ import { MAIN, sessionId, type SessionInfo } from "@nyte-ai/protocol";
 import { isLiveActivityActive, startLiveActivity, stopLiveActivity } from "@use-voltra/ios-client";
 import { registerDevMenuItems } from "expo-dev-client";
 import { router, useGlobalSearchParams } from "expo-router";
+// oxlint-disable-next-line no-restricted-imports -- dev menu items re-register when the client or conversation changes
 import { useEffect } from "react";
 import { Alert } from "react-native";
 import { workLiveActivityVariants } from "../activity/live-activity.tsx";

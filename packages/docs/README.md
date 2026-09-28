@@ -26,8 +26,9 @@ Fumadocs is kept for MDX collections, the page tree, and search indexing (`fumad
 | Route                     | Description                                            |
 | ------------------------- | ------------------------------------------------------ |
 | `src/app/(site)/(landing)` | Landing page. |
-| `src/app/(site)/docs` | Core docs shell: site nav, sidebar, and MDX map. |
-| `src/app/cloud` | Cloud design system. Same site nav, own sidebar and article. |
+| `src/app/(site)/docs` | Core docs. |
+| `src/app/(site)/cloud` | Cloud design system. |
+| `src/app/(site)/_layout` | Frame, sidebar, article, and MDX elements shared by docs and Cloud. |
 | `src/app/api/search/route.ts` | Search handler. |
 
 ### Fumadocs MDX

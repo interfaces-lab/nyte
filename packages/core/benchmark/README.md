@@ -29,7 +29,7 @@ different runtime or source revision.
 ## Fixture shapes
 
 Seed `nyte-core-j-v1`; commit epoch `1700000000000` ms, advancing 1 ms per
-commit. IDs are SHA-256 hashes of real canonical commit bodies. Tool IDs and
+commit. IDs are SHA-256 hashes of real commit bodies. Tool IDs and
 paths use fixed counters. Each documented text field contains exactly 256
 ASCII characters. Tool arguments and unified patch strings have their own
 lengths, included in the constructed object payload.
@@ -96,7 +96,7 @@ values, and stored commit counts.
 
 `objects.put batch` inserts `N` distinct synthetic blobs into a newly created,
 empty session/store for **every warmup and sample**. A put never reuses a
-previous write target. The batch includes real canonicalization and SHA-256
+previous write target. The batch includes real key sorting and SHA-256
 hashing. `objects.get sequential batch, prepared statement primed` reads each
 OID in order after one untimed get primes the existing statement cache. Reads
 retain the real schema and hash validation. Expected OIDs, stored counts, and

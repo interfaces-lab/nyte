@@ -1,30 +1,40 @@
 ---
 title: Icons
-description: "Central Icons in two stroke geometries, sized for Nyte controls"
+description: "Central Icons at radius 2, outlined and filled, behind one Icon component"
 ---
 
-Nyte draws every glyph from [Central Icons](https://centralicons.com). Two packages are installed
-under different aliases.
+Nyte draws every glyph from [Central Icons](https://centralicons.com). `@nyte-ai/ui` installs two
+sets under aliases and reaches both through [Icon](/cloud/components/icon).
 
-| Alias                   | Package                                                   | Used by             |
-| ----------------------- | --------------------------------------------------------- | ------------------- |
-| `central-icons`         | `@central-icons-react/round-outlined-radius-1-stroke-1.5` | `@nyte-ai/ui`, docs |
-| `central-icons-desktop` | `@central-icons-react/round-outlined-radius-2-stroke-1.5` | desktop             |
+| Alias                  | Package                                                   |
+| ---------------------- | --------------------------------------------------------- |
+| `central-icons`        | `@central-icons-react/round-outlined-radius-2-stroke-1.5` |
+| `central-icons-filled` | `@central-icons-react/round-filled-radius-2-stroke-1.5`   |
 
-Both are round-outlined at stroke 1.5, and the desktop set has the larger corner radius. Do not mix
-the two sets on one surface. Central Icons needs a license key at install time
-(`CENTRAL_LICENSE_KEY`).
+Central Icons needs a license key at install time (`CENTRAL_LICENSE_KEY`).
 
 ## Usage
 
 ```tsx
-import { IconPlusSmall } from "central-icons";
+import { Button } from "@nyte-ai/ui/button";
+import { Icon } from "@nyte-ai/ui/icon";
 
-<Button size="icon-sm" aria-label="Add">
-  <IconPlusSmall size={14} />
-</Button>;
+<Icon name="folder" />
+<Button size="icon-sm" icon="plus" aria-label="Add" />
 ```
 
+- Choose a glyph by its semantic name. Do not import a glyph from the icon packages beside `Icon`,
+  so one surface never mixes two geometries.
 - Give an icon-only control an `aria-label`. The glyph is decorative.
-- Hide decorative icons beside text from assistive tech.
-- Sizes are 12 or 14 inside controls.
+- Sizes are 12, 14, or 16 inside controls.
+
+## Stroke weight
+
+The sets draw a 1.5-unit stroke on a 24-unit grid, which reads thin at 10 to 17px. Every `Icon`
+frame carries `data-nyte-icon`, so an app can thicken the stroke in its global stylesheet.
+
+```css
+[data-nyte-icon] svg [stroke]:not([stroke="none"]) {
+  stroke-width: 1.875;
+}
+```

@@ -2,7 +2,7 @@
 import { execFile } from "node:child_process";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { LocalFontCatalog } from "../shared/ipc.ts";
+import type { LocalFontCatalog } from "@nyte-ai/app/bridge.ts";
 
 const EMPTY_CATALOG: LocalFontCatalog = { sans: [], monospace: [] };
 

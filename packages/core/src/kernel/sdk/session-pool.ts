@@ -386,30 +386,30 @@ export function createSessionPool(input: {
 
     if (stored === undefined) return undefined;
 
-    const [lease, awaitingReply] = await Promise.all([
+    const [lease, question] = await Promise.all([
       session.leases.read(headRef(head)),
-      awaitsReply(session, stored.run),
+      participantQuestion(session, stored.run),
     ]);
 
     const projected = runInfo(stored.run, lease);
 
-    return awaitingReply ? { ...projected, awaitingReply } : projected;
+    return question === undefined ? projected : { ...projected, awaitingReply: true, question };
   };
 
   /**
-   * Whether a parked run waits on a participant rather than on background work.
-   * Only a parked run pays the effect read; every other phase answers from the
-   * run alone, so listing a directory of idle sessions costs nothing extra.
+   * What a parked run asks a participant, when it waits on one rather than on
+   * background work. Only a parked run pays the effect read; every other phase
+   * answers from the run alone, so listing a directory of idle sessions costs
+   * nothing extra.
    */
-  const awaitsReply = async (session: Session, run: Run): Promise<true | undefined> => {
+  const participantQuestion = async (session: Session, run: Run): Promise<string | undefined> => {
     if (run.phase.kind !== "waiting") return undefined;
     const views = await listEffects(session, run.id);
 
-    const asks = views.some(
-      (view) => view.effect.state === "waiting" && view.effect.selection !== undefined,
-    );
+    for (const { effect } of views)
+      if (effect.state === "waiting" && effect.selection !== undefined) return effect.selection.title;
 
-    return asks ? true : undefined;
+    return undefined;
   };
 
   /** The run's calls still parked for a reply. A finished run has none. */

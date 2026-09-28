@@ -24,6 +24,8 @@ export interface CliTheme {
   readonly dim: string;
   readonly muted: string;
   readonly accent: string;
+  /** The welcome moon's lit face. */
+  readonly moon: string;
   readonly user: string;
   readonly thinking: string;
   readonly tool: string;
@@ -73,6 +75,7 @@ export const DARK_THEME: CliTheme = Object.freeze({
   dim: "#737373",
   muted: "#525252",
   accent: "#009fff",
+  moon: "#c1d0f6",
   user: "#d4d4d4",
   thinking: "#9d6afb",
   tool: "#a3a3a3",
@@ -118,6 +121,7 @@ export const LIGHT_THEME: CliTheme = Object.freeze({
   dim: "#737373",
   muted: "#a3a3a3",
   accent: "#1a85d4",
+  moon: "#232a44",
   user: "#404040",
   thinking: "#693acf",
   tool: "#525252",

@@ -247,16 +247,13 @@ export const SPACING = {
 /** Rows the transcript keeps clear under its last line. */
 export const TRANSCRIPT_BOTTOM_PADDING = 1;
 
-export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"] as const;
+/**
+ * The moon's phase cycle over a 4 by 4 disc in two braille columns: thin
+ * crescent, full, thin crescent. There is no new-moon frame, so the row never blanks.
+ */
+export const SPINNER_FRAMES = ["⠀⠰", "⠀⡷", "⢸⡷", "⢾⡷", "⢾⡇", "⢾⠀", "⠆⠀"] as const;
 
 export const SPINNER_INTERVAL_MS = 130;
-
-/**
- * Rows a delegation card reserves from its first frame to its last. Its
- * height never answers to content: a card that grew while the child worked
- * and shrank when it settled would move every line below it, twice.
- */
-export const DELEGATION_ROWS = 3;
 
 /**
  * The gutter's last row: the key that opens what is waiting, plus any rows the

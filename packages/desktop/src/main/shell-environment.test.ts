@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runProviderCommand } from "./github.ts";
+import { runGitHubCommand } from "@nyte-ai/host";
 import { createShellEnvironmentRepair } from "./shell-environment.ts";
 
 const directories: string[] = [];
@@ -130,7 +130,7 @@ printf 'goodbye\\n'
     vi.stubEnv("PATH", "/missing-inherited-tools");
     await createShellEnvironmentRepair()();
     expect(
-      await runProviderCommand({
+      await runGitHubCommand({
         command: "gh",
         args: ["--version"],
         cwd: local.directory,

@@ -10,20 +10,19 @@
  *
  * A reply is a `SelectionReply` from a client, or a bare string from a script
  * naming a choice by id or label, or anything else as the user's own answer;
- * a human is never trapped in the answers the model imagined. A session
- * setting gives every question a deadline, after which the runner wakes the
- * call unanswered and the model carries on.
+ * a human is never trapped in the answers the model imagined. The transcript
+ * labels the call with the question itself. A session setting gives every
+ * question a deadline, after which the runner wakes the call unanswered and
+ * the model carries on.
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/examples/extensions/question.ts
  * The own-answer rule follows https://github.com/anomalyco/opencode/blob/e70d667a9fe3e84cc071a5596aa522c142c525b7/packages/core/src/tool/plugin/question.ts
  */
 import { acceptsSelectionReply, definePlugin, selectionReply, ToolWait } from "@nyte-ai/plugin";
-import type { AgentTool, Choice, Selection, ToolWakeOutcome } from "@nyte-ai/plugin";
+import type { AgentTool, Choice, Selection } from "@nyte-ai/plugin";
 import type { JsonValue } from "@nyte-ai/schema";
 import { Type, Unsafe, type Static } from "typebox";
 import { Value } from "typebox/value";
-
-export const QUESTION_TIMEOUT_SETTING_ID = "question-timeout";
 
 const TIMEOUT_KEY = "timeout";
 
@@ -44,7 +43,7 @@ const questionOption = Type.Object(
 
 type QuestionOption = Static<typeof questionOption>;
 
-export const questionParameters = Type.Object(
+const questionParameters = Type.Object(
   {
     question: Type.String({ minLength: 1, description: "The question to ask the user" }),
     // `minItems: 1` is the tuple's whole invariant, so the check earns the type.
@@ -60,24 +59,6 @@ export const questionParameters = Type.Object(
 
 export type QuestionInput = Static<typeof questionParameters>;
 
-/** What a client can show beside the settled call: the question, and the answer when one was given. */
-export interface QuestionDetails {
-  readonly question: string;
-  readonly answer?: string;
-}
-
-/**
- * The intent's arguments were validated against `questionParameters` before
- * the call parked; a wake re-derives the typed view through the same schema.
- */
-function parseQuestionInput(args: JsonValue): QuestionInput {
-  if (!Value.Check(questionParameters, args)) {
-    throw new Error("Question arguments do not match the question schema");
-  }
-
-  return args;
-}
-
 /** Choice ids are 1-based positions: stable, short, and what a terminal user types. */
 function choiceAt(option: QuestionOption, index: number): Choice {
   const choice = { id: String(index + 1), label: option.label };
@@ -85,22 +66,23 @@ function choiceAt(option: QuestionOption, index: number): Choice {
   return option.description === undefined ? choice : { ...choice, description: option.description };
 }
 
-export function selectionFor(input: QuestionInput): Selection {
+function selectionFor(input: QuestionInput): Selection {
   const [first, ...rest] = input.options;
 
   const selection: Selection = {
     title: input.question,
     choices: [choiceAt(first, 0), ...rest.map((option, index) => choiceAt(option, index + 1))],
-    other: "Or type your own answer",
+    other: "Type your own answer",
   };
 
   return input.multiple === true ? { ...selection, multiple: true } : selection;
 }
 
 /**
- * The answer as the model reads it. A client's `SelectionReply` names choices
- * by id and keeps typed text apart; a bare string from a script names one
- * choice by id or label, or is its own answer. Several answers join as a list.
+ * The answer as the model reads it, or "" for none. A client's
+ * `SelectionReply` names choices by id and keeps typed text apart; a bare
+ * string from a script names one choice by id or label, or is its own answer.
+ * Several answers join as a list.
  */
 export function answerFor(input: QuestionInput, reply: JsonValue): string {
   const selection = selectionFor(input);
@@ -122,7 +104,7 @@ export function answerFor(input: QuestionInput, reply: JsonValue): string {
     return [...picked, ...(other === undefined ? [] : [other])].join(", ");
   }
 
-  if (typeof reply !== "string") return "";
+  if (!Value.Check(Type.String(), reply)) return "";
   const trimmed = reply.trim();
   const lowered = trimmed.toLowerCase();
 
@@ -133,74 +115,71 @@ export function answerFor(input: QuestionInput, reply: JsonValue): string {
   return selected?.label ?? trimmed;
 }
 
-function unanswered(input: QuestionInput): ToolWakeOutcome {
-  // An empty or malformed reply is a human walking away, not an answer.
-  return {
-    kind: "settle",
-    isError: true,
-    result: {
-      content: [{ type: "text", text: "Question was left unanswered" }],
-      details: { question: input.question },
-      title: input.question,
-    },
-  };
-}
-
-function answered(input: QuestionInput, answer: string): ToolWakeOutcome {
-  return {
-    kind: "settle",
-    result: {
-      content: [{ type: "text", text: answer }],
-      details: { question: input.question, answer },
-      title: input.question,
-    },
-  };
-}
-
-export function createQuestionTool(options: {
-  readonly timeoutMs: () => Promise<number | undefined>;
-}): AgentTool<typeof questionParameters, QuestionDetails> {
+function questionTool(
+  timeoutMs: () => Promise<number | undefined>,
+): AgentTool<typeof questionParameters> {
   return {
     name: "question",
     description:
-      "Ask the user one question and let them choose one or more answers from a list. " +
-      "The user may also answer in their own words; you receive whichever they gave.",
+      "Ask the user a question and wait for their answer. Use it when you need a decision " +
+      "you can't make yourself. Offer short, distinct options. The user can always answer " +
+      'in their own words, so don\'t add an "Other" option.',
     parameters: questionParameters,
     availability: "foreground",
     replay: "never",
+    present: (params) => ({ kind: "custom", label: params.question }),
     execute: async (_callId, params) => {
-      const ms = await options.timeoutMs();
+      const ms = await timeoutMs();
       const selection = selectionFor(params);
       throw new ToolWait(ms === undefined ? { selection } : { selection, until: Date.now() + ms });
     },
     wake: async (waiting, context) => {
-      const input = parseQuestionInput(waiting.args);
+      // The arguments passed this schema before the call parked.
+      if (!Value.Check(questionParameters, waiting.args)) {
+        throw new Error("Question arguments do not match the question schema");
+      }
 
-      if (context.expired || context.aborted) return unanswered(input);
+      const input = waiting.args;
+      // No reply means the deadline passed or the run stopped; a blank reply is a human walking away.
+      const answer = context.reply === undefined ? "" : answerFor(input, context.reply);
 
-      if (context.reply === undefined) return { kind: "wait", selection: selectionFor(input) };
-      const answer = answerFor(input, context.reply);
-
-      return answer === "" ? unanswered(input) : answered(input, answer);
+      return {
+        kind: "settle",
+        result:
+          answer === ""
+            ? {
+                content: [
+                  {
+                    type: "text",
+                    text: "The user didn't answer. Continue with your best judgment and say what you assumed.",
+                  },
+                ],
+                details: { question: input.question },
+              }
+            : {
+                content: [{ type: "text", text: answer }],
+                details: { question: input.question, answer },
+              },
+      };
     },
   };
 }
 
-/** A standalone question tool with no timeout. The plugin binds its setting instead. */
-export const questionTool = createQuestionTool({ timeoutMs: async () => undefined });
-
 export const questionPlugin = definePlugin({
   id: "question",
   session(api) {
-    const timeoutMs = async (): Promise<number | undefined> => {
-      const stored = await api.storage.get(TIMEOUT_KEY);
+    api.tools.add((draft) =>
+      draft.set(
+        "question",
+        questionTool(async () => {
+          const stored = await api.storage.get(TIMEOUT_KEY);
 
-      return TIMEOUTS.find((timeout) => timeout.id === stored)?.ms;
-    };
-
-    api.tools.add((draft) => draft.set(questionTool.name, createQuestionTool({ timeoutMs })));
+          return TIMEOUTS.find((timeout) => timeout.id === stored)?.ms;
+        }),
+      ),
+    );
     api.settings.add((settings) =>
-      settings.set(QUESTION_TIMEOUT_SETTING_ID, {
+      settings.set("question-timeout", {
         label: "Question timeout",
         key: TIMEOUT_KEY,
         fallback: "never",

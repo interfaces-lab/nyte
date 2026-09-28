@@ -24,6 +24,8 @@ export * from "./remote.ts";
 
 export * from "./operations.ts";
 
+export * from "./environment.ts";
+
 export * from "./wire.ts";
 
 export * from "./parse.ts";

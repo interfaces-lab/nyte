@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import type { AppInfo, AppMenuCommand } from "../shared/app-menu.ts";
-import { clientActions } from "../shared/client-actions.ts";
+import type { AppInfo, AppMenuCommand } from "@nyte-ai/app/bridge.ts";
+import { clientActions } from "@nyte-ai/app/client-actions.ts";
 import { createMenuCommandDelivery } from "./app-menu.ts";
 
 const info = {

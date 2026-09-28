@@ -12,7 +12,8 @@ Every page holds the same order, so a reader learns the shape once.
 7. `## Props`, our props as a table, then `<include>` per Base UI part.
 8. `## Accessibility`, the keyboard model, focus behavior, and ARIA. Terse.
 
-Say in one line where we ship no styling, and skip the styled props table there.
+Where a part passes through Base UI with no styling of its own, such as a trigger or a portal, say so
+in one line and skip its styled props table.
 
 ## What belongs
 

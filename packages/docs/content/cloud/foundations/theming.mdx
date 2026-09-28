@@ -12,17 +12,22 @@ description: "Change what a primitive looks like with token overrides, className
 ## Token overrides
 
 Override on an ancestor. The app root is the right place, and a preview container works too.
+An anchor such as `--nyte-accent-base` moves every step mixed from it only when overridden on
+`:root`. Below the root, override the step itself. See [Tokens](/cloud/foundations/tokens).
 
 ```css
-.my-app {
+:root {
+  --nyte-accent-base: #7c3aed;
+}
+
+.my-preview {
   color-scheme: dark;
-  --nyte-color-avatar-orange-background: #5f2a06;
-  --nyte-color-avatar-orange-foreground: #ffb27d;
+  --nyte-bg-raised: #1c1c22;
 }
 ```
 
-Override the tokens that carry identity. Overriding `--nyte-control-height-md` to fix one layout is
-a layout problem, so solve that one with `className`.
+Override the tokens that carry identity. Resizing one component to fix one layout is a layout
+problem, so solve that one with `className`.
 
 ## The three props every styled primitive accepts
 
@@ -32,51 +37,27 @@ a layout problem, so solve that one with `className`.
 | `style`     | `React.CSSProperties` | Inline overrides. Spread after StyleX's inline style, so it wins.                                                |
 | `xstyle`    | `XStyle`              | A deliberate StyleX override. Passed as the last argument to `stylex.props`, so it wins by StyleX's merge rules. |
 
-`XStyle` accepts one compiled style, an array, or a conditional.
-
-## `unstyled`
-
-`Button`, `Input`, and `Textarea` accept `unstyled`. When true the component renders the Base UI
-part with no StyleX class at all, keeping the interaction layer and the `data-slot` attribute. On
-`Button`, `unstyled` also forbids `variant` and `size` at the type level.
-
-Reach for `unstyled` when a surface supplies a complete `xstyle` treatment of its own. For a
-slightly different button, use a token override or `xstyle`.
+`XStyle` accepts one compiled style, an array, or a conditional. `Button` and `Toggle` narrow
+`xstyle` to `ButtonLayout`, placement properties only, so the look stays with the variant. `Hint`
+renders no element of its own and takes `xstyle` alone, for the popup.
 
 ## Data attributes
 
-Every primitive sets `data-slot="<part>"`, so you can target a part from CSS without knowing the
-StyleX class. Variant-bearing primitives also expose their appearance.
+The primitives below set `data-slot="<part>"`, so you can target a part from CSS without knowing
+the StyleX class. Variant-bearing ones also expose their appearance.
 
-| Component           | Attributes                                                                  |
-| ------------------- | --------------------------------------------------------------------------- |
-| `Button`            | `data-slot="button"`, `data-variant`, `data-size` (omitted when `unstyled`) |
-| `Avatar`            | `data-slot="avatar"`, `data-size`, `data-tone`                              |
-| `AvatarImage`       | `data-slot="avatar-image"`                                                  |
-| `AvatarFallback`    | `data-slot="avatar-fallback"`                                               |
-| `Input`             | `data-slot="input"`                                                         |
-| `Textarea`          | `data-slot="textarea"`                                                      |
-| `DropdownMenuItem`  | `data-slot="dropdown-menu-item"`, `data-variant`, `data-inset`              |
-| `DropdownMenuLabel` | `data-inset`                                                                |
+| Component        | Attributes                                     |
+| ---------------- | ---------------------------------------------- |
+| `Avatar`         | `data-slot="avatar"`, `data-size`, `data-tone` |
+| `AvatarImage`    | `data-slot="avatar-image"`                     |
+| `AvatarFallback` | `data-slot="avatar-fallback"`                  |
+| `Input`          | `data-slot="input"`                            |
+| `Textarea`       | `data-slot="textarea"`                         |
 
 Base UI adds its own state attributes on top, such as `data-disabled`, `data-popup-open`,
 `data-highlighted`, and `data-checked`. Each component page lists them.
 
-## Headless subpaths
-
-For anything without a styled wrapper, import the Base UI namespace from its subpath and style it
-in the app.
-
-```ts
-import { Popover } from "@nyte-ai/ui/popover";
-```
-
-Import from the subpath rather than `@base-ui/react`, so the Base UI version stays behind the
-shared package. See [Components](/cloud/components).
-
 ## Dark mode
 
-Tokens use `light-dark()`, so a primitive follows whichever `color-scheme` is in effect. The
-primitives have no `.dark` class. `@nyte-ai/ui/styles.css` declares
-`@custom-variant dark (&:is(.dark *))` for Tailwind consumers who want class-based variants in
-their own utilities.
+Tokens use `light-dark()`, so a component follows whichever `color-scheme` is in effect. The
+components read no `.dark` class. An app that toggles a class sets `color-scheme: dark` under it.

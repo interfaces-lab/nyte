@@ -1,0 +1,472 @@
+import { create, props } from "@stylexjs/stylex";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
+// oxlint-disable-next-line no-restricted-imports -- the deadline timer follows the call's until
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import type { ReactElement } from "react";
+import type { SelectionReply, SessionId, SessionSnapshot } from "@nyte-ai/protocol";
+import { Icon } from "@nyte-ai/ui/icon";
+import { Button } from "@nyte-ai/ui/button";
+import { Row } from "@nyte-ai/ui/row";
+import { focus } from "@nyte-ai/ui/a11y.stylex";
+import { nyte } from "../../nyte.ts";
+import { loadThread } from "../../live.ts";
+import { keys } from "../../queries.ts";
+import { tray } from "../../theme/schema.stylex.ts";
+import { trayStyles } from "../../theme/tray.stylex.ts";
+import { t } from "@nyte-ai/ui/vars.stylex";
+import { Tray, trayParts, useTrayRoot } from "./tray.tsx";
+import {
+  acceptsReply,
+  childSelectionOptions,
+  parkedSelections,
+  pickedChoices,
+  selectionReplyOptions,
+} from "./questions-state.ts";
+import type { ParkedSelection } from "./questions-state.ts";
+
+const styles = create({
+  list: { gap: 12, paddingTop: 6, paddingBottom: 6 },
+  card: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    minWidth: 0,
+    fontSize: t.fontBase,
+    color: t.textPrimary,
+  },
+  header: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: 12,
+    paddingTop: 4,
+    paddingBottom: 4,
+    paddingInline: 6,
+  },
+  heading: {
+    flex: 1,
+    minWidth: 0,
+    margin: 0,
+    fontSize: t.fontBase,
+    fontWeight: 600,
+    lineHeight: t.leadingBase,
+    textWrap: "pretty",
+  },
+  origin: { display: "block", fontWeight: 400, color: t.textTertiary, overflowWrap: "anywhere" },
+  deadline: {
+    flexShrink: 0,
+    color: t.textTertiary,
+    fontSize: t.fontSm,
+    fontVariantNumeric: "tabular-nums",
+  },
+  choices: { display: "flex", flexDirection: "column", gap: 1 },
+  choice: {
+    "--_row-fill": { default: "transparent", ":hover:not(:disabled)": t.fillHover },
+    alignItems: "flex-start",
+    gap: 8,
+    minHeight: tray.rowHeight,
+    paddingBlock: 4,
+    paddingInline: 6,
+    borderRadius: t.radiusBase,
+    lineHeight: t.leadingBase,
+    color: { default: t.textPrimary, ":disabled": t.textQuaternary },
+  },
+  choiceText: { display: "flex", flexDirection: "column", gap: 1, minWidth: 0 },
+  description: {
+    color: t.textTertiary,
+    fontSize: t.fontSm,
+    lineHeight: t.leadingSm,
+    textWrap: "pretty",
+  },
+  box: {
+    display: "grid",
+    placeItems: "center",
+    flexShrink: 0,
+    width: 14,
+    height: 14,
+    marginTop: 2,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: t.strokeSecondary,
+    borderRadius: t.radiusXs,
+  },
+  boxChecked: { borderColor: t.accent, backgroundColor: t.accent, color: t.textOnColor },
+  footer: { display: "flex", justifyContent: "flex-end", paddingInline: 6, paddingBottom: 6 },
+  unready: { visibility: "hidden" },
+  note: { paddingInline: 6, color: t.textSecondary, fontSize: t.fontSm },
+  error: { color: t.textDanger, fontSize: t.fontSm },
+});
+
+function useDeadline(until: number | undefined): number | undefined {
+  const [value, setValue] = useState(() =>
+    until === undefined ? undefined : Math.max(0, until - Date.now()),
+  );
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const update = (): void => {
+      if (until === undefined) {
+        setValue(undefined);
+
+        return;
+      }
+
+      const remaining = Math.max(0, until - Date.now());
+      setValue(remaining);
+
+      if (remaining > 0) timer = setTimeout(update, Math.min(1_000, remaining));
+    };
+
+    timer = setTimeout(update, 0);
+
+    return () => clearTimeout(timer);
+  }, [until]);
+
+  return value;
+}
+
+function deadlineLabel(remaining: number): string {
+  const seconds = Math.max(0, Math.ceil(remaining / 1_000));
+
+  if (seconds < 60) return `${String(seconds)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+
+  return rest === 0 ? `${String(minutes)}m` : `${String(minutes)}m ${String(rest)}s`;
+}
+
+/**
+ * What a reply may have changed. These are not duplicates of the rebase
+ * reconciliation in live.ts. A delegated child is answered through its
+ * parent's card, so `sessionId` is the child while `threadSessionId` is the
+ * parent whose children query feeds it, and nobody observes the child:
+ * `loadThread` opens its observer, whose first read is a bootstrap and
+ * reconciles nothing.
+ */
+async function refreshAnswered(
+  queryClient: QueryClient,
+  sessionId: SessionId,
+  threadSessionId: SessionId,
+): Promise<void> {
+  await Promise.all([
+    loadThread(sessionId),
+    queryClient.invalidateQueries(
+      { queryKey: keys.children(threadSessionId), exact: true },
+      { throwOnError: true },
+    ),
+    // A reply may change a setting, as web search consent does.
+    queryClient.invalidateQueries(
+      { queryKey: keys.pluginSettings(sessionId), exact: true },
+      { throwOnError: true },
+    ),
+    queryClient.invalidateQueries(
+      { queryKey: ["customize", sessionId], exact: true },
+      { throwOnError: true },
+    ),
+  ]);
+}
+
+function SelectionCard({
+  sessionId,
+  threadSessionId,
+  model,
+  call,
+  disabled,
+}: {
+  readonly sessionId: SessionId;
+  readonly threadSessionId: SessionId;
+  readonly model?: string;
+  readonly call: ParkedSelection;
+  readonly disabled: boolean;
+}): ReactElement {
+  const id = useId();
+  const queryClient = useQueryClient();
+
+  const selected = useSyncExternalStore(pickedChoices.subscribe, () =>
+    pickedChoices.get(call.waitId),
+  );
+
+  const remaining = useDeadline(call.until);
+  const submitting = useRef(false);
+  const { selection } = call;
+
+  const refresh = useMutation({
+    mutationFn: () => refreshAnswered(queryClient, sessionId, threadSessionId),
+    retry: false,
+  });
+
+  const reply = useMutation(
+    selectionReplyOptions({
+      sessionId,
+      call,
+      reply: (input) => nyte.runs.reply(input),
+      refresh: () => refresh.mutateAsync(),
+    }),
+  );
+
+  const expired = remaining !== undefined && remaining <= 0;
+
+  const blocked =
+    expired ||
+    disabled ||
+    reply.isPending ||
+    reply.isSuccess ||
+    refresh.isPending ||
+    refresh.isError;
+
+  const send = (answer: SelectionReply) => {
+    if (blocked || submitting.current) return;
+    submitting.current = true;
+    reply.mutate(answer, {
+      onSettled: () => {
+        submitting.current = false;
+      },
+    });
+  };
+
+  const toggle = (choiceId: string): void => {
+    if (blocked) return;
+    pickedChoices.set(
+      call.waitId,
+      selected.includes(choiceId)
+        ? selected.filter((selectedId) => selectedId !== choiceId)
+        : [...selected, choiceId],
+    );
+  };
+
+  if (expired) return <></>;
+
+  return (
+    <section aria-labelledby={`${id}-title`} {...props(styles.card)}>
+      <div {...props(styles.header)}>
+        <h2 id={`${id}-title`} {...props(styles.heading)}>
+          {model !== undefined && <span {...props(styles.origin)}>Asked by {model}</span>}
+          {selection.title}
+        </h2>
+        {remaining !== undefined && (
+          <span {...props(styles.deadline)}>Closes in {deadlineLabel(remaining)}</span>
+        )}
+      </div>
+      <div
+        role="group"
+        aria-labelledby={`${id}-title`}
+        aria-busy={reply.isPending}
+        {...props(styles.choices)}
+      >
+        {selection.choices.map((choice, index) => {
+          const checked = selected.includes(choice.id);
+          const descriptionId = `${id}-choice-${String(index)}-description`;
+
+          return (
+            <Row
+              key={choice.id}
+              variant="nav"
+              aria-label={choice.label}
+              aria-describedby={choice.description === undefined ? undefined : descriptionId}
+              aria-pressed={selection.multiple === true ? checked : undefined}
+              disabled={blocked}
+              xstyle={[styles.choice, focus.ring]}
+              onClick={() => {
+                if (selection.multiple === true) toggle(choice.id);
+                else send({ choices: [choice.id] });
+              }}
+            >
+              {selection.multiple === true && (
+                <span aria-hidden="true" {...props(styles.box, checked && styles.boxChecked)}>
+                  {checked && <Icon name="checkmark" size={12} />}
+                </span>
+              )}
+              <span {...props(styles.choiceText)}>
+                <span>{choice.label}</span>
+                {choice.description !== undefined && (
+                  <span id={descriptionId} {...props(styles.description)}>
+                    {choice.description}
+                  </span>
+                )}
+              </span>
+            </Row>
+          );
+        })}
+      </div>
+      {selection.multiple === true && (
+        <div {...props(styles.footer, selected.length === 0 && styles.unready)}>
+          <Button
+            variant="inverse"
+            size="sm"
+            round
+            disabled={blocked || selected.length === 0}
+            onClick={() => send({ choices: selected })}
+          >
+            Answer
+          </Button>
+        </div>
+      )}
+      {reply.isPending && (
+        <div role="status" {...props(styles.note)}>
+          Sending answer…
+        </div>
+      )}
+      {refresh.isPending && !reply.isPending && (
+        <div role="status" {...props(styles.note)}>
+          Refreshing…
+        </div>
+      )}
+      {reply.isSuccess && (
+        <div role="status" {...props(styles.note)}>
+          {reply.data.kind === "signalled"
+            ? "Answer sent."
+            : "This is no longer waiting for an answer."}
+        </div>
+      )}
+      {reply.isError && (
+        <div role="alert" {...props(styles.note, styles.error)}>
+          Couldn&rsquo;t send your answer. Try again.
+        </div>
+      )}
+      {refresh.isError && (
+        <div role="alert" {...props(styles.note, styles.error)}>
+          Couldn&rsquo;t refresh this session.
+          <Button disabled={refresh.isPending} onClick={() => refresh.mutate()}>
+            Refresh
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** What the composer answers while a question waits, with the words it asks for. */
+export interface ComposerAnswer {
+  readonly placeholder: string;
+  readonly send: (text: string) => Promise<void>;
+}
+
+/**
+ * The first waiting question that takes typed words, in the tray's order. The
+ * composer answers it, as the terminal's does, together with anything checked
+ * on its card.
+ */
+export function useComposerAnswer(
+  sessionId: SessionId,
+  parked: SessionSnapshot["parked"],
+): ComposerAnswer | undefined {
+  const queryClient = useQueryClient();
+  const children = useQuery(childSelectionOptions(sessionId, nyte.sessions));
+
+  const target = [
+    ...parkedSelections(parked).map((call) => ({ owner: sessionId, call })),
+    ...(children.data ?? []).flatMap((child) =>
+      child.calls.map((call) => ({ owner: child.sessionId, call })),
+    ),
+  ].flatMap(({ owner, call }) =>
+    call.selection.other === undefined ? [] : [{ owner, call, placeholder: call.selection.other }],
+  )[0];
+
+  if (target === undefined) return undefined;
+  const { owner, call, placeholder } = target;
+
+  return {
+    placeholder,
+    send: async (text) => {
+      const choices = pickedChoices.get(call.waitId);
+
+      if (!acceptsReply(call.selection, { choices, other: text })) {
+        throw new Error("Choose one of the offered answers.");
+      }
+
+      const outcome = await nyte.runs.reply({
+        sessionId: owner,
+        runId: call.runId,
+        callId: call.callId,
+        waitId: call.waitId,
+        reply: { choices: [...choices], other: text.trim() },
+      });
+
+      // The reply stands whether or not the refresh does; the watch catches up.
+      await refreshAnswered(queryClient, owner, sessionId).catch(() => undefined);
+
+      if (outcome.kind !== "signalled") throw new Error("This question is no longer waiting.");
+    },
+  };
+}
+
+/** Every question waiting on this session or on a session it delegated to. */
+export function Questions({
+  sessionId,
+  parked,
+  disabled,
+}: {
+  readonly sessionId: SessionId;
+  readonly parked: SessionSnapshot["parked"];
+  readonly disabled: boolean;
+}): ReactElement {
+  const children = useQuery(childSelectionOptions(sessionId, nyte.sessions));
+
+  return (
+    <>
+      {parkedSelections(parked).map((call) => (
+        <SelectionCard
+          key={`${sessionId}:${call.waitId}`}
+          sessionId={sessionId}
+          threadSessionId={sessionId}
+          call={call}
+          disabled={disabled}
+        />
+      ))}
+      {children.data?.flatMap((child) =>
+        child.calls.map((call) => (
+          <SelectionCard
+            key={`${child.sessionId}:${call.waitId}`}
+            sessionId={child.sessionId}
+            threadSessionId={sessionId}
+            model={child.model}
+            call={call}
+            disabled={disabled || children.isError}
+          />
+        )),
+      )}
+      {children.isError && (
+        <div role="alert" {...props(styles.error)}>
+          Couldn&rsquo;t load delegated sessions.
+          <Button disabled={children.isFetching} onClick={() => void children.refetch()}>
+            Try again
+          </Button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Questions wait above the composer, which answers them in the user's own words. */
+export function QuestionTray({
+  sessionId,
+  parked,
+  disabled,
+  viewport,
+}: {
+  readonly sessionId: SessionId;
+  readonly parked: SessionSnapshot["parked"];
+  readonly disabled: boolean;
+  readonly viewport: HTMLElement | null;
+}): ReactElement {
+  const { ref, availableHeight } = useTrayRoot(viewport);
+  const children = useQuery(childSelectionOptions(sessionId, nyte.sessions));
+
+  const count =
+    parkedSelections(parked).length +
+    (children.data ?? []).reduce((sum, child) => sum + child.calls.length, 0);
+
+  return (
+    <div ref={ref} {...props(trayParts.root)}>
+      <Tray open={count > 0 || children.isError} label="Questions">
+        <div
+          data-nyte-scrollport
+          {...props(trayStyles.list, styles.list, trayParts.listHeight(availableHeight))}
+        >
+          <Questions sessionId={sessionId} parked={parked} disabled={disabled} />
+        </div>
+      </Tray>
+    </div>
+  );
+}

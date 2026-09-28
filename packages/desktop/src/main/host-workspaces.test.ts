@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:net";
-import { access, chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, afterEach, test, vi } from "vitest";
+import { afterEach, test, vi } from "vitest";
 import {
   contentText,
   createAssistantMessageEventStream,
@@ -12,17 +11,22 @@ import {
   InMemoryModelsStore,
 } from "@nyte-ai/ai";
 import type { MutableModels, Provider } from "@nyte-ai/ai";
+import { sessionMark } from "@nyte-ai/client";
+import { createHost } from "@nyte-ai/host";
+import { definePlugin, ToolWait } from "@nyte-ai/plugin";
 import type { Api, AssistantMessage, Model } from "@nyte-ai/schema";
-import { localSessions } from "../shared/ipc.ts";
-import type { HostEvent, WatchEnvelope } from "../shared/ipc.ts";
-import { loadSessionDirectory } from "../renderer/src/session-directory.ts";
+import { Type } from "typebox";
+import { localSessions } from "@nyte-ai/app/bridge.ts";
+import type { WatchEnvelope } from "../shared/ipc.ts";
+import type { HostEvent } from "@nyte-ai/app/bridge.ts";
+import { loadSessionDirectory } from "@nyte-ai/app/session-directory.ts";
 import { DesktopHost } from "./host.ts";
 import { unusedBrowserAgent } from "./browser-stub.ts";
-import { localDay } from "./usage.ts";
+import { localDay } from "@nyte-ai/host/store-usage";
 import { callIpc } from "./ipc-call.ts";
 import { ipcDiagnostics } from "./errors.ts";
-import { keys, loadLocalResources, queryClient } from "../renderer/src/queries.ts";
-import type { SessionsBridge } from "../shared/ipc.ts";
+import { keys, loadLocalResources, queryClient } from "@nyte-ai/app/queries.ts";
+import type { SessionsBridge } from "@nyte-ai/app/bridge.ts";
 
 interface RendererHostFixture {
   current: DesktopHost | undefined;
@@ -30,12 +34,16 @@ interface RendererHostFixture {
 
 const renderer = vi.hoisted(() => {
   const state: RendererHostFixture = { current: undefined };
+  return state;
+});
+
+vi.mock("@nyte-ai/app/nyte.ts", () => {
   const host = (): DesktopHost => {
-    if (state.current === undefined) throw new Error("No renderer host fixture selected");
-    return state.current;
+    if (renderer.current === undefined) throw new Error("No renderer host fixture selected");
+    return renderer.current;
   };
   // The renderer uses the real host through the methods normally supplied by preload.
-  vi.stubGlobal("window", {
+  return {
     nyte: {
       host: {
         state: () => host().call(1, "host.state", undefined),
@@ -49,11 +57,8 @@ const renderer = vi.hoisted(() => {
       },
       plugins: { catalog: () => host().call(1, "plugins.catalog", undefined) },
     },
-  });
-  return state;
+  };
 });
-
-afterAll(() => vi.unstubAllGlobals());
 
 const directories: string[] = [];
 const hosts: DesktopHost[] = [];
@@ -97,6 +102,10 @@ function echoModels(): MutableModels {
       (text === "delegate" || text === "delegate explore") &&
       result === undefined &&
       context.tools?.some((tool) => tool.name === "task") === true;
+    const ask =
+      text === "ask" &&
+      result === undefined &&
+      context.tools?.some((tool) => tool.name === "ask") === true;
     const message: AssistantMessage = {
       role: "assistant",
       content: delegate
@@ -111,11 +120,13 @@ function echoModels(): MutableModels {
               },
             },
           ]
-        : [{ type: "text", text: result === undefined ? text : contentText(result.content) }],
+        : ask
+          ? [{ type: "toolCall", id: "ask-call", name: "ask", arguments: {} }]
+          : [{ type: "text", text: result === undefined ? text : contentText(result.content) }],
       api: selected.api,
       provider: selected.provider,
       model: selected.id,
-      stopReason: delegate ? "toolUse" : "stop",
+      stopReason: delegate || ask ? "toolUse" : "stop",
       timestamp: Date.now(),
       usage: {
         input: 1,
@@ -127,7 +138,7 @@ function echoModels(): MutableModels {
       },
     };
     const events = createAssistantMessageEventStream();
-    events.push({ type: "done", reason: delegate ? "toolUse" : "stop", message });
+    events.push({ type: "done", reason: delegate || ask ? "toolUse" : "stop", message });
     return events;
   };
   models.setProvider({
@@ -140,6 +151,35 @@ function echoModels(): MutableModels {
   });
   return models;
 }
+
+/** A tool that parks its run on a question, so a session can wait on the person reading the sidebar. */
+const askPlugin = definePlugin({
+  id: "ask-fixture",
+  session(api) {
+    api.tools.add((draft) => {
+      draft.set("ask", {
+        name: "ask",
+        description: "Ask the user",
+        parameters: Type.Object({}),
+        execute: async () => {
+          throw new ToolWait({
+            selection: { title: "Continue?", choices: [{ id: "yes", label: "Yes" }] },
+          });
+        },
+      });
+    });
+  },
+});
+
+/** The desktop's host with the fixture's tool beside its own built-ins. */
+const createHostWithAsk: typeof createHost = (options) =>
+  createHost({
+    ...options,
+    plugins:
+      options.plugins.kind === "workspace"
+        ? { ...options.plugins, extra: [...(options.plugins.extra ?? []), askPlugin] }
+        : options.plugins,
+  });
 
 async function fixture() {
   const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-host-workspaces-")));
@@ -155,6 +195,7 @@ async function fixture() {
     const host = new DesktopHost({
       storeWorker: new URL("../../../core/src/kernel/store-worker.ts", import.meta.url),
       createModels: echoModels,
+      createHost: createHostWithAsk,
       emitHostEvent: (event, window) => {
         events.push(event);
         routedEvents.push({ event, window });
@@ -163,6 +204,7 @@ async function fixture() {
       openExternal: () => undefined,
       revealPath: () => undefined,
       showContextMenu: () => Promise.resolve(undefined),
+      confirmExternal: () => Promise.resolve("cancel"),
       pickFolder: async () => undefined,
       listFonts: async () => ({ sans: [], monospace: [] }),
       browser: {
@@ -235,7 +277,7 @@ test("releasing one window leaves another window's watches running", async () =>
     }
   });
 
-  await host.releaseWindow(1);
+  host.releaseWindow(1);
   await vi.waitFor(() => assert.deepEqual(browserReleases, [released.sessionId]));
 
   host.watchStop("kept");
@@ -272,7 +314,10 @@ test("untrusted send queues once, reports the requirement, and runs after trust"
   await writeFile(file, "untrusted projects remain browsable\n");
   assert.equal((await host.call(1, "host.openWorkspace", { path })).kind, "opened");
   const session = await host.call(1, "sessions.create", { name: "Saved chat" });
-  const document = await host.call(1, "host.files.read", { path: file });
+  const document = await host.call(1, "workspace.read", {
+    target: { kind: "workspace" },
+    path: file,
+  });
   assert.equal(document.kind, "text");
   if (document.kind === "text") {
     assert.equal(document.contents, "untrusted projects remain browsable\n");
@@ -601,18 +646,34 @@ test("terminal and file mutations still require trust", async () => {
     events.some((event) => event.kind === "terminal_data"),
     false,
   );
-  const document = await host.call(1, "host.files.read", { path: file });
+  const document = await host.call(1, "workspace.read", {
+    target: { kind: "workspace" },
+    path: file,
+  });
   assert.equal(document.kind, "text");
   if (document.kind !== "text") return;
   await assert.rejects(
-    host.call(1, "host.files.save", {
+    host.call(1, "workspace.save", {
+      target: { kind: "workspace" },
       path: file,
       contents: "after\n",
       version: document.version,
     }),
     /Workspace trust required/,
   );
-  const unchanged = await host.call(1, "host.files.read", { path: file });
+  await assert.rejects(
+    host.call(1, "workspace.format", {
+      target: { kind: "workspace" },
+      path: file,
+      contents: "after\n",
+      version: document.version,
+    }),
+    /Workspace trust required/,
+  );
+  const unchanged = await host.call(1, "workspace.read", {
+    target: { kind: "workspace" },
+    path: file,
+  });
   assert.equal(unchanged.kind, "text");
   if (unchanged.kind === "text") assert.equal(unchanged.contents, "before\n");
 });
@@ -665,16 +726,19 @@ test("opening another workspace preserves its predecessor's sessions and live wa
   );
   assert.equal((await host.call(1, "host.state", undefined)).workspace?.path, second);
   const transitionCount = events.length;
-  const directory = await host.call(1, "host.sessionDirectory", undefined);
+  const { directories } = await host.call(1, "host.sessionDirectory", undefined);
   assert.deepEqual(
-    localSessions(directory, first)?.map((session) => session.name),
+    localSessions(directories, first)?.map((session) => session.name),
     ["Still open"],
   );
   assert.deepEqual(
-    localSessions(directory, second)?.map((session) => session.sessionId),
+    localSessions(directories, second)?.map((session) => session.sessionId),
     [secondSession.sessionId],
   );
-  assert.equal(events.length, transitionCount);
+  assert.equal(
+    events.slice(transitionCount).every((event) => event.kind === "session_directory"),
+    true,
+  );
   assert.equal((await host.call(1, "host.state", undefined)).workspace?.path, second);
   assert.equal(
     watchEvents.some((event) => event.kind === "ended"),
@@ -693,7 +757,7 @@ test("opening another workspace preserves its predecessor's sessions and live wa
 });
 
 test("a closed directory refresh drops owners for sessions removed from its store", async () => {
-  const { root, createHost } = await fixture();
+  const { root, events, createHost } = await fixture();
   const path = join(root, "refreshed-project");
   await mkdir(path);
 
@@ -718,7 +782,26 @@ test("a closed directory refresh drops owners for sessions removed from its stor
   const now = Date.now();
   const clock = vi.spyOn(Date, "now").mockReturnValue(now + 60_001);
   try {
+    // The snapshot read starts a sweep; the stale closed stores are re-read on it.
     await reader.call(1, "host.sessionDirectory", undefined);
+    await vi.waitFor(
+      () => {
+        assert.ok(
+          events.some(
+            (event) =>
+              event.kind === "session_directory" &&
+              event.changes.some(
+                (change) =>
+                  change.kind === "upsert" &&
+                  change.source.environment === "local" &&
+                  change.source.workspacePath === null &&
+                  change.session.sessionId === moved.sessionId,
+              ),
+          ),
+        );
+      },
+      { timeout: 10_000 },
+    );
   } finally {
     clock.mockRestore();
   }
@@ -752,8 +835,101 @@ test("subagent children stay out of the sidebar directory", async () => {
   );
   const workspaces = await host.call(1, "host.sessionDirectory", undefined);
   assert.deepEqual(
-    workspaces.flatMap((entry) => entry.sessions.map((session) => session.sessionId)),
+    workspaces.directories.flatMap((entry) => entry.sessions.map((session) => session.sessionId)),
     [parent.sessionId],
+  );
+});
+
+/** Every row the host pushed for one session, in order. */
+function pushedRows(events: readonly HostEvent[], sessionId: string) {
+  return events.flatMap((event) =>
+    event.kind === "session_directory"
+      ? event.changes.flatMap((change) =>
+          change.kind === "upsert" && change.session.sessionId === sessionId
+            ? [change.session]
+            : [],
+        )
+      : [],
+  );
+}
+
+test("a session parked on a question reaches every window without a renderer watch", async () => {
+  const { root, events, createHost } = await fixture();
+  const host = createHost();
+  const path = join(root, "parked-project");
+  await mkdir(path);
+  await host.call(1, "host.openWorkspace", { path });
+  await host.call(1, "host.trustWorkspace", { path });
+  const session = await host.call(1, "sessions.create", { name: "Parked" });
+  await host.call(1, "messages.send", { sessionId: session.sessionId, content: "ask" });
+
+  await vi.waitFor(
+    () => {
+      const rows = pushedRows(events, session.sessionId);
+      assert.equal(sessionMark(rows.at(-1) ?? session), "waiting");
+    },
+    { timeout: 10_000 },
+  );
+
+  await host.call(1, "sessions.delete", { sessionId: session.sessionId });
+  assert.equal(
+    (await host.call(1, "host.sessionDirectory", undefined)).directories.some((entry) =>
+      entry.sessions.some((row) => row.sessionId === session.sessionId),
+    ),
+    false,
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.kind === "session_directory" &&
+        event.changes.some(
+          (change) => change.kind === "removed" && change.sessionId === session.sessionId,
+        ),
+    ),
+  );
+});
+
+test("a delegated child is pushed under its parent and the parent settles idle", async () => {
+  const { root, events, createHost } = await fixture();
+  const host = createHost();
+  const path = join(root, "delegating-project");
+  await mkdir(path);
+  await host.call(1, "host.openWorkspace", { path });
+  await host.call(1, "host.trustWorkspace", { path });
+  const session = await host.call(1, "sessions.create", { name: "Delegating" });
+  await host.call(1, "messages.send", { sessionId: session.sessionId, content: "delegate" });
+
+  const child = await vi.waitFor(
+    () => {
+      const pushed = events.flatMap((event) =>
+        event.kind === "session_directory"
+          ? event.changes.flatMap((change) =>
+              change.kind === "upsert" && change.session.parent?.sessionId === session.sessionId
+                ? [change.session]
+                : [],
+            )
+          : [],
+      );
+      assert.ok(pushed[0], "the delegated child was pushed under its parent");
+
+      return pushed[0];
+    },
+    { timeout: 10_000 },
+  );
+  const { directories } = await host.call(1, "host.sessionDirectory", undefined);
+  assert.equal(
+    directories.some((entry) => entry.sessions.some((row) => row.sessionId === child.sessionId)),
+    false,
+    "a child never enters the top-level snapshot",
+  );
+
+  await vi.waitFor(
+    () => {
+      const rows = pushedRows(events, session.sessionId);
+      assert.ok(rows.some((row) => sessionMark(row) === "working"));
+      assert.equal(sessionMark(rows.at(-1) ?? session), "idle");
+    },
+    { timeout: 10_000 },
   );
 });
 
@@ -1130,58 +1306,3 @@ test("plugin load status retains the available failure record only in main", asy
   assert.equal(status[0]?.message, `The host operation failed. Diagnostic ID: ${diagnostic[0]}`);
   assert.doesNotMatch(JSON.stringify(status), /synthetic-secret-plugin-body|broken.mjs/);
 });
-
-test.skipIf(process.platform === "win32")(
-  "mention IPC propagates process failure and cancels running discovery",
-  async () => {
-    const { root, createHost } = await fixture();
-    const host = createHost();
-    const workspace = join(root, "project");
-    await mkdir(workspace);
-    await host.call(1, "host.openWorkspace", { path: workspace });
-    const executable = join(root, "rg");
-    const header = `#!${process.execPath}\nif (process.argv.includes("--version")) { console.log("ripgrep 15.1.0"); process.exit(0); }\n`;
-    await writeFile(
-      executable,
-      header + 'process.stderr.write("mention process failed"); process.exitCode = 42;',
-    );
-    await chmod(executable, 0o755);
-    vi.stubEnv("PATH", root);
-    await assert.rejects(
-      host.call(1, "host.files.list", { requestId: "failure" }),
-      /42.*mention process failed/su,
-    );
-
-    const server = createServer();
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const address = server.address();
-    assert.ok(address !== null && typeof address !== "string");
-    await writeFile(
-      executable,
-      header +
-        `const socket = require("node:net").connect(${address.port}, "127.0.0.1", () => socket.write(String(process.pid))); setInterval(() => {}, 1000);`,
-    );
-    try {
-      for (const stop of ["cancel", "close"] as const) {
-        const started = new Promise<number>((resolve) =>
-          server.once("connection", (socket) => {
-            socket.once("data", (data) => {
-              resolve(Number(data.toString()));
-              socket.destroy();
-            });
-          }),
-        );
-        const pending = host.call(1, "host.files.list", { requestId: stop });
-        const rejected = assert.rejects(pending, /abort/iu);
-        const pid = await started;
-        if (stop === "cancel") await host.call(1, "host.files.cancelList", { requestId: stop });
-        else await host.close();
-        await rejected;
-        assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
-      }
-    } finally {
-      await host.close();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    }
-  },
-);

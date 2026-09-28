@@ -226,6 +226,151 @@ importers:
         specifier: ^5.0.1
         version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
 
+  packages/app:
+    dependencies:
+      '@dnd-kit/core':
+        specifier: 6.3.1
+        version: 6.3.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@fontsource-variable/inter':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource-variable/jetbrains-mono':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@lexical/history':
+        specifier: ^0.51.0
+        version: 0.51.0(typescript@7.0.2)
+      '@lexical/link':
+        specifier: ^0.51.0
+        version: 0.51.0(typescript@7.0.2)
+      '@lexical/plain-text':
+        specifier: ^0.51.0
+        version: 0.51.0(typescript@7.0.2)
+      '@lobehub/streamdown':
+        specifier: 1.3.1
+        version: 1.3.1(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(supports-color@10.2.2)
+      '@nivo/core':
+        specifier: 0.99.0
+        version: 0.99.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@nivo/line':
+        specifier: 0.99.0
+        version: 0.99.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@nyte-ai/client':
+        specifier: workspace:*
+        version: link:../client
+      '@nyte-ai/host':
+        specifier: workspace:*
+        version: link:../host
+      '@nyte-ai/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@nyte-ai/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@nyte-ai/ui':
+        specifier: workspace:*
+        version: link:../ui
+      '@pierre/diffs':
+        specifier: 1.4.1
+        version: 1.4.1(@shikijs/themes@4.4.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@pierre/trees':
+        specifier: 1.0.0-beta.4
+        version: 1.0.0-beta.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@stylexjs/stylex':
+        specifier: 0.19.0
+        version: 0.19.0
+      '@tanstack/react-query':
+        specifier: 5.102.5
+        version: 5.102.5(react@19.3.0)
+      '@tanstack/react-router':
+        specifier: 1.170.27
+        version: 1.170.27(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@tanstack/react-virtual':
+        specifier: 3.14.10
+        version: 3.14.10(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      beautiful-mermaid:
+        specifier: 1.1.3
+        version: 1.1.3
+      central-icons:
+        specifier: npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.1.319
+        version: '@central-icons-react/round-outlined-radius-2-stroke-1.5@1.1.319(react@19.3.0)'
+      ghostty-web:
+        specifier: github:anomalyco/ghostty-web#83c0a07b8628b748aed073b232cb4b52a6ca11c1
+        version: https://codeload.github.com/anomalyco/ghostty-web/tar.gz/83c0a07b8628b748aed073b232cb4b52a6ca11c1
+      lexical:
+        specifier: ^0.51.0
+        version: 0.51.0(typescript@7.0.2)
+      motion:
+        specifier: 12.43.0
+        version: 12.43.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      qrcode-generator:
+        specifier: ^2.0.4
+        version: 2.0.4
+      react:
+        specifier: 19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: 19.3.0
+        version: 19.3.0(react@19.3.0)
+      react-markdown:
+        specifier: ^10.1.0
+        version: 10.1.0(@types/react@19.3.0)(react@19.3.0)(supports-color@10.2.2)
+      remark-gfm:
+        specifier: ^4.0.1
+        version: 4.0.1(supports-color@10.2.2)
+      remend:
+        specifier: 1.3.0
+        version: 1.3.0
+      shiki:
+        specifier: 4.4.3
+        version: 4.4.3
+      torph:
+        specifier: 0.1.3
+        version: 0.1.3(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      typebox:
+        specifier: 1.3.7
+        version: 1.3.7
+    devDependencies:
+      '@nyte-ai/ai':
+        specifier: workspace:*
+        version: link:../ai
+      '@nyte-ai/core':
+        specifier: workspace:*
+        version: link:../core
+      '@playwright/test':
+        specifier: 1.63.0
+        version: 1.63.0
+      '@stylexjs/unplugin':
+        specifier: 0.19.0
+        version: 0.19.0(supports-color@10.2.2)(unplugin@2.3.11)
+      '@types/node':
+        specifier: ^26.6.2
+        version: 26.6.2
+      '@types/react':
+        specifier: 19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      '@vitejs/plugin-react':
+        specifier: 5.2.0
+        version: 5.2.0(supports-color@10.2.2)(vite@7.1.4(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
+      babel-plugin-react-compiler:
+        specifier: 1.0.0
+        version: 1.0.0
+      electron:
+        specifier: ^44.4.3
+        version: 44.4.3(supports-color@10.2.2)
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vite:
+        specifier: 7.1.4
+        version: 7.1.4(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0)
+      vitest:
+        specifier: ^5.0.1
+        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@7.1.4(@types/node@26.6.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
+
   packages/cli:
     devDependencies:
       vitest:
@@ -252,7 +397,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: ^5.0.1
-        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0))
+        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
 
   packages/core:
     dependencies:
@@ -358,7 +503,7 @@ importers:
         version: 59.25.0(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(rollup@4.63.4)(supports-color@8.1.1)
       vitest:
         specifier: ^5.0.1
-        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0))
+        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
 
   packages/demo/website:
     dependencies:
@@ -435,9 +580,6 @@ importers:
       '@ghostery/adblocker':
         specifier: 2.18.2
         version: 2.18.2
-      '@hono/node-server':
-        specifier: 2.1.0
-        version: 2.1.0(hono@4.13.1)
       '@lexical/history':
         specifier: ^0.51.0
         version: 0.51.0(typescript@7.0.2)
@@ -462,6 +604,9 @@ importers:
       '@nyte-ai/ai':
         specifier: workspace:*
         version: link:../ai
+      '@nyte-ai/app':
+        specifier: workspace:*
+        version: link:../app
       '@nyte-ai/client':
         specifier: workspace:*
         version: link:../client
@@ -480,6 +625,9 @@ importers:
       '@nyte-ai/schema':
         specifier: workspace:*
         version: link:../schema
+      '@nyte-ai/serve':
+        specifier: workspace:*
+        version: link:../serve
       '@nyte-ai/server':
         specifier: workspace:*
         version: link:../server
@@ -622,6 +770,9 @@ importers:
       '@nyte-ai/ui':
         specifier: workspace:*
         version: link:../ui
+      '@pierre/diffs':
+        specifier: 1.4.1
+        version: 1.4.1(@shikijs/themes@4.4.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@stylexjs/stylex':
         specifier: 0.19.0
         version: 0.19.0
@@ -634,12 +785,12 @@ importers:
       central-icons-desktop:
         specifier: npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.1.319
         version: '@central-icons-react/round-outlined-radius-2-stroke-1.5@1.1.319(react@19.3.0)'
+      central-icons-filled:
+        specifier: npm:@central-icons-react/round-filled-radius-2-stroke-1.5@^1.1.319
+        version: '@central-icons-react/round-filled-radius-2-stroke-1.5@1.1.319(react@19.3.0)'
       cn:
         specifier: ^0.3.2
         version: 0.3.2
-      dialkit:
-        specifier: ^2.0.2
-        version: 2.0.2(motion@13.4.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(solid-js@1.9.12)
       fumadocs-core:
         specifier: 16.14.3
         version: 16.14.3(@mdx-js/mdx@3.1.1(supports-color@7.2.0))(@tanstack/react-router@1.170.27(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(lucide-react@1.47.0(react@19.3.0))(next@16.3.0(@babel/core@7.29.7(supports-color@7.2.0))(@opentelemetry/api@1.9.1)(@playwright/test@1.63.0)(@types/node@26.6.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(supports-color@7.2.0)(zod@4.5.4)
@@ -755,13 +906,19 @@ importers:
         version: 7.0.2
       vitest:
         specifier: ^5.0.1
-        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0))
+        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
 
   packages/lab:
     dependencies:
       '@fontsource-variable/inter':
         specifier: 5.3.0
         version: 5.3.0
+      '@nyte-ai/app':
+        specifier: workspace:*
+        version: link:../app
+      '@nyte-ai/protocol':
+        specifier: workspace:*
+        version: link:../protocol
       '@nyte-ai/ui':
         specifier: workspace:*
         version: link:../ui
@@ -958,7 +1115,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: ^5.0.1
-        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0))
+        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
 
   packages/plugin:
     dependencies:
@@ -998,7 +1155,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: ^5.0.1
-        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0))
+        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
 
   packages/protocol:
     dependencies:
@@ -1017,7 +1174,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: ^5.0.1
-        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0))
+        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
 
   packages/schema:
     dependencies:
@@ -1031,6 +1188,49 @@ importers:
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
+
+  packages/serve:
+    dependencies:
+      '@hono/node-server':
+        specifier: 2.1.0
+        version: 2.1.0(hono@4.13.1)
+      '@nyte-ai/ai':
+        specifier: workspace:*
+        version: link:../ai
+      '@nyte-ai/app':
+        specifier: workspace:*
+        version: link:../app
+      '@nyte-ai/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nyte-ai/host':
+        specifier: workspace:*
+        version: link:../host
+      '@nyte-ai/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@nyte-ai/server':
+        specifier: workspace:*
+        version: link:../server
+      typebox:
+        specifier: 1.3.7
+        version: 1.3.7
+    devDependencies:
+      '@nyte-ai/client':
+        specifier: workspace:*
+        version: link:../client
+      '@nyte-ai/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@types/node':
+        specifier: ^26.6.2
+        version: 26.6.2
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: ^5.0.1
+        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2))
 
   packages/server:
     dependencies:
@@ -1061,7 +1261,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: ^5.0.1
-        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0))
+        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
 
   packages/telemetry:
     dependencies:
@@ -1080,7 +1280,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: ^5.0.1
-        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0))
+        version: 5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0))
 
   packages/tui:
     dependencies:
@@ -1167,20 +1367,20 @@ importers:
         specifier: 0.19.0
         version: 0.19.0
       central-icons:
-        specifier: npm:@central-icons-react/round-outlined-radius-1-stroke-1.5@^1.1.319
-        version: '@central-icons-react/round-outlined-radius-1-stroke-1.5@1.1.319(react@19.3.0)'
+        specifier: npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.1.319
+        version: '@central-icons-react/round-outlined-radius-2-stroke-1.5@1.1.319(react@19.3.0)'
+      central-icons-filled:
+        specifier: npm:@central-icons-react/round-filled-radius-2-stroke-1.5@^1.1.319
+        version: '@central-icons-react/round-filled-radius-2-stroke-1.5@1.1.319(react@19.3.0)'
       cn:
         specifier: ^0.3.2
         version: 0.3.2
+      motion:
+        specifier: 12.43.0
+        version: 12.43.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       sonner:
         specifier: ^2.0.8
         version: 2.0.8(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      tailwindcss:
-        specifier: ^4.3.3
-        version: 4.3.3
-      tw-animate-css:
-        specifier: ^1.4.0
-        version: 1.4.0
     devDependencies:
       '@stylexjs/unplugin':
         specifier: 0.19.0
@@ -1191,6 +1391,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.3.0
         version: 19.3.0(@types/react@19.3.0)
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -11823,9 +12026,6 @@ packages:
     resolution: {integrity: sha512-s0GhnWXlAAN+wb2GRMQxnZgFweRWTAceRWW/4Lk9iHj7QuLZMjDxQQqu+Xoh7Nckuy8UiSim520w6yqP2+ertw==}
     hasBin: true
 
-  tw-animate-css@1.4.0:
-    resolution: {integrity: sha512-7bziOlRqH0hJx80h/3mbicLW7o8qLsH5+RaLR2t+OHM3D0JlWGODQKQ4cxbK7WlvmUxpcj6Kgu6EKqjrGFe3QQ==}
-
   type-fest@0.13.1:
     resolution: {integrity: sha512-34R7HTnG0XIJcBSn5XhDd7nNFPRcXYRZrBB2O2jdKqYODldSzBAqzsWoZYYvduky73toYS/ESqxPvkDf/F0XMg==}
     engines: {node: '>=10'}
@@ -13534,6 +13734,19 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@electron/get@5.1.0(supports-color@10.2.2)':
+    dependencies:
+      debug: 4.4.3(supports-color@10.2.2)
+      env-paths: 3.0.0
+      graceful-fs: 4.2.11
+      progress: 2.0.3
+      semver: 7.8.5
+      sumchecker: 3.0.1(supports-color@10.2.2)
+    optionalDependencies:
+      undici: 7.29.1
+    transitivePeerDependencies:
+      - supports-color
+
   '@electron/get@5.1.0(supports-color@7.2.0)':
     dependencies:
       debug: 4.4.3(supports-color@7.2.0)
@@ -14645,6 +14858,26 @@ snapshots:
       lexical: 0.51.0(typescript@7.0.2)
     optionalDependencies:
       typescript: 7.0.2
+
+  '@lobehub/streamdown@1.3.1(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(supports-color@10.2.2)':
+    dependencies:
+      '@types/hast': 3.0.5
+      hast-util-to-jsx-runtime: 2.3.6(supports-color@10.2.2)
+      html-url-attributes: 3.0.1
+      katex: 0.18.7
+      marked: 18.0.13
+      react: 19.3.0
+      react-dom: 19.3.0(react@19.3.0)
+      react-markdown: 10.1.0(@types/react@19.3.0)(react@19.3.0)(supports-color@10.2.2)
+      remark-parse: 11.0.0(supports-color@10.2.2)
+      remark-rehype: 11.1.2
+      remend: 1.3.0
+      unified: 11.0.5
+      unist-util-visit: 5.1.0
+      vfile: 6.0.3
+    transitivePeerDependencies:
+      - '@types/react'
+      - supports-color
 
   '@lobehub/streamdown@1.3.1(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(supports-color@7.2.0)':
     dependencies:
@@ -17899,7 +18132,7 @@ snapshots:
     optionalDependencies:
       vite: 8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.21.0)(yaml@2.9.0)
 
-  '@vitest/mocker@5.0.1(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0))':
+  '@vitest/mocker@5.0.1(vite@8.3.0(@types/node@26.6.2))':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       '@vitest/spy': 5.0.1
@@ -19598,6 +19831,14 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  electron@44.4.3(supports-color@10.2.2):
+    dependencies:
+      '@electron-internal/extract-zip': 1.0.5
+      '@electron/get': 5.1.0(supports-color@10.2.2)
+      '@types/node': 24.13.6
+    transitivePeerDependencies:
+      - supports-color
+
   electron@44.4.3(supports-color@7.2.0):
     dependencies:
       '@electron-internal/extract-zip': 1.0.5
@@ -20966,6 +21207,26 @@ snapshots:
       stringify-entities: 4.0.4
       zwitch: 2.0.4
 
+  hast-util-to-jsx-runtime@2.3.6(supports-color@10.2.2):
+    dependencies:
+      '@types/estree': 1.0.9
+      '@types/hast': 3.0.5
+      '@types/unist': 3.0.3
+      comma-separated-tokens: 2.0.3
+      devlop: 1.1.0
+      estree-util-is-identifier-name: 3.0.0
+      hast-util-whitespace: 3.0.0
+      mdast-util-mdx-expression: 2.0.1(supports-color@10.2.2)
+      mdast-util-mdx-jsx: 3.2.0(supports-color@10.2.2)
+      mdast-util-mdxjs-esm: 2.0.1(supports-color@10.2.2)
+      property-information: 7.2.0
+      space-separated-tokens: 2.0.2
+      style-to-js: 1.1.21
+      unist-util-position: 5.0.0
+      vfile-message: 4.0.3
+    transitivePeerDependencies:
+      - supports-color
+
   hast-util-to-jsx-runtime@2.3.6(supports-color@7.2.0):
     dependencies:
       '@types/estree': 1.0.9
@@ -21608,6 +21869,23 @@ snapshots:
       unist-util-is: 6.0.1
       unist-util-visit-parents: 6.0.2
 
+  mdast-util-from-markdown@2.0.3(supports-color@10.2.2):
+    dependencies:
+      '@types/mdast': 4.0.4
+      '@types/unist': 3.0.3
+      decode-named-character-reference: 1.3.0
+      devlop: 1.1.0
+      mdast-util-to-string: 4.0.0
+      micromark: 4.0.2(supports-color@10.2.2)
+      micromark-util-decode-numeric-character-reference: 2.0.2
+      micromark-util-decode-string: 2.0.1
+      micromark-util-normalize-identifier: 2.0.1
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+      unist-util-stringify-position: 4.0.0
+    transitivePeerDependencies:
+      - supports-color
+
   mdast-util-from-markdown@2.0.3(supports-color@7.2.0):
     dependencies:
       '@types/mdast': 4.0.4
@@ -21633,6 +21911,16 @@ snapshots:
       mdast-util-find-and-replace: 3.0.2
       micromark-util-character: 2.1.1
 
+  mdast-util-gfm-footnote@2.1.0(supports-color@10.2.2):
+    dependencies:
+      '@types/mdast': 4.0.4
+      devlop: 1.1.0
+      mdast-util-from-markdown: 2.0.3(supports-color@10.2.2)
+      mdast-util-to-markdown: 2.1.2
+      micromark-util-normalize-identifier: 2.0.1
+    transitivePeerDependencies:
+      - supports-color
+
   mdast-util-gfm-footnote@2.1.0(supports-color@7.2.0):
     dependencies:
       '@types/mdast': 4.0.4
@@ -21643,10 +21931,28 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  mdast-util-gfm-strikethrough@2.0.0(supports-color@10.2.2):
+    dependencies:
+      '@types/mdast': 4.0.4
+      mdast-util-from-markdown: 2.0.3(supports-color@10.2.2)
+      mdast-util-to-markdown: 2.1.2
+    transitivePeerDependencies:
+      - supports-color
+
   mdast-util-gfm-strikethrough@2.0.0(supports-color@7.2.0):
     dependencies:
       '@types/mdast': 4.0.4
       mdast-util-from-markdown: 2.0.3(supports-color@7.2.0)
+      mdast-util-to-markdown: 2.1.2
+    transitivePeerDependencies:
+      - supports-color
+
+  mdast-util-gfm-table@2.0.0(supports-color@10.2.2):
+    dependencies:
+      '@types/mdast': 4.0.4
+      devlop: 1.1.0
+      markdown-table: 3.0.4
+      mdast-util-from-markdown: 2.0.3(supports-color@10.2.2)
       mdast-util-to-markdown: 2.1.2
     transitivePeerDependencies:
       - supports-color
@@ -21661,11 +21967,32 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  mdast-util-gfm-task-list-item@2.0.0(supports-color@10.2.2):
+    dependencies:
+      '@types/mdast': 4.0.4
+      devlop: 1.1.0
+      mdast-util-from-markdown: 2.0.3(supports-color@10.2.2)
+      mdast-util-to-markdown: 2.1.2
+    transitivePeerDependencies:
+      - supports-color
+
   mdast-util-gfm-task-list-item@2.0.0(supports-color@7.2.0):
     dependencies:
       '@types/mdast': 4.0.4
       devlop: 1.1.0
       mdast-util-from-markdown: 2.0.3(supports-color@7.2.0)
+      mdast-util-to-markdown: 2.1.2
+    transitivePeerDependencies:
+      - supports-color
+
+  mdast-util-gfm@3.1.0(supports-color@10.2.2):
+    dependencies:
+      mdast-util-from-markdown: 2.0.3(supports-color@10.2.2)
+      mdast-util-gfm-autolink-literal: 2.0.1
+      mdast-util-gfm-footnote: 2.1.0(supports-color@10.2.2)
+      mdast-util-gfm-strikethrough: 2.0.0(supports-color@10.2.2)
+      mdast-util-gfm-table: 2.0.0(supports-color@10.2.2)
+      mdast-util-gfm-task-list-item: 2.0.0(supports-color@10.2.2)
       mdast-util-to-markdown: 2.1.2
     transitivePeerDependencies:
       - supports-color
@@ -21682,6 +22009,17 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  mdast-util-mdx-expression@2.0.1(supports-color@10.2.2):
+    dependencies:
+      '@types/estree-jsx': 1.0.5
+      '@types/hast': 3.0.5
+      '@types/mdast': 4.0.4
+      devlop: 1.1.0
+      mdast-util-from-markdown: 2.0.3(supports-color@10.2.2)
+      mdast-util-to-markdown: 2.1.2
+    transitivePeerDependencies:
+      - supports-color
+
   mdast-util-mdx-expression@2.0.1(supports-color@7.2.0):
     dependencies:
       '@types/estree-jsx': 1.0.5
@@ -21690,6 +22028,23 @@ snapshots:
       devlop: 1.1.0
       mdast-util-from-markdown: 2.0.3(supports-color@7.2.0)
       mdast-util-to-markdown: 2.1.2
+    transitivePeerDependencies:
+      - supports-color
+
+  mdast-util-mdx-jsx@3.2.0(supports-color@10.2.2):
+    dependencies:
+      '@types/estree-jsx': 1.0.5
+      '@types/hast': 3.0.5
+      '@types/mdast': 4.0.4
+      '@types/unist': 3.0.3
+      ccount: 2.0.1
+      devlop: 1.1.0
+      mdast-util-from-markdown: 2.0.3(supports-color@10.2.2)
+      mdast-util-to-markdown: 2.1.2
+      parse-entities: 4.0.2
+      stringify-entities: 4.0.4
+      unist-util-stringify-position: 4.0.0
+      vfile-message: 4.0.3
     transitivePeerDependencies:
       - supports-color
 
@@ -21716,6 +22071,17 @@ snapshots:
       mdast-util-mdx-expression: 2.0.1(supports-color@7.2.0)
       mdast-util-mdx-jsx: 3.2.0(supports-color@7.2.0)
       mdast-util-mdxjs-esm: 2.0.1(supports-color@7.2.0)
+      mdast-util-to-markdown: 2.1.2
+    transitivePeerDependencies:
+      - supports-color
+
+  mdast-util-mdxjs-esm@2.0.1(supports-color@10.2.2):
+    dependencies:
+      '@types/estree-jsx': 1.0.5
+      '@types/hast': 3.0.5
+      '@types/mdast': 4.0.4
+      devlop: 1.1.0
+      mdast-util-from-markdown: 2.0.3(supports-color@10.2.2)
       mdast-util-to-markdown: 2.1.2
     transitivePeerDependencies:
       - supports-color
@@ -22533,6 +22899,28 @@ snapshots:
   micromark-util-symbol@2.0.1: {}
 
   micromark-util-types@2.0.2: {}
+
+  micromark@4.0.2(supports-color@10.2.2):
+    dependencies:
+      '@types/debug': 4.1.13
+      debug: 4.4.3(supports-color@10.2.2)
+      decode-named-character-reference: 1.3.0
+      devlop: 1.1.0
+      micromark-core-commonmark: 2.0.3
+      micromark-factory-space: 2.0.1
+      micromark-util-character: 2.1.1
+      micromark-util-chunked: 2.0.1
+      micromark-util-combine-extensions: 2.0.1
+      micromark-util-decode-numeric-character-reference: 2.0.2
+      micromark-util-encode: 2.0.1
+      micromark-util-normalize-identifier: 2.0.1
+      micromark-util-resolve-all: 2.0.1
+      micromark-util-sanitize-uri: 2.0.1
+      micromark-util-subtokenize: 2.1.0
+      micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+    transitivePeerDependencies:
+      - supports-color
 
   micromark@4.0.2(supports-color@7.2.0):
     dependencies:
@@ -23643,6 +24031,24 @@ snapshots:
 
   react-is@19.3.0: {}
 
+  react-markdown@10.1.0(@types/react@19.3.0)(react@19.3.0)(supports-color@10.2.2):
+    dependencies:
+      '@types/hast': 3.0.5
+      '@types/mdast': 4.0.4
+      '@types/react': 19.3.0
+      devlop: 1.1.0
+      hast-util-to-jsx-runtime: 2.3.6(supports-color@10.2.2)
+      html-url-attributes: 3.0.1
+      mdast-util-to-hast: 13.2.1
+      react: 19.3.0
+      remark-parse: 11.0.0(supports-color@10.2.2)
+      remark-rehype: 11.1.2
+      unified: 11.0.5
+      unist-util-visit: 5.1.0
+      vfile: 6.0.3
+    transitivePeerDependencies:
+      - supports-color
+
   react-markdown@10.1.0(@types/react@19.3.0)(react@19.3.0)(supports-color@7.2.0):
     dependencies:
       '@types/hast': 3.0.5
@@ -24004,6 +24410,17 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  remark-gfm@4.0.1(supports-color@10.2.2):
+    dependencies:
+      '@types/mdast': 4.0.4
+      mdast-util-gfm: 3.1.0(supports-color@10.2.2)
+      micromark-extension-gfm: 3.0.0
+      remark-parse: 11.0.0(supports-color@10.2.2)
+      remark-stringify: 11.0.0
+      unified: 11.0.5
+    transitivePeerDependencies:
+      - supports-color
+
   remark-gfm@4.0.1(supports-color@7.2.0):
     dependencies:
       '@types/mdast': 4.0.4
@@ -24019,6 +24436,15 @@ snapshots:
     dependencies:
       mdast-util-mdx: 3.0.0(supports-color@7.2.0)
       micromark-extension-mdxjs: 3.0.0
+    transitivePeerDependencies:
+      - supports-color
+
+  remark-parse@11.0.0(supports-color@10.2.2):
+    dependencies:
+      '@types/mdast': 4.0.4
+      mdast-util-from-markdown: 2.0.3(supports-color@10.2.2)
+      micromark-util-types: 2.0.2
+      unified: 11.0.5
     transitivePeerDependencies:
       - supports-color
 
@@ -24747,6 +25173,12 @@ snapshots:
 
   styleq@0.2.1: {}
 
+  sumchecker@3.0.1(supports-color@10.2.2):
+    dependencies:
+      debug: 4.4.3(supports-color@10.2.2)
+    transitivePeerDependencies:
+      - supports-color
+
   sumchecker@3.0.1(supports-color@7.2.0):
     dependencies:
       debug: 4.4.3(supports-color@7.2.0)
@@ -24969,8 +25401,6 @@ snapshots:
       '@turbo/linux-arm64': 2.11.2
       '@turbo/windows-64': 2.11.2
       '@turbo/windows-arm64': 2.11.2
-
-  tw-animate-css@1.4.0: {}
 
   type-fest@0.13.1:
     optional: true
@@ -25408,10 +25838,10 @@ snapshots:
     transitivePeerDependencies:
       - msw
 
-  vitest@5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0)):
+  vitest@5.0.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.6.2)(vite@8.3.0(@types/node@26.6.2)):
     dependencies:
       '@types/chai': 5.2.3
-      '@vitest/mocker': 5.0.1(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0))
+      '@vitest/mocker': 5.0.1(vite@8.3.0(@types/node@26.6.2))
       chai: 6.2.2
       es-module-lexer: 2.3.2
       expect-type: 1.4.0

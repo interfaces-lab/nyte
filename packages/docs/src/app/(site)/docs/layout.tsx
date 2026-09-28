@@ -1,12 +1,11 @@
-import { ShellFrame } from "~/components/shell/frame";
 import { docsNavGroups } from "~/lib/docs-nav";
-import "~/shell.css";
+import { DocFrame } from "../_layout/frame";
 import "./docs.css";
 
 export default function Layout({ children }: LayoutProps<"/docs">) {
   return (
-    <ShellFrame skin="docs" label="Docs" groups={docsNavGroups()}>
+    <DocFrame label="Docs" groups={docsNavGroups()}>
       {children}
-    </ShellFrame>
+    </DocFrame>
   );
 }

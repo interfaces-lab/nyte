@@ -8,8 +8,8 @@ import type {
   BrowserNavigationAction,
   BrowserSurfaceState,
   HostEvent,
-  HostBridge,
-} from "../shared/ipc.ts";
+  BrowserBridge,
+} from "@nyte-ai/app/bridge.ts";
 import type { SessionId } from "@nyte-ai/core";
 import { loadBlocker, type Blocker } from "./adblock.ts";
 import {
@@ -93,13 +93,13 @@ function partitionName(owner: BrowserOwner): string {
 
 export interface BrowserSurfaces {
   menu(
-    input: Parameters<HostBridge["browser"]["menu"]>[0],
+    input: Parameters<BrowserBridge["menu"]>[0],
     window: HostWindow,
-  ): ReturnType<HostBridge["browser"]["menu"]>;
+  ): ReturnType<BrowserBridge["menu"]>;
   perform(
-    input: Parameters<HostBridge["browser"]["perform"]>[0],
+    input: Parameters<BrowserBridge["perform"]>[0],
     window: HostWindow,
-  ): ReturnType<HostBridge["browser"]["perform"]>;
+  ): ReturnType<BrowserBridge["perform"]>;
   /** Opening a page places it in the requesting window. */
   open(
     input: {
@@ -603,6 +603,8 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
         dependencies.emit({
           kind: "browser_agent_opened",
           surface: surfId,
+          session: input.session,
+          owner: input.owner.kind === "project" ? input.owner.path : null,
           url: target,
           state: stateOf(surface),
         });

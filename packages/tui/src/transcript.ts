@@ -1,18 +1,15 @@
 /**
- * The transcript as OpenTUI blocks, reconciled from `SessionState`: one block
- * per turn keyed by the turn's id, one part block per settled part keyed by
- * `turnPartId`, and live blocks for the streaming overlay keyed by
- * `livePartKey`. A restore and a live stream both land here, so a resumed
- * session looks like the one that was just typed.
+ * OpenTUI blocks for transcript entries: one block per turn keyed by the
+ * turn's id, one part block per settled part keyed by `turnPartId`, and live
+ * blocks for the streaming overlay keyed by `livePartKey`. `Timeline`
+ * reconciles restored and live session state into these blocks.
  */
 import {
   BoxRenderable,
   CodeRenderable,
-  CliRenderEvents,
   createMarkdownCodeBlockRenderer,
   DiffRenderable,
   fg,
-  ImageRenderable,
   LineNumberRenderable,
   MarkdownRenderable,
   ScrollBoxRenderable,
@@ -22,42 +19,23 @@ import {
   SyntaxStyle,
   TextRenderable,
   TextBufferRenderable,
-  TextBuffer,
-  TextBufferView,
   TextTableRenderable,
   RGBA,
-  LayoutEvents,
 } from "@opentui/core";
 import type {
-  BoxOptions,
   CliRenderer,
   MarkdownCodeBlockRenderer,
   MarkdownOptions,
   Renderable,
-  ScrollUnit,
-  Selection,
   SimpleHighlight,
   TextChunk,
   OptimizedBuffer,
 } from "@opentui/core";
-import { Edge } from "@opentui/core/yoga";
 import { parsePatchFacts, turnPartId } from "@nyte-ai/client";
-import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { Failure, ToolProgress, ToolTurnPart, TurnPart } from "@nyte-ai/protocol";
 import type { RunInfo, Turn } from "@nyte-ai/core";
-import type { ImageContent, UserMessage } from "@nyte-ai/schema";
-import { diffChars, diffWordsWithSpace } from "diff";
+import { diffWordsWithSpace } from "diff";
 import { SpinnerRenderable } from "opentui-spinner";
-import { basename } from "node:path";
-import { pathToFileURL } from "node:url";
-import {
-  extractFileAttachments,
-  extractFileMentions,
-  extractShellBlocks,
-  PASTE_COLLAPSE_LINES,
-  pasteLineCount,
-} from "./composer.ts";
-import type { ShellRun } from "./composer.ts";
 import type { ShellExecution } from "./local-shell.ts";
 import {
   ACTIVITY_RETRY_LABEL,
@@ -75,7 +53,6 @@ import {
   SPACING,
   SPINNER_FRAMES,
   SPINNER_INTERVAL_MS,
-  DELEGATION_ROWS,
   TOOL_INLINE_PREVIEW_LENGTH,
 } from "./constants.ts";
 import {
@@ -94,23 +71,20 @@ import {
   type ChangedLinePair,
   type OutputDiff,
 } from "./output-diff.ts";
-import type { LabelSyntax } from "./label-syntax.ts";
+import { appendMessage } from "./message.ts";
 import { renderMermaidASCII } from "beautiful-mermaid";
-import { waitingCall } from "@nyte-ai/client";
-import type { SessionState } from "@nyte-ai/client";
 import { livePartKey, type LivePart } from "@nyte-ai/client";
-import { extractSkillInvocations } from "./slash.ts";
+import { phaseStatus, statusMark, taskActivity, taskLabel, taskStatus } from "./tasks.ts";
 import {
-  phaseStatus,
-  runStatus,
-  statusMark,
-  taskLabel,
-  taskPrompt,
-  taskSteps,
-  type Task,
-} from "./tasks.ts";
+  bufferWidths,
+  repaints,
+  TranscriptCodeRenderable,
+  TranscriptTextRenderable,
+} from "./surface.ts";
+import type { ExpandableToolOutput, Transcript } from "./surface.ts";
 import type { CliTheme } from "./theme.ts";
 import {
+  delegateSubject,
   failureNotice,
   runningActivityLabel,
   toolLabel,
@@ -118,39 +92,25 @@ import {
   toolSubject,
   type ToolPhase,
 } from "./tool-copy.ts";
-import { cellOffset, displayWidth } from "./width.ts";
+import { displayWidth } from "./width.ts";
 
-// Native text buffers retain their construction-time width rules after capability replies.
-const bufferWidths = new WeakMap<TextBufferRenderable, CliRenderer["widthMethod"]>();
-
-class TranscriptTextRenderable extends TextRenderable {
-  constructor(renderer: CliRenderer, options: ConstructorParameters<typeof TextRenderable>[1]) {
-    super(renderer, options);
-    bufferWidths.set(this, renderer.widthMethod);
+/** The callback leaves chunks untouched, including OpenTUI's link metadata. */
+export const highlightSources = new WeakMap<
+  CodeRenderable,
+  {
+    callback: NonNullable<CodeRenderable["onChunks"]>;
+    source: string;
+    text: string;
+    highlights: SimpleHighlight[];
   }
-}
-
-class TranscriptCodeRenderable extends CodeRenderable {
-  constructor(renderer: CliRenderer, options: ConstructorParameters<typeof CodeRenderable>[1]) {
-    super(renderer, options);
-    bufferWidths.set(this, renderer.widthMethod);
-  }
-}
-
-const repaints = new WeakMap<Renderable, () => void>();
-
-export function repaintTree(root: Renderable): void {
-  repaints.get(root)?.();
-
-  for (const child of root.getChildren()) repaintTree(child);
-}
+>();
 
 /**
  * OpenTUI only seeds inline styled text for streaming markdown. Settled blocks
  * otherwise reserve raw-text geometry but draw nothing until highlighting ends.
  * Draw that pending text too; concealment and asynchronous highlighting stay on.
  */
-class TranscriptMarkdownRenderable extends MarkdownRenderable {
+export class TranscriptMarkdownRenderable extends MarkdownRenderable {
   constructor(renderer: CliRenderer, options: MarkdownOptions) {
     super(renderer, options);
     this.showPendingText(this);
@@ -383,7 +343,7 @@ function createMermaidCodeBlockRenderer(
   };
 }
 
-function createMermaidMarkdownRenderer(
+export function createMermaidMarkdownRenderer(
   renderer: CliRenderer,
   theme: CliTheme,
   disclosures: Map<string, boolean> | undefined,
@@ -582,110 +542,24 @@ export function createSubtleSyntaxStyle(theme: CliTheme): SyntaxStyle {
   return syntaxStyle(theme, true);
 }
 
-interface ExpandableToolOutput {
-  setExpanded(expanded: boolean): void;
-}
-
-/**
- * One expansion state for the transcript and every tool card in it.
- *
- * Based on pi's global tool-output toggle:
- * https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/modes/interactive/interactive-mode.ts
- */
-export class ToolOutputExpansion {
-  private readonly cards = new Set<ExpandableToolOutput>();
-  private current = false;
-
-  get expanded(): boolean {
-    return this.current;
-  }
-
-  register(card: ExpandableToolOutput): () => void {
-    this.cards.add(card);
-    card.setExpanded(this.current);
-
-    return () => this.cards.delete(card);
-  }
-
-  toggle(): boolean {
-    this.current = !this.current;
-
-    for (const card of this.cards) card.setExpanded(this.current);
-
-    return this.current;
-  }
-}
-
-/** Disclosure changes invalidate measurements at every previously visited width. */
-class TranscriptDisclosures extends Map<string, boolean> {
-  revision = 0;
-
-  override set(key: string, value: boolean): this {
-    if (this.get(key) === value) return this;
-    super.set(key, value);
-    this.revision += 1;
-
-    return this;
-  }
-}
-
-/** What every block draws with. */
-export interface Transcript {
-  readonly renderer: CliRenderer;
-  readonly container: ScrollBoxRenderable;
-  syntaxStyle: SyntaxStyle;
-  subtleSyntaxStyle: SyntaxStyle;
-  readonly theme: CliTheme;
-  /** Highlights for one-line labels, such as the command on a shell call. */
-  readonly labelSyntax: LabelSyntax;
-  readonly toolOutput: ToolOutputExpansion;
-  readonly nextId: (prefix?: string) => string;
-  readonly openPath: (path: string) => void;
-  /**
-   * The tasks of the session shown, for delegation cards. The task browser
-   * follows them and installs this once it exists; until then there are none.
-   */
-  tasks: () => readonly Task[];
-  readonly disclosures?: TranscriptDisclosures;
-  /** Width for user cards, which sit inside the scroll padding. */
-  readonly userBlocks: Set<BoxRenderable>;
-  readonly userBlockWidth: () => number;
-  /** Told whether output growth owns the viewport, for the latest control. */
-  readonly onFollowModeChange: (followingLatest: boolean) => void;
-}
-
-type SectionOptions = Pick<
-  BoxOptions,
-  | "backgroundColor"
-  | "marginTop"
-  | "marginLeft"
-  | "marginRight"
-  | "paddingTop"
-  | "paddingBottom"
-  | "paddingLeft"
-  | "paddingRight"
-  | "width"
->;
-
-function section(
+export function section(
   transcript: Transcript,
   prefix: string,
-  options: SectionOptions = {},
   parent: Renderable = transcript.container,
   before?: Renderable,
 ): BoxRenderable {
   const box = new BoxRenderable(transcript.renderer, {
     id: transcript.nextId(prefix),
     flexDirection: "column",
-    backgroundColor: options.backgroundColor ?? transcript.theme.transparent,
-    paddingTop: options.paddingTop ?? 0,
-    paddingBottom: options.paddingBottom ?? 0,
-    paddingLeft: options.paddingLeft ?? SPACING.inset,
-    paddingRight: options.paddingRight ?? SPACING.insetRight,
-    marginTop: options.marginTop ?? SPACING.block,
-    marginLeft: options.marginLeft ?? 0,
-    marginRight: options.marginRight ?? 0,
-    width: options.width ?? "100%",
+    backgroundColor: transcript.theme.transparent,
+    paddingTop: 0,
+    paddingBottom: 0,
+    paddingLeft: SPACING.inset,
+    paddingRight: SPACING.insetRight,
+    marginTop: SPACING.block,
+    marginLeft: 0,
+    marginRight: 0,
+    width: "100%",
   });
 
   if (before === undefined) parent.add(box);
@@ -716,479 +590,11 @@ function hasIncompleteHeadingPrefix(text: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// User turns
-// ---------------------------------------------------------------------------
-
-interface PresentedFile {
-  readonly path: string;
-  readonly text?: string;
-}
-
-interface PresentedSkill {
-  readonly name: string;
-  readonly path: string;
-}
-
-interface UserPresentation {
-  readonly text: string;
-  readonly files: readonly PresentedFile[];
-  readonly skills: readonly PresentedSkill[];
-  readonly shells: readonly ShellRun[];
-  readonly images: readonly ImageContent[];
-}
-
-function userPresentation(content: UserMessage["content"]): UserPresentation {
-  let text = Array.isArray(content)
-    ? content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
-    : content;
-
-  // Instructions the prompt pulled in are the skill, not the prompt; an
-  // attached body is the file, not the prompt. Both fold back to their tag.
-  const skills: PresentedSkill[] = [];
-
-  for (const invocation of extractSkillInvocations(text)) {
-    skills.push({ name: invocation.name, path: invocation.path });
-    text = text.replace(invocation.source, "");
-  }
-
-  const files: PresentedFile[] = [];
-
-  for (const attachment of extractFileAttachments(text)) {
-    files.push({ path: attachment.path, text: attachment.text });
-    text = text.replace(attachment.source, "");
-  }
-
-  for (const mention of extractFileMentions(text)) {
-    files.push({ path: mention.path });
-    text = text.replace(mention.source, "");
-  }
-
-  const shells: ShellRun[] = [];
-
-  for (const block of extractShellBlocks(text)) {
-    shells.push({ command: block.command, output: block.output, exitCode: block.exitCode });
-    text = text.replace(block.source, "");
-  }
-
-  const images = Array.isArray(content)
-    ? content.flatMap((part) => (part.type === "image" ? [part] : []))
-    : [];
-
-  if (images.length > 0) text = text.replace(/\[Image \d+\]/g, "");
-
-  return {
-    text: text
-      .replace(/[ \t]{2,}/g, " ")
-      .replace(/\n[ \t]+/g, "\n")
-      .trim(),
-    files,
-    skills,
-    shells,
-    images,
-  };
-}
-
-const PASTE_PREVIEW_LINES = 3;
-
-/** A clickable tag that folds or opens what a user turn carried. */
-function collapsedTag(
-  transcript: Transcript,
-  parent: BoxRenderable,
-  options: {
-    readonly label: () => string;
-    readonly url?: string;
-    readonly marginTop?: number;
-    readonly onToggle: () => void;
-  },
-): TextRenderable {
-  const { renderer, theme } = transcript;
-  let hovered = false;
-
-  const tag = new TranscriptTextRenderable(renderer, {
-    id: transcript.nextId("tag"),
-    content: "",
-    fg: theme.pasteForeground,
-    bg: theme.pasteBackground,
-    wrapMode: "none",
-    marginTop: options.marginTop ?? 0,
-  });
-
-  const paint = (): void => {
-    tag.content = new StyledText([fg(theme.pasteForeground)(options.label())]);
-    tag.bg = hovered ? theme.hover : theme.pasteBackground;
-  };
-
-  tag.onMouseOver = () => {
-    hovered = true;
-    paint();
-  };
-
-  tag.onMouseOut = () => {
-    hovered = false;
-    paint();
-  };
-
-  tag.onMouseUp = (event) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const selected = renderer.getSelection()?.getSelectedText() ?? "";
-
-    if (selected !== "") return;
-    options.onToggle();
-    paint();
-  };
-
-  repaints.set(tag, () => {
-    tag.fg = theme.pasteForeground;
-    paint();
-  });
-  paint();
-  parent.add(tag);
-
-  return tag;
-}
-
-function addUserText(transcript: Transcript, block: BoxRenderable, text: string): void {
-  const lines = text.split("\n");
-  const folded = lines.length > PASTE_COLLAPSE_LINES;
-  const preview = lines.slice(0, PASTE_PREVIEW_LINES).join("\n");
-  let expanded = transcript.disclosures?.get(`user:${text}`) ?? false;
-
-  const body = new TranscriptTextRenderable(transcript.renderer, {
-    id: transcript.nextId("user-text"),
-    content: folded && !expanded ? preview : text,
-    fg: transcript.theme.foreground,
-    wrapMode: "word",
-    selectionBg: transcript.theme.selectionBackground,
-    selectionFg: transcript.theme.selectionForeground,
-  });
-
-  repaints.set(body, () => {
-    body.fg = transcript.theme.foreground;
-    body.selectionBg = transcript.theme.selectionBackground;
-    body.selectionFg = transcript.theme.selectionForeground;
-  });
-  block.add(body);
-
-  if (!folded) return;
-  const hidden = lines.length - PASTE_PREVIEW_LINES;
-  collapsedTag(transcript, block, {
-    marginTop: 1,
-    label: () => (expanded ? " fewer lines " : ` +${String(hidden)} lines `),
-    onToggle: () => {
-      expanded = !expanded;
-      transcript.disclosures?.set(`user:${text}`, expanded);
-      body.content = expanded ? text : preview;
-    },
-  });
-}
-
-function addFileTag(
-  transcript: Transcript,
-  block: BoxRenderable,
-  tags: BoxRenderable,
-  file: PresentedFile,
-): void {
-  const { path, text } = file;
-
-  if (text === undefined) {
-    collapsedTag(transcript, tags, {
-      url: pathToFileURL(path).href,
-      label: () => ` File ${basename(path)} `,
-      onToggle: () => transcript.openPath(path),
-    });
-
-    return;
-  }
-
-  let open = transcript.disclosures?.get(`file:${path}`) ?? false;
-
-  const body = new TranscriptCodeRenderable(transcript.renderer, {
-    id: transcript.nextId("file-body"),
-    content: text,
-    filetype: pathToFiletype(path) ?? undefined,
-    syntaxStyle: transcript.syntaxStyle,
-    fg: transcript.theme.foreground,
-    visible: open,
-    marginTop: 1,
-    selectionBg: transcript.theme.selectionBackground,
-    selectionFg: transcript.theme.selectionForeground,
-  });
-
-  repaints.set(body, () => {
-    body.syntaxStyle = transcript.syntaxStyle;
-    body.fg = transcript.theme.foreground;
-    body.selectionBg = transcript.theme.selectionBackground;
-    body.selectionFg = transcript.theme.selectionForeground;
-  });
-  collapsedTag(transcript, tags, {
-    url: pathToFileURL(path).href,
-    label: () => ` File ${basename(path)}${open ? "" : ` +${String(pasteLineCount(text))} lines`} `,
-    onToggle: () => {
-      open = !open;
-      transcript.disclosures?.set(`file:${path}`, open);
-      body.visible = open;
-    },
-  });
-  block.add(body);
-}
-
-/** A `!command` the prompt carried: its output folds behind the command, like an attached file. */
-function addShellTag(
-  transcript: Transcript,
-  block: BoxRenderable,
-  tags: BoxRenderable,
-  run: ShellRun,
-): void {
-  const key = `shell:${run.command}:${run.output}`;
-  let open = transcript.disclosures?.get(key) ?? false;
-
-  const body = new TranscriptCodeRenderable(transcript.renderer, {
-    id: transcript.nextId("shell-body"),
-    content: run.output,
-    syntaxStyle: transcript.syntaxStyle,
-    fg: transcript.theme.foreground,
-    visible: open,
-    marginTop: 1,
-    selectionBg: transcript.theme.selectionBackground,
-    selectionFg: transcript.theme.selectionForeground,
-  });
-
-  repaints.set(body, () => {
-    body.syntaxStyle = transcript.syntaxStyle;
-    body.fg = transcript.theme.foreground;
-    body.selectionBg = transcript.theme.selectionBackground;
-    body.selectionFg = transcript.theme.selectionForeground;
-  });
-  collapsedTag(transcript, tags, {
-    label: () =>
-      ` Shell ${run.command}${run.exitCode === 0 ? "" : ` exit ${String(run.exitCode)}`}${open ? "" : ` +${String(pasteLineCount(run.output))} lines`} `,
-    onToggle: () => {
-      open = !open;
-      transcript.disclosures?.set(key, open);
-      body.visible = open;
-    },
-  });
-  block.add(body);
-}
-
-/** The request block of a turn; a pending message draws the same block ahead of its turn. */
-export function appendUser(
-  transcript: Transcript,
-  content: UserMessage["content"],
-  parent: Renderable,
-  before?: Renderable,
-): BoxRenderable {
-  const presentation = userPresentation(content);
-
-  const block = section(
-    transcript,
-    "user",
-    {
-      backgroundColor: transcript.theme.userBackground,
-      marginTop: 0,
-      marginLeft: 1,
-      marginRight: 1,
-      paddingTop: 1,
-      paddingBottom: 1,
-      paddingLeft: 3,
-      width: transcript.userBlockWidth(),
-    },
-    parent,
-    before,
-  );
-
-  repaints.set(block, () => {
-    block.backgroundColor = transcript.theme.userBackground;
-  });
-  transcript.userBlocks.add(block);
-  block.once(RenderableEvents.DESTROYED, () => transcript.userBlocks.delete(block));
-
-  if (presentation.text !== "") addUserText(transcript, block, presentation.text);
-
-  const tags = new BoxRenderable(transcript.renderer, {
-    id: transcript.nextId("user-attachments"),
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 1,
-    visible:
-      presentation.files.length +
-        presentation.skills.length +
-        presentation.shells.length +
-        presentation.images.length >
-      0,
-    marginTop: presentation.text === "" ? 0 : 1,
-  });
-
-  block.add(tags);
-
-  for (const skill of presentation.skills) {
-    collapsedTag(transcript, tags, {
-      url: pathToFileURL(skill.path).href,
-      label: () => ` Skill ${skill.name} `,
-      onToggle: () => transcript.openPath(skill.path),
-    });
-  }
-
-  for (const file of presentation.files) addFileTag(transcript, block, tags, file);
-
-  for (const run of presentation.shells) addShellTag(transcript, block, tags, run);
-
-  for (const [index, image] of presentation.images.entries()) {
-    const preview = new ImageRenderable(transcript.renderer, {
-      id: transcript.nextId("user-image"),
-      source: Buffer.from(image.data, "base64"),
-      width: "100%",
-      height: 12,
-      fit: "fit",
-      visible: transcript.disclosures?.get(`image:${String(index)}`) ?? false,
-    });
-
-    collapsedTag(transcript, tags, {
-      label: () => ` Image ${String(index + 1)} (${image.mimeType}) `,
-      onToggle: () => {
-        preview.visible = !preview.visible;
-        transcript.disclosures?.set(`image:${String(index)}`, preview.visible);
-      },
-    });
-    block.add(preview);
-  }
-
-  return block;
-}
-
-// ---------------------------------------------------------------------------
-// Markers between turns
-// ---------------------------------------------------------------------------
-
-function appendNote(
-  transcript: Transcript,
-  text: string,
-  color: string | undefined,
-  parent: Renderable,
-  before?: Renderable,
-): BoxRenderable {
-  const box = section(transcript, "note", {}, parent, before);
-  box.add(
-    new TranscriptTextRenderable(transcript.renderer, {
-      id: transcript.nextId("note-text"),
-      content: text,
-      fg: color ?? transcript.theme.dim,
-      wrapMode: "word",
-    }),
-  );
-  repaints.set(box, () => {
-    for (const child of box.getChildren()) {
-      if (child instanceof TextRenderable)
-        child.fg = color === undefined ? transcript.theme.dim : transcript.theme.error;
-    }
-  });
-
-  return box;
-}
-
-function appendCard(transcript: Transcript, heading: string, summary: string): BoxRenderable {
-  const { theme } = transcript;
-  const preview = previewLines(summary, { kind: "head", max: 40 });
-
-  const visibleSummary =
-    preview.omitted === 0 ? preview.text : `${preview.text}\n${omittedLabel(preview.omitted)}`;
-
-  const card = new BoxRenderable(transcript.renderer, {
-    id: transcript.nextId("card"),
-    flexDirection: "column",
-    border: true,
-    borderStyle: "rounded",
-    borderColor: theme.promptBorder,
-    paddingLeft: 2,
-    paddingRight: 2,
-    marginTop: SPACING.block,
-    width: "100%",
-  });
-
-  card.add(
-    new TranscriptTextRenderable(transcript.renderer, {
-      id: transcript.nextId("card-heading"),
-      content: new StyledText([fg(theme.dim)(heading)]),
-      wrapMode: "word",
-    }),
-  );
-
-  if (visibleSummary !== "") {
-    card.add(
-      new TranscriptMarkdownRenderable(transcript.renderer, {
-        renderNode: createMermaidMarkdownRenderer(
-          transcript.renderer,
-          theme,
-          transcript.disclosures,
-          { key: "card" },
-        ),
-        tableOptions: { selectable: true, cellPaddingX: 1 },
-        id: transcript.nextId("card-summary"),
-        content: visibleSummary,
-        syntaxStyle: transcript.subtleSyntaxStyle,
-        fg: theme.dim,
-      }),
-    );
-  }
-
-  repaints.set(card, () => {
-    card.borderColor = theme.promptBorder;
-
-    for (const child of card.getChildren()) {
-      if (child instanceof TextRenderable) child.content = new StyledText([fg(theme.dim)(heading)]);
-
-      if (child instanceof TranscriptMarkdownRenderable)
-        child.retheme(theme, transcript.subtleSyntaxStyle, true);
-    }
-  });
-  transcript.container.add(card);
-
-  return card;
-}
-
-/** One non-turn item: a checkpoint card, a branch summary, a config line, a note. */
-function appendMarker(transcript: Transcript, item: Exclude<Turn, { kind: "turn" }>): Renderable {
-  switch (item.kind) {
-    case "checkpoint":
-      return appendCard(
-        transcript,
-        `context compacted · ${String(item.body.tokensBefore)} tokens before`,
-        item.body.summary,
-      );
-    case "summary":
-      return appendCard(transcript, "branch summary", item.body.text);
-    case "config": {
-      const parts: string[] = [];
-
-      if (item.body.model !== undefined) {
-        const { provider, id } = item.body.model;
-        parts.push(`Model → ${provider === undefined ? id : `${provider}/${id}`}`);
-      }
-
-      if (item.body.thinkingLevel !== undefined)
-        parts.push(`Thinking → ${item.body.thinkingLevel}`);
-
-      if (item.body.agent !== undefined) parts.push(`Agent → ${item.body.agent}`);
-
-      return appendNote(transcript, parts.join(" · "), undefined, transcript.container);
-    }
-
-    default: {
-      const _exhaustive: never = item;
-
-      return _exhaustive;
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Turn blocks
 // ---------------------------------------------------------------------------
 
 /** Top-level layout owner for a conversation turn. */
-class TurnSection extends BoxRenderable {
+export class TurnSection extends BoxRenderable {
   constructor(transcript: Transcript, id: string) {
     super(transcript.renderer, {
       id: `turn:${id}`,
@@ -1225,7 +631,7 @@ class AssistantPartBlock {
   ) {
     this.disclosureKey = { key: partKey };
     this.disclosures = transcript.disclosures;
-    this.box = section(transcript, "assistant", {}, parent, before);
+    this.box = section(transcript, "assistant", parent, before);
     this.markdown = new TranscriptMarkdownRenderable(transcript.renderer, {
       renderNode: createMermaidMarkdownRenderer(
         transcript.renderer,
@@ -1296,7 +702,7 @@ class ReasoningBlock implements ExpandableToolOutput {
     this.theme = transcript.theme;
     this.disclosureKey = { key: partKey };
     this.disclosures = transcript.disclosures;
-    this.box = section(transcript, "thinking", {}, parent, before);
+    this.box = section(transcript, "thinking", parent, before);
     this.box.visible = false;
     this.heading = new TranscriptTextRenderable(transcript.renderer, {
       id: transcript.nextId("thinking-heading"),
@@ -1408,7 +814,7 @@ class ActivityBlock {
     this.transcript = transcript;
     this.durationMs = durationMs;
     this.mode = mode;
-    this.section = section(transcript, "activity", {}, parent);
+    this.section = section(transcript, "activity", parent);
     this.section.flexDirection = "row";
     this.section.height = 1;
     this.spinner = new SpinnerRenderable(transcript.renderer, {
@@ -1537,7 +943,7 @@ class ActivityBlock {
  */
 type DelegationClass = Extract<ToolTurnPart["class"], { kind: "delegate" }>;
 
-class ToolCard {
+export class ToolCard {
   readonly container: BoxRenderable;
 
   private readonly transcript: Transcript;
@@ -1551,7 +957,7 @@ class ToolCard {
   private expanded = false;
   private destroyed = false;
   private textBody: CodeRenderable | undefined;
-  /** The rows of a delegation card, made once and sized for good. */
+  /** A delegation card's step row: one row for good, so nothing below it moves. */
   private window: TextRenderable | undefined;
   /** A dim remark after the result and clock: what this call is not (`not sent to model`). */
   private note: string | undefined;
@@ -1592,7 +998,7 @@ class ToolCard {
     this.live = live;
     this.running = running;
     this.note = note;
-    this.container = section(transcript, "tool", {}, parent, before);
+    this.container = section(transcript, "tool", parent, before);
     this.heading = new TranscriptTextRenderable(transcript.renderer, {
       id: transcript.nextId("tool-heading"),
       content: "",
@@ -1673,8 +1079,8 @@ class ToolCard {
 
     if (this.completed) this.stopClock();
 
-    // A delegation's rows follow the child, which changes without this part.
-    if (changed || this.window !== undefined) this.render();
+    // A delegation follows the child, which changes without this part.
+    if (changed || this.toolClass?.kind === "delegate") this.render();
   }
 
   private stopClock(): void {
@@ -1908,31 +1314,31 @@ class ToolCard {
   }
 
   /**
-   * The call that made the child is its card: the child's steps follow it
-   * while it works. Every other call on a child is one line.
+   * The call that made the child is its card: its title, then the child's
+   * latest step. Every other call on a child is one line naming it.
    */
   private renderDelegation(delegation: DelegationClass): void {
-    if (this.current.kind !== "tool") return;
     const { theme } = this.transcript;
-    const agents = this.transcript.tasks().flatMap((task) => (task.kind === "agent" ? [task] : []));
 
     const sessions =
       delegation.target.kind === "one" ? [delegation.target.session] : delegation.target.sessions;
 
-    const tasks = sessions.map((session) =>
-      agents.find((candidate) => candidate.state.sessionId === session),
-    );
-
-    const task = tasks[0];
-
-    const name = tasks
-      .map((candidate, index) => (candidate === undefined ? sessions[index] : taskLabel(candidate)))
-      .join(", ");
+    const task = this.transcript
+      .tasks()
+      .find((candidate) => candidate.kind === "agent" && candidate.id === sessions[0]);
 
     const phase = this.phase();
+    // A listed child speaks for itself; until then its call does.
+    const mark = statusMark(task === undefined ? phaseStatus(phase) : taskStatus(task));
 
     if (delegation.role !== "create") {
-      const mark = statusMark(phaseStatus(phase));
+      const others = sessions.length - 1;
+
+      const name =
+        task === undefined
+          ? delegateSubject(delegation)
+          : `${taskLabel(task)}${others > 0 ? ` +${String(others)}` : ""}`;
+
       this.heading.content = new StyledText([
         fg(theme[mark.tone])(`${mark.glyph} `),
         fg(theme.foreground)(`${toolLabel(delegation, phase)} `),
@@ -1943,35 +1349,23 @@ class ToolCard {
       return;
     }
 
-    const child = task?.state;
-    const result = this.result;
-
-    const status =
-      result !== undefined
-        ? result.isError
-          ? "failed"
-          : "done"
-        : child === undefined
-          ? "running"
-          : runStatus(child.run);
-
-    const mark = statusMark(status);
-
-    const config = [child?.config.model?.id, child?.config.thinkingLevel]
-      .filter((value) => value !== undefined)
-      .join(" · ");
+    const config =
+      task?.kind === "agent"
+        ? [task.state.config.model?.id, task.state.config.thinkingLevel]
+            .filter((value) => value !== undefined)
+            .join(" · ")
+        : "";
 
     this.heading.content = new StyledText([
       fg(theme[mark.tone])(`${mark.glyph} `),
-      fg(theme.foreground)(`${toolLabel(delegation, phase)} `),
-      fg(theme.tool)(name),
+      fg(theme.foreground)(delegation.title),
       ...(config === "" ? [] : [fg(theme.dim)(`  ${config}`)]),
     ]);
 
     if (this.window === undefined) {
       this.window = new TranscriptTextRenderable(this.transcript.renderer, {
         id: this.transcript.nextId("tool-window"),
-        height: DELEGATION_ROWS,
+        height: 1,
         marginLeft: 2,
         wrapMode: "none",
         truncate: true,
@@ -1979,25 +1373,9 @@ class ToolCard {
       this.container.add(this.window);
     }
 
-    const prompt = child === undefined ? undefined : taskPrompt(child);
-
-    const steps = [
-      ...(prompt === undefined ? [] : [{ status: "queued" as const, text: prompt }]),
-      ...(child === undefined ? [] : taskSteps(child)),
-    ].slice(-DELEGATION_ROWS);
-
-    const rows: TextChunk[] = [];
-
-    for (let index = 0; index < DELEGATION_ROWS; index += 1) {
-      if (index > 0) rows.push(fg(theme.dim)("\n"));
-      const step = steps[index];
-
-      if (step === undefined) continue;
-      const stepMark = statusMark(step.status);
-      rows.push(fg(theme[stepMark.tone])(`${stepMark.glyph} `), fg(theme.dim)(step.text));
-    }
-
-    this.window.content = new StyledText(rows);
+    this.window.content = new StyledText([
+      fg(theme.dim)(task === undefined ? "" : taskActivity(task)),
+    ]);
   }
 
   private renderSettled(isError: boolean): void {
@@ -2228,7 +1606,7 @@ class ToolCard {
  * lie the block could never take back, while dropping the row would move the
  * message the run is about to answer.
  */
-type TurnStatus =
+export type TurnStatus =
   | {
       readonly kind: "open";
       readonly phase: RunInfo["phase"];
@@ -2244,7 +1622,7 @@ type PartBlock =
   | { readonly kind: "thinking"; readonly block: ReasoningBlock; readonly contentIndex: number };
 
 /** One visual owner for a user request and every assistant step it drives. */
-class TurnBlock {
+export class TurnBlock {
   private readonly transcript: Transcript;
   readonly root: TurnSection;
   private readonly settled = new Set<string>();
@@ -2338,7 +1716,12 @@ class TurnBlock {
       case "user":
         if (this.settled.has(id)) return;
         this.settled.add(id);
-        appendUser(this.transcript, part.content, this.root, this.contentAnchor());
+        appendMessage(
+          this.transcript,
+          { align: "end", content: part.content },
+          this.root,
+          this.contentAnchor(),
+        );
 
         return;
       case "assistant": {
@@ -2527,1153 +1910,6 @@ function activityMode(status: Extract<TurnStatus, { kind: "open" }>): ActivityMo
       const _exhaustive: never = status.phase;
 
       return _exhaustive;
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// The whole transcript
-// ---------------------------------------------------------------------------
-
-function itemKey(item: Turn): string {
-  return item.kind === "turn" ? `turn:${item.id}` : `${item.kind}:${item.commit}`;
-}
-
-/** A turn that has drawn no answer: only its request, or nothing at all (a completion's turn). */
-function isRequestOnly(turn: Extract<Turn, { kind: "turn" }>): boolean {
-  return turn.parts.length === 0 || (turn.parts.length === 1 && turn.parts[0]?.kind === "user");
-}
-
-/**
- * The status of a turn no run is streaming into: the record's outcome, or the
- * run's when it is the run that answered it. A bare request that no run has
- * answered stays unanswered; a run that ended on it (with nothing to say, or
- * by stopping) settles it.
- */
-function settledStatus(
-  turn: Extract<Turn, { kind: "turn" }>,
-  run: RunInfo | undefined,
-): Extract<TurnStatus, { kind: "unanswered" | "settled" }> {
-  const answered = run !== undefined && run.startedAt >= turn.startedAt;
-
-  if (!answered) {
-    return isRequestOnly(turn) && turn.failure === undefined
-      ? { kind: "unanswered" }
-      : { kind: "settled", failure: turn.failure };
-  }
-
-  switch (run.phase.kind) {
-    case "aborted":
-      return {
-        kind: "settled",
-        failure: turn.failure ?? { class: "aborted", message: "Run stopped." },
-      };
-    case "failed":
-      return { kind: "settled", failure: turn.failure ?? run.phase.failure };
-    case "done":
-    case "respond":
-    case "tools":
-    case "waiting":
-    case "retry":
-      return { kind: "settled", failure: turn.failure };
-    default: {
-      const _exhaustive: never = run.phase;
-
-      return _exhaustive;
-    }
-  }
-}
-
-/** Measured rows are hints, never a limit on how much history can be reached. */
-const HEIGHT_CACHE_LIMIT = 1024;
-
-/** One of the user's `!` jobs, shown among the turns where it started. */
-interface ShellEntry {
-  readonly kind: "shell";
-  readonly execution: ShellExecution;
-  readonly note: string | undefined;
-}
-
-interface TranscriptItem {
-  readonly key: string;
-  readonly source: Turn | ShellEntry;
-  readonly item: Turn | ShellEntry;
-  readonly disclosures: TranscriptDisclosures;
-  height: number;
-}
-
-type MountedItem =
-  | { readonly kind: "turn"; readonly root: TurnSection; readonly block: TurnBlock }
-  | { readonly kind: "marker"; readonly root: Renderable }
-  | { readonly kind: "shell"; readonly root: BoxRenderable; readonly card: ToolCard };
-
-function entryTime(entry: Turn | ShellEntry): number {
-  switch (entry.kind) {
-    case "turn":
-      return entry.startedAt;
-    case "shell":
-      return entry.execution.startedAt;
-    default:
-      return entry.at;
-  }
-}
-
-function layoutY(node: Renderable): number {
-  return (
-    node.getLayoutNode().getComputedLayout().top +
-    node.translateY +
-    (node.parent === null ? 0 : layoutY(node.parent))
-  );
-}
-
-interface ReadingAnchor {
-  readonly index: number;
-  readonly row: number;
-  readonly text?: {
-    readonly node: TextBufferRenderable;
-    readonly offset: number;
-    readonly screenRow: number;
-    readonly widthMethod: CliRenderer["widthMethod"];
-  };
-}
-
-/** The callback leaves chunks untouched, including OpenTUI's link metadata. */
-const highlightSources = new WeakMap<
-  CodeRenderable,
-  {
-    callback: NonNullable<CodeRenderable["onChunks"]>;
-    source: string;
-    text: string;
-    highlights: SimpleHighlight[];
-  }
->();
-
-type TextChange = Pick<ReturnType<typeof diffChars>[number], "value" | "added" | "removed">;
-
-/** Follow OpenTUI's highlight boundaries, including replacement and concealed spaces. */
-function concealChanges(source: string, highlights: SimpleHighlight[]): TextChange[] {
-  const boundaries = highlights
-    .flatMap(([start, end], index) =>
-      start === end
-        ? []
-        : [
-            { offset: start, start: true, index },
-            { offset: end, start: false, index },
-          ],
-    )
-    .toSorted(
-      (left, right) => left.offset - right.offset || Number(left.start) - Number(right.start),
-    );
-
-  const active = new Set<number>();
-  const changes: TextChange[] = [];
-  let cursor = 0;
-
-  for (const boundary of boundaries) {
-    if (cursor < boundary.offset) {
-      const conceal = [...active]
-        .map((index) => highlights[index])
-        .find(
-          (highlight) =>
-            highlight !== undefined &&
-            (highlight[3]?.conceal !== undefined ||
-              highlight[2] === "conceal" ||
-              highlight[2].startsWith("conceal.")),
-        );
-
-      changes.push({
-        value: source.slice(cursor, boundary.offset),
-        removed: conceal !== undefined,
-        added: false,
-      });
-
-      if (conceal !== undefined) {
-        const replacement =
-          conceal[3]?.conceal !== undefined
-            ? (conceal[3].conceal ?? "")
-            : conceal[2] === "conceal.with.space"
-              ? " "
-              : "";
-
-        if (replacement !== "") changes.push({ value: replacement, added: true, removed: false });
-      }
-    }
-
-    if (boundary.start) active.add(boundary.index);
-    else active.delete(boundary.index);
-    cursor = boundary.offset;
-
-    if (boundary.start) continue;
-    const highlight = highlights[boundary.index];
-    const meta = highlight?.[3];
-
-    if (
-      (meta?.concealLines !== undefined && source[cursor] === "\n") ||
-      (source[cursor] === " " &&
-        (meta?.conceal === " " ||
-          (meta?.conceal === "" && highlight?.[2] === "conceal" && !meta.isInjection)))
-    ) {
-      changes.push({ value: source[cursor] ?? "", removed: true, added: false });
-      cursor += 1;
-    }
-  }
-
-  if (cursor < source.length)
-    changes.push({ value: source.slice(cursor), added: false, removed: false });
-
-  return changes;
-}
-
-/** Map the actual native buffer, including conceal replacements, not markdown guesses. */
-const textMappings = new WeakMap<
-  CodeRenderable,
-  {
-    source: string;
-    text: string;
-    changes: TextChange[];
-  }
->();
-
-function textOffset(node: TextBufferRenderable, offset: number, toSource: boolean): number {
-  if (!(node instanceof CodeRenderable) || node.content === node.plainText) return offset;
-  let mapping = textMappings.get(node);
-
-  if (mapping?.source !== node.content || mapping.text !== node.plainText) {
-    const highlighted = highlightSources.get(node);
-
-    const changes =
-      node.conceal && highlighted?.source === node.content && highlighted.text === node.plainText
-        ? concealChanges(highlighted.source, highlighted.highlights)
-        : diffChars(node.content, node.plainText);
-
-    mapping = { source: node.content, text: node.plainText, changes };
-    textMappings.set(node, mapping);
-  }
-
-  let from = 0;
-  let to = 0;
-
-  for (const change of mapping.changes) {
-    const removed = toSource ? change.added : change.removed;
-    const added = toSource ? change.removed : change.added;
-    const length = change.value.length;
-
-    if (added) {
-      to += length;
-      continue;
-    }
-
-    if (offset < from + length) return to + (removed ? 0 : offset - from);
-    from += length;
-
-    if (!removed) to += length;
-  }
-
-  return to;
-}
-
-/**
- * Only the viewport, one viewport of overscan on either side, and the tail are
- * mounted. Spacers stand in for the rest. A selection temporarily retains its
- * whole range because OpenTUI copies from mounted text buffers.
- */
-export class TranscriptView {
-  private readonly transcript: Transcript;
-  private readonly mounted = new Map<number, MountedItem>();
-  private readonly spacers: BoxRenderable[] = [];
-  private readonly heights = new Map<
-    string,
-    { readonly source: Turn | ShellEntry; readonly height: number }
-  >();
-  private items: TranscriptItem[] = [];
-  /** A local shell card may follow the still-streaming conversation turn. */
-  private lastTurnIndex = -1;
-  private offsets: number[] = [0];
-  private state: SessionState | undefined;
-  private geometry = "";
-  private queued = false;
-  private changingLayout = false;
-  private pendingAnchor: ReadingAnchor | "bottom" | undefined;
-  private reading: { readonly top: number; readonly anchor: ReadingAnchor | "bottom" } | undefined;
-  private followMode: "latest" | "history" = "latest";
-  /** The turn selected with Ctrl+Up/Down; it survives physical clamping near the tail. */
-  private navigationKey: string | undefined;
-  /** Blank rows after the tail so a selected turn can reach the viewport top. */
-  private readonly navigationSpacer: BoxRenderable;
-  private navigationSlack = 0;
-  private selectionRange:
-    | { readonly selection: Selection; readonly start: number; readonly end: number }
-    | undefined;
-  private liveTurn: { readonly key: string; readonly block: TurnBlock } | undefined;
-  /** Content after the last turn that is not a turn: the messages still waiting to become one. */
-  private readonly tail: Renderable | undefined;
-  /** The user's `!` jobs on this head. Jobs, not commits: they join the items by start time. */
-  private readonly shellEntries = new Map<string, ShellEntry>();
-  private shellChanged = false;
-  private readonly shellPositions = new Map<string, number>();
-
-  constructor(transcript: Transcript, options: { readonly tail?: Renderable } = {}) {
-    this.transcript = transcript;
-    this.tail = options.tail;
-    this.navigationSpacer = new BoxRenderable(transcript.renderer, {
-      id: transcript.nextId("navigation-slack"),
-      width: "100%",
-      height: 0,
-      flexShrink: 0,
-    });
-    transcript.renderer.setFrameCallback(this.beforeFrame);
-    transcript.renderer.root.on(LayoutEvents.LAYOUT_CHANGED, this.restoreAnchor);
-    transcript.renderer.on(CliRenderEvents.FRAME, this.scheduleLayout);
-    transcript.renderer.on(CliRenderEvents.SELECTION, this.scheduleLayout);
-    transcript.container.once(RenderableEvents.DESTROYED, () => {
-      transcript.renderer.removeFrameCallback(this.beforeFrame);
-      transcript.renderer.root.off(LayoutEvents.LAYOUT_CHANGED, this.restoreAnchor);
-      transcript.renderer.off(CliRenderEvents.FRAME, this.scheduleLayout);
-      transcript.renderer.off(CliRenderEvents.SELECTION, this.scheduleLayout);
-      this.clear();
-      this.navigationSpacer.destroy();
-    });
-  }
-
-  /** Diagnostic count; cached widths are bounded independently of durable history. */
-  get cachedHeightCount(): number {
-    return this.heights.size;
-  }
-
-  /** Diagnostic count; the mounted window stays bounded independently of durable history. */
-  get mountedItemCount(): number {
-    return this.mounted.size;
-  }
-
-  /** Temporary space exists only while turn navigation needs to align the tail. */
-  get navigationSlackRows(): number {
-    return this.navigationSlack;
-  }
-
-  get isFollowingLatest(): boolean {
-    return this.followMode === "latest";
-  }
-
-  get openTurn(): TurnBlock | undefined {
-    const last = this.mounted.get(this.lastTurnIndex);
-
-    return last?.kind === "turn" ? last.block : this.liveTurn?.block;
-  }
-
-  /** Call after the owning shell updates its theme and syntax styles. */
-  retheme(): void {
-    this.pendingAnchor ??= this.anchor();
-
-    for (const mounted of this.mounted.values()) repaintTree(mounted.root);
-
-    if (this.liveTurn !== undefined) repaintTree(this.liveTurn.block.root);
-    this.transcript.renderer.requestRender();
-  }
-
-  /** Progress replaces one card; only a new command changes transcript order. */
-  syncShell(execution: ShellExecution, note: string | undefined): void {
-    const state = this.state;
-
-    if (state === undefined) return;
-    const entry: ShellEntry = { kind: "shell", execution, note };
-    this.shellEntries.set(execution.id, entry);
-    const index = this.shellPositions.get(execution.id);
-    const item = index === undefined ? undefined : this.items[index];
-
-    if (index !== undefined && item !== undefined) {
-      this.pendingAnchor ??= this.anchor();
-      this.items[index] = { ...item, source: entry, item: entry };
-      const mounted = this.mounted.get(index);
-
-      if (mounted !== undefined) this.syncMounted(index, mounted);
-      this.scheduleLayout();
-      this.transcript.renderer.requestRender();
-
-      return;
-    }
-
-    this.shellChanged = true;
-    this.sync(state);
-  }
-
-  /** The turns and shell jobs in start order; a job goes before the first item that started after it. */
-  private entries(source: readonly Turn[]): readonly (Turn | ShellEntry)[] {
-    if (this.shellEntries.size === 0) return source;
-
-    const jobs = [...this.shellEntries.values()].toSorted(
-      (left, right) =>
-        left.execution.startedAt - right.execution.startedAt ||
-        left.execution.id.localeCompare(right.execution.id),
-    );
-
-    const merged: (Turn | ShellEntry)[] = [];
-    let next = 0;
-
-    for (const item of source) {
-      while (next < jobs.length && entryTime(jobs[next] ?? item) < entryTime(item)) {
-        merged.push(jobs[next] ?? item);
-        next += 1;
-      }
-
-      merged.push(item);
-    }
-
-    return [...merged, ...jobs.slice(next)];
-  }
-
-  sync(state: SessionState, options: { readonly reset?: boolean } = {}): void {
-    const previous = this.state;
-    const source = state.transcript.items;
-    const changed = previous?.transcript.items !== source || this.shellChanged;
-    this.shellChanged = false;
-
-    const reset =
-      options.reset === true ||
-      previous?.sessionId !== state.sessionId ||
-      previous?.head !== state.head ||
-      (changed &&
-        previous !== undefined &&
-        (source.length < previous.transcript.items.length ||
-          previous.transcript.items.some(
-            (item, index) => itemKey(item) !== itemKey(source[index] ?? item),
-          )));
-
-    if (reset) this.clear();
-    this.state = state;
-
-    if (changed || reset) {
-      this.pendingAnchor ??= this.anchor();
-
-      const old =
-        this.shellEntries.size === 0
-          ? undefined
-          : new Map(this.items.map((item) => [item.key, item]));
-
-      const next: TranscriptItem[] = [];
-
-      for (const item of this.entries(source)) {
-        const preceding = next.at(-1);
-
-        // A config run is one display item, not one mounted node per commit.
-        const merged =
-          item.kind === "config" && preceding?.item.kind === "config"
-            ? { ...item, body: { ...preceding.item.body, ...item.body } }
-            : item;
-
-        if (merged !== item) next.pop();
-        const key = item.kind === "shell" ? `shell:${item.execution.id}` : itemKey(item);
-        const candidate = old === undefined ? this.items[next.length] : old.get(key);
-        const existing = candidate?.key === key ? candidate : undefined;
-        next.push(
-          existing?.source === item
-            ? existing
-            : {
-                key,
-                source: item,
-                item: merged,
-                disclosures: existing?.disclosures ?? new TranscriptDisclosures(),
-                height: existing?.height ?? (item.kind === "turn" ? 8 : 3),
-              },
-        );
-      }
-
-      for (const [index, mounted] of this.mounted) {
-        const before = this.items[index];
-        const after = next[index];
-
-        if (
-          before?.key !== after?.key ||
-          (mounted.kind === "marker" && before?.source !== after?.source)
-        ) {
-          mounted.root.parent?.remove(mounted.root);
-          mounted.root.destroyRecursively();
-          this.mounted.delete(index);
-        }
-      }
-
-      this.items = next;
-      this.shellPositions.clear();
-      this.lastTurnIndex = -1;
-
-      for (const [index, item] of next.entries()) {
-        if (item.item.kind === "shell") this.shellPositions.set(item.item.execution.id, index);
-        else if (item.item.kind === "turn" && item.source === source.at(-1))
-          this.lastTurnIndex = index;
-      }
-
-      this.reindex();
-    }
-
-    this.reconcileWindow();
-
-    if (changed || reset) {
-      for (const [index, mounted] of this.mounted) this.syncMounted(index, mounted);
-    } else {
-      const last = this.mounted.get(this.lastTurnIndex);
-
-      if (last !== undefined) this.syncMounted(this.lastTurnIndex, last);
-    }
-
-    const last = source.at(-1);
-
-    if (state.compaction !== undefined && (!this.running() || last?.kind !== "turn")) {
-      const key = `compaction:${state.compaction.id}`;
-
-      if (this.liveTurn?.key !== key) {
-        this.liveTurn?.block.remove();
-        this.liveTurn = { key, block: new TurnBlock(this.transcript, key, 0) };
-      }
-
-      this.liveTurn.block.sync(undefined, { kind: "compacting" });
-    } else if (this.running() && last?.kind !== "turn" && state.run !== undefined) {
-      const key = `live:${state.run.runId}`;
-
-      if (this.liveTurn?.key !== key) {
-        this.liveTurn?.block.remove();
-        this.liveTurn = { key, block: new TurnBlock(this.transcript, key, 0) };
-      }
-
-      this.liveTurn.block.sync(undefined, {
-        kind: "open",
-        phase: state.run.phase,
-        live: state.overlay,
-        waitingForUser: waitingCall(state) !== undefined,
-      });
-    } else if (this.liveTurn !== undefined) {
-      this.liveTurn.block.remove();
-      this.liveTurn = undefined;
-    }
-
-    if (reset) this.pendingAnchor = "bottom";
-    this.scheduleLayout();
-  }
-
-  /** Logical navigation includes turns that have no renderable yet. */
-  jumpTurn(direction: "previous" | "next"): boolean {
-    const indices = this.items.flatMap((item, index) => (item.item.kind === "turn" ? [index] : []));
-    const selected = indices.findIndex((index) => this.items[index]?.key === this.navigationKey);
-    const top = this.transcript.container.scrollTop;
-
-    const index =
-      selected >= 0
-        ? indices[selected + (direction === "next" ? 1 : -1)]
-        : direction === "next"
-          ? indices.find((candidate) => this.offset(candidate) + SPACING.block > top)
-          : indices.findLast((candidate) => this.offset(candidate) + SPACING.block < top);
-
-    const item = index === undefined ? undefined : this.items[index];
-
-    if (index === undefined || item === undefined) return false;
-
-    this.setFollowMode("history");
-    this.navigationKey = item.key;
-    this.reading = undefined;
-    const target = this.offset(index) + SPACING.block;
-    // A tail target clamps until the spacer is laid out; restoreAnchor applies it in-frame.
-    this.pendingAnchor = { index, row: SPACING.block };
-    this.setNavigationSlack(this.slackForTarget(target));
-    this.transcript.container.scrollTo(target);
-    this.reconcileWindow(target);
-    this.scheduleLayout();
-    this.transcript.renderer.requestRender();
-
-    return true;
-  }
-
-  /** Page keys take physical ownership and end logical turn navigation. */
-  scrollBy(delta: number, unit: ScrollUnit = "absolute"): void {
-    this.beginManualScroll();
-    this.transcript.container.scrollBy(delta, unit);
-  }
-
-  /**
-   * Called before OpenTUI moves this viewport for a wheel event. A stale anchor
-   * must not scroll back over the user's move, so the new one is captured after.
-   */
-  beginManualScroll(): void {
-    this.endNavigation();
-    this.setFollowMode("history");
-    this.pendingAnchor = undefined;
-    this.reading = undefined;
-    queueMicrotask(this.finishManualScroll);
-  }
-
-  /** Clear all viewport ownership and follow subsequent output at the tail. */
-  returnToLatest(): void {
-    this.endNavigation();
-    this.pendingAnchor = "bottom";
-    this.reading = undefined;
-    this.setFollowMode("latest");
-    this.transcript.container.scrollTo(Infinity);
-    this.reconcileWindow();
-    this.scheduleLayout();
-    this.transcript.renderer.requestRender();
-  }
-
-  clear(): void {
-    for (const mounted of this.mounted.values()) {
-      mounted.root.parent?.remove(mounted.root);
-      mounted.root.destroyRecursively();
-    }
-
-    this.mounted.clear();
-    this.heights.clear();
-
-    for (const spacer of this.spacers.splice(0)) {
-      spacer.parent?.remove(spacer);
-      spacer.destroy();
-    }
-
-    this.endNavigation();
-    this.liveTurn?.block.remove();
-    this.liveTurn = undefined;
-    this.shellEntries.clear();
-    this.shellPositions.clear();
-    this.items = [];
-    this.lastTurnIndex = -1;
-    this.offsets = [0];
-    this.state = undefined;
-    this.geometry = "";
-    this.selectionRange = undefined;
-    this.reading = undefined;
-    this.pendingAnchor = "bottom";
-    this.setFollowMode("latest");
-  }
-
-  /** OpenTUI's bottom pin is on exactly while output growth owns the viewport. */
-  private setFollowMode(mode: "latest" | "history"): void {
-    if (this.followMode === mode) return;
-    this.followMode = mode;
-    this.transcript.container.stickyScroll = mode === "latest";
-    this.transcript.onFollowModeChange(mode === "latest");
-  }
-
-  /**
-   * Content rows without navigation space. scrollHeight comes from the last Yoga
-   * pass, so subtract the slack that pass measured (NaN before the first pass)
-   * rather than the rows requested since.
-   */
-  private naturalHeight(): number {
-    const measuredSlack = this.navigationSpacer.getLayoutNode().getComputedLayout().height || 0;
-
-    return this.transcript.container.scrollHeight - measuredSlack;
-  }
-
-  /** Compares against the requested slack; a wheel step that cancels navigation lands on the natural tail. */
-  private atBottom(): boolean {
-    const scroll = this.transcript.container;
-    const bottom = this.naturalHeight() + this.navigationSlack - scroll.viewport.height;
-
-    return scroll.scrollTop >= Math.max(0, bottom) - 1;
-  }
-
-  private viewportRows(): number {
-    return Math.max(
-      1,
-      this.transcript.container.viewport.height || this.transcript.renderer.height,
-    );
-  }
-
-  /** Runs after OpenTUI moved the viewport, unless another owner took over meanwhile. */
-  private readonly finishManualScroll = (): void => {
-    if (this.followMode !== "history" || this.navigationKey !== undefined) return;
-
-    if (this.transcript.container.isDestroyed) return;
-
-    if (this.atBottom()) {
-      this.returnToLatest();
-
-      return;
-    }
-
-    this.pendingAnchor ??= this.captureReadingAnchor();
-    this.reconcileWindow();
-    this.scheduleLayout();
-    this.transcript.renderer.requestRender();
-  };
-
-  private slackForTarget(target: number): number {
-    return Math.max(0, target + this.viewportRows() - this.naturalHeight());
-  }
-
-  private setNavigationSlack(rows: number): void {
-    this.navigationSlack = rows;
-    this.navigationSpacer.height = rows;
-  }
-
-  private endNavigation(): void {
-    this.navigationKey = undefined;
-    this.setNavigationSlack(0);
-  }
-
-  private running(): boolean {
-    const run = this.state?.run;
-
-    return run !== undefined && !isTerminalPhase(run.phase);
-  }
-
-  private syncMounted(index: number, mounted: MountedItem): void {
-    const item = this.items[index]?.item;
-    const state = this.state;
-
-    if (mounted.kind === "shell" && item?.kind === "shell") {
-      mounted.card.sync(item.execution, undefined, false);
-      mounted.card.setNote(item.note);
-
-      return;
-    }
-
-    if (mounted.kind !== "turn" || item?.kind !== "turn" || state === undefined) return;
-    const last = index === this.lastTurnIndex;
-    mounted.block.sync(
-      item,
-      last && this.running() && state.run !== undefined
-        ? state.compaction !== undefined
-          ? { kind: "compacting" }
-          : {
-              kind: "open",
-              phase: state.run.phase,
-              live: state.overlay,
-              waitingForUser: waitingCall(state) !== undefined,
-            }
-        : settledStatus(item, last ? state.run : undefined),
-    );
-  }
-
-  private offset(index: number): number {
-    return this.offsets[index] ?? 0;
-  }
-
-  private reindex(start = 0): void {
-    this.offsets.length = start + 1;
-    this.offsets[0] = 0;
-
-    for (let index = start; index < this.items.length; index += 1) {
-      this.offsets.push(this.offset(index) + (this.items[index]?.height ?? 1));
-    }
-  }
-
-  private indexAt(row: number): number {
-    let low = 0;
-    let high = this.items.length;
-
-    while (low < high) {
-      const middle = Math.floor((low + high) / 2);
-
-      if (this.offset(middle + 1) <= row) low = middle + 1;
-      else high = middle;
-    }
-
-    return Math.min(low, Math.max(0, this.items.length - 1));
-  }
-
-  private anchor(): ReadingAnchor | "bottom" {
-    if (this.followMode === "latest") return "bottom";
-    const scroll = this.transcript.container;
-
-    if (this.reading?.top === scroll.scrollTop) return this.reading.anchor;
-
-    return this.captureReadingAnchor();
-  }
-
-  private captureReadingAnchor(): ReadingAnchor {
-    const scroll = this.transcript.container;
-    const index = this.indexAt(scroll.scrollTop);
-    const row = scroll.scrollTop - this.offset(index);
-    const root = this.mounted.get(index)?.root;
-    const node = root === undefined ? undefined : this.visibleText(root);
-
-    if (node === undefined) return { index, row };
-    const visualRow = Math.max(0, scroll.viewport.y - node.y + node.scrollY);
-    // Native line starts are absolute cell offsets, including preceding newlines.
-    // CodeRenderable remaps lineSources to markdown source lines, not buffer lines.
-    const column = node.lineInfo.lineStartCols[visualRow] ?? 0;
-    const text = node.plainText;
-    const widthMethod = bufferWidths.get(node) ?? this.transcript.renderer.widthMethod;
-    let offset = Math.min(column, text.length);
-
-    if (!/^[\x20-\x7e\n]*$/.test(text)) {
-      const buffer = TextBuffer.create(widthMethod);
-
-      try {
-        buffer.setText(text);
-        offset = buffer.getTextRange(0, column).length;
-      } finally {
-        buffer.destroy();
-      }
-    }
-
-    return {
-      index,
-      row,
-      text: {
-        node,
-        offset: textOffset(node, offset, true),
-        widthMethod,
-        screenRow: node.y + visualRow - node.scrollY - scroll.viewport.y,
-      },
-    };
-  }
-
-  private visibleText(root: Renderable): TextBufferRenderable | undefined {
-    if (!root.visible) return undefined;
-    const top = this.transcript.container.viewport.y;
-
-    if (root instanceof TextBufferRenderable && root.y <= top && root.y + root.height > top)
-      return root;
-
-    for (const child of root.getChildren()) {
-      const node = this.visibleText(child);
-
-      if (node !== undefined) return node;
-    }
-
-    return undefined;
-  }
-
-  private textTarget(anchor: ReadingAnchor, measured = false): number | undefined {
-    const text = anchor.text;
-
-    if (text === undefined || text.node.isDestroyed || !text.node.visible) return undefined;
-    const node = text.node;
-    const prefix = node.plainText.slice(0, textOffset(node, text.offset, false));
-    const column = cellOffset(prefix, prefix.length, text.widthMethod, 4);
-    const width = node.getLayoutNode().getComputedLayout().width;
-    let info = node.lineInfo;
-
-    // Yoga has measured the new width, but OpenTUI applies text viewports later.
-    // Measure only this reading buffer before scroll translation is inherited.
-    if (measured && width !== node.width) {
-      const buffer = TextBuffer.create(text.widthMethod);
-      const view = TextBufferView.create(buffer);
-
-      try {
-        buffer.setText(node.plainText);
-        view.setWrapMode(node.wrapMode);
-        view.setWrapWidth(width);
-        info = view.logicalLineInfo;
-      } finally {
-        view.destroy();
-        buffer.destroy();
-      }
-    }
-
-    const row = info.lineStartCols.findLastIndex((start) => start <= column);
-    const scroll = this.transcript.container;
-
-    return (
-      scroll.scrollTop +
-      (measured ? layoutY(node) - layoutY(scroll.viewport) : node.y - scroll.viewport.y) +
-      Math.max(0, row) -
-      node.scrollY -
-      text.screenRow
-    );
-  }
-
-  private readonly restoreAnchor = (): void => {
-    const anchor = this.pendingAnchor;
-
-    if (anchor === undefined || anchor === "bottom") return;
-    const scroll = this.transcript.container;
-
-    const target =
-      anchor.text === undefined ? this.indexTarget(anchor) : this.textTarget(anchor, true);
-
-    if (target === undefined) return;
-    // Apply the scroll ancestors first. Otherwise viewport resize clamps against
-    // the old content height and falsely re-engages the native bottom pin.
-    const ancestors: Renderable[] = [];
-
-    for (let node: Renderable | null = scroll.content; node !== null; node = node.parent)
-      ancestors.unshift(node);
-
-    for (const node of ancestors) node.updateFromLayout();
-    scroll.scrollTo(target);
-  };
-
-  /**
-   * In-frame, a mounted item's Yoga position beats the prefix offsets: an
-   * overscan item mounted above it may have just measured taller than its
-   * estimate, which the offsets only learn on the next layout pass.
-   */
-  private indexTarget(anchor: ReadingAnchor): number {
-    const root = this.mounted.get(anchor.index)?.root;
-
-    if (root === undefined || !root.visible) return this.offset(anchor.index) + anchor.row;
-    const scroll = this.transcript.container;
-
-    return (
-      scroll.scrollTop +
-      layoutY(root) -
-      layoutY(scroll.viewport) -
-      root.getLayoutNode().getComputedMargin(Edge.Top) +
-      anchor.row
-    );
-  }
-
-  private readonly beforeFrame = (): Promise<void> => {
-    // Capture against the old geometry before Yoga can clamp a shrinking scroll
-    // range or re-engage OpenTUI's bottom pin during reflow.
-    if (!this.changingLayout && this.state !== undefined) {
-      if (this.followMode === "latest" && !this.atBottom()) this.setFollowMode("history");
-      this.pendingAnchor ??= this.anchor();
-      this.reconcileWindow();
-    }
-
-    return Promise.resolve();
-  };
-
-  private readonly scheduleLayout = (): void => {
-    if (this.queued || this.transcript.container.isDestroyed) return;
-    this.queued = true;
-    // FRAME is emitted inside the render pass; mutations there lose render requests.
-    queueMicrotask(() => {
-      this.queued = false;
-
-      if (!this.transcript.container.isDestroyed && this.state !== undefined) this.layout();
-    });
-  };
-
-  private layout(): void {
-    const scroll = this.transcript.container;
-
-    if (scroll.content.width <= 0 || scroll.viewport.height <= 0) return;
-    this.changingLayout = true;
-
-    try {
-      const anchor = this.pendingAnchor ?? this.anchor();
-      this.pendingAnchor = undefined;
-      const geometry = `${String(scroll.content.width)}:${String(this.transcript.userBlockWidth())}:${String(this.transcript.toolOutput.expanded)}`;
-      let firstChanged = this.items.length;
-
-      if (geometry !== this.geometry) {
-        this.geometry = geometry;
-
-        for (const [index, item] of this.items.entries()) {
-          const cached = this.heights.get(
-            `${geometry}:${item.key}:${String(item.disclosures.revision)}`,
-          );
-
-          // A different width is an estimate until this item is mounted and measured.
-          if (cached?.source === item.source && cached.height !== item.height) {
-            item.height = cached.height;
-            firstChanged = Math.min(firstChanged, index);
-          }
-        }
-      }
-
-      for (const [index, mounted] of this.mounted) {
-        const item = this.items[index];
-
-        // A root just mounted outside a frame reads 0 until Yoga measures it;
-        // its estimate must stand or every offset below it shifts for one frame.
-        if (item === undefined || mounted.root.height === 0) continue;
-        const height = mounted.root.height + SPACING.block;
-
-        if (item.height !== height) {
-          item.height = height;
-          firstChanged = Math.min(firstChanged, index);
-        }
-
-        const key = `${geometry}:${item.key}:${String(item.disclosures.revision)}`;
-        this.heights.delete(key);
-        this.heights.set(key, { source: item.source, height });
-      }
-
-      while (this.heights.size > HEIGHT_CACHE_LIMIT) {
-        const oldest = this.heights.keys().next();
-
-        if (oldest.done) break;
-        this.heights.delete(oldest.value);
-      }
-
-      // A growing live tail changes just the final offset, not the history prefix.
-      if (firstChanged < this.items.length) this.reindex(firstChanged);
-
-      if (this.navigationKey !== undefined) {
-        const navigationIndex = this.items.findIndex(
-          (item) => item.key === this.navigationKey && item.item.kind === "turn",
-        );
-
-        if (navigationIndex === -1) this.endNavigation();
-        else
-          this.setNavigationSlack(
-            this.slackForTarget(this.offset(navigationIndex) + SPACING.block),
-          );
-      }
-
-      // Rebase before deciding the window, otherwise newly measured overscan can
-      // evict the very turn the reader was looking at.
-      const target =
-        anchor === "bottom"
-          ? undefined
-          : (this.textTarget(anchor) ?? this.offset(anchor.index) + anchor.row);
-
-      this.reconcileWindow(
-        target ?? Math.max(0, this.offset(this.items.length) - scroll.viewport.height),
-      );
-
-      if (anchor === "bottom") scroll.scrollTo(Infinity);
-      else if (target !== undefined && target !== scroll.scrollTop) scroll.scrollTo(target);
-      // beforeFrame re-reads this anchor, so a clamped target is retried before the next frame.
-      this.reading = { top: scroll.scrollTop, anchor };
-    } finally {
-      this.changingLayout = false;
-    }
-  }
-
-  private reconcileWindow(top = this.transcript.container.scrollTop): void {
-    const scroll = this.transcript.container;
-    const viewport = this.viewportRows();
-    const atBottom = this.pendingAnchor === "bottom";
-    const position = atBottom ? Math.max(0, this.offset(this.items.length) - viewport) : top;
-    const start = this.indexAt(Math.max(0, position - viewport));
-    const end = this.indexAt(position + viewport * 2);
-    const selection = this.transcript.renderer.getSelection();
-
-    if (
-      selection !== null &&
-      (selection.isDragging || !selection.isStart || selection.behavior !== "cell")
-    ) {
-      const retained =
-        this.selectionRange?.selection === selection ? this.selectionRange : undefined;
-
-      this.selectionRange = {
-        selection,
-        start: selection.isDragging
-          ? Math.min(start, retained?.start ?? start)
-          : (retained?.start ?? start),
-        end: selection.isDragging ? Math.max(end, retained?.end ?? end) : (retained?.end ?? end),
-      };
-    } else this.selectionRange = undefined;
-    const keep = new Set<number>();
-
-    for (let index = start; index <= end && index < this.items.length; index += 1) keep.add(index);
-
-    if (this.selectionRange !== undefined) {
-      for (
-        let index = this.selectionRange.start;
-        index <= this.selectionRange.end && index < this.items.length;
-        index += 1
-      )
-        keep.add(index);
-    }
-
-    if (this.items.length > 0) keep.add(this.items.length - 1);
-
-    if (this.lastTurnIndex >= 0) keep.add(this.lastTurnIndex);
-
-    for (const [index, mounted] of this.mounted) {
-      if (keep.has(index) || mounted.root.hasFocusedDescendant) continue;
-      mounted.root.parent?.remove(mounted.root);
-      mounted.root.destroyRecursively();
-      this.mounted.delete(index);
-    }
-
-    const owner = this.transcript;
-
-    for (const index of keep) {
-      if (this.mounted.has(index)) continue;
-      const item = this.items[index];
-
-      if (item === undefined) continue;
-
-      const transcript: Transcript = {
-        ...this.transcript,
-        disclosures: item.disclosures,
-        tasks: () => owner.tasks(),
-        get syntaxStyle() {
-          return owner.syntaxStyle;
-        },
-        get subtleSyntaxStyle() {
-          return owner.subtleSyntaxStyle;
-        },
-      };
-
-      const mounted: MountedItem =
-        item.item.kind === "turn"
-          ? (() => {
-              const block = new TurnBlock(transcript, item.item.id, item.item.durationMs);
-
-              return { kind: "turn", root: block.root, block };
-            })()
-          : item.item.kind === "shell"
-            ? (() => {
-                const root = new BoxRenderable(transcript.renderer, {
-                  id: transcript.nextId("shell"),
-                  flexDirection: "column",
-                  width: "100%",
-                  live: false,
-                });
-
-                const card = new ToolCard(
-                  transcript,
-                  item.item.execution,
-                  root,
-                  undefined,
-                  undefined,
-                  false,
-                  item.item.note,
-                );
-
-                return { kind: "shell", root, card };
-              })()
-            : { kind: "marker", root: appendMarker(transcript, item.item) };
-
-      this.mounted.set(index, mounted);
-      this.syncMounted(index, mounted);
-    }
-
-    const children: Renderable[] = [];
-    let cursor = 0;
-    let gaps = 0;
-
-    for (const [index, mounted] of [...this.mounted].toSorted(
-      (left, right) => left[0] - right[0],
-    )) {
-      if (index > cursor) {
-        let spacer = this.spacers[gaps];
-
-        if (spacer === undefined) {
-          spacer = new BoxRenderable(this.transcript.renderer, {
-            id: this.transcript.nextId("transcript-spacer"),
-            width: "100%",
-            height: 0,
-            flexShrink: 0,
-          });
-          this.spacers.push(spacer);
-        }
-
-        // The getter reads the last layout, so it cannot dedupe a request; the setter does.
-        spacer.height = this.offset(index) - this.offset(cursor);
-        children.push(spacer);
-        gaps += 1;
-      }
-
-      children.push(mounted.root);
-      cursor = index + 1;
-    }
-
-    for (const spacer of this.spacers.splice(gaps)) {
-      spacer.parent?.remove(spacer);
-      spacer.destroy();
-    }
-
-    if (this.liveTurn !== undefined) children.push(this.liveTurn.block.root);
-
-    if (this.tail !== undefined) children.push(this.tail);
-    children.push(this.navigationSpacer);
-    const current = scroll.getChildren();
-
-    if (
-      current.length === children.length &&
-      children.every((child, index) => current[index] === child)
-    )
-      return;
-
-    // add moves existing children, so changed orders must read back each mutation.
-    for (const [index, child] of children.entries()) {
-      if (scroll.getChildren()[index] !== child) scroll.add(child, index);
     }
   }
 }

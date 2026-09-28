@@ -80,7 +80,11 @@ async function reply(
   const [part, ...rest] = await toolParts(sdk, sessionId);
   assert.ok(part !== undefined && rest.length === 0, "one question was asked");
   assert.ok(part.result !== undefined, "the question settled");
-  return { ...part.result, message: await toolResultOf({ sdk, sessionId, callId }) };
+  return {
+    ...part.result,
+    class: part.class,
+    message: await toolResultOf({ sdk, sessionId, callId }),
+  };
 }
 
 test("asking parks the run; the waiting call carries the question a client renders", async () => {
@@ -97,7 +101,7 @@ test("asking parks the run; the waiting call carries the question a client rende
       { id: "1", label: "Small patch", description: "Change one owner" },
       { id: "2", label: "Broad rewrite" },
     ],
-    other: "Or type your own answer",
+    other: "Type your own answer",
   };
   assert.deepEqual(waiting.selection, selection);
   // A client that opens the session later answers from the snapshot alone.
@@ -120,7 +124,8 @@ test("asking parks the run; the waiting call carries the question a client rende
     question: "Which implementation?",
     answer: "Broad rewrite",
   });
-  assert.equal(settled.message.title, "Which implementation?");
+  // Every client's transcript labels the call with the question it asked.
+  assert.deepEqual(settled.class, { kind: "custom", label: "Which implementation?" });
   assert.equal(await lastAssistantText(sdk, sessionId), "Proceeding with Broad rewrite");
 });
 
@@ -132,11 +137,11 @@ test("a reply in the user's own words is the answer", async () => {
   assert.equal(await lastAssistantText(sdk, sessionId), "Proceeding with Wait for the migration");
 });
 
-test("walking away is not an answer", async () => {
+test("walking away is not an answer, and the model carries on", async () => {
   const { sdk, sessionId, callId, waitId } = await openParked();
   const settled = await reply(sdk, sessionId, callId, waitId, "   ");
-  assert.equal(settled.isError, true);
-  assert.match(settled.output, /unanswered/);
+  assert.equal(settled.isError, false);
+  assert.match(settled.output, /didn't answer/);
   assert.deepEqual(settled.message.details, { question: "Which implementation?" });
 });
 

@@ -2,7 +2,7 @@ import { app, clipboard, dialog, Menu } from "electron";
 import type { BrowserWindow, Session, WebContents } from "electron";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { BrowserAction, BrowserMenuAction, HostBridge } from "../shared/ipc.ts";
+import type { BrowserAction, BrowserBridge, BrowserMenuAction } from "@nyte-ai/app/bridge.ts";
 
 export async function showBrowserMenu({
   window,
@@ -11,7 +11,7 @@ export async function showBrowserMenu({
 }: {
   readonly window: BrowserWindow | undefined;
   readonly hasPage: boolean;
-  readonly input: Parameters<HostBridge["browser"]["menu"]>[0];
+  readonly input: Parameters<BrowserBridge["menu"]>[0];
 }): Promise<BrowserMenuAction | undefined> {
   if (window === undefined || window.isDestroyed()) return undefined;
 

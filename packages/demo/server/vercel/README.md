@@ -142,7 +142,7 @@ checks. A local test or build does not establish that Vercel deployment works.
 
 ## Connect the desktop
 
-Start the local desktop with `pnpm dev:desktop`. In Settings › Server, enter
+Start the local desktop with `pnpm dev:desktop`. In Environments › Connections, enter
 the production domain and `NYTE_TOKEN`. The row distinguishes server access,
 connection failures, and storage classification. Cloud's model picker reads the
 server's SDK catalog, including available models, pricing, and thinking levels.

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import {
@@ -13,9 +14,15 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { describe, test, vi } from "vitest";
-import { readWorkspaceFile, saveWorkspaceFile } from "../src/workspace-files.ts";
+import {
+  blameWorkspaceFile,
+  formatWorkspaceFile,
+  readWorkspaceFile,
+  saveWorkspaceFile,
+  WorkspaceFileError,
+} from "../src/workspace-files.ts";
 import { searchWorkspaceFiles, WorkspaceSearchError } from "../src/workspace-search.ts";
 
 async function fixture(): Promise<{ readonly root: string; readonly file: string }> {
@@ -65,6 +72,43 @@ describe("workspace files", () => {
       });
     } finally {
       await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("refuses paths that leave the workspace through .., absolute paths or symlinks", async () => {
+    const { root, file } = await fixture();
+    const outside = await fixture();
+    try {
+      await symlink(outside.file, join(root, "link.ts"));
+      await symlink(outside.root, join(root, "linked"), "junction");
+      const escapes = [
+        relative(root, outside.file),
+        outside.file,
+        join(root, "link.ts"),
+        join(root, "linked", "index.ts"),
+        join(root, ".."),
+      ];
+      const outsideWorkspace = (error: unknown) =>
+        error instanceof WorkspaceFileError && error.reason === "not_file";
+      const original = await readWorkspaceFile(root, file);
+      assert.equal(original.kind, "text");
+      if (original.kind !== "text") return;
+
+      for (const path of escapes) {
+        const input = { path, contents: "overwrite", version: original.version };
+        await assert.rejects(readWorkspaceFile(root, path), outsideWorkspace);
+        await assert.rejects(saveWorkspaceFile(root, input), outsideWorkspace);
+        await assert.rejects(formatWorkspaceFile(root, input), outsideWorkspace);
+        await assert.rejects(blameWorkspaceFile(root, path), outsideWorkspace);
+      }
+
+      assert.equal(await readFile(outside.file, "utf8"), "export const value = 1;\n");
+      assert.equal((await readWorkspaceFile(root, "index.ts")).kind, "text");
+    } finally {
+      await Promise.all([
+        rm(root, { recursive: true, force: true }),
+        rm(outside.root, { recursive: true, force: true }),
+      ]);
     }
   });
 });
@@ -581,4 +625,234 @@ test("disk search follows rg decoding and binary-prefix semantics, not editor va
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+describe("workspace blame", () => {
+  test("parses real Git porcelain including uncommitted lines and an option-like filename", async () => {
+    const { root } = await fixture();
+    const file = join(root, "--odd name.txt");
+    const git = (args: string[]) =>
+      execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+    try {
+      git(["init", "-q"]);
+      git(["config", "user.name", "Fixture Author"]);
+      git(["config", "user.email", "fixture@example.test"]);
+      await writeFile(file, "original\nsecond\n");
+      git(["add", "--", "--odd name.txt"]);
+      git(["commit", "-qm", "First commit"]);
+      const commit = git(["rev-parse", "HEAD"]);
+      await writeFile(file, "original\nchanged\n");
+      const result = await blameWorkspaceFile(root, file);
+      assert.equal(result.kind, "blame", JSON.stringify(result));
+      if (result.kind !== "blame") return;
+      assert.equal(result.truncated, false);
+      assert.equal(result.lines.length, 2);
+      assert.deepEqual(result.lines[0], {
+        line: 1,
+        originalLine: 1,
+        commit,
+        author: "Fixture Author",
+        authorMail: "fixture@example.test",
+        authorTime: Number(git(["show", "-s", "--format=%at"])),
+        summary: "First commit",
+        contents: "original",
+        uncommitted: false,
+      });
+      assert.equal(result.lines[1]?.uncommitted, true);
+      assert.equal(result.lines[1]?.contents, "changed");
+      assert.equal((await blameWorkspaceFile(root, join(root, "index.ts"))).kind, "error");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("reports a non-repository explicitly", async () => {
+    const { root, file } = await fixture();
+    try {
+      assert.equal((await blameWorkspaceFile(root, file)).kind, "unsupported");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+async function installFormatterFixture(directory: string, formatter: string, source: string) {
+  const packageDirectory = join(
+    directory,
+    "node_modules",
+    formatter === "biome" ? "@biomejs/biome" : formatter,
+  );
+  const bin = "bin space & %name%/cli";
+  await mkdir(join(packageDirectory, "bin space & %name%"), { recursive: true });
+  await writeFile(
+    join(packageDirectory, "package.json"),
+    JSON.stringify({
+      name: formatter,
+      bin: formatter === "prettier" ? bin : { [formatter]: bin },
+    }),
+  );
+  await writeFile(join(packageDirectory, bin), source);
+  return packageDirectory;
+}
+
+describe("workspace formatting", () => {
+  test("uses an installed formatter and project config without saving or bypassing conflict checks", async () => {
+    const { root, file } = await fixture();
+    try {
+      await mkdir(join(root, "node_modules"), { recursive: true });
+      await symlink(
+        await realpath(resolve("../../node_modules/oxfmt")),
+        join(root, "node_modules", "oxfmt"),
+        "junction",
+      );
+      await writeFile(join(root, ".oxfmtrc.json"), '{"semi":false}');
+      const original = await readWorkspaceFile(root, file);
+      assert.equal(original.kind, "text");
+      if (original.kind !== "text") return;
+      const input = { path: file, contents: "const value={x:1};", version: original.version };
+      const result = await formatWorkspaceFile(root, input);
+      assert.deepEqual(result, {
+        kind: "formatted",
+        formatter: "oxfmt",
+        contents: "const value = { x: 1 }\n",
+        version: original.version,
+      });
+      assert.equal(await readFile(file, "utf8"), original.contents);
+      await writeFile(file, "newer\n");
+      assert.deepEqual(await formatWorkspaceFile(root, input), { kind: "conflict" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("runs a Biome-style JavaScript wrapper that delegates stdin to a native process", async () => {
+    const { root, file } = await fixture();
+    try {
+      await installFormatterFixture(
+        root,
+        "biome",
+        `const { spawnSync } = require("node:child_process");
+         const result = spawnSync(process.execPath, ["-e",
+           'process.stdin.pipe(process.stdout)', "--", ...process.argv.slice(2)],
+           { stdio: "inherit", shell: false });
+         if (result.error) throw result.error;
+         process.exitCode = result.status ?? 1;`,
+      );
+      const original = await readWorkspaceFile(root, file);
+      assert.equal(original.kind, "text");
+      if (original.kind !== "text") return;
+      assert.deepEqual(
+        await formatWorkspaceFile(root, {
+          path: file,
+          contents: "draft\n",
+          version: original.version,
+        }),
+        { kind: "formatted", formatter: "biome", contents: "draft\n", version: original.version },
+      );
+      assert.equal(await readFile(file, "utf8"), original.contents);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("selects the nearest installation, preserves priority and stops at the workspace root", async () => {
+    const { root } = await fixture();
+    const workspace = join(root, "workspace");
+    const nested = join(workspace, "nested");
+    const file = join(nested, "index.ts");
+    try {
+      await mkdir(nested, { recursive: true });
+      await writeFile(file, "original");
+      await installFormatterFixture(root, "prettier", 'process.stdout.write("outside");');
+      const original = await readWorkspaceFile(workspace, file);
+      assert.equal(original.kind, "text");
+      if (original.kind !== "text") return;
+      const input = { path: file, contents: "draft", version: original.version };
+      assert.equal((await formatWorkspaceFile(workspace, input)).kind, "unsupported");
+      await installFormatterFixture(workspace, "prettier", 'process.stdout.write("root");');
+      assert.deepEqual(await formatWorkspaceFile(workspace, input), {
+        kind: "formatted",
+        formatter: "prettier",
+        contents: "root",
+        version: original.version,
+      });
+      await installFormatterFixture(nested, "oxfmt", 'process.stdout.write("nested oxfmt");');
+      assert.deepEqual(await formatWorkspaceFile(workspace, input), {
+        kind: "formatted",
+        formatter: "oxfmt",
+        contents: "nested oxfmt",
+        version: original.version,
+      });
+      await installFormatterFixture(nested, "biome", 'process.stdout.write("nested biome");');
+      assert.deepEqual(await formatWorkspaceFile(workspace, input), {
+        kind: "formatted",
+        formatter: "biome",
+        contents: "nested biome",
+        version: original.version,
+      });
+      await installFormatterFixture(nested, "prettier", 'process.stdout.write("nested prettier");');
+      assert.deepEqual(await formatWorkspaceFile(workspace, input), {
+        kind: "formatted",
+        formatter: "prettier",
+        contents: "nested prettier",
+        version: original.version,
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects oversized output and detects changes made while a formatter runs", async () => {
+    const { root, file } = await fixture();
+    try {
+      const original = await readWorkspaceFile(root, file);
+      assert.equal(original.kind, "text");
+      if (original.kind !== "text") return;
+      const input = { path: file, contents: "draft", version: original.version };
+      await installFormatterFixture(
+        root,
+        "prettier",
+        'process.stdout.write("x".repeat(2_000_001));',
+      );
+      assert.deepEqual(await formatWorkspaceFile(root, input), {
+        kind: "error",
+        message: "Formatted contents exceed 2 MB",
+      });
+      await installFormatterFixture(
+        root,
+        "prettier",
+        `require("node:fs").writeFileSync(process.argv[3], "newer");
+         process.stdout.write("formatted");`,
+      );
+      assert.deepEqual(await formatWorkspaceFile(root, input), { kind: "conflict" });
+      assert.equal(await readFile(file, "utf8"), "newer");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("reports missing tools and formatter failures", async () => {
+    const { root, file } = await fixture();
+    try {
+      const original = await readWorkspaceFile(root, file);
+      assert.equal(original.kind, "text");
+      if (original.kind !== "text") return;
+      const input = { path: file, contents: "const x=1", version: original.version };
+      assert.equal((await formatWorkspaceFile(root, input)).kind, "unsupported");
+      await installFormatterFixture(
+        root,
+        "prettier",
+        `require("node:fs").writeFileSync(${JSON.stringify(join(root, "formatter-ran"))}, "ran");
+         process.stderr.write("bad syntax"); process.exitCode = 1;`,
+      );
+      assert.deepEqual(await formatWorkspaceFile(root, input), {
+        kind: "error",
+        message: "bad syntax",
+      });
+      assert.equal(await readFile(join(root, "formatter-ran"), "utf8"), "ran");
+      assert.equal(await readFile(file, "utf8"), original.contents);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

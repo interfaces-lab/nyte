@@ -2,7 +2,8 @@
  * `@nyte-ai/server`: a Web `Request -> Response` handler over a `Nyte` SDK.
  *
  * Three routes, all under `/v1`: `GET /v1/info` says what is answering,
- * `POST /v1/call/{operation}` runs one operation from the protocol table,
+ * `POST /v1/call/{operation}` runs one operation from the protocol table, or
+ * from the environment table when the host passed an `environment`, and
  * `GET /v1/watch` streams a session's events as server-sent events. The
  * handler never listens on a socket. Hand `server.fetch` to `Bun.serve`,
  * `Deno.serve`, or a Node adapter that builds a `Request` from an incoming
@@ -18,6 +19,7 @@ import { dispatch, NyteClosed, UnknownSession, type Nyte, type SessionEvent } fr
 import {
   CALL_ROUTE_PREFIX,
   CallRequestSchema,
+  ENVIRONMENT_OPERATIONS,
   EVENT_STREAM_MEDIA_TYPE,
   INFO_ROUTE,
   JSON_MEDIA_TYPE,
@@ -28,12 +30,16 @@ import {
   describeIssues,
   encodeSseComment,
   encodeSseFrame,
+  isEnvironmentOperation,
   mediaType,
   parseOperation,
   schemas,
   statusFor,
   validationIssues,
   type CallReply,
+  type Environment,
+  type EnvironmentInput,
+  type EnvironmentOperation,
   type Issue,
   type SessionId,
   type Operation,
@@ -45,7 +51,7 @@ import {
   type WatchFrame,
   type WireError,
 } from "@nyte-ai/protocol";
-import { Type, type Static } from "typebox";
+import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 
 // ---------------------------------------------------------------------------
@@ -72,11 +78,17 @@ export type ServerAuth =
       readonly authorize: (request: Request) => unknown;
     };
 
-/** Parsed operation inputs reach policy before any SDK operation runs. Only true grants access. */
+/** Parsed operation inputs reach policy before any operation runs. Only true grants access. */
 export interface ServerPermissions {
   readonly calls: {
     readonly [O in Operation]?: (
       input: OperationInput<O>,
+      request: Request,
+    ) => boolean | Promise<boolean>;
+  };
+  readonly environment?: {
+    readonly [O in EnvironmentOperation]?: (
+      input: EnvironmentInput<O>,
       request: Request,
     ) => boolean | Promise<boolean>;
   };
@@ -86,18 +98,26 @@ export interface ServerPermissions {
 export type ServerFailure = {
   readonly cause: unknown;
 } & (
-  | { readonly route: "call"; readonly operation: Operation }
+  | { readonly route: "call"; readonly operation: Operation | EnvironmentOperation }
   | { readonly route: "watch" | "request"; readonly operation?: never }
 );
 
 export interface NyteServerOptions {
   readonly sdk: Nyte;
+  /**
+   * The serving machine's own services beside the SDK. Omit it and every
+   * `environment.*` call answers `unknown_operation`, as on an older server.
+   */
+  readonly environment?: Environment;
   /** The host's release, answered on the info route so a client can say what it is attached to. */
   readonly version: string;
   /** Public host metadata, refreshed for authenticated info reads. Omit when the embedding cannot describe it. */
   readonly describe?: () => ServerDescription | Promise<ServerDescription>;
   readonly auth: ServerAuth;
-  /** Omit for full access. When supplied, unlisted calls and watches are forbidden. Info stays authenticated. */
+  /**
+   * Omit for full access. When supplied, unlisted calls, environment calls,
+   * and watches are forbidden. Info stays authenticated.
+   */
   readonly permissions?: ServerPermissions;
   /**
    * Origins a browser page may call from, exactly as the `Origin` header
@@ -404,7 +424,7 @@ function validateOptions(options: NyteServerOptions) {
 // ---------------------------------------------------------------------------
 
 export function createNyteServer(options: NyteServerOptions): NyteServer {
-  const { sdk } = options;
+  const { sdk, environment } = options;
 
   // Equal-length digests let the native comparison handle tokens of any byte length.
   const auth =
@@ -484,11 +504,28 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
     return new Response(null, { status: 204, headers });
   };
 
-  const call = async <O extends Operation>(
-    request: Request,
-    operation: O,
-    cors: Headers,
-  ): Promise<Response> => {
+  /**
+   * One call after routing: its body, its input schema, policy, then its
+   * handler. SDK and environment calls both run through here, so each is
+   * bounded, validated, permitted, and redacted the same way.
+   */
+  const answer = async <I extends TSchema>({
+    request,
+    cors,
+    operation,
+    schema,
+    permit,
+    run,
+  }: {
+    readonly request: Request;
+    readonly cors: Headers;
+    readonly operation: Operation | EnvironmentOperation;
+    readonly schema: I;
+    readonly permit:
+      | ((input: Static<I>, request: Request) => boolean | Promise<boolean>)
+      | undefined;
+    readonly run: (input: Static<I>) => Promise<unknown>;
+  }): Promise<Response> => {
     if (mediaType(request.headers.get("content-type")) !== JSON_MEDIA_TYPE) {
       return refuse({ code: "unsupported_media_type", message: `Send ${JSON_MEDIA_TYPE}` }, cors);
     }
@@ -529,7 +566,6 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       );
     }
 
-    const schema: (typeof OPERATIONS)[O]["input"] = OPERATIONS[operation].input;
     const input = Object.hasOwn(parsed, "input") ? parsed.input : undefined;
 
     if (!Value.Check(schema, input)) {
@@ -540,15 +576,12 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
     }
 
     try {
-      if (
-        options.permissions !== undefined &&
-        (await options.permissions.calls[operation]?.(input, request)) !== true
-      ) {
+      if (options.permissions !== undefined && (await permit?.(input, request)) !== true) {
         return refuse({ code: "forbidden", message: "Operation is not allowed" }, cors);
       }
 
       if (closed) return refuse({ code: "closed", message: "The server is closed" }, cors);
-      const value = await dispatch(sdk, operation, input);
+      const value = await run(input);
 
       return jsonResponse(
         200,
@@ -563,6 +596,31 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       return refuse(error, cors);
     }
   };
+
+  const call = <O extends Operation>(request: Request, operation: O, cors: Headers) =>
+    answer<(typeof OPERATIONS)[O]["input"]>({
+      request,
+      cors,
+      operation,
+      schema: OPERATIONS[operation].input,
+      permit: options.permissions?.calls[operation],
+      run: (input) => dispatch(sdk, operation, input),
+    });
+
+  const callEnvironment = <V extends EnvironmentOperation>(
+    request: Request,
+    handlers: Environment,
+    operation: V,
+    cors: Headers,
+  ) =>
+    answer<(typeof ENVIRONMENT_OPERATIONS)[V]["input"]>({
+      request,
+      cors,
+      operation,
+      schema: ENVIRONMENT_OPERATIONS[operation].input,
+      permit: options.permissions?.environment?.[operation],
+      run: (input) => handlers[operation](input),
+    });
 
   const watch = async (request: Request, url: URL, cors: Headers): Promise<Response> => {
     const query = parseWatchQuery(url.searchParams);
@@ -773,6 +831,7 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       const info: ServerInfo = {
         version: options.version,
         wireVersion: WIRE_VERSION,
+        environment: environment === undefined ? undefined : true,
         host:
           description === undefined
             ? { kind: "unspecified" }
@@ -798,11 +857,13 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       const name = url.pathname.slice(CALL_ROUTE_PREFIX.length);
       const operation = parseOperation(name);
 
-      if (operation === undefined) {
-        return refuse({ code: "unknown_operation", message: `Unknown operation: ${name}` }, cors);
+      if (operation !== undefined) return call(request, operation, cors);
+
+      if (environment !== undefined && isEnvironmentOperation(name)) {
+        return callEnvironment(request, environment, name, cors);
       }
 
-      return call(request, operation, cors);
+      return refuse({ code: "unknown_operation", message: `Unknown operation: ${name}` }, cors);
     }
 
     return refuse({ code: "not_found", message: "No such route" }, cors);

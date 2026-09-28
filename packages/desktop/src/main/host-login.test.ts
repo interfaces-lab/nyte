@@ -12,7 +12,8 @@ import type {
   ProviderAuthInteraction,
 } from "@nyte-ai/ai";
 import type { Api, Model } from "@nyte-ai/schema";
-import type { DesktopCatalog, HostEvent, LoginOutcome } from "../shared/ipc.ts";
+import type { DesktopCatalog, HostEvent, LoginOutcome } from "@nyte-ai/app/bridge.ts";
+import { createNyteClient } from "@nyte-ai/client";
 import { DesktopHost } from "./host.ts";
 import { unusedBrowserAgent } from "./browser-stub.ts";
 
@@ -274,6 +275,7 @@ async function desktop(createModels: () => MutableModels) {
     openExternal: (url) => opened.push(url),
     revealPath: () => undefined,
     showContextMenu: () => Promise.resolve(undefined),
+    confirmExternal: () => Promise.resolve("cancel"),
     pickFolder: async () => undefined,
     listFonts: async () => ({ sans: [], monospace: [] }),
     browser: {
@@ -321,6 +323,14 @@ async function settled(condition: () => boolean): Promise<void> {
 
 function deviceLogin(host: DesktopHost, attempt: string) {
   return host.call(1, "host.login", { provider: "device", method: { kind: "browser" }, attempt });
+}
+
+/** Start remote access from window 1 and connect a client to it. */
+async function remoteClient(host: DesktopHost) {
+  const state = await host.call(1, "host.remote.start", { reach: "local" });
+  assert.equal(state.kind, "serving");
+  if (state.kind !== "serving") throw new Error("unreachable");
+  return createNyteClient({ baseUrl: state.address, token: state.token });
 }
 
 test("a device code reaches the renderer without the device secret and the provider connects on approval", async () => {
@@ -409,20 +419,21 @@ test("a cancelled attempt's late approval never saves a credential", async () =>
   assert.ok(!events.some((event) => event.kind === "catalog_changed"));
 });
 
-test("an attempt ID cannot be reused until its cancelled flow has settled, and a later reuse stays cancellable", async () => {
+test("an attempt ID is single-use: refused while its cancelled flow winds down and after it has settled", async () => {
   const provider = deviceCodeProvider({ ignoresAbort: true });
   const { host } = await desktop(provider.create);
   const first = deviceLogin(host, "attempt-reuse");
   await settled(() => provider.state.polling);
   await host.call(1, "host.cancelLogin", { attempt: "attempt-reuse" });
   // Cancel returns before the abandoned flow has let go; the ID is still taken.
-  await assert.rejects(deviceLogin(host, "attempt-reuse"), /attempt ID is already running/);
+  await assert.rejects(deviceLogin(host, "attempt-reuse"), /attempt ID already exists/);
   assert.deepEqual(await first, { kind: "cancelled" } satisfies LoginOutcome);
 
-  // Once settled, the ID is free again and the new attempt owns its own cancel.
-  const second = deviceLogin(host, "attempt-reuse");
+  // The settled attempt still answers for its ID, so a fresh ID starts the next flow.
+  await assert.rejects(deviceLogin(host, "attempt-reuse"), /attempt ID already exists/);
+  const second = deviceLogin(host, "attempt-reuse-2");
   await settled(() => provider.state.polling);
-  await host.call(1, "host.cancelLogin", { attempt: "attempt-reuse" });
+  await host.call(1, "host.cancelLogin", { attempt: "attempt-reuse-2" });
   assert.deepEqual(await second, { kind: "cancelled" } satisfies LoginOutcome);
   assert.equal(deviceStatus(await host.call(1, "host.catalog", undefined)), "disconnected");
 });
@@ -447,7 +458,7 @@ test("a reused attempt ID is refused before any flow starts", async () => {
   const { host } = await desktop(provider.create);
   const pending = deviceLogin(host, "attempt-4");
   await settled(() => provider.state.polling);
-  await assert.rejects(deviceLogin(host, "attempt-4"), /attempt ID is already running/);
+  await assert.rejects(deviceLogin(host, "attempt-4"), /attempt ID already exists/);
   assert.equal(provider.state.polling, true);
   await host.call(1, "host.cancelLogin", { attempt: "attempt-4" });
   assert.deepEqual(await pending, { kind: "cancelled" } satisfies LoginOutcome);
@@ -463,6 +474,74 @@ test("closing the host aborts a running sign-in and refuses a new one", async ()
   assert.equal(provider.state.aborted, true);
   await assert.rejects(deviceLogin(host, "attempt-after-close"), /window closed/);
   assert.equal(provider.state.polling, false);
+});
+
+test("releasing a window cancels the sign-ins it started; another window's release or a share's stop does not", async () => {
+  const provider = deviceCodeProvider();
+  const { host } = await desktop(provider.create);
+  await remoteClient(host);
+  const pending = deviceLogin(host, "attempt-window");
+  await settled(() => provider.state.polling);
+
+  host.releaseWindow(2);
+  await host.call(1, "host.remote.stop", undefined);
+  assert.equal(provider.state.polling, true);
+
+  host.releaseWindow(1);
+  assert.deepEqual(await pending, { kind: "cancelled" } satisfies LoginOutcome);
+  assert.equal(provider.state.aborted, true);
+
+  // The reloaded window signs in again.
+  const again = deviceLogin(host, "attempt-window-2");
+  await settled(() => provider.state.polling);
+  provider.approve();
+  assert.deepEqual(await again, {
+    kind: "connected",
+    catalogRefreshed: true,
+  } satisfies LoginOutcome);
+});
+
+test("stopping remote access cancels the sign-ins its clients started and keeps their outcome", async () => {
+  const provider = deviceCodeProvider();
+  const { host, events } = await desktop(provider.create);
+  const client = await remoteClient(host);
+  const input = {
+    provider: "device",
+    method: { kind: "browser" },
+    attempt: "attempt-remote",
+  } as const;
+  assert.deepEqual(await client.environment("environment.login", input), { kind: "running" });
+  await settled(() => provider.state.polling);
+  // The code is the client's to show, so it polls for it; nothing reaches the Mac's window.
+  assert.deepEqual(
+    await client.environment("environment.loginAttempt", { attempt: input.attempt }),
+    {
+      kind: "running",
+      deviceCode: {
+        userCode: "ABCD-1234",
+        verificationUri: "https://github.com/login/device",
+        expiresInSeconds: 900,
+        instructions: "Approve the fixture app.",
+      },
+      message: "Waiting for GitHub",
+    },
+  );
+  assert.deepEqual(loginEvents(events), []);
+
+  // The Mac's window has nothing to do with this sign-in.
+  host.releaseWindow(1);
+  assert.equal(provider.state.polling, true);
+
+  await host.call(1, "host.remote.stop", undefined);
+  assert.equal(provider.state.aborted, true);
+
+  // The next share still answers for the attempt: one registry, not one per share.
+  const next = await remoteClient(host);
+  assert.deepEqual(await next.environment("environment.loginAttempt", { attempt: input.attempt }), {
+    kind: "settled",
+    outcome: { kind: "cancelled" },
+  });
+  assert.equal(deviceStatus(await host.call(1, "host.catalog", undefined)), "disconnected");
 });
 
 test("signing out during approval waits for the credential the flow was already saving, then removes it", async () => {
@@ -573,7 +652,7 @@ test("cancelling releases a manual-code prompt the provider gave no signal for",
   await host.call(1, "host.cancelLogin", { attempt: "attempt-held" });
   assert.deepEqual(await pending, { kind: "cancelled" } satisfies LoginOutcome);
   await settled(() => provider.state.manualCodeReleased);
-  assert.match(provider.state.manualCodeReason, /Browser login finished/);
+  assert.match(provider.state.manualCodeReason, /no longer waits for a code/);
   assert.equal(
     (await host.call(1, "host.catalog", undefined)).providers[0]?.connection.kind,
     "disconnected",

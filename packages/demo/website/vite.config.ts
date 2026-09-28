@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import { nitro } from "nitro/vite";
-import { defineConfig } from "vite";
+import { defaultClientConditions, defaultServerConditions, defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [
@@ -24,7 +24,11 @@ export default defineConfig({
     nitro(),
   ],
   optimizeDeps: { exclude: ["@nyte-ai/ui"] },
-  resolve: { dedupe: ["react", "react-dom"] },
+  resolve: {
+    conditions: ["nyte-source", ...defaultClientConditions],
+    dedupe: ["react", "react-dom"],
+  },
+  ssr: { resolve: { conditions: ["nyte-source", ...defaultServerConditions] } },
   server: {
     port: 5174,
     strictPort: true,

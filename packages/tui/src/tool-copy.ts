@@ -99,9 +99,7 @@ export function toolSubject(toolClass: ToolClass): string | undefined {
     case "shell":
       return toolClass.command;
     case "delegate":
-      return toolClass.target.kind === "one"
-        ? toolClass.target.session
-        : toolClass.target.sessions.join(", ");
+      return delegateSubject(toolClass);
     case "custom":
       return undefined;
     default: {
@@ -110,6 +108,17 @@ export function toolSubject(toolClass: ToolClass): string | undefined {
       return _exhaustive;
     }
   }
+}
+
+/** A child is named by its card; a call on it only says which kind of target it has. */
+export function delegateSubject(
+  toolClass: Extract<ToolClass, { readonly kind: "delegate" }>,
+): string {
+  if (toolClass.role === "create") return toolClass.title;
+
+  return toolClass.target.kind === "many" && toolClass.target.sessions.length > 1
+    ? "subagents"
+    : "subagent";
 }
 
 /** The status row for the tools still running: subagent waits win, otherwise the newest call. */

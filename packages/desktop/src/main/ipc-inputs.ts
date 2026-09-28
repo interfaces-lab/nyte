@@ -3,30 +3,17 @@
  * code through `new Function`, which the renderer's CSP forbids. Renderer code
  * imports `typebox/value` and never `typebox/compile`.
  */
-import {
-  BROWSER_ACTIONS,
-  CONTEXT_MENU_ROLES,
-  HOST_OPERATION_PATHS,
-  SDK_OPERATION_PATHS,
-} from "../shared/ipc.ts";
+import { HOST_OPERATION_PATHS, SDK_OPERATION_PATHS } from "../shared/ipc.ts";
+import { BROWSER_ACTIONS, CONTEXT_MENU_ROLES } from "@nyte-ai/app/bridge.ts";
 import { Type } from "typebox";
-import { WorkspaceSearchSchema } from "@nyte-ai/protocol";
 import type { Static, TProperties, TSchema } from "typebox";
 import { Compile } from "typebox/compile";
 import { ParseError } from "typebox/value";
 import { ExpectedHostError } from "./errors.ts";
-import { OPERATIONS, schemas } from "@nyte-ai/protocol";
-import { sessionId } from "../shared/schemas.ts";
-import type {
-  BrowserBoundsMessage,
-  CallInput,
-  CallPath,
-  CallRequest,
-  WatchStartInput,
-  WorkspaceEditorInput,
-  WorkspaceEditorOperation,
-  WorkspaceEditorRequest,
-} from "../shared/ipc.ts";
+import { ENVIRONMENT_OPERATIONS, OPERATIONS } from "@nyte-ai/protocol";
+import { sessionId } from "@nyte-ai/app/schemas.ts";
+import type { CallInput, CallPath, CallRequest, WatchStartInput } from "../shared/ipc.ts";
+import type { BrowserBoundsMessage } from "@nyte-ai/app/bridge.ts";
 
 interface Parser<T> {
   Parse(value: unknown): T;
@@ -65,54 +52,9 @@ function compile<T extends TSchema>(schema: T) {
   } satisfies Parser<Static<T>>;
 }
 
-const id = Type.String();
-
 const nonEmpty = Type.String({ minLength: 1 });
 
-/** A renderer-chosen correlation ID; bounded so it cannot carry a payload. */
-const loginAttempt = Type.String({ minLength: 1, maxLength: 64 });
-
-const thinkingLevel = schemas.ThinkingLevel;
-
 const noInput = Type.Optional(Type.Undefined());
-
-const model = strict({ provider: nonEmpty, id: nonEmpty });
-
-const fileVersion = Type.String({ pattern: "^[a-f0-9]{64}$" });
-
-/** A local calendar day. Anything else would fold history onto the wrong dates. */
-const usageDay = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
-
-export const WORKSPACE_EDITOR_INPUT_SCHEMAS = {
-  search: compile(
-    strict({
-      requestId: Type.String({ minLength: 1, maxLength: 128 }),
-      ...WorkspaceSearchSchema.properties,
-    }),
-  ),
-  cancelSearch: compile(strict({ requestId: Type.String({ minLength: 1, maxLength: 128 }) })),
-  blame: compile(strict({ path: nonEmpty })),
-  format: compile(
-    strict({
-      path: nonEmpty,
-      contents: Type.String({ maxLength: 2_000_000 }),
-      version: fileVersion,
-    }),
-  ),
-} satisfies { readonly [P in WorkspaceEditorOperation]: Parser<WorkspaceEditorInput<P>> };
-
-const workspaceEditorRequest = compile(
-  strict({
-    operation: Type.Enum(["search", "cancelSearch", "blame", "format"]),
-    input: Type.Unknown(),
-  }),
-);
-
-export function decodeWorkspaceEditorRequest(
-  input: WorkspaceEditorRequest,
-): WorkspaceEditorRequest {
-  return checked(workspaceEditorRequest, input);
-}
 
 export const CALL_INPUT_SCHEMAS = {
   // The SDK operations validate with the wire protocol's own input schemas, compiled here.
@@ -139,6 +81,12 @@ export const CALL_INPUT_SCHEMAS = {
   "heads.move": compile(OPERATIONS["heads.move"].input),
   "workspace.list": compile(OPERATIONS["workspace.list"].input),
   "workspace.forget": compile(OPERATIONS["workspace.forget"].input),
+  "workspace.files": compile(OPERATIONS["workspace.files"].input),
+  "workspace.read": compile(OPERATIONS["workspace.read"].input),
+  "workspace.save": compile(OPERATIONS["workspace.save"].input),
+  "workspace.format": compile(OPERATIONS["workspace.format"].input),
+  "workspace.search": compile(OPERATIONS["workspace.search"].input),
+  "workspace.blame": compile(OPERATIONS["workspace.blame"].input),
   "workspace.vcs.snapshot": compile(OPERATIONS["workspace.vcs.snapshot"].input),
   "workspace.vcs.diff": compile(OPERATIONS["workspace.vcs.diff"].input),
   "workspace.vcs.contents": compile(OPERATIONS["workspace.vcs.contents"].input),
@@ -165,59 +113,14 @@ export const CALL_INPUT_SCHEMAS = {
   "host.trustWorkspace": compile(strict({ path: Type.String() })),
   "host.closeWorkspace": compile(noInput),
   "host.catalog": compile(Type.Union([Type.Undefined(), strict({ sessionId })])),
-  "host.usage": compile(
-    // `sinceDay: null` is all time, the one window whose start the page cannot
-    // name before reading.
-    strict({ sinceDay: Type.Union([usageDay, Type.Null()]), untilDay: usageDay }),
-  ),
+  "host.usage": compile(ENVIRONMENT_OPERATIONS["environment.usage"].input),
   "host.accountLimits": compile(noInput),
-  "host.login": compile(
-    strict({
-      provider: Type.String(),
-      method: Type.Union([
-        strict({ kind: Type.Literal("browser") }),
-        // A key must hold something other than whitespace.
-        strict({ kind: Type.Literal("api_key"), key: Type.String({ pattern: "\\S" }) }),
-      ]),
-      attempt: loginAttempt,
-    }),
-  ),
-  "host.cancelLogin": compile(strict({ attempt: loginAttempt })),
-  "host.logout": compile(strict({ provider: Type.String() })),
-  "host.setPreference": compile(
-    Type.Union([
-      strict({ kind: Type.Literal("provider"), provider: Type.String(), enabled: Type.Boolean() }),
-      strict({
-        kind: Type.Literal("models"),
-        provider: Type.String(),
-        ids: Type.Array(id),
-        hidden: Type.Boolean(),
-      }),
-      strict({
-        kind: Type.Literal("defaults"),
-        model: Type.Optional(model),
-        thinkingLevel: Type.Optional(thinkingLevel),
-      }),
-    ]),
-  ),
+  "host.login": compile(ENVIRONMENT_OPERATIONS["environment.login"].input),
+  "host.cancelLogin": compile(ENVIRONMENT_OPERATIONS["environment.cancelLogin"].input),
+  "host.logout": compile(ENVIRONMENT_OPERATIONS["environment.logout"].input),
+  "host.setPreference": compile(ENVIRONMENT_OPERATIONS["environment.setPreference"].input),
   "host.github.createPullRequest": compile(
-    strict({
-      title: Type.String({ minLength: 1, maxLength: 512, pattern: "\\S" }),
-      body: Type.Optional(Type.String({ maxLength: 65_536 })),
-      draft: Type.Optional(Type.Boolean()),
-    }),
-  ),
-  "host.files.list": compile(strict({ requestId: Type.String({ minLength: 1, maxLength: 128 }) })),
-  "host.files.cancelList": compile(
-    strict({ requestId: Type.String({ minLength: 1, maxLength: 128 }) }),
-  ),
-  "host.files.read": compile(strict({ path: nonEmpty })),
-  "host.files.save": compile(
-    strict({
-      path: nonEmpty,
-      contents: Type.String({ maxLength: 2_000_000 }),
-      version: fileVersion,
-    }),
+    ENVIRONMENT_OPERATIONS["environment.github.createPullRequest"].input,
   ),
   "host.github.state": compile(noInput),
   "host.github.signIn": compile(noInput),
@@ -226,12 +129,13 @@ export const CALL_INPUT_SCHEMAS = {
   "host.server.connect": compile(strict({ baseUrl: nonEmpty, token: nonEmpty })),
   "host.server.disconnect": compile(noInput),
   "host.server.createSession": compile(noInput),
-  "host.mobile.state": compile(noInput),
-  "host.mobile.start": compile(
-    strict({ reach: Type.Union([Type.Literal("simulator"), Type.Literal("tailnet")]) }),
+  "host.remote.state": compile(noInput),
+  "host.remote.start": compile(
+    strict({ reach: Type.Union([Type.Literal("local"), Type.Literal("tailnet")]) }),
   ),
-  "host.mobile.stop": compile(noInput),
+  "host.remote.stop": compile(noInput),
   "host.openExternal": compile(strict({ url: Type.String() })),
+  "host.confirmExternal": compile(strict({ url: Type.String() })),
   "host.revealPath": compile(strict({ path: nonEmpty })),
   "host.contextMenu": compile(
     strict({

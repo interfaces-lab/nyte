@@ -1,14 +1,14 @@
 ---
 title: Introduction
-description: "Tokens, styled primitives, and headless Base UI re-exports, shipped as @nyte-ai/ui"
+description: "Tokens and styled components, shipped as @nyte-ai/ui"
 ---
 
 `@nyte-ai/ui` wraps [Base UI](https://base-ui.com) in StyleX styles driven by `--nyte-*` custom
-properties. Components with a styled wrapper come from the package root. Everything else
-re-exports Base UI unstyled from its own subpath.
+properties. Every component is styled. Import it from the package root or from the subpath named
+for it.
 
 ```ts
-import "@nyte-ai/ui/styles.css";
+import "@nyte-ai/ui/ui.css";
 import { Button } from "@nyte-ai/ui";
 import { Popover } from "@nyte-ai/ui/popover";
 ```

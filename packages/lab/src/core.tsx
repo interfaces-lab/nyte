@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { CoreReview } from "./core-review";
+import { CoreGuide } from "./core-guide";
+import { LabNav } from "./shell/lab-nav";
 import "./tokens/palette.css";
 import "./shell/reset.css";
 
@@ -10,6 +11,7 @@ if (root === null) throw new Error("core.html is missing #root");
 
 createRoot(root).render(
   <StrictMode>
-    <CoreReview />
+    <CoreGuide />
+    <LabNav current="/core" />
   </StrictMode>,
 );

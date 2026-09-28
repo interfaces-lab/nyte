@@ -1274,14 +1274,7 @@ class Interactive {
     )
       this.refreshStatus(pending.session);
 
-    if (!this.shell.ui.prompting) {
-      this.shell.input.placeholder =
-        waitingCall(state)?.selection.other !== undefined
-          ? ANSWER_COMPOSER_PLACEHOLDER
-          : this.busy
-            ? BUSY_COMPOSER_PLACEHOLDER
-            : COMPOSER_PLACEHOLDER;
-    }
+    if (!this.shell.ui.prompting) this.shell.input.placeholder = this.composerPlaceholder(state);
 
     if (!this.shell.ui.selecting && !this.shell.ui.prompting) this.refreshHints();
 
@@ -1360,6 +1353,15 @@ class Interactive {
     if (waiting !== undefined) this.askQuestion(session, waiting);
   }
 
+  /** The open question menu takes the answer itself, so the composer asks for nothing meanwhile. */
+  private composerPlaceholder(state: SessionState): string {
+    if (this.asking !== undefined) return "";
+
+    if (waitingCall(state)?.selection.other !== undefined) return ANSWER_COMPOSER_PLACEHOLDER;
+
+    return this.busy ? BUSY_COMPOSER_PLACEHOLDER : COMPOSER_PLACEHOLDER;
+  }
+
   /**
    * Parked selections accept one row, several rows, or typed text according to
    * their protocol data. Escape leaves the call parked; its durable deadline
@@ -1376,6 +1378,7 @@ class Interactive {
       waiting.until === undefined ? undefined : scheduleAt(waiting.until, () => asking.abort());
 
     this.asking = asking;
+    this.shell.input.placeholder = "";
     void (async () => {
       try {
         const { selection } = waiting;
@@ -1403,6 +1406,9 @@ class Interactive {
         cancelDeadline?.();
 
         if (this.asking === asking) this.asking = undefined;
+
+        if (this.session !== undefined && !this.shell.ui.prompting)
+          this.shell.input.placeholder = this.composerPlaceholder(this.session.state);
 
         if (
           !this.disposed &&
@@ -2279,7 +2285,7 @@ class Interactive {
   }
 
   private scrollToEnd(): void {
-    this.shell.view.returnToLatest();
+    this.shell.view.scrollToEnd();
   }
 
   private steerFirstQueued(session: FollowedSession): void {
@@ -2748,7 +2754,7 @@ class Interactive {
           "chat.scroll.latest": {
             title: "Jump to latest",
             run: () => {
-              this.shell.view.returnToLatest();
+              this.shell.view.scrollToEnd();
 
               return true;
             },

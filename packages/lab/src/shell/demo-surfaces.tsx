@@ -12,17 +12,16 @@ import {
   MenuSwitchItem,
   MenuRadioGroup,
   MenuRadioItem,
-  ContextMenu,
-  ContextMenuItem,
-  ContextMenuSeparator,
-} from "../../../desktop/src/renderer/src/components/menu.tsx";
-import { ConfirmDialog } from "../../../desktop/src/renderer/src/components/confirm-dialog.tsx";
-import { Icon } from "../../../desktop/src/renderer/src/components/icons.tsx";
-import type { IconName } from "../../../desktop/src/renderer/src/components/icons.tsx";
-import { composerStyles } from "../../../desktop/src/renderer/src/conversation/styles.stylex.ts";
-import { floatingSurfaceStyles } from "../../../desktop/src/renderer/src/theme/floating-surface.stylex.ts";
-import { overlayRef } from "../../../desktop/src/renderer/src/components/overlay-occlusion.ts";
+} from "@nyte-ai/ui/menu";
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "@nyte-ai/ui/context-menu";
+import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
+import { ModelPicker } from "@nyte-ai/app/conversation/model-picker.tsx";
+import { Icon } from "@nyte-ai/ui/icon";
+import type { IconName } from "@nyte-ai/ui/icon";
+import { composerStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
+import type { DesktopModelOption } from "@nyte-ai/app/bridge.ts";
 import type { AuditSurface } from "./audit-state";
+import { labModel, modelCatalog } from "./fixtures";
 
 type SurfaceProps = {
   surface: AuditSurface;
@@ -44,7 +43,7 @@ function dismiss(surface: AuditSurface, onSurface: SurfaceProps["onSurface"]) {
 export function PaneMenu({ surface, onSurface, trigger }: SurfaceProps) {
   const [workspace, setWorkspace] = useState("nyte");
   const [wrap, setWrap] = useState(true);
-  const [whitespace, setWhitespace] = useState(false);
+  const [whitespace, setWhitespace] = useState(true);
 
   return (
     <Menu
@@ -173,22 +172,19 @@ export function DemoPopover({
       <Popover.Trigger render={trigger} />
       <Popover.Portal>
         <Popover.Positioner
-          positionMethod="fixed"
           anchor={anchor}
           side="top"
           align="start"
           sideOffset={8}
-          collisionPadding={8}
           collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
-          {...props(composerStyles.suggestionPositioner)}
+          xstyle={composerStyles.suggestionPositioner}
         >
           <Popover.Popup
-            ref={overlayRef}
             role="listbox"
             aria-label="Commands, skills, and prompts"
             initialFocus={false}
             finalFocus={false}
-            {...props(floatingSurfaceStyles.popup, composerStyles.suggestionMenu)}
+            xstyle={composerStyles.suggestionMenu}
           >
             <div {...props(composerStyles.suggestionList)}>
               {suggestions.map((item, index) => (
@@ -241,9 +237,8 @@ export function DemoDialog({
   return (
     <ConfirmDialog
       open={surface === "dialog"}
-      pending={false}
-      error={undefined}
       returnFocusRef={returnFocusRef}
+      title="Delete chat?"
       description="This removes the chat from the preview."
       onOpenChange={(open) => {
         if (!open) onSurface("none");
@@ -251,6 +246,34 @@ export function DemoDialog({
       onConfirm={() => {
         onConfirm();
         onSurface("none");
+      }}
+    />
+  );
+}
+
+/** The composer's real model chip over a fixture catalog: its palette and rows are their own surface. */
+export function DemoModelPicker() {
+  const [current, setCurrent] = useState(labModel);
+  const [fast, setFast] = useState<ReadonlySet<string>>(new Set());
+
+  const [thinkingLevel, setThinkingLevel] =
+    useState<DesktopModelOption["thinkingLevels"][number]>("high");
+
+  return (
+    <ModelPicker
+      catalog={modelCatalog}
+      current={current}
+      thinkingLevel={thinkingLevel}
+      fastEnabled={fast}
+      onChange={(change) => {
+        if (change.kind === "fast") {
+          setFast(new Set(change.enabled ? [change.settingId] : []));
+
+          return;
+        }
+
+        if (change.kind === "model") setCurrent(change.option);
+        setThinkingLevel(change.thinkingLevel);
       }}
     />
   );

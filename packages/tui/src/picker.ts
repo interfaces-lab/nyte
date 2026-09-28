@@ -17,6 +17,7 @@ import { commandBindings } from "@opentui/keymap/extras";
 import { MenuList } from "./menu-list.ts";
 import type { MenuItem } from "./menu-list.ts";
 import type { CliTheme } from "./theme.ts";
+import { wrappedRows } from "./width.ts";
 
 export type Choice = MenuItem;
 
@@ -108,9 +109,17 @@ const PADDING_LEFT = 2;
 
 const PADDING_RIGHT = 1;
 
+/** Cells a panel row loses to its margins and padding. */
+const PANEL_INSET = 1 + PADDING_LEFT + PADDING_RIGHT + 1;
+
+/** A typed answer lines up with the labels, past the highlighted row's `❯ `. */
+const TYPED_INSET = 2;
+
 /**
  * Searchable choices under the composer. Settings, thinking levels, and
  * slash commands share this menu; model configuration has its own panel.
+ * A typed screen asks a question instead: its title wraps on rows of its own
+ * and the answer field follows the choices, so neither is cut to fit the other.
  *
  * Based on https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/src/views/slash_dropdown.rs
  */
@@ -120,6 +129,7 @@ export class InlineMenu {
 
   private readonly renderer: CliRenderer;
   private readonly theme: CliTheme;
+  private readonly heading: TextRenderable;
   private readonly title: TextRenderable;
   private readonly list: MenuList;
   private readonly count: TextRenderable;
@@ -165,6 +175,15 @@ export class InlineMenu {
       height: 1,
       flexShrink: 0,
       flexDirection: "row",
+      paddingLeft: screen.typed === undefined ? 0 : TYPED_INSET,
+    });
+
+    this.heading = new TextRenderable(options.renderer, {
+      id: nextId("menu-heading"),
+      content: new StyledText([bold(fg(theme.accent)(screen.title))]),
+      wrapMode: "word",
+      flexShrink: 0,
+      visible: screen.typed !== undefined,
     });
 
     this.title = new TextRenderable(options.renderer, {
@@ -217,9 +236,13 @@ export class InlineMenu {
       visible: false,
     });
 
-    this.container.add(queryRow);
+    this.container.add(this.heading);
+
+    if (screen.typed === undefined) this.container.add(queryRow);
     this.container.add(this.list.container);
     this.container.add(this.empty);
+
+    if (screen.typed !== undefined) this.container.add(queryRow);
 
     options.renderer.keyInput.on("keypress", this.onKeyPress);
     options.renderer.on(CliRenderEvents.RESIZE, this.onResize);
@@ -234,6 +257,7 @@ export class InlineMenu {
   get rows(): number {
     return (
       PANEL_CHROME_ROWS +
+      this.headingRows(this.renderer.width) +
       Math.max(1, Math.min(this.matches.length, this.maxVisibleForHeight(this.renderer.height)))
     );
   }
@@ -252,10 +276,13 @@ export class InlineMenu {
     if (this.destroyed) return;
     this.screen = screen;
     this.choices = screen.choices;
+    this.heading.content = new StyledText([bold(fg(this.theme.accent)(screen.title))]);
+    this.heading.visible = screen.typed !== undefined;
     this.title.content = this.titleText(screen.title);
     this.queryInput.placeholder = screen.typed?.placeholder ?? FILTER_PLACEHOLDER;
     this.setQuery("");
     this.matches = screen.choices;
+    this.applyWidth(this.renderer.width);
     this.list.setMaxVisible(this.maxVisibleForHeight(this.renderer.height));
     this.list.setItems(this.matches, this.indexOf(screen.selectedId));
     this.repaintStatus();
@@ -387,11 +414,17 @@ export class InlineMenu {
   private maxVisibleForHeight(height: number): number {
     const cap = Math.max(1, Math.floor(this.screen.maxVisible ?? MAX_ROWS));
 
-    return Math.max(1, Math.min(cap, height - CHROME_ROWS));
+    return Math.max(1, Math.min(cap, height - CHROME_ROWS - this.headingRows(this.renderer.width)));
+  }
+
+  private headingRows(width: number): number {
+    if (this.screen.typed === undefined) return 0;
+
+    return wrappedRows(this.screen.title, width - PANEL_INSET, this.renderer.widthMethod);
   }
 
   private applyWidth(width: number): void {
-    this.title.visible = width >= TITLE_MIN_WIDTH;
+    this.title.visible = this.screen.typed === undefined && width >= TITLE_MIN_WIDTH;
     this.count.visible = this.screen.typed === undefined && width >= COUNT_MIN_WIDTH;
   }
 

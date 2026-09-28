@@ -11,6 +11,7 @@
     "package:desktop": "turbo package --filter=@nyte-ai/desktop",
     "dev:tui": "pnpm --filter @nyte-ai/tui dev",
     "dev:desktop": "pnpm --filter @nyte-ai/desktop dev",
+    "serve": "pnpm --dir packages/app build && pnpm --dir packages/serve start --",
     "format": "oxfmt --check",
     "format:fix": "oxfmt .",
     "lint": "oxlint .",
@@ -20,6 +21,8 @@
     "docs:dep:test": "node --test scripts/dependency-docs.test.mjs",
     "bench:core": "node packages/core/benchmark/run.ts",
     "bench:desktop": "pnpm --dir packages/desktop bench",
+    "e2e": "pnpm --dir packages/app e2e",
+    "e2e:desktop": "pnpm --dir packages/app e2e:desktop",
     "test:benchmark": "node --test packages/core/benchmark/smoke.test.ts",
     "typecheck:benchmark": "tsc --noEmit -p packages/core/benchmark/tsconfig.json",
     "typecheck": "turbo typecheck"

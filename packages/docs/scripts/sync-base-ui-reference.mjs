@@ -2,7 +2,7 @@
 /*
  * Vendors Base UI's generated API tables into content/base-ui-reference.
  *
- * Every `@nyte-ai/ui` component that wraps or re-exports Base UI gets one
+ * Every `@nyte-ai/ui` component built on Base UI gets one
  * markdown file per part, copied word for word (MIT, (c) Material-UI SAS).
  * The hand-written pages under content/cloud/components pull the parts they
  * document in with `<include>`.
@@ -24,12 +24,13 @@ const docsRoot = path.resolve(here, "..");
 // Per-part reference tables. Component pages `<include>` the parts they wrap.
 const partsDir = path.join(docsRoot, "content/base-ui-reference");
 
-/** Base UI docs slugs. Avatar and Input have a styled wrapper but no subpath. */
+/** Base UI docs slugs. Avatar has a styled wrapper but no subpath. */
 const slugs = [
   "alert-dialog",
   "autocomplete",
   "avatar",
   "button",
+  "checkbox",
   "collapsible",
   "context-menu",
   "dialog",

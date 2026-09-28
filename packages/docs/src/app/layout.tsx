@@ -1,8 +1,6 @@
 import "./global.css";
-import * as stylex from "@stylexjs/stylex";
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter, Newsreader } from "next/font/google";
-import { shell } from "~/shell.stylex";
+import { Geist, Geist_Mono, Inter } from "next/font/google";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -27,18 +25,6 @@ const geistMono = Geist_Mono({
   display: "swap",
 });
 
-/*
- * Newsreader sets marketing prose on /. The editorial pattern is
- * restrained sans headings over serif paragraphs. The docs chrome never uses it.
- */
-const newsreader = Newsreader({
-  subsets: ["latin"],
-  variable: "--font-newsreader",
-  display: "swap",
-  style: ["normal", "italic"],
-  axes: ["opsz"],
-});
-
 export const metadata: Metadata = {
   title: {
     default: "Nyte — a handwritten core for agentic UI",
@@ -52,10 +38,12 @@ export default function Layout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${geist.variable} ${geistMono.variable} ${newsreader.variable} ${inter.className}`}
+      className={`${inter.variable} ${geist.variable} ${geistMono.variable} overflow-hidden`}
       suppressHydrationWarning
     >
-      <body {...stylex.props(shell.page)}>{children}</body>
+      <body className="flex h-dvh min-h-svh min-w-0 flex-col overflow-hidden bg-(--nyte-bg-page) font-sans text-(--nyte-text-primary) antialiased">
+        {children}
+      </body>
     </html>
   );
 }

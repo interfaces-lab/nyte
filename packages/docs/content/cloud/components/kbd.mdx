@@ -1,0 +1,47 @@
+---
+title: Kbd
+description: "A keyboard shortcut drawn as a key cap"
+---
+
+```ts title="Import"
+import { Kbd } from "@nyte-ai/ui";
+```
+
+The same `Kbd` is exported from its own subpath. Pick one path per file.
+
+```ts title="Subpath"
+import { Kbd } from "@nyte-ai/ui/kbd";
+```
+
+A shortcut in monospace on a quiet fill. Reach for it beside a command that has a key binding.
+
+## Usage
+
+- Pass each key as its own string, in the order the user presses them.
+- `plain` drops the fill and padding, for a shortcut beside other row metadata.
+
+## Examples
+
+<Preview>
+  <KbdDemo />
+</Preview>
+
+```tsx
+<Kbd keys={["⌘", "K"]} />
+<Kbd keys={["⇧", "⌘", "D"]} />
+<Kbd keys={["⌘", "N"]} plain />
+```
+
+## Props
+
+| Prop        | Type                  | Default | Description                                |
+| ----------- | --------------------- | ------- | ------------------------------------------ |
+| `keys`      | `readonly string[]`   |         | One entry per key.                         |
+| `plain`     | `boolean`             | `false` | No fill and no padding.                    |
+| `xstyle`    | `XStyle`              |         | See [Theming](/cloud/foundations/theming). |
+| `className` | `string`              |         | See [Theming](/cloud/foundations/theming). |
+| `style`     | `React.CSSProperties` |         | See [Theming](/cloud/foundations/theming). |
+
+## Accessibility
+
+- Renders a `<kbd>` with one `<span>` per key. A screen reader reads the keys in order.

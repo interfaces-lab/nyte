@@ -386,12 +386,17 @@ export interface WorkspaceBackend {
   list(): Promise<readonly WorkspaceInfo[]>;
   touch(path: string, now?: number): Promise<void>;
   forget(path: string): Promise<void>;
-  /** Files and folders `@` can name under `cwd`, ranked by `query`; the backend caps the count. */
+  /** Files and folders under `cwd`: all of them without `query`, otherwise ranked by it and capped. */
   files(input: {
     readonly cwd: string;
     readonly query?: string;
     readonly signal?: AbortSignal;
   }): Promise<readonly MentionFile[]>;
+  read(input: InWorkspace<"workspace.read">): Promise<OperationOutput<"workspace.read">>;
+  save(input: InWorkspace<"workspace.save">): Promise<OperationOutput<"workspace.save">>;
+  format(input: InWorkspace<"workspace.format">): Promise<OperationOutput<"workspace.format">>;
+  search(input: InWorkspace<"workspace.search">): Promise<OperationOutput<"workspace.search">>;
+  blame(input: InWorkspace<"workspace.blame">): Promise<OperationOutput<"workspace.blame">>;
   readonly vcs?: VcsBackend;
 }
 
@@ -401,14 +406,20 @@ export interface Workspace {
   select(input: WorkspaceSelectInput): Promise<WorkspaceSelectOutcome>;
   forget(input: { readonly path: string }): Promise<void>;
   /**
-   * Files and folders `@` can name, narrowed on the host. `sessionId` picks the
-   * session's directory; without one the directory a new session would start in
-   * answers. The host caps how many come back.
+   * Files and folders in the workspace. Without `query` every one comes back,
+   * which the Files tree needs; with one the host ranks and caps them for an `@`
+   * menu. `sessionId` picks the session's directory; without one the directory a
+   * new session would start in answers.
    */
   files(input: {
     readonly target: WorkspaceTarget;
     readonly query?: string;
   }): Promise<readonly MentionFile[]>;
+  read(input: OperationInput<"workspace.read">): Promise<OperationOutput<"workspace.read">>;
+  save(input: OperationInput<"workspace.save">): Promise<OperationOutput<"workspace.save">>;
+  format(input: OperationInput<"workspace.format">): Promise<OperationOutput<"workspace.format">>;
+  search(input: OperationInput<"workspace.search">): Promise<OperationOutput<"workspace.search">>;
+  blame(input: OperationInput<"workspace.blame">): Promise<OperationOutput<"workspace.blame">>;
   /**
    * Version control where a session runs, or where a new one would start.
    * Without a backend, reads answer empty and writes answer `failed`.

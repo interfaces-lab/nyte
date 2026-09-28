@@ -1,65 +1,54 @@
 import { defineConfig } from "oxlint";
 
+const rendererCoreMessage =
+  "Renderer value imports use the browser-safe @nyte-ai/core/views and @nyte-ai/core/client entries.";
+
+const rendererCoreImports = {
+  paths: [{ name: "@nyte-ai/core", allowTypeImports: true, message: rendererCoreMessage }],
+  patterns: [
+    {
+      group: ["@nyte-ai/core/*", "!@nyte-ai/core/views", "!@nyte-ai/core/client"],
+      allowTypeImports: true,
+      message: rendererCoreMessage,
+    },
+  ],
+};
+
+const mountEffectImport = {
+  name: "react",
+  importNames: ["useEffect"],
+  message:
+    "No direct useEffect: derive inline, fetch with useQuery, act in the event handler, remount via key, or useMountEffect for mount-time external sync.",
+};
+
+const uiLibraryImports = [
+  {
+    group: ["@base-ui/**", "sonner"],
+    message:
+      "Import the styled component from @nyte-ai/ui. Base UI and sonner stay inside packages/ui.",
+  },
+];
+
+const buttonLibraryMessage =
+  "Buttons come styled from @nyte-ai/ui/button and @nyte-ai/ui/toggle; pass layout through their props, not a new look.";
+
 export default defineConfig({
   // Generated brand assets and audit evidence, not source.
-  ignorePatterns: ["output/**", ".agents/**", "tools/oxlint/anti-slop/**"],
+  ignorePatterns: ["output/**", ".agents/**"],
   plugins: ["react", "eslint", "typescript", "unicorn", "import"],
   // The desktop design scale: enforced on StyleX sources, not wrapped in tokens.
-  jsPlugins: [
-    "./packages/desktop/lint/design-scale.js",
-    { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
-  ],
+  jsPlugins: ["./packages/app/lint/design-scale.js"],
   categories: {
     correctness: "error",
   },
   rules: {
     "oxc/no-accumulating-spread": "error",
-    "anti-slop/no-array-filter-map": "error",
-    "anti-slop/no-reduce-accumulator-copy": "error",
-    "anti-slop/no-chained-type-assertions": "error",
-    "anti-slop/no-conditional-empty-object-spread": "error",
-    "anti-slop/no-known-value-widening": "error",
-    "anti-slop/no-module-mocking": "error",
-    "anti-slop/no-object-parameters": "error",
-    "anti-slop/no-reflect-apply": "error",
-    "anti-slop/no-reflect-get": "error",
-    "anti-slop/no-runtime-typeof": "error",
-    "anti-slop/no-shape-in-symbol-names": "error",
-    "anti-slop/no-unknown-parameters": "error",
-    "anti-slop/no-unknown-returns": "error",
-    "anti-slop/no-unknown-type-aliases": "error",
-    "anti-slop/no-unsafe-dictionary-type": "error",
-    "anti-slop/no-widen-then-assert": "error",
-    "anti-slop/require-readable-spacing": "error",
-    "anti-slop/require-safety-comment-for-type-assertion": "error",
+    "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
   },
   options: {
     typeAware: true,
   },
   overrides: [
-    {
-      files: ["**/test/**", "**/*.test.{ts,tsx,js,mjs}", "**/*.browser-test.{ts,tsx}"],
-      rules: {
-        "anti-slop/no-array-filter-map": "off",
-        "anti-slop/no-reduce-accumulator-copy": "off",
-        "anti-slop/no-chained-type-assertions": "off",
-        "anti-slop/no-conditional-empty-object-spread": "off",
-        "anti-slop/no-known-value-widening": "off",
-        "anti-slop/no-module-mocking": "off",
-        "anti-slop/no-object-parameters": "off",
-        "anti-slop/no-reflect-apply": "off",
-        "anti-slop/no-reflect-get": "off",
-        "anti-slop/no-runtime-typeof": "off",
-        "anti-slop/no-shape-in-symbol-names": "off",
-        "anti-slop/no-unknown-parameters": "off",
-        "anti-slop/no-unknown-returns": "off",
-        "anti-slop/no-unknown-type-aliases": "off",
-        "anti-slop/no-unsafe-dictionary-type": "off",
-        "anti-slop/no-widen-then-assert": "off",
-        "anti-slop/require-readable-spacing": "off",
-        "anti-slop/require-safety-comment-for-type-assertion": "off",
-      },
-    },
     {
       // Solid components run once and read refs after the tree is built; the
       // React render-purity rules describe a different runtime.
@@ -153,30 +142,20 @@ export default defineConfig({
       },
     },
     {
-      files: ["packages/desktop/src/renderer/**/*.{ts,tsx}"],
+      files: ["packages/app/src/**/*.{ts,tsx}", "packages/desktop/src/renderer/**/*.{ts,tsx}"],
       rules: {
         "nyte-design/spacing-scale": "error",
         "nyte-design/size-grid": "error",
         "nyte-design/no-raw-colors": "error",
+        "react/forbid-elements": [
+          "error",
+          { forbid: [{ element: "button", message: buttonLibraryMessage }] },
+        ],
         "eslint/no-restricted-imports": [
           "error",
           {
-            paths: [
-              {
-                name: "@nyte-ai/core",
-                allowTypeImports: true,
-                message:
-                  "Renderer value imports use the browser-safe @nyte-ai/core/views and @nyte-ai/core/client entries.",
-              },
-            ],
-            patterns: [
-              {
-                group: ["@nyte-ai/core/*", "!@nyte-ai/core/views", "!@nyte-ai/core/client"],
-                allowTypeImports: true,
-                message:
-                  "Renderer value imports use the browser-safe @nyte-ai/core/views and @nyte-ai/core/client entries.",
-              },
-            ],
+            paths: [...rendererCoreImports.paths, mountEffectImport],
+            patterns: [...rendererCoreImports.patterns, ...uiLibraryImports],
           },
         ],
       },
@@ -186,9 +165,16 @@ export default defineConfig({
       // renderer bundle. A Node-run unit test is not part of that bundle, so it
       // may import the full surface; `*.browser-test.tsx` still loads in a real
       // browser and stays restricted.
-      files: ["packages/desktop/src/renderer/**/*.test.{ts,tsx}"],
+      files: ["packages/app/src/**/*.test.{ts,tsx}"],
       rules: {
-        "eslint/no-restricted-imports": "off",
+        "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
+      },
+    },
+    {
+      // Fixtures render bare controls to drive the component under test.
+      files: ["packages/app/src/**/*.browser-test.tsx"],
+      rules: {
+        "react/forbid-elements": "off",
       },
     },
     {
@@ -196,8 +182,8 @@ export default defineConfig({
       // code needs a white quiet zone a camera can read; neither resolves
       // through the palette.
       files: [
-        "packages/desktop/src/renderer/src/chrome/appearance-panel.stylex.ts",
-        "packages/desktop/src/renderer/src/chrome/pairing-code.tsx",
+        "packages/app/src/chrome/appearance-panel.stylex.ts",
+        "packages/app/src/chrome/pairing-code.tsx",
       ],
       rules: {
         "nyte-design/no-raw-colors": "off",
@@ -207,21 +193,18 @@ export default defineConfig({
       // Effects exist to synchronize with an external system; derived state,
       // fetching (TanStack Query), event relays, and per-prop resets each have
       // a better primitive. Legitimate survivors carry an inline disable.
-      files: ["packages/ios/src/**/*.{ts,tsx}"],
+      files: ["packages/mobile/src/**/*.{ts,tsx}"],
       rules: {
         "eslint/no-restricted-imports": [
           "error",
-          {
-            paths: [
-              {
-                name: "react",
-                importNames: ["useEffect"],
-                message:
-                  "No direct useEffect: derive inline, fetch with useQuery, act in the event handler, remount via key, or useMountEffect for mount-time external sync.",
-              },
-            ],
-          },
+          { paths: [mountEffectImport], patterns: uiLibraryImports },
         ],
+      },
+    },
+    {
+      files: ["packages/ui/**"],
+      rules: {
+        "eslint/no-restricted-imports": "off",
       },
     },
     {
@@ -236,6 +219,7 @@ export default defineConfig({
                 message:
                   "Built-in plugins use SessionApi only. If the API is missing something, add a primitive.",
               },
+              ...uiLibraryImports,
             ],
           },
         ],

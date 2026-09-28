@@ -5,11 +5,10 @@
  * Checkers are compiled once: the interpreted checker walks the cyclic JSON
  * schema per value and is two orders of magnitude slower on a hot read path.
  */
-import { canonicalJson } from "@nyte-ai/client";
 import { schemas } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
-import { hashCanonicalJson } from "./hash.ts";
+import { hashBody, objectBody } from "./hash.ts";
 import type { EventBody, Obj, Oid } from "./model.ts";
 import { CorruptObject } from "./store.ts";
 
@@ -187,20 +186,20 @@ export function parseStoredObject(body: string, oid: Oid) {
 
   if (!checkObject.Check(value)) throw new CorruptObject(oid, "is not a known object");
 
-  if (hashCanonicalJson(body) !== oid) throw new CorruptObject(oid, "does not match its hash");
+  if (hashBody(body) !== oid) throw new CorruptObject(oid, "does not match its hash");
 
   return value;
 }
 
 export function serializeObject(object: Obj) {
-  const body = canonicalJson(object);
+  const body = objectBody(object);
   const value: unknown = JSON.parse(body);
 
   if (!checkObject.Check(value)) {
     throw new TypeError("Object is not valid after JSON serialization");
   }
 
-  return { body, kind: value.kind, oid: hashCanonicalJson(body) };
+  return { body, kind: value.kind, oid: hashBody(body) };
 }
 
 export function serializeEventBody(body: EventBody): string {

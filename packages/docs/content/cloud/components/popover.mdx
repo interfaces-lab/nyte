@@ -4,32 +4,37 @@ description: "An accessible popup anchored to a button"
 ---
 
 ```ts title="Import"
+import { Popover } from "@nyte-ai/ui";
+```
+
+The same `Popover` is exported from its own subpath. Pick one path per file.
+
+```ts title="Subpath"
 import { Popover } from "@nyte-ai/ui/popover";
 ```
 
-A popup anchored to the button that opens it. Reach for it when the content is interactive and
-belongs next to its trigger.
-
-No Nyte styling here.
+A raised panel anchored to the element that opens it. Reach for it when the content is interactive
+and belongs next to its trigger.
 
 ## Usage
 
-- `Popover.Positioner` places the popup. It defaults to `side="bottom"` and `align="center"`.
-  Pass `sideOffset` for the gap between the anchor and the popup.
-- `Popover.Arrow` only works inside the positioner. `arrowPadding` on the positioner keeps the
-  arrow clear of rounded corners.
+- `Popover.Popup` paints the raised surface with 8px padding and fades in with a slight scale. Lay
+  out its content with `xstyle`.
+- `Popover.Title` and `Popover.Description` set the heading and body text, and name and describe the
+  popup. Render them rather than writing your own ARIA.
+- Render the trigger and close as buttons with `render={<Button />}`.
+- `Popover.Positioner` defaults to `side="bottom"`, `align="center"`, `positionMethod="fixed"`, and
+  `collisionPadding={8}`. Pass `sideOffset` for the gap between the anchor and the popup.
 - `openOnHover` on the trigger opens the popup on hover after `delay`, which is 300ms. Set
   `closeDelay` to hold it open while the pointer travels.
 - The popover is non-modal by default. With `modal={true}`, focus trapping turns on only when
   `Popover.Close` is rendered inside `Popover.Popup`.
-- `Popover.Title` and `Popover.Description` name and describe the popup. Render them rather than
-  writing your own ARIA.
-- Pass `open` and `onOpenChange` on `Popover.Root` to drive it from your own state. With no
-  trigger inside the root, point the positioner at an element with `anchor`.
-- `Popover.Viewport` is only needed when one popup serves several triggers and you animate the
-  content change.
-- To open from a trigger outside the root, pass one handle from `Popover.createHandle()` to both
-  the trigger and the root.
+- Pass `open` and `onOpenChange` on `Popover.Root` to drive it from your own state. With no trigger
+  inside the root, point the positioner at an element with `anchor`.
+- To open from a trigger outside the root, pass one handle from `Popover.createHandle()` to both the
+  trigger and the root.
+- The popup attaches the ref from [Overlays](/cloud/foundations/overlays), so a host can keep it
+  above native views.
 
 ## Anatomy
 
@@ -54,45 +59,66 @@ No Nyte styling here.
 
 ## Examples
 
-A popover that opens on press, offset from its trigger.
+### Basic
 
 <Preview>
   <PopoverDemo />
 </Preview>
 
 ```tsx
+const styles = create({
+  popup: { display: "flex", flexDirection: "column", gap: 2, width: 240 },
+  actions: { display: "flex", justifyContent: "flex-end", marginBlockStart: 8 },
+});
+
 <Popover.Root>
-  <Popover.Trigger render={<Button variant="outline" />}>Notifications</Popover.Trigger>
+  <Popover.Trigger render={<Button variant="secondary" />}>Notifications</Popover.Trigger>
   <Popover.Portal>
     <Popover.Positioner sideOffset={6}>
-      <Popover.Popup>
+      <Popover.Popup xstyle={styles.popup}>
         <Popover.Title>Notifications</Popover.Title>
         <Popover.Description>You are all caught up.</Popover.Description>
-        <div>
-          <Popover.Close render={<Button size="sm" variant="ghost" />}>Close</Popover.Close>
+        <div {...props(styles.actions)}>
+          <Popover.Close render={<Button size="sm" variant="secondary" />}>Close</Popover.Close>
         </div>
       </Popover.Popup>
     </Popover.Positioner>
   </Popover.Portal>
-</Popover.Root>
+</Popover.Root>;
 ```
 
-An infotip opens on hover and stays open while the pointer moves to the popup. The trigger is
-icon-only, so it carries its own label.
+### Controlled with an anchor
+
+A popup your own state opens, placed against an element outside the root.
 
 ```tsx
-<Popover.Trigger openOnHover delay={200} closeDelay={150} aria-label="About rate limits">
-  <IconCircleInfo size={14} />
-</Popover.Trigger>
+const [open, setOpen] = useState(false);
+const anchor = useRef<HTMLDivElement>(null);
+
+<Popover.Root open={open} onOpenChange={setOpen}>
+  <Popover.Portal>
+    <Popover.Positioner anchor={anchor} side="top" align="start" sideOffset={8}>
+      <Popover.Popup>
+        <Popover.Title>Suggestions</Popover.Title>
+      </Popover.Popup>
+    </Popover.Positioner>
+  </Popover.Portal>
+</Popover.Root>;
 ```
 
-One popover driven by two detached triggers, each passing its own payload.
+### Detached triggers
+
+One popover driven by two triggers, each passing its own payload.
 
 ```tsx
 const details = Popover.createHandle<{ name: string }>();
 
-<Popover.Trigger handle={details} payload={{ name: "Ada" }}>Ada</Popover.Trigger>
-<Popover.Trigger handle={details} payload={{ name: "Linus" }}>Linus</Popover.Trigger>
+<Popover.Trigger handle={details} payload={{ name: "Ada" }} render={<Button variant="secondary" />}>
+  Ada
+</Popover.Trigger>
+<Popover.Trigger handle={details} payload={{ name: "Linus" }} render={<Button variant="secondary" />}>
+  Linus
+</Popover.Trigger>
 
 <Popover.Root handle={details}>
   {({ payload }) => (
@@ -107,12 +133,13 @@ const details = Popover.createHandle<{ name: string }>();
 </Popover.Root>;
 ```
 
-Animate the popup's position with CSS transitions on `left`, `right`, `top`, and `bottom` of the
-positioner, and its size with `width` and `height` on the popup.
-
 ## Props
 
-The part tables below come from Base UI, MIT, © Material-UI SAS.
+`Popover.Positioner`, `Popover.Popup`, `Popover.Title`, and `Popover.Description` take `xstyle`, and
+`className` and `style` as plain values, not functions of state. See
+[Theming](/cloud/foundations/theming). The other parts are Base UI's.
+
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Root
 
@@ -131,6 +158,13 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
 <include>../../base-ui-reference/popover/Backdrop.md</include>
 
 ### Positioner
+
+Our defaults replace two of Base UI's.
+
+| Prop               | Type                    | Default   |
+| ------------------ | ----------------------- | --------- |
+| `positionMethod`   | `'absolute' \| 'fixed'` | `'fixed'` |
+| `collisionPadding` | `Padding`               | `8`       |
 
 <include>../../base-ui-reference/popover/Positioner.md</include>
 
@@ -166,8 +200,9 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
   that describes it.
 - Escape closes the popup. Outside press closes it. Focus leaving the popup closes it.
 - Focus moves to the first tabbable element inside the popup on open, except when the popover was
-  opened by touch, where the popup itself takes focus. `initialFocus` and `finalFocus` on the
-  popup override this.
+  opened by touch, where the popup itself takes focus. `initialFocus` and `finalFocus` on the popup
+  override this.
 - On close, focus returns to the trigger or to the previously focused element.
 - Render `Popover.Close` inside the popup when `modal` is `true` or `'trap-focus'` so touch screen
   reader users can leave it.
+- The popup appears without motion under `prefers-reduced-motion: reduce`.

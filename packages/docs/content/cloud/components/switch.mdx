@@ -4,103 +4,56 @@ description: "A control that turns a setting on or off"
 ---
 
 ```ts title="Import"
+import { Switch } from "@nyte-ai/ui";
+```
+
+The same `Switch` is exported from its own subpath. Pick one path per file.
+
+```ts title="Subpath"
 import { Switch } from "@nyte-ai/ui/switch";
 ```
 
-A setting that applies the moment it changes. No Nyte styling on this one, you own the visual
-layer.
+A 30 by 18px track with a sliding thumb, accent when on. Use it for a setting that applies the
+moment it changes.
 
 ## Usage
 
-- Give the switch an accessible name. A wrapping `<label>` is the simplest pattern.
-- `Switch.Root` renders a `<span>` by default, so an enclosing label works. Render a native
-  `<button>` when you use a sibling label with `htmlFor` and `id`.
+- `label` is required and becomes the switch's `aria-label`. A row that shows the same text beside
+  the switch still passes it.
+- `checked` with `onCheckedChange` controls the switch. `defaultChecked` leaves it uncontrolled.
 - A switch commits on change. If the setting needs a save step, use a checkbox instead.
-- The `on` value is submitted by default. Set `value` to change it, and `uncheckedValue` to submit
-  something when the switch is off.
-
-## Anatomy
-
-```tsx
-<Switch.Root>
-  <Switch.Thumb />
-</Switch.Root>
-```
+- `disabled` dims the switch to half opacity. Pair it with `title` to say why.
 
 ## Examples
-
-### A wrapping label
 
 <Preview>
   <SwitchDemo />
 </Preview>
 
 ```tsx
-<label>
-  <Switch.Root defaultChecked>
-    <Switch.Thumb />
-  </Switch.Root>
-  Notifications
-</label>
-```
+const [wrap, setWrap] = useState(true);
 
-### A sibling label
-
-With `htmlFor` and `id`, render the root as a native button and tell Base UI about it.
-
-```tsx
-<div>
-  <label htmlFor="notifications-switch">Notifications</label>
-  <Switch.Root id="notifications-switch" nativeButton render={<button />}>
-    <Switch.Thumb />
-  </Switch.Root>
-</div>
-```
-
-### A native button inside a label
-
-A `<button>` inside a `<label>` is invalid HTML, so the render callback places the hidden input
-outside the label.
-
-```tsx
-<Switch.Root
-  nativeButton
-  render={(buttonProps) => (
-    <label>
-      <button {...buttonProps} />
-      Notifications
-    </label>
-  )}
-/>
-```
-
-### Controlled
-
-```tsx
-const [enabled, setEnabled] = useState(false);
-
-<Switch.Root checked={enabled} onCheckedChange={setEnabled}>
-  <Switch.Thumb />
-</Switch.Root>;
+<Switch label="Code block word wrap" checked={wrap} onCheckedChange={setWrap} />
+<Switch label="Reduce transparency" disabled />
 ```
 
 ## Props
 
-The reference tables below come from Base UI, MIT, © Material-UI SAS.
+Every Base UI `Switch.Root` prop passes through, except `render` and `children`. The thumb is built
+in.
 
-### Root
+| Prop                           | Type                                      | Default | Description                    |
+| ------------------------------ | ----------------------------------------- | ------- | ------------------------------ |
+| `label`                        | `string`                                  |         | Accessible name of the switch. |
+| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |         |                                |
+
+The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
 <include>../../base-ui-reference/switch/Root.md</include>
-
-### Thumb
-
-<include>../../base-ui-reference/switch/Thumb.md</include>
 
 ## Accessibility
 
 - The root carries `role="switch"` and `aria-checked`. Space and Enter toggle it.
-- `id` lands on the hidden input, or on the root when `nativeButton` is `true`.
 - `readOnly` keeps the switch focusable and blocks the change. `disabled` removes it from the tab
   order.
-- Both parts reflect `data-checked`, `data-unchecked`, `data-disabled`, `data-readonly`, and
-  `data-required`, so the thumb can animate from CSS alone.
+- The focus ring appears on keyboard focus. See [Focus](/cloud/foundations/focus).

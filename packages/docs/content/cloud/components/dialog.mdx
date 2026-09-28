@@ -1,74 +1,50 @@
 ---
 title: Dialog
-description: "A modal with a scrim, a centered popup, and a built-in close button"
+description: "A modal panel centered over a scrim"
 ---
 
 ```ts title="Import"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@nyte-ai/ui";
-import { Dialog as DialogBase } from "@nyte-ai/ui/dialog";
+import { Dialog } from "@nyte-ai/ui";
 ```
 
-A modal that opens on top of the page and takes focus. Reach for it when a task needs the user's
-full attention and can be cancelled.
+The same `Dialog` is exported from its own subpath. Pick one path per file.
 
-The root exports give you the styled surface. There is no styled Trigger or Close, so those come
-from the `@nyte-ai/ui/dialog` namespace with `render={<Button … />}`. Both paths export the name
-`Dialog`, so a file using both aliases one. The namespace also carries `Portal`, `Backdrop`, and
-`Viewport`.
+```ts title="Subpath"
+import { Dialog } from "@nyte-ai/ui/dialog";
+```
+
+A modal that opens over the page and takes focus. Reach for it when a task needs the user's full
+attention and can be cancelled. For a question that must be answered, use
+[Alert dialog](/cloud/components/alert-dialog).
 
 ## Usage
 
-- Every dialog needs a `DialogTitle`. It becomes the accessible name. Hide it visually rather
-  than omitting it.
-- Use `DialogDescription` for the one sentence that explains the consequence. Longer content goes
+- `Dialog.Popup` renders the portal, the scrim, and the panel as one unit.
+- Every dialog needs a `Dialog.Title`. It becomes the accessible name. Hide it with `srOnly` from
+  [Focus](/cloud/foundations/focus) rather than omitting it.
+- Use `Dialog.Description` for the one sentence that explains the consequence. Longer content goes
   in the body.
-- Confirmations that destroy something use [Alert dialog](/cloud/components/alert-dialog), which
-  does not dismiss on outside press.
-- `showCloseButton` is on by default. Turn it off when the footer already has a Cancel.
-- `DialogContent` renders the portal, backdrop, and popup as one unit. Use the namespace parts
-  when you need to place them yourself or need a scrollable `Viewport`.
-- Nest dialogs normally. Style the parent with the `[data-nested-dialog-open]` selector and the
-  `--nested-dialogs` CSS variable. Backdrops of child dialogs are not rendered.
+- `Dialog.Trigger` and `Dialog.Close` carry no look. Pass `render={<Button … />}` or give them
+  `xstyle`.
+- The panel is a column with a 16px gap. Change its width, padding, or gap through `xstyle` on
+  `Dialog.Popup`.
+- The popup and the scrim attach the ref from [Overlays](/cloud/foundations/overlays).
 
 ## Anatomy
 
 ```tsx
-<Dialog>
-  <DialogBase.Trigger />
-  <DialogContent>
-    {/* Portal › Backdrop › Popup, plus Close */}
-    <DialogHeader>
-      <DialogTitle />
-      <DialogDescription />
-    </DialogHeader>
-    …
-    <DialogFooter />
-  </DialogContent>
-</Dialog>
-```
-
-The same tree with the unstyled namespace, where nothing from the root is in play:
-
-```tsx
 <Dialog.Root>
   <Dialog.Trigger />
-  <Dialog.Portal>
-    <Dialog.Backdrop />
-    <Dialog.Viewport>
-      <Dialog.Popup>
-        <Dialog.Title />
-        <Dialog.Description />
-        <Dialog.Close />
-      </Dialog.Popup>
-    </Dialog.Viewport>
-  </Dialog.Portal>
+  <Dialog.Popup>
+    <Dialog.Header>
+      <Dialog.Title />
+      <Dialog.Description />
+    </Dialog.Header>
+    …
+    <Dialog.Footer>
+      <Dialog.Close />
+    </Dialog.Footer>
+  </Dialog.Popup>
 </Dialog.Root>
 ```
 
@@ -79,19 +55,21 @@ The same tree with the unstyled namespace, where nothing from the root is in pla
 </Preview>
 
 ```tsx
-<Dialog>
-  <DialogBase.Trigger render={<Button variant="outline" />}>Rename session</DialogBase.Trigger>
-  <DialogContent>
-    <DialogHeader>
-      <DialogTitle>Rename session</DialogTitle>
-      <DialogDescription>The name shows in the sidebar and in the window title.</DialogDescription>
-    </DialogHeader>
-    <DialogFooter>
-      <DialogBase.Close render={<Button variant="ghost" />}>Cancel</DialogBase.Close>
-      <DialogBase.Close render={<Button />}>Save</DialogBase.Close>
-    </DialogFooter>
-  </DialogContent>
-</Dialog>
+<Dialog.Root>
+  <Dialog.Trigger render={<Button variant="secondary" />}>Rename session</Dialog.Trigger>
+  <Dialog.Popup>
+    <Dialog.Header>
+      <Dialog.Title>Rename session</Dialog.Title>
+      <Dialog.Description>
+        The name shows in the sidebar and in the window title.
+      </Dialog.Description>
+    </Dialog.Header>
+    <Dialog.Footer>
+      <Dialog.Close render={<Button variant="secondary" />}>Cancel</Dialog.Close>
+      <Dialog.Close render={<Button variant="inverse" />}>Save</Dialog.Close>
+    </Dialog.Footer>
+  </Dialog.Popup>
+</Dialog.Root>
 ```
 
 Pass `open` and `onOpenChange` to drive the dialog from your own state, which is how you open it
@@ -100,11 +78,9 @@ from a menu item or close it after a submit.
 ```tsx
 const [open, setOpen] = useState(false);
 
-<Dialog open={open} onOpenChange={setOpen}>
-  <DialogContent showCloseButton={false}>
-    <DialogHeader>
-      <DialogTitle>Rename session</DialogTitle>
-    </DialogHeader>
+<Dialog.Root open={open} onOpenChange={setOpen}>
+  <Dialog.Popup>
+    <Dialog.Title>Rename session</Dialog.Title>
     <form
       onSubmit={async () => {
         await save();
@@ -113,29 +89,43 @@ const [open, setOpen] = useState(false);
     >
       …
     </form>
-  </DialogContent>
-</Dialog>;
+  </Dialog.Popup>
+</Dialog.Root>;
+```
+
+A wider panel with no padding, for content that draws its own edges.
+
+```tsx
+import { Dialog } from "@nyte-ai/ui";
+import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { create } from "@stylexjs/stylex";
+
+const styles = create({
+  popup: { gap: 0, width: "min(610px, calc(100vw - 48px))", padding: 0 },
+});
+
+<Dialog.Popup xstyle={styles.popup}>
+  <Dialog.Title xstyle={srOnly}>Search</Dialog.Title>…
+</Dialog.Popup>;
 ```
 
 ## Props
 
-| Export              | Renders                                     | Styling                     |
-| ------------------- | ------------------------------------------- | --------------------------- |
-| `Dialog`            | `Root`                                      | None, it renders no element |
-| `DialogContent`     | `Portal`, `Backdrop`, `Popup`, and `Close`  | Styles land on the popup    |
-| `DialogHeader`      | A `<div>` that stacks title and description | Layout only                 |
-| `DialogTitle`       | `Title`                                     | Title type scale            |
-| `DialogDescription` | `Description`                               | Muted body type             |
-| `DialogFooter`      | A `<div>` that right-aligns its buttons     | Layout only                 |
+| Part                 | Renders                        | Styling                                                               |
+| -------------------- | ------------------------------ | --------------------------------------------------------------------- |
+| `Dialog.Root`        | Nothing                        | None                                                                  |
+| `Dialog.Trigger`     | `<button>`                     | None                                                                  |
+| `Dialog.Popup`       | A portal, the scrim, a `<div>` | 400px wide, 24px padding, 16px gap, hairline border, translucent fill |
+| `Dialog.Header`      | `<div>`                        | Stacks title and description 4px apart                                |
+| `Dialog.Title`       | `<h2>`                         | Large, semibold                                                       |
+| `Dialog.Description` | `<p>`                          | Body size, secondary text                                             |
+| `Dialog.Footer`      | `<div>`                        | Right-aligns its buttons 8px apart                                    |
+| `Dialog.Close`       | `<button>`                     | None                                                                  |
 
-`DialogContent` adds one prop on top of the popup props.
-
-| Prop              | Type      | Default | Description                                        |
-| ----------------- | --------- | ------- | -------------------------------------------------- |
-| `showCloseButton` | `boolean` | `true`  | Render the ✕ close button in the top-right corner. |
-
-Every styled export accepts `xstyle` alongside `className` and `style`. The backdrop is not
-exposed, change it with the scrim token, see [Tokens](/cloud/foundations/tokens).
+Every part except `Dialog.Root` accepts `xstyle`, merged last. `className` takes a string and
+`style` an object, both merged with the part's own. `Dialog.Popup` takes the Base UI popup props
+except `ref`. The panel is capped at 48px less than the window in both directions and scrolls when
+its content is taller.
 
 The part tables below come from Base UI, MIT, © Material-UI SAS.
 
@@ -146,18 +136,6 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
 ### Trigger
 
 <include>../../base-ui-reference/dialog/Trigger.md</include>
-
-### Portal
-
-<include>../../base-ui-reference/dialog/Portal.md</include>
-
-### Backdrop
-
-<include>../../base-ui-reference/dialog/Backdrop.md</include>
-
-### Viewport
-
-<include>../../base-ui-reference/dialog/Viewport.md</include>
 
 ### Popup
 
@@ -177,10 +155,9 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
 
 ## Accessibility
 
-- The popup has `role="dialog"`, labelled by `DialogTitle` and described by `DialogDescription`.
+- The popup has `role="dialog"`, labelled by `Dialog.Title` and described by `Dialog.Description`.
 - Focus moves into the popup on open and returns to the trigger on close. Tab cycles inside the
   popup.
 - Escape closes. Outside press closes unless `disablePointerDismissal` is set on the root.
-- Content outside the dialog is inert while it is open, and background scroll is locked. Set
-  `modal={false}` on the root to allow interaction with the rest of the page.
+- Content outside the dialog is inert while it is open, and background scroll is locked.
 - `initialFocus` and `finalFocus` on the popup override where focus lands.

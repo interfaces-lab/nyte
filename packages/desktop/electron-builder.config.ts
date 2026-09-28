@@ -65,7 +65,11 @@ export default {
     "!node_modules/electron-sparkle/dist/Sparkle-*.zip",
   ],
   asarUnpack: ["node_modules/@lydell/**/*"],
-  extraResources: [{ from: "resources/adblock.bin", to: "adblock.bin" }],
+  extraResources: [
+    { from: "resources/adblock.bin", to: "adblock.bin" },
+    // The web app Remote access serves beside the API; scripts/build.mjs builds it first.
+    { from: "../app/dist", to: "app" },
+  ],
   mac: updateTest
     ? {
         ...mac,

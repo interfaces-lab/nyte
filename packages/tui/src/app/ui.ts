@@ -1,9 +1,9 @@
 /**
  * The terminal's UI state and the handle every feature module writes through.
  * `App.tsx` paints from `ui`; nothing here patches a renderable's content.
- * Leaf widgets that are pure rendering (transcript view, pickers, gutter)
- * stay imperative renderables and are mounted by the app where the store
- * says they belong.
+ * Leaf widgets that are pure rendering (timeline, pickers, gutter) stay
+ * imperative renderables and are mounted by the app where the store says they
+ * belong.
  */
 import type { Selection, SelectionReply } from "@nyte-ai/core";
 import type {
@@ -25,7 +25,8 @@ import type { PendingTail } from "../pending-tail.ts";
 import { InlineMenu, PickerCancelled } from "../picker.ts";
 import type { Choice, ChoiceAction, MenuScreen } from "../picker.ts";
 import type { ActiveCliTheme, CliTheme } from "../theme.ts";
-import type { Transcript, TranscriptView } from "../transcript.ts";
+import type { Timeline } from "../timeline.ts";
+import type { Transcript } from "../surface.ts";
 import { displayWidth, truncateDisplay } from "../width.ts";
 
 /** Keeps the active editor stable across terminal and pane focus changes. */
@@ -133,7 +134,7 @@ export interface Shell {
   readonly theme: ActiveCliTheme;
   readonly setTheme: (next: CliTheme) => void;
   readonly transcript: Transcript;
-  readonly view: TranscriptView;
+  readonly view: Timeline;
   readonly scroll: ScrollBoxRenderable;
   readonly input: TextareaRenderable;
   /** Edit buffers keep the width rules from construction, even after capability replies. */

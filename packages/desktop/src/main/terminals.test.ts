@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test, vi } from "vitest";
-import type { HostEvent } from "../shared/ipc.ts";
+import type { HostEvent } from "@nyte-ai/app/bridge.ts";
 import { TerminalSessions } from "./terminals.ts";
 import { CALL_INPUT_SCHEMAS } from "./ipc-inputs.ts";
 

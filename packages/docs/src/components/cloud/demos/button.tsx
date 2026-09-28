@@ -1,16 +1,15 @@
 "use client";
 
 import { Button } from "@nyte-ai/ui";
-import { IconPlusSmall } from "central-icons";
 
 export function ButtonVariantsDemo() {
   return (
     <>
-      <Button>Default</Button>
+      <Button>Primary</Button>
       <Button variant="secondary">Secondary</Button>
-      <Button variant="outline">Outline</Button>
-      <Button variant="ghost">Ghost</Button>
-      <Button variant="destructive">Destructive</Button>
+      <Button variant="inverse">Inverse</Button>
+      <Button variant="danger">Danger</Button>
+      <Button variant="link">Link</Button>
     </>
   );
 }
@@ -18,11 +17,16 @@ export function ButtonVariantsDemo() {
 export function ButtonSizesDemo() {
   return (
     <>
-      <Button size="default">Default</Button>
-      <Button size="sm">Small</Button>
-      <Button size="icon-sm" aria-label="Add">
-        <IconPlusSmall size={14} />
+      <Button variant="secondary">Default</Button>
+      <Button variant="secondary" size="condensed">
+        Condensed
       </Button>
+      <Button variant="secondary" size="sm">
+        Small
+      </Button>
+      <Button size="icon" icon="plus" aria-label="Add" />
+      <Button size="icon-sm" icon="plus" aria-label="Add" />
+      <Button size="icon-xs" icon="x" aria-label="Remove" />
     </>
   );
 }
@@ -30,9 +34,14 @@ export function ButtonSizesDemo() {
 export function ButtonStatesDemo() {
   return (
     <>
-      <Button disabled>Disabled</Button>
-      <Button variant="outline" disabled focusableWhenDisabled>
-        Focusable when disabled
+      <Button variant="secondary" icon="refresh">
+        Refresh
+      </Button>
+      <Button variant="secondary" round>
+        Round
+      </Button>
+      <Button variant="secondary" disabled>
+        Disabled
       </Button>
     </>
   );

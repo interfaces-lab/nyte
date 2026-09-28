@@ -1,15 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import {
-  access,
-  chmod,
-  mkdir,
-  mkdtemp,
-  readFile,
-  realpath,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, test, vi } from "vitest";
@@ -89,8 +80,8 @@ function trashRecorder() {
   };
 }
 
-function vcsAt(root: string, options?: Parameters<typeof createGitVcs>[1]) {
-  const backend = createGitVcs(root, options);
+function vcsAt(root: string, options?: Parameters<typeof createGitVcs>[0]) {
+  const backend = createGitVcs(options);
   const cwd = root;
   const repository = async (): Promise<Extract<VcsSnapshot, { kind: "repository" }>> => {
     const snapshot = await backend.snapshot({ cwd });
@@ -789,8 +780,8 @@ describe("stage", () => {
   test("serializes clients with the same revision so the second answers stale", async () => {
     const root = await repository();
     await writeFile(join(root, "scratch.txt"), "untracked\n");
-    const first = createGitVcs(root);
-    const second = createGitVcs(root);
+    const first = createGitVcs();
+    const second = createGitVcs();
     const snapshot = await first.snapshot({ cwd: root });
     assert.equal(snapshot.kind, "repository");
     if (snapshot.kind !== "repository") return;
@@ -965,11 +956,10 @@ describe("createBranch", () => {
 });
 
 describe("per-call workspace", () => {
-  test("tree and repository reads use the call cwd instead of the constructor cwd", async () => {
-    const constructor = await repository();
+  test("tree and repository reads use the call cwd", async () => {
     const called = await repository();
     await writeFile(join(called, "only-there.txt"), "called\n");
-    const backend = createGitVcs(constructor);
+    const backend = createGitVcs();
 
     const snapshot = await backend.snapshot({ cwd: called });
     const tree = await backend.tree({ cwd: called });

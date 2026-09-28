@@ -109,6 +109,8 @@ test("a session parked on a question is marked apart from one parked on backgrou
     assert.equal(slept.heads[0]?.run?.phase.kind, "waiting");
     assert.equal(asked.heads[0]?.run?.awaitingReply, true);
     assert.equal(slept.heads[0]?.run?.awaitingReply, undefined);
+    assert.equal(asked.heads[0]?.run?.question, selection.title);
+    assert.equal(slept.heads[0]?.run?.question, undefined);
     assert.equal(sessionMark(asked), "waiting");
     assert.equal(sessionMark(slept), "working");
   } finally {

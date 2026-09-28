@@ -1,0 +1,85 @@
+import * as stylex from "@stylexjs/stylex";
+import { t } from "@nyte-ai/ui/vars.stylex";
+
+export const boardStyles = stylex.create({
+  page: {
+    height: "100%",
+    overflowY: "auto",
+    backgroundColor: t.bgPage,
+    color: t.textPrimary,
+    fontFamily: t.fontSans,
+    fontSize: t.fontBase,
+    lineHeight: t.leadingBase,
+    WebkitFontSmoothing: "antialiased",
+  },
+  header: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 12,
+    paddingInline: 32,
+    paddingBlock: 20,
+  },
+  title: { fontSize: t.fontLg, lineHeight: t.leadingLg, fontWeight: 500 },
+  subtitle: { color: t.textTertiary, flex: 1, minWidth: 240 },
+});
+
+export const newChatStyles = stylex.create({
+  frame: {
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+    width: "100%",
+    maxWidth: 640,
+    marginInline: "auto",
+    paddingInline: 32,
+  },
+  context: {
+    display: "flex",
+    alignItems: "center",
+    gap: 2,
+    minWidth: 0,
+    color: t.textSecondary,
+  },
+  chipText: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  chipDivider: { color: t.textQuaternary },
+  staticChip: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    height: 28,
+    paddingInline: 8,
+    color: t.textTertiary,
+  },
+  composer: {
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    minHeight: 104,
+    padding: 12,
+    borderRadius: t.radius2xl,
+    backgroundColor: t.composerBg,
+    boxShadow: `0 0 0 1px ${t.composerRing}`,
+    color: t.textTertiary,
+  },
+  composerFoot: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    color: t.textTertiary,
+    fontSize: t.fontSm,
+  },
+  send: {
+    display: "grid",
+    placeItems: "center",
+    width: 28,
+    height: 28,
+    borderRadius: t.radiusFull,
+    backgroundColor: t.fillStrong,
+    color: t.iconSecondary,
+  },
+  menuMeta: { color: t.textTertiary, fontSize: t.fontSm },
+});

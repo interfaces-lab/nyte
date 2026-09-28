@@ -4,28 +4,34 @@ description: "A link that shows a destination preview without interrupting keybo
 ---
 
 ```ts title="Import"
+import { PreviewCard } from "@nyte-ai/ui";
+```
+
+The same `PreviewCard` is exported from its own subpath. Pick one path per file.
+
+```ts title="Subpath"
 import { PreviewCard } from "@nyte-ai/ui/preview-card";
 ```
 
-A card that previews where a link goes, shown on hover. Reach for it when a sighted reader
-benefits from seeing the destination before clicking.
-
-No Nyte styling here.
+A card that previews where a link goes, shown on hover. Reach for it when a sighted reader benefits
+from seeing the destination before clicking.
 
 ## Usage
 
-- The trigger renders an `<a>`. Give it a real `href`, since the link is the only part users can
-  reach by keyboard, touch, or screen reader.
+- `PreviewCard.Popup` paints a raised card, a column at most 260px wide with 8px padding, and fades
+  in with a slight scale. Style what goes inside it yourself.
+- The trigger renders an `<a>` with no look of its own. Give it a real `href`, since the link is the
+  only part users can reach by keyboard, touch, or screen reader. Pass `render` to put the trigger
+  on another element, such as a list row.
 - Put everything the card shows on the linked page as well. Nothing unique lives in the popup.
-- The card opens after `delay`, which is 600ms, and closes after `closeDelay`, which is 300ms.
-  Both live on the trigger.
-- `PreviewCard.Positioner` places the popup. It defaults to `side="bottom"` and `align="center"`.
-  Pass `sideOffset` for the gap.
-- `PreviewCard.Arrow` only works inside the positioner.
-- `PreviewCard.Viewport` is only needed when one popup serves several triggers and you animate the
-  content change.
-- To open from a trigger outside the root, pass one handle from `PreviewCard.createHandle()` to
-  both the trigger and the root.
+- The card opens after `delay`, which is 600ms, and closes after `closeDelay`, which is 300ms. Both
+  live on the trigger.
+- `PreviewCard.Positioner` defaults to `side="bottom"`, `align="center"`, `positionMethod="fixed"`,
+  and `collisionPadding={8}`. Pass `sideOffset` for the gap.
+- To open from a trigger outside the root, pass one handle from `PreviewCard.createHandle()` to both
+  the trigger and the root.
+- The popup attaches the ref from [Overlays](/cloud/foundations/overlays), so a host can keep it
+  above native views.
 
 ## Anatomy
 
@@ -46,25 +52,40 @@ No Nyte styling here.
 
 ## Examples
 
-A link that previews its destination.
+### Basic
 
 <Preview>
   <PreviewCardDemo />
 </Preview>
 
 ```tsx
+const styles = create({
+  link: {
+    color: t.textAccent,
+    fontSize: t.fontBase,
+    textDecorationLine: "underline",
+    textUnderlineOffset: "2px",
+  },
+  title: { fontWeight: 500 },
+  detail: { color: t.textSecondary, fontSize: t.fontSm, lineHeight: t.leadingSm },
+});
+
 <PreviewCard.Root>
-  <PreviewCard.Trigger href="/cloud/components/button">Button</PreviewCard.Trigger>
+  <PreviewCard.Trigger href="/cloud/components/button" {...props(styles.link, focus.ring)}>
+    Button
+  </PreviewCard.Trigger>
   <PreviewCard.Portal>
     <PreviewCard.Positioner sideOffset={8}>
       <PreviewCard.Popup>
-        <span>Button</span>
-        <p>Variants, sizes, and an unstyled mode.</p>
+        <span {...props(styles.title)}>Button</span>
+        <span {...props(styles.detail)}>Variants and sizes.</span>
       </PreviewCard.Popup>
     </PreviewCard.Positioner>
   </PreviewCard.Portal>
-</PreviewCard.Root>
+</PreviewCard.Root>;
 ```
+
+### Timing
 
 Open sooner and keep the card up longer.
 
@@ -74,12 +95,25 @@ Open sooner and keep the card up longer.
 </PreviewCard.Trigger>
 ```
 
-Animate the popup's position with CSS transitions on `left`, `right`, `top`, and `bottom` of the
-positioner, and its size with `width` and `height` on the popup.
+### Wider card
+
+`xstyle` on the popup overrides its size.
+
+```tsx
+const styles = create({
+  card: { width: 280, maxWidth: "min(280px, var(--available-width))", padding: 10 },
+});
+
+<PreviewCard.Popup xstyle={styles.card}>{children}</PreviewCard.Popup>;
+```
 
 ## Props
 
-The part tables below come from Base UI, MIT, © Material-UI SAS.
+`PreviewCard.Positioner` and `PreviewCard.Popup` take `xstyle`, and `className` and `style` as
+plain values, not functions of state. See [Theming](/cloud/foundations/theming). The other parts
+are Base UI's.
+
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Root
 
@@ -98,6 +132,13 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
 <include>../../base-ui-reference/preview-card/Backdrop.md</include>
 
 ### Positioner
+
+Our defaults replace two of Base UI's.
+
+| Prop               | Type                    | Default   |
+| ------------------ | ----------------------- | --------- |
+| `positionMethod`   | `'absolute' \| 'fixed'` | `'fixed'` |
+| `collisionPadding` | `Padding`               | `8`       |
 
 <include>../../base-ui-reference/preview-card/Positioner.md</include>
 
@@ -121,3 +162,4 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
   without being walked through the preview.
 - The trigger carries `data-popup-open` while the card is open.
 - Escape closes the card. Outside press closes it.
+- The card appears without motion under `prefers-reduced-motion: reduce`.

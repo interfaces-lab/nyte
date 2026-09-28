@@ -1,202 +1,146 @@
+/**
+ * A centered modal over a scrim. `Popup` renders the portal, backdrop, and
+ * panel as one unit, so every dialog paints the same surface and attaches the
+ * overlay ref. The alert dialog reuses these parts under its own root.
+ */
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import * as stylex from "@stylexjs/stylex";
-import { IconCrossSmall } from "central-icons";
-import type * as React from "react";
+import { create, props } from "@stylexjs/stylex";
+import type { ComponentProps, ReactElement } from "react";
 
-import {
-  borderVars,
-  colorVars,
-  controlVars,
-  elevationVars,
-  fontVars,
-  motionVars,
-  overlayVars,
-  radiusVars,
-  spaceVars,
-} from "../../platform-tokens.stylex.ts";
+import { floatingSurfaceStyles } from "../../floating-surface.stylex.ts";
+import { dialog, layer } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { Button } from "./button.tsx";
-import { IconBox } from "./icon-box.tsx";
+import { t } from "../../vars.stylex.ts";
+import { useOverlayRef } from "./overlay.tsx";
 
-const styles = stylex.create({
-  overlay: {
+const styles = create({
+  backdrop: {
     position: "fixed",
     inset: 0,
-    zIndex: overlayVars["--nyte-layer-dialog"],
-    backgroundColor: colorVars["--nyte-color-scrim"],
-    opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
-    transitionProperty: "opacity",
-    transitionDuration: {
-      default: motionVars["--nyte-motion-normal"],
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: motionVars["--nyte-motion-ease-out"],
+    zIndex: layer.dialogBackdrop,
+    backgroundColor: t.bgScrim,
   },
   popup: {
     position: "fixed",
     top: "50%",
     left: "50%",
-    zIndex: overlayVars["--nyte-layer-dialog"],
-    display: "grid",
-    boxSizing: "border-box",
-    width: overlayVars["--nyte-dialog-width"],
-    maxWidth: overlayVars["--nyte-dialog-max-width"],
-    maxHeight: overlayVars["--nyte-dialog-max-height"],
-    gap: spaceVars["--nyte-space-4"],
-    overflowY: "auto",
-    padding: spaceVars["--nyte-space-4"],
-    transform: "translate(-50%, -50%)",
-    transformOrigin: "center",
-    borderWidth: borderVars["--nyte-border-control-width"],
-    borderStyle: "solid",
-    borderColor: colorVars["--nyte-color-border"],
-    borderRadius: radiusVars["--nyte-radius-dialog"],
-    backgroundColor: colorVars["--nyte-color-popover"],
-    boxShadow: elevationVars["--nyte-elevation-dialog"],
-    color: colorVars["--nyte-color-popover-foreground"],
-    fontFamily: fontVars["--nyte-font-family-ui"],
-    fontSize: fontVars["--nyte-font-size-body"],
-    lineHeight: fontVars["--nyte-leading-body"],
-    outline: "none",
-    opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
-    scale: { default: 1, "[data-starting-style]": 0.98, "[data-ending-style]": 0.98 },
-    transitionProperty: "opacity, scale",
-    transitionDuration: {
-      default: motionVars["--nyte-motion-normal"],
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: motionVars["--nyte-motion-ease-out"],
-  },
-  close: {
-    position: "absolute",
-    top: spaceVars["--nyte-space-2"],
-    right: spaceVars["--nyte-space-2"],
-  },
-  header: {
+    zIndex: layer.dialog,
     display: "flex",
     flexDirection: "column",
-    // Clears the absolutely positioned close button.
-    paddingInlineEnd: controlVars["--nyte-control-height-sm"],
-    gap: spaceVars["--nyte-space-1"],
+    gap: dialog.gap,
+    width: `min(${dialog.width}, calc(100vw - 48px))`,
+    maxHeight: "calc(100dvh - 48px)",
+    padding: dialog.padding,
+    overflowY: "auto",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: t.strokeSecondary,
+    borderRadius: dialog.radius,
+    outline: "none",
+    boxShadow: t.shadowModal,
+    color: t.textPrimary,
+    transform: "translate(-50%, -50%)",
   },
-  footer: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: spaceVars["--nyte-space-2"],
-  },
+  header: { display: "flex", flexDirection: "column", gap: 4 },
   title: {
     margin: 0,
-    color: colorVars["--nyte-color-popover-foreground"],
-    fontSize: fontVars["--nyte-font-size-title"],
-    fontWeight: fontVars["--nyte-font-weight-medium"],
-    lineHeight: fontVars["--nyte-leading-title"],
+    color: t.textPrimary,
+    fontSize: t.fontLg,
+    fontWeight: 600,
+    lineHeight: t.leadingLg,
   },
   description: {
     margin: 0,
-    color: colorVars["--nyte-color-muted-foreground"],
-    fontSize: fontVars["--nyte-font-size-body"],
-    lineHeight: fontVars["--nyte-leading-body"],
+    color: t.textSecondary,
+    fontSize: t.fontBase,
+    lineHeight: t.leadingBase,
   },
+  footer: { display: "flex", justifyContent: "flex-end", gap: 8 },
 });
 
-// Shared with alert-dialog.tsx, which renders the same popup surface.
-export const dialogStyles = styles;
+export type DialogRootProps = DialogPrimitive.Root.Props;
 
-export const Dialog = DialogPrimitive.Root;
+export type DialogTriggerProps = StyledProps<DialogPrimitive.Trigger.Props>;
 
-type DialogOverlayProps = StyledProps<DialogPrimitive.Backdrop.Props>;
-
-function DialogOverlay({ className, style, xstyle, ...props }: DialogOverlayProps) {
+function DialogTrigger({ xstyle, className, style, ...rest }: DialogTriggerProps): ReactElement {
   return (
-    <DialogPrimitive.Backdrop
-      data-slot="dialog-overlay"
-      {...mergeStyleProps(stylex.props(styles.overlay, xstyle), className, style)}
-      {...props}
-    />
+    <DialogPrimitive.Trigger {...rest} {...mergeStyleProps(props(xstyle), className, style)} />
   );
 }
 
-export interface DialogContentProps extends StyledProps<DialogPrimitive.Popup.Props> {
-  showCloseButton?: boolean;
+export type DialogCloseProps = StyledProps<DialogPrimitive.Close.Props>;
+
+function DialogClose({ xstyle, className, style, ...rest }: DialogCloseProps): ReactElement {
+  return <DialogPrimitive.Close {...rest} {...mergeStyleProps(props(xstyle), className, style)} />;
 }
 
-export function DialogContent({
-  children,
-  className,
-  showCloseButton = true,
-  style,
-  xstyle,
-  ...props
-}: DialogContentProps) {
+export type DialogPopupProps = StyledProps<Omit<DialogPrimitive.Popup.Props, "ref">>;
+
+function DialogPopup({ xstyle, className, style, ...rest }: DialogPopupProps): ReactElement {
+  const overlayRef = useOverlayRef();
+
   return (
     <DialogPrimitive.Portal>
-      <DialogOverlay />
+      <DialogPrimitive.Backdrop ref={overlayRef} {...props(styles.backdrop)} />
       <DialogPrimitive.Popup
-        data-slot="dialog-content"
-        {...mergeStyleProps(stylex.props(styles.popup, xstyle), className, style)}
-        {...props}
-      >
-        {children}
-        {showCloseButton && (
-          <DialogPrimitive.Close
-            aria-label="Close"
-            render={<Button size="icon-sm" variant="ghost" xstyle={styles.close} />}
-          >
-            <IconBox glyphSize={12}>
-              <IconCrossSmall />
-            </IconBox>
-          </DialogPrimitive.Close>
+        ref={overlayRef}
+        {...rest}
+        {...mergeStyleProps(
+          props(styles.popup, floatingSurfaceStyles.material, xstyle),
+          className,
+          style,
         )}
-      </DialogPrimitive.Popup>
+      />
     </DialogPrimitive.Portal>
   );
 }
 
-export type DialogHeaderProps = StyledProps<React.ComponentProps<"div">>;
+export type DialogHeaderProps = StyledProps<ComponentProps<"div">>;
 
-export function DialogHeader({ className, style, xstyle, ...props }: DialogHeaderProps) {
-  return (
-    <div
-      data-slot="dialog-header"
-      {...mergeStyleProps(stylex.props(styles.header, xstyle), className, style)}
-      {...props}
-    />
-  );
-}
-
-export type DialogFooterProps = StyledProps<React.ComponentProps<"div">>;
-
-export function DialogFooter({ className, style, xstyle, ...props }: DialogFooterProps) {
-  return (
-    <div
-      data-slot="dialog-footer"
-      {...mergeStyleProps(stylex.props(styles.footer, xstyle), className, style)}
-      {...props}
-    />
-  );
+function DialogHeader({ xstyle, className, style, ...rest }: DialogHeaderProps): ReactElement {
+  return <div {...rest} {...mergeStyleProps(props(styles.header, xstyle), className, style)} />;
 }
 
 export type DialogTitleProps = StyledProps<DialogPrimitive.Title.Props>;
 
-export function DialogTitle({ className, style, xstyle, ...props }: DialogTitleProps) {
+function DialogTitle({ xstyle, className, style, ...rest }: DialogTitleProps): ReactElement {
   return (
     <DialogPrimitive.Title
-      data-slot="dialog-title"
-      {...mergeStyleProps(stylex.props(styles.title, xstyle), className, style)}
-      {...props}
+      {...rest}
+      {...mergeStyleProps(props(styles.title, xstyle), className, style)}
     />
   );
 }
 
 export type DialogDescriptionProps = StyledProps<DialogPrimitive.Description.Props>;
 
-export function DialogDescription({ className, style, xstyle, ...props }: DialogDescriptionProps) {
+function DialogDescription({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: DialogDescriptionProps): ReactElement {
   return (
     <DialogPrimitive.Description
-      data-slot="dialog-description"
-      {...mergeStyleProps(stylex.props(styles.description, xstyle), className, style)}
-      {...props}
+      {...rest}
+      {...mergeStyleProps(props(styles.description, xstyle), className, style)}
     />
   );
 }
+
+export type DialogFooterProps = StyledProps<ComponentProps<"div">>;
+
+function DialogFooter({ xstyle, className, style, ...rest }: DialogFooterProps): ReactElement {
+  return <div {...rest} {...mergeStyleProps(props(styles.footer, xstyle), className, style)} />;
+}
+
+export const Dialog = {
+  Root: DialogPrimitive.Root,
+  Trigger: DialogTrigger,
+  Popup: DialogPopup,
+  Header: DialogHeader,
+  Title: DialogTitle,
+  Description: DialogDescription,
+  Footer: DialogFooter,
+  Close: DialogClose,
+};

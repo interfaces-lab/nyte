@@ -127,7 +127,8 @@ export const notificationsPlugin = definePlugin({
         }
 
         case "effect": {
-          if (event.state !== "waiting" || asked.has(event.callId)) return;
+          if (event.state !== "waiting" || event.selection === undefined || asked.has(event.callId))
+            return;
           asked.add(event.callId);
           void notify("Input needs response", questionTitle(event.args)).catch(report);
 

@@ -46,7 +46,7 @@ export interface ConnectCopy {
 }
 
 /** Where the Mac shows the current address and token. */
-export const SHARE_LOCATION = "Settings › Server › iOS app";
+export const SHARE_LOCATION = "Environments › Remote access";
 
 export function connectCopy(stage: ConnectStage): ConnectCopy {
   switch (stage.kind) {

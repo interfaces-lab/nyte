@@ -1,270 +1,270 @@
 ---
 title: Menu
-description: "A dropdown of actions with items, radio groups, and submenus"
+description: "A list of actions opened from a trigger"
 ---
 
 ```ts title="Import"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@nyte-ai/ui";
-import { Menu } from "@nyte-ai/ui/menu";
+import { Menu, MenuItem, MenuSeparator } from "@nyte-ai/ui";
 ```
 
-A list of actions opened by a button, with keyboard navigation and submenus. The root export ships
-styled `DropdownMenu*` components. The `@nyte-ai/ui/menu` subpath gives you the same behavior
-unstyled when you need parts the styled set does not cover, such as checkbox items, links, or an
-arrow.
+The same names are exported from their own subpath. Pick one path per file.
+
+```ts title="Subpath"
+import { Menu, MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
+```
+
+`Menu` opens a list of actions from a button. Every row reserves a leading icon column and a
+trailing meta column, so labels line up in every menu whether or not a row uses them.
+`CommandMenu` is the same list as a modal palette near the top of the window.
 
 ## Usage
 
-- Items are actions. To choose one of several values use a `DropdownMenuRadioGroup`. For a
-  form-style control use [Select](/cloud/components/select).
-- Put `variant="destructive"` on the last item, after a separator.
-- `inset` adds leading padding to an item or label, so its text lines up with rows that start with
-  an icon.
-- `DropdownMenuShortcut` is display only. It does not bind the key.
-- `closeOnClick` controls whether clicking an item closes the menu. It defaults to `true` on
-  `Menu.Item` and `false` on `Menu.CheckboxItem`.
-- `Menu.LinkItem` renders an `<a>`, so pass `href` instead of `onClick`.
-- `openOnHover` on `Menu.Trigger` opens the menu on hover after `delay` milliseconds. Submenu
-  triggers open on hover already.
-- A trigger rendered outside `Menu.Root` connects to it through a handle from
-  `Menu.createHandle()`, passed to the `handle` prop on both. Submenu triggers stay inside their
-  `Menu.SubmenuRoot`.
+- `trigger` is the element that opens the menu. It receives the trigger props, so pass a real
+  control such as a [Button](/cloud/components/button).
+- `label` names the popup for assistive technology.
+- Items are actions and run `onSelect`. To choose one of several values, use `MenuRadioGroup` with
+  `MenuRadioItem`. For a form-style control, use [Select](/cloud/components/select).
+- `meta` fills the trailing column with a shortcut, a count, or a short value. It does not bind the
+  key.
+- Put `danger` on a destructive item, last, after a separator.
+- `MenuItem` and `MenuRadioItem` close the menu on click. `MenuCheckboxItem` stays open. Set
+  `closeOnClick` to change either. `MenuSwitchItem` always stays open.
+- `MenuSubmenu` opens on hover and on Arrow Right. `value` shows the current choice before the
+  chevron.
+- `xstyle`, `className`, and `style` go to the popup on `Menu`, `MenuSubmenu`, and `CommandMenu`,
+  and to the row on items. Use them for size, such as a wider popup for long labels.
+- Popups and the command scrim attach the ref from [Overlays](/cloud/foundations/overlays).
 
 ## Anatomy
 
-```tsx title="Styled"
-<DropdownMenu>
-  <DropdownMenuTrigger />
-  <DropdownMenuContent>
-    {/* Portal › Positioner › Popup */}
-    <DropdownMenuLabel />
-    <DropdownMenuItem>
-      <DropdownMenuShortcut />
-    </DropdownMenuItem>
-    <DropdownMenuSeparator />
-    <DropdownMenuRadioGroup>
-      <DropdownMenuRadioItem /> {/* includes the indicator */}
-    </DropdownMenuRadioGroup>
-    <DropdownMenuSub>
-      <DropdownMenuSubTrigger /> {/* includes the chevron */}
-      <DropdownMenuSubContent /> {/* Content with side="right" */}
-    </DropdownMenuSub>
-  </DropdownMenuContent>
-</DropdownMenu>
-```
-
-```tsx title="Unstyled"
-<Menu.Root>
-  <Menu.Trigger />
-  <Menu.Portal>
-    <Menu.Backdrop />
-    <Menu.Positioner>
-      <Menu.Popup>
-        <Menu.Arrow />
-        <Menu.Item />
-        <Menu.LinkItem />
-        <Menu.Separator />
-
-        <Menu.SubmenuRoot>
-          <Menu.SubmenuTrigger />
-          {/* Portal › Positioner › Popup, as above */}
-        </Menu.SubmenuRoot>
-
-        <Menu.Group>
-          <Menu.GroupLabel />
-        </Menu.Group>
-
-        <Menu.RadioGroup>
-          <Menu.RadioItem>
-            <Menu.RadioItemIndicator />
-          </Menu.RadioItem>
-        </Menu.RadioGroup>
-
-        <Menu.CheckboxItem>
-          <Menu.CheckboxItemIndicator />
-        </Menu.CheckboxItem>
-      </Menu.Popup>
-    </Menu.Positioner>
-  </Menu.Portal>
-</Menu.Root>
+```tsx
+<Menu>
+  <MenuGroup>
+    <MenuItem />
+    <MenuCheckboxItem />
+    <MenuSwitchItem />
+  </MenuGroup>
+  <MenuSeparator />
+  <MenuRadioGroup>
+    <MenuRadioItem />
+  </MenuRadioGroup>
+  <MenuSubmenu>{/* items, as above */}</MenuSubmenu>
+</Menu>
 ```
 
 ## Examples
 
 <Preview>
-  <DropdownMenuDemo />
+  <MenuDemo />
 </Preview>
 
 ```tsx
-<DropdownMenu>
-  <DropdownMenuTrigger render={<Button variant="outline" />}>Session</DropdownMenuTrigger>
-  <DropdownMenuContent>
-    <DropdownMenuItem>
+const [effort, setEffort] = useState("medium");
+const [pinned, setPinned] = useState(false);
+
+<Menu label="Session" trigger={<Button variant="secondary">Session</Button>}>
+  <MenuGroup label="Session">
+    <MenuItem icon="pencil" meta="⌘R" onSelect={rename}>
       Rename
-      <DropdownMenuShortcut>⌘R</DropdownMenuShortcut>
-    </DropdownMenuItem>
-    <DropdownMenuItem>Duplicate</DropdownMenuItem>
-    <DropdownMenuSeparator />
-    <DropdownMenuRadioGroup value={effort} onValueChange={setEffort}>
-      <DropdownMenuLabel inset>Effort</DropdownMenuLabel>
-      <DropdownMenuRadioItem value="low">Low</DropdownMenuRadioItem>
-      <DropdownMenuRadioItem value="medium">Medium</DropdownMenuRadioItem>
-      <DropdownMenuRadioItem value="high">High</DropdownMenuRadioItem>
-    </DropdownMenuRadioGroup>
-    <DropdownMenuSeparator />
-    <DropdownMenuSub>
-      <DropdownMenuSubTrigger>Move to</DropdownMenuSubTrigger>
-      <DropdownMenuSubContent>
-        <DropdownMenuItem>Inbox</DropdownMenuItem>
-        <DropdownMenuItem>Archive</DropdownMenuItem>
-      </DropdownMenuSubContent>
-    </DropdownMenuSub>
-    <DropdownMenuSeparator />
-    <DropdownMenuItem variant="destructive">Delete</DropdownMenuItem>
-  </DropdownMenuContent>
-</DropdownMenu>
+    </MenuItem>
+    <MenuItem icon="copy" onSelect={duplicate}>
+      Duplicate
+    </MenuItem>
+    <MenuSwitchItem icon="pin" checked={pinned} onCheckedChange={setPinned}>
+      Pinned
+    </MenuSwitchItem>
+  </MenuGroup>
+  <MenuSeparator />
+  <MenuSubmenu label="Effort" icon="bolt" value={effort}>
+    <MenuRadioGroup value={effort} onValueChange={setEffort}>
+      <MenuRadioItem value="low">low</MenuRadioItem>
+      <MenuRadioItem value="medium">medium</MenuRadioItem>
+      <MenuRadioItem value="high">high</MenuRadioItem>
+    </MenuRadioGroup>
+  </MenuSubmenu>
+  <MenuSeparator />
+  <MenuItem icon="trash" danger onSelect={remove}>
+    Delete
+  </MenuItem>
+</Menu>;
 ```
 
-Open a dialog from an item by controlling the dialog and setting its state in `onClick`.
+Open a dialog from an item by controlling the dialog and setting its state in `onSelect`.
 
 ```tsx
-<DropdownMenuItem onClick={() => setRenameOpen(true)}>Rename</DropdownMenuItem>
+<MenuItem icon="pencil" onSelect={() => setRenameOpen(true)}>
+  Rename
+</MenuItem>
+```
+
+A compact menu for a dense toolbar.
+
+```tsx
+<Menu label="Sort" trigger={<Button size="sm">Sort</Button>}>
+  <MenuRadioGroup value={order} onValueChange={setOrder}>
+    <MenuRadioItem value="recent" size="small" layout="plain">
+      Recent
+    </MenuRadioItem>
+    <MenuRadioItem value="name" size="small" layout="plain">
+      Name
+    </MenuRadioItem>
+  </MenuRadioGroup>
+</Menu>
+```
+
+A command palette, opened by its own trigger or a shortcut.
+
+```tsx
+<CommandMenu
+  label="Search"
+  open={open}
+  onOpenChange={setOpen}
+  trigger={<Button size="icon" icon="search" aria-label="Search" />}
+>
+  <MenuItem icon="new-chat" onSelect={startChat}>
+    New chat
+  </MenuItem>
+</CommandMenu>
 ```
 
 ## Props
 
-Each styled component wraps a Base UI part.
+Every component below also takes `className` and `style`, merged onto the same element as
+`xstyle`. See [Theming](/cloud/foundations/theming).
 
-| Styled                   | Part                                        |
-| ------------------------ | ------------------------------------------- |
-| `DropdownMenu`           | `Menu.Root`                                 |
-| `DropdownMenuTrigger`    | `Menu.Trigger`                              |
-| `DropdownMenuContent`    | `Menu.Portal`, `Positioner`, `Popup`        |
-| `DropdownMenuItem`       | `Menu.Item`                                 |
-| `DropdownMenuLabel`      | `Menu.GroupLabel`                           |
-| `DropdownMenuSeparator`  | `Menu.Separator`                            |
-| `DropdownMenuRadioGroup` | `Menu.RadioGroup`                           |
-| `DropdownMenuRadioItem`  | `Menu.RadioItem`, `RadioItemIndicator`      |
-| `DropdownMenuSub`        | `Menu.SubmenuRoot`                          |
-| `DropdownMenuSubTrigger` | `Menu.SubmenuTrigger`                       |
-| `DropdownMenuSubContent` | `DropdownMenuContent` with submenu defaults |
-| `DropdownMenuShortcut`   | a `<span>` pushed to the right of the item  |
+### Menu
 
-`DropdownMenuContent` forwards these to the positioner and passes the rest to the popup.
+| Prop                   | Type                                                                                                         | Default    | Description                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------- |
+| `label`                | `string`                                                                                                     |            | Accessible name of the popup.                                       |
+| `trigger`              | `React.ReactElement`                                                                                         |            | The element that opens the menu.                                    |
+| `id`                   | `string`                                                                                                     |            | DOM id of the popup, for `aria-controls`.                           |
+| `side`                 | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"`                                   | `"bottom"` | Side of the trigger to open on.                                     |
+| `align`                | `"start" \| "center" \| "end"`                                                                               | `"start"`  | Alignment along that side.                                          |
+| `anchor`               | `MenuAnchor`                                                                                                 | trigger    | Element or virtual element to position against.                     |
+| `sideOffset`           | `number`                                                                                                     | `4`        | Gap from the trigger.                                               |
+| `alignOffset`          | `number`                                                                                                     | `0`        | Shift along the alignment axis.                                     |
+| `collisionPadding`     | `number`                                                                                                     | `8`        | Space kept from the viewport edge.                                  |
+| `open`                 | `boolean`                                                                                                    |            | Controlled open state.                                              |
+| `onOpenChange`         | `(open: boolean) => void`                                                                                    |            | Called when the menu opens or closes.                               |
+| `onOpenChangeComplete` | `(open: boolean) => void`                                                                                    |            | Called after the open or close animation.                           |
+| `modal`                | `boolean`                                                                                                    | `true`     | Locks page scroll and outside pointer input while open.             |
+| `loopFocus`            | `boolean`                                                                                                    | `true`     | Arrow keys wrap at the ends.                                        |
+| `highlightItemOnHover` | `boolean`                                                                                                    | `true`     | The pointer moves the highlight.                                    |
+| `finalFocus`           | `boolean \| React.RefObject<HTMLElement \| null> \| ((closeType) => boolean \| void \| HTMLElement \| null)` |            | Where focus goes on close. `false` leaves it where the item put it. |
+| `xstyle`               | `XStyle`                                                                                                     |            | Merged last onto the popup.                                         |
 
-| Prop          | Type                                   | Default    | Description                     |
-| ------------- | -------------------------------------- | ---------- | ------------------------------- |
-| `side`        | `Menu.Positioner.Props["side"]`        | `"bottom"` | Which side of the trigger.      |
-| `align`       | `Menu.Positioner.Props["align"]`       | `"start"`  | Alignment along that side.      |
-| `sideOffset`  | `number`                               | `4`        | Gap from the trigger.           |
-| `alignOffset` | `Menu.Positioner.Props["alignOffset"]` | `0`        | Shift along the alignment axis. |
+The popup is at least `--nyte-menu-width` or the trigger's width, at most 320px, and scrolls past
+the available height. It flips to the other side when there is no room.
 
-`DropdownMenuSubContent` takes the same props with defaults `side="right"`, `align="start"`,
-`sideOffset={0}`, `alignOffset={-3}`.
+### MenuItem
 
-`DropdownMenuItem`, `DropdownMenuRadioItem`, `DropdownMenuSubTrigger`, and `DropdownMenuLabel` add
-`inset`. `DropdownMenuItem` also adds `variant`.
+| Prop            | Type                           | Default     | Description                                           |
+| --------------- | ------------------------------ | ----------- | ----------------------------------------------------- |
+| `onSelect`      | `() => void`                   |             | Runs when the item is chosen.                         |
+| `icon`          | `IconName`                     |             | Glyph in the leading column.                          |
+| `leading`       | `React.ReactNode`              |             | Any node in the leading column, in place of `icon`.   |
+| `meta`          | `React.ReactNode`              |             | Trailing column, in tertiary text.                    |
+| `danger`        | `boolean`                      | `false`     | Danger text and icon color.                           |
+| `disabled`      | `boolean`                      | `false`     | Skipped by activation, still reachable by arrow keys. |
+| `selected`      | `boolean`                      | `false`     | Paints the selected fill, for the current item.       |
+| `closeOnClick`  | `boolean`                      | `true`      | Closes the menu when chosen.                          |
+| `textValue`     | `string`                       |             | Typeahead text when the body is more than a label.    |
+| `size`          | `"default" \| "small"`         | `"default"` | `small` is a 24px row with a 12px icon.               |
+| `layout`        | `"menu" \| "plain"`            | `"menu"`    | `plain` drops the leading icon column.                |
+| `background`    | `"default" \| "highlightOnly"` | `"default"` | `highlightOnly` paints only the pointer highlight.    |
+| `id`            | `string`                       |             | DOM id of the row.                                    |
+| `onPointerMove` | `() => void`                   |             | Pointer movement over the row.                        |
+| `xstyle`        | `XStyle`                       |             | Merged last onto the row.                             |
 
-| Prop      | Type                         | Default     | Description                                       |
-| --------- | ---------------------------- | ----------- | ------------------------------------------------- |
-| `inset`   | `boolean`                    | `false`     | Leading padding for rows that start with an icon. |
-| `variant` | `"default" \| "destructive"` | `"default"` | Destructive color.                                |
+### MenuRadioGroup
 
-Every styled export accepts `xstyle` alongside `className` and `style`. See
-[Theming](/cloud/foundations/theming).
-
-The part tables below come from Base UI, MIT, © Material-UI SAS.
-
-### Root
-
-<include>../../base-ui-reference/menu/Root.md</include>
-
-### Trigger
-
-<include>../../base-ui-reference/menu/Trigger.md</include>
-
-### Portal
-
-<include>../../base-ui-reference/menu/Portal.md</include>
-
-### Backdrop
-
-<include>../../base-ui-reference/menu/Backdrop.md</include>
-
-### Positioner
-
-<include>../../base-ui-reference/menu/Positioner.md</include>
-
-### Popup
-
-<include>../../base-ui-reference/menu/Popup.md</include>
-
-### Arrow
-
-<include>../../base-ui-reference/menu/Arrow.md</include>
-
-### Viewport
-
-<include>../../base-ui-reference/menu/Viewport.md</include>
-
-### Item
-
-<include>../../base-ui-reference/menu/Item.md</include>
-
-### LinkItem
-
-<include>../../base-ui-reference/menu/LinkItem.md</include>
-
-### Separator
-
-<include>../../base-ui-reference/menu/Separator.md</include>
-
-### Group
-
-<include>../../base-ui-reference/menu/Group.md</include>
-
-### GroupLabel
-
-<include>../../base-ui-reference/menu/GroupLabel.md</include>
-
-### RadioGroup
+Base UI's radio group. It takes `value`, `defaultValue`, and `onValueChange`.
 
 <include>../../base-ui-reference/menu/RadioGroup.md</include>
 
-### RadioItem
+The table above comes from Base UI, MIT, © Material-UI SAS.
 
-<include>../../base-ui-reference/menu/RadioItem.md</include>
+### MenuRadioItem
 
-### RadioItemIndicator
+Takes `value`, `icon`, `leading`, `meta`, `disabled`, `size`, `layout`, `background`, `id`, and
+`xstyle` as `MenuItem` does. A checkmark follows `meta` on the chosen item.
 
-<include>../../base-ui-reference/menu/RadioItemIndicator.md</include>
+| Prop           | Type         | Default | Description                                        |
+| -------------- | ------------ | ------- | -------------------------------------------------- |
+| `value`        | `string`     |         | Value set on the group when chosen.                |
+| `closeOnClick` | `boolean`    | `true`  | Closes the menu when chosen.                       |
+| `label`        | `string`     |         | Typeahead text when the body is more than a label. |
+| `onFocus`      | `() => void` |         | Called when the item is highlighted.               |
 
-### CheckboxItem
+### MenuCheckboxItem
 
-<include>../../base-ui-reference/menu/CheckboxItem.md</include>
+Takes `icon`, `leading`, `meta`, `disabled`, `size`, `background`, and `xstyle` as `MenuItem`
+does. A checkmark follows `meta` while checked.
 
-### CheckboxItemIndicator
+| Prop              | Type                         | Default | Description                  |
+| ----------------- | ---------------------------- | ------- | ---------------------------- |
+| `checked`         | `boolean`                    |         | Checked state.               |
+| `onCheckedChange` | `(checked: boolean) => void` |         | Called with the next state.  |
+| `closeOnClick`    | `boolean`                    | `false` | Closes the menu when chosen. |
 
-<include>../../base-ui-reference/menu/CheckboxItemIndicator.md</include>
+### MenuSwitchItem
 
-### SubmenuRoot
+A checkbox item that draws a switch in the meta column. Takes `checked`, `onCheckedChange`,
+`icon`, `leading`, `disabled`, `size`, `layout`, `background`, and `xstyle`. It never closes the
+menu.
 
-<include>../../base-ui-reference/menu/SubmenuRoot.md</include>
+### MenuSubmenu
 
-### SubmenuTrigger
+Takes `icon`, `leading`, `size`, `layout`, and `disabled` for its row, and `xstyle` for its popup.
 
-<include>../../base-ui-reference/menu/SubmenuTrigger.md</include>
+| Prop                   | Type                                    | Default   | Description                               |
+| ---------------------- | --------------------------------------- | --------- | ----------------------------------------- |
+| `label`                | `string`                                |           | Row text and the popup's accessible name. |
+| `value`                | `React.ReactNode`                       |           | Current choice, shown before the chevron. |
+| `align`                | `"start" \| "center" \| "end"`          | `"start"` | Alignment against the row.                |
+| `open`                 | `boolean`                               |           | Controlled open state.                    |
+| `onOpenChange`         | `(open: boolean, eventDetails) => void` |           | Called when the submenu opens or closes.  |
+| `onOpenChangeComplete` | `(open: boolean) => void`               |           | Called after the open or close animation. |
+
+The submenu opens 6px to the right of its row and flips left when there is no room.
+
+### MenuGroup
+
+| Prop     | Type                                      | Default | Description                            |
+| -------- | ----------------------------------------- | ------- | -------------------------------------- |
+| `label`  | `React.ReactNode`                         |         | Small heading above the group's items. |
+| `action` | `{ label: string; onSelect: () => void }` |         | A text action on the heading row.      |
+| `xstyle` | `XStyle`                                  |         | Merged last onto the group.            |
+
+### MenuSeparator
+
+| Prop     | Type      | Default | Description                       |
+| -------- | --------- | ------- | --------------------------------- |
+| `inset`  | `boolean` | `false` | Stops short of the popup's edges. |
+| `xstyle` | `XStyle`  |         | Merged last onto the separator.   |
+
+### CommandMenu
+
+| Prop           | Type                        | Default | Description                     |
+| -------------- | --------------------------- | ------- | ------------------------------- |
+| `label`        | `string`                    |         | Accessible name of the popup.   |
+| `trigger`      | `React.ReactElement`        |         | The element that opens it.      |
+| `open`         | `boolean`                   |         | Open state. Always controlled.  |
+| `onOpenChange` | `(open: boolean) => void`   |         | Called when it opens or closes. |
+| `popupRef`     | `React.Ref<HTMLDivElement>` |         | Ref to the popup element.       |
+| `xstyle`       | `XStyle`                    |         | Merged last onto the popup.     |
+
+The popup is 560px wide at most, centered, and sits over a scrim. Closing leaves focus where it
+is.
 
 ## Accessibility
 
-- The popup has `role="menu"`, items `role="menuitem"`, radio items `role="menuitemradio"` with
-  `aria-checked`, submenu triggers `aria-haspopup="menu"` and `aria-expanded`.
-- Arrow Down and Up move the highlight and wrap, Home and End jump, typing matches item text
-  (override with `label`), Enter and Space activate, Escape closes and returns focus to the
-  trigger.
-- `orientation` on the root switches arrow navigation to left and right. `loopFocus={false}` stops
-  the highlight wrapping at the ends.
-- Arrow Right opens a submenu and moves focus into it, Arrow Left closes it. Submenus also open on
-  hover.
-- Disabled items are `aria-disabled`. They stay reachable with the arrow keys and do not activate.
-- Separators are `role="separator"`.
+- The popup has `role="menu"` and the `label` as its name. Items are `menuitem`, radio items
+  `menuitemradio`, and checkbox and switch items `menuitemcheckbox`, each with `aria-checked`.
+- Arrow Down and Up move the highlight and wrap. Home and End jump. Typing matches item text,
+  overridden by `textValue` or `label`. Enter and Space activate. Escape closes and returns focus
+  to the trigger.
+- Arrow Right opens a submenu and moves focus into it. Arrow Left closes it.
+- Disabled items stay reachable with the arrow keys and do not activate.
+- Icons, the switch, and the checkmark are decorative. The row text carries the meaning.

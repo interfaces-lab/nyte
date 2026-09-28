@@ -1,1 +1,3 @@
-export { ToggleGroup } from "@base-ui/react/toggle-group";
+export { ToggleGroup } from "./components/ui/toggle-group.tsx";
+
+export type { ToggleGroupProps } from "./components/ui/toggle-group.tsx";

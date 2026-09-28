@@ -260,6 +260,32 @@ export const sidebarStyles = stylex.create({
     color: t.textPrimary,
   },
   draftRow: { color: t.textTertiary },
+  /** The status glyph's box, so a badge can sit on its corner without moving the label. */
+  sessionBadgeHost: {
+    position: "relative",
+    display: "grid",
+    placeItems: "center",
+    width: "100%",
+    height: "100%",
+  },
+  /** Where a chat runs, when that is not this machine. The sidebar fill rings it off the glyph. */
+  sessionBadge: {
+    position: "absolute",
+    insetInlineEnd: -4,
+    insetBlockEnd: -3,
+    display: "grid",
+    placeItems: "center",
+    width: 12,
+    height: 12,
+    borderRadius: t.radiusFull,
+    backgroundColor: t.bgSidebar,
+    color: t.iconSecondary,
+  },
+  /**
+   * A chat whose machine can't be reached keeps its place at half weight. The
+   * content fades, not the row, so a selected row keeps a solid selection.
+   */
+  sessionUnreachable: { opacity: 0.5 },
   /** The lane's width comes from the rail; this is the tone and the box height. */
   rowIcon: {
     height: sidebar.iconSlot,

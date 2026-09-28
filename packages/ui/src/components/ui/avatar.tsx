@@ -2,8 +2,8 @@ import { Avatar as AvatarPrimitive } from "@base-ui/react/avatar";
 import * as stylex from "@stylexjs/stylex";
 import type * as React from "react";
 
-import { avatarVars, colorVars, fontVars, radiusVars } from "../../platform-tokens.stylex.ts";
 import { mergeStyleProps, type XStyle } from "../../style.ts";
+import { t } from "../../vars.stylex.ts";
 
 const styles = stylex.create({
   root: {
@@ -14,13 +14,11 @@ const styles = stylex.create({
     flexShrink: 0,
     overflow: "hidden",
     boxSizing: "border-box",
-    borderWidth: avatarVars["--nyte-avatar-ring-width"],
+    borderWidth: 0.5,
     borderStyle: "solid",
-    borderColor: colorVars["--nyte-color-border"],
-    backgroundColor: colorVars["--nyte-color-avatar-background"],
-    color: colorVars["--nyte-color-avatar-foreground"],
-    fontFamily: fontVars["--nyte-font-family-ui"],
-    fontWeight: fontVars["--nyte-font-weight-semibold"],
+    borderColor: t.imageOutline,
+    fontFamily: t.fontSans,
+    fontWeight: 600,
     lineHeight: 1,
     userSelect: "none",
   },
@@ -44,54 +42,29 @@ const styles = stylex.create({
 });
 
 const sizeStyles = stylex.create({
-  xs: {
-    width: avatarVars["--nyte-avatar-size-xs"],
-    height: avatarVars["--nyte-avatar-size-xs"],
-    fontSize: avatarVars["--nyte-avatar-font-xs"],
-  },
-  sm: {
-    width: avatarVars["--nyte-avatar-size-sm"],
-    height: avatarVars["--nyte-avatar-size-sm"],
-    fontSize: avatarVars["--nyte-avatar-font-sm"],
-  },
-  md: {
-    width: avatarVars["--nyte-avatar-size-md"],
-    height: avatarVars["--nyte-avatar-size-md"],
-    fontSize: avatarVars["--nyte-avatar-font-md"],
-  },
-  lg: {
-    width: avatarVars["--nyte-avatar-size-lg"],
-    height: avatarVars["--nyte-avatar-size-lg"],
-    fontSize: avatarVars["--nyte-avatar-font-lg"],
-  },
+  xs: { width: 20, height: 20, fontSize: 9 },
+  sm: { width: 24, height: 24, fontSize: 10 },
+  md: { width: 28, height: 28, fontSize: 11 },
+  lg: { width: 36, height: 36, fontSize: 14 },
 });
 
 const shapeStyles = stylex.create({
-  circle: { borderRadius: radiusVars["--nyte-radius-pill"] },
-  rounded: { borderRadius: radiusVars["--nyte-radius-avatar"] },
+  circle: { borderRadius: t.radiusFull },
+  rounded: { borderRadius: "42%" },
 });
 
 const toneStyles = stylex.create({
-  neutral: {
-    backgroundColor: colorVars["--nyte-color-avatar-background"],
-    color: colorVars["--nyte-color-avatar-foreground"],
-  },
+  neutral: { backgroundColor: t.fillStrong, color: t.textSecondary },
   orange: {
-    backgroundColor: colorVars["--nyte-color-avatar-orange-background"],
-    color: colorVars["--nyte-color-avatar-orange-foreground"],
+    backgroundColor: `color-mix(in srgb, ${t.orange} 12%, transparent)`,
+    color: t.orange,
   },
-  blue: {
-    backgroundColor: colorVars["--nyte-color-avatar-blue-background"],
-    color: colorVars["--nyte-color-avatar-blue-foreground"],
-  },
+  blue: { backgroundColor: t.fillAccentSubtle, color: t.textAccent },
   violet: {
-    backgroundColor: colorVars["--nyte-color-avatar-violet-background"],
-    color: colorVars["--nyte-color-avatar-violet-foreground"],
+    backgroundColor: `color-mix(in srgb, ${t.purple} 12%, transparent)`,
+    color: t.purple,
   },
-  green: {
-    backgroundColor: colorVars["--nyte-color-avatar-green-background"],
-    color: colorVars["--nyte-color-avatar-green-foreground"],
-  },
+  green: { backgroundColor: t.fillSuccessSubtle, color: t.textSuccess },
 });
 
 export type AvatarSize = keyof typeof sizeStyles;

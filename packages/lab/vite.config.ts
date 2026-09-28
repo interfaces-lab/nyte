@@ -1,16 +1,22 @@
 import stylex from "@stylexjs/unplugin";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defaultClientConditions, defineConfig } from "vite";
 
 /** A blank room: StyleX and nothing else. No Tailwind, no inherited palette. */
 export default defineConfig(({ command }) => ({
-  resolve: { dedupe: ["react", "react-dom", "@stylexjs/stylex"] },
+  resolve: {
+    conditions: ["nyte-source", ...defaultClientConditions],
+    dedupe: ["react", "react-dom", "@stylexjs/stylex"],
+  },
   optimizeDeps: { include: ["react", "react-dom/client", "dialkit", "motion/react"] },
   plugins: [
     stylex.vite({
       devMode: command === "serve" ? "css-only" : "off",
       runtimeInjection: command === "serve",
       useCSSLayers: true,
+      // The desktop's Electron Chromium. Older targets make lightningcss
+      // polyfill the tokens' light-dark() with variables nothing here defines.
+      lightningcssOptions: { targets: { chrome: 152 << 16 } },
     }),
     react(),
   ],
@@ -20,7 +26,8 @@ export default defineConfig(({ command }) => ({
         index: "index.html",
         demo: "demo.html",
         core: "core.html",
-        antimetal: "antimetal.html",
+        moon: "moon.html",
+        environments: "environments.html",
       },
     },
   },

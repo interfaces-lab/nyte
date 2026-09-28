@@ -10,10 +10,10 @@ import {
   shiftDay,
   usageCommit,
   type SessionCommits,
-} from "./usage.ts";
+} from "@nyte-ai/host/store-usage";
 import { ipcDiagnostics, ipcFailure } from "./errors.ts";
-import type { StoreRead } from "./usage.ts";
-import type { UsageWindow } from "../shared/ipc.ts";
+import type { StoreRead } from "@nyte-ai/host/store-usage";
+import type { UsageWindow } from "@nyte-ai/app/bridge.ts";
 
 const AT = new Date(2026, 8, 2, 13, 30).getTime();
 const DAY_MS = 24 * 60 * 60 * 1_000;

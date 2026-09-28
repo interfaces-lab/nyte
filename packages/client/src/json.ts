@@ -1,9 +1,3 @@
-/**
- * Canonical JSON: the bytes an object hashes over. Keys sort, `undefined`
- * properties vanish exactly as `JSON.stringify` drops them, and everything
- * else is `JSON.stringify` of the value. Two objects with the same canonical
- * text are the same object.
- */
 import type { JsonValue } from "@nyte-ai/schema";
 
 export type { JsonValue };
@@ -20,27 +14,6 @@ function isStringOrBoolean<Value>(value: Value): value is Value & (string | bool
 
 function isNumber<Value>(value: Value): value is Value & number {
   return typeof value === "number";
-}
-
-function compareKeys(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
-
-/** `JSON.stringify` replacer: every object is written with its keys in sorted order. */
-function withSortedKeys(_key: string, member: JsonValue | undefined): JsonValue | undefined {
-  if (!isJsonObject(member)) return member;
-  const entries = Object.entries(member);
-  entries.sort(([left], [right]) => compareKeys(left, right));
-
-  return Object.fromEntries(entries);
-}
-
-export function canonicalJson(value: unknown) {
-  const text = JSON.stringify(value, withSortedKeys);
-
-  if (text === undefined) throw new TypeError("Value has no JSON representation");
-
-  return text;
 }
 
 export function isJsonObject(value: JsonValue | undefined): value is JsonObject {

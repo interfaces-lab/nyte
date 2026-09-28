@@ -3,8 +3,7 @@ import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { DialRoot } from "dialkit";
 import { createRoot } from "react-dom/client";
-import { queryClient } from "./queries.ts";
-import { router } from "./router.tsx";
+import { queryClient, router } from "@nyte-ai/app";
 import "react-grab";
 import "dialkit/styles.css";
 

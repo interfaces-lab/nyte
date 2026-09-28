@@ -1,5 +1,5 @@
 /** Browser panel decisions that need no Electron; `browser.ts` applies them. */
-import type { BrowserSurfaceState } from "../shared/ipc.ts";
+import type { BrowserSurfaceState } from "@nyte-ai/app/bridge.ts";
 
 const NET_ERROR_ABORTED = -3;
 

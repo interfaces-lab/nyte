@@ -23,8 +23,9 @@ import {
   canStopTask,
 } from "./tasks.ts";
 import type { Task } from "./tasks.ts";
-import { ToolOutputExpansion, TranscriptView } from "./transcript.ts";
-import type { Transcript } from "./transcript.ts";
+import { Timeline } from "./timeline.ts";
+import { ToolOutputExpansion } from "./surface.ts";
+import type { Transcript } from "./surface.ts";
 
 class TaskInspector {
   readonly container: BoxRenderable;
@@ -32,7 +33,7 @@ class TaskInspector {
   private readonly heading: TextRenderable;
   private readonly metadata: TextRenderable;
   private readonly transcript: Transcript;
-  private readonly view: TranscriptView;
+  private readonly view: Timeline;
   private output: TextRenderable | undefined;
   private id: string | undefined;
 
@@ -81,7 +82,7 @@ class TaskInspector {
     const toolOutput = new ToolOutputExpansion();
     toolOutput.toggle();
     this.transcript = { ...shell.transcript, container: this.scroll, toolOutput };
-    this.view = new TranscriptView(this.transcript);
+    this.view = new Timeline(this.transcript);
   }
 
   show(task: Task): void {

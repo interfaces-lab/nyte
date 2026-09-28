@@ -4,7 +4,7 @@ description: >
   Authoring and reviewing the Cloud component documentation in packages/docs/content/cloud.
   Use whenever work adds, edits, or reviews a page under content/cloud, changes what
   @nyte-ai/ui exports, or answers a question by citing those pages. Trigger on component docs,
-  design system docs, primitives, headless, tokens, theming, and any request to document a
+  design system docs, styled components, tokens, theming, and any request to document a
   component or check that a page is still true.
   Not for the core design record in content/docs/design.mdx, marketing pages under src/app,
   or code changes in packages/ui that leave the public exports unchanged.
@@ -26,7 +26,7 @@ read them as the reference for what the package does, so a wrong example becomes
 ## Workflow
 
 1. Read `packages/ui/package.json` exports. Every import path is one page, named for the
-   component, except `/sonner`, which is the Toast page. Asset paths get no page.
+   component. Asset paths get no page.
 2. Read the component source before writing a sentence about it. Root exports live in
    `packages/ui/src/index.ts`, subpaths in `packages/ui/src/<name>.ts`, styled components in
    `packages/ui/src/components/ui/`.

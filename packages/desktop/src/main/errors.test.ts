@@ -3,7 +3,7 @@ import { afterEach, test } from "vitest";
 import { NyteClosed, UnknownSession } from "@nyte-ai/core";
 import { CursorExpired } from "@nyte-ai/protocol";
 import { WorkspaceFileError, WorkspaceTrustRequired } from "@nyte-ai/host";
-import { bridgeError, errorMessage } from "../shared/errors.ts";
+import { bridgeError, errorMessage } from "@nyte-ai/app/errors.ts";
 import { ipcDiagnostics, ipcResult } from "./errors.ts";
 import { callIpc } from "./ipc-call.ts";
 import { CALL_INPUT_SCHEMAS } from "./ipc-inputs.ts";

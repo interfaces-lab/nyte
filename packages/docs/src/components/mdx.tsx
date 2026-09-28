@@ -2,7 +2,7 @@ import type { MDXComponents } from "mdx/types";
 import type { ReactNode } from "react";
 import { DocCard } from "~/components/mdx/doc-card";
 import { Mermaid } from "~/components/mdx/mermaid";
-import { shellMdxComponents } from "~/components/shell/mdx";
+import { sharedMdxComponents } from "~/app/(site)/_layout/mdx";
 
 function Cards({ children }: { children?: ReactNode }) {
   return <div className="docs-cards">{children}</div>;
@@ -14,7 +14,7 @@ function Cards({ children }: { children?: ReactNode }) {
  */
 export function docsMdxComponents(): MDXComponents {
   return {
-    ...shellMdxComponents(),
+    ...sharedMdxComponents(),
     Cards,
     DocCard,
     Mermaid,
