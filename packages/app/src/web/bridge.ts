@@ -6,7 +6,7 @@
 import { createNyteClient } from "@nyte-ai/client";
 import type { NyteClient } from "@nyte-ai/client";
 import type { ServerInfo, WorkspaceSelectInput, WorkspaceSelectOutcome } from "@nyte-ai/protocol";
-import type { HostEvent, NyteBridge, OpenWorkspaceOutcome } from "../bridge.ts";
+import type { HostEvent, GitHubBridge, NyteBridge, OpenWorkspaceOutcome } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
 import { serverCatalog } from "../server-connection.ts";
 import { createSessionDirectory } from "./directory.ts";
@@ -124,6 +124,13 @@ export function createWebBridge(): WebBridge {
     if (document.visibilityState === "visible") refreshQuietly();
   };
 
+  const github: GitHubBridge = {
+    state: () => environmentCall("environment.github.state", undefined),
+    signIn: () => environmentCall("environment.github.signIn", undefined),
+    signOut: () => environmentCall("environment.github.signOut", undefined),
+    createPullRequest: (input) => environmentCall("environment.github.createPullRequest", input),
+  };
+
   const bridge: NyteBridge = {
     clientSurface: "web",
     get environment() {
@@ -232,13 +239,6 @@ export function createWebBridge(): WebBridge {
       sessionDirectory: () => directory.snapshot(),
       fonts: () => Promise.resolve({ sans: [], monospace: [] }),
       openWorkspace,
-      pickWorkspace: () => Promise.resolve({ kind: "cancelled" }),
-      trustWorkspace: (input) =>
-        openWorkspace(input).then((outcome) =>
-          outcome.kind === "needs_trust"
-            ? { kind: "failed", message: "Trust this folder on the machine running the server." }
-            : outcome,
-        ),
       closeWorkspace: async () => {
         const outcome = await select({ kind: "home" });
 
@@ -264,16 +264,8 @@ export function createWebBridge(): WebBridge {
         emit({ kind: "catalog_changed" });
       },
       setPreference: (change) => environmentCall("environment.setPreference", change),
-      github: {
-        // The sidebar reads this on every server; only an environment has a GitHub login to report.
-        state: () =>
-          environment
-            ? environmentCall("environment.github.state", undefined)
-            : Promise.resolve({ kind: "cli_missing" }),
-        signIn: () => environmentCall("environment.github.signIn", undefined),
-        signOut: () => environmentCall("environment.github.signOut", undefined),
-        createPullRequest: (input) =>
-          environmentCall("environment.github.createPullRequest", input),
+      get github() {
+        return environment ? github : undefined;
       },
       server: {
         state: () => Promise.resolve({ kind: "none" }),
@@ -294,9 +286,7 @@ export function createWebBridge(): WebBridge {
       },
       confirmExternal: async ({ url }) =>
         window.confirm(`Open external website?\n\n${url}`) ? "open" : "cancel",
-      revealPath: refuse("Showing files is not available in the web app."),
       pathForFile: () => "",
-      contextMenu: () => Promise.resolve(undefined),
       onEvent: (listener) => {
         listeners.add(listener);
 

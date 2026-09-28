@@ -418,7 +418,8 @@ export const COMMITS = [
 /** The textual conflict, three ways, and the semantic one git cannot see. */
 export const CONFLICT = {
   path: PAIRING_PATH,
-  line: 22,
+  /** Where the markers open in \`CONFLICTED_FILE\`, and where the resolution lands. */
+  line: 23,
   base: ["    setTimeout(() => (this.code = this.issue()), CODE_TTL_MS);"],
   ours: [
     "    setInterval(() => this.refresh(), CODE_TTL_MS);",
@@ -431,7 +432,8 @@ export const CONFLICT = {
   ],
   /** Merges cleanly and is still wrong: refresh() reads the wall clock main just removed. */
   silent: {
-    line: 31,
+    /** In \`CONFLICTED_FILE\`; line 28 once resolved. */
+    line: 32,
     before: "    if (this.code.expiresAt <= Date.now()) this.code = this.issue();",
     after: "    if (this.code.expiresAt <= this.#clock.now()) this.code = this.issue();",
   },
@@ -477,7 +479,7 @@ export const PIPELINES = [
       " ✗ pairing › refreshes an expired code on resume",
       "",
       "   AssertionError: expected 'K7Q-29X' not to be 'K7Q-29X'",
-      "   ❯ src/pairing.test.ts:48:37",
+      "   ❯ src/pairing.test.ts:26:37",
       "",
       " Test Files  1 failed | 11 passed (12)",
       "      Tests  1 failed | 86 passed (87)",
@@ -556,7 +558,7 @@ export const EVENTS = [
     detail: "waiting → signal",
     ref: `refs/effects/${AGENT.run}/ci-1`,
   },
-  { at: 14, stage: "checks", actor: "agent", title: "Read the job log", detail: "pairing.test.ts:48" },
+  { at: 14, stage: "checks", actor: "agent", title: "Read the job log", detail: "pairing.test.ts:26" },
   {
     at: 15.5,
     stage: "checks",
@@ -606,7 +608,7 @@ export const EVENTS = [
     detail: "parent 7c21f0a is behind main",
     ref: `refs/stacks/${HEAD}`,
   },
-  { at: 29, stage: "conflict", actor: "agent", title: "Conflict in pairing.ts", detail: "1 hunk, line 20" },
+  { at: 29, stage: "conflict", actor: "agent", title: "Conflict in pairing.ts", detail: "1 hunk, line 23" },
   {
     at: 30,
     stage: "fix",
@@ -616,7 +618,7 @@ export const EVENTS = [
     ref: `refs/delegations/${CHILD.head}/chg-4`,
   },
   { at: 31, stage: "fix", actor: "child", title: "Read b7d0f13 and c5e8d17" },
-  { at: 32, stage: "fix", actor: "child", title: "Resolved pairing.ts:20", detail: CONFLICT.reason },
+  { at: 32, stage: "fix", actor: "child", title: "Resolved pairing.ts:23", detail: CONFLICT.reason },
   {
     at: 33,
     stage: "fix",

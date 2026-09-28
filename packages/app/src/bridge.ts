@@ -394,6 +394,16 @@ export interface TerminalBridge {
   close(input: { id: string }): Promise<void>;
 }
 
+export interface GitHubBridge {
+  state(): Promise<GitHubProviderState>;
+  /** The renderer can call this only from a user gesture. `gh` owns the credentials. */
+  signIn(): Promise<GitHubProviderState>;
+  /** Ends a sign-in still waiting for its code; otherwise removes the CLI login. */
+  signOut(): Promise<GitHubProviderState>;
+  /** Open a pull request for the current branch through `gh`. Needs workspace trust. */
+  createPullRequest(input: GitHubPullRequestInput): Promise<GitHubPullRequestOutcome>;
+}
+
 export interface BrowserBridge {
   open(input: {
     surface: string;
@@ -428,10 +438,13 @@ export interface HostBridge {
   fonts(): Promise<LocalFontCatalog>;
   /** Select local history by path, even when the folder is unavailable. */
   openWorkspace(input: { path: string }): Promise<OpenWorkspaceOutcome>;
-  /** Native folder picker, then open. */
-  pickWorkspace(): Promise<OpenWorkspaceOutcome>;
-  /** Grant trust and open in one step; the renderer's trust dialog confirms first. */
-  trustWorkspace(input: { path: string }): Promise<OpenWorkspaceOutcome>;
+  /** Native folder picker, then open. Absent where the host has no picker to show. */
+  readonly pickWorkspace?: () => Promise<OpenWorkspaceOutcome>;
+  /**
+   * Grant trust and open in one step; the renderer's trust dialog confirms
+   * first. Absent where trust is granted on another machine.
+   */
+  readonly trustWorkspace?: (input: { path: string }) => Promise<OpenWorkspaceOutcome>;
   closeWorkspace(): Promise<void>;
   /** A session reads its owning host's catalog. Omit the input for local provider settings. */
   catalog(input?: { readonly sessionId: SessionId }): Promise<DesktopCatalog>;
@@ -468,15 +481,8 @@ export interface HostBridge {
   logout(input: { provider: string }): Promise<void>;
   /** Apply one preference change and answer with the catalog as it now stands. */
   setPreference(change: PreferenceChange): Promise<DesktopCatalog>;
-  github: {
-    state(): Promise<GitHubProviderState>;
-    /** The renderer can call this only from a user gesture. `gh` owns the credentials. */
-    signIn(): Promise<GitHubProviderState>;
-    /** Ends a sign-in still waiting for its code; otherwise removes the CLI login. */
-    signOut(): Promise<GitHubProviderState>;
-    /** Open a pull request for the current branch through `gh`. Needs workspace trust. */
-    createPullRequest(input: GitHubPullRequestInput): Promise<GitHubPullRequestOutcome>;
-  };
+  /** Absent where no environment answers for `gh`. */
+  readonly github?: GitHubBridge;
   server: {
     state(): Promise<ServerState>;
     /** Proves the server answers with this token before remembering either. */
@@ -495,20 +501,21 @@ export interface HostBridge {
   openExternal(input: { url: string }): Promise<void>;
   /** Ask before opening a link that came from conversation content. */
   confirmExternal(input: { url: string }): Promise<ExternalLinkChoice>;
-  /** Show a file or folder in the system file manager. */
-  revealPath(input: { path: string }): Promise<void>;
+  /** Show a file or folder in the system file manager. Absent where the files live on another machine. */
+  readonly revealPath?: (input: { path: string }) => Promise<void>;
   /** The absolute path behind a dropped or picked `File`; empty when nothing on disk backs it. */
   pathForFile(file: File): string;
   /**
    * Pop a native context menu at the cursor and resolve the chosen item's index
    * in `items`, or undefined when it is dismissed. Native menus float above the
-   * `WebContentsView`s that browser panels composite over the renderer.
+   * `WebContentsView`s that browser panels composite over the renderer. Absent
+   * where the browser's own menu is the only one.
    */
-  contextMenu(input: {
+  readonly contextMenu?: (input: {
     items: readonly ContextMenuTemplateItem[];
     x: number;
     y: number;
-  }): Promise<number | undefined>;
+  }) => Promise<number | undefined>;
   readonly terminal?: TerminalBridge;
   readonly browser?: BrowserBridge;
   onEvent(listener: (event: HostEvent) => void): Disposer;
