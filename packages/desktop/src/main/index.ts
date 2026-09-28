@@ -1,7 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from "electron";
 import { createNyteModels } from "@nyte-ai/ai";
-import { createWorkspaceStore, nyteHome, WorkspaceTrustRequired } from "@nyte-ai/host";
-import { createWorkspaceEditor } from "./workspace-files.ts";
+import { nyteHome } from "@nyte-ai/host";
 import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
 import { join } from "node:path";
 import {
@@ -12,15 +11,16 @@ import {
   WATCH_EVENT_CHANNEL,
   WATCH_START_CHANNEL,
   WATCH_STOP_CHANNEL,
-  WORKSPACE_EDITOR_CHANNEL,
+  WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
-import type { HostEvent, WatchEnvelope } from "../shared/ipc.ts";
+import type { WatchEnvelope } from "../shared/ipc.ts";
+import type { HostEvent } from "@nyte-ai/app/bridge.ts";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
 import { applicationMenuTemplate, createMenuCommandDelivery } from "./app-menu.ts";
 import { safeExternalUrl } from "./external-url.ts";
 import { createBrowserSurfaces } from "./browser.ts";
 import { showContextMenu } from "./context-menu.ts";
-import { ExpectedHostError, ipcResult } from "./errors.ts";
+import { ipcResult } from "./errors.ts";
 import { callIpc } from "./ipc-call.ts";
 import { localFonts } from "./fonts.ts";
 import { UsageScanWorker } from "./usage-scan.ts";
@@ -32,14 +32,13 @@ import {
   decodeBrowserBounds,
   decodeWatchStart,
   decodeWatchStop,
-  decodeWorkspaceEditorRequest,
   themePreference,
 } from "./ipc-inputs.ts";
 
 interface NyteWindow {
   readonly window: BrowserWindow;
-  readonly editor: ReturnType<typeof createWorkspaceEditor>;
   readonly menuCommands: ReturnType<typeof createMenuCommandDelivery>;
+  windowButtonZoomFactor: number | undefined;
   /**
    * Whether the window has been shown at least once. Synthesized mouse input
    * is silently dropped until the first show, so the explicit signal avoids
@@ -55,6 +54,15 @@ let desktopHost: DesktopHost | undefined;
 
 registerBunOAuthFlows();
 
+function macOSTrafficLightPosition(zoomFactor: number) {
+  const diameter = Number.parseFloat(process.getSystemVersion()) >= 25 ? 14 : 16;
+
+  return {
+    x: Math.floor((35 - diameter) / 2) + 1,
+    y: Math.max(0, Math.round((35 * zoomFactor - diameter) / 2)),
+  };
+}
+
 /**
  * Vibrancy needs an opaque window. `transparent: true` gives the NSWindow a
  * clear backing, the vibrancy view behind the page has nothing left to blur,
@@ -63,15 +71,12 @@ registerBunOAuthFlows();
  * the user asked to be legible.
  */
 function macOSWindowChrome(): Partial<Electron.BrowserWindowConstructorOptions> {
-  const trafficLightDiameter = Number.parseFloat(process.getSystemVersion()) >= 25 ? 14 : 16;
-  const trafficLightInset = Math.floor((35 - trafficLightDiameter) / 2);
-
   const options: Partial<Electron.BrowserWindowConstructorOptions> = {
     acceptFirstMouse: true,
     hasShadow: true,
     titleBarOverlay: true,
     titleBarStyle: "hidden",
-    trafficLightPosition: { x: trafficLightInset + 1, y: trafficLightInset },
+    trafficLightPosition: macOSTrafficLightPosition(1),
   };
 
   if (!nativeTheme.shouldUseHighContrastColors) {
@@ -86,11 +91,11 @@ function macOSWindowChrome(): Partial<Electron.BrowserWindowConstructorOptions> 
  * A vibrant window still takes a fill, and its alpha tints the material rather
  * than clearing it. Light stays neutral; dark carries a quarter black so the
  * blur reads dark instead of washing out. Without vibrancy the window needs a
- * real colour, matching `--nyte-chrome-base`.
+ * real colour, matching `--nyte-page-base`.
  */
 function windowBackgroundColor(): string {
   if (process.platform !== "darwin" || nativeTheme.shouldUseHighContrastColors) {
-    return nativeTheme.shouldUseDarkColors ? "#111111" : "#f8f8f8";
+    return nativeTheme.shouldUseDarkColors ? "#191919" : "#ffffff";
   }
 
   return nativeTheme.shouldUseDarkColors ? "#40000000" : "#00ffffff";
@@ -149,6 +154,9 @@ const browserSurfaces = createBrowserSurfaces({
 const hostDependencies = {
   createModels: createNyteModels,
   appVersion: app.getVersion(),
+  appRoot: app.isPackaged
+    ? join(process.resourcesPath, "app")
+    : join(app.getAppPath(), "..", "app", "dist"),
   // A sibling entry of this bundle; see the main build's rollup inputs.
   usageScan: new UsageScanWorker(nyteHome(), new URL("./usage-worker.js", import.meta.url)),
   storeWorker: new URL("./store-worker.js", import.meta.url),
@@ -156,6 +164,26 @@ const hostDependencies = {
     window === undefined ? broadcast(event) : send(window, HOST_EVENT_CHANNEL, event),
   emitWatchEvent: (envelope, window) => send(window, WATCH_EVENT_CHANNEL, envelope),
   openExternal: (url) => void shell.openExternal(url),
+  confirmExternal: async (url, id) => {
+    const window = windows.get(id)?.window;
+
+    const options: Electron.MessageBoxOptions = {
+      type: "question",
+      message: "Do you want Nyte to open the external website?",
+      detail: url,
+      buttons: ["Open", "Copy", `Always Open ${new URL(url).host}`, "Cancel"],
+      defaultId: 0,
+      cancelId: 3,
+      noLink: true,
+    };
+
+    const { response } =
+      window === undefined
+        ? await dialog.showMessageBox(options)
+        : await dialog.showMessageBox(window, options);
+
+    return (["open", "copy", "trust", "cancel"] as const)[response] ?? "cancel";
+  },
   revealPath: (path) => shell.showItemInFolder(path),
   trashPath: (path) => shell.trashItem(path),
   showContextMenu: (input, window) =>
@@ -185,31 +213,6 @@ function getHost(): DesktopHost {
   return desktopHost;
 }
 
-/** Editor requests capture the requesting window's workspace. */
-function createWindowEditor(window: HostWindow): ReturnType<typeof createWorkspaceEditor> {
-  return createWorkspaceEditor({
-    workspace: async () => {
-      const state = await getHost().call(window, "host.state", undefined);
-
-      if (state.workspace === undefined)
-        throw new ExpectedHostError({ code: "not_found", message: "No project is open" });
-
-      return state.workspace.path;
-    },
-    requireTrust: async (path) => {
-      try {
-        await createWorkspaceStore().require(path);
-      } catch (cause) {
-        if (cause instanceof WorkspaceTrustRequired) {
-          send(window, HOST_EVENT_CHANNEL, { kind: "workspace_trust_required", path: cause.cwd });
-        }
-
-        throw cause;
-      }
-    },
-  });
-}
-
 function senderWindow(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): NyteWindow {
   const entry = windows.get(event.sender.id);
 
@@ -224,7 +227,23 @@ function senderWindow(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent
   return entry;
 }
 
+function updateWindowButtonPosition(entry: NyteWindow): void {
+  if (process.platform !== "darwin") return;
+
+  const zoomFactor = entry.window.webContents.getZoomFactor();
+
+  if (zoomFactor === entry.windowButtonZoomFactor) return;
+  entry.window.setWindowButtonPosition(macOSTrafficLightPosition(zoomFactor));
+  entry.windowButtonZoomFactor = zoomFactor;
+}
+
 function registerIpc(): void {
+  if (process.platform === "darwin") {
+    ipcMain.on(WINDOW_ZOOM_CHANNEL, (event) => {
+      updateWindowButtonPosition(senderWindow(event));
+    });
+  }
+
   ipcMain.on(APP_MENU_READY_CHANNEL, (event) => {
     senderWindow(event).menuCommands.ready();
   });
@@ -244,12 +263,6 @@ function registerIpc(): void {
     } catch {
       return;
     }
-  });
-
-  ipcMain.handle(WORKSPACE_EDITOR_CHANNEL, async (event, request) => {
-    const { editor } = senderWindow(event);
-
-    return ipcResult(() => editor.call(decodeWorkspaceEditorRequest(request)));
   });
 
   ipcMain.handle(CALL_CHANNEL, async (event, request) => {
@@ -293,11 +306,11 @@ function createWindow(): NyteWindow {
 
   const entry: NyteWindow = {
     window: created,
-    editor: createWindowEditor(id),
     menuCommands: createMenuCommandDelivery({
       openWindow: () => reveal(created),
       send: (command) => created.webContents.send(APP_MENU_COMMAND_CHANNEL, command),
     }),
+    windowButtonZoomFactor: process.platform === "darwin" ? 1 : undefined,
     shown: false,
   };
 
@@ -308,11 +321,13 @@ function createWindow(): NyteWindow {
   });
 
   const releaseRendererWork = (): void => {
-    entry.editor.dispose();
     desktopHost?.releaseWindow(id);
   };
 
   created.webContents.on("render-process-gone", releaseRendererWork);
+  created.webContents.on("did-finish-load", () => {
+    updateWindowButtonPosition(entry);
+  });
   // Only a committed main-frame navigation has left the document behind. The
   // start event fires before `will-navigate` can cancel, and would tear down
   // under a renderer that stays.
@@ -370,7 +385,6 @@ function createWindow(): NyteWindow {
 
   created.on("closed", () => {
     entry.menuCommands.reset();
-    entry.editor.dispose();
     nativeTheme.off("updated", updateWindowBackground);
     windows.delete(id);
     browserSurfaces.releaseWindow(id);

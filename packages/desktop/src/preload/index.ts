@@ -8,9 +8,9 @@
  * path's input/output relationship instead of widening transport payloads.
  */
 import type { SessionEvent } from "@nyte-ai/core";
-import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
-import type { AppMenuCommand } from "../shared/app-menu.ts";
+import type { AppMenuCommand } from "@nyte-ai/app/bridge.ts";
 import {
   BROWSER_BOUNDS_CHANNEL,
   CALL_CHANNEL,
@@ -19,26 +19,24 @@ import {
   WATCH_EVENT_CHANNEL,
   WATCH_START_CHANNEL,
   WATCH_STOP_CHANNEL,
-  WORKSPACE_EDITOR_CHANNEL,
+  WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
 import type {
-  BrowserBoundsMessage,
   CallInput,
   CallOutput,
   CallPath,
   CallReplyFor,
+  WatchEnvelope,
+  WatchStartInput,
+} from "../shared/ipc.ts";
+import type {
+  BrowserBoundsMessage,
   HostEvent,
   NyteBridge,
-  WatchEnvelope,
   WatchInput,
-  WatchStartInput,
-  WorkspaceEditorInput,
-  WorkspaceEditorOperation,
-  WorkspaceEditorOutput,
-  WorkspaceEditorReply,
-} from "../shared/ipc.ts";
-import { bridgeError } from "../shared/errors.ts";
-import type { IpcResult } from "../shared/errors.ts";
+} from "@nyte-ai/app/bridge.ts";
+import { bridgeError } from "@nyte-ai/app/errors.ts";
+import type { IpcResult } from "@nyte-ai/app/errors.ts";
 
 async function call<P extends CallPath>(path: P, input: CallInput<P>): Promise<CallOutput<P>> {
   // SAFETY: only Nyte's main process handles CALL_CHANNEL; it decodes the path-specific
@@ -66,21 +64,8 @@ function object<P extends Exclude<CallPath, NoneCallPath>>(
   return (input) => call(path, input);
 }
 
-function editorOperation<P extends WorkspaceEditorOperation>(operation: P) {
-  return async (input: WorkspaceEditorInput<P>): Promise<WorkspaceEditorOutput<P>> => {
-    // SAFETY: the private main handler validates the operation's input and owns its reply.
-    const result = (await ipcRenderer.invoke(WORKSPACE_EDITOR_CHANNEL, {
-      operation,
-      input,
-    })) as WorkspaceEditorReply<P>;
-
-    if (!result.ok) return Promise.reject(bridgeError(result.error));
-
-    return result.value;
-  };
-}
-
 const bridge = {
+  clientSurface: "desktop",
   sessions: {
     create: object("sessions.create"),
     get: object("sessions.get"),
@@ -115,6 +100,12 @@ const bridge = {
   workspace: {
     list: none("workspace.list"),
     forget: object("workspace.forget"),
+    files: object("workspace.files"),
+    read: object("workspace.read"),
+    save: object("workspace.save"),
+    format: object("workspace.format"),
+    search: object("workspace.search"),
+    blame: object("workspace.blame"),
     vcs: {
       snapshot: object("workspace.vcs.snapshot"),
       diff: object("workspace.vcs.diff"),
@@ -230,16 +221,6 @@ const bridge = {
     cancelLogin: object("host.cancelLogin"),
     logout: object("host.logout"),
     setPreference: object("host.setPreference"),
-    files: {
-      list: object("host.files.list"),
-      cancelList: object("host.files.cancelList"),
-      read: object("host.files.read"),
-      save: object("host.files.save"),
-      search: editorOperation("search"),
-      cancelSearch: editorOperation("cancelSearch"),
-      blame: editorOperation("blame"),
-      format: editorOperation("format"),
-    },
     github: {
       state: none("host.github.state"),
       signIn: none("host.github.signIn"),
@@ -252,12 +233,13 @@ const bridge = {
       disconnect: none("host.server.disconnect"),
       createSession: none("host.server.createSession"),
     },
-    mobile: {
-      state: none("host.mobile.state"),
-      start: object("host.mobile.start"),
-      stop: none("host.mobile.stop"),
+    remote: {
+      state: none("host.remote.state"),
+      start: object("host.remote.start"),
+      stop: none("host.remote.stop"),
     },
     openExternal: object("host.openExternal"),
+    confirmExternal: object("host.confirmExternal"),
     revealPath: object("host.revealPath"),
     pathForFile: (file: File) => webUtils.getPathForFile(file),
     contextMenu: object("host.contextMenu"),
@@ -296,10 +278,24 @@ const bridge = {
 
 contextBridge.exposeInMainWorld("nyte", bridge);
 
+let windowZoomFactor: number | undefined;
+
+function syncWindowZoom(): void {
+  const zoomFactor = webFrame.getZoomFactor();
+
+  if (zoomFactor === windowZoomFactor) return;
+  windowZoomFactor = zoomFactor;
+  document.documentElement.style.setProperty("--nyte-window-zoom", String(zoomFactor));
+  ipcRenderer.send(WINDOW_ZOOM_CHANNEL);
+}
+
+if (process.platform === "darwin") window.addEventListener("resize", syncWindowZoom);
+
 window.addEventListener(
   "DOMContentLoaded",
   () => {
     document.documentElement.dataset["platform"] = process.platform;
+    if (process.platform === "darwin") syncWindowZoom();
   },
   { once: true },
 );
