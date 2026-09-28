@@ -1,65 +1,87 @@
 import { useRender } from "@base-ui/react/use-render";
-import * as stylex from "@stylexjs/stylex";
+import { create, props, type StyleXStyles } from "@stylexjs/stylex";
 
-import { colorVars, controlVars, motionVars, radiusVars } from "../../platform-tokens.stylex.ts";
+import { focus } from "../../a11y.stylex.ts";
+import { glyph } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
+import { t } from "../../vars.stylex.ts";
 
-const styles = stylex.create({
+const styles = create({
   root: {
     boxSizing: "border-box",
     position: "relative",
-    /*
-     * `Row.Backdrop` sits at `z-index: -1`, which without a stacking context
-     * here would put it behind the list rather than behind the row. Declaring
-     * it on the row means no surface has to remember.
-     */
+    // `Row.Backdrop` sits at `z-index: -1`; this keeps it behind the row, not the list.
     isolation: "isolate",
     display: "flex",
     alignItems: "center",
     width: "100%",
     minWidth: 0,
-    minHeight: `var(--nyte-row-height, ${controlVars["--nyte-control-height-md"]})`,
-    gap: `var(--nyte-row-gap, ${controlVars["--nyte-control-padding-xs"]})`,
-    paddingInline: `var(--nyte-row-padding-inline, ${controlVars["--nyte-control-padding-sm"]})`,
+    minHeight: "var(--nyte-row-height, 28px)",
+    gap: "var(--nyte-row-gap, 6px)",
+    paddingInline: "var(--nyte-row-padding-inline, 6px)",
     borderStyle: "none",
-    borderRadius: radiusVars["--nyte-radius-control"],
+    borderRadius: t.radiusBase,
     backgroundColor: "var(--_row-fill, transparent)",
-    color: colorVars["--nyte-color-foreground"],
-    /*
-     * Typography is inherited, not declared. A surface owns the family and the
-     * size — the desktop app rebinds both from the user's Appearance settings —
-     * and a row naming its own would ignore that, the same way a row naming its
-     * own height would ignore the surface's density.
-     */
+    color: t.textPrimary,
+    // Typography is inherited: the surface owns the family and the size.
     textAlign: "start",
     transitionProperty: "background-color, color",
     transitionDuration: {
-      default: motionVars["--nyte-motion-fast"],
+      default: t.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: motionVars["--nyte-motion-ease-out"],
+    transitionTimingFunction: t.easeOut,
+  },
+  lg: {
+    "--nyte-row-height": "44px",
+    "--nyte-row-gap": "12px",
+    "--nyte-row-padding-inline": "12px",
+    paddingBlock: 8,
   },
   /*
    * One declaration owns the fill. StyleX merges a property's conditions into
-   * one key, so a second style naming `--_row-fill` would drop these states
-   * rather than add to them.
+   * one key, so a second style naming `--_row-fill` replaces these states.
    */
   interactive: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { "@media (hover: hover)": colorVars["--nyte-color-muted"] },
-      ":focus-within": colorVars["--nyte-color-muted"],
-      "[data-selected]": colorVars["--nyte-color-muted"],
+      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillHover },
+      ":focus-within": t.fillHover,
+      "[data-selected]": t.fillSelected,
     },
   },
   /*
-   * No transition on the reveal. Pointing at rows is high-frequency, and a fade
-   * only desynchronises the lane from whatever room the surface reclaims for
-   * it: the title reflows on the first frame, the icons arrive later.
-   *
+   * The row is the control. Its label brightens on hover and on keyboard focus,
+   * and the leading glyph follows the label.
+   */
+  nav: {
+    "--_row-fill": {
+      default: "transparent",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillHover },
+    },
+    "--_row-leading-color": "currentColor",
+    flexShrink: 0,
+    margin: 0,
+    paddingBlock: 0,
+    borderRadius: t.radiusLg,
+    color: {
+      default: t.textSecondary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": t.textPrimary },
+      ":focus-visible": t.textPrimary,
+      ":disabled": t.textQuaternary,
+    },
+    font: "inherit",
+    textDecoration: "none",
+    appearance: "none",
+    cursor: { default: t.cursorInteractive, ":disabled": "default" },
+  },
+  navSelected: {
+    "--_row-fill": t.fillSelected,
+    color: t.textPrimary,
+  },
+  /*
    * A surface reclaiming room multiplies this value rather than repeating the
-   * conditions, so the room and the lane cannot disagree:
-   * `calc(var(--_row-actions-opacity, 0) * 44px)`.
+   * conditions: `calc(var(--_row-actions-opacity, 0) * 44px)`.
    */
   revealActions: {
     "--_row-actions-opacity": { default: 0, ":hover": 1, ":focus-within": 1 },
@@ -76,11 +98,7 @@ const styles = stylex.create({
     gap: "inherit",
     flex: 1,
     minWidth: 0,
-    /*
-     * A `button` or an `a` brings UA padding, borders, background, and font.
-     * The reset has to be complete: Chrome's `1px 6px` on a button is invisible
-     * until it costs a row two characters of title.
-     */
+    // A `button` or an `a` brings user agent padding, borders, background, and font.
     margin: 0,
     padding: 0,
     borderStyle: "none",
@@ -88,14 +106,11 @@ const styles = stylex.create({
     backgroundColor: "transparent",
     color: "inherit",
     font: "inherit",
+    letterSpacing: "inherit",
     textAlign: "start",
     textDecoration: "none",
     appearance: "none",
-    // A row sits flush in a scroll container, where an outset ring would clip.
-    outlineColor: colorVars["--nyte-color-focus-ring"],
-    outlineStyle: { default: "none", ":focus-visible": "solid" },
-    outlineWidth: controlVars["--nyte-control-focus-width"],
-    outlineOffset: "-2px",
+    cursor: { default: t.cursorInteractive, ":disabled": "default" },
   },
   backdrop: {
     position: "absolute",
@@ -108,9 +123,9 @@ const styles = stylex.create({
     display: "grid",
     placeItems: "center",
     flexShrink: 0,
-    width: "var(--nyte-row-leading-size, auto)",
+    width: `var(--nyte-row-leading-size, ${glyph.box})`,
     lineHeight: 0,
-    color: colorVars["--nyte-color-muted-foreground"],
+    color: `var(--_row-leading-color, ${t.iconSecondary})`,
   },
   body: {
     display: "flex",
@@ -130,23 +145,22 @@ const styles = stylex.create({
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    color: colorVars["--nyte-color-muted-foreground"],
-    // Steps down from whatever the surface set rather than naming a size.
-    fontSize: "0.9231em",
+    color: t.textTertiary,
+    fontSize: t.fontSm,
   },
   meta: {
     display: "inline-flex",
     alignItems: "center",
     flexShrink: 0,
-    color: `var(--_row-meta-color, ${colorVars["--nyte-color-tertiary-foreground"]})`,
-    fontSize: "0.9231em",
+    color: `var(--_row-meta-color, ${t.textTertiary})`,
+    fontSize: t.fontSm,
     // A time or a count updates in place; tabular figures keep it from shifting.
     fontVariantNumeric: "tabular-nums",
   },
   actions: {
     display: "inline-flex",
     alignItems: "center",
-    gap: controlVars["--nyte-control-gap-sm"],
+    gap: 4,
     flexShrink: 0,
     opacity: "var(--_row-actions-opacity, 1)",
     pointerEvents: "var(--_row-actions-pointer-events, auto)",
@@ -154,7 +168,7 @@ const styles = stylex.create({
   actionsOverlay: {
     position: "absolute",
     zIndex: 1,
-    insetInlineEnd: `var(--nyte-row-padding-inline, ${controlVars["--nyte-control-padding-sm"]})`,
+    insetInlineEnd: "var(--nyte-row-padding-inline, 6px)",
     top: "50%",
     transform: "translateY(-50%)",
   },
@@ -162,10 +176,22 @@ const styles = stylex.create({
 
 type RowElementProps = StyledProps<useRender.ComponentProps<"div">>;
 
+type RowButtonProps = StyledProps<useRender.ComponentProps<"button">>;
+
+/** `lg` is the settings row: taller, with room for a description under the label. */
+export type RowSize = "default" | "lg";
+
+/**
+ * `list` holds a `Row.Primary` and its actions. `nav` is itself the control:
+ * a `<button type="button">` that fills on hover and brightens its label.
+ */
+export type RowVariant = "list" | "nav";
+
 interface RowOwnProps {
+  readonly size?: RowSize;
   /**
-   * Paints the row's own fill on hover and while selected. A surface that sets
-   * `--_row-fill` itself owns every state of it and leaves this off.
+   * Paints the row's own fill on hover, on focus within, and while selected. A
+   * surface that sets `--_row-fill` itself owns every state of it and leaves this off.
    */
   readonly interactive?: boolean;
   /** Marks the row current. Surfaces style it through `[data-selected]`. */
@@ -174,26 +200,17 @@ interface RowOwnProps {
   readonly revealActions?: boolean;
 }
 
-export type RowProps = RowElementProps & RowOwnProps;
+export type RowProps =
+  | (RowElementProps & RowOwnProps & { readonly variant?: "list" })
+  | (RowButtonProps & RowOwnProps & { readonly variant: "nav" });
 
 /**
  * One row of a list.
  *
- * Row owns structure and nothing else. Height, gap, inline padding, and the
- * leading lane arrive as `--nyte-row-height`, `--nyte-row-gap`,
- * `--nyte-row-padding-inline`, and `--nyte-row-leading-size`, which the surface
- * sets on its list container. There is deliberately no size or density prop: a
- * dense list is a surface that measures differently, not a different row.
- *
- * The parts compose rather than arrive as slots, because a row's arrangement is
- * the surface's decision. A sidebar needs its selection layer behind everything
- * and its actions floating over the title; a settings list needs neither. Slots
- * would have to anticipate both.
- *
- * Fill is a variable: the shell reads `--_row-fill` and never writes it, so a
- * surface that sets it owns every state of it. StyleX merges a property's
- * conditions into one key, so a kind declaring its own `background-color` would
- * silently drop the states declared here.
+ * Geometry arrives as `--nyte-row-height`, `--nyte-row-gap`,
+ * `--nyte-row-padding-inline`, and `--nyte-row-leading-size`, which a surface
+ * sets on its list container; `size="lg"` sets them on the row. Fill is a
+ * variable: the row reads `--_row-fill` and `interactive` writes it.
  */
 export function Row({
   className,
@@ -201,22 +218,29 @@ export function Row({
   render,
   revealActions = false,
   selected = false,
+  size = "default",
   style,
+  variant = "list",
   xstyle,
-  ...props
+  ...rest
 }: RowProps) {
+  const nav = variant === "nav";
+
   return useRender({
-    defaultTagName: "div",
+    defaultTagName: nav ? "button" : "div",
     render,
     props: {
       "data-slot": "row",
       "data-selected": selected ? "" : undefined,
-      ...props,
+      type: nav && render === undefined ? "button" : undefined,
+      ...rest,
       ...mergeStyleProps(
-        stylex.props(
+        props(
           styles.root,
+          size === "lg" && styles.lg,
           interactive && styles.interactive,
           revealActions && styles.revealActions,
+          nav && [styles.nav, selected && styles.navSelected, focus.ringInset],
           xstyle,
         ),
         className,
@@ -227,7 +251,6 @@ export function Row({
 }
 
 type RowSlot =
-  | "row-primary"
   | "row-backdrop"
   | "row-leading"
   | "row-body"
@@ -235,45 +258,52 @@ type RowSlot =
   | "row-description"
   | "row-meta";
 
-/**
- * Every part is the same component with a different slot name and style, so
- * they are built rather than written out. `Row.Actions` is the exception: it
- * takes a placement.
- */
-function rowPart(slot: RowSlot, part: stylex.StyleXStyles, decorative = false) {
-  return function RowPart({ className, render, style, xstyle, ...props }: RowElementProps) {
+function rowPart(slot: RowSlot, part: StyleXStyles, decorative = false) {
+  return function RowPart({ className, render, style, xstyle, ...rest }: RowElementProps) {
     return useRender({
       defaultTagName: "span",
       render,
       props: {
         "data-slot": slot,
         "aria-hidden": decorative ? "true" : undefined,
-        ...props,
-        ...mergeStyleProps(stylex.props(part, xstyle), className, style),
+        ...rest,
+        ...mergeStyleProps(props(part, xstyle), className, style),
       },
     });
   };
 }
 
 /**
- * The click target, wrapping whichever parts should be clickable. Actions live
- * outside it: a row whose whole shell is a button cannot contain one.
+ * The click target, wrapping whichever parts should be clickable. It renders a
+ * `<button type="button">`; `render` swaps it for a link or another trigger.
+ * Actions live outside it: a button cannot contain one.
  */
-const RowPrimary = rowPart("row-primary", styles.primary);
+function RowPrimary({
+  className,
+  render,
+  style,
+  xstyle,
+  ...rest
+}: StyledProps<useRender.ComponentProps<"button">>) {
+  return useRender({
+    defaultTagName: "button",
+    render,
+    props: {
+      "data-slot": "row-primary",
+      type: render === undefined ? "button" : undefined,
+      ...rest,
+      ...mergeStyleProps(props(styles.primary, focus.ringInset, xstyle), className, style),
+    },
+  });
+}
 
-/**
- * Sits behind the row's content, for a selection layer the surface animates
- * itself. It takes `render`, like every part.
- */
+/** Sits behind the row's content, for a selection layer the surface animates itself. */
 const RowBackdrop = rowPart("row-backdrop", styles.backdrop, true);
 
 /** A fixed lane, so labels align down the list whatever glyph each row carries. */
 const RowLeading = rowPart("row-leading", styles.leading);
 
-/**
- * Stacks its children, so a label can carry a description under it, or two.
- * Omit it when there is only a label.
- */
+/** Stacks its children, so a label can carry a description under it. */
 const RowBody = rowPart("row-body", styles.body);
 
 const RowLabel = rowPart("row-label", styles.label);
@@ -296,16 +326,16 @@ function RowActions({
   render,
   style,
   xstyle,
-  ...props
+  ...rest
 }: RowElementProps & { readonly placement?: RowActionsPlacement }) {
   return useRender({
     defaultTagName: "span",
     render,
     props: {
       "data-slot": "row-actions",
-      ...props,
+      ...rest,
       ...mergeStyleProps(
-        stylex.props(styles.actions, placement === "overlay" && styles.actionsOverlay, xstyle),
+        props(styles.actions, placement === "overlay" && styles.actionsOverlay, xstyle),
         className,
         style,
       ),

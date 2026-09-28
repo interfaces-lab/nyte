@@ -1,106 +1,220 @@
 ---
 title: Tokens
-description: "The --nyte-* custom properties every primitive paints with"
+description: "The --nyte-* custom properties every component paints with"
 ---
 
-Primitives paint with `--nyte-*` custom properties only. Override one on an ancestor, ideally the
-app root.
+Components paint with `--nyte-*` custom properties only. The compiled stylesheet declares every
+token on `:root`, so loading it is enough.
 
 ```css
-.my-app {
-  --nyte-color-primary: #3b5bdb;
+@import "@nyte-ai/ui/ui.css";
+```
+
+An app that compiles StyleX itself gets the same declarations from the compiler, and reads the
+tokens through typed constants.
+
+```ts
+import { t } from "@nyte-ai/ui/vars.stylex";
+```
+
+```ts
+const styles = stylex.create({
+  note: { color: t.textSecondary, borderRadius: t.radiusBase },
+});
+```
+
+## Light and dark
+
+Every color is one `light-dark()` pair, so a component follows the `color-scheme` in effect rather
+than a class. The package sets no `color-scheme`, so set one. A class toggle works by setting the
+scheme under it.
+
+```css
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
 }
 ```
 
-Import `@nyte-ai/ui/styles.css` for the tokens plus the Tailwind mapping, or
-`@nyte-ai/ui/platform-tokens.css` for the tokens alone.
+A subtree can take the other appearance on its own with `color-scheme` on any ancestor.
 
-Colors are `light-dark()` pairs, so a primitive follows the `color-scheme` in effect rather than a
-class. See [Theming](/cloud/foundations/theming). `--nyte-color-focus-ring` defaults to
-`var(--nyte-color-ring)` and is the one token a host changes at runtime. See
+## Overriding
+
+Override a token on an ancestor. A step such as `--nyte-text-tertiary` mixes from an anchor such as
+`--nyte-ink`, and the mix resolves where the step is declared. An anchor override on `:root` moves
+every step built from it. Below the root, override the step you want to change.
+
+```css
+:root {
+  --nyte-accent-base: #7c3aed;
+}
+
+.preview {
+  --nyte-bg-page: #101014;
+  --nyte-text-primary: #f4f4f5;
+}
+```
+
+## Anchors and hues
+
+The ink, the untinted surfaces, and the named hues. Text, fills, and strokes mix from these.
+
+<TokenTable
+  prefix={[
+    "--nyte-ink",
+    "--nyte-page-base",
+    "--nyte-sidebar",
+    "--nyte-accent",
+    "--nyte-red",
+    "--nyte-green",
+    "--nyte-yellow",
+    "--nyte-orange",
+    "--nyte-purple",
+    "--nyte-cyan",
+    "--nyte-magenta",
+  ]}
+  swatch
+/>
+
+## Surfaces
+
+`bg-page` is the page and every editor on it. `bg-raised` is a card, dialog, or field above the
+page. `material-bg` is the translucent popup surface behind menus and popovers.
+
+<TokenTable prefix={["--nyte-bg-", "--nyte-material-bg"]} swatch />
+
+## Text and icons
+
+Four steps of ink, then status colors. `text-on-inverse` sits on `fill-inverse`, `text-on-color`
+on a saturated fill.
+
+<TokenTable prefix={["--nyte-text-", "--nyte-icon-"]} swatch />
+
+## Fills
+
+`fill-hover`, `fill-selected`, and `fill-pressed` are states laid over whatever sits beneath.
+`fill-quiet` and `fill-strong` are resting fills. `fill-inverse` is the primary button.
+
+<TokenTable prefix={["--nyte-fill-", "--nyte-switch-thumb"]} swatch />
+
+`layer-hover` and `layer-pressed` lay the hover and press fills as `background-image`, so a
+button keeps its own fill underneath.
+
+<TokenTable prefix={["--nyte-layer-", "--nyte-button-secondary-bg"]} />
+
+## Strokes
+
+`stroke-secondary` is the default hairline, `stroke-primary` the strong one, and `stroke-focused`
+the accent a focused field takes. `focus-ring` is the keyboard ring. See
 [Focus](/cloud/foundations/focus).
 
-## Color
+<TokenTable
+  prefix={[
+    "--nyte-stroke-",
+    "--nyte-focus-ring",
+    "--nyte-image-outline",
+    "--nyte-scrollbar-thumb",
+    "--nyte-selection",
+  ]}
+  swatch
+/>
 
-Semantic roles, not a palette. `primary` is the filled button, `muted` is the hover wash and the
-avatar background, `border` has four strengths, and `bubble-*` and `sidebar` belong to the
-conversation surface.
+## Interaction
 
-<TokenTable prefix="--nyte-color-" />
+`cursor-interactive` is the cursor for clickable elements. Hosts can override it with `default` for
+native desktop behavior.
 
-## Font
+<TokenTable prefix="--nyte-cursor-" />
 
-One UI family and a five-step scale. `label` and `body` share a size and line height, so labels
-stay aligned with the fields beside them.
+## Diffs and conversation
 
-<TokenTable prefix="--nyte-font-" />
-
-<TokenTable prefix="--nyte-leading-" />
-
-## Radius
-
-`avatar` is a percentage, so it scales with the size steps. `pill` is the circle.
-
-<TokenTable prefix="--nyte-radius-" />
-
-## Control
-
-The geometry of anything you press or type into. `height-md` (28px) is the default button and
-input height, `height-sm` (24px) the compact button and the icon button. `menu-inset` is the left
-padding that leaves room for a radio or checkbox indicator.
-
-<TokenTable prefix="--nyte-control-" />
-
-## Border
-
-<TokenTable prefix="--nyte-border-" />
-
-## Avatar
-
-<TokenTable prefix="--nyte-avatar-" />
-
-## Space
-
-Three steps. Layout spacing belongs to the app.
-
-<TokenTable prefix="--nyte-space-" />
-
-## Motion
-
-`fast` for state changes on controls, `normal` for popups. Every primitive collapses its transition
-to `0s` under `prefers-reduced-motion: reduce`.
-
-<TokenTable prefix="--nyte-motion-" />
+<TokenTable prefix={["--nyte-diff-", "--nyte-conversation-", "--nyte-composer-"]} swatch />
 
 ## Elevation
 
-<TokenTable prefix="--nyte-elevation-" />
+<TokenTable prefix={["--nyte-shadow-", "--nyte-tray-shadow"]} />
 
-## Overlay
+## Type
 
-Sizes and stacking for dialogs and menus. `--nyte-menu-max-width` and `--nyte-menu-max-height` read
-Base UI's `--available-width` and `--available-height`, which the Positioner sets from the viewport.
+`--nyte-font-size-base` drives the scale. Every other size and line height is computed from it, so
+one override resizes the set.
 
-<TokenTable prefix="--nyte-dialog-" />
+<TokenTable
+  prefix={[
+    "--nyte-ui-font-",
+    "--nyte-code-font-",
+    "--nyte-font-",
+    "--nyte-line-height-",
+    "--nyte-letter-spacing-",
+  ]}
+/>
 
-<TokenTable prefix="--nyte-menu-" />
+## Radius
 
-<TokenTable prefix="--nyte-layer-" />
+<TokenTable prefix="--nyte-radius-" />
+
+## Motion
+
+`fast` for state changes on controls, `normal` for popups.
+
+<TokenTable prefix={["--nyte-duration-", "--nyte-easing-"]} />
+
+## Component geometry
+
+Measurements for menus, dialogs, and toasts.
+
+<TokenTable
+  prefix={[
+    "--nyte-glyph-box",
+    "--nyte-menu-",
+    "--nyte-model-menu-width",
+    "--nyte-parameter-menu-width",
+    "--nyte-dialog-",
+    "--nyte-toast-",
+    "--nyte-clipboard-preview-",
+  ]}
+/>
 
 ## Tailwind mapping
 
-`@nyte-ai/ui/tailwind.css` maps tokens into Tailwind v4's `@theme inline`, so utilities resolve to
-the same variables.
+`@nyte-ai/ui/tailwind.css` maps Tailwind v4's theme onto the tokens with `@theme inline`, so
+utilities such as `bg-background`, `text-muted-foreground`, and `rounded-md` paint with the same
+values as the components.
 
-| Tailwind token               | Reads                   |
-| ---------------------------- | ----------------------- |
-| `--font-sans`                | `--nyte-font-family-ui` |
-| `--color-primary`            | `--nyte-color-primary`  |
-| `--color-muted`              | `--nyte-color-muted`    |
-| `--color-border`             | `--nyte-color-border`   |
-| `--color-ring`               | `--nyte-color-ring`     |
-| `--text-body`                | `--nyte-font-size-body` |
-| `--text-body--line-height`   | `--nyte-leading-body`   |
-| `--radius-sm`, `--radius-md` | `--nyte-radius-control` |
-| `--radius-lg`                | `--nyte-radius-menu`    |
-| `--radius-xl`                | `--nyte-radius-dialog`  |
+```css
+@import "tailwindcss";
+@import "@nyte-ai/ui/ui.css";
+@import "@nyte-ai/ui/tailwind.css";
+```
+
+| Tailwind token                  | Reads                     |
+| ------------------------------- | ------------------------- |
+| `--font-sans`, `--font-heading` | `--nyte-font-family-sans` |
+| `--font-mono`                   | `--nyte-font-family-mono` |
+| `--color-background`            | `--nyte-bg-page`          |
+| `--color-foreground`            | `--nyte-text-primary`     |
+| `--color-popover`               | `--nyte-bg-raised`        |
+| `--color-popover-foreground`    | `--nyte-text-primary`     |
+| `--color-sidebar`               | `--nyte-sidebar`          |
+| `--color-primary`               | `--nyte-fill-inverse`     |
+| `--color-primary-foreground`    | `--nyte-text-on-inverse`  |
+| `--color-muted`                 | `--nyte-fill-quiet`       |
+| `--color-muted-foreground`      | `--nyte-text-tertiary`    |
+| `--color-tertiary-foreground`   | `--nyte-text-quaternary`  |
+| `--color-fill-hover`            | `--nyte-fill-hover`       |
+| `--color-fill-selected`         | `--nyte-fill-selected`    |
+| `--color-accent`                | `--nyte-text-accent`      |
+| `--color-destructive`           | `--nyte-text-danger`      |
+| `--color-border-subtle`         | `--nyte-stroke-tertiary`  |
+| `--color-border`                | `--nyte-stroke-secondary` |
+| `--color-border-strong`         | `--nyte-stroke-primary`   |
+| `--color-ring`                  | `--nyte-stroke-focused`   |
+| `--radius-xs`                   | `--nyte-radius-xs`        |
+| `--radius-sm`                   | `--nyte-radius-sm`        |
+| `--radius-md`                   | `--nyte-radius-base`      |
+| `--radius-lg`                   | `--nyte-radius-lg`        |
+| `--radius-xl`                   | `--nyte-radius-xl`        |
+| `--radius-2xl`                  | `--nyte-radius-2xl`       |

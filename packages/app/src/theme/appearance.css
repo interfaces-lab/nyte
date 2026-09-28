@@ -1,0 +1,66 @@
+/*
+ * What the token declarations in `@nyte-ai/ui/tokens.stylex` cannot carry on their own:
+ * overrides keyed on the attributes `boot.ts` and `focus-modality.ts` write on
+ * <html>. Unlayered, so they outrank the StyleX layers the tokens compile into.
+ */
+
+:root {
+  color-scheme: light;
+}
+
+/* `light-dark()` in every colour token follows this. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --nyte-material-filter: blur(12px) brightness(120%);
+}
+
+/* Desktop controls keep the native arrow unless pointer cursors are enabled. */
+:root[data-nyte-pointer-cursors="false"] {
+  --nyte-cursor-interactive: default;
+}
+
+/* The tint keeps each surface's lightness. The sidebar takes the full
+   intensity, the page half. */
+:root[data-tint-active="true"] {
+  --nyte-accent: hsl(from var(--nyte-accent-base) var(--nyte-tint-hue) s l);
+  --nyte-bg-page: hsl(
+    from var(--nyte-page-base) var(--nyte-tint-hue) calc(var(--nyte-tint-intensity) * 0.5) l
+  );
+  --nyte-sidebar: hsl(
+    from var(--nyte-sidebar-base) var(--nyte-tint-hue) var(--nyte-tint-intensity) l
+  );
+}
+
+:root[data-reduce-transparency="true"] {
+  --nyte-bg-sidebar: var(--nyte-sidebar);
+  --nyte-material-bg: var(--nyte-bg-raised);
+  --nyte-material-filter: none;
+}
+
+/* Diff lines tinted with the raw hues rather than the themed washes. */
+:root[data-nyte-themed-diff-backgrounds="false"] {
+  --nyte-diff-added-line-bg: light-dark(
+    color-mix(in srgb, var(--nyte-green) 9%, transparent),
+    color-mix(in srgb, var(--nyte-green) 17%, transparent)
+  );
+  --nyte-diff-added-text-bg: light-dark(
+    color-mix(in srgb, var(--nyte-green) 6%, transparent),
+    color-mix(in srgb, var(--nyte-green) 14%, transparent)
+  );
+  --nyte-diff-removed-line-bg: light-dark(
+    color-mix(in srgb, var(--nyte-red) 9%, transparent),
+    color-mix(in srgb, var(--nyte-red) 17%, transparent)
+  );
+  --nyte-diff-removed-text-bg: light-dark(
+    color-mix(in srgb, var(--nyte-red) 6%, transparent),
+    color-mix(in srgb, var(--nyte-red) 14%, transparent)
+  );
+}
+
+/*
+ * Chromium matches `:focus-visible` on every text field focus, pointer
+ * included, so the colour gates the ring where the selector cannot.
+ */
+:root[data-nyte-focus-modality="pointer"] {
+  --nyte-focus-ring: transparent;
+}

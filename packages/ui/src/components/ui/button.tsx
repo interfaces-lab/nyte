@@ -1,181 +1,253 @@
+/**
+ * The button library: `Button`, and `Toggle` for anything with an on state.
+ * A caller picks a variant and a size and may place the control through
+ * `xstyle`, never restyle it.
+ *
+ * The sizes are one stair, read off the controls the app had grown by hand:
+ * text stands 30, 28 condensed, or 24; icon-only controls are 28, 24, or 16
+ * squares. Variants are named by use, so `primary` is the one reached for
+ * most: a bare label or glyph that lifts on hover.
+ */
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
-import * as stylex from "@stylexjs/stylex";
-import type * as React from "react";
+import { create, props, type StyleXStyles } from "@stylexjs/stylex";
+import type { CSSProperties, JSX, ReactElement } from "react";
 
-import {
-  borderVars,
-  colorVars,
-  controlVars,
-  fontVars,
-  motionVars,
-  radiusVars,
-} from "../../platform-tokens.stylex.ts";
-import { mergeStyleProps, type XStyle } from "../../style.ts";
+import { focus } from "../../a11y.stylex.ts";
+import { mergeStyleProps } from "../../style.ts";
+import { t } from "../../vars.stylex.ts";
+import { Icon, type IconName } from "./icon.tsx";
 
-const styles = stylex.create({
-  root: {
-    appearance: "none",
-    boxSizing: "border-box",
+const button = create({
+  base: {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
+    gap: 4,
     flexShrink: 0,
-    gap: controlVars["--nyte-control-gap-sm"],
-    borderWidth: borderVars["--nyte-border-control-width"],
-    borderStyle: "solid",
-    borderColor: "transparent",
-    borderRadius: radiusVars["--nyte-radius-control"],
-    fontFamily: fontVars["--nyte-font-family-ui"],
-    fontWeight: fontVars["--nyte-font-weight-medium"],
-    lineHeight: 1,
+    paddingBlock: 0,
+    borderRadius: t.radiusBase,
+    borderStyle: "none",
+    backgroundColor: "transparent",
+    // Hover and press lay a state over the variant's own fill.
+    backgroundImage: {
+      default: "none",
+      ":hover:not(:disabled)": t.layerHover,
+      ":active:not(:disabled)": t.layerPressed,
+    },
+    fontWeight: 500,
+    cursor: { default: t.cursorInteractive, ":disabled": "default" },
     whiteSpace: "nowrap",
-    textDecoration: "none",
     userSelect: "none",
-    outlineColor: colorVars["--nyte-color-focus-ring"],
-    outlineStyle: { default: "none", ":focus-visible": "solid" },
-    outlineWidth: controlVars["--nyte-control-focus-width"],
-    outlineOffset: controlVars["--nyte-control-focus-offset"],
-    opacity: {
-      default: 1,
-      ":disabled": controlVars["--nyte-control-disabled-opacity"],
-      "[data-disabled]": controlVars["--nyte-control-disabled-opacity"],
-    },
-    pointerEvents: { default: "auto", ":disabled": "none", "[data-disabled]": "none" },
-    transform: { default: "none", ":active:not(:disabled)": "translateY(1px)" },
-    transitionProperty: "background-color, border-color, color, opacity",
-    transitionDuration: {
-      default: motionVars["--nyte-motion-fast"],
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: motionVars["--nyte-motion-ease-out"],
+    opacity: { default: 1, ":disabled": 0.5 },
+    transitionProperty: "background-color, color, opacity",
+    transitionDuration: t.durationFast,
+    transitionTimingFunction: t.easeOut,
   },
-  default: {
-    backgroundColor: {
-      default: colorVars["--nyte-color-primary"],
-      ":hover": { "@media (hover: hover)": colorVars["--nyte-color-primary-hover"] },
-      "[data-popup-open]": colorVars["--nyte-color-primary-hover"],
-    },
-    color: colorVars["--nyte-color-primary-foreground"],
-  },
-  outline: {
-    borderColor: {
-      default: colorVars["--nyte-color-border"],
-      ":hover": { "@media (hover: hover)": colorVars["--nyte-color-border-strong"] },
+  round: { borderRadius: t.radiusFull },
+});
+
+const buttonSizes = create({
+  default: { height: 30, paddingInline: 12, fontSize: t.fontBase, lineHeight: t.leadingBase },
+  condensed: { height: 28, paddingInline: 8, fontSize: t.fontBase, lineHeight: t.leadingBase },
+  sm: { height: 24, paddingInline: 6, fontSize: t.fontSm, lineHeight: t.leadingSm },
+  icon: { width: 28, height: 28, paddingInline: 0 },
+  "icon-sm": { width: 24, height: 24, paddingInline: 0 },
+  "icon-xs": { width: 16, height: 16, paddingInline: 0, borderRadius: t.radiusSm },
+});
+
+const buttonVariants = create({
+  // A pressed toggle and a trigger whose menu or panel is open read the same.
+  primary: {
+    color: {
+      default: t.textSecondary,
+      ":hover:not(:disabled)": t.textPrimary,
+      "[data-pressed]": t.textPrimary,
+      '[aria-expanded="true"]': t.textPrimary,
     },
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover)": colorVars["--nyte-color-muted"] },
-      "[data-popup-open]": colorVars["--nyte-color-muted"],
+      "[data-pressed]": t.fillSelected,
+      '[aria-expanded="true"]': t.fillSelected,
     },
-    color: colorVars["--nyte-color-foreground"],
   },
-  ghost: {
-    backgroundColor: {
-      default: "transparent",
-      ":hover": { "@media (hover: hover)": colorVars["--nyte-color-muted-hover"] },
-      "[data-popup-open]": colorVars["--nyte-color-muted-hover"],
-    },
-    color: colorVars["--nyte-color-foreground"],
+  /** A toggle whose glyph already draws its state, like a panel's open/closed icon. */
+  glyphPressed: {
+    backgroundColor: "transparent",
+    color: { default: t.iconSecondary, ":hover:not(:disabled)": t.iconPrimary },
   },
   secondary: {
-    backgroundColor: {
-      default: colorVars["--nyte-color-secondary"],
-      ":hover": { "@media (hover: hover)": colorVars["--nyte-color-muted"] },
-      "[data-popup-open]": colorVars["--nyte-color-muted"],
+    color: t.textPrimary,
+    backgroundImage: {
+      default: t.buttonSecondaryBg,
+      ":hover:not(:disabled)": `${t.layerHover}, ${t.buttonSecondaryBg}`,
+      ":active:not(:disabled)": `${t.layerPressed}, ${t.buttonSecondaryBg}`,
     },
-    color: colorVars["--nyte-color-foreground"],
+    boxShadow: `inset 0 0 0 1px ${t.strokeSecondary}, ${t.shadowButton}`,
   },
-  destructive: {
-    backgroundColor: {
-      default: colorVars["--nyte-color-destructive-muted"],
-      ":hover": { "@media (hover: hover)": colorVars["--nyte-color-destructive-hover"] },
-      "[data-popup-open]": colorVars["--nyte-color-destructive-hover"],
-    },
-    color: colorVars["--nyte-color-destructive"],
+  inverse: {
+    // Disabled keeps its glyph readable on the strong fill instead of fading.
+    color: { default: t.textOnInverse, ":disabled": t.textQuaternary },
+    backgroundColor: { default: t.fillInverse, ":disabled": t.fillStrong },
+    opacity: 1,
   },
-  defaultSize: {
-    height: controlVars["--nyte-control-height-md"],
-    paddingInline: controlVars["--nyte-control-padding-sm"],
-    fontSize: fontVars["--nyte-font-size-body"],
-  },
-  sm: {
-    height: controlVars["--nyte-control-height-sm"],
-    paddingInline: controlVars["--nyte-control-padding-xs"],
-    gap: controlVars["--nyte-control-gap-sm"],
-    fontSize: fontVars["--nyte-font-size-detail"],
-  },
-  iconSm: {
-    width: controlVars["--nyte-control-height-sm"],
-    height: controlVars["--nyte-control-height-sm"],
+  danger: { color: t.textOnColor, backgroundColor: t.fillDanger },
+  link: {
+    height: "auto",
     paddingInline: 0,
+    backgroundImage: "none",
+    color: t.textAccent,
+    fontSize: "inherit",
+    fontWeight: "inherit",
+    lineHeight: "inherit",
+    textDecoration: { default: "none", ":hover:not(:disabled)": "underline" },
   },
 });
 
-const variantStyles = {
-  default: styles.default,
-  secondary: styles.secondary,
-  outline: styles.outline,
-  ghost: styles.ghost,
-  destructive: styles.destructive,
-} as const;
+/** A glyph on the bare variant: quieter in the smaller boxes that sit inside rows. */
+const iconButtonTones = create({
+  default: {
+    color: {
+      default: t.iconSecondary,
+      ":hover:not(:disabled)": t.iconPrimary,
+      "[data-pressed]": t.iconPrimary,
+      '[aria-expanded="true"]': t.iconPrimary,
+    },
+  },
+  quiet: {
+    color: {
+      default: t.iconTertiary,
+      ":hover:not(:disabled)": t.iconPrimary,
+      "[data-pressed]": t.iconPrimary,
+      '[aria-expanded="true"]': t.iconPrimary,
+    },
+  },
+});
 
-const sizeStyles = {
-  default: styles.defaultSize,
-  sm: styles.sm,
-  "icon-sm": styles.iconSm,
-} as const;
+export type ButtonVariant = Exclude<keyof typeof buttonVariants, "glyphPressed">;
 
-export type ButtonVariant = keyof typeof variantStyles;
+export type ButtonSize = keyof typeof buttonSizes;
 
-export type ButtonSize = keyof typeof sizeStyles;
+type IconSize = Extract<ButtonSize, `icon${string}`>;
 
-interface StyledButtonAppearance {
-  size?: ButtonSize;
-  unstyled?: false;
-  variant?: ButtonVariant;
+/** An icon-only control has no text to name it, so its size demands a label. */
+export type ButtonSizing =
+  | { readonly size?: Exclude<ButtonSize, IconSize> }
+  | { readonly size: IconSize; readonly "aria-label": string };
+
+/** Where a control sits. How it looks belongs to its variant and size. */
+export type ButtonLayout = StyleXStyles<{
+  position?: "static" | "relative" | "absolute" | "sticky";
+  inset?: number | string;
+  insetBlock?: number | string;
+  insetBlockStart?: number | string;
+  insetBlockEnd?: number | string;
+  insetInline?: number | string;
+  insetInlineStart?: number | string;
+  insetInlineEnd?: number | string;
+  zIndex?: number;
+  margin?: number | string;
+  marginBlock?: number | string;
+  marginBlockStart?: number | string;
+  marginBlockEnd?: number | string;
+  marginInline?: number | string;
+  marginInlineStart?: number | string;
+  marginInlineEnd?: number | string;
+  flex?: number | string;
+  flexGrow?: number;
+  flexShrink?: number;
+  alignSelf?: string;
+  justifySelf?: string;
+  gridArea?: string;
+  gridColumn?: number | string;
+  gridRow?: number | string;
+  order?: number;
+  width?: number | string;
+  minWidth?: number | string;
+  maxWidth?: number | string;
+}>;
+
+export type ButtonElementProps = Omit<JSX.IntrinsicElements["button"], "className" | "style">;
+
+export interface ButtonAppearance {
+  readonly round?: boolean;
+  /** A leading glyph, or the whole content of an icon-only control. */
+  readonly icon?: IconName;
+  readonly xstyle?: ButtonLayout;
+  readonly className?: string;
+  readonly style?: CSSProperties;
 }
 
-interface UnstyledButtonAppearance {
-  size?: never;
-  unstyled: true;
-  variant?: never;
+export type ButtonProps = ButtonElementProps &
+  ButtonSizing &
+  ButtonAppearance & { readonly variant?: ButtonVariant };
+
+export const buttonGlyphSize = {
+  default: 14,
+  condensed: 14,
+  sm: 12,
+  icon: 16,
+  "icon-sm": 14,
+  "icon-xs": 12,
+} as const satisfies Record<ButtonSize, number>;
+
+function isIconSize(size: ButtonSize): size is IconSize {
+  return size.startsWith("icon");
 }
 
-export type ButtonProps = Omit<ButtonPrimitive.Props, "className" | "style"> & {
-  className?: string;
-  style?: React.CSSProperties;
-  xstyle?: XStyle;
-} & (StyledButtonAppearance | UnstyledButtonAppearance);
+export function buttonStyle(
+  variant: ButtonVariant,
+  size: ButtonSize,
+  { round = false, xstyle, className, style }: ButtonAppearance,
+  glyphPressed = false,
+) {
+  return mergeStyleProps(
+    props(
+      button.base,
+      buttonSizes[size],
+      buttonVariants[variant],
+      variant === "primary" &&
+        isIconSize(size) &&
+        iconButtonTones[size === "icon" ? "default" : "quiet"],
+      round && button.round,
+      // The 16px square sits inside rows, where an outset ring would clip.
+      size === "icon-xs" ? focus.ringInset : focus.ring,
+      xstyle,
+      glyphPressed && buttonVariants.glyphPressed,
+    ),
+    className,
+    style,
+  );
+}
+
+/**
+ * An icon-only control shows its label as the native tooltip. One wrapped in
+ * a `Hint` passes `title={undefined}`, which wins over this default.
+ */
+export function tooltipTitle(size: ButtonSize, label: string | undefined): string | undefined {
+  return isIconSize(size) ? label : undefined;
+}
 
 export function Button({
-  className,
-  render,
+  variant = "primary",
   size = "default",
-  style,
-  type,
-  unstyled = false,
-  variant = "default",
+  round,
+  icon,
   xstyle,
-  ...props
-}: ButtonProps) {
+  className,
+  style,
+  children,
+  type = "button",
+  disabled,
+  ...rest
+}: ButtonProps): ReactElement {
   return (
     <ButtonPrimitive
-      data-slot="button"
-      data-size={unstyled ? undefined : size}
-      data-variant={unstyled ? undefined : variant}
-      render={render}
-      type={type ?? (render ? undefined : "button")}
-      {...mergeStyleProps(
-        stylex.props(
-          !unstyled && styles.root,
-          !unstyled && variantStyles[variant],
-          !unstyled && sizeStyles[size],
-          xstyle,
-        ),
-        className,
-        style,
-      )}
-      {...props}
-    />
+      disabled={disabled}
+      render={<button type={type} title={tooltipTitle(size, rest["aria-label"])} {...rest} />}
+      {...buttonStyle(variant, size, { round, xstyle, className, style })}
+    >
+      {icon !== undefined && <Icon name={icon} size={buttonGlyphSize[size]} />}
+      {children}
+    </ButtonPrimitive>
   );
 }
