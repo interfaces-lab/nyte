@@ -4,6 +4,7 @@ import type { ReactElement, ReactNode } from "react";
 
 import { clipboardPreview, layer } from "../../schema.stylex.ts";
 import type { XStyle } from "../../style.ts";
+import { surfaceTheme, type Tint } from "../../surface-theme.ts";
 import { t } from "../../vars.stylex.ts";
 import { useOverlayRef } from "./overlay.tsx";
 
@@ -13,10 +14,10 @@ const styles = create({
     maxWidth: 260,
     paddingBlock: 4,
     paddingInline: 6,
-    borderRadius: t.radiusBase,
-    backgroundColor: t.bgRaised,
-    boxShadow: `${t.shadowPopover}, inset 0 0 0 1px ${t.strokeSecondary}`,
-    color: t.textSecondary,
+    borderRadius: t.radius6,
+    backgroundColor: t.bgElevated,
+    boxShadow: t.shadowMdOutline,
+    color: t.contentSecondary,
     fontSize: t.fontXs,
     lineHeight: t.leadingXs,
     whiteSpace: "pre-line",
@@ -50,14 +51,15 @@ export type HintSide = Tooltip.Positioner.Props["side"];
 
 export type HintAlign = Tooltip.Positioner.Props["align"];
 
-export interface HintProps {
-  readonly content: ReactNode;
-  readonly trigger: ReactElement;
-  readonly side?: HintSide;
-  readonly align?: HintAlign;
-  /** Merged last onto the popup. */
-  readonly xstyle?: XStyle;
-}
+export type HintProps = Pick<Tooltip.Root.Props, "disabled"> &
+  Pick<Tooltip.Positioner.Props, "side" | "align"> & {
+    readonly content: ReactNode;
+    readonly trigger: NonNullable<Tooltip.Trigger.Props["render"]>;
+    /** Scopes the popup to a hue. */
+    readonly tint?: Tint;
+    /** Merged last onto the popup. */
+    readonly xstyle?: XStyle;
+  };
 
 /** Shares one open delay across every `Hint` inside it. */
 export const HintProvider = Tooltip.Provider;
@@ -67,12 +69,14 @@ export function Hint({
   trigger,
   side = "bottom",
   align = "center",
+  disabled,
+  tint,
   xstyle,
 }: HintProps): ReactElement {
   const overlayRef = useOverlayRef();
 
   return (
-    <Tooltip.Root>
+    <Tooltip.Root disabled={disabled}>
       <Tooltip.Trigger render={trigger} />
       <Tooltip.Portal>
         <Tooltip.Positioner
@@ -83,7 +87,10 @@ export function Hint({
           collisionPadding={8}
           {...props(styles.positioner)}
         >
-          <Tooltip.Popup ref={overlayRef} {...props(styles.popup, xstyle)}>
+          <Tooltip.Popup
+            ref={overlayRef}
+            {...props(tint !== undefined && surfaceTheme[tint], styles.popup, xstyle)}
+          >
             {content}
           </Tooltip.Popup>
         </Tooltip.Positioner>
@@ -92,7 +99,7 @@ export function Hint({
   );
 }
 
-export type HoverPreviewProps = Omit<HintProps, "align" | "xstyle">;
+export type HoverPreviewProps = Omit<HintProps, "align" | "tint" | "xstyle">;
 
 /** A `Hint` for long monospace text such as a pasted snippet, scrolling past its bounds. */
 export function HoverPreview({ content, trigger, side }: HoverPreviewProps): ReactElement {

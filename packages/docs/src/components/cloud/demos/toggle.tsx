@@ -9,13 +9,7 @@ export function ToggleDemo() {
 
   return (
     <>
-      <Toggle
-        size="icon"
-        icon="pin"
-        aria-label="Pin"
-        pressed={pinned}
-        onPressedChange={setPinned}
-      />
+      <Toggle iconOnly icon="pin" aria-label="Pin" pressed={pinned} onPressedChange={setPinned} />
       <Toggle icon="eye" defaultPressed>
         Preview
       </Toggle>
@@ -42,9 +36,9 @@ export function ToggleGroupDemo() {
 export function ToggleGroupMultipleDemo() {
   return (
     <ToggleGroup multiple defaultValue={["sidebar"]} aria-label="Panels">
-      <Toggle value="sidebar" size="icon-sm" icon="panel-left" aria-label="Sidebar" />
-      <Toggle value="terminal" size="icon-sm" icon="console" aria-label="Terminal" />
-      <Toggle value="inspector" size="icon-sm" icon="panel-right" aria-label="Inspector" />
+      <Toggle value="sidebar" size="sm" iconOnly icon="panel-left" aria-label="Sidebar" />
+      <Toggle value="terminal" size="sm" iconOnly icon="console" aria-label="Terminal" />
+      <Toggle value="inspector" size="sm" iconOnly icon="panel-right" aria-label="Inspector" />
     </ToggleGroup>
   );
 }

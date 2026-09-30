@@ -21,12 +21,12 @@ function Feature({ feature }: { feature: SiteFeature }) {
   return (
     <a
       href={feature.href}
-      className="flex items-center gap-2.5 rounded-(--nyte-radius-row) p-2 hover:bg-(--nyte-text-primary)/5"
+      className="flex items-center gap-2.5 rounded-(--nyte-radius-row) p-2 hover:bg-(--nyte-content-primary)/5"
     >
-      <span className="inline-flex size-6 shrink-0 items-center justify-center text-(--nyte-text-primary)">
+      <span className="inline-flex size-6 shrink-0 items-center justify-center text-(--nyte-content-primary)">
         <FeatureGlyph icon={feature.icon} />
       </span>
-      <span className="min-w-0 text-sm/5 font-medium text-(--nyte-text-primary)">
+      <span className="min-w-0 text-sm/5 font-medium text-(--nyte-content-primary)">
         {feature.title}
       </span>
     </a>
@@ -34,7 +34,7 @@ function Feature({ feature }: { feature: SiteFeature }) {
 }
 
 const itemClass =
-  "relative inline-flex h-(--site-nav-control) items-center rounded-(--nyte-radius-full) px-2.5 text-[15px] font-medium text-(--nyte-text-primary) hero:text-white";
+  "relative inline-flex h-(--site-nav-control) items-center rounded-(--nyte-radius-full) px-2.5 text-[15px] font-medium text-(--nyte-content-primary) hero:text-white";
 
 interface Indicator {
   x: number;
@@ -116,7 +116,7 @@ export function SiteNavSections({ githubHref }: Props) {
           <div
             key={section.id}
             data-direction={direction}
-            className="w-79 max-w-full animate-nav-panel-content-in rounded-(--nyte-radius-surface) border border-(--nyte-stroke-secondary) bg-(--nyte-bg-raised) p-1 text-(--nyte-text-primary) shadow-[0_8px_30px_color-mix(in_srgb,var(--nyte-text-primary)_10%,transparent)] data-[direction=-1]:[--enter-x:-24px] data-[direction=1]:[--enter-x:24px] motion-reduce:animate-none"
+            className="w-79 max-w-full animate-nav-panel-content-in rounded-(--nyte-radius-surface) border border-(--nyte-border-secondary-translucent) bg-(--nyte-bg-elevated) p-1 text-(--nyte-content-primary) shadow-[0_8px_30px_color-mix(in_srgb,var(--nyte-content-primary)_10%,transparent)] data-[direction=-1]:[--enter-x:-24px] data-[direction=1]:[--enter-x:24px] motion-reduce:animate-none"
           >
             {section.features.map((feature, i) => (
               <div

@@ -10,8 +10,8 @@ import { renderMermaidSVG } from "beautiful-mermaid";
 
 export function Mermaid({ chart }: { chart: string }) {
   const svg = renderMermaidSVG(chart.replaceAll("\\n", "\n"), {
-    bg: "var(--nyte-bg-page)",
-    fg: "var(--nyte-text-primary)",
+    bg: "var(--nyte-bg-base)",
+    fg: "var(--nyte-content-primary)",
     transparent: true,
   });
 

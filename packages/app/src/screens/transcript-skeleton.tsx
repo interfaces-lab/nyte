@@ -33,14 +33,14 @@ const styles = stylex.create({
     boxSizing: "border-box",
     height: 58,
     marginTop: 10,
-    borderRadius: t.radiusXl,
-    backgroundColor: t.fillQuiet,
+    borderRadius: t.radius12,
+    backgroundColor: t.bgMutedTranslucent,
   },
   line: (width: string) => ({
     width,
     height: 12,
     borderRadius: t.radiusFull,
-    backgroundColor: t.fillQuiet,
+    backgroundColor: t.bgMutedTranslucent,
   }),
   row: { display: "flex", flexDirection: "column", gap: 10, paddingBlock: 6 },
 });

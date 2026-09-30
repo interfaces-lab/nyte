@@ -30,8 +30,8 @@
   }
 
   .doc a.cloud-cta-primary {
-    background: var(--nyte-text-primary);
-    color: var(--nyte-bg-page);
+    background: var(--nyte-content-primary);
+    color: var(--nyte-bg-base);
   }
 
   .cloud-cta-primary:hover {
@@ -39,12 +39,12 @@
   }
 
   .cloud-cta-secondary {
-    background: var(--nyte-fill-strong);
-    color: var(--nyte-text-primary);
+    background: var(--nyte-bg-interactive-primary-translucent);
+    color: var(--nyte-content-primary);
   }
 
   .cloud-cta-secondary:hover {
-    background: color-mix(in srgb, var(--nyte-text-primary) 10%, transparent);
+    background: color-mix(in srgb, var(--nyte-content-primary) 10%, transparent);
   }
 
   /* ---- feature grid ---------------------------------------------------- */
@@ -79,7 +79,7 @@
     flex: none;
     width: 28px;
     height: 28px;
-    color: var(--nyte-text-tertiary);
+    color: var(--nyte-content-secondary);
   }
 
   .doc-prose a.cloud-feature strong {
@@ -96,7 +96,7 @@
   .doc-prose a.cloud-feature > span:last-child span {
     display: block;
     margin: 4px 0 0;
-    color: var(--nyte-text-tertiary);
+    color: var(--nyte-content-secondary);
     font-size: 14px;
     line-height: 22px;
     letter-spacing: -0.18px;
@@ -113,13 +113,17 @@
     min-height: 144px;
     margin: 0 0 13px;
     padding: 34px 21px;
-    border: 0.5px solid var(--nyte-stroke-secondary);
+    border: 0.5px solid var(--nyte-border-secondary-translucent);
     border-radius: 13px;
     background:
-      radial-gradient(circle at 1px 1px, var(--nyte-stroke-secondary) 1px, transparent 0) 0 0 / 21px
-        21px,
-      var(--nyte-bg-page);
-    color: var(--nyte-text-primary);
+      radial-gradient(
+          circle at 1px 1px,
+          var(--nyte-border-secondary-translucent) 1px,
+          transparent 0
+        )
+        0 0 / 21px 21px,
+      var(--nyte-bg-base);
+    color: var(--nyte-content-primary);
     font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
     font-size: var(--nyte-font-size-base);
     line-height: var(--nyte-line-height-base);
@@ -145,7 +149,7 @@
     height: 13px;
     margin-inline-end: 8px;
     border-radius: 999px;
-    border: 0.5px solid var(--nyte-stroke-secondary);
+    border: 0.5px solid var(--nyte-border-secondary-translucent);
     vertical-align: -2px;
   }
 }

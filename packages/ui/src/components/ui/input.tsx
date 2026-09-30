@@ -7,22 +7,26 @@ import { Input as InputPrimitive } from "@base-ui/react/input";
 import { create, props } from "@stylexjs/stylex";
 import { createContext, use, type JSX, type ReactElement } from "react";
 
+import { input } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { t } from "../../vars.stylex.ts";
+import { ramp, t } from "../../vars.stylex.ts";
 
 const field = create({
   base: {
     boxSizing: "border-box",
     minWidth: 0,
     margin: 0,
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontFamily: "inherit",
-    "::placeholder": { color: t.textTertiary },
+    fontSize: t.fontBase,
+    lineHeight: t.leadingBase,
+    letterSpacing: t.letterBase,
+    "::placeholder": { color: t.contentTertiary },
   },
   framed: {
     borderWidth: 1,
     borderStyle: "solid",
-    borderRadius: t.radiusBase,
+    borderRadius: "var(--_input-radius)",
     outlineStyle: "none",
   },
   bare: {
@@ -38,37 +42,34 @@ const field = create({
 
 const variants = create({
   raised: {
-    paddingInline: 6,
     borderColor: {
-      default: t.strokeSecondary,
-      ":focus": t.strokeFocused,
-      "[aria-invalid=true]": t.red,
+      default: t.borderPrimaryTranslucent,
+      ":focus": ramp.blue80,
+      "[aria-invalid=true]": ramp.red80,
     },
-    backgroundColor: t.bgRaised,
+    backgroundColor: t.bgElevated,
   },
   quiet: {
-    paddingInline: 8,
     borderColor: {
-      default: t.strokeSecondary,
-      ":focus": t.strokePrimary,
-      "[aria-invalid=true]": t.red,
+      default: t.borderSecondaryTranslucent,
+      ":focus": t.borderPrimaryTranslucent,
+      "[aria-invalid=true]": ramp.red80,
     },
-    backgroundColor: t.fillQuiet,
+    backgroundColor: t.bgMutedTranslucent,
   },
 });
 
 const groupVariants = create({
   raised: {
-    gap: 4,
-    paddingInline: 6,
-    borderColor: { default: t.strokeSecondary, ":focus-within": t.strokeFocused },
-    backgroundColor: t.bgRaised,
+    borderColor: { default: t.borderPrimaryTranslucent, ":focus-within": ramp.blue80 },
+    backgroundColor: t.bgElevated,
   },
   quiet: {
-    gap: 8,
-    paddingInline: 8,
-    borderColor: { default: t.strokeSecondary, ":focus-within": t.strokePrimary },
-    backgroundColor: t.fillQuiet,
+    borderColor: {
+      default: t.borderSecondaryTranslucent,
+      ":focus-within": t.borderPrimaryTranslucent,
+    },
+    backgroundColor: t.bgMutedTranslucent,
   },
 });
 
@@ -76,45 +77,77 @@ const group = create({
   base: {
     display: "flex",
     alignItems: "center",
+    gap: 6,
     boxSizing: "border-box",
     minWidth: 0,
     borderWidth: 1,
     borderStyle: "solid",
-    borderRadius: t.radiusBase,
-    color: t.iconTertiary,
+    borderRadius: "var(--_input-radius)",
+    paddingInlineStart: "var(--_input-inset)",
+    paddingInlineEnd: "var(--_input-padding-end)",
+    color: t.contentTertiary,
   },
 });
 
-const type = create({
-  sm: { fontSize: t.fontSm, lineHeight: t.leadingSm },
-  default: { fontSize: t.fontBase, lineHeight: t.leadingBase, letterSpacing: t.letterBase },
-  lg: { fontSize: t.fontLg, lineHeight: t.leadingLg, letterSpacing: t.letterLg },
+/** Notion Calendar's input sizes, which grow under a coarse pointer. */
+const sizes = create({
+  md: {
+    "--_input-radius": input.radiusMd,
+    "--_input-inset": input.insetMd,
+    "--_input-padding-end": input.paddingEndMd,
+    "--_input-textarea-min-height": input.textareaMinHeightMd,
+    "--_input-textarea-padding-block": input.textareaPaddingBlockMd,
+    height: input.heightMd,
+  },
+  lg: {
+    "--_input-radius": input.radiusLg,
+    "--_input-inset": input.insetLg,
+    "--_input-padding-end": input.paddingEndLg,
+    "--_input-textarea-min-height": input.textareaMinHeightLg,
+    "--_input-textarea-padding-block": input.textareaPaddingBlockLg,
+    height: input.heightLg,
+  },
+  xl: {
+    "--_input-radius": input.radiusXl,
+    "--_input-inset": input.insetXl,
+    "--_input-padding-end": input.paddingEndXl,
+    "--_input-textarea-min-height": input.textareaMinHeightXl,
+    "--_input-textarea-padding-block": input.textareaPaddingBlockXl,
+    height: input.heightXl,
+  },
 });
 
-const heights = create({
-  sm: { height: 24 },
-  default: { height: 28 },
-  lg: { height: 36 },
+/** A framed field clears its text by the inset plus the control's own start padding. */
+const framedPadding = create({
+  base: {
+    paddingInlineStart: "calc(var(--_input-inset) + var(--nyte-spacing-4))",
+    paddingInlineEnd: "var(--_input-padding-end)",
+  },
 });
 
 const textarea = create({
-  base: { display: "block", minHeight: 64, resize: "vertical" },
-  raised: { paddingBlock: 4 },
-  quiet: { paddingBlock: 6 },
+  base: {
+    display: "block",
+    height: "auto",
+    minHeight: "var(--_input-textarea-min-height)",
+    paddingBlock: "var(--_input-textarea-padding-block)",
+    paddingInline: "calc(var(--_input-inset) + var(--nyte-spacing-4)) var(--_input-inset)",
+    resize: "vertical",
+  },
 });
 
 export type InputVariant = keyof typeof variants | "bare";
 
 export type InputGroupVariant = keyof typeof groupVariants;
 
-export type InputSize = keyof typeof type;
+export type InputSize = keyof typeof sizes;
 
 const InputGroupContext = createContext<InputSize | undefined>(undefined);
 
 export type InputProps = StyledProps<Omit<InputPrimitive.Props, "size">> & {
   /** Defaults to `raised`, or to `bare` inside an `InputGroup`. */
   readonly variant?: InputVariant;
-  /** Defaults to `default`, or to the size of the enclosing `InputGroup`. */
+  /** Defaults to `md`, or to the size of the enclosing `InputGroup`. */
   readonly size?: InputSize;
 };
 
@@ -128,7 +161,7 @@ export function Input({
 }: InputProps): ReactElement {
   const groupSize = use(InputGroupContext);
   const resolvedVariant = variant ?? (groupSize === undefined ? "raised" : "bare");
-  const resolvedSize = size ?? groupSize ?? "default";
+  const resolvedSize = size ?? groupSize ?? "md";
 
   return (
     <InputPrimitive
@@ -137,10 +170,10 @@ export function Input({
       {...mergeStyleProps(
         props(
           field.base,
-          resolvedVariant === "bare" ? field.bare : [field.framed, variants[resolvedVariant]],
+          resolvedVariant === "bare"
+            ? field.bare
+            : [field.framed, variants[resolvedVariant], sizes[resolvedSize], framedPadding.base],
           groupSize !== undefined && field.grouped,
-          type[resolvedSize],
-          resolvedVariant !== "bare" && heights[resolvedSize],
           xstyle,
         ),
         className,
@@ -158,7 +191,7 @@ export type InputGroupProps = StyledProps<JSX.IntrinsicElements["label"]> & {
 /** A framed `<label>` that makes the `Input` inside it bare, beside its glyphs and controls. */
 export function InputGroup({
   variant = "raised",
-  size = "default",
+  size = "md",
   xstyle,
   className,
   style,
@@ -170,7 +203,7 @@ export function InputGroup({
       data-slot="input-group"
       {...rest}
       {...mergeStyleProps(
-        props(group.base, groupVariants[variant], heights[size], xstyle),
+        props(group.base, groupVariants[variant], sizes[size], xstyle),
         className,
         style,
       )}
@@ -187,7 +220,7 @@ export type TextareaProps = StyledProps<JSX.IntrinsicElements["textarea"]> & {
 
 export function Textarea({
   variant = "raised",
-  size = "default",
+  size = "md",
   xstyle,
   className,
   style,
@@ -198,15 +231,7 @@ export function Textarea({
       data-slot="textarea"
       {...rest}
       {...mergeStyleProps(
-        props(
-          field.base,
-          field.framed,
-          variants[variant],
-          type[size],
-          textarea.base,
-          textarea[variant],
-          xstyle,
-        ),
+        props(field.base, field.framed, variants[variant], sizes[size], textarea.base, xstyle),
         className,
         style,
       )}

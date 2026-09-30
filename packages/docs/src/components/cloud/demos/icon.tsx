@@ -20,7 +20,7 @@ export function PanelToggleIconDemo() {
 
   return (
     <Button
-      size="icon"
+      iconOnly
       aria-label={visible ? "Hide sidebar" : "Show sidebar"}
       onClick={() => setVisible(!visible)}
     >

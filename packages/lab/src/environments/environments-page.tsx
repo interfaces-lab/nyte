@@ -1,4 +1,4 @@
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { useState, type ReactElement } from "react";
 import { customizeStyles } from "@nyte-ai/app/chrome/customize.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
@@ -18,10 +18,10 @@ const TABS = [
 type Tab = (typeof TABS)[number][0];
 
 /** Only what Customize has no piece for: a heading action and the badge tones. */
-const styles = stylex.create({
+const styles = create({
   heading: { display: "flex", alignItems: "center", justifyContent: "space-between" },
   titleGroup: { display: "flex", alignItems: "baseline", gap: 6 },
-  onBadge: { backgroundColor: t.fillSuccessSubtle, color: t.textSuccess },
+  onBadge: { backgroundColor: t.intentSuccessBg, color: t.intentSuccessContent },
 });
 
 interface Entry {
@@ -88,14 +88,12 @@ function EntryRow({ entry }: { readonly entry: Entry }): ReactElement {
         <Row.Label xstyle={customizeStyles.rowTitle}>{entry.title}</Row.Label>
         <Row.Description title={entry.detail}>{entry.detail}</Row.Description>
       </Row.Body>
-      <span {...stylex.props(customizeStyles.badge, entry.on && styles.onBadge)}>
-        {entry.badge}
-      </span>
+      <span {...props(customizeStyles.badge, entry.on && styles.onBadge)}>{entry.badge}</span>
       {entry.actions !== "none" && (
         <Menu
           label={`Actions for ${entry.title}`}
           align="end"
-          trigger={<Button size="icon-sm" icon="more-horizontal" aria-label="More" />}
+          trigger={<Button size="sm" iconOnly icon="more-horizontal" aria-label="More" />}
         >
           {entry.actions === "connection" ? (
             <>
@@ -165,7 +163,7 @@ export function EnvironmentsSurface({
   } as const satisfies Readonly<Record<Tab, readonly Entry[]>>;
 
   return (
-    <div {...stylex.props(customizeStyles.surface)}>
+    <div {...props(customizeStyles.surface)}>
       <Tabs.Root
         variant="pill"
         value={tab}
@@ -176,7 +174,7 @@ export function EnvironmentsSurface({
           if (next !== undefined) setTab(next[0]);
         }}
       >
-        <search {...stylex.props(customizeStyles.searchRow)}>
+        <search {...props(customizeStyles.searchRow)}>
           <InputGroup variant="quiet" xstyle={customizeStyles.searchField}>
             <Icon name="search" size={13} />
             <Input
@@ -210,12 +208,12 @@ export function EnvironmentsSurface({
               render={<section />}
               xstyle={customizeStyles.inventory}
             >
-              <div {...stylex.props(customizeStyles.inventoryHeading, styles.heading)}>
-                <span {...stylex.props(styles.titleGroup)}>
-                  <h1 {...stylex.props(customizeStyles.inventoryTitle)}>
+              <div {...props(customizeStyles.inventoryHeading, styles.heading)}>
+                <span {...props(styles.titleGroup)}>
+                  <h1 {...props(customizeStyles.inventoryTitle)}>
                     {panel === "connections" ? "Connected" : "Serving this Mac"}
                   </h1>
-                  <span {...stylex.props(customizeStyles.inventoryCount)}>{visible.length}</span>
+                  <span {...props(customizeStyles.inventoryCount)}>{visible.length}</span>
                 </span>
                 {panel === "connections" && (
                   <Button size="sm" icon="plus">
@@ -224,11 +222,11 @@ export function EnvironmentsSurface({
                 )}
               </div>
               {visible.length === 0 ? (
-                <div {...stylex.props(customizeStyles.list)}>
-                  <div {...stylex.props(customizeStyles.quiet)}>Nothing matches this search.</div>
+                <div {...props(customizeStyles.list)}>
+                  <div {...props(customizeStyles.quiet)}>Nothing matches this search.</div>
                 </div>
               ) : (
-                <div {...stylex.props(customizeStyles.list)}>
+                <div {...props(customizeStyles.list)}>
                   {visible.map((entry) => (
                     <EntryRow key={entry.id} entry={entry} />
                   ))}

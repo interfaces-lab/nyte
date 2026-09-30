@@ -17,15 +17,15 @@
     --doc-gutter: 72px;
     --doc-article: 710px;
 
-    background: var(--nyte-bg-page);
-    color: var(--nyte-text-primary);
+    background: var(--nyte-bg-base);
+    color: var(--nyte-content-primary);
     font-size: 16px;
     line-height: 24px;
     text-rendering: optimizeLegibility;
   }
 
   .doc :focus-visible {
-    outline: 1px solid var(--nyte-text-accent);
+    outline: 1px solid var(--nyte-intent-primary-content);
     outline-offset: 2px;
     border-radius: 3px;
   }
@@ -86,7 +86,7 @@
   .doc-side-label {
     margin: 0;
     padding: 6px 0;
-    color: var(--nyte-text-primary);
+    color: var(--nyte-content-primary);
     font-size: 12px;
     font-weight: 600;
     line-height: 19px;
@@ -111,7 +111,7 @@
     justify-content: space-between;
     width: 100%;
     padding: 10px 0;
-    color: var(--nyte-text-tertiary);
+    color: var(--nyte-content-secondary);
     font-size: 14px;
     font-weight: 400;
     letter-spacing: -0.09px;
@@ -120,11 +120,11 @@
   }
 
   .doc-side-row:hover {
-    color: var(--nyte-text-primary);
+    color: var(--nyte-content-primary);
   }
 
   .doc-side-row[aria-current="page"] {
-    color: var(--nyte-text-primary);
+    color: var(--nyte-content-primary);
     font-weight: 500;
   }
 
@@ -147,7 +147,7 @@
     font-weight: 600;
     line-height: 19px;
     letter-spacing: -0.01px;
-    color: var(--nyte-text-tertiary);
+    color: var(--nyte-content-secondary);
   }
 
   .doc-head .doc-eyebrow {
@@ -158,7 +158,7 @@
   .doc-title {
     margin: 0 0 16px;
     overflow: visible;
-    color: var(--nyte-text-primary);
+    color: var(--nyte-content-primary);
     font-size: 32px;
     font-weight: 600;
     line-height: 40px;
@@ -170,7 +170,7 @@
     margin: 0;
     padding: 0 0 32px;
     max-width: 640px;
-    color: var(--nyte-text-primary);
+    color: var(--nyte-content-primary);
     font-size: 16px;
     font-weight: 400;
     line-height: 24px;
@@ -194,7 +194,7 @@
   .doc-prose h4 {
     position: relative;
     scroll-margin-top: calc(var(--site-nav-height) + 24px);
-    color: var(--nyte-text-primary);
+    color: var(--nyte-content-primary);
     font-weight: 500;
     letter-spacing: -0.28px;
     text-wrap: balance;
@@ -214,22 +214,22 @@
 
   .doc-prose h4 {
     margin: 21px 0 8px;
-    color: var(--nyte-text-tertiary);
+    color: var(--nyte-content-secondary);
     font-size: 13px;
     font-weight: 600;
     line-height: 21px;
   }
 
   .doc-prose a {
-    color: var(--nyte-text-accent);
+    color: var(--nyte-intent-primary-content);
     text-decoration: underline;
-    text-decoration-color: color-mix(in srgb, var(--nyte-text-accent) 40%, transparent);
+    text-decoration-color: color-mix(in srgb, var(--nyte-intent-primary-content) 40%, transparent);
     text-underline-offset: 3px;
     transition: text-decoration-color 120ms var(--nyte-easing-out);
   }
 
   .doc-prose a:hover {
-    text-decoration-color: var(--nyte-text-accent);
+    text-decoration-color: var(--nyte-intent-primary-content);
   }
 
   .doc-prose strong {
@@ -237,7 +237,7 @@
   }
 
   .doc-prose em {
-    color: var(--nyte-text-tertiary);
+    color: var(--nyte-content-secondary);
   }
 
   .doc-prose ul,
@@ -260,14 +260,14 @@
   }
 
   .doc-prose li::marker {
-    color: var(--nyte-text-quaternary);
+    color: var(--nyte-content-tertiary);
   }
 
   .doc-prose blockquote {
     margin: 0 0 21px;
     padding: 3px 0 3px 21px;
-    border-left: 0.5px solid var(--nyte-stroke-secondary);
-    color: var(--nyte-text-tertiary);
+    border-left: 0.5px solid var(--nyte-border-secondary-translucent);
+    color: var(--nyte-content-secondary);
   }
 
   .doc-prose blockquote p:last-child {
@@ -277,7 +277,7 @@
   .doc-prose hr {
     margin: 34px 0;
     border: 0;
-    border-top: 0.5px solid var(--nyte-stroke-secondary);
+    border-top: 0.5px solid var(--nyte-border-secondary-translucent);
   }
 
   .doc-prose img {
@@ -288,7 +288,7 @@
   .doc-prose :not(pre) > code {
     padding: 1px 5px;
     border-radius: 5px;
-    background: var(--nyte-stroke-secondary);
+    background: var(--nyte-border-secondary-translucent);
     font-family: var(--font-mono);
     font-size: 0.87em;
     font-variant-ligatures: none;
@@ -299,9 +299,9 @@
 
   .doc-code {
     margin: 0 0 21px;
-    border: 0.5px solid var(--nyte-stroke-secondary);
+    border: 0.5px solid var(--nyte-border-secondary-translucent);
     border-radius: 8px;
-    background: var(--nyte-sidebar);
+    background: var(--nyte-bg-chrome);
     overflow: hidden;
   }
 
@@ -320,7 +320,7 @@
     border: 0;
     border-radius: 999px;
     background: transparent;
-    color: var(--nyte-text-tertiary);
+    color: var(--nyte-content-secondary);
     cursor: pointer;
     opacity: 0;
     transition:
@@ -335,8 +335,8 @@
   }
 
   .doc-code-copy:hover {
-    background: var(--nyte-stroke-secondary);
-    color: var(--nyte-text-primary);
+    background: var(--nyte-border-secondary-translucent);
+    color: var(--nyte-content-primary);
   }
 
   .doc-code pre {
@@ -363,7 +363,7 @@
   }
 
   .doc-code .highlighted {
-    background: var(--nyte-fill-accent-subtle);
+    background: var(--nyte-intent-primary-bg);
     margin-inline: -13px;
     padding-inline: 13px;
   }
@@ -394,14 +394,14 @@
     margin: 0;
     padding: 0;
     list-style: none;
-    border-left: 0.5px solid var(--nyte-stroke-secondary);
+    border-left: 0.5px solid var(--nyte-border-secondary-translucent);
   }
 
   .doc-toc a {
     position: relative;
     display: block;
     padding: 3px 0 3px 13px;
-    color: var(--nyte-text-quaternary);
+    color: var(--nyte-content-secondary);
     font-size: 13px;
     line-height: 21px;
     text-wrap: balance;
@@ -417,7 +417,7 @@
   }
 
   .doc-toc a:hover {
-    color: var(--nyte-text-primary);
+    color: var(--nyte-content-primary);
   }
 
   /* The tail: a segment of the rail lights up beside the current heading. */
@@ -429,13 +429,13 @@
     bottom: 5px;
     width: 1.5px;
     border-radius: 999px;
-    background: var(--nyte-text-accent);
+    background: var(--nyte-intent-primary-content);
     opacity: 0;
     transition: opacity 160ms var(--nyte-easing-out);
   }
 
   .doc-toc a[aria-current="true"] {
-    color: var(--nyte-text-accent);
+    color: var(--nyte-intent-primary-content);
   }
 
   .doc-toc a[aria-current="true"]::before {
@@ -450,7 +450,7 @@
     gap: 13px;
     margin-top: 89px;
     padding-top: 34px;
-    border-top: 0.5px solid var(--nyte-stroke-secondary);
+    border-top: 0.5px solid var(--nyte-border-secondary-translucent);
   }
 
   .doc-pager a {
@@ -458,13 +458,13 @@
     flex-direction: column;
     gap: 3px;
     padding: 13px;
-    border: 0.5px solid var(--nyte-stroke-secondary);
+    border: 0.5px solid var(--nyte-border-secondary-translucent);
     border-radius: 13px;
     transition: border-color 120ms var(--nyte-easing-out);
   }
 
   .doc-pager a:hover {
-    border-color: var(--nyte-text-quaternary);
+    border-color: var(--nyte-content-tertiary);
   }
 
   .doc-pager a[data-dir="next"] {
@@ -518,8 +518,8 @@
 
   .doc-prose thead th {
     padding: 0 13px 8px 0;
-    border-bottom: 0.5px solid var(--nyte-stroke-secondary);
-    color: var(--nyte-text-quaternary);
+    border-bottom: 0.5px solid var(--nyte-border-secondary-translucent);
+    color: var(--nyte-content-secondary);
     font-size: 12px;
     font-weight: 600;
     letter-spacing: -0.01px;
@@ -529,12 +529,12 @@
 
   .doc-prose tbody td {
     padding: 8px 13px 8px 0;
-    border-bottom: 0.5px solid var(--nyte-stroke-secondary);
+    border-bottom: 0.5px solid var(--nyte-border-secondary-translucent);
     vertical-align: top;
   }
 
   .doc-prose tbody tr:last-child td {
-    border-bottom-color: var(--nyte-stroke-secondary);
+    border-bottom-color: var(--nyte-border-secondary-translucent);
   }
 
   /*

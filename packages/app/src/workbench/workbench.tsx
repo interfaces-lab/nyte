@@ -197,7 +197,8 @@ function FloatingWorkbenchPanel({
         <div {...stylex.props(workbenchStyles.railHeading)}>
           <span {...stylex.props(workbenchStyles.railHeadingText)}>Open Tabs</span>
           <Button
-            size="icon-sm"
+            size="sm"
+            iconOnly
             aria-label="Collapse workbench"
             xstyle={workbenchStyles.chevronLayout}
             onClick={() => workbenchController.actions.toggleCollapsed({ view: viewKey })}
@@ -261,7 +262,7 @@ function CompactWorkbenchBar({
   return (
     <nav aria-label="Workbench navigation" {...stylex.props(workbenchStyles.iconRail)}>
       <Button
-        size="icon"
+        iconOnly
         aria-label="Expand workbench"
         onClick={() => workbenchController.actions.toggleCollapsed({ view: viewKey })}
       >
@@ -270,7 +271,7 @@ function CompactWorkbenchBar({
       <span aria-hidden="true" {...stylex.props(workbenchStyles.iconRailDivider)} />
       {workbenchTabs(scope, capabilities).map((kind) => (
         <Button
-          size="icon"
+          iconOnly
           key={kind}
           icon={tabIcons[kind]}
           aria-label={`Open ${workbenchKindLabel(kind)}`}
@@ -375,7 +376,7 @@ function PanelContent({
           workspacePath={workspacePath}
           toolbarActions={
             <Toggle
-              size="icon"
+              iconOnly
               indicator="glyph"
               aria-label={sidebarVisible ? "Hide visit history" : "Show visit history"}
               pressed={sidebarVisible}

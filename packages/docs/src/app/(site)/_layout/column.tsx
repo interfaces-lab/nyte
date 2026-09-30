@@ -8,7 +8,7 @@ export function Column({ children }: { children: ReactNode }) {
         {children}
       </div>
       <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-18 bg-linear-to-t from-(--nyte-bg-page) from-[12px] to-transparent"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-18 bg-linear-to-t from-(--nyte-bg-base) from-[12px] to-transparent"
         aria-hidden
       />
     </>

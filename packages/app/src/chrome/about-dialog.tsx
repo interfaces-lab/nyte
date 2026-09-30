@@ -28,8 +28,8 @@ const styles = create({
     padding: 0,
     borderStyle: "none",
     borderRadius: "50%",
-    color: t.iconSecondary,
-    backgroundColor: { default: "transparent", ":hover": t.fillHover },
+    color: t.contentInteractiveSecondary,
+    backgroundColor: { default: "transparent", ":hover": t.bgHover },
     cursor: t.cursorInteractive,
   },
   icon: {
@@ -37,7 +37,6 @@ const styles = create({
     height: 112,
     marginBottom: 12,
     flexShrink: 0,
-    filter: `drop-shadow(0 12px 16px ${t.shadowColor})`,
   },
   title: {
     margin: 0,
@@ -49,18 +48,18 @@ const styles = create({
   },
   version: {
     margin: "8px 0 0",
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: 15,
     lineHeight: 1.5,
     fontVariantNumeric: "tabular-nums",
   },
   credit: {
     margin: "20px 0 24px",
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: 13,
     lineHeight: 1.5,
   },
-  error: { margin: "12px 0 0", color: t.textDanger, fontSize: t.fontBase },
+  error: { margin: "12px 0 0", color: t.intentDangerContent, fontSize: t.fontBase },
 });
 
 export function AboutDialog({

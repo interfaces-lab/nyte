@@ -15,7 +15,7 @@ const styles = stylex.create({
     display: "grid",
     placeItems: "center",
     padding: 10,
-    borderRadius: t.radiusLg,
+    borderRadius: t.radius8,
     backgroundColor: "#ffffff",
   },
   code: { display: "block", shapeRendering: "crispEdges" },

@@ -29,8 +29,8 @@ const styles = create({
     maxWidth: "100%",
     minWidth: 0,
     color: {
-      default: t.textTertiary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.textSecondary },
+      default: t.contentInteractiveSecondary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": t.contentInteractivePrimary },
     },
     userSelect: "none",
     transitionProperty: "color",
@@ -45,7 +45,7 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    color: t.iconTertiary,
+    color: t.contentInteractiveTertiary,
     transform: "rotate(var(--_collapsible-chevron-rotate, 0deg))",
     transitionProperty: "transform",
     transitionDuration: {

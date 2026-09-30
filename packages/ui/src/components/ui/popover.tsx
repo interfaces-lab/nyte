@@ -5,6 +5,7 @@ import type { ReactElement } from "react";
 import { floatingSurfaceStyles } from "../../floating-surface.stylex.ts";
 import { layer } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
+import { surfaceTheme, type Tint } from "../../surface-theme.ts";
 import { t } from "../../vars.stylex.ts";
 import { useOverlayRef } from "./overlay.tsx";
 
@@ -13,9 +14,9 @@ const styles = create({
   popup: {
     padding: 8,
     borderStyle: "none",
-    borderRadius: t.radiusXl,
+    borderRadius: t.radius12,
     outline: "none",
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
     transformOrigin: "var(--transform-origin)",
@@ -35,14 +36,14 @@ const styles = create({
   },
   title: {
     margin: 0,
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontSize: t.fontBase,
     fontWeight: 500,
     lineHeight: t.leadingBase,
   },
   description: {
     margin: 0,
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
   },
@@ -68,16 +69,30 @@ function PopoverPositioner({
   );
 }
 
-export type PopoverPopupProps = StyledProps<PopoverPrimitive.Popup.Props>;
+export type PopoverPopupProps = StyledProps<PopoverPrimitive.Popup.Props> & {
+  /** Scopes the popup to a hue. */
+  readonly tint?: Tint;
+};
 
-function PopoverPopup({ className, style, xstyle, ...rest }: PopoverPopupProps): ReactElement {
+function PopoverPopup({
+  tint,
+  className,
+  style,
+  xstyle,
+  ...rest
+}: PopoverPopupProps): ReactElement {
   const overlayRef = useOverlayRef();
 
   return (
     <PopoverPrimitive.Popup
       ref={overlayRef}
       {...mergeStyleProps(
-        props(floatingSurfaceStyles.popup, styles.popup, xstyle),
+        props(
+          tint !== undefined && surfaceTheme[tint],
+          floatingSurfaceStyles.popup,
+          styles.popup,
+          xstyle,
+        ),
         className,
         style,
       )}

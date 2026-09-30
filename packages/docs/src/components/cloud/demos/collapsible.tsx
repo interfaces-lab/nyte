@@ -10,7 +10,7 @@ const styles = create({
   panel: {
     marginTop: 4,
     paddingInlineStart: 15,
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
   },

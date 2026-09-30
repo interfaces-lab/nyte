@@ -14,10 +14,10 @@ export const trayStyles = create({
     overflow: "hidden",
     borderRadius: tray.radius,
     backgroundColor: t.composerBg,
-    // The soft shadow alone disappears on a dark page; the inset hairline is
-    // what draws the tray's edge, as menus and tooltips do.
-    boxShadow: `${t.trayShadow}, inset 0 0 0 1px ${t.composerRing}`,
-    color: t.textSecondary,
+    // The shadow alone disappears on a dark page; the outline's hairline is
+    // what draws the tray's edge, as it does for tooltips and toasts.
+    boxShadow: t.shadowMdOutline,
+    color: t.contentSecondary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
   },
@@ -39,7 +39,7 @@ export const trayStyles = create({
     fontSize: t.fontBase,
     fontWeight: 400,
     lineHeight: "20px",
-    color: t.textSecondary,
+    color: t.contentSecondary,
   },
   list: {
     display: "flex",

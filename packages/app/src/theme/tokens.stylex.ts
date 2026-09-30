@@ -1,26 +1,27 @@
 /**
  * The desktop's app layout measurements, keyed by the custom property each
- * compiles to. The design tokens they build on live in
+ * compiles to. A control or row size reads the component token it is; the
+ * rest are Nyte's own. The design tokens they build on live in
  * `@nyte-ai/ui/tokens.stylex`; importing this file ships both.
  */
-import * as stylex from "@stylexjs/stylex";
+import { defineVars } from "@stylexjs/stylex";
 import "@nyte-ai/ui/tokens.stylex";
 
 /** The measurements `schema.stylex.ts` names; each is documented at its handle. */
-export const layout = stylex.defineVars({
+export const layout = defineVars({
   "--nyte-titlebar-height": "35px",
   // Main and preload keep the traffic lights in this lane at any zoom.
   "--nyte-titlebar-traffic-light-inset": "calc(72px / var(--nyte-window-zoom, 1))",
   "--nyte-sidebar-width": "220px",
   "--nyte-sidebar-handle-width": "8px",
-  "--nyte-sidebar-row-height": "28px",
+  "--nyte-sidebar-row-height": "var(--nyte-row-height-md)",
   "--nyte-sidebar-gutter": "8px",
-  "--nyte-sidebar-row-padding-inline": "4px",
-  "--nyte-sidebar-row-gap": "6px",
+  "--nyte-sidebar-row-padding-inline": "var(--nyte-row-padding-inline-md)",
+  "--nyte-sidebar-row-gap": "var(--nyte-row-gap)",
   "--nyte-sidebar-section-gap": "8px",
   "--nyte-sidebar-list-gap": "1px",
   "--nyte-sidebar-icon-slot": "20px",
-  "--nyte-sidebar-action-size": "24px",
+  "--nyte-sidebar-action-size": "var(--nyte-btn-height-sm)",
   "--nyte-sidebar-trailing-width": "44px",
   "--nyte-sidebar-meta-width": "40px",
   "--nyte-settings-content-width": "680px",
@@ -30,11 +31,11 @@ export const layout = stylex.defineVars({
   "--nyte-settings-section-gap": "28px",
   "--nyte-settings-card-gap": "8px",
   "--nyte-settings-row-padding": "12px",
-  "--nyte-settings-control-height": "24px",
+  "--nyte-settings-control-height": "var(--nyte-btn-height-sm)",
   "--nyte-settings-control-max-width": "160px",
   "--nyte-settings-page-title-size": "calc(var(--nyte-font-size-base) + 4px)",
   "--nyte-settings-page-title-line-height": "calc(var(--nyte-font-size-base) + 8px)",
-  "--nyte-suggestion-item-height": "28px",
+  "--nyte-suggestion-item-height": "var(--nyte-row-height-md)",
   "--nyte-suggestion-item-gap": "8px",
   "--nyte-conversation-measure": "840px",
   "--nyte-prose-measure": "840px",
@@ -48,16 +49,16 @@ export const layout = stylex.defineVars({
   "--nyte-composer-inset": "14px",
   "--nyte-composer-new-chat-radius": "22px",
   "--nyte-composer-expanded-radius": "18px",
-  "--nyte-tray-radius": "var(--nyte-radius-xl)",
+  "--nyte-tray-radius": "var(--nyte-radius-12)",
   "--nyte-tray-gap": "6px",
   "--nyte-tray-padding-inline": "12px",
   "--nyte-tray-header-height": "36px",
-  "--nyte-tray-row-height": "28px",
+  "--nyte-tray-row-height": "var(--nyte-row-height-md)",
   "--nyte-tray-row-inset": "6px",
   "--nyte-workbench-rail-width": "210px",
   "--nyte-workbench-rail-gap": "16px",
-  "--nyte-workbench-row-height": "28px",
-  "--nyte-workbench-row-gap": "6px",
+  "--nyte-workbench-row-height": "var(--nyte-row-height-md)",
+  "--nyte-workbench-row-gap": "var(--nyte-row-gap)",
   "--nyte-workbench-row-padding-inline": "6px",
   "--nyte-workbench-heading-height": "24px",
   "--nyte-workbench-panel-width": "384px",

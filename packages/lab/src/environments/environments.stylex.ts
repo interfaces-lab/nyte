@@ -1,12 +1,12 @@
-import * as stylex from "@stylexjs/stylex";
+import { create } from "@stylexjs/stylex";
 import { t } from "@nyte-ai/ui/vars.stylex";
 
-export const boardStyles = stylex.create({
+export const boardStyles = create({
   page: {
     height: "100%",
     overflowY: "auto",
-    backgroundColor: t.bgPage,
-    color: t.textPrimary,
+    backgroundColor: t.bgBase,
+    color: t.contentPrimary,
     fontFamily: t.fontSans,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
@@ -21,10 +21,10 @@ export const boardStyles = stylex.create({
     paddingBlock: 20,
   },
   title: { fontSize: t.fontLg, lineHeight: t.leadingLg, fontWeight: 500 },
-  subtitle: { color: t.textTertiary, flex: 1, minWidth: 240 },
+  subtitle: { color: t.contentSecondary, flex: 1, minWidth: 240 },
 });
 
-export const newChatStyles = stylex.create({
+export const newChatStyles = create({
   frame: {
     display: "flex",
     flexDirection: "column",
@@ -42,17 +42,17 @@ export const newChatStyles = stylex.create({
     alignItems: "center",
     gap: 2,
     minWidth: 0,
-    color: t.textSecondary,
+    color: t.contentSecondary,
   },
   chipText: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  chipDivider: { color: t.textQuaternary },
+  chipDivider: { color: t.contentDisabled },
   staticChip: {
     display: "inline-flex",
     alignItems: "center",
     gap: 4,
     height: 28,
     paddingInline: 8,
-    color: t.textTertiary,
+    color: t.contentSecondary,
   },
   composer: {
     display: "flex",
@@ -60,16 +60,16 @@ export const newChatStyles = stylex.create({
     justifyContent: "space-between",
     minHeight: 104,
     padding: 12,
-    borderRadius: t.radius2xl,
+    borderRadius: t.radius14,
     backgroundColor: t.composerBg,
     boxShadow: `0 0 0 1px ${t.composerRing}`,
-    color: t.textTertiary,
+    color: t.contentTertiary,
   },
   composerFoot: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
   },
   send: {
@@ -78,8 +78,8 @@ export const newChatStyles = stylex.create({
     width: 28,
     height: 28,
     borderRadius: t.radiusFull,
-    backgroundColor: t.fillStrong,
-    color: t.iconSecondary,
+    backgroundColor: t.bgInteractivePrimaryTranslucent,
+    color: t.contentInteractiveSecondary,
   },
-  menuMeta: { color: t.textTertiary, fontSize: t.fontSm },
+  menuMeta: { color: t.contentSecondary, fontSize: t.fontSm },
 });

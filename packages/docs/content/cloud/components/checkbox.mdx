@@ -13,7 +13,7 @@ The same `Checkbox` is exported from its own subpath. Pick one path per file.
 import { Checkbox } from "@nyte-ai/ui/checkbox";
 ```
 
-A 16px box, accent when ticked. Use it for a choice that is saved with a form or applies to a set
+A 16px box, filled in the primary intent when ticked. Use it for a choice that is saved with a form or applies to a set
 of items. For a setting that applies the moment it changes, use [Switch](/cloud/components/switch).
 
 ## Usage
@@ -21,7 +21,7 @@ of items. For a setting that applies the moment it changes, use [Switch](/cloud/
 - Name the box with a `<label>` around it, `aria-label`, or `aria-labelledby`.
 - `checked` with `onCheckedChange` controls the box. `defaultChecked` leaves it uncontrolled.
 - `indeterminate` draws a dash instead of the tick, for a box over a list that is partly ticked.
-- `size="sm"` is 14px, for a box on a line of text.
+- `size="lg"` is 20px. Both sizes are 20px under a coarse pointer.
 - `disabled` dims the box to half opacity.
 
 ## Examples
@@ -56,7 +56,6 @@ const [viewed, setViewed] = useState<readonly string[]>(["row.tsx"]);
   {files.map((file) => (
     <label key={file}>
       <Checkbox
-        size="sm"
         checked={viewed.includes(file)}
         onCheckedChange={(checked) =>
           setViewed((current) =>
@@ -75,10 +74,10 @@ const [viewed, setViewed] = useState<readonly string[]>(["row.tsx"]);
 Every Base UI `Checkbox.Root` prop passes through, except `render` and `children`. The indicator
 is built in.
 
-| Prop                           | Type                                      | Default     | Description    |
-| ------------------------------ | ----------------------------------------- | ----------- | -------------- |
-| `size`                         | `"default" \| "sm"`                       | `"default"` | 16px, or 14px. |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |             |                |
+| Prop                           | Type                                      | Default | Description    |
+| ------------------------------ | ----------------------------------------- | ------- | -------------- |
+| `size`                         | `"md" \| "lg"`                            | `"md"`  | 16px, or 20px. |
+| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |         |                |
 
 `CheckboxSize` is the exported type for `size`.
 

@@ -35,7 +35,7 @@ one control switches one thing on and off in place, without a form value.
 ```tsx
 const [pinned, setPinned] = useState(true);
 
-<Toggle size="icon" icon="pin" aria-label="Pin" pressed={pinned} onPressedChange={setPinned} />
+<Toggle iconOnly icon="pin" aria-label="Pin" pressed={pinned} onPressedChange={setPinned} />
 <Toggle icon="eye" defaultPressed>
   Preview
 </Toggle>
@@ -46,19 +46,20 @@ const [pinned, setPinned] = useState(true);
 Every native `<button>` attribute passes through, except `onClick`, `aria-pressed`, and
 `defaultValue`. `className` and `style` merge with the component's own.
 
-| Prop              | Type                                                                   | Default     | Description                                         |
-| ----------------- | ---------------------------------------------------------------------- | ----------- | --------------------------------------------------- |
-| `pressed`         | `boolean`                                                              |             | Controlled pressed state.                           |
-| `defaultPressed`  | `boolean`                                                              | `false`     | Uncontrolled initial state.                         |
-| `onPressedChange` | `(pressed: boolean, eventDetails) => void`                             |             | Called when the state changes.                      |
-| `value`           | `string`                                                               |             | Identifies the toggle inside a toggle group.        |
-| `indicator`       | `"fill" \| "glyph"`                                                    | `"fill"`    | Whether the pressed state paints the selected fill. |
-| `size`            | `"default" \| "condensed" \| "sm" \| "icon" \| "icon-sm" \| "icon-xs"` | `"default"` | See [Button](/cloud/components/button).             |
-| `icon`            | `IconName`                                                             |             | See [Button](/cloud/components/button).             |
-| `round`           | `boolean`                                                              | `false`     | Fully rounded corners.                              |
-| `xstyle`          | `ButtonLayout`                                                         |             | Placement only.                                     |
-| `className`       | `string`                                                               |             | See [Theming](/cloud/foundations/theming).          |
-| `style`           | `React.CSSProperties`                                                  |             | See [Theming](/cloud/foundations/theming).          |
+| Prop              | Type                                            | Default  | Description                                         |
+| ----------------- | ----------------------------------------------- | -------- | --------------------------------------------------- |
+| `pressed`         | `boolean`                                       |          | Controlled pressed state.                           |
+| `defaultPressed`  | `boolean`                                       | `false`  | Uncontrolled initial state.                         |
+| `onPressedChange` | `(pressed: boolean, eventDetails) => void`      |          | Called when the state changes.                      |
+| `value`           | `string`                                        |          | Identifies the toggle inside a toggle group.        |
+| `indicator`       | `"fill" \| "glyph"`                             | `"fill"` | Whether the pressed state paints the selected fill. |
+| `size`            | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"` | `"md"`   | See [Button](/cloud/components/button).             |
+| `iconOnly`        | `boolean`                                       | `false`  | See [Button](/cloud/components/button).             |
+| `icon`            | `IconName`                                      |          | See [Button](/cloud/components/button).             |
+| `round`           | `boolean`                                       | `false`  | Fully rounded corners.                              |
+| `xstyle`          | `ButtonLayout`                                  |          | Placement only.                                     |
+| `className`       | `string`                                        |          | See [Theming](/cloud/foundations/theming).          |
+| `style`           | `React.CSSProperties`                           |          | See [Theming](/cloud/foundations/theming).          |
 
 ## Accessibility
 

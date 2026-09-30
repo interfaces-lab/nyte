@@ -23,10 +23,10 @@ export const appearanceSettingsStyles = stylex.create({
     marginBlockEnd: 16,
     paddingInline: sidebar.rowPaddingInline,
     borderWidth: 0,
-    borderRadius: t.radiusLg,
+    borderRadius: t.radius8,
     boxShadow: {
-      default: `inset 0 0 0 1px ${t.strokeSecondary}`,
-      ":focus-within": `inset 0 0 0 1px ${t.strokePrimary}`,
+      default: `inset 0 0 0 1px ${t.borderSecondaryTranslucent}`,
+      ":focus-within": `inset 0 0 0 1px ${t.borderPrimaryTranslucent}`,
     },
     flexShrink: 0,
   },
@@ -48,10 +48,10 @@ export const appearanceSettingsStyles = stylex.create({
   },
   navList: { display: "flex", flexDirection: "column", gap: sidebar.listGap },
   /** The arrow keys' cursor while searching; the open section keeps its fill. */
-  navItemHighlighted: { "--_row-fill": t.fillHover, color: t.textPrimary },
+  navItemHighlighted: { "--_row-fill": t.bgHover, color: t.contentPrimary },
   emptyNavigation: {
     padding: "6px 4px",
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
   },
@@ -60,7 +60,7 @@ export const appearanceSettingsStyles = stylex.create({
     minWidth: 0,
     minHeight: 0,
     overflowY: "auto",
-    backgroundColor: t.bgPage,
+    backgroundColor: t.bgBase,
   },
   contentInner: {
     display: "flex",

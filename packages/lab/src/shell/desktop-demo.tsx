@@ -55,8 +55,8 @@ const fixture = create({
     minWidth: 0,
     minHeight: 0,
     overflow: "hidden",
-    backgroundColor: t.bgSidebar,
-    color: t.textPrimary,
+    backgroundColor: t.sidebarMaterial,
+    color: t.contentPrimary,
     fontFamily: t.fontSans,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
@@ -68,7 +68,7 @@ const fixture = create({
   red: { backgroundColor: "#ff5f57" },
   yellow: { backgroundColor: "#febc2e" },
   green: { backgroundColor: "#28c840" },
-  main: { backgroundColor: t.bgPage },
+  main: { backgroundColor: t.bgBase },
   transcript: { paddingBlockStart: 16, paddingBlockEnd: 8 },
   flowRow: { position: "relative" },
   sidebarSeat: {
@@ -131,11 +131,11 @@ const fixture = create({
       insetBlock: 0,
       insetInlineEnd: 0,
       width: 1,
-      backgroundColor: t.strokeTertiary,
+      backgroundColor: t.borderSecondaryTranslucent,
       pointerEvents: "none",
     },
   },
-  activity: { color: t.textAccent },
+  activity: { color: t.intentPrimaryContent },
 });
 
 const workbenchScope = { kind: "project" } as const;
@@ -328,7 +328,7 @@ export function DesktopDemo({
           <i {...props(fixture.light, fixture.green)} />
         </span>
         <span {...props(titlebarStyles.actionTrack)}>
-          <Button size="icon" aria-label="Toggle sidebar" onClick={onSidebar}>
+          <Button iconOnly aria-label="Toggle sidebar" onClick={onSidebar}>
             <PanelToggleIcon side="left" visible={sidebarVisible} />
           </Button>
         </span>
@@ -336,8 +336,8 @@ export function DesktopDemo({
           inert={!sidebarVisible}
           {...props(titlebarStyles.navigationTrack, fixture.historySlide)}
         >
-          <Button size="icon" icon="arrow-left" aria-label="Back" />
-          <Button size="icon" icon="arrow-right" aria-label="Forward" disabled />
+          <Button iconOnly icon="arrow-left" aria-label="Back" />
+          <Button iconOnly icon="arrow-right" aria-label="Forward" disabled />
         </span>
         <span
           {...props(
@@ -357,7 +357,7 @@ export function DesktopDemo({
             <PaneMenu
               surface={surface}
               onSurface={onSurface}
-              trigger={<Button size="icon" ref={menuRef} icon="more" aria-label="Pane actions" />}
+              trigger={<Button iconOnly ref={menuRef} icon="more" aria-label="Pane actions" />}
             />
           </span>
         )}
@@ -382,7 +382,7 @@ export function DesktopDemo({
                 content={view.maximized ? "Restore Workbench Width" : "Expand Workbench"}
                 trigger={
                   <Toggle
-                    size="icon"
+                    iconOnly
                     icon={view.maximized ? "minimize" : "expand"}
                     aria-label={view.maximized ? "Restore workbench width" : "Expand workbench"}
                     pressed={view.maximized}
@@ -399,7 +399,7 @@ export function DesktopDemo({
             content={`${workbenchOpen ? "Close Workbench Panel" : "Open Workbench Panel"} ${clientActionShortcut(clientActions.workbench, true)}`}
             trigger={
               <Toggle
-                size="icon"
+                iconOnly
                 aria-label={workbenchOpen ? "Close workbench panel" : "Open workbench panel"}
                 pressed={workbenchOpen}
                 onPressedChange={() =>
@@ -465,8 +465,8 @@ export function DesktopDemo({
               <section {...props(sidebarStyles.section)}>
                 <div {...props(sidebarStyles.sectionHeader)}>
                   <span {...props(sidebarStyles.sectionToggle)}>Workspaces</span>
-                  <Button size="icon-sm" icon="filters" aria-label="Filter workspaces" />
-                  <Button size="icon-sm" icon="folder-add" aria-label="Add workspace" />
+                  <Button size="sm" iconOnly icon="filters" aria-label="Filter workspaces" />
+                  <Button size="sm" iconOnly icon="folder-add" aria-label="Add workspace" />
                 </div>
                 <Row xstyle={[sidebarStyles.rowSurface, sidebarStyles.workspaceRow]}>
                   <Row.Leading xstyle={sidebarStyles.rowIcon}>
@@ -528,13 +528,15 @@ export function DesktopDemo({
                             xstyle={[sidebarStyles.rowActions, sidebarStyles.rowActionsBesideMeta]}
                           >
                             <Button
-                              size="icon-xs"
+                              size="2xs"
+                              iconOnly
                               icon="pin"
                               aria-label={`${pinned.has(title) ? "Unpin" : "Pin"} ${title}`}
                               onClick={() => togglePin(title)}
                             />
                             <Button
-                              size="icon-xs"
+                              size="2xs"
+                              iconOnly
                               aria-label={`Archive ${title}`}
                               onClick={() => archive(title)}
                             >
@@ -563,7 +565,7 @@ export function DesktopDemo({
                   side="top"
                   trigger={
                     <Button
-                      size="icon"
+                      iconOnly
                       icon="settings"
                       aria-label="Settings"
                       onClick={() => onSurface("menu")}
@@ -673,7 +675,7 @@ export function DesktopDemo({
                             onChoose={setReply}
                             trigger={
                               <Button
-                                size="icon"
+                                iconOnly
                                 icon="plus"
                                 aria-label="Add agents, context, tools"
                                 variant="secondary"
@@ -688,7 +690,7 @@ export function DesktopDemo({
                             <DemoModelPicker />
                           </span>
                           <Button
-                            size="icon"
+                            iconOnly
                             icon="arrow-up"
                             aria-label="Send message"
                             variant="inverse"

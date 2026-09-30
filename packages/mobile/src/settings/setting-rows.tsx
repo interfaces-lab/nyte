@@ -39,7 +39,7 @@ export function ChoiceRow<Value extends string>({
                 <Image
                   systemName="chevron.up.chevron.down"
                   size={10}
-                  modifiers={[foregroundStyle(theme.tertiary)]}
+                  modifiers={[foregroundStyle(theme.interactiveTertiary)]}
                 />
               </HStack>
             }
@@ -81,7 +81,7 @@ export function SwitchRow({
         <Switch
           value={value}
           onValueChange={onChange}
-          trackColor={{ false: theme.fill, true: theme.accent }}
+          trackColor={{ false: theme.fill, true: theme.accentFill }}
           accessibilityLabel={label}
         />
       </html.div>

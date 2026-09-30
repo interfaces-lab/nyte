@@ -32,7 +32,7 @@ import {
   useWorkbenchSnapshot,
 } from "../workbench/controller.ts";
 import { terminalActions } from "../workbench/terminal-store.ts";
-import { handleOpenOutcome } from "./open-workspace.tsx";
+import { folderPicker } from "./open-workspace.tsx";
 import { shellActions, useShellState } from "./shell-state.ts";
 import {
   clientActionAriaShortcut,
@@ -91,7 +91,7 @@ function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
       {parentSessionId !== undefined && (
         <span {...stylex.props(titlebarStyles.sessionBack)}>
           <Button
-            size="icon"
+            iconOnly
             icon="arrow-left"
             aria-label="Back to parent chat"
             onClick={() => panes.openSession(parentSessionId)}
@@ -169,7 +169,7 @@ export function Titlebar(): ReactElement {
 
           return;
         case clientActions.openFolder.id:
-          void nyte.host.pickWorkspace().then(handleOpenOutcome);
+          folderPicker()?.();
 
           return;
         case clientActions.newTerminal.id:
@@ -265,7 +265,7 @@ export function Titlebar(): ReactElement {
           content={`${sidebarVisible ? "Hide Sidebar" : "Show Sidebar"} ${clientActionShortcut(clientActions.sidebar, mac)}`}
           trigger={
             <Toggle
-              size="icon"
+              iconOnly
               indicator="glyph"
               aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
               pressed={sidebarVisible}
@@ -284,7 +284,7 @@ export function Titlebar(): ReactElement {
             content={`Go Back ${clientActionShortcut(clientActions.back, mac)}`}
             trigger={
               <Button
-                size="icon"
+                iconOnly
                 icon="arrow-left"
                 aria-label="Go back"
                 disabled={!canGoBack}
@@ -306,7 +306,7 @@ export function Titlebar(): ReactElement {
             content={`Go Forward ${clientActionShortcut(clientActions.forward, mac)}`}
             trigger={
               <Button
-                size="icon"
+                iconOnly
                 icon="arrow-right"
                 aria-label="Go forward"
                 disabled={!canGoForward}
@@ -341,7 +341,7 @@ export function Titlebar(): ReactElement {
           <Menu
             label="Chat actions"
             align="end"
-            trigger={<Button size="icon" icon="more" aria-label="Chat actions" />}
+            trigger={<Button iconOnly icon="more" aria-label="Chat actions" />}
           >
             <MenuItem
               icon="split-down"
@@ -390,7 +390,7 @@ export function Titlebar(): ReactElement {
                 content={view.maximized ? "Restore Workbench Width" : "Expand Workbench"}
                 trigger={
                   <Toggle
-                    size="icon"
+                    iconOnly
                     icon={view.maximized ? "minimize" : "expand"}
                     aria-label={view.maximized ? "Restore workbench width" : "Expand workbench"}
                     pressed={view.maximized}
@@ -407,7 +407,7 @@ export function Titlebar(): ReactElement {
             content={`${workbenchOpen ? "Close Workbench Panel" : "Open Workbench Panel"} ${clientActionShortcut(clientActions.workbench, mac)}`}
             trigger={
               <Toggle
-                size="icon"
+                iconOnly
                 indicator="glyph"
                 id="workbench-toggle"
                 aria-label={workbenchOpen ? "Close workbench panel" : "Open workbench panel"}

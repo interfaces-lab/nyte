@@ -15,7 +15,7 @@ const kbdClass =
 
 export function PlateHero() {
   return (
-    <div className="landing-plate relative isolate mx-(--plate-inset) mt-(--plate-inset) overflow-hidden rounded-(--plate-radius) text-white after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-(--nyte-stroke-secondary)">
+    <div className="landing-plate relative isolate mx-(--plate-inset) mt-(--plate-inset) overflow-hidden rounded-(--plate-radius) text-white after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-(--nyte-border-secondary-translucent)">
       <div
         aria-hidden="true"
         className="landing-plate-grain pointer-events-none absolute inset-0"

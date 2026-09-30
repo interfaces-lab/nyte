@@ -8,7 +8,6 @@ export function InputDemo() {
       <Input placeholder="Chat name" aria-label="Chat name" />
       <Input
         variant="quiet"
-        size="sm"
         type="password"
         placeholder="Paste your API key"
         aria-label="API key"

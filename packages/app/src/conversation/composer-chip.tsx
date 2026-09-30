@@ -81,7 +81,8 @@ export function ComposerChipView({
           content={`Remove ${label}`}
           trigger={
             <Button
-              size="icon-xs"
+              size="2xs"
+              iconOnly
               icon="x"
               aria-label={`Remove ${label}`}
               onMouseDown={(event) => event.preventDefault()}

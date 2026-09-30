@@ -12,19 +12,19 @@ const styles = create({
     gap: 1,
     width: 300,
     padding: 4,
-    borderRadius: t.radiusLg,
-    backgroundColor: t.bgSidebar,
-    boxShadow: `inset 0 0 0 1px ${t.strokeSecondary}`,
-    color: t.textSecondary,
+    borderRadius: t.radius8,
+    backgroundColor: t.sidebarMaterial,
+    boxShadow: `inset 0 0 0 1px ${t.borderSecondaryTranslucent}`,
+    color: t.contentSecondary,
     fontFamily: t.fontSans,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
   },
   settings: {
     width: 360,
-    borderRadius: t.radiusXl,
-    backgroundColor: t.bgRaised,
-    boxShadow: `inset 0 0 0 1px ${t.strokeSecondary}`,
+    borderRadius: t.radius12,
+    backgroundColor: t.bgElevated,
+    boxShadow: `inset 0 0 0 1px ${t.borderSecondaryTranslucent}`,
     fontFamily: t.fontSans,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
@@ -69,9 +69,7 @@ export function RowLargeDemo() {
           <Row.Description>200K context · $3 / $15</Row.Description>
         </Row.Body>
         <Row.Actions>
-          <Button variant="secondary" size="condensed">
-            Hide
-          </Button>
+          <Button variant="secondary">Hide</Button>
         </Row.Actions>
       </Row>
     </div>

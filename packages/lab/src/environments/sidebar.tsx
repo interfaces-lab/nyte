@@ -103,8 +103,8 @@ function SessionRow({
         placement="overlay"
         xstyle={[sidebarStyles.rowActions, sidebarStyles.rowActionsBesideMeta]}
       >
-        <Button size="icon-xs" icon="pin" aria-label="Pin" />
-        <Button size="icon-xs" aria-label="Archive">
+        <Button size="2xs" iconOnly icon="pin" aria-label="Pin" />
+        <Button size="2xs" iconOnly aria-label="Archive">
           <span {...props(sidebarStyles.actionGlyphArchive)}>
             <Icon name="archive" size={12} />
           </span>
@@ -222,7 +222,7 @@ export function EnvironmentSidebar({
             </Row.Leading>
             <Row.Label>Itsnotaka</Row.Label>
           </Row>
-          <Button size="icon" icon="settings" aria-label="Settings" />
+          <Button iconOnly icon="settings" aria-label="Settings" />
         </div>
       </div>
     </aside>

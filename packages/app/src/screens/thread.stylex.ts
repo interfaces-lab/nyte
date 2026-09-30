@@ -1,7 +1,7 @@
 import { create } from "@stylexjs/stylex";
 import { layer } from "@nyte-ai/ui/schema.stylex";
 import { conversation, pane } from "../theme/schema.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { ramp, t } from "@nyte-ai/ui/vars.stylex";
 
 export const threadStyles = create({
   stage: {
@@ -28,7 +28,7 @@ export const threadStyles = create({
     minWidth: 0,
     minHeight: 0,
     overflow: "hidden",
-    backgroundColor: t.bgPage,
+    backgroundColor: t.bgBase,
   },
   paneSingle: { flex: 1 },
   paneLeading: (ratio: number) => ({
@@ -60,13 +60,13 @@ export const threadStyles = create({
     whiteSpace: "nowrap",
     fontSize: t.fontBase,
     fontWeight: 600,
-    color: t.textPrimary,
+    color: t.contentPrimary,
   },
   headerActions: { display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0 },
   renameInput: {
     flex: 1,
     height: 24,
-    borderRadius: t.radiusSm,
+    borderRadius: t.radius4,
     fontWeight: 600,
   },
   body: { position: "relative", display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
@@ -85,34 +85,10 @@ export const threadStyles = create({
     gap: 8,
     width: "min(608px, calc(100% - 40px))",
   },
-  greeting: { paddingInlineStart: 4, color: t.textTertiary, fontSize: t.fontLg },
-  workspaceContext: {
-    display: "flex",
-    alignItems: "center",
-    gap: 4,
-    minWidth: 0,
-    paddingInline: 4,
-    color: t.textSecondary,
-    fontSize: t.fontBase,
-  },
-  workspaceContextItem: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    minWidth: 0,
-  },
-  workspaceContextPath: { minWidth: 0, maxWidth: 280 },
-  workspaceContextStatic: { height: 26, paddingInline: 4 },
-  workspaceContextDivider: { color: t.textQuaternary },
-  workspaceContextText: {
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  blankHint: { paddingInlineStart: 4, color: t.textTertiary, fontSize: t.fontBase },
+  greeting: { paddingInlineStart: 4, color: t.contentSecondary, fontSize: t.fontLg },
+  blankHint: { paddingInlineStart: 4, color: t.contentSecondary, fontSize: t.fontBase },
   blankActions: { display: "flex", gap: 8, paddingInlineStart: 4 },
-  error: { paddingInlineStart: 4, color: t.textDanger, fontSize: t.fontBase },
+  error: { paddingInlineStart: 4, color: t.intentDangerContent, fontSize: t.fontBase },
   sash: {
     position: "relative",
     display: "grid",
@@ -127,7 +103,7 @@ export const threadStyles = create({
   },
   sashRight: { width: pane.sashSize, cursor: "col-resize" },
   sashDown: { height: pane.sashSize, cursor: "row-resize" },
-  sashLine: { backgroundColor: t.strokeSecondary, pointerEvents: "none" },
+  sashLine: { backgroundColor: t.borderSecondaryTranslucent, pointerEvents: "none" },
   sashLineRight: { width: 1, height: "100%" },
   sashLineDown: { width: "100%", height: 1 },
   dropPreviewLayer: {
@@ -139,11 +115,11 @@ export const threadStyles = create({
   },
   dropPreview: {
     position: "absolute",
-    borderRadius: t.radiusSm,
+    borderRadius: t.radius4,
     borderWidth: 2,
     borderStyle: "solid",
-    borderColor: t.strokeFocused,
-    backgroundColor: t.fillAccentSubtle,
+    borderColor: ramp.blue80,
+    backgroundColor: t.intentPrimaryBg,
     pointerEvents: "none",
   },
 });

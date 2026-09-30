@@ -6,7 +6,7 @@ description: "The focus ring, the pointer and keyboard modality switch, and the 
 ## The ring
 
 A focusable component draws a 1px outline in `--nyte-focus-ring` on `:focus-visible`. The token
-defaults to the accent. The same styles are exported for your own focusable elements.
+defaults to `--nyte-blue-80`. The same styles are exported for your own focusable elements.
 
 ```ts title="Import"
 import { focus, srOnly } from "@nyte-ai/ui/a11y.stylex";
@@ -24,8 +24,8 @@ import { focus, srOnly } from "@nyte-ai/ui/a11y.stylex";
 </a>
 ```
 
-`Input`, `InputGroup`, and `Textarea` draw no ring. Their border takes `--nyte-stroke-focused` on
-focus in the `raised` variant and `--nyte-stroke-primary` in the `quiet` one.
+`Input`, `InputGroup`, and `Textarea` draw no ring. Their border takes `--nyte-blue-80` on
+focus in the `raised` variant and `--nyte-border-primary-translucent` in the `quiet` one.
 
 ## Focus modality
 
@@ -63,6 +63,5 @@ The full key tables are on the [component pages](/cloud/components), reproduced 
 
 ## Disabled
 
-`Button` and `Toggle` drop to half opacity when disabled, except the `inverse` variant, which
-switches to `--nyte-fill-strong` behind `--nyte-text-quaternary`. A disabled menu item takes
-`--nyte-text-quaternary`.
+`Button` and `Toggle` drop to half opacity when disabled. A disabled menu item takes
+`--nyte-content-disabled`.

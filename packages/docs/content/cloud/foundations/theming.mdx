@@ -12,17 +12,14 @@ description: "Change what a primitive looks like with token overrides, className
 ## Token overrides
 
 Override on an ancestor. The app root is the right place, and a preview container works too.
-An anchor such as `--nyte-accent-base` moves every step mixed from it only when overridden on
-`:root`. Below the root, override the step itself. See [Tokens](/cloud/foundations/tokens).
+A hue scope re-declares every role on the element that starts it, so to recolour a subtree give it
+a scope from `@nyte-ai/ui/surface-theme` rather than overriding roles one by one. See
+[Tokens](/cloud/foundations/tokens).
 
 ```css
-:root {
-  --nyte-accent-base: #7c3aed;
-}
-
 .my-preview {
   color-scheme: dark;
-  --nyte-bg-raised: #1c1c22;
+  --nyte-bg-elevated: #1c1c22;
 }
 ```
 

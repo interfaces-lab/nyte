@@ -130,27 +130,27 @@ const styles = stylex.create({
     display: "inline-flex",
     gap: 6,
     flexShrink: 0,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     fontWeight: 590,
     fontVariantNumeric: "tabular-nums",
   },
-  scopeAdded: { color: t.textSuccess },
-  scopeRemoved: { color: t.textDanger },
+  scopeAdded: { color: t.intentSuccessContent },
+  scopeRemoved: { color: t.intentDangerContent },
   scopeCount: {
-    color: t.textTertiary,
+    color: t.contentSecondary,
     whiteSpace: "nowrap",
     fontVariantNumeric: "tabular-nums",
   },
   scopeDetail: {
     maxWidth: 160,
     overflow: "hidden",
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  scopeChevron: { display: "inline-flex", flexShrink: 0, color: t.iconTertiary },
+  scopeChevron: { display: "inline-flex", flexShrink: 0, color: t.contentInteractiveTertiary },
   scopeMenu: {
     maxHeight: `min(${menu.maxHeight}, var(--available-height))`,
   },
@@ -160,7 +160,7 @@ const styles = stylex.create({
     gap: 4,
     minWidth: 0,
     paddingInline: 6,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
   },
@@ -173,8 +173,8 @@ const styles = stylex.create({
   branchTag: {
     flexShrink: 0,
     paddingInline: 4,
-    borderRadius: t.radiusSm,
-    backgroundColor: t.fillQuiet,
+    borderRadius: t.radius4,
+    backgroundColor: t.bgMutedTranslucent,
     fontSize: t.fontXs,
     lineHeight: t.leadingXs,
   },
@@ -515,7 +515,6 @@ export function ChangesToolbar({
           trigger={
             <Button
               icon={scopeIcon(scope)}
-              size="condensed"
               aria-label={`Select scope, showing ${scopeLabel}`}
               xstyle={styles.scopeTriggerLayout}
             >
@@ -577,11 +576,11 @@ export function ChangesToolbar({
         </Menu>
         {branch !== undefined && <BranchReadoutChip branch={branch} />}
         <span {...stylex.props(styles.spacer)} />
-        <Button size="icon" icon="refresh" aria-label="Refresh changes" onClick={onRefresh} />
+        <Button iconOnly icon="refresh" aria-label="Refresh changes" onClick={onRefresh} />
         <Menu
           label="Changes view options"
           align="end"
-          trigger={<Button size="icon" icon="more-horizontal" aria-label="More changes options" />}
+          trigger={<Button iconOnly icon="more-horizontal" aria-label="More changes options" />}
         >
           <MenuSubmenu
             label="Layout"
@@ -639,7 +638,7 @@ export function ChangesToolbar({
           </MenuItem>
         </Menu>
         <Toggle
-          size="icon"
+          iconOnly
           indicator="glyph"
           aria-label={fileTreeVisible ? "Hide file tree" : "Show file tree"}
           pressed={fileTreeVisible}

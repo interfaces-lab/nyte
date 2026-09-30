@@ -18,12 +18,12 @@ export function renderDiagram(source: string): DiagramResult {
   try {
     const svg = renderMermaidSVG(source, {
       bg: "var(--nyte-conversation-technical-bg)",
-      fg: "var(--nyte-text-primary)",
-      accent: "var(--nyte-accent)",
-      muted: "var(--nyte-text-tertiary)",
-      surface: "var(--nyte-bg-raised)",
-      border: "var(--nyte-stroke-secondary)",
-      line: "var(--nyte-stroke-primary)",
+      fg: "var(--nyte-content-primary)",
+      accent: "var(--nyte-blue-80)",
+      muted: "var(--nyte-content-secondary)",
+      surface: "var(--nyte-bg-elevated)",
+      border: "var(--nyte-border-secondary-translucent)",
+      line: "var(--nyte-border-primary-translucent)",
       font: "var(--nyte-font-family-sans)",
       padding: 24,
       transparent: true,

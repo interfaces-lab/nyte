@@ -14,11 +14,13 @@ import { useId } from "react";
 import type { CSSProperties, ReactElement, ReactNode, Ref } from "react";
 
 import { floatingSurfaceStyles } from "../../floating-surface.stylex.ts";
-import { layer, menu } from "../../schema.stylex.ts";
+import { layer, menu, switchControl } from "../../schema.stylex.ts";
 import { mergeStyleProps, type XStyle } from "../../style.ts";
+import { intent, surfaceTheme, type Tint } from "../../surface-theme.ts";
 import { t } from "../../vars.stylex.ts";
 import { Icon, type IconName } from "./icon.tsx";
 import { useOverlayRef } from "./overlay.tsx";
+import { Hint, type HintProps } from "./tooltip.tsx";
 
 const MENU_COLLISION: NonNullable<MenuPrimitive.Positioner.Props["collisionAvoidance"]> = {
   side: "flip",
@@ -39,7 +41,7 @@ const styles = create({
     borderStyle: "none",
     borderRadius: menu.radius,
     outline: "none",
-    color: t.textPrimary,
+    color: t.contentPrimary,
     overflowY: "auto",
     overscrollBehavior: "contain",
     transformOrigin: "var(--transform-origin)",
@@ -87,49 +89,44 @@ const styles = create({
     outline: "none",
     backgroundColor: {
       default: "transparent",
-      "[data-highlighted]": t.fillHover,
-      "[data-checked]": t.fillSelected,
-      "[data-nyte-selected='true']": t.fillSelected,
+      "[data-highlighted]": t.bgHover,
+      "[data-checked]": t.bgInteractiveSecondaryTranslucent,
+      "[data-nyte-selected='true']": t.bgInteractiveSecondaryTranslucent,
     },
-    color: { default: t.textPrimary, "[data-disabled]": t.textQuaternary },
+    // A selected row carries a hairline, so it reads apart from the hovered one.
+    boxShadow: {
+      default: "none",
+      "[data-checked]": `inset 0 0 0 1px ${t.borderPrimary}`,
+      "[data-nyte-selected='true']": `inset 0 0 0 1px ${t.borderPrimary}`,
+    },
+    color: { default: t.contentPrimary, "[data-disabled]": t.contentDisabled },
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
     letterSpacing: t.letterBase,
     cursor: "default",
     userSelect: "none",
   },
-  itemSmall: {
-    gridTemplateColumns: "12px minmax(0, 1fr) auto",
-    columnGap: 6,
-    minHeight: 24,
-    paddingBlock: 2,
-    paddingInline: 4,
-    borderRadius: t.radiusSm,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
-  },
   itemHighlightOnly: {
     backgroundColor: {
       default: "transparent",
       "[data-checked]": "transparent",
-      "[data-highlighted]": t.fillHover,
-      "[data-checked][data-highlighted]": t.fillHover,
+      "[data-highlighted]": t.bgHover,
+      "[data-checked][data-highlighted]": t.bgHover,
     },
-    borderRadius: t.radiusSm,
+    boxShadow: "none",
   },
   itemPlain: { gridTemplateColumns: "minmax(0, 1fr) auto" },
-  itemDanger: { color: { default: t.textDanger, "[data-disabled]": t.textQuaternary } },
+  itemDanger: { color: { default: t.intentDangerContent, "[data-disabled]": t.contentDisabled } },
   icon: {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     width: 14,
     height: t.leadingBase,
-    color: t.iconSecondary,
+    color: t.contentSecondary,
   },
-  iconSmall: { width: 12, height: t.leadingBase },
-  iconDanger: { color: t.textDanger },
-  iconDisabled: { color: t.iconTertiary },
+  iconDanger: { color: t.intentDangerContent },
+  iconDisabled: { color: t.contentTertiary },
   label: {
     minWidth: 0,
     overflow: "hidden",
@@ -137,7 +134,6 @@ const styles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  labelSmall: { lineHeight: t.leadingBase },
   meta: {
     display: "inline-flex",
     alignItems: "center",
@@ -145,20 +141,24 @@ const styles = create({
     minWidth: 32,
     minHeight: t.leadingBase,
     gap: 4,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
     whiteSpace: "nowrap",
   },
-  metaSmall: { minHeight: t.leadingBase },
-  separator: { height: 1, marginBlock: 4, marginInline: -4, backgroundColor: t.strokeSecondary },
+  separator: {
+    height: 1,
+    marginBlock: 4,
+    marginInline: `calc(${menu.padding} * -1)`,
+    backgroundColor: t.borderSecondaryTranslucent,
+  },
   separatorInset: { marginBlock: 4, marginInline: 8 },
   groupHeading: { display: "flex", alignItems: "center", minHeight: menu.itemHeight },
   groupLabel: {
     flex: 1,
     paddingInline: 6,
     paddingBlock: 2,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontXs,
     lineHeight: t.leadingXs,
     userSelect: "none",
@@ -166,41 +166,50 @@ const styles = create({
   groupAction: {
     paddingInline: 6,
     paddingBlock: 2,
-    borderRadius: t.radiusBase,
+    borderRadius: t.radius6,
     outline: "none",
-    color: { default: t.textTertiary, "[data-highlighted]": t.textPrimary },
-    backgroundColor: { default: "transparent", "[data-highlighted]": t.fillHover },
+    color: {
+      default: t.contentInteractiveSecondary,
+      "[data-highlighted]": t.contentInteractivePrimary,
+    },
+    backgroundColor: { default: "transparent", "[data-highlighted]": t.bgHover },
     fontSize: t.fontXs,
     lineHeight: t.leadingXs,
     cursor: "default",
     userSelect: "none",
   },
-  submenuTriggerOpen: { backgroundColor: { "[data-popup-open]": t.fillSelected } },
+  submenuTriggerOpen: {
+    backgroundColor: { "[data-popup-open]": t.bgInteractiveSecondaryTranslucent },
+  },
   submenuValue: {
     maxWidth: 112,
     overflow: "hidden",
-    color: t.textTertiary,
+    color: t.contentSecondary,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
   switchTrack: {
+    boxSizing: "border-box",
     display: "inline-flex",
     alignItems: "center",
-    width: 26,
-    height: 16,
-    padding: 2,
+    width: switchControl.widthMd,
+    height: switchControl.heightMd,
+    padding: switchControl.paddingMd,
     borderRadius: t.radiusFull,
-    backgroundColor: t.fillStrong,
+    backgroundColor: t.bgControl,
   },
-  switchTrackOn: { backgroundColor: t.accent },
+  switchTrackOn: { backgroundColor: t.bgControlSelected },
   switchThumb: {
-    width: 12,
-    height: 12,
+    width: switchControl.knobMd,
+    height: switchControl.knobMd,
     borderRadius: t.radiusFull,
-    backgroundColor: t.switchThumb,
+    backgroundColor: t.contentOnControl,
+    boxShadow: t.shadowSm,
     transform: "translateX(0)",
   },
-  switchThumbOn: { transform: "translateX(10px)" },
+  switchThumbOn: {
+    transform: `translateX(calc(${switchControl.widthMd} - ${switchControl.knobMd} - ${switchControl.paddingMd} * 2))`,
+  },
   commandBackdrop: {
     position: "fixed",
     inset: 0,
@@ -214,10 +223,10 @@ const styles = create({
     width: "min(560px, calc(100vw - 32px))",
     maxHeight: "min(430px, calc(100vh - 96px))",
     borderStyle: "none",
-    borderRadius: t.radius2xl,
+    borderRadius: t.radius14,
     outline: "none",
     overflow: "hidden",
-    color: t.textPrimary,
+    color: t.contentPrimary,
   },
 });
 
@@ -243,33 +252,34 @@ export type MenuAlign = MenuPrimitive.Positioner.Props["align"];
 
 export type MenuAnchor = MenuPrimitive.Positioner.Props["anchor"];
 
-export interface MenuProps extends MenuStyleProps {
-  readonly label: string;
-  /** DOM id for the popup, so a combobox can point `aria-controls` at it. */
-  readonly id?: string;
-  /** The element that opens the menu; Base UI merges the trigger props into it. */
-  readonly trigger: ReactElement;
-  readonly side?: MenuSide;
-  readonly align?: MenuAlign;
-  readonly anchor?: MenuAnchor;
-  readonly sideOffset?: number;
-  readonly alignOffset?: number;
-  readonly collisionPadding?: number;
-  readonly open?: boolean;
-  readonly modal?: boolean;
-  readonly loopFocus?: boolean;
-  readonly highlightItemOnHover?: boolean;
-  /** Where focus goes when the menu closes; `false` leaves it where the item put it. */
-  readonly finalFocus?: MenuPrimitive.Popup.Props["finalFocus"];
-  readonly onOpenChange?: (open: boolean) => void;
-  readonly onOpenChangeComplete?: (open: boolean) => void;
-  readonly children: ReactNode;
-}
+export type MenuProps = MenuStyleProps &
+  Pick<
+    MenuPrimitive.Root.Props,
+    | "open"
+    | "modal"
+    | "loopFocus"
+    | "highlightItemOnHover"
+    | "onOpenChange"
+    | "onOpenChangeComplete"
+  > &
+  Pick<
+    MenuPrimitive.Positioner.Props,
+    "side" | "align" | "anchor" | "sideOffset" | "alignOffset" | "collisionPadding"
+  > &
+  Pick<MenuPrimitive.Popup.Props, "id" | "finalFocus"> & {
+    readonly label: string;
+    readonly trigger: NonNullable<MenuPrimitive.Trigger.Props["render"]>;
+    readonly hint?: Omit<HintProps, "trigger">;
+    /** Scopes the popup to a hue. */
+    readonly tint?: Tint;
+    readonly children: ReactNode;
+  };
 
 export function Menu({
   label,
   id,
   trigger,
+  hint,
   side = "bottom",
   align = "start",
   anchor,
@@ -283,6 +293,7 @@ export function Menu({
   finalFocus,
   onOpenChange,
   onOpenChangeComplete,
+  tint,
   xstyle,
   className,
   style,
@@ -296,10 +307,14 @@ export function Menu({
       modal={modal}
       loopFocus={loopFocus}
       highlightItemOnHover={highlightItemOnHover}
-      onOpenChange={(nextOpen) => onOpenChange?.(nextOpen)}
+      onOpenChange={onOpenChange}
       onOpenChangeComplete={onOpenChangeComplete}
     >
-      <MenuPrimitive.Trigger render={trigger} />
+      {hint === undefined ? (
+        <MenuPrimitive.Trigger render={trigger} />
+      ) : (
+        <Hint {...hint} trigger={<MenuPrimitive.Trigger render={trigger} />} />
+      )}
       <MenuPrimitive.Portal>
         <MenuPrimitive.Positioner
           positionMethod="fixed"
@@ -318,7 +333,13 @@ export function Menu({
             aria-label={label}
             finalFocus={finalFocus}
             {...mergeStyleProps(
-              props(floatingSurfaceStyles.popup, styles.popup, styles.rootPopupMotion, xstyle),
+              props(
+                tint !== undefined && surfaceTheme[tint],
+                floatingSurfaceStyles.popup,
+                styles.popup,
+                styles.rootPopupMotion,
+                xstyle,
+              ),
               className,
               style,
             )}
@@ -330,8 +351,6 @@ export function Menu({
     </MenuPrimitive.Root>
   );
 }
-
-export type MenuSize = "default" | "small";
 
 /**
  * How a row paints its background. `highlightOnly` suppresses the checked fill,
@@ -348,7 +367,6 @@ interface ItemBodyProps {
   readonly leading?: ReactNode;
   /** Right column: a shortcut, a count, a provider name. */
   readonly meta?: ReactNode;
-  readonly size?: MenuSize;
   readonly layout?: MenuItemLayout;
   readonly children: ReactNode;
 }
@@ -359,42 +377,33 @@ function ItemBody({
   icon,
   leading,
   meta,
-  size = "default",
   layout = "menu",
   children,
 }: ItemBodyProps & { readonly danger?: boolean; readonly disabled?: boolean }): ReactElement {
-  const small = size === "small";
-
   return (
     <>
       {layout !== "plain" && (
         <span
           aria-hidden="true"
-          {...props(
-            styles.icon,
-            small && styles.iconSmall,
-            danger && styles.iconDanger,
-            disabled && styles.iconDisabled,
-          )}
+          {...props(styles.icon, danger && styles.iconDanger, disabled && styles.iconDisabled)}
         >
-          {leading ?? (icon !== undefined && <Icon name={icon} size={small ? 12 : 14} />)}
+          {leading ?? (icon !== undefined && <Icon name={icon} size={14} />)}
         </span>
       )}
-      <span {...props(styles.label, small && styles.labelSmall)}>{children}</span>
-      <span {...props(styles.meta, small && styles.metaSmall)}>{meta}</span>
+      <span {...props(styles.label)}>{children}</span>
+      <span {...props(styles.meta)}>{meta}</span>
     </>
   );
 }
 
 function itemStyles(
-  { size, background, layout }: Pick<ItemRowProps, "size" | "background" | "layout">,
+  { background, layout }: Pick<ItemRowProps, "background" | "layout">,
   danger: boolean,
   { xstyle, className, style }: MenuStyleProps,
 ): ReturnType<typeof mergeStyleProps> {
   return mergeStyleProps(
     props(
       styles.item,
-      size === "small" && styles.itemSmall,
       background === "highlightOnly" && styles.itemHighlightOnly,
       layout === "plain" && styles.itemPlain,
       danger && styles.itemDanger,
@@ -431,7 +440,6 @@ export function MenuItem({
   closeOnClick = true,
   textValue,
   selected = false,
-  size = "default",
   background = "default",
   layout = "menu",
   xstyle,
@@ -448,7 +456,7 @@ export function MenuItem({
       closeOnClick={closeOnClick}
       label={textValue}
       data-nyte-selected={selected}
-      {...itemStyles({ size, background, layout }, danger, { xstyle, className, style })}
+      {...itemStyles({ background, layout }, danger, { xstyle, className, style })}
       onClick={onSelect}
       onPointerMove={onPointerMove}
     >
@@ -458,7 +466,6 @@ export function MenuItem({
         icon={icon}
         leading={leading}
         meta={meta}
-        size={size}
         layout={layout}
       >
         {children}
@@ -489,7 +496,6 @@ export function MenuRadioItem({
   closeOnClick = true,
   label,
   onFocus,
-  size = "default",
   background = "default",
   layout = "menu",
   xstyle,
@@ -505,13 +511,12 @@ export function MenuRadioItem({
       closeOnClick={closeOnClick}
       label={label}
       onFocus={onFocus}
-      {...itemStyles({ size, background, layout }, false, { xstyle, className, style })}
+      {...itemStyles({ background, layout }, false, { xstyle, className, style })}
     >
       <ItemBody
         disabled={disabled}
         icon={icon}
         leading={leading}
-        size={size}
         layout={layout}
         meta={
           <>
@@ -528,7 +533,7 @@ export function MenuRadioItem({
   );
 }
 
-export interface MenuCheckboxItemProps extends Omit<ItemRowProps, "layout"> {
+export interface MenuCheckboxItemProps extends ItemRowProps {
   readonly checked: boolean;
   readonly closeOnClick?: boolean;
   readonly onCheckedChange: (checked: boolean) => void;
@@ -541,8 +546,8 @@ export function MenuCheckboxItem({
   meta,
   disabled = false,
   closeOnClick = false,
-  size = "default",
   background = "default",
+  layout = "menu",
   xstyle,
   className,
   style,
@@ -555,13 +560,13 @@ export function MenuCheckboxItem({
       disabled={disabled}
       closeOnClick={closeOnClick}
       onCheckedChange={(nextChecked) => onCheckedChange(nextChecked)}
-      {...itemStyles({ size, background }, false, { xstyle, className, style })}
+      {...itemStyles({ background, layout }, false, { xstyle, className, style })}
     >
       <ItemBody
         disabled={disabled}
         icon={icon}
         leading={leading}
-        size={size}
+        layout={layout}
         meta={
           <>
             {meta}
@@ -588,7 +593,6 @@ export function MenuSwitchItem({
   icon,
   leading,
   disabled = false,
-  size = "default",
   background = "default",
   layout = "menu",
   xstyle,
@@ -603,16 +607,18 @@ export function MenuSwitchItem({
       disabled={disabled}
       closeOnClick={false}
       onCheckedChange={(nextChecked) => onCheckedChange(nextChecked)}
-      {...itemStyles({ size, background, layout }, false, { xstyle, className, style })}
+      {...itemStyles({ background, layout }, false, { xstyle, className, style })}
     >
       <ItemBody
         disabled={disabled}
         icon={icon}
         leading={leading}
-        size={size}
         layout={layout}
         meta={
-          <span aria-hidden="true" {...props(styles.switchTrack, checked && styles.switchTrackOn)}>
+          <span
+            aria-hidden="true"
+            {...props(intent.primary, styles.switchTrack, checked && styles.switchTrackOn)}
+          >
             <span {...props(styles.switchThumb, checked && styles.switchThumbOn)} />
           </span>
         }
@@ -632,6 +638,8 @@ export interface MenuSubmenuProps extends Omit<ItemBodyProps, "meta">, MenuStyle
   readonly disabled?: boolean;
   readonly align?: MenuAlign;
   readonly onOpenChangeComplete?: (open: boolean) => void;
+  /** Scopes the nested popup to a hue. */
+  readonly tint?: Tint;
 }
 
 /** A row that opens a nested menu on hover; `xstyle`, `className`, and `style` go to its popup. */
@@ -642,10 +650,10 @@ export function MenuSubmenu({
   onOpenChange,
   icon,
   leading,
-  size = "default",
   layout = "menu",
   disabled = false,
   align = "start",
+  tint,
   xstyle,
   className,
   style,
@@ -664,18 +672,12 @@ export function MenuSubmenu({
         disabled={disabled}
         label={label}
         openOnHover
-        {...props(
-          styles.item,
-          size === "small" && styles.itemSmall,
-          layout === "plain" && styles.itemPlain,
-          styles.submenuTriggerOpen,
-        )}
+        {...props(styles.item, layout === "plain" && styles.itemPlain, styles.submenuTriggerOpen)}
       >
         <ItemBody
           disabled={disabled}
           icon={icon}
           leading={leading}
-          size={size}
           layout={layout}
           meta={
             <>
@@ -702,7 +704,13 @@ export function MenuSubmenu({
             ref={overlayRef}
             aria-label={label}
             {...mergeStyleProps(
-              props(floatingSurfaceStyles.popup, styles.popup, styles.submenuPopupMotion, xstyle),
+              props(
+                tint !== undefined && surfaceTheme[tint],
+                floatingSurfaceStyles.popup,
+                styles.popup,
+                styles.submenuPopupMotion,
+                xstyle,
+              ),
               className,
               style,
             )}
@@ -777,6 +785,8 @@ export interface CommandMenuProps extends MenuStyleProps {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly popupRef?: Ref<HTMLDivElement>;
+  /** Scopes the popup to a hue. */
+  readonly tint?: Tint;
   readonly children: ReactNode;
 }
 
@@ -787,6 +797,7 @@ export function CommandMenu({
   open,
   onOpenChange,
   popupRef,
+  tint,
   xstyle,
   className,
   style,
@@ -820,6 +831,7 @@ export function CommandMenu({
             finalFocus={false}
             {...mergeStyleProps(
               props(
+                tint !== undefined && surfaceTheme[tint],
                 floatingSurfaceStyles.popup,
                 floatingSurfaceStyles.modalPopup,
                 styles.commandPopup,
@@ -843,6 +855,8 @@ export interface ContextMenuProps extends MenuStyleProps {
   readonly trigger: ReactElement;
   readonly open?: boolean;
   readonly onOpenChange?: ContextMenuPrimitive.Root.Props["onOpenChange"];
+  /** Scopes the popup to a hue. */
+  readonly tint?: Tint;
   readonly children: ReactNode;
 }
 
@@ -851,6 +865,7 @@ export function ContextMenu({
   trigger,
   open,
   onOpenChange,
+  tint,
   xstyle,
   className,
   style,
@@ -871,7 +886,13 @@ export function ContextMenu({
             ref={overlayRef}
             aria-label={label}
             {...mergeStyleProps(
-              props(floatingSurfaceStyles.popup, styles.popup, styles.rootPopupMotion, xstyle),
+              props(
+                tint !== undefined && surfaceTheme[tint],
+                floatingSurfaceStyles.popup,
+                styles.popup,
+                styles.rootPopupMotion,
+                xstyle,
+              ),
               className,
               style,
             )}
@@ -896,7 +917,6 @@ export function ContextMenuItem({
   disabled = false,
   danger = false,
   textValue,
-  size = "default",
   background = "default",
   layout = "menu",
   xstyle,
@@ -909,7 +929,7 @@ export function ContextMenuItem({
     <ContextMenuPrimitive.Item
       disabled={disabled}
       label={textValue}
-      {...itemStyles({ size, background, layout }, danger, { xstyle, className, style })}
+      {...itemStyles({ background, layout }, danger, { xstyle, className, style })}
       onClick={onSelect}
     >
       <ItemBody
@@ -918,7 +938,6 @@ export function ContextMenuItem({
         icon={icon}
         leading={leading}
         meta={meta}
-        size={size}
         layout={layout}
       >
         {children}

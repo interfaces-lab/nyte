@@ -1,4 +1,4 @@
-export { Toaster } from "./components/ui/toast.tsx";
+export { Toaster, toastTint } from "./components/ui/toast.tsx";
 
 export type { ToasterProps } from "./components/ui/toast.tsx";
 

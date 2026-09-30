@@ -13,7 +13,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Row } from "@nyte-ai/ui/row";
 import { useWorkspaceSearch } from "../queries.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { ramp, t } from "@nyte-ai/ui/vars.stylex";
 import { useDebouncedValue } from "../use-debounced-value.ts";
 
 type SearchLocation = Pick<WorkspaceSearchResult["files"][number], "path" | "displayPath"> &
@@ -41,7 +41,7 @@ const styles = create({
     fontFamily: t.fontSans,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
-    color: t.textPrimary,
+    color: t.contentPrimary,
   },
   controls: { display: "flex", flexDirection: "column", gap: 4, padding: 8, flexShrink: 0 },
   toolbar: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 },
@@ -75,8 +75,8 @@ const styles = create({
   },
   filters: { display: "flex", flexDirection: "column", gap: 4 },
   results: { flex: 1, minWidth: 0, minHeight: 0, overflow: "auto", paddingBottom: 8 },
-  status: { margin: 0, paddingBlock: 6, paddingInline: 8, color: t.textTertiary },
-  error: { color: t.textDanger, overflowWrap: "anywhere" },
+  status: { margin: 0, paddingBlock: 6, paddingInline: 8, color: t.contentSecondary },
+  error: { color: t.intentDangerContent, overflowWrap: "anywhere" },
   group: { margin: 0, padding: 0, listStyleType: "none" },
   fileHeading: {
     display: "flex",
@@ -85,7 +85,7 @@ const styles = create({
     margin: 0,
     minHeight: 24,
     paddingInline: 8,
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontBase,
     fontWeight: 400,
   },
@@ -97,12 +97,12 @@ const styles = create({
     height: 18,
     paddingInline: 4,
     borderRadius: t.radiusFull,
-    backgroundColor: t.fillQuiet,
+    backgroundColor: t.bgMutedTranslucent,
     fontSize: t.fontXs,
     fontVariantNumeric: "tabular-nums",
-    color: t.textTertiary,
+    color: t.contentSecondary,
   },
-  draft: { flexShrink: 0, color: t.textWarning, fontSize: t.fontSm },
+  draft: { flexShrink: 0, color: t.intentWarningContent, fontSize: t.fontSm },
   result: {
     display: "flex",
     alignItems: "baseline",
@@ -113,9 +113,9 @@ const styles = create({
     paddingInlineStart: 32,
     paddingInlineEnd: 8,
     marginBlockEnd: 2,
-    borderRadius: t.radiusSm,
-    backgroundColor: { default: "transparent", ":hover": t.fillHover },
-    color: t.textSecondary,
+    borderRadius: t.radius4,
+    backgroundColor: { default: "transparent", ":hover": t.bgHover },
+    color: t.contentSecondary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
   },
@@ -136,10 +136,10 @@ const styles = create({
     overflow: "hidden",
     textOverflow: "ellipsis",
     backgroundColor: t.selection,
-    color: t.textPrimary,
+    color: t.contentPrimary,
     borderRadius: 2,
   },
-  zeroMatch: { display: "inline-block", width: 2, backgroundColor: t.accent },
+  zeroMatch: { display: "inline-block", width: 2, backgroundColor: ramp.blue80 },
 });
 
 export function WorkspaceSearch({
@@ -242,7 +242,8 @@ export function WorkspaceSearch({
             </div>
           </InputGroup>
           <Button
-            size="icon-sm"
+            size="sm"
+            iconOnly
             icon="filters"
             aria-label="Search filters"
             aria-expanded={filtersOpen}

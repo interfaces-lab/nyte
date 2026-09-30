@@ -66,10 +66,10 @@ export function GlassButton(props: GlassButtonProps) {
           <SymbolView
             name={systemImage}
             size={controls.icon}
-            tintColor={prominent ? theme.onAccent : theme.foreground}
+            tintColor={prominent ? theme.onAccentFill : theme.foreground}
           />
         )}
-        <html.span style={[styles.label, prominent ? styles.onAccent : styles.onNeutral]}>
+        <html.span style={[styles.label, prominent ? styles.onAccentFill : styles.onNeutral]}>
           {label}
         </html.span>
       </html.button>
@@ -102,7 +102,7 @@ export function GlassButton(props: GlassButtonProps) {
           buttonStyle(prominent ? "glassProminent" : "glass"),
           controlSize("regular"),
           buttonBorderShape(iconOnly ? "circle" : "capsule"),
-          tint(prominent ? palette.accent : palette.foreground),
+          tint(prominent ? palette.accentFill : palette.foreground),
           font(
             iconOnly
               ? { size: typography.title.fontSize, weight: "regular" }
@@ -130,7 +130,7 @@ const styles = css.create({
     borderWidth: 0,
   },
   prominent: {
-    backgroundColor: tokens.accent,
+    backgroundColor: tokens.accentFill,
     opacity: { default: 1, ":active": controls.pressedOpacity },
   },
   neutral: { backgroundColor: { default: tokens.fill, ":active": tokens.separator } },
@@ -139,6 +139,6 @@ const styles = css.create({
     ...typography.button,
     lineHeight: `${typography.button.lineHeight}px`,
   },
-  onAccent: { color: tokens.onAccent },
+  onAccentFill: { color: tokens.onAccentFill },
   onNeutral: { color: tokens.foreground },
 });

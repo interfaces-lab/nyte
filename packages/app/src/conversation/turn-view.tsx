@@ -83,7 +83,6 @@ function UserMessagePreview({ children }: { children: ReactNode }): ReactElement
       </div>
       {overflowing && (
         <Button
-          size="condensed"
           aria-controls={id}
           aria-expanded={expanded}
           xstyle={turnStyles.userPreviewToggle}
@@ -96,13 +95,28 @@ function UserMessagePreview({ children }: { children: ReactNode }): ReactElement
   );
 }
 
-function UserMessageImages({ content }: { content: UserTurnPart["content"] }): ReactElement | null {
+function UserMessageImages({
+  content,
+  onEdit,
+}: {
+  content: UserTurnPart["content"];
+  onEdit?: () => void;
+}): ReactElement | null {
   const images = messageImages(content);
 
   if (images.length === 0) return null;
 
   return (
-    <div aria-label="Image attachments" {...stylex.props(turnStyles.userImages)}>
+    <div
+      aria-label="Image attachments"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onEdit?.();
+      }}
+      {...stylex.props(
+        turnStyles.userImages,
+        onEdit !== undefined && turnStyles.userImagesEditable,
+      )}
+    >
       {images.map((item, index) => (
         <ImagePreview
           key={index}
@@ -307,7 +321,10 @@ export function UserMessageView({
       <Message align="end">
         {edit === undefined ? (
           <Bubble variant={onEdit === undefined ? "default" : "editable"}>
-            <UserMessageImages content={content} />
+            <UserMessageImages
+              content={content}
+              onEdit={onEdit === undefined ? undefined : begin}
+            />
             <UserMessagePreview>
               {onEdit === undefined ? (
                 <UserMessageText text={original} />
@@ -438,7 +455,7 @@ function TurnChangesCard({
         <Hint
           content="Open the Changes panel"
           trigger={
-            <Button size="condensed" onClick={onReview} xstyle={turnStyles.changesReview}>
+            <Button onClick={onReview} xstyle={turnStyles.changesReview}>
               Review
             </Button>
           }

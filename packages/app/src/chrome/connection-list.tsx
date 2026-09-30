@@ -3,13 +3,13 @@
  * account and each model provider. A row says where it stands first, then
  * offers the actions that change that.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { t } from "@nyte-ai/ui/vars.stylex";
 
-const styles = stylex.create({
+const styles = create({
   row: {
     position: "relative",
     display: "grid",
@@ -18,31 +18,31 @@ const styles = stylex.create({
     columnGap: 12,
     rowGap: 8,
     minHeight: settings.rowMinHeight,
-    padding: 12,
+    padding: settings.rowPadding,
     "::after": {
       position: "absolute",
-      insetInline: 12,
+      insetInline: settings.rowPadding,
       insetBlockEnd: 0,
       height: 1,
-      backgroundColor: t.strokeSecondary,
+      backgroundColor: t.borderSecondaryTranslucent,
       content: '""',
     },
     ":last-child::after": { display: "none" },
   },
-  dimmedGlyph: { color: t.iconTertiary },
-  dimmedText: { color: t.textTertiary },
+  dimmedGlyph: { color: t.contentTertiary },
+  dimmedText: { color: t.contentTertiary },
   glyph: {
     display: "grid",
     placeItems: "center",
     width: 28,
     height: 28,
-    borderRadius: t.radiusBase,
-    color: t.iconSecondary,
+    borderRadius: t.radius6,
+    color: t.contentSecondary,
     overflow: "hidden",
   },
   body: { display: "flex", flexDirection: "column", minWidth: 0, gap: 1 },
   title: {
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontSize: t.fontBase,
     fontWeight: 400,
     lineHeight: t.leadingBase,
@@ -52,7 +52,7 @@ const styles = stylex.create({
     whiteSpace: "nowrap",
   },
   detail: {
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
     overflowWrap: "anywhere",
@@ -61,14 +61,14 @@ const styles = stylex.create({
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     whiteSpace: "nowrap",
   },
-  statusOn: { color: t.textSuccess },
-  statusWarn: { color: t.textWarning },
-  statusErr: { color: t.textDanger },
+  statusOn: { color: t.intentSuccessContent },
+  statusWarn: { color: t.intentWarningContent },
+  statusErr: { color: t.intentDangerContent },
   dot: { width: 6, height: 6, borderRadius: t.radiusFull, backgroundColor: "currentColor" },
   end: {
     display: "inline-flex",
@@ -96,21 +96,21 @@ export function ConnectionStatus({
 }): ReactElement {
   return (
     <span
-      {...stylex.props(
+      {...props(
         styles.status,
         tone === "on" && styles.statusOn,
         tone === "warn" && styles.statusWarn,
         tone === "err" && styles.statusErr,
       )}
     >
-      <span aria-hidden="true" {...stylex.props(styles.dot)} />
+      <span aria-hidden="true" {...props(styles.dot)} />
       {children}
     </span>
   );
 }
 
 export function ConnectionList({ children }: { children: ReactNode }): ReactElement {
-  return <div {...stylex.props(settingsPatterns.group)}>{children}</div>;
+  return <div {...props(settingsPatterns.group)}>{children}</div>;
 }
 
 export function ConnectionRow({
@@ -124,7 +124,7 @@ export function ConnectionRow({
   expansion,
 }: {
   glyph: ReactNode;
-  title: string;
+  title: ReactNode;
   detail: string | undefined;
   /** Where the connection stands. Rows that only carry detail leave it out. */
   status?: ReactElement;
@@ -136,24 +136,24 @@ export function ConnectionRow({
   expansion?: ReactNode;
 }): ReactElement {
   return (
-    <div {...stylex.props(styles.row)}>
-      <span {...stylex.props(styles.glyph, dimmed && styles.dimmedGlyph)}>{glyph}</span>
-      <span {...stylex.props(styles.body)}>
-        <span {...stylex.props(styles.title, dimmed && styles.dimmedText)}>{title}</span>
+    <div {...props(styles.row)}>
+      <span {...props(styles.glyph, dimmed && styles.dimmedGlyph)}>{glyph}</span>
+      <span {...props(styles.body)}>
+        <span {...props(styles.title, dimmed && styles.dimmedText)}>{title}</span>
         {detail !== undefined && (
-          <span {...stylex.props(styles.detail, dimmed && styles.dimmedText)}>{detail}</span>
+          <span {...props(styles.detail, dimmed && styles.dimmedText)}>{detail}</span>
         )}
       </span>
       {(status !== undefined || actions !== undefined || trailing !== undefined) && (
-        <span {...stylex.props(styles.end)}>
+        <span {...props(styles.end)}>
           {status}
           {(actions !== undefined || trailing !== undefined) && (
-            <span {...stylex.props(styles.actions)}>{actions}</span>
+            <span {...props(styles.actions)}>{actions}</span>
           )}
           {trailing}
         </span>
       )}
-      {expansion !== undefined && <div {...stylex.props(styles.expansion)}>{expansion}</div>}
+      {expansion !== undefined && <div {...props(styles.expansion)}>{expansion}</div>}
     </div>
   );
 }

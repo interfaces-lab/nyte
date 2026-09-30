@@ -7,13 +7,13 @@ import { create, props } from "@stylexjs/stylex";
 
 const styles = create({
   link: {
-    color: t.textAccent,
+    color: t.intentPrimaryContent,
     fontSize: t.fontBase,
     textDecorationLine: "underline",
     textUnderlineOffset: "2px",
   },
   title: { fontWeight: 500 },
-  detail: { color: t.textSecondary, fontSize: t.fontSm, lineHeight: t.leadingSm },
+  detail: { color: t.contentSecondary, fontSize: t.fontSm, lineHeight: t.leadingSm },
 });
 
 export function PreviewCardDemo() {

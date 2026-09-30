@@ -119,7 +119,6 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
     >
       <Input
         variant="quiet"
-        size="sm"
         aria-label="Code or address"
         autoComplete="off"
         spellCheck={false}

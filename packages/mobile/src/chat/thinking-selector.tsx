@@ -22,6 +22,7 @@ import { THINKING_LABELS, type ThinkingLevel } from "./thinking.ts";
 export type ThinkingSelectorColors = {
   text: string;
   accent: string;
+  accentFill: string;
   track: string;
   tickOnTrack: string;
   tickOnFill: string;
@@ -232,7 +233,7 @@ export function ThinkingSelector({
             </Animated.View>
 
             <Animated.View
-              style={[styles.fillPill, fillStyle, { backgroundColor: colors.accent }]}
+              style={[styles.fillPill, fillStyle, { backgroundColor: colors.accentFill }]}
               pointerEvents="none"
             >
               <Animated.View style={[styles.ticks, ticksStyle]}>

@@ -387,7 +387,7 @@ function DiffSections({
               name={collapsed ? "chevron.down" : "chevron.up"}
               size={13}
               weight="semibold"
-              tintColor={theme.tertiary}
+              tintColor={theme.interactiveTertiary}
             />
           </html.button>
         );

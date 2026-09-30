@@ -17,10 +17,10 @@
       html {
         color-scheme: light dark;
       }
-      html[data-theme="light"] {
+      html[data-display-mode="light"] {
         color-scheme: light;
       }
-      html[data-theme="dark"] {
+      html[data-display-mode="dark"] {
         color-scheme: dark;
       }
       html,
@@ -29,18 +29,19 @@
         height: 100%;
       }
       #startup {
-        --startup-bg: var(--nyte-bg-page, light-dark(oklch(1 0 0), oklch(0.2134 0 0)));
+        --startup-bg: var(
+          --nyte-bg-base,
+          light-dark(lab(99.9996% -0.00357628 -0.0378609), lab(9.7636% 0 0))
+        );
         --startup-text: var(
-          --nyte-text-primary,
-          light-dark(oklch(0.3098 0.0076 84.59), oklch(1 0 0 / 0.81))
+          --nyte-content-primary,
+          light-dark(lab(17.9803% -0.180662 0.655705), lab(90.9749% 0.0809431 1.06326))
         );
-        --startup-fill: var(--nyte-fill-inverse, var(--startup-text));
-        --startup-hover: var(
-          --nyte-fill-hover,
-          light-dark(oklch(0 0 0 / 0.04), oklch(1 0 0 / 0.05))
-        );
-        --startup-on-fill: var(--nyte-text-on-inverse, var(--startup-bg));
-        --startup-accent: var(--nyte-accent-base, oklch(0.6068 0.1404 251.76));
+        /* The retry button is the primary intent's filled button. */
+        --startup-fill: var(--nyte-blue-100, lab(38.8331% -4.16589 -29.326));
+        --startup-hover: var(--nyte-bg-hover, light-dark(#3b14000d, #ffffff0f));
+        --startup-on-fill: var(--nyte-gray-0, lab(99.9996% -0.00357628 -0.0378609));
+        --startup-accent: var(--nyte-focus-ring, lab(53.1052% -1.53607 -54.9391));
         --startup-moon-color: light-dark(#232a44, #c1d0f6);
         box-sizing: border-box;
         height: 100dvh;

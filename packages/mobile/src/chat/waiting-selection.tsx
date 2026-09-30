@@ -128,7 +128,7 @@ function SelectionForm({ waiting, onReply }: WaitingSelectionProps): ReactElemen
                 <SymbolView
                   name={chosen ? "checkmark.circle.fill" : "circle"}
                   size={22}
-                  tintColor={chosen ? theme.accent : theme.tertiary}
+                  tintColor={chosen ? theme.accent : theme.interactiveTertiary}
                 />
                 <html.div style={styles.choiceText}>
                   <html.span style={textStyles.body}>{choice.label}</html.span>

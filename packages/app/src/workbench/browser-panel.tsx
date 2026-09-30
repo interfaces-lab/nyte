@@ -35,7 +35,7 @@ const styles = stylex.create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: t.bgPage,
+    backgroundColor: t.bgBase,
   },
   bookmarks: {
     display: "flex",
@@ -47,7 +47,7 @@ const styles = stylex.create({
     overflowX: "auto",
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.strokeSecondary,
+    borderBottomColor: t.borderSecondaryTranslucent,
   },
   bookmark: { display: "flex", alignItems: "center", flexShrink: 0, maxWidth: 220 },
   bookmarkButton: { flex: 1, minWidth: 0 },
@@ -70,8 +70,8 @@ const styles = stylex.create({
     gap: 6,
     height: 26,
     paddingInline: 8,
-    borderColor: t.strokeSecondary,
-    borderRadius: t.radiusLg,
+    borderColor: t.borderSecondaryTranslucent,
+    borderRadius: t.radius8,
     // The ring belongs on the rounded field, not on the square input nested
     // inside it, so its corners stay concentric with the border it wraps.
     outlineStyle: { default: "none", ":focus-within": "solid" },
@@ -79,19 +79,19 @@ const styles = stylex.create({
     outlineColor: t.focusRing,
     outlineOffset: 0,
   },
-  addressIcon: { display: "inline-flex", flexShrink: 0, color: t.iconSecondary },
+  addressIcon: { display: "inline-flex", flexShrink: 0, color: t.contentSecondary },
   blocked: {
     display: "inline-flex",
     alignItems: "center",
     gap: 2,
     flexShrink: 0,
     paddingInline: 4,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontCode,
     fontFamily: t.fontMono,
     fontVariantNumeric: "tabular-nums",
   },
-  blockedOff: { color: t.textQuaternary },
+  blockedOff: { color: t.contentDisabled },
   address: { height: "100%" },
   slot: {
     position: "relative",
@@ -113,14 +113,14 @@ const styles = stylex.create({
     padding: 4,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: t.strokeSecondary,
-    backgroundColor: t.bgPage,
+    borderInlineStartColor: t.borderSecondaryTranslucent,
+    backgroundColor: t.bgBase,
   },
   historyHeading: {
     margin: 0,
     paddingBlock: 6,
     paddingInline: 6,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     fontWeight: 400,
     lineHeight: t.leadingSm,
@@ -128,7 +128,7 @@ const styles = stylex.create({
   historyEntry: {
     "--nyte-row-height": "32px",
     paddingBlock: 6,
-    color: { default: t.textSecondary, "[data-selected]": t.textPrimary },
+    color: { default: t.contentSecondary, "[data-selected]": t.contentPrimary },
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
   },
@@ -140,8 +140,8 @@ const styles = stylex.create({
     gap: 8,
     textAlign: "center",
   },
-  messageTitle: { color: t.textPrimary, fontSize: t.fontBase, fontWeight: 600 },
-  messageDetail: { color: t.textTertiary, fontSize: t.fontSm, lineHeight: t.leadingSm },
+  messageTitle: { color: t.contentPrimary, fontSize: t.fontBase, fontWeight: 600 },
+  messageDetail: { color: t.contentSecondary, fontSize: t.fontSm, lineHeight: t.leadingSm },
   notice: {
     display: "flex",
     alignItems: "center",
@@ -151,9 +151,9 @@ const styles = stylex.create({
     paddingInline: 10,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.strokeSecondary,
-    backgroundColor: t.bgPage,
-    color: t.textSecondary,
+    borderBottomColor: t.borderSecondaryTranslucent,
+    backgroundColor: t.bgBase,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
   },
   noticeText: {
@@ -169,7 +169,7 @@ const styles = stylex.create({
     gap: 4,
     flexShrink: 0,
     paddingInline: 6,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
   },
   // Sits under the native view at all times, so hiding the page reveals a
@@ -470,28 +470,28 @@ export function BrowserPanel({
     <section aria-label="Browser" {...stylex.props(styles.panel)}>
       <div {...stylex.props(workbenchStyles.toolbar)}>
         <Button
-          size="icon"
+          iconOnly
           icon="arrow-left"
           aria-label="Back"
           disabled={state?.canGoBack !== true}
           onClick={() => navigate("back")}
         />
         <Button
-          size="icon"
+          iconOnly
           icon="arrow-right"
           aria-label="Forward"
           disabled={state?.canGoForward !== true}
           onClick={() => navigate("forward")}
         />
         <Button
-          size="icon"
+          iconOnly
           icon={loading ? "x" : "refresh"}
           aria-label={loading ? "Stop" : "Reload"}
           disabled={!hasPage}
           onClick={() => navigate(loading ? "stop" : "reload")}
         />
         <form {...stylex.props(styles.addressForm)} onSubmit={submit}>
-          <InputGroup size="sm" xstyle={styles.addressWrap}>
+          <InputGroup xstyle={styles.addressWrap}>
             {secure === "https" && draft === undefined && (
               <span {...stylex.props(styles.addressIcon)} title="Secure connection">
                 <Icon name="lock" size={12} />
@@ -536,14 +536,14 @@ export function BrowserPanel({
           </span>
         )}
         <Button
-          size="icon"
+          iconOnly
           icon="globe"
           aria-label="Open in system browser"
           disabled={!hasPage}
           onClick={() => void nyte.host.openExternal({ url: currentUrl }).catch(() => undefined)}
         />
         <Button
-          size="icon"
+          iconOnly
           icon="more-horizontal"
           aria-label="Browser actions"
           onClick={openMenu}
@@ -564,7 +564,7 @@ export function BrowserPanel({
         <div role="alert" {...stylex.props(styles.notice)}>
           <span {...stylex.props(styles.noticeText)}>{failure}</span>
           <Button
-            size="icon"
+            iconOnly
             icon="x"
             aria-label="Dismiss browser error"
             onClick={() => setFailure(undefined)}
@@ -575,7 +575,6 @@ export function BrowserPanel({
         <div aria-label="Bookmark bar" {...stylex.props(styles.bookmarks)}>
           <Button
             variant="secondary"
-            size="condensed"
             disabled={!hasPage}
             onClick={() => toggleBookmark({ url: currentUrl, title: state?.title || currentUrl })}
           >
@@ -587,7 +586,6 @@ export function BrowserPanel({
             <div key={item.url} {...stylex.props(styles.bookmark)}>
               <Button
                 variant="secondary"
-                size="condensed"
                 title={item.url}
                 xstyle={styles.bookmarkButton}
                 onClick={() => onUrlChange(item.url)}
@@ -597,7 +595,7 @@ export function BrowserPanel({
                 </span>
               </Button>
               <Button
-                size="icon"
+                iconOnly
                 icon="x"
                 aria-label={`Remove bookmark: ${item.title || item.url}`}
                 onClick={() => toggleBookmark(item)}
@@ -613,7 +611,6 @@ export function BrowserPanel({
           </span>
           <Button
             variant="secondary"
-            size="condensed"
             onClick={() => {
               void nyte.host.openExternal({ url: refusedDownload }).catch(() => undefined);
               dismissRefusedDownload(surface);
@@ -622,7 +619,7 @@ export function BrowserPanel({
             Open in system browser
           </Button>
           <Button
-            size="icon"
+            iconOnly
             icon="x"
             aria-label="Dismiss"
             onClick={() => dismissRefusedDownload(surface)}
@@ -646,7 +643,7 @@ export function BrowserPanel({
               <span {...stylex.props(styles.messageDetail)}>
                 {state.error.description} ({String(state.error.code)})
               </span>
-              <Button variant="secondary" size="condensed" onClick={() => navigate("reload")}>
+              <Button variant="secondary" onClick={() => navigate("reload")}>
                 Try again
               </Button>
             </div>

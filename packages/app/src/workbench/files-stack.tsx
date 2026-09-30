@@ -25,11 +25,11 @@ const styles = create({
     minWidth: 0,
     minHeight: 0,
     overflow: "auto",
-    backgroundColor: t.bgPage,
+    backgroundColor: t.bgBase,
   },
   notice: {
     padding: 10,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontFamily: t.fontSans,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
@@ -375,7 +375,7 @@ function FileHeader({
 
   return (
     <StackHeader path={path} collapsed={collapsed} onToggleCollapsed={onToggleCollapsed}>
-      <Button size="icon" icon="pencil" aria-label={`Edit ${path}`} onClick={() => onOpen(path)} />
+      <Button iconOnly icon="pencil" aria-label={`Edit ${path}`} onClick={() => onOpen(path)} />
     </StackHeader>
   );
 }

@@ -5,16 +5,16 @@
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/workbench-layout.stylex.ts
  */
-import * as stylex from "@stylexjs/stylex";
+import { defineConsts } from "@stylexjs/stylex";
 import "./tokens.stylex.ts";
 
-export const shell = stylex.defineConsts({
+export const shell = defineConsts({
   titlebarHeight: "var(--nyte-titlebar-height)",
   /** macOS reserves this zoom-adjusted lane for the traffic lights. */
   trafficLightInset: "var(--nyte-titlebar-traffic-light-inset)",
 });
 
-export const conversation = stylex.defineConsts({
+export const conversation = defineConsts({
   measure: "var(--nyte-conversation-measure)",
   proseMeasure: "var(--nyte-prose-measure)",
   paragraphGap: "var(--nyte-prose-paragraph-gap)",
@@ -34,7 +34,7 @@ export const conversation = stylex.defineConsts({
   composerExpandedRadius: "var(--nyte-composer-expanded-radius)",
 });
 
-export const tray = stylex.defineConsts({
+export const tray = defineConsts({
   radius: "var(--nyte-tray-radius)",
   gap: "var(--nyte-tray-gap)",
   paddingInline: "var(--nyte-tray-padding-inline)",
@@ -43,7 +43,7 @@ export const tray = stylex.defineConsts({
   rowInset: "var(--nyte-tray-row-inset)",
 });
 
-export const sidebar = stylex.defineConsts({
+export const sidebar = defineConsts({
   width: "var(--nyte-sidebar-width)",
   handleWidth: "var(--nyte-sidebar-handle-width)",
   rowHeight: "var(--nyte-sidebar-row-height)",
@@ -58,7 +58,7 @@ export const sidebar = stylex.defineConsts({
   metaWidth: "var(--nyte-sidebar-meta-width)",
 });
 
-export const settings = stylex.defineConsts({
+export const settings = defineConsts({
   contentWidth: "var(--nyte-settings-content-width)",
   contentGutter: "var(--nyte-settings-content-gutter)",
   rowMinHeight: "var(--nyte-settings-row-min-height)",
@@ -72,7 +72,7 @@ export const settings = stylex.defineConsts({
   pageTitleLineHeight: "var(--nyte-settings-page-title-line-height)",
 });
 
-export const workbench = stylex.defineConsts({
+export const workbench = defineConsts({
   railWidth: "var(--nyte-workbench-rail-width)",
   railGap: "var(--nyte-workbench-rail-gap)",
   rowHeight: "var(--nyte-workbench-row-height)",
@@ -84,7 +84,7 @@ export const workbench = stylex.defineConsts({
   fileListWidth: "var(--nyte-workbench-file-list-width)",
 });
 
-export const pane = stylex.defineConsts({
+export const pane = defineConsts({
   /**
    * The drag lane on a pane divider. It centres a 1px line, so the track stays
    * odd; an even one would land the hairline on a half pixel.
@@ -94,7 +94,7 @@ export const pane = stylex.defineConsts({
   dividerGap: "var(--nyte-pane-divider-gap)",
 });
 
-export const diffView = stylex.defineConsts({
+export const diffView = defineConsts({
   lineHeight: "var(--nyte-diff-line-height)",
   previewMaxHeight: "var(--nyte-diff-preview-max-height)",
 });

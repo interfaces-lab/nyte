@@ -40,7 +40,7 @@ export async function run(): Promise<string> {
   await new Promise((resolve) => setTimeout(resolve, 50));
 
   for (const theme of ["light", "dark"]) {
-    document.documentElement.dataset["theme"] = theme;
+    document.documentElement.dataset["displayMode"] = theme;
     await new Promise((resolve) => requestAnimationFrame(resolve));
     const tray = fill("tray");
     if (theme === "dark" && tray === fill("dock")) {

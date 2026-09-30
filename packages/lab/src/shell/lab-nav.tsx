@@ -1,10 +1,12 @@
 import { create, props } from "@stylexjs/stylex";
+import { Link } from "@tanstack/react-router";
+import type { router } from "../router";
 
 const PAGES = [
-  ["/", "Tokens"],
   ["/core", "Core"],
   ["/moon", "Moon"],
   ["/environments", "Environments"],
+  ["/pipeline", "Pipeline"],
 ] as const;
 
 type Path = (typeof PAGES)[number][0];
@@ -31,24 +33,31 @@ const styles = create({
     paddingBlock: 5,
     paddingInline: 10,
     borderRadius: 7,
-    color: { default: "rgb(255 255 255 / 0.6)", ":hover": "rgb(255 255 255)" },
+    color: {
+      default: "rgb(255 255 255 / 0.6)",
+      ":hover": "rgb(255 255 255)",
+      "[data-status='active']": "rgb(255 255 255)",
+    },
+    backgroundColor: {
+      default: "transparent",
+      "[data-status='active']": "rgb(255 255 255 / 0.12)",
+    },
     textDecoration: "none",
   },
-  current: { color: "rgb(255 255 255)", backgroundColor: "rgb(255 255 255 / 0.12)" },
 });
 
-export function LabNav({ current }: { readonly current: Path }) {
+export function LabNav() {
   return (
     <nav aria-label="Lab pages" {...props(styles.nav)}>
       {PAGES.map(([path, label]) => (
-        <a
+        <Link<typeof router, string, Path>
           key={path}
-          href={path}
-          aria-current={path === current ? "page" : undefined}
-          {...props(styles.link, path === current && styles.current)}
+          to={path}
+          activeOptions={{ exact: true, includeSearch: false }}
+          {...props(styles.link)}
         >
           {label}
-        </a>
+        </Link>
       ))}
     </nav>
   );

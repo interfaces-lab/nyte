@@ -5,7 +5,7 @@ import { toast } from "@nyte-ai/ui/toast";
 import { nyte } from "../nyte.ts";
 import { errorMessage } from "../errors.ts";
 import type { TerminalBridge } from "../bridge.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { ramp, t } from "@nyte-ai/ui/vars.stylex";
 import {
   attachTerminalOutput,
   getTerminal,
@@ -58,7 +58,7 @@ function terminalTheme(): ITheme {
     return getComputedStyle(probe).color;
   };
 
-  const background = resolve(t.bgPage);
+  const background = resolve(t.bgBase);
 
   const color = (value: string): string => {
     context.clearRect(0, 0, 1, 1);
@@ -77,11 +77,13 @@ function terminalTheme(): ITheme {
   };
 
   try {
-    const page = color(t.bgPage);
-    const ink = color(t.textPrimary);
-    const dark = document.documentElement.dataset["theme"] === "dark";
+    const page = color(t.bgBase);
+    const ink = color(t.contentPrimary);
+    const dark = document.documentElement.dataset["displayMode"] === "dark";
     const black = dark ? page : ink;
     const white = dark ? ink : page;
+    // Every hue reads at 4.5:1 on the page, and bright is the lighter step in both modes.
+    const step = (light: string, darkStep: string) => color(`light-dark(${light}, ${darkStep})`);
 
     return {
       background: page,
@@ -89,20 +91,20 @@ function terminalTheme(): ITheme {
       cursor: ink,
       selectionBackground: color(t.selection),
       black,
-      red: color(t.textDanger),
-      green: color(t.textSuccess),
-      yellow: color(t.textWarning),
-      blue: color(t.accent),
-      magenta: color(t.magenta),
-      cyan: color(t.textCyan),
+      red: step(ramp.red110, ramp.red70),
+      green: step(ramp.green110, ramp.green70),
+      yellow: step(ramp.yellow110, ramp.yellow70),
+      blue: step(ramp.blue110, ramp.blue70),
+      magenta: step(ramp.pink110, ramp.pink70),
+      cyan: step(ramp.teal110, ramp.teal70),
       white,
-      brightBlack: color(t.textTertiary),
-      brightRed: color(t.red),
-      brightGreen: color(t.green),
-      brightYellow: color(t.yellow),
-      brightBlue: color(t.accent),
-      brightMagenta: color(t.magenta),
-      brightCyan: color(t.cyan),
+      brightBlack: step(ramp.gray100, ramp.gray70),
+      brightRed: step(ramp.red100, ramp.red50),
+      brightGreen: step(ramp.green100, ramp.green50),
+      brightYellow: step(ramp.yellow100, ramp.yellow50),
+      brightBlue: step(ramp.blue100, ramp.blue50),
+      brightMagenta: step(ramp.pink100, ramp.pink50),
+      brightCyan: step(ramp.teal100, ramp.teal50),
       brightWhite: white,
     };
   } finally {
@@ -163,7 +165,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     cursorStyle: "bar",
     cursorBlink: false,
     theme: terminalTheme(),
-    colorScheme: root.dataset["theme"] === "dark" ? "dark" : "light",
+    colorScheme: root.dataset["displayMode"] === "dark" ? "dark" : "light",
     fontFamily: css.getPropertyValue("--nyte-font-family-mono"),
     fontSize: Number.parseFloat(css.getPropertyValue("--nyte-font-size-code")),
     scrollback: 10000,
@@ -262,9 +264,10 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     const next = getComputedStyle(root);
 
     const signature = [
-      root.dataset["theme"],
-      root.style.getPropertyValue("--nyte-tint-hue"),
-      root.style.getPropertyValue("--nyte-tint-intensity"),
+      root.dataset["displayMode"],
+      root.className,
+      root.style.getPropertyValue("--nyte-custom-hue"),
+      root.style.getPropertyValue("--nyte-custom-chroma-scale"),
       next.getPropertyValue("--nyte-font-family-mono"),
       next.getPropertyValue("--nyte-font-size-code"),
     ].join("|");
@@ -272,13 +275,16 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     if (signature === lastAppearance) return;
     lastAppearance = signature;
     terminal.options.theme = terminalTheme();
-    terminal.options.colorScheme = root.dataset["theme"] === "dark" ? "dark" : "light";
+    terminal.options.colorScheme = root.dataset["displayMode"] === "dark" ? "dark" : "light";
     terminal.options.fontFamily = next.getPropertyValue("--nyte-font-family-mono");
     terminal.options.fontSize = Number.parseFloat(next.getPropertyValue("--nyte-font-size-code"));
     scheduleFit();
   });
 
-  appearance.observe(root, { attributes: true, attributeFilter: ["style", "data-theme"] });
+  appearance.observe(root, {
+    attributes: true,
+    attributeFilter: ["style", "class", "data-display-mode"],
+  });
   document.fonts.addEventListener("loadingdone", scheduleFit);
   let pendingInput = Promise.resolve();
 

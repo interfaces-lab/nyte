@@ -41,7 +41,7 @@ export default function Layout({ children }: LayoutProps<"/">) {
       className={`${inter.variable} ${geist.variable} ${geistMono.variable} overflow-hidden`}
       suppressHydrationWarning
     >
-      <body className="flex h-dvh min-h-svh min-w-0 flex-col overflow-hidden bg-(--nyte-bg-page) font-sans text-(--nyte-text-primary) antialiased">
+      <body className="flex h-dvh min-h-svh min-w-0 flex-col overflow-hidden bg-(--nyte-bg-base) font-sans text-(--nyte-content-primary) antialiased">
         {children}
       </body>
     </html>

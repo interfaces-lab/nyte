@@ -55,7 +55,7 @@ const styles = stylex.create({
     flexDirection: "column",
     width: "100%",
     height: "100%",
-    backgroundColor: t.bgSidebar,
+    backgroundColor: t.sidebarMaterial,
   },
   stage: {
     display: "flex",
@@ -68,7 +68,7 @@ const styles = stylex.create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: t.bgPage,
+    backgroundColor: t.bgBase,
     overflow: "hidden",
   },
   loadError: {
@@ -78,11 +78,11 @@ const styles = stylex.create({
     justifyContent: "center",
     flex: 1,
     gap: 12,
-    color: t.textPrimary,
+    color: t.contentPrimary,
   },
   loadErrorText: {
     margin: 0,
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontBase,
   },
 });

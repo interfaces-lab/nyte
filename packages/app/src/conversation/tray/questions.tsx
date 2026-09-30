@@ -9,6 +9,8 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Row } from "@nyte-ai/ui/row";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
+import { checkbox } from "@nyte-ai/ui/schema.stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { nyte } from "../../nyte.ts";
 import { loadThread } from "../../live.ts";
 import { keys } from "../../queries.ts";
@@ -33,7 +35,7 @@ const styles = create({
     gap: 4,
     minWidth: 0,
     fontSize: t.fontBase,
-    color: t.textPrimary,
+    color: t.contentPrimary,
   },
   header: {
     display: "flex",
@@ -52,28 +54,33 @@ const styles = create({
     lineHeight: t.leadingBase,
     textWrap: "pretty",
   },
-  origin: { display: "block", fontWeight: 400, color: t.textTertiary, overflowWrap: "anywhere" },
+  origin: {
+    display: "block",
+    fontWeight: 400,
+    color: t.contentSecondary,
+    overflowWrap: "anywhere",
+  },
   deadline: {
     flexShrink: 0,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     fontVariantNumeric: "tabular-nums",
   },
   choices: { display: "flex", flexDirection: "column", gap: 1 },
   choice: {
-    "--_row-fill": { default: "transparent", ":hover:not(:disabled)": t.fillHover },
+    "--_row-fill": { default: "transparent", ":hover:not(:disabled)": t.bgHover },
     alignItems: "flex-start",
     gap: 8,
     minHeight: tray.rowHeight,
     paddingBlock: 4,
     paddingInline: 6,
-    borderRadius: t.radiusBase,
+    borderRadius: t.radius6,
     lineHeight: t.leadingBase,
-    color: { default: t.textPrimary, ":disabled": t.textQuaternary },
+    color: { default: t.contentPrimary, ":disabled": t.contentDisabled },
   },
   choiceText: { display: "flex", flexDirection: "column", gap: 1, minWidth: 0 },
   description: {
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     textWrap: "pretty",
@@ -82,19 +89,24 @@ const styles = create({
     display: "grid",
     placeItems: "center",
     flexShrink: 0,
-    width: 14,
-    height: 14,
-    marginTop: 2,
-    borderWidth: 1,
+    width: checkbox.sizeMd,
+    height: checkbox.sizeMd,
+    marginTop: 1,
+    borderWidth: 1.5,
     borderStyle: "solid",
-    borderColor: t.strokeSecondary,
-    borderRadius: t.radiusXs,
+    borderColor: t.borderControlTranslucent,
+    borderRadius: checkbox.radius,
   },
-  boxChecked: { borderColor: t.accent, backgroundColor: t.accent, color: t.textOnColor },
+  // A ticked box paints inside the primary intent, as the checkbox does.
+  boxChecked: {
+    borderColor: t.bgControlSelected,
+    backgroundColor: t.bgControlSelected,
+    color: t.contentOnControl,
+  },
   footer: { display: "flex", justifyContent: "flex-end", paddingInline: 6, paddingBottom: 6 },
   unready: { visibility: "hidden" },
-  note: { paddingInline: 6, color: t.textSecondary, fontSize: t.fontSm },
-  error: { color: t.textDanger, fontSize: t.fontSm },
+  note: { paddingInline: 6, color: t.contentSecondary, fontSize: t.fontSm },
+  error: { color: t.intentDangerContent, fontSize: t.fontSm },
 });
 
 function useDeadline(until: number | undefined): number | undefined {
@@ -273,7 +285,10 @@ function SelectionCard({
               }}
             >
               {selection.multiple === true && (
-                <span aria-hidden="true" {...props(styles.box, checked && styles.boxChecked)}>
+                <span
+                  aria-hidden="true"
+                  {...props(styles.box, checked && [intent.primary, styles.boxChecked])}
+                >
                   {checked && <Icon name="checkmark" size={12} />}
                 </span>
               )}

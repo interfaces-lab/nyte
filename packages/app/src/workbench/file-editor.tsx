@@ -52,7 +52,7 @@ const EDITOR_CSS = `
 ${PIERRE_TOKEN_CSS}
 :host {
   color-scheme: inherit;
-  --diffs-bg: ${t.bgPage};
+  --diffs-bg: ${t.bgBase};
 }
 `;
 
@@ -77,7 +77,7 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: t.bgPage,
+    backgroundColor: t.bgBase,
   },
   // Keep each tab's viewport measurable so virtualized editors retain their scroll position.
   hidden: { visibility: "hidden", pointerEvents: "none" },
@@ -90,7 +90,7 @@ const styles = create({
   },
   message: {
     padding: 20,
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     textWrap: "pretty",
@@ -104,13 +104,13 @@ const styles = create({
     paddingInline: 10,
     borderTopWidth: 1,
     borderTopStyle: "solid",
-    borderTopColor: t.strokeSecondary,
-    color: t.textTertiary,
+    borderTopColor: t.borderSecondaryTranslucent,
+    color: t.contentSecondary,
     fontSize: t.fontXs,
     lineHeight: t.leadingSm,
-    backgroundColor: t.bgPage,
+    backgroundColor: t.bgBase,
   },
-  error: { color: t.textDanger },
+  error: { color: t.intentDangerContent },
   statusText: {
     flex: 1,
     minWidth: 0,
@@ -411,40 +411,46 @@ function TextFileEditor({
     if (result.kind === "formatted") buffer.edit(result.contents);
   };
 
-  const openContextMenu = (event: MouseEvent<HTMLDivElement>): void => {
-    event.preventDefault();
-    void showContextMenu(event, [
-      { kind: "role", role: "cut", label: "Cut" },
-      { kind: "role", role: "copy", label: "Copy" },
-      { kind: "role", role: "paste", label: "Paste" },
-      { kind: "role", role: "selectAll", label: "Select All" },
-      { kind: "separator" },
-      { kind: "item", label: "Format Document", run: () => void format() },
-      {
-        kind: "item",
-        label: "Save",
-        accelerator: "CmdOrCtrl+S",
-        enabled: dirty,
-        run: () => void save(),
-      },
-      { kind: "separator" },
-      {
-        kind: "item",
-        label: "Copy Path",
-        run: () => void navigator.clipboard.writeText(file.path),
-      },
-      {
-        kind: "item",
-        label: "Copy Relative Path",
-        run: () => void navigator.clipboard.writeText(file.displayPath),
-      },
-      {
-        kind: "item",
-        label: revealLabel(host.data?.platform),
-        run: () => void nyte.host.revealPath({ path: file.path }),
-      },
-    ]);
-  };
+  const contextMenu = nyte.host.contextMenu;
+  const revealPath = nyte.host.revealPath;
+
+  const openContextMenu =
+    contextMenu === undefined
+      ? undefined
+      : (event: MouseEvent<HTMLDivElement>): void => {
+          event.preventDefault();
+          void showContextMenu(contextMenu, event, [
+            { kind: "role", role: "cut", label: "Cut" },
+            { kind: "role", role: "copy", label: "Copy" },
+            { kind: "role", role: "paste", label: "Paste" },
+            { kind: "role", role: "selectAll", label: "Select All" },
+            { kind: "separator" },
+            { kind: "item", label: "Format Document", run: () => void format() },
+            {
+              kind: "item",
+              label: "Save",
+              accelerator: "CmdOrCtrl+S",
+              enabled: dirty,
+              run: () => void save(),
+            },
+            { kind: "separator" },
+            {
+              kind: "item",
+              label: "Copy Path",
+              run: () => void navigator.clipboard.writeText(file.path),
+            },
+            {
+              kind: "item",
+              label: "Copy Relative Path",
+              run: () => void navigator.clipboard.writeText(file.displayPath),
+            },
+            revealPath !== undefined && {
+              kind: "item",
+              label: revealLabel(host.data?.platform),
+              run: () => void revealPath({ path: file.path }),
+            },
+          ]);
+        };
 
   const blameLine =
     blame.data?.kind === "blame"

@@ -48,27 +48,25 @@ An app that paints something above the DOM, such as an Electron browser view, wr
 
 ## Theme it
 
-Components paint with inherited `--nyte-*` custom properties declared on `:root` by `tokens.stylex.ts`. Every colour is a `light-dark()` pair, so appearance follows `color-scheme` rather than a class.
+Components paint with inherited `--nyte-*` custom properties declared on `:root` by `tokens.stylex.ts`, in Notion Calendar's layers: `lab()` ramps (`ramps.stylex.ts`), a theme layer that picks one hue (`theme.stylex.ts`), and the roles every surface paints with (`roles.stylex.ts`). Every role is a `light-dark()` pair, so appearance follows `color-scheme` rather than a class.
 
-Anchors such as `--nyte-ink`, `--nyte-page-base`, and `--nyte-accent-base` feed the steps mixed from them. A step resolves its `var()` where it is declared, so an anchor override moves the steps only on `:root`. Below the root, override the step itself:
+A scope paints a subtree in one hue. `@nyte-ai/ui/surface-theme` exports `surfaceTheme` (one entry per hue, plus `custom` for a hue built from `--nyte-custom-hue` and `--nyte-custom-chroma-scale`) and `intent` (`primary`, `success`, `warning`, `danger`). Each bundles the hue's theme with the roles re-declared from it; pass it to `stylex.props` on the element that starts the scope. Popups take a `tint` prop for the same thing, and `toastTint()` scopes one toast.
+
+A scope re-declares every role on its element, so a role overridden on `:root` holds only outside scopes. Override on the element itself, or give the subtree a scope:
 
 ```css
-:root {
-  --nyte-accent-base: #7c3aed;
-}
-
 .my-demo {
   color-scheme: dark;
-  --nyte-bg-page: #101014;
+  --nyte-bg-base: #101014;
 }
 ```
 
-Apps that author StyleX read the tokens through the typed constants in `vars.stylex.ts`:
+Apps that author StyleX read the tokens through the typed constants in `vars.stylex.ts`: `t` for roles and component tokens, `ramp` for a hue step that must not follow a scope.
 
 ```ts
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { ramp, t } from "@nyte-ai/ui/vars.stylex";
 ```
 
-Native apps import `platformColors` from `@nyte-ai/ui/platform-colors`. Its `light` and `dark` palettes hold every colour token as a concrete hex value, named in camelCase without the `--nyte-` prefix, such as `platformColors.dark.textPrimary`. This entrypoint has no runtime dependencies. Apps map those colours to their own native theme and keep platform typography and touch geometry locally.
+Native apps import `platformColors` from `@nyte-ai/ui/platform-colors`. Its `light` and `dark` palettes hold every role and component colour as a concrete hex value, named in camelCase without the `--nyte-` prefix, such as `platformColors.dark.contentPrimary`. This entrypoint has no runtime dependencies. Apps map those colours to their own native theme and keep platform typography and touch geometry locally.
 
-After editing the palette in `tokens.stylex.ts`, run `pnpm --dir packages/ui sync:tokens` to regenerate `platform-colors.ts`; `check:tokens` fails when it is stale. The generator imports the module with `defineVars` and `defineConsts` stubbed to the identity function, so it reads the declared values rather than parsing them. It takes each token's `rgb()` fallback, resolves it in both appearances by following `var()` and evaluating `light-dark()` and `color-mix()` the way CSS does, with the workspace tint at its default, and rejects any colour token that does not reduce to a concrete value, because React Native can evaluate none of them.
+After editing the colour tokens, run `pnpm --dir packages/ui sync:tokens` to regenerate `platform-colors.ts`; `check:tokens` fails when it is stale. The generator imports the token modules with `defineVars` and `defineConsts` stubbed to the identity function, so it reads the declared values rather than parsing them. It resolves the roles and the unscoped colours in both appearances, following `var()`, `light-dark()`, `lab()`, `color-mix(in srgb, …)`, and relative `oklch(from …)` the way CSS does, outside any scope and with reduced transparency off, and rejects any colour that does not reduce to a concrete value, because React Native can evaluate none of them. A colour token that mixes in any space other than sRGB fails the run.

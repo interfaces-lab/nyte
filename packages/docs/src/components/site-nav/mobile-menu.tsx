@@ -61,7 +61,7 @@ const styles = create({
 });
 
 const rowClass =
-  "flex min-h-14 w-full cursor-pointer items-center rounded-[10px] p-4 text-left text-base font-medium tracking-[-0.2px] text-(--nyte-text-primary) hover:bg-(--nyte-text-primary)/5 data-popup-open:bg-(--nyte-text-primary)/5";
+  "flex min-h-14 w-full cursor-pointer items-center rounded-[10px] p-4 text-left text-base font-medium tracking-[-0.2px] text-(--nyte-content-primary) hover:bg-(--nyte-content-primary)/5 data-popup-open:bg-(--nyte-content-primary)/5";
 
 function foldersFrom(groups: NavGroup[]): NavNode[] {
   const nodes: NavNode[] = [];
@@ -111,14 +111,14 @@ function NavFolderRow({ node, onNavigate }: { node: NavFolder; onNavigate: () =>
     <Dialog.Root modal={false}>
       <Dialog.Trigger className={rowClass}>
         {node.title}
-        <span className="ml-auto inline-flex text-(--nyte-text-tertiary)">
+        <span className="ml-auto inline-flex text-(--nyte-content-secondary)">
           <IconChevronRightSmall size={16} />
         </span>
       </Dialog.Trigger>
       <Dialog.Popup xstyle={styles.popup}>
         <div className="flex min-h-14 items-center gap-1 px-2 pt-2 pb-1">
           <Dialog.Close
-            className="inline-flex size-8 cursor-pointer items-center justify-center text-(--nyte-text-primary)"
+            className="inline-flex size-8 cursor-pointer items-center justify-center text-(--nyte-content-primary)"
             aria-label="Back"
           >
             <IconChevronLeftSmall size={16} />
@@ -164,7 +164,7 @@ export function SiteMobileNav({
     <Dialog.Root modal={false} onOpenChange={setOpen} open={open}>
       <Dialog.Trigger
         aria-label="Open navigation"
-        className="group hidden size-(--site-nav-control) cursor-pointer items-center justify-center rounded-[10px] bg-(--nyte-fill-strong) text-(--nyte-text-primary) hover:bg-(--nyte-text-primary)/10 max-lg:inline-flex hero:text-white"
+        className="group hidden size-(--site-nav-control) cursor-pointer items-center justify-center rounded-[10px] bg-(--nyte-bg-interactive-primary-translucent) text-(--nyte-content-primary) hover:bg-(--nyte-content-primary)/10 max-lg:inline-flex hero:text-white"
       >
         <span className="group-data-popup-open:hidden">
           <IconBarsTwo size={16} />

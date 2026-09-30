@@ -3,16 +3,17 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
+import { intent } from "../../surface-theme.ts";
 import { t } from "../../vars.stylex.ts";
 
 const styles = create({
   label: {
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
   },
   value: {
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontXs,
     lineHeight: t.leadingSm,
     fontVariantNumeric: "tabular-nums",
@@ -30,14 +31,15 @@ const styles = create({
     position: "relative",
     width: "100%",
     height: 6,
-    borderRadius: t.radiusXs,
-    backgroundColor: t.fillStrong,
+    borderRadius: t.radius2,
+    backgroundColor: t.bgControl,
     userSelect: "none",
   },
+  // The filled part paints inside the primary intent.
   indicator: {
     height: "100%",
     borderRadius: "inherit",
-    backgroundColor: t.accent,
+    backgroundColor: t.bgControlSelected,
   },
   thumb: {
     boxSizing: "border-box",
@@ -45,9 +47,10 @@ const styles = create({
     height: 14,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: t.strokePrimary,
+    borderColor: t.borderControl,
     borderRadius: t.radiusFull,
-    backgroundColor: t.fillInverse,
+    backgroundColor: t.contentOnControl,
+    boxShadow: t.shadowSm,
     outlineStyle: { default: "none", ":focus-within": "solid" },
     outlineWidth: 1,
     outlineColor: t.focusRing,
@@ -122,7 +125,7 @@ function SliderIndicator({
   return (
     <SliderPrimitive.Indicator
       {...rest}
-      {...mergeStyleProps(props(styles.indicator, xstyle), className, style)}
+      {...mergeStyleProps(props(intent.primary, styles.indicator, xstyle), className, style)}
     />
   );
 }

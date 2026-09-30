@@ -4,12 +4,18 @@ import { useRef } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
 
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
+import type { Tint } from "../../surface-theme.ts";
 import { t } from "../../vars.stylex.ts";
 import { Button } from "./button.tsx";
 import { Dialog } from "./dialog.tsx";
 
 const styles = create({
-  error: { margin: 0, color: t.textDanger, fontSize: t.fontBase, lineHeight: t.leadingBase },
+  error: {
+    margin: 0,
+    color: t.intentDangerContent,
+    fontSize: t.fontBase,
+    lineHeight: t.leadingBase,
+  },
 });
 
 export type AlertDialogRootProps = AlertDialogPrimitive.Root.Props;
@@ -50,6 +56,7 @@ export interface ConfirmDialogProps {
   readonly error?: string;
   /** Where focus lands on close when the dialog has no trigger. */
   readonly returnFocusRef?: RefObject<HTMLElement | null>;
+  readonly tint?: Tint;
   readonly onOpenChange: (open: boolean) => void;
   readonly onConfirm: () => void;
 }
@@ -64,6 +71,7 @@ export function ConfirmDialog({
   pending = false,
   error,
   returnFocusRef,
+  tint,
   onOpenChange,
   onConfirm,
 }: ConfirmDialogProps): ReactElement {
@@ -76,7 +84,12 @@ export function ConfirmDialog({
         if (!nextOpen && !pending) onOpenChange(false);
       }}
     >
-      <AlertDialog.Popup initialFocus={cancelRef} finalFocus={returnFocusRef} aria-busy={pending}>
+      <AlertDialog.Popup
+        tint={tint}
+        initialFocus={cancelRef}
+        finalFocus={returnFocusRef}
+        aria-busy={pending}
+      >
         <AlertDialog.Header>
           <AlertDialog.Title>{title}</AlertDialog.Title>
           <AlertDialog.Description>{description}</AlertDialog.Description>

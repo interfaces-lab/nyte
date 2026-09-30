@@ -2,7 +2,7 @@ import { useRender } from "@base-ui/react/use-render";
 import { create, props, type StyleXStyles } from "@stylexjs/stylex";
 
 import { focus } from "../../a11y.stylex.ts";
-import { glyph } from "../../schema.stylex.ts";
+import { glyph, row } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
 import { t } from "../../vars.stylex.ts";
 
@@ -16,13 +16,13 @@ const styles = create({
     alignItems: "center",
     width: "100%",
     minWidth: 0,
-    minHeight: "var(--nyte-row-height, 28px)",
-    gap: "var(--nyte-row-gap, 6px)",
-    paddingInline: "var(--nyte-row-padding-inline, 6px)",
+    minHeight: `var(--nyte-row-height, ${row.heightMd})`,
+    gap: `var(--nyte-row-gap, ${row.gap})`,
+    paddingInline: `var(--nyte-row-padding-inline, ${row.paddingInlineMd})`,
     borderStyle: "none",
-    borderRadius: t.radiusBase,
+    borderRadius: row.radius,
     backgroundColor: "var(--_row-fill, transparent)",
-    color: t.textPrimary,
+    color: t.contentPrimary,
     // Typography is inherited: the surface owns the family and the size.
     textAlign: "start",
     transitionProperty: "background-color, color",
@@ -33,10 +33,9 @@ const styles = create({
     transitionTimingFunction: t.easeOut,
   },
   lg: {
-    "--nyte-row-height": "44px",
-    "--nyte-row-gap": "12px",
-    "--nyte-row-padding-inline": "12px",
-    paddingBlock: 8,
+    "--nyte-row-height": row.heightLg,
+    "--nyte-row-padding-inline": row.paddingInlineLg,
+    paddingBlock: 6,
   },
   /*
    * One declaration owns the fill. StyleX merges a property's conditions into
@@ -45,10 +44,12 @@ const styles = create({
   interactive: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillHover },
-      ":focus-within": t.fillHover,
-      "[data-selected]": t.fillSelected,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": t.bgHover },
+      ":focus-within": t.bgHover,
+      "[data-selected]": t.bgInteractiveSecondaryTranslucent,
     },
+    // A selected row carries a hairline, so it reads apart from the hovered one.
+    boxShadow: { default: "none", "[data-selected]": `inset 0 0 0 1px ${t.borderPrimary}` },
   },
   /*
    * The row is the control. Its label brightens on hover and on keyboard focus,
@@ -57,18 +58,18 @@ const styles = create({
   nav: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillHover },
+      ":hover": { "@media (hover: hover) and (pointer: fine)": t.bgHover },
     },
     "--_row-leading-color": "currentColor",
     flexShrink: 0,
     margin: 0,
     paddingBlock: 0,
-    borderRadius: t.radiusLg,
+    borderRadius: row.radius,
     color: {
-      default: t.textSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.textPrimary },
-      ":focus-visible": t.textPrimary,
-      ":disabled": t.textQuaternary,
+      default: t.contentChrome,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": t.contentPrimary },
+      ":focus-visible": t.contentPrimary,
+      ":disabled": t.contentDisabled,
     },
     font: "inherit",
     textDecoration: "none",
@@ -76,8 +77,9 @@ const styles = create({
     cursor: { default: t.cursorInteractive, ":disabled": "default" },
   },
   navSelected: {
-    "--_row-fill": t.fillSelected,
-    color: t.textPrimary,
+    "--_row-fill": t.bgInteractiveSecondaryTranslucent,
+    boxShadow: `inset 0 0 0 1px ${t.borderPrimary}`,
+    color: t.contentPrimary,
   },
   /*
    * A surface reclaiming room multiplies this value rather than repeating the
@@ -125,7 +127,7 @@ const styles = create({
     flexShrink: 0,
     width: `var(--nyte-row-leading-size, ${glyph.box})`,
     lineHeight: 0,
-    color: `var(--_row-leading-color, ${t.iconSecondary})`,
+    color: `var(--_row-leading-color, ${t.contentSecondary})`,
   },
   body: {
     display: "flex",
@@ -145,14 +147,14 @@ const styles = create({
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
   },
   meta: {
     display: "inline-flex",
     alignItems: "center",
     flexShrink: 0,
-    color: `var(--_row-meta-color, ${t.textTertiary})`,
+    color: `var(--_row-meta-color, ${t.contentSecondary})`,
     fontSize: t.fontSm,
     // A time or a count updates in place; tabular figures keep it from shifting.
     fontVariantNumeric: "tabular-nums",
@@ -168,7 +170,7 @@ const styles = create({
   actionsOverlay: {
     position: "absolute",
     zIndex: 1,
-    insetInlineEnd: "var(--nyte-row-padding-inline, 6px)",
+    insetInlineEnd: `var(--nyte-row-padding-inline, ${row.paddingInlineMd})`,
     top: "50%",
     transform: "translateY(-50%)",
   },
@@ -178,8 +180,8 @@ type RowElementProps = StyledProps<useRender.ComponentProps<"div">>;
 
 type RowButtonProps = StyledProps<useRender.ComponentProps<"button">>;
 
-/** `lg` is the settings row: taller, with room for a description under the label. */
-export type RowSize = "default" | "lg";
+/** Notion Calendar's row sizes. `lg` is taller, with room for a description under the label. */
+export type RowSize = "md" | "lg";
 
 /**
  * `list` holds a `Row.Primary` and its actions. `nav` is itself the control:
@@ -218,7 +220,7 @@ export function Row({
   render,
   revealActions = false,
   selected = false,
-  size = "default",
+  size = "md",
   style,
   variant = "list",
   xstyle,

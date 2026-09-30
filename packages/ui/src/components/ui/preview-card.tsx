@@ -5,6 +5,7 @@ import type { ReactElement } from "react";
 import { floatingSurfaceStyles } from "../../floating-surface.stylex.ts";
 import { layer } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
+import { surfaceTheme, type Tint } from "../../surface-theme.ts";
 import { t } from "../../vars.stylex.ts";
 import { useOverlayRef } from "./overlay.tsx";
 
@@ -17,9 +18,9 @@ const styles = create({
     maxWidth: "min(260px, var(--available-width))",
     padding: 8,
     borderStyle: "none",
-    borderRadius: t.radiusLg,
+    borderRadius: t.radius8,
     outline: "none",
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
     transformOrigin: "var(--transform-origin)",
@@ -59,9 +60,13 @@ function PreviewCardPositioner({
   );
 }
 
-export type PreviewCardPopupProps = StyledProps<PreviewCardPrimitive.Popup.Props>;
+export type PreviewCardPopupProps = StyledProps<PreviewCardPrimitive.Popup.Props> & {
+  /** Scopes the popup to a hue. */
+  readonly tint?: Tint;
+};
 
 function PreviewCardPopup({
+  tint,
   className,
   style,
   xstyle,
@@ -73,7 +78,12 @@ function PreviewCardPopup({
     <PreviewCardPrimitive.Popup
       ref={overlayRef}
       {...mergeStyleProps(
-        props(floatingSurfaceStyles.popup, styles.popup, xstyle),
+        props(
+          tint !== undefined && surfaceTheme[tint],
+          floatingSurfaceStyles.popup,
+          styles.popup,
+          xstyle,
+        ),
         className,
         style,
       )}

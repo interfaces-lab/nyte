@@ -161,7 +161,7 @@ const SessionModelChip = memo(function SessionModelChip({
           snapshot.data?.session.config.thinkingLevel ?? snapshot.data?.config.thinkingLevel
         }
         fastEnabled={fastEnabled}
-        disabled={configure.isPending || catalog.isError || catalog.isPending}
+        disabled={catalog.isError || catalog.isPending}
         onChange={handleChange}
       />
       {context?.percent !== undefined && (
@@ -443,7 +443,8 @@ export function ComposerFrame({
             />
             {onAttachmentRemove !== undefined && (
               <Button
-                size="icon-xs"
+                size="2xs"
+                iconOnly
                 icon="x"
                 aria-label={`Remove ${attachment.name}`}
                 variant="inverse"
@@ -656,7 +657,7 @@ export function ComposerFrame({
               finalFocus={() => areaRef.current?.element}
               trigger={
                 <Button
-                  size="icon"
+                  iconOnly
                   icon="plus"
                   aria-label="Add to message"
                   variant="secondary"
@@ -694,7 +695,7 @@ export function ComposerFrame({
             />
             {busy && onAbort !== undefined && (
               <Button
-                size="icon"
+                iconOnly
                 icon="square"
                 aria-label={stopping ? "Stopping" : "Stop"}
                 title={stopping ? "Stopping…" : "Stop (Esc)"}
@@ -707,7 +708,7 @@ export function ComposerFrame({
             )}
             {(!busy || onAbort === undefined || hasSubmission) && (
               <Button
-                size="icon"
+                iconOnly
                 icon="arrow-up"
                 aria-label={sendLabel}
                 title={sendTitle}
@@ -1362,7 +1363,7 @@ export function Composer({
                   <div {...stylex.props(composerStyles.queueActions)}>
                     {item.source?.kind !== "action" && (
                       <Button
-                        size="icon"
+                        iconOnly
                         icon="pencil"
                         aria-label={
                           canBeginEdit
@@ -1375,7 +1376,7 @@ export function Composer({
                     )}
                     {!steering && (
                       <Button
-                        size="icon"
+                        iconOnly
                         icon="arrow-up"
                         aria-label="Add to next response"
                         onClick={(event) => {
@@ -1385,7 +1386,7 @@ export function Composer({
                       />
                     )}
                     <Button
-                      size="icon"
+                      iconOnly
                       icon="trash"
                       aria-label="Remove queued message"
                       onClick={(event) => {
@@ -1424,7 +1425,7 @@ export function Composer({
                   <div {...stylex.props(composerStyles.queueActions)}>
                     {row.input.source?.kind !== "action" && row.input.delivery !== roles.steer && (
                       <Button
-                        size="icon"
+                        iconOnly
                         icon="pencil"
                         aria-label={
                           canBeginEdit
@@ -1436,7 +1437,7 @@ export function Composer({
                       />
                     )}
                     <Button
-                      size="icon"
+                      iconOnly
                       icon="trash"
                       aria-label="Remove queued message"
                       onClick={(event) => {
@@ -1486,7 +1487,7 @@ export function Composer({
                   </Button>
                 )}
                 <Button
-                  size="icon"
+                  iconOnly
                   icon="x"
                   aria-label="Dismiss"
                   onClick={() => setFeedback(undefined)}

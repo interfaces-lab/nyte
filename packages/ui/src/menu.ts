@@ -24,7 +24,6 @@ export type {
   MenuRadioItemProps,
   MenuSeparatorProps,
   MenuSide,
-  MenuSize,
   MenuSubmenuProps,
   MenuSwitchItemProps,
 } from "./components/ui/menu.tsx";

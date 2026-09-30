@@ -27,7 +27,7 @@ function EnvironmentMenu({
       label="Select environment"
       align="start"
       trigger={
-        <Button size="condensed" title={current.reach ?? current.name}>
+        <Button title={current.reach ?? current.name}>
           <Icon name={current.icon} size={13} />
           <span {...props(styles.chipText)}>{current.name}</span>
           <Icon name="chevron-down" size={10} />
@@ -79,7 +79,7 @@ function FolderMenu({ environment }: { readonly environment: LabEnvironment }): 
       label="Select workspace"
       align="start"
       trigger={
-        <Button size="condensed" title={`${first.name} on ${environment.name}`}>
+        <Button title={`${first.name} on ${environment.name}`}>
           <span {...props(styles.chipText)}>{first.name}</span>
           <Icon name="chevron-down" size={10} />
         </Button>

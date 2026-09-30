@@ -416,7 +416,7 @@ export function MessageScrollerButton(): ReactElement | null {
 
   return (
     <Button
-      size="icon"
+      iconOnly
       icon="chevron-down"
       aria-label="Scroll to latest message"
       variant="secondary"

@@ -6,7 +6,7 @@ import { t } from "@nyte-ai/ui/vars.stylex";
 export const settingsPatterns = stylex.create({
   pageTitle: {
     margin: 0,
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontSize: settings.pageTitleSize,
     fontWeight: 500,
     lineHeight: settings.pageTitleLineHeight,
@@ -26,14 +26,14 @@ export const settingsPatterns = stylex.create({
   },
   sectionTitle: {
     margin: 0,
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     fontWeight: 400,
     lineHeight: t.leadingSm,
   },
   sectionDescription: {
     margin: 0,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
   },
@@ -41,8 +41,8 @@ export const settingsPatterns = stylex.create({
     display: "flex",
     flexDirection: "column",
     overflow: "clip",
-    borderRadius: t.radiusXl,
-    backgroundColor: t.fillQuiet,
+    borderRadius: t.radius12,
+    backgroundColor: t.bgMutedTranslucent,
   },
   row: {
     position: "relative",
@@ -67,7 +67,7 @@ export const settingsPatterns = stylex.create({
       insetInline: settings.rowPadding,
       insetBlockStart: 0,
       height: 1,
-      backgroundColor: t.strokeSecondary,
+      backgroundColor: t.borderSecondaryTranslucent,
       content: '""',
     },
     ":first-child::before": { display: "none" },
@@ -94,7 +94,7 @@ export const settingsPatterns = stylex.create({
   },
   rowTitle: {
     overflow: "hidden",
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontSize: t.fontBase,
     fontWeight: 400,
     lineHeight: t.leadingBase,
@@ -102,7 +102,7 @@ export const settingsPatterns = stylex.create({
     textOverflow: "ellipsis",
   },
   rowDescription: {
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontBase,
     fontWeight: 400,
     lineHeight: t.leadingBase,

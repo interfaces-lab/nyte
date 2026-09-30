@@ -2,12 +2,12 @@
 
 Paired forms, three-layer stacks, and branching connections came from patterns
 in a one-time random alphanumeric prompt. The prompt is not part of the artwork.
-Run from any directory to update both inline and downloadable SVGs.
+Run from any directory to regenerate the SVGs in `public/diagrams`.
 """
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-INK = "var(--nyte-text-accent)"
+INK = "var(--nyte-blue-80)"
 parts = []
 
 
@@ -126,5 +126,4 @@ for name,draw in [('schema',schema),('ai',ai),('core',core),('ui',ui),('plugin',
     parts=[]
     draw()
     svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 8 180 156" fill="none" stroke="{INK}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">\n'+'\n'.join(parts)+'\n</svg>\n'
-    for folder in ['src/diagrams','public/diagrams']:
-        (ROOT/folder/f'package-{name}.svg').write_text(svg)
+    (ROOT/'public/diagrams'/f'package-{name}.svg').write_text(svg)

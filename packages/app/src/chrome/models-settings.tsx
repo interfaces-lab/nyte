@@ -1,10 +1,8 @@
 /**
- * Settings › Models: what a new chat starts with, which providers are on and
- * connected, and which of their models the picker shows. Every row states
- * where it stands first and offers the one action that changes that.
+ * Settings › Providers: connections, model defaults, and enabled models.
  */
 import { Collapsible } from "@nyte-ai/ui/collapsible";
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
@@ -28,7 +26,7 @@ import type { DesktopCatalog, ProviderStatus } from "../nyte.ts";
 import type { LoginMethod } from "../bridge.ts";
 import { useCatalog, useSetPreference } from "../queries.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
+import { ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
 import {
   beginLoginAttempt,
   endLoginAttempt,
@@ -42,12 +40,41 @@ import { BrowserSignInPanel, DeviceCodePanel } from "./sign-in-panels.tsx";
 
 type CatalogDefaults = NonNullable<DesktopCatalog["defaults"]>;
 
+const popularProviders = [
+  { id: "opencode-go", description: "Low-cost subscription for everyday use", recommended: true },
+  {
+    id: "opencode",
+    description: "Curated models including Claude, GPT, Gemini, and more",
+    recommended: true,
+  },
+  {
+    id: "github-copilot",
+    description: "Coding models through your GitHub Copilot subscription",
+    recommended: false,
+  },
+  { id: "google", description: "Gemini models from Google", recommended: false },
+  { id: "anthropic", description: "Claude models from Anthropic", recommended: false },
+  { id: "openai", description: "GPT and reasoning models from OpenAI", recommended: false },
+  {
+    id: "openai-codex",
+    description: "Codex through your ChatGPT subscription",
+    recommended: false,
+  },
+  {
+    id: "openrouter",
+    description: "Models from multiple providers through one API",
+    recommended: false,
+  },
+];
+
 function providerIcon(providerId: string): IconName {
   if (providerId === "anthropic") return "model-anthropic";
 
   if (providerId === "openai" || providerId === "openai-codex") return "model-openai";
 
   if (providerId === "opencode" || providerId === "opencode-go") return "provider-opencode";
+
+  if (providerId === "github-copilot") return "github";
 
   return "model-generic";
 }
@@ -72,11 +99,11 @@ function DefaultsSection({
   const levels = thinkingLevelsFor(chosen);
 
   return (
-    <section {...stylex.props(settingsPatterns.section)}>
-      <div {...stylex.props(settingsPatterns.sectionHeader)}>
-        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>New chats</h2>
+    <section {...props(settingsPatterns.section)}>
+      <div {...props(settingsPatterns.sectionHeader)}>
+        <h2 {...props(settingsPatterns.sectionTitle)}>New chats</h2>
       </div>
-      <div {...stylex.props(settingsPatterns.group)}>
+      <div {...props(settingsPatterns.group)}>
         <SettingsRow
           title="Model"
           controlWidth="wide"
@@ -137,17 +164,16 @@ function ApiKeyForm({
 
   return (
     <form
-      {...stylex.props(styles.keyForm)}
+      {...props(styles.keyForm)}
       onSubmit={(event) => {
         event.preventDefault();
 
         if (key.trim() !== "") onSubmit(key.trim());
       }}
     >
-      <div {...stylex.props(styles.keyRow)}>
+      <div {...props(styles.keyRow)}>
         <Input
           variant="quiet"
-          size="sm"
           type="password"
           aria-label={label}
           autoComplete="off"
@@ -166,7 +192,7 @@ function ApiKeyForm({
           Cancel
         </Button>
       </div>
-      <span {...stylex.props(styles.keyHint)}>
+      <span {...props(styles.keyHint)}>
         {nyte.clientSurface === "web"
           ? "Stored on the machine running the server"
           : "Stored on this Mac in ~/.nyte/auth.json"}
@@ -196,6 +222,8 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
     onSuccess: (outcome) => {
       if (outcome.kind === "cancelled") return;
       setKeyFormOpen(false);
+      if (!provider.enabled)
+        setPreference.mutate({ kind: "provider", provider: provider.id, enabled: true });
 
       if (outcome.catalogRefreshed) toast.success(`Connected to ${provider.name}`);
       else
@@ -223,7 +251,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
     });
   };
 
-  const busy = login.isPending || logout.isPending;
+  const busy = login.isPending || logout.isPending || setPreference.isPending;
   const browser = provider.signIn.find((method) => method.kind === "browser");
   const apiKey = provider.signIn.find((method) => method.kind === "api_key");
   const { connection } = provider;
@@ -235,28 +263,33 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
       <ConnectionStatus tone="warn">Waiting for approval</ConnectionStatus>
     ) : attempt?.method === "browser" ? (
       <ConnectionStatus tone="warn">Waiting for the browser</ConnectionStatus>
-    ) : !provider.enabled ? (
-      <ConnectionStatus tone="off">Off</ConnectionStatus>
-    ) : connection.kind === "disconnected" ? (
-      <ConnectionStatus tone="off">Not connected</ConnectionStatus>
-    ) : (
-      <ConnectionStatus tone="on">Connected</ConnectionStatus>
-    );
+    ) : undefined;
+
+  const popular = popularProviders.find((entry) => entry.id === provider.id);
+  const badge =
+    connection.kind === "api_key"
+      ? "API key"
+      : connection.kind === "oauth"
+        ? "Subscription"
+        : popular?.recommended
+          ? "Recommended"
+          : undefined;
 
   const detail =
     connection.kind === "oauth"
-      ? `Signed in with ${browser?.subscription ?? "your subscription"}`
+      ? undefined
       : connection.kind === "api_key"
         ? connection.env === undefined
-          ? "API key"
+          ? undefined
           : `API key from ${connection.env}`
-        : browser !== undefined && apiKey !== undefined
-          ? `Sign in with ${browser.subscription}, or add an API key`
-          : apiKey !== undefined
-            ? "Add an API key to connect"
-            : browser !== undefined
-              ? "Sign in to connect"
-              : "Connects through the environment";
+        : (popular?.description ??
+          (browser !== undefined && apiKey !== undefined
+            ? `Sign in with ${browser.subscription}, or add an API key`
+            : apiKey !== undefined
+              ? "Add an API key to connect"
+              : browser !== undefined
+                ? "Sign in to connect"
+                : "Connects through the environment"));
 
   // A key from the environment is not ours to remove.
   const canSignOut =
@@ -265,9 +298,13 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
   return (
     <ConnectionRow
       glyph={<Icon name={providerIcon(provider.id)} size={20} />}
-      title={provider.name}
+      title={
+        <span {...props(styles.providerTitle)}>
+          {provider.name}
+          {badge !== undefined && <span {...props(styles.providerBadge)}>{badge}</span>}
+        </span>
+      }
       detail={detail}
-      dimmed={!provider.enabled}
       status={status}
       actions={
         attempt !== undefined && attempt.method === "browser" ? (
@@ -278,16 +315,18 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
           <>
             {browser !== undefined && (
               <Button
-                variant="secondary"
+                variant="primary"
+                icon="plus"
                 disabled={busy}
                 onClick={() => login.mutate({ kind: "browser" })}
               >
-                {browser.label}
+                {apiKey === undefined ? "Connect" : browser.label}
               </Button>
             )}
             {apiKey !== undefined && (
               <Button
-                icon="key"
+                variant="primary"
+                icon={browser === undefined ? "plus" : "key"}
                 disabled={busy}
                 aria-expanded={keyFormOpen}
                 onClick={() => {
@@ -295,25 +334,30 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
                   setKeyFormOpen((open) => !open);
                 }}
               >
-                Add API key
+                {browser === undefined ? "Connect" : "Add API key"}
               </Button>
             )}
           </>
-        ) : canSignOut ? (
-          <Button disabled={busy} onClick={() => logout.mutate()}>
-            Sign out
-          </Button>
-        ) : undefined
-      }
-      trailing={
-        <Switch
-          label={`${provider.name} on`}
-          checked={provider.enabled}
-          disabled={setPreference.isPending}
-          onCheckedChange={(enabled) =>
-            setPreference.mutate({ kind: "provider", provider: provider.id, enabled })
-          }
-        />
+        ) : (
+          <>
+            {!provider.enabled && (
+              <Button
+                variant="primary"
+                disabled={busy}
+                onClick={() =>
+                  setPreference.mutate({ kind: "provider", provider: provider.id, enabled: true })
+                }
+              >
+                Enable models
+              </Button>
+            )}
+            {canSignOut && (
+              <Button disabled={busy} onClick={() => logout.mutate()}>
+                {logout.isPending ? "Disconnecting…" : "Disconnect"}
+              </Button>
+            )}
+          </>
+        )
       }
       expansion={
         attempt?.deviceCode !== undefined ? (
@@ -336,7 +380,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
             }}
           />
         ) : attempt?.message !== undefined ? (
-          <span role="status" {...stylex.props(styles.deviceCodeNote)}>
+          <span role="status" {...props(styles.deviceCodeNote)}>
             {attempt.message}
           </span>
         ) : undefined
@@ -345,7 +389,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
   );
 }
 
-function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactElement {
+function EnabledModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactElement {
   const setPreference = useSetPreference();
   const [query, setQuery] = useState("");
   const [expandedProviders, setExpandedProviders] = useState<ReadonlySet<string>>(new Set());
@@ -363,11 +407,11 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
   });
 
   return (
-    <section {...stylex.props(settingsPatterns.section)}>
-      <div {...stylex.props(settingsPatterns.sectionHeader)}>
-        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>In the picker</h2>
-        <p {...stylex.props(settingsPatterns.sectionDescription)}>
-          Hide the models you never use. Hidden models stay here to turn back on.
+    <section {...props(settingsPatterns.section)}>
+      <div {...props(settingsPatterns.sectionHeader)}>
+        <h2 {...props(settingsPatterns.sectionTitle)}>Enabled models</h2>
+        <p {...props(settingsPatterns.sectionDescription)}>
+          Disabled models cannot be used by chats or subagents.
         </p>
       </div>
       {enabled.length > 0 && (
@@ -385,13 +429,13 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
         </InputGroup>
       )}
       {enabled.length === 0 && (
-        <div {...stylex.props(styles.quiet)}>Turn on a provider to choose its models.</div>
+        <div {...props(styles.quiet)}>Connect a provider to choose its models.</div>
       )}
       {enabled.length > 0 && groups.length === 0 && (
-        <div {...stylex.props(styles.quiet)}>No models match.</div>
+        <div {...props(styles.quiet)}>No models match.</div>
       )}
       {groups.map(({ provider, all, matching }) => {
-        const shown = all.filter((option) => !option.hidden).length;
+        const active = all.filter((option) => !option.hidden).length;
 
         const setAll = (hidden: boolean): void =>
           setPreference.mutate({
@@ -411,9 +455,9 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
               }
               size={12}
             />
-            <span {...stylex.props(styles.groupTitle)}>{provider.name}</span>
-            <span {...stylex.props(styles.groupMeta)}>
-              <span>{shown}</span> of <span>{all.length}</span> shown
+            <span {...props(styles.groupTitle)}>{provider.name}</span>
+            <span {...props(styles.groupMeta)}>
+              <span>{active}</span> of <span>{all.length}</span> enabled
               {provider.connection.kind === "disconnected" && " · Not connected"}
             </span>
           </>
@@ -435,7 +479,7 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
             }
             xstyle={settingsPatterns.group}
           >
-            <div {...stylex.props(styles.groupHeading)}>
+            <div {...props(styles.groupHeading)}>
               {needle === "" ? (
                 <Collapsible.Trigger
                   aria-label={`${provider.name} models`}
@@ -444,20 +488,20 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
                   {heading}
                 </Collapsible.Trigger>
               ) : (
-                <span {...stylex.props(styles.groupLabel)}>{heading}</span>
+                <span {...props(styles.groupLabel)}>{heading}</span>
               )}
-              <span {...stylex.props(styles.groupActions)}>
+              <span {...props(styles.groupActions)}>
                 <Button
-                  disabled={shown === all.length || setPreference.isPending}
+                  disabled={active === all.length || setPreference.isPending}
                   onClick={() => setAll(false)}
                 >
-                  Show all
+                  Enable all
                 </Button>
                 <Button
-                  disabled={shown === 0 || setPreference.isPending}
+                  disabled={active === 0 || setPreference.isPending}
                   onClick={() => setAll(true)}
                 >
-                  Hide all
+                  Disable all
                 </Button>
               </span>
             </div>
@@ -472,7 +516,7 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
                   </Row.Body>
                   <Row.Actions>
                     <Switch
-                      label={`Show ${option.name}`}
+                      label={`Enable ${option.name}`}
                       checked={!option.hidden}
                       disabled={setPreference.isPending}
                       onCheckedChange={(show) =>
@@ -495,38 +539,69 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
   );
 }
 
-export function ModelsSettings(): ReactElement | null {
+export function ProvidersSettings(): ReactElement | null {
   const catalog = useCatalog();
 
   if (catalog.data === undefined) {
     if (!catalog.isError) return null;
 
     return (
-      <div role="alert" title={catalog.error.message} {...stylex.props(styles.alert)}>
+      <div role="alert" title={catalog.error.message} {...props(styles.alert)}>
         Couldn&rsquo;t load providers. Try again.
       </div>
     );
   }
 
   const defaults = catalog.data.defaults;
+  const connected = catalog.data.providers.filter(
+    (provider) => provider.connection.kind !== "disconnected",
+  );
+  const disconnected = catalog.data.providers.filter(
+    (provider) => provider.connection.kind === "disconnected",
+  );
+  const popular = popularProviders.flatMap((entry) => {
+    const provider = disconnected.find((candidate) => candidate.id === entry.id);
+
+    return provider === undefined ? [] : [provider];
+  });
+  const other = disconnected.filter(
+    (provider) => !popularProviders.some((entry) => entry.id === provider.id),
+  );
 
   return (
     <>
-      {defaults !== undefined && <DefaultsSection catalog={catalog.data} defaults={defaults} />}
-      <section {...stylex.props(settingsPatterns.section)}>
-        <div {...stylex.props(settingsPatterns.sectionHeader)}>
-          <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Providers</h2>
-          <p {...stylex.props(settingsPatterns.sectionDescription)}>
-            The picker shows models from providers that are on and connected.
-          </p>
+      <section {...props(styles.providers)}>
+        <div {...props(settingsPatterns.sectionHeader)}>
+          <p {...props(settingsPatterns.sectionDescription)}>Connect and manage model providers</p>
         </div>
-        <ConnectionList>
-          {catalog.data.providers.map((provider) => (
-            <ProviderRow key={provider.id} provider={provider} />
-          ))}
-        </ConnectionList>
+        {[
+          { title: "Connected providers", providers: connected },
+          { title: "Popular providers", providers: popular },
+          { title: "Other providers", providers: other },
+        ].map((group) =>
+          group.providers.length === 0 ? null : (
+            <section
+              key={group.title}
+              aria-label={group.title}
+              {...props(settingsPatterns.section)}
+            >
+              <div {...props(settingsPatterns.sectionHeader)}>
+                <h3 {...props(settingsPatterns.sectionTitle)}>{group.title}</h3>
+              </div>
+              <div {...props(settingsPatterns.group, styles.providerList)}>
+                {group.providers.map((provider) => (
+                  <ProviderRow key={provider.id} provider={provider} />
+                ))}
+              </div>
+            </section>
+          ),
+        )}
+        {catalog.data.providers.length === 0 && (
+          <p {...props(settingsPatterns.sectionDescription)}>No model providers available.</p>
+        )}
       </section>
-      <PickerModelsSection catalog={catalog.data} />
+      {defaults !== undefined && <DefaultsSection catalog={catalog.data} defaults={defaults} />}
+      <EnabledModelsSection catalog={catalog.data} />
     </>
   );
 }

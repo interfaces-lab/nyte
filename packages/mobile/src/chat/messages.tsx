@@ -188,7 +188,12 @@ function Disclosure({
       >
         <html.span style={[textStyles.secondary, styles.disclosureTitle]}>{title}</html.span>
         <html.div style={styles.chevron(expanded)}>
-          <SymbolView name="chevron.right" size={11} weight="semibold" tintColor={theme.tertiary} />
+          <SymbolView
+            name="chevron.right"
+            size={11}
+            weight="semibold"
+            tintColor={theme.interactiveTertiary}
+          />
         </html.div>
       </html.button>
       {expanded ? (
@@ -220,7 +225,7 @@ function EditRow({
       <html.span style={[textStyles.caption, styles.editTotals]}>
         {`+${String(patch.added)} \u2212${String(patch.removed)}`}
       </html.span>
-      <SymbolView name="chevron.right" size={13} tintColor={theme.tertiary} />
+      <SymbolView name="chevron.right" size={13} tintColor={theme.interactiveTertiary} />
     </html.button>
   );
 }
@@ -340,7 +345,7 @@ function WorkRow({
                 name="chevron.right"
                 size={13}
                 weight="semibold"
-                tintColor={theme.tertiary}
+                tintColor={theme.interactiveTertiary}
               />
             </html.div>
           ) : null}

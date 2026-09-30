@@ -10,7 +10,7 @@ const styles = create({
     display: "flex",
     flexDirection: "column",
     gap: 8,
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontFamily: t.fontSans,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
@@ -36,7 +36,6 @@ export function CheckboxDemo() {
       {files.map((file) => (
         <label key={file} {...props(styles.item)}>
           <Checkbox
-            size="sm"
             checked={viewed.includes(file)}
             onCheckedChange={(checked) =>
               setViewed((current) =>

@@ -13,7 +13,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { keys, queryClient } from "../queries.ts";
 import { t } from "@nyte-ai/ui/vars.stylex";
 import { nyte } from "../nyte.ts";
-import type { OpenWorkspaceOutcome } from "../nyte.ts";
+import type { HostBridge, OpenWorkspaceOutcome } from "../bridge.ts";
 
 const styles = stylex.create({
   popup: {
@@ -25,9 +25,9 @@ const styles = stylex.create({
   title: { lineHeight: t.leadingBase },
   path: {
     padding: "6px 10px",
-    borderRadius: t.radiusBase,
-    backgroundColor: t.fillQuiet,
-    color: t.textSecondary,
+    borderRadius: t.radius6,
+    backgroundColor: t.bgMutedTranslucent,
+    color: t.contentSecondary,
     fontFamily: t.fontMono,
     fontSize: t.fontCode,
     overflowWrap: "anywhere",
@@ -106,38 +106,57 @@ function declineTrust(path: string): void {
   setPrompt(undefined);
 }
 
-function grantTrust(path: string): void {
+function grantTrust(trust: NonNullable<HostBridge["trustWorkspace"]>, path: string): void {
   declined.delete(path);
   setPrompt(undefined);
-  void nyte.host.trustWorkspace({ path }).then((outcome) => {
+  void trust({ path }).then((outcome) => {
     handleOpenOutcome(outcome);
     void queryClient.invalidateQueries({ queryKey: keys.workspaces });
     void queryClient.invalidateQueries({ queryKey: keys.pluginCatalog });
   });
 }
 
+/** The native folder picker, then open. Absent where the host has no picker to show. */
+export function folderPicker(): (() => void) | undefined {
+  const pick = nyte.host.pickWorkspace;
+
+  return pick === undefined ? undefined : () => void pick().then(handleOpenOutcome);
+}
+
 /** Mounted once in the shell; renders whichever prompt is live. */
 export function WorkspaceDialogHost(): ReactElement | null {
   const current = useSyncExternalStore(subscribe, snapshot);
+  const trust = nyte.host.trustWorkspace;
 
   if (current === undefined) return null;
 
   return (
     <Dialog.Root key={current} defaultOpen onOpenChange={(open) => !open && declineTrust(current)}>
       <Dialog.Popup xstyle={styles.popup}>
-        <Dialog.Title xstyle={styles.title}>Do you trust this folder?</Dialog.Title>
+        <Dialog.Title xstyle={styles.title}>
+          {trust === undefined ? "This folder is not trusted" : "Do you trust this folder?"}
+        </Dialog.Title>
         <div {...stylex.props(styles.path)}>{current}</div>
         <Dialog.Description>
-          Nyte can execute code and access files in this folder. Project plugins and skills load
-          only after you trust it.
+          {trust === undefined
+            ? "Trust it on the machine running the server. Nyte runs code and reads files only in trusted folders."
+            : "Nyte can execute code and access files in this folder. Project plugins and skills load only after you trust it."}
         </Dialog.Description>
         <Dialog.Footer>
-          <Button autoFocus onClick={() => declineTrust(current)}>
-            Cancel
-          </Button>
-          <Button variant="inverse" onClick={() => grantTrust(current)}>
-            Trust and continue
-          </Button>
+          {trust === undefined ? (
+            <Button autoFocus onClick={() => declineTrust(current)}>
+              Close
+            </Button>
+          ) : (
+            <>
+              <Button autoFocus onClick={() => declineTrust(current)}>
+                Cancel
+              </Button>
+              <Button variant="inverse" onClick={() => grantTrust(trust, current)}>
+                Trust and continue
+              </Button>
+            </>
+          )}
         </Dialog.Footer>
       </Dialog.Popup>
     </Dialog.Root>

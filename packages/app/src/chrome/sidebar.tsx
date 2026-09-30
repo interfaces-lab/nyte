@@ -63,14 +63,18 @@ import {
   useWorkspaces,
 } from "../queries.ts";
 import { nyte } from "../nyte.ts";
-import { sessionReadState, useReadSessions } from "../session-read-state.ts";
+import {
+  sessionHasUnreadCompletion,
+  sessionReadState,
+  useReadSessions,
+} from "../session-read-state.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
 import { sessionActivityMark } from "../session-activity.ts";
 import { useOptimisticSessionIds } from "../use-outbox.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
-import { signOutDescription, useGitHubAccount } from "./github-account.ts";
-import { handleOpenOutcome } from "./open-workspace.tsx";
+import { signOutDescription, useGitHubAccount, useGitHubState } from "./github-account.ts";
+import { folderPicker } from "./open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
 import { SessionPreviewCard, type SessionPreviewContext } from "./sidebar-session-preview.tsx";
 import { WorkspaceControls } from "./sidebar-filter.tsx";
@@ -89,6 +93,7 @@ import { shellActions, useShellState } from "./shell-state.ts";
 import { activateWorkspace } from "./use-show-session.ts";
 import { clientActionAriaShortcut, clientActionKeys, clientActions } from "../client-actions.ts";
 import { cloudSessions, localSessions } from "../bridge.ts";
+import type { GitHubBridge } from "../bridge.ts";
 
 /** Which list a sidebar panel shows: one local store, or the connected server's sessions. */
 type SessionPlace =
@@ -302,7 +307,9 @@ export function Sidebar(): ReactElement {
   // Confirmations open from a context menu, which has no persistent trigger to
   // return focus to; the dialog falls back to the previously focused element.
   const confirmationReturnRef = useRef<HTMLButtonElement>(null);
-  const account = useGitHubAccount();
+  const github = nyte.host.github;
+  const githubState = useGitHubState(github);
+  const openFolder = folderPicker();
   const footerRowRef = useRef<HTMLDivElement>(null);
   const workspaceCollectionID = useId();
   const [collectionExpanded, setCollectionExpanded] = useState(true);
@@ -356,7 +363,6 @@ export function Sidebar(): ReactElement {
       : undefined;
 
   const mac = macPlatform(host.data?.platform);
-  const native = nyte.clientSurface === "desktop";
   const completeDirectoryRequired = needsCompleteSessionDirectory(view);
 
   // The next switch is most often to a neighbouring row; its snapshot is warm
@@ -458,8 +464,8 @@ export function Sidebar(): ReactElement {
             path: place.path,
             repository:
               place.path === workspacePath &&
-              (account.query.data?.kind === "ready" || account.query.data?.kind === "signed_out")
-                ? account.query.data.repository
+              (githubState.data?.kind === "ready" || githubState.data?.kind === "signed_out")
+                ? githubState.data.repository
                 : undefined,
           };
 
@@ -594,7 +600,6 @@ export function Sidebar(): ReactElement {
           ) : (
             <div {...stylex.props(styles.quiet, styles.sessionQuiet)}>No sessions yet</div>
           ))}
-        {visible.map(({ place, session }) => sessionRow(place, session, layoutEnabled))}
         {drafts.map((draft) => (
           <DraftRow
             key={draft.id}
@@ -605,6 +610,7 @@ export function Sidebar(): ReactElement {
             onDelete={() => paneControllerForWorkspace(workspacePath).removeDraft(draft.id)}
           />
         ))}
+        {visible.map(({ place, session }) => sessionRow(place, session, layoutEnabled))}
         {hasOverflow && (
           <Row
             variant="nav"
@@ -786,7 +792,7 @@ export function Sidebar(): ReactElement {
                 panes.openSession(sessionId);
               }}
               onNewChat={() => panes.newChat()}
-              onOpenFolder={() => void nyte.host.pickWorkspace().then(handleOpenOutcome)}
+              onOpenFolder={openFolder}
               onOpenHome={
                 open === undefined
                   ? undefined
@@ -880,7 +886,7 @@ export function Sidebar(): ReactElement {
                     onHomeVisibleChange={shellActions.setHomeVisible}
                     filterDisabled={sessionDirectory.data === undefined}
                     onChange={setSessionView}
-                    onOpenFolder={() => void nyte.host.pickWorkspace().then(handleOpenOutcome)}
+                    onOpenFolder={openFolder}
                     onCollapseAll={() =>
                       flat
                         ? setCollectionExpanded(false)
@@ -987,10 +993,10 @@ export function Sidebar(): ReactElement {
         </>
       </SidebarContent>
 
-      {native && (
+      {github !== undefined && (
         <div {...stylex.props(styles.footer)}>
           <div ref={footerRowRef} {...stylex.props(styles.footerRow)}>
-            <AccountFooterMenu account={account} anchor={footerRowRef} />
+            <AccountFooterMenu github={github} anchor={footerRowRef} />
           </div>
         </div>
       )}
@@ -1042,12 +1048,13 @@ export function Sidebar(): ReactElement {
  * instead of making the footer disappear while a workspace changes.
  */
 function AccountFooterMenu({
-  account,
+  github,
   anchor,
 }: {
-  account: ReturnType<typeof useGitHubAccount>;
+  github: GitHubBridge;
   anchor: RefObject<HTMLDivElement | null>;
 }): ReactElement {
+  const account = useGitHubAccount(github);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const state = account.query.data;
@@ -1183,7 +1190,8 @@ function WorkspaceRow({
       </Row.Primary>
       <Row.Actions placement="overlay" xstyle={styles.workspaceActions}>
         <Button
-          size="icon-sm"
+          size="sm"
+          iconOnly
           icon="new-chat-folder"
           aria-label={`New chat in ${name}`}
           onClick={onNewChat}
@@ -1284,7 +1292,8 @@ function DraftRow({
         xstyle={[styles.rowActions, styles.rowActionsBesideMeta]}
       >
         <Button
-          size="icon-xs"
+          size="2xs"
+          iconOnly
           icon="trash"
           aria-label={`Delete draft: ${title}`}
           onClick={(event) => {
@@ -1305,32 +1314,32 @@ function DraftRow({
   );
 }
 
-/**
- * One glyph per stage, by shape: the live marks while a run works, waits, or
- * failed; an eye once it finished and waits on a look, until it is archived;
- * the draft glyph for a chat nothing has been said in. Opening a chat changes
- * none of them.
- */
 /** Where a chat runs when that is not this machine. */
 interface SessionElsewhere {
   readonly icon: IconName;
   readonly name: string;
 }
 
+/**
+ * One glyph per stage, by shape: the live marks while a run works, waits, or
+ * failed; an eye once it finished and nobody has opened it; the draft glyph
+ * for a chat nothing has been said in.
+ */
 function StatusGlyph({
   session,
   mark,
 }: {
   readonly session: SessionInfo;
   readonly mark: SessionMark;
-}): ReactElement {
+}): ReactElement | null {
+  const read = useReadSessions();
+
   if (mark !== "idle") return <StatusDot mark={mark} />;
 
-  return sessionIsDraft(session) ? (
-    <Icon name="draft" size={14} label="Draft" />
-  ) : (
-    <Icon name="eye" size={14} label="In review" />
-  );
+  if (sessionHasUnreadCompletion(session, read))
+    return <Icon name="eye" size={14} label="Unread" />;
+
+  return sessionIsDraft(session) ? <Icon name="draft" size={14} label="Draft" /> : null;
 }
 
 /** A chat running elsewhere carries that place as a corner badge; a chat here carries nothing. */
@@ -1477,6 +1486,15 @@ function SessionRow({
     );
   }
 
+  const titleLine = (
+    <>
+      <Row.Label xstyle={styles.sessionLabel}>{title}</Row.Label>
+      {showUpdated && (
+        <Row.Meta xstyle={styles.rowMeta}>{formatTimeAgo(session.lastActivityAt)}</Row.Meta>
+      )}
+    </>
+  );
+
   const row = (
     <Row
       render={
@@ -1525,10 +1543,10 @@ function SessionRow({
           <SessionGlyph session={session} mark={mark} elsewhere={elsewhere} />
         </Row.Leading>
         {ask === undefined ? (
-          <Row.Label xstyle={styles.sessionLabel}>{title}</Row.Label>
+          titleLine
         ) : (
           <Row.Body>
-            <Row.Label xstyle={styles.sessionLabel}>{title}</Row.Label>
+            <span {...stylex.props(styles.sessionTitleLine)}>{titleLine}</span>
             <Row.Description
               xstyle={mark === "failed" ? styles.sessionAskFailed : styles.sessionAskWaiting}
             >
@@ -1536,23 +1554,26 @@ function SessionRow({
             </Row.Description>
           </Row.Body>
         )}
-        {showUpdated && (
-          <Row.Meta xstyle={styles.rowMeta}>{formatTimeAgo(session.lastActivityAt)}</Row.Meta>
-        )}
       </Row.Primary>
       <Row.Actions
         placement="overlay"
         data-nyte-session-row-actions=""
-        xstyle={[styles.rowActions, showUpdated && styles.rowActionsBesideMeta]}
+        xstyle={[
+          styles.rowActions,
+          showUpdated && styles.rowActionsBesideMeta,
+          ask !== undefined && styles.rowActionsAsk,
+        ]}
       >
         <Button
-          size="icon-xs"
+          size="2xs"
+          iconOnly
           icon={session.pinned ? "unpin" : "pin"}
           aria-label={session.pinned ? "Unpin" : "Pin"}
           onClick={onPin}
         />
         <Button
-          size="icon-xs"
+          size="2xs"
+          iconOnly
           aria-label={session.archived ? "Restore" : "Archive"}
           onClick={onArchive}
         >

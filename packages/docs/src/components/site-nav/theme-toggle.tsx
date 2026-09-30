@@ -20,7 +20,7 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      className="inline-flex size-(--site-nav-control) cursor-pointer items-center justify-center rounded-(--nyte-radius-full) text-(--nyte-text-tertiary) transition-colors hover:bg-(--nyte-fill-hover) hover:text-(--nyte-text-primary) hero:text-white/72 hero:hover:bg-white/12 hero:hover:text-white"
+      className="inline-flex size-(--site-nav-control) cursor-pointer items-center justify-center rounded-(--nyte-radius-full) text-(--nyte-content-secondary) transition-colors hover:bg-(--nyte-bg-hover) hover:text-(--nyte-content-primary) hero:text-white/72 hero:hover:bg-white/12 hero:hover:text-white"
       aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
       onClick={() => setTheme(dark ? "light" : "dark")}
     >

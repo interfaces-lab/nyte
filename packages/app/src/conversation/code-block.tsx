@@ -321,7 +321,7 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
         content={copied ? "Copied" : "Copy code"}
         trigger={
           <Button
-            size="icon"
+            iconOnly
             icon={copied ? "checkmark" : "copy"}
             aria-label={copied ? "Code copied" : "Copy code"}
             onClick={() => {

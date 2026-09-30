@@ -16,7 +16,7 @@ import { useMatch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { sidebar } from "../theme/schema.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { ramp, t } from "@nyte-ai/ui/vars.stylex";
 import {
   clampSidebarWidth,
   SIDEBAR_WIDTH_MAX,
@@ -64,15 +64,15 @@ const styles = stylex.create({
       insetBlock: 0,
       insetInlineEnd: 0,
       width: 1,
-      backgroundColor: t.strokeTertiary,
+      backgroundColor: t.borderSecondaryTranslucent,
       transitionProperty: "background-color",
       transitionDuration: t.durationFast,
       transitionTimingFunction: t.easeOut,
     },
-    ":hover::after": { backgroundColor: t.strokePrimary },
-    ":focus-visible::after": { backgroundColor: t.strokeFocused },
+    ":hover::after": { backgroundColor: t.borderPrimaryTranslucent },
+    ":focus-visible::after": { backgroundColor: ramp.blue80 },
   },
-  handleActive: { "::after": { backgroundColor: t.strokeFocused } },
+  handleActive: { "::after": { backgroundColor: ramp.blue80 } },
 });
 
 interface ResizeState {

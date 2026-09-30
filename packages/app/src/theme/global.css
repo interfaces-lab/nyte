@@ -22,7 +22,7 @@
   }
 
   :root {
-    color: var(--nyte-text-primary);
+    color: var(--nyte-content-primary);
     background: transparent;
     font-family: var(--nyte-font-family-sans);
     font-size: var(--nyte-font-size-base);
@@ -106,8 +106,8 @@
     color: var(--shiki-light);
   }
 
-  :root[data-theme="dark"] .shiki,
-  :root[data-theme="dark"] .shiki span {
+  :root[data-display-mode="dark"] .shiki,
+  :root[data-display-mode="dark"] .shiki span {
     color: var(--shiki-dark);
   }
 

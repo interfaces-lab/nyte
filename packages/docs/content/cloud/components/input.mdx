@@ -48,7 +48,7 @@ beside it, such as a search icon or match toggles. For multi-line text use
 
 ```tsx
 <Input placeholder="Chat name" aria-label="Chat name" />
-<Input variant="quiet" size="sm" type="password" placeholder="Paste your API key" aria-label="API key" />
+<Input variant="quiet" type="password" placeholder="Paste your API key" aria-label="API key" />
 <Input placeholder="Server URL" aria-label="Server URL" aria-invalid defaultValue="not-a-url" />
 ```
 
@@ -85,11 +85,11 @@ const [query, setQuery] = useState("");
 
 Every Base UI `Input` prop passes through, except the native `size` attribute.
 
-| Prop                           | Type                                      | Default                             | Description                  |
-| ------------------------------ | ----------------------------------------- | ----------------------------------- | ---------------------------- |
-| `variant`                      | `"raised" \| "quiet" \| "bare"`           | `"raised"`, `"bare"` inside a group | The frame.                   |
-| `size`                         | `"sm" \| "default" \| "lg"`               | `"default"`, or the group's size    | Type size and framed height. |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |                                     |                              |
+| Prop                           | Type                                      | Default                             | Description                                                    |
+| ------------------------------ | ----------------------------------------- | ----------------------------------- | -------------------------------------------------------------- |
+| `variant`                      | `"raised" \| "quiet" \| "bare"`           | `"raised"`, `"bare"` inside a group | The frame.                                                     |
+| `size`                         | `"md" \| "lg" \| "xl"`                    | `"md"`, or the group's size         | Framed height: 28, 32, or 36px, larger under a coarse pointer. |
+| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |                                     |                                                                |
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
@@ -99,11 +99,11 @@ The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
 Every native `<label>` attribute passes through.
 
-| Prop                           | Type                                      | Default     | Description                          |
-| ------------------------------ | ----------------------------------------- | ----------- | ------------------------------------ |
-| `variant`                      | `"raised" \| "quiet"`                     | `"raised"`  | The frame.                           |
-| `size`                         | `"sm" \| "default" \| "lg"`               | `"default"` | Height, and the size of its `Input`. |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |             |                                      |
+| Prop                           | Type                                      | Default    | Description                          |
+| ------------------------------ | ----------------------------------------- | ---------- | ------------------------------------ |
+| `variant`                      | `"raised" \| "quiet"`                     | `"raised"` | The frame.                           |
+| `size`                         | `"md" \| "lg" \| "xl"`                    | `"md"`     | Height, and the size of its `Input`. |
+| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |            |                                      |
 
 ## Accessibility
 

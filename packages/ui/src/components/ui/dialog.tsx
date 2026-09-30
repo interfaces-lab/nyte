@@ -10,6 +10,7 @@ import type { ComponentProps, ReactElement } from "react";
 import { floatingSurfaceStyles } from "../../floating-surface.stylex.ts";
 import { dialog, layer } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
+import { surfaceTheme, type Tint } from "../../surface-theme.ts";
 import { t } from "../../vars.stylex.ts";
 import { useOverlayRef } from "./overlay.tsx";
 
@@ -34,24 +35,24 @@ const styles = create({
     overflowY: "auto",
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: t.strokeSecondary,
+    borderColor: t.borderSecondaryTranslucent,
     borderRadius: dialog.radius,
     outline: "none",
-    boxShadow: t.shadowModal,
-    color: t.textPrimary,
+    boxShadow: t.shadowXl,
+    color: t.contentPrimary,
     transform: "translate(-50%, -50%)",
   },
   header: { display: "flex", flexDirection: "column", gap: 4 },
   title: {
     margin: 0,
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontSize: t.fontLg,
     fontWeight: 600,
     lineHeight: t.leadingLg,
   },
   description: {
     margin: 0,
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
   },
@@ -74,9 +75,12 @@ function DialogClose({ xstyle, className, style, ...rest }: DialogCloseProps): R
   return <DialogPrimitive.Close {...rest} {...mergeStyleProps(props(xstyle), className, style)} />;
 }
 
-export type DialogPopupProps = StyledProps<Omit<DialogPrimitive.Popup.Props, "ref">>;
+export type DialogPopupProps = StyledProps<Omit<DialogPrimitive.Popup.Props, "ref">> & {
+  /** Scopes the panel to a hue; the scrim stays neutral. */
+  readonly tint?: Tint;
+};
 
-function DialogPopup({ xstyle, className, style, ...rest }: DialogPopupProps): ReactElement {
+function DialogPopup({ tint, xstyle, className, style, ...rest }: DialogPopupProps): ReactElement {
   const overlayRef = useOverlayRef();
 
   return (
@@ -86,7 +90,12 @@ function DialogPopup({ xstyle, className, style, ...rest }: DialogPopupProps): R
         ref={overlayRef}
         {...rest}
         {...mergeStyleProps(
-          props(styles.popup, floatingSurfaceStyles.material, xstyle),
+          props(
+            tint !== undefined && surfaceTheme[tint],
+            styles.popup,
+            floatingSurfaceStyles.material,
+            xstyle,
+          ),
           className,
           style,
         )}

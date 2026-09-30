@@ -348,7 +348,7 @@ keeps one dictate control. Message content stays on solid surfaces.
 React Strict DOM supplies the StyleX-compatible `css` API for native layout,
 with no WebView bridge. All screens consume colors, typography, spacing, radii,
 and control metrics from `src/theme.ts`. Colors are generated from the shared
-palette in `packages/ui/src/tokens.stylex.ts` through `@nyte-ai/ui/platform-colors`;
+roles in `packages/ui/src/roles.stylex.ts` through `@nyte-ai/ui/platform-colors`;
 `pnpm --dir packages/ui check:tokens` rejects stale native color output.
 The app follows the system appearance by default: `userInterfaceStyle` is
 `automatic`, RSD `css` tokens resolve light and dark values through

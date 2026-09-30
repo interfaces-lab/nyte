@@ -77,7 +77,7 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: t.bgPage,
+    backgroundColor: t.bgBase,
   },
   body: { display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
   empty: {
@@ -87,7 +87,7 @@ const styles = create({
     justifyContent: "center",
     minHeight: 0,
     padding: 20,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     textAlign: "center",
     textWrap: "pretty",

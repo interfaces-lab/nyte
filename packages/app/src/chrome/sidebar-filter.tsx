@@ -133,7 +133,7 @@ interface WorkspaceControlsProps {
   readonly homeVisible: boolean;
   readonly onHomeVisibleChange: (visible: boolean) => void;
   readonly onChange: (value: SessionViewSettings) => void;
-  readonly onOpenFolder: () => void;
+  readonly onOpenFolder: (() => void) | undefined;
   readonly onCollapseAll: () => void;
 }
 
@@ -161,7 +161,8 @@ export function WorkspaceControls({
         xstyle={styles.popup}
         trigger={
           <Toggle
-            size="icon-sm"
+            size="sm"
+            iconOnly
             disabled={filterDisabled}
             aria-label="Customize sidebar"
             pressed={filtersActive}
@@ -340,16 +341,24 @@ export function WorkspaceControls({
           Mark all as read
         </MenuItem>
       </Menu>
-      <Hint
-        content="Open Workspace"
-        side="bottom"
-        align="end"
-        trigger={
-          <Button size="icon-sm" aria-label="Open folder…" onClick={onOpenFolder} title={undefined}>
-            <IconFolderAddRight ariaHidden mode="raw" size={13} />
-          </Button>
-        }
-      />
+      {onOpenFolder !== undefined && (
+        <Hint
+          content="Open Workspace"
+          side="bottom"
+          align="end"
+          trigger={
+            <Button
+              size="sm"
+              iconOnly
+              aria-label="Open folder…"
+              onClick={onOpenFolder}
+              title={undefined}
+            >
+              <IconFolderAddRight ariaHidden mode="raw" size={13} />
+            </Button>
+          }
+        />
+      )}
     </span>
   );
 }

@@ -8,7 +8,7 @@ export function TooltipDemo() {
     <>
       <Hint
         content="Copy output"
-        trigger={<Button size="icon" icon="copy" aria-label="Copy output" title={undefined} />}
+        trigger={<Button iconOnly icon="copy" aria-label="Copy output" title={undefined} />}
       />
       <HoverPreview
         content={"const answer = 42;\nconsole.log(answer);"}

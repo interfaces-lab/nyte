@@ -24,10 +24,8 @@ import type {
 import type { GitHubPullRequestOutcome } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
 import { Menu, MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
-import { Button } from "@nyte-ai/ui/button";
-import { Icon } from "@nyte-ai/ui/icon";
-import { Input, InputGroup } from "@nyte-ai/ui/input";
-import type { IconName } from "@nyte-ai/ui/icon";
+import { Button, ButtonGroup } from "@nyte-ai/ui/button";
+import { Input } from "@nyte-ai/ui/input";
 import { nyte } from "../nyte.ts";
 import { keys, queryClient, refreshVcs, refreshVcsSnapshot } from "../queries.ts";
 import { t } from "@nyte-ai/ui/vars.stylex";
@@ -84,6 +82,22 @@ export function commitActionPlan(action: CommitAction): CommitActionPlan {
   }
 }
 
+/** The actions this host offers; pull requests need GitHub. */
+export function commitActions(pullRequests: boolean): readonly CommitAction[] {
+  return pullRequests
+    ? COMMIT_ACTIONS
+    : COMMIT_ACTIONS.filter((action) => !commitActionPlan(action).pullRequest);
+}
+
+/** Menu groups: actions that branch first, then commits, then pushes and pull requests. */
+function commitActionGroup(action: CommitAction): "branch" | "commit" | "push" {
+  const plan = commitActionPlan(action);
+
+  if (plan.branch) return "branch";
+
+  return plan.commit ? "commit" : "push";
+}
+
 export function commitActionLabel(action: CommitAction): string {
   switch (action) {
     case "branch-commit":
@@ -103,18 +117,6 @@ export function commitActionLabel(action: CommitAction): string {
     case "pull-request":
       return "Create pull request";
   }
-}
-
-function commitActionIcon(action: CommitAction): IconName {
-  const plan = commitActionPlan(action);
-
-  if (plan.branch) return "git-branch";
-
-  if (plan.pullRequest) return "pull-request";
-
-  if (plan.commit) return "git";
-
-  return "arrow-up";
 }
 
 /** The scopes that read the working tree, which is the only place a commit applies. */
@@ -289,12 +291,12 @@ export function pullRequestTitle(message: string, branch: BranchReadout | undefi
   return branch?.label ?? "";
 }
 
-function readStoredAction(): CommitAction {
+function readStoredAction(actions: readonly CommitAction[]): CommitAction {
   try {
     if (typeof window === "undefined") return DEFAULT_COMMIT_ACTION;
     const stored = window.localStorage.getItem(STORAGE_KEY);
 
-    return COMMIT_ACTIONS.find((action) => action === stored) ?? DEFAULT_COMMIT_ACTION;
+    return actions.find((action) => action === stored) ?? DEFAULT_COMMIT_ACTION;
   } catch {
     return DEFAULT_COMMIT_ACTION;
   }
@@ -317,23 +319,22 @@ const styles = stylex.create({
     padding: 8,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.strokeSecondary,
+    borderBottomColor: t.borderSecondaryTranslucent,
   },
   actions: { display: "flex", alignItems: "center", gap: 4, minWidth: 0 },
-  branchField: { flex: 1, minWidth: 0 },
-  // A grid cell stretches its only child, which is how the button fills the row.
-  primary: { display: "grid", flex: 1, minWidth: 0 },
+  branchField: { flex: 1 },
+  primary: { flexGrow: 1, flexShrink: 1, minWidth: 0 },
   result: {
     display: "flex",
     flexDirection: "column",
     gap: 2,
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     textWrap: "pretty",
   },
-  resultError: { color: t.textDanger },
-  resultDetail: { color: t.textTertiary, fontSize: t.fontXs, lineHeight: t.leadingXs },
+  resultError: { color: t.intentDangerContent },
+  resultDetail: { color: t.contentSecondary, fontSize: t.fontXs, lineHeight: t.leadingXs },
   resultActions: { display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" },
 });
 
@@ -358,8 +359,10 @@ export function ChangesCommitBar({
   revision,
   fileCount,
 }: ChangesCommitBarProps): ReactElement {
+  const github = nyte.host.github;
+  const actions = commitActions(github !== undefined);
   const [message, setMessage] = useState("");
-  const [action, setAction] = useState<CommitAction>(readStoredAction);
+  const [action, setAction] = useState<CommitAction>(() => readStoredAction(actions));
   const [branchName, setBranchName] = useState("");
   const [branchPrompt, setBranchPrompt] = useState<CommitAction | undefined>(undefined);
   const [running, setRunning] = useState(false);
@@ -368,6 +371,11 @@ export function ChangesCommitBar({
 
   const state: CommitBarState = { scope, fileCount, message, branch };
   const primaryDisabledReason = commitActionDisabledReason(action, state);
+  // The chevron locks with the primary, so the pair never shows two states at once.
+  const primaryDisabled =
+    running ||
+    primaryDisabledReason !== undefined ||
+    (branchPrompt !== undefined && branchName.trim() === "");
 
   const run = async (chosen: CommitAction, options: RunOptions = {}): Promise<void> => {
     const plan = commitActionPlan(chosen);
@@ -483,7 +491,13 @@ export function ChangesCommitBar({
       }
 
       if (plan.pullRequest) {
-        const opened = await nyte.host.github.createPullRequest({
+        if (github === undefined) {
+          settle({ tone: "error", text: "Pull requests need GitHub on the server." });
+
+          return;
+        }
+
+        const opened = await github.createPullRequest({
           title: pullRequestTitle(message, branch),
         });
 
@@ -539,89 +553,76 @@ export function ChangesCommitBar({
 
   return (
     <div {...stylex.props(styles.bar)}>
-      <InputGroup size="sm">
-        <Icon name="git" size={12} />
-        <Input
-          type="text"
-          aria-label="Commit message"
-          placeholder="Commit message"
-          autoComplete="off"
-          spellCheck
-          value={message}
-          disabled={running}
-          onValueChange={setMessage}
-        />
-      </InputGroup>
+      <Input
+        type="text"
+        aria-label="Commit message"
+        placeholder="Commit message"
+        autoComplete="off"
+        spellCheck
+        value={message}
+        disabled={running}
+        onValueChange={setMessage}
+      />
       {branchPrompt !== undefined && (
         <div {...stylex.props(styles.actions)}>
-          <InputGroup size="sm" xstyle={styles.branchField}>
-            <Icon name="git-branch" size={12} />
-            <Input
-              type="text"
-              aria-label="New branch name"
-              placeholder="Branch name"
-              autoComplete="off"
-              spellCheck={false}
-              autoFocus
-              value={branchName}
-              disabled={running}
-              onValueChange={setBranchName}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  confirmBranch();
-                }
+          <Input
+            type="text"
+            aria-label="New branch name"
+            placeholder="Branch name"
+            autoComplete="off"
+            spellCheck={false}
+            autoFocus
+            value={branchName}
+            disabled={running}
+            xstyle={styles.branchField}
+            onValueChange={setBranchName}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                confirmBranch();
+              }
 
-                if (event.key === "Escape") setBranchPrompt(undefined);
-              }}
-            />
-          </InputGroup>
-          <Button
-            variant="inverse"
-            disabled={running || branchName.trim() === ""}
-            onClick={confirmBranch}
-          >
-            {commitActionLabel(branchPrompt)}
-          </Button>
+              if (event.key === "Escape") setBranchPrompt(undefined);
+            }}
+          />
           <Button disabled={running} onClick={() => setBranchPrompt(undefined)}>
             Cancel
           </Button>
         </div>
       )}
-      <div {...stylex.props(styles.actions)}>
-        <span {...stylex.props(styles.primary)}>
-          <Button
-            variant="inverse"
-            icon={commitActionIcon(action)}
-            title={primaryDisabledReason}
-            disabled={running || primaryDisabledReason !== undefined}
-            onClick={() => start(action)}
-          >
-            {commitActionLabel(action)}
-          </Button>
-        </span>
+      <ButtonGroup>
+        <Button
+          variant="inverse"
+          title={primaryDisabledReason}
+          disabled={primaryDisabled}
+          xstyle={styles.primary}
+          onClick={() => (branchPrompt === undefined ? start(action) : confirmBranch())}
+        >
+          {commitActionLabel(action)}
+        </Button>
         <Menu
           label="Commit actions"
           align="end"
           trigger={
             <Button
-              size="icon"
+              variant="inverse"
+              iconOnly
               icon="chevron-down"
               aria-label="More commit actions"
-              disabled={running}
+              disabled={primaryDisabled}
             />
           }
         >
-          {COMMIT_ACTIONS.map((candidate, index) => {
-            const reason = commitActionDisabledReason(candidate, state);
+          {actions.map((candidate, index) => {
+            const previous = actions[index - 1];
 
             return (
               <Fragment key={candidate}>
-                {(index === 3 || index === 6) && <MenuSeparator />}
+                {previous !== undefined &&
+                  commitActionGroup(previous) !== commitActionGroup(candidate) && <MenuSeparator />}
                 <MenuItem
-                  icon={commitActionIcon(candidate)}
-                  disabled={reason !== undefined}
-                  meta={reason}
+                  layout="plain"
+                  disabled={commitActionDisabledReason(candidate, state) !== undefined}
                   selected={candidate === action}
                   onSelect={() => start(candidate)}
                 >
@@ -631,7 +632,7 @@ export function ChangesCommitBar({
             );
           })}
         </Menu>
-      </div>
+      </ButtonGroup>
       {showResult && result !== undefined && (
         <div
           role={result.tone === "error" ? "alert" : "status"}

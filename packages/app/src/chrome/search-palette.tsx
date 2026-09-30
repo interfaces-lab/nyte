@@ -43,7 +43,7 @@ interface SearchPaletteProps {
   readonly onOpenChange: (open: boolean) => void;
   readonly onOpenSession: (sessionId: SessionId) => void;
   readonly onNewChat: () => void;
-  readonly onOpenFolder: () => void;
+  readonly onOpenFolder: (() => void) | undefined;
   readonly onOpenHome: (() => void) | undefined;
   readonly onOpenSettings: (section: SettingsSection) => void;
   readonly onOpenCustomize: () => void;
@@ -128,9 +128,11 @@ export function SearchPalette({
   const actions: readonly PaletteAction[] = Object.values(clientActions).flatMap((action) => {
     if (!("palette" in action)) return [];
 
-    if (action.id === "model-settings" && !settingsSections.includes("models")) return [];
+    if (action.id === "model-settings" && !settingsSections.includes("providers")) return [];
 
     if (action.id === "account-settings" && !settingsSections.includes("accounts")) return [];
+
+    if (action.id === "open-folder" && onOpenFolder === undefined) return [];
 
     if (action.id === "open-home" && onOpenHome === undefined) return [];
 
@@ -139,7 +141,7 @@ export function SearchPalette({
         case "new-chat":
           return onNewChat();
         case "open-folder":
-          return onOpenFolder();
+          return onOpenFolder?.();
         case "open-home":
           return onOpenHome?.();
         case "general-settings":
@@ -147,7 +149,7 @@ export function SearchPalette({
         case "appearance-settings":
           return onOpenSettings("appearance");
         case "model-settings":
-          return onOpenSettings("models");
+          return onOpenSettings("providers");
         case "account-settings":
           return onOpenSettings("accounts");
         case "customize-settings":
@@ -300,6 +302,7 @@ export function SearchPalette({
       popupRef={popupRef}
     >
       <Tabs.Root
+        variant="pill"
         value={tab}
         xstyle={styles.root}
         onValueChange={(value) => {
@@ -311,7 +314,7 @@ export function SearchPalette({
           <Input
             ref={inputRef}
             variant="bare"
-            size="lg"
+            size="xl"
             aria-label="Search"
             aria-controls={`${resultsID}-${tab}`}
             autoComplete="off"

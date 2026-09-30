@@ -9,13 +9,13 @@ export function ToolbarDemo() {
     <Toolbar.Root aria-label="Layout">
       <Toolbar.Group aria-label="Panels">
         <Toolbar.Button
-          render={<Toggle size="icon" icon="panel-left" aria-label="Sidebar" defaultPressed />}
+          render={<Toggle iconOnly icon="panel-left" aria-label="Sidebar" defaultPressed />}
         />
-        <Toolbar.Button render={<Toggle size="icon" icon="console" aria-label="Terminal" />} />
+        <Toolbar.Button render={<Toggle iconOnly icon="console" aria-label="Terminal" />} />
       </Toolbar.Group>
       <Toolbar.Separator />
-      <Toolbar.Button render={<Button size="icon" icon="refresh" aria-label="Refresh" />} />
-      <Toolbar.Button render={<Button size="icon" icon="trash" aria-label="Delete" />} />
+      <Toolbar.Button render={<Button iconOnly icon="refresh" aria-label="Refresh" />} />
+      <Toolbar.Button render={<Button iconOnly icon="trash" aria-label="Delete" />} />
     </Toolbar.Root>
   );
 }

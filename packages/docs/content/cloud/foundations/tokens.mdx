@@ -19,123 +19,157 @@ import { t } from "@nyte-ai/ui/vars.stylex";
 
 ```ts
 const styles = stylex.create({
-  note: { color: t.textSecondary, borderRadius: t.radiusBase },
+  note: { color: t.contentSecondary, borderRadius: t.radius6 },
 });
 ```
 
+## Layers
+
+The tokens follow Notion Calendar's layered system.
+
+| Layer             | Tokens                                                   | What it holds                                                       |
+| ----------------- | -------------------------------------------------------- | ------------------------------------------------------------------- |
+| Ramps             | `--nyte-{hue}-{step}`, `--nyte-translucent-…`            | Ten hues in twenty steps, 0 to 150, in `lab()`                      |
+| Theme             | `--nyte-theme-{step}`, `--nyte-theme-translucent-…`      | The ramp a scope paints with, gray by default                       |
+| Roles             | `--nyte-content-*`, `--nyte-border-*`, `--nyte-bg-*`     | What each step paints: text, edges, and surfaces                    |
+| Component colours | `--nyte-composer-*`, `--nyte-popup-material` …           | Nyte's own surfaces, built on the roles                             |
+| Size primitives   | `--nyte-spacing-*`, `--nyte-sizing-*`, `--nyte-radius-*` | Notion Calendar's length scale                                      |
+| Component sizes   | `--nyte-btn-*`, `--nyte-input-*`, `--nyte-row-*` …       | Control measurements over the primitives, with a coarse-pointer box |
+
+A component names a role, never a ramp step, unless the colour must stay the same everywhere,
+such as a chart series or a status dot. From `@nyte-ai/ui/vars.stylex`, `t` holds the roles,
+component colours, shadows, type, radius, and motion, and `ramp` holds the opaque steps. The
+component sizes come from `@nyte-ai/ui/schema.stylex` as `button`, `input`, `switchControl`,
+`checkbox`, `row`, and `menu`.
+
 ## Light and dark
 
-Every color is one `light-dark()` pair, so a component follows the `color-scheme` in effect rather
-than a class. The package sets no `color-scheme`, so set one. A class toggle works by setting the
-scheme under it.
+Roles resolve by `color-scheme`: a role is a `light-dark()` pair, a single step both modes share,
+or a colour derived from another role, so a component follows the `color-scheme` in effect rather
+than a class. The package sets no `color-scheme`, so set one. The desktop sets it from
+`data-display-mode` on `<html>`.
 
 ```css
 :root {
   color-scheme: light;
 }
 
-.dark {
+:root[data-display-mode="dark"] {
   color-scheme: dark;
 }
 ```
 
 A subtree can take the other appearance on its own with `color-scheme` on any ancestor.
 
+## Scopes
+
+A scope paints a subtree in one hue. It swaps the theme layer and re-declares the roles from it,
+which is why both halves travel together: a custom property inherits its computed value, so a
+role resolved above the scope would stay gray.
+
+```ts
+import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+
+<div {...stylex.props(surfaceTheme.blue, styles.card)} />;
+<div {...stylex.props(intent.danger, styles.banner)} />;
+```
+
+`intent.primary`, `success`, `warning`, and `danger` are the blue, green, yellow, and red scopes.
+Checked controls and filled buttons paint inside `intent.primary`. The control roles
+(`bg-control`, `border-control`, `content-on-control`) keep their neutral value in every scope, so
+an empty checkbox stays gray inside one. Menus, popovers, dialogs, tooltips, and preview cards take
+a `tint` prop, and `toastTint()` scopes a single toast.
+
+`surfaceTheme.custom` builds a hue from Notion Calendar's template ramp at
+`--nyte-custom-hue` and `--nyte-custom-chroma-scale`. The desktop puts it on `<html>` as the
+workspace tint.
+
 ## Overriding
 
-Override a token on an ancestor. A step such as `--nyte-text-tertiary` mixes from an anchor such as
-`--nyte-ink`, and the mix resolves where the step is declared. An anchor override on `:root` moves
-every step built from it. Below the root, override the step you want to change.
+Override a ramp step or a role on an ancestor. A scope re-declares every role on the element that
+starts it, so a role overridden on `:root` holds only outside scopes. To recolour a subtree, give
+it a scope.
 
 ```css
-:root {
-  --nyte-accent-base: #7c3aed;
-}
-
 .preview {
-  --nyte-bg-page: #101014;
-  --nyte-text-primary: #f4f4f5;
+  color-scheme: dark;
+  --nyte-bg-base: #101014;
 }
 ```
 
-## Anchors and hues
+## Ramps
 
-The ink, the untinted surfaces, and the named hues. Text, fills, and strokes mix from these.
+Gray and blue shown; every hue has the same steps. Translucent steps carry a light and a dark
+value.
+
+<TokenTable prefix={["--nyte-gray-", "--nyte-blue-"]} swatch />
+
+<TokenTable prefix={["--nyte-translucent-gray-"]} swatch />
+
+## Roles
+
+Content is text and icons. Text that must be read uses `content-secondary` or stronger;
+`content-tertiary` is for placeholders, disabled text, and decoration. Readable roles take the
+nearest step that reaches 4.5:1 on `bg-base`, `bg-chrome`, and `bg-elevated` in each mode, in the
+neutral roles and in every scope.
+
+<TokenTable prefix="--nyte-content-" swatch />
+
+<TokenTable prefix="--nyte-border-" swatch />
+
+`bg-base` is the page, `bg-elevated` a card or popup above it, and `bg-chrome` the sidebar.
+`bg-hover` and `bg-pressed` are states laid over whatever sits beneath.
+
+<TokenTable prefix="--nyte-bg-" swatch />
+
+## Component colours
+
+Built from the roles, so they re-resolve inside a scope.
 
 <TokenTable
   prefix={[
-    "--nyte-ink",
-    "--nyte-page-base",
-    "--nyte-sidebar",
-    "--nyte-accent",
-    "--nyte-red",
-    "--nyte-green",
-    "--nyte-yellow",
-    "--nyte-orange",
-    "--nyte-purple",
-    "--nyte-cyan",
-    "--nyte-magenta",
+    "--nyte-sidebar-material",
+    "--nyte-popup-material",
+    "--nyte-layer-",
+    "--nyte-scrollbar-thumb",
+    "--nyte-button-fill",
+    "--nyte-conversation-",
+    "--nyte-composer-",
   ]}
   swatch
 />
 
-## Surfaces
-
-`bg-page` is the page and every editor on it. `bg-raised` is a card, dialog, or field above the
-page. `material-bg` is the translucent popup surface behind menus and popovers.
-
-<TokenTable prefix={["--nyte-bg-", "--nyte-material-bg"]} swatch />
-
-## Text and icons
-
-Four steps of ink, then status colors. `text-on-inverse` sits on `fill-inverse`, `text-on-color`
-on a saturated fill.
-
-<TokenTable prefix={["--nyte-text-", "--nyte-icon-"]} swatch />
-
-## Fills
-
-`fill-hover`, `fill-selected`, and `fill-pressed` are states laid over whatever sits beneath.
-`fill-quiet` and `fill-strong` are resting fills. `fill-inverse` is the primary button.
-
-<TokenTable prefix={["--nyte-fill-", "--nyte-switch-thumb"]} swatch />
-
-`layer-hover` and `layer-pressed` lay the hover and press fills as `background-image`, so a
-button keeps its own fill underneath.
-
-<TokenTable prefix={["--nyte-layer-", "--nyte-button-secondary-bg"]} />
-
-## Strokes
-
-`stroke-secondary` is the default hairline, `stroke-primary` the strong one, and `stroke-focused`
-the accent a focused field takes. `focus-ring` is the keyboard ring. See
-[Focus](/cloud/foundations/focus).
+Status text, syntax, marks, selection, and diffs keep their hue under every scope. Each text
+colour reads at 4.5:1 on the page in both modes, and each mark 3:1.
 
 <TokenTable
   prefix={[
-    "--nyte-stroke-",
-    "--nyte-focus-ring",
-    "--nyte-image-outline",
-    "--nyte-scrollbar-thumb",
+    "--nyte-intent-",
+    "--nyte-syntax-",
     "--nyte-selection",
+    "--nyte-image-bg",
+    "--nyte-diff-",
   ]}
   swatch
 />
 
 ## Interaction
 
-`cursor-interactive` is the cursor for clickable elements. Hosts can override it with `default` for
-native desktop behavior.
+`focus-ring` is the keyboard ring; see [Focus](/cloud/foundations/focus). `cursor-interactive` is
+the cursor for clickable elements, and a host can set it to `default` for native desktop behavior.
 
-<TokenTable prefix="--nyte-cursor-" />
-
-## Diffs and conversation
-
-<TokenTable prefix={["--nyte-diff-", "--nyte-conversation-", "--nyte-composer-"]} swatch />
+<TokenTable
+  prefix={[
+    "--nyte-focus-ring",
+    "--nyte-cursor-",
+    "--nyte-popup-material-filter",
+    "--nyte-reduce-transparency",
+  ]}
+/>
 
 ## Elevation
 
-<TokenTable prefix={["--nyte-shadow-", "--nyte-tray-shadow"]} />
+<TokenTable prefix="--nyte-shadow-" />
 
 ## Type
 
@@ -152,9 +186,9 @@ one override resizes the set.
   ]}
 />
 
-## Radius
+## Size primitives
 
-<TokenTable prefix="--nyte-radius-" />
+<TokenTable prefix={["--nyte-radius-", "--nyte-spacing", "--nyte-sizing-"]} />
 
 ## Motion
 
@@ -162,9 +196,23 @@ one override resizes the set.
 
 <TokenTable prefix={["--nyte-duration-", "--nyte-easing-"]} />
 
-## Component geometry
+## Component sizes
 
-Measurements for menus, dialogs, and toasts.
+Notion Calendar's button, input, switch, checkbox, and row sizes. A coarse pointer gets the larger
+box.
+
+<TokenTable
+  prefix={[
+    "--nyte-btn-",
+    "--nyte-icon-btn-",
+    "--nyte-input-",
+    "--nyte-switch-",
+    "--nyte-checkbox-",
+    "--nyte-row-",
+  ]}
+/>
+
+Nyte's own measurements for menus, dialogs, and toasts.
 
 <TokenTable
   prefix={[
@@ -190,31 +238,31 @@ values as the components.
 @import "@nyte-ai/ui/tailwind.css";
 ```
 
-| Tailwind token                  | Reads                     |
-| ------------------------------- | ------------------------- |
-| `--font-sans`, `--font-heading` | `--nyte-font-family-sans` |
-| `--font-mono`                   | `--nyte-font-family-mono` |
-| `--color-background`            | `--nyte-bg-page`          |
-| `--color-foreground`            | `--nyte-text-primary`     |
-| `--color-popover`               | `--nyte-bg-raised`        |
-| `--color-popover-foreground`    | `--nyte-text-primary`     |
-| `--color-sidebar`               | `--nyte-sidebar`          |
-| `--color-primary`               | `--nyte-fill-inverse`     |
-| `--color-primary-foreground`    | `--nyte-text-on-inverse`  |
-| `--color-muted`                 | `--nyte-fill-quiet`       |
-| `--color-muted-foreground`      | `--nyte-text-tertiary`    |
-| `--color-tertiary-foreground`   | `--nyte-text-quaternary`  |
-| `--color-fill-hover`            | `--nyte-fill-hover`       |
-| `--color-fill-selected`         | `--nyte-fill-selected`    |
-| `--color-accent`                | `--nyte-text-accent`      |
-| `--color-destructive`           | `--nyte-text-danger`      |
-| `--color-border-subtle`         | `--nyte-stroke-tertiary`  |
-| `--color-border`                | `--nyte-stroke-secondary` |
-| `--color-border-strong`         | `--nyte-stroke-primary`   |
-| `--color-ring`                  | `--nyte-stroke-focused`   |
-| `--radius-xs`                   | `--nyte-radius-xs`        |
-| `--radius-sm`                   | `--nyte-radius-sm`        |
-| `--radius-md`                   | `--nyte-radius-base`      |
-| `--radius-lg`                   | `--nyte-radius-lg`        |
-| `--radius-xl`                   | `--nyte-radius-xl`        |
-| `--radius-2xl`                  | `--nyte-radius-2xl`       |
+| Tailwind token                  | Reads                                         |
+| ------------------------------- | --------------------------------------------- |
+| `--font-sans`, `--font-heading` | `--nyte-font-family-sans`                     |
+| `--font-mono`                   | `--nyte-font-family-mono`                     |
+| `--color-background`            | `--nyte-bg-base`                              |
+| `--color-foreground`            | `--nyte-content-primary`                      |
+| `--color-popover`               | `--nyte-bg-elevated`                          |
+| `--color-popover-foreground`    | `--nyte-content-primary`                      |
+| `--color-sidebar`               | `--nyte-bg-chrome`                            |
+| `--color-primary`               | `--nyte-bg-interactive-strong`                |
+| `--color-primary-foreground`    | `--nyte-content-on-interactive-strong`        |
+| `--color-muted`                 | `--nyte-bg-muted-translucent`                 |
+| `--color-muted-foreground`      | `--nyte-content-secondary`                    |
+| `--color-tertiary-foreground`   | `--nyte-content-tertiary`                     |
+| `--color-fill-hover`            | `--nyte-bg-hover`                             |
+| `--color-fill-selected`         | `--nyte-bg-interactive-secondary-translucent` |
+| `--color-accent`                | `--nyte-intent-primary-content`               |
+| `--color-destructive`           | `--nyte-intent-danger-content`                |
+| `--color-border-subtle`         | `--nyte-border-secondary-translucent`         |
+| `--color-border`                | `--nyte-border-secondary-translucent`         |
+| `--color-border-strong`         | `--nyte-border-primary-translucent`           |
+| `--color-ring`                  | `--nyte-blue-80`                              |
+| `--radius-xs`                   | `--nyte-radius-2`                             |
+| `--radius-sm`                   | `--nyte-radius-4`                             |
+| `--radius-md`                   | `--nyte-radius-6`                             |
+| `--radius-lg`                   | `--nyte-radius-8`                             |
+| `--radius-xl`                   | `--nyte-radius-12`                            |
+| `--radius-2xl`                  | `--nyte-radius-14`                            |

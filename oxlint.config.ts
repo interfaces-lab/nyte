@@ -44,6 +44,10 @@ export default defineConfig({
   rules: {
     "oxc/no-accumulating-spread": "error",
     "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
+    "react/rules-of-hooks": "error",
+    "react/no-unstable-nested-components": "error",
+    // A component React Compiler cannot compile ships without memoization.
+    "react/todo": "warn",
   },
   options: {
     typeAware: true,
@@ -51,11 +55,20 @@ export default defineConfig({
   overrides: [
     {
       // Solid components run once and read refs after the tree is built; the
-      // React render-purity rules describe a different runtime.
+      // React render-purity rules describe a different runtime, and React
+      // Compiler never compiles them.
       files: ["packages/tui/src/**/*.tsx"],
       rules: {
         "react/refs": "off",
         "react/immutability": "off",
+        "react/todo": "off",
+      },
+    },
+    {
+      // Playwright hands each fixture a `use` callback; it is not React's hook.
+      files: ["packages/desktop/benchmark/**"],
+      rules: {
+        "react/rules-of-hooks": "off",
       },
     },
     {
@@ -178,13 +191,9 @@ export default defineConfig({
       },
     },
     {
-      // The tint preview paints the raw hue the user is choosing, and the QR
-      // code needs a white quiet zone a camera can read; neither resolves
-      // through the palette.
-      files: [
-        "packages/app/src/chrome/appearance-panel.stylex.ts",
-        "packages/app/src/chrome/pairing-code.tsx",
-      ],
+      // The QR code needs a white quiet zone a camera can read, which no
+      // token guarantees in every appearance.
+      files: ["packages/app/src/chrome/pairing-code.tsx"],
       rules: {
         "nyte-design/no-raw-colors": "off",
       },

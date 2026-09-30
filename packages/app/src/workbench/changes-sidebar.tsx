@@ -3,8 +3,7 @@ import type { FileTreeBatchOperation } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
 import { memo, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
-import { Icon } from "@nyte-ai/ui/icon";
-import { Input, InputGroup } from "@nyte-ai/ui/input";
+import { Input } from "@nyte-ai/ui/input";
 import {
   Menu,
   MenuCheckboxItem,
@@ -19,6 +18,7 @@ import { t } from "@nyte-ai/ui/vars.stylex";
 import { changeSelectionSummary, filesChangedLabel, filterChangePaths } from "./change-tree.ts";
 import type { ChangeStatus } from "./change-tree.ts";
 import type { ViewedState } from "./changes-viewed.ts";
+import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 export interface ChangesSidebarFile {
@@ -55,25 +55,33 @@ const styles = create({
     minHeight: 0,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: t.strokeSecondary,
-    backgroundColor: t.bgPage,
+    borderInlineStartColor: t.borderSecondaryTranslucent,
+    backgroundColor: t.bgBase,
   },
   railHidden: { display: "none" },
+  // The stack's file header sits beside this row, so both take the workbench header height.
   search: {
     display: "flex",
     alignItems: "center",
     gap: 4,
+    boxSizing: "border-box",
+    height: workbench.headerHeight,
     flexShrink: 0,
-    padding: 4,
+    paddingInline: 4,
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: t.borderSecondaryTranslucent,
   },
   field: { flex: 1 },
+  // Short labels with no icons, so the menu fits them instead of the default menu width.
+  filterMenu: { minWidth: 0 },
   overviewTitle: {
     display: "flex",
     alignItems: "center",
     gap: 4,
     height: 24,
     paddingInline: 6,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     fontWeight: 590,
@@ -81,8 +89,8 @@ const styles = create({
   overviewLabel: { flex: 1, minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" },
   checkbox: { marginInlineStart: 4 },
   checkboxChanged: {
-    borderColor: t.yellow,
-    color: t.textWarning,
+    borderColor: t.markYellow,
+    color: t.intentWarningContent,
     "::after": {
       content: "''",
       width: 6,
@@ -102,7 +110,7 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     padding: 20,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     textAlign: "center",
     textWrap: "pretty",
@@ -171,6 +179,7 @@ export const ChangesSidebar = memo(function ChangesSidebar({
   const { model } = useFileTree({
     paths: [],
     density: "compact",
+    unsafeCSS: PIERRE_TREE_CSS,
     initialExpansion: "open",
     onSelectionChange: (selected) => {
       if (syncing.current) return;
@@ -268,88 +277,86 @@ export const ChangesSidebar = memo(function ChangesSidebar({
 
   return (
     <div {...props(styles.rail, !visible && styles.railHidden)}>
+      {/* Outside the tree: focus inside it makes the tree pull focus back to a row as the rows change. */}
+      <div {...props(styles.search)}>
+        <Input
+          ref={filterInputRef}
+          id={searchId}
+          type="text"
+          aria-label="Filter changed files"
+          placeholder="Filter files"
+          autoComplete="off"
+          spellCheck={false}
+          value={query}
+          xstyle={styles.field}
+          onValueChange={setQuery}
+        />
+        <Menu
+          label="Filter changes"
+          align="end"
+          xstyle={styles.filterMenu}
+          trigger={
+            <Button
+              iconOnly
+              icon="filters"
+              aria-label={filtering ? "Filters on" : "Filter changes"}
+              aria-pressed={filtering}
+            />
+          }
+        >
+          {STATUS_FILTERS.map((option) => (
+            <MenuCheckboxItem
+              key={option.value}
+              layout="plain"
+              checked={statuses.includes(option.value)}
+              closeOnClick={false}
+              onCheckedChange={(checked) => {
+                setStatuses((current) =>
+                  checked
+                    ? [...current, option.value]
+                    : current.filter((status) => status !== option.value),
+                );
+              }}
+            >
+              {option.label}
+            </MenuCheckboxItem>
+          ))}
+          <MenuSeparator />
+          <MenuRadioGroup
+            value={viewedMode}
+            onValueChange={(value) => {
+              const found = VIEWED_FILTERS.find((option) => option.value === value);
+
+              if (found !== undefined) setViewedMode(found.value);
+            }}
+          >
+            {VIEWED_FILTERS.map((option) => (
+              <MenuRadioItem key={option.value} value={option.value} layout="plain">
+                {option.label}
+              </MenuRadioItem>
+            ))}
+          </MenuRadioGroup>
+        </Menu>
+      </div>
+      <div {...props(styles.overviewTitle)}>
+        <span {...props(styles.overviewLabel)}>
+          {sidebarCountLabel(files.length, shownPaths.length, filtering)}
+        </span>
+        <ReviewCheckbox
+          state={summary === "all" ? "viewed" : summary === "some" ? "mixed" : "unviewed"}
+          label={summary === "all" ? "Mark all files not viewed" : "Mark all files viewed"}
+          onChange={(viewed) => onAllViewedChange(shownPaths, viewed)}
+        />
+      </div>
+      {shownPaths.length === 0 && (
+        <div role="status" {...props(styles.empty)}>
+          No files match this filter
+        </div>
+      )}
       <FileTree
         model={model}
         aria-label="Changed files"
         {...props(workbenchStyles.treeTheme, styles.tree)}
-        header={
-          <>
-            <div {...props(styles.search)}>
-              <InputGroup size="sm" xstyle={styles.field}>
-                <Icon name="search" size={12} />
-                <Input
-                  ref={filterInputRef}
-                  id={searchId}
-                  type="text"
-                  aria-label="Filter changed files"
-                  placeholder="Filter files"
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={query}
-                  onValueChange={setQuery}
-                />
-              </InputGroup>
-              <Menu
-                label="Filter changes"
-                trigger={
-                  <Button
-                    size="icon"
-                    icon="filters"
-                    aria-label={filtering ? "Filters on" : "Filter changes"}
-                    aria-pressed={filtering}
-                  />
-                }
-              >
-                {STATUS_FILTERS.map((option) => (
-                  <MenuCheckboxItem
-                    key={option.value}
-                    checked={statuses.includes(option.value)}
-                    closeOnClick={false}
-                    onCheckedChange={(checked) => {
-                      setStatuses((current) =>
-                        checked
-                          ? [...current, option.value]
-                          : current.filter((status) => status !== option.value),
-                      );
-                    }}
-                  >
-                    {option.label}
-                  </MenuCheckboxItem>
-                ))}
-                <MenuSeparator />
-                <MenuRadioGroup
-                  value={viewedMode}
-                  onValueChange={(value) => {
-                    const found = VIEWED_FILTERS.find((option) => option.value === value);
-
-                    if (found !== undefined) setViewedMode(found.value);
-                  }}
-                >
-                  {VIEWED_FILTERS.map((option) => (
-                    <MenuRadioItem key={option.value} value={option.value}>
-                      {option.label}
-                    </MenuRadioItem>
-                  ))}
-                </MenuRadioGroup>
-              </Menu>
-            </div>
-            <div {...props(styles.overviewTitle)}>
-              <span {...props(styles.overviewLabel)}>
-                {sidebarCountLabel(files.length, shownPaths.length, filtering)}
-              </span>
-              <ReviewCheckbox
-                state={summary === "all" ? "viewed" : summary === "some" ? "mixed" : "unviewed"}
-                label={summary === "all" ? "Mark all files not viewed" : "Mark all files viewed"}
-                onChange={(viewed) => onAllViewedChange(shownPaths, viewed)}
-              />
-            </div>
-            {shownPaths.length === 0 && (
-              <div role="status" {...props(styles.empty)}>
-                No files match this filter
-              </div>
-            )}
-          </>
-        }
       />
     </div>
   );

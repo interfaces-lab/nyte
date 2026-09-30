@@ -57,11 +57,11 @@ const SECTIONS = {
       "pointer",
     ],
   },
-  models: {
+  providers: {
     icon: "box-3d",
-    title: "Models",
+    title: "Providers",
     keywords: [
-      "providers",
+      "models",
       "api key",
       "sign in",
       "anthropic",
@@ -85,17 +85,17 @@ export type SettingsSection = keyof typeof SECTIONS;
 /** The app itself, then the agent's providers and spend. */
 const SECTION_GROUPS: readonly (readonly SettingsSection[])[] = [
   ["general", "appearance"],
-  ["models", "usage", "accounts"],
+  ["providers", "usage", "accounts"],
 ];
 
 const WEB_SECTION_GROUPS: readonly (readonly SettingsSection[])[] = [["general", "appearance"]];
 
 const WEB_ENVIRONMENT_SECTION_GROUPS: readonly (readonly SettingsSection[])[] = [
   ["general", "appearance"],
-  ["models", "usage", "accounts"],
+  ["providers", "usage", "accounts"],
 ];
 
-/** What this host can show. The web app reaches Models, Usage, and Accounts only through a server environment. */
+/** What this host can show. The web app reaches Providers, Usage, and Accounts only through a server environment. */
 export function settingsSectionGroups(): readonly (readonly SettingsSection[])[] {
   if (nyte.clientSurface === "desktop") return SECTION_GROUPS;
 
@@ -192,7 +192,7 @@ export function SettingsNavigation({
         </Row.Leading>
         <Row.Label>Back</Row.Label>
       </Row>
-      <InputGroup variant="quiet" size="sm" xstyle={styles.search}>
+      <InputGroup variant="quiet" xstyle={styles.search}>
         <span {...stylex.props(styles.searchIcon)}>
           <Icon name="search" size={14} />
         </span>

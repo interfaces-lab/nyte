@@ -37,9 +37,9 @@ const styles = create({
     width: 6,
     height: 6,
     borderRadius: t.radiusFull,
-    backgroundColor: t.yellow,
+    backgroundColor: t.markYellow,
   },
-  count: { color: t.textTertiary },
+  count: { color: t.contentSecondary },
   detail: (height: number) => ({
     minHeight: 0,
     height: `min(70dvh, max(220px, ${String(height)}px))`,
@@ -195,7 +195,6 @@ export function SubagentTray({
               <span {...props(trayStyles.title)}>Agents</span>
               {stoppable.length > 0 && (
                 <Button
-                  size="condensed"
                   aria-label={
                     stopCandidates === undefined
                       ? "Stop all active agents"
@@ -277,11 +276,7 @@ export function SubagentTray({
               {selected !== undefined &&
                 !("kind" in selected) &&
                 trayState(selected) !== "inactive" && (
-                  <Button
-                    size="condensed"
-                    disabled={pendingAction}
-                    onClick={() => stop.mutate(selectedId)}
-                  >
+                  <Button disabled={pendingAction} onClick={() => stop.mutate(selectedId)}>
                     Stop
                   </Button>
                 )}

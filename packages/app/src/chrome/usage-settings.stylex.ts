@@ -6,7 +6,7 @@
  */
 import * as stylex from "@stylexjs/stylex";
 import { settings } from "../theme/schema.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { ramp, t } from "@nyte-ai/ui/vars.stylex";
 
 /** Tall enough for three lines to separate, short enough to stay under the total. */
 const CHART_HEIGHT = 160;
@@ -27,7 +27,7 @@ export const usageStyles = stylex.create({
   },
   headingActions: { display: "flex", alignItems: "center", gap: 6 },
   hint: {
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     textWrap: "pretty",
@@ -37,7 +37,7 @@ export const usageStyles = stylex.create({
   label: {
     margin: 0,
     paddingInline: 8,
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     fontWeight: 400,
     lineHeight: t.leadingSm,
@@ -46,7 +46,7 @@ export const usageStyles = stylex.create({
   /** The one number the page is about, and the sentence that qualifies it. */
   headline: { display: "flex", flexDirection: "column", gap: 2, paddingInline: 8 },
   amount: {
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontSize: t.font2xl,
     fontWeight: 500,
     lineHeight: t.leadingLg,
@@ -54,7 +54,7 @@ export const usageStyles = stylex.create({
   },
   meta: {
     margin: 0,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     textWrap: "pretty",
@@ -62,19 +62,19 @@ export const usageStyles = stylex.create({
   note: {
     margin: 0,
     paddingInline: 8,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     textWrap: "pretty",
   },
-  changeUp: { color: t.textWarning },
-  changeDown: { color: t.textSuccess },
+  changeUp: { color: t.intentWarningContent },
+  changeDown: { color: t.intentSuccessContent },
   /** A number the history could not price reads as absent, never as free. */
-  absent: { color: t.textQuaternary, fontWeight: 400 },
+  absent: { color: t.contentDisabled, fontWeight: 400 },
 
   /** What the tab would say if opened, so a glance at the strip is enough. */
   tabSummary: {
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontWeight: 400,
   },
   tabPanel: {
@@ -98,7 +98,7 @@ export const usageStyles = stylex.create({
     display: "flex",
     flexWrap: "wrap",
     gap: "0 16px",
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontXs,
     lineHeight: t.leadingXs,
   },
@@ -110,15 +110,15 @@ export const usageStyles = stylex.create({
     flexDirection: "column",
     gap: 2,
     padding: "6px 8px",
-    borderRadius: t.radiusLg,
-    backgroundColor: t.bgRaised,
-    boxShadow: t.shadowPopover,
-    color: t.textPrimary,
+    borderRadius: t.radius8,
+    backgroundColor: t.bgElevated,
+    boxShadow: t.shadowMd,
+    color: t.contentPrimary,
     fontSize: t.fontXs,
     lineHeight: t.leadingXs,
     whiteSpace: "nowrap",
   },
-  chartTipLabel: { color: t.textTertiary },
+  chartTipLabel: { color: t.contentSecondary },
   chartTipRow: { display: "flex", justifyContent: "space-between", gap: 12 },
 
   /** A ranked list: one stacked bar, then the rows naming its segments. */
@@ -126,8 +126,8 @@ export const usageStyles = stylex.create({
     display: "flex",
     flexDirection: "column",
     overflow: "clip",
-    borderRadius: t.radiusXl,
-    backgroundColor: t.fillQuiet,
+    borderRadius: t.radius12,
+    backgroundColor: t.bgMutedTranslucent,
   },
   /**
    * The stacked bar sits in its own slot so the hairline under it lines up
@@ -143,7 +143,7 @@ export const usageStyles = stylex.create({
       insetInline: RAIL,
       insetBlockEnd: 0,
       height: 1,
-      backgroundColor: t.strokeSecondary,
+      backgroundColor: t.borderSecondaryTranslucent,
       content: '""',
     },
   },
@@ -153,7 +153,7 @@ export const usageStyles = stylex.create({
     height: 8,
     borderRadius: t.radiusFull,
     // One step above the group fill, so the unranked remainder is still a track.
-    backgroundColor: t.fillStrong,
+    backgroundColor: t.bgInteractivePrimaryTranslucent,
     overflow: "hidden",
   },
   barSegment: {
@@ -186,7 +186,7 @@ export const usageStyles = stylex.create({
       insetInline: RAIL,
       insetBlockStart: 0,
       height: 1,
-      backgroundColor: t.strokeSecondary,
+      backgroundColor: t.borderSecondaryTranslucent,
       content: '""',
     },
     ":first-child::before": { display: "none" },
@@ -198,14 +198,14 @@ export const usageStyles = stylex.create({
     alignItems: "center",
     gap: 8,
     minWidth: 0,
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     overflowWrap: "anywhere",
   },
   dot: { width: 8, height: 8, borderRadius: t.radiusFull, flexShrink: 0 },
   rowMeta: {
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontXs,
     lineHeight: t.leadingXs,
     overflowWrap: "anywhere",
@@ -215,7 +215,7 @@ export const usageStyles = stylex.create({
   rowValue: {
     flexShrink: 0,
     minWidth: 72,
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontSize: t.fontSm,
     fontWeight: 500,
     lineHeight: t.leadingSm,
@@ -225,7 +225,7 @@ export const usageStyles = stylex.create({
   rowShare: {
     flexShrink: 0,
     minWidth: 40,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     textAlign: "end",
@@ -237,7 +237,7 @@ export const usageStyles = stylex.create({
     margin: 0,
     paddingBlock: 8,
     paddingInline: RAIL,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     "::before": {
@@ -245,41 +245,41 @@ export const usageStyles = stylex.create({
       insetInline: RAIL,
       insetBlockStart: 0,
       height: 1,
-      backgroundColor: t.strokeSecondary,
+      backgroundColor: t.borderSecondaryTranslucent,
       content: '""',
     },
   },
-  series0: { backgroundColor: t.accent },
-  series1: { backgroundColor: t.purple },
-  series2: { backgroundColor: t.cyan },
-  series3: { backgroundColor: t.orange },
-  series4: { backgroundColor: t.green },
-  series5: { backgroundColor: t.magenta },
+  series0: { backgroundColor: ramp.blue80 },
+  series1: { backgroundColor: ramp.purple80 },
+  series2: { backgroundColor: t.markTeal },
+  series3: { backgroundColor: t.markOrange },
+  series4: { backgroundColor: ramp.green80 },
+  series5: { backgroundColor: ramp.pink80 },
 
   /** A subscription window: how much is gone, and when it comes back. */
   meter: { display: "flex", flexDirection: "column", gap: 4 },
   meterHead: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 },
-  warm: { color: t.textWarning },
-  hot: { color: t.textDanger },
+  warm: { color: t.intentWarningContent },
+  hot: { color: t.intentDangerContent },
   meterTrack: {
     height: 6,
     borderRadius: t.radiusFull,
-    backgroundColor: t.fillStrong,
+    backgroundColor: t.bgInteractivePrimaryTranslucent,
     overflow: "hidden",
   },
   meterFill: {
     display: "block",
     height: "100%",
     borderRadius: t.radiusFull,
-    backgroundColor: t.accent,
+    backgroundColor: ramp.blue80,
     transitionProperty: "width, background-color",
     transitionDuration: t.durationFast,
     transitionTimingFunction: t.easeOut,
     "@media (prefers-reduced-motion: reduce)": { transitionProperty: "none" },
   },
   /** Near the ceiling the bar changes colour, and so does the number beside it. */
-  meterFillWarm: { backgroundColor: t.yellow },
-  meterFillHot: { backgroundColor: t.fillDanger },
+  meterFillWarm: { backgroundColor: t.markYellow },
+  meterFillHot: { backgroundColor: ramp.red80 },
 
   /** A read that failed or found nothing, said once, where its numbers would be. */
   panel: {
@@ -290,12 +290,12 @@ export const usageStyles = stylex.create({
     gap: 6,
     minHeight: 148,
     padding: 24,
-    borderRadius: t.radiusXl,
-    backgroundColor: t.fillQuiet,
+    borderRadius: t.radius12,
+    backgroundColor: t.bgMutedTranslucent,
     textAlign: "center",
   },
   panelTitle: {
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
     textWrap: "balance",
@@ -303,7 +303,7 @@ export const usageStyles = stylex.create({
   panelBody: {
     maxWidth: 340,
     margin: 0,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     textWrap: "pretty",
@@ -317,9 +317,9 @@ export const usageStyles = stylex.create({
     minHeight: 30,
     paddingBlock: 6,
     paddingInline: 10,
-    borderRadius: t.radiusLg,
-    backgroundColor: t.fillQuiet,
-    color: t.textSecondary,
+    borderRadius: t.radius8,
+    backgroundColor: t.bgMutedTranslucent,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     textWrap: "pretty",
@@ -328,9 +328,9 @@ export const usageStyles = stylex.create({
     flexShrink: 0,
     // 14px glyph on 16px type: one pixel down sits on the first line's cap.
     marginBlockStart: 1,
-    color: t.iconTertiary,
+    color: t.contentTertiary,
   },
-  noticeIconAlert: { color: t.textWarning },
+  noticeIconAlert: { color: t.intentWarningContent },
   noticeCopy: { flex: 1, minWidth: 0, paddingBlockStart: 1 },
 });
 
@@ -348,8 +348,8 @@ export const skeletonStyles = stylex.create({
     display: "inline-block",
     verticalAlign: "middle",
     flexShrink: 0,
-    borderRadius: t.radiusSm,
-    backgroundColor: t.fillStrong,
+    borderRadius: t.radius4,
+    backgroundColor: t.bgInteractivePrimaryTranslucent,
     animationName: { default: bonePulse, "@media (prefers-reduced-motion: reduce)": "none" },
     animationDuration: "1.8s",
     animationTimingFunction: "ease-in-out",

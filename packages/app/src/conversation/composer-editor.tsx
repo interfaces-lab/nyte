@@ -432,7 +432,7 @@ export function ComposerEditor({
     typographyObserver.observe(root, { attributes: true, attributeFilter: ["class", "style"] });
     typographyObserver.observe(ownerDocument.documentElement, {
       attributes: true,
-      attributeFilter: ["class", "style", "data-theme"],
+      attributeFilter: ["class", "style", "data-display-mode"],
     });
     ownerDocument.fonts.addEventListener("loadingdone", draw);
     const unregister = editor.registerUpdateListener(draw);

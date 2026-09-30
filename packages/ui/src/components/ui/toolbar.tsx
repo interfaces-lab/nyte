@@ -19,7 +19,7 @@ const styles = create({
     height: { default: 16, '[data-orientation="horizontal"]': 1 },
     marginInline: { default: 4, '[data-orientation="horizontal"]': 0 },
     marginBlock: { default: 0, '[data-orientation="horizontal"]': 4 },
-    backgroundColor: t.strokeSecondary,
+    backgroundColor: t.borderSecondaryTranslucent,
   },
 });
 

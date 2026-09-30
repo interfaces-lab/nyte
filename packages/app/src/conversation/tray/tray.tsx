@@ -29,8 +29,8 @@ export const trayParts = create({
     "--nyte-row-height": tray.rowHeight,
     "--nyte-row-padding-inline": tray.rowInset,
   },
-  notice: { paddingBlock: 8, paddingInline: 12, color: t.textSecondary, fontSize: t.fontSm },
-  error: { color: t.textDanger },
+  notice: { paddingBlock: 8, paddingInline: 12, color: t.contentSecondary, fontSize: t.fontSm },
+  error: { color: t.intentDangerContent },
 });
 
 /**
@@ -82,7 +82,6 @@ export function TrayPill({
       <Button
         ref={ref}
         variant="secondary"
-        size="condensed"
         round
         aria-label={label}
         aria-controls={controls}
@@ -107,7 +106,7 @@ export function TrayIconAction({
   readonly onClick: () => void;
 }): ReactElement {
   return (
-    <Button size="icon" aria-label={label} onClick={onClick}>
+    <Button iconOnly aria-label={label} onClick={onClick}>
       <Icon name={icon} size={size} />
     </Button>
   );

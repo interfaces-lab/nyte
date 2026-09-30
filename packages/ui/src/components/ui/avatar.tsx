@@ -3,6 +3,7 @@ import * as stylex from "@stylexjs/stylex";
 import type * as React from "react";
 
 import { mergeStyleProps, type XStyle } from "../../style.ts";
+import { surfaceTheme } from "../../surface-theme.ts";
 import { t } from "../../vars.stylex.ts";
 
 const styles = stylex.create({
@@ -16,7 +17,7 @@ const styles = stylex.create({
     boxSizing: "border-box",
     borderWidth: 0.5,
     borderStyle: "solid",
-    borderColor: t.imageOutline,
+    borderColor: t.borderPrimaryTranslucent,
     fontFamily: t.fontSans,
     fontWeight: 600,
     lineHeight: 1,
@@ -53,25 +54,27 @@ const shapeStyles = stylex.create({
   rounded: { borderRadius: "42%" },
 });
 
-const toneStyles = stylex.create({
-  neutral: { backgroundColor: t.fillStrong, color: t.textSecondary },
-  orange: {
-    backgroundColor: `color-mix(in srgb, ${t.orange} 12%, transparent)`,
-    color: t.orange,
+const toneFill = stylex.create({
+  base: {
+    backgroundColor: t.bgInteractiveSecondaryTranslucent,
+    color: t.contentInteractivePrimary,
   },
-  blue: { backgroundColor: t.fillAccentSubtle, color: t.textAccent },
-  violet: {
-    backgroundColor: `color-mix(in srgb, ${t.purple} 12%, transparent)`,
-    color: t.purple,
-  },
-  green: { backgroundColor: t.fillSuccessSubtle, color: t.textSuccess },
 });
+
+/** Each tone but `neutral` scopes the avatar to its hue. */
+const toneScopes = {
+  neutral: null,
+  orange: surfaceTheme.orange,
+  blue: surfaceTheme.blue,
+  violet: surfaceTheme.purple,
+  green: surfaceTheme.green,
+} as const;
 
 export type AvatarSize = keyof typeof sizeStyles;
 
 export type AvatarShape = keyof typeof shapeStyles;
 
-export type AvatarTone = keyof typeof toneStyles;
+export type AvatarTone = keyof typeof toneScopes;
 
 export interface AvatarProps extends Omit<AvatarPrimitive.Root.Props, "className" | "style"> {
   className?: string;
@@ -97,7 +100,14 @@ export function Avatar({
       data-size={size}
       data-tone={tone}
       {...mergeStyleProps(
-        stylex.props(styles.root, sizeStyles[size], shapeStyles[shape], toneStyles[tone], xstyle),
+        stylex.props(
+          toneScopes[tone],
+          styles.root,
+          sizeStyles[size],
+          shapeStyles[shape],
+          toneFill.base,
+          xstyle,
+        ),
         className,
         style,
       )}

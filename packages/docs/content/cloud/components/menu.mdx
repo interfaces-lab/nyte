@@ -102,10 +102,10 @@ A compact menu for a dense toolbar.
 ```tsx
 <Menu label="Sort" trigger={<Button size="sm">Sort</Button>}>
   <MenuRadioGroup value={order} onValueChange={setOrder}>
-    <MenuRadioItem value="recent" size="small" layout="plain">
+    <MenuRadioItem value="recent" layout="plain">
       Recent
     </MenuRadioItem>
-    <MenuRadioItem value="name" size="small" layout="plain">
+    <MenuRadioItem value="name" layout="plain">
       Name
     </MenuRadioItem>
   </MenuRadioGroup>
@@ -119,7 +119,7 @@ A command palette, opened by its own trigger or a shortcut.
   label="Search"
   open={open}
   onOpenChange={setOpen}
-  trigger={<Button size="icon" icon="search" aria-label="Search" />}
+  trigger={<Button iconOnly icon="search" aria-label="Search" />}
 >
   <MenuItem icon="new-chat" onSelect={startChat}>
     New chat
@@ -159,23 +159,22 @@ the available height. It flips to the other side when there is no room.
 
 ### MenuItem
 
-| Prop            | Type                           | Default     | Description                                           |
-| --------------- | ------------------------------ | ----------- | ----------------------------------------------------- |
-| `onSelect`      | `() => void`                   |             | Runs when the item is chosen.                         |
-| `icon`          | `IconName`                     |             | Glyph in the leading column.                          |
-| `leading`       | `React.ReactNode`              |             | Any node in the leading column, in place of `icon`.   |
-| `meta`          | `React.ReactNode`              |             | Trailing column, in tertiary text.                    |
-| `danger`        | `boolean`                      | `false`     | Danger text and icon color.                           |
-| `disabled`      | `boolean`                      | `false`     | Skipped by activation, still reachable by arrow keys. |
-| `selected`      | `boolean`                      | `false`     | Paints the selected fill, for the current item.       |
-| `closeOnClick`  | `boolean`                      | `true`      | Closes the menu when chosen.                          |
-| `textValue`     | `string`                       |             | Typeahead text when the body is more than a label.    |
-| `size`          | `"default" \| "small"`         | `"default"` | `small` is a 24px row with a 12px icon.               |
-| `layout`        | `"menu" \| "plain"`            | `"menu"`    | `plain` drops the leading icon column.                |
-| `background`    | `"default" \| "highlightOnly"` | `"default"` | `highlightOnly` paints only the pointer highlight.    |
-| `id`            | `string`                       |             | DOM id of the row.                                    |
-| `onPointerMove` | `() => void`                   |             | Pointer movement over the row.                        |
-| `xstyle`        | `XStyle`                       |             | Merged last onto the row.                             |
+| Prop            | Type                           | Default     | Description                                                  |
+| --------------- | ------------------------------ | ----------- | ------------------------------------------------------------ |
+| `onSelect`      | `() => void`                   |             | Runs when the item is chosen.                                |
+| `icon`          | `IconName`                     |             | Glyph in the leading column.                                 |
+| `leading`       | `React.ReactNode`              |             | Any node in the leading column, in place of `icon`.          |
+| `meta`          | `React.ReactNode`              |             | Trailing column, in secondary text.                          |
+| `danger`        | `boolean`                      | `false`     | Danger text and icon color.                                  |
+| `disabled`      | `boolean`                      | `false`     | Skipped by activation, still reachable by arrow keys.        |
+| `selected`      | `boolean`                      | `false`     | Paints the selected fill and hairline, for the current item. |
+| `closeOnClick`  | `boolean`                      | `true`      | Closes the menu when chosen.                                 |
+| `textValue`     | `string`                       |             | Typeahead text when the body is more than a label.           |
+| `layout`        | `"menu" \| "plain"`            | `"menu"`    | `plain` drops the leading icon column.                       |
+| `background`    | `"default" \| "highlightOnly"` | `"default"` | `highlightOnly` paints only the pointer highlight.           |
+| `id`            | `string`                       |             | DOM id of the row.                                           |
+| `onPointerMove` | `() => void`                   |             | Pointer movement over the row.                               |
+| `xstyle`        | `XStyle`                       |             | Merged last onto the row.                                    |
 
 ### MenuRadioGroup
 
@@ -187,7 +186,7 @@ The table above comes from Base UI, MIT, © Material-UI SAS.
 
 ### MenuRadioItem
 
-Takes `value`, `icon`, `leading`, `meta`, `disabled`, `size`, `layout`, `background`, `id`, and
+Takes `value`, `icon`, `leading`, `meta`, `disabled`, `layout`, `background`, `id`, and
 `xstyle` as `MenuItem` does. A checkmark follows `meta` on the chosen item.
 
 | Prop           | Type         | Default | Description                                        |
@@ -199,8 +198,8 @@ Takes `value`, `icon`, `leading`, `meta`, `disabled`, `size`, `layout`, `backgro
 
 ### MenuCheckboxItem
 
-Takes `icon`, `leading`, `meta`, `disabled`, `size`, `background`, and `xstyle` as `MenuItem`
-does. A checkmark follows `meta` while checked.
+Takes `icon`, `leading`, `meta`, `disabled`, `layout`, `background`, and `xstyle` as
+`MenuItem` does. A checkmark follows `meta` while checked.
 
 | Prop              | Type                         | Default | Description                  |
 | ----------------- | ---------------------------- | ------- | ---------------------------- |
@@ -211,12 +210,12 @@ does. A checkmark follows `meta` while checked.
 ### MenuSwitchItem
 
 A checkbox item that draws a switch in the meta column. Takes `checked`, `onCheckedChange`,
-`icon`, `leading`, `disabled`, `size`, `layout`, `background`, and `xstyle`. It never closes the
+`icon`, `leading`, `disabled`, `layout`, `background`, and `xstyle`. It never closes the
 menu.
 
 ### MenuSubmenu
 
-Takes `icon`, `leading`, `size`, `layout`, and `disabled` for its row, and `xstyle` for its popup.
+Takes `icon`, `leading`, `layout`, and `disabled` for its row, and `xstyle` for its popup.
 
 | Prop                   | Type                                    | Default   | Description                               |
 | ---------------------- | --------------------------------------- | --------- | ----------------------------------------- |

@@ -3,29 +3,32 @@
  * A caller picks a variant and a size and may place the control through
  * `xstyle`, never restyle it.
  *
- * The sizes are one stair, read off the controls the app had grown by hand:
- * text stands 30, 28 condensed, or 24; icon-only controls are 28, 24, or 16
- * squares. Variants are named by use, so `primary` is the one reached for
- * most: a bare label or glyph that lifts on hover.
+ * Sizes are Notion Calendar's, 2xs to xl, and grow under a coarse pointer.
+ * `iconOnly` squares the box for a glyph with no text. Variants are named by
+ * use, so `primary` is the one reached for most: a bare label or glyph that
+ * lifts on hover. The filled `inverse` and `danger` paint inside their intent.
+ * A `ButtonGroup` joins buttons into one control, such as an action beside the
+ * menu of its siblings.
  */
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { create, props, type StyleXStyles } from "@stylexjs/stylex";
-import type { CSSProperties, JSX, ReactElement } from "react";
+import { createContext, use, type CSSProperties, type JSX, type ReactElement } from "react";
 
 import { focus } from "../../a11y.stylex.ts";
-import { mergeStyleProps } from "../../style.ts";
+import { button } from "../../schema.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "../../style.ts";
+import { intent } from "../../surface-theme.ts";
 import { t } from "../../vars.stylex.ts";
 import { Icon, type IconName } from "./icon.tsx";
 
-const button = create({
+const control = create({
   base: {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
     flexShrink: 0,
     paddingBlock: 0,
-    borderRadius: t.radiusBase,
+    borderRadius: "var(--_btn-radius)",
     borderStyle: "none",
     backgroundColor: "transparent",
     // Hover and press lay a state over the variant's own fill.
@@ -44,58 +47,150 @@ const button = create({
     transitionTimingFunction: t.easeOut,
   },
   round: { borderRadius: t.radiusFull },
+  // Only the group's outer corners round. By type, because an open menu's focus guards are spans.
+  joined: {
+    borderStartStartRadius: { default: 0, ":first-of-type": "var(--_btn-radius)" },
+    borderEndStartRadius: { default: 0, ":first-of-type": "var(--_btn-radius)" },
+    borderStartEndRadius: { default: 0, ":last-of-type": "var(--_btn-radius)" },
+    borderEndEndRadius: { default: 0, ":last-of-type": "var(--_btn-radius)" },
+  },
 });
 
-const buttonSizes = create({
-  default: { height: 30, paddingInline: 12, fontSize: t.fontBase, lineHeight: t.leadingBase },
-  condensed: { height: 28, paddingInline: 8, fontSize: t.fontBase, lineHeight: t.leadingBase },
-  sm: { height: 24, paddingInline: 6, fontSize: t.fontSm, lineHeight: t.leadingSm },
-  icon: { width: 28, height: 28, paddingInline: 0 },
-  "icon-sm": { width: 24, height: 24, paddingInline: 0 },
-  "icon-xs": { width: 16, height: 16, paddingInline: 0, borderRadius: t.radiusSm },
+const group = create({
+  // The hairline gap shows the surface through, dividing the parts.
+  base: { display: "inline-flex", gap: 1, minWidth: 0 },
 });
+
+const ButtonGroupContext = createContext(false);
+
+const buttonSizes = create({
+  "2xs": {
+    "--_btn-radius": button.radius2xs,
+    height: button.height2xs,
+    paddingInline: button.paddingInline2xs,
+    gap: button.gap2xs,
+    fontSize: t.fontSm,
+    lineHeight: t.leadingSm,
+  },
+  xs: {
+    "--_btn-radius": button.radiusXs,
+    height: button.heightXs,
+    paddingInline: button.paddingInlineXs,
+    gap: button.gapXs,
+    fontSize: t.fontSm,
+    lineHeight: t.leadingSm,
+  },
+  sm: {
+    "--_btn-radius": button.radiusSm,
+    height: button.heightSm,
+    paddingInline: button.paddingInlineSm,
+    gap: button.gapSm,
+    fontSize: t.fontBase,
+    lineHeight: t.leadingBase,
+  },
+  md: {
+    "--_btn-radius": button.radiusMd,
+    height: button.heightMd,
+    paddingInline: button.paddingInlineMd,
+    gap: button.gapMd,
+    fontSize: t.fontBase,
+    lineHeight: t.leadingBase,
+  },
+  lg: {
+    "--_btn-radius": button.radiusLg,
+    height: button.heightLg,
+    paddingInline: button.paddingInlineLg,
+    gap: button.gapLg,
+    fontSize: t.fontBase,
+    lineHeight: t.leadingBase,
+  },
+  xl: {
+    "--_btn-radius": button.radiusXl,
+    height: button.heightXl,
+    paddingInline: button.paddingInlineXl,
+    gap: button.gapXl,
+    fontSize: t.fontBase,
+    lineHeight: t.leadingBase,
+  },
+});
+
+/** A pill keeps its text clear of the rounded ends. */
+const pillSizes = create({
+  "2xs": { paddingInline: button.pillPaddingInline2xs },
+  xs: { paddingInline: button.pillPaddingInlineXs },
+  sm: { paddingInline: button.pillPaddingInlineSm },
+  md: { paddingInline: button.pillPaddingInlineMd },
+  lg: { paddingInline: button.pillPaddingInlineLg },
+  xl: { paddingInline: button.pillPaddingInlineXl },
+});
+
+const iconOnlySizes = create({
+  "2xs": { width: button.height2xs, paddingInline: button.iconPaddingInline },
+  xs: { width: button.heightXs, paddingInline: button.iconPaddingInline },
+  sm: { width: button.heightSm, paddingInline: button.iconPaddingInline },
+  md: { width: button.heightMd, paddingInline: button.iconPaddingInline },
+  lg: { width: button.heightLg, paddingInline: button.iconPaddingInline },
+  xl: { width: button.heightXl, paddingInline: button.iconPaddingInline },
+});
+
+const filled = {
+  color: t.contentOnInteractiveStrong,
+  backgroundColor: {
+    default: t.buttonFill,
+    ":hover:not(:disabled)": t.buttonFillHover,
+    ":active:not(:disabled)": t.buttonFillPressed,
+  },
+  backgroundImage: "none",
+};
 
 const buttonVariants = create({
   // A pressed toggle and a trigger whose menu or panel is open read the same.
   primary: {
     color: {
-      default: t.textSecondary,
-      ":hover:not(:disabled)": t.textPrimary,
-      "[data-pressed]": t.textPrimary,
-      '[aria-expanded="true"]': t.textPrimary,
+      default: t.contentInteractiveSecondary,
+      ":hover:not(:disabled)": t.contentInteractivePrimary,
+      "[data-pressed]": t.contentInteractivePrimary,
+      '[aria-expanded="true"]': t.contentInteractivePrimary,
     },
     backgroundColor: {
       default: "transparent",
-      "[data-pressed]": t.fillSelected,
-      '[aria-expanded="true"]': t.fillSelected,
+      "[data-pressed]": t.bgInteractiveSecondaryTranslucent,
+      '[aria-expanded="true"]': t.bgInteractiveSecondaryTranslucent,
     },
   },
   /** A toggle whose glyph already draws its state, like a panel's open/closed icon. */
   glyphPressed: {
     backgroundColor: "transparent",
-    color: { default: t.iconSecondary, ":hover:not(:disabled)": t.iconPrimary },
+    color: {
+      default: t.contentInteractiveSecondary,
+      ":hover:not(:disabled)": t.contentInteractivePrimary,
+    },
   },
   secondary: {
-    color: t.textPrimary,
-    backgroundImage: {
-      default: t.buttonSecondaryBg,
-      ":hover:not(:disabled)": `${t.layerHover}, ${t.buttonSecondaryBg}`,
-      ":active:not(:disabled)": `${t.layerPressed}, ${t.buttonSecondaryBg}`,
+    color: t.contentInteractivePrimary,
+    backgroundColor: t.bgElevated,
+    boxShadow: `inset 0 0 0 1px ${t.borderPrimaryTranslucent}, ${t.shadowSm}`,
+  },
+  inverse: filled,
+  danger: filled,
+  context: {
+    fontWeight: 400,
+    backgroundImage: "none",
+    color: {
+      default: t.contentInteractiveSecondary,
+      ":hover:not(:disabled)": t.contentInteractivePrimary,
+      '[aria-expanded="true"]': t.contentInteractivePrimary,
     },
-    boxShadow: `inset 0 0 0 1px ${t.strokeSecondary}, ${t.shadowButton}`,
+    backgroundColor: {
+      default: "transparent",
+      '[aria-expanded="true"]': t.bgInteractiveSecondaryTranslucent,
+    },
   },
-  inverse: {
-    // Disabled keeps its glyph readable on the strong fill instead of fading.
-    color: { default: t.textOnInverse, ":disabled": t.textQuaternary },
-    backgroundColor: { default: t.fillInverse, ":disabled": t.fillStrong },
-    opacity: 1,
-  },
-  danger: { color: t.textOnColor, backgroundColor: t.fillDanger },
   link: {
     height: "auto",
     paddingInline: 0,
     backgroundImage: "none",
-    color: t.textAccent,
+    color: t.intentPrimaryContent,
     fontSize: "inherit",
     fontWeight: "inherit",
     lineHeight: "inherit",
@@ -107,18 +202,18 @@ const buttonVariants = create({
 const iconButtonTones = create({
   default: {
     color: {
-      default: t.iconSecondary,
-      ":hover:not(:disabled)": t.iconPrimary,
-      "[data-pressed]": t.iconPrimary,
-      '[aria-expanded="true"]': t.iconPrimary,
+      default: t.contentInteractiveSecondary,
+      ":hover:not(:disabled)": t.contentInteractivePrimary,
+      "[data-pressed]": t.contentInteractivePrimary,
+      '[aria-expanded="true"]': t.contentInteractivePrimary,
     },
   },
   quiet: {
     color: {
-      default: t.iconTertiary,
-      ":hover:not(:disabled)": t.iconPrimary,
-      "[data-pressed]": t.iconPrimary,
-      '[aria-expanded="true"]': t.iconPrimary,
+      default: t.contentInteractiveTertiary,
+      ":hover:not(:disabled)": t.contentInteractivePrimary,
+      "[data-pressed]": t.contentInteractivePrimary,
+      '[aria-expanded="true"]': t.contentInteractivePrimary,
     },
   },
 });
@@ -127,14 +222,12 @@ export type ButtonVariant = Exclude<keyof typeof buttonVariants, "glyphPressed">
 
 export type ButtonSize = keyof typeof buttonSizes;
 
-type IconSize = Extract<ButtonSize, `icon${string}`>;
+/** An icon-only control has no text to name it, so it demands a label. */
+export type ButtonSizing = { readonly size?: ButtonSize } & (
+  | { readonly iconOnly?: false }
+  | { readonly iconOnly: true; readonly "aria-label": string }
+);
 
-/** An icon-only control has no text to name it, so its size demands a label. */
-export type ButtonSizing =
-  | { readonly size?: Exclude<ButtonSize, IconSize> }
-  | { readonly size: IconSize; readonly "aria-label": string };
-
-/** Where a control sits. How it looks belongs to its variant and size. */
 export type ButtonLayout = StyleXStyles<{
   position?: "static" | "relative" | "absolute" | "sticky";
   inset?: number | string;
@@ -181,36 +274,45 @@ export type ButtonProps = ButtonElementProps &
   ButtonSizing &
   ButtonAppearance & { readonly variant?: ButtonVariant };
 
-export const buttonGlyphSize = {
-  default: 14,
-  condensed: 14,
-  sm: 12,
-  icon: 16,
-  "icon-sm": 14,
-  "icon-xs": 12,
-} as const satisfies Record<ButtonSize, number>;
+const glyphSizes = {
+  text: { "2xs": 12, xs: 12, sm: 14, md: 14, lg: 14, xl: 16 },
+  iconOnly: { "2xs": 12, xs: 12, sm: 14, md: 16, lg: 16, xl: 18 },
+} as const satisfies Record<string, Record<ButtonSize, number>>;
 
-function isIconSize(size: ButtonSize): size is IconSize {
-  return size.startsWith("icon");
+export function buttonGlyphSize(size: ButtonSize, iconOnly: boolean): number {
+  return glyphSizes[iconOnly ? "iconOnly" : "text"][size];
 }
+
+const filledIntent = { inverse: intent.primary, danger: intent.danger } as const;
 
 export function buttonStyle(
   variant: ButtonVariant,
   size: ButtonSize,
-  { round = false, xstyle, className, style }: ButtonAppearance,
+  {
+    iconOnly = false,
+    round = false,
+    joined = false,
+    xstyle,
+    className,
+    style,
+  }: ButtonAppearance & { readonly iconOnly?: boolean; readonly joined?: boolean },
   glyphPressed = false,
 ) {
   return mergeStyleProps(
     props(
-      button.base,
+      control.base,
       buttonSizes[size],
+      round && pillSizes[size],
+      iconOnly && iconOnlySizes[size],
       buttonVariants[variant],
+      (variant === "inverse" || variant === "danger") && filledIntent[variant],
       variant === "primary" &&
-        isIconSize(size) &&
-        iconButtonTones[size === "icon" ? "default" : "quiet"],
-      round && button.round,
-      // The 16px square sits inside rows, where an outset ring would clip.
-      size === "icon-xs" ? focus.ringInset : focus.ring,
+        iconOnly &&
+        iconButtonTones[size === "md" || size === "lg" || size === "xl" ? "default" : "quiet"],
+      round && control.round,
+      joined && control.joined,
+      // The 2xs square sits inside rows, where an outset ring would clip.
+      size === "2xs" ? focus.ringInset : focus.ring,
       xstyle,
       glyphPressed && buttonVariants.glyphPressed,
     ),
@@ -223,13 +325,14 @@ export function buttonStyle(
  * An icon-only control shows its label as the native tooltip. One wrapped in
  * a `Hint` passes `title={undefined}`, which wins over this default.
  */
-export function tooltipTitle(size: ButtonSize, label: string | undefined): string | undefined {
-  return isIconSize(size) ? label : undefined;
+export function tooltipTitle(iconOnly: boolean, label: string | undefined): string | undefined {
+  return iconOnly ? label : undefined;
 }
 
 export function Button({
   variant = "primary",
-  size = "default",
+  size = "md",
+  iconOnly = false,
   round,
   icon,
   xstyle,
@@ -240,14 +343,38 @@ export function Button({
   disabled,
   ...rest
 }: ButtonProps): ReactElement {
+  const joined = use(ButtonGroupContext);
+
   return (
     <ButtonPrimitive
       disabled={disabled}
-      render={<button type={type} title={tooltipTitle(size, rest["aria-label"])} {...rest} />}
-      {...buttonStyle(variant, size, { round, xstyle, className, style })}
+      render={<button type={type} title={tooltipTitle(iconOnly, rest["aria-label"])} {...rest} />}
+      {...buttonStyle(variant, size, { iconOnly, round, joined, xstyle, className, style })}
     >
-      {icon !== undefined && <Icon name={icon} size={buttonGlyphSize[size]} />}
+      {icon !== undefined && <Icon name={icon} size={buttonGlyphSize(size, iconOnly)} />}
       {children}
     </ButtonPrimitive>
+  );
+}
+
+export type ButtonGroupProps = StyledProps<JSX.IntrinsicElements["div"]>;
+
+/** Joins the `Button`s inside it into one control, including one that triggers a menu. */
+export function ButtonGroup({
+  xstyle,
+  className,
+  style,
+  children,
+  ...rest
+}: ButtonGroupProps): ReactElement {
+  return (
+    <div
+      role="group"
+      data-slot="button-group"
+      {...rest}
+      {...mergeStyleProps(props(group.base, xstyle), className, style)}
+    >
+      <ButtonGroupContext value={true}>{children}</ButtonGroupContext>
+    </div>
   );
 }

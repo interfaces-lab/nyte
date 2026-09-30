@@ -17,7 +17,7 @@ const styles = create({
     justifyContent: "center",
     height: "100%",
     padding: 24,
-    backgroundColor: t.bgPage,
+    backgroundColor: t.bgBase,
   },
   card: {
     display: "flex",
@@ -28,21 +28,21 @@ const styles = create({
     padding: 24,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: t.strokeTertiary,
-    borderRadius: t.radiusXl,
-    backgroundColor: t.bgRaised,
-    boxShadow: t.shadowPopover,
+    borderColor: t.borderSecondaryTranslucent,
+    borderRadius: t.radius12,
+    backgroundColor: t.bgElevated,
+    boxShadow: t.shadowMd,
   },
   heading: { margin: 0, fontSize: t.fontLg, lineHeight: t.leadingLg, fontWeight: 600 },
   field: {
     display: "flex",
     flexDirection: "column",
     gap: 6,
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
   },
-  error: { margin: 0, color: t.textDanger, fontSize: t.fontSm, lineHeight: t.leadingSm },
+  error: { margin: 0, color: t.intentDangerContent, fontSize: t.fontSm, lineHeight: t.leadingSm },
 });
 
 interface ConnectScreenProps {

@@ -59,7 +59,7 @@ const replies = [
     "Calendar puts every surface on one of three elevation tiers, and the tier follows the surface's role rather than its size.",
     "- **elevation-low** (`shadow-sm`): ordinary menus and context menus.\n- **elevation-middle** (`shadow-md`): suggestion lists, pickers and the material panel.\n- **elevation-high** (`shadow-lg`): dialogs only.",
     "Our popover token currently paints every floating surface with one stack, so menus land a tier heavier than Calendar draws them. Splitting the token is the smallest change that keeps pickers where they are.",
-    "The inset hairline stays as it is. Calendar draws it with `stroke-secondary`, which already matches `--nyte-stroke-tertiary` in both appearances.",
+    "The inset hairline stays as it is. Calendar draws it with `stroke-secondary`, which already matches `--nyte-border-secondary-translucent` in both appearances.",
   ],
   [
     "Every step derived from an anchor with alpha: the text ramp at 74, 60 and 36 percent, the icon ramp at 66 and 52, the fill steps and the strokes.",

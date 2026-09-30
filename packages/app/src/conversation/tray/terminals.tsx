@@ -118,9 +118,7 @@ function AvailableBackgroundWork({
       {jobs.isError && (
         <div role="alert" {...props(trayParts.notice, trayParts.error)}>
           Couldn’t load background work.
-          <Button size="condensed" onClick={() => void jobs.refetch()}>
-            Try again
-          </Button>
+          <Button onClick={() => void jobs.refetch()}>Try again</Button>
         </div>
       )}
       {!trayOpen && hasTerminals && (
@@ -146,7 +144,6 @@ function AvailableBackgroundWork({
         <div {...props(trayStyles.header)}>
           <span {...props(trayStyles.title)}>{`${count} ${noun.toLowerCase()}`}</span>
           <Button
-            size="condensed"
             aria-label={
               stopCandidates !== undefined
                 ? `Confirm stopping ${String(stopCandidates.length)} running terminals`
@@ -190,7 +187,6 @@ function AvailableBackgroundWork({
               </Row.Primary>
               <Row.Actions>
                 <Button
-                  size="condensed"
                   aria-label={`Stop ${job.command}`}
                   disabled={pendingAction}
                   onClick={() => cancel.mutate(job.id)}

@@ -861,9 +861,14 @@ export const Composer = memo(function Composer({
               onPress={() => {
                 void submit();
               }}
-              style={[field.send, { backgroundColor: theme.accent }, busy && field.disabled]}
+              style={[field.send, { backgroundColor: theme.accentFill }, busy && field.disabled]}
             >
-              <SymbolView name="arrow.up" size={16} tintColor={theme.onAccent} weight="semibold" />
+              <SymbolView
+                name="arrow.up"
+                size={16}
+                tintColor={theme.onAccentFill}
+                weight="semibold"
+              />
             </Pressable>
           ) : (
             <Pressable
@@ -892,6 +897,7 @@ export const Composer = memo(function Composer({
           colors={{
             text: theme.foreground,
             accent: theme.accent,
+            accentFill: theme.accentFill,
             track: dark ? "rgba(44, 44, 46, 0.86)" : "rgba(250, 250, 250, 0.86)",
             tickOnTrack: dark ? "rgba(255, 255, 255, 0.28)" : "rgba(0, 0, 0, 0.24)",
             tickOnFill: "rgba(255, 255, 255, 0.2)",

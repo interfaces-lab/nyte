@@ -141,9 +141,9 @@ ${PIERRE_TOKEN_CSS}
   min-width: 0;
   height: 20px;
   border: 0;
-  border-radius: ${t.radiusSm};
+  border-radius: ${t.radius4};
   background-color: transparent;
-  color: ${t.iconSecondary};
+  color: ${t.contentInteractiveSecondary};
   cursor: var(--nyte-cursor-interactive);
 }
 
@@ -153,8 +153,8 @@ ${PIERRE_TOKEN_CSS}
 }
 
 [data-gutter] [data-expand-button]:hover {
-  background-color: ${t.fillHover};
-  color: ${t.iconPrimary};
+  background-color: ${t.bgHover};
+  color: ${t.contentInteractivePrimary};
 }
 
 /*
@@ -183,8 +183,8 @@ ${PIERRE_TOKEN_CSS}
 [data-separator-content] {
   /* The band runs the full width of the row, as Cursor's does. */
   flex: 1;
-  background-color: ${t.fillQuiet};
-  color: ${t.textTertiary};
+  background-color: ${t.bgMutedTranslucent};
+  color: ${t.contentSecondary};
   /*
    * Fixed like the row it sits in. The diff's line box is a fixed 20px, so a
    * label that tracked the code font would clip against it at large sizes.
@@ -197,14 +197,14 @@ ${PIERRE_TOKEN_CSS}
 /* The two column copies meet, so only the outer corners round. */
 [data-gutter] [data-separator-content] {
   padding-inline: 8px 0;
-  border-start-start-radius: ${t.radiusBase};
-  border-end-start-radius: ${t.radiusBase};
+  border-start-start-radius: ${t.radius6};
+  border-end-start-radius: ${t.radius6};
 }
 
 [data-content] [data-separator-content] {
   padding-inline: 0 8px;
-  border-start-end-radius: ${t.radiusBase};
-  border-end-end-radius: ${t.radiusBase};
+  border-start-end-radius: ${t.radius6};
+  border-end-end-radius: ${t.radius6};
 }
 `;
 

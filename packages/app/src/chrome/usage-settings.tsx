@@ -11,6 +11,7 @@
  * legible only under the pointer and a long name wraps instead of being cut off.
  */
 import { ResponsiveLine } from "@nivo/line";
+import type { LineSeries, SliceTooltipProps } from "@nivo/line";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import * as stylex from "@stylexjs/stylex";
@@ -21,7 +22,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { useAccountLimits, useUsageReport } from "../queries.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { ramp, t } from "@nyte-ai/ui/vars.stylex";
 import { isOption } from "./sidebar-view.ts";
 import { skeletonStyles as bone, usageStyles as styles } from "./usage-settings.stylex.ts";
 import {
@@ -86,9 +87,14 @@ const RANK_COLOURS = [
 
 /** Tokens by kind, on the same ramp as the ranked lists so colour means one thing. */
 const TOKEN_SERIES = [
-  { id: "Input", colour: t.accent, swatch: styles.series0, read: (p: UsagePoint) => p.input },
-  { id: "Output", colour: t.purple, swatch: styles.series1, read: (p: UsagePoint) => p.output },
-  { id: "Cached", colour: t.cyan, swatch: styles.series2, read: (p: UsagePoint) => p.cached },
+  { id: "Input", colour: ramp.blue80, swatch: styles.series0, read: (p: UsagePoint) => p.input },
+  {
+    id: "Output",
+    colour: ramp.purple80,
+    swatch: styles.series1,
+    read: (p: UsagePoint) => p.output,
+  },
+  { id: "Cached", colour: t.markTeal, swatch: styles.series2, read: (p: UsagePoint) => p.cached },
 ] as const;
 
 /** Ticks under the curve: the ends and a few evenly between, never every bucket. */
@@ -250,6 +256,7 @@ function TokenCurve({ usage }: { readonly usage: UsageDerived }): ReactElement |
           margin={{ top: 8, right: 8, bottom: 24, left: 44 }}
           xScale={{ type: "linear", min: 0, max: last }}
           yScale={{ type: "linear", min: 0, max: "auto", nice: true }}
+          xFormat={labelAt}
           yFormat={formatTokens}
           curve="monotoneX"
           colors={series.map((kind) => kind.colour)}
@@ -266,32 +273,36 @@ function TokenCurve({ usage }: { readonly usage: UsageDerived }): ReactElement |
           crosshairType="x"
           animate={false}
           theme={{
-            text: { fontFamily: t.fontSans, fontSize: 11, fill: t.textTertiary },
-            grid: { line: { stroke: t.strokeTertiary, strokeWidth: 1 } },
-            crosshair: { line: { stroke: t.strokePrimary, strokeWidth: 1, strokeOpacity: 1 } },
+            text: { fontFamily: t.fontSans, fontSize: 11, fill: t.contentSecondary },
+            grid: { line: { stroke: t.borderSecondaryTranslucent, strokeWidth: 1 } },
+            crosshair: {
+              line: { stroke: t.borderPrimaryTranslucent, strokeWidth: 1, strokeOpacity: 1 },
+            },
           }}
-          sliceTooltip={({ slice }) => (
-            <div {...stylex.props(styles.chartTip)}>
-              <span {...stylex.props(styles.chartTipLabel)}>
-                {labelAt(slice.points[0]?.data.x ?? 0)}
-              </span>
-              {slice.points.map((point) => (
-                <span key={point.id} {...stylex.props(styles.chartTipRow)}>
-                  <span {...stylex.props(styles.chartKey)}>
-                    <span
-                      aria-hidden="true"
-                      {...stylex.props(styles.chartSwatch)}
-                      style={{ backgroundColor: point.seriesColor }}
-                    />
-                    {point.seriesId}
-                  </span>
-                  <span>{point.data.yFormatted}</span>
-                </span>
-              ))}
-            </div>
-          )}
+          sliceTooltip={TokenSliceTooltip}
         />
       </div>
+    </div>
+  );
+}
+
+function TokenSliceTooltip({ slice }: SliceTooltipProps<LineSeries>): ReactElement {
+  return (
+    <div {...stylex.props(styles.chartTip)}>
+      <span {...stylex.props(styles.chartTipLabel)}>{slice.points[0]?.data.xFormatted}</span>
+      {slice.points.map((point) => (
+        <span key={point.id} {...stylex.props(styles.chartTipRow)}>
+          <span {...stylex.props(styles.chartKey)}>
+            <span
+              aria-hidden="true"
+              {...stylex.props(styles.chartSwatch)}
+              style={{ backgroundColor: point.seriesColor }}
+            />
+            {point.seriesId}
+          </span>
+          <span>{point.data.yFormatted}</span>
+        </span>
+      ))}
     </div>
   );
 }

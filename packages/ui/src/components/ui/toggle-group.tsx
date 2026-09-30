@@ -12,9 +12,9 @@ const styles = create({
     alignItems: "center",
     gap: 1,
     padding: 2,
-    borderRadius: t.radiusLg,
-    backgroundColor: t.fillQuiet,
-    boxShadow: `inset 0 0 0 1px ${t.strokeSecondary}`,
+    borderRadius: t.radius8,
+    backgroundColor: t.bgMutedTranslucent,
+    boxShadow: `inset 0 0 0 1px ${t.borderSecondaryTranslucent}`,
   },
 });
 

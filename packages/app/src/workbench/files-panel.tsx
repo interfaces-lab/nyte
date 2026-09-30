@@ -7,6 +7,7 @@ import { worktreeFiles } from "@nyte-ai/client";
 import { errorMessage } from "../errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Menu, MenuItem, MenuSeparator, MenuSwitchItem } from "@nyte-ai/ui/menu";
+import type { HostBridge } from "../bridge.ts";
 import { revealLabel, showContextMenu } from "../components/context-menu.ts";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
@@ -23,6 +24,7 @@ import { setFilePreference, useFilePreferences } from "./file-preferences.ts";
 import { fileActions, useFileTabs } from "./file-store.ts";
 import { FilesStack } from "./files-stack.tsx";
 import { WorkspaceSearch } from "./workspace-search.tsx";
+import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const styles = create({
@@ -32,7 +34,7 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: t.bgPage,
+    backgroundColor: t.bgBase,
   },
   explorerHeader: {
     display: "flex",
@@ -40,7 +42,7 @@ const styles = create({
     height: workbench.headerHeight,
     flexShrink: 0,
     paddingInline: 10,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontBase,
   },
   path: {
@@ -50,7 +52,7 @@ const styles = create({
     minWidth: 0,
     overflow: "hidden",
     paddingInline: 4,
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontBase,
     whiteSpace: "nowrap",
   },
@@ -60,10 +62,10 @@ const styles = create({
     display: "inline-flex",
     flexShrink: 0,
     marginInline: 2,
-    color: t.iconTertiary,
+    color: t.contentTertiary,
   },
-  currentCrumb: { flexShrink: 0, maxWidth: "100%", color: t.textPrimary },
-  dirty: { flexShrink: 0, color: t.textTertiary, fontSize: t.fontXs },
+  currentCrumb: { flexShrink: 0, maxWidth: "100%", color: t.contentPrimary },
+  dirty: { flexShrink: 0, color: t.contentSecondary, fontSize: t.fontXs },
   body: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
   editors: { position: "relative", display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
   explorer: {
@@ -73,26 +75,26 @@ const styles = create({
     minWidth: 160,
     minHeight: 0,
     flexShrink: 0,
-    backgroundColor: t.bgPage,
+    backgroundColor: t.bgBase,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: t.strokeSecondary,
+    borderInlineStartColor: t.borderSecondaryTranslucent,
   },
   search: { width: "min(320px, 50%)", minWidth: 230 },
   sidebarBody: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   hidden: { display: "none" },
-  empty: { padding: 20, color: t.textTertiary, fontSize: t.fontSm },
+  empty: { padding: 20, color: t.contentSecondary, fontSize: t.fontSm },
   menu: {
     minWidth: "min(220px, var(--available-width))",
     maxWidth: "min(420px, var(--available-width))",
-    borderRadius: t.radiusLg,
+    borderRadius: t.radius8,
   },
   tree: {
     display: "block",
     flex: 1,
     width: "100%",
     minHeight: 0,
-    "--trees-border-radius-override": t.radiusXs,
+    "--trees-border-radius-override": t.radius2,
     "--trees-item-margin-x-override": "0px",
     "--trees-item-padding-x-override": "5px",
     "--trees-item-row-gap-override": "4px",
@@ -150,11 +152,18 @@ export function FilesPanel({
       .catch((cause: unknown) => setCopyError(errorMessage(cause)));
   };
 
+  const contextMenu = nyte.host.contextMenu;
+  const revealPath = nyte.host.revealPath;
+
   /**
    * Serves the row's menu button and its right-click. The tree keeps its own
    * open state, so close it before the native menu takes over the pointer.
    */
-  const openRowMenu = (item: ContextMenuItem, context: ContextMenuOpenContext): void => {
+  const openRowMenu = (
+    menu: NonNullable<HostBridge["contextMenu"]>,
+    item: ContextMenuItem,
+    context: ContextMenuOpenContext,
+  ): void => {
     context.close({ restoreFocus: false });
     const file = fileEntries.current?.find((entry) => entry.displayPath === item.path);
     const root = hostState.current?.workspace?.path;
@@ -165,45 +174,55 @@ export function FilesPanel({
     const absolutePath =
       file?.path ?? (root === undefined ? undefined : `${root}${separator}${relative}`);
 
-    void showContextMenu({ clientX: context.anchorRect.left, clientY: context.anchorRect.bottom }, [
-      file !== undefined && {
-        kind: "item",
-        label: "Open",
-        run: () => fileActions.open(viewKey, file),
-      },
-      absolutePath !== undefined && {
-        kind: "item",
-        label: revealLabel(hostState.current?.platform),
-        run: () => void nyte.host.revealPath({ path: absolutePath }),
-      },
-      { kind: "separator" },
-      { kind: "item", label: "Search Files", run: showSearch },
-      { kind: "separator" },
-      absolutePath !== undefined && {
-        kind: "item",
-        label: "Copy Path",
-        run: () => copyPath(absolutePath),
-      },
-      { kind: "item", label: "Copy Relative Path", run: () => copyPath(relative) },
-      { kind: "separator" },
-      { kind: "item", label: "Refresh Explorer", run: refreshVcs },
-    ]);
+    void showContextMenu(
+      menu,
+      { clientX: context.anchorRect.left, clientY: context.anchorRect.bottom },
+      [
+        file !== undefined && {
+          kind: "item",
+          label: "Open",
+          run: () => fileActions.open(viewKey, file),
+        },
+        absolutePath !== undefined &&
+          revealPath !== undefined && {
+            kind: "item",
+            label: revealLabel(hostState.current?.platform),
+            run: () => void revealPath({ path: absolutePath }),
+          },
+        { kind: "separator" },
+        { kind: "item", label: "Search Files", run: showSearch },
+        { kind: "separator" },
+        absolutePath !== undefined && {
+          kind: "item",
+          label: "Copy Path",
+          run: () => copyPath(absolutePath),
+        },
+        { kind: "item", label: "Copy Relative Path", run: () => copyPath(relative) },
+        { kind: "separator" },
+        { kind: "item", label: "Refresh Explorer", run: refreshVcs },
+      ],
+    );
   };
 
   const { model } = useFileTree({
     paths: [],
     density: "compact",
+    unsafeCSS: PIERRE_TREE_CSS,
     flattenEmptyDirectories: true,
     initialExpansion: 1,
     search: false,
     composition: {
-      contextMenu: {
-        triggerMode: "both",
-        buttonVisibility: "when-needed",
-        // The native menu replaces the tree's own surface for both triggers.
-        render: () => null,
-        onOpen: (item, context) => openRowMenu(item, context),
-      },
+      // Without a native menu the tree keeps neither a menu button nor the right-click.
+      contextMenu:
+        contextMenu === undefined
+          ? undefined
+          : {
+              triggerMode: "both",
+              buttonVisibility: "when-needed",
+              // The native menu replaces the tree's own surface for both triggers.
+              render: () => null,
+              onOpen: (item, context) => openRowMenu(contextMenu, item, context),
+            },
     },
   });
 
@@ -308,14 +327,14 @@ export function FilesPanel({
     >
       <div {...props(workbenchStyles.toolbar)}>
         <Button
-          size="icon"
+          iconOnly
           icon="arrow-left"
           aria-label="Go Back"
           disabled={!tabs.canGoBack}
           onClick={() => fileActions.back(viewKey)}
         />
         <Button
-          size="icon"
+          iconOnly
           icon="arrow-right"
           aria-label="Go Forward"
           disabled={!tabs.canGoForward}
@@ -351,7 +370,7 @@ export function FilesPanel({
           align="end"
           xstyle={styles.menu}
           trigger={
-            <Button size="icon" ref={menuRef} icon="more-horizontal" aria-label="File options" />
+            <Button iconOnly ref={menuRef} icon="more-horizontal" aria-label="File options" />
           }
         >
           <MenuItem
@@ -430,14 +449,14 @@ export function FilesPanel({
           </MenuSwitchItem>
         </Menu>
         <Toggle
-          size="icon"
+          iconOnly
           icon="search"
           aria-label="Search Files"
           pressed={sidebar === "search"}
           onPressedChange={showSearch}
         />
         <Toggle
-          size="icon"
+          iconOnly
           indicator="glyph"
           aria-label="Browse Files"
           pressed={sidebar === "explorer"}

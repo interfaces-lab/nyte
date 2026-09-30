@@ -9,7 +9,7 @@ import { t } from "@nyte-ai/ui/vars.stylex";
 const styles = stylex.create({
   title: {
     overflow: "hidden",
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontSize: t.fontBase,
     fontWeight: 500,
     lineHeight: t.leadingBase,
@@ -27,7 +27,7 @@ const styles = stylex.create({
     gridTemplateColumns: "14px minmax(0, 1fr)",
     alignItems: "center",
     gap: 6,
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
   },
@@ -36,7 +36,7 @@ const styles = stylex.create({
     placeItems: "center",
     width: 14,
     height: t.leadingSm,
-    color: t.iconTertiary,
+    color: t.contentTertiary,
   },
   detailText: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
 });

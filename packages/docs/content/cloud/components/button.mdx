@@ -1,28 +1,31 @@
 ---
 title: Button
-description: "Five variants, six sizes, and an optional glyph"
+description: "Five variants, six sizes, an optional glyph, and a group that joins them"
 ---
 
 ```ts title="Import"
-import { Button } from "@nyte-ai/ui";
+import { Button, ButtonGroup } from "@nyte-ai/ui";
 ```
 
-The same `Button` is exported from its own subpath. Pick one path per file.
+The same names are exported from their own subpath. Pick one path per file.
 
 ```ts title="Subpath"
-import { Button } from "@nyte-ai/ui/button";
+import { Button, ButtonGroup } from "@nyte-ai/ui/button";
 ```
 
 A native `<button>` in Nyte styling. `primary` is a bare label or glyph that lifts on hover, and is
 the one to reach for most. Use `secondary` for a framed action, `inverse` for the one action that
 commits a form or a dialog, `danger` for an action that removes or discards, and `link` for an
-action that sits inside running text.
+action that sits inside running text. `inverse` and `danger` are filled, inside the primary and
+danger intents.
 
 ## Usage
 
-- `icon` takes an [Icon](/cloud/components/icon) name. With a text size it leads the label. With an
-  icon size it is the whole content.
-- An icon size requires `aria-label`, and the label doubles as the native `title`. Inside a
+- Sizes are Notion Calendar's, `2xs` to `xl`, 16 to 36px tall, and larger under a coarse pointer.
+  `md` is the default.
+- `icon` takes an [Icon](/cloud/components/icon) name. It leads the label, or with `iconOnly` it is
+  the whole content of a square button.
+- `iconOnly` requires `aria-label`, and the label doubles as the native `title`. Inside a
   [Tooltip](/cloud/components/tooltip) trigger, pass `title={undefined}` so only the tooltip shows.
 - `xstyle` places the control and accepts position, inset, margin, flex, grid, order, and width
   properties. The look belongs to `variant` and `size`.
@@ -31,6 +34,9 @@ action that sits inside running text.
   `aria-expanded="true"`.
 - A `Button` can be the `render` element of any trigger or close part, such as
   `<Popover.Trigger render={<Button variant="secondary" />}>`.
+- `ButtonGroup` joins the `Button`s inside it into one control. Only the outer corners round, and a
+  1px gap shows the surface between parts. Give every part the same size, such as `md` beside
+  an `iconOnly` `md`.
 
 ## Examples
 
@@ -55,16 +61,16 @@ action that sits inside running text.
 </Preview>
 
 ```tsx
-<Button variant="secondary">Default</Button>
-<Button variant="secondary" size="condensed">
-  Condensed
+<Button variant="secondary" size="lg">
+  Large
 </Button>
+<Button variant="secondary">Medium</Button>
 <Button variant="secondary" size="sm">
   Small
 </Button>
-<Button size="icon" icon="plus" aria-label="Add" />
-<Button size="icon-sm" icon="plus" aria-label="Add" />
-<Button size="icon-xs" icon="x" aria-label="Remove" />
+<Button iconOnly icon="plus" aria-label="Add" />
+<Button size="sm" iconOnly icon="plus" aria-label="Add" />
+<Button size="2xs" iconOnly icon="x" aria-label="Remove" />
 ```
 
 ### Glyph, round, and disabled
@@ -85,26 +91,62 @@ action that sits inside running text.
 </Button>
 ```
 
+### Group
+
+An action beside the menu of its alternatives. A menu trigger inside the group joins it too.
+
+<Preview>
+  <ButtonGroupDemo />
+</Preview>
+
+```tsx
+<ButtonGroup>
+  <Button variant="inverse">Commit and push</Button>
+  <Menu
+    label="Commit actions"
+    align="end"
+    trigger={
+      <Button variant="inverse" iconOnly icon="chevron-down" aria-label="More commit actions" />
+    }
+  >
+    <MenuItem onSelect={() => {}}>Commit</MenuItem>
+    <MenuItem onSelect={() => {}}>Push</MenuItem>
+  </Menu>
+</ButtonGroup>
+```
+
 ## Props
+
+### Button
 
 Every native `<button>` attribute passes through, except `className` and `style`, which merge with
 the component's own.
 
-| Prop        | Type                                                                   | Default     | Description                                                               |
-| ----------- | ---------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------- |
-| `variant`   | `"primary" \| "secondary" \| "inverse" \| "danger" \| "link"`          | `"primary"` | Fill, frame, and ink.                                                     |
-| `size`      | `"default" \| "condensed" \| "sm" \| "icon" \| "icon-sm" \| "icon-xs"` | `"default"` | 30, 28, or 24px tall with a label. 28, 24, or 16px square with a glyph.   |
-| `icon`      | `IconName`                                                             |             | Leading glyph, drawn at 14px, 12px at `sm` and `icon-xs`, 16px at `icon`. |
-| `round`     | `boolean`                                                              | `false`     | Fully rounded corners.                                                    |
-| `xstyle`    | `ButtonLayout`                                                         |             | Placement only. Merged after the variant and size.                        |
-| `className` | `string`                                                               |             | See [Theming](/cloud/foundations/theming).                                |
-| `style`     | `React.CSSProperties`                                                  |             | See [Theming](/cloud/foundations/theming).                                |
-| `type`      | `"button" \| "submit" \| "reset"`                                      | `"button"`  |                                                                           |
+| Prop        | Type                                                          | Default     | Description                                                                       |
+| ----------- | ------------------------------------------------------------- | ----------- | --------------------------------------------------------------------------------- |
+| `variant`   | `"primary" \| "secondary" \| "inverse" \| "danger" \| "link"` | `"primary"` | Fill, frame, and ink.                                                             |
+| `size`      | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`               | `"md"`      | 16, 20, 24, 28, 32, or 36px tall; 28 to 48px under a coarse pointer.              |
+| `iconOnly`  | `boolean`                                                     | `false`     | A square of the height with the glyph alone. Requires `aria-label`.               |
+| `icon`      | `IconName`                                                    |             | Leading glyph, 12px at `2xs` and `xs`, 14px from `sm`, 16px `iconOnly` from `md`. |
+| `round`     | `boolean`                                                     | `false`     | Fully rounded corners.                                                            |
+| `xstyle`    | `ButtonLayout`                                                |             | Placement only. Merged after the variant and size.                                |
+| `className` | `string`                                                      |             | See [Theming](/cloud/foundations/theming).                                        |
+| `style`     | `React.CSSProperties`                                         |             | See [Theming](/cloud/foundations/theming).                                        |
+| `type`      | `"button" \| "submit" \| "reset"`                             | `"button"`  |                                                                                   |
+
+### ButtonGroup
+
+Every native `<div>` attribute passes through. The group renders `role="group"`.
+
+| Prop                           | Type                                      | Default | Description |
+| ------------------------------ | ----------------------------------------- | ------- | ----------- |
+| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |         |             |
 
 ## Accessibility
 
 - Renders a native `<button>`. Enter and Space activate it.
-- `disabled` sets the native attribute. Most variants fade to half opacity, and `inverse` switches
-  to a muted fill.
-- The focus ring appears on keyboard focus. `icon-xs` draws it inset. See
+- `disabled` sets the native attribute, and the button fades to half opacity.
+- The focus ring appears on keyboard focus. `2xs` draws it inset. See
   [Focus](/cloud/foundations/focus).
+- `ButtonGroup` is a `role="group"`. Name it with `aria-label` when its parts do not say what the
+  group is for. Each part stays its own tab stop.

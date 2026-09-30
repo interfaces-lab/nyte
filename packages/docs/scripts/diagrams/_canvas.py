@@ -9,8 +9,9 @@ that is the generator's job.
 
 Two conventions make the set read as one system:
 
-  * Colour is never literal. Strokes are `currentColor` or an `@nyte-ai/ui` token
-    (`var(--nyte-text-accent)` and the other `--nyte-text-*` roles). The SVG
+  * Colour is never literal. Strokes are `currentColor`, an `@nyte-ai/ui` ramp
+    step (`var(--nyte-blue-80)` and the other hues at 80), or the yellow mark,
+    whose saturated step is too light for a page. The SVG
     is inlined into the page rather than loaded through <img>, which is what
     makes theme inversion work.
   * Motion is slow, linear, and endless. These are ambient figures beside a
@@ -29,17 +30,17 @@ HEIGHT = 180
 CX = WIDTH / 2
 CY = HEIGHT / 2
 
-OUT_DIR = Path(__file__).resolve().parents[2] / "src" / "diagrams"
+OUT_DIR = Path(__file__).resolve().parents[2] / "public" / "diagrams"
 
 # The roles a figure may paint with. `ink` is the page's text colour, so a
 # figure is legible in both themes without a second palette.
 INK = "currentColor"
-ACCENT = "var(--nyte-text-accent)"
-GREEN = "var(--nyte-text-success)"
-AMBER = "var(--nyte-text-warning)"
-VIOLET = "var(--nyte-purple)"
-CYAN = "var(--nyte-text-accent)"
-GOLD = "var(--nyte-text-warning)"
+ACCENT = "var(--nyte-blue-80)"
+GREEN = "var(--nyte-green-80)"
+AMBER = "var(--nyte-mark-yellow)"
+VIOLET = "var(--nyte-purple-80)"
+CYAN = "var(--nyte-blue-80)"
+GOLD = "var(--nyte-mark-yellow)"
 
 # Literal values, for figures that keep one appearance wherever they are shown.
 BLACK = "#000000"

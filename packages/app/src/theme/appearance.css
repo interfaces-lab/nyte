@@ -2,6 +2,9 @@
  * What the token declarations in `@nyte-ai/ui/tokens.stylex` cannot carry on their own:
  * overrides keyed on the attributes `boot.ts` and `focus-modality.ts` write on
  * <html>. Unlayered, so they outrank the StyleX layers the tokens compile into.
+ *
+ * Only unscoped inputs are overridden here. A role, or anything built from one,
+ * is re-declared by every scope below <html>, which would drop a root override.
  */
 
 :root {
@@ -9,9 +12,9 @@
 }
 
 /* `light-dark()` in every colour token follows this. */
-:root[data-theme="dark"] {
+:root[data-display-mode="dark"] {
   color-scheme: dark;
-  --nyte-material-filter: blur(12px) brightness(120%);
+  --nyte-popup-material-filter: blur(12px) brightness(120%);
 }
 
 /* Desktop controls keep the native arrow unless pointer cursors are enabled. */
@@ -19,41 +22,29 @@
   --nyte-cursor-interactive: default;
 }
 
-/* The tint keeps each surface's lightness. The sidebar takes the full
-   intensity, the page half. */
-:root[data-tint-active="true"] {
-  --nyte-accent: hsl(from var(--nyte-accent-base) var(--nyte-tint-hue) s l);
-  --nyte-bg-page: hsl(
-    from var(--nyte-page-base) var(--nyte-tint-hue) calc(var(--nyte-tint-intensity) * 0.5) l
-  );
-  --nyte-sidebar: hsl(
-    from var(--nyte-sidebar-base) var(--nyte-tint-hue) var(--nyte-tint-intensity) l
-  );
-}
-
+/* The materials read this to turn opaque. */
 :root[data-reduce-transparency="true"] {
-  --nyte-bg-sidebar: var(--nyte-sidebar);
-  --nyte-material-bg: var(--nyte-bg-raised);
-  --nyte-material-filter: none;
+  --nyte-reduce-transparency: 1;
+  --nyte-popup-material-filter: none;
 }
 
 /* Diff lines tinted with the raw hues rather than the themed washes. */
 :root[data-nyte-themed-diff-backgrounds="false"] {
   --nyte-diff-added-line-bg: light-dark(
-    color-mix(in srgb, var(--nyte-green) 9%, transparent),
-    color-mix(in srgb, var(--nyte-green) 17%, transparent)
+    color-mix(in srgb, var(--nyte-green-80) 9%, transparent),
+    color-mix(in srgb, var(--nyte-green-80) 17%, transparent)
   );
   --nyte-diff-added-text-bg: light-dark(
-    color-mix(in srgb, var(--nyte-green) 6%, transparent),
-    color-mix(in srgb, var(--nyte-green) 14%, transparent)
+    color-mix(in srgb, var(--nyte-green-80) 6%, transparent),
+    color-mix(in srgb, var(--nyte-green-80) 14%, transparent)
   );
   --nyte-diff-removed-line-bg: light-dark(
-    color-mix(in srgb, var(--nyte-red) 9%, transparent),
-    color-mix(in srgb, var(--nyte-red) 17%, transparent)
+    color-mix(in srgb, var(--nyte-red-80) 9%, transparent),
+    color-mix(in srgb, var(--nyte-red-80) 17%, transparent)
   );
   --nyte-diff-removed-text-bg: light-dark(
-    color-mix(in srgb, var(--nyte-red) 6%, transparent),
-    color-mix(in srgb, var(--nyte-red) 14%, transparent)
+    color-mix(in srgb, var(--nyte-red-80) 6%, transparent),
+    color-mix(in srgb, var(--nyte-red-80) 14%, transparent)
   );
 }
 

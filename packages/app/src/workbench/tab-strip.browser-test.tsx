@@ -81,7 +81,7 @@ export async function run(): Promise<string> {
     const accent = agentTab.querySelector<HTMLElement>('[data-agent-terminal="true"]');
     if (accent === null) throw new Error("Agent terminal has no accent class");
     const probe = document.createElement("span");
-    probe.style.color = "var(--nyte-purple)";
+    probe.style.color = "var(--nyte-purple-80)";
     container.append(probe);
     check(
       getComputedStyle(accent).color === getComputedStyle(probe).color,

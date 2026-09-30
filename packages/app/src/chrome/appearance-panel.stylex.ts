@@ -1,7 +1,7 @@
 /** Controls unique to Settings › Appearance. */
 import * as stylex from "@stylexjs/stylex";
 import { settings } from "../theme/schema.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { ramp, t } from "@nyte-ai/ui/vars.stylex";
 
 export const appearancePanelStyles = stylex.create({
   root: { display: "flex", flexDirection: "column", gap: settings.sectionGap },
@@ -29,15 +29,15 @@ export const appearancePanelStyles = stylex.create({
     height: 20,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: t.imageOutline,
+    borderColor: t.borderPrimaryTranslucent,
     borderRadius: t.radiusFull,
-    backgroundColor: t.fillStrong,
+    backgroundColor: t.bgInteractivePrimaryTranslucent,
   },
   tintSwatchActive: {
     backgroundColor: t.tintSwatch,
   },
   tintValue: {
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontXs,
     lineHeight: t.leadingSm,
     textAlign: "center",
@@ -65,7 +65,7 @@ export const appearancePanelStyles = stylex.create({
     width: 4,
     height: 4,
     borderRadius: t.radiusFull,
-    backgroundColor: t.iconTertiary,
+    backgroundColor: t.contentTertiary,
     pointerEvents: "none",
     transform: "translate(-50%, -50%)",
   },
@@ -73,13 +73,13 @@ export const appearancePanelStyles = stylex.create({
     display: "flex",
     justifyContent: "space-between",
     marginTop: 4,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
   },
   codeFontPreview: {
     overflow: "hidden",
-    borderRadius: t.radiusSm,
+    borderRadius: t.radius4,
     fontFamily: t.fontMono,
     fontSize: t.fontCode,
     lineHeight: "20px",
@@ -92,11 +92,15 @@ export const appearancePanelStyles = stylex.create({
     whiteSpace: "pre",
   },
   diffRemovedLine: {
-    borderInlineStart: `3px solid ${t.diffRemoved}`,
+    borderInlineStartWidth: 3,
+    borderInlineStartStyle: "solid",
+    borderInlineStartColor: ramp.red80,
     backgroundColor: t.diffRemovedLineBg,
   },
   diffAddedLine: {
-    borderInlineStart: `3px solid ${t.diffAdded}`,
+    borderInlineStartWidth: 3,
+    borderInlineStartStyle: "solid",
+    borderInlineStartColor: ramp.green80,
     backgroundColor: t.diffAddedLineBg,
   },
   codePreviewText: {
@@ -109,8 +113,8 @@ export const appearancePanelStyles = stylex.create({
     textOverflow: "ellipsis",
     whiteSpace: "pre",
   },
-  diffRemovedNumber: { color: t.diffRemoved, textAlign: "center" },
-  diffAddedNumber: { color: t.diffAdded, textAlign: "center" },
-  codeKeyword: { color: t.textDanger },
-  codeIdentifier: { color: t.textAccent },
+  diffRemovedNumber: { color: t.intentDangerContent, textAlign: "center" },
+  diffAddedNumber: { color: t.intentSuccessContent, textAlign: "center" },
+  codeKeyword: { color: t.syntaxKeyword },
+  codeIdentifier: { color: t.syntaxIdentifier },
 });

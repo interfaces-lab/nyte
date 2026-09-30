@@ -369,8 +369,8 @@ const sizeGrid = styleValueRule(
 
 /**
  * Every colour in the renderer is themed, so a literal one is unreachable from
- * an appearance. The value has to come from a handle in `vars.stylex.ts`,
- * which is where `tokens.stylex.ts` surfaces the palette.
+ * an appearance or a scope. The value has to come from a handle in
+ * `vars.stylex.ts`, which is where the tokens surface.
  */
 const noRawColors = {
   meta: { docs: { description: "Keep literal colors out of StyleX styles." } },
@@ -388,10 +388,10 @@ const noRawColors = {
             node: member,
             message:
               `"${property}" carries the literal color "${color}", which no appearance can ` +
-              `reach. Use a handle from ${VARS_PATH} — t.textPrimary, t.bgRaised, ` +
-              `t.strokeSecondary, t.fillHover, and the rest of that map. If the color is ` +
-              `new, add it to ${TOKENS_PATH} in oklch with an rgb() fallback and expose a ` +
-              `handle in ${VARS_PATH}. ` +
+              `reach. Use a handle from ${VARS_PATH} — t.contentPrimary, t.bgElevated, ` +
+              `t.borderSecondaryTranslucent, t.bgHover, and the rest of that map. If the ` +
+              `color is new, add a role or component token built from the ramps in ` +
+              `${TOKENS_PATH} and expose a handle in ${VARS_PATH}. ` +
               `transparent, currentColor, and color-mix() over existing handles are allowed.`,
           });
 

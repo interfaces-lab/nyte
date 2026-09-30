@@ -2,6 +2,8 @@
  * Applies the palette to the static HTML shell before first paint. Keeping it
  * in the boot entry avoids an inline script that the CSP would block.
  */
+import { props } from "@stylexjs/stylex";
+import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { nyte } from "../nyte.ts";
@@ -43,7 +45,7 @@ export interface AppearanceSettings {
 const DEFAULT_APPEARANCE: AppearanceSettings = {
   theme: "system",
   pointerCursors: false,
-  tintHue: 210,
+  tintHue: 250,
   tintIntensity: 0,
   uiFont: "inter",
   codeFont: "system",
@@ -213,19 +215,23 @@ function storedAppearance(): AppearanceSettings {
 
 let appearance = storedAppearance();
 
+/** The workspace tint scope: Notion Calendar's custom hue, on <html>. */
+const tintClassName = props(surfaceTheme.custom).className ?? "";
+
 function apply(settings: AppearanceSettings): void {
   const preference = settings.theme;
   const dark = preference === "dark" || (preference === "system" && systemDark());
   const reduceTransparency = settings.reduceTransparency || systemReducesTransparency();
   const root = document.documentElement;
-  root.dataset["theme"] = dark ? "dark" : "light";
+  root.dataset["displayMode"] = dark ? "dark" : "light";
   root.dataset["nytePointerCursors"] = settings.pointerCursors ? "true" : "false";
-  root.dataset["tintActive"] = settings.tintIntensity > 0 ? "true" : "false";
   root.dataset["reduceTransparency"] = reduceTransparency ? "true" : "false";
   root.dataset["nyteCodeBlockWordWrap"] = settings.codeBlockWordWrap ? "true" : "false";
   root.dataset["nyteThemedDiffBackgrounds"] = settings.themedDiffBackgrounds ? "true" : "false";
-  root.style.setProperty("--nyte-tint-hue", `${String(settings.tintHue)}deg`);
-  root.style.setProperty("--nyte-tint-intensity", `${String(settings.tintIntensity)}%`);
+  // Intensity scales the tint's chroma; at zero the app stays neutral gray.
+  root.className = settings.tintIntensity > 0 ? tintClassName : "";
+  root.style.setProperty("--nyte-custom-hue", String(settings.tintHue));
+  root.style.setProperty("--nyte-custom-chroma-scale", String(settings.tintIntensity / 100));
   nyte.host.setThemePreference(preference);
   // @nyte-ai/ui/tokens.stylex derives the whole type scale from these four.
   root.style.setProperty("--nyte-font-family-sans", uiFontFamily(settings.uiFont));

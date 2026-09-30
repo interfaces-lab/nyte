@@ -1,6 +1,7 @@
 "use client";
 
-import { Button } from "@nyte-ai/ui";
+import { Button, ButtonGroup } from "@nyte-ai/ui";
+import { Menu, MenuItem } from "@nyte-ai/ui/menu";
 
 export function ButtonVariantsDemo() {
   return (
@@ -17,16 +18,16 @@ export function ButtonVariantsDemo() {
 export function ButtonSizesDemo() {
   return (
     <>
-      <Button variant="secondary">Default</Button>
-      <Button variant="secondary" size="condensed">
-        Condensed
+      <Button variant="secondary" size="lg">
+        Large
       </Button>
+      <Button variant="secondary">Medium</Button>
       <Button variant="secondary" size="sm">
         Small
       </Button>
-      <Button size="icon" icon="plus" aria-label="Add" />
-      <Button size="icon-sm" icon="plus" aria-label="Add" />
-      <Button size="icon-xs" icon="x" aria-label="Remove" />
+      <Button iconOnly icon="plus" aria-label="Add" />
+      <Button size="sm" iconOnly icon="plus" aria-label="Add" />
+      <Button size="2xs" iconOnly icon="x" aria-label="Remove" />
     </>
   );
 }
@@ -44,5 +45,23 @@ export function ButtonStatesDemo() {
         Disabled
       </Button>
     </>
+  );
+}
+
+export function ButtonGroupDemo() {
+  return (
+    <ButtonGroup>
+      <Button variant="inverse">Commit and push</Button>
+      <Menu
+        label="Commit actions"
+        align="end"
+        trigger={
+          <Button variant="inverse" iconOnly icon="chevron-down" aria-label="More commit actions" />
+        }
+      >
+        <MenuItem onSelect={() => {}}>Commit</MenuItem>
+        <MenuItem onSelect={() => {}}>Push</MenuItem>
+      </Menu>
+    </ButtonGroup>
   );
 }

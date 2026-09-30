@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { glyph } from "@nyte-ai/ui/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { ramp, t } from "@nyte-ai/ui/vars.stylex";
 import type { SessionMark } from "@nyte-ai/client";
 
 /** The spinner's disc at full: 5 cells across on a 3px pitch. */
@@ -24,7 +24,7 @@ const styles = stylex.create({
     flexShrink: 0,
     width: glyph.box,
     height: glyph.box,
-    color: t.accent,
+    color: ramp.blue80,
     animationName: { default: pulse, "@media (prefers-reduced-motion: reduce)": "none" },
     // The spinner's loop, so an unread moon breathes at the pace a working one turns.
     animationDuration: "1600ms",
@@ -42,10 +42,20 @@ const styles = stylex.create({
     flexShrink: 0,
     pointerEvents: "none",
   },
-  statusWorking: { width: glyph.box, height: glyph.box, color: t.textAccent },
-  statusRetry: { width: glyph.box, height: glyph.box, color: t.textWarning },
-  statusWaiting: { width: 14, height: 14, backgroundColor: "transparent", color: t.textWarning },
-  statusFailed: { width: 14, height: 14, backgroundColor: "transparent", color: t.textDanger },
+  statusWorking: { width: glyph.box, height: glyph.box, color: t.intentPrimaryContent },
+  statusRetry: { width: glyph.box, height: glyph.box, color: t.intentWarningContent },
+  statusWaiting: {
+    width: 14,
+    height: 14,
+    backgroundColor: "transparent",
+    color: t.intentWarningContent,
+  },
+  statusFailed: {
+    width: 14,
+    height: 14,
+    backgroundColor: "transparent",
+    color: t.intentDangerContent,
+  },
   statusIdle: { backgroundColor: "transparent" },
   statusUnread: { width: glyph.box, height: glyph.box, backgroundColor: "transparent" },
 });

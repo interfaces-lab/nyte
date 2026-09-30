@@ -244,7 +244,7 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
                     name="chevron.right"
                     size={13}
                     weight="semibold"
-                    tintColor={theme.tertiary}
+                    tintColor={theme.interactiveTertiary}
                   />
                 </GroupRow>
               ))}

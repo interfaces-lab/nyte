@@ -21,12 +21,12 @@ const githubHref = `https://github.com/${gitConfig.user}/${gitConfig.repo}`;
  */
 export function SiteNav() {
   return (
-    <header className="sticky top-0 z-30 h-(--site-nav-height) w-full min-w-0 shrink-0 bg-(--nyte-bg-page) hero:absolute hero:inset-x-0 hero:bg-transparent plate:top-[calc(var(--plate-inset)+var(--plate-nav-drop))]">
+    <header className="sticky top-0 z-30 h-(--site-nav-height) w-full min-w-0 shrink-0 bg-(--nyte-bg-base) hero:absolute hero:inset-x-0 hero:bg-transparent plate:top-[calc(var(--plate-inset)+var(--plate-nav-drop))]">
       <div className="relative mx-auto grid h-full w-[min(100%,var(--site-inner))] min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-5 px-(--site-pad) py-(--site-nav-pad)">
         <a
           href="/"
           aria-label="Nyte, home"
-          className="inline-flex items-center text-(--nyte-text-primary) hover:opacity-60 hero:text-white"
+          className="inline-flex items-center text-(--nyte-content-primary) hover:opacity-60 hero:text-white"
         >
           <NyteWordmark size={18} />
         </a>

@@ -1,3 +1,4 @@
+import { DEFAULT_CODE_VIEW_LAYOUT } from "@pierre/diffs";
 import { CodeView } from "@pierre/diffs/react";
 import type { CodeViewHandle, CodeViewItem, CodeViewReactOptions } from "@pierre/diffs/react";
 import { create, props } from "@stylexjs/stylex";
@@ -10,6 +11,7 @@ import { Button } from "@nyte-ai/ui/button";
 import type { DiffFilesLoader } from "../conversation/diff-expansion.ts";
 import { diffStyles } from "../conversation/styles.stylex.ts";
 import { PIERRE_TOKEN_CSS, PierreWorkerProvider } from "../pierre-worker-provider.tsx";
+import { workbench } from "../theme/schema.stylex.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { t } from "@nyte-ai/ui/vars.stylex";
 import { ReviewCheckbox } from "./changes-sidebar.tsx";
@@ -25,19 +27,21 @@ const styles = create({
     minWidth: 0,
     minHeight: 0,
     overflow: "auto",
-    backgroundColor: t.bgPage,
+    backgroundColor: t.bgBase,
   },
+  // The file tree's filter row sits beside the first header, so both take the workbench header height.
   headerRow: {
     display: "flex",
     alignItems: "center",
     gap: 6,
+    boxSizing: "border-box",
     width: "100%",
-    height: "100%",
+    height: workbench.headerHeight,
     paddingInlineEnd: 8,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.strokeSecondary,
-    backgroundColor: t.bgPage,
+    borderBottomColor: t.borderSecondaryTranslucent,
+    backgroundColor: t.bgBase,
   },
   headerButton: {
     position: "static",
@@ -45,6 +49,7 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     alignSelf: "stretch",
+    minHeight: 0,
     paddingRight: 0,
     borderBottomWidth: 0,
     backgroundColor: "transparent",
@@ -56,7 +61,7 @@ const styles = create({
   },
   notice: {
     padding: 10,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontFamily: t.fontSans,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
@@ -127,6 +132,8 @@ export function ChangesStack({
         overflow: wordWrap ? "wrap" : "scroll",
         loadDiffFiles,
         stickyHeaders: true,
+        // The first header starts flush with the file tree's filter row.
+        layout: { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 },
         unsafeCSS: PIERRE_TOKEN_CSS,
       }) satisfies CodeViewReactOptions<string, undefined>,
     [appearance.theme, layout, loadDiffFiles, wordWrap],
@@ -176,7 +183,7 @@ export function ChangesStack({
           onToggleCollapsed={onToggleCollapsed}
         >
           <Button
-            size="icon"
+            iconOnly
             icon="refresh"
             aria-label={`Revert ${item.path}`}
             disabled={onRevertPath === undefined}

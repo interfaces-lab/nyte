@@ -149,7 +149,8 @@ function ToolOutput({
             content={copied ? "Copied" : "Copy output"}
             trigger={
               <Button
-                size="icon-sm"
+                size="sm"
+                iconOnly
                 icon={copied ? "checkmark" : "copy"}
                 aria-label={copied ? "Output copied" : "Copy output"}
                 title={undefined}

@@ -14,7 +14,7 @@ import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { nyte } from "../nyte.ts";
 import { glyph } from "@nyte-ai/ui/schema.stylex";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { ramp, t } from "@nyte-ai/ui/vars.stylex";
 import {
   activeWorkbenchTab,
   defaultWorkbenchTab,
@@ -68,11 +68,11 @@ const styles = stylex.create({
     flexShrink: 0,
     maxWidth: 200,
     height: 26,
-    borderRadius: t.radiusBase,
-    backgroundColor: { default: "transparent", ":hover": t.fillHover },
-    color: t.textTertiary,
+    borderRadius: t.radius6,
+    backgroundColor: { default: "transparent", ":hover": t.bgHover },
+    color: t.contentInteractiveSecondary,
   },
-  active: { backgroundColor: t.fillSelected, color: t.textPrimary },
+  active: { backgroundColor: t.bgInteractiveSecondaryTranslucent, color: t.contentPrimary },
   tab: {
     display: "inline-flex",
     alignItems: "center",
@@ -82,7 +82,7 @@ const styles = stylex.create({
     paddingInlineStart: 4,
     paddingInlineEnd: 6,
     borderStyle: "none",
-    borderRadius: t.radiusBase,
+    borderRadius: t.radius6,
     backgroundColor: "transparent",
     color: "inherit",
     fontSize: t.fontBase,
@@ -98,7 +98,7 @@ const styles = stylex.create({
     WebkitMaskImage: "var(--_tab-content-mask)",
     maskImage: "var(--_tab-content-mask)",
   },
-  agentTerminal: { color: t.purple },
+  agentTerminal: { color: ramp.purple80 },
   label: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
   preview: { fontStyle: "italic" },
   tabIcon: { display: "inline-flex" },
@@ -107,7 +107,7 @@ const styles = stylex.create({
     height: 6,
     flexShrink: 0,
     borderRadius: "50%",
-    backgroundColor: t.yellow,
+    backgroundColor: t.markYellow,
   },
   running: {
     display: "inline-flex",
@@ -336,7 +336,8 @@ export function WorkbenchTabStrip({
                 </Tabs.Tab>
                 <span {...stylex.props(styles.close)}>
                   <Button
-                    size="icon-xs"
+                    size="2xs"
+                    iconOnly
                     icon="x"
                     aria-label={`Close ${label} tab`}
                     ref={
@@ -389,7 +390,7 @@ export function WorkbenchTabStrip({
       </Tabs.Root>
       <Menu
         label="New workbench tab"
-        trigger={<Button size="icon" icon="plus" aria-label="New workbench tab" />}
+        trigger={<Button iconOnly icon="plus" aria-label="New workbench tab" />}
       >
         {workbenchTabs(scope, capabilities).map((kind) => (
           <MenuItem

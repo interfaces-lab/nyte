@@ -4,7 +4,7 @@ import path from "node:path";
 /*
  * Reads the `--nyte-*` declarations from the stylesheet @nyte-ai/ui ships, so
  * the table can never disagree with the package. The first declaration of a
- * token is its rgb() fallback; the oklch value follows under @supports.
+ * token is its default; a coarse-pointer value follows under @media.
  */
 // Resolved by path rather than through the package export so the bundler
 // treats it as data, not as a stylesheet to be placed in a chunk.

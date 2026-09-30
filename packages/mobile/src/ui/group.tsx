@@ -90,7 +90,7 @@ export function GroupRow({
             name={trails[trail]}
             size={controls.iconXs}
             weight="semibold"
-            tintColor={theme.tertiary}
+            tintColor={theme.interactiveTertiary}
           />
         </html.div>
       )}

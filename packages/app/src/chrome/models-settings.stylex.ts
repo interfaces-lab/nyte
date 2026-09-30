@@ -1,8 +1,37 @@
 /** Settings › Models geometry beyond the shared settings patterns. */
-import * as stylex from "@stylexjs/stylex";
+import { create } from "@stylexjs/stylex";
 import { t } from "@nyte-ai/ui/vars.stylex";
+import { settings } from "../theme/schema.stylex.ts";
 
-export const modelsSettingsStyles = stylex.create({
+export const modelsSettingsStyles = create({
+  providers: { display: "flex", flexDirection: "column", gap: settings.sectionGap },
+  providerList: {
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: t.borderSecondaryTranslucent,
+  },
+  providerTitle: {
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingBlock: 2,
+    whiteSpace: "normal",
+  },
+  providerBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    paddingInline: 6,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: t.borderSecondaryTranslucent,
+    borderRadius: t.radius4,
+    backgroundColor: t.bgMutedTranslucent,
+    color: t.contentSecondary,
+    fontSize: t.fontSm,
+    fontWeight: 400,
+    lineHeight: t.leadingSm,
+  },
   search: { height: "auto", minHeight: 28, paddingBlock: 6 },
   groupHeading: {
     display: "flex",
@@ -14,7 +43,7 @@ export const modelsSettingsStyles = stylex.create({
     paddingBlock: 4,
   },
   groupTrigger: {
-    borderRadius: t.radiusBase,
+    borderRadius: t.radius6,
   },
   groupLabel: {
     display: "flex",
@@ -24,25 +53,25 @@ export const modelsSettingsStyles = stylex.create({
     minHeight: 36,
     gap: 8,
     padding: 6,
-    color: t.iconSecondary,
+    color: t.contentSecondary,
   },
   groupPanel: {
     borderTopWidth: 1,
     borderTopStyle: "solid",
-    borderTopColor: t.strokeSecondary,
+    borderTopColor: t.borderSecondaryTranslucent,
   },
   groupTitle: {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
     letterSpacing: t.letterBase,
   },
   groupMeta: {
     flex: 1,
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
   },
@@ -53,7 +82,7 @@ export const modelsSettingsStyles = stylex.create({
       insetInline: 12,
       insetBlockEnd: 0,
       height: 1,
-      backgroundColor: t.strokeSecondary,
+      backgroundColor: t.borderSecondaryTranslucent,
       content: '""',
     },
     ":last-child::after": { display: "none" },
@@ -63,9 +92,9 @@ export const modelsSettingsStyles = stylex.create({
     alignItems: "center",
     minHeight: 44,
     paddingInline: 12,
-    borderRadius: t.radiusXl,
-    backgroundColor: t.fillQuiet,
-    color: t.textTertiary,
+    borderRadius: t.radius12,
+    backgroundColor: t.bgMutedTranslucent,
+    color: t.contentSecondary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
   },
@@ -74,14 +103,14 @@ export const modelsSettingsStyles = stylex.create({
   keyInput: {
     flex: 1,
     height: 26,
-    backgroundColor: t.bgPage,
+    backgroundColor: t.bgBase,
     fontFamily: t.fontMono,
     "::placeholder": { fontFamily: t.fontSans },
   },
-  keyHint: { color: t.textTertiary, fontSize: t.fontSm, lineHeight: t.leadingSm },
+  keyHint: { color: t.contentSecondary, fontSize: t.fontSm, lineHeight: t.leadingSm },
   deviceCodePanel: { display: "flex", flexDirection: "column", gap: 8 },
   deviceCodeLead: {
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
     overflowWrap: "anywhere",
@@ -94,12 +123,12 @@ export const modelsSettingsStyles = stylex.create({
     minHeight: 32,
     paddingInline: 10,
     paddingBlock: 4,
-    borderRadius: t.radiusBase,
+    borderRadius: t.radius6,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: t.strokeSecondary,
-    backgroundColor: t.bgPage,
-    color: t.textPrimary,
+    borderColor: t.borderSecondaryTranslucent,
+    backgroundColor: t.bgBase,
+    color: t.contentPrimary,
     fontFamily: t.fontMono,
     fontSize: t.fontLg,
     lineHeight: t.leadingLg,
@@ -108,10 +137,10 @@ export const modelsSettingsStyles = stylex.create({
     whiteSpace: "nowrap",
   },
   deviceCodeNote: {
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     overflowWrap: "anywhere",
   },
-  alert: { color: t.textDanger, fontSize: t.fontSm, lineHeight: t.leadingSm },
+  alert: { color: t.intentDangerContent, fontSize: t.fontSm, lineHeight: t.leadingSm },
 });

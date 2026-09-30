@@ -12,14 +12,14 @@
 
   .doc-prose img[src^="/tui/"] {
     border-radius: 8px;
-    border: 1px solid var(--nyte-stroke-secondary);
+    border: 1px solid var(--nyte-border-secondary-translucent);
     background: #0a0a0a;
   }
 
   .doc-prose figure:has(img[src^="/tui/"]) figcaption {
     margin-top: 8px;
     font-size: 13px;
-    color: var(--nyte-text-tertiary);
+    color: var(--nyte-content-secondary);
   }
 
   .docs-cards {
@@ -34,18 +34,18 @@
     flex-direction: column;
     gap: 8px;
     padding: 16px;
-    border: 0.5px solid var(--nyte-stroke-secondary);
+    border: 0.5px solid var(--nyte-border-secondary-translucent);
     border-radius: 13px;
     transition: border-color 120ms var(--nyte-easing-out);
   }
 
   .docs-card:hover {
-    border-color: var(--nyte-text-quaternary);
+    border-color: var(--nyte-content-tertiary);
   }
 
   .docs-card-icon {
     display: inline-flex;
-    color: var(--nyte-text-primary);
+    color: var(--nyte-content-primary);
   }
 
   .docs-card strong {
@@ -54,7 +54,7 @@
   }
 
   .docs-card span:last-child {
-    color: var(--nyte-text-tertiary);
+    color: var(--nyte-content-secondary);
     font-size: 13px;
     line-height: 20px;
   }

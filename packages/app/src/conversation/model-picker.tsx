@@ -56,7 +56,7 @@ const styles = stylex.create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  triggerDetail: { flexShrink: 0, color: t.textTertiary, whiteSpace: "nowrap" },
+  triggerDetail: { flexShrink: 0, color: t.contentSecondary, whiteSpace: "nowrap" },
   palette: {
     width: `min(${menu.modelWidth}, var(--available-width))`,
     maxWidth: "var(--available-width)",
@@ -74,11 +74,11 @@ const styles = stylex.create({
     flexDirection: "column",
     gap: 2,
     padding: "10px 8px",
-    color: t.textTertiary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
   },
-  emptyTitle: { color: t.textSecondary, fontSize: t.fontBase, lineHeight: t.leadingBase },
+  emptyTitle: { color: t.contentSecondary, fontSize: t.fontBase, lineHeight: t.leadingBase },
 });
 
 interface ModelPickerProps {
@@ -119,10 +119,11 @@ function ModelPickerView({
       ? nyte.clientSurface === "desktop"
         ? { label: "Environments…", open: () => shellActions.openEnvironments() }
         : undefined
-      : isSettingsSection("models")
+      : isSettingsSection("providers")
         ? {
-            label: connected ? "Manage models…" : "Connect a provider…",
-            open: () => void navigate({ to: "/settings/$section", params: { section: "models" } }),
+            label: connected ? "Manage providers…" : "Connect a provider…",
+            open: () =>
+              void navigate({ to: "/settings/$section", params: { section: "providers" } }),
           }
         : undefined;
 
@@ -248,12 +249,12 @@ function ModelPickerView({
                 ) : connected ? (
                   <>
                     <span {...stylex.props(styles.emptyTitle)}>Every model is hidden</span>
-                    <span>Show some in Settings › Models.</span>
+                    <span>Enable models in Settings › Providers.</span>
                   </>
                 ) : (
                   <>
                     <span {...stylex.props(styles.emptyTitle)}>No providers connected</span>
-                    <span>Sign in or add an API key in Settings › Models.</span>
+                    <span>Connect a provider in Settings › Providers.</span>
                   </>
                 )}
               </div>

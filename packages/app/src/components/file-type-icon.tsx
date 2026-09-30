@@ -8,7 +8,7 @@
 import * as stylex from "@stylexjs/stylex";
 import { createFileTreeIconResolver, getBuiltInSpriteSheet } from "@pierre/trees";
 import type { ReactElement } from "react";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { ramp, t } from "@nyte-ai/ui/vars.stylex";
 
 type FileIconTone =
   | "gray"
@@ -45,15 +45,15 @@ const styles = stylex.create({
     overflow: "hidden",
     pointerEvents: "none",
   },
-  gray: { color: t.iconSecondary },
-  red: { color: t.red },
-  orange: { color: t.orange },
-  yellow: { color: t.yellow },
-  green: { color: t.green },
-  cyan: { color: t.cyan },
-  blue: { color: t.textAccent },
-  purple: { color: t.purple },
-  magenta: { color: t.magenta },
+  gray: { color: t.contentSecondary },
+  red: { color: ramp.red80 },
+  orange: { color: t.markOrange },
+  yellow: { color: t.markYellow },
+  green: { color: ramp.green80 },
+  cyan: { color: t.markTeal },
+  blue: { color: ramp.blue80 },
+  purple: { color: ramp.purple80 },
+  magenta: { color: ramp.pink80 },
 });
 
 const TONE_STYLE = {

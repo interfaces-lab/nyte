@@ -28,7 +28,8 @@ export function Toggle({
   onPressedChange,
   value,
   indicator = "fill",
-  size = "default",
+  size = "md",
+  iconOnly = false,
   round,
   icon,
   xstyle,
@@ -46,10 +47,15 @@ export function Toggle({
       value={value}
       disabled={disabled}
       onPressedChange={onPressedChange}
-      render={<button type={type} title={tooltipTitle(size, rest["aria-label"])} {...rest} />}
-      {...buttonStyle("primary", size, { round, xstyle, className, style }, indicator === "glyph")}
+      render={<button type={type} title={tooltipTitle(iconOnly, rest["aria-label"])} {...rest} />}
+      {...buttonStyle(
+        "primary",
+        size,
+        { iconOnly, round, xstyle, className, style },
+        indicator === "glyph",
+      )}
     >
-      {icon !== undefined && <Icon name={icon} size={buttonGlyphSize[size]} />}
+      {icon !== undefined && <Icon name={icon} size={buttonGlyphSize(size, iconOnly)} />}
       {children}
     </TogglePrimitive>
   );

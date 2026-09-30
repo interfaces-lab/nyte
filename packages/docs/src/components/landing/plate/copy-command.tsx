@@ -7,15 +7,15 @@ export function CopyCommand({ command }: { command: string }) {
   const [copied, setCopied] = useState(false);
 
   return (
-    <div className="flex h-10 max-w-full items-center gap-3 rounded-[12px] bg-(--nyte-fill-quiet) pr-1 pl-4 font-mono text-[13px]">
-      <span aria-hidden="true" className="text-(--nyte-text-quaternary) select-none">
+    <div className="flex h-10 max-w-full items-center gap-3 rounded-[12px] bg-(--nyte-bg-muted-translucent) pr-1 pl-4 font-mono text-[13px]">
+      <span aria-hidden="true" className="text-(--nyte-content-tertiary) select-none">
         $
       </span>
       <code className="min-w-0 truncate">{command}</code>
       <button
         type="button"
         aria-label={copied ? "Copied" : "Copy command"}
-        className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-[8px] text-(--nyte-text-tertiary) transition-colors hover:bg-(--nyte-fill-hover) hover:text-(--nyte-text-primary)"
+        className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-[8px] text-(--nyte-content-secondary) transition-colors hover:bg-(--nyte-bg-hover) hover:text-(--nyte-content-primary)"
         onClick={async () => {
           await navigator.clipboard.writeText(command);
           setCopied(true);

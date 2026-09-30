@@ -7,7 +7,7 @@ import { create } from "@stylexjs/stylex";
 const styles = create({
   root: { display: "flex", flexDirection: "column", gap: 12, width: 320 },
   panel: {
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
   },

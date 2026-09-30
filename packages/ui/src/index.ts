@@ -9,9 +9,10 @@ export type {
   AvatarTone,
 } from "./components/ui/avatar.tsx";
 
-export { Button } from "./components/ui/button.tsx";
+export { Button, ButtonGroup } from "./components/ui/button.tsx";
 
 export type {
+  ButtonGroupProps,
   ButtonLayout,
   ButtonProps,
   ButtonSize,
@@ -60,7 +61,7 @@ export { Spinner } from "./components/ui/spinner.tsx";
 
 export type { SpinnerProps } from "./components/ui/spinner.tsx";
 
-export { Toaster } from "./components/ui/toast.tsx";
+export { Toaster, toastTint } from "./components/ui/toast.tsx";
 
 export type { ToasterProps } from "./components/ui/toast.tsx";
 
@@ -138,7 +139,6 @@ export type {
   MenuRadioItemProps,
   MenuSeparatorProps,
   MenuSide,
-  MenuSize,
   MenuSubmenuProps,
   MenuSwitchItemProps,
 } from "./components/ui/menu.tsx";

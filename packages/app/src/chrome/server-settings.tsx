@@ -49,7 +49,7 @@ const shareStyles = stylex.create({
     rowGap: 6,
   },
   label: {
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
   },
@@ -61,12 +61,12 @@ const shareStyles = stylex.create({
     minHeight: 26,
     paddingInline: 8,
     paddingBlock: 4,
-    borderRadius: t.radiusBase,
+    borderRadius: t.radius6,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: t.strokeSecondary,
-    backgroundColor: t.bgPage,
-    color: t.textPrimary,
+    borderColor: t.borderSecondaryTranslucent,
+    backgroundColor: t.bgBase,
+    color: t.contentPrimary,
     fontFamily: t.fontMono,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
@@ -103,7 +103,6 @@ function ConnectForm({
       <div {...stylex.props(styles.keyRow)}>
         <Input
           variant="quiet"
-          size="sm"
           type="url"
           aria-label="Server URL"
           autoComplete="off"
@@ -119,7 +118,6 @@ function ConnectForm({
       <div {...stylex.props(styles.keyRow)}>
         <Input
           variant="quiet"
-          size="sm"
           type="password"
           aria-label="Server token"
           autoComplete="off"
@@ -261,7 +259,7 @@ function CopyButton({ label, value }: { label: string; value: string }): ReactEl
 
   return (
     <Button
-      size="icon"
+      iconOnly
       icon={copied ? "checkmark" : "copy"}
       aria-label={copied ? "Copied" : `Copy ${label.toLocaleLowerCase()}`}
       onClick={() => {
@@ -378,7 +376,7 @@ function ServingPanel({ state }: { state: Serving }) {
                 <span {...stylex.props(shareStyles.fieldActions)}>
                   <CopyButton label="Token" value={state.token} />
                   <Button
-                    size="icon"
+                    iconOnly
                     icon="eye"
                     aria-label={revealed ? "Hide token" : "Reveal token"}
                     aria-pressed={revealed}

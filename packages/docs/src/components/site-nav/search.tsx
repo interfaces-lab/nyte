@@ -95,7 +95,7 @@ export function SiteSearch() {
     <>
       <button
         type="button"
-        className="inline-flex h-(--site-nav-control) cursor-pointer items-center justify-center rounded-(--nyte-radius-full) bg-(--nyte-fill-strong) px-3.5 text-[15px] font-medium text-(--nyte-text-primary) max-lg:hidden hero:bg-white/12 hero:text-white hero:hover:bg-white/20"
+        className="inline-flex h-(--site-nav-control) cursor-pointer items-center justify-center rounded-(--nyte-radius-full) bg-(--nyte-bg-interactive-primary-translucent) px-3.5 text-[15px] font-medium text-(--nyte-content-primary) max-lg:hidden hero:bg-white/12 hero:text-white hero:hover:bg-white/20"
         onClick={() => setOpen(true)}
         aria-label="Search"
       >
@@ -107,7 +107,7 @@ export function SiteSearch() {
           <Input
             autoFocus
             variant="bare"
-            className="min-h-12 border-b border-b-(--nyte-stroke-secondary) px-4 text-[15px]"
+            className="min-h-12 border-b border-b-(--nyte-border-secondary-translucent) px-4 text-[15px]"
             placeholder="Search Cloud and the docs"
             aria-label="Search"
             aria-controls={listId}
@@ -122,21 +122,23 @@ export function SiteSearch() {
                   <Link
                     href={result.url}
                     data-type={result.type}
-                    className="flex flex-col gap-0.5 rounded-lg px-3 py-2 text-sm/5 not-data-[type=page]:pl-6 not-data-[type=page]:text-(--nyte-text-tertiary) hover:bg-(--nyte-fill-hover) data-active:bg-(--nyte-fill-selected) data-[type=page]:font-medium"
+                    className="flex flex-col gap-0.5 rounded-lg px-3 py-2 text-sm/5 not-data-[type=page]:pl-6 not-data-[type=page]:text-(--nyte-content-secondary) hover:bg-(--nyte-bg-hover) data-active:bg-(--nyte-bg-interactive-secondary-translucent) data-[type=page]:font-medium"
                     data-active={index === active || undefined}
                     onClick={() => setOpen(false)}
                     onMouseEnter={() => setActive(index)}
                   >
                     {result.content}
                     {result.type === "page" && (
-                      <small className="text-xs/5 text-(--nyte-text-tertiary)">{result.url}</small>
+                      <small className="text-xs/5 text-(--nyte-content-secondary)">
+                        {result.url}
+                      </small>
                     )}
                   </Link>
                 </li>
               ))}
             </ul>
           ) : (
-            <div className="px-4 py-6 text-center text-sm text-(--nyte-text-tertiary)">
+            <div className="px-4 py-6 text-center text-sm text-(--nyte-content-secondary)">
               {query.trim() === "" ? "Type to search" : "No results"}
             </div>
           )}

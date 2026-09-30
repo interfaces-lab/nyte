@@ -1,8 +1,8 @@
-import * as stylex from "@stylexjs/stylex";
+import { create } from "@stylexjs/stylex";
 import { t } from "@nyte-ai/ui/vars.stylex";
 
-export const railStyles = stylex.create({
-  rail: { height: "100%", backgroundColor: t.bgSidebar },
+export const railStyles = create({
+  rail: { height: "100%", backgroundColor: t.sidebarMaterial },
 
   /**
    * 3: a machine you can't reach keeps its rows in place at half weight. The
@@ -27,7 +27,7 @@ export const railStyles = stylex.create({
     width: 12,
     height: 12,
     borderRadius: t.radiusFull,
-    backgroundColor: t.bgSidebar,
-    color: t.iconSecondary,
+    backgroundColor: t.sidebarMaterial,
+    color: t.contentSecondary,
   },
 });

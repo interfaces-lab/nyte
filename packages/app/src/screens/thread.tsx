@@ -6,7 +6,7 @@ import { threadStyles } from "./thread.stylex.ts";
  * the composer share one scrollport, and a chat's absolutely positioned rows
  * only leave that scrollport when the surface holding them is replaced.
  */
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import {
   useCallback,
   useLayoutEffect,
@@ -18,7 +18,6 @@ import {
 } from "react";
 import type { CSSProperties, PointerEvent, ReactElement, ReactNode, RefObject } from "react";
 import type { Oid, SessionId, Turn, UserTurnPart } from "@nyte-ai/protocol";
-import type { VcsSnapshot } from "@nyte-ai/protocol";
 import type { Delivery } from "@nyte-ai/protocol";
 import { Composer, ComposerFrame } from "../conversation/composer.tsx";
 import { attachComposerFiles } from "../conversation/composer-files.ts";
@@ -38,14 +37,12 @@ import type {
   TurnChangesTarget,
 } from "../conversation/turn-view.tsx";
 import { ModelPicker } from "../conversation/model-picker.tsx";
-import { EnvironmentMenu } from "./environment-menu.tsx";
+import { WorkspaceContext } from "./workspace-context.tsx";
 import { draftConfiguration, updateDraftModel } from "../conversation/blank-draft.ts";
-import { Icon } from "@nyte-ai/ui/icon";
 import { Input } from "@nyte-ai/ui/input";
 import { FileTypeIconSprite } from "../components/file-type-icon.tsx";
 import { Menu, MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
-import { handleOpenOutcome } from "../chrome/open-workspace.tsx";
 import {
   usePaneActions,
   useCanSplitPane,
@@ -79,8 +76,6 @@ import {
   useRenameSession,
   useSession,
   useSessionSnapshot,
-  useVcsSnapshot,
-  useWorkspaces,
 } from "../queries.ts";
 import { useSessionRemoval } from "../layout/use-session-removal.ts";
 import { macPlatform } from "../platform.ts";
@@ -122,16 +117,6 @@ const EMPTY_TURNS: readonly Turn[] = [];
 
 const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
 
-function repositoryBranch(snapshot: VcsSnapshot | undefined): string | undefined {
-  if (snapshot === undefined || snapshot.kind === "none") return undefined;
-
-  return snapshot.head.kind === "attached" ? snapshot.head.branch : undefined;
-}
-
-function displayWorkspacePath(path: string): string {
-  return path.replace(/^\/Users\/[^/]+(?=\/|$)/, "~").replace(/^\/home\/[^/]+(?=\/|$)/, "~");
-}
-
 type BlankViewUpdate = (current: BlankViewState) => BlankViewState;
 
 type SessionDeletionState =
@@ -142,9 +127,14 @@ function useBlankViewBinding(
   paneId: PaneId,
 ): readonly [ChatDraft, (update: BlankViewUpdate) => void] {
   const store = usePaneViewStateStore();
-  useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+
+  const state = useSyncExternalStore(
+    store.subscribe,
+    () => store.readBlank(paneId),
+    () => store.readBlank(paneId),
+  );
+
   const [, redraw] = useReducer((value: number) => value + 1, 0);
-  const state = store.readBlank(paneId);
   const draftId = state.id;
 
   const update = useCallback(
@@ -180,15 +170,13 @@ function PaneHeader({
   const mac = macPlatform(host.data?.platform);
 
   return (
-    <div {...stylex.props(threadStyles.header)}>
-      <span {...stylex.props(threadStyles.title)}>{title}</span>
-      <span {...stylex.props(threadStyles.headerActions)}>
+    <div {...props(threadStyles.header)}>
+      <span {...props(threadStyles.title)}>{title}</span>
+      <span {...props(threadStyles.headerActions)}>
         <Menu
           label="Pane actions"
           align="end"
-          trigger={
-            <Button size="icon" ref={menuTriggerRef} icon="more" aria-label="Pane actions" />
-          }
+          trigger={<Button iconOnly ref={menuTriggerRef} icon="more" aria-label="Pane actions" />}
         >
           <MenuItem
             icon="split-down"
@@ -354,8 +342,8 @@ type SessionConversationProps =
       readonly onOpenSubagentTray: (sessionId?: SessionId) => void;
     };
 
-function SessionConversation(props: SessionConversationProps): ReactElement {
-  const { paneId, presentation, sessionId } = props;
+function SessionConversation(conversation: SessionConversationProps): ReactElement {
+  const { paneId, presentation, sessionId } = conversation;
   const host = useHostState();
   const paneActions = usePaneActions();
   const { layout } = usePaneControllerSnapshot();
@@ -378,7 +366,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
 
   const paneMenuTrigger = useRef<HTMLButtonElement>(null);
   const composerRef = useRef<ComposerEditorHandle | null>(null);
-  const inputRef = presentation === "full" ? props.inputRef : undefined;
+  const inputRef = presentation === "full" ? conversation.inputRef : undefined;
 
   const attachComposer = useCallback(
     (handle: ComposerEditorHandle | null): void => {
@@ -561,7 +549,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
   }, [children.data, lastTurn, parentRunning, turns]);
 
   const childSessions = useMemo(() => [...childBySession.values()], [childBySession]);
-  const forwardSubagentTray = presentation === "tray" ? props.onOpenSubagentTray : undefined;
+  const forwardSubagentTray = presentation === "tray" ? conversation.onOpenSubagentTray : undefined;
 
   // A card always opens the tray, whatever the child's state; the tray's own
   // expand action is the way to a full chat.
@@ -630,10 +618,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
   return (
     <SubagentSessionsProvider value={subagentSessions}>
       <div
-        {...stylex.props(
-          threadStyles.screen,
-          presentation === "tray" && threadStyles.embeddedScreen,
-        )}
+        {...props(threadStyles.screen, presentation === "tray" && threadStyles.embeddedScreen)}
         aria-busy={snapshot.isLoading}
       >
         {presentation === "full" && layout.kind === "split" && (
@@ -674,8 +659,8 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
           />
         )}
 
-        <div {...stylex.props(threadStyles.body)}>
-          <div {...stylex.props(threadStyles.conversation)}>
+        <div {...props(threadStyles.body)}>
+          <div {...props(threadStyles.conversation)}>
             <MessageScrollerProvider
               paneId={paneId}
               sessionId={sessionId}
@@ -823,11 +808,9 @@ function BlankConversation({
   const host = useHostState();
   const { layout } = usePaneControllerSnapshot();
   const workspace = host.data?.workspace;
-  const vcs = useVcsSnapshot(workspace !== undefined);
   const catalog = useCatalog();
   const pluginCatalog = usePluginCatalog();
   const workspaceFiles = useMentionFiles(workspace !== undefined);
-  const workspaces = useWorkspaces();
   const actions = usePaneActions();
   const viewStore = usePaneViewStateStore();
   const [viewState, updateViewState] = useBlankViewBinding(paneId);
@@ -846,12 +829,6 @@ function BlankConversation({
       inputRef(handle);
     },
     [inputRef],
-  );
-
-  const branch = workspace === undefined ? undefined : repositoryBranch(vcs.data);
-
-  const recentWorkspaces = (workspaces.data ?? []).filter(
-    (candidate) => candidate.path !== workspace?.path,
   );
 
   const configuration = draftConfiguration(catalog.data, viewState.configuration);
@@ -949,89 +926,11 @@ function BlankConversation({
   }, [addFiles, dropDisabled]);
 
   return (
-    <div {...stylex.props(threadStyles.screen)}>
+    <div {...props(threadStyles.screen)}>
       {layout.kind === "split" && <PaneHeader paneId={paneId} title="New chat" />}
-      <div ref={blankRef} {...stylex.props(threadStyles.blank)}>
-        <div {...stylex.props(threadStyles.blankColumn)}>
-          {host.data !== undefined && (
-            <div {...stylex.props(threadStyles.workspaceContext)}>
-              {nyte.clientSurface === "desktop" && (
-                <>
-                  <EnvironmentMenu />
-                  <span aria-hidden="true" {...stylex.props(threadStyles.workspaceContextDivider)}>
-                    /
-                  </span>
-                </>
-              )}
-              <Menu
-                label="Select workspace"
-                align="start"
-                trigger={
-                  <Button
-                    size="condensed"
-                    title={workspace?.path ?? "Home"}
-                    xstyle={threadStyles.workspaceContextPath}
-                  >
-                    <span {...stylex.props(threadStyles.workspaceContextText)}>
-                      {workspace === undefined ? "Home" : displayWorkspacePath(workspace.path)}
-                    </span>
-                    <Icon name="chevron-down" size={10} />
-                  </Button>
-                }
-              >
-                <MenuItem
-                  icon="folder"
-                  onSelect={() => {
-                    if (workspace !== undefined) void nyte.host.closeWorkspace();
-                  }}
-                >
-                  Home
-                </MenuItem>
-                {recentWorkspaces.map((candidate) => (
-                  <MenuItem
-                    key={candidate.path}
-                    icon="folder"
-                    onSelect={() => {
-                      void nyte.host
-                        .openWorkspace({ path: candidate.path })
-                        .then(handleOpenOutcome);
-                    }}
-                  >
-                    {candidate.name}
-                  </MenuItem>
-                ))}
-                <MenuSeparator />
-                <MenuItem
-                  icon="folder-add"
-                  onSelect={() => void nyte.host.pickWorkspace().then(handleOpenOutcome)}
-                >
-                  Open folder…
-                </MenuItem>
-              </Menu>
-              {branch !== undefined && (
-                <span
-                  title={`Branch: ${branch}`}
-                  {...stylex.props(
-                    threadStyles.workspaceContextItem,
-                    threadStyles.workspaceContextStatic,
-                  )}
-                >
-                  <span {...stylex.props(threadStyles.workspaceContextText)}>{branch}</span>
-                </span>
-              )}
-              {nyte.clientSurface !== "desktop" && (
-                <span
-                  {...stylex.props(
-                    threadStyles.workspaceContextItem,
-                    threadStyles.workspaceContextStatic,
-                  )}
-                >
-                  <Icon name="computer" size={13} />
-                  <span {...stylex.props(threadStyles.workspaceContextText)}>This Mac</span>
-                </span>
-              )}
-            </div>
-          )}
+      <div ref={blankRef} {...props(threadStyles.blank)}>
+        <div {...props(threadStyles.blankColumn)}>
+          <WorkspaceContext active={activePane(layout).id === paneId} />
           <ComposerFrame
             surface="new-chat"
             document={{
@@ -1091,7 +990,7 @@ function BlankConversation({
             }
           />
           {startFailure !== undefined && (
-            <div role="alert" title={startFailure} {...stylex.props(threadStyles.error)}>
+            <div role="alert" title={startFailure} {...props(threadStyles.error)}>
               Couldn&rsquo;t start the chat. Try again.
             </div>
           )}
@@ -1159,10 +1058,10 @@ function DropPreview({
   readonly target: SessionDropTarget;
 }): ReactElement {
   return (
-    <div aria-hidden="true" {...stylex.props(threadStyles.dropPreviewLayer)}>
+    <div aria-hidden="true" {...props(threadStyles.dropPreviewLayer)}>
       <div
         data-nyte-drop-preview=""
-        {...stylex.props(threadStyles.dropPreview)}
+        {...props(threadStyles.dropPreview)}
         style={dropPreviewRect(layout, target)}
       />
     </div>
@@ -1211,7 +1110,7 @@ function PaneHost({ pane, position }: { pane: PaneState; position: PanePosition 
       ref={attachDropTarget}
       aria-label={`${activePane(layout).id === pane.id ? "Active " : ""}chat pane`}
       data-nyte-pane-id={pane.id}
-      {...stylex.props(
+      {...props(
         threadStyles.pane,
         position.kind === "single" && threadStyles.paneSingle,
         position.kind === "leading" && threadStyles.paneLeading(position.ratio),
@@ -1287,7 +1186,7 @@ function SplitSash({
       aria-valuemin={20}
       aria-valuemax={80}
       aria-valuenow={Math.round(ratio * 100)}
-      {...stylex.props(
+      {...props(
         threadStyles.sash,
         direction === "right" ? threadStyles.sashRight : threadStyles.sashDown,
       )}
@@ -1327,7 +1226,7 @@ function SplitSash({
       }}
     >
       <span
-        {...stylex.props(
+        {...props(
           threadStyles.sashLine,
           direction === "right" ? threadStyles.sashLineRight : threadStyles.sashLineDown,
         )}
@@ -1370,11 +1269,11 @@ export function ThreadScreen({
   }, [actions, routeSessionId]);
 
   return (
-    <div {...stylex.props(threadStyles.stage)}>
+    <div {...props(threadStyles.stage)}>
       <FileTypeIconSprite />
       <div
         ref={containerRef}
-        {...stylex.props(
+        {...props(
           threadStyles.panes,
           layout.kind === "split" &&
             (layout.direction === "right" ? threadStyles.splitRight : threadStyles.splitDown),

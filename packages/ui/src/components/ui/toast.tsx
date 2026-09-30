@@ -1,17 +1,23 @@
 import { create, props } from "@stylexjs/stylex";
 import { useEffect, useRef, type ReactElement } from "react";
-import { Toaster as Sonner, useSonner, type ToasterProps as SonnerToasterProps } from "sonner";
+import {
+  Toaster as Sonner,
+  useSonner,
+  type ExternalToast,
+  type ToasterProps as SonnerToasterProps,
+} from "sonner";
 
 import { focus } from "../../a11y.stylex.ts";
-import { layer, toast } from "../../schema.stylex.ts";
+import { button, layer, toast } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
+import { surfaceTheme, type Tint } from "../../surface-theme.ts";
 import { t } from "../../vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 import { useOverlayRef } from "./overlay.tsx";
 
 // Hairline lives in the shadow stack. Sonner already uses ::after for the
 // stacked-toast hit lane, so an extra inset ring there would collide.
-const TOAST_SHADOW = `${t.shadowPopover}, inset 0 0 0 1px ${t.strokeSecondary}`;
+const TOAST_SHADOW = t.shadowMdOutline;
 
 const styles = create({
   root: {
@@ -31,10 +37,10 @@ const styles = create({
     padding: `12px ${toast.closeGutter} 12px 12px`,
     overflow: "visible",
     borderStyle: "none",
-    borderRadius: t.radius2xl,
-    backgroundColor: t.bgRaised,
+    borderRadius: t.radius14,
+    backgroundColor: t.bgElevated,
     boxShadow: TOAST_SHADOW,
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontFamily: t.fontSans,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
@@ -43,7 +49,7 @@ const styles = create({
     outlineWidth: 1,
     outlineColor: t.focusRing,
     outlineOffset: 0,
-    "--_toast-icon-color": t.iconSecondary,
+    "--_toast-icon-color": t.contentSecondary,
   },
   content: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, gap: 2 },
   title: {
@@ -54,7 +60,7 @@ const styles = create({
     textWrap: "balance",
   },
   description: {
-    color: t.textSecondary,
+    color: t.contentSecondary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     textWrap: "pretty",
@@ -68,27 +74,27 @@ const styles = create({
     height: t.leadingBase,
     color: "var(--_toast-icon-color)",
   },
-  success: { "--_toast-icon-color": t.textSuccess },
-  error: { "--_toast-icon-color": t.textDanger },
-  warning: { "--_toast-icon-color": t.textWarning },
+  success: { "--_toast-icon-color": t.intentSuccessContent },
+  error: { "--_toast-icon-color": t.intentDangerContent },
+  warning: { "--_toast-icon-color": t.intentWarningContent },
   action: {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
     boxSizing: "border-box",
-    minHeight: 26,
+    minHeight: button.heightSm,
     paddingBlock: 0,
-    paddingInline: 8,
+    paddingInline: button.paddingInlineSm,
     appearance: "none",
     borderStyle: "none",
-    borderRadius: t.radiusBase,
-    backgroundColor: t.fillQuiet,
+    borderRadius: button.radiusSm,
+    backgroundColor: t.bgInteractiveSecondaryTranslucent,
     backgroundImage: {
       default: "none",
       ":hover": { "@media (hover: hover)": t.layerHover },
     },
-    color: t.textPrimary,
+    color: t.contentPrimary,
     fontFamily: t.fontSans,
     fontSize: t.fontSm,
     fontWeight: 400,
@@ -111,17 +117,17 @@ const styles = create({
     display: "grid",
     placeItems: "center",
     boxSizing: "border-box",
-    width: 24,
-    height: 24,
+    width: button.heightSm,
+    height: button.heightSm,
     padding: 0,
     appearance: "none",
     borderStyle: "none",
-    borderRadius: t.radiusBase,
+    borderRadius: button.radiusSm,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover)": t.fillHover },
+      ":hover": { "@media (hover: hover)": t.bgHover },
     },
-    color: { default: t.iconSecondary, ":hover": t.iconPrimary },
+    color: { default: t.contentInteractiveSecondary, ":hover": t.contentInteractivePrimary },
     cursor: t.cursorInteractive,
     scale: { default: 1, ":active": 0.96 },
     transitionProperty: "background-color, color, scale",
@@ -143,7 +149,7 @@ const styles = create({
 // public style boundary; the unstyled content above remains ordinary StyleX.
 const positionerStyle = {
   "--width": "min(380px, calc(100vw - 32px))",
-  "--gray11": t.iconSecondary,
+  "--gray11": t.contentSecondary,
   fontFamily: t.fontSans,
   zIndex: layer.toast,
   transitionDuration: "var(--_toast-duration)",
@@ -155,6 +161,11 @@ const toastStyle = {
   transitionDuration: "var(--_toast-duration)",
   transitionTimingFunction: t.easeOut,
 };
+
+/** Options that scope one toast to a hue: `toast("Saved", toastTint("green"))`. */
+export function toastTint(tint: Tint): Pick<ExternalToast, "className"> {
+  return { className: props(surfaceTheme[tint]).className };
+}
 
 /** The look is fixed. `xstyle`, `className`, and `style` land on the toast list. */
 export type ToasterProps = StyledProps<

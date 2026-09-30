@@ -91,11 +91,11 @@ function macOSWindowChrome(): Partial<Electron.BrowserWindowConstructorOptions> 
  * A vibrant window still takes a fill, and its alpha tints the material rather
  * than clearing it. Light stays neutral; dark carries a quarter black so the
  * blur reads dark instead of washing out. Without vibrancy the window needs a
- * real colour, matching `--nyte-page-base`.
+ * real colour, matching `--nyte-bg-base`.
  */
 function windowBackgroundColor(): string {
   if (process.platform !== "darwin" || nativeTheme.shouldUseHighContrastColors) {
-    return nativeTheme.shouldUseDarkColors ? "#191919" : "#ffffff";
+    return nativeTheme.shouldUseDarkColors ? "#1b1b1b" : "#ffffff";
   }
 
   return nativeTheme.shouldUseDarkColors ? "#40000000" : "#00ffffff";
