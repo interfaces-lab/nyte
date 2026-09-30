@@ -132,7 +132,7 @@ test("palette-only settings stay discoverable while the native settings action i
     "Open home",
     "General settings",
     "Appearance",
-    "Models",
+    "Providers",
     "Accounts",
     "Customize",
   ]);

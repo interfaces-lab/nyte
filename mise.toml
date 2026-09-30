@@ -2,3 +2,4 @@
 node = "26"
 pnpm = "latest"
 bun = "latest"
+"npm:wrangler" = "4"

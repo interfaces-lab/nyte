@@ -3,12 +3,12 @@
  * the first import of the entry, so the interface has its bridge before
  * `theme/boot.ts` or any screen reads it.
  */
-import type { NyteBridge } from "@nyte-ai/app/bridge.ts";
 import { installBridge } from "@nyte-ai/app/nyte.ts";
+import type { DesktopBridge } from "../../shared/ipc.ts";
 
 declare global {
   interface Window {
-    readonly nyte: NyteBridge;
+    readonly nyte: DesktopBridge;
   }
 }
 

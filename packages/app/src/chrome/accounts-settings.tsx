@@ -8,7 +8,12 @@
 import { create, props } from "@stylexjs/stylex";
 import { useRef, useState } from "react";
 import type { ReactElement } from "react";
-import type { GitHubPullRequest, GitHubPullRequestContext, GitHubRepository } from "../bridge.ts";
+import type {
+  GitHubBridge,
+  GitHubPullRequest,
+  GitHubPullRequestContext,
+  GitHubRepository,
+} from "../bridge.ts";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { nyte } from "../nyte.ts";
@@ -300,8 +305,15 @@ function PullRequestRow({
   }
 }
 
-export function AccountsSettings(): ReactElement {
-  const account = useGitHubAccount();
+/** Settings lists this section only where the host has GitHub. */
+export function AccountsSettings(): ReactElement | null {
+  const github = nyte.host.github;
+
+  return github === undefined ? null : <GitHubSettings github={github} />;
+}
+
+function GitHubSettings({ github }: { github: GitHubBridge }): ReactElement {
+  const account = useGitHubAccount(github);
   const state = account.query.data;
   const repository = state?.repository;
 

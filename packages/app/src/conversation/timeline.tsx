@@ -146,7 +146,7 @@ export function Timeline({
           return <TranscriptSkeleton />;
         case "error":
           return (
-            <Marker role="alert" variant="warning">
+            <Marker role="alert" variant="destructive">
               Couldn&rsquo;t load this chat.{" "}
               <Button variant="link" onClick={() => onRetry()}>
                 Try again
@@ -190,7 +190,7 @@ export function Timeline({
           );
         case "retry":
           return (
-            <Marker role="status" variant="warning" title={row.message}>
+            <Marker role="status" variant="retrying" title={row.message}>
               Retrying…
             </Marker>
           );

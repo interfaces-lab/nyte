@@ -5,15 +5,15 @@
  */
 import { Menu } from "electron";
 import type { BrowserWindow, MenuItemConstructorOptions } from "electron";
-import type { HostBridge } from "@nyte-ai/app/bridge.ts";
+import type { CallInput, CallOutput } from "../shared/ipc.ts";
 
 export async function showContextMenu({
   window,
   input: { items, x, y },
 }: {
   readonly window: BrowserWindow | undefined;
-  readonly input: Parameters<HostBridge["contextMenu"]>[0];
-}): Promise<number | undefined> {
+  readonly input: CallInput<"host.contextMenu">;
+}): Promise<CallOutput<"host.contextMenu">> {
   if (window === undefined || window.isDestroyed() || items.length === 0) return undefined;
 
   return new Promise<number | undefined>((resolve) => {

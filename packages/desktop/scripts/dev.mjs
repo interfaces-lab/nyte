@@ -14,7 +14,7 @@ export function prepareDevElectron() {
   const icon = readFileSync(new URL("../build/icon.icns", import.meta.url));
 
   const fingerprint = createHash("sha256")
-    .update(readFileSync(fileURLToPath(import.meta.url)))
+    .update(readFileSync(import.meta.filename))
     .update(icon)
     .digest("hex");
 
@@ -69,6 +69,7 @@ if (import.meta.main) {
     [
       fileURLToPath(new URL("../bin/electron-vite.js", import.meta.resolve("electron-vite"))),
       "dev",
+      "--watch",
       ...process.argv.slice(2),
     ],
     { stdio: "inherit", env: { ...process.env, ELECTRON_EXEC_PATH: prepareDevElectron() } },

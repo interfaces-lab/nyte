@@ -858,20 +858,25 @@ server is a command the host spawns.
 
 ## Agents
 
-An agent is a host-resolved session preset, not a second runner type. A run using a preset stores
-its name in `config`. Delegation does not require a preset: the parent creates a child through
-`create` or `task` and may supply an exact `provider/model`. The tool schema lists available
-explicit choices across authenticated providers, refreshed for each request. If the call omits a
-model, it resolves to `openai-codex/gpt-5.6-sol`; if it omits `thinkingLevel`, it resolves to
-`high`. The parent passes another model or thinking level when the user requests one. There is no
-global subagent setting or automatic model substitution.
+An agent is a host-resolved session preset, not a second runner type. A run using a
+preset stores its name in `config`. Delegation does not require a preset: the parent
+creates a child through `create` or `task` and may supply an exact `provider/model`.
+Both tool schemas list enabled choices across authenticated providers, refreshed
+for each request. Host model preferences govern the picker and execution through
+one availability policy; there is no separate subagent model category or allowlist.
 
-The child receives the shared session tools except the delegation tools and any tool marked for a
-present participant, with its role and constraints supplied through `create.system` or the prompt.
-Its config records the resolved model and thinking level. Availability is checked before child
-creation. An unavailable explicit choice or default fails without creating a child. A model lost
-from the catalog before execution fails the child rather than replacing the selected model with
-the host default.
+If a call omits the model, it resolves to `openai-codex/gpt-6.1-sol` with `high`
+thinking, or `anthropic/claude-opus-5-5` with `medium` thinking if the first choice
+is unavailable. An explicit thinking level overrides the selected default. If both
+choices are unavailable, creation fails. An explicit model is exact and never falls
+back. Provider request errors do not switch models.
+
+The child receives the shared session tools except the delegation tools and any tool
+marked for a present participant, with its role and constraints supplied through
+`create.system` or the prompt. Its config records the resolved model and thinking
+level before its prompt runs. Availability is checked at creation and at each model
+request, including after a restart or preference change. Losing availability fails
+the request; it never replaces an admitted child's model.
 
 A child is a session the parent addresses by `SessionId`, with durable parent coordinates stored
 as a `parent` fact: parent session, run, call, and depth. `sessions.create({ parent })` writes

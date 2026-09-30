@@ -48,6 +48,20 @@ export const clientActions = {
     scope: "window",
     palette: { keywords: "start create conversation session", icon: "plus", group: "actions" },
   },
+  selectWorkspace: {
+    id: "select-workspace",
+    label: "Select Workspace",
+    key: ".",
+    chord: "primary",
+    scope: "workspace",
+  },
+  selectEnvironment: {
+    id: "select-environment",
+    label: "Select Environment",
+    key: ".",
+    chord: "primary-shift",
+    scope: "workspace",
+  },
   openFolder: {
     id: "open-folder",
     label: "Open folder…",
@@ -80,7 +94,7 @@ export const clientActions = {
   },
   modelSettings: {
     id: "model-settings",
-    label: "Models",
+    label: "Providers",
     scope: "window",
     palette: {
       keywords: "providers api key sign in anthropic openai default reasoning",
@@ -204,6 +218,7 @@ export function resolveClientAction(
   capabilities: ClientCapabilities,
 ): ClientAction | undefined {
   if (event.isComposing) return undefined;
+  const key = event.code === "Period" ? "." : event.key.toLowerCase();
 
   return Object.values(clientActions).find((action) => {
     if (!("chord" in action) || !clientActionAvailable(action, stage, capabilities)) return false;
@@ -213,8 +228,7 @@ export function resolveClientAction(
     // Other consumed events must remain with the editor or terminal that handled them.
     if (event.defaultPrevented && !terminal) return false;
 
-    if (terminal ? event.code !== "Backquote" : event.key.toLowerCase() !== action.key)
-      return false;
+    if (terminal ? event.code !== "Backquote" : key !== action.key) return false;
 
     if (terminal) {
       return (

@@ -3,18 +3,16 @@ import { setImmediate } from "node:timers/promises";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, test, vi } from "vitest";
-import type { GitHubProviderState, HostBridge, HostState } from "../bridge.ts";
+import type { GitHubBridge, GitHubProviderState, HostState } from "../bridge.ts";
 import { keys } from "../query-keys.ts";
 import { useGitHubAccount } from "./github-account.ts";
 
-const github = vi.hoisted(() => ({
-  state: vi.fn<HostBridge["github"]["state"]>(),
-  signIn: vi.fn<HostBridge["github"]["signIn"]>(),
-  signOut: vi.fn<HostBridge["github"]["signOut"]>(),
-}));
-
-// Electron's preload is absent in Node; React and TanStack run unchanged.
-vi.mock("../nyte.ts", () => ({ nyte: { host: { github } } }));
+const github = {
+  state: vi.fn<GitHubBridge["state"]>(),
+  signIn: vi.fn<GitHubBridge["signIn"]>(),
+  signOut: vi.fn<GitHubBridge["signOut"]>(),
+  createPullRequest: vi.fn<GitHubBridge["createPullRequest"]>(),
+};
 
 const clients = new Set<QueryClient>();
 const signedOut = { kind: "signed_out", repository: undefined } satisfies GitHubProviderState;
@@ -59,7 +57,7 @@ function probe(client: QueryClient) {
   function Probe() {
     // SSR has no effects; capture the real hook result for actions after rendering.
     // oxlint-disable-next-line react/globals
-    account = useGitHubAccount();
+    account = useGitHubAccount(github);
     return null;
   }
   renderToStaticMarkup(

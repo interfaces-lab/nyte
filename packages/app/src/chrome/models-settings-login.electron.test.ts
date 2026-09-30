@@ -159,7 +159,7 @@ beforeEach(async () => {
   await page.reload();
   await page.locator("#root").waitFor();
   await catalogBecomes(disconnected);
-  await page.getByRole("button", { name: "Sign in with GitHub" }).waitFor();
+  await page.getByRole("button", { name: "Connect", exact: true }).waitFor();
 });
 
 /** The host's catalog changed; the renderer must re-read it, as after any sign-in. */
@@ -186,9 +186,9 @@ function setFailures(failures: Partial<HarnessFailures>): Promise<void> {
   return page.evaluate((next) => window.nyteLoginHarness.setFailures(next), failures);
 }
 
-/** Click "Sign in with GitHub" and answer with the attempt ID the renderer chose. */
+/** Start a connection and answer with the attempt ID the renderer chose. */
 async function startSignIn(): Promise<string> {
-  await page.getByRole("button", { name: "Sign in with GitHub" }).click();
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
   await page.getByText("Waiting for the browser").waitFor();
   const calls = await recordedCalls();
   const login = calls.find((call) => call.path === "host.login");
@@ -242,9 +242,9 @@ test(
     await catalogBecomes(connected);
     await settleLogin({ kind: "connected", catalogRefreshed: true });
     await page.getByText("Connected to GitHub Copilot").waitFor();
-    await page.getByText("Connected", { exact: true }).waitFor();
+    await page.getByRole("region", { name: "Connected providers" }).waitFor();
     await code.waitFor({ state: "detached" });
-    await page.getByRole("button", { name: "Sign out" }).waitFor();
+    await page.getByRole("button", { name: "Disconnect", exact: true }).waitFor();
     const defaultModel = page.getByRole("combobox", { name: "Default model" });
     await defaultModel.waitFor();
     assert.equal(await defaultModel.isDisabled(), false, "two listed models make it a choice");
@@ -262,7 +262,7 @@ test(
     await catalogBecomes({ ...connected, models: [gpt] });
     await settleLogin({ kind: "connected", catalogRefreshed: false });
     await page.getByText(/model list couldn't be updated/).waitFor();
-    await page.getByText("Connected", { exact: true }).waitFor();
+    await page.getByRole("region", { name: "Connected providers" }).waitFor();
     assert.deepEqual(pageErrors, []);
   },
   TEST_TIMEOUT,
@@ -285,8 +285,8 @@ test(
     );
 
     await settleLogin({ kind: "cancelled" });
-    await page.getByRole("button", { name: "Sign in with GitHub" }).waitFor();
-    await page.getByText("Not connected", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Connect", exact: true }).waitFor();
+    await page.getByRole("region", { name: "Popular providers" }).waitFor();
     await page.getByLabel("Device code").waitFor({ state: "detached" });
     assert.equal(
       await page.getByRole("region", { name: "Notifications" }).getByRole("listitem").count(),
@@ -325,7 +325,7 @@ test(
     await setFailures({ cancel: false });
     await cancel.click();
     await settleLogin({ kind: "cancelled" });
-    await page.getByRole("button", { name: "Sign in with GitHub" }).waitFor();
+    await page.getByRole("button", { name: "Connect", exact: true }).waitFor();
     assert.deepEqual(pageErrors, []);
   },
   TEST_TIMEOUT,
@@ -338,7 +338,7 @@ test(
     await emit(deviceCode(attempt));
     await page.evaluate(() => window.nyteLoginHarness.rejectLogin());
     await page.getByText(/Couldn't sign in to GitHub Copilot/).waitFor();
-    await page.getByRole("button", { name: "Sign in with GitHub" }).waitFor();
+    await page.getByRole("button", { name: "Connect", exact: true }).waitFor();
     await page.getByLabel("Device code").waitFor({ state: "detached" });
     assert.deepEqual(pageErrors, []);
   },

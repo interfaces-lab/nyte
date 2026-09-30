@@ -32,10 +32,15 @@ so it is a start/stop pump with the same `afterSeq` and `live` cursors.
 
 ## Subagent models
 
-Delegated tasks default to `openai-codex/gpt-5.6-sol` with `high` thinking. Tell the parent to use
-another model or thinking level when needed, and it passes that exact choice for the task call. An
-unavailable explicit choice or default fails before child creation, and Nyte does not substitute
-another model or provider.
+Delegated tasks default to `openai-codex/gpt-6.1-sol` with `high` thinking. If it is
+unavailable, they fall back once to `anthropic/claude-opus-5-5` with `medium` thinking.
+Tell the parent to use another model or thinking level when needed. An explicit model
+selection fails if unavailable and does not use the fallback.
+
+Provider and model switches control which models Nyte may use, including for subagents.
+Disabling a model blocks new calls and further model requests from existing sessions.
+The default and fallback must both respect these settings. Provider request failures
+do not switch models.
 
 Child sessions stay out of the sidebar and chat search. Inspect their progress and results from the
 parent task or the jobs panel.

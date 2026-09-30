@@ -10,7 +10,7 @@ import type {
   VcsSnapshot,
   VcsWorktreeFile,
 } from "@nyte-ai/protocol";
-import type { GitHubPullRequestOutcome, NyteBridge } from "../bridge.ts";
+import type { GitHubBridge, GitHubPullRequestOutcome, NyteBridge } from "../bridge.ts";
 import { bridgeError } from "../errors.ts";
 
 export const CHANGED = "src/working.ts";
@@ -125,7 +125,7 @@ const createBranch: NyteBridge["workspace"]["vcs"]["createBranch"] = async (inpu
   return nextAnswer<VcsBranchOutcome>(commitScript.branchResults, { kind: "created" });
 };
 
-const createPullRequest: NyteBridge["host"]["github"]["createPullRequest"] = async (input) => {
+const createPullRequest: GitHubBridge["createPullRequest"] = async (input) => {
   commitScript.pullRequests.push({ title: input.title });
 
   return nextAnswer<GitHubPullRequestOutcome>(commitScript.pullRequestResults, {

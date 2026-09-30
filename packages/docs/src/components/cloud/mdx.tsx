@@ -3,7 +3,12 @@ import { sharedMdxComponents } from "~/app/(site)/_layout/mdx";
 import { CloudFeatures } from "./features";
 import { Preview } from "./preview";
 import { TokenTable } from "./token-table";
-import { ButtonSizesDemo, ButtonStatesDemo, ButtonVariantsDemo } from "./demos/button";
+import {
+  ButtonGroupDemo,
+  ButtonSizesDemo,
+  ButtonStatesDemo,
+  ButtonVariantsDemo,
+} from "./demos/button";
 import { AvatarDemo, AvatarTonesDemo } from "./demos/avatar";
 import { CheckboxDemo } from "./demos/checkbox";
 import { InputDemo, InputGroupDemo, TextareaDemo } from "./demos/input";
@@ -41,6 +46,7 @@ export function cloudMdxComponents(): MDXComponents {
     ButtonVariantsDemo,
     ButtonSizesDemo,
     ButtonStatesDemo,
+    ButtonGroupDemo,
     AvatarDemo,
     AvatarTonesDemo,
     CheckboxDemo,

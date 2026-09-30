@@ -1,6 +1,7 @@
-export { Button } from "./components/ui/button.tsx";
+export { Button, ButtonGroup } from "./components/ui/button.tsx";
 
 export type {
+  ButtonGroupProps,
   ButtonLayout,
   ButtonProps,
   ButtonSize,

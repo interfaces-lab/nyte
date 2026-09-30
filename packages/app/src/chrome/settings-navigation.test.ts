@@ -12,9 +12,9 @@ afterEach(() => {
 
 test("only sections this host can show are settings sections", () => {
   assert.ok(isSettingsSection("general"));
-  assert.equal(isSettingsSection("models"), false);
+  assert.equal(isSettingsSection("providers"), false);
   assert.equal(isSettingsSection("nope"), false);
 
   bridge.clientSurface = "desktop";
-  assert.ok(isSettingsSection("models"));
+  assert.ok(isSettingsSection("providers"));
 });

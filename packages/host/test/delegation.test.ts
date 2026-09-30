@@ -22,6 +22,7 @@ import { SqliteStore } from "@nyte-ai/core/store";
 import type { Api, AssistantMessage, Context, Model } from "@nyte-ai/schema";
 import { createHost, createWorkspaceStore } from "../src/index.ts";
 import type { HostPlugins } from "../src/index.ts";
+import { createModelPreferencesStore } from "../src/catalog.ts";
 
 const CHILD_PROMPT = "Map the repository.";
 
@@ -71,8 +72,8 @@ afterEach(async () => {
  */
 async function fixture(
   options: {
-    readonly model?: () => string;
-    readonly cachedModel?: Model<Api>;
+    readonly model?: () => string | undefined;
+    readonly cachedModels?: readonly Model<Api>[];
     /** Runs synchronously on each request, before the script answers. */
     readonly onRequest?: (request: Request, block: (ids: readonly string[]) => void) => void;
   } = {},
@@ -99,6 +100,7 @@ async function fixture(
     requests.push(request);
     options.onRequest?.(request, block);
     const result = context.messages.findLast((item) => item.role === "toolResult");
+    const selection = options.model === undefined ? "echo/small" : options.model();
     const content: AssistantMessage["content"] =
       result !== undefined
         ? [{ type: "text", text: `done: ${contentText(result.content)}` }]
@@ -108,7 +110,10 @@ async function fixture(
                 type: "toolCall",
                 id: "task-1",
                 name: "task",
-                arguments: { model: options.model?.() ?? "echo/small", prompt: CHILD_PROMPT },
+                arguments: {
+                  ...(selection === undefined ? {} : { model: selection }),
+                  prompt: CHILD_PROMPT,
+                },
               },
             ]
           : [{ type: "text", text: `found: ${prompt}` }];
@@ -148,8 +153,7 @@ async function fixture(
   };
   models.setProvider(provider);
   const refreshes: boolean[] = [];
-  const cached = options.cachedModel;
-  if (cached !== undefined) {
+  for (const cached of options.cachedModels ?? []) {
     await modelsStore.write(cached.provider, { models: [cached] });
     let restored: readonly Model<Api>[] = [];
     models.setProvider({
@@ -259,7 +263,7 @@ for (const composition of compositions) {
 test("spawn refuses a requested model that became unavailable", async () => {
   const f = await fixture({
     onRequest: (request, block) => {
-      if (request.hasTask) block([blocked.id, small.id, premium.id]);
+      if (request.hasTask) block([blocked.id, small.id]);
     },
   });
   const host = await f.open({
@@ -299,7 +303,7 @@ test("each delegation uses the model chosen for that call", async () => {
 
 test("a task can select another provider's cached model before a picker or network refresh", async () => {
   const cached: Model<Api> = { ...premium, provider: "openai-codex", id: "gpt-6-astra" };
-  const f = await fixture({ cachedModel: cached, model: () => "openai-codex/gpt-6-astra" });
+  const f = await fixture({ cachedModels: [cached], model: () => "openai-codex/gpt-6-astra" });
   const host = await f.open({
     kind: "workspace",
     target: { kind: "project", workspace: f.workspace },
@@ -315,4 +319,113 @@ test("a task can select another provider's cached model before a picker or netwo
   assert.deepEqual(answers, [reported(child.sessionId)]);
   assert.ok(f.refreshes.length > 0);
   assert.ok(f.refreshes.every((allowNetwork) => !allowNetwork));
+});
+
+for (const change of [
+  { kind: "models", provider: "echo", ids: ["small"], hidden: true },
+  { kind: "provider", provider: "worker", enabled: false },
+] as const) {
+  test(`${change.kind} preferences govern discovery, spawn, and existing child execution without reopening the host`, async () => {
+    const selected = change.kind === "models" ? small : { ...small, provider: "worker" };
+    const f = await fixture({
+      model: () => `${selected.provider}/${selected.id}`,
+      cachedModels: selected.provider === "worker" ? [selected] : [],
+    });
+    const host = await f.open({
+      kind: "workspace",
+      target: { kind: "project", workspace: f.workspace },
+    });
+    const { child } = await delegate(host);
+    const preferences = createModelPreferencesStore();
+    await preferences.update(change);
+    assert.ok(
+      !(await host.provider.models.list()).some(
+        (model) => model.provider === selected.provider && model.id === selected.id,
+      ),
+    );
+
+    const requests = f.requests.length;
+    await host.messages.send({ sessionId: child.sessionId, content: "continue after disabling" });
+    await untilIdle(host, child.sessionId);
+    const run = await host.runs.current({ sessionId: child.sessionId });
+    assert.ok(run?.phase.kind === "failed");
+    assert.ok(
+      run.phase.failure.message.includes(
+        `Subagent model is unavailable: ${selected.provider}/${selected.id}`,
+      ),
+    );
+    assert.equal(f.requests.length, requests);
+    assert.deepEqual((await host.sessions.get({ sessionId: child.sessionId }))?.config.model, {
+      provider: selected.provider,
+      id: selected.id,
+    });
+
+    const parent = await host.sessions.create();
+    await host.messages.send({ sessionId: parent.sessionId, content: "delegate" });
+    await untilIdle(host, parent.sessionId);
+    assert.deepEqual((await host.sessions.list({ parent: parent.sessionId })).items, []);
+    assert.equal((await host.runs.current({ sessionId: parent.sessionId }))?.phase.kind, "done");
+    assert.ok(f.requests.slice(requests).every((request) => request.prompt !== CHILD_PROMPT));
+
+    await preferences.update(
+      change.kind === "models" ? { ...change, hidden: false } : { ...change, enabled: true },
+    );
+    assert.deepEqual((await delegate(host)).child.config.model, {
+      provider: selected.provider,
+      id: selected.id,
+    });
+  });
+}
+
+test("the default fallback respects model preferences and does not choose a third model", async () => {
+  const sol: Model<Api> = {
+    ...premium,
+    provider: "openai-codex",
+    id: "gpt-6.1-sol",
+    reasoning: true,
+  };
+  const opus: Model<Api> = {
+    ...premium,
+    provider: "anthropic",
+    id: "claude-opus-5-5",
+    reasoning: true,
+  };
+  const f = await fixture({ model: () => undefined, cachedModels: [sol, opus] });
+  const host = await f.open({
+    kind: "workspace",
+    target: { kind: "project", workspace: f.workspace },
+  });
+  const preferences = createModelPreferencesStore();
+  await preferences.update({ kind: "models", provider: sol.provider, ids: [sol.id], hidden: true });
+  const { child } = await delegate(host);
+  assert.deepEqual(child.config.model, { provider: opus.provider, id: opus.id });
+  assert.equal(child.config.thinkingLevel, "medium");
+
+  await preferences.update({ kind: "provider", provider: opus.provider, enabled: false });
+  const parent = await host.sessions.create();
+  await host.messages.send({ sessionId: parent.sessionId, content: "delegate" });
+  await untilIdle(host, parent.sessionId);
+  assert.deepEqual((await host.sessions.list({ parent: parent.sessionId })).items, []);
+  const snapshot = await host.sessions.snapshot({ sessionId: parent.sessionId });
+  assert.ok(
+    snapshot?.transcript.some(
+      (turn) =>
+        turn.kind === "turn" &&
+        turn.parts.some(
+          (part) =>
+            part.kind === "assistant" &&
+            part.text.includes("Default subagent models are unavailable"),
+        ),
+    ),
+  );
+
+  await preferences.update({
+    kind: "models",
+    provider: sol.provider,
+    ids: [sol.id],
+    hidden: false,
+  });
+  const preferred = (await delegate(host)).child;
+  assert.deepEqual(preferred.config.model, { provider: sol.provider, id: sol.id });
+  assert.equal(preferred.config.thinkingLevel, "high");
 });

@@ -24,7 +24,7 @@ import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { appearanceSettingsStyles as styles } from "./appearance-settings.stylex.ts";
 import { AccountsSettings } from "./accounts-settings.tsx";
 import { AppearanceSettings } from "./appearance-panel.tsx";
-import { ModelsSettings } from "./models-settings.tsx";
+import { ProvidersSettings } from "./models-settings.tsx";
 import { UsageSettings } from "./usage-settings.tsx";
 import { SettingsRow } from "./settings-controls.tsx";
 import { settingsTitle, type SettingsSection } from "./settings-navigation.tsx";
@@ -102,8 +102,8 @@ function SettingsPanel({ section }: { section: SettingsSection }): ReactElement 
       return <GeneralSettings />;
     case "appearance":
       return <AppearanceSettings />;
-    case "models":
-      return <ModelsSettings />;
+    case "providers":
+      return <ProvidersSettings />;
     case "usage":
       return <UsageSettings />;
     case "accounts":

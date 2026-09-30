@@ -31,6 +31,7 @@ const config = {
             "@stylexjs/babel-plugin",
             {
               runtimeInjection: false,
+              propertyValidationMode: "throw",
               unstable_moduleResolution: { type: "commonJS", rootDir: workspaceRoot },
             },
           ],

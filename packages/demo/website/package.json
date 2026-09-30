@@ -15,7 +15,7 @@
     "@nyte-ai/ui": "workspace:*",
     "@tanstack/react-router": "1.170.27",
     "@tanstack/react-start": "1.168.44",
-    "central-icons": "npm:@central-icons-react/round-outlined-radius-1-stroke-1.5@^1.1.319",
+    "central-icons": "npm:@central-icons-react/round-outlined-radius-1-stroke-1.5@^1.2.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
@@ -26,9 +26,9 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "nitro": "^3.0.260610-beta",
-    "oxc-transform-react": "^0.149.0",
+    "oxc-transform-react": "^0.151.0",
     "tailwindcss": "4.3.3",
     "typescript": "^7.0.2",
-    "vite": "^8.3.0"
+    "vite": "^8.3.1"
   }
 }

@@ -57,6 +57,8 @@ const buildContext = await context({
       // shorthands against longhands, so library classes get their own prefix.
       classNamePrefix: "nyte",
       useCSSLayers: true,
+      // A key StyleX cannot compile, like `border`, fails the build instead of vanishing.
+      propertyValidationMode: "throw",
       unstable_moduleResolution: { type: "commonJS", rootDir: packageRoot },
       // Keeps light-dark() and color-mix() as written; older targets lower them.
       lightningcssOptions: {

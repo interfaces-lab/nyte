@@ -309,6 +309,8 @@ class ModelsImpl implements MutableModels {
   private catalog: RefreshModelsContext["catalog"];
   private refreshGenerations = new Map<string, number>();
   private refreshControllers = new Map<string, AbortController>();
+  /** Settles once the running refresh for a provider has restored its cached catalog. */
+  private restorations = new Map<string, Promise<void>>();
   private publicationChains = new Map<string, Promise<unknown>>();
 
   constructor(options?: CreateModelsOptions) {
@@ -483,8 +485,21 @@ class ModelsImpl implements MutableModels {
 
     const refresh = Promise.all(
       refreshable.map(async (provider) => {
+        const running = this.restorations.get(provider.id);
+
+        // An offline refresh only restores the cache, which a running refresh
+        // restores first. Superseding it would cancel its network phase, and
+        // nothing would retry that until the next launch.
+        if (!allowNetwork && running !== undefined) {
+          await raceWithAbortSignal(running, callerSignal).catch(() => undefined);
+
+          return;
+        }
+
         const { generation, controller } = this.beginProviderRefresh(provider.id);
         const signal = AbortSignal.any([callerSignal, controller.signal]);
+        const restored = Promise.withResolvers<void>();
+        this.restorations.set(provider.id, restored.promise);
 
         const operation = (async () => {
           let storedCredential: Credential | undefined;
@@ -505,6 +520,8 @@ class ModelsImpl implements MutableModels {
             generation,
             signal,
           );
+
+          restored.resolve();
 
           if (credentialError !== undefined) throw credentialError;
 
@@ -540,8 +557,14 @@ class ModelsImpl implements MutableModels {
             );
           }
         } finally {
+          restored.resolve();
+
           if (this.refreshControllers.get(provider.id) === controller) {
             this.refreshControllers.delete(provider.id);
+          }
+
+          if (this.restorations.get(provider.id) === restored.promise) {
+            this.restorations.delete(provider.id);
           }
         }
       }),

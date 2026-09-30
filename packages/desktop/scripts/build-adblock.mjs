@@ -3,7 +3,6 @@
 // only place a network request happens, and it runs at build time.
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { ENGINE_VERSION, FiltersEngine } from "@ghostery/adblocker";
 import { parseFilterLists } from "../src/main/adblock.ts";
 
@@ -14,9 +13,7 @@ const LISTS = [
 
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
 
-const desktopRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-
-const output = join(desktopRoot, "resources", "adblock.bin");
+const output = join(import.meta.dirname, "..", "resources", "adblock.bin");
 
 const force = process.argv.includes("--force");
 

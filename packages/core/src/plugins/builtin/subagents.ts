@@ -27,9 +27,17 @@ export const SUBAGENTS_PLUGIN_ID = "subagents";
 
 export const TASK_TOOL = "task";
 
-const DEFAULT_TASK_MODEL = "openai-codex/gpt-5.6-sol";
+const DEFAULT_TASK_MODEL = {
+  model: "openai-codex/gpt-6.1-sol",
+  thinkingLevel: "high",
+} as const;
 
-const DEFAULT_TASK_THINKING_LEVEL = "high";
+const FALLBACK_TASK_MODEL = {
+  model: "anthropic/claude-opus-5-5",
+  thinkingLevel: "medium",
+} as const;
+
+const defaultModelDescription = `Defaults to ${DEFAULT_TASK_MODEL.model} with ${DEFAULT_TASK_MODEL.thinkingLevel} thinking, falling back to ${FALLBACK_TASK_MODEL.model} with ${FALLBACK_TASK_MODEL.thinkingLevel} thinking if the default is unavailable.`;
 
 const DEFAULT_TASK_WAIT_MS = 120_000;
 
@@ -58,8 +66,8 @@ export interface SubagentHost {
   childOf(head: string, runId: string, callId: string): SessionId;
   create(input: {
     readonly title: string;
-    readonly model: string;
-    readonly thinkingLevel: ModelThinkingLevel;
+    readonly model?: string;
+    readonly thinkingLevel?: ModelThinkingLevel;
     readonly system?: string;
     readonly runId: string;
     readonly callId: string;
@@ -96,7 +104,7 @@ export interface SubagentHost {
   inputPending(head: string): Promise<boolean>;
 }
 
-const modelDescription = `Exact provider/model. Omit to use ${DEFAULT_TASK_MODEL}. Use an explicit value when the user requests another model. Unavailable models fail without substitution.`;
+const modelDescription = `Exact provider/model. ${defaultModelDescription} Only set this when the user requests another model. Choose an enabled model from the current list. Unavailable explicit choices fail without substitution.`;
 
 const modelParameter = Type.Optional(
   Type.String({ pattern: "^[^/]+/.+$", description: modelDescription }),
@@ -104,7 +112,7 @@ const modelParameter = Type.Optional(
 
 const thinkingParameter = Type.Optional(
   Type.Enum(MODEL_THINKING_LEVELS, {
-    description: `Thinking level for the agent. Omit to use ${DEFAULT_TASK_THINKING_LEVEL}.`,
+    description: `Thinking level for the agent. Omit to use ${DEFAULT_TASK_MODEL.thinkingLevel}, or ${FALLBACK_TASK_MODEL.thinkingLevel} for the default's fallback.`,
   }),
 );
 
@@ -200,11 +208,15 @@ const readParameters = Type.Object(
 
 const stopParameters = Type.Object({ agent: agentParameter }, { additionalProperties: false });
 
-/** Each provider request receives the current cross-provider availability, not a session snapshot. */
-export function taskModelParameters(models: readonly Pick<Model<Api>, "provider" | "id">[]) {
+export function subagentModelParameters(
+  tool: "task" | "create",
+  models: readonly Pick<Model<Api>, "provider" | "id">[],
+) {
+  const parameters = tool === TASK_TOOL ? taskParameters : createParameters;
+
   return Type.Object(
     {
-      ...taskParameters.properties,
+      ...parameters.properties,
       model: Type.Optional(
         Type.Enum([...new Set(models.map((model) => `${model.provider}/${model.id}`))], {
           description: modelDescription,
@@ -212,6 +224,31 @@ export function taskModelParameters(models: readonly Pick<Model<Api>, "provider"
       ),
     },
     { additionalProperties: false },
+  );
+}
+
+export function resolveTaskModel(
+  input: Pick<TaskInput, "model" | "thinkingLevel"> & { readonly models: readonly Model<Api>[] },
+) {
+  const choices =
+    input.model === undefined
+      ? [DEFAULT_TASK_MODEL, FALLBACK_TASK_MODEL]
+      : [{ model: input.model, thinkingLevel: DEFAULT_TASK_MODEL.thinkingLevel }];
+
+  for (const choice of choices) {
+    const model = input.models.find(
+      (candidate) => `${candidate.provider}/${candidate.id}` === choice.model,
+    );
+
+    if (model !== undefined) {
+      return { model, thinkingLevel: input.thinkingLevel ?? choice.thinkingLevel };
+    }
+  }
+
+  throw new Error(
+    input.model === undefined
+      ? `Default subagent models are unavailable: ${DEFAULT_TASK_MODEL.model}, ${FALLBACK_TASK_MODEL.model}. Enable a model or choose an available model explicitly.`
+      : `Subagent model is unavailable: ${input.model}. Choose an enabled model or connect its provider.`,
   );
 }
 
@@ -229,7 +266,7 @@ export function taskTitle(input: TaskInput): string {
 
   return line.length > TITLE_LIMIT
     ? `${line.slice(0, TITLE_LIMIT - 1)}…`
-    : line || DEFAULT_TASK_MODEL;
+    : line || DEFAULT_TASK_MODEL.model;
 }
 
 /**
@@ -407,7 +444,7 @@ export function subagentsPlugin(host: SubagentHost) {
 
   const task: AgentTool<typeof taskParameters, AgentDetails & AwaitDetails> = {
     name: TASK_TOOL,
-    description: `Creates an agent in a fresh session, sends it the prompt, and waits up to waitMs (default ${DEFAULT_TASK_WAIT_MS} ms) for its report. Defaults to ${DEFAULT_TASK_MODEL} with ${DEFAULT_TASK_THINKING_LEVEL} thinking unless the user requests another model or thinking level.
+    description: `Creates an agent in a fresh session, sends it the prompt, and waits up to waitMs (default ${DEFAULT_TASK_WAIT_MS} ms) for its report. ${defaultModelDescription} Use an explicit model or thinking level when the user requests one.
 Returns the report when the agent finishes in time; otherwise returns the agent's id and phase, and the agent keeps working. Its report then arrives on its own as a "Background" message, or call await with the id when you need it before you reply. The agent persists until you call stop: send it follow-up messages, read its transcript, or stop it.
 If the user sends something while you wait, this returns early so you can answer them. Never poll, sleep, or relaunch a task to check progress.`,
     parameters: taskParameters,
@@ -428,8 +465,8 @@ If the user sends something while you wait, this returns early so you can answer
 
       const agent = await host.create({
         title,
-        model: input.model ?? DEFAULT_TASK_MODEL,
-        thinkingLevel: input.thinkingLevel ?? DEFAULT_TASK_THINKING_LEVEL,
+        model: input.model,
+        thinkingLevel: input.thinkingLevel,
         runId: context.runId,
         callId,
         head: context.head,
@@ -462,7 +499,7 @@ If the user sends something while you wait, this returns early so you can answer
 
   const create: AgentTool<typeof createParameters, AgentDetails> = {
     name: "create",
-    description: `Creates a persistent agent in a fresh session and returns its id at once, without sending it anything. Defaults to ${DEFAULT_TASK_MODEL} with ${DEFAULT_TASK_THINKING_LEVEL} thinking. Use send to give it work, await or read to follow it, and stop when you are done with it; it persists until stop.`,
+    description: `Creates a persistent agent in a fresh session and returns its id at once, without sending it anything. ${defaultModelDescription} Use send to give it work, await or read to follow it, and stop when you are done with it; it persists until stop.`,
     parameters: createParameters,
     replay: "never",
     present: (input, context) => presentChild(input.title, context),
@@ -480,8 +517,8 @@ If the user sends something while you wait, this returns early so you can answer
 
       const agent = await host.create({
         title: input.title,
-        model: input.model ?? DEFAULT_TASK_MODEL,
-        thinkingLevel: input.thinkingLevel ?? DEFAULT_TASK_THINKING_LEVEL,
+        model: input.model,
+        thinkingLevel: input.thinkingLevel,
         system: input.system,
         runId: context.runId,
         callId,

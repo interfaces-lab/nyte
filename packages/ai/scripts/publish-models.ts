@@ -4,6 +4,8 @@ import { spawn } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { styleText } from "node:util";
+import { done, fail, seconds } from "./terminal.ts";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -11,36 +13,42 @@ const catalogDir = join(packageRoot, "catalog");
 
 const repositoryRoot = join(packageRoot, "..", "..");
 
-function uploadModelCatalog(filename: string): Promise<void> {
-  const path = join(catalogDir, filename);
+const concurrency = 6;
 
+function uploadModelCatalog(filename: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const upload = spawn(
-      "npx",
+      "wrangler",
       [
-        "wrangler@4",
         "r2",
         "object",
         "put",
         `nyte-models/${filename}`,
         "--file",
-        path,
+        join(catalogDir, filename),
         "--content-type",
         "application/json",
         "--cache-control",
         "public, max-age=300",
         "--remote",
       ],
-      { cwd: repositoryRoot, stdio: "inherit" },
+      { cwd: repositoryRoot, stdio: ["ignore", "pipe", "pipe"] },
     );
+    let output = "";
+
+    upload.stdout.on("data", (chunk: Buffer) => (output += chunk));
+    upload.stderr.on("data", (chunk: Buffer) => (output += chunk));
 
     upload.once("error", (error) => {
-      reject(
-        new Error(`Could not start the upload for ${filename}: ${error.message}`, { cause: error }),
-      );
+      const hint =
+        "code" in error && error.code === "ENOENT"
+          ? "Wrangler is not installed. Run `mise install`."
+          : error.message;
+
+      reject(new Error(`Could not upload ${filename}: ${hint}`, { cause: error }));
     });
 
-    upload.once("exit", (code, signal) => {
+    upload.once("close", (code, signal) => {
       if (code === 0) {
         resolve();
 
@@ -51,7 +59,11 @@ function uploadModelCatalog(filename: string): Promise<void> {
 
       reject(
         new Error(
-          `Upload failed for ${filename} with ${status}. Log in with Wrangler or set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.`,
+          [
+            `Upload failed for ${filename} with ${status}.`,
+            styleText("dim", output.trim()),
+            "Log in with `wrangler login` or set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.",
+          ].join("\n\n"),
         ),
       );
     });
@@ -59,6 +71,7 @@ function uploadModelCatalog(filename: string): Promise<void> {
 }
 
 async function publishModels(): Promise<void> {
+  const startedAt = performance.now();
   const filenames = (await readdir(catalogDir))
     .filter((filename) => filename.endsWith(".json"))
     .sort();
@@ -67,15 +80,34 @@ async function publishModels(): Promise<void> {
     throw new Error(`No model catalogs found in ${catalogDir}. Run models:generate first.`);
   }
 
-  for (const filename of filenames) {
-    console.log(`Uploading ${filename}`);
-    await uploadModelCatalog(filename);
-  }
+  const width = String(filenames.length).length;
+  const nameWidth = Math.max(...filenames.map((filename) => filename.length));
+  const pending = [...filenames];
+  let uploaded = 0;
+  let failed = false;
 
-  console.log(`Published ${String(filenames.length)} model catalogs to nyte-models`);
+  const worker = async (): Promise<void> => {
+    for (let filename = pending.shift(); filename && !failed; filename = pending.shift()) {
+      try {
+        await uploadModelCatalog(filename);
+      } catch (error) {
+        failed = true;
+
+        throw error;
+      }
+
+      uploaded += 1;
+      done(filename, `${String(uploaded).padStart(width)}/${filenames.length}`, nameWidth);
+    }
+  };
+
+  const results = await Promise.allSettled(Array.from({ length: concurrency }, worker));
+  const failure = results.find((result) => result.status === "rejected");
+
+  if (failure) throw failure.reason;
+
+  console.log("");
+  done(`Published ${filenames.length} catalogs to nyte-models`, seconds(startedAt));
 }
 
-publishModels().catch((error: Error) => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+publishModels().catch(fail);

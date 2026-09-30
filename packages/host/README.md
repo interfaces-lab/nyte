@@ -51,19 +51,21 @@ workspace's trust grant and when it was last opened.
 
 ## Delegated models
 
-A task call may select an exact `provider/model`. When it omits the model, Nyte uses
-`openai-codex/gpt-5.6-sol`; when it omits the thinking level, Nyte uses `high`. Users can
-request another model or thinking level, and the parent passes that explicit choice for the call.
-There is no global subagent setting.
+A `task` or `create` call may select an exact `provider/model`. Without a model,
+Nyte uses `openai-codex/gpt-6.1-sol` with `high` thinking. If it is unavailable,
+Nyte falls back once to `anthropic/claude-opus-5-5` with `medium` thinking. An explicit
+thinking level overrides either default. An unavailable explicit model fails without
+substitution; provider request errors do not trigger model switching.
 
-The host checks the resolved selection against `models.getAvailable()` before creating the child.
-Provider auth and `filterModels` determine availability. An unavailable explicit choice or default
-returns a task error before child creation; Nyte never substitutes another model or provider.
+The desktop's provider and model switches govern availability in every host.
+The picker, delegation tool schemas, child creation, and model requests use the
+same enabled-model policy. Preferences are read for each availability check, so
+disabling a model also blocks further requests from existing sessions.
 
-The child config records the resolved model before its prompt runs. Missing or
-catalog-blocked ids return a task error without creating a child. Provider errors
-not reflected in catalog availability remain request errors, not automatic
-model-switch retries.
+The child config records the resolved model and thinking level before its prompt
+runs. If both default choices are unavailable, creation fails. Once admitted, a
+child keeps its exact model; losing availability fails the request rather than
+switching the child to another model.
 
 ## Local tool usage
 

@@ -785,7 +785,7 @@ export function deriveAccount(account: AccountUsage): AccountView {
     return {
       title: name,
       meters: [],
-      message: `Sign in to ${name} with a subscription in Settings › Models to see its limits.`,
+      message: `Sign in to ${name} with a subscription in Settings › Providers to see its limits.`,
       failed: false,
     };
   }

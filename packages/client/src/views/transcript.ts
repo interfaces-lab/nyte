@@ -165,7 +165,8 @@ function appendAssistant(
   if (!hasVisibleAssistantContent(message) && failure === undefined) return;
   const turn = landingTurn(builder, item);
 
-  if (failure !== undefined) turn.failure = failure;
+  if (failure === undefined) delete turn.failure;
+  else turn.failure = failure;
 
   for (const [contentIndex, part] of message.content.entries()) {
     switch (part.type) {

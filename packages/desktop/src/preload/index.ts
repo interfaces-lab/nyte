@@ -26,15 +26,11 @@ import type {
   CallOutput,
   CallPath,
   CallReplyFor,
+  DesktopBridge,
   WatchEnvelope,
   WatchStartInput,
 } from "../shared/ipc.ts";
-import type {
-  BrowserBoundsMessage,
-  HostEvent,
-  NyteBridge,
-  WatchInput,
-} from "@nyte-ai/app/bridge.ts";
+import type { BrowserBoundsMessage, HostEvent, WatchInput } from "@nyte-ai/app/bridge.ts";
 import { bridgeError } from "@nyte-ai/app/errors.ts";
 import type { IpcResult } from "@nyte-ai/app/errors.ts";
 
@@ -274,7 +270,7 @@ const bridge = {
       };
     },
   },
-} satisfies NyteBridge;
+} satisfies DesktopBridge;
 
 contextBridge.exposeInMainWorld("nyte", bridge);
 

@@ -11,6 +11,7 @@ import type { JsonValue } from "@nyte-ai/schema";
 import { definePlugin, inlinePlugin, type LoadedPlugin } from "../../plugins/types.ts";
 import {
   awaitedAgents,
+  resolveTaskModel,
   satisfied,
   subagentsPlugin,
   type AgentPhase,
@@ -562,24 +563,13 @@ export function createDelegation(input: {
 
       if ((await openChild(childId)) !== undefined) return childId;
 
-      const slash = input.model.indexOf("/");
-      const selected = { provider: input.model.slice(0, slash), id: input.model.slice(slash + 1) };
-
-      const available = await options.models.getAvailable(selected.provider, {
+      const available = await options.models.getAvailable(input.model?.split("/", 1)[0], {
         signal: input.signal,
       });
 
       input.signal?.throwIfAborted();
 
-      const model = available.find(
-        (candidate) => candidate.provider === selected.provider && candidate.id === selected.id,
-      );
-
-      if (model === undefined) {
-        throw new Error(
-          `Subagent model is unavailable: ${input.model}. Choose an available model or connect its provider.`,
-        );
-      }
+      const { model, thinkingLevel } = resolveTaskModel({ ...input, models: available });
 
       const parent: SessionParent = {
         sessionId: id,
@@ -611,7 +601,7 @@ export function createDelegation(input: {
           body: {
             kind: "config",
             model: { provider: model.provider, id: model.id },
-            thinkingLevel: input.thinkingLevel,
+            thinkingLevel,
           } satisfies CommitBody,
           preparation: { kind: "none" },
           actor: { clientId: id, device: "delegate" },

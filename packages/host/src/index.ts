@@ -23,6 +23,7 @@ import type { Plugin, PluginEnv } from "@nyte-ai/core/plugins";
 import { openaiCompactionPlugin } from "@nyte-ai/plugin/openai-compaction";
 import { openaiAstraContextPlugin } from "@nyte-ai/plugin/openai-astra-context";
 import type { Api, Model } from "@nyte-ai/schema";
+import { createModelCatalog, createModelPreferencesStore } from "./catalog.ts";
 import { nyteHome } from "./paths.ts";
 import type { PluginTarget } from "./paths.ts";
 import { resolveHostPlugins } from "./plugins.ts";
@@ -173,7 +174,7 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
 
   const shared = {
     ...base,
-    models,
+    models: createModelCatalog(models, createModelPreferencesStore()),
     drain: "all",
     streamFn: providers.stream,
   } satisfies Partial<NyteOptions>;

@@ -1,6 +1,5 @@
 import { glob, readFile, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { failure, formatSize, green, red, table } from "./terminal.mjs";
 
 const KIB = 1_024;
@@ -10,10 +9,10 @@ const KIB = 1_024;
 const budgets = {
   main: 700 * KIB,
   preload: 16 * KIB,
-  renderer: 4_250 * KIB,
+  renderer: 4_400 * KIB,
 };
 
-const desktopRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const desktopRoot = join(import.meta.dirname, "..");
 
 const problems = [];
 

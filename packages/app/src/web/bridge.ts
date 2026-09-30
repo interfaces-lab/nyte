@@ -6,7 +6,7 @@
 import { createNyteClient } from "@nyte-ai/client";
 import type { NyteClient } from "@nyte-ai/client";
 import type { ServerInfo, WorkspaceSelectInput, WorkspaceSelectOutcome } from "@nyte-ai/protocol";
-import type { HostEvent, GitHubBridge, NyteBridge, OpenWorkspaceOutcome } from "../bridge.ts";
+import type { GitHubBridge, HostEvent, NyteBridge, OpenWorkspaceOutcome } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
 import { serverCatalog } from "../server-connection.ts";
 import { createSessionDirectory } from "./directory.ts";

@@ -9,6 +9,7 @@ export default defineConfig({
   plugins: [
     stylex.vite({
       useCSSLayers: true,
+      propertyValidationMode: "throw",
       lightningcssOptions: {
         targets: {
           chrome: 123 << 16,

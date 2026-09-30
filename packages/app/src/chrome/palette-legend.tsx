@@ -1,6 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
-import { floatingSurfaceStyles } from "@nyte-ai/ui/floating-surface.stylex";
 import { Icon } from "@nyte-ai/ui/icon";
 import { paletteLegendStyles as styles } from "./palette-legend.stylex.ts";
 
@@ -72,10 +71,7 @@ function DitherMark(): ReactElement {
 
 export function PaletteLegend(): ReactElement {
   return (
-    <footer
-      aria-label="Keyboard shortcuts"
-      {...stylex.props(floatingSurfaceStyles.material, styles.footer)}
-    >
+    <footer aria-label="Keyboard shortcuts" {...stylex.props(styles.footer)}>
       <div {...stylex.props(styles.legend)}>
         <span {...stylex.props(styles.item)}>
           <span {...stylex.props(styles.keys)}>

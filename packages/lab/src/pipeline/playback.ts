@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { DURATION } from "./scenario";
 
 export interface Playback {
-  /** Demo seconds, 0 to `DURATION`. */
+  /** Demo seconds, 0 to `duration`. */
   readonly time: number;
+  readonly duration: number;
   readonly playing: boolean;
   readonly speed: number;
   readonly play: () => void;
@@ -14,67 +15,89 @@ export interface Playback {
   readonly setSpeed: (speed: number) => void;
 }
 
+/** `?t=30` opens every demo paused at that second, for screenshots and links. */
+function pinnedTime(): number | undefined {
+  const value = new URLSearchParams(window.location.search).get("t");
+
+  return value === null || Number.isNaN(Number(value)) ? undefined : Number(value);
+}
+
 /**
- * One clock per demo. Stops at the end rather than looping, so the merged
- * state stays on screen; `loop` restarts after a beat instead.
+ * One clock per demo. Stops at the end so the merged state stays on screen;
+ * `loop` holds the end for two seconds and starts over instead.
  */
 export function usePlayback(
-  options: { readonly autoplay?: boolean; readonly loop?: boolean; readonly duration?: number } = {},
+  options: {
+    readonly autoplay?: boolean;
+    readonly loop?: boolean;
+    readonly duration?: number;
+  } = {},
 ): Playback {
   const duration = options.duration ?? DURATION;
-  const [time, setTime] = useState(0);
-  const [playing, setPlaying] = useState(options.autoplay ?? true);
+  const loop = options.loop === true;
+  const pinned = pinnedTime();
+  const [time, setTime] = useState(pinned ?? 0);
+  const [playing, setPlaying] = useState(pinned === undefined && (options.autoplay ?? true));
   const [speed, setSpeed] = useState(1);
-  const last = useRef<number | undefined>(undefined);
+  const clock = useRef(pinned ?? 0);
+
+  const seek = useCallback(
+    (next: number) => {
+      clock.current = Math.min(duration, Math.max(0, next));
+      setTime(clock.current);
+    },
+    [duration],
+  );
 
   useEffect(() => {
-    if (!playing) {
-      last.current = undefined;
-      return;
-    }
+    if (!playing) return;
 
+    let previous: number | undefined;
     let frame = requestAnimationFrame(function tick(now) {
-      const previous = last.current ?? now;
-      last.current = now;
-      setTime((current) => {
-        const next = current + ((now - previous) / 1000) * speed;
+      const next = clock.current + ((now - (previous ?? now)) / 1000) * speed;
+      previous = now;
 
-        if (next < duration) return next;
-        if (options.loop === true) return next > duration + 2 ? 0 : next;
+      if (next >= duration + (loop ? 2 : 0)) {
+        if (!loop) {
+          seek(duration);
+          setPlaying(false);
+          return;
+        }
 
-        setPlaying(false);
+        seek(0);
+      } else {
+        clock.current = next;
+        setTime(Math.min(next, duration));
+      }
 
-        return duration;
-      });
       frame = requestAnimationFrame(tick);
     });
 
     return () => cancelAnimationFrame(frame);
-  }, [playing, speed, duration, options.loop]);
+  }, [playing, speed, duration, loop, seek]);
 
-  const seek = useCallback(
-    (next: number) => setTime(Math.min(duration, Math.max(0, next))),
-    [duration],
-  );
+  const restart = (): void => {
+    seek(0);
+    setPlaying(true);
+  };
 
   return {
-    time: Math.min(time, duration),
+    time,
+    duration,
     playing,
     speed,
     play: () => {
-      if (time >= duration) setTime(0);
+      if (clock.current >= duration) seek(0);
       setPlaying(true);
     },
     pause: () => setPlaying(false),
     toggle: () => {
-      if (!playing && time >= duration) setTime(0);
-      setPlaying(!playing);
-    },
-    seek,
-    restart: () => {
-      setTime(0);
+      if (playing) return setPlaying(false);
+      if (clock.current >= duration) seek(0);
       setPlaying(true);
     },
+    seek,
+    restart,
     setSpeed,
   };
 }

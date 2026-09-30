@@ -145,9 +145,9 @@ export interface DesktopHostDependencies {
   readonly trashPath?: (path: string) => Promise<void>;
   /** Native right-click menu, with the renderer's own signature. */
   showContextMenu(
-    input: Parameters<HostBridge["contextMenu"]>[0],
+    input: CallInput<"host.contextMenu">,
     window: HostWindow,
-  ): ReturnType<HostBridge["contextMenu"]>;
+  ): Promise<CallOutput<"host.contextMenu">>;
   browser: BrowserSurfaces;
   listFonts(): Promise<LocalFontCatalog>;
   /** Native folder picker; resolves undefined on cancel. */
@@ -300,6 +300,8 @@ interface NamedStore {
 /** Long enough for a provider round trip, short enough that Usage still paints. */
 const ACCOUNT_LIMITS_TIMEOUT_MS = 10_000;
 
+const CATALOG_REFRESH_INTERVAL_MS = 60 * 60 * 1_000;
+
 /** The bridge's own SDK subset: `landing` is a protocol operation the desktop never carries. */
 const SDK_OPERATIONS: ReadonlySet<string> = new Set(SDK_OPERATION_PATHS);
 
@@ -320,6 +322,7 @@ export class DesktopHost {
   private readonly otel: ReturnType<typeof createOtelExport>;
   private modelsPromise: Promise<MutableModels> | undefined;
   private catalogPromise: Promise<ResolvedCatalog> | undefined;
+  private catalogRefreshTimer: ReturnType<typeof setInterval> | undefined;
   private readonly selections = new Map<HostWindow, OpenLocalTarget>();
   private readonly openTargets = new Map<string | null, OpenLocalTarget>();
   private server: OpenServerTarget | undefined;
@@ -960,6 +963,7 @@ export class DesktopHost {
     for (const terminals of this.terminalSessions.values()) terminals.dispose();
     this.terminalSessions.clear();
     clearInterval(this.sweepTimer);
+    clearInterval(this.catalogRefreshTimer);
     this.directory.close();
 
     for (const tracked of this.tracked.values()) tracked.controller.abort();
@@ -1263,20 +1267,37 @@ export class DesktopHost {
         allowNetwork: false,
       });
       const empty = models.getModels().length === 0;
-      const refreshed = models
-        .refresh(empty ? { signal: AbortSignal.timeout(10_000) } : undefined)
-        .then((result) => {
-          if (result.aborted) return;
-          this.catalogChanged();
-        });
+      const refreshed = this.refreshModels(models, empty ? AbortSignal.timeout(10_000) : undefined);
 
-      if (empty) await refreshed.catch(() => undefined);
-      else void refreshed.catch(() => undefined);
+      if (empty) await refreshed;
+      else void refreshed;
+
+      if (!this.closed && this.catalogRefreshTimer === undefined) {
+        this.catalogRefreshTimer = setInterval(
+          () => void this.refreshModels(models),
+          CATALOG_REFRESH_INTERVAL_MS,
+        );
+        this.catalogRefreshTimer.unref();
+      }
 
       return models;
     })();
 
     return this.modelsPromise;
+  }
+
+  private async refreshModels(models: MutableModels, signal?: AbortSignal): Promise<void> {
+    try {
+      const result = await models.refresh(signal === undefined ? undefined : { signal });
+
+      for (const [provider, cause] of result.errors) {
+        retainDiagnostic({ correlationId: `model-catalog:${provider}`, cause });
+      }
+
+      if (!result.aborted && !this.closed) this.catalogChanged();
+    } catch (cause) {
+      retainDiagnostic({ correlationId: "model-catalog", cause });
+    }
   }
 
   private catalog(): Promise<ResolvedCatalog> {

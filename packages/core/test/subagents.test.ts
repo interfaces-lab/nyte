@@ -43,6 +43,7 @@ function script(
   options: {
     readonly childGate?: () => Promise<void>;
     readonly taskArguments?: Parameters<typeof call>[2];
+    readonly tool?: "task" | "create";
     readonly onRequest?: (context: Context) => void;
   } = {},
 ) {
@@ -80,7 +81,7 @@ function script(
         title: TASK_TITLE,
         prompt: CHILD_PROMPT,
       };
-      answer = assistant("", { calls: [call("task-1", "task", args)] });
+      answer = assistant("", { calls: [call("task-1", options.tool ?? "task", args)] });
     } else {
       answer = assistant(`three files (${text})`);
     }
@@ -265,36 +266,57 @@ const astra: Model<Api> = { ...model, id: "gpt-astra", name: "GPT Astra", reason
 const defaultTaskModel: Model<Api> = {
   ...model,
   provider: "openai-codex",
-  id: "gpt-5.6-sol",
-  name: "GPT 5.6 Sol",
+  id: "gpt-6.1-sol",
+  name: "GPT 6.1 Sol",
   reasoning: true,
 };
 // Same id under another provider catches dispatch that matches only the model id.
 const decoy: Model<Api> = { ...astra, provider: "other" };
 
-test("task defaults to Codex GPT 5.6 Sol with high thinking", async () => {
-  const scripted = script({ taskArguments: { prompt: CHILD_PROMPT } });
-  const nyte = await open(scripted.streamFn, { catalog: [model, defaultTaskModel] });
-  try {
-    const parent = await nyte.sessions.create();
-    await nyte.sessions.configure({ sessionId: parent.sessionId, thinkingLevel: "low" });
-    nyte.attach();
-    await nyte.messages.send({ sessionId: parent.sessionId, content: "delegate default" });
-    await untilIdle(nyte, parent.sessionId);
+const fallbackTaskModel: Model<Api> = {
+  ...opus,
+  id: "claude-opus-5-5",
+  name: "Claude Opus 5.5",
+};
 
-    const child = await onlyChild(nyte, parent.sessionId);
-    assert.deepEqual(scripted.selected.get(CHILD_PROMPT), defaultTaskModel);
-    assert.deepEqual(child.config.model, {
-      provider: "openai-codex",
-      id: "gpt-5.6-sol",
+for (const tool of ["task", "create"] as const) {
+  for (const fallback of [false, true]) {
+    test(`${tool} uses ${fallback ? "Opus 5.5 medium when Sol is unavailable" : "GPT 6.1 Sol high"}`, async () => {
+      const scripted = script({
+        tool,
+        taskArguments: tool === "task" ? { prompt: CHILD_PROMPT } : { title: TASK_TITLE },
+      });
+      const catalog = [model, fallbackTaskModel, defaultTaskModel];
+      const nyte = await open(scripted.streamFn, {
+        catalog,
+        getAvailable: async () =>
+          fallback ? catalog.filter((candidate) => candidate !== defaultTaskModel) : catalog,
+      });
+      try {
+        const parent = await nyte.sessions.create();
+        await nyte.sessions.configure({ sessionId: parent.sessionId, thinkingLevel: "low" });
+        nyte.attach();
+        await nyte.messages.send({ sessionId: parent.sessionId, content: "delegate default" });
+        await untilIdle(nyte, parent.sessionId);
+        const child = await onlyChild(nyte, parent.sessionId);
+        const selected = fallback ? fallbackTaskModel : defaultTaskModel;
+        const thinkingLevel = fallback ? "medium" : "high";
+        assert.deepEqual(child.config.model, { provider: selected.provider, id: selected.id });
+        assert.equal(child.config.thinkingLevel, thinkingLevel);
+
+        if (tool === "create") {
+          await nyte.messages.send({ sessionId: child.sessionId, content: CHILD_PROMPT });
+          await untilIdle(nyte, child.sessionId);
+        }
+
+        assert.deepEqual(scripted.selected.get(CHILD_PROMPT), selected);
+        assert.equal(scripted.reasoning.get(CHILD_PROMPT), thinkingLevel);
+      } finally {
+        await nyte.close();
+      }
     });
-    assert.equal(child.config.thinkingLevel, "high");
-    assert.equal(scripted.reasoning.get(CHILD_PROMPT), "high");
-    assert.equal(child.name, CHILD_PROMPT);
-  } finally {
-    await nyte.close();
   }
-});
+}
 
 for (const selected of [opus, astra]) {
   test(`task dispatches and persists exactly ${selected.provider}/${selected.id}`, async () => {
@@ -350,7 +372,7 @@ for (const selected of [opus, astra]) {
   });
 }
 
-test("no available models omits task rather than sending an empty model enum", async () => {
+test("an unavailable selected model fails without a provider request", async () => {
   const scripted = script();
   const nyte = await open(scripted.streamFn, { getAvailable: async () => [] });
   try {
@@ -358,24 +380,19 @@ test("no available models omits task rather than sending an empty model enum", a
     nyte.attach();
     await nyte.messages.send({ sessionId: parent.sessionId, content: "show available models" });
     await untilIdle(nyte, parent.sessionId);
-    const tools = scripted.offered.get("show available models");
-    assert.ok(tools !== undefined);
-    assert.ok(!tools.includes("task"));
-    assert.equal((await nyte.runs.current({ sessionId: parent.sessionId }))?.phase.kind, "done");
+    assert.equal(scripted.selected.size, 0);
+    const run = await nyte.runs.current({ sessionId: parent.sessionId });
+    assert.ok(run?.phase.kind === "failed");
+    assert.match(run.phase.failure.message, /Selected model is unavailable: openai\/script-model/);
   } finally {
     await nyte.close();
   }
 });
 
-test("every parent request advertises all currently available cross-provider models", async () => {
+test("task and create advertise the current enabled cross-provider models on every request", async () => {
   let available = [model, opus];
-  const menus: unknown[] = [];
-  const scripted = script({
-    onRequest(context) {
-      const task = context.tools?.find((tool) => tool.name === "task");
-      if (task) menus.push(task.parameters);
-    },
-  });
+  const contexts: Context[] = [];
+  const scripted = script({ onRequest: (context) => contexts.push(context) });
   const nyte = await open(scripted.streamFn, {
     catalog: [decoy, model, opus, astra],
     getAvailable: async (provider) =>
@@ -386,28 +403,27 @@ test("every parent request advertises all currently available cross-provider mod
     nyte.attach();
     for (const models of [
       [model, opus],
-      [astra, opus],
+      [model, astra],
     ]) {
       available = models;
       await nyte.messages.send({ sessionId: parent.sessionId, content: "show available models" });
       await untilIdle(nyte, parent.sessionId);
     }
-    assert.equal(menus.length, 2);
+    assert.equal(contexts.length, 2);
     for (const [index, expected] of [
       [0, ["openai/script-model", "anthropic/claude-opus-5"]],
-      [1, ["openai/gpt-astra", "anthropic/claude-opus-5"]],
+      [1, ["openai/script-model", "openai/gpt-astra"]],
     ] as const) {
-      const schema = menus[index];
-      assert.ok(typeof schema === "object" && schema !== null && "properties" in schema);
-      const properties = schema.properties;
-      assert.ok(typeof properties === "object" && properties !== null && "model" in properties);
-      const selection = properties.model;
-      assert.ok(typeof selection === "object" && selection !== null && "enum" in selection);
-      assert.deepEqual(selection.enum, expected);
-      assert.ok(!("agent" in properties));
-      assert.ok("required" in schema && Array.isArray(schema.required));
-      assert.deepEqual(new Set(schema.required), new Set(["prompt"]));
-      assert.ok("additionalProperties" in schema && schema.additionalProperties === false);
+      for (const name of ["task", "create"]) {
+        const schema = contexts[index]?.tools?.find((tool) => tool.name === name)?.parameters;
+        assert.ok(typeof schema === "object" && schema !== null && "properties" in schema);
+        const properties = schema.properties;
+        assert.ok(typeof properties === "object" && properties !== null && "model" in properties);
+        const selection = properties.model;
+        assert.ok(typeof selection === "object" && selection !== null && "enum" in selection);
+        assert.deepEqual(selection.enum, expected);
+        assert.ok(!("agent" in properties));
+      }
     }
   } finally {
     await nyte.close();
@@ -447,7 +463,7 @@ for (const args of [
   });
 }
 
-test("an unavailable default fails without using another available model", async () => {
+test("unavailable default and fallback fail without choosing a third model", async () => {
   const scripted = script({ taskArguments: { prompt: CHILD_PROMPT } });
   const nyte = await open(scripted.streamFn, { catalog: [model] });
   try {
@@ -461,7 +477,7 @@ test("an unavailable default fails without using another available model", async
     assert.ok(
       (await transcript(nyte, parent.sessionId)).some((line) =>
         line.includes(
-          "Subagent model is unavailable: openai-codex/gpt-5.6-sol. Choose an available model or connect its provider.",
+          "Default subagent models are unavailable: openai-codex/gpt-6.1-sol, anthropic/claude-opus-5-5.",
         ),
       ),
     );
@@ -470,12 +486,17 @@ test("an unavailable default fails without using another available model", async
   }
 });
 
-for (const selected of ["openai/gpt-astra", "anthropic/claude-opus-5", "unknown/script-model"]) {
+for (const selected of [
+  "openai/gpt-astra",
+  "anthropic/claude-opus-5",
+  "openai-codex/gpt-6.1-sol",
+  "unknown/script-model",
+]) {
   test(`unavailable selection ${selected} fails without a child or fallback`, async () => {
     const scripted = script();
     const nyte = await open(scripted.streamFn, {
-      catalog: [model, astra, opus, decoy],
-      getAvailable: async () => [model, decoy],
+      catalog: [model, astra, opus, decoy, defaultTaskModel, fallbackTaskModel],
+      getAvailable: async () => [model, decoy, fallbackTaskModel],
     });
     try {
       const parent = await nyte.sessions.create();

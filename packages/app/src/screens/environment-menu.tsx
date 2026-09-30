@@ -1,22 +1,15 @@
-/**
- * The new chat's first choice: where it runs. This Mac is the default; Cloud
- * starts a chat on the configured server and opens it. Environments manages
- * the list.
- */
-import * as stylex from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { Button } from "@nyte-ai/ui/button";
-import { Icon } from "@nyte-ai/ui/icon";
-import { Menu, MenuItem, MenuRadioGroup, MenuRadioItem, MenuSeparator } from "@nyte-ai/ui/menu";
+import { MenuItem, MenuRadioGroup, MenuRadioItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import { toast } from "@nyte-ai/ui/toast";
 import { shellActions } from "../chrome/shell-state.ts";
 import { usePaneActions } from "../layout/pane-context.tsx";
 import { nyte } from "../nyte.ts";
 import { keys, queryClient, useServerState } from "../queries.ts";
-import { threadStyles } from "./thread.stylex.ts";
+import { clientActions } from "../client-actions.ts";
+import { ContextSelector } from "./context-selector.tsx";
 
-export function EnvironmentMenu(): ReactElement {
+export function EnvironmentMenu({ active }: { readonly active: boolean }): ReactElement {
   const server = useServerState(false);
   const panes = usePaneActions();
   const [starting, setStarting] = useState(false);
@@ -38,16 +31,11 @@ export function EnvironmentMenu(): ReactElement {
   };
 
   return (
-    <Menu
-      label="Select environment"
-      align="start"
-      trigger={
-        <Button size="condensed" xstyle={threadStyles.workspaceContextPath}>
-          <Icon name="computer" size={13} />
-          <span {...stylex.props(threadStyles.workspaceContextText)}>This Mac</span>
-          <Icon name="chevron-down" size={10} />
-        </Button>
-      }
+    <ContextSelector
+      action={clientActions.selectEnvironment}
+      value="This Mac"
+      icon="laptop"
+      active={active}
     >
       <MenuRadioGroup
         value="this-mac"
@@ -55,7 +43,7 @@ export function EnvironmentMenu(): ReactElement {
           if (value === "cloud") void startCloudChat();
         }}
       >
-        <MenuRadioItem value="this-mac" icon="computer">
+        <MenuRadioItem value="this-mac" icon="laptop">
           This Mac
         </MenuRadioItem>
         {configured && (
@@ -73,6 +61,6 @@ export function EnvironmentMenu(): ReactElement {
       <MenuItem icon="server" onSelect={() => shellActions.openEnvironments()}>
         Environments…
       </MenuItem>
-    </Menu>
+    </ContextSelector>
   );
 }

@@ -151,7 +151,7 @@ export function transcriptRows({
   readonly failed: boolean;
   readonly turns: readonly Turn[];
   readonly landing: readonly LandingMessage[];
-  /** The retry banner's title; absent while the run is not retrying. */
+  /** The retry status's title; absent while the run is not retrying. */
   readonly retrying: string | undefined;
   readonly working: boolean;
 }): TranscriptRow[] {

@@ -7,7 +7,7 @@
 import { isTerminalPhase, validateHeadName } from "@nyte-ai/protocol";
 import type { Api, Model } from "@nyte-ai/schema";
 import type { Event, Oid, RefName, Run, RunConfig } from "../model.ts";
-import { TASK_TOOL, taskModelParameters } from "../../plugins/builtin/subagents.ts";
+import { TASK_TOOL, subagentModelParameters } from "../../plugins/builtin/subagents.ts";
 import { revokeDelegations } from "../delegation-record.ts";
 import { failedAssistant } from "./requests.ts";
 import { parseHeadRef, isHeadName, parseInboxRef, runRef } from "../names.ts";
@@ -150,27 +150,35 @@ export function createRunners(input: {
       },
       {
         streamFn: async (model, context, streamOptions) => {
+          const available = await options.models.getAvailable(
+            pooled.parent === undefined ? undefined : model.provider,
+            { signal: streamOptions?.signal },
+          );
+
           if (
-            pooled.parent !== undefined ||
-            !context.tools?.some((tool) => tool.name === TASK_TOOL)
+            !available.some(
+              (candidate) => candidate.provider === model.provider && candidate.id === model.id,
+            )
           ) {
-            return options.streamFn(model, context, streamOptions);
+            const owner = pooled.parent === undefined ? "Selected" : "Subagent";
+
+            throw new Error(
+              `${owner} model is unavailable: ${model.provider}/${model.id}. Choose an enabled model or connect its provider.`,
+            );
           }
 
-          const available = await options.models.getAvailable(undefined, {
-            signal: streamOptions?.signal,
-          });
+          if (pooled.parent !== undefined || context.tools === undefined) {
+            return options.streamFn(model, context, streamOptions);
+          }
 
           return options.streamFn(
             model,
             {
               ...context,
-              tools: context.tools.flatMap((tool) =>
-                tool.name !== TASK_TOOL
-                  ? [tool]
-                  : available.length === 0
-                    ? []
-                    : [{ ...tool, parameters: taskModelParameters(available) }],
+              tools: context.tools.map((tool) =>
+                tool.name !== TASK_TOOL && tool.name !== "create"
+                  ? tool
+                  : { ...tool, parameters: subagentModelParameters(tool.name, available) },
               ),
             },
             streamOptions,

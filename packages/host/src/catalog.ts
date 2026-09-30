@@ -1,10 +1,8 @@
 /**
  * The provider catalog a host answers from, and the user-scoped model
- * preferences it applies: which providers are on, which models each provider
- * hides from the picker, and what a new chat starts with. Preferences live in
- * `~/.nyte` beside the credential and model stores, so every host on the
- * machine reads the same choices. A damaged file reads as empty and heals on
- * the next write: a preference is UX, not a security gate.
+ * preferences it applies: which providers and models are enabled, and what a
+ * new chat starts with. Preferences live in `~/.nyte` beside the credential and
+ * model stores, so every host on the machine reads the same choices.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -14,6 +12,7 @@ import {
   getSupportedThinkingLevels,
 } from "@nyte-ai/ai";
 import type { Api, Model, Models } from "@nyte-ai/ai";
+import type { ModelCatalog } from "@nyte-ai/core";
 import { fastModeSettingId } from "@nyte-ai/plugin/examples/fast-mode";
 import { schemas } from "@nyte-ai/protocol";
 import type {
@@ -159,6 +158,31 @@ export function createModelPreferencesStore(): ModelPreferencesStore {
   return new ModelPreferencesStore(join(nyteHome(), "model-preferences.json"));
 }
 
+function isModelEnabled(
+  model: Pick<Model<Api>, "provider" | "id">,
+  preferences: ModelPreferences,
+): boolean {
+  const provider = preferences.providers[model.provider];
+
+  return provider?.enabled !== false && !provider?.hiddenModels?.includes(model.id);
+}
+
+export function createModelCatalog(
+  models: ModelCatalog,
+  preferences: ModelPreferencesStore,
+): ModelCatalog {
+  return {
+    getModels: models.getModels.bind(models),
+    getModel: models.getModel.bind(models),
+    async getAvailable(provider, options) {
+      const available = await models.getAvailable(provider, options);
+      const current = await preferences.read();
+
+      return available.filter((model) => isModelEnabled(model, current));
+    },
+  };
+}
+
 export interface ResolvedCatalog {
   readonly catalog: ProviderCatalog;
   /** The catalog's default as the SDK needs it, for composition. */
@@ -168,7 +192,6 @@ export interface ResolvedCatalog {
 interface Entry {
   readonly model: Model<Api>;
   readonly option: CatalogModel;
-  readonly available: boolean;
 }
 
 /**
@@ -213,12 +236,6 @@ export async function readCatalog(
     }),
   );
 
-  const listedProviders = new Set(
-    providers
-      .filter((provider) => provider.enabled && provider.connection.kind !== "disconnected")
-      .map((provider) => provider.id),
-  );
-
   const availableKeys = new Set(
     (await models.getAvailable()).map((model) => `${model.provider}/${model.id}`),
   );
@@ -230,7 +247,6 @@ export async function readCatalog(
 
     return {
       model,
-      available,
       option: {
         key,
         provider: model.provider,
@@ -248,25 +264,22 @@ export async function readCatalog(
           : { kind: "unavailable" },
         thinkingLevels: getSupportedThinkingLevels(model),
         hidden,
-        listed: available && listedProviders.has(model.provider) && !hidden,
+        listed: available && isModelEnabled(model, preferences),
       },
     };
   });
 
   const providerIds = providers.map((provider) => provider.id);
   const listed = entries.filter((entry) => entry.option.listed);
-  const available = entries.filter((entry) => entry.available);
+  const enabled = entries.filter((entry) => isModelEnabled(entry.model, preferences));
   const chosen = preferences.defaults.model;
 
-  // Prefer a listed choice, but keep hidden or disabled settings usable as a
-  // last resort.
   const fallback =
     listed.find(
       (entry) => entry.model.provider === chosen?.provider && entry.model.id === chosen.id,
     ) ??
     firstPreferred(listed, providerIds) ??
-    firstPreferred(available, providerIds) ??
-    firstPreferred(entries, providerIds);
+    firstPreferred(enabled, providerIds);
 
   return {
     defaultModel: fallback?.model,

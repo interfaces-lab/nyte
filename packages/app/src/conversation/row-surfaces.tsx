@@ -38,19 +38,23 @@ export function Marker({
   title,
   children,
 }: Pick<ComponentProps<"div">, "role" | "title" | "children"> & {
-  /** `default` is a muted status line, `destructive` its failure tone, `warning` a filled banner. */
-  readonly variant?: "default" | "destructive" | "warning";
+  /** `default` is a muted status line, `destructive` its failure tone, `retrying` a shimmering tail status. */
+  readonly variant?: "default" | "destructive" | "retrying";
 }): ReactElement {
   return (
     <div
       role={role}
       title={title}
       {...stylex.props(
-        variant === "warning" ? markerStyles.warning : markerStyles.default,
+        variant === "retrying" ? markerStyles.retrying : markerStyles.default,
         variant === "destructive" && markerStyles.destructive,
       )}
     >
-      {children}
+      {variant === "retrying" ? (
+        <span {...stylex.props(markerStyles.shimmer)}>{children}</span>
+      ) : (
+        children
+      )}
     </div>
   );
 }

@@ -1,8 +1,7 @@
 // node scripts/build.mjs [--package <electron-builder args>]
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, relative } from "node:path";
 import packageMetadata from "../package.json" with { type: "json" };
 import { artifacts } from "./artifacts.mjs";
 import {
@@ -19,7 +18,7 @@ import {
   table,
 } from "./terminal.mjs";
 
-const desktopRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const desktopRoot = join(import.meta.dirname, "..");
 
 const args = process.argv.slice(2);
 

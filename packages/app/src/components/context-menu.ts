@@ -5,8 +5,7 @@
  * panels composite over the renderer, which a DOM menu cannot do without
  * registering for overlay occlusion.
  */
-import type { ContextMenuTemplateItem, HostState } from "../bridge.ts";
-import { nyte } from "../nyte.ts";
+import type { ContextMenuTemplateItem, HostBridge, HostState } from "../bridge.ts";
 import { macPlatform } from "../platform.ts";
 
 /** An item owns the work it performs, so no call site matches choices back up. */
@@ -24,8 +23,10 @@ export function revealLabel(platform: HostState["platform"] | undefined): string
 /**
  * Runs the chosen entry. Absent entries and the separators they strand are
  * dropped, so a call site turns a whole group off by leaving its items out.
+ * The caller holds the host's menu, so a host without one attaches nothing.
  */
 export async function showContextMenu(
+  contextMenu: NonNullable<HostBridge["contextMenu"]>,
   event: { readonly clientX: number; readonly clientY: number },
   entries: readonly (ContextMenuEntry | false | undefined)[],
 ): Promise<void> {
@@ -39,7 +40,7 @@ export async function showContextMenu(
 
   if (menu.length === 0) return;
 
-  const chosen = await nyte.host.contextMenu({
+  const chosen = await contextMenu({
     items: menu.map<ContextMenuTemplateItem>((entry) =>
       entry.kind === "item"
         ? {

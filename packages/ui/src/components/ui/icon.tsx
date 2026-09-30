@@ -71,6 +71,7 @@ import {
   IconListBullets,
   IconLoader,
   IconLock,
+  IconMacbook,
   IconMagnifyingGlass,
   IconMerged,
   IconMinimize45,
@@ -110,6 +111,7 @@ import {
   IconWindowApp,
   IconZai,
 } from "central-icons";
+import FilledIconMacbook from "central-icons-filled/IconMacbook";
 import type { CentralIconBaseProps } from "central-icons/CentralIconBase";
 import {
   Icon3dBoxTop as FilledIcon3dBoxTop,
@@ -287,6 +289,7 @@ const GLYPHS = {
   javascript: pair(IconJavascript, FilledIconJavascript),
   key: pair(IconKey1, FilledIconKey1),
   keyboard: pair(IconKeyboard, FilledIconKeyboard),
+  laptop: pair(IconMacbook, FilledIconMacbook),
   layers: pair(IconLayersTwo, FilledIconLayersTwo),
   linear: pair(IconLinear, FilledIconLinear),
   list: pair(IconListBullets, FilledIconListBullets),

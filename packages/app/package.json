@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./vite": "./vite.ts",
     "./dist/*": "./dist/*",
     "./*": "./src/*"
   },
@@ -40,7 +41,7 @@
     "@tanstack/react-router": "1.170.27",
     "@tanstack/react-virtual": "3.14.10",
     "beautiful-mermaid": "1.1.3",
-    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.1.319",
+    "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.2.1",
     "ghostty-web": "github:anomalyco/ghostty-web#83c0a07b8628b748aed073b232cb4b52a6ca11c1",
     "lexical": "^0.51.0",
     "motion": "12.43.0",
@@ -59,14 +60,14 @@
     "@nyte-ai/core": "workspace:*",
     "@playwright/test": "1.63.0",
     "@stylexjs/unplugin": "0.19.0",
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "@vitejs/plugin-react": "5.2.0",
-    "babel-plugin-react-compiler": "1.0.0",
-    "electron": "^44.4.3",
+    "@vitejs/plugin-react": "6.1.1",
+    "electron": "^44.4.5",
+    "oxc-transform-react": "0.151.0",
     "typescript": "^7.0.2",
-    "vite": "7.1.4",
-    "vitest": "^5.0.1"
+    "vite": "8.3.1",
+    "vitest": "^5.0.2"
   }
 }

@@ -9,7 +9,7 @@
  * pair around a push channel, cursor semantics unchanged.
  */
 import type { Operation, Seq, SessionEvent, SessionId } from "@nyte-ai/protocol";
-import type { NyteBridge } from "@nyte-ai/app/bridge.ts";
+import type { HostBridge, NyteBridge } from "@nyte-ai/app/bridge.ts";
 import type { IpcFailure } from "@nyte-ai/app/errors.ts";
 export const CALL_CHANNEL = "nyte:call";
 
@@ -142,10 +142,18 @@ export type WatchEnvelope =
   | { readonly watchId: string; readonly kind: "event"; readonly event: SessionEvent }
   | { readonly watchId: string; readonly kind: "ended"; readonly error?: IpcFailure };
 
-/** Walk `sessions.create` / `host.github.state` to the matching NyteBridge method. */
+/**
+ * The desktop carries every host capability the contract leaves optional for
+ * browsers. It opens sign-in pages itself, so it never takes a code back.
+ */
+export type DesktopBridge = Omit<NyteBridge, "host"> & {
+  readonly host: Required<Omit<HostBridge, "answerLogin">>;
+};
+
+/** Walk `sessions.create` / `host.github.state` to the matching DesktopBridge method. */
 type BridgeMethod<T, P extends string> = P extends `${infer Head}.${infer Rest}`
   ? Head extends keyof T
-    ? BridgeMethod<NonNullable<T[Head]>, Rest>
+    ? BridgeMethod<T[Head], Rest>
     : never
   : P extends keyof T
     ? T[P]
@@ -153,7 +161,7 @@ type BridgeMethod<T, P extends string> = P extends `${infer Head}.${infer Rest}`
 
 /** The authoritative path-to-method relationship carried by Electron IPC. */
 export type CallMethodByPath = {
-  readonly [P in CallPath]: BridgeMethod<NyteBridge, P>;
+  readonly [P in CallPath]: BridgeMethod<DesktopBridge, P>;
 };
 
 export type CallInput<P extends CallPath> =

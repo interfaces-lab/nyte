@@ -15,7 +15,7 @@ import { keys, queryClient } from "../../queries.ts";
 import { nyte } from "../../nyte.ts";
 import { useMountEffect } from "../../use-mount-effect.ts";
 import { applyLoginEvent } from "../login-attempts.ts";
-import { ModelsSettings } from "../models-settings.tsx";
+import { ProvidersSettings } from "../models-settings.tsx";
 
 function Harness(): ReactElement {
   useMountEffect(() =>
@@ -29,7 +29,7 @@ function Harness(): ReactElement {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ModelsSettings />
+      <ProvidersSettings />
       <Toaster />
     </QueryClientProvider>
   );
