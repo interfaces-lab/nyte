@@ -1,37 +1,26 @@
 ---
 title: Design
-description: "How @nyte-ai/core is put together: content-addressed objects, atomic refs, fenced leases, and one ordered event stream"
+description: "Content-addressed objects, atomic refs, fenced leases, and one ordered event stream in @nyte-ai/core"
 ---
 
-This is the design of `@nyte-ai/core`. It says what the runtime is, what shape each part has,
-and what a host or client can count on. When this page and any other document disagree about a
-contract, this page wins. **must** and **must not** are the load-bearing words. Whether a thing
-is built is a question for the tree and its tests, not for this page. What follows describes the
-kernel that exists today, checked against `packages/core/src/kernel` as of this writing.
-
-The yardstick for every section is the same. What is the smallest set of mechanisms that keeps
-the promises below? If a feature can be a projection, it is a projection. If it can be a ref, it
-is a ref. If an operation can be one compare-and-swap, it is one compare-and-swap. I have tried to be
-ruthless about this, because every extra mechanism is another thing that can disagree with the
-others at 3am.
+This page defines `@nyte-ai/core` contracts and overrides conflicting documents. The tree and tests
+determine shipped behavior.
 
 ## What core is
 
-Nyte core is a durable runtime for agent conversations. Three promises drive everything else:
+Nyte core is a durable runtime for agent conversations.
 
-- **It runs anywhere.** The same kernel runs inside an Electron main process, under a TUI, on a
-  VM, and in request-scoped infrastructure. A runner reads all durable state at the start of each
-  step. A long-lived process is an optimization, never a requirement.
-- **Any number of participants may write at once.** A phone, a web page, a desktop app, and a
-  cloud job may all submit to one session. Participant writes never take the runner's lease. They
-  linearize through compare-and-swap and retry the conflicts they are expected to meet.
-- **Accepted input is not lost and published history is not rewritten.** Objects are immutable.
-  Refs say which objects are current. A failed publish leaves a loose object, not a half-applied
-  transaction. Retention may collect an object only once no ref or retained ref event protects it
-  and its grace period has passed.
+- **It runs anywhere.** The same kernel runs in an Electron main process, under a TUI, on a VM,
+  and in request-scoped infrastructure. Each step reads all durable state. A long-lived process
+  is an optimization, never a requirement.
+- **Any number of participants may write at once.** Phones, web pages, desktop apps, and cloud
+  jobs may submit to one session. Participant writes never take the runner's lease. They
+  linearize through compare-and-swap and retry expected conflicts.
+- **Accepted input is not lost and published history is not rewritten.** Objects are immutable,
+  and refs identify current objects. A failed publish leaves a loose object, not a partial
+  transaction.
 
-Four scenes are the acceptance tests for the whole design. If a change to the kernel breaks one of
-these, the change is wrong, whatever else it improves.
+A kernel change must preserve these four acceptance scenes.
 
 1. Three phones submit at the same moment to `next` on an idle head. Every submission
    succeeds. The tip retries form one change chain and the oldest change starts a run. The rest
@@ -49,9 +38,6 @@ these, the change is wrong, whatever else it improves.
 
 ### Facts we accept
 
-Each mechanism on this page answers one fact I cannot change. That is what keeps the mechanism
-count down. One per fact, and a new mechanism needs a new fact behind it.
-
 | Fact                                                   | Mechanism                                                                       | Section                                 |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------- | --------------------------------------- |
 | The process can die at any moment, or never existed    | Every uncertain tool call moves an effect ref from intent to result             | [Runs](#runs)                           |
@@ -68,8 +54,7 @@ count down. One per fact, and a new mechanism needs a new fact behind it.
 
 ### Roles
 
-Six roles. One process can play several at once. The TUI plays all of them. A phone plays only
-client.
+One process can play several roles. The TUI plays all six. A phone plays only client.
 
 | Role   | Is                                                                                                               |
 | ------ | ---------------------------------------------------------------------------------------------------------------- |
@@ -80,15 +65,10 @@ client.
 | plugin | Host-side code that contributes model context, tools, commands, settings, resources, and policy.                 |
 | schema | The shared message and JSON types used at the object boundary, by the agent loop, and by clients.                |
 
-Protocol adds the shapes a client draws without knowing who produced them: `Choice` and
-`Selection` today, beside the setting, notification, and status shapes. They are data, never
-calls.
+Protocol defines client-rendered `Choice`, `Selection`, setting, notification, and status data.
+They are never calls.
 
 ## The model, in git terms
-
-Core is git's object database with messages in place of files. If you know git, this table is
-the reading guide for the rest of the page. If you don't, it still tells you which ideas were
-borrowed and which were changed on purpose.
 
 | git                           | core                                                                             |
 | ----------------------------- | -------------------------------------------------------------------------------- |
@@ -107,39 +87,17 @@ borrowed and which were changed on purpose.
 | worktree                      | none; a client reads any commit and a runner reads refs at every step            |
 | garbage collection            | mark from refs and retained ref events, wait through a grace period, then sweep  |
 
-The stricter rule, and the one people push back on first, is the one-parent rule. A commit has one
-`parent`, or `null` at a root. That chain alone becomes model context. `imports` may name commits
-that were summarized or carried across a branch, but imports are provenance only. They **must not**
-add a second context path. Git merges are fine for files because a three-way merge of text is a
-well-understood operation. There is no such operation for two conversations.
-
-There is no worktree and no checkout. A client may read any commit. A runner advances one head
-without materializing files or holding conversation state outside the store.
-
-Generated text **must not** be mechanically replayed onto a new base. Instead the object model has
-a `summary` commit body for a path carried forward by meaning. `heads.move({ summary })` asks the
-model to summarize the abandoned path and writes that commit with the navigation target as its
-parent. A model failure returns `failed` and leaves the head where it was.
-
-The reflog is retained, not eternal. The store exposes a floor. Events at or below it may be
-removed, and unreachable objects lose the protection those old ref events gave them. A grace
-period still protects loose objects and recently unreachable history before collection.
+A commit has one `parent`, or `null` at a root. Only that chain becomes model context. `imports`
+record summarized or carried commits as provenance and **must not** add another context path.
 
 ## The four authorities
 
-A session has four authorities. Everything else is a helper or a projection over them.
-
 ### Objects
 
-Objects are content-addressed and immutable. An object's body is its JSON with keys sorted and no
-whitespace, per RFC 8785. `hashObject` returns the SHA-256 hex of the body. The store keeps the
-body and checks it against the oid on every read. Any field change produces a different oid.
-
-Putting an identical value again returns the same oid and rewrites nothing. Most objects carry a
-write time, so a retried write usually creates a new object. Retries stay safe through
-`refs/keys/<key>`, not through hashing.
-
-There are six object kinds:
+An object's body is RFC 8785 JSON with sorted keys and no whitespace. `hashObject` returns its
+SHA-256 hex. The store checks the body against the oid on every read. Putting the same value again
+returns the same oid without rewriting it. Most objects carry a write time, so retries usually
+create a new object. `refs/keys/<key>` makes retries safe.
 
 | Object   | Meaning                                                                                                       |
 | -------- | ------------------------------------------------------------------------------------------------------------- |
@@ -150,16 +108,12 @@ There are six object kinds:
 | `stack`  | The parent head and base commit for a stacked head.                                                           |
 | `blob`   | A small JSON value behind a fact, job record, compaction record, cancellation marker, or deletion marker.     |
 
-Every commit can name the submitted `change`, repeat its submission `key`, name the `run` that
-wrote it, and identify its `author`. The body determines the rest. A user message or background
-`completion` has `start`: either no run started there, or it records the workspace tree at the
-start of that run. An assistant message has a complete `calls` map and an `outcome` that is either
-`ok` or carries the classified `Failure`. A tool result has its one settled `call` class and the
-workspace `tree` after the batch. A `summary` alone has `imports`, the commits it summarizes.
-These fields are provenance, never context, and the model never sees them. They let a client ask
-which files one run touched or which commit a receipt became without guessing from timestamps.
-
-A commit body is one of five kinds:
+Every commit can name its submitted `change`, submission `key`, writing `run`, and `author`. A
+user message or background `completion` has `start`, which records either that no run started there
+or the new run's initial workspace tree. An assistant message has a complete `calls` map and an
+`outcome` of `ok` or a classified `Failure`. A tool result has its settled `call` class and the
+workspace `tree` after the batch. Only a `summary` has `imports`, naming summarized commits. These
+fields are provenance and never reach the model.
 
 | Commit body  | Meaning                                                                                                          |
 | ------------ | ---------------------------------------------------------------------------------------------------------------- |
@@ -169,30 +123,21 @@ A commit body is one of five kinds:
 | `summary`    | What a path being carried forward was about. It does not cut context.                                            |
 | `config`     | A model, thinking level, or agent declaration. The latest value of each field wins.                              |
 
-Objects **must** be written before the ref update that makes them reachable. A failed update may
-leave loose objects. That is safe, because no ref names them, and retention collects them after
-the grace period. I would rather have a few orphaned rows than a ref pointing at nothing.
+Objects **must** be written before a ref makes them reachable. A failed update may leave loose
+objects, which retention collects after the grace period.
 
-One consequence takes people a moment. A commit oid cannot exist while an assistant message is
-still streaming, because the message is part of the bytes that get hashed. So streaming has its
-own identity. Provisional deltas name `(runId, attempt, index)`, and the finished commit supplies
-its oid at settlement.
+A streaming assistant message has no commit oid until complete. Provisional deltas name
+`(runId, attempt, index)`; settlement supplies the finished commit's oid.
 
 ### Refs
 
-Refs are the only mutable domain state. They move only through one multi-ref compare-and-swap.
-Every update names the expected oid in `from` and the desired oid or absence in `to`. The store
-checks every expectation before writing any ref. All writes and their ref events commit together,
-or none do.
+Refs are the only mutable domain state. One multi-ref compare-and-swap moves them. Each update
+names the expected oid in `from` and the desired oid or absence in `to`. The store checks every
+expectation before atomically writing refs and ref events.
 
-An update with `to === from` is an assertion. The store checks it, but writes no row and emits no
-event. Runner publishes use this to assert that `refs/deleted` is absent. Cancellation and
-redelivery use assertions to close races with landing.
-
-A publish is a runner's `refs.update` that moves head or run refs. It carries the runner's lease
-and the `refs/deleted` assertion.
-
-The ref namespace is:
+`to === from` is an assertion. The store checks it without writing a row or emitting an event.
+Cancellation and redelivery use assertions to close landing races. A runner publish moves head or
+run refs, carries its lease, and asserts `refs/deleted` absent.
 
 ```text
 refs/heads/<head>              branch tip; absence means unborn
@@ -213,29 +158,27 @@ refs/cancelled/<change>        Blob tombstone for a withdrawn Change
 refs/deleted                   Blob marking a session being deleted
 ```
 
-Head names are open. Inbox delivery is closed: every head has `steer` and `next`. The default head
-(`main`) belongs to the SDK, which lists it before the head has a ref.
+Head names are open. Each head has only `steer` and `next` inbox delivery. The SDK defaults to
+`main` and lists it before its ref exists.
 
 ### Leases
 
-A lease is fenced execution authority over one name. Runners acquire the head ref name. A lease
-has `name`, `owner`, `fence`, and `expiresAt`. Leases are liveness, not history. They never enter
-the object graph or the reflog.
+A lease grants fenced execution authority over one name. Runners acquire the head ref name. A
+lease has `name`, `owner`, `fence`, and `expiresAt`. Leases record liveness, never history, so they
+do not enter the object graph or reflog.
 
-Acquire inserts a lease when none exists. After expiry, takeover changes the owner and increments
-the fence. Losing an acquire returns the current holder as a value, not an exception. Renew and
-release match both owner and fence, so an old process cannot extend or release its successor's
-lease. Renew ignores expiry for the matching holder. Expiry permits takeover. It is not an
-execution budget, and hosts should not treat it as one.
+Acquire creates a lease when none exists. After expiry, takeover changes the owner and increments the
+fence. Losing an acquire returns the current holder, not an exception. Renew and release match
+both owner and fence. Renew ignores expiry for a matching holder. Expiry permits takeover but is
+not an execution budget.
 
-Every runner ref update and every runner event append **must** carry the lease. The store checks
-the stored owner and fence inside the transaction. A mismatch returns `fenced` before any ref or
-event changes.
+Every runner ref update and event append **must** carry the lease. The transaction checks the
+stored owner and fence. A mismatch returns `fenced` before changing any ref or event.
 
 ### Events
 
-Events are both the reflog and the live feed. One increasing `seq` orders every event in a session,
-starting at 1. Four raw event bodies exist:
+Events form the reflog and live feed. An increasing `seq`, starting at 1, orders every event in a
+session:
 
 | Event      | Meaning                                                                    |
 | ---------- | -------------------------------------------------------------------------- |
@@ -244,69 +187,53 @@ starting at 1. Four raw event bodies exist:
 | `progress` | One tool call's partial output keyed by run id and call id.                |
 | `notice`   | An informational, warning, or error notice owned by a component.           |
 
-`refs.update` appends one `ref` event per actual ref write, followed by any extra events, in the
-same transaction. Assertions emit nothing. `events.append` adds deltas, progress, or notices
-without moving a ref, and may be fenced by a lease.
+In one transaction, `refs.update` appends one `ref` event per ref write, then any extra events.
+`events.append` adds deltas, progress, or notices without moving a ref and may be fenced by a lease.
 
 `read` and `watch` yield events after a cursor in sequence order. `last` returns the newest
-sequence, and `floor` returns the oldest valid cursor boundary. Trimming removes events at or
-below a chosen sequence and raises the floor, never past the newest event. Reading below the floor
-throws `CursorExpired`.
+sequence. `floor` returns the oldest valid cursor boundary. Trimming removes events at or below a
+chosen sequence and raises the floor, never past the newest event. Reading below the floor throws
+`CursorExpired`.
 
 ## Heads are named refs
 
-A head is `refs/heads/<head>` pointing to a commit oid, or absent for an unborn branch. The head
-name supplied to an operation defaults to `main`. It is client state, not a stored current-checkout
-register. Two clients may use different heads in one session and neither has to know.
+Clients may use different heads in one session.
 
 ### Moves and live runs
 
-A participant moves a head by compare-and-swap from the oid it read. It may also supply `expect`
-to reject a view that was already stale. A non-null target **must** name an existing commit. At
-the kernel level the outcome is `moved`, `moved_since`, or `not_found`.
+A participant moves a head by compare-and-swap from the oid it read. Optional `expect` rejects an
+already stale view. A non-null target **must** name an existing commit. Kernel outcomes are
+`moved`, `moved_since`, and `not_found`.
 
-The SDK's `heads.move` applies `navigationTarget` first, so selecting a user message restores it to
-the composer and targets its parent. With `summary`, the abandoned commits are summarized into one
-commit whose parent is that target, and one head CAS moves from the expected old tip to the
-summary. Nothing abandoned, or an empty summary, falls back to the plain move. Generated text is
+SDK `heads.move` applies `navigationTarget` first. Selecting a user message restores it to the
+composer and targets its parent. With `summary`, one commit summarizes the abandoned commits and
+uses that target as its parent. One CAS moves the head from the expected old tip to the summary.
+If nothing was abandoned or the summary is empty, it falls back to a plain move. Generated text is
 never replayed. A summarization failure returns `failed` without moving the head.
 
-The low-level move does not take the runner's lease or wait for a live run. The SDK checks first
-and returns `busy` when one is live. A run that races the check still publishes with its expected
-head, expected run ref, lease, and an assertion that deletion has not started. If the participant
-moved the head in between, that publish fails. The runner re-reads and moves the same run to
-`aborted` in an update whose event reason is `superseded`. It leaves the participant's head alone
-and consumes no queued input. Any output objects prepared for the failed publish stay loose until
-retention collects them.
+A kernel move neither takes the runner's lease nor waits for a live run. The SDK returns `busy` for
+a live run. If a run races that check, its publish fails. The runner re-reads and moves the same run
+to `aborted` with event reason `superseded`, without moving the participant's head or consuming
+queued input.
 
-Every actual head ref write emits a retained `ref` event with its previous and next oid, reason,
-and optional actor. Undo is another move, and it works for as long as the needed ref event and
-object are still retained. The kernel **must not** promise undo beyond the configured event and
-object retention window.
+Undo is another move. The kernel **must not** promise undo beyond the configured event and object
+retention window.
 
 ### Branching
 
-Creating a head from another head copies its current tip and writes a stack object naming the
-parent head and that tip as the base. A parent is a name, so cutting from an unborn parent records
-no base. Creating from a commit writes only the head ref and no stack metadata. An unborn head
-therefore needs a stack parent. Moving an unborn head to a commit is what creates it. The SDK cuts
-from and moves only heads the session lists, or its default head, so a mistyped name creates
-nothing and answers `unknown_parent` or `not_found`.
+Creating a head from another head copies its tip and writes a stack object naming that parent and
+tip as the base. Cutting from an unborn parent records no base. Creating from a commit writes only
+the head ref. An unborn head therefore needs a stack parent, and moving it to a commit creates it.
+The SDK cuts from and moves only listed heads or the default head. A mistyped name creates nothing
+and returns `unknown_parent` or `not_found`.
 
-Deleting a head removes its head ref, stack, both deliveries' tip and base refs, and run ref in one
-CAS. It refuses with `busy` while a live lease exists for that head. The kernel deletes any head.
-The SDK refuses its default head. The objects stay until retention proves them unreachable and old
-enough.
-
-There is no stored HEAD and no forked worktree. Reading an older commit is a projection.
-Continuing from it means moving a head or creating a head there.
+One CAS deletes a head ref, stack, both deliveries' tip and base refs, and run ref. A live lease
+returns `busy`. The kernel deletes any head, but the SDK refuses its default head.
 
 ### Stacks
 
-`refs/stacks/<head>` points to a `Stack { parent, base }` object. A stacked head is stale exactly
-when `base !== parent.tip`. That one equality check is the whole staleness model.
-
-The stack operations are deliberately narrow:
+`refs/stacks/<head>` points to `Stack { parent, base }`. A stacked head is stale exactly when
+`base !== parent.tip`.
 
 - `advanceBase` returns `unchanged` when there is no stack or the base already matches. If the old
   base is still an ancestor of the parent's tip, it updates only the stack base and returns
@@ -315,13 +242,9 @@ The stack operations are deliberately narrow:
   child. One CAS moves the parent head to the child tip and advances the child's stack base to the
   same oid. Its outcomes are `merged`, `stale`, `empty`, and `no_stack`.
 
-Carry-forward without replay goes through `heads.move({ summary })`, which uses `summary` commits
-and `imports`. The stack code offers no general join of two heads, and I am not in a hurry to add
-one.
-
 ## The turn
 
-The kernel turn has two calls and one commit boundary between them:
+The kernel turn has two calls separated by one commit boundary:
 
 ```ts
 interface Turn {
@@ -330,49 +253,44 @@ interface Turn {
 }
 ```
 
-`respond` receives the session, lease, run, attempt number, the commits since the newest
-checkpoint, an event emitter, and an abort signal. It projects model context and streams one
-assistant message. Its outcomes are `checkpoint`, `complete`, `tools`, `retry`, `failed`, and
-`aborted`. All but `checkpoint` carry the complete assistant message the step will commit.
-`checkpoint` carries a checkpoint body instead. The step commits it and calls `respond` again, so
-compaction is a commit like any other and never a special phase.
+`respond` receives the session, lease, run, attempt number, commits since the newest checkpoint,
+an event emitter, and an abort signal. It projects model context and streams one assistant
+message. Its outcomes are `checkpoint`, `complete`, `tools`, `retry`, `failed`, and `aborted`.
+Except for `checkpoint`, each carries the complete assistant message to commit. `checkpoint`
+carries a checkpoint body, which the step commits before calling `respond` again. Compaction is a
+commit, never a special phase.
 
-`tools` receives the same durable inputs plus the committed assistant message. It recovers or
-executes each tool call through its effect ref. Its outcomes are `complete`, `waiting`, `failed`,
-`fenced`, and `conflict`. Complete and failed outcomes carry tool-result messages in call order.
-Waiting names the parked call ids. `fenced` and `conflict` end the batch without committing, after
-a lost lease or a raced effect CAS.
+`tools` receives the same durable inputs and the committed assistant message. It recovers or
+executes each call through its effect ref. Outcomes are `complete`, `waiting`, `failed`, `fenced`,
+and `conflict`. Complete and failed outcomes carry tool-result messages in call order. Waiting
+names parked call ids. `fenced` and `conflict` end the batch without committing after a lost lease
+or raced effect CAS.
 
-The turn emits text and thinking deltas with the supplied attempt number. Tool progress names the
-run and call. Emission is buffered through a fenced outbox and flushed before the call returns, so
-a fenced event append aborts the in-flight work rather than letting it finish into the void.
+The turn emits text and thinking deltas with the supplied attempt number. A fenced outbox buffers
+and flushes emissions before the call returns. A fenced event append aborts in-flight work.
 
 ### The tool batch
 
-Tool calls use the existing agent loop. A `length` stop returns an error result for every tool call
-in the message, because truncated arguments cannot be trusted. Tool failures settle a structured
-error result, and the last partial progress is available to that settlement. Results come back in
-the assistant message's call order.
+A `length` stop returns an error result for every tool call because truncated arguments cannot be
+trusted. Tool failures settle a structured error result with the last partial progress available.
+Results follow the assistant message's call order.
 
-No turn state survives the call. On a resumed `tools` phase, the turn reads the assistant commit
-and every effect ref again and starts from what it finds.
+No turn state survives the call. A resumed `tools` phase re-reads the assistant commit and every
+effect ref.
 
 ## Runs
 
-A run is one head being advanced. `refs/runs/<head>` points to the current immutable `Run` object.
-Each phase change writes a new run object and moves that ref. The run id stays stable across all
-of them.
+`refs/runs/<head>` points to the current immutable `Run`. Each phase change writes a new object
+and moves the ref while the run id stays stable.
 
-A run records `id`, `head`, `origin`, `root`, `phase`, `startedAt`, `attempts`, and the branch
-configuration folded when the run began. A user run has `origin: { kind: "user" }` and is its own
-root. A delegate continuation names the child session and request in `origin` and inherits the
-requesting run's root. The SDK runner resolves its model and thinking defaults into that configuration
-before publishing the run. Before responding, it also resolves legacy runs and records any fallback
-required when a successor host cannot supply the recorded model. Observers read these inputs from
-the run; their own host defaults say nothing about another host's execution. An idle head's snapshot
-combines declared configuration with the last recorded or observed response inputs. Legacy history
-can reveal a model without revealing its thinking level. A participant may set `abortRequested`.
-The phases are:
+A run records `id`, `head`, `origin`, `root`, `phase`, `startedAt`, `attempts`, and its folded branch
+configuration. A user run has `origin: { kind: "user" }` and is its own root. A delegate continuation's
+origin names the child session and request, and it inherits the requesting run's root. Before
+publishing, the SDK runner resolves model and thinking defaults into the configuration. Before
+responding, it resolves legacy runs and records any fallback needed when a successor host cannot
+supply the recorded model. Observers use the run's inputs, not their host defaults. An idle
+snapshot combines declared configuration with the last recorded or observed response inputs, which
+in legacy history may lack a thinking level. A participant may set `abortRequested`.
 
 | Phase     | Meaning                                                                           |
 | --------- | --------------------------------------------------------------------------------- |
@@ -386,14 +304,13 @@ The phases are:
 
 ### Leases and the step
 
-`step(session, turn, options)` acquires a lease over the head unless the caller supplies one. It
-does one durable action and releases a lease it acquired itself. `drive` acquires once, renews
-before every step, loops over `continue`, waits through a retry deadline, and releases when it
-returns.
+`step(session, turn, options)` acquires a head lease unless supplied one, performs one durable
+action, and releases a lease it acquired. `drive` acquires once, renews before each step, loops over
+`continue`, waits through retry deadlines, and releases on return.
 
-The step first settles any checkpoint work left in `refs/compactions/<head>`, then reads the head,
-run, and deletion refs. A session being deleted makes every step `idle`. Otherwise the step follows
-this table:
+The step first settles leftover checkpoint work in `refs/compactions/<head>`, then reads the head,
+run, and deletion refs. A
+session being deleted makes every step `idle`. Otherwise:
 
 | Head / phase       | Lead                                 | Decision and step                                                                           | Publish CAS                                            |
 | ------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
@@ -408,26 +325,20 @@ this table:
 | `waiting`          | any                                  | wake on a signal, expiry, completed results, deadline, or abort; otherwise return `waiting` | as `tools` when it wakes                               |
 | `retry`            | any                                  | return `retry` before `at`; afterwards act as `respond`                                     | none until responding                                  |
 
-Three small rules sit inside the `respond` row. First, an abort request already on the run stores
-`aborted` without calling the model. Second, if the projected context ends in something other than
-a user message or a tool result, there is nothing to answer, and the run goes straight to `done`.
-Third, if the pending batch selects a different agent than the live run folded, the step ends that
-run `done` for the reason `agent changed`, lands nothing, and leaves the batch queued for the run
-that follows.
+Three rules apply within `respond`:
 
-Every runner publish carries the lease and asserts `refs/deleted` absent. A participant head move,
-an abort request written through the run ref, another run ref change, or session deletion may make
-the CAS fail. The runner re-reads and ends or continues according to current refs. It **must not**
-force stale output.
+1. An existing abort request stores `aborted` without calling the model.
+2. If projected context ends with neither a user message nor a tool result, the run goes to `done`.
+3. If a pending batch selects another agent, the step ends the run as `done` for `agent changed`,
+   lands nothing, and leaves the batch queued for the next run.
 
-A step ceiling is checked before `turn.respond`. Every run has `origin` and
-`root`: a user run is its own root, while a continuation inherits the requesting
-run's root. `refs/chains/<root>` points to `Blob { attempts }`. Before each
-provider call, the step reserves one attempt by moving that ref in its own CAS.
-A reservation conflict ends the losing run at the ceiling instead of retrying.
-A new user message starts a new root and counter. Reaching the ceiling stores a
-runner failure. Pending input is never consumed by failure, abort, or
-supersession.
+A participant head move, run-ref change, abort request, or session deletion may fail a runner
+publish. The runner then re-reads, acts on current refs, and **must not** force stale output.
+
+Before `turn.respond`, the step checks the chain's attempt ceiling. `refs/chains/<root>` points to
+`Blob { attempts }`. Each provider call reserves an attempt by moving that ref in its own CAS. A
+reservation conflict ends the losing run at the ceiling instead of retrying. A user message starts
+a new root and counter. Reaching the ceiling stores a runner failure.
 
 ### The effect sandwich
 
@@ -451,76 +362,61 @@ JSON arguments, replay policy, and time. Recovery depends only on the ref state:
 | `signal`  | call the tool's wake handler with the first reply                 |
 | `result`  | reuse the stored tool-result message and never execute again      |
 
-A tool that declares no replay policy gets `never`. That is the conservative default on purpose. A
-tool has to opt into being run twice, because the kernel cannot know whether "send the email" is
+A missing replay policy defaults to `never` because the kernel cannot know whether a tool is
 idempotent.
 
-A tool parks by moving the effect ref to `waiting`. A participant replies by comparing that exact
-waiting oid and moving the ref to `signal`. At the deadline, a runner compares the same oid and
-moves the ref to `expired`. Those updates have one winner. Only then does the runner call the wake
-handler. A later reply returns `not_waiting`. The wake handler may settle a result or park again.
+A tool parks by moving its effect to `waiting`. A participant CAS moves that exact waiting oid to
+`signal`; at the deadline, a runner CAS moves it to `expired`. Only one wins. The runner then calls
+the wake handler. A later reply returns `not_waiting`. The handler may settle or park again.
 
-When a tool batch completes, one runner CAS advances the conversation head with result commits,
-moves the run back to `respond`, and deletes the run's effect refs. A failed batch stores a failed
-run. A waiting batch stores the `waiting` phase and keeps effect refs.
+One runner CAS completes a tool batch by advancing the head with result commits, returning the run
+to `respond`, and deleting the run's effect refs. A failed batch stores a failed run. A waiting
+batch stores phase `waiting` and keeps effect refs.
 
-Exactly-once execution is not promised, and I want to be blunt about that. The outside world does
-not share the ref transaction. `safe` is at-least-once after an uncertain crash. `never` is
-at-most-once and reports an unknown outcome after interruption. Anything claiming better than
-that for an HTTP call is lying.
+Exactly-once execution is not promised. `safe` is at-least-once after an uncertain crash. `never`
+is at-most-once and reports an unknown outcome after interruption.
 
 ### Wait and wake
 
-A waiting run needs no live process and no held lease. Its run ref and effect refs contain
-everything needed to resume. A ref event or deadline wakes a runner to read that state; waking is
-not permission to start a new run. User input grants that permission. A delegate answer also grants
-it when the request record still carries authorization from an un-stopped run, and landing consumes
-that authorization once. Stop revokes outstanding request authorizations.
+A waiting run needs no process or held lease. Its run and effect refs hold its resume state. A ref
+event or deadline wakes a runner but does not authorize a new run. Only user input or an
+[authorized answer](#a-submitted-message-is-never-lost) starts one.
 
 `runs.reply` targets a call id and its exact `waitId`, optionally checks a run id, and uses the
-effect signal CAS. Its outcomes are `signalled`, `not_waiting`, and `not_found`.
+effect signal CAS.
 
-On the next acquired step, a `waiting` run calls tools again if any effect has a signal or expiry,
-all effects already hold results, its nearest deadline has passed, or the run has an abort request. Otherwise the step returns
-`waiting` with that nearest deadline so a hot host can schedule another step. Ordinary submitted messages
-stay in the inbox while the run waits. A tool reply is a signal, not a conversation message, and
-the two never get confused for each other.
+A `waiting` step calls tools again when any effect has a signal or expiry, every effect has a
+result, the nearest deadline passed, or the run has an abort request. Otherwise it returns `waiting`
+with the nearest deadline for host scheduling. Submitted messages remain in the inbox. A tool reply
+is a signal, never a conversation message.
 
-A wait that needs a participant says so. The waiting effect may carry a `selection`: a `Selection`,
-which is a title, a non-empty list of `Choice`s with ids and labels, optional `multiple: true`, and
-optionally `other`, the placeholder under which the participant's own words are accepted. A client
-answers with a `SelectionReply` that keeps picked ids and own text in separate fields. Text that
-looks like an id therefore stays text. A selection is data, not a call into a client. It lives on
-the ref, rides the `effect` event, and appears on the snapshot's `parked` list with a `waitId`
-that identifies that exact waiting effect, so the phone in scene 3 renders it an hour later
-without the tool's schema or the plugin that parked it. The snapshot projects concurrent waits in
-the assistant message's tool-call order; there is no second stored order. Re-parking the same call
-produces a new `waitId`; clients use it to discard local picks and reopen the new wait. A client renders a
-selection generically. A wait without one is background work, such as a delegated child, and a
-client **must not** present it as a request for input. Core and clients decide this by the
-selection's presence, never by the tool's name. What a plugin parks with is checked against the
-`Selection` schema before it is written; a malformed one fails that call as a tool error.
+A waiting effect may carry a `selection`. A `Selection` has a title, a non-empty list of `Choice`
+items with ids and labels, optional `multiple: true`, and optional `other` as the placeholder for
+the participant's own words. `SelectionReply` keeps selected ids separate from own text, so text
+that looks like an id stays text. The selection is data on the ref, `effect` event, and snapshot's
+`parked` list. Its `waitId` identifies the exact waiting effect. Snapshot order follows the
+assistant message's tool-call order, with no other stored order. Re-parking creates a new `waitId`,
+so clients discard local picks and reopen the wait. A wait without a selection is background work,
+and a client **must not** present it as input. Core and clients use selection presence, never the
+tool name. Core checks the `Selection` schema before writing it; a malformed selection fails the
+call as a tool error.
 
-A waiting effect may also carry `until`, an epoch-ms deadline. The deadline is durable state, not a
-client timer. At or after it, a participant reply returns `not_waiting`. A runner first moves the
-exact waiting effect to `expired`, then calls the tool's wake handler with `expired: true` and no
-reply. A crash between those actions leaves an `expired` effect for the next runner to wake. The
-handler settles or parks again with a new `waitId` and deadline. Desktop and TUI may close their panels at the same time, but closing a panel
-never settles the effect. A host step does. Local timers are only wake-up hints and must re-check
-the epoch deadline, including when it exceeds the platform's maximum timer delay.
+A waiting effect may carry `until`, a durable epoch-ms deadline. At or after it, a participant
+reply returns `not_waiting`, and the wake handler receives `expired: true` and no reply. A crash
+after the expiry CAS leaves the next runner an `expired` effect. The handler settles or parks again
+with a new `waitId` and deadline. Closing a Desktop or TUI panel never settles the effect; a host
+step does. Local timers only hint wake-up and must recheck the epoch deadline, including deadlines
+beyond the platform's maximum timer delay.
 
-A wait on a child session is the bounded kind. `await`, `task`, and `send` with `waitMs` park with
-`until = now + timeoutMs` and no selection. Delegation signals the effect when the agents it names
-satisfy its mode, or when user input arrives with `delivery: "steer"` on the head the wait is holding up;
-the runner expires it at the deadline; an abort wakes it with the flag. Every wake settles: the
-handler answers with a report for each agent whose request ended and a phase for the rest, and
-the parent may wait again. Nothing about the wait is process state: which agents, from the intent's
-arguments; whether each has answered, from the child session and the parent's delegation record.
+`await`, `task`, and `send` with `waitMs` park on a child with `until = now + timeoutMs` and no
+selection. Delegation signals the effect when its named agents
+satisfy its mode or user input arrives with `delivery: "steer"` on the blocked head. Abort wakes it
+with the abort flag. Every wake settles with a report for each ended request and a phase for the
+rest. The parent may wait again. The intent arguments name the agents; child sessions and parent
+delegation records hold their answer state.
 
-`Choice`, `Selection`, and `SelectionReply` are protocol's first UI shapes: vocabulary a plugin
-fills, core carries, and any client draws. They deliberately do not grow toward a widget language. A plugin
-that needs a richer rendering than a list draws it from the typed `ToolClass` the commit carries,
-the same way tool results do, never from a bigger shape in core.
+Richer rendering than a `Selection` comes from the commit's typed `ToolClass`, never a larger core
+widget shape.
 
 ### Retries
 
@@ -531,9 +427,8 @@ consecutive retryable failures and resets after a successful response. Before `a
 the durable deadline. At or after `at`, it calls `respond` again. `drive` waits in process. A
 step-at-a-time host schedules another entry.
 
-Whether a failure is retryable, and any provider-requested minimum delay, are functions of the
-failure's class; the retry policy adds the backoff. Retries are a run phase. They are not timers in runner memory,
-because runner memory is exactly the thing this design refuses to depend on.
+Failure class determines retryability and any provider-requested minimum delay; retry policy adds
+backoff.
 
 ### Checkpoints
 
@@ -542,14 +437,11 @@ A `checkpoint` commit is a context boundary. It stores a portable summary, retai
 starts at the newest checkpoint. It uses provider material only when provider, API, and model all
 match. Transcript and usage projections keep the checkpoint as history.
 
-`Turn` produces checkpoint outcomes for threshold and overflow compaction, and `step` commits them
-before asking for another response. `runs.compact` calls `writeCheckpoint` for a manual checkpoint
-under the head lease, summarizing with the model and thinking level the branch declares. The
-checkpoint itself lands as an ordinary `commit` event, because a checkpoint is a commit like any
-other. What compaction adds is liveness, not history: `refs/compactions/<head>` records the work in
-flight, a `compaction` event carries that record to watchers, and the same record rides the
-snapshot, so a client that joins mid-summary can draw the progress and a later step can settle
-work its host abandoned. The event ends with `compaction: null`.
+Threshold and overflow produce `Turn` checkpoint outcomes. Under the head lease, `runs.compact`
+writes a manual checkpoint through `writeCheckpoint` with the branch's declared model and thinking
+level. The checkpoint emits an ordinary `commit` event. `refs/compactions/<head>` records in-flight
+work. A `compaction` event and snapshot field carry that record so watchers can show progress and a
+later step can settle abandoned work.
 
 ### Two ways to run
 
@@ -558,27 +450,24 @@ work its host abandoned. The event ends with `compaction: null`.
 - **Step at a time.** A request, queue consumer, or alarm calls `step`, persists nothing locally,
   and schedules another entry when the outcome requires one.
 
-Both have the same durable behavior, because a runner **must not** require in-memory state that
-outlives a step. The hot loop is just the step loop with the lease kept warm.
+Both have the same durable behavior. A runner **must not** require in-memory state beyond a step.
+The hot loop only keeps the lease warm.
 
 ## Admission is open
 
-`submit` always creates a pending `Change`. It never appends directly to the conversation head and
-never inspects or acquires the runner lease. The submitter stamps two closed values: `delivery`
-selects `steer` or `next`, and `kind` classifies the change as `user`, `answer`, `passive`, or
-`report`. Nothing after submission inspects the body to recover either decision.
+`submit` always creates a pending `Change`, never appends to the head, and never inspects or
+acquires the runner lease. It stamps `delivery` as `steer` or `next` and `kind` as `user`,
+`answer`, `passive`, or `report`. Later code never infers them from the body.
 
-Submission reads the selected inbox tip, builds a change whose `previous` names that tip, writes
-the object, then compares and moves the tip ref. A tip conflict retries internally. If the caller
-supplied a key, the same CAS writes `refs/keys/<key>` to the new change. A competing key write
-returns `duplicate` with the first change oid. The only successful outcomes are `queued` and
-`duplicate`.
+Submission reads the selected tip, writes a change whose `previous` names it, then compares and
+moves the tip ref. Tip conflicts retry internally. With a caller key, the same CAS writes
+`refs/keys/<key>`. A competing key returns `duplicate` with the first change oid.
 
 ### The inbox
 
-Each head has two independent chains. `steer` lands at every response boundary and while idle.
-`next` lands only while idle, after `steer`. Separate fronts let steering input overtake older
-next-run input without rewriting either chain.
+Each head has independent `steer` and `next` chains. `steer` lands at response boundaries and while
+idle. `next` lands only while idle and after `steer`, so steering may overtake older next-run input
+without rewriting either chain.
 
 For each delivery, `tip` names the newest change and `base` names the last landed change. Pending
 is the half-open interval `(base, tip]`, walked through `Change.previous` and presented oldest
@@ -587,8 +476,7 @@ move compares its predecessor.
 
 `drain: "one"` lands through the first user change, including passive changes ahead of it.
 `drain: "all"` lands the whole selected delivery. While a live run still owes an answer, the
-boundary drain takes only leading answer and report changes. An idle head considers `steer` and
-then `next`; a live head considers only `steer`.
+boundary drain takes only leading answer and report changes.
 
 Admission is one pure decision over the head and the selected batch's lead:
 
@@ -598,10 +486,10 @@ Admission is one pure decision over the head and the selected batch's lead:
 | `live`      | `wait` | `join`                           | `join`                                                 | `join`   | `join`                                                                         |
 | `settling`  | `wait` | `wait`                           | `wait`                                                 | `wait`   | `wait`                                                                         |
 
-For every non-empty live cell, an agent change returns `handoff` instead of `join`: the run ends
-and the batch stays pending. `step`, `runs.wait`, and relocation all use this decision. Only
-building an answer lead reads its authorization record. Landing builds the next run and ref updates
-from the decision, rather than repeating admission conditions.
+For every non-empty live cell, an agent change returns `handoff` instead of `join`. The run ends
+and the batch remains pending. `step`, `runs.wait`, and relocation use this decision. Only building
+an answer lead reads its authorization record. Landing derives the next run and ref updates from
+the decision.
 
 `pending` walks both chains, drops tombstoned changes, and sorts visible items by submission time
 and oid. All clients read that store projection and see the same list.
@@ -609,8 +497,8 @@ and oid. All clients read that store projection and see the same list.
 ### Cancel and redeliver
 
 Cancel does not rewrite a change or splice a chain. It writes a blob behind
-`refs/cancelled/<change>` and asserts the source inbox base in the same CAS. Pending walks skip the
-tombstone. Landing asserts that every selected change has no tombstone. A cancel racing landing
+`refs/cancelled/<change>` and asserts the source inbox base in the same CAS. Landing asserts that
+every selected change has no tombstone. A cancel racing landing
 therefore settles as `cancelled` or `landed`, never both.
 
 Redelivery edits a pending item in one atomic update. It may change `delivery`, move the item with
@@ -622,49 +510,40 @@ item in both deliveries or in neither.
 
 ### A submitted message is never lost
 
-The only ways a pending change stops being visible are landing and an explicit cancellation
-tombstone. A failed, aborted, or superseded run leaves pending changes in their chains. A
-reconnecting client asks the store for pending and sees the same set as every other client.
+Only landing or an explicit cancellation tombstone hides a pending change. Failed, aborted, and
+superseded runs leave changes pending.
 
-Cancellation is one-way for a run. The runner cancels the call in flight, preserves its output,
-settles admitted tool work, and ends the run as `aborted`. A queued user message starts a new run
-in the same conversation; it never clears the stopped run's flag.
+Run cancellation is one-way. The runner cancels the in-flight call, preserves its output, settles
+admitted tool work, and ends as `aborted`. A queued user message starts a new run without clearing
+the stopped run's flag.
 
-User input starts model work. So does a delegate's answer to a request an un-stopped run
-authorized. The idle landing CAS consumes that request's authorization once, beside the head,
-inbox base, and new run refs. A model send creates its authorization in a CAS that asserts the
-exact parent run ref with `to === from`; if Stop moves that ref first, no child change publishes.
-Stop and requester failure rewrite outstanding authorizations to `input`. Command completions,
-participant child requests, and delegate answers whose authorization
-was revoked or consumed remain queued until user input. Configuration can still land without
-starting model work. A head with only deferred, unauthorized completions is `idle` to `runs.wait`.
-Compaction can continue an already-authorized run, but cannot revive a cancelled one.
+User input starts model work. An answer to a request authorized by an unstopped run also starts
+it. The idle landing CAS consumes that authorization once beside the head, inbox base, and new run
+refs. Stop and requester failure rewrite outstanding authorizations to `input`. Command
+completions, participant child requests, and answers with revoked or consumed authorization remain
+queued until user input. Configuration may land without starting model work. To `runs.wait`, a
+head with only deferred unauthorized completions is `idle`. Compaction may continue an authorized
+run but cannot revive a cancelled one.
 
-Each store transaction is atomic. If submit throws because the disk is full or the connection is
-lost, it may have written an unreachable loose object, but it has not half-applied a ref update.
-Core does not repair an unknown request. The client retries.
-
-Core cannot cover the gap between a user pressing Enter and receiving a durable receipt. The
-client closes it with an outbox:
+Core does not repair a submit whose outcome is unknown. The client retries through an outbox that
+closes the gap between Enter and a durable receipt:
 
 1. Mint a key on Enter, keep the message locally as `sending`, and render it immediately.
 2. Submit with that key. On a network failure, keep the row and retry with backoff using the same
    key until it succeeds or the user cancels the local send.
-3. Treat `queued` and `duplicate` as durable. Match the local row to the store's message by
-   identity, never by content: the receipt names the change, and the key rides on the change,
-   on its pending item, and on the commit that lands it. The receipt and the watch arrive in
-   either order; a message the watch already shows draws nothing from its late receipt.
+3. Treat `queued` and `duplicate` as durable. Match the local row by identity, never content. The
+   receipt names the change, and the key appears on the change, pending item, and landing commit.
+   Receipt and watch may arrive in either order. A message already shown by the watch draws nothing
+   from its late receipt.
 
-The idempotency ref and inbox tip move in one CAS. A retry after a lost response returns the first
-change and never enqueues the message twice. The key is correlation for the sender, not
-authorization, and stays outside the message the model reads.
+The key is correlation for the sender, not authorization, and stays outside the message the model
+reads.
 
 ### Who runs?
 
-Admission makes work durable but does not guarantee that this process will execute it. A host that
-called `attach` watches the session's event stream, wakes a driver for a head whenever its head,
-queue, run, or effect refs move, and races for the head lease. One runner wins. Thin clients do
-not call `attach`. Their submissions stay durable until a host volunteers.
+A host that called `attach` watches session events, wakes a head driver when head, queue, run, or
+effect refs move, and races for the head lease. One runner wins. Thin clients do not call
+`attach`; their submissions remain durable until a host volunteers.
 
 Attribution is optional `Actor` data with `clientId`, `userId`, and `device`. A host sets it once
 in `NyteOptions`, and the SDK writes it on participant objects and ref events. Attribution is not
@@ -672,13 +551,9 @@ authorization.
 
 ## Many runners, one store
 
-Heads and sessions are independent. Two runners may hold leases for different heads in one
-session. Any number of sessions may share one backend. Processes are interchangeable because a
-step reads objects and refs again and every runner write is fenced.
-
-Takeover increments the lease fence. The old runner's next ref update or event append returns
-`fenced` before it changes durable state. A second participant may request abort without the
-lease. The runner honors the new run ref at its next publish.
+Heads and sessions are independent. Runners may lease different heads in one session, and any
+number of sessions may share a backend. A participant may request abort without the lease; the
+runner honors the new run ref at its next publish.
 
 The `Store` contract has four namespaces on every `Session`:
 
@@ -689,10 +564,9 @@ The `Store` contract has four namespaces on every `Session`:
 | `leases`  | Acquire, renew, release, and read fenced execution rights.                                                               |
 | `events`  | Fenced append, cursor read, last, floor, trim, and gap-free ordered watch.                                               |
 
-The transaction that matters spans a `refs.update`: check the lease, check every `from`, apply
-every non-assertion ref write, allocate sequences, append ref events and supplied events, then
-publish to watchers. A backend that cannot make that atomic **must not** host the kernel. Objects
-are put first and may stay loose if this transaction loses its race.
+A `refs.update` transaction checks the lease and every `from`, applies non-assertion writes,
+allocates sequences, appends ref and supplied events, then publishes to watchers. A backend that
+cannot do this atomically **must not** host the kernel.
 
 Two backends ship. The SQLite backend uses five tables:
 
@@ -705,13 +579,11 @@ Two backends ship. The SQLite backend uses five tables:
 | `events`   | Session and sequence to time and event body.                     |
 
 SQLite serializes writes with `BEGIN IMMEDIATE`. One session row allocates every event sequence.
-An assertion changes no ref row and emits no ref event. Trimming deletes event rows and raises the
-session floor in one transaction.
+Trimming deletes event rows and raises the session floor in one transaction.
 
-The Postgres backend, exported as `@nyte-ai/core/postgres`, holds the same five under a `nyte_`
-prefix plus a `nyte_schema` version row, and takes the same transaction with row locks instead of
-`BEGIN IMMEDIATE`. It is the first backend a host can put on the far side of a network, which is
-what the server and serverless placements need.
+The Postgres backend, exported as `@nyte-ai/core/postgres`, uses the same five tables under a
+`nyte_` prefix plus a `nyte_schema` version row. It uses row locks instead of `BEGIN IMMEDIATE` and
+supports server and serverless placements over a network.
 
 ## Deployment
 
@@ -723,10 +595,9 @@ Three placements use the same store and step contract:
 - **Serverless.** A request or alarm opens a session, calls `step`, and exits. A remote backend
   supplies the same four authorities.
 
-Only the embedded placement ships as a client today. `@nyte-ai/server` supplies a tested
-request handler, not a listener or a hosted service. A host-owned service lives with the host,
-so an MCP stdio server is a child process of whichever process runs the plugin. It exists on
-the embedded and server placements and remains an open question on stateless ones.
+Only embedded clients ship today. `@nyte-ai/server` supplies a tested request handler, not a
+listener or hosted service. An MCP stdio server is a child of the plugin host process, so it exists
+in embedded and server placements; stateless placement remains open.
 
 The implemented wire follows the SDK's operation table in `@nyte-ai/protocol`:
 
@@ -737,50 +608,37 @@ GET  /v1/watch?sessionId=id&after=seq  projected session events over SSE
 GET  /v1/watch?sessionId=id&live=1     the same stream, starting at the tip
 ```
 
-The server **must not** attach a runner or execute a step on behalf of a connection. Host
-composition opens the store, supplies trusted plugins and models, and chooses when runners
-attach. Disconnecting a client or closing the server **must not** cancel accepted submissions
-or stop host runners. Server close rejects new work and terminates its streams, while SDK
-operations already dispatched may finish.
+The server **must not** attach a runner or step for a connection. Host composition opens the
+store, provides trusted plugins and models, and decides when runners attach. Disconnect or server
+close **must not** cancel accepted submissions or stop host runners. Close rejects new work and
+ends streams; dispatched SDK operations may finish.
 
-Authentication runs before body parsing. Optional server permissions decide each operation
-from its validated input and each watch from its validated session id, before touching the SDK.
-When a permission policy is supplied, unlisted operations and watches **must** be denied.
-Authenticated version discovery remains available. The server does not filter result pages;
-a host **must not** grant directory operations such as `sessions.list` to a session-scoped
-caller unless that caller may see every item they can return. Device pairing, credential
-storage and revocation, encrypted connections, and relays remain host responsibilities.
-Request permissions do not revoke streams already admitted; immediate revocation also requires
-terminating the affected connections.
+Authentication precedes body parsing. Optional permissions decide each operation from validated
+input and each watch from its validated session id before SDK access. A supplied policy **must**
+deny unlisted operations and watches. Authenticated version discovery remains available. The
+server does not filter result pages. A host **must not** grant a directory operation such as
+`sessions.list` to a session-scoped caller unless it may see every returned item. Hosts own device
+pairing, credential storage and revocation, encryption, and relays. Permissions do not revoke
+admitted streams; immediate revocation requires terminating affected connections.
 
-A raw store sequence and an SDK event cursor are not interchangeable checkpoints. Several
-projected SDK events may share one durable sequence, and host activation notices are not ordered
-by it. After an arbitrary wire disconnect, the client **must** take a fresh snapshot and watch
-from its `seq`, folding replayed objects by identity. Resuming from the last individual SSE
-`id` can skip the remaining projections of that sequence, even above the retention floor.
-A protocol **must** keep the SDK's plain objects and discriminated outcomes, so another language
-can implement it without TypeScript object handles. Client outboxes retain the same submission
-key until the server returns a durable receipt.
+Store sequences and SDK cursors are not interchangeable. Several SDK events may share one durable
+sequence, and host activation notices are not ordered by it. After any wire disconnect, the client
+**must** take a fresh snapshot, watch from its `seq`, and fold replayed objects by identity. The
+last SSE `id` may skip other projections of that sequence, even above the floor. A protocol
+**must** preserve SDK plain objects and discriminated outcomes for non-TypeScript clients.
 
 ## Events and views
 
-The raw event stream is durable. Ref moves, deltas, tool progress, and notices all take sequence
-numbers in the same feed. That is what pays for cross-process streaming until retention advances
-the floor. A reconnect within the window replays the deltas it missed. A reconnect below the floor
-gets `CursorExpired`, throws away incremental state, takes `sessions.snapshot`, and resumes after
-the snapshot's `seq`.
+A reconnect within the retention window replays missed deltas. Below the floor, `CursorExpired`
+makes the client drop incremental state, take `sessions.snapshot`, and resume after its `seq`.
 
-The event stream is also the bounded reflog. The collector marks every current ref target and both
-ends of every retained ref event, then follows object links, including a commit's `change`
-provenance. It sweeps only unmarked objects older than the supplied grace period. A host that wants
-to reclaim history first calls `trimStream`, which advances the floor and drops old ref-event
-roots, then calls `collect`.
+The collector marks current ref targets and both ends of retained ref events, follows object links
+including commit `change` provenance, and sweeps only unmarked objects older than the supplied
+grace period. To reclaim history, a host calls
+`trimStream` to advance the floor and drop old ref-event roots, then `collect`.
 
-Retention is explicit. The kernel supplies floor, trim, mark, grace, and sweep. It does not pick a
-default event window, grace period, or schedule. Those are product decisions and I did not want to
-bake a guess into the kernel.
-
-Projections in `@nyte-ai/client` are pure reads:
+The kernel supplies floor, trim, mark, grace, and sweep, but no default event window, grace period,
+or schedule.
 
 | Projection area | Exports                                                                                      |
 | --------------- | -------------------------------------------------------------------------------------------- |
@@ -793,131 +651,124 @@ Projections in `@nyte-ai/client` are pure reads:
 | tree            | `collectAbandoned`, `navigationTarget`, and `projectTree`                                    |
 | usage           | `commitUsage`, `usageTokens`, `emptyUsageSummary`, `mergeUsageSummaries`, and `projectUsage` |
 
-Projections **must not** write, and never classify. A tool part carries the `ToolClass` its commit
-stamped and a turn carries the `Failure` its assistant commit stamped; an unknown tool is `custom`
-under its label, so the transcript renders every settled message without a plugin. A client should
-never see a blank row because a plugin is missing.
+Projections in `@nyte-ai/client` **must not** write or classify. Tool parts carry their commit's
+`ToolClass`, and turns carry their assistant commit's `Failure`. An unknown tool is `custom` under
+its label, so every settled message renders without a plugin.
 
 ## Plugins
 
-Plugins stay host composition. A plugin may contribute tools, commands, prompt sections, resources,
-settings, and agents, and may install hooks. The host resolves plugins only after workspace trust
-and passes the resolved list into core.
+Plugins are host composition. They may contribute tools, commands, prompt sections, resources,
+settings, agents, and hooks. The host resolves them only after workspace trust and passes the list
+to core.
 
-Hooks are the points where plugin code intercepts a run and returns a typed result. They are a
-separate list from event listeners on purpose. A listener has no return value the runner reads.
-A hook does, and keeping the two apart is what stops an observer from turning into an interceptor
-by accident. The hooks are `transform_context`, `before_request`, `before_tool`, `after_tool`, and
-`before_compaction`. `before_tool` is the policy hook. Its handlers run in registration order,
-`modify` decisions chain, and the first `reject` or `error` stops the chain. A handler that throws
-becomes `error`, so a broken policy plugin fails closed.
+Hooks intercept a run and return typed results. They are `transform_context`,
+`transform_transcript`, `before_request`, `before_tool`, `after_tool`, `before_compaction`, and
+`cache_warming_decision`. `transform_context` sees the conversation without system messages and may
+replace it or that request's system prompt. `transform_transcript` sees the full transcript
+including system messages, and core sends its result as returned. Both change one request, never
+the branch. `before_tool` handles policy. Its handlers run in registration order, chain `modify`
+decisions, and stop on the first `reject` or `error`. A throw becomes `error`, so policy fails
+closed.
 
-A command runs at once with the argument typed after it. It answers with text for the user, with a
-`prompt` the client sends as the user's next message, or with nothing. A plugin acts on its own
-session through `api.session`: `info` (the name, and whether the session is a child), `rename`,
-and `context` (the main branch as the model would see it next). A plugin that needs more asks for
-a new operation here. It does not reach for the store.
+`api.events.subscribe` receives the same post-hoc `SessionEvent` stream a client folds. Listener
+returns and throws never reach the run.
 
-Hooks and events are two lists on purpose, the way a pre-commit hook and a post-receive hook are.
-A hook handler returns something the runner reads, so it can refuse or rewrite what is about to
-happen. `api.events.subscribe` delivers the same `SessionEvent` stream a client folds, after the
-fact, and nothing a listener returns or throws reaches the run. Observers built on it, such as
-notifications and the footer's status items, cannot become interceptors by accident.
+A command runs immediately with its typed argument and returns user text, a `prompt` for the
+client's next user message, or nothing. `api.session` gives a plugin `info` with name and child
+status, `rename`, and `context` with the main branch's next model view. Other needs require a new
+operation here, not store access.
 
-Three more ways a plugin reaches the user without touching the conversation: `diagnostics.notify`
-asks for attention (a title, a message, and whether to make a sound), the `status` registry holds
-short items a client shows beside the model, and a tool that needs an answer parks with a
-`Selection` (`throw new ToolWait({ selection, until })`, or `{ kind: "wait", selection, until }`
-from its wake handler). All three travel as data, `notification` and `status_changed` events and
-the waiting effect, so every client renders them the same way and none of them names a plugin.
-There is no `ui` namespace of calls a plugin makes into a client, because there is no attached client to call:
-a phone that connects tomorrow must see the same thing, and only data on a ref or an event can
-promise that. A tool may declare `availability: "foreground"` when it cannot run after its session
-moves to background. That is host placement metadata. It says nothing about the tool's name or
-what selection it may create.
+Plugins reach users outside the conversation through `diagnostics.notify`, the `status` registry,
+and tool waits. `diagnostics.notify` carries a title, message, and sound choice. `status` holds
+short items beside the model. A tool parks with `throw new ToolWait({ selection, until })` or
+returns `{ kind: "wait", selection, until }` from its wake handler. These travel as `notification`
+and `status_changed` events and waiting-effect data for every client to render. No payload names a
+plugin, and `api` has no `ui` namespace for calling an attached client. A tool may declare
+`availability: "foreground"` when it cannot run after its session enters the background. This host
+placement metadata does not determine its name or selection.
 
-Activation is per session and per host process. Handlers **must** be re-entrant. Cross-step state
-belongs behind session fact refs or in a host-owned service, never in a runner closure. Plugin
-failure **must not** weaken a policy decision into permission.
+Activation is per session and host process. Setup stages and validates contributions before
+publication. It may read session facts but cannot rename the session or write storage. A failed
+candidate leaves the active set unchanged. Disposed registrations and callbacks cannot mutate it.
 
-Facts use `refs/facts/<key>` pointing to blobs. The SDK keeps a session's `name`, `parent`,
-`pinned`, `archived`, and `cwd` there, and plugin storage lives under a per-plugin prefix. Ref updates make their changes visible
-in the same event stream as every other domain ref, so a plugin learns of its own setting changes
-the way a client does: a `fact` event carrying the key it wrote and the new value.
+Plugin replacement waits for the offered response and tool batch, including parked calls and wake
+handlers, plus active commands and callbacks. It returns `queued` instead of blocking its caller.
+Other sessions continue. `api.defer` schedules resource changes at that boundary; MCP uses it
+before releasing connections. `plugins_changed` reports publication, not preparation.
 
-MCP is the worked example of every rule above. The process owns the connections and a session
-owns the choice of which to use: a pool holds one connection per server config for every session,
-and the plugin turns a session's on/off settings into acquire and release on that pool, offering
-whatever is connected as tools. The pool is the host-owned service, kept across a plugin reload
-that leaves its config alone. The settings are per-plugin facts whose default is the manifest's
-`disabled`, and the plugin reacts to its own `fact` events. Its tools are `never` replay, because
-a remote call is not known to be idempotent. A server's tool table is discovered at runtime, so
-the pool notifies on every status change and the plugin rebuilds its registries. The config is
-project manifest read after trust, which matters here more than for most plugins, since a stdio
-server is a command the host spawns.
+Handlers **must** be re-entrant. Cross-step state belongs behind session fact refs or in a
+host-owned service, never in a runner closure. Plugin failure **must not** weaken a policy
+decision into permission.
+
+Facts are blobs behind `refs/facts/<key>`. The SDK stores `name`, `parent`, `pinned`, `archived`,
+and `cwd` there. Plugin storage uses per-plugin prefixes. A plugin sees its own setting change as
+a `fact` event with its key and new value.
+
+The process owns MCP connections; each session selects which to use. A pool shares one connection
+per server configuration across sessions. The plugin maps per-session on/off
+settings to pool acquisition and release, then offers connected tools. The host-owned pool survives
+plugin reloads that leave its configuration unchanged. Settings are per-plugin facts defaulting to
+the manifest's `disabled`, and the plugin reacts to its own `fact` events. MCP tools use `never`
+replay. Runtime tool discovery makes the pool notify on each status change and the plugin rebuild
+its registries. After trust, the plugin reads server commands from the project manifest.
 
 ## Agents
 
-An agent is a host-resolved session preset, not a second runner type. A run using a
-preset stores its name in `config`. Delegation does not require a preset: the parent
-creates a child through `create` or `task` and may supply an exact `provider/model`.
-Both tool schemas list enabled choices across authenticated providers, refreshed
-for each request. Host model preferences govern the picker and execution through
-one availability policy; there is no separate subagent model category or allowlist.
+An agent is a host-resolved session preset, not another runner type. A run stores its preset name
+in `config`. Delegation needs no preset; `create` or `task` may supply an exact `provider/model`.
+Both tool schemas list enabled choices across authenticated providers and refresh them per request.
+One host model availability policy governs picking and execution. No separate subagent model
+category or allowlist exists.
 
-If a call omits the model, it resolves to `openai-codex/gpt-6.1-sol` with `high`
-thinking, or `anthropic/claude-opus-5-5` with `medium` thinking if the first choice
-is unavailable. An explicit thinking level overrides the selected default. If both
-choices are unavailable, creation fails. An explicit model is exact and never falls
-back. Provider request errors do not switch models.
+Without a model, a call selects `openai-codex/gpt-6.1-sol` with `high` thinking, then
+`anthropic/claude-opus-5-5` with `medium` thinking if unavailable. An explicit thinking level
+overrides that default. Creation fails if neither model is available. An explicit model never
+falls back, and provider request errors never switch models.
 
-The child receives the shared session tools except the delegation tools and any tool
-marked for a present participant, with its role and constraints supplied through
-`create.system` or the prompt. Its config records the resolved model and thinking
-level before its prompt runs. Availability is checked at creation and at each model
-request, including after a restart or preference change. Losing availability fails
-the request; it never replaces an admitted child's model.
+A child receives shared session tools except delegation tools and tools marked for a present
+participant. `create.system` or the prompt supplies its role and constraints. Before the prompt,
+its config records the resolved model and thinking level. Availability is checked at creation and
+each model request, including after restarts or preference changes. Losing availability fails the
+request and never replaces an admitted child's model.
 
-A child is a session the parent addresses by `SessionId`, with durable parent coordinates stored
-as a `parent` fact: parent session, run, call, and depth. `sessions.create({ parent })` writes
-them, `sessions.list({ parent })` finds the children, and a plugin reads `session.info().child`.
-A child persists until the parent calls `stop`; it is not a job, and `jobs.list` does not name it.
-A panel draws a child from its `SessionInfo`: `parent`, `name`, and its `main` head's `run`.
+A child is a session addressed by `SessionId`. Its `parent` fact stores parent session, run, call,
+and depth. `sessions.create({ parent })` writes it, `sessions.list({ parent })` finds children, and
+plugins read `session.info().child`. A child persists until its parent calls `stop`. It is not a job
+and does not appear in `jobs.list`. A panel uses the child's `SessionInfo` fields `parent`, `name`,
+and `main` head `run`.
 
-The parent's tools are `task` (create, send, and await in one call), `create`, `send`, `await`,
-`read`, and `stop`. `send` enqueues a user message on the child's `main` head as the parent, with
-`delivery: "next"` when the child is idle and `delivery: "steer"` when it is live. Before publishing the child change, the parent writes a request
-record with the owning run, call, head, delivery state, and continuation state. The same CAS
-asserts that the parent run ref still points to the exact run object `send` read. If Stop wins
-that race, `send` abandons the prepared request and the child receives nothing. Model `send` and
-`task` authorize one continuation under the parent run's root; a participant message to the child
-records `input` instead. When the child run that landed a request ends, one `completion` lands on
-the parent head carrying `JobReport.delegate`: the child, its title, the `request` identity
-(`commit` when landed, `change` when stopped first), how the run ended, and the child's last
-assistant commit as its report. The request record captures the terminal child run object's oid,
-so delivery reads the end without depending on the trimmable event stream. Garbage collection
-keeps that run object while the record remains reachable. Delivery submits first under its stable
-key and then marks the record delivered, so recovery closes a crash between those writes without
-duplicating the completion. One request, one completion; a second `send` earns a second. Durable child completion **must** travel through stored state, never through a
-process-local registry the model queries. The SDK installs the delegation tools only in root
-sessions, so delegation depth is 1. A client presents a parked wait as background work rather
-than as a request for user input.
+Parent tools are `task`, `create`, `send`, `await`, `read`, and `stop`. `task` creates, sends, and
+awaits in one call. `send` enqueues a parent-authored user message on child head `main` with
+`delivery: "next"` when idle or `delivery: "steer"` when live.
 
-`await` parks for up to `timeoutMs` on any or all of the named agents and returns what is known
-when it wakes: a report where a request ended, a phase otherwise. The parent may call it again;
-the report also arrives as its completion. `read` returns the child's phase and its latest turns
-without parking. `stop` cancels the child and its running work through the same durable
-cancellation clients use, and the child answers no further messages. Only children the calling
-session created can be addressed; unknown ids return a tool error. Stopping a child does not abort
-the parent run. Aborting the parent cancels its parked waits and revokes every outstanding
-continuation authorization that run owns. The children keep working, but later reports from those
-requests wait for user input. A parent run that fails revokes its authorizations too.
+Before publishing the child change, the parent writes a request with owning run, call, head,
+delivery state, and continuation state. The same CAS asserts the exact parent run object read by
+`send`. If Stop wins, `send` abandons the request and publishes no child change. Model `send` and
+`task` authorize one continuation under the parent's root. A participant message records `input`
+instead.
+
+When the child run that landed a request ends, one `completion` lands on the parent head. Its
+`JobReport.delegate` carries the child, title, request identity, how the run ended, and last
+assistant commit as the report. Request identity is the `commit` when landed or `change` when
+stopped first. The request records the terminal child run oid, so delivery does not depend on the
+trimmable event stream. Garbage collection retains that run object while the record is reachable.
+Delivery submits under a stable key before marking the record delivered, so recovery cannot
+duplicate a completion after a crash between writes. Each request gets one completion. A second
+`send` gets another. Durable child completion **must** use stored state, never a process-local
+registry queried by the model. Delegation tools exist only in root sessions, so depth is 1.
+
+`await` waits on any or all named agents as [Wait and wake](#wait-and-wake) describes, and each
+report also arrives as a completion. `read` returns child phase and latest turns without parking.
+`stop` uses durable client cancellation for the child and its work, after which the child answers
+no messages. Only children
+created by the calling session are addressable; unknown ids return a tool error. Stopping a child
+does not abort the parent run. Aborting the parent cancels its parked waits and revokes its
+continuation authorizations. Children continue, but their later reports wait for user input.
 
 ## The SDK
 
-The kernel SDK is plain data and one options object per operation. `SessionId` is the only branded id.
-Run ids, head names, oids, and sequences use fields that name their meaning. `main` is the default
-head.
+The SDK uses plain data and one options object per operation. `SessionId` is its only branded id;
+run ids, heads, oids, and sequences are plain named fields.
 
 The root contract is:
 
@@ -938,27 +789,24 @@ Nyte
   sessionCwd({ sessionId })                       host-only location read
   relocate({ sessionId, workspace, plugins })     re-point one idle session
   reactivate()
-  setPlugins(plugins, { sessionId }?)
-  holdPlugins()                                   pause every runner's next step
+  setPlugins(plugins, { sessionId }?)             applied | queued | rejected { error }
   close()
 ```
 
-`NyteOptions` always supplies `store`, `streamFn`, `models`, and a fallback `model`. It may supply
-`drain` (`one` by default or `all`), `actor`, `thinkingLevel`,
-`compaction`, stream options, `telemetry`, `onDiagnostic`, and a workspace backend (registry,
-`@` file discovery, and a `vcs` backend that answers every `workspace.vcs` operation at the
-directory the SDK resolves per call; `@nyte-ai/host` supplies git). Static
-composition supplies `plugins` and `env`. Lazy composition supplies `resolveActivation` and must
-not also supply static plugins or env.
+`NyteOptions` always supplies `store`, `streamFn`, `models`, and fallback `model`. Optional fields
+are `actor`, `thinkingLevel`, `compaction`, stream options, `telemetry`, `onDiagnostic`, a workspace
+backend, and `drain`, which is `one` by default or `all`. The backend provides a registry, `@`
+file discovery, and `vcs` for every `workspace.vcs` operation at the directory resolved per call.
+`@nyte-ai/host` supplies git. Static composition supplies `plugins` and `env`. Lazy composition
+supplies `resolveActivation` and must not also supply static plugins or env.
 
 `SessionInfo.activation` is host-local state. `activation_changed` is replayed once on every watch
 with the latest durable sequence, but it is not ordered by the snapshot's `seq` and does not enter
 the durable event stream. `reactivate()` asks the host resolver again for blocked sessions.
 
-`runs.compact` writes a manual checkpoint. `heads.move({ summary })` carries abandoned history to
-the navigation target with a summary commit. `runs.wait` resolves `idle` only once the run is
-terminal, nothing is pending, and the runner has released its lease, because the last publish and
-the lease release are two writes and `idle` promises the head is free.
+`runs.wait` resolves `idle` only after the run is terminal, nothing is pending, and the runner
+released its lease. The last publish and lease release are separate writes, and `idle` promises a
+free head.
 
 The outcome unions a client switches on are exactly:
 
@@ -981,16 +829,12 @@ CommandOutcome     ran { output? } | prompt { prompt } | not_found | failed { me
 ApplyOutcome       applied | not_found | invalid_choice
 ```
 
-A `failed` outcome is not one shape. `CompactOutcome` and `MoveOutcome` both carry a `code` beside
-their message, so a client distinguishes an internal failure from `inactive`, `busy`, `conflict`,
-`fenced`, or a stopped summary without matching on prose. The message is for a human.
+`failed` in `CompactOutcome` and `MoveOutcome` carries a `code`, so clients distinguish internal
+failure from `inactive`, `busy`, `conflict`, `fenced`, or a stopped summary without parsing prose.
 
-`RunInfo` is not a terminal-state union. It carries `runId`, `head`, `origin`, `root`, the kernel
-`RunPhase`, `startedAt`, `attempts`, the `config` the run folded when it began, optional
-`abortRequested`, optional `awaitingReply` while a `waiting` run is parked on a participant rather
-than on background work, and the current lease owner and expiry when a lease exists. A user run's
-origin is `{ kind: "user" }` and its root equals its run id. A continuation origin names the child
-session and delegate request, while `root` remains the requesting chain's root.
+`RunInfo` carries `runId`, `head`, `origin`, `root`, kernel `RunPhase`, `startedAt`, `attempts`,
+folded `config`, optional `abortRequested`, optional `awaitingReply` for a participant wait, and
+current lease owner and expiry if present. It is not a terminal-state union.
 
 ### Events
 
@@ -1023,15 +867,11 @@ status_changed   { items }
 activation_changed { activation }
 ```
 
-The SDK event contract has no claim events, entry ids, and no retry overlay. The `compaction` event
-and its snapshot field are liveness, not a second history: the checkpoint they describe still
-arrives as an ordinary `commit`. Deltas use the provisional run tuple because no commit oid exists
-until the assistant message is whole.
+The SDK has no claim events, entry ids, or retry overlay.
 
 ## Invariants
 
-This numbered list is the contract other documents and code comments cite by number. Numbers are
-never reused. A superseded number stays here with one line saying why.
+Numbers are never reused. A superseded number remains with its reason.
 
 Storage and session:
 
@@ -1105,8 +945,9 @@ Agents:
 
 27. An agent is one plugin registry contribution. There is no separate subagent runner type, and
     its mode never grants a capability.
-28. A parent selects an agent by name. It **must not** set the child's model, system prompt, tools,
-    or a weaker policy through model-supplied arguments.
+28. A parent **must not** set a child's tools or a weaker policy through model-supplied arguments.
+    Those arguments may choose its exact model and thinking level and, through `create.system`,
+    add its role and constraints.
 29. **Superseded.** There is no `operation_started` record. The run object stores configuration
     folded from config commits when the run starts.
 30. A model-facing background job settles through durable session state, never through a
@@ -1170,35 +1011,24 @@ Kernel CAS, queues, retention, and streaming:
 
 1. **Long tools on stateless placements.** A command that outlives a request needs a process that
    can finish it or an external service that later signals its effect. The wait mechanism and the
-   Postgres backend exist. What stays open is the host wiring: which process finishes the command,
-   and what wakes the next step.
+   Postgres backend exist. Which process finishes the command and what wakes the next step remain
+   open host wiring.
 2. **Joining heads.** `heads.merge` fast-forwards a current stacked child into its parent. A general
    join of two named heads stays deferred until a product needs one.
 3. **Identity and authorization.** `Actor` is durable attribution. ACL-scoped callers are host and
    protocol territory.
 4. **Host-scoped plugin storage.** Fact refs belong to one session. Preferences shared across
-   sessions need a host-owned store when a concrete plugin needs one. The MCP server toggle is
-   the first candidate: a user turning a server off most likely means for this machine, and today
-   the per-session fact with the manifest's `disabled` as its default stands in.
-5. **Retention defaults.** The kernel exposes trim, floor, grace, mark, and sweep without choosing
-   a window or schedule. Each host needs a policy before users can rely on a specific undo horizon.
+   sessions need a host-owned store when a concrete plugin needs one. The first candidate is the
+   MCP server toggle, since turning a server off most likely means for this machine. Today the
+   per-session fact, defaulting to the manifest's `disabled`, stands in.
+5. **Retention defaults.** Each host needs a retention window and schedule before users can rely
+   on a specific undo horizon.
 
 ## Lineage
 
-The kernel's git correspondence is deliberate. Object database to `objects`, refs and `update-ref`
-CAS to `refs`, lock files to `leases`, reflog to `events`. Nyte swaps the content for messages,
-enforces one context parent, has no worktree, and retains the reflog instead of keeping it
-forever.
+`Turn`, schema messages, the effect sandwich, and replay policies come from pi. Ported files keep
+`Based on` credit; `THIRD-PARTY-NOTICES.md` lists upstreams. `steer` and `next` retain OpenCode's
+admission terms.
 
-The turn, schema message types, effect sandwich, and replay policies come from pi. Ported files
-keep their `Based on` credit, and `THIRD-PARTY-NOTICES.md` lists upstreams. The `steer` and `next` deliveries keep the useful part of OpenCode's admission vocabulary while
-making timing a closed protocol choice.
-
-Stack metadata follows Graphite and its open-source fork charcoal: one parent branch and one base
-revision, with staleness as an equality check. The kernel does not copy their commit replay model.
-Generated conversation text is not a patch you can reapply safely, and pretending otherwise is how
-you end up with a transcript the model never said.
-
-The plain-object, one-options-object-per-operation SDK form follows `code.storage`. Nyte keeps that
-wire-friendly shape while exposing kernel oids, run phases, delivery, and the event cursor
-directly.
+Stack metadata follows Graphite and charcoal. The plain-object, one-options-object-per-operation
+SDK form follows `code.storage`.

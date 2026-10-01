@@ -1,27 +1,23 @@
 ---
 title: SDK
-description: createNyte is how a host talks to Nyte. A store, a stream function, a catalog, and plugins go in; operations and one event stream come out
+description: Host API for stores, models, plugins, operations, and events
 ---
 
-Compose one `Nyte` over a store, a stream function, a model catalog, and a plugin list. Clients call
-operations on that object and fold its events. The [design record](/docs/design#the-sdk) holds the
-full contract.
+Create one `Nyte` from a store, stream function, model catalog, and plugins.
 
-`messages.send` admits a message into the inbox. It does not start a run. The process that called
-`attach()` runs it, and without an attached runner `runs.wait` sits forever on a message the store
-already holds.
+`messages.send` writes to the inbox but does not start a run. The process that called `attach()` runs
+the message. Without one, `runs.wait` never returns.
 
 ## Two entries
 
-| Entry                 | Imports                                                                                                                                                                                                |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@nyte-ai/core`       | `createNyte`, the wire data types, and `MAIN`. The operation table, envelopes, SSE codec, and `CursorExpired` stay in `@nyte-ai/protocol`. The projections live in `@nyte-ai/client`.                  |
-| `@nyte-ai/core/store` | `SqliteStore`, `WorkerStore` (the same backend in a worker thread, for hosts that also render), and the `Store` contract a backend implements. Hosts name their storage here. Clients never import it. |
+| Entry                 | Imports                                                                                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@nyte-ai/core`       | `createNyte`, the wire data types, and `MAIN`. `CursorExpired`, the operation table, envelopes, and SSE codec come from `@nyte-ai/protocol`. Projections come from `@nyte-ai/client`. |
+| `@nyte-ai/core/store` | `SqliteStore`, `WorkerStore`, and the `Store` contract. `WorkerStore` runs SQLite in a worker thread for hosts that also render. Only hosts import this entry.                        |
 
-Plugin authoring is `@nyte-ai/core/plugins`. `@nyte-ai/plugin` re-exports it and adds `define` for
-local TUI plugins. `SqliteStore` takes one file path. Nyte's clients share
-`~/.nyte/workspaces/<path-hash>/sessions.db` per workspace, resolved by `workspaceStorePath` from
-`@nyte-ai/host`.
+Author plugins through `@nyte-ai/core/plugins`. `@nyte-ai/plugin` re-exports it and adds `define`
+for local TUI plugins. Nyte's clients share one database per workspace at
+`~/.nyte/workspaces/<path-hash>/sessions.db`, the path `workspaceStorePath` returns.
 
 ```ts title="host.ts"
 import process from "node:process";
@@ -69,16 +65,13 @@ await nyte.close();
 await store.close();
 ```
 
-`drain` is `"one"` by default; `"all"` lands the whole selected delivery. The send above could
-omit `head` to use `MAIN`. `jobs.list` without a head filter lists jobs across the session's heads.
+`drain` defaults to `"one"`; `"all"` lands the whole selected delivery. `head` defaults to `MAIN`.
 
 ## The client loop
 
-A client opens with `sessions.snapshot`, draws it, then watches from the snapshot's `seq`. Each
-`commit` event folds into the transcript with `appendTranscriptCommit`. That function returns
-`undefined` when the commit's parent is not the tip it holds, which means the head moved. Take a new
-snapshot. A cursor older than the event floor throws `CursorExpired` from `watch`, with the same
-answer.
+Open with `sessions.snapshot`, draw it, then watch from its `seq`. `appendTranscriptCommit` returns
+`undefined` when the head moved, and `watch` throws `CursorExpired` for a cursor below the event
+floor. Both mean take a new snapshot.
 
 ```ts title="follow.ts"
 import { appendTranscriptCommit } from "@nyte-ai/client";
@@ -119,14 +112,13 @@ async function follow(
 }
 ```
 
-`watch({ afterSeq })` replays retained events, emits `synced`, then stays live. `watch({ live: true })`
-skips the replay. The snapshot already carries `pending`, `run`, and `context`.
+`watch({ afterSeq })` replays retained events, emits `synced`, then stays live. `live: true` skips
+replay. Snapshots include `pending`, `run`, and `context`.
 
 ## Sends go through an outbox
 
-Mint a key on Enter, keep the message locally as `sending`, draw it in the pending gutter at once,
-and submit with that key until the store answers. `queued` and `duplicate` both mean the message is
-durable, so a retry after a lost response lands nothing twice.
+Assign a key before sending, show the message locally as `sending`, and reuse the key on every
+retry. `queued` and `duplicate` both mean the store holds the message.
 
 ```ts title="outbox.ts"
 async function submit(
@@ -136,11 +128,9 @@ async function submit(
   sleep: (ms: number) => Promise<void>,
 ): Promise<string> {
   const key = crypto.randomUUID();
-  // Keep { key, content } locally as "sending" and draw it now.
   for (let attempt = 1; ; attempt += 1) {
     try {
       const receipt = await sdk.messages.send({ sessionId, content, key });
-      // queued and duplicate both mean the store holds it: drop the local row.
       return receipt.change;
     } catch {
       await sleep(Math.min(10_000, 250 * 2 ** (attempt - 1)));
@@ -151,24 +141,17 @@ async function submit(
 
 ## The inbox
 
-Each head has two deliveries with fixed timing.
-
 | Delivery | Lands                                                   |
 | -------- | ------------------------------------------------------- |
 | `steer`  | At the next response boundary, or when the head is idle |
 | `next`   | Only when the head is idle                              |
 
-`messages.send` defaults to `delivery: "next"`; use `"steer"` for input that
-should join a live run at its next boundary. The submitter also stamps the
-change as user input. Configuration is passive, delegated answers are answers,
-and command completions are reports. Admission uses those stamps rather than
-inspecting the body later.
+`messages.send` defaults to `delivery: "next"`.
 
-`messages.redeliver` can change a still-pending item's `delivery`. It also accepts `content` to edit
-the message and `before` to reorder it within the target delivery. Omit `before` to preserve its
-position, or pass `null` to move it to the end. The changed suffix receives new change IDs in one
-atomic update, and an untouched prefix keeps its IDs. `messages.cancel` withdraws one. A cancel
-racing landing settles as `cancelled` or `landed`, never both.
+`messages.redeliver` changes a pending item's `delivery`. Pass `content` to edit it and `before` to
+reorder it. Omit `before` to keep its position, or pass `null` to move it last. Items from the first
+changed position on get new change IDs. `messages.cancel` withdraws one, or returns `landed` if it
+landed first.
 
 ## Runs
 
@@ -200,30 +183,26 @@ if (outcome.kind === "waiting") {
 const compacted = await sdk.runs.compact({ sessionId, customInstructions: "keep file paths" });
 ```
 
-A parked participant selection needs no live process. Its refs hold the choices, an optional
-own-answer placeholder, an optional deadline, and a `waitId` for that exact wait generation.
-Re-parking the same call changes `waitId`, which tells clients to clear local picks and open the
-replacement. Running jobs still need their owning host.
+A parked selection needs no live process to answer. If the same call parks again, its new `waitId`
+tells clients to clear picks and show the replacement.
 
-`runs.context` is the token gauge. `runs.diff` is the per-run file diff, exact from the trees
-recorded on the run's commits when the host has a VCS backend and from `file_patch` facts otherwise.
-`runs.revert` restores the run's files from its first tree.
+`runs.context` returns token use. `runs.diff` returns the per-run file diff from commit trees when
+the host has a VCS backend, or from `file_patch` facts otherwise. `runs.revert` restores the files
+the run changed to their state at its start.
 
 ## Jobs
 
-Core tracks `bash` commands as jobs. The tool accepts `background: true`. Children are sessions,
-not jobs: the parent addresses one by `SessionId` through `create`, `send`, `await`, `read`, and
-`stop`, and `sessions.list({ parent })` finds them. Aborting a run cancels that run's own command
-jobs and its parked waits; the children keep working.
+Core tracks `bash` commands as jobs, including ones started with `background: true`. Children are
+sessions, not jobs. List them with `sessions.list({ parent })`.
 
-To move already-running work to background, use its job ID, not its run ID.
+Background or cancel running work by its job ID, not its run ID.
 
 ```ts title="jobs.ts"
 import type { Nyte, SessionId } from "@nyte-ai/core";
 
 async function backgroundWork(sdk: Nyte, sessionId: SessionId) {
   const jobs = await sdk.jobs.list({ sessionId, head: "main" });
-  const job = jobs.find((job) => job.phase.kind === "running" && job.phase.mode === "foreground");
+  const job = jobs.find((job) => job.phase.kind === "running" && !job.isBackgrounded);
   if (job === undefined) return;
   return sdk.jobs.background({ sessionId, jobId: job.id });
 }
@@ -233,42 +212,31 @@ async function cancelJob(sdk: Nyte, sessionId: SessionId, jobId: string) {
 }
 ```
 
-`jobs.background` and `jobs.cancel` return `applied`, `finished`, or `not_found`. Backgrounding keeps
-the same work running and releases the parked parent call with a receipt. Cancelling targets only
-that job. `runs.abort` cancels foreground and background work owned by that run, and leaves
-independent user jobs running. These controls work while the parent run is waiting, so do not gate
-them on an idle composer.
+`jobs.background` and `jobs.cancel` return `applied`, `finished`, or `not_found`. Backgrounding
+keeps the work running and releases the parked parent call. Cancelling affects only that job.
+`runs.abort` cancels the run's command jobs and parked waits, but not its children or user jobs. These
+controls work while the parent waits.
 
-`JobInfo` includes `id`, `head`, `origin`, `command`, `phase`, timestamps, and `output`. `origin`
-is `{ kind: "run", runId, callId }` for a job a tool call started and `{ kind: "user" }` for one
-`jobs.start` began. `phase` is `running` with a `foreground` or `background` mode, or
-`completed`, `failed`, `cancelled`, or `interrupted`. Output retains the last 50,000
-characters. Read jobs with `jobs.list` and refresh on `job` events. Job data is separate from the
-session snapshot.
+A run's job has `origin: { kind: "run", runId, callId }`, and a `jobs.start` job has
+`{ kind: "user" }`. `isBackgrounded` stays true after completion. Phases are `running`, `completed`,
+`failed`, `cancelled`, and `interrupted`. Output keeps the last 50,000 characters. Jobs are not in the
+session snapshot. Read them with `jobs.list`, which covers every head unless you filter.
 
-Job records and output are durable, but work does not survive the owning host closing. Host close or
-recovery marks abandoned work `interrupted` without rerunning it. A terminal background job changes
-its completion from `owed` to `claimed`, submits its end and output under an idempotency key on the
-originating head, then records `delivered`. Recovery retries `claimed` delivery with the same key.
-`runs.abort` suppresses only a completion still `owed`; one already `claimed` finishes exactly once.
-Completions are submitted with `kind: "report"` and `delivery: "steer"`; a child's answered request
-uses `kind: "answer"` and the same delivery. User input starts model work. A delegate's answer can also start one continuation when
-an un-stopped run authorized that request. The send writes its authorization while asserting the
-exact parent run ref in the same CAS, and landing consumes the authorization once. Stop either wins
-that assertion before the child submission or revokes the stored authorization. Command completions,
-participant child requests, and unauthorized delegate answers wait for user input when no run is
-active. Clients do not submit completion messages themselves.
+Job records and output are durable, but work stops with its host and becomes `interrupted` without
+rerunning. A finished background job lands once on its originating head as a `completion` commit with
+`steer` timing. `runs.abort` drops a completion unless its delivery has started.
 
-Children inherit workspace trust and are not offered tools marked
-`availability: "foreground"`.
+On an idle head, only user input or a delegate's answer starts a run. The answer continues the run
+that asked, once, unless that run was stopped. Clients do not submit completion messages.
+
+Children inherit workspace trust and cannot use tools marked `availability: "foreground"`.
 
 ## Heads
 
-`heads.move` keeps one `main` pointer and keeps abandoned branches. Selecting a user message parks
-the head on its parent and hands the original content back in `restored`. With `summary`, the commits
-the move abandons are summarized into one `summary` commit whose parent is the target, in the same
-compare-and-swap a plain move uses. Nothing abandoned means a plain move. A model failure returns
-`failed` and leaves the head where it was.
+`heads.move` moves a head, `main` by default, and keeps abandoned branches. Moving to a user message
+puts the head on its parent and returns the message in `restored`. With `summary`, any abandoned
+commits become one `summary` commit on the target. A model failure returns `failed` without moving
+the head.
 
 ```ts
 const moved = await sdk.heads.move({
@@ -278,73 +246,70 @@ const moved = await sdk.heads.move({
   summary: { customInstructions: "what the abandoned attempt learned" },
 });
 if (moved.kind === "moved") {
-  void moved.restored?.content; // hand the selected message back to the composer
-  void moved.summary; // the summary commit, when anything was abandoned
+  void moved.restored?.content;
+  void moved.summary;
 }
 ```
 
 The outcomes are `moved`, `busy { run }`, `moved_since { tip }`, `not_found`, and `failed`. `expect`
-rejects a view that was already stale. `heads.create` cuts a stacked head from another head or a
-commit. `heads.merge` fast-forwards a current stacked child into its parent.
+rejects a stale view with `moved_since`. `heads.create` stacks a head on another head or commit.
+`heads.merge` fast-forwards a current stacked child into its parent.
 
 ## Events a client folds
 
-Every event carries `seq`. A client keeps the last one it applied as its cursor.
+Every event has `seq`. Keep the last applied value as the cursor.
 
-| Kind                                    | Fold                                                                                                   |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `commit`                                | `appendTranscriptCommit`; `undefined` means re-snapshot.                                               |
-| `head_moved`                            | The tip the next commits will follow. Clear any provisional text.                                      |
-| `run`                                   | The head's `RunInfo`, including `origin`, `root`, and phase. A terminal phase drops the run's overlay. |
-| `job`                                   | Upsert `event.job` by job ID, or refresh `jobs.list`.                                                  |
-| `queued` / `landed` / `queue_cancelled` | The pending gutter. Pending is also a store read, never client memory.                                 |
-| `text_delta` / `reasoning_delta`        | Provisional text keyed by `(runId, attempt, index)`; the commit settles it.                            |
-| `tool_progress` / `effect`              | A call's live output and durable state: intent, waiting, expired, signal, result.                      |
-| `stack` / `fact` / `deleted`            | Head metadata, a small session value, the session going away. A deleted fact carries no `value`.       |
-| `compaction`                            | Checkpoint work in flight on that head; `compaction: null` means it ended.                             |
-| `config_queued`                         | A configuration choice joined the queue before anything landed.                                        |
-| `activation_changed`                    | Host-local activation state, replayed once per watch and not ordered by `seq`.                         |
-| `synced`                                | Replay is over; what follows is live.                                                                  |
-| `diagnostic` / `plugins_changed`        | A notice to show, and the plugin list to re-read.                                                      |
-| `notification` / `status_changed`       | A plugin asking for attention, and the status items to show beside the model.                          |
+| Kind                                    | Fold                                                                                             |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `commit`                                | `appendTranscriptCommit`; `undefined` means re-snapshot.                                         |
+| `head_moved`                            | The tip the next commits will follow. Clear any provisional text.                                |
+| `run`                                   | The head's `RunInfo`. A terminal phase drops the run's overlay.                                  |
+| `job`                                   | Upsert `event.job` by job ID, or refresh `jobs.list`.                                            |
+| `queued` / `landed` / `queue_cancelled` | The pending gutter. Pending is also a store read, never client memory.                           |
+| `text_delta` / `reasoning_delta`        | Provisional text keyed by `(runId, attempt, index)`; the commit settles it.                      |
+| `tool_progress` / `effect`              | A call's live output and durable state: intent, waiting, expired, signal, result.                |
+| `stack` / `fact` / `deleted`            | Head metadata, a small session value, the session going away. A deleted fact carries no `value`. |
+| `compaction`                            | Checkpoint work in flight on that head; `compaction: null` means it ended.                       |
+| `config_queued`                         | A configuration choice joined the queue before anything landed.                                  |
+| `activation_changed`                    | Host-local activation state, replayed once per watch and not ordered by `seq`.                   |
+| `synced`                                | Replay is over; what follows is live.                                                            |
+| `diagnostic` / `plugins_changed`        | A notice to show, and the plugin list to re-read.                                                |
+| `notification` / `status_changed`       | A plugin asking for attention, and the status items to show beside the model.                    |
 
-A user run has `origin: { kind: "user" }` and uses its own `runId` as `root`. A continuation
-origin names the child session and its request as `{ kind: "commit", oid }` after landing or
-`{ kind: "change", oid }` when stopped first. It keeps the requesting run's root. The root
-identifies the aggregate response-attempt budget across the chain. Core reserves each attempt in
-that root's counter before the provider call, so concurrent continuations cannot both spend the
-last slot. Retry phases carry `retry { at, retries, failure }`, where `retries` is the consecutive
-retry count.
+A user run has `origin: { kind: "user" }` and uses its `runId` as `root`. A continuation origin
+names the child session and request as `{ kind: "commit", oid }` after landing or
+`{ kind: "change", oid }` if stopped first. It keeps the requesting run's root, which bounds response
+attempts across the chain. Retry phases carry `retry { at, retries, failure }`; `retries` counts
+consecutive retries.
 
-The checkpoint a compaction writes arrives as an ordinary `commit`. The `compaction` event is
-progress, not a second history.
+A compaction checkpoint arrives as a `commit`; `compaction` reports progress only.
 
 ## What the host still owns
 
-`createNyte` does not pick a provider, load plugins, or decide trust. You do that first.
-
-1. Build `Models`, register the providers this product supports, resolve a credential.
-2. Gate project plugins on workspace trust (`WorkspaceStore` from `@nyte-ai/host`). The grant lives
-   in `~/.nyte/workspaces.json` and is inherited from a trusted ancestor. Print mode will not grant
-   trust.
-3. Resolve the plugin list with `resolvePlugins`, which reads built-ins, then `~/.nyte/plugins`,
-   then `<cwd>/.nyte/plugins`, filtered by the merged `nyte.json` manifests (`~/.nyte` and
-   `<cwd>/.nyte`), which also name MCP servers. Watch those sources with `watchPluginDirectories`
-   and pass `nyte.holdPlugins` as its `hold`, so a runner's next step waits for `setPlugins`.
+1. Build `Models`, register providers, and resolve a credential.
+2. Gate project plugins on workspace trust with `WorkspaceStore` from `@nyte-ai/host`. Grants live in
+   `~/.nyte/workspaces.json`, and a directory inherits trust from its nearest trusted ancestor. Print
+   mode never grants trust.
+3. Resolve plugins with `resolveHostPlugins` from `@nyte-ai/host`. Local plugins use
+   `plugins/<id>/index.ts` for session behavior and `plugins/<id>/tui.ts` for the terminal.
+   Global roots load before trusted project roots, and a later plugin replaces an earlier one with the same ID.
+   Watch plugin, context, skill and manifest inputs with `watchPluginDirectories` from
+   `@nyte-ai/host/plugins`. A failed reload keeps the active set. `setPlugins` returns `applied`,
+   `queued`, or `rejected`. A queued replacement waits for the current response and its tool calls,
+   parked calls included, to finish.
 4. Pass that list, `streamFn`, `store`, and `env.cwd` into `createNyte`, or pass `resolveActivation`
    to load plugins the first time a session activates.
 5. Call `attach()` in the process that should run tools.
-6. Supply `workspace.vcs` (`createGitVcs` from `@nyte-ai/host`) so `nyte.workspace.vcs` answers
-   snapshot, diff, contents, log, refs, stage, discard, commit, createBranch, and push for the
-   session's directory. Without it, reads answer empty and writes answer `failed`. Mutation `expect`
-   protects against acting on a moved tree; the revision is a public digest, not proof that the
-   client read that tree.
+6. Pass `workspace.vcs`, such as `createGitVcs` from `@nyte-ai/host`, so `nyte.workspace.vcs`
+   answers snapshot, diff, contents, log, refs, stage, discard, commit, createBranch, and push for
+   the session's directory. Without it, reads answer empty and writes answer `failed`. A mutation's
+   `expect` rejects a moved tree. It is a public digest, so it does not prove the client read the
+   tree.
 
-Trust is not a sandbox and not a per-call approval. After trust, project plugins and unrestricted
-filesystem tools load.
+Trust is not a sandbox or per-call approval. It loads project plugins and unrestricted filesystem
+tools.
 
-An agent is a plugin contribution, and a child is a child session with durable parent coordinates.
-See [design, Agents](/docs/design#agents).
+Agents are plugin contributions. See [Agents](/docs/design#agents).
 
 ## Related
 
@@ -359,13 +324,13 @@ See [design, Agents](/docs/design#agents).
     icon="IconAgent"
     title="Desktop"
     href="/docs/desktop"
-    description="The Electron host: same SDK, window.nyte over IPC"
+    description="Electron host with the same SDK over window.nyte"
   />
   <DocCard
     icon="IconCodeBrackets"
     title="Admission"
     href="/docs/design#admission-is-open"
-    description="Inbox deliveries, chains, and why a send never errors"
+    description="Inbox deliveries and chains"
   />
   <DocCard
     icon="IconConsole"
