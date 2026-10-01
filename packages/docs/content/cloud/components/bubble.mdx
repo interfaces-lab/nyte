@@ -1,0 +1,54 @@
+---
+title: Bubble
+description: "Message content with optional reactions"
+---
+
+```ts title="Import"
+import { Bubble, BubbleContent } from "@nyte-ai/ui/bubble";
+```
+
+A container for message content and reactions.
+
+## Usage
+
+- Style with `className` and `style`, not `xstyle`.
+- With `render`, `BubbleContent` props and refs stay typed for a `div`.
+
+## Anatomy
+
+| Part              | Element            | Parent                          |
+| ----------------- | ------------------ | ------------------------------- |
+| `BubbleGroup`     | `div`              | Optional group                  |
+| `Bubble`          | `div`              | `BubbleGroup` or your container |
+| `BubbleContent`   | `div`, or `render` | `Bubble`                        |
+| `BubbleReactions` | `div`              | `Bubble`                        |
+
+## Examples
+
+```tsx
+<Bubble align="end">
+  <BubbleContent>Inspect the latest change.</BubbleContent>
+</Bubble>
+```
+
+```tsx
+<BubbleContent render={<button type="button" />}>Edit message</BubbleContent>
+```
+
+## Props
+
+Parts take native props and refs and set a matching `data-slot`.
+
+| Part              | Prop      | Type                                                                                               | Default     |
+| ----------------- | --------- | -------------------------------------------------------------------------------------------------- | ----------- |
+| `Bubble`          | `variant` | `"default" \| "secondary" \| "muted" \| "tinted" \| "outline" \| "ghost" \| "destructive" \| null` | `"default"` |
+| `Bubble`          | `align`   | `"start" \| "end"`                                                                                 | `"start"`   |
+| `BubbleContent`   | `render`  | `ReactElement \| render callback`                                                                  | `div`       |
+| `BubbleReactions` | `side`    | `"top" \| "bottom"`                                                                                | `"bottom"`  |
+| `BubbleReactions` | `align`   | `"start" \| "end"`                                                                                 | `"end"`     |
+
+Every prop except `render` sets a matching `data-*` attribute. A `null` variant omits its class and attribute.
+
+## Accessibility
+
+Bubble parts add no role or focus styles. Give reaction controls accessible names.

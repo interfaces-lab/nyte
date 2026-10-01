@@ -1,0 +1,49 @@
+---
+title: Marker
+description: "Transcript status and separator rows"
+---
+
+```ts title="Import"
+import { Marker, MarkerContent } from "@nyte-ai/ui/marker";
+```
+
+A transcript row for a status, boundary or annotation.
+
+## Usage
+
+- Style with `className` and `style`, not `xstyle`. `variant` adds classes but draws no lines or borders.
+- With `render`, put element-specific props such as `href` on the rendered element.
+
+## Anatomy
+
+| Part            | Element            | Parent         |
+| --------------- | ------------------ | -------------- |
+| `Marker`        | `div`, or `render` | Your container |
+| `MarkerIcon`    | `span`             | `Marker`       |
+| `MarkerContent` | `span`             | `Marker`       |
+
+## Examples
+
+```tsx
+<Marker role="status">
+  <MarkerContent>Waiting for input</MarkerContent>
+</Marker>
+```
+
+## Props
+
+Parts take native props and refs and set a matching `data-slot`.
+
+| Part         | Prop          | Type                                           | Default     |
+| ------------ | ------------- | ---------------------------------------------- | ----------- |
+| `Marker`     | `variant`     | `"default" \| "separator" \| "border" \| null` | `"default"` |
+| `Marker`     | `render`      | `ReactElement \| render callback`              | `div`       |
+| `MarkerIcon` | `aria-hidden` | Native ARIA value                              | `"true"`    |
+
+`variant` sets `data-variant`. `null` omits the class and attribute.
+
+`markerVariants({ variant, className })` returns the marker classes plus yours.
+
+## Accessibility
+
+The root has no default role. Add `role="status"` or `role="alert"` when a marker should announce. Leave `role="separator"` off labeled boundaries, so the label keeps its text semantics.

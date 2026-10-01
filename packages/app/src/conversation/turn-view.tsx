@@ -8,6 +8,9 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Row } from "@nyte-ai/ui/row";
+import { BubbleContent } from "@nyte-ai/ui/bubble";
+import { Message } from "@nyte-ai/ui/message";
+import { AttachmentGroup } from "@nyte-ai/ui/attachment";
 // oxlint-disable-next-line no-restricted-imports -- the outside-click listener lives only while an edit can dismiss
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
@@ -37,8 +40,13 @@ import { UserMessageText, messageImages, userMessageText } from "./message-conte
 import { messageDraftText } from "./message-references.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import type { ModelPickerChange } from "./model-picker.tsx";
-import { USER_MESSAGE_PREVIEW_LINES, bubbleStyles, turnStyles } from "./styles.stylex.ts";
-import { Marker, Message } from "./row-surfaces.tsx";
+import {
+  USER_MESSAGE_PREVIEW_LINES,
+  bubbleStyles,
+  messageStyles,
+  turnStyles,
+} from "./styles.stylex.ts";
+import { StatusMarker } from "./row-surfaces.tsx";
 import { ToolCallView } from "./tool-call.tsx";
 import { WorkGroupView } from "./tool-group.tsx";
 import { failureNotice } from "./tool-copy.ts";
@@ -102,7 +110,7 @@ function UserMessageImages({ content }: { content: UserTurnPart["content"] }): R
   if (images.length === 0) return null;
 
   return (
-    <div {...props(turnStyles.userImages)}>
+    <AttachmentGroup {...props(turnStyles.userImages)}>
       {images.map((item, index) => (
         <ImagePreview
           key={index}
@@ -110,7 +118,7 @@ function UserMessageImages({ content }: { content: UserTurnPart["content"] }): R
           name={`Image ${String(index + 1)}`}
         />
       ))}
-    </div>
+    </AttachmentGroup>
   );
 }
 
@@ -304,9 +312,13 @@ export function UserMessageView({
 
   return (
     <div ref={rowRef} data-sticky-user-message {...props(turnStyles.userRow)}>
-      <Message align="end">
+      <Message align="end" {...props(messageStyles.end)}>
         {edit === undefined ? (
-          <Row xstyle={[bubbleStyles.default, onEdit !== undefined && bubbleStyles.editable]}>
+          <BubbleContent
+            render={
+              <Row xstyle={[bubbleStyles.default, onEdit !== undefined && bubbleStyles.editable]} />
+            }
+          >
             <UserMessageImages content={content} />
             {original !== "" && (
               <UserMessagePreview>
@@ -336,7 +348,7 @@ export function UserMessageView({
                 }
               />
             )}
-          </Row>
+          </BubbleContent>
         ) : (
           <div aria-busy={edit.saving || undefined} {...props(turnStyles.userEdit)}>
             {edit.error !== undefined && (
@@ -703,12 +715,12 @@ export const TurnView = memo(function TurnView({
             />
           )}
           {failure !== undefined && (
-            <Marker
+            <StatusMarker
               role={failure.tone === "danger" ? "alert" : "status"}
               variant={failure.tone === "danger" ? "destructive" : "default"}
             >
               {failure.text}
-            </Marker>
+            </StatusMarker>
           )}
           {!running && changes.length > 0 && (
             <TurnChangesCard
