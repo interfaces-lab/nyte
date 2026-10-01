@@ -150,8 +150,6 @@ export function createSummaries(input: {
         head,
         streamFn: requestStream({ ...request, step: "compaction" }),
         providerCompaction: providerCompactionFor(request),
-        systemPrompt: resolved.systemPrompt,
-        tools: [...resolved.tools],
         model: resolved.model,
         settings: options.compaction ?? DEFAULT_COMPACTION_SETTINGS,
         reason: "manual",

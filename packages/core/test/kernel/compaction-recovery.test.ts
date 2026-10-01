@@ -170,7 +170,7 @@ test.each(["save", "publish"])(
       ]);
       const turn = bindTurn({
         model,
-        systemPrompt: "test",
+        sections: { prompt: "test" },
         tools: [],
         compaction: { enabled: true, reserveTokens: 1_000, keepRecentTokens: 0 },
         streamFn: () => {

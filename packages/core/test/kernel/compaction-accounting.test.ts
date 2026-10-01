@@ -198,7 +198,7 @@ test.each([false, true])(
         );
       },
       model,
-      systemPrompt: "normal agent",
+      sections: { prompt: "normal agent" },
       tools: [],
       compaction: settings,
       retry,
@@ -322,7 +322,7 @@ test.each([false, true])(
     let requests = 0;
     const turn = bindTurn({
       model,
-      systemPrompt: "normal agent",
+      sections: { prompt: "normal agent" },
       tools: [],
       compaction: settings,
       retry,

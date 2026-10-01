@@ -17,7 +17,7 @@ import { hashObject } from "../../src/kernel/hash.ts";
 import type { Commit, CommitBody, Oid } from "../../src/kernel/model.ts";
 import { headRef, runRef } from "../../src/kernel/names.ts";
 import { submit } from "../../src/kernel/queue.ts";
-import { step } from "../../src/kernel/step.ts";
+import { drive, step } from "../../src/kernel/step.ts";
 import type { Session } from "../../src/kernel/store.ts";
 import { bindTurn, type TurnInput } from "../../src/kernel/turn.ts";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
@@ -186,9 +186,16 @@ test("the turn asks for a checkpoint before answering only when the last report 
   const session = await openSession();
   const script = summarizer("COMPACTED");
   const bind = (compaction: CompactionSettings) =>
-    bindTurn({ streamFn: script.streamFn, model, systemPrompt: "system", tools: [], compaction });
+    bindTurn({
+      streamFn: script.streamFn,
+      model,
+      sections: { prompt: "system" },
+      tools: [],
+      compaction,
+    });
   const turn = bind(settings);
-  const outcome = await turn.respond(await turnInput(session, items(longChat())));
+  assert.ok(turn.prepare);
+  const outcome = await turn.prepare(await turnInput(session, items(longChat())));
   assert.equal(outcome.kind, "checkpoint");
   if (outcome.kind === "checkpoint") assert.match(outcome.body.summary, /COMPACTED/u);
 
@@ -197,6 +204,7 @@ test("the turn asks for a checkpoint before answering only when the last report 
     message(assistant("small", { usage })),
     message(user("more")),
   ]);
+  assert.notEqual((await turn.prepare(await turnInput(session, light))).kind, "checkpoint");
   assert.equal((await turn.respond(await turnInput(session, light))).kind, "complete");
 
   const disabled = bind({ ...settings, enabled: false });
@@ -228,7 +236,7 @@ test("an oversized request compacts once, then the failure stands", async () => 
   const turn = bindTurn({
     streamFn,
     model,
-    systemPrompt: "system",
+    sections: { prompt: "system" },
     tools: [],
     compaction: settings,
     retry: { enabled: false, maxRetries: 0, baseDelayMs: 0 },
@@ -267,7 +275,7 @@ test("the step commits a checkpoint the turn asked for and asks again over the s
     streamFn,
     compactionStreamFn: summarizer("SHORTER").streamFn,
     model,
-    systemPrompt: "system",
+    sections: { prompt: "system" },
     tools: [],
     compaction: settings,
   });
@@ -288,7 +296,7 @@ test("the step commits a checkpoint the turn asked for and asks again over the s
   assert.equal(tipCommit?.kind === "commit" ? tipCommit.body.kind : undefined, "checkpoint");
   assert.equal(await session.refs.read(runRef("main")), runBefore);
 
-  assert.equal((await step(session, turn, { head: "main", drain })).kind, "finished");
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
   assert.ok(request);
   const messages = JSON.stringify(request.messages);
   assert.match(messages, /SHORTER/u);

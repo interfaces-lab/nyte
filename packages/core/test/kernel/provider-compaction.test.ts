@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
 import { test } from "vitest";
 import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
-import type { Context, ProviderCheckpointMaterial } from "@nyte-ai/schema";
+import type { Context, ProviderCheckpointMaterial, SystemMessage } from "@nyte-ai/schema";
+import { getCurrentSystemPrompt } from "@nyte-ai/schema";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { sessionId, type SessionEvent } from "../../src/kernel/sdk/types.ts";
 import { modelContext } from "@nyte-ai/client";
@@ -81,8 +82,16 @@ async function storedCompactionTokens(session: Session): Promise<number> {
 test("native compaction serves manual and automatic checkpoints without a local summary, and other models read the portable history", async () => {
   const store = openStore();
   const session = await store.create({ id: "native-lifecycle" });
+  // The branch declared its prompt with its first response, as a runner's branch does.
+  const declaration: SystemMessage = {
+    role: "system",
+    content: "",
+    sections: { "0100-persona": "NORMAL AGENT PERSONA" },
+    timestamp: 1_000,
+  };
   await seedHead(session, "main", [
     message(user("original")),
+    message(declaration),
     message(assistant("answer")),
     message(user("latest")),
   ]);
@@ -146,19 +155,30 @@ test("native compaction serves manual and automatic checkpoints without a local 
     assert.equal((await nyte.sessions.snapshot({ sessionId: id }))?.compaction, undefined);
     assert.equal(hookCalls[0]?.reason, "manual");
     assert.equal(hookCalls[0]?.customInstructions, "Preserve the constraints");
-    assert.equal(hookCalls[0]?.context.systemPrompt, "NORMAL AGENT PERSONA");
+    assert.equal(
+      getCurrentSystemPrompt(hookCalls[0]?.context.messages ?? []),
+      "NORMAL AGENT PERSONA",
+    );
     assert.equal(requests.length, 0);
 
     const tip = await session.refs.read(headRef("main"));
     const checkpoint = tip === null ? undefined : await session.objects.get(tip);
     assert.ok(checkpoint?.kind === "commit" && checkpoint.body.kind === "checkpoint");
     assert.deepEqual(checkpoint.body.material, material);
+    // The checkpoint replays the prompt the model had, for the native target and for any other.
     const target = { provider: model.provider, api: model.api, model: model.id };
-    assert.deepEqual(modelContext([checkpoint], target), { checkpoint: material, messages: [] });
+    const native = modelContext([checkpoint], target);
+    assert.deepEqual(native.checkpoint, material);
+    assert.equal(getCurrentSystemPrompt(native.messages), "NORMAL AGENT PERSONA");
+    assert.deepEqual(
+      native.messages.filter((item) => item.role !== "system"),
+      [],
+    );
     const portable = modelContext([checkpoint], { ...target, model: "different-model" });
     assert.equal(portable.checkpoint, undefined);
+    assert.equal(getCurrentSystemPrompt(portable.messages), "NORMAL AGENT PERSONA");
     assert.deepEqual(
-      portable.messages.map((item) => item.content),
+      portable.messages.flatMap((item) => (item.role === "system" ? [] : [item.content])),
       ["original", assistant("answer").content, "latest"],
     );
 
@@ -172,11 +192,21 @@ test("native compaction serves manual and automatic checkpoints without a local 
     assert.equal(hookCalls[1]?.reason, "threshold");
     assert.deepEqual(hookCalls[1]?.context.checkpoint, material);
     assert.deepEqual(
-      hookCalls[1]?.context.messages.map((item) => item.content),
+      hookCalls[1]?.context.messages.flatMap((item) =>
+        item.role === "system" ? [] : [item.content],
+      ),
       [oversized],
     );
+    assert.equal(
+      getCurrentSystemPrompt(hookCalls[1]?.context.messages ?? []),
+      "NORMAL AGENT PERSONA",
+    );
     assert.equal(requests.length, 1);
-    assert.ok(requests.every((request) => request.systemPrompt === "NORMAL AGENT PERSONA"));
+    assert.ok(
+      requests.every(
+        (request) => getCurrentSystemPrompt(request.messages) === "NORMAL AGENT PERSONA",
+      ),
+    );
     const commits = await storedCommits(session);
     assert.equal(commits.filter((commit) => commit.body.kind === "checkpoint").length, 2);
     assert.equal(projectUsage(commits).compaction.totalTokens, usage.totalTokens * 2);

@@ -13,13 +13,14 @@ import {
   uuidv7,
 } from "@nyte-ai/ai";
 import type { Api, AssistantMessage, Model, RetryPolicy, SimpleStreamOptions } from "@nyte-ai/ai";
-import type { Context, Message, ProviderCheckpointMaterial, Usage } from "@nyte-ai/schema";
+import type { Message, ProviderCheckpointMaterial, Usage } from "@nyte-ai/schema";
+import { getCurrentSystemMessage } from "@nyte-ai/schema";
 import { schemas, type CompactionInfo } from "@nyte-ai/protocol";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { Result } from "./result.ts";
 import type { StreamFn, ThinkingLevel } from "./loop/types.ts";
-import { contextMessages, modelContext } from "@nyte-ai/client";
+import { contextMessages, modelContext, type ModelContext } from "@nyte-ai/client";
 import { contextCommits } from "./graph.ts";
 import { hashObject } from "./hash.ts";
 import { LeaseLost, withLeaseRenewal } from "./lease.ts";
@@ -536,6 +537,8 @@ export function serializeConversation(messages: readonly Message[]): string {
         break;
       }
 
+      case "system":
+        break;
       default: {
         const _exhaustive: never = message;
 
@@ -559,7 +562,6 @@ async function completeSimpleWithRetries(input: {
     ...input.options,
     signal: input.signal,
     cacheRetention: "none",
-    sessionId: uuidv7(),
   };
 
   let usage: Usage | undefined;
@@ -816,6 +818,7 @@ function validCutPoints(messages: readonly Message[]): number[] {
         cutPoints.push(index);
         break;
       case "toolResult":
+      case "system":
         break;
       default: {
         const _exhaustive: never = message;
@@ -916,8 +919,13 @@ export function prepareCheckpoint(
   const checkpointBody = checkpoint?.kind === "checkpoint" ? checkpoint : undefined;
   const previousSummary = options?.previousSummary ?? checkpointBody?.summary;
 
+  // System messages are prompt state, not conversation; the checkpoint carries their replay.
+  const conversation = withoutSystemMessages(projected);
+
   const compactableMessages =
-    checkpointBody === undefined || checkpointBody.summary === "" ? projected : projected.slice(1);
+    checkpointBody === undefined || checkpointBody.summary === ""
+      ? conversation
+      : conversation.slice(1);
 
   const cut = findCutPoint(compactableMessages, settings.keepRecentTokens);
   const historyEnd = cut.isSplitTurn ? cut.turnStartIndex : cut.firstKeptMessageIndex;
@@ -941,7 +949,7 @@ export function prepareCheckpoint(
     turnPrefixMessages,
     retainedTail,
     isSplitTurn: cut.isSplitTurn,
-    tokensBefore: estimateContextTokens(projected).tokens,
+    tokensBefore: estimateContextTokens(withReplayedSystemMessage(projected)).tokens,
     fileOps,
     settings,
   };
@@ -952,7 +960,8 @@ export function prepareCheckpoint(
 }
 
 interface ProviderCompactionRequest {
-  readonly context: Context;
+  /** The transcript as the model reads it: system messages carry the prompt and tools. */
+  readonly context: ModelContext;
   readonly model: Model<Api>;
   readonly reason: CompactionReason;
   readonly tokensBefore: number;
@@ -980,8 +989,19 @@ export interface SummarizeCheckpointInput {
   readonly signal?: AbortSignal;
   readonly retry?: RetryPolicy;
   readonly providerCompaction?: ProviderCompaction;
-  readonly systemPrompt?: string;
-  readonly tools?: Context["tools"];
+}
+
+function withoutSystemMessages(messages: readonly Message[]): Message[] {
+  return messages.filter((message) => message.role !== "system");
+}
+
+/** The transcript as the model reads it: one replayed system message, then the conversation. */
+function withReplayedSystemMessage(messages: readonly Message[]): Message[] {
+  const system = getCurrentSystemMessage(messages);
+
+  return system === undefined
+    ? withoutSystemMessages(messages)
+    : [system, ...withoutSystemMessages(messages)];
 }
 
 async function summarizePreparedCheckpoint(input: {
@@ -1093,24 +1113,21 @@ export async function summarizeCheckpoint(
   }
 
   const commits = input.commits.map((entry) => entry.commit);
+  const target = { provider: input.model.provider, api: input.model.api, model: input.model.id };
+  const tokensBefore = estimateModelContextTokens(commits, target).tokens;
 
-  const tokensBefore = estimateModelContextTokens(commits, {
-    provider: input.model.provider,
-    api: input.model.api,
-    model: input.model.id,
-  }).tokens;
+  // The prompt and tools the model had when the cut was made; the checkpoint
+  // replays them ahead of the summary.
+  const replayed = getCurrentSystemMessage(contextMessages(commits));
+
+  const systemMessage: Pick<
+    Extract<CommitBody, { kind: "checkpoint" }>,
+    "systemMessage"
+  > = replayed === undefined ? {} : { systemMessage: { ...replayed, timestamp: Date.now() } };
 
   const checkpoint = await input.providerCompaction?.(
     {
-      context: {
-        ...modelContext(commits, {
-          provider: input.model.provider,
-          api: input.model.api,
-          model: input.model.id,
-        }),
-        systemPrompt: input.systemPrompt,
-        tools: input.tools,
-      },
+      context: modelContext(commits, target),
       model: input.model,
       reason: input.reason,
       tokensBefore,
@@ -1131,10 +1148,11 @@ export async function summarizeCheckpoint(
     return Result.ok({
       kind: "checkpoint",
       summary: "",
-      retainedTail: contextMessages(commits),
+      retainedTail: withoutSystemMessages(contextMessages(commits)),
       material: checkpoint.material,
       tokensBefore,
       usage: checkpoint.usage,
+      ...systemMessage,
     });
   }
 
@@ -1151,10 +1169,11 @@ export async function summarizeCheckpoint(
 
   if (!summarized.ok) return Result.err(withPriorUsage(summarized.error, checkpoint?.usage));
 
-  if (checkpoint?.usage === undefined) return summarized;
+  if (checkpoint?.usage === undefined) return Result.ok({ ...summarized.value, ...systemMessage });
 
   return Result.ok({
     ...summarized.value,
+    ...systemMessage,
     usage:
       summarized.value.usage === undefined
         ? checkpoint.usage
@@ -1335,17 +1354,20 @@ function branchMessages(commit: Commit): Message[] {
 
   switch (body.kind) {
     case "message":
-      return body.message.role === "toolResult" ? [] : [body.message];
+      return body.message.role === "toolResult" || body.message.role === "system"
+        ? []
+        : [body.message];
     case "checkpoint":
       // Native checkpoints have no portable summary; their retained history is
       // the only readable account of the branch, including its later messages.
       return body.summary === ""
-        ? contextMessages([commit])
-        : contextMessages([commit]).slice(0, 1);
+        ? withoutSystemMessages(contextMessages([commit]))
+        : withoutSystemMessages(contextMessages([commit])).slice(0, 1);
     case "completion":
     case "summary":
       return contextMessages([commit]);
     case "config":
+    case "usage":
       return [];
     default: {
       const _exhaustive: never = body;
