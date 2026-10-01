@@ -1,5 +1,7 @@
 import type { Plugin } from "vite";
 
+export { stylex } from "@nyte-ai/ui/stylex";
+
 export function dropInlinedGhosttyWasm(): Plugin {
   const inlinedWasm = /"data:application\/wasm;base64,[A-Za-z0-9+/=]+"/u;
 

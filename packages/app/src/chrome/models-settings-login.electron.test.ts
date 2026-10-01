@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
-import stylex from "@stylexjs/unplugin";
+import { stylex } from "@nyte-ai/ui/stylex";
 import electronExecutable from "electron";
 import { build } from "vite";
 import { afterAll, beforeAll, beforeEach, test } from "vitest";

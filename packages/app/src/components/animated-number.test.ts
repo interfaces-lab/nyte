@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import stylex from "@stylexjs/unplugin";
+import { stylex } from "@nyte-ai/ui/stylex";
 import electron from "electron";
 import { build } from "vite";
 import { afterAll, beforeAll, expect, test } from "vitest";

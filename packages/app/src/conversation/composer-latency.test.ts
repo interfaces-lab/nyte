@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import stylex from "@stylexjs/unplugin";
+import { stylex } from "@nyte-ai/ui/stylex";
 import electron from "electron";
 import { Type } from "typebox";
 import { Value } from "typebox/value";

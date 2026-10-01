@@ -1,4 +1,4 @@
-import stylex from "@stylexjs/unplugin";
+import { stylex } from "@nyte-ai/ui/stylex";
 import { defaultClientConditions } from "vite";
 import { configDefaults, defineConfig } from "vitest/config";
 
