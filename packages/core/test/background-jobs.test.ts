@@ -266,7 +266,8 @@ for (const background of [false, true]) {
       expect(await f.nyte.jobs.list({ sessionId: f.parent })).toEqual([]);
       const job = await f.start();
       expect(job).toMatchObject({
-        phase: { kind: "running", mode: background ? "background" : "foreground" },
+        isBackgrounded: background,
+        phase: { kind: "running" },
         origin: { kind: "run", callId: "work" },
         head: "main",
         command: expect.stringContaining("work.cjs"),
@@ -300,7 +301,10 @@ for (const background of [false, true]) {
         0,
       );
       expect((await f.nyte.runs.current({ sessionId: f.parent }))?.phase.kind).toBe("respond");
-      expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).output).toContain("job-result");
+      expect(only(await f.nyte.jobs.list({ sessionId: f.parent }))).toMatchObject({
+        isBackgrounded: true,
+        output: expect.stringContaining("job-result"),
+      });
       f.parentGate.release();
       await idle(f.nyte, f.parent);
       await f.nyte.reactivate();
@@ -323,6 +327,7 @@ for (const background of [false, true]) {
                 event.kind === "job" &&
                 event.job.id === job.id &&
                 event.job.phase.kind === "completed" &&
+                event.job.isBackgrounded &&
                 event.job.output.includes("job-result"),
             ),
           poll,
@@ -552,7 +557,10 @@ test("jobs.cancel kills the local process and publishes cancelled output", async
       kind: "applied",
     });
     await expect.poll(() => alive(pid), poll).toBe("dead");
-    expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).phase.kind).toBe("cancelled");
+    expect(only(await f.nyte.jobs.list({ sessionId: f.parent }))).toMatchObject({
+      phase: { kind: "cancelled" },
+      isBackgrounded: true,
+    });
     await expect
       .poll(
         () =>
@@ -591,7 +599,8 @@ test("a user job runs without a run: streams, lists, backgrounds, cancels, survi
       origin: { kind: "user" },
       head: "main",
       command,
-      phase: { kind: "running", mode: "foreground" },
+      isBackgrounded: false,
+      phase: { kind: "running" },
     });
     await expect
       .poll(async () => only(await f.nyte.jobs.list({ sessionId: f.parent })).output, poll)
@@ -627,15 +636,18 @@ test("a user job runs without a run: streams, lists, backgrounds, cancels, survi
     expect(await f.nyte.jobs.background({ sessionId: f.parent, jobId: job.id })).toEqual({
       kind: "applied",
     });
-    expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).phase).toEqual({
-      kind: "running",
-      mode: "background",
+    expect(only(await f.nyte.jobs.list({ sessionId: f.parent }))).toMatchObject({
+      phase: { kind: "running" },
+      isBackgrounded: true,
     });
     expect(await f.nyte.jobs.cancel({ sessionId: f.parent, jobId: job.id })).toEqual({
       kind: "applied",
     });
     await expect.poll(() => alive(pid), poll).toBe("dead");
-    expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).phase.kind).toBe("cancelled");
+    expect(only(await f.nyte.jobs.list({ sessionId: f.parent }))).toMatchObject({
+      phase: { kind: "cancelled" },
+      isBackgrounded: true,
+    });
     // A user job is never a completion: no background delivery item, no model turn.
     expect(await f.nyte.messages.pending({ sessionId: f.parent })).toEqual([]);
     expect(
@@ -652,7 +664,7 @@ test("a user job runs without a run: streams, lists, backgrounds, cancels, survi
     await expect.poll(async () => (await phaseOf(completed.id))?.kind, poll).toBe("completed");
     expect(
       (await f.nyte.jobs.list({ sessionId: f.parent })).find((item) => item.id === completed.id),
-    ).toMatchObject({ phase: { kind: "completed" }, output: "natural\n" });
+    ).toMatchObject({ phase: { kind: "completed" }, isBackgrounded: false, output: "natural\n" });
 
     const failed = await f.nyte.jobs.start({
       sessionId: f.parent,

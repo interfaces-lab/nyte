@@ -3,6 +3,7 @@ import type { JobInfo, JobReport } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import { afterEach, expect, test, vi } from "vitest";
 import { openEffect, parkEffect, readEffect } from "../src/kernel/effects.ts";
+import { projectEvent } from "../src/kernel/sdk/events.ts";
 import { toJsonValue } from "@nyte-ai/client";
 import type { Run } from "../src/kernel/model.ts";
 import { runRef } from "../src/kernel/names.ts";
@@ -65,12 +66,13 @@ async function fixture() {
     managers.push(jobs);
     return jobs;
   };
-  const seed = async (phase: JobInfo["phase"] = { kind: "running", mode: "background" }) => {
+  const seed = async (phase: JobInfo["phase"] = { kind: "running" }) => {
     const info: JobInfo = {
       id: "orphan",
       origin: { kind: "run", runId: run.id, callId: "call" },
       head: run.head,
       command: "work",
+      isBackgrounded: true,
       phase,
       startedAt: 1,
       updatedAt: 1,
@@ -135,6 +137,58 @@ function controlledTool(name = "bash") {
     executions: () => executions,
   };
 }
+
+test("old job records remain readable through listing and event replay", async () => {
+  const f = await fixture();
+  const jobs = f.manager();
+  const cases = [
+    { phase: { kind: "running", mode: "foreground" }, completion: { kind: "none" } },
+    { phase: { kind: "running", mode: "background" }, completion: { kind: "none" } },
+    { phase: { kind: "completed" }, completion: { kind: "owed" } },
+    { phase: { kind: "cancelled" }, completion: { kind: "none" } },
+  ] as const;
+  try {
+    for (const [index, entry] of cases.entries()) {
+      const info = {
+        id: `old-${index}`,
+        head: "main",
+        origin: { kind: "run", runId: f.run.id, callId: `call-${index}` },
+        command: "work",
+        output: "saved output",
+        phase: entry.phase,
+        startedAt: 1,
+        updatedAt: 2,
+      };
+      const oid = only(
+        await f.session.objects.put([
+          { kind: "blob", value: toJsonValue({ info, completion: entry.completion }) },
+        ]),
+      );
+      await f.session.refs.update([{ name: JOB_PREFIX + info.id, from: null, to: oid }], {
+        reason: "test",
+      });
+    }
+    const listed = await jobs.list();
+    expect(listed.map((job) => job.isBackgrounded)).toEqual([false, true, true, false]);
+    expect(listed.map((job) => job.phase)).toEqual([
+      { kind: "running" },
+      { kind: "running" },
+      { kind: "completed" },
+      { kind: "cancelled" },
+    ]);
+    expect(listed.every((job) => job.output === "saved output")).toBe(true);
+    const events = (
+      await Promise.all(
+        (await f.session.events.read({ afterSeq: 0 })).map((event) =>
+          projectEvent(event, f.session.objects),
+        ),
+      )
+    ).flat();
+    expect(events.flatMap((event) => (event.kind === "job" ? [event.job] : []))).toEqual(listed);
+  } finally {
+    await f.close();
+  }
+});
 
 test("remote job refs cancel the owner without replacing the notified terminal output", async () => {
   const f = await fixture();
@@ -244,7 +298,10 @@ test("recovery leaves a leased job alive, then interrupts the orphan and wakes i
     expect(f.notifications).toEqual([]);
     await f.session.leases.release(held);
     await Promise.all([jobs.recover(), jobs.recover()]);
-    expect(only(await jobs.list()).phase.kind).toBe("interrupted");
+    expect(only(await jobs.list())).toMatchObject({
+      phase: { kind: "interrupted" },
+      isBackgrounded: true,
+    });
     expect(
       (await readEffect(f.session, { runId: info.origin.runId, callId: info.origin.callId }))
         ?.effect.state,

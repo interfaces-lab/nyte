@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { JsonValue } from "@nyte-ai/schema";
 import {
   isTerminalPhase,
   schemas,
@@ -53,14 +52,52 @@ type JobRecord = Static<typeof jobRecord>;
 
 const checkJobRecord = Compile(jobRecord);
 
+const checkLegacyJobRecord = Compile(
+  Type.Object({
+    info: Type.Object({
+      isBackgrounded: Type.Optional(Type.Never()),
+      phase: Type.Union([
+        Type.Object({
+          kind: Type.Literal("running"),
+          mode: Type.Union([Type.Literal("foreground"), Type.Literal("background")]),
+        }),
+        Type.Object({
+          kind: Type.Union([
+            Type.Literal("completed"),
+            Type.Literal("failed"),
+            Type.Literal("cancelled"),
+            Type.Literal("interrupted"),
+          ]),
+        }),
+      ]),
+    }),
+    completion: jobRecord.properties.completion,
+  }),
+);
+
 const checkJobArguments = Compile(
   Type.Object({ command: Type.String(), background: Type.Optional(Type.Unknown()) }),
 );
 
-export function parseJobRecord(value: JsonValue): JobRecord {
-  if (!checkJobRecord.Check(value)) throw new Error("Invalid stored job");
+export function parseJobRecord(value: unknown): JobRecord {
+  if (checkJobRecord.Check(value)) return value;
+  if (!checkLegacyJobRecord.Check(value)) throw new Error("Invalid stored job");
 
-  return value;
+  const { phase } = value.info;
+  const migrated = {
+    ...value,
+    info: {
+      ...value.info,
+      isBackgrounded:
+        (phase.kind === "running" && phase.mode === "background") ||
+        value.completion.kind !== "none",
+      phase: phase.kind === "running" ? { kind: "running" } : phase,
+    },
+  };
+
+  if (!checkJobRecord.Check(migrated)) throw new Error("Invalid stored job");
+
+  return migrated;
 }
 
 function jobId(runId: string, callId: string): string {
@@ -276,7 +313,7 @@ export function createJobs(input: {
             completion: current.info.origin.kind === "user" ? current.completion : { kind: "owed" },
             info: {
               ...current.info,
-              phase: { kind: "running", mode: "background" },
+              isBackgrounded: true,
               updatedAt: Date.now(),
             },
           },
@@ -286,9 +323,7 @@ export function createJobs(input: {
 
     return {
       kind:
-        next?.info.phase.kind === "running" && next.info.phase.mode === "background"
-          ? "applied"
-          : "finished",
+        next?.info.phase.kind === "running" && next.info.isBackgrounded ? "applied" : "finished",
     };
   };
 
@@ -441,7 +476,7 @@ export function createJobs(input: {
     const { info, result, completion } = stored.record;
 
     if (info.phase.kind === "running") {
-      return info.phase.mode === "background"
+      return info.isBackgrounded
         ? { kind: "settle", result: receipt(info) }
         : { kind: "wait", ...backgroundWait };
     }
@@ -516,7 +551,8 @@ export function createJobs(input: {
           ? { kind: "run", runId: owner.runId, callId: owner.callId }
           : { kind: "user" },
       command,
-      phase: { kind: "running", mode: background ? "background" : "foreground" },
+      isBackgrounded: background,
+      phase: { kind: "running" },
       startedAt: now,
       updatedAt: now,
       output: "",
@@ -641,7 +677,7 @@ export function createJobs(input: {
             if (
               owner.kind === "run" &&
               stored?.info.phase.kind === "running" &&
-              stored.info.phase.mode === "foreground" &&
+              !stored.info.isBackgrounded &&
               pending.progress !== undefined
             ) {
               await input.session.events.append(
@@ -789,6 +825,9 @@ export function createJobs(input: {
       ...tool,
       replay: "never",
       execute(callId, args, signal, onUpdate, context) {
+        if (context?.parentToolCallId !== undefined) {
+          return tool.execute(callId, args, signal, onUpdate, context);
+        }
         return track(
           (async () => {
             let executing = true;
@@ -808,7 +847,7 @@ export function createJobs(input: {
 
               const { info, runtime } = admitted;
 
-              if (info.phase.kind === "running" && info.phase.mode === "background") {
+              if (info.isBackgrounded) {
                 await Promise.race([
                   admitted.produced,
                   runtime.done,

@@ -93,6 +93,7 @@ test("a terminal command job clears its tool progress", () => {
       origin: { kind: "run", runId: "run", callId: "call" },
       command: "work",
       output: "done",
+      isBackgrounded: false,
       phase: { kind: "completed" },
       startedAt: 1,
       updatedAt: 2,
