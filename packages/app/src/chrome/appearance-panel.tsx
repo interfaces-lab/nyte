@@ -140,7 +140,6 @@ function HueControl({
         xstyle={styles.tintSlider}
         onValueChange={onValueChange}
       />
-      <span {...props(styles.tintValue)}>{value}°</span>
       <span aria-hidden="true" {...props(styles.tintSlot)}>
         <span
           {...props(
@@ -171,9 +170,7 @@ function IntensityControl({
         xstyle={styles.tintSlider}
         onValueChange={onValueChange}
       />
-      <span {...props(styles.tintSlot)}>
-        <span {...props(styles.tintValue)}>{value}%</span>
-      </span>
+      <span aria-hidden="true" {...props(styles.tintSlot)} />
     </span>
   );
 }
@@ -202,7 +199,8 @@ function DensityControl({
         }}
       />
       <span aria-hidden="true" {...props(styles.densityLabels)}>
-        <span>{TOOL_CALL_DENSITY_LABELS[value]}</span>
+        <span>{TOOL_CALL_DENSITY_LABELS.compact}</span>
+        <span>{TOOL_CALL_DENSITY_LABELS.detailed}</span>
       </span>
     </span>
   );

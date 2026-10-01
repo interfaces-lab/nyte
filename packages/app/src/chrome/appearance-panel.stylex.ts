@@ -10,7 +10,6 @@ export const appearancePanelStyles = create({
     display: "inline-flex",
     alignItems: "center",
     gap: 8,
-    width: 180,
   },
   tintSlider: { width: 120, minWidth: 0, flex: "0 1 auto" },
   tintSlot: {
@@ -32,13 +31,6 @@ export const appearancePanelStyles = create({
   },
   tintSwatchActive: {
     backgroundColor: role.bgInteractiveStrong,
-  },
-  tintValue: {
-    color: role.contentSecondary,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingSm,
-    textAlign: "center",
-    fontVariantNumeric: "tabular-nums",
   },
   density: {
     display: "flex",
