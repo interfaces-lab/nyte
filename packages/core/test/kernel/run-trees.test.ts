@@ -220,7 +220,10 @@ test("a run's first commit and its tool results carry trees, and runs.diff/rever
     const commits = (await branch(session.objects, await session.refs.read(headRef("main")))).map(
       (item) => item.commit,
     );
-    const [request, ask, result, answer] = commits;
+    // The prompt declaration between the request and the response carries no tree.
+    const [request, ask, result, answer] = commits.filter(
+      (item) => item.body.kind !== "message" || item.body.message.role !== "system",
+    );
     assert.ok(request !== undefined && "start" in request && request.start.kind === "run");
     assert.equal(request.start.tree, vcs.trees[0]);
     assert.ok(ask !== undefined && "outcome" in ask);

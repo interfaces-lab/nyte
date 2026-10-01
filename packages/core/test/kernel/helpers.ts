@@ -14,6 +14,7 @@ import type { TreeId } from "@nyte-ai/protocol";
 import type {
   AssistantMessage,
   Message,
+  SystemMessage,
   ToolCall,
   ToolResultMessage,
   Usage,
@@ -33,6 +34,7 @@ import { headRef } from "../../src/kernel/names.ts";
 import { SqliteStore } from "../../src/kernel/sqlite.ts";
 import { WorkerStore } from "../../src/kernel/worker-store.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
+import type { Turn, TurnInput } from "../../src/kernel/turn.ts";
 import { TRUSTED_WORKSPACE } from "../../src/kernel/sdk/types.ts";
 import type { TrustedWorkspace } from "../../src/kernel/sdk/types.ts";
 
@@ -156,6 +158,9 @@ export function message(
 export function message(
   value: ToolResultMessage,
 ): Extract<CommitBody, { readonly message: ToolResultMessage }>;
+export function message(
+  value: SystemMessage,
+): Extract<CommitBody, { readonly message: SystemMessage }>;
 export function message(value: Message): CommitBody;
 export function message(value: Message): CommitBody {
   switch (value.role) {
@@ -164,6 +169,8 @@ export function message(value: Message): CommitBody {
     case "assistant":
       return { kind: "message", message: value };
     case "toolResult":
+      return { kind: "message", message: value };
+    case "system":
       return { kind: "message", message: value };
     default: {
       const _exhaustive: never = value;
@@ -285,6 +292,11 @@ export function commit(parent: Oid | null, body: CommitBody, options: CommitFiel
           return assistantCommit(parent, { kind: "message", message: body.message }, options);
         case "toolResult":
           return toolResultCommit(parent, { kind: "message", message: body.message }, options);
+        case "system":
+          return {
+            ...commitFields(parent, options),
+            body: { kind: "message", message: body.message },
+          };
         default: {
           const _exhaustive: never = body.message;
           return _exhaustive;
@@ -298,11 +310,30 @@ export function commit(parent: Oid | null, body: CommitBody, options: CommitFiel
       return { ...commitFields(parent, options), body };
     case "config":
       return { ...commitFields(parent, options), body };
+    case "usage":
+      return { ...commitFields(parent, options), body };
     default: {
       const _exhaustive: never = body;
       return _exhaustive;
     }
   }
+}
+
+/**
+ * What the step does with `prepare` before a response: commit the system
+ * message that declares the prompt and tools, then respond over that branch.
+ * The commit is loose; the input's commits carry it to the turn.
+ */
+export async function declared(turn: Turn, input: TurnInput): Promise<TurnInput> {
+  const prepared = await turn.prepare?.(input);
+  if (prepared?.kind !== "system") return input;
+  const parent = input.commits.at(-1);
+  const declaration = commit(parent?.oid ?? null, message(prepared.message), {
+    run: input.run.id,
+  });
+  const [oid] = await input.session.objects.put([declaration]);
+  assert.ok(oid);
+  return { ...input, commits: [...input.commits, { oid, commit: declaration }] };
 }
 
 /** Write a chain of commits, oldest first, on top of `parent`. Returns the oids oldest first. */

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
+import { getCurrentSystemPrompt } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { sessionId } from "../../src/kernel/sdk/types.ts";
@@ -75,7 +76,7 @@ async function open(
       assert.ok(latest !== undefined && !Array.isArray(latest.content));
       requests.push({
         content: latest.content,
-        agent: context.systemPrompt?.trim().split("\n").at(-1) ?? "",
+        agent: getCurrentSystemPrompt(context.messages).trim().split("\n").at(-1) ?? "",
       });
       const stream = createAssistantMessageEventStream();
       const wantsTool = toolGate !== undefined && requests.length === (toolGate.request ?? 1);

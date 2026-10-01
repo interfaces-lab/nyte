@@ -181,7 +181,7 @@ test("the publish span reports the checkpoint CAS result, and durable state matc
     ]);
     const turn = bindTurn({
       model,
-      systemPrompt: "test",
+      sections: { prompt: "test" },
       tools: [],
       compaction: { enabled: true, reserveTokens: 1_000, keepRecentTokens: 0 },
       streamFn: () => {

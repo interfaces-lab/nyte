@@ -7,6 +7,7 @@
 import assert from "node:assert/strict";
 import { dirname } from "node:path";
 import { contentText, createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
+import { getCurrentTools } from "@nyte-ai/schema";
 import {
   isTerminalPhase,
   sessionId,
@@ -127,7 +128,7 @@ async function fixture(hook: RefUpdateHook = ({ proceed }) => proceed()) {
     const text = user?.role === "user" ? contentText(user.content) : "";
     requests.push({
       text,
-      tools: (context.tools ?? []).map((tool) => tool.name),
+      tools: getCurrentTools(context.messages).map((tool) => tool.name),
       completions: messages.filter(isCompletion).map((message) => contentText(message.content)),
       fast: options?.fast,
     });

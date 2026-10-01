@@ -9,12 +9,15 @@ import type { Api, Model } from "@nyte-ai/schema";
 import type { Event, Oid, RefName, Run, RunConfig } from "../model.ts";
 import { TASK_TOOL, subagentModelParameters } from "../../plugins/builtin/subagents.ts";
 import { revokeDelegations } from "../delegation-record.ts";
-import { failedAssistant } from "./requests.ts";
+import { failedAssistant, type RequestStreamFn } from "./requests.ts";
 import { parseHeadRef, isHeadName, parseInboxRef, runRef } from "../names.ts";
 import type { Session } from "../store.ts";
 import { drive, type StepOptions } from "../step.ts";
+import type { StreamFn } from "../loop/types.ts";
 import { advanceStep } from "./advance.ts";
 import { turnFor, type Activation } from "./activation.ts";
+import type { TurnInput } from "../turn.ts";
+import type { CacheWarming } from "./cache-warming.ts";
 import { JOB_PREFIX, JOBS_CANCELLED_REF, type createJobs } from "./jobs.ts";
 import {
   RUN_PREFIX,
@@ -22,6 +25,7 @@ import {
   type DriveState,
   type Pooled,
   type SessionPool,
+  type SessionPoolHooks,
 } from "./session-pool.ts";
 import {
   MAIN,
@@ -87,6 +91,7 @@ async function headForRun(session: Session, runId: string): Promise<HeadName | u
 export function createRunners(input: {
   readonly options: NyteOptions;
   readonly pool: SessionPool;
+  readonly warming: CacheWarming;
   readonly drain: "one" | "all";
   readonly resolveModel: (ref: {
     readonly provider?: string;
@@ -95,6 +100,7 @@ export function createRunners(input: {
   readonly jobsFor: (id: SessionId, pooled: Pooled) => ReturnType<typeof createJobs>;
   /** What a runner tells delegation: a child's run moved, a run parked, or input arrived on a head. */
   readonly delegation: {
+    readonly pluginsFor: SessionPoolHooks["pluginsFor"];
     readonly childRunChanged: (id: SessionId, pooled: Pooled) => Promise<void>;
     readonly recheck: (id: SessionId, pooled: Pooled, runId: string) => Promise<void>;
     readonly yieldToInput: (id: SessionId, pooled: Pooled, head: HeadName) => Promise<void>;
@@ -104,7 +110,7 @@ export function createRunners(input: {
   /** Failures of detached work, surfaced by `close`. */
   readonly reportBackground: (cause: unknown) => void;
 }) {
-  const { options, pool } = input;
+  const { options, pool, warming } = input;
   const runnerDone = new WeakMap<Disposer, Promise<void>>();
   /** Every loop still running, including those of retired sessions; `settle` waits for all. */
   const runnerLoops = new Set<Promise<void>>();
@@ -135,10 +141,76 @@ export function createRunners(input: {
       return true;
     }
 
+    await warming.onRef(pooled, event);
+
     return false;
   };
 
   const prepareExecution = (id: SessionId, pooled: Pooled, activation: Activation) => {
+    const availableModels = async (model: Model<Api>, signal: AbortSignal | undefined) => {
+      const available = await options.models.getAvailable(
+        pooled.parent === undefined ? undefined : model.provider,
+        { signal },
+      );
+
+      if (
+        !available.some(
+          (candidate) => candidate.provider === model.provider && candidate.id === model.id,
+        )
+      ) {
+        const owner = pooled.parent === undefined ? "Selected" : "Subagent";
+
+        throw new Error(
+          `${owner} model is unavailable: ${model.provider}/${model.id}. Choose an enabled model or connect its provider.`,
+        );
+      }
+
+      return available;
+    };
+
+    const replay: StreamFn = async (model, context, streamOptions) => {
+      await availableModels(model, streamOptions?.signal);
+      return options.streamFn(model, context, streamOptions);
+    };
+
+    const streamFn: RequestStreamFn = async (model, context, streamOptions, invocation) => {
+      const available = await availableModels(model, streamOptions?.signal);
+      const prepared =
+        pooled.parent !== undefined
+          ? context
+          : {
+              ...context,
+              messages: context.messages.map((message) =>
+                message.role !== "system" || message.toolsAdded === undefined
+                  ? message
+                  : {
+                      ...message,
+                      toolsAdded: message.toolsAdded.map((tool) =>
+                        tool.name !== TASK_TOOL && tool.name !== "create"
+                          ? tool
+                          : { ...tool, parameters: subagentModelParameters(tool.name, available) },
+                      ),
+                    },
+              ),
+            };
+      if (invocation.step === "assistant") {
+        await warming.request(
+          id,
+          pooled,
+          activation,
+          replay,
+          {
+            model,
+            context: prepared,
+            options: streamOptions ?? {},
+          },
+          invocation,
+        );
+      }
+      streamOptions?.signal?.throwIfAborted();
+      return options.streamFn(model, prepared, streamOptions);
+    };
+
     const bound = turnFor(
       {
         ...activation,
@@ -149,41 +221,7 @@ export function createRunners(input: {
             .filter((tool) => tool.availability !== "foreground" || pooled.parent === undefined),
       },
       {
-        streamFn: async (model, context, streamOptions) => {
-          const available = await options.models.getAvailable(
-            pooled.parent === undefined ? undefined : model.provider,
-            { signal: streamOptions?.signal },
-          );
-
-          if (
-            !available.some(
-              (candidate) => candidate.provider === model.provider && candidate.id === model.id,
-            )
-          ) {
-            const owner = pooled.parent === undefined ? "Selected" : "Subagent";
-
-            throw new Error(
-              `${owner} model is unavailable: ${model.provider}/${model.id}. Choose an enabled model or connect its provider.`,
-            );
-          }
-
-          if (pooled.parent !== undefined || context.tools === undefined) {
-            return options.streamFn(model, context, streamOptions);
-          }
-
-          return options.streamFn(
-            model,
-            {
-              ...context,
-              tools: context.tools.map((tool) =>
-                tool.name !== TASK_TOOL && tool.name !== "create"
-                  ? tool
-                  : { ...tool, parameters: subagentModelParameters(tool.name, available) },
-              ),
-            },
-            streamOptions,
-          );
-        },
+        streamFn,
         model: options.model,
         resolveModel: input.resolveModel,
         thinkingLevel: options.thinkingLevel,
@@ -237,9 +275,46 @@ export function createRunners(input: {
       return `Selected model is unavailable: ${modelLabel(config.model)}. Choose an available model or connect its provider.`;
     };
 
+    const inputDelegation = input.delegation;
+
+    // Sources are reconciled before the turn resolves what the branch must
+    // declare, so the declaration and the request that follows share one catalog.
+    const prepareResponsePlugins = async (input: TurnInput): Promise<void> => {
+      if (options.prepareResponsePlugins === undefined || cwd === undefined) return;
+
+      try {
+        const plugins = await options.prepareResponsePlugins({ sessionId: id, cwd });
+        input.signal.throwIfAborted();
+        await activation.setPlugins(inputDelegation.pluginsFor({ id, pooled, plugins }), () => {
+          if (pooled.activationState?.kind === "active")
+            pooled.activationState = { ...pooled.activationState, plugins };
+        });
+      } catch (cause) {
+        if (input.signal.aborted) throw cause;
+        await pool.dispatchNotice(pooled, {
+          kind: "diagnostic",
+          owner: "plugins",
+          level: "error",
+          message: errorMessage(cause),
+        });
+      }
+      input.signal.throwIfAborted();
+      await requireRunnerLocation();
+    };
+
     const turn: typeof bound.turn = {
+      async prepare(input) {
+        await requireRunnerLocation();
+
+        // The response reports the unavailable model; nothing is declared for it.
+        if (unavailableModel(input.run.config) !== undefined) return { kind: "ready" };
+
+        activation.observeRun(input.run);
+        await prepareResponsePlugins(input);
+
+        return bound.turn.prepare === undefined ? { kind: "ready" } : bound.turn.prepare(input);
+      },
       async respond(input) {
-        await pool.pluginsSettled();
         await requireRunnerLocation();
         const error = unavailableModel(input.run.config);
 
@@ -261,10 +336,11 @@ export function createRunners(input: {
           };
         }
 
+        activation.observeRun(input.run);
+
         return bound.turn.respond(input);
       },
       async tools(input) {
-        await pool.pluginsSettled();
         await requireRunnerLocation();
         const error = missingChildModel(input.run.config);
 
@@ -610,6 +686,7 @@ export function createRunners(input: {
   };
 
   const stopRunner = async (pooled: Pooled): Promise<void> => {
+    warming.cancel(pooled);
     const active = [...(advances.get(pooled) ?? [])];
 
     for (const execution of active) execution.controller.abort();

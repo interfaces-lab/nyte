@@ -51,7 +51,7 @@ async function fixture(ids = ["call"]) {
   const makeTurn = (tool: Pick<AgentTool, "execute" | "wake">, loop?: TurnOptions["loop"]) =>
     bindTurn({
       model,
-      systemPrompt: "test",
+      sections: { prompt: "test" },
       loop,
       tools: [
         {

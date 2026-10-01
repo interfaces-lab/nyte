@@ -9,7 +9,7 @@ import type { RunPhase } from "@nyte-ai/protocol";
 import type { TelemetryContext, TelemetrySpan } from "@nyte-ai/telemetry";
 import type { HookInvocation } from "../plugins/hooks.ts";
 import type { PublishOutcome, StepOutcome } from "./step.ts";
-import type { RespondOutcome } from "./turn.ts";
+import type { PrepareOutcome, RespondOutcome } from "./turn.ts";
 
 export interface SpanCatalog {
   "nyte.step": {
@@ -20,6 +20,10 @@ export interface SpanCatalog {
       "nyte.run.phase"?: RunPhase["kind"];
     };
     end: { "nyte.step.outcome": StepOutcome["kind"] };
+  };
+  "nyte.prepare": {
+    start: { "nyte.run.id": string; "nyte.attempt": number };
+    end: { "nyte.prepare.outcome": PrepareOutcome["kind"] };
   };
   "nyte.respond": {
     start: {

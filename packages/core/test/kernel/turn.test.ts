@@ -14,6 +14,7 @@ import {
   type AssistantMessage,
   type Model,
 } from "@nyte-ai/ai";
+import { getCurrentSystemPrompt, getCurrentTools } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { bindTool } from "../../src/tools/bind-tool.ts";
 import { createAllTools } from "../../src/tools/index.ts";
@@ -28,14 +29,19 @@ import {
   ToolWait,
   type AgentTool,
   type StreamFn,
+  type ToolExecutionContext,
 } from "../../src/kernel/loop/types.ts";
+import { ToolError } from "../../src/kernel/loop/tool-result.ts";
+import { contextCommits } from "../../src/kernel/graph.ts";
 import {
   assistant,
   call,
   commit,
+  declared,
   lease,
   message,
   openSession,
+  seedHead,
   storePath,
   user,
   within,
@@ -181,7 +187,7 @@ function turnWith(
   tools: readonly AgentTool[] = [],
   options: Partial<TurnOptions> = {},
 ): Turn {
-  return bindTurn({ streamFn, model, systemPrompt: "system", tools, ...options });
+  return bindTurn({ streamFn, model, sections: { prompt: "system" }, tools, ...options });
 }
 
 const askTool = (id = "call-1", value = "input") =>
@@ -200,14 +206,19 @@ test("a response streams its text and thinking as deltas and comes back complete
       { type: "text", text: "hello there" },
     ],
   };
-  let seen: { systemPrompt?: string; messages: number } | undefined;
+  let seen: { systemPrompt: string; messages: number } | undefined;
   const script = scripted([answer]);
   const streamFn: StreamFn = (requested, context, options) => {
-    seen = { systemPrompt: context.systemPrompt, messages: context.messages.length };
+    seen = {
+      systemPrompt: getCurrentSystemPrompt(context.messages),
+      messages: context.messages.filter((item) => item.role !== "system").length,
+    };
     assert.equal(requested.id, model.id);
     return script.streamFn(requested, context, options);
   };
-  const outcome = await turnWith(streamFn).respond(b.input());
+  const turn = turnWith(streamFn);
+  const input = await declared(turn, b.input());
+  const outcome = await turn.respond(input);
   assert.equal(outcome.kind, "complete");
   assert.deepEqual(seen, { systemPrompt: "system", messages: 1 });
   assert.deepEqual(
@@ -735,6 +746,207 @@ test("builtin factories execute approved arguments after durable intent and jobs
     assert.deepEqual(diagnostics, []);
   } finally {
     release.resolve();
+    await jobs.close();
+  }
+});
+
+test("nested failures retain structured output, reject waits and cancellation, and never open effects", async () => {
+  const b = await bench();
+  let saved: ToolExecutionContext | undefined;
+  let cancellations = 0;
+  const target: AgentTool = {
+    name: "target",
+    description: "target",
+    parameters,
+    execute: async (_id, args, signal, update) => {
+      assert.ok(typeof args === "object" && args !== null && "value" in args);
+      if (args.value === "wait") throw new ToolWait({ until: 10 });
+      if (args.value === "cancel") {
+        cancellations += 1;
+        update?.({ content: [], details: {}, structuredContent: { partial: true } });
+        signal?.throwIfAborted();
+        return { content: [], details: {} };
+      }
+      throw new ToolError({
+        content: [{ type: "text", text: "failed" }],
+        details: {},
+        structuredContent: { error: "kept" },
+      });
+    },
+  };
+  const outer = tool(async (_id, _args, _signal, _update, context) => {
+    saved = context;
+    assert.ok(context?.tools);
+    const failure = await context.tools.execute("target", { value: "error" });
+    assert.equal(failure.isError, true);
+    assert.deepEqual(failure.result.structuredContent, { error: "kept" });
+    assert.deepEqual(failure.result.details, { reviewed: true });
+    const waiting = await context.tools.execute("target", { value: "wait" });
+    assert.equal(waiting.isError, true);
+    assert.match(JSON.stringify(waiting.result.content), /cannot wait during a nested invocation/u);
+    const child = new AbortController();
+    const cancelled = await context.tools.execute(
+      "target",
+      { value: "cancel" },
+      {
+        signal: child.signal,
+        onUpdate: () => child.abort(new Error("sandbox cancelled")),
+      },
+    );
+    assert.equal(cancelled.isError, true);
+    assert.deepEqual(cancelled.result.structuredContent, { partial: true });
+    assert.match(JSON.stringify(cancelled.result.content), /sandbox cancelled/u);
+    const aborted = new AbortController();
+    aborted.abort();
+    assert.equal(
+      (await context.tools.execute("target", { value: "cancel" }, { signal: aborted.signal }))
+        .isError,
+      true,
+    );
+    assert.equal((await context.tools.execute("target", { value: 123 })).isError, true);
+    assert.equal((await context.tools.execute("target", [])).isError, true);
+    return { content: [], details: {}, structuredContent: { done: true } };
+  });
+  const turn = turnWith(scripted([]).streamFn, [outer, target], {
+    loop: { afterToolCall: async () => ({ details: { reviewed: true } }) },
+  });
+  const outcome = await turn.tools({ ...b.input(), assistant: askTool() });
+  assert.equal(outcome.kind, "complete");
+  assert.equal(cancellations, 1);
+  assert.ok(saved?.tools);
+  assert.equal((await saved.tools.execute("target", { value: "cancel" })).isError, true);
+  assert.equal(cancellations, 1);
+  assert.deepEqual((await b.session.refs.list(effectPrefix("run_1"))).length, 1);
+  assert.equal(await effectState(b.session), "result");
+});
+
+test("tool activation and full tool history follow durable branch ancestry across checkpoints and recovery", async () => {
+  const b = await bench();
+  const hidden: AgentTool = {
+    ...tool(async () => ({ content: [], details: {} })),
+    name: "hidden",
+    exposure: "hidden",
+  };
+  const deferred: AgentTool = { ...hidden, name: "later", exposure: "deferred" };
+  const codemode: AgentTool = { ...hidden, name: "scripted", exposure: "codemode" };
+  const modelOnly: AgentTool = { ...hidden, name: "visible", exposure: "model-only" };
+  const search: AgentTool = {
+    name: "tool_search",
+    description: "activate",
+    parameters: Type.Object({}),
+    execute: async (_id, _args, _signal, _update, context) => {
+      assert.ok(context?.tools);
+      context.tools.activate(["later", "hidden", "visible", "missing"]);
+      return { content: [], details: {}, structuredContent: { loaded: true } };
+    },
+  };
+  const definitions = [search, hidden, deferred, codemode, modelOnly];
+  const searchMessage = assistant("", { calls: [call("search", "tool_search")] });
+  let executions = 0;
+  const activatedTurn = turnWith(scripted([]).streamFn, [
+    {
+      ...search,
+      execute: async (...args) => {
+        executions += 1;
+        return search.execute(...args);
+      },
+    },
+    ...definitions.slice(1),
+  ]);
+  let loaded;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const outcome = await activatedTurn.tools({ ...b.input(), assistant: searchMessage });
+    assert.ok(outcome.kind === "complete");
+    loaded = outcome.messages[0];
+    assert.deepEqual(loaded?.addedToolNames, ["later"]);
+    assert.deepEqual(loaded?.structuredContent, { loaded: true });
+  }
+  assert.equal(executions, 1);
+  assert.ok(loaded);
+  const oids = await seedHead(b.session, "main", [
+    message(user("original")),
+    message(searchMessage),
+    message(loaded),
+    { kind: "checkpoint", summary: "not the original", retainedTail: [loaded], tokensBefore: 10 },
+    message(user("after checkpoint")),
+  ]);
+  const tip = oids.at(-1);
+  assert.ok(tip);
+  const commits = await contextCommits(b.session.objects, tip);
+  const declarations: string[][] = [];
+  const script = scripted([assistant("ok"), assistant("ok")]);
+  const restarted = turnWith((model, context, options) => {
+    declarations.push(getCurrentTools(context.messages).map((tool) => tool.name));
+    return script.streamFn(model, context, options);
+  }, definitions);
+  await restarted.respond(await declared(restarted, { ...b.input(), commits }));
+  assert.deepEqual(declarations[0], ["tool_search", "later", "visible"]);
+  const observer = tool(async (_id, _args, _signal, _update, context) => {
+    assert.ok(context?.history);
+    const history = await context.history();
+    assert.deepEqual(
+      history.map((message) => message.role),
+      ["user", "assistant", "toolResult", "user"],
+    );
+    assert.equal(history[0]?.content, "original");
+    assert.equal(history.filter((message) => message.role === "toolResult").length, 1);
+    return { content: [], details: {} };
+  });
+  await turnWith(scripted([]).streamFn, [observer]).tools({
+    ...b.input(),
+    commits,
+    assistant: askTool("history"),
+  });
+  const ancestor = oids[0];
+  assert.ok(ancestor);
+  const rewound = await contextCommits(b.session.objects, ancestor);
+  await restarted.respond(await declared(restarted, { ...b.input(), commits: rewound }));
+  assert.deepEqual(declarations[1], ["tool_search", "visible"]);
+  const fabricated = await restarted.tools({
+    ...b.input(),
+    commits: rewound,
+    assistant: assistant("", { calls: [call("fabricated", "later", { value: "input" })] }),
+  });
+  assert.ok(fabricated.kind === "complete");
+  assert.equal(fabricated.messages[0]?.isError, true);
+  assert.equal(await effectState(b.session, "fabricated"), undefined);
+});
+
+test("nested bash finishes inside the caller without parking a durable job", async () => {
+  const b = await bench();
+  const directory = dirname(storePath());
+  const jobs = createJobs({
+    session: b.session,
+    notify: async () => "unused",
+    diagnostic: async () => undefined,
+  });
+  const bash = createAllTools(directory).find((tool) => tool.name === "bash");
+  assert.ok(bash);
+  const caller = tool(async (_id, _args, _signal, _update, context) => {
+    assert.ok(context?.tools);
+    const nested = await context.tools.execute("bash", {
+      command: "printf wrong > nested.txt",
+      background: true,
+    });
+    assert.equal(nested.isError, false);
+    return nested.result;
+  });
+  try {
+    const turn = turnWith(scripted([]).streamFn, [caller, jobs.wrap(bash)], {
+      loop: {
+        beforeToolCall: async ({ toolCall }) =>
+          toolCall.name === "bash"
+            ? { args: { command: "printf approved > nested.txt" } }
+            : undefined,
+      },
+    });
+    const outcome = await turn.tools({ ...b.input(), assistant: askTool() });
+    assert.ok(outcome.kind === "complete");
+    assert.equal(outcome.messages[0]?.isError, false);
+    assert.equal(await readFile(join(directory, "nested.txt"), "utf8"), "approved");
+    assert.deepEqual(await jobs.list(), []);
+    assert.equal((await b.session.refs.list(effectPrefix("run_1"))).length, 1);
+  } finally {
     await jobs.close();
   }
 });

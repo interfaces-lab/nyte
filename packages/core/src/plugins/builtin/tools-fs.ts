@@ -21,6 +21,9 @@ export function toolsFsPlugin() {
       api.tools.add((draft) => {
         for (const tool of tools) draft.set(tool.name, tool);
       });
+      api.prompt.add((draft) =>
+        draft.set("cwd", { text: `Current working directory: ${api.env.cwd}` }),
+      );
     },
   });
 }

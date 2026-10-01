@@ -37,6 +37,8 @@ function chain(bodies: readonly FixtureBody[], patches = new Map<number, string>
       const message = body.message;
 
       switch (message.role) {
+        case "system":
+          return { ...base, body: { ...body, message } };
         case "user":
           return { ...base, body: { ...body, message }, start: { kind: "none" } };
         case "assistant":

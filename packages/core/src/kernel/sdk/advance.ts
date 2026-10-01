@@ -51,6 +51,12 @@ export async function advanceStep(input: {
   });
 
   const turn: Turn = {
+    prepare: async (invocation) => {
+      runId = invocation.run.id;
+      await inspect();
+
+      return input.turn.prepare === undefined ? { kind: "ready" } : input.turn.prepare(invocation);
+    },
     respond: async (invocation) => {
       runId = invocation.run.id;
       // A stop can arrive between the step's read and entering the turn.

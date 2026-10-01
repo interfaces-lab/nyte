@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
+import { getCurrentSystemPrompt } from "@nyte-ai/schema";
 import { expect, test } from "vitest";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { definePlugin, inlinePlugin, toolsFsPlugin } from "../../src/plugins/index.ts";
@@ -48,7 +49,7 @@ test("relocation keeps history in its store, rebinds filesystem tools, and requi
   const requests: number[] = [];
   const streamFn: StreamFn = (_model, context) => {
     requests.push(context.messages.filter((message) => message.role === "user").length);
-    const last = context.messages.at(-1);
+    const last = context.messages.findLast((item) => item.role !== "system");
     const response =
       last?.role === "user"
         ? assistant("", {
@@ -218,8 +219,10 @@ test("scoped plugin reload keeps the directory and leaves a live run and other s
     await nyte.messages.send({ ...input, content: "keep running" });
     await within(started.promise);
     const run = await nyte.runs.current(input);
-    await nyte.setPlugins([locationPlugin("reloaded")], input);
-    assert.ok((await nyte.plugins.list(input)).some((plugin) => plugin.id === "reloaded"));
+    assert.deepEqual(await nyte.setPlugins([locationPlugin("reloaded")], input), {
+      kind: "queued",
+    });
+    assert.ok((await nyte.plugins.list(input)).some((plugin) => plugin.id === "destination"));
     assert.deepEqual(await nyte.plugins.commands.run({ ...input, name: "where" }), {
       kind: "ran",
       output: workspace.cwd,
@@ -238,6 +241,7 @@ test("scoped plugin reload keeps the directory and leaves a live run and other s
     release.resolve();
     await within(nyte.runs.wait(input));
     assert.equal((await nyte.runs.current(input))?.phase.kind, "done");
+    assert.ok((await nyte.plugins.list(input)).some((plugin) => plugin.id === "reloaded"));
   } finally {
     release.resolve();
     await nyte.close();
@@ -259,7 +263,7 @@ test("messages admitted during relocation run only after destination activation 
     plugins: [],
     env: { cwd },
     streamFn: (_model, context) => {
-      prompts.push(context.systemPrompt);
+      prompts.push(getCurrentSystemPrompt(context.messages));
       const stream = createAssistantMessageEventStream();
       stream.push({ type: "done", reason: "stop", message: assistant("done") });
       return stream;

@@ -179,12 +179,6 @@ export function createSessionPool(input: {
 
   let catalogCache: Promise<PluginCatalog> | undefined;
   let closed = false;
-  // A host that saw plugin sources change holds the gate until its swap lands,
-  // so a step that starts in between advertises the new tools, not the old.
-  let pluginHolds = 0;
-  let pluginsSettled = Promise.resolve();
-  let releasePlugins: (() => void) | undefined;
-
   const alive = (): void => {
     if (closed) throw new NyteClosed();
   };
@@ -407,7 +401,8 @@ export function createSessionPool(input: {
     const views = await listEffects(session, run.id);
 
     for (const { effect } of views)
-      if (effect.state === "waiting" && effect.selection !== undefined) return effect.selection.title;
+      if (effect.state === "waiting" && effect.selection !== undefined)
+        return effect.selection.title;
 
     return undefined;
   };
@@ -738,30 +733,7 @@ export function createSessionPool(input: {
     /** Refuse new work; the caller drains what is pooled and then calls `clear`. */
     markClosed(): void {
       closed = true;
-      pluginHolds = 0;
-      releasePlugins?.();
     },
-    holdPlugins(): Disposer {
-      pluginHolds += 1;
-
-      if (pluginHolds === 1) {
-        pluginsSettled = new Promise((resolve) => {
-          releasePlugins = resolve;
-        });
-      }
-
-      let released = false;
-
-      return () => {
-        if (released) return;
-        released = true;
-        pluginHolds = Math.max(0, pluginHolds - 1);
-
-        if (pluginHolds === 0) releasePlugins?.();
-      };
-    },
-    /** Resolves once no host holds a plugin swap open. Immediate when nothing is pending. */
-    pluginsSettled: (): Promise<void> => pluginsSettled,
     entries: (): IterableIterator<[SessionId, Pooled]> => pool.entries(),
     /** The pooled handle without opening the store; `undefined` for a session nobody opened. */
     peek: (id: SessionId): Pooled | undefined => pool.get(id),

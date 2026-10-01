@@ -81,11 +81,13 @@ import type {
 import type {
   Disposer,
   LoadedPlugin,
+  PluginReplacement,
   PluginEnv,
   PluginInfo,
   SettingInfo,
 } from "../../plugins/types.ts";
 import type { StreamFn, StreamOptions, ThinkingLevel } from "../loop/types.ts";
+import type { CacheWarmingMode, CacheWarmingStatus } from "../cache-warmer.ts";
 import type { CompactionSettings } from "../compaction.ts";
 import type { Actor, Run } from "../model.ts";
 import type { StepOutcome } from "../step.ts";
@@ -551,9 +553,15 @@ interface NyteBaseOptions {
   readonly thinkingLevel?: ThinkingLevel;
   readonly compaction?: CompactionSettings;
   readonly streamOptions?: StreamOptions;
+  /** Read at every warming decision, so the host's policy may change while sessions run. Default: streaming. */
+  readonly cacheWarming?: () => CacheWarmingMode;
   /** default: records nothing */
   readonly telemetry?: TelemetryContext;
   readonly workspace?: WorkspaceBackend;
+  readonly prepareResponsePlugins?: (input: {
+    readonly sessionId: SessionId;
+    readonly cwd: string;
+  }) => Promise<readonly LoadedPlugin[]>;
 }
 
 export interface ActiveSessionActivation {
@@ -590,6 +598,12 @@ export type NyteOptions = StaticNyteOptions | LazyNyteOptions;
 
 export type ModelCatalog = Pick<Models, "getModels" | "getModel" | "getAvailable">;
 
+export interface CacheWarming {
+  status(input: { readonly sessionId: SessionId; readonly head?: HeadName }): CacheWarmingStatus;
+  /** Reconcile every active warming run after `cacheWarming()` starts answering differently. */
+  modeChanged(): void;
+}
+
 export interface Nyte {
   readonly sessions: Sessions;
   readonly messages: Messages;
@@ -599,6 +613,7 @@ export interface Nyte {
   readonly workspace: Workspace;
   readonly provider: Provider;
   readonly plugins: Plugins;
+  readonly cacheWarming: CacheWarming;
   watch(
     input: { readonly sessionId: SessionId; readonly signal?: AbortSignal } & (
       | { readonly afterSeq?: Seq }
@@ -621,15 +636,10 @@ export interface Nyte {
     readonly workspace: TrustedWorkspace;
     readonly plugins: readonly LoadedPlugin[];
   }): Promise<{ readonly kind: "relocated" } | { readonly kind: "busy" }>;
+  /** Global preparation failure preserves all sessions and defaults; publication is per activation and advances the default even if a session rejects revalidation. */
   setPlugins(
     plugins: readonly LoadedPlugin[],
     input?: { readonly sessionId: SessionId },
-  ): Promise<void>;
-  /**
-   * Hold every runner's next step until the returned disposer runs. A host
-   * takes the hold when it sees plugin sources change and releases it after
-   * `setPlugins`, so a tool the model just wrote is in its very next request.
-   */
-  holdPlugins(): Disposer;
+  ): Promise<PluginReplacement>;
   close(): Promise<void>;
 }

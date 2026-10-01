@@ -1,6 +1,11 @@
 /**
- * The turn as the step sees it: two calls, one commit boundary between them.
+ * The turn as the step sees it: three calls, one commit boundary between each.
  *
+ * `prepare` reconciles the branch with what this host wants the model to have:
+ * a checkpoint when the context is over the threshold, then one system message
+ * declaring the prompt sections and tool declarations the transcript lacks. The
+ * step commits what it returns before any response is attempted, so the
+ * provider always reads the prompt and tool state from the branch.
  * `respond` streams one assistant message over the branch's context.
  * `tools` executes that message's tool calls, each inside the effect sandwich
  * (`effects.ts`), and may park on calls that wait for the world. The step
@@ -26,9 +31,19 @@ import type {
   AssistantMessage,
   Failure,
   ImageContent,
+  Message,
+  SystemMessage,
   TextContent,
+  Tool,
   ToolResultMessage,
   Usage,
+} from "@nyte-ai/schema";
+import {
+  getCurrentSystemMessage,
+  getCurrentTools,
+  getToolStateChanges,
+  toToolDeclaration,
+  type ToolStateChanges,
 } from "@nyte-ai/schema";
 import {
   executeToolCalls,
@@ -49,6 +64,9 @@ import type {
 } from "./loop/types.ts";
 import { isToolWait, waitTerms } from "./loop/types.ts";
 import { ToolError, toolResultContent } from "./loop/tool-result.ts";
+import { liveTools } from "./loop/nested-tool-calls.ts";
+import { modelTools } from "./loop/tool-catalog.ts";
+import { branch } from "./graph.ts";
 import {
   DEFAULT_COMPACTION_SETTINGS,
   finishCompaction,
@@ -134,6 +152,17 @@ export interface TurnInput {
   readonly signal: AbortSignal;
 }
 
+export type PrepareOutcome =
+  /** The branch already declares what this host wants; respond next. */
+  | { readonly kind: "ready" }
+  /** The context is over the threshold: the step commits the checkpoint and prepares again. */
+  | {
+      readonly kind: "checkpoint";
+      readonly body: Extract<CommitBody, { kind: "checkpoint" }>;
+    }
+  /** The step commits this system message before the response. */
+  | { readonly kind: "system"; readonly message: SystemMessage };
+
 export type RespondOutcome =
   /** No response yet: the step commits the checkpoint and calls `respond` again. */
   | {
@@ -179,6 +208,8 @@ export type ToolBatchOutcome =
     } & ToolBatchResults);
 
 export interface Turn {
+  /** Absent on a turn with nothing to declare; the step then responds at once. */
+  prepare?(this: void, input: TurnInput): Promise<PrepareOutcome>;
   respond(input: TurnInput): Promise<RespondOutcome>;
   tools(input: TurnInput & { readonly assistant: AssistantMessage }): Promise<ToolBatchOutcome>;
 }
@@ -186,7 +217,8 @@ export interface Turn {
 export interface TurnOptions {
   readonly streamFn: StreamFn;
   readonly model: Model<Api>;
-  readonly systemPrompt: string;
+  /** The prompt as named, ordered sections; they become `SystemMessage.sections`. */
+  readonly sections: Readonly<Record<string, string>>;
   readonly tools: readonly AgentTool[];
   readonly thinkingLevel?: ThinkingLevel;
   readonly loop?: Pick<AgentLoopConfig, "transformContext" | "beforeToolCall" | "afterToolCall"> &
@@ -203,6 +235,18 @@ export function bindTurn(options: TurnOptions): Turn {
   validateCompactionSettings(options.compaction ?? DEFAULT_COMPACTION_SETTINGS);
 
   return {
+    prepare: (input) =>
+      startSpan(
+        input.telemetry,
+        "nyte.prepare",
+        { "nyte.run.id": input.run.id, "nyte.attempt": input.attempt },
+        async (span) => {
+          const outcome = await prepare(options, { ...input, telemetry: span });
+          span.setAttributes({ "nyte.prepare.outcome": outcome.kind });
+
+          return outcome;
+        },
+      ),
     respond: (input) =>
       startSpan(
         input.telemetry,
@@ -239,7 +283,12 @@ export function bindTurn(options: TurnOptions): Turn {
   };
 }
 
-async function respond(options: TurnOptions, input: TurnInput): Promise<RespondOutcome> {
+/**
+ * Before one request: compact when over the threshold, then declare the
+ * prompt sections and tools the branch's replayed system state lacks. Each outcome is committed by the step
+ * before the next call, so a resumed run finds nothing left to declare.
+ */
+async function prepare(options: TurnOptions, input: TurnInput): Promise<PrepareOutcome> {
   const settings = options.compaction ?? DEFAULT_COMPACTION_SETTINGS;
   const usage = newestAssistantUsage(input.commits);
   const checkpoint = input.commits[0]?.commit.body;
@@ -267,7 +316,107 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
     if (checkpoint !== undefined) return checkpoint;
   }
 
-  const context = agentContext({ options, input, tools: [...options.tools] });
+  const context = agentContext({ options, input, tools: await declaredTools(options, input) });
+  const message = systemUpdate(context.messages, options.sections, context.tools ?? []);
+
+  return message === undefined ? { kind: "ready" } : { kind: "system", message };
+}
+
+/**
+ * Diff the sections the model currently has (replayed from the transcript, so
+ * never null) against the desired ones. Returns a `SystemMessage.sections`
+ * patch, or undefined when nothing changed.
+ */
+export function diffSystemPromptSections(
+  previous: Readonly<Record<string, string | null>>,
+  current: Readonly<Record<string, string>>,
+): Record<string, string | null> | undefined {
+  const patch: Record<string, string | null> = {};
+
+  for (const [name, text] of Object.entries(current)) {
+    if (previous[name] !== text) patch[name] = text;
+  }
+
+  for (const name of Object.keys(previous)) {
+    if (current[name] === undefined) patch[name] = null;
+  }
+
+  return Object.keys(patch).length > 0 ? patch : undefined;
+}
+
+/** Copy a system message with its tool fields replaced by `changes`; empty lists omit the field. */
+function withToolChanges(
+  message: SystemMessage,
+  { toolsAdded, toolsRemoved }: ToolStateChanges,
+): SystemMessage {
+  return {
+    ...message,
+    ...(toolsAdded.length > 0 ? { toolsAdded } : {}),
+    ...(toolsRemoved.length > 0 ? { toolsRemoved } : {}),
+  };
+}
+
+/**
+ * A declaration as the store returns it: object keys sorted, which is how the
+ * object store serializes every commit. Comparing fresh declarations against
+ * replayed ones in that form keeps an unchanged tool from reading as redefined.
+ */
+function storedDeclaration(tool: AgentTool): Tool {
+  const declaration = toToolDeclaration(tool);
+
+  const parameters: unknown = JSON.parse(
+    JSON.stringify(declaration.parameters, (_key, value: unknown) =>
+      typeof value === "object" && value !== null && !Array.isArray(value)
+        ? Object.fromEntries(
+            Object.entries(value).sort(([left], [right]) => (left < right ? -1 : 1)),
+          )
+        : value,
+    ),
+  );
+
+  if (typeof parameters !== "object" || parameters === null) {
+    throw new Error(`Tool ${tool.name} parameters did not survive a JSON round trip`);
+  }
+
+  return { ...declaration, parameters };
+}
+
+/**
+ * The system message that brings the transcript's replayed prompt and tool
+ * state to `sections` and `tools`: a section patch when the prompt changed,
+ * with the tool delta folded onto it; a tool-only message otherwise;
+ * nothing when both already match. Declarations are stored stripped of
+ * executable fields, so a stored one can never run.
+ */
+export function systemUpdate(
+  messages: readonly Message[],
+  sections: Readonly<Record<string, string>>,
+  tools: readonly AgentTool[],
+): SystemMessage | undefined {
+  const patch = diffSystemPromptSections(
+    getCurrentSystemMessage(messages)?.sections ?? {},
+    sections,
+  );
+
+  const pending: SystemMessage | undefined =
+    patch === undefined
+      ? undefined
+      : { role: "system", content: "", sections: patch, timestamp: Date.now() };
+
+  const changes = getToolStateChanges(getCurrentTools(messages), tools.map(storedDeclaration));
+
+  const unchanged = changes.toolsAdded.length === 0 && changes.toolsRemoved.length === 0;
+
+  if (pending !== undefined) return unchanged ? pending : withToolChanges(pending, changes);
+
+  if (unchanged) return undefined;
+
+  return withToolChanges({ role: "system", content: "", timestamp: Date.now() }, changes);
+}
+
+async function respond(options: TurnOptions, input: TurnInput): Promise<RespondOutcome> {
+  const settings = options.compaction ?? DEFAULT_COMPACTION_SETTINGS;
+  const context = agentContext({ options, input, tools: await declaredTools(options, input) });
 
   const message = await generateAssistant(
     context,
@@ -381,7 +530,7 @@ async function checkpointOutcome(
   input: TurnInput,
   settings: CompactionSettings,
   reason: "threshold" | "overflow",
-): Promise<Extract<RespondOutcome, { readonly kind: "checkpoint" }> | undefined> {
+): Promise<Extract<PrepareOutcome, { readonly kind: "checkpoint" }> | undefined> {
   return startSpan(
     input.telemetry,
     "nyte.compaction",
@@ -407,8 +556,6 @@ async function checkpointOutcome(
         signal: input.signal,
         retry: options.retry,
         providerCompaction: options.providerCompaction,
-        systemPrompt: options.systemPrompt,
-        tools: [...options.tools],
       });
 
       span.setAttributes({ "nyte.compaction.outcome": summarized.ok ? "summarized" : "skipped" });
@@ -477,8 +624,31 @@ async function runTools(
   const parked = new Set<string>();
   const settling = new Map<string, EffectView>();
   const state: ToolBatchState = {};
-  const tools = durableTools({ options, input, parked, settling, state });
-  const context = agentContext({ options, input, tools });
+  let history: Promise<readonly Message[]> | undefined;
+  const readHistory = () => (history ??= fullHistory(input));
+  const declared = await declaredTools(options, input, readHistory);
+  const declaredNames = new Set(declared.map((tool) => tool.name));
+  const context = agentContext({ options, input, tools: declared });
+  const live = liveTools({
+    tools: options.tools,
+    runId: input.run.id,
+    head: input.run.head,
+    history: readHistory,
+    call: {
+      assistantMessage: input.assistant,
+      context,
+      beforeToolCall: options.loop?.beforeToolCall,
+      afterToolCall: options.loop?.afterToolCall,
+    },
+  });
+  const tools = durableTools({
+    input,
+    parked,
+    settling,
+    state,
+    tools: live.filter((tool) => declaredNames.has(tool.name)),
+  });
+  context.tools = tools;
   const callerBeforeToolCall = options.loop?.beforeToolCall;
   const callerAfterToolCall = options.loop?.afterToolCall;
 
@@ -603,6 +773,32 @@ function presentCall(
   }
 }
 
+async function fullHistory(input: TurnInput): Promise<Message[]> {
+  const older = await branch(input.session.objects, input.commits[0]?.commit.parent ?? null);
+  return [...older, ...input.commits].flatMap(({ commit }) =>
+    commit.body.kind === "message" ? [commit.body.message] : [],
+  );
+}
+
+function activatedToolNames(messages: readonly Message[]): string[] {
+  return messages.flatMap((message) =>
+    message.role === "toolResult" && !message.isError ? (message.addedToolNames ?? []) : [],
+  );
+}
+
+async function declaredTools(
+  options: TurnOptions,
+  input: TurnInput,
+  history: () => Promise<readonly Message[]> = () => fullHistory(input),
+): Promise<AgentTool[]> {
+  const activated = options.tools.some(
+    (tool) => tool.exposure === "codemode" || tool.exposure === "deferred",
+  )
+    ? activatedToolNames(await history())
+    : [];
+  return modelTools(options.tools, activated);
+}
+
 function agentContext(options: {
   readonly options: TurnOptions;
   readonly input: TurnInput;
@@ -618,7 +814,6 @@ function agentContext(options: {
   );
 
   const context: AgentContext = {
-    systemPrompt: options.options.systemPrompt,
     messages: projected.messages,
     tools: options.tools,
   };
@@ -698,13 +893,13 @@ function retrySchedule(options: {
 }
 
 function durableTools(options: {
-  readonly options: TurnOptions;
   readonly input: TurnInput;
   readonly parked: Set<string>;
   readonly settling: Map<string, EffectView>;
   readonly state: ToolBatchState;
+  readonly tools: readonly AgentTool[];
 }): AgentTool[] {
-  return options.options.tools.map((tool) => {
+  return options.tools.map((tool) => {
     const execute: AgentTool["execute"] = async (callId, params, signal, onUpdate) => {
       if (options.state.stopped !== undefined) return waitingResult();
       const args = toJsonValue(params);
@@ -878,16 +1073,14 @@ function durableTools(options: {
           const stored = view.effect.result;
 
           const result: AgentToolResult<unknown> = {
+            ...stored,
             content: stored.content,
             details: stored.details,
           };
 
-          const titled = stored.title === undefined ? result : { ...result, title: stored.title };
-          const restored = stored.usage === undefined ? titled : { ...titled, usage: stored.usage };
+          if (stored.isError) throw new ToolError(result);
 
-          if (stored.isError) throw new ToolError(restored);
-
-          return restored;
+          return result;
         }
 
         default: {

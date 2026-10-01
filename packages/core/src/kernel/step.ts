@@ -33,6 +33,7 @@ import type { Commit, Failure, Lease, Obj, RefUpdate, Run, RunConfig, RunPhase }
 import type { Session } from "./store.ts";
 import type { RespondOutcome, ToolBatchOutcome, Turn } from "./turn.ts";
 import { startSpan } from "./telemetry.ts";
+import type { SystemMessage } from "@nyte-ai/schema";
 
 const DEFAULT_TTL_MS = 30_000;
 
@@ -646,16 +647,72 @@ async function publishCheckpoint(
   return outcome === "fenced" ? { kind: "fenced" } : { kind: "continue" };
 }
 
-/** A user input or completion at the branch tail still needs a response. */
-async function awaitingAnswer(context: StepContext): Promise<boolean> {
-  if (context.tip === null) return false;
-  const tip = await context.session.objects.get(context.tip);
+/**
+ * Commit the system message `prepare` returned under the head lease, so the
+ * response that follows in this step reads the prompt and tools from the
+ * branch. Answers the moved tip, or the step outcome when the publish failed.
+ */
+async function publishSystem(
+  context: StepContext,
+  message: SystemMessage,
+): Promise<{ readonly kind: "declared"; readonly tip: string } | StepOutcome> {
+  const commit: Commit = {
+    kind: "commit",
+    parent: context.tip,
+    body: { kind: "message", message },
+    run: context.run.id,
+    at: context.now(),
+  };
 
-  return (
-    tip?.kind === "commit" &&
-    (tip.body.kind === "completion" ||
-      (tip.body.kind === "message" && tip.body.message.role === "user"))
-  );
+  const tip = hashObject(commit);
+  await context.session.objects.put([commit]);
+
+  const outcome = await publish(context.session, {
+    lease: context.lease,
+    updates: [
+      { name: headRef(context.options.head), from: context.tip, to: tip },
+      { name: runRef(context.options.head), from: context.runOid, to: context.runOid },
+    ],
+    reason: "declare",
+  });
+
+  switch (outcome) {
+    case "ok":
+      return { kind: "declared", tip };
+    case "conflict":
+      return { kind: "continue" };
+    case "fenced":
+      return { kind: "fenced" };
+    default: {
+      const _exhaustive: never = outcome;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * A user input or completion at the branch tail still needs a response. System
+ * messages declared since are prompt state, not an answer.
+ */
+async function awaitingAnswer(context: StepContext): Promise<boolean> {
+  for (let oid = context.tip; oid !== null;) {
+    const tip = await context.session.objects.get(oid);
+
+    if (tip?.kind !== "commit") return false;
+
+    if (tip.body.kind === "message" && tip.body.message.role === "system") {
+      oid = tip.parent;
+      continue;
+    }
+
+    return (
+      tip.body.kind === "completion" ||
+      (tip.body.kind === "message" && tip.body.message.role === "user")
+    );
+  }
+
+  return false;
 }
 
 function isStepCeilingResolver(
@@ -664,7 +721,8 @@ function isStepCeilingResolver(
   return steps instanceof Function;
 }
 
-async function respond(context: StepContext): Promise<StepOutcome> {
+async function respond(initial: StepContext): Promise<StepOutcome> {
+  let context = initial;
   const answering = context.options.drain === "one" && (await awaitingAnswer(context));
 
   const landed = await land(context, {
@@ -679,9 +737,9 @@ async function respond(context: StepContext): Promise<StepOutcome> {
     return endRun(context, { kind: "aborted" }, "abort");
   }
 
-  const commits = await contextCommits(context.session.objects, context.tip);
+  let commits = await contextCommits(context.session.objects, context.tip);
   const messages = contextMessages(commits.map((entry) => entry.commit));
-  const last = messages[messages.length - 1];
+  const last = messages.findLast((message) => message.role !== "system");
 
   if (last === undefined || (last.role !== "user" && last.role !== "toolResult")) {
     return endRun(context, { kind: "done" }, "done");
@@ -709,6 +767,50 @@ async function respond(context: StepContext): Promise<StepOutcome> {
 
   if (ceiling !== undefined && chain.attempts >= ceiling) {
     return endRun(context, { kind: "failed", failure: runnerFailure("step ceiling") }, "fail");
+  }
+
+  // What the branch must declare before a response is committed first, and
+  // before the reservation: a checkpoint or a prompt declaration is not an
+  // attempt. A declaration moves the tip this step responds over.
+  if (context.turn.prepare !== undefined) {
+    const prepare = context.turn.prepare;
+
+    const prepared = await callTurn(context, false, (emit, signal) =>
+      prepare({
+        session: context.session,
+        telemetry: context.telemetry,
+        lease: context.lease,
+        run: context.run,
+        now: context.now(),
+        attempt: context.run.attempts + 1,
+        commits,
+        emit,
+        signal,
+      }),
+    );
+
+    if (prepared.kind === "fenced") return { kind: "fenced" };
+
+    switch (prepared.outcome.kind) {
+      case "checkpoint":
+        return publishCheckpoint(context, prepared.outcome.body);
+      case "system": {
+        const declared = await publishSystem(context, prepared.outcome.message);
+
+        if (declared.kind !== "declared") return declared;
+        context = { ...context, tip: declared.tip };
+        commits = await contextCommits(context.session.objects, context.tip);
+        break;
+      }
+
+      case "ready":
+        break;
+      default: {
+        const _exhaustive: never = prepared.outcome;
+
+        return _exhaustive;
+      }
+    }
   }
 
   const [counter] = await context.session.objects.put([

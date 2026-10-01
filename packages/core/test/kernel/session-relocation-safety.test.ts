@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { contentText, createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
+import { getCurrentSystemPrompt, getCurrentTools } from "@nyte-ai/schema";
 import { expect, test } from "vitest";
 import { submit } from "../../src/kernel/queue.ts";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
@@ -31,7 +32,6 @@ function plugins(id: string) {
           api.commands.add((draft) =>
             draft.set("where", { description: "Directory", run: () => api.env.cwd }),
           );
-          api.prompt.add((draft) => draft.set("cwd", { text: api.env.cwd }));
           api.agents.add((draft) => draft.set("worker", { id: "worker", mode: "subagent" }));
         },
       }),
@@ -60,14 +60,14 @@ function fixture(streamFn?: StreamFn) {
       streamFn:
         streamFn ??
         ((_model, context) => {
-          requests.push(context.systemPrompt);
+          requests.push(getCurrentSystemPrompt(context.messages));
           const response =
-            context.messages.at(-1)?.role === "user"
+            context.messages.findLast((item) => item.role !== "system")?.role === "user"
               ? assistant("", {
                   calls: [
                     call(`write-${requests.length}`, "write", {
                       path: "result.txt",
-                      content: context.systemPrompt ?? "",
+                      content: getCurrentSystemPrompt(context.messages),
                     }),
                   ],
                 })
@@ -125,7 +125,10 @@ test("failed destination setup preserves the original activation, cwd and runnab
     nyte.attach();
     await nyte.messages.send({ ...input, content: "write after rollback" });
     await within(nyte.runs.wait(input));
-    assert.equal(readFileSync(join(setup.cwd, "result.txt"), "utf8"), setup.cwd);
+    assert.equal(
+      readFileSync(join(setup.cwd, "result.txt"), "utf8"),
+      `Current working directory: ${setup.cwd}`,
+    );
   } finally {
     await nyte.close();
   }
@@ -177,8 +180,14 @@ test("a cached foreign runner cannot land or execute in its old cwd and plugin o
       .poll(() => old.relocate({ ...input, workspace, plugins: plugins("destination") }))
       .toEqual({ kind: "relocated" });
     await within(old.runs.wait(input));
-    assert.equal(readFileSync(join(setup.destination, "result.txt"), "utf8"), workspace.cwd);
-    assert.equal(readFileSync(join(setup.cwd, "result.txt"), "utf8"), setup.cwd);
+    assert.equal(
+      readFileSync(join(setup.destination, "result.txt"), "utf8"),
+      `Current working directory: ${workspace.cwd}`,
+    );
+    assert.equal(
+      readFileSync(join(setup.cwd, "result.txt"), "utf8"),
+      `Current working directory: ${setup.cwd}`,
+    );
     await stored.close();
   } finally {
     await old.close();
@@ -231,7 +240,10 @@ test("children keep their creation directory across parent moves and resume with
     assert.ok(
       (await resumed.plugins.list(childInput)).some((plugin) => plugin.id === "destination"),
     );
-    assert.equal(readFileSync(join(setup.destination, "result.txt"), "utf8"), workspace.cwd);
+    assert.equal(
+      readFileSync(join(setup.destination, "result.txt"), "utf8"),
+      `Current working directory: ${workspace.cwd}`,
+    );
     assert.equal((await resumed.sessions.get(oldChildInput))?.activation.kind, "requires");
     assert.deepEqual(await resumed.plugins.list(oldChildInput), []);
   } finally {
@@ -242,11 +254,11 @@ test("children keep their creation directory across parent moves and resume with
 test("spawned subagents persist the parent's destination instead of following a later parent move", async () => {
   const setup = fixture((_model, context) => {
     // The child's report reaches the parent twice: as the wake and again as a completion.
-    const last = context.messages.at(-1);
+    const last = context.messages.findLast((item) => item.role !== "system");
     const response =
       last?.role === "user" &&
       !contentText(last.content).startsWith("Background ") &&
-      context.tools?.some((tool) => tool.name === "task")
+      getCurrentTools(context.messages).some((tool) => tool.name === "task")
         ? assistant("", {
             calls: [
               call("delegate", "task", { model: "openai/test-model", prompt: "finish child" }),

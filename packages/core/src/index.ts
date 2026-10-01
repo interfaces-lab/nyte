@@ -14,20 +14,10 @@ export { bindTool } from "./tools/bind-tool.ts";
 
 export * from "./kernel/sdk/types.ts";
 
-/**
- * Host composition, not internals: a host needs these to build
- * `NyteOptions.plugins` behind workspace trust, so they sit beside `createNyte`.
- * The plugin registries, host, and scope are internals and are exported from
- * nowhere.
- */
 export {
-  resolvePlugins,
-  watchPluginDirectories,
-  type PluginDirectory,
-  type PluginManifest,
-  type ResolvedPlugins,
-  type WatchTarget,
-} from "./plugins/sources.ts";
+  loadProjectContextFiles,
+  formatContextFilesForPrompt,
+} from "./plugins/builtin/context-files.ts";
 
 /**
  * `LoadedPlugin` is a `NyteOptions` field; `PluginInfo` and `SettingInfo` are
@@ -40,3 +30,13 @@ export type { LoadedPlugin, PluginInfo, SettingInfo } from "./plugins/types.ts";
 export { isThinkingLevel, type StreamFn, type ThinkingLevel } from "./kernel/loop/types.ts";
 
 export { DEFAULT_COMPACTION_SETTINGS, type CompactionSettings } from "./kernel/compaction.ts";
+
+export {
+  CACHE_WARMING_MODES,
+  formatCacheWarmingStatus,
+  formatCacheWarmingUsage,
+  type CacheWarmingAction,
+  type CacheWarmingDecision,
+  type CacheWarmingMode,
+  type CacheWarmingStatus,
+} from "./kernel/cache-warmer.ts";

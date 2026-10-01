@@ -11,6 +11,7 @@ import { test } from "vitest";
 import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import type { AssistantMessage } from "@nyte-ai/schema";
 import { branch } from "../../src/kernel/graph.ts";
+import type { Commit } from "../../src/kernel/model.ts";
 import { runRef } from "../../src/kernel/names.ts";
 import { submit } from "../../src/kernel/queue.ts";
 import { step } from "../../src/kernel/step.ts";
@@ -56,7 +57,7 @@ async function drive(session: Session, streamFn: StreamFn, cwd: string, steps: n
   const turn = bindTurn({
     streamFn,
     model,
-    systemPrompt: "system",
+    sections: { prompt: "system" },
     tools: createAllTools(cwd),
     retry: { enabled: true, maxRetries: 2, baseDelayMs: 1 },
   });
@@ -78,6 +79,16 @@ async function drive(session: Session, streamFn: StreamFn, cwd: string, steps: n
   return { commits, run: run?.kind === "run" ? run : undefined };
 }
 
+/** The branch after the user's message, without the prompt declarations the runner records. */
+function conversation(commits: readonly Commit[]): Commit[] {
+  return commits.filter(
+    (entry) =>
+      entry.body.kind === "message" &&
+      entry.body.message.role !== "user" &&
+      entry.body.message.role !== "system",
+  );
+}
+
 test("an edit call is stamped as file_edit, and its result as the settled patch", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "nyte-provenance-"));
   await writeFile(join(cwd, "note.txt"), "one\ntwo\nthree\n");
@@ -92,7 +103,7 @@ test("an edit call is stamped as file_edit, and its result as the settled patch"
     cwd,
     4,
   );
-  const [, asked, settled] = commits;
+  const [asked, settled] = conversation(commits);
   assert.ok(asked !== undefined && "calls" in asked);
   assert.deepEqual(asked.calls, { "call-edit": { kind: "file_edit", path: "note.txt" } });
   assert.ok(settled !== undefined && "call" in settled);
@@ -131,7 +142,7 @@ test("an unknown tool is custom under its own name", async () => {
     tmpdir(),
     4,
   );
-  const [, asked, settled] = commits;
+  const [asked, settled] = conversation(commits);
   assert.ok(asked !== undefined && "calls" in asked);
   assert.deepEqual(asked.calls, { "call-x": { kind: "custom", label: "mystery" } });
   assert.ok(settled !== undefined && "call" in settled);

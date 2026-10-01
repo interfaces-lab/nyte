@@ -49,7 +49,7 @@ const model: Model<Api> = {
 function echo(options: { readonly gate?: () => Promise<void> } = {}): StreamFn {
   return (_model, context, streamOptions) => {
     const users = context.messages.filter((item) => item.role === "user").length;
-    const tail = context.messages.at(-1);
+    const tail = context.messages.findLast((item) => item.role !== "system");
     const tailText =
       tail?.role === "user" && !Array.isArray(tail.content) ? tail.content : undefined;
     const wantsTool = tailText === "ask" || tailText === "ask many";
@@ -274,7 +274,7 @@ test("a client that opens from a snapshot and watches from its seq sees synced, 
           ]
         : [],
     );
-    assert.deepEqual(commits, ["config", "user", "assistant"]);
+    assert.deepEqual(commits, ["config", "user", "system", "assistant"]);
     assert.ok(events.some((event) => event.kind === "text_delta" && event.delta === "saw"));
     assert.ok(events.some((event) => event.kind === "queued"));
     assert.ok(events.some((event) => event.kind === "landed"));
@@ -773,7 +773,6 @@ test("the prospective plugin catalog is sessionless, cached, and invalidated by 
         id,
         async session(api) {
           activations += 1;
-          await api.storage.set("catalog", commandName);
           api.settings.add((draft) =>
             draft.set("verbosity", {
               key: "verbosity",

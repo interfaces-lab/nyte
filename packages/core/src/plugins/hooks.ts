@@ -11,7 +11,11 @@
  * keeps an observer from becoming an interceptor by accident.
  *
  * Combining rules, per hook:
- * - `transform_context`: chained replacement of messages and system prompt.
+ * - `transform_context`: chained replacement of the conversation (the messages
+ *   without system messages) and of the system prompt. A returned prompt
+ *   replaces the request's leading prompt for that request only.
+ * - `transform_transcript`: chained replacement of the whole transcript,
+ *   system messages included; the result is sent as returned.
  * - `before_request`: each patch applied in order over the stream options.
  * - `before_tool`: policies run in plugin order; `modify` decisions
  *   chain and `continue` is not terminal, so no decision bypasses a later
@@ -21,6 +25,8 @@
  * - `before_compaction`: first provider checkpoint wins; failed attempts carry
  *   usage into later handlers or portable compaction. Only exhausted failures
  *   report a fallback warning.
+ * - `cache_warming_decision`: the last handler to return an action wins; a
+ *   failing handler leaves the action as it stood.
  *
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/agent/src/harness/agent-harness.ts (HookMap)
  * Synced with pi 7ebf9087e.
@@ -32,6 +38,7 @@ import { Value } from "typebox/value";
 import { isJsonObject, toJsonValue, type JsonObject } from "@nyte-ai/client";
 import { addUsage } from "@nyte-ai/client";
 import type { AgentToolResult, StreamOptions, StreamOptionsPatch } from "../kernel/loop/types.ts";
+import type { CacheWarmingAction, CacheWarmingDecisionEvent } from "../kernel/cache-warmer.ts";
 import { withBudget } from "./scope.ts";
 
 /**
@@ -45,9 +52,25 @@ export interface HookModelRef {
 }
 
 export interface HookMap {
+  /**
+   * `messages` holds the conversation without system
+   * messages. The prompt and tool state belong to the kernel, which restores
+   * them after the handlers return, so a handler cannot drop them and does not
+   * need to preserve them. `systemPrompt` is the rendered current prompt; a
+   * returned one heads the request for that request only and is never stored.
+   */
   transform_context: {
     event: { messages: Message[]; systemPrompt: string };
     result: { messages?: Message[]; systemPrompt?: string } | undefined;
+  };
+  /**
+   * After every `transform_context` handler:
+   * the full transcript including system messages, sent as returned. The
+   * handler owns the prompt and tool declarations.
+   */
+  transform_transcript: {
+    event: { messages: Message[] };
+    result: { messages?: Message[] } | undefined;
   };
   before_compaction: {
     event: {
@@ -73,6 +96,12 @@ export interface HookMap {
     event: ToolCallRequest;
     result: ToolCallDecision;
   };
+  /** Fired before each prompt-cache refresh with the kernel's decision filled in. */
+  cache_warming_decision: {
+    event: Omit<CacheWarmingDecisionEvent, "type"> & { sessionId: string; model: HookModelRef };
+    /** `stop` ends warming until the next real request. */
+    result: { action?: CacheWarmingAction } | undefined;
+  };
   after_tool: {
     event: {
       toolCallId: string;
@@ -80,6 +109,7 @@ export interface HookMap {
       args: JsonObject;
       content: AgentToolResult<unknown>["content"];
       details?: JsonValue;
+      structuredContent?: JsonValue;
       isError: boolean;
       usage?: Usage;
     };
@@ -87,6 +117,7 @@ export interface HookMap {
       | {
           content?: AgentToolResult<unknown>["content"];
           details?: JsonValue;
+          structuredContent?: JsonValue;
           isError?: boolean;
           usage?: Usage;
         }
@@ -200,10 +231,12 @@ export type HookBudgets = Readonly<Record<HookName, number>>;
 
 export const HOOK_BUDGETS_MS: HookBudgets = {
   transform_context: 5_000,
+  transform_transcript: 5_000,
   before_compaction: 300_000,
   before_request: 5_000,
   before_tool: 5_000,
   after_tool: 5_000,
+  cache_warming_decision: 5_000,
 };
 
 type HookRegistrations = {
@@ -235,10 +268,12 @@ function normalizeError(cause: unknown): Error {
 export class HookRegistry implements Hooks {
   private readonly registrations: HookRegistrations = {
     transform_context: [],
+    transform_transcript: [],
     before_compaction: [],
     before_request: [],
     before_tool: [],
     after_tool: [],
+    cache_warming_decision: [],
   };
   private readonly runners: HookRunners;
   private readonly reportError: HookErrorReporter;
@@ -250,10 +285,12 @@ export class HookRegistry implements Hooks {
     this.budgets = budgets;
     this.runners = {
       transform_context: (event, signal) => this.transformContext(event, signal),
+      transform_transcript: (event, signal) => this.transformTranscript(event, signal),
       before_compaction: (event, signal) => this.beforeCompaction(event, signal),
       before_request: (event, signal) => this.beforeRequest(event, signal),
       before_tool: (event, signal) => this.beforeTool(event, signal),
       after_tool: (event, signal) => this.afterTool(event, signal),
+      cache_warming_decision: (event, signal) => this.cacheWarmingDecision(event, signal),
     };
   }
 
@@ -304,14 +341,14 @@ export class HookRegistry implements Hooks {
     signal: AbortSignal | undefined,
   ): Promise<HookMap["transform_context"]["result"]> {
     let messages = event.messages;
-    let systemPrompt = event.systemPrompt;
+    let systemPrompt: string | undefined;
 
     for (const registration of this.registrationsFor("transform_context")) {
       try {
         const result = await this.call(
           "transform_context",
           registration,
-          { ...event, messages, systemPrompt },
+          { ...event, messages, systemPrompt: systemPrompt ?? event.systemPrompt },
           signal,
         );
 
@@ -323,7 +360,45 @@ export class HookRegistry implements Hooks {
       }
     }
 
-    return { messages, systemPrompt };
+    return systemPrompt === undefined ? { messages } : { messages, systemPrompt };
+  }
+
+  private async transformTranscript(
+    event: HookInvocation<"transform_transcript">,
+    signal: AbortSignal | undefined,
+  ): Promise<HookMap["transform_transcript"]["result"]> {
+    let messages = event.messages;
+
+    for (const registration of this.registrationsFor("transform_transcript")) {
+      try {
+        const hadLeadingSystemMessage = messages[0]?.role === "system";
+
+        const result = await this.call(
+          "transform_transcript",
+          registration,
+          { ...event, messages },
+          signal,
+        );
+
+        messages = result?.messages ?? messages;
+
+        // Providers read the prompt and initial tools from the leading system message.
+        // Losing it is never intended; report it but honor the handler's output.
+        if (hadLeadingSystemMessage && messages[0]?.role !== "system") {
+          await this.reportError(
+            new Error(
+              "Handler removed the leading system message; the request has no prompt or initial tool declarations. Keep it at index 0 or replace a dropped prefix with getCurrentSystemMessage().",
+            ),
+            "transform_transcript",
+            event.head,
+          );
+        }
+      } catch (error) {
+        await this.reportError(normalizeError(error), "transform_transcript", event.head);
+      }
+    }
+
+    return { messages };
   }
 
   private async beforeCompaction(
@@ -451,6 +526,7 @@ export class HookRegistry implements Hooks {
   ): Promise<HookMap["after_tool"]["result"]> {
     let content = event.content;
     let details = event.details;
+    let structuredContent = event.structuredContent;
     let isError = event.isError;
     let usage = event.usage;
     const aggregate: NonNullable<HookMap["after_tool"]["result"]> = {};
@@ -460,7 +536,7 @@ export class HookRegistry implements Hooks {
         const result = await this.call(
           "after_tool",
           registration,
-          afterToolInvocation(event, content, details, isError, usage),
+          afterToolInvocation(event, content, details, structuredContent, isError, usage),
           signal,
         );
 
@@ -470,11 +546,16 @@ export class HookRegistry implements Hooks {
 
         if (result.details !== undefined) aggregate.details = result.details;
 
+        if (result.structuredContent !== undefined)
+          aggregate.structuredContent = result.structuredContent;
+
         if (result.isError !== undefined) aggregate.isError = result.isError;
 
         if (result.usage !== undefined) aggregate.usage = result.usage;
         content = result.content ?? content;
         details = result.details ?? details;
+        structuredContent =
+          result.structuredContent === undefined ? structuredContent : result.structuredContent;
         isError = result.isError ?? isError;
         usage = result.usage ?? usage;
       } catch (error) {
@@ -483,6 +564,25 @@ export class HookRegistry implements Hooks {
     }
 
     return Object.keys(aggregate).length === 0 ? undefined : aggregate;
+  }
+
+  private async cacheWarmingDecision(
+    event: HookInvocation<"cache_warming_decision">,
+    signal: AbortSignal | undefined,
+  ): Promise<HookMap["cache_warming_decision"]["result"]> {
+    let action = event.action;
+
+    for (const registration of this.registrationsFor("cache_warming_decision")) {
+      try {
+        const result = await this.call("cache_warming_decision", registration, event, signal);
+
+        if (result?.action === "warm" || result?.action === "stop") action = result.action;
+      } catch (error) {
+        await this.reportError(normalizeError(error), "cache_warming_decision", event.head);
+      }
+    }
+
+    return { action };
   }
 
   private registrationsFor<TName extends HookName>(name: TName): HookRegistration<TName>[] {
@@ -507,6 +607,7 @@ function afterToolInvocation(
   event: HookInvocation<"after_tool">,
   content: AgentToolResult<unknown>["content"],
   details: JsonValue | undefined,
+  structuredContent: JsonValue | undefined,
   isError: boolean,
   usage: Usage | undefined,
 ): HookInvocation<"after_tool"> {
@@ -517,6 +618,7 @@ function afterToolInvocation(
     toolName: event.toolName,
     args: event.args,
     content,
+    structuredContent,
     isError,
   };
 

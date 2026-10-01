@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import type { AssistantMessage, Context } from "@nyte-ai/schema";
+import { getCurrentSystemPrompt, getCurrentTools } from "@nyte-ai/schema";
 import { createNyte } from "../src/kernel/sdk/nyte.ts";
 import type { HeadName, ModelCatalog, Nyte, SessionId } from "../src/kernel/sdk/types.ts";
 import { definePlugin, inlinePlugin, type LoadedPlugin } from "../src/plugins/index.ts";
@@ -65,9 +66,9 @@ function script(
     const text = tail?.role === "user" && !Array.isArray(tail.content) ? tail.content : "";
     offered.set(
       text,
-      (context.tools ?? []).map((tool) => tool.name),
+      getCurrentTools(context.messages).map((tool) => tool.name),
     );
-    prompts.set(text, context.systemPrompt ?? "");
+    prompts.set(text, getCurrentSystemPrompt(context.messages));
     selected.set(text, selectedModel);
     reasoning.set(text, streamOptions?.reasoning);
     const result = messages.findLast((item) => item.role === "toolResult");
@@ -415,7 +416,9 @@ test("task and create advertise the current enabled cross-provider models on eve
       [1, ["openai/script-model", "openai/gpt-astra"]],
     ] as const) {
       for (const name of ["task", "create"]) {
-        const schema = contexts[index]?.tools?.find((tool) => tool.name === name)?.parameters;
+        const schema = getCurrentTools(contexts[index]?.messages ?? []).find(
+          (tool) => tool.name === name,
+        )?.parameters;
         assert.ok(typeof schema === "object" && schema !== null && "properties" in schema);
         const properties = schema.properties;
         assert.ok(typeof properties === "object" && properties !== null && "model" in properties);

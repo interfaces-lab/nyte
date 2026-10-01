@@ -9,6 +9,7 @@ import {
   type PluginRegistries,
   type PluginHostTarget,
   type PluginNotice,
+  type PreparedPluginReplacement,
 } from "../../plugins/host.ts";
 import { withBudget } from "../../plugins/scope.ts";
 import { pluginFactKey } from "../../plugins/storage.ts";
@@ -21,25 +22,32 @@ import type {
   LoadedPlugin,
   PluginEnv,
   PluginEvents,
-  PluginInfo,
+  PluginReplacement,
   SettingInfo,
 } from "../../plugins/types.ts";
 import {
   isThinkingLevel,
+  type AgentContext,
   type AgentTool,
-  type StreamFn,
   type StreamOptions,
   type ThinkingLevel,
 } from "../loop/types.ts";
 import type { CompactionSettings } from "../compaction.ts";
 import { isJsonObject, toJsonValue } from "@nyte-ai/client";
+import { isTerminalPhase } from "@nyte-ai/protocol";
+import {
+  getCurrentSystemMessage,
+  getCurrentSystemPrompt,
+  getSystemMessageText,
+} from "@nyte-ai/schema";
+import type { Message, SystemMessage } from "@nyte-ai/schema";
 import type { Blob, ModelRef, Obj, Run, RunConfig } from "../model.ts";
 import { contextMessages } from "@nyte-ai/client";
 import { contextCommits } from "../graph.ts";
-import { FACT_PREFIX, decodeFactKey, encodeFactKey, factRef, headRef } from "../names.ts";
+import { FACT_PREFIX, decodeFactKey, encodeFactKey, factRef, headRef, runRef } from "../names.ts";
 import type { Session } from "../store.ts";
 import { projectEvent } from "./events.ts";
-import { providerCompactionFor, requestStream } from "./requests.ts";
+import { providerCompactionFor, requestStream, type RequestStreamFn } from "./requests.ts";
 import { NAME_FACT, PARENT_FACT } from "./snapshot.ts";
 import { MAIN, type SessionEvent } from "./types.ts";
 import { bindTurn, type Turn, type TurnInput, type TurnOptions } from "../turn.ts";
@@ -66,6 +74,9 @@ export interface Activation {
   readonly hooks: HookRegistry;
   readonly plugins: PluginHost;
   tools(): readonly AgentTool[];
+  /** The prompt registry as named, ordered sections: what `SystemMessage.sections` declares. */
+  promptSections(): Record<string, string>;
+  /** The rendered prompt, as the model reads it once declared. */
   systemPrompt(): string;
   agents(): readonly Agent[];
   commands(): ReadonlyMap<string, Command>;
@@ -76,7 +87,16 @@ export interface Activation {
   /** The plugin status items in display order. */
   statuses(): readonly string[];
   runCommand(name: string, argument?: string): Promise<CommandResult>;
-  setPlugins(plugins: readonly LoadedPlugin[]): Promise<readonly PluginInfo[]>;
+  setPlugins(plugins: readonly LoadedPlugin[], applied?: () => void): Promise<PluginReplacement>;
+  observeRun(run: Run): void;
+  preparePlugins(
+    plugins: readonly LoadedPlugin[],
+    applied?: () => void,
+  ): Promise<PreparedPluginReplacement>;
+  offeredTurn(runId: string): TurnResolution | undefined;
+  offerTurn(input: TurnInput, resolution: TurnResolution, attempt?: number): void;
+  releaseTurn(runId: string): void;
+  duringCall<T>(call: () => T | Promise<T>): Promise<T>;
   subscribe(listener: (notice: Notice) => void): Disposer;
   close(): Promise<void>;
 }
@@ -194,10 +214,54 @@ export async function activate(input: {
   env: PluginEnv;
 }): Promise<Activation> {
   const registries = createRegistries();
+  let initializing = true;
   const session = input.target.kind === "session" ? input.target.session : undefined;
   const facts = session === undefined ? transientFacts() : factsFor(session);
   const listeners = new Set<(notice: Notice) => void | Promise<void>>();
   let closePromise: Promise<void> | undefined;
+  const offered = new Map<string, { head: string; attempt: number; resolution: TurnResolution }>();
+  const blockedHeads = new Map<string, string>();
+  const calls = new Set<Promise<void>>();
+  let pending: (() => void) | undefined;
+  let pendingRebuild = false;
+  const deferred: (() => void)[] = [];
+  let flushing = false;
+  const flush = (): void => {
+    if (flushing || calls.size || offered.size || blockedHeads.size || closePromise !== undefined)
+      return;
+    flushing = true;
+    try {
+      while (deferred.length) for (const action of deferred.splice(0)) action();
+      const commit = pending;
+      pending = undefined;
+      if (pendingRebuild) {
+        pendingRebuild = false;
+        if (commit === undefined) rebuildAll();
+      }
+      commit?.();
+      while (deferred.length && !calls.size && !offered.size && !blockedHeads.size) {
+        for (const action of deferred.splice(0)) action();
+      }
+      if (eventListeners.size === 0) {
+        eventLoop?.abort();
+        eventLoop = undefined;
+      }
+    } finally {
+      flushing = false;
+    }
+  };
+  const duringCall = async <T>(call: () => T | Promise<T>): Promise<T> => {
+    if (closePromise !== undefined) throw new Error("activation is closed");
+    const { promise, resolve } = Promise.withResolvers<void>();
+    calls.add(promise);
+    try {
+      return await call();
+    } finally {
+      calls.delete(promise);
+      resolve();
+      flush();
+    }
+  };
 
   const emit = async (notice: Notice): Promise<void> => {
     for (const listener of listeners) {
@@ -236,7 +300,19 @@ export async function activate(input: {
 
   let shownStatuses = statuses().join("\u0000");
 
+  const emitStatuses = (): void => {
+    const items = statuses();
+    const signature = items.join("\u0000");
+    if (signature === shownStatuses) return;
+    shownStatuses = signature;
+    void emit({ kind: "status_changed", items });
+  };
+
   const rebuildAll = (): void => {
+    if (calls.size || offered.size || blockedHeads.size) {
+      pendingRebuild = true;
+      return;
+    }
     for (const property of REGISTRY_PROPERTIES) {
       for (const failure of registries[property].rebuild().errors) {
         void emit({
@@ -247,13 +323,7 @@ export async function activate(input: {
         });
       }
     }
-
-    const items = statuses();
-    const signature = items.join("\u0000");
-
-    if (signature === shownStatuses) return;
-    shownStatuses = signature;
-    void emit({ kind: "status_changed", items });
+    emitStatuses();
   };
 
   // One watch over the session's events, started by the first subscriber and
@@ -261,22 +331,54 @@ export async function activate(input: {
   // and the stream goes on: an observer cannot stop what it observes.
   const eventListeners = new Set<(event: SessionEvent) => void | Promise<void>>();
   let eventLoop: AbortController | undefined;
+  let eventTask: Promise<void> | undefined;
+  const recordRun = (name: string, run: Run | undefined): void => {
+    if (run !== undefined && (run.phase.kind === "tools" || run.phase.kind === "waiting"))
+      blockedHeads.set(name, run.id);
+    else blockedHeads.delete(name);
+    for (const [id, binding] of offered) {
+      if (name !== runRef(binding.head)) continue;
+      if (
+        run === undefined ||
+        run.id !== id ||
+        isTerminalPhase(run.phase) ||
+        (run.attempts >= binding.attempt &&
+          run.phase.kind !== "tools" &&
+          run.phase.kind !== "waiting")
+      )
+        offered.delete(id);
+    }
+    flush();
+  };
+  const observeRunRef = async (name: string): Promise<void> => {
+    if (session === undefined) return;
+    const oid = await session.refs.read(name);
+    const object = oid === null ? undefined : await session.objects.get(oid);
+    recordRun(name, object?.kind === "run" ? object : undefined);
+  };
 
   const startEventLoop = (): void => {
     if (session === undefined || eventLoop !== undefined) return;
     const loop = new AbortController();
     eventLoop = loop;
-    void (async () => {
+    eventTask = (async () => {
       const afterSeq = await session.events.last();
+      const heads = new Set([
+        ...blockedHeads.keys(),
+        ...offered.values().map((binding) => runRef(binding.head)),
+      ]);
+      for (const head of heads) await observeRunRef(head);
       const events = session.events.watch({ afterSeq, signal: loop.signal });
 
       for await (const event of events) {
         if (loop.signal.aborted) return;
 
+        if (event.kind === "ref" && event.name.startsWith("refs/runs/"))
+          await observeRunRef(event.name);
         for (const projected of await projectEvent(event, session.objects)) {
           for (const listener of eventListeners) {
             void withBudget({ what: "event listener", ms: PLUGIN_CALL_BUDGET_MS }, () =>
-              listener(projected),
+              duringCall(() => listener(projected)),
             ).catch((error: unknown) =>
               emit({
                 kind: "diagnostic",
@@ -299,7 +401,10 @@ export async function activate(input: {
       eventListeners.add(listener);
       startEventLoop();
 
-      return () => eventListeners.delete(listener);
+      return () => {
+        eventListeners.delete(listener);
+        flush();
+      };
     },
   };
 
@@ -337,27 +442,43 @@ export async function activate(input: {
     env: input.env,
     subscribe,
     rebuildAll,
+    defer: (action) => {
+      deferred.push(action);
+      flush();
+    },
+    publish: (commit) => {
+      const publish = (): void => {
+        commit();
+        emitStatuses();
+      };
+      if (!initializing && (calls.size || offered.size || blockedHeads.size)) {
+        pending = publish;
+        startEventLoop();
+        return false;
+      }
+      publish();
+      return true;
+    },
     emit,
   };
 
   const plugins = new PluginHost(target);
 
-  const systemPrompt = (): string =>
-    registries.prompt
-      .values()
-      .map((section, index) => ({ section, index }))
-      .sort(
-        (left, right) =>
-          (left.section.order ?? 100) - (right.section.order ?? 100) || left.index - right.index,
-      )
-      .map(({ section }) => section.text)
-      .join("\n\n");
+  const promptSections = (): Record<string, string> =>
+    Object.fromEntries(
+      [...registries.prompt.current()]
+        .map(([id, section]) => [sectionName(id, section.order), section.text] as const)
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0)),
+    );
+
+  const systemPrompt = (): string => renderSections(promptSections());
 
   const activation: Activation = {
     registries,
     hooks,
     plugins,
     tools: () => registries.tools.values(),
+    promptSections,
     systemPrompt,
     agents: () => registries.agents.values(),
     commands: () => registries.commands.current(),
@@ -397,6 +518,17 @@ export async function activate(input: {
 
       return { kind: "applied" };
     },
+    observeRun: (run) => recordRun(runRef(run.head), run),
+    offeredTurn: (runId) => offered.get(runId)?.resolution,
+    offerTurn: (input, resolution, attempt = input.run.attempts + 1) => {
+      offered.set(input.run.id, { head: input.run.head, attempt, resolution });
+      startEventLoop();
+    },
+    releaseTurn: (runId) => {
+      offered.delete(runId);
+      flush();
+    },
+    duringCall,
     runCommand: async (name, argument = "") => {
       const command = registries.commands.get(name);
 
@@ -404,18 +536,22 @@ export async function activate(input: {
 
       const result = await withBudget(
         { what: `command ${name}`, ms: PLUGIN_CALL_BUDGET_MS },
-        (signal) => command.run(argument, signal),
+        (signal) => duringCall(() => command.run(argument, signal)),
       );
 
       return result ?? undefined;
     },
-    setPlugins: (next) => plugins.activate(next),
+    setPlugins: (next, applied) => plugins.activate(next, applied),
+    preparePlugins: (next, applied) => plugins.prepare(next, applied),
     subscribe,
     close: () => {
       if (closePromise !== undefined) return closePromise;
       closePromise = (async () => {
         const errors: unknown[] = [];
+        pending = undefined;
+        deferred.length = 0;
         await plugins.close().catch((cause: unknown) => errors.push(cause));
+        await Promise.allSettled(calls);
 
         try {
           hooks.close(new Error("activation is closed"));
@@ -425,6 +561,7 @@ export async function activate(input: {
 
         listeners.clear();
         eventLoop?.abort();
+        await eventTask;
         eventListeners.clear();
 
         if (errors.length > 0) throw new AggregateError(errors, "Failed to close activation");
@@ -436,7 +573,11 @@ export async function activate(input: {
 
   try {
     await plugins.activate(input.plugins);
-
+    if (session !== undefined) {
+      for (const ref of await session.refs.list("refs/runs/")) await observeRunRef(ref.name);
+      if (blockedHeads.size) startEventLoop();
+    }
+    initializing = false;
     return activation;
   } catch (error) {
     await activation.close().catch(() => undefined);
@@ -457,13 +598,13 @@ export interface TurnResolution {
   readonly agent: Agent | undefined;
   readonly thinkingLevel: ThinkingLevel | undefined;
   readonly steps: number | undefined;
-  readonly systemPrompt: string;
+  /** The prompt the branch must declare: the registry sections, then the agent persona as `agent`. */
+  readonly sections: Readonly<Record<string, string>>;
   readonly tools: readonly AgentTool[];
 }
 
 interface InvocationState {
   readonly input: TurnInput;
-  systemPrompt: string;
 }
 
 interface CachedTurn {
@@ -472,10 +613,29 @@ interface CachedTurn {
   readonly compactAt: number | undefined;
   readonly agent: Agent | undefined;
   readonly thinkingLevel: ThinkingLevel | undefined;
-  readonly systemPrompt: string;
+  readonly sections: Readonly<Record<string, string>>;
   readonly tools: readonly AgentTool[];
   readonly turn: Turn;
 }
+
+/** Render sections as the transcript's replayed system message renders them. */
+export function renderSections(sections: Readonly<Record<string, string>>): string {
+  return getSystemMessageText({ role: "system", content: "", sections, timestamp: 0 });
+}
+
+/**
+ * A section's name in the transcript: its order, then its registry id. Stored
+ * objects keep their keys sorted, so the order rides in the name and sections
+ * replay in registry order wherever the message is read; ties sort by id.
+ */
+function sectionName(id: string, order = 100): string {
+  const rank = Math.min(9999, Math.max(0, Math.trunc(order)));
+
+  return `${String(rank).padStart(4, "0")}-${id}`;
+}
+
+/** The persona section a preset layers onto the base prompt, never replacing it. It renders last. */
+const AGENT_SECTION = sectionName("agent", 9999);
 
 /** Resolve the model, agent, and thinking level declared by a branch. */
 export function resolveTurnConfig(
@@ -504,7 +664,7 @@ export function resolveTurnConfig(
       ? config.thinkingLevel
       : defaults.thinkingLevel;
 
-  const basePrompt = activation.systemPrompt();
+  const sections = activation.promptSections();
   const allowed = agent?.tools === undefined ? undefined : new Set(agent.tools);
   const tools = activation.tools();
 
@@ -515,13 +675,31 @@ export function resolveTurnConfig(
     agent,
     thinkingLevel,
     steps: agent?.steps,
-    systemPrompt: agent?.system === undefined ? basePrompt : `${basePrompt}\n\n${agent.system}`,
+    sections:
+      agent?.system === undefined ? sections : { ...sections, [AGENT_SECTION]: agent.system },
     tools: allowed === undefined ? tools : tools.filter((tool) => allowed.has(tool.name)),
   };
 }
 
 function sameItems<T>(left: readonly T[], right: readonly T[]): boolean {
   return left.length === right.length && left.every((item, index) => item === right[index]);
+}
+
+function sameSections(
+  left: Readonly<Record<string, string>>,
+  right: Readonly<Record<string, string>>,
+): boolean {
+  const leftEntries = Object.entries(left);
+  const rightEntries = Object.entries(right);
+
+  return (
+    leftEntries.length === rightEntries.length &&
+    leftEntries.every(([name, text], index) => {
+      const other = rightEntries[index];
+
+      return other !== undefined && other[0] === name && other[1] === text;
+    })
+  );
 }
 
 function sameResolution(cached: CachedTurn, resolved: TurnResolution): boolean {
@@ -531,7 +709,7 @@ function sameResolution(cached: CachedTurn, resolved: TurnResolution): boolean {
     cached.compactAt === resolved.compactAt &&
     cached.agent === resolved.agent &&
     cached.thinkingLevel === resolved.thinkingLevel &&
-    cached.systemPrompt === resolved.systemPrompt &&
+    sameSections(cached.sections, resolved.sections) &&
     sameItems(cached.tools, resolved.tools)
   );
 }
@@ -562,6 +740,46 @@ async function duringInvocation<T>(
   }
 }
 
+function sameMessages(left: readonly Message[], right: readonly Message[]): boolean {
+  return left.length === right.length && left.every((message, index) => message === right[index]);
+}
+
+/**
+ * Re-attach the prompt and tool state after a `transform_context` handler.
+ * Handlers only see the conversation; the system messages belong to the
+ * kernel. An unchanged conversation keeps every system message in place; a
+ * changed one gets the replayed state as one leading message.
+ */
+function restoreSystemMessages(
+  current: Message[],
+  visible: readonly Message[],
+  returned: Message[],
+): Message[] {
+  if (sameMessages(returned, visible)) return current;
+  const head = getCurrentSystemMessage(current);
+
+  return head ? [head, ...returned] : returned;
+}
+
+/**
+ * Send a forced prompt as the provider's leading system prompt without
+ * recording it. The forced text heads the request with the current tools, and
+ * the system messages collapse into it, so the transcript keeps its structured
+ * sections and only this request is projected.
+ */
+function forcePrompt(messages: readonly Message[], forced: string): Message[] {
+  const current = getCurrentSystemMessage(messages);
+
+  const head: SystemMessage = {
+    role: "system",
+    content: forced,
+    ...(current?.toolsAdded ? { toolsAdded: current.toolsAdded } : {}),
+    timestamp: current?.timestamp ?? Date.now(),
+  };
+
+  return [head, ...messages.filter((message) => message.role !== "system")];
+}
+
 function toolArguments(toolName: string, args: JsonValue): Record<string, JsonValue> {
   if (!isJsonObject(args)) throw new Error(`tool ${toolName} received non-object arguments`);
 
@@ -572,7 +790,7 @@ function toolArguments(toolName: string, args: JsonValue): Record<string, JsonVa
 export function turnFor(
   activation: Activation,
   defaults: {
-    readonly streamFn: StreamFn;
+    readonly streamFn: RequestStreamFn;
     readonly model: Model<Api>;
     readonly resolveModel?: (ref: ModelRef) => Model<Api> | undefined;
     readonly thinkingLevel?: ThinkingLevel;
@@ -582,6 +800,20 @@ export function turnFor(
   },
 ) {
   const invocations = new WeakMap<AbortSignal, InvocationState>();
+  const toolInvocations = new WeakMap<AgentContext, InvocationState>();
+  const toolInvocation = (
+    context: AgentContext,
+    signal: AbortSignal | undefined,
+  ): InvocationState => {
+    const invocation = signal === undefined ? undefined : invocations.get(signal);
+    if (invocation !== undefined) {
+      toolInvocations.set(context, invocation);
+      return invocation;
+    }
+    const nested = toolInvocations.get(context);
+    if (nested === undefined) throw new Error("Activation hook ran outside a turn invocation");
+    return nested;
+  };
   const policyFailures = new Map<string, string>();
   const cache = new Map<string, CachedTurn>();
 
@@ -604,7 +836,6 @@ export function turnFor(
   const streamFn = requestStream({
     ...requests,
     step: "assistant",
-    systemPrompt: (signal) => invocationFor(invocations, signal).systemPrompt,
   });
 
   const compactionStreamFn = requestStream({ ...requests, step: "compaction" });
@@ -619,27 +850,40 @@ export function turnFor(
     const loop: NonNullable<TurnOptions["loop"]> = {
       transformContext: async (messages, signal) => {
         const invocation = invocationFor(invocations, signal);
-        invocation.systemPrompt = resolved.systemPrompt;
+        const { head, id: runId } = invocation.input.run;
+        let current = messages;
+        let forced: string | undefined;
 
-        if (!activation.hooks.has("transform_context")) return messages;
+        if (activation.hooks.has("transform_context")) {
+          const visible = current.filter((message) => message.role !== "system");
 
-        const result = await activation.hooks.run(
-          "transform_context",
-          {
-            head: invocation.input.run.head,
-            runId: invocation.input.run.id,
-            messages,
-            systemPrompt: resolved.systemPrompt,
-          },
-          invocation.input.signal,
-        );
+          const result = await activation.hooks.run(
+            "transform_context",
+            { head, runId, messages: visible, systemPrompt: getCurrentSystemPrompt(current) },
+            invocation.input.signal,
+          );
 
-        invocation.systemPrompt = result?.systemPrompt ?? resolved.systemPrompt;
+          if (result?.messages !== undefined) {
+            current = restoreSystemMessages(current, visible, result.messages);
+          }
 
-        return result?.messages ?? messages;
+          forced = result?.systemPrompt;
+        }
+
+        if (activation.hooks.has("transform_transcript")) {
+          const result = await activation.hooks.run(
+            "transform_transcript",
+            { head, runId, messages: current },
+            invocation.input.signal,
+          );
+
+          current = result?.messages ?? current;
+        }
+
+        return forced === undefined ? current : forcePrompt(current, forced);
       },
-      beforeToolCall: async ({ toolCall, args }, signal) => {
-        const invocation = invocationFor(invocations, signal);
+      beforeToolCall: async ({ toolCall, args, context }, signal) => {
+        const invocation = toolInvocation(context, signal);
         const priorFailure = policyFailures.get(invocation.input.run.id);
 
         if (priorFailure !== undefined) return { block: true, reason: priorFailure };
@@ -656,7 +900,7 @@ export function turnFor(
             toolName: toolCall.name,
             args: effectiveArgs,
           },
-          invocation.input.signal,
+          signal ?? invocation.input.signal,
         );
 
         switch (decision.action) {
@@ -677,8 +921,8 @@ export function turnFor(
           }
         }
       },
-      afterToolCall: async ({ toolCall, args, result, isError }, signal) => {
-        const invocation = invocationFor(invocations, signal);
+      afterToolCall: async ({ toolCall, args, result, isError, context }, signal) => {
+        const invocation = toolInvocation(context, signal);
 
         if (!activation.hooks.has("after_tool")) return undefined;
 
@@ -690,13 +934,14 @@ export function turnFor(
           args: toolArguments(toolCall.name, toJsonValue(args)),
           content: result.content,
           details: toJsonValue(result.details),
+          structuredContent: result.structuredContent,
           isError,
         };
 
         const patch = await activation.hooks.run(
           "after_tool",
           result.usage === undefined ? hookInput : { ...hookInput, usage: result.usage },
-          invocation.input.signal,
+          signal ?? invocation.input.signal,
         );
 
         if (patch === undefined) return undefined;
@@ -707,15 +952,19 @@ export function turnFor(
 
         const error =
           patch.isError === undefined ? details : { ...details, isError: patch.isError };
+        const structured =
+          patch.structuredContent === undefined
+            ? error
+            : { ...error, structuredContent: patch.structuredContent };
 
-        return patch.usage === undefined ? error : { ...error, usage: patch.usage };
+        return patch.usage === undefined ? structured : { ...structured, usage: patch.usage };
       },
     };
 
     const turn = bindTurn({
       streamFn,
       model: resolved.model,
-      systemPrompt: resolved.systemPrompt,
+      sections: resolved.sections,
       tools: resolved.tools,
       thinkingLevel: resolved.thinkingLevel,
       loop,
@@ -732,7 +981,7 @@ export function turnFor(
       compactAt: resolved.compactAt,
       agent: resolved.agent,
       thinkingLevel: resolved.thinkingLevel,
-      systemPrompt: resolved.systemPrompt,
+      sections: resolved.sections,
       tools: resolved.tools,
       turn,
     });
@@ -741,21 +990,56 @@ export function turnFor(
   };
 
   const turn: Turn = {
-    respond: async (input) => {
+    // The resolution offered here stays offered through `respond`: plugin
+    // publication waits, so the request declares exactly what was prepared.
+    prepare: async (input) => {
+      activation.observeRun(input.run);
       const resolved = resolveTurnConfig(activation, defaults, input.run.config);
       const bound = cachedTurn(resolved);
+      activation.offerTurn(input, resolved);
+      return activation.duringCall(async () => {
+        try {
+          const prepare = bound.prepare;
 
-      return duringInvocation(invocations, { input, systemPrompt: resolved.systemPrompt }, () =>
-        bound.respond(input),
-      );
+          return await duringInvocation(invocations, { input }, () =>
+            prepare === undefined ? Promise.resolve({ kind: "ready" }) : prepare(input),
+          );
+        } catch (cause) {
+          activation.releaseTurn(input.run.id);
+          throw cause;
+        }
+      });
+    },
+    respond: async (input) => {
+      activation.observeRun(input.run);
+      const resolved =
+        activation.offeredTurn(input.run.id) ??
+        resolveTurnConfig(activation, defaults, input.run.config);
+      const bound = cachedTurn(resolved);
+      activation.offerTurn(input, resolved);
+      return activation.duringCall(async () => {
+        try {
+          const outcome = await duringInvocation(invocations, { input }, () =>
+            bound.respond(input),
+          );
+          if (outcome.kind !== "tools") activation.releaseTurn(input.run.id);
+          return outcome;
+        } catch (cause) {
+          activation.releaseTurn(input.run.id);
+          throw cause;
+        }
+      });
     },
     tools: async (input) => {
       policyFailures.delete(input.run.id);
-      const resolved = resolveTurnConfig(activation, defaults, input.run.config);
+      const resolved =
+        activation.offeredTurn(input.run.id) ??
+        resolveTurnConfig(activation, defaults, input.run.config);
       const bound = cachedTurn(resolved);
-
-      return duringInvocation(invocations, { input, systemPrompt: resolved.systemPrompt }, () =>
-        bound.tools(input),
+      if (activation.offeredTurn(input.run.id) === undefined)
+        activation.offerTurn(input, resolved, input.run.attempts);
+      return activation.duringCall(() =>
+        duringInvocation(invocations, { input }, () => bound.tools(input)),
       );
     },
   };

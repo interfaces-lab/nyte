@@ -74,7 +74,7 @@ async function fixture(store: Store = openStore(), existingId?: string) {
     streamFn: (_model, context, options) => {
       if (options?.signal !== undefined) providerSignals.push(options.signal);
       const stream = createAssistantMessageEventStream();
-      const tail = context.messages.at(-1);
+      const tail = context.messages.findLast((item) => item.role !== "system");
       const asks = tail?.role === "user" && tail.content === "ask";
       const answer = asks ? assistant("", { calls: [call("question", "ask")] }) : assistant("done");
       started.resolve();

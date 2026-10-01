@@ -76,7 +76,7 @@ refs/deleted                   Blob: the session is being deleted
 | `step.ts`     | One durable step of a run, and `drive` to loop it under one lease.     |
 | `lease.ts`    | Renews ownership during provider and tool calls; aborts work after takeover. |
 | `outbox.ts`   | Buffers a runner's deltas and progress into the event stream.          |
-| `turn.ts`     | Binds `agent-loop.ts` to `step.ts`: respond, tools, durable tools.     |
+| `turn.ts`     | Binds `agent-loop.ts` to `step.ts`: prepare (checkpoint, prompt and tool declaration), respond, tools, durable tools. |
 | `telemetry.ts` | The span vocabulary `step.ts` and `turn.ts` emit, and its typed starter. |
 | `compaction.ts` | Checkpoints and branch summaries: the cut, the summary, the publish.  |
 | `gc.ts`       | Mark from refs and recent ref events; sweep unreachable, aged objects. |
@@ -157,6 +157,33 @@ Each chain has a `tip` and `base`. Pending is the half-open interval
 whole selected delivery. When a live run still owes an answer, a boundary drain
 takes only leading answer and report changes.
 
+## Prompt and tool state
+
+The model reads its instructions and tool declarations from the branch, never
+from the request. A `system` message commit declares them: `sections` are the
+prompt registry's named sections (keyed `<order>-<id>`, so the sorted keys a
+stored object keeps are the registry order; an agent persona is `9999-agent`),
+`toolsAdded` holds declarations stripped of everything executable, and
+`toolsRemoved` names what the model may no longer call. Replaying every system
+message on the branch yields the current prompt and tools; providers that take
+system messages mid-conversation send each in place, the rest collapse them
+into one leading message.
+
+Before each response, `turn.prepare` compares what the host wants (the
+activation's sections and executable catalog) with what the branch replays
+and returns the one system message that closes the gap, or nothing. The step
+commits it under the head lease, before the chain reservation and the request,
+then responds over the moved tip. A resumed, forked, or rewound branch needs
+no special case: the next `prepare` diffs against whatever its tip replays.
+A declaration is never an attempt, and a stored declaration cannot run
+anything: `context.tools` stays the executable catalog, so a tool the branch
+still names but the host no longer offers answers "not found".
+
+A checkpoint records `systemMessage`, the replayed state at the cut, ahead of
+its summary, and keeps no system messages in `retainedTail`. The request-only
+projections (`transform_context` with its forced prompt, `transform_transcript`,
+the delegate model list) change what a provider sees and nothing on the branch.
+
 ## The step
 
 `step(session, turn, options)` settles any live compaction, reads the head, run, and deletion refs, and does one thing:
@@ -170,7 +197,7 @@ takes only leading answer and report changes.
 | idle after a terminal run | user | `start`: land the batch and start a new user run and chain | head, inbox base, run, chain |
 | idle after a terminal run | authorized answer | `start`: land the batch, inherit its root, consume its authorization, and start a continuation | head, inbox base, run, authorization |
 | idle after a terminal run | passive | `settle` under the terminal run | head, inbox base, run assertion |
-| live `respond` | none | `wait`, then call `turn.respond` | assistant commit, run phase |
+| live `respond` | none | `wait`, then `turn.prepare` (a checkpoint or a system declaration commits first), then `turn.respond` | checkpoint or system commit; assistant commit, run phase |
 | live `respond` | user, passive, report, or answer | `join` the batch at the boundary; if its agent changed, `handoff` ends the run and keeps the batch pending | head and inbox base for `join`; run only for `handoff` |
 | settling `respond` | any | `wait`, then end the run `aborted`; keep every batch pending | run |
 | `tools` | any | call `turn.tools`; commit results or park | result commits, effects, run phase |
@@ -311,7 +338,12 @@ its head: nothing, a completion, or one already delivered. Job IDs derive from
 the originating run and call IDs. Updates use the same object-before-ref CAS as
 other durable state; there is no separate jobs table. The `job` event projects
 the ref's `JobInfo`, and `jobs.list` reads these refs. Output in `JobInfo`
-retains the last 50,000 characters. Children are not jobs: see Delegation.
+retains the last 50,000 characters. `isBackgrounded` stays true after execution ends;
+`phase` records execution state independently. Children are not jobs: see Delegation.
+
+Old job blobs are normalized when read, including event replay. The old running mode
+or a completion obligation identifies background work. Terminal records with neither
+have lost that history and are excluded from background task lists.
 
 ```text
 bash -> job ref + job lease -> work

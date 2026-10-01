@@ -18,8 +18,10 @@ import { navigationTarget, transcriptFromCommits } from "@nyte-ai/client";
 import { toJsonValue } from "@nyte-ai/client";
 import { normalizeImageContent } from "../loop/image.ts";
 import { isCommandPrompt } from "../../plugins/types.ts";
+import type { PreparedPluginReplacement } from "../../plugins/host.ts";
 import { createReads } from "./reads.ts";
 import { createRunners, errorMessage } from "./runner.ts";
+import { createCacheWarming } from "./cache-warming.ts";
 import { createRelocation } from "./relocate.ts";
 import { createDelegation } from "./delegation.ts";
 import { createSummaries } from "./summaries.ts";
@@ -169,13 +171,23 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
     },
   });
 
+  const warming = createCacheWarming({
+    options,
+    pool,
+    reportBackground: (cause) => {
+      detached.push(cause);
+    },
+  });
+
   const runners = createRunners({
     options,
     pool,
+    warming,
     drain,
     resolveModel: resolveModelRef,
     jobsFor: (id, pooled) => delegation.jobsFor(id, pooled),
     delegation: {
+      pluginsFor: (input) => delegation.pluginsFor(input),
       childRunChanged: (id, pooled) => delegation.childRunChanged(id, pooled),
       recheck: (id, pooled, runId) => delegation.recheck(id, pooled, runId),
       yieldToInput: (id, pooled, head) => delegation.yieldToInput(id, pooled, head),
@@ -1002,6 +1014,17 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
 
     relocate: relocation.relocate,
 
+    cacheWarming: {
+      status(input) {
+        pool.alive();
+        const head = input.head ?? MAIN;
+        validateHeadName(head);
+
+        return warming.status(pool.peek(input.sessionId), head);
+      },
+      modeChanged: () => warming.modeChanged(),
+    },
+
     async setPlugins(next, input) {
       pool.alive();
 
@@ -1012,37 +1035,50 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         const activation = await pool.activationFor(input.sessionId, pooled);
 
         if (activation === undefined) throw new Error("Session is not active in this host");
-        await activation.setPlugins(
+        const outcome = await activation.setPlugins(
           delegation.pluginsFor({ id: input.sessionId, pooled, plugins: next }),
+          () => {
+            if (pooled.activationState?.kind === "active")
+              pooled.activationState = { ...pooled.activationState, plugins: next };
+          },
         );
-
-        if (pooled.activationState?.kind === "active") {
-          pooled.activationState = { ...pooled.activationState, plugins: next };
-        }
-
-        return;
+        return outcome;
       }
 
-      pool.setPluginsOverride(next);
-
+      const prepared: Extract<PreparedPluginReplacement, { kind: "ready" }>[] = [];
+      const errors: string[] = [];
       for (const [id, pooled] of pool.entries()) {
         if (pooled.relocating) continue;
         await pool.resolveSessionActivation(id, pooled);
 
         if (pooled.scopedPlugins) continue;
 
-        if (pooled.activationState?.kind === "active") {
-          pooled.activationState = { ...pooled.activationState, plugins: next };
-        }
-
         const activation = await pool.activationFor(id, pooled);
-
-        if (activation !== undefined)
-          await activation.setPlugins(delegation.pluginsFor({ id, pooled, plugins: next }));
+        if (activation === undefined) continue;
+        const outcome = await activation.preparePlugins(
+          delegation.pluginsFor({ id, pooled, plugins: next }),
+          () => {
+            if (pooled.activationState?.kind === "active")
+              pooled.activationState = { ...pooled.activationState, plugins: next };
+          },
+        );
+        if (outcome.kind === "rejected") errors.push(`${id}: ${outcome.error}`);
+        else prepared.push(outcome);
       }
+      if (errors.length) {
+        for (const candidate of prepared) candidate.cancel();
+        return { kind: "rejected", error: errors.join("; ") };
+      }
+      let queued = false;
+      for (const candidate of prepared) {
+        const outcome = candidate.publish();
+        if (outcome.kind === "rejected") errors.push(outcome.error);
+        else if (outcome.kind === "queued") queued = true;
+      }
+      pool.setPluginsOverride(next);
+      if (errors.length) return { kind: "rejected", error: errors.join("; ") };
+      return { kind: queued ? "queued" : "applied" };
     },
-
-    holdPlugins: () => pool.holdPlugins(),
 
     /** The host's answer may have changed: ask again for every session it had blocked. */
     async reactivate() {
@@ -1114,18 +1150,23 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       attachments.clear();
 
       for (const [, pooled] of pool.entries()) {
+        warming.cancel(pooled);
         if (pooled.runner === undefined) continue;
         pooled.runner();
         pooled.runner = undefined;
       }
 
       const errors: unknown[] = [];
+      const settling = runners.settle();
+      for (const [, pooled] of pool.entries()) {
+        void pooled.activation?.close().catch(() => undefined);
+      }
 
       for (const [, pooled] of pool.entries()) {
         await pooled.jobs?.close().catch((cause: unknown) => errors.push(cause));
       }
 
-      errors.push(...(await runners.settle()));
+      errors.push(...(await settling));
 
       for (const [, pooled] of pool.entries()) await pooled.reconciliation;
 

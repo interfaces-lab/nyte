@@ -2,6 +2,7 @@ import {
   createAssistantMessageEventStream,
   type Api,
   type AssistantMessage,
+  type Context,
   type Model,
   type SimpleStreamOptions,
 } from "@nyte-ai/ai";
@@ -76,21 +77,32 @@ export function failedAssistant(
   };
 }
 
-type RequestInvocation = Pick<
+export type RequestInvocation = Pick<
   HookInvocation<"before_request">,
-  "head" | "runId" | "sessionId" | "attempt"
+  "head" | "runId" | "sessionId" | "attempt" | "step"
 >;
+
+export type RequestStreamFn = (
+  ...args: [...Parameters<StreamFn>, invocation: RequestInvocation]
+) => ReturnType<StreamFn>;
+
+/** Exactly what reaches the configured stream function: hooks applied, prompt set. */
+export interface DispatchedRequest {
+  readonly model: Model<Api>;
+  readonly context: Context;
+  readonly options: SimpleStreamOptions;
+}
 
 interface RequestHooks {
   readonly hooks: HookRegistry;
-  readonly invocation: (signal: AbortSignal | undefined) => RequestInvocation;
+  readonly invocation: (signal: AbortSignal | undefined) => Omit<RequestInvocation, "step">;
 }
 
 /** Shared request options and hooks, without replacing a request's purpose or prompt. */
 export function requestStream(
   options: Pick<RequestHooks, "invocation"> & {
     readonly hooks?: RequestHooks["hooks"];
-    readonly streamFn: StreamFn;
+    readonly streamFn: RequestStreamFn;
     readonly telemetry?: TelemetryContext;
     readonly errorPolicy?: {
       // Provider and iterator throws are opaque host-only diagnostics, not parsed input.
@@ -99,14 +111,13 @@ export function requestStream(
     };
     readonly streamOptions?: StreamOptions;
     readonly step: HookInvocation<"before_request">["step"];
-    readonly systemPrompt?: (signal: AbortSignal | undefined) => string;
   },
 ): StreamFn {
   return (model, context, requestOptions) => {
     const out = createAssistantMessageEventStream();
     void (async () => {
       requestOptions?.signal?.throwIfAborted();
-      const invocation = options.invocation(requestOptions?.signal);
+      const invocation = { ...options.invocation(requestOptions?.signal), step: options.step };
 
       let streamOptions: SimpleStreamOptions = {
         ...requestOptions,
@@ -124,7 +135,6 @@ export function requestStream(
           {
             ...invocation,
             model: { provider: model.provider, modelId: model.id },
-            step: options.step,
             streamOptions: pickStreamOptions(streamOptions),
           },
           requestOptions?.signal,
@@ -138,7 +148,6 @@ export function requestStream(
         }
       }
 
-      const prompt = options.systemPrompt?.(requestOptions?.signal);
       requestOptions?.signal?.throwIfAborted();
       await startSpan(
         requestOptions?.telemetryContext ?? options.telemetry ?? NOOP_TELEMETRY_CONTEXT,
@@ -157,8 +166,9 @@ export function requestStream(
           try {
             const inner = await options.streamFn(
               model,
-              prompt === undefined ? context : { ...context, systemPrompt: prompt },
+              context,
               { ...streamOptions, telemetryContext: span },
+              invocation,
             );
 
             for await (const event of inner) {

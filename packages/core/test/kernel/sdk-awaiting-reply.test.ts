@@ -75,7 +75,7 @@ async function fixture() {
     ],
     streamFn: (_model, context) => {
       const stream = createAssistantMessageEventStream();
-      const tail = context.messages.at(-1);
+      const tail = context.messages.findLast((item) => item.role !== "system");
       const tool = tail?.role === "user" && tail.content === "ask" ? "ask" : "sleep";
       stream.push({
         type: "done",
