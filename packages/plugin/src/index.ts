@@ -15,6 +15,7 @@ export type SlotName = "session.composer.top";
 export type Slot = (props: { readonly sessionID: SessionId }) => Renderable;
 
 export interface Context {
+  readonly signal: AbortSignal;
   readonly renderer: CliRenderer;
   readonly theme: Pick<TextOptions, "fg" | "bg">;
   readonly client: Nyte;
