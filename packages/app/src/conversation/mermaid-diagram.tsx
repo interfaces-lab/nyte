@@ -26,7 +26,6 @@ const styles = create({
   toolbar: {
     display: "flex",
     alignItems: "center",
-    minHeight: 30,
     paddingInline: 8,
   },
   viewport: {

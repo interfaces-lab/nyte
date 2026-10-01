@@ -8,6 +8,7 @@
 import { create, props } from "@stylexjs/stylex";
 import { createFileTreeIconResolver, getBuiltInSpriteSheet } from "@pierre/trees";
 import type { ReactElement } from "react";
+import { glyph } from "@nyte-ai/ui/schema.stylex";
 import { role } from "@nyte-ai/ui/vars.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 
@@ -33,8 +34,8 @@ const styles = create({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 16,
-    height: 16,
+    width: glyph.md,
+    height: glyph.md,
     flexShrink: 0,
     fontSize: 14,
     lineHeight: 1,

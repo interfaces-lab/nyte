@@ -306,7 +306,6 @@ export const usageStyles = create({
     alignItems: "flex-start",
     gap: 8,
     margin: 0,
-    minHeight: 30,
     paddingBlock: 6,
     paddingInline: 10,
     borderRadius: shape.control,

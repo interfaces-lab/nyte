@@ -1,5 +1,5 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { avatar, shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * The card of rows Settings uses for anything that connects: the GitHub
  * account and each model provider. A row says where it stands first, then
@@ -15,7 +15,7 @@ const styles = create({
   row: {
     position: "relative",
     display: "grid",
-    gridTemplateColumns: "28px minmax(0, 1fr) auto",
+    gridTemplateColumns: `${avatar.md} minmax(0, 1fr) auto`,
     alignItems: "center",
     columnGap: 12,
     rowGap: 8,
@@ -36,8 +36,8 @@ const styles = create({
   glyph: {
     display: "grid",
     placeItems: "center",
-    width: 28,
-    height: 28,
+    width: avatar.md,
+    height: avatar.md,
     borderRadius: shape.control,
     color: role.contentSecondary,
     overflow: "hidden",

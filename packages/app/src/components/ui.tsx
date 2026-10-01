@@ -45,14 +45,14 @@ const styles = create({
   },
   statusSpinner: { width: glyph.box, height: glyph.box, color: role.contentSecondary },
   statusWaiting: {
-    width: 14,
-    height: 14,
+    width: glyph.sm,
+    height: glyph.sm,
     backgroundColor: "transparent",
     color: role.contentSecondary,
   },
   statusFailed: {
-    width: 14,
-    height: 14,
+    width: glyph.sm,
+    height: glyph.sm,
     backgroundColor: "transparent",
     color: role.contentSecondary,
   },
