@@ -6,17 +6,23 @@ import { useState } from "react";
 export function DialogDemo() {
   return (
     <Dialog.Root>
-      <Dialog.Trigger render={<Button variant="secondary" />}>Rename session</Dialog.Trigger>
+      <Dialog.Trigger render={<Button variant="outline">Rename Session</Button>} />
       <Dialog.Popup>
         <Dialog.Header>
-          <Dialog.Title>Rename session</Dialog.Title>
+          <Dialog.Title>Rename Session</Dialog.Title>
           <Dialog.Description>
             The name shows in the sidebar and in the window title.
           </Dialog.Description>
         </Dialog.Header>
         <Dialog.Footer>
-          <Dialog.Close render={<Button variant="secondary" />}>Cancel</Dialog.Close>
-          <Dialog.Close render={<Button variant="inverse" />}>Save</Dialog.Close>
+          <Dialog.Close render={<Button variant="outline">Cancel</Button>} />
+          <Dialog.Close
+            render={
+              <Button variant="solid" tone="primary">
+                Save
+              </Button>
+            }
+          />
         </Dialog.Footer>
       </Dialog.Popup>
     </Dialog.Root>
@@ -26,17 +32,29 @@ export function DialogDemo() {
 export function AlertDialogDemo() {
   return (
     <AlertDialog.Root>
-      <AlertDialog.Trigger render={<Button variant="danger" />}>Delete session</AlertDialog.Trigger>
+      <AlertDialog.Trigger
+        render={
+          <Button variant="solid" tone="danger">
+            Delete Session
+          </Button>
+        }
+      />
       <AlertDialog.Popup>
         <AlertDialog.Header>
-          <AlertDialog.Title>Delete this session?</AlertDialog.Title>
+          <AlertDialog.Title>Delete Session</AlertDialog.Title>
           <AlertDialog.Description>
             The history tree and every head under it are removed. This cannot be undone.
           </AlertDialog.Description>
         </AlertDialog.Header>
         <AlertDialog.Footer>
-          <AlertDialog.Close render={<Button variant="secondary" />}>Cancel</AlertDialog.Close>
-          <AlertDialog.Close render={<Button variant="danger" />}>Delete</AlertDialog.Close>
+          <AlertDialog.Close render={<Button variant="outline">Cancel</Button>} />
+          <AlertDialog.Close
+            render={
+              <Button variant="solid" tone="danger">
+                Delete Session
+              </Button>
+            }
+          />
         </AlertDialog.Footer>
       </AlertDialog.Popup>
     </AlertDialog.Root>
@@ -48,12 +66,13 @@ export function ConfirmDialogDemo() {
 
   return (
     <>
-      <Button variant="danger" onClick={() => setOpen(true)}>
-        Delete chat
+      <Button variant="solid" tone="danger" onClick={() => setOpen(true)}>
+        Delete Chat
       </Button>
       <ConfirmDialog
         open={open}
-        title="Delete chat?"
+        title="Delete Chat"
+        confirmLabel="Delete Chat"
         description="The chat and its history are removed."
         onOpenChange={setOpen}
         onConfirm={() => setOpen(false)}

@@ -56,17 +56,23 @@ attention and can be cancelled. For a question that must be answered, use
 
 ```tsx
 <Dialog.Root>
-  <Dialog.Trigger render={<Button variant="secondary" />}>Rename session</Dialog.Trigger>
+  <Dialog.Trigger render={<Button variant="outline">Rename Session</Button>} />
   <Dialog.Popup>
     <Dialog.Header>
-      <Dialog.Title>Rename session</Dialog.Title>
+      <Dialog.Title>Rename Session</Dialog.Title>
       <Dialog.Description>
         The name shows in the sidebar and in the window title.
       </Dialog.Description>
     </Dialog.Header>
     <Dialog.Footer>
-      <Dialog.Close render={<Button variant="secondary" />}>Cancel</Dialog.Close>
-      <Dialog.Close render={<Button variant="inverse" />}>Save</Dialog.Close>
+      <Dialog.Close render={<Button variant="outline">Cancel</Button>} />
+      <Dialog.Close
+        render={
+          <Button variant="solid" tone="primary">
+            Save
+          </Button>
+        }
+      />
     </Dialog.Footer>
   </Dialog.Popup>
 </Dialog.Root>
@@ -80,7 +86,7 @@ const [open, setOpen] = useState(false);
 
 <Dialog.Root open={open} onOpenChange={setOpen}>
   <Dialog.Popup>
-    <Dialog.Title>Rename session</Dialog.Title>
+    <Dialog.Title>Rename Session</Dialog.Title>
     <form
       onSubmit={async () => {
         await save();

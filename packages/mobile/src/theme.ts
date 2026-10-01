@@ -1,7 +1,7 @@
 import { css } from "react-strict-dom";
 import { StyleSheet, useColorScheme } from "react-native";
 import type { MarkdownStyle } from "react-native-enriched-markdown";
-import { platformColors } from "@nyte-ai/ui/platform-colors";
+import { platformColors, platformScopes } from "@nyte-ai/ui/platform-colors";
 
 // Raw colors serve native controls outside RSD; RSD gets the same values
 // through prefers-color-scheme conditionals on the tokens below.
@@ -18,17 +18,17 @@ const schemes = {
     interactiveTertiary: platformColors.light.contentInteractiveTertiary,
     border: platformColors.light.borderSecondaryTranslucent,
     separator: platformColors.light.borderSecondaryTranslucent,
-    accent: platformColors.light.intentPrimaryContent,
-    accentFill: platformColors.light.intentPrimaryFill,
-    onAccentFill: platformColors.light.contentOnInteractiveStrong,
+    accent: platformScopes.light.blue.contentSecondary,
+    accentFill: platformScopes.light.blue.buttonFill,
+    onAccentFill: platformScopes.light.blue.contentOnInteractiveStrong,
     primary: platformColors.light.bgInteractiveStrong,
     onPrimary: platformColors.light.contentOnInteractiveStrong,
-    success: platformColors.light.intentSuccessContent,
-    danger: platformColors.light.intentDangerContent,
-    warning: platformColors.light.intentWarningContent,
-    successFill: platformColors.light.intentSuccessBg,
-    dangerFill: platformColors.light.intentDangerBg,
-    warningFill: platformColors.light.intentWarningBg,
+    success: platformScopes.light.green.contentSecondary,
+    danger: platformScopes.light.red.contentSecondary,
+    warning: platformScopes.light.yellow.contentSecondary,
+    successFill: platformScopes.light.green.bgInteractiveSecondaryTranslucent,
+    dangerFill: platformScopes.light.red.bgInteractiveSecondaryTranslucent,
+    warningFill: platformScopes.light.yellow.bgInteractiveSecondaryTranslucent,
     shadow: "0 2px 12px rgba(0,0,0,0.08)",
   },
   dark: {
@@ -43,17 +43,17 @@ const schemes = {
     interactiveTertiary: platformColors.dark.contentInteractiveTertiary,
     border: platformColors.dark.borderSecondaryTranslucent,
     separator: platformColors.dark.borderSecondaryTranslucent,
-    accent: platformColors.dark.intentPrimaryContent,
-    accentFill: platformColors.dark.intentPrimaryFill,
-    onAccentFill: platformColors.dark.contentOnInteractiveStrong,
+    accent: platformScopes.dark.blue.contentSecondary,
+    accentFill: platformScopes.dark.blue.buttonFill,
+    onAccentFill: platformScopes.dark.blue.contentOnInteractiveStrong,
     primary: platformColors.dark.bgInteractiveStrong,
     onPrimary: platformColors.dark.contentOnInteractiveStrong,
-    success: platformColors.dark.intentSuccessContent,
-    danger: platformColors.dark.intentDangerContent,
-    warning: platformColors.dark.intentWarningContent,
-    successFill: platformColors.dark.intentSuccessBg,
-    dangerFill: platformColors.dark.intentDangerBg,
-    warningFill: platformColors.dark.intentWarningBg,
+    success: platformScopes.dark.green.contentSecondary,
+    danger: platformScopes.dark.red.contentSecondary,
+    warning: platformScopes.dark.yellow.contentSecondary,
+    successFill: platformScopes.dark.green.bgInteractiveSecondaryTranslucent,
+    dangerFill: platformScopes.dark.red.bgInteractiveSecondaryTranslucent,
+    warningFill: platformScopes.dark.yellow.bgInteractiveSecondaryTranslucent,
     shadow: "none",
   },
 } as const;
@@ -260,37 +260,6 @@ export const textStyles = css.create({
 /** The face the transcript's prose is set in. */
 export type TranscriptFont = "system" | "monospaced";
 
-// The GitHub light/dark palettes desktop's Shiki highlighter loads, mapped to
-// the native highlighter's token roles; unset roles inherit the base color.
-const syntaxPalettes = {
-  light: {
-    keyword: "#d73a49",
-    string: "#032f62",
-    number: "#005cc5",
-    constant: "#005cc5",
-    comment: "#6a737d",
-    function: "#6f42c1",
-    type: "#6f42c1",
-    variable: "#e36209",
-    property: "#005cc5",
-    tag: "#22863a",
-    attribute: "#005cc5",
-  },
-  dark: {
-    keyword: "#f97583",
-    string: "#9ecbff",
-    number: "#79b8ff",
-    constant: "#79b8ff",
-    comment: "#6a737d",
-    function: "#b392f0",
-    type: "#b392f0",
-    variable: "#ffab70",
-    property: "#79b8ff",
-    tag: "#85e89d",
-    attribute: "#79b8ff",
-  },
-} as const;
-
 export function markdownStyle(
   theme: Theme,
   transcriptFont: TranscriptFont,
@@ -300,6 +269,7 @@ export function markdownStyle(
   // reply reads as one font rather than two.
   const prose =
     transcriptFont === "monospaced" ? { fontFamily: typography.code.fontFamily } : undefined;
+  const scopes = platformScopes[scheme];
 
   return {
     paragraph: {
@@ -372,7 +342,19 @@ export function markdownStyle(
       borderWidth: 0,
       borderRadius: radii.control,
       padding: spacing.md,
-      syntaxColors: syntaxPalettes[scheme],
+      syntaxColors: {
+        keyword: scopes.purple.contentSecondary,
+        string: scopes.green.contentSecondary,
+        number: scopes.teal.contentSecondary,
+        constant: scopes.teal.contentSecondary,
+        comment: theme.muted,
+        function: scopes.blue.contentSecondary,
+        type: scopes.blue.contentSecondary,
+        variable: scopes.orange.contentSecondary,
+        property: scopes.blue.contentSecondary,
+        tag: scopes.purple.contentSecondary,
+        attribute: scopes.blue.contentSecondary,
+      },
     },
     taskList: {
       checkedColor: theme.accentFill,

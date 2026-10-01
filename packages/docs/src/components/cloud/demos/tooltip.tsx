@@ -12,7 +12,7 @@ export function TooltipDemo() {
       />
       <HoverPreview
         content={"const answer = 42;\nconsole.log(answer);"}
-        trigger={<Button variant="secondary">Snippet</Button>}
+        trigger={<Button variant="outline">Snippet</Button>}
       />
     </>
   );

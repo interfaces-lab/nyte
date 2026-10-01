@@ -1,14 +1,14 @@
-import * as stylex from "@stylexjs/stylex";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { create } from "@stylexjs/stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 
-export const terminalStyles = stylex.create({
+export const terminalStyles = create({
   root: {
     display: "flex",
     flexDirection: "column",
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
   },
   body: { position: "relative", flex: 1, minHeight: 0, minWidth: 0 },
   panel: {
@@ -19,7 +19,7 @@ export const terminalStyles = stylex.create({
     minHeight: 0,
     minWidth: 0,
     outlineStyle: "none",
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
   },
   hidden: { display: "none" },
   canvas: {
@@ -37,11 +37,11 @@ export const terminalStyles = stylex.create({
     gap: 8,
     paddingBlock: 8,
     paddingInline: 12,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
-  failure: { color: t.intentDangerContent },
+  failure: { color: role.contentSecondary },
   empty: {
     display: "flex",
     flex: 1,
@@ -50,9 +50,9 @@ export const terminalStyles = stylex.create({
     justifyContent: "center",
     gap: 12,
     padding: 24,
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     textAlign: "center",
   },
 });

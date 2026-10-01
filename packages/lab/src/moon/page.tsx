@@ -1,3 +1,4 @@
+import { applyDisplayMode } from "@nyte-ai/app/theme/appearance.ts";
 import { create, props } from "@stylexjs/stylex";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { MOON_STATES, type MoonState } from "./dither";
@@ -120,7 +121,7 @@ const TUI_LABEL = {
 
 export function MoonPage() {
   useLayoutEffect(() => {
-    document.documentElement.dataset.displayMode = "dark";
+    applyDisplayMode("dark");
   }, []);
   const scripted = useScriptedRun();
   const [picked, setPicked] = useState<MoonState | null>(null);

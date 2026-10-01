@@ -9,19 +9,20 @@ import { createContext, use, type JSX, type ReactElement } from "react";
 
 import { input } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { ramp, t } from "../../vars.stylex.ts";
+import { intent } from "../../surface-theme.ts";
+import { appearance, role, type } from "../../vars.stylex.ts";
 
 const field = create({
   base: {
     boxSizing: "border-box",
     minWidth: 0,
     margin: 0,
-    color: t.contentPrimary,
+    color: role.contentPrimary,
     fontFamily: "inherit",
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
-    letterSpacing: t.letterBase,
-    "::placeholder": { color: t.contentTertiary },
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    letterSpacing: type.letterBase,
+    "::placeholder": { color: role.contentTertiary },
   },
   framed: {
     borderWidth: 1,
@@ -31,45 +32,49 @@ const field = create({
   },
   bare: {
     padding: 0,
+    minHeight: { default: 24, "@media (pointer: coarse)": 44 },
     appearance: "none",
     borderStyle: "none",
     outlineStyle: "none",
     backgroundColor: "transparent",
     boxShadow: "none",
   },
-  grouped: { flex: 1 },
+  grouped: { flex: 1, alignSelf: "stretch", height: "100%", minHeight: 0 },
 });
 
 const variants = create({
   raised: {
     borderColor: {
-      default: t.borderPrimaryTranslucent,
-      ":focus": ramp.blue80,
-      "[aria-invalid=true]": ramp.red80,
+      default: role.borderPrimaryTranslucent,
+      ":focus": appearance.focusColor,
+      "[aria-invalid=true]": role.borderInteractivePrimary,
     },
-    backgroundColor: t.bgElevated,
+    backgroundColor: role.bgElevated,
   },
   quiet: {
     borderColor: {
-      default: t.borderSecondaryTranslucent,
-      ":focus": t.borderPrimaryTranslucent,
-      "[aria-invalid=true]": ramp.red80,
+      default: role.borderSecondaryTranslucent,
+      ":focus": role.borderPrimaryTranslucent,
+      "[aria-invalid=true]": role.borderInteractivePrimary,
     },
-    backgroundColor: t.bgMutedTranslucent,
+    backgroundColor: role.bgMutedTranslucent,
   },
 });
 
 const groupVariants = create({
   raised: {
-    borderColor: { default: t.borderPrimaryTranslucent, ":focus-within": ramp.blue80 },
-    backgroundColor: t.bgElevated,
+    borderColor: {
+      default: role.borderPrimaryTranslucent,
+      ":focus-within": appearance.focusColor,
+    },
+    backgroundColor: role.bgElevated,
   },
   quiet: {
     borderColor: {
-      default: t.borderSecondaryTranslucent,
-      ":focus-within": t.borderPrimaryTranslucent,
+      default: role.borderSecondaryTranslucent,
+      ":focus-within": role.borderPrimaryTranslucent,
     },
-    backgroundColor: t.bgMutedTranslucent,
+    backgroundColor: role.bgMutedTranslucent,
   },
 });
 
@@ -85,7 +90,7 @@ const group = create({
     borderRadius: "var(--_input-radius)",
     paddingInlineStart: "var(--_input-inset)",
     paddingInlineEnd: "var(--_input-padding-end)",
-    color: t.contentTertiary,
+    color: role.contentTertiary,
   },
 });
 
@@ -97,6 +102,7 @@ const sizes = create({
     "--_input-padding-end": input.paddingEndMd,
     "--_input-textarea-min-height": input.textareaMinHeightMd,
     "--_input-textarea-padding-block": input.textareaPaddingBlockMd,
+    minHeight: { default: 24, "@media (pointer: coarse)": 44 },
     height: input.heightMd,
   },
   lg: {
@@ -105,6 +111,7 @@ const sizes = create({
     "--_input-padding-end": input.paddingEndLg,
     "--_input-textarea-min-height": input.textareaMinHeightLg,
     "--_input-textarea-padding-block": input.textareaPaddingBlockLg,
+    minHeight: { default: 24, "@media (pointer: coarse)": 44 },
     height: input.heightLg,
   },
   xl: {
@@ -113,6 +120,7 @@ const sizes = create({
     "--_input-padding-end": input.paddingEndXl,
     "--_input-textarea-min-height": input.textareaMinHeightXl,
     "--_input-textarea-padding-block": input.textareaPaddingBlockXl,
+    minHeight: { default: 24, "@media (pointer: coarse)": 44 },
     height: input.heightXl,
   },
 });
@@ -120,7 +128,7 @@ const sizes = create({
 /** A framed field clears its text by the inset plus the control's own start padding. */
 const framedPadding = create({
   base: {
-    paddingInlineStart: "calc(var(--_input-inset) + var(--nyte-spacing-4))",
+    paddingInlineStart: "calc(var(--_input-inset) + 4px)",
     paddingInlineEnd: "var(--_input-padding-end)",
   },
 });
@@ -131,7 +139,7 @@ const textarea = create({
     height: "auto",
     minHeight: "var(--_input-textarea-min-height)",
     paddingBlock: "var(--_input-textarea-padding-block)",
-    paddingInline: "calc(var(--_input-inset) + var(--nyte-spacing-4)) var(--_input-inset)",
+    paddingInline: "calc(var(--_input-inset) + 4px) var(--_input-inset)",
     resize: "vertical",
   },
 });
@@ -170,6 +178,7 @@ export function Input({
       {...mergeStyleProps(
         props(
           field.base,
+          rest["aria-invalid"] && rest["aria-invalid"] !== "false" && intent.danger,
           resolvedVariant === "bare"
             ? field.bare
             : [field.framed, variants[resolvedVariant], sizes[resolvedSize], framedPadding.base],
@@ -203,7 +212,13 @@ export function InputGroup({
       data-slot="input-group"
       {...rest}
       {...mergeStyleProps(
-        props(group.base, groupVariants[variant], sizes[size], xstyle),
+        props(
+          rest["aria-invalid"] && rest["aria-invalid"] !== "false" && intent.danger,
+          group.base,
+          groupVariants[variant],
+          sizes[size],
+          xstyle,
+        ),
         className,
         style,
       )}
@@ -231,7 +246,15 @@ export function Textarea({
       data-slot="textarea"
       {...rest}
       {...mergeStyleProps(
-        props(field.base, field.framed, variants[variant], sizes[size], textarea.base, xstyle),
+        props(
+          rest["aria-invalid"] && rest["aria-invalid"] !== "false" && intent.danger,
+          field.base,
+          field.framed,
+          variants[variant],
+          sizes[size],
+          textarea.base,
+          xstyle,
+        ),
         className,
         style,
       )}

@@ -24,11 +24,11 @@ const SHADOW_CSS = `
 }
 
 [data-line-type="change-addition"] {
-  --diffs-line-bg: var(--nyte-diff-added-line-bg);
+  --diffs-line-bg: var(--diffs-bg-addition-override);
 }
 
 [data-line-type="change-deletion"] {
-  --diffs-line-bg: var(--nyte-diff-removed-line-bg);
+  --diffs-line-bg: var(--diffs-bg-deletion-override);
 }
 
 [data-column-number][data-line-type="change-addition"]::before,

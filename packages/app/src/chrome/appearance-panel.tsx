@@ -1,9 +1,10 @@
 /** Settings that affect the renderer's palette, typography, and conversation density. */
+import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { NumberField } from "@nyte-ai/ui/number-field";
 import { Select, type SelectOption } from "@nyte-ai/ui/select";
 import { Slider } from "@nyte-ai/ui/slider";
 import { Switch } from "@nyte-ai/ui/switch";
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { nyte } from "../nyte.ts";
@@ -70,25 +71,25 @@ function update(settings: AppearanceSettings, patch: Partial<AppearanceSettings>
 
 function CodeFontPreview(): ReactElement {
   return (
-    <div aria-label="Code and diff font preview" {...stylex.props(styles.codeFontPreview)}>
-      <div {...stylex.props(styles.diffLine, styles.diffRemovedLine)}>
-        <span {...stylex.props(styles.diffRemovedNumber)}>1</span>
-        <code {...stylex.props(styles.codePreviewText)}>
-          <span {...stylex.props(styles.codeKeyword)}>return</span> a + b;
+    <div aria-label="Code and diff font preview" {...props(styles.codeFontPreview)}>
+      <div {...props(intent.danger, styles.diffLine, styles.diffRemovedLine)}>
+        <span {...props(styles.diffRemovedNumber)}>1</span>
+        <code {...props(styles.codePreviewText)}>
+          <span {...props(surfaceTheme.purple, styles.codeKeyword)}>return</span> a + b;
         </code>
       </div>
-      <div {...stylex.props(styles.diffLine, styles.diffAddedLine)}>
-        <span {...stylex.props(styles.diffAddedNumber)}>1</span>
-        <code {...stylex.props(styles.codePreviewText)}>
-          <span {...stylex.props(styles.codeKeyword)}>const</span>{" "}
-          <span {...stylex.props(styles.codeIdentifier)}>result</span> = a + b;
+      <div {...props(intent.success, styles.diffLine, styles.diffAddedLine)}>
+        <span {...props(styles.diffAddedNumber)}>1</span>
+        <code {...props(styles.codePreviewText)}>
+          <span {...props(surfaceTheme.purple, styles.codeKeyword)}>const</span>{" "}
+          <span {...props(surfaceTheme.blue, styles.codeIdentifier)}>result</span> = a + b;
         </code>
       </div>
-      <div {...stylex.props(styles.diffLine, styles.diffAddedLine)}>
-        <span {...stylex.props(styles.diffAddedNumber)}>2</span>
-        <code {...stylex.props(styles.codePreviewText)}>
-          <span {...stylex.props(styles.codeKeyword)}>return</span>{" "}
-          <span {...stylex.props(styles.codeIdentifier)}>result</span>;
+      <div {...props(intent.success, styles.diffLine, styles.diffAddedLine)}>
+        <span {...props(styles.diffAddedNumber)}>2</span>
+        <code {...props(styles.codePreviewText)}>
+          <span {...props(surfaceTheme.purple, styles.codeKeyword)}>return</span>{" "}
+          <span {...props(surfaceTheme.blue, styles.codeIdentifier)}>result</span>;
         </code>
       </div>
     </div>
@@ -105,7 +106,7 @@ function HueControl({
   readonly onValueChange: (value: number) => void;
 }): ReactElement {
   return (
-    <span {...stylex.props(styles.tintControl)}>
+    <span {...props(styles.tintControl)}>
       <Slider.Root
         min={0}
         max={360}
@@ -120,13 +121,19 @@ function HueControl({
             <Slider.Thumb
               aria-label="Tint hue"
               aria-valuetext={`${String(value)} degrees`}
-              xstyle={styles.tintThumb}
+              xstyle={[surfaceTheme.custom, styles.tintThumb]}
             />
           </Slider.Track>
         </Slider.Control>
       </Slider.Root>
-      <span aria-hidden="true" {...stylex.props(styles.tintSlot)}>
-        <span {...stylex.props(styles.tintSwatch, active && styles.tintSwatchActive)} />
+      <span aria-hidden="true" {...props(styles.tintSlot)}>
+        <span
+          {...props(
+            active && surfaceTheme.custom,
+            styles.tintSwatch,
+            active && styles.tintSwatchActive,
+          )}
+        />
       </span>
     </span>
   );
@@ -140,7 +147,7 @@ function IntensityControl({
   readonly onValueChange: (value: number) => void;
 }): ReactElement {
   return (
-    <span {...stylex.props(styles.tintControl)}>
+    <span {...props(styles.tintControl)}>
       <Slider.Root
         min={0}
         max={100}
@@ -155,13 +162,13 @@ function IntensityControl({
             <Slider.Thumb
               aria-label="Tint intensity"
               aria-valuetext={`${String(value)} percent`}
-              xstyle={styles.tintThumb}
+              xstyle={[surfaceTheme.custom, styles.tintThumb]}
             />
           </Slider.Track>
         </Slider.Control>
       </Slider.Root>
-      <span {...stylex.props(styles.tintSlot)}>
-        <span {...stylex.props(styles.tintValue)}>{value}%</span>
+      <span {...props(styles.tintSlot)}>
+        <span {...props(styles.tintValue)}>{value}%</span>
       </span>
     </span>
   );
@@ -177,7 +184,7 @@ function DensityControl({
   const index = TOOL_CALL_DENSITIES.indexOf(value);
 
   return (
-    <span {...stylex.props(styles.density)}>
+    <span {...props(styles.density)}>
       <Slider.Root
         min={0}
         max={TOOL_CALL_DENSITIES.length - 1}
@@ -193,7 +200,7 @@ function DensityControl({
       >
         <Slider.Control>
           <Slider.Track>
-            <span aria-hidden="true" {...stylex.props(styles.densityDetent)} />
+            <span aria-hidden="true" {...props(styles.densityDetent)} />
             <Slider.Thumb
               aria-label="Conversation density"
               aria-valuetext={TOOL_CALL_DENSITY_LABELS[value]}
@@ -201,7 +208,7 @@ function DensityControl({
           </Slider.Track>
         </Slider.Control>
       </Slider.Root>
-      <span aria-hidden="true" {...stylex.props(styles.densityLabels)}>
+      <span aria-hidden="true" {...props(styles.densityLabels)}>
         <span>Compact</span>
         <span>Detailed</span>
       </span>
@@ -235,8 +242,8 @@ export function AppearanceSettings(): ReactElement {
   );
 
   return (
-    <div {...stylex.props(styles.root)}>
-      <div {...stylex.props(settingsPatterns.group)}>
+    <div {...props(styles.root)}>
+      <div {...props(settingsPatterns.group)}>
         <SettingsRow title="Theme" description="Choose between light and dark themes">
           <Select<ThemePreference>
             label="Theme"
@@ -257,11 +264,11 @@ export function AppearanceSettings(): ReactElement {
         </SettingsRow>
       </div>
 
-      <section {...stylex.props(settingsPatterns.section)}>
-        <div {...stylex.props(settingsPatterns.sectionHeader)}>
-          <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Agent Conversations</h2>
+      <section {...props(settingsPatterns.section)}>
+        <div {...props(settingsPatterns.sectionHeader)}>
+          <h2 {...props(settingsPatterns.sectionTitle)}>Agent Conversations</h2>
         </div>
-        <div {...stylex.props(settingsPatterns.group)}>
+        <div {...props(settingsPatterns.group)}>
           <SettingsRow
             title="Tool Call Density"
             description="Adjust how much detail is shown for tool calls"
@@ -282,26 +289,14 @@ export function AppearanceSettings(): ReactElement {
               onCheckedChange={(codeBlockWordWrap) => update(settings, { codeBlockWordWrap })}
             />
           </SettingsRow>
-          <SettingsRow
-            title="Themed Diff Backgrounds"
-            description="Use themed background colors for inline code diffs"
-          >
-            <Switch
-              label="Themed Diff Backgrounds"
-              checked={settings.themedDiffBackgrounds}
-              onCheckedChange={(themedDiffBackgrounds) =>
-                update(settings, { themedDiffBackgrounds })
-              }
-            />
-          </SettingsRow>
         </div>
       </section>
 
-      <section {...stylex.props(settingsPatterns.section)}>
-        <div {...stylex.props(settingsPatterns.sectionHeader)}>
-          <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Colors</h2>
+      <section {...props(settingsPatterns.section)}>
+        <div {...props(settingsPatterns.sectionHeader)}>
+          <h2 {...props(settingsPatterns.sectionTitle)}>Colors</h2>
         </div>
-        <div {...stylex.props(settingsPatterns.group)}>
+        <div {...props(settingsPatterns.group)}>
           <SettingsRow title="Hue" description="Choose a tint color">
             <HueControl
               value={settings.tintHue}
@@ -334,11 +329,11 @@ export function AppearanceSettings(): ReactElement {
         </div>
       </section>
 
-      <section {...stylex.props(settingsPatterns.section)}>
-        <div {...stylex.props(settingsPatterns.sectionHeader)}>
-          <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Typography</h2>
+      <section {...props(settingsPatterns.section)}>
+        <div {...props(settingsPatterns.sectionHeader)}>
+          <h2 {...props(settingsPatterns.sectionTitle)}>Typography</h2>
         </div>
-        <div {...stylex.props(settingsPatterns.group)}>
+        <div {...props(settingsPatterns.group)}>
           <SettingsRow title="UI Font Size" description="Font size for the Nyte user interface">
             <NumberField
               label="UI Font Size"

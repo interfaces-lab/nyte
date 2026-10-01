@@ -95,8 +95,7 @@ export function ContextSelector({
       trigger={
         <Button
           ref={triggerRef}
-          variant="context"
-          aria-label={`${action.label}: ${value}`}
+          variant="plain"
           aria-keyshortcuts={clientActionAriaShortcut(action, mac)}
           xstyle={contextStyles.controlLayout}
         >

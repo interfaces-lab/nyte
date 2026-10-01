@@ -1,18 +1,18 @@
 "use client";
 
 import { Collapsible } from "@nyte-ai/ui/collapsible";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { create } from "@stylexjs/stylex";
 
 const styles = create({
   root: { display: "flex", flexDirection: "column", width: 280 },
-  trigger: { fontSize: t.fontBase, lineHeight: t.leadingBase },
+  trigger: { fontSize: type.fontBase, lineHeight: type.leadingBase },
   panel: {
     marginTop: 4,
     paddingInlineStart: 15,
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
 });
 

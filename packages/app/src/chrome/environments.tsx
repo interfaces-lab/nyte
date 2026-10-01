@@ -4,7 +4,7 @@
  * sends chats to: This Mac and the Cloud server. Remote access is the reverse,
  * other devices sending chats to this Mac.
  */
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -31,7 +31,7 @@ export function EnvironmentsSurface(): ReactElement {
   const connections = server.data === undefined || server.data.kind === "none" ? 1 : 2;
 
   return (
-    <div {...stylex.props(styles.surface)}>
+    <div {...props(styles.surface)}>
       <Tabs.Root
         variant="pill"
         value={tab}
@@ -49,9 +49,9 @@ export function EnvironmentsSurface(): ReactElement {
         </Tabs.List>
 
         <Tabs.Panel value="connections" render={<section />} xstyle={styles.inventory}>
-          <div {...stylex.props(styles.inventoryHeading)}>
-            <h1 {...stylex.props(styles.inventoryTitle)}>Connected</h1>
-            <span {...stylex.props(styles.inventoryCount)}>{connections}</span>
+          <div {...props(styles.inventoryHeading)}>
+            <h1 {...props(styles.inventoryTitle)}>Connected</h1>
+            <span {...props(styles.inventoryCount)}>{connections}</span>
           </div>
           <ConnectionList>
             <ConnectionRow
@@ -65,8 +65,8 @@ export function EnvironmentsSurface(): ReactElement {
         </Tabs.Panel>
 
         <Tabs.Panel value="remote" render={<section />} xstyle={styles.inventory}>
-          <div {...stylex.props(styles.inventoryHeading)}>
-            <h1 {...stylex.props(styles.inventoryTitle)}>Serving this Mac</h1>
+          <div {...props(styles.inventoryHeading)}>
+            <h1 {...props(styles.inventoryTitle)}>Serving this Mac</h1>
           </div>
           <RemoteAccess active={active} />
         </Tabs.Panel>

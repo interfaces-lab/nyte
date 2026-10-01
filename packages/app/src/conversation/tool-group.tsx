@@ -1,3 +1,4 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * Intermediate narration, reasoning, and tool calls form one work episode.
  * Compact mode keeps the episode in a clipped window
@@ -6,7 +7,7 @@
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/ui/src/work-group.tsx
  */
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import type { RunId, TurnRun } from "@nyte-ai/protocol";
@@ -161,8 +162,8 @@ function WorkEntryView({
 }): ReactElement {
   if (entry.kind === "live-thinking") {
     return (
-      <div {...stylex.props(toolGroupStyles.thinking)}>
-        <span {...stylex.props(srOnly)}>Reasoning</span>
+      <div {...props(toolGroupStyles.thinking)}>
+        <span {...props(srOnly)}>Reasoning</span>
         <Prose markdown={entry.text} streaming />
       </div>
     );
@@ -173,8 +174,8 @@ function WorkEntryView({
   switch (part.kind) {
     case "thinking":
       return (
-        <div {...stylex.props(toolGroupStyles.thinking)}>
-          <span {...stylex.props(srOnly)}>Reasoning</span>
+        <div {...props(toolGroupStyles.thinking)}>
+          <span {...props(srOnly)}>Reasoning</span>
           <Prose markdown={part.text} />
         </div>
       );
@@ -384,22 +385,22 @@ export function WorkGroupView({
   const summaryLine = (
     <>
       {active && <Spinner />}
-      <span {...stylex.props(toolGroupStyles.verb)}>{summary.verb}</span>
-      {detail !== undefined && <span {...stylex.props(toolGroupStyles.summary)}>{detail}</span>}
+      <span {...props(toolGroupStyles.verb)}>{summary.verb}</span>
+      {detail !== undefined && <span {...props(toolGroupStyles.summary)}>{detail}</span>}
       {active && waits?.until !== undefined && (
-        <span {...stylex.props(toolGroupStyles.summary)}>
+        <span {...props(toolGroupStyles.summary)}>
           <Countdown until={waits.until} />
         </span>
       )}
       {(summary.added > 0 || summary.removed > 0) && (
-        <span {...stylex.props(toolGroupStyles.stats)}>
+        <span {...props(toolGroupStyles.stats)}>
           {summary.added > 0 && (
-            <span {...stylex.props(toolGroupStyles.added)}>
+            <span {...props(intent.success, toolGroupStyles.added)}>
               +<AnimatedNumber value={summary.added} />
             </span>
           )}
           {summary.removed > 0 && (
-            <span {...stylex.props(toolGroupStyles.removed)}>
+            <span {...props(intent.danger, toolGroupStyles.removed)}>
               -<AnimatedNumber value={summary.removed} />
             </span>
           )}
@@ -410,14 +411,11 @@ export function WorkGroupView({
 
   if (!hasContent) {
     return openWaitingTray === undefined ? (
-      <div
-        aria-busy={active || undefined}
-        {...stylex.props(toolGroupStyles.root, toolGroupStyles.status)}
-      >
+      <div aria-busy={active || undefined} {...props(toolGroupStyles.root, toolGroupStyles.status)}>
         {summaryLine}
       </div>
     ) : (
-      <div aria-busy={active || undefined} {...stylex.props(toolGroupStyles.root)}>
+      <div aria-busy={active || undefined} {...props(toolGroupStyles.root)}>
         <Row.Primary xstyle={[toolGroupStyles.toggle, focus.ring]} onClick={openWaitingTray}>
           {summaryLine}
         </Row.Primary>
@@ -448,7 +446,7 @@ export function WorkGroupView({
           <Collapsible.Chevron />
         </Collapsible.Trigger>
       ) : (
-        <div {...stylex.props(toolGroupStyles.status)}>
+        <div {...props(toolGroupStyles.status)}>
           <Row.Primary xstyle={[toolGroupStyles.toggle, focus.ring]} onClick={openWaitingTray}>
             {summaryLine}
           </Row.Primary>
@@ -473,9 +471,9 @@ export function WorkGroupView({
                 }
               : undefined
           }
-          {...stylex.props(preview && toolGroupStyles.preview)}
+          {...props(preview && toolGroupStyles.preview)}
         >
-          <div {...stylex.props(toolGroupStyles.calls)}>
+          <div {...props(toolGroupStyles.calls)}>
             <WorkGroupWindow
               groupKey={groupKey}
               density={density}

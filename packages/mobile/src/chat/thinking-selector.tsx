@@ -117,6 +117,7 @@ export function ThinkingSelector({
     borderRadius: trackHeight.get() / 2,
     // Icon-row centre, not the keyboard. This composer sits above extra padding.
     bottom: cardDock.get() + ICON_ROW_INSET - trackHeight.get() / 2,
+    shadowColor: colors.scrim,
     shadowOpacity: interpolate(progress.get(), [0, 1], [0, 0.1]),
   }));
 
@@ -335,7 +336,6 @@ const styles = StyleSheet.create({
   track: {
     position: "absolute",
     justifyContent: "center",
-    shadowColor: "#000",
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 4 },
   },

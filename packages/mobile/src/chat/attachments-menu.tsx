@@ -149,14 +149,14 @@ export function AttachmentsMenu({
     height: height.get(),
     bottom: bottom.get(),
     left: left.get(),
-    boxShadow: `${interpolate(progress.get(), [0, 1], [0, 0.2])}px ${interpolate(progress.get(), [0, 1], [0, 4])}px ${interpolate(progress.get(), [0, 1], [0, 24])}px rgba(0, 0, 0, ${interpolate(progress.get(), [0, 1], [0, 0.05])})`,
+    boxShadow: `${interpolate(progress.get(), [0, 1], [0, 0.2])}px ${interpolate(progress.get(), [0, 1], [0, 4])}px ${interpolate(progress.get(), [0, 1], [0, 24])}px ${interpolateColor(progress.get(), [0, 1], ["transparent", theme.separator])}`,
   }));
 
   const fallbackFill = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
       progress.get(),
       [0, 0.3, 1],
-      ["#00000000", "#00000000", theme.surface],
+      ["transparent", "transparent", theme.surface],
     ),
   }));
 
@@ -205,7 +205,7 @@ export function AttachmentsMenu({
 
   const glassProps = useAnimatedProps(() => ({
     glassEffectStyle: progress.get() > 0.01 ? ("clear" as const) : ("none" as const),
-    tintColor: "#00000000",
+    tintColor: "transparent",
   }));
 
   const chrome = HAS_GLASS ? overCamera.foreground : theme.foreground;
@@ -257,7 +257,10 @@ export function AttachmentsMenu({
                     onPress={() => onPick(item)}
                     style={styles.imageCell}
                   >
-                    <Image source={{ uri: item.uri }} style={styles.image} />
+                    <Image
+                      source={{ uri: item.uri }}
+                      style={[styles.image, { backgroundColor: theme.fill }]}
+                    />
                   </Pressable>
                 )}
               />
@@ -447,7 +450,7 @@ const styles = StyleSheet.create({
   imageList: { flex: 1 },
   gridGap: { gap: 1 },
   imageCell: { flex: 1, aspectRatio: 1 },
-  image: { flex: 1, backgroundColor: "rgba(120, 120, 128, 0.12)" },
+  image: { flex: 1 },
   backButton: { position: "absolute", left: 28, bottom: 28, zIndex: 10 },
   backButtonGlass: {
     width: 44,
@@ -478,7 +481,7 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 34,
     borderWidth: 4,
-    borderColor: "#FFF",
+    borderColor: overCamera.foreground,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -486,7 +489,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 27,
-    backgroundColor: "#FFF",
+    backgroundColor: overCamera.foreground,
   },
-  cameraNotice: { flex: 1, backgroundColor: "#000" },
+  cameraNotice: { flex: 1, backgroundColor: overCamera.backdrop },
 });

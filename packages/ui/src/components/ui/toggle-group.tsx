@@ -1,9 +1,10 @@
+import { shape } from "../../schema.stylex.ts";
 import { ToggleGroup as ToggleGroupPrimitive } from "@base-ui/react/toggle-group";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { t } from "../../vars.stylex.ts";
+import { role } from "../../vars.stylex.ts";
 
 const styles = create({
   group: {
@@ -12,9 +13,9 @@ const styles = create({
     alignItems: "center",
     gap: 1,
     padding: 2,
-    borderRadius: t.radius8,
-    backgroundColor: t.bgMutedTranslucent,
-    boxShadow: `inset 0 0 0 1px ${t.borderSecondaryTranslucent}`,
+    borderRadius: shape.control,
+    backgroundColor: role.bgMutedTranslucent,
+    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
   },
 });
 

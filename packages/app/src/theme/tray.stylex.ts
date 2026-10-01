@@ -1,6 +1,6 @@
 import { create } from "@stylexjs/stylex";
 import { tray } from "./schema.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, shadow, type } from "@nyte-ai/ui/vars.stylex";
 
 /** Shared frame for the queue, background agents, and terminal trays. */
 export const trayStyles = create({
@@ -13,13 +13,13 @@ export const trayStyles = create({
     minWidth: 0,
     overflow: "hidden",
     borderRadius: tray.radius,
-    backgroundColor: t.composerBg,
+    backgroundColor: role.bgElevated,
     // The shadow alone disappears on a dark page; the outline's hairline is
     // what draws the tray's edge, as it does for tooltips and toasts.
-    boxShadow: t.shadowMdOutline,
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    boxShadow: shadow.shadowMdOutline,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
   header: {
     display: "flex",
@@ -36,10 +36,10 @@ export const trayStyles = create({
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    fontSize: t.fontBase,
+    fontSize: type.fontBase,
     fontWeight: 400,
     lineHeight: "20px",
-    color: t.contentSecondary,
+    color: role.contentSecondary,
   },
   list: {
     display: "flex",

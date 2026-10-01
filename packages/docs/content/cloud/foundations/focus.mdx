@@ -5,8 +5,9 @@ description: "The focus ring, the pointer and keyboard modality switch, and the 
 
 ## The ring
 
-A focusable component draws a 1px outline in `--nyte-focus-ring` on `:focus-visible`. The token
-defaults to `--nyte-blue-80`. The same styles are exported for your own focusable elements.
+A focusable component draws a 1px outline using `appearance.focusRing` on `:focus-visible`.
+The ring stays blue inside every hue scope. The same styles are exported for your own focusable
+elements.
 
 ```ts title="Import"
 import { focus, srOnly } from "@nyte-ai/ui/a11y.stylex";
@@ -24,8 +25,9 @@ import { focus, srOnly } from "@nyte-ai/ui/a11y.stylex";
 </a>
 ```
 
-`Input`, `InputGroup`, and `Textarea` draw no ring. Their border takes `--nyte-blue-80` on
-focus in the `raised` variant and `--nyte-border-primary-translucent` in the `quiet` one.
+`Input`, `InputGroup`, and `Textarea` draw no ring. Their border takes
+`role.borderInteractivePrimary` on focus in the `raised` variant and
+`role.borderPrimaryTranslucent` in the `quiet` one.
 
 ## Focus modality
 

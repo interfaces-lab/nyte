@@ -1,3 +1,5 @@
+import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * Code on the page, in two forms. `Source` is a verbatim excerpt with its
  * line numbers and a link to the line; `Sketch` is a summary written for the
@@ -6,7 +8,7 @@
  * line marked inside it.
  */
 import { create, props } from "@stylexjs/stylex";
-import { ramp, t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { Fragment, useMemo, type ReactNode } from "react";
 import type { Excerpt } from "./excerpts";
 import type { Patch } from "./patches";
@@ -19,9 +21,9 @@ const styles = create({
     display: "flex",
     alignItems: "baseline",
     gap: 10,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   title: {
     flex: 1,
@@ -29,10 +31,10 @@ const styles = create({
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    color: t.contentSecondary,
+    color: role.contentSecondary,
     fontWeight: 500,
   },
-  path: { fontFamily: t.fontMono, fontSize: t.fontXs, fontWeight: 400 },
+  path: { fontFamily: type.fontMono, fontSize: type.fontXs, fontWeight: 400 },
   meta: {
     display: "flex",
     alignItems: "baseline",
@@ -41,24 +43,24 @@ const styles = create({
     fontVariantNumeric: "tabular-nums",
   },
   link: {
-    fontFamily: t.fontMono,
-    fontSize: t.fontXs,
-    color: { default: t.contentSecondary, ":hover": t.contentPrimary },
+    fontFamily: type.fontMono,
+    fontSize: type.fontXs,
+    color: { default: role.contentSecondary, ":hover": role.contentPrimary },
     textDecoration: "none",
   },
-  added: { color: t.intentSuccessContent },
-  removed: { color: t.intentDangerContent },
+  added: { color: role.contentSecondary },
+  removed: { color: role.contentSecondary },
   pre: {
     display: "flex",
     flexDirection: "column",
     margin: 0,
     paddingBlock: 8,
     overflow: "hidden",
-    borderRadius: t.radius8,
-    backgroundColor: t.bgMutedTranslucent,
-    color: t.contentPrimary,
-    fontFamily: t.fontMono,
-    fontSize: t.fontCode,
+    borderRadius: shape.control,
+    backgroundColor: role.bgMutedTranslucent,
+    color: role.contentPrimary,
+    fontFamily: type.fontMono,
+    fontSize: type.fontCode,
     lineHeight: "20px",
     tabSize: 2,
   },
@@ -71,14 +73,14 @@ const styles = create({
     paddingInlineStart: 12,
     paddingInlineEnd: 12,
     textAlign: "end",
-    color: t.contentTertiary,
+    color: role.contentTertiary,
     fontVariantNumeric: "tabular-nums",
     userSelect: "none",
   },
   gutterOld: { paddingInlineEnd: 0 },
   /* Border-box: the digits plus whatever padding the column keeps. */
   gutterWidth: (digits: number, padding: number) => ({ width: `calc(${digits}ch + ${padding}px)` }),
-  sign: { flexShrink: 0, width: "2ch", color: t.contentTertiary, userSelect: "none" },
+  sign: { flexShrink: 0, width: "2ch", color: role.contentTertiary, userSelect: "none" },
   text: {
     flexGrow: 1,
     minWidth: 0,
@@ -91,15 +93,24 @@ const styles = create({
     paddingInlineStart: `${indent}ch`,
     textIndent: `-${indent}ch`,
   }),
-  addedRow: { backgroundColor: t.diffAddedLineBg, boxShadow: `inset 2px 0 0 ${ramp.green80}` },
-  removedRow: {
-    backgroundColor: t.diffRemovedLineBg,
-    boxShadow: `inset 2px 0 0 ${ramp.red80}`,
+  addedRow: {
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    boxShadow: `inset 2px 0 0 ${role.contentInteractiveTertiary}`,
   },
-  addedWord: { backgroundColor: t.diffAddedTextBg, borderRadius: t.radius2 },
-  removedWord: { backgroundColor: t.diffRemovedTextBg, borderRadius: t.radius2 },
+  removedRow: {
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    boxShadow: `inset 2px 0 0 ${role.contentInteractiveTertiary}`,
+  },
+  addedWord: {
+    backgroundColor: role.bgInteractivePrimaryTranslucent,
+    borderRadius: shape.indicator,
+  },
+  removedWord: {
+    backgroundColor: role.bgInteractivePrimaryTranslucent,
+    borderRadius: shape.indicator,
+  },
   /* The skipped lines between hunks: a quiet band in the code's own columns, naming where it resumes. */
-  gap: { marginBlock: 4, backgroundColor: t.bgHover, opacity: 0.75 },
+  gap: { marginBlock: 4, backgroundColor: role.bgHover, opacity: 0.75 },
 });
 
 /** The span of a replaced line that differs from its pair. */
@@ -112,16 +123,26 @@ interface Mark {
 /** Readable hues for code; comments stay in the content ramp, set apart by slant. */
 const roles = create({
   plain: {},
-  keyword: { color: t.syntaxKeyword },
-  string: { color: t.syntaxString },
-  function: { color: t.syntaxIdentifier },
-  constant: { color: t.syntaxConstant },
-  comment: { color: t.contentSecondary, fontStyle: "italic" },
-  punctuation: { color: t.contentSecondary },
+  keyword: { color: role.contentSecondary },
+  string: { color: role.contentSecondary },
+  function: { color: role.contentSecondary },
+  constant: { color: role.contentSecondary },
+  comment: { color: role.contentSecondary, fontStyle: "italic" },
+  punctuation: { color: role.contentSecondary },
 });
 
-function roleStyle(role: Role) {
-  return roles[role];
+const syntaxScopes = {
+  plain: [],
+  keyword: surfaceTheme.purple,
+  string: surfaceTheme.green,
+  function: surfaceTheme.blue,
+  constant: surfaceTheme.teal,
+  comment: [],
+  punctuation: [],
+};
+
+function roleStyle(syntaxRole: Role) {
+  return [syntaxScopes[syntaxRole], roles[syntaxRole]];
 }
 
 /** A line's tokens, with `[start, end)` of its text wrapped in `mark`. */
@@ -143,14 +164,16 @@ function Tokens(input: { readonly line: Line; readonly mark?: Mark }): ReactNode
 
     const start = Math.max(mark.start, from) - from;
     const end = Math.min(mark.end, offset) - from;
-    const word = mark.added ? styles.addedWord : styles.removedWord;
+    const word = mark.added
+      ? [intent.success, styles.addedWord]
+      : [intent.danger, styles.removedWord];
 
     return [
       <span key={`${index}a`} {...props(roleStyle(token.role))}>
         {token.text.slice(0, start)}
       </span>,
-      <span key={`${index}b`} {...props(roleStyle(token.role), word)}>
-        {token.text.slice(start, end)}
+      <span key={`${index}b`} {...props(word)}>
+        <span {...props(roleStyle(token.role))}>{token.text.slice(start, end)}</span>
       </span>,
       <span key={`${index}c`} {...props(roleStyle(token.role))}>
         {token.text.slice(end)}
@@ -475,8 +498,8 @@ export function Diff(input: { readonly patch: Patch }) {
       title={<span {...props(styles.path)}>{path.replace(/^core\/src\//u, "")}</span>}
       meta={
         <>
-          {added > 0 && <span {...props(styles.added)}>+{added}</span>}
-          {removed > 0 && <span {...props(styles.removed)}>−{removed}</span>}
+          {added > 0 && <span {...props([intent.success, styles.added])}>+{added}</span>}
+          {removed > 0 && <span {...props([intent.danger, styles.removed])}>−{removed}</span>}
           <SourceLink path={path} line={first} />
         </>
       }
@@ -497,8 +520,8 @@ export function Diff(input: { readonly patch: Patch }) {
               <span
                 {...props(
                   styles.row,
-                  row.kind === "added" && styles.addedRow,
-                  row.kind === "removed" && styles.removedRow,
+                  row.kind === "added" && [intent.success, styles.addedRow],
+                  row.kind === "removed" && [intent.danger, styles.removedRow],
                 )}
               >
                 <span {...props(styles.gutter, styles.gutterOld, styles.gutterWidth(digits, 12))}>
@@ -508,8 +531,8 @@ export function Diff(input: { readonly patch: Patch }) {
                 <span
                   {...props(
                     styles.sign,
-                    row.kind === "added" && styles.added,
-                    row.kind === "removed" && styles.removed,
+                    row.kind === "added" && [intent.success, styles.added],
+                    row.kind === "removed" && [intent.danger, styles.removed],
                   )}
                 >
                   {SIGN[row.kind]}

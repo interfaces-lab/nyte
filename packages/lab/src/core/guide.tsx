@@ -8,7 +8,7 @@ import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Row } from "@nyte-ai/ui/row";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { useEffect, useState } from "react";
 import { Diff, Sketch, Source } from "./code";
 import { ADMISSION, CONSTANTS, FUNCTION_GROUPS, PHASES, REFS } from "./data";
@@ -121,12 +121,12 @@ const LAYERS: readonly Layer[] = [
 const page = create({
   root: {
     minHeight: "100vh",
-    backgroundColor: t.bgBase,
-    color: t.contentPrimary,
-    fontFamily: t.fontSans,
-    fontSize: t.fontLg,
-    lineHeight: t.leadingLg,
-    letterSpacing: t.letterLg,
+    backgroundColor: role.bgBase,
+    color: role.contentPrimary,
+    fontFamily: type.fontSans,
+    fontSize: type.fontLg,
+    lineHeight: type.leadingLg,
+    letterSpacing: type.letterLg,
   },
   frame: {
     display: "flex",
@@ -146,26 +146,26 @@ const page = create({
     flexShrink: 0,
     maxHeight: "calc(100vh - 48px)",
     overflowY: "auto",
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
-    letterSpacing: t.letterBase,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    letterSpacing: type.letterBase,
   },
   tocGroup: { display: "flex", flexDirection: "column" },
   tocLabel: {
     paddingInline: 6,
     paddingBlockEnd: 2,
-    color: t.contentSecondary,
-    fontSize: t.fontXs,
-    lineHeight: t.leadingXs,
+    color: role.contentSecondary,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
     fontWeight: 500,
   },
   article: { width: "min(840px, 100%)", minWidth: 0 },
   hero: { display: "flex", flexDirection: "column", gap: 10 },
   kicker: {
     margin: 0,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     fontWeight: 500,
   },
   title: {
@@ -175,30 +175,30 @@ const page = create({
     fontWeight: 650,
     letterSpacing: "-0.02em",
   },
-  lede: { margin: 0, maxWidth: "64ch", color: t.contentSecondary, textWrap: "pretty" },
+  lede: { margin: 0, maxWidth: "64ch", color: role.contentSecondary, textWrap: "pretty" },
   meta: {
     display: "flex",
     flexWrap: "wrap",
     gap: 16,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   metaLink: {
-    color: { default: t.contentSecondary, ":hover": t.contentPrimary },
-    fontFamily: t.fontMono,
-    fontSize: t.fontXs,
+    color: { default: role.contentSecondary, ":hover": role.contentPrimary },
+    fontFamily: type.fontMono,
+    fontSize: type.fontXs,
     textDecoration: "none",
   },
   inlineContents: {
     display: { default: "none", "@media (max-width: 1079px)": "flex" },
     flexWrap: "wrap",
     gap: "4px 20px",
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
   inlineLink: {
-    color: { default: t.contentSecondary, ":hover": t.contentPrimary },
+    color: { default: role.contentSecondary, ":hover": role.contentPrimary },
     textDecoration: "none",
   },
   appearance: { alignSelf: "flex-start" },
@@ -206,15 +206,15 @@ const page = create({
   issueRow: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.bgHover },
-      ":has(:focus-visible)": t.bgHover,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":has(:focus-visible)": role.bgHover,
     },
   },
   group: { display: "flex", flexDirection: "column", gap: 8 },
   issues: { display: "flex", flexDirection: "column", marginInline: -6 },
-  issueName: { fontFamily: t.fontMono, fontSize: t.fontBase },
-  issueMeta: { fontFamily: t.fontMono, fontSize: t.fontXs },
-  chevron: { color: t.contentSecondary },
+  issueName: { fontFamily: type.fontMono, fontSize: type.fontBase },
+  issueMeta: { fontFamily: type.fontMono, fontSize: type.fontXs },
+  chevron: { color: role.contentSecondary },
   issueWhy: { whiteSpace: "normal" },
   issuePanel: {
     display: "flex",

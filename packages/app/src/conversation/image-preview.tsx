@@ -1,10 +1,12 @@
+import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { shape } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { Hint } from "@nyte-ai/ui/tooltip";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 
 const styles = create({
   trigger: {
@@ -13,8 +15,8 @@ const styles = create({
     flexShrink: 0,
     padding: 0,
     borderStyle: "none",
-    borderRadius: t.radius6,
-    backgroundColor: t.imageBg,
+    borderRadius: shape.control,
+    backgroundColor: role.bgBase,
     boxShadow: "none",
     cursor: "zoom-in",
     overflow: "hidden",
@@ -24,10 +26,10 @@ const styles = create({
     width: 80,
     height: 80,
     objectFit: "cover",
-    borderRadius: t.radius6,
+    borderRadius: shape.control,
     outlineWidth: 1,
     outlineStyle: "solid",
-    outlineColor: t.borderPrimaryTranslucent,
+    outlineColor: role.borderPrimaryTranslucent,
     outlineOffset: -1,
   },
   compact: { width: 64, height: 64 },
@@ -38,7 +40,7 @@ const styles = create({
     padding: 8,
     overflowY: "visible",
     borderStyle: "none",
-    backgroundColor: t.bgElevated,
+    backgroundColor: role.bgElevated,
     backdropFilter: "none",
   },
   toolbar: {
@@ -47,7 +49,7 @@ const styles = create({
     gap: 16,
     minHeight: 40,
     paddingInlineStart: 8,
-    color: t.contentSecondary,
+    color: role.contentSecondary,
   },
   title: {
     flex: 1,
@@ -56,10 +58,10 @@ const styles = create({
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
     fontWeight: 500,
-    lineHeight: t.leadingBase,
+    lineHeight: type.leadingBase,
   },
   close: {
     display: "inline-flex",
@@ -70,10 +72,10 @@ const styles = create({
     height: 40,
     padding: 0,
     borderStyle: "none",
-    borderRadius: t.radius6,
-    backgroundColor: { default: "transparent", ":hover": t.bgHover },
-    color: t.contentInteractiveSecondary,
-    cursor: t.cursorInteractive,
+    borderRadius: shape.control,
+    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    color: role.contentInteractiveSecondary,
+    cursor: appearance.cursorInteractive,
   },
   image: {
     display: "block",
@@ -83,7 +85,7 @@ const styles = create({
     maxHeight: "calc(100dvh - 104px)",
     marginInline: "auto",
     objectFit: "contain",
-    borderRadius: t.radius6,
+    borderRadius: shape.control,
   },
 });
 
@@ -105,7 +107,7 @@ export function ImagePreview({
           <Dialog.Trigger
             type="button"
             aria-label={`Preview ${name}`}
-            xstyle={[styles.trigger, focus.ring]}
+            xstyle={[surfaceTheme.gray, styles.trigger, focus.ring]}
           >
             <img src={src} alt={name} {...props(styles.thumbnail, compact && styles.compact)} />
           </Dialog.Trigger>

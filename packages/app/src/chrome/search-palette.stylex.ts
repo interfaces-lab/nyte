@@ -1,7 +1,8 @@
-import * as stylex from "@stylexjs/stylex";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { shape } from "@nyte-ai/ui/schema.stylex";
+import { create } from "@stylexjs/stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 
-export const searchPaletteStyles = stylex.create({
+export const searchPaletteStyles = create({
   root: {
     display: "flex",
     flexDirection: "column",
@@ -17,8 +18,8 @@ export const searchPaletteStyles = stylex.create({
     paddingInline: 20,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderSecondaryTranslucent,
-    color: t.contentSecondary,
+    borderBottomColor: role.borderSecondaryTranslucent,
+    color: role.contentSecondary,
   },
   input: { height: 40 },
   tabs: {
@@ -27,7 +28,7 @@ export const searchPaletteStyles = stylex.create({
     overflowX: "auto",
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderSecondaryTranslucent,
+    borderBottomColor: role.borderSecondaryTranslucent,
   },
   results: {
     minHeight: 0,
@@ -42,9 +43,9 @@ export const searchPaletteStyles = stylex.create({
     paddingInline: 12,
     paddingBlockStart: 12,
     paddingBlockEnd: 6,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     userSelect: "none",
   },
   result: {
@@ -55,15 +56,15 @@ export const searchPaletteStyles = stylex.create({
     paddingBlock: 8,
     paddingInline: 12,
     columnGap: 10,
-    borderRadius: t.radius12,
+    borderRadius: shape.card,
     backgroundColor: {
       default: "transparent",
-      ":is([data-highlighted])": t.bgHover,
+      ":is([data-highlighted])": role.bgHover,
     },
-    color: t.contentPrimary,
-    fontSize: t.fontLg,
-    lineHeight: t.leadingLg,
-    letterSpacing: t.letterLg,
+    color: role.contentPrimary,
+    fontSize: type.fontLg,
+    lineHeight: type.leadingLg,
+    letterSpacing: type.letterLg,
   },
   resultIcon: {
     display: "inline-flex",
@@ -71,16 +72,16 @@ export const searchPaletteStyles = stylex.create({
     justifyContent: "center",
     width: 16,
     height: 16,
-    color: t.contentSecondary,
+    color: role.contentSecondary,
   },
   empty: {
     display: "grid",
     placeItems: "center",
     minHeight: 152,
     padding: 24,
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     textAlign: "center",
   },
 });

@@ -1,6 +1,6 @@
 /** The route-owned desktop Settings content. */
 import { Select } from "@nyte-ai/ui/select";
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import {
@@ -36,11 +36,11 @@ function GeneralSettings(): ReactElement {
   const { browser } = clientCapabilities(nyte.host);
 
   return (
-    <section {...stylex.props(settingsPatterns.section)}>
-      <div {...stylex.props(settingsPatterns.sectionHeader)}>
-        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Startup</h2>
+    <section {...props(settingsPatterns.section)}>
+      <div {...props(settingsPatterns.sectionHeader)}>
+        <h2 {...props(settingsPatterns.sectionTitle)}>Startup</h2>
       </div>
-      <div {...stylex.props(settingsPatterns.group)}>
+      <div {...props(settingsPatterns.group)}>
         <SettingsRow title="Window restoration" description="Choose what opens when Nyte starts">
           <Select<StartupDestination>
             label="Window restoration"
@@ -53,10 +53,10 @@ function GeneralSettings(): ReactElement {
           />
         </SettingsRow>
       </div>
-      <div {...stylex.props(settingsPatterns.sectionHeader)}>
-        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Chat</h2>
+      <div {...props(settingsPatterns.sectionHeader)}>
+        <h2 {...props(settingsPatterns.sectionTitle)}>Chat</h2>
       </div>
-      <div {...stylex.props(settingsPatterns.group)}>
+      <div {...props(settingsPatterns.group)}>
         <SettingsRow
           title="Messages while running"
           description="Choose what Enter does while the agent is working"
@@ -74,10 +74,10 @@ function GeneralSettings(): ReactElement {
       </div>
       {browser && (
         <>
-          <div {...stylex.props(settingsPatterns.sectionHeader)}>
-            <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Links</h2>
+          <div {...props(settingsPatterns.sectionHeader)}>
+            <h2 {...props(settingsPatterns.sectionTitle)}>Links</h2>
           </div>
-          <div {...stylex.props(settingsPatterns.group)}>
+          <div {...props(settingsPatterns.group)}>
             <SettingsRow title="Open links in" description="Applies to links in chat">
               <Select<LinkPreference>
                 label="Open links in"
@@ -120,15 +120,11 @@ export function SettingsSurface(): ReactElement {
   const { section } = useParams({ from: "/settings/$section" });
 
   return (
-    <div
-      data-nyte-settings-surface
-      data-nyte-scrollport="balanced"
-      {...stylex.props(styles.content)}
-    >
-      <div {...stylex.props(styles.contentInner)}>
-        <div {...stylex.props(styles.panel)}>
-          <div {...stylex.props(styles.titleRow)}>
-            <h1 {...stylex.props(settingsPatterns.pageTitle)}>{settingsTitle(section)}</h1>
+    <div data-nyte-settings-surface data-nyte-scrollport="balanced" {...props(styles.content)}>
+      <div {...props(styles.contentInner)}>
+        <div {...props(styles.panel)}>
+          <div {...props(styles.titleRow)}>
+            <h1 {...props(settingsPatterns.pageTitle)}>{settingsTitle(section)}</h1>
           </div>
           <SettingsPanel section={section} />
         </div>

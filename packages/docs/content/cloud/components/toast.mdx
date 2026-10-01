@@ -4,13 +4,13 @@ description: "A notification stack for outcomes the user did not just watch happ
 ---
 
 ```ts title="Import"
-import { Toaster, toast } from "@nyte-ai/ui";
+import { Toaster, toast, toastTint } from "@nyte-ai/ui";
 ```
 
 The same names are exported from their own subpath. Pick one path per file.
 
 ```ts title="Subpath"
-import { Toaster, toast } from "@nyte-ai/ui/toast";
+import { Toaster, toast, toastTint } from "@nyte-ai/ui/toast";
 ```
 
 `Toaster` renders the notification stack, and `toast` opens a notification in it. Reach for it
@@ -27,6 +27,8 @@ API is sonner's.
   each tinted to match.
 - The look is fixed. `Toaster` takes no `icons` or `toastOptions`. `xstyle`, `className`, and
   `style` land on the toast list.
+- `tint` scopes the stack to a hue. Use `toastTint("green")` in an individual toast
+  call to scope only that notification.
 - Give a repeated notification a stable `id` so a second call updates the open toast instead of
   stacking another one.
 - Every call that opens a toast returns its id. Pass it to `toast.dismiss` to close that one, or
@@ -41,11 +43,11 @@ API is sonner's.
 </Preview>
 
 ```tsx
-<Button variant="secondary" onClick={() => toast("Workspace saved")}>
+<Button variant="outline" onClick={() => toast("Workspace saved")}>
   Default
 </Button>
 <Button
-  variant="secondary"
+  variant="outline"
   onClick={() =>
     toast.success("3 chats archived", {
       action: { label: "Undo", onClick: () => toast("Chats restored") },
@@ -55,7 +57,7 @@ API is sonner's.
   Success
 </Button>
 <Button
-  variant="secondary"
+  variant="outline"
   onClick={() =>
     toast.error("Could not reach the server", {
       description: "The request timed out after 30 seconds.",
@@ -106,6 +108,17 @@ toast.promise(save(), {
 
 ### Toaster
 
+The close button is always shown unless an individual toast suppresses it. Its target is at least
+24×24px on a fine pointer and 44×44px on a coarse pointer. Actions also grow on coarse pointers.
+
+```tsx
+<Toaster tint="gray" />
+```
+
+```ts
+toast("Workspace saved", toastTint("green"));
+```
+
 | Prop                 | Type                                         | Default              | Description                                                           |
 | -------------------- | -------------------------------------------- | -------------------- | --------------------------------------------------------------------- |
 | `position`           | `Position`                                   | `"bottom-right"`     | Corner the stack grows from.                                          |
@@ -113,7 +126,7 @@ toast.promise(save(), {
 | `mobileOffset`       | `Offset`                                     | `16`                 | Same, at small viewports.                                             |
 | `gap`                | `number`                                     | `8`                  | Space between stacked toasts.                                         |
 | `expand`             | `boolean`                                    | `true`               | Shows the stack expanded instead of collapsed.                        |
-| `closeButton`        | `boolean`                                    | `true`               | Shows a close button on every toast.                                  |
+| `tint`               | `Tint`                                       |                      | Scopes the stack to a hue.                                            |
 | `containerAriaLabel` | `string`                                     | `"Notifications"`    | Names the list. Sonner appends the hotkey.                            |
 | `theme`              | `"light" \| "dark" \| "system"`              | `"light"`            | Color scheme sonner marks the list with.                              |
 | `visibleToasts`      | `number`                                     | `3`                  | How many toasts render at once.                                       |

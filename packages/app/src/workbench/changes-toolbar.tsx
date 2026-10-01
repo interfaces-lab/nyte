@@ -10,7 +10,7 @@
  * Nothing here writes to the repository. The branch readout reports HEAD and
  * offers no checkout, and refresh only invalidates the reads.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import type { VcsSnapshot } from "@nyte-ai/protocol";
@@ -31,9 +31,10 @@ import { Toggle } from "@nyte-ai/ui/toggle";
 import { macPlatform } from "../platform.ts";
 import { useVcsDiff, useVcsLog } from "../queries.ts";
 import type { VcsDiffRead } from "../queries.ts";
-import { menu } from "@nyte-ai/ui/schema.stylex";
+import { menu, shape } from "@nyte-ai/ui/schema.stylex";
 import { workbenchStyles } from "./workbench.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { ChangesCommitBar, isWorkingTreeScope } from "./changes-commit-bar.tsx";
 import {
   changesScopeValue,
@@ -115,7 +116,7 @@ export function changesShortcutLabel(action: ChangesShortcutAction, mac: boolean
   }
 }
 
-const styles = stylex.create({
+const styles = create({
   scopeTriggerLayout: {
     minWidth: 0,
     maxWidth: "calc(100% - 120px)",
@@ -130,27 +131,27 @@ const styles = stylex.create({
     display: "inline-flex",
     gap: 6,
     flexShrink: 0,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
     fontWeight: 590,
     fontVariantNumeric: "tabular-nums",
   },
-  scopeAdded: { color: t.intentSuccessContent },
-  scopeRemoved: { color: t.intentDangerContent },
+  scopeAdded: { color: role.contentSecondary },
+  scopeRemoved: { color: role.contentSecondary },
   scopeCount: {
-    color: t.contentSecondary,
+    color: role.contentSecondary,
     whiteSpace: "nowrap",
     fontVariantNumeric: "tabular-nums",
   },
   scopeDetail: {
     maxWidth: 160,
     overflow: "hidden",
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  scopeChevron: { display: "inline-flex", flexShrink: 0, color: t.contentInteractiveTertiary },
+  scopeChevron: { display: "inline-flex", flexShrink: 0, color: role.contentInteractiveTertiary },
   scopeMenu: {
     maxHeight: `min(${menu.maxHeight}, var(--available-height))`,
   },
@@ -160,9 +161,9 @@ const styles = stylex.create({
     gap: 4,
     minWidth: 0,
     paddingInline: 6,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   branchLabel: {
     minWidth: 0,
@@ -173,10 +174,10 @@ const styles = stylex.create({
   branchTag: {
     flexShrink: 0,
     paddingInline: 4,
-    borderRadius: t.radius4,
-    backgroundColor: t.bgMutedTranslucent,
-    fontSize: t.fontXs,
-    lineHeight: t.leadingXs,
+    borderRadius: shape.indicator,
+    backgroundColor: role.bgMutedTranslucent,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
   },
   branchCount: { flexShrink: 0, fontVariantNumeric: "tabular-nums" },
   spacer: { flex: 1, minWidth: 0 },
@@ -194,15 +195,15 @@ export function ChangeStats({
   return (
     <span
       aria-label={`${String(added)} added, ${String(removed)} removed`}
-      {...stylex.props(styles.scopeStats)}
+      {...props(styles.scopeStats)}
     >
       {added > 0 && (
-        <span {...stylex.props(styles.scopeAdded)}>
+        <span {...props(intent.success, styles.scopeAdded)}>
           +<AnimatedNumber value={added} />
         </span>
       )}
       {removed > 0 && (
-        <span {...stylex.props(styles.scopeRemoved)}>
+        <span {...props(intent.danger, styles.scopeRemoved)}>
           -<AnimatedNumber value={removed} />
         </span>
       )}
@@ -224,7 +225,7 @@ function ScopeMeta({
   if (fileCount === undefined) return null;
 
   return (
-    <span {...stylex.props(styles.scopeCount)}>
+    <span {...props(styles.scopeCount)}>
       {String(fileCount)} {fileCount === 1 ? "file" : "files"}
     </span>
   );
@@ -254,7 +255,7 @@ function ScopeRadioItem({ option }: { readonly option: ChangesScopeOption }): Re
       meta={
         <>
           {option.detail !== undefined && (
-            <span {...stylex.props(styles.scopeDetail)}>{option.detail}</span>
+            <span {...props(styles.scopeDetail)}>{option.detail}</span>
           )}
           {option.read.kind === "ready" && (
             <ScopeMeta stats={option.read.stats} fileCount={option.read.fileCount} />
@@ -412,18 +413,18 @@ function BranchReadoutChip({ branch }: { readonly branch: BranchReadout }): Reac
   const description = branchDescription(branch);
 
   return (
-    <span aria-label={description} title={description} {...stylex.props(styles.branch)}>
+    <span aria-label={description} title={description} {...props(styles.branch)}>
       <Icon name={branch.kind === "detached" ? "git" : "git-branch"} size={12} />
-      <span {...stylex.props(styles.branchLabel)}>{branch.label}</span>
-      {branch.kind === "detached" && <span {...stylex.props(styles.branchTag)}>detached</span>}
-      {branch.kind === "unborn" && <span {...stylex.props(styles.branchTag)}>no commits</span>}
+      <span {...props(styles.branchLabel)}>{branch.label}</span>
+      {branch.kind === "detached" && <span {...props(styles.branchTag)}>detached</span>}
+      {branch.kind === "unborn" && <span {...props(styles.branchTag)}>no commits</span>}
       {branch.kind === "attached" && branch.ahead > 0 && (
-        <span aria-hidden="true" {...stylex.props(styles.branchCount)}>
+        <span aria-hidden="true" {...props(styles.branchCount)}>
           ↑{String(branch.ahead)}
         </span>
       )}
       {branch.kind === "attached" && branch.behind > 0 && (
-        <span aria-hidden="true" {...stylex.props(styles.branchCount)}>
+        <span aria-hidden="true" {...props(styles.branchCount)}>
           ↓{String(branch.behind)}
         </span>
       )}
@@ -507,20 +508,16 @@ export function ChangesToolbar({
 
   return (
     <>
-      <div {...stylex.props(workbenchStyles.toolbar)}>
+      <div {...props(workbenchStyles.toolbar)}>
         <Menu
           label="Select changes"
           alignOffset={-4}
           xstyle={styles.scopeMenu}
           trigger={
-            <Button
-              icon={scopeIcon(scope)}
-              aria-label={`Select scope, showing ${scopeLabel}`}
-              xstyle={styles.scopeTriggerLayout}
-            >
-              <span {...stylex.props(styles.scopeLabel)}>{scopeLabel}</span>
+            <Button icon={scopeIcon(scope)} xstyle={styles.scopeTriggerLayout}>
+              <span {...props(styles.scopeLabel)}>{scopeLabel}</span>
               <ScopeMeta key={scopeKey} stats={scopeStats} fileCount={scopeFileCount} />
-              <span {...stylex.props(styles.scopeChevron)}>
+              <span {...props(styles.scopeChevron)}>
                 <Icon name="chevron-down" size={10} />
               </span>
             </Button>
@@ -575,7 +572,7 @@ export function ChangesToolbar({
           )}
         </Menu>
         {branch !== undefined && <BranchReadoutChip branch={branch} />}
-        <span {...stylex.props(styles.spacer)} />
+        <span {...props(styles.spacer)} />
         <Button iconOnly icon="refresh" aria-label="Refresh changes" onClick={onRefresh} />
         <Menu
           label="Changes view options"

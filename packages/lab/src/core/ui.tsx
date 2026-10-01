@@ -1,10 +1,12 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * The page's reading primitives: section, heading, prose, inline code,
  * source link, table. Layout and type only, on `@nyte-ai/ui` tokens; every
  * control on the page is a `@nyte-ai/ui` component.
  */
 import { create, props } from "@stylexjs/stylex";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { Fragment, type ReactNode } from "react";
 import { KERNEL, sourceLabel, sourceUrl } from "./source";
 
@@ -19,14 +21,14 @@ const styles = create({
   eyebrow: {
     margin: 0,
     marginBlockEnd: -8,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     fontWeight: 500,
   },
   h2: {
     margin: 0,
-    fontSize: t.font2xl,
+    fontSize: type.font2xl,
     lineHeight: "26px",
     fontWeight: 600,
     letterSpacing: "-0.01em",
@@ -34,8 +36,8 @@ const styles = create({
   h3: {
     margin: 0,
     marginBlockStart: 12,
-    fontSize: t.fontLg,
-    lineHeight: t.leadingLg,
+    fontSize: type.fontLg,
+    lineHeight: type.leadingLg,
     fontWeight: 590,
     scrollMarginBlockStart: 16,
   },
@@ -52,23 +54,23 @@ const styles = create({
   code: {
     paddingInline: "0.25em",
     paddingBlock: "0.08em",
-    borderRadius: t.radius4,
-    backgroundColor: t.bgMutedTranslucent,
-    fontFamily: t.fontMono,
+    borderRadius: shape.indicator,
+    backgroundColor: role.bgMutedTranslucent,
+    fontFamily: type.fontMono,
     fontSize: "0.86em",
     /* Mono metrics would otherwise open up every line a chip sits on. */
     lineHeight: 1,
     whiteSpace: "nowrap",
   },
   src: {
-    fontFamily: t.fontMono,
+    fontFamily: type.fontMono,
     fontSize: "0.8em",
-    color: { default: t.contentSecondary, ":hover": t.contentPrimary },
+    color: { default: role.contentSecondary, ":hover": role.contentPrimary },
     textDecoration: "none",
     whiteSpace: "nowrap",
   },
   link: {
-    color: t.intentPrimaryContent,
+    color: role.contentSecondary,
     textDecorationLine: { default: "none", ":hover": "underline" },
     textUnderlineOffset: 2,
   },
@@ -76,22 +78,22 @@ const styles = create({
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
   th: {
     paddingBlock: 6,
     paddingInlineEnd: 16,
     textAlign: "start",
     verticalAlign: "bottom",
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     fontWeight: 500,
     whiteSpace: "nowrap",
     borderBlockEndWidth: 1,
     borderBlockEndStyle: "solid",
-    borderBlockEndColor: t.borderPrimaryTranslucent,
+    borderBlockEndColor: role.borderPrimaryTranslucent,
   },
   td: {
     textWrap: "pretty",
@@ -100,7 +102,7 @@ const styles = create({
     verticalAlign: "top",
     borderBlockEndWidth: { default: 1, ":is(tr:last-child > *)": 0 },
     borderBlockEndStyle: "solid",
-    borderBlockEndColor: t.borderSecondaryTranslucent,
+    borderBlockEndColor: role.borderSecondaryTranslucent,
   },
   nowrap: { whiteSpace: "nowrap" },
   fixed: { tableLayout: "fixed" },
@@ -173,7 +175,7 @@ export function Codes(input: { readonly items: readonly string[] }) {
 /** A link into the page. */
 export function To(input: { readonly href: string; readonly children: ReactNode }) {
   return (
-    <a href={input.href} {...props(styles.link)}>
+    <a href={input.href} {...props([intent.primary, styles.link])}>
       {input.children}
     </a>
   );

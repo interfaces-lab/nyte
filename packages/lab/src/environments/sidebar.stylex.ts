@@ -1,8 +1,9 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 import { create } from "@stylexjs/stylex";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/vars.stylex";
 
 export const railStyles = create({
-  rail: { height: "100%", backgroundColor: t.sidebarMaterial },
+  rail: { height: "100%", backgroundColor: role.sidebarMaterial },
 
   /**
    * 3: a machine you can't reach keeps its rows in place at half weight. The
@@ -26,8 +27,8 @@ export const railStyles = create({
     placeItems: "center",
     width: 12,
     height: 12,
-    borderRadius: t.radiusFull,
-    backgroundColor: t.sidebarMaterial,
-    color: t.contentSecondary,
+    borderRadius: shape.pill,
+    backgroundColor: role.sidebarMaterial,
+    color: role.contentSecondary,
   },
 });

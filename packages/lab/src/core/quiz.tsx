@@ -1,8 +1,9 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { create, props } from "@stylexjs/stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { useState, type ReactNode } from "react";
 import { C } from "./ui";
 
@@ -396,9 +397,9 @@ const QUESTIONS: readonly Question[] = [
 const styles = create({
   bar: { display: "flex", alignItems: "center", gap: 12 },
   score: {
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     fontVariantNumeric: "tabular-nums",
   },
   list: {
@@ -416,28 +417,29 @@ const styles = create({
     flexShrink: 0,
     width: 15,
     textAlign: "center",
-    color: t.contentSecondary,
+    color: role.contentSecondary,
     fontVariantNumeric: "tabular-nums",
   },
   choices: { display: "flex", flexDirection: "column", maxWidth: 706, marginInlineStart: -6 },
-  choice: { whiteSpace: "normal", fontSize: t.fontBase, lineHeight: t.leadingBase },
+  choice: { whiteSpace: "normal", fontSize: type.fontBase, lineHeight: type.leadingBase },
   marker: {
-    color: t.contentSecondary,
-    fontSize: t.fontXs,
-    lineHeight: t.leadingXs,
+    color: role.contentSecondary,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
     fontWeight: 500,
   },
-  right: { color: t.intentSuccessContent },
-  wrong: { color: t.intentDangerContent },
-  dim: { color: t.contentSecondary },
-  why: { maxWidth: 700, margin: 0, paddingInlineStart: 21, color: t.contentSecondary },
+  right: { color: role.contentInteractiveTertiary },
+  wrong: { color: role.contentInteractiveTertiary },
+  dim: { color: role.contentSecondary },
+  why: { maxWidth: 700, margin: 0, paddingInlineStart: 21, color: role.contentSecondary },
 });
 
 const LETTERS = ["A", "B", "C", "D"] as const;
 
 function marker(settled: boolean, isAnswer: boolean, isPicked: boolean, option: number) {
-  if (settled && isAnswer) return <Icon name="checkmark" size={14} xstyle={styles.right} />;
-  if (isPicked) return <Icon name="x" size={14} xstyle={styles.wrong} />;
+  if (settled && isAnswer)
+    return <Icon name="checkmark" size={14} xstyle={[intent.success, styles.right]} />;
+  if (isPicked) return <Icon name="x" size={14} xstyle={[intent.danger, styles.wrong]} />;
 
   return <span {...props(styles.marker)}>{LETTERS[option]}</span>;
 }
@@ -457,7 +459,7 @@ export function Quiz() {
           {picked.size < QUESTIONS.length ? `, ${QUESTIONS.length - picked.size} to go` : ""}
         </span>
         {picked.size > 0 && (
-          <Button variant="secondary" size="sm" onClick={() => setPicked(new Map())}>
+          <Button variant="outline" size="sm" onClick={() => setPicked(new Map())}>
             Start over
           </Button>
         )}

@@ -25,7 +25,8 @@ import {
 } from "../pierre-worker-provider.tsx";
 import { useHostState, useSaveWorkspaceFile, useWorkspaceFile } from "../queries.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import type { WorkbenchViewKey } from "./controller.ts";
 import { createFileDocument } from "./file-document.ts";
 import type { FilePreferences } from "./file-preferences.ts";
@@ -52,7 +53,7 @@ const EDITOR_CSS = `
 ${PIERRE_TOKEN_CSS}
 :host {
   color-scheme: inherit;
-  --diffs-bg: ${t.bgBase};
+  --diffs-bg: ${role.bgBase};
 }
 `;
 
@@ -61,11 +62,11 @@ ${PIERRE_TOKEN_CSS}
  * has to construct the editor. A module constant keeps the context value stable.
  */
 function createEditor<EType extends EditorType>(
-  type: EType,
+  editorType: EType,
   options: EditorOptions<EType, undefined, undefined>,
   editStateKey?: string,
 ): Editor<EType, undefined, undefined> {
-  return new Editor(type, options, editStateKey);
+  return new Editor(editorType, options, editStateKey);
 }
 
 const styles = create({
@@ -77,7 +78,7 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
   },
   // Keep each tab's viewport measurable so virtualized editors retain their scroll position.
   hidden: { visibility: "hidden", pointerEvents: "none" },
@@ -90,9 +91,9 @@ const styles = create({
   },
   message: {
     padding: 20,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     textWrap: "pretty",
   },
   status: {
@@ -104,13 +105,13 @@ const styles = create({
     paddingInline: 10,
     borderTopWidth: 1,
     borderTopStyle: "solid",
-    borderTopColor: t.borderSecondaryTranslucent,
-    color: t.contentSecondary,
-    fontSize: t.fontXs,
-    lineHeight: t.leadingSm,
-    backgroundColor: t.bgBase,
+    borderTopColor: role.borderSecondaryTranslucent,
+    color: role.contentSecondary,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingSm,
+    backgroundColor: role.bgBase,
   },
-  error: { color: t.intentDangerContent },
+  error: { color: role.contentSecondary },
   statusText: {
     flex: 1,
     minWidth: 0,
@@ -518,6 +519,8 @@ function TextFileEditor({
               : "status"
           }
           {...props(
+            (snapshot.status.kind === "error" || snapshot.status.kind === "conflict") &&
+              intent.danger,
             styles.status,
             (snapshot.status.kind === "error" || snapshot.status.kind === "conflict") &&
               styles.error,

@@ -1,12 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { glob, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import stylex from "@stylexjs/unplugin";
 import electron from "electron";
-import { build } from "vite";
+import { build, defaultClientConditions } from "vite";
 
 const execute = promisify(execFile);
 
@@ -17,6 +17,7 @@ export async function testRenderer(entry: URL, setup = ""): Promise<string> {
     await mkdir(join(directory, "profile"));
     await build({
       configFile: false,
+      resolve: { conditions: ["nyte-source", ...defaultClientConditions] },
       logLevel: "silent",
       esbuild: { jsxDev: false },
       define: { "process.env.NODE_ENV": JSON.stringify("production") },
@@ -42,9 +43,12 @@ export async function testRenderer(entry: URL, setup = ""): Promise<string> {
         },
       },
     });
+    const stylesheets: string[] = [];
+    for await (const sheet of glob("**/*.css", { cwd: directory })) stylesheets.push(sheet);
+    stylesheets.sort((first, second) => first.localeCompare(second));
     await writeFile(
       join(directory, "index.html"),
-      `<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="fixture.css"><body>
+      `<!doctype html><meta charset="utf-8">${stylesheets.map((sheet) => `<link rel="stylesheet" href="${sheet}">`).join("")}<body>
 <script>
 window.addEventListener("error", (event) => { window.fixtureFailure = event.error?.stack ?? event.message; });
 ${setup}

@@ -1,3 +1,4 @@
+import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import type { StyleXStyles } from "@stylexjs/stylex";
 import { useCallback } from "react";
@@ -61,6 +62,7 @@ function SubagentStatusLine({
     <span
       {...props(
         subagentCallStyles.status,
+        status.indicator === "attention" && intent.warning,
         status.indicator === "attention" && subagentCallStyles.statusAttention,
       )}
     >
@@ -101,7 +103,14 @@ function SubagentRow({
         ) : status.indicator === "unread" ? (
           <UnreadMark />
         ) : (
-          <span {...props(subagentCallStyles.dot, subagentCallStyles[status.indicator])} />
+          <span
+            {...props(
+              status.indicator === "attention" && surfaceTheme.yellow,
+              status.indicator === "failed" && surfaceTheme.red,
+              subagentCallStyles.dot,
+              subagentCallStyles[status.indicator],
+            )}
+          />
         )}
       </span>
       <span {...props(subagentCallStyles.text)}>
@@ -259,7 +268,7 @@ export function SubagentLineView({
     </>
   );
 
-  const failed = phase === "failed" && toolCallStyles.failed;
+  const failed = phase === "failed" && [intent.danger, toolCallStyles.failed];
   const lineStyles = [toolCallStyles.line, density === "detailed" && toolCallStyles.lineDetailed];
 
   if (openTray === undefined) {

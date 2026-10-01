@@ -3,8 +3,9 @@ import { create, props } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement } from "react";
 
 import { focus } from "../../a11y.stylex.ts";
+import { button } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { t } from "../../vars.stylex.ts";
+import { appearance, motion, role } from "../../vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 
 const styles = create({
@@ -20,39 +21,54 @@ const styles = create({
     font: "inherit",
     letterSpacing: "inherit",
     textAlign: "start",
-    cursor: { default: t.cursorInteractive, "[data-disabled]": "default" },
+    cursor: { default: appearance.cursorInteractive, "[data-disabled]": "default" },
   },
   disclosure: {
-    display: "inline-flex",
+    display: "flex",
     alignItems: "center",
+    width: "100%",
+    minHeight: { default: button.heightSm, "@media (pointer: coarse)": 44 },
     gap: 4,
     maxWidth: "100%",
     minWidth: 0,
     color: {
-      default: t.contentInteractiveSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.contentInteractivePrimary },
+      default: role.contentInteractiveSecondary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentInteractivePrimary },
     },
     userSelect: "none",
     transitionProperty: "color",
     transitionDuration: {
-      default: t.durationFast,
+      default: motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: t.easeOut,
+    transitionTimingFunction: motion.easeOut,
+  },
+  panel: {
+    height: "var(--collapsible-panel-height)",
+    overflow: "hidden",
+    opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
+    transitionProperty: "height, opacity",
+    transitionDuration: {
+      default: motion.durationNormal,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: motion.easeOut,
+    "[data-starting-style]": { height: 0 },
+    "[data-ending-style]": { height: 0 },
   },
   chevron: {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    color: t.contentInteractiveTertiary,
+    color: role.contentInteractiveTertiary,
     transform: "rotate(var(--_collapsible-chevron-rotate, 0deg))",
     transitionProperty: "transform",
     transitionDuration: {
-      default: t.durationNormal,
+      default: motion.durationNormal,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: t.easeOutQuint,
+    transitionTimingFunction: motion.easeOutQuint,
   },
 });
 
@@ -87,6 +103,7 @@ function CollapsibleRoot({
 
 function CollapsibleTrigger({
   variant = "disclosure",
+  onClick,
   xstyle,
   className,
   style,
@@ -95,6 +112,25 @@ function CollapsibleTrigger({
   return (
     <CollapsiblePrimitive.Trigger
       {...rest}
+      onClick={(event) => {
+        const childControl =
+          event.target instanceof Element
+            ? event.target.closest("a, button, input, textarea, select, [role=button]")
+            : null;
+
+        if (
+          event.shiftKey ||
+          event.currentTarget.ownerDocument.getSelection()?.isCollapsed === false ||
+          (childControl !== null &&
+            childControl !== event.currentTarget &&
+            event.currentTarget.contains(childControl))
+        ) {
+          event.preventDefault();
+          event.preventBaseUIHandler();
+          return;
+        }
+        onClick?.(event);
+      }}
       {...mergeStyleProps(
         props(styles.trigger, variant === "disclosure" && [styles.disclosure, focus.ring], xstyle),
         className,
@@ -111,7 +147,11 @@ function CollapsiblePanel({
   ...rest
 }: CollapsiblePanelProps): ReactElement {
   return (
-    <CollapsiblePrimitive.Panel {...rest} {...mergeStyleProps(props(xstyle), className, style)} />
+    <CollapsiblePrimitive.Panel
+      hiddenUntilFound
+      {...rest}
+      {...mergeStyleProps(props(styles.panel, xstyle), className, style)}
+    />
   );
 }
 

@@ -1,15 +1,47 @@
 import { Switch as SwitchPrimitive } from "@base-ui/react/switch";
 import { create, props } from "@stylexjs/stylex";
-import type { ReactElement } from "react";
+import { useId, type ReactElement } from "react";
 
 import { focus } from "../../a11y.stylex.ts";
-import { switchControl } from "../../schema.stylex.ts";
+import { row, shape, switchControl } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
 import { intent } from "../../surface-theme.ts";
-import { t } from "../../vars.stylex.ts";
+import { appearance, motion, role, shadow, type } from "../../vars.stylex.ts";
 
 const styles = create({
+  target: {
+    "--_switch-hit-floor": { default: "24px", "@media (pointer: coarse)": "44px" },
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    width: `max(var(--_switch-hit-floor), ${switchControl.widthMd})`,
+    height: `max(var(--_switch-hit-floor), ${switchControl.heightMd})`,
+  },
+  field: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    width: "100%",
+    minHeight: row.heightMd,
+    color: role.contentPrimary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    cursor: appearance.cursorInteractive,
+  },
+  copy: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
+  description: { color: role.contentSecondary, fontSize: type.fontSm },
   track: {
+    "::before": {
+      content: '""',
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      translate: "-50% -50%",
+      width: `max(var(--_switch-hit-floor), ${switchControl.widthMd})`,
+      height: `max(var(--_switch-hit-floor), ${switchControl.heightMd})`,
+    },
     appearance: "none",
     boxSizing: "border-box",
     position: "relative",
@@ -21,59 +53,120 @@ const styles = create({
     height: switchControl.heightMd,
     padding: switchControl.paddingMd,
     borderStyle: "none",
-    borderRadius: t.radiusFull,
+    borderRadius: shape.pill,
     backgroundColor: {
-      default: t.bgControl,
-      ":hover:not([data-disabled])": t.bgControlHover,
-      ":active:not([data-disabled])": t.bgControlPressed,
-      "[data-checked]": t.bgControlSelected,
-      ":hover:is([data-checked]):not([data-disabled])": t.bgControlSelectedHover,
-      ":active:is([data-checked]):not([data-disabled])": t.bgControlSelectedPressed,
+      default: role.bgControl,
+      ":hover:not([data-disabled])": role.bgControlHover,
+      ":active:not([data-disabled])": role.bgControlPressed,
+      "[data-checked]": role.bgControlSelected,
+      ":hover:is([data-checked]):not([data-disabled])": role.bgControlSelectedHover,
+      ":active:is([data-checked]):not([data-disabled])": role.bgControlSelectedPressed,
     },
     opacity: { default: 1, "[data-disabled]": 0.5 },
     transitionProperty: "background-color",
-    transitionDuration: t.durationFast,
-    transitionTimingFunction: t.easeOut,
-    cursor: { default: t.cursorInteractive, "[data-disabled]": "default" },
+    transitionDuration: motion.durationFast,
+    transitionTimingFunction: motion.easeOut,
+    cursor: { default: appearance.cursorInteractive, "[data-disabled]": "default" },
   },
   thumb: {
     display: "block",
     width: switchControl.knobMd,
     height: switchControl.knobMd,
-    borderRadius: t.radiusFull,
-    backgroundColor: t.contentOnControl,
-    boxShadow: t.shadowSm,
+    borderRadius: shape.pill,
+    backgroundColor: role.contentOnControl,
+    boxShadow: shadow.shadowSm,
     transform: {
       default: "translateX(0)",
       "[data-checked]": `translateX(calc(${switchControl.widthMd} - ${switchControl.knobMd} - ${switchControl.paddingMd} * 2))`,
     },
     transitionProperty: "transform",
     transitionDuration: {
-      default: t.durationSlow,
+      default: motion.durationSlow,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: t.easeInOutStrong,
+    transitionTimingFunction: motion.easeInOutStrong,
   },
 });
 
-export type SwitchProps = StyledProps<Omit<SwitchPrimitive.Root.Props, "children" | "render">> & {
-  /** Names the switch for assistive technology. */
+type SwitchControlProps = StyledProps<Omit<SwitchPrimitive.Root.Props, "children" | "render">>;
+
+export type SwitchProps = SwitchControlProps & {
   readonly label: string;
 };
 
-/** An on/off control that applies the moment it changes, inside the primary intent. */
-export function Switch({ label, xstyle, className, style, ...rest }: SwitchProps): ReactElement {
+function SwitchControl({ xstyle, className, style, ...rest }: SwitchControlProps): ReactElement {
   return (
-    <SwitchPrimitive.Root
-      aria-label={label}
-      {...rest}
-      {...mergeStyleProps(
-        props(intent.primary, styles.track, focus.ring, xstyle),
-        className,
-        style,
-      )}
+    <span {...props(styles.target)}>
+      <SwitchPrimitive.Root
+        {...rest}
+        {...mergeStyleProps(
+          props(intent.primary, styles.track, focus.ring, xstyle),
+          className,
+          style,
+        )}
+      >
+        <SwitchPrimitive.Thumb {...props(styles.thumb)} />
+      </SwitchPrimitive.Root>
+    </span>
+  );
+}
+
+export function Switch({ label, ...rest }: SwitchProps): ReactElement {
+  return <SwitchControl aria-label={label} {...rest} />;
+}
+
+export type SwitchFieldProps = Omit<
+  SwitchControlProps,
+  "aria-label" | "aria-labelledby" | "nativeButton"
+> & {
+  readonly label: string;
+  readonly description?: string;
+};
+
+export function SwitchField({
+  label,
+  description,
+  id,
+  xstyle,
+  className,
+  style,
+  ...rest
+}: SwitchFieldProps): ReactElement {
+  const generatedId = useId();
+  const controlId = id ?? generatedId;
+  const labelId = `${controlId}-label`;
+  const descriptionId = description === undefined ? undefined : `${controlId}-description`;
+
+  return (
+    <label
+      htmlFor={controlId}
+      onClickCapture={(event) => {
+        if (
+          event.shiftKey ||
+          event.currentTarget.ownerDocument.getSelection()?.isCollapsed === false
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
+      {...mergeStyleProps(props(styles.field, xstyle), className, style)}
     >
-      <SwitchPrimitive.Thumb {...props(styles.thumb)} />
-    </SwitchPrimitive.Root>
+      <span {...props(styles.copy)}>
+        <span id={labelId}>{label}</span>
+        {description !== undefined && (
+          <span id={descriptionId} {...props(styles.description)}>
+            {description}
+          </span>
+        )}
+      </span>
+      <SwitchControl
+        {...rest}
+        id={controlId}
+        aria-labelledby={labelId}
+        aria-describedby={
+          [rest["aria-describedby"], descriptionId].filter(Boolean).join(" ") || undefined
+        }
+      />
+    </label>
   );
 }

@@ -23,7 +23,7 @@ import { PaneControllerProvider } from "../layout/pane-context.tsx";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient } from "../queries.ts";
 import { ThreadScreen } from "./thread.tsx";
-import "../theme/appearance.css";
+import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 
 declare global {
@@ -300,3 +300,5 @@ export async function runTest(): Promise<string> {
 }
 
 export const run = runTest;
+
+applyDisplayMode("light");

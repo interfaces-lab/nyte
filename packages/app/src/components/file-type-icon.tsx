@@ -5,10 +5,11 @@
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/ui/src/file-type-icon.tsx
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { createFileTreeIconResolver, getBuiltInSpriteSheet } from "@pierre/trees";
 import type { ReactElement } from "react";
-import { ramp, t } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/vars.stylex";
+import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 
 type FileIconTone =
   | "gray"
@@ -27,7 +28,7 @@ const resolver = createFileTreeIconResolver("complete");
 
 const spriteMarkup = { __html: getBuiltInSpriteSheet("complete") };
 
-const styles = stylex.create({
+const styles = create({
   root: {
     display: "inline-flex",
     alignItems: "center",
@@ -37,6 +38,7 @@ const styles = stylex.create({
     flexShrink: 0,
     fontSize: 14,
     lineHeight: 1,
+    color: role.contentInteractiveTertiary,
   },
   sprite: {
     position: "absolute",
@@ -45,28 +47,19 @@ const styles = stylex.create({
     overflow: "hidden",
     pointerEvents: "none",
   },
-  gray: { color: t.contentSecondary },
-  red: { color: ramp.red80 },
-  orange: { color: t.markOrange },
-  yellow: { color: t.markYellow },
-  green: { color: ramp.green80 },
-  cyan: { color: t.markTeal },
-  blue: { color: ramp.blue80 },
-  purple: { color: ramp.purple80 },
-  magenta: { color: ramp.pink80 },
 });
 
-const TONE_STYLE = {
-  gray: styles.gray,
-  red: styles.red,
-  orange: styles.orange,
-  yellow: styles.yellow,
-  green: styles.green,
-  cyan: styles.cyan,
-  blue: styles.blue,
-  purple: styles.purple,
-  magenta: styles.magenta,
-} satisfies Record<FileIconTone, stylex.StyleXStyles>;
+const TONE_THEME = {
+  gray: surfaceTheme.gray,
+  red: surfaceTheme.red,
+  orange: surfaceTheme.orange,
+  yellow: surfaceTheme.yellow,
+  green: surfaceTheme.green,
+  cyan: surfaceTheme.teal,
+  blue: surfaceTheme.blue,
+  purple: surfaceTheme.purple,
+  magenta: surfaceTheme.pink,
+};
 
 const TOKEN_TONE = {
   astro: "purple",
@@ -131,7 +124,7 @@ export function FileTypeIcon({ path }: { readonly path: string }): ReactElement 
   const height = icon.height ?? 16;
 
   return (
-    <span aria-hidden="true" {...stylex.props(styles.root, TONE_STYLE[tone])}>
+    <span aria-hidden="true" {...props(TONE_THEME[tone], styles.root)}>
       <svg
         data-icon-name={icon.name}
         viewBox={icon.viewBox ?? `0 0 ${String(width)} ${String(height)}`}
@@ -147,10 +140,6 @@ export function FileTypeIcon({ path }: { readonly path: string }): ReactElement 
 
 export function FileTypeIconSprite(): ReactElement {
   return (
-    <span
-      aria-hidden="true"
-      {...stylex.props(styles.sprite)}
-      dangerouslySetInnerHTML={spriteMarkup}
-    />
+    <span aria-hidden="true" {...props(styles.sprite)} dangerouslySetInnerHTML={spriteMarkup} />
   );
 }

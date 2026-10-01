@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { glob, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -19,7 +19,13 @@ beforeAll(async () => {
     configFile: false,
     logLevel: "silent",
     define: { "process.env.NODE_ENV": JSON.stringify("development") },
-    plugins: [stylex.rollup({ devMode: "css-only", runtimeInjection: false })],
+    plugins: [
+      stylex.rollup({
+        devMode: "css-only",
+        runtimeInjection: false,
+        lightningcssOptions: { targets: { chrome: 152 << 16 } },
+      }),
+    ],
     build: {
       outDir: directory,
       emptyOutDir: false,
@@ -32,9 +38,12 @@ beforeAll(async () => {
       },
     },
   });
+  const stylesheets: string[] = [];
+  for await (const sheet of glob("**/*.css", { cwd: directory })) stylesheets.push(sheet);
+  stylesheets.sort((first, second) => first.localeCompare(second));
   await writeFile(
     join(directory, "index.html"),
-    '<!doctype html><link rel="stylesheet" href="number.css"><script src="number.js"></script>',
+    `<!doctype html>${stylesheets.map((sheet) => `<link rel="stylesheet" href="${sheet}">`).join("")}<script src="number.js"></script>`,
   );
   await writeFile(
     join(directory, "main.cjs"),

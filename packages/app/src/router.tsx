@@ -7,7 +7,7 @@
  * ⌘N and ⌘[ return to the blank pane, ⌘B shows or hides the rail, ⌘, opens
  * Settings, ⌘D and ⇧⌘D split the stage — because the renderer owns chords.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { HintProvider } from "@nyte-ai/ui/tooltip";
 import {
   createMemoryHistory,
@@ -38,7 +38,7 @@ import { readRouteSession } from "./route-session.ts";
 import type { SessionPage } from "./session-directory.ts";
 import { getStartupDestination, startupSession } from "./startup-preference.ts";
 import { WorkspaceStage } from "./shell/workspace-stage.tsx";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { sessionId } from "@nyte-ai/protocol";
 import type { SessionId } from "@nyte-ai/protocol";
 import { nyte } from "./nyte.ts";
@@ -49,13 +49,13 @@ import { CustomizeSurface } from "./chrome/customize.tsx";
 import { EnvironmentsSurface } from "./chrome/environments.tsx";
 import { SettingsSurface } from "./chrome/appearance-settings.tsx";
 
-const styles = stylex.create({
+const styles = create({
   shell: {
     display: "flex",
     flexDirection: "column",
     width: "100%",
     height: "100%",
-    backgroundColor: t.sidebarMaterial,
+    backgroundColor: role.sidebarMaterial,
   },
   stage: {
     display: "flex",
@@ -68,7 +68,7 @@ const styles = stylex.create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
     overflow: "hidden",
   },
   loadError: {
@@ -78,12 +78,12 @@ const styles = stylex.create({
     justifyContent: "center",
     flex: 1,
     gap: 12,
-    color: t.contentPrimary,
+    color: role.contentPrimary,
   },
   loadErrorText: {
     margin: 0,
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
   },
 });
 
@@ -92,7 +92,7 @@ export function Shell({ appIcon }: { appIcon: string }): ReactElement {
   const host = useHostState();
 
   return (
-    <HintProvider delay={600} closeDelay={0} timeout={400}>
+    <HintProvider>
       <PaneControllerProvider workspaceKey={host.data?.workspace?.path}>
         <ShellChrome appIcon={appIcon} />
       </PaneControllerProvider>
@@ -179,10 +179,10 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   }, [canSplit, stageOpen, mac, panes, shellRouter, shellStage.kind]);
 
   return (
-    <div data-nyte-shell {...stylex.props(styles.shell)}>
+    <div data-nyte-shell {...props(styles.shell)}>
       <Titlebar />
       <div
-        {...stylex.props(styles.stage)}
+        {...props(styles.stage)}
         onClickCapture={(event) => {
           if (!stageOpen || !(event.target instanceof Element)) return;
 
@@ -199,7 +199,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
           <SidebarPane>
             <Sidebar />
           </SidebarPane>
-          <main {...stylex.props(styles.surface)}>
+          <main {...props(styles.surface)}>
             <StageContent shellStage={shellStage} />
           </main>
         </SessionDndProvider>
@@ -284,9 +284,9 @@ function ThreadRouteError(): ReactElement {
   const threadRouter = useRouter();
 
   return (
-    <div role="alert" {...stylex.props(styles.loadError)}>
-      <p {...stylex.props(styles.loadErrorText)}>Couldn&rsquo;t open this chat.</p>
-      <Button variant="secondary" onClick={() => void threadRouter.invalidate()}>
+    <div role="alert" {...props(styles.loadError)}>
+      <p {...props(styles.loadErrorText)}>Couldn&rsquo;t open this chat.</p>
+      <Button variant="outline" onClick={() => void threadRouter.invalidate()}>
         Try again
       </Button>
     </div>

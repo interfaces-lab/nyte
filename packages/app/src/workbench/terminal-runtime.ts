@@ -5,7 +5,10 @@ import { toast } from "@nyte-ai/ui/toast";
 import { nyte } from "../nyte.ts";
 import { errorMessage } from "../errors.ts";
 import type { TerminalBridge } from "../bridge.ts";
-import { ramp, t } from "@nyte-ai/ui/vars.stylex";
+import { props } from "@stylexjs/stylex";
+import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import type { Tint } from "@nyte-ai/ui/surface-theme";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import {
   attachTerminalOutput,
   getTerminal,
@@ -42,7 +45,7 @@ function loadGhostty(): Promise<Ghostty> {
 }
 
 /** Canvas terminals need resolved sRGB values, not CSS variables or color-mix expressions. */
-function terminalTheme(): ITheme {
+function terminalAppearance(): { theme: ITheme; fontFamily: string; fontSize: number } {
   const probe = document.createElement("span");
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 1;
@@ -51,20 +54,20 @@ function terminalTheme(): ITheme {
   if (context === null) throw new Error("Canvas rendering is unavailable");
   document.documentElement.append(probe);
 
-  // Tokens hold `light-dark()`, which only an element can resolve.
-  const resolve = (value: string): string => {
+  const resolve = (value: string, scope?: Tint): string => {
+    probe.className = scope === undefined ? "" : (props(surfaceTheme[scope]).className ?? "");
     probe.style.color = value;
 
     return getComputedStyle(probe).color;
   };
 
-  const background = resolve(t.bgBase);
+  const background = resolve(role.bgBase);
 
-  const color = (value: string): string => {
+  const color = (value: string, scope?: Tint): string => {
     context.clearRect(0, 0, 1, 1);
     context.fillStyle = background;
     context.fillRect(0, 0, 1, 1);
-    context.fillStyle = resolve(value);
+    context.fillStyle = resolve(value, scope);
     context.fillRect(0, 0, 1, 1);
 
     return (
@@ -77,36 +80,40 @@ function terminalTheme(): ITheme {
   };
 
   try {
-    const page = color(t.bgBase);
-    const ink = color(t.contentPrimary);
+    const page = color(role.bgBase);
+    const ink = color(role.contentPrimary);
     const dark = document.documentElement.dataset["displayMode"] === "dark";
     const black = dark ? page : ink;
     const white = dark ? ink : page;
-    // Every hue reads at 4.5:1 on the page, and bright is the lighter step in both modes.
-    const step = (light: string, darkStep: string) => color(`light-dark(${light}, ${darkStep})`);
-
-    return {
+    probe.style.fontFamily = type.fontMono;
+    probe.style.fontSize = type.fontCode;
+    const font = getComputedStyle(probe);
+    const fontFamily = font.fontFamily;
+    const fontSize = Number.parseFloat(font.fontSize);
+    const theme = {
       background: page,
       foreground: ink,
       cursor: ink,
-      selectionBackground: color(t.selection),
+      selectionBackground: color(role.bgInteractivePrimaryTranslucent),
       black,
-      red: step(ramp.red110, ramp.red70),
-      green: step(ramp.green110, ramp.green70),
-      yellow: step(ramp.yellow110, ramp.yellow70),
-      blue: step(ramp.blue110, ramp.blue70),
-      magenta: step(ramp.pink110, ramp.pink70),
-      cyan: step(ramp.teal110, ramp.teal70),
+      red: color(role.contentSecondary, "red"),
+      green: color(role.contentSecondary, "green"),
+      yellow: color(role.contentSecondary, "yellow"),
+      blue: color(role.contentSecondary, "blue"),
+      magenta: color(role.contentSecondary, "pink"),
+      cyan: color(role.contentSecondary, "teal"),
       white,
-      brightBlack: step(ramp.gray100, ramp.gray70),
-      brightRed: step(ramp.red100, ramp.red50),
-      brightGreen: step(ramp.green100, ramp.green50),
-      brightYellow: step(ramp.yellow100, ramp.yellow50),
-      brightBlue: step(ramp.blue100, ramp.blue50),
-      brightMagenta: step(ramp.pink100, ramp.pink50),
-      brightCyan: step(ramp.teal100, ramp.teal50),
+      brightBlack: color(role.contentSecondary, "gray"),
+      brightRed: color(role.contentPrimary, "red"),
+      brightGreen: color(role.contentPrimary, "green"),
+      brightYellow: color(role.contentPrimary, "yellow"),
+      brightBlue: color(role.contentPrimary, "blue"),
+      brightMagenta: color(role.contentPrimary, "pink"),
+      brightCyan: color(role.contentPrimary, "teal"),
       brightWhite: white,
-    };
+    } satisfies ITheme;
+
+    return { theme, fontFamily, fontSize };
   } finally {
     probe.remove();
   }
@@ -152,7 +159,7 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   if (initialTab === undefined) return undefined;
   const commandOutput = !isShellTerminal(initialTab);
   const root = document.documentElement;
-  const css = getComputedStyle(root);
+  const initialAppearance = terminalAppearance();
   const element = document.createElement("div");
   element.style.width = "100%";
   element.style.height = "100%";
@@ -164,10 +171,10 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     ghostty: engine,
     cursorStyle: "bar",
     cursorBlink: false,
-    theme: terminalTheme(),
+    theme: initialAppearance.theme,
     colorScheme: root.dataset["displayMode"] === "dark" ? "dark" : "light",
-    fontFamily: css.getPropertyValue("--nyte-font-family-mono"),
-    fontSize: Number.parseFloat(css.getPropertyValue("--nyte-font-size-code")),
+    fontFamily: initialAppearance.fontFamily,
+    fontSize: initialAppearance.fontSize,
     scrollback: 10000,
     smoothScrollDuration: 0,
     convertEol: commandOutput,
@@ -261,23 +268,15 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   let lastAppearance = "";
 
   const appearance = new MutationObserver(() => {
-    const next = getComputedStyle(root);
-
-    const signature = [
-      root.dataset["displayMode"],
-      root.className,
-      root.style.getPropertyValue("--nyte-custom-hue"),
-      root.style.getPropertyValue("--nyte-custom-chroma-scale"),
-      next.getPropertyValue("--nyte-font-family-mono"),
-      next.getPropertyValue("--nyte-font-size-code"),
-    ].join("|");
+    const next = terminalAppearance();
+    const signature = JSON.stringify([root.dataset["displayMode"], next]);
 
     if (signature === lastAppearance) return;
     lastAppearance = signature;
-    terminal.options.theme = terminalTheme();
+    terminal.options.theme = next.theme;
     terminal.options.colorScheme = root.dataset["displayMode"] === "dark" ? "dark" : "light";
-    terminal.options.fontFamily = next.getPropertyValue("--nyte-font-family-mono");
-    terminal.options.fontSize = Number.parseFloat(next.getPropertyValue("--nyte-font-size-code"));
+    terminal.options.fontFamily = next.fontFamily;
+    terminal.options.fontSize = next.fontSize;
     scheduleFit();
   });
 

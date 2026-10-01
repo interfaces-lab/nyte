@@ -1,4 +1,4 @@
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { useRef, useState } from "react";
 import type { ReactElement } from "react";
@@ -13,8 +13,9 @@ import { Menu, MenuItem } from "@nyte-ai/ui/menu";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { nyte } from "../nyte.ts";
-import { glyph } from "@nyte-ai/ui/schema.stylex";
-import { ramp, t } from "@nyte-ai/ui/vars.stylex";
+import { glyph, shape } from "@nyte-ai/ui/schema.stylex";
+import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { appearance, motion, role, type } from "@nyte-ai/ui/vars.stylex";
 import {
   activeWorkbenchTab,
   defaultWorkbenchTab,
@@ -39,7 +40,7 @@ import { fileActions, useFileTabs } from "./file-store.ts";
 const TAB_CONTENT_FADE =
   "linear-gradient(to right, black calc(100% - 36px), transparent calc(100% - 12px))";
 
-const styles = stylex.create({
+const styles = create({
   root: { display: "flex", alignItems: "center", gap: 1, flex: 1, minWidth: 0 },
   tabs: { display: "flex", minWidth: 0, overflowX: "auto", scrollbarWidth: "none" },
   list: { display: "flex", alignItems: "center", gap: 1, minWidth: 0 },
@@ -68,11 +69,11 @@ const styles = stylex.create({
     flexShrink: 0,
     maxWidth: 200,
     height: 26,
-    borderRadius: t.radius6,
-    backgroundColor: { default: "transparent", ":hover": t.bgHover },
-    color: t.contentInteractiveSecondary,
+    borderRadius: shape.control,
+    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    color: role.contentInteractiveSecondary,
   },
-  active: { backgroundColor: t.bgInteractiveSecondaryTranslucent, color: t.contentPrimary },
+  active: { backgroundColor: role.bgInteractiveSecondaryTranslucent, color: role.contentPrimary },
   tab: {
     display: "inline-flex",
     alignItems: "center",
@@ -82,11 +83,11 @@ const styles = stylex.create({
     paddingInlineStart: 4,
     paddingInlineEnd: 6,
     borderStyle: "none",
-    borderRadius: t.radius6,
+    borderRadius: shape.control,
     backgroundColor: "transparent",
     color: "inherit",
-    fontSize: t.fontBase,
-    cursor: t.cursorInteractive,
+    fontSize: type.fontBase,
+    cursor: appearance.cursorInteractive,
     whiteSpace: "nowrap",
   },
   content: {
@@ -98,7 +99,7 @@ const styles = stylex.create({
     WebkitMaskImage: "var(--_tab-content-mask)",
     maskImage: "var(--_tab-content-mask)",
   },
-  agentTerminal: { color: ramp.purple80 },
+  agentTerminal: { color: role.contentSecondary },
   label: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
   preview: { fontStyle: "italic" },
   tabIcon: { display: "inline-flex" },
@@ -107,7 +108,7 @@ const styles = stylex.create({
     height: 6,
     flexShrink: 0,
     borderRadius: "50%",
-    backgroundColor: t.markYellow,
+    backgroundColor: role.contentInteractiveTertiary,
   },
   running: {
     display: "inline-flex",
@@ -126,8 +127,8 @@ const styles = stylex.create({
     opacity: "var(--_tab-close-opacity)",
     pointerEvents: "var(--_tab-close-pointer-events)",
     transitionProperty: "opacity",
-    transitionDuration: t.durationFast,
-    transitionTimingFunction: t.easeOut,
+    transitionDuration: motion.durationFast,
+    transitionTimingFunction: motion.easeOut,
   },
 });
 
@@ -250,7 +251,7 @@ export function WorkbenchTabStrip({
   };
 
   return (
-    <div ref={stripRef} {...stylex.props(styles.root)}>
+    <div ref={stripRef} {...props(styles.root)}>
       <Tabs.Root
         value={activeValue}
         xstyle={styles.tabs}
@@ -271,7 +272,7 @@ export function WorkbenchTabStrip({
               <div
                 key={tab.id}
                 role="presentation"
-                {...stylex.props(styles.item, activeValue === tab.id && styles.active)}
+                {...props(styles.item, activeValue === tab.id && styles.active)}
                 onAuxClick={(event) => {
                   if (event.button === 1) {
                     event.preventDefault();
@@ -309,32 +310,35 @@ export function WorkbenchTabStrip({
                 >
                   <span
                     data-agent-terminal={agentTerminal ? "true" : undefined}
-                    {...stylex.props(styles.content, agentTerminal && styles.agentTerminal)}
+                    {...props(
+                      agentTerminal && surfaceTheme.purple,
+                      styles.content,
+                      agentTerminal && styles.agentTerminal,
+                    )}
                   >
                     {tab.kind === "file" ? (
                       <FileTypeIcon path={tab.path} />
                     ) : (
-                      <span {...stylex.props(styles.tabIcon)}>
+                      <span {...props(styles.tabIcon)}>
                         <Icon name={tabIcons[tab.kind]} size={16} />
                       </span>
                     )}
                     <span
-                      {...stylex.props(
-                        styles.label,
-                        tab.kind === "file" && tab.preview && styles.preview,
-                      )}
+                      {...props(styles.label, tab.kind === "file" && tab.preview && styles.preview)}
                     >
                       {label}
                     </span>
-                    {file?.dirty && <span aria-hidden="true" {...stylex.props(styles.dirty)} />}
+                    {file?.dirty && (
+                      <span aria-hidden="true" {...props(surfaceTheme.yellow, styles.dirty)} />
+                    )}
                     {running && (
-                      <span aria-label="Running" {...stylex.props(styles.running)}>
+                      <span aria-label="Running" {...props(styles.running)}>
                         <Spinner />
                       </span>
                     )}
                   </span>
                 </Tabs.Tab>
-                <span {...stylex.props(styles.close)}>
+                <span {...props(styles.close)}>
                   <Button
                     size="2xs"
                     iconOnly

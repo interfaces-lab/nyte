@@ -7,13 +7,14 @@ import type { ReactElement, ReactNode } from "react";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { FileTypeIcon } from "../components/file-type-icon";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { Button } from "@nyte-ai/ui/button";
 import type { DiffFilesLoader } from "../conversation/diff-expansion.ts";
 import { diffStyles } from "../conversation/styles.stylex.ts";
 import { PIERRE_TOKEN_CSS, PierreWorkerProvider } from "../pierre-worker-provider.tsx";
 import { workbench } from "../theme/schema.stylex.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { ReviewCheckbox } from "./changes-sidebar.tsx";
 import { createChangesCodeViewItems, type ChangesStackItem } from "./changes-stack-code-view.ts";
 import type { ChangesLayout } from "./changes-view-options.ts";
@@ -27,7 +28,7 @@ const styles = create({
     minWidth: 0,
     minHeight: 0,
     overflow: "auto",
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
   },
   // The file tree's filter row sits beside the first header, so both take the workbench header height.
   headerRow: {
@@ -40,8 +41,8 @@ const styles = create({
     paddingInlineEnd: 8,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderSecondaryTranslucent,
-    backgroundColor: t.bgBase,
+    borderBottomColor: role.borderSecondaryTranslucent,
+    backgroundColor: role.bgBase,
   },
   headerButton: {
     position: "static",
@@ -61,10 +62,10 @@ const styles = create({
   },
   notice: {
     padding: 10,
-    color: t.contentSecondary,
-    fontFamily: t.fontSans,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontFamily: type.fontSans,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     textWrap: "pretty",
   },
 });
@@ -298,12 +299,12 @@ export function StackHeader({
             {...props(diffStyles.stackStats)}
           >
             {added > 0 && (
-              <span {...props(diffStyles.added)}>
+              <span {...props(intent.success, diffStyles.added)}>
                 +<AnimatedNumber value={added} />
               </span>
             )}
             {removed > 0 && (
-              <span {...props(diffStyles.removed)}>
+              <span {...props(intent.danger, diffStyles.removed)}>
                 -<AnimatedNumber value={removed} />
               </span>
             )}

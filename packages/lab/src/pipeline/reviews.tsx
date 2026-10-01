@@ -1,13 +1,15 @@
+import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * The Reviews list beside the app sidebar: For me or Created, grouped by
  * what each pull request needs from you, closest to shipping first.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { useState, type ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Tabs } from "@nyte-ai/ui/tabs";
-import { ramp, t } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 import { COMPLETED_REVIEWS, OTHER_REVIEWS, type ReviewStatus } from "./scenario";
 
 export type LiveStatus = ReviewStatus | "checks_running" | "checks_failed" | "conflicts" | "merged";
@@ -36,13 +38,13 @@ function StatusMark({ status }: { readonly status: LiveStatus }): ReactElement |
   if (status === "checks_running") return <Spinner />;
   if (status === "waiting" || status === "approved" || status === "merged")
     return (
-      <span {...stylex.props(styles.mark, styles.markGood)}>
+      <span {...props(styles.mark, [intent.success, styles.markGood])}>
         <Icon name="checkmark" size={10} />
       </span>
     );
 
   return (
-    <span {...stylex.props(styles.mark, styles.markBad)}>
+    <span {...props(styles.mark, [intent.danger, styles.markBad])}>
       <Icon name="x" size={10} />
     </span>
   );
@@ -63,23 +65,27 @@ function Row({
       aria-current={selected ? "page" : undefined}
       disabled={onSelect === undefined}
       onClick={onSelect}
-      {...stylex.props(styles.row, selected && styles.rowSelected)}
+      {...props(styles.row, selected && styles.rowSelected)}
     >
-      <span {...stylex.props(styles.line)}>
-        <span {...stylex.props(styles.title)}>{row.title}</span>
+      <span {...props(styles.line)}>
+        <span {...props(styles.title)}>{row.title}</span>
         <Icon
           name={row.status === "merged" ? "merged" : "pull-request"}
           size={14}
-          xstyle={row.status === "merged" ? styles.merged : styles.open}
+          xstyle={
+            row.status === "merged"
+              ? [surfaceTheme.purple, styles.merged]
+              : [intent.success, styles.open]
+          }
         />
       </span>
-      <span {...stylex.props(styles.line)}>
-        <span {...stylex.props(styles.status)}>
+      <span {...props(styles.line)}>
+        <span {...props(styles.status)}>
           <StatusMark status={row.status} />
           {LABEL[row.status]}
         </span>
-        <span {...stylex.props(styles.who)}>
-          <span {...stylex.props(styles.avatar)}>{row.author.slice(0, 1)}</span>
+        <span {...props(styles.who)}>
+          <span {...props(styles.avatar)}>{row.author.slice(0, 1)}</span>
           {row.age}
         </span>
       </span>
@@ -101,17 +107,12 @@ function Group({
   readonly children?: ReactElement | readonly ReactElement[];
 }): ReactElement {
   return (
-    <div {...stylex.props(styles.group)}>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={onToggle}
-        {...stylex.props(styles.groupHeader)}
-      >
+    <div {...props(styles.group)}>
+      <button type="button" aria-expanded={open} onClick={onToggle} {...props(styles.groupHeader)}>
         <Icon name="pull-request" size={13} />
         <span>{label}</span>
-        <span {...stylex.props(styles.groupCount)}>{count}</span>
-        <span {...stylex.props(styles.spacer)} />
+        <span {...props(styles.groupCount)}>{count}</span>
+        <span {...props(styles.spacer)} />
         <Icon name={open ? "chevron-down" : "chevron-right"} size={12} />
       </button>
       {open && children}
@@ -140,9 +141,9 @@ export function ReviewList({
   const toggle = (key: keyof typeof open): void => setOpen({ ...open, [key]: !open[key] });
 
   return (
-    <aside aria-label="Reviews" {...stylex.props(styles.pane)}>
-      <div {...stylex.props(styles.head)}>
-        <span {...stylex.props(styles.heading)}>Reviews</span>
+    <aside aria-label="Reviews" {...props(styles.pane)}>
+      <div {...props(styles.head)}>
+        <span {...props(styles.heading)}>Reviews</span>
         <Tabs.Root
           variant="pill"
           value={tab}
@@ -154,9 +155,9 @@ export function ReviewList({
           </Tabs.List>
         </Tabs.Root>
       </div>
-      <div {...stylex.props(styles.scroll)}>
+      <div {...props(styles.scroll)}>
         {tab === "created" ? (
-          <p {...stylex.props(styles.empty)}>Pull requests you open appear here.</p>
+          <p {...props(styles.empty)}>Pull requests you open appear here.</p>
         ) : (
           <>
             <Group
@@ -206,17 +207,17 @@ export function ReviewList({
   );
 }
 
-const styles = stylex.create({
+const styles = create({
   pane: {
     display: "flex",
     flexDirection: "column",
     width: 320,
     flexShrink: 0,
     minHeight: 0,
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
     borderInlineEndWidth: 1,
     borderInlineEndStyle: "solid",
-    borderInlineEndColor: t.borderSecondaryTranslucent,
+    borderInlineEndColor: role.borderSecondaryTranslucent,
   },
   head: {
     display: "flex",
@@ -225,7 +226,7 @@ const styles = stylex.create({
     paddingInline: 12,
     paddingBlock: "12px 8px",
   },
-  heading: { color: t.contentPrimary, fontWeight: 600 },
+  heading: { color: role.contentPrimary, fontWeight: 600 },
   scroll: {
     display: "flex",
     flexDirection: "column",
@@ -235,7 +236,7 @@ const styles = stylex.create({
     overflowY: "auto",
     padding: 8,
   },
-  empty: { margin: 0, padding: 8, color: t.contentSecondary, fontSize: t.fontSm },
+  empty: { margin: 0, padding: 8, color: role.contentSecondary, fontSize: type.fontSm },
   group: { display: "flex", flexDirection: "column", gap: 2 },
   groupHeader: {
     display: "flex",
@@ -244,14 +245,14 @@ const styles = stylex.create({
     height: 30,
     paddingInline: 8,
     borderStyle: "none",
-    borderRadius: t.radius8,
-    backgroundColor: t.bgMutedTranslucent,
-    color: t.contentSecondary,
+    borderRadius: shape.control,
+    backgroundColor: role.bgMutedTranslucent,
+    color: role.contentSecondary,
     font: "inherit",
-    fontSize: t.fontSm,
-    cursor: t.cursorInteractive,
+    fontSize: type.fontSm,
+    cursor: appearance.cursorInteractive,
   },
-  groupCount: { color: t.contentSecondary, fontVariantNumeric: "tabular-nums" },
+  groupCount: { color: role.contentSecondary, fontVariantNumeric: "tabular-nums" },
   spacer: { flex: 1 },
   row: {
     display: "flex",
@@ -260,16 +261,16 @@ const styles = stylex.create({
     paddingBlock: 8,
     paddingInline: 10,
     borderStyle: "none",
-    borderRadius: t.radius8,
-    backgroundColor: { default: "transparent", ":hover:not(:disabled)": t.bgHover },
-    color: t.contentPrimary,
+    borderRadius: shape.control,
+    backgroundColor: { default: "transparent", ":hover:not(:disabled)": role.bgHover },
+    color: role.contentPrimary,
     font: "inherit",
     textAlign: "start",
-    cursor: { default: t.cursorInteractive, ":disabled": "default" },
+    cursor: { default: appearance.cursorInteractive, ":disabled": "default" },
   },
   rowSelected: {
-    backgroundColor: t.bgInteractiveSecondaryTranslucent,
-    boxShadow: `inset 0 0 0 1px ${t.borderPrimary}`,
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    boxShadow: `inset 0 0 0 1px ${role.borderPrimary}`,
   },
   line: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 },
   title: {
@@ -280,16 +281,16 @@ const styles = stylex.create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  open: { color: ramp.green80, flexShrink: 0 },
-  merged: { color: ramp.purple80, flexShrink: 0 },
+  open: { color: role.contentInteractiveTertiary, flexShrink: 0 },
+  merged: { color: role.contentInteractiveTertiary, flexShrink: 0 },
   status: {
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
     flex: 1,
     minWidth: 0,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
     whiteSpace: "nowrap",
   },
   mark: {
@@ -297,17 +298,23 @@ const styles = stylex.create({
     placeItems: "center",
     width: 16,
     height: 16,
-    borderRadius: t.radius4,
+    borderRadius: shape.indicator,
     flexShrink: 0,
   },
-  markGood: { backgroundColor: t.intentSuccessBg, color: t.intentSuccessContent },
-  markBad: { backgroundColor: t.intentDangerBg, color: t.intentDangerContent },
+  markGood: {
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    color: role.contentSecondary,
+  },
+  markBad: {
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    color: role.contentSecondary,
+  },
   who: {
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
     flexShrink: 0,
   },
   avatar: {
@@ -315,9 +322,9 @@ const styles = stylex.create({
     placeItems: "center",
     width: 16,
     height: 16,
-    borderRadius: t.radiusFull,
-    backgroundColor: t.bgInteractivePrimaryTranslucent,
-    color: t.contentSecondary,
+    borderRadius: shape.pill,
+    backgroundColor: role.bgInteractivePrimaryTranslucent,
+    color: role.contentSecondary,
     fontSize: 9,
     fontWeight: 600,
   },

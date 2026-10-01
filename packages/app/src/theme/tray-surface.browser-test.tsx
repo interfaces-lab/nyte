@@ -1,7 +1,8 @@
+import { applyDisplayMode } from "./appearance.ts";
 import { createRoot } from "react-dom/client";
 import "./tokens.stylex.ts";
 import "./global.css";
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { trayStyles } from "./tray.stylex.ts";
 import { composerStyles } from "../conversation/styles.stylex.ts";
 
@@ -13,16 +14,16 @@ import { composerStyles } from "../conversation/styles.stylex.ts";
  */
 function Dock() {
   return (
-    <div id="dock" {...stylex.props(composerStyles.dock)}>
-      <section id="tray" {...stylex.props(trayStyles.surface)}>
-        <div {...stylex.props(trayStyles.header)}>1 Queued Message</div>
-        <div {...stylex.props(trayStyles.list)}>
-          <div id="row" {...stylex.props(composerStyles.queueRow)}>
+    <div id="dock" {...props(composerStyles.dock)}>
+      <section id="tray" {...props(trayStyles.surface)}>
+        <div {...props(trayStyles.header)}>1 Queued Message</div>
+        <div {...props(trayStyles.list)}>
+          <div id="row" {...props(composerStyles.queueRow)}>
             Queued text
           </div>
         </div>
       </section>
-      <div id="composer" {...stylex.props(composerStyles.frame)} />
+      <div id="composer" {...props(composerStyles.frame)} />
     </div>
   );
 }
@@ -40,7 +41,7 @@ export async function run(): Promise<string> {
   await new Promise((resolve) => setTimeout(resolve, 50));
 
   for (const theme of ["light", "dark"]) {
-    document.documentElement.dataset["displayMode"] = theme;
+    applyDisplayMode(theme === "dark" ? "dark" : "light");
     await new Promise((resolve) => requestAnimationFrame(resolve));
     const tray = fill("tray");
     if (theme === "dark" && tray === fill("dock")) {

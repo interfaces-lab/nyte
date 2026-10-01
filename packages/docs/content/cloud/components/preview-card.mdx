@@ -13,7 +13,7 @@ The same `PreviewCard` is exported from its own subpath. Pick one path per file.
 import { PreviewCard } from "@nyte-ai/ui/preview-card";
 ```
 
-A card that previews where a link goes, shown on hover. Reach for it when a sighted reader benefits
+A card that previews where a link goes, shown on hover or a touch or pen hold. Reach for it when a sighted reader benefits
 from seeing the destination before clicking.
 
 ## Usage
@@ -21,8 +21,10 @@ from seeing the destination before clicking.
 - `PreviewCard.Popup` paints a raised card, a column at most 260px wide with 8px padding, and fades
   in with a slight scale. Style what goes inside it yourself.
 - The trigger renders an `<a>` with no look of its own. Give it a real `href`, since the link is the
-  only part users can reach by keyboard, touch, or screen reader. Pass `render` to put the trigger
+  keyboard and screen reader navigation target. Pass `render` to put the trigger
   on another element, such as a list row.
+- A 500ms touch or pen hold opens the preview and suppresses the following click. Moving more
+  than 8px or cancelling the pointer ends the hold.
 - Put everything the card shows on the linked page as well. Nothing unique lives in the popup.
 - The card opens after `delay`, which is 600ms, and closes after `closeDelay`, which is 300ms. Both
   live on the trigger.
@@ -59,19 +61,27 @@ from seeing the destination before clicking.
 </Preview>
 
 ```tsx
+import { create, props } from "@stylexjs/stylex";
+import { focus } from "@nyte-ai/ui/a11y.stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
+
 const styles = create({
   link: {
-    color: t.intentPrimaryContent,
-    fontSize: t.fontBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
     textDecorationLine: "underline",
     textUnderlineOffset: "2px",
   },
   title: { fontWeight: 500 },
-  detail: { color: t.contentSecondary, fontSize: t.fontSm, lineHeight: t.leadingSm },
+  detail: { color: role.contentSecondary, fontSize: type.fontSm, lineHeight: type.leadingSm },
 });
 
 <PreviewCard.Root>
-  <PreviewCard.Trigger href="/cloud/components/button" {...props(styles.link, focus.ring)}>
+  <PreviewCard.Trigger
+    href="/cloud/components/button"
+    {...props(intent.primary, styles.link, focus.ring)}
+  >
     Button
   </PreviewCard.Trigger>
   <PreviewCard.Portal>
@@ -144,6 +154,8 @@ Our defaults replace two of Base UI's.
 
 ### Popup
 
+`tint?: Tint` scopes the card to a hue.
+
 <include>../../base-ui-reference/preview-card/Popup.md</include>
 
 ### Arrow
@@ -156,8 +168,8 @@ Our defaults replace two of Base UI's.
 
 ## Accessibility
 
-- The popup is not exposed to screen readers, and nothing inside it can be reached by touch or
-  keyboard. It is a visual enhancement for sighted mouse and keyboard users.
+- The popup is a visual preview, not a replacement for the linked page. Touch and pen users
+  can open it with a 500ms hold. Keep essential information on the destination.
 - The link is the accessible interface. Screen reader users read the link text and continue,
   without being walked through the preview.
 - The trigger carries `data-popup-open` while the card is open.

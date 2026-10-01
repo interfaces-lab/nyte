@@ -4,7 +4,7 @@
  * the current turn's prompt stuck, restores where the pane left the session,
  * and drives the jump button. It knows rows only by id and anchor flag.
  */
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import type { SessionId } from "@nyte-ai/protocol";
@@ -143,7 +143,7 @@ export function MessageScrollerViewport({
     <div
       ref={attach}
       data-nyte-scrollport="balanced"
-      {...stylex.props(messageScrollerStyles.viewport)}
+      {...props(messageScrollerStyles.viewport)}
       onScroll={(event) => {
         const element = event.currentTarget;
         const bottomPinned = isBottomPinned(element, scrollEdgeThreshold);
@@ -382,7 +382,7 @@ export const MessageScrollerContent = memo(function MessageScrollerContent({
   }, [items, scrollEdgeThreshold, viewport, virtualizer]);
 
   return (
-    <div ref={virtualizer.containerRef} {...stylex.props(messageScrollerStyles.content)}>
+    <div ref={virtualizer.containerRef} {...props(messageScrollerStyles.content)}>
       {virtualizer.getVirtualItems().map((virtualItem) => {
         const item = items[virtualItem.index];
 
@@ -394,7 +394,7 @@ export const MessageScrollerContent = memo(function MessageScrollerContent({
             ref={virtualizer.measureElement}
             data-index={virtualItem.index}
             data-scroll-anchor={item.scrollAnchor}
-            {...stylex.props(
+            {...props(
               messageScrollerStyles.item,
               virtualItem.index === 0 && messageScrollerStyles.itemFirst,
             )}
@@ -419,7 +419,7 @@ export function MessageScrollerButton(): ReactElement | null {
       iconOnly
       icon="chevron-down"
       aria-label="Scroll to latest message"
-      variant="secondary"
+      variant="outline"
       round
       onClick={() => {
         const { viewport } = scroller;

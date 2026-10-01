@@ -36,6 +36,7 @@ import {
 } from "@expo/ui/swift-ui/modifiers";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
+import { platformColors } from "@nyte-ai/ui/platform-colors";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { controls, media, useTheme, radii, spacing, textStyles, typography } from "../theme.ts";
 import { useHost } from "../connection/host-context.tsx";
@@ -128,6 +129,7 @@ export const Composer = memo(function Composer({
 }) {
   const theme = useTheme();
   const dark = useColorScheme() === "dark";
+  const colors = platformColors[dark ? "dark" : "light"];
   const { client } = useHost();
   const [draft, setDraft] = useState(prefill?.text ?? "");
   const [caret, setCaret] = useState(prefill?.text.length ?? 0);
@@ -898,13 +900,13 @@ export const Composer = memo(function Composer({
             text: theme.foreground,
             accent: theme.accent,
             accentFill: theme.accentFill,
-            track: dark ? "rgba(44, 44, 46, 0.86)" : "rgba(250, 250, 250, 0.86)",
-            tickOnTrack: dark ? "rgba(255, 255, 255, 0.28)" : "rgba(0, 0, 0, 0.24)",
-            tickOnFill: "rgba(255, 255, 255, 0.2)",
-            knob: "#FFFFFF",
+            track: colors.popupMaterial,
+            tickOnTrack: colors.contentInteractiveTertiary,
+            tickOnFill: colors.contentOnInteractiveStrong,
+            knob: colors.contentOnControl,
             gaugeTrack: theme.muted,
             needle: theme.foreground,
-            scrim: dark ? "rgba(0, 0, 0, 0.45)" : "rgba(255, 255, 255, 0.55)",
+            scrim: colors.bgScrim,
           }}
           onClose={closeSelector}
           onCommit={(index) => {

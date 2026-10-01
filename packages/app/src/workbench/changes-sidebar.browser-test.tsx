@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { ChangesSidebar } from "./changes-sidebar.tsx";
 import type { ChangesSidebarFile } from "./changes-sidebar.tsx";
 import type { ViewedState } from "./changes-viewed.ts";
-import "../theme/appearance.css";
+import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 
 const PATHS = ["src/alpha.ts", "src/beta.ts", "docs/guide.md", "docs/notes.md"] as const;
@@ -146,3 +146,5 @@ export async function run(): Promise<string> {
     container.remove();
   }
 }
+
+applyDisplayMode("light");

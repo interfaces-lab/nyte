@@ -1,33 +1,34 @@
+import { shape } from "./schema.stylex.ts";
 /**
  * One painted frame for raised surfaces. The popup owns its fill,
  * shadow, and hairline so all three follow the same enter/exit lifecycle.
  * Collision-aware positioners only handle placement.
  */
 import { create } from "@stylexjs/stylex";
-import { t } from "./vars.stylex.ts";
+import { appearance, role, shadow } from "./vars.stylex.ts";
 
 export const floatingSurfaceStyles = create({
   /** The translucent fill every floating surface shares, blurring the page behind it. */
   material: {
-    backgroundColor: t.popupMaterial,
-    backdropFilter: t.popupMaterialFilter,
+    backgroundColor: role.popupMaterial,
+    backdropFilter: appearance.popupMaterialFilter,
   },
   modalPopup: {
-    boxShadow: t.shadowXl,
+    boxShadow: shadow.shadowXl,
   },
   popup: {
     boxSizing: "border-box",
     position: "relative",
-    borderRadius: t.radius14,
-    backgroundColor: t.popupMaterial,
-    backdropFilter: t.popupMaterialFilter,
-    boxShadow: t.shadowLg,
+    borderRadius: shape.surface,
+    backgroundColor: role.popupMaterial,
+    backdropFilter: appearance.popupMaterialFilter,
+    boxShadow: shadow.shadowLg,
     "::after": {
       content: '""',
       position: "absolute",
       inset: 0,
       borderRadius: "inherit",
-      boxShadow: `inset 0 0 0 1px ${t.borderSecondaryTranslucent}`,
+      boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
       pointerEvents: "none",
     },
   },

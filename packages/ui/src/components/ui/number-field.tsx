@@ -1,30 +1,32 @@
+import { button, shape } from "../../schema.stylex.ts";
 import { NumberField as NumberFieldPrimitive } from "@base-ui/react/number-field";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { t } from "../../vars.stylex.ts";
+import { appearance, role, type } from "../../vars.stylex.ts";
 
 const styles = create({
   root: {
     display: "grid",
-    gridTemplateColumns: "26px 42px 26px",
+    "--_number-hit-floor": { default: "24px", "@media (pointer: coarse)": "44px" },
+    gridTemplateColumns: `max(var(--_number-hit-floor), ${button.heightSm}) 48px max(var(--_number-hit-floor), ${button.heightSm})`,
     boxSizing: "border-box",
     width: "max-content",
-    height: 24,
+    minHeight: `calc(max(var(--_number-hit-floor), ${button.heightSm}) + 2px)`,
     overflow: "hidden",
-    borderRadius: t.radius6,
+    borderRadius: shape.control,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: t.borderPrimaryTranslucent,
-    backgroundColor: t.bgMutedTranslucent,
+    borderColor: role.borderPrimaryTranslucent,
+    backgroundColor: role.bgMutedTranslucent,
     outlineStyle: { default: "none", ":focus-within": "solid" },
     outlineWidth: 1,
-    outlineColor: t.focusRing,
+    outlineColor: appearance.focusRing,
     outlineOffset: 0,
   },
   split: {
-    boxShadow: `inset -1px 0 0 0 ${t.borderSecondaryTranslucent}`,
+    boxShadow: `inset -1px 0 0 0 ${role.borderSecondaryTranslucent}`,
   },
   button: {
     display: "grid",
@@ -32,11 +34,11 @@ const styles = create({
     padding: 0,
     borderStyle: "none",
     outlineStyle: "none",
-    backgroundColor: { default: "transparent", ":hover:not(:disabled)": t.bgHover },
-    color: { default: t.contentInteractiveSecondary, ":disabled": t.contentDisabled },
-    fontSize: t.fontLg,
-    lineHeight: t.leadingBase,
-    cursor: { default: t.cursorInteractive, ":disabled": "default" },
+    backgroundColor: { default: "transparent", ":hover:not(:disabled)": role.bgHover },
+    color: { default: role.contentInteractiveSecondary, ":disabled": role.contentDisabled },
+    fontSize: type.fontLg,
+    lineHeight: type.leadingBase,
+    cursor: { default: appearance.cursorInteractive, ":disabled": "default" },
   },
   value: {
     width: "100%",
@@ -46,15 +48,15 @@ const styles = create({
     borderRadius: 0,
     outlineStyle: "none",
     backgroundColor: "transparent",
-    color: t.contentSecondary,
+    color: role.contentSecondary,
     fontFamily: "inherit",
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     textAlign: "center",
     // The global ::selection is an accent wash and would tint the value.
     "::selection": {
-      backgroundColor: t.bgInteractiveSecondaryTranslucent,
-      color: t.contentSecondary,
+      backgroundColor: role.bgInteractiveSecondaryTranslucent,
+      color: role.contentSecondary,
     },
   },
 });

@@ -1,6 +1,8 @@
 export { Autocomplete } from "./components/ui/autocomplete.tsx";
 
 export type {
+  AutocompleteBackdropProps,
+  AutocompleteClearProps,
   AutocompleteEmptyProps,
   AutocompleteGroupLabelProps,
   AutocompleteInputProps,

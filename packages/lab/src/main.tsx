@@ -18,7 +18,7 @@ if (root === null) throw new Error("index.html is missing #root");
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <HintProvider delay={400}>
+      <HintProvider>
         <RouterProvider router={router} />
       </HintProvider>
     </QueryClientProvider>

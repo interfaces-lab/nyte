@@ -1,3 +1,4 @@
+import { applyDisplayMode } from "@nyte-ai/app/theme/appearance.ts";
 import { useLayoutEffect, useState } from "react";
 import { CoreGuide } from "./guide";
 
@@ -16,7 +17,7 @@ export function CorePage() {
   const [appearance, setAppearance] = useState(initialAppearance);
 
   useLayoutEffect(() => {
-    document.documentElement.dataset.displayMode = appearance;
+    applyDisplayMode(appearance === "dark" ? "dark" : "light");
   }, [appearance]);
 
   return <CoreGuide appearance={appearance} onAppearance={setAppearance} />;

@@ -1,3 +1,4 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { create, props } from "@stylexjs/stylex";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { JobActionOutcome, JobInfo, SessionId } from "@nyte-ai/protocol";
@@ -116,7 +117,7 @@ function AvailableBackgroundWork({
   return (
     <div ref={ref} {...props(trayParts.root)}>
       {jobs.isError && (
-        <div role="alert" {...props(trayParts.notice, trayParts.error)}>
+        <div role="alert" {...props(intent.danger, trayParts.notice, trayParts.error)}>
           Couldn’t load background work.
           <Button onClick={() => void jobs.refetch()}>Try again</Button>
         </div>
@@ -144,7 +145,7 @@ function AvailableBackgroundWork({
         <div {...props(trayStyles.header)}>
           <span {...props(trayStyles.title)}>{`${count} ${noun.toLowerCase()}`}</span>
           <Button
-            aria-label={
+            aria-description={
               stopCandidates !== undefined
                 ? `Confirm stopping ${String(stopCandidates.length)} running terminals`
                 : "Stop all running terminals"
@@ -187,7 +188,7 @@ function AvailableBackgroundWork({
               </Row.Primary>
               <Row.Actions>
                 <Button
-                  aria-label={`Stop ${job.command}`}
+                  aria-description={`Stop ${job.command}`}
                   disabled={pendingAction}
                   onClick={() => cancel.mutate(job.id)}
                 >
@@ -210,7 +211,7 @@ function AvailableBackgroundWork({
           </div>
         )}
         {(cancel.isError || stopAll.isError) && (
-          <div role="alert" {...props(trayParts.notice, trayParts.error)}>
+          <div role="alert" {...props(intent.danger, trayParts.notice, trayParts.error)}>
             Failed to update background work. Try again.
           </div>
         )}

@@ -1,21 +1,21 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * The pairing code the iOS app scans. The matrix is drawn as one SVG path so it
  * stays crisp at any size, and stays black on white in every theme so scanners
  * read it. The payload is the same `nyte://connect` string a person can
  * paste, so scanning and pasting cannot drift apart.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import qrcode from "qrcode-generator";
 import { useMemo } from "react";
 import type { ReactElement } from "react";
-import { t } from "@nyte-ai/ui/vars.stylex";
 
-const styles = stylex.create({
+const styles = create({
   frame: {
     display: "grid",
     placeItems: "center",
     padding: 10,
-    borderRadius: t.radius8,
+    borderRadius: shape.control,
     backgroundColor: "#ffffff",
   },
   code: { display: "block", shapeRendering: "crispEdges" },
@@ -53,14 +53,14 @@ export function PairingCode({ value, size }: { value: string; size: number }): R
   }, [value]);
 
   return (
-    <div {...stylex.props(styles.frame)}>
+    <div {...props(styles.frame)}>
       <svg
         role="img"
         aria-label="Pairing code for the Nyte iOS app"
         width={size}
         height={size}
         viewBox={`0 0 ${String(count)} ${String(count)}`}
-        {...stylex.props(styles.code)}
+        {...props(styles.code)}
       >
         <path d={path} fill="#000000" />
       </svg>

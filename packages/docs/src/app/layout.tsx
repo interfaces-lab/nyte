@@ -1,4 +1,6 @@
 import "./global.css";
+import { props } from "@stylexjs/stylex";
+import { siteTypography } from "~/theme.stylex";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 
@@ -38,10 +40,10 @@ export default function Layout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${geist.variable} ${geistMono.variable} overflow-hidden`}
+      className={`${inter.variable} ${geist.variable} ${geistMono.variable} ${props(siteTypography).className ?? ""} overflow-hidden`}
       suppressHydrationWarning
     >
-      <body className="flex h-dvh min-h-svh min-w-0 flex-col overflow-hidden bg-(--nyte-bg-base) font-sans text-(--nyte-content-primary) antialiased">
+      <body className="flex h-dvh min-h-svh min-w-0 flex-col overflow-hidden bg-background font-sans text-foreground antialiased">
         {children}
       </body>
     </html>

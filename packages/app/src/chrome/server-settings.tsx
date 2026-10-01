@@ -1,3 +1,4 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * The two connections Environments shows, pointing opposite ways. The Cloud
  * row is outbound: a remote Nyte host this desktop reaches, whose chats run
@@ -6,7 +7,7 @@
  * or the iOS app on this Mac or over Tailscale. Nothing here touches local
  * providers.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { focusManager, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { Transition } from "motion/react";
@@ -21,17 +22,17 @@ import type {
   TailnetAvailability,
 } from "../bridge.ts";
 import { Icon } from "@nyte-ai/ui/icon";
-import { Button } from "@nyte-ai/ui/button";
+import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { nyte } from "../nyte.ts";
 import { keys, useRemoteAccessState, useServerState } from "../queries.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
 import { PairingCode, pairingPayload } from "./pairing-code.tsx";
 
-const shareStyles = stylex.create({
+const shareStyles = create({
   panel: { display: "flex", flexDirection: "column", gap: 8 },
   // The pane keeps one height per step and animates between them, so the row
   // below it never jumps while the user switches.
@@ -49,9 +50,9 @@ const shareStyles = stylex.create({
     rowGap: 6,
   },
   label: {
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   fieldActions: { display: "inline-flex", gap: 2 },
   // Selected whole so a click cannot grab half of a token or address.
@@ -61,15 +62,15 @@ const shareStyles = stylex.create({
     minHeight: 26,
     paddingInline: 8,
     paddingBlock: 4,
-    borderRadius: t.radius6,
+    borderRadius: shape.control,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: t.borderSecondaryTranslucent,
-    backgroundColor: t.bgBase,
-    color: t.contentPrimary,
-    fontFamily: t.fontMono,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    borderColor: role.borderSecondaryTranslucent,
+    backgroundColor: role.bgBase,
+    color: role.contentPrimary,
+    fontFamily: type.fontMono,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     fontVariantNumeric: "tabular-nums",
     userSelect: "all",
     whiteSpace: "nowrap",
@@ -93,14 +94,14 @@ function ConnectForm({
 
   return (
     <form
-      {...stylex.props(styles.keyForm)}
+      {...props(styles.keyForm)}
       onSubmit={(event) => {
         event.preventDefault();
 
         if (ready) onSubmit({ baseUrl: baseUrl.trim(), token: token.trim() });
       }}
     >
-      <div {...stylex.props(styles.keyRow)}>
+      <div {...props(styles.keyRow)}>
         <Input
           variant="quiet"
           type="url"
@@ -115,7 +116,7 @@ function ConnectForm({
           onValueChange={setBaseUrl}
         />
       </div>
-      <div {...stylex.props(styles.keyRow)}>
+      <div {...props(styles.keyRow)}>
         <Input
           variant="quiet"
           type="password"
@@ -128,7 +129,7 @@ function ConnectForm({
           xstyle={styles.keyInput}
           onValueChange={setToken}
         />
-        <Button type="submit" variant="inverse" disabled={pending || !ready}>
+        <Button type="submit" variant="solid" tone="primary" disabled={pending || !ready}>
           {pending ? "Connecting…" : "Connect"}
         </Button>
         {onCancel !== undefined && (
@@ -137,7 +138,7 @@ function ConnectForm({
           </Button>
         )}
       </div>
-      <span {...stylex.props(styles.keyHint)}>
+      <span {...props(styles.keyHint)}>
         Stored on this Mac in ~/.nyte/server.json. The desktop proves the token before saving it.
       </span>
     </form>
@@ -299,26 +300,30 @@ function ServingPanel({ state }: { state: Serving }) {
   const hidden = "••••••••••••••••";
 
   return (
-    <div {...stylex.props(shareStyles.panel)}>
-      <div {...stylex.props(shareStyles.fields)}>
-        <span {...stylex.props(shareStyles.label)}>Link</span>
-        <code aria-label="Pairing link" {...stylex.props(shareStyles.value)}>
+    <div {...props(shareStyles.panel)}>
+      <div {...props(shareStyles.fields)}>
+        <span {...props(shareStyles.label)}>Link</span>
+        <code aria-label="Pairing link" {...props(shareStyles.value)}>
           {revealed ? state.pairingUrl : state.pairingUrl.replace(state.token, hidden)}
         </code>
-        <span {...stylex.props(shareStyles.fieldActions)}>
+        <span {...props(shareStyles.fieldActions)}>
           <CopyButton label="Link" value={state.pairingUrl} />
-          <Button
-            onClick={() => {
+          <ButtonLink
+            href={state.pairingUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => {
+              event.preventDefault();
               nyte.host.openExternal({ url: state.pairingUrl }).catch((cause: unknown) => {
                 toast.error(`Couldn't open the link: ${errorMessage(cause)}`);
               });
             }}
           >
             Open
-          </Button>
+          </ButtonLink>
         </span>
       </div>
-      <div {...stylex.props(shareStyles.switcher)} role="group" aria-label="Pairing method">
+      <div {...props(shareStyles.switcher)} role="group" aria-label="Pairing method">
         <Toggle pressed={step === "scan"} onPressedChange={() => setStep("scan")}>
           Scan
         </Toggle>
@@ -326,7 +331,7 @@ function ServingPanel({ state }: { state: Serving }) {
           Address and token
         </Toggle>
       </div>
-      <motion.div layout {...stylex.props(shareStyles.steps)} transition={transition}>
+      <motion.div layout {...props(shareStyles.steps)} transition={transition}>
         <AnimatePresence initial={false} mode="popLayout">
           {step === "scan" ? (
             <motion.div
@@ -336,15 +341,15 @@ function ServingPanel({ state }: { state: Serving }) {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: offset }}
               transition={transition}
-              {...stylex.props(shareStyles.step)}
+              {...props(shareStyles.step)}
             >
-              <div {...stylex.props(shareStyles.scan)}>
+              <div {...props(shareStyles.scan)}>
                 <PairingCode value={payload} size={132} />
-                <span {...stylex.props(shareStyles.scanText)}>
-                  <span {...stylex.props(shareStyles.label)}>
+                <span {...props(shareStyles.scanText)}>
+                  <span {...props(shareStyles.label)}>
                     In the iOS app, tap Scan QR code on the connect screen.
                   </span>
-                  <span {...stylex.props(styles.deviceCodeNote)}>
+                  <span {...props(styles.deviceCodeNote)}>
                     The code carries the token, so treat it like the token itself. It stops working
                     when you stop.
                   </span>
@@ -359,21 +364,21 @@ function ServingPanel({ state }: { state: Serving }) {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: offset }}
               transition={transition}
-              {...stylex.props(shareStyles.step)}
+              {...props(shareStyles.step)}
             >
-              <div {...stylex.props(shareStyles.fields)}>
-                <span {...stylex.props(shareStyles.label)}>Address</span>
-                <code aria-label="Address" {...stylex.props(shareStyles.value)}>
+              <div {...props(shareStyles.fields)}>
+                <span {...props(shareStyles.label)}>Address</span>
+                <code aria-label="Address" {...props(shareStyles.value)}>
                   {state.address}
                 </code>
-                <span {...stylex.props(shareStyles.fieldActions)}>
+                <span {...props(shareStyles.fieldActions)}>
                   <CopyButton label="Address" value={state.address} />
                 </span>
-                <span {...stylex.props(shareStyles.label)}>Token</span>
-                <code aria-label="Token" {...stylex.props(shareStyles.value)}>
+                <span {...props(shareStyles.label)}>Token</span>
+                <code aria-label="Token" {...props(shareStyles.value)}>
                   {revealed ? state.token : hidden}
                 </code>
-                <span {...stylex.props(shareStyles.fieldActions)}>
+                <span {...props(shareStyles.fieldActions)}>
                   <CopyButton label="Token" value={state.token} />
                   <Button
                     iconOnly
@@ -384,7 +389,7 @@ function ServingPanel({ state }: { state: Serving }) {
                   />
                 </span>
               </div>
-              <span {...stylex.props(styles.deviceCodeNote)}>
+              <span {...props(styles.deviceCodeNote)}>
                 {state.reach === "tailnet"
                   ? "Reachable from your signed-in Tailscale devices on any network, and from nothing else. The token is new each time and never written to disk."
                   : "Only this Mac can reach this address, so a physical phone can't. The token is new each time and never written to disk."}
@@ -450,7 +455,8 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
             detail={tailnetDetail(state.tailnet)}
             actions={
               <Button
-                variant="inverse"
+                variant="solid"
+                tone="primary"
                 disabled={pending || state.tailnet.kind !== "ready"}
                 onClick={() => start.mutate("tailnet")}
               >

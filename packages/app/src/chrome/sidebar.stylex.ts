@@ -1,21 +1,14 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * Sidebar feature styles.
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
  */
-import * as stylex from "@stylexjs/stylex";
+import { create } from "@stylexjs/stylex";
 import { sidebar } from "../theme/schema.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { appearance, motion, role, type } from "@nyte-ai/ui/vars.stylex";
 
-export const sidebarStyles = stylex.create({
+export const sidebarStyles = create({
   rail: {
-    // The rail is the surface that measures its rows: `Row` owns structure and
-    // reads its geometry from these four variables. The leading lane is fixed
-    // so a 14px folder glyph and an 8px draft dot start their labels on the
-    // same edge.
-    "--nyte-row-height": sidebar.rowHeight,
-    "--nyte-row-gap": sidebar.rowGap,
-    "--nyte-row-padding-inline": sidebar.rowPaddingInline,
-    "--nyte-row-leading-size": sidebar.iconSlot,
     display: "flex",
     flexDirection: "column",
     width: sidebar.width,
@@ -26,10 +19,10 @@ export const sidebarStyles = stylex.create({
     containerName: "nyte-sidebar",
   },
   content: {
-    "--_sidebar-motion-duration": t.durationNormal,
-    "--_sidebar-motion-easing": t.easeOutQuint,
+    "--_sidebar-motion-duration": motion.durationNormal,
+    "--_sidebar-motion-easing": motion.easeOutQuint,
     // Archiving is a dismissal, not a rearrangement: one short slide, no glide.
-    "--_sidebar-archive-duration": t.durationFast,
+    "--_sidebar-archive-duration": motion.durationFast,
     position: "relative",
     display: "flex",
     flexDirection: "column",
@@ -60,15 +53,19 @@ export const sidebarStyles = stylex.create({
    * the shortcut with them.
    */
   navRow: {
+    minHeight: sidebar.rowHeight,
+    gap: sidebar.rowGap,
+    "--_row-padding-inline": sidebar.rowPaddingInline,
     "--_shortcut-opacity": {
       default: "0",
       ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
       ":focus-visible": "1",
     },
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     fontWeight: 400,
   },
+  navLeading: { width: sidebar.iconSlot },
   navRowActive: { "--_shortcut-opacity": "1" },
   shortcutSlot: {
     display: "flex",
@@ -78,8 +75,8 @@ export const sidebarStyles = stylex.create({
     flexShrink: 0,
     opacity: "var(--_shortcut-opacity)",
     transitionProperty: "opacity",
-    transitionDuration: t.durationFast,
-    transitionTimingFunction: t.easeOut,
+    transitionDuration: motion.durationFast,
+    transitionTimingFunction: motion.easeOut,
   },
   shortcutPersistent: { opacity: 1 },
   scroll: {
@@ -112,9 +109,9 @@ export const sidebarStyles = stylex.create({
     width: "100%",
     height: sidebar.rowHeight,
     paddingInlineEnd: sidebar.rowPaddingInline,
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     fontWeight: 400,
     flexShrink: 0,
   },
@@ -127,12 +124,12 @@ export const sidebarStyles = stylex.create({
     paddingInlineStart: sidebar.rowPaddingInline,
     paddingInlineEnd: 4,
     flex: 1,
-    borderRadius: t.radius6,
+    borderRadius: shape.control,
     color: "inherit",
   },
   sectionChevron: {
     opacity: "var(--_section-chevron-opacity)",
-    transitionTimingFunction: t.easeOut,
+    transitionTimingFunction: motion.easeOut,
   },
   sectionLabel: {
     minWidth: 0,
@@ -146,15 +143,14 @@ export const sidebarStyles = stylex.create({
     gap: sidebar.listGap,
     minWidth: 0,
   },
-  /**
-   * The tones every sidebar row shares. `Row` owns the structure and reads its
-   * geometry from the rail; this is only what the surface sounds different on.
-   */
   rowSurface: {
-    borderRadius: t.radius6,
-    color: t.contentChrome,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    minHeight: sidebar.rowHeight,
+    gap: sidebar.rowGap,
+    "--_row-padding-inline": sidebar.rowPaddingInline,
+    borderRadius: shape.control,
+    color: role.contentChrome,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
   rowPrimary: {
     "::before": { content: "''", position: "absolute", inset: 0 },
@@ -176,7 +172,7 @@ export const sidebarStyles = stylex.create({
       ":hover": "inline-flex",
       ":focus-within": "inline-flex",
     },
-    cursor: t.cursorInteractive,
+    cursor: appearance.cursorInteractive,
     flexShrink: 0,
   },
   /** Room for the create action, which floats over the row rather than in it. */
@@ -193,11 +189,11 @@ export const sidebarStyles = stylex.create({
    * list instead of behind the row.
    */
   sessionRow: {
-    "--_row-meta-color": t.contentSecondary,
+    "--_row-meta-color": role.contentSecondary,
     "--_row-fill": {
       default: "transparent",
-      ":hover": t.bgHover,
-      ":focus-within": t.bgHover,
+      ":hover": role.bgHover,
+      ":focus-within": role.bgHover,
     },
     /*
      * The trailing lane is reserved only for what is showing. The time, when
@@ -207,8 +203,8 @@ export const sidebarStyles = stylex.create({
      * in, and re-running the ellipsis on hover is the cheaper of the two, being
      * the state the eye is already moving through.
      */
-    cursor: t.cursorInteractive,
-    touchAction: "none",
+    cursor: appearance.cursorInteractive,
+
     userSelect: "none",
     WebkitUserDrag: "none",
   },
@@ -227,7 +223,7 @@ export const sidebarStyles = stylex.create({
    * decision is pending.
    */
   sessionRowAsk: {
-    "--nyte-row-height": "40px",
+    minHeight: { default: 40, "@media (pointer: coarse)": 52 },
     alignItems: "flex-start",
     paddingBlock: 4,
   },
@@ -241,39 +237,38 @@ export const sidebarStyles = stylex.create({
   /** The actions cover the title line's box, clear of the second line. */
   rowActionsAsk: {
     top: 4,
-    height: t.leadingBase,
+    height: type.leadingBase,
     transform: "none",
   },
   rowIconAsk: { alignSelf: "flex-start", paddingBlockStart: 2 },
-  sessionAskWaiting: { color: t.intentWarningContent },
-  sessionAskFailed: { color: t.intentDangerContent },
+  sessionAsk: { color: role.contentSecondary },
   /** Replaces the row's title while renaming; same footprint, so the list does not jump. */
   sessionRenameRow: {
-    "--_row-fill": t.bgInteractiveSecondaryTranslucent,
+    "--_row-fill": role.bgInteractiveSecondaryTranslucent,
   },
   sessionRenameInput: {
     // The label is a plain box, not a flex line, so the field fills it by width.
     width: "100%",
     height: 22,
-    borderRadius: t.radius4,
-    borderColor: t.borderSecondaryTranslucent,
+    borderRadius: shape.indicator,
+    borderColor: role.borderSecondaryTranslucent,
     outlineStyle: { default: "none", ":focus-visible": "solid" },
     outlineWidth: 1,
-    outlineColor: t.focusRing,
+    outlineColor: appearance.focusRing,
     outlineOffset: -1,
   },
   /** The layer `Row.Backdrop` positions behind the row; only the tone is ours. */
   sessionSelection: {
-    backgroundColor: t.bgInteractiveSecondaryTranslucent,
-    boxShadow: `inset 0 0 0 1px ${t.borderPrimary}`,
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    boxShadow: `inset 0 0 0 1px ${role.borderPrimary}`,
   },
   rowSelected: {
     // The selection layer behind the row is the fill; hover must not add a second.
     "--_row-fill": "transparent",
-    "--_row-meta-color": t.contentSecondary,
-    color: t.contentPrimary,
+    "--_row-meta-color": role.contentSecondary,
+    color: role.contentPrimary,
   },
-  draftRow: { color: t.contentSecondary },
+  draftRow: { color: role.contentSecondary },
   /** The status glyph's box, so a badge can sit on its corner without moving the label. */
   sessionBadgeHost: {
     position: "relative",
@@ -291,9 +286,9 @@ export const sidebarStyles = stylex.create({
     placeItems: "center",
     width: 12,
     height: 12,
-    borderRadius: t.radiusFull,
-    backgroundColor: t.sidebarMaterial,
-    color: t.contentSecondary,
+    borderRadius: shape.pill,
+    backgroundColor: role.sidebarMaterial,
+    color: role.contentSecondary,
   },
   /**
    * A chat whose machine can't be reached keeps its place at half weight. The
@@ -302,8 +297,9 @@ export const sidebarStyles = stylex.create({
   sessionUnreachable: { opacity: 0.5 },
   /** The lane's width comes from the rail; this is the tone and the box height. */
   rowIcon: {
+    width: sidebar.iconSlot,
     height: sidebar.iconSlot,
-    color: t.contentTertiary,
+    color: role.contentTertiary,
   },
   draftDot: {
     width: 8,
@@ -311,7 +307,7 @@ export const sidebarStyles = stylex.create({
     borderWidth: 1.5,
     borderStyle: "solid",
     borderColor: "currentColor",
-    borderRadius: t.radiusFull,
+    borderRadius: shape.pill,
   },
   workspaceGlyph: {
     position: "relative",
@@ -330,19 +326,19 @@ export const sidebarStyles = stylex.create({
     transform: "rotate(-90deg)",
     transitionProperty: "transform",
     transitionDuration: {
-      default: t.durationSlow,
+      default: motion.durationSlow,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: t.easeOut,
+    transitionTimingFunction: motion.easeOut,
   },
   workspaceChevronOpen: { transform: "rotate(0deg)" },
-  workspaceUnavailable: { color: t.contentTertiary },
+  workspaceUnavailable: { color: role.contentTertiary },
   rowMeta: {
     minWidth: sidebar.metaWidth,
     justifyContent: "flex-end",
     color: "var(--_row-meta-color)",
-    fontSize: t.fontXs,
-    lineHeight: t.leadingXs,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
     letterSpacing: 0.07,
   },
   rowActions: {
@@ -367,8 +363,8 @@ export const sidebarStyles = stylex.create({
   },
   workspaceActions: {
     transitionProperty: "opacity",
-    transitionDuration: t.durationFast,
-    transitionTimingFunction: t.easeOut,
+    transitionDuration: motion.durationFast,
+    transitionTimingFunction: motion.easeOut,
   },
   sessionList: {
     display: { default: "flex", "[hidden]": "none" },
@@ -381,9 +377,9 @@ export const sidebarStyles = stylex.create({
     paddingInlineStart: `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} + ${sidebar.rowGap})`,
     paddingInlineEnd: sidebar.rowPaddingInline,
     paddingBlock: 4,
-    color: t.contentSecondary,
-    fontSize: t.fontXs,
-    lineHeight: t.leadingXs,
+    color: role.contentSecondary,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
     userSelect: "none",
   },
   quiet: {
@@ -392,20 +388,20 @@ export const sidebarStyles = stylex.create({
     minHeight: sidebar.rowHeight,
     paddingInline: sidebar.rowPaddingInline,
     paddingBlock: 0,
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     flexShrink: 0,
   },
   sessionQuiet: {
     paddingInlineStart: `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} + ${sidebar.rowGap})`,
   },
   showMore: {
-    "--_row-fill": { default: "transparent", ":hover": t.bgHover },
+    "--_row-fill": { default: "transparent", ":hover": role.bgHover },
     paddingInline: `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} + ${sidebar.rowGap})`,
-    borderRadius: t.radius6,
-    color: { default: t.contentInteractiveSecondary, ":disabled": t.contentDisabled },
-    fontSize: t.fontBase,
+    borderRadius: shape.control,
+    color: { default: role.contentInteractiveSecondary, ":disabled": role.contentDisabled },
+    fontSize: type.fontBase,
   },
   footer: {
     display: "flex",
@@ -424,7 +420,12 @@ export const sidebarStyles = stylex.create({
     minWidth: 0,
     flex: 1,
   },
-  avatarSlot: { height: sidebar.iconSlot, borderRadius: t.radius4, overflow: "hidden" },
+  avatarSlot: {
+    width: sidebar.iconSlot,
+    height: sidebar.iconSlot,
+    borderRadius: shape.indicator,
+    overflow: "hidden",
+  },
   avatar: { display: "block", width: "100%", height: "100%", objectFit: "cover" },
   /**
    * Pointing is not selecting: with the menu's hover highlight off, the label
@@ -434,10 +435,10 @@ export const sidebarStyles = stylex.create({
    */
   accountMenuItem: {
     color: {
-      default: t.contentSecondary,
-      ":hover": t.contentPrimary,
-      ":is([data-highlighted])": t.contentPrimary,
-      ":is([data-disabled])": t.contentDisabled,
+      default: role.contentSecondary,
+      ":hover": role.contentPrimary,
+      ":is([data-highlighted])": role.contentPrimary,
+      ":is([data-disabled])": role.contentDisabled,
     },
   },
 });

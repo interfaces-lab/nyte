@@ -1,10 +1,11 @@
 /** App-specific status marks and time labels, styled on the palette. */
-import * as stylex from "@stylexjs/stylex";
+import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
-import { glyph } from "@nyte-ai/ui/schema.stylex";
+import { glyph, shape } from "@nyte-ai/ui/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { ramp, t } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/vars.stylex";
+import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import type { SessionMark } from "@nyte-ai/client";
 
 /** The spinner's disc at full: 5 cells across on a 3px pitch. */
@@ -13,18 +14,18 @@ const MOON = Array.from({ length: 25 }, (_, index) => ({ x: index % 5, y: Math.f
   .map(({ x, y }) => `M${x * 3} ${y * 3}h2v2h-2z`)
   .join("");
 
-const pulse = stylex.keyframes({
+const pulse = keyframes({
   "0%": { opacity: 1 },
   "50%": { opacity: 0.35 },
   "100%": { opacity: 1 },
 });
 
-const styles = stylex.create({
+const styles = create({
   unreadMark: {
     flexShrink: 0,
     width: glyph.box,
     height: glyph.box,
-    color: ramp.blue80,
+    color: role.contentInteractiveTertiary,
     animationName: { default: pulse, "@media (prefers-reduced-motion: reduce)": "none" },
     // The spinner's loop, so an unread moon breathes at the pace a working one turns.
     animationDuration: "1600ms",
@@ -38,23 +39,22 @@ const styles = stylex.create({
     boxSizing: "border-box",
     width: 8,
     height: 8,
-    borderRadius: t.radiusFull,
+    borderRadius: shape.pill,
     flexShrink: 0,
     pointerEvents: "none",
   },
-  statusWorking: { width: glyph.box, height: glyph.box, color: t.intentPrimaryContent },
-  statusRetry: { width: glyph.box, height: glyph.box, color: t.intentWarningContent },
+  statusSpinner: { width: glyph.box, height: glyph.box, color: role.contentSecondary },
   statusWaiting: {
     width: 14,
     height: 14,
     backgroundColor: "transparent",
-    color: t.intentWarningContent,
+    color: role.contentSecondary,
   },
   statusFailed: {
     width: 14,
     height: 14,
     backgroundColor: "transparent",
-    color: t.intentDangerContent,
+    color: role.contentSecondary,
   },
   statusIdle: { backgroundColor: "transparent" },
   statusUnread: { width: glyph.box, height: glyph.box, backgroundColor: "transparent" },
@@ -73,13 +73,13 @@ const STATUS_MARK_LABEL = {
 function statusMarkStyle(mark: SessionMark) {
   switch (mark) {
     case "working":
-      return styles.statusWorking;
+      return [intent.primary, styles.statusSpinner];
     case "retry":
-      return styles.statusRetry;
+      return [intent.warning, styles.statusSpinner];
     case "waiting":
-      return styles.statusWaiting;
+      return [intent.warning, styles.statusWaiting];
     case "failed":
-      return styles.statusFailed;
+      return [intent.danger, styles.statusFailed];
     case "idle":
       return styles.statusIdle;
     default: {
@@ -108,10 +108,7 @@ export function StatusDot({
     <span
       role="img"
       aria-label={mark === "idle" ? "Completed, unread" : STATUS_MARK_LABEL[mark]}
-      {...stylex.props(
-        styles.statusDot,
-        mark === "idle" ? styles.statusUnread : statusMarkStyle(mark),
-      )}
+      {...props(styles.statusDot, mark === "idle" ? styles.statusUnread : statusMarkStyle(mark))}
     >
       {mark === "idle" && <UnreadMark />}
       {(mark === "working" || mark === "retry") && <Spinner />}
@@ -129,7 +126,7 @@ export function UnreadMark(): ReactElement {
       viewBox="0 0 15 15"
       fill="currentColor"
       shapeRendering="crispEdges"
-      {...stylex.props(styles.unreadMark)}
+      {...props(surfaceTheme.blue, styles.unreadMark)}
     >
       <path d={MOON} />
     </svg>

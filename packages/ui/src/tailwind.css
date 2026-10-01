@@ -14,16 +14,14 @@
   --color-tertiary-foreground: var(--nyte-content-tertiary);
   --color-fill-hover: var(--nyte-bg-hover);
   --color-fill-selected: var(--nyte-bg-interactive-secondary-translucent);
-  --color-accent: var(--nyte-intent-primary-content);
-  --color-destructive: var(--nyte-intent-danger-content);
   --color-border-subtle: var(--nyte-border-secondary-translucent);
   --color-border: var(--nyte-border-secondary-translucent);
   --color-border-strong: var(--nyte-border-primary-translucent);
-  --color-ring: var(--nyte-blue-80);
-  --radius-xs: var(--nyte-radius-2);
-  --radius-sm: var(--nyte-radius-4);
-  --radius-md: var(--nyte-radius-6);
-  --radius-lg: var(--nyte-radius-8);
-  --radius-xl: var(--nyte-radius-12);
-  --radius-2xl: var(--nyte-radius-14);
+  --color-ring: var(--nyte-focus-ring);
+  --radius-xs: var(--nyte-shape-indicator);
+  --radius-sm: var(--nyte-shape-indicator);
+  --radius-md: var(--nyte-shape-control);
+  --radius-lg: var(--nyte-shape-control);
+  --radius-xl: var(--nyte-shape-card);
+  --radius-2xl: var(--nyte-shape-surface);
 }

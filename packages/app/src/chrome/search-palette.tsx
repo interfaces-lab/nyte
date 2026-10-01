@@ -1,5 +1,5 @@
 import { Tabs } from "@nyte-ai/ui/tabs";
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 // oxlint-disable-next-line no-restricted-imports -- the shortcut and input focus follow the open state
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
@@ -238,35 +238,35 @@ export function SearchPalette({
   const agentContent = (embedded = false): ReactElement | null => {
     if (!sessionQueriesAvailable)
       return embedded ? null : (
-        <div aria-busy="true" {...stylex.props(styles.empty)}>
+        <div aria-busy="true" {...props(styles.empty)}>
           Loading chats…
         </div>
       );
 
     if (searchingAgents ? sessionSearch.isPending : recentSessions.isPending)
       return (
-        <div aria-busy="true" {...stylex.props(styles.empty)}>
+        <div aria-busy="true" {...props(styles.empty)}>
           Loading chats…
         </div>
       );
 
     if (searchingAgents ? sessionSearch.isError : recentSessions.isError)
       return embedded ? null : (
-        <div role="alert" {...stylex.props(styles.empty)}>
+        <div role="alert" {...props(styles.empty)}>
           Couldn&rsquo;t load chats. Try again.
         </div>
       );
 
     if (sessions.length === 0)
       return embedded ? null : (
-        <div {...stylex.props(styles.empty)}>
+        <div {...props(styles.empty)}>
           {searchingAgents ? `No chats match "${query.trim()}"` : "No chats yet"}
         </div>
       );
 
     return (
       <>
-        <div {...stylex.props(styles.groupLabel)}>{searchingAgents ? "Chats" : "Recent chats"}</div>
+        <div {...props(styles.groupLabel)}>{searchingAgents ? "Chats" : "Recent chats"}</div>
         {sessions.map((session) => (
           <MenuItem
             key={session.sessionId}
@@ -309,7 +309,7 @@ export function SearchPalette({
           if (isOption(value, TABS)) setTab(value);
         }}
       >
-        <search {...stylex.props(styles.searchRow)}>
+        <search {...props(styles.searchRow)}>
           <Icon name="search" size={15} />
           <Input
             ref={inputRef}
@@ -349,26 +349,26 @@ export function SearchPalette({
             </Tabs.Tab>
           ))}
         </Tabs.List>
-        <div role="status" {...stylex.props(srOnly)}>
+        <div role="status" {...props(srOnly)}>
           {`${String(resultCount)} ${resultCount === 1 ? "result" : "results"}`}
         </div>
         <Tabs.Panel id={`${resultsID}-agents`} value="agents" xstyle={styles.results}>
           {agentContent()}
         </Tabs.Panel>
         <Tabs.Panel id={`${resultsID}-files`} value="files" xstyle={styles.results}>
-          <div {...stylex.props(styles.empty)}>No recent files.</div>
+          <div {...props(styles.empty)}>No recent files.</div>
         </Tabs.Panel>
         <Tabs.Panel id={`${resultsID}-all`} value="all" xstyle={styles.results}>
           {agentContent(true)}
           {visibleActions.length > 0 && (
             <>
-              <div {...stylex.props(styles.groupLabel)}>Actions</div>
+              <div {...props(styles.groupLabel)}>Actions</div>
               {visibleActions.map((action) => (
                 <MenuItem
                   key={action.key}
                   xstyle={styles.result}
                   leading={
-                    <span {...stylex.props(styles.resultIcon)}>
+                    <span {...props(styles.resultIcon)}>
                       <Icon name={action.icon} size={16} />
                     </span>
                   }
@@ -390,16 +390,16 @@ export function SearchPalette({
             xstyle={styles.results}
           >
             {visibleActions.length === 0 ? (
-              <div {...stylex.props(styles.empty)}>No {panelTab} match this search.</div>
+              <div {...props(styles.empty)}>No {panelTab} match this search.</div>
             ) : (
               <>
-                <div {...stylex.props(styles.groupLabel)}>{tabLabel(panelTab)}</div>
+                <div {...props(styles.groupLabel)}>{tabLabel(panelTab)}</div>
                 {visibleActions.map((action) => (
                   <MenuItem
                     key={action.key}
                     xstyle={styles.result}
                     leading={
-                      <span {...stylex.props(styles.resultIcon)}>
+                      <span {...props(styles.resultIcon)}>
                         <Icon name={action.icon} size={16} />
                       </span>
                     }

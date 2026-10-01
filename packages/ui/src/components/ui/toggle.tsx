@@ -32,6 +32,7 @@ export function Toggle({
   iconOnly = false,
   round,
   icon,
+  tone,
   xstyle,
   className,
   style,
@@ -49,9 +50,9 @@ export function Toggle({
       onPressedChange={onPressedChange}
       render={<button type={type} title={tooltipTitle(iconOnly, rest["aria-label"])} {...rest} />}
       {...buttonStyle(
-        "primary",
+        "ghost",
         size,
-        { iconOnly, round, xstyle, className, style },
+        { iconOnly, round, tone, xstyle, className, style },
         indicator === "glyph",
       )}
     >

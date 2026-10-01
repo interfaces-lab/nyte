@@ -1,8 +1,10 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * What every code surface in the review shares: one Pierre preset, one file
  * header, and one way to turn a line selection into a side-chat reference.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import type { FileDiffMetadata, SelectedLineRange } from "@pierre/diffs";
 import { parsePatchFiles } from "@pierre/diffs";
 import { useMemo, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
@@ -13,9 +15,8 @@ import { Button } from "@nyte-ai/ui/button";
 import { Checkbox } from "@nyte-ai/ui/checkbox";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuItem } from "@nyte-ai/ui/menu";
-import { intent } from "@nyte-ai/ui/surface-theme";
 import { Hint } from "@nyte-ai/ui/tooltip";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 import { fileAt } from "./scenario";
 
 /** One file of the pull request at its current head. */
@@ -86,9 +87,9 @@ function readTheme(): "light" | "dark" {
 export const PIERRE_CSS = `
 ${PIERRE_TOKEN_CSS}
 [data-line-type="context"], [data-gutter-buffer] { --diffs-line-bg: var(--diffs-bg); }
-[data-line-type="change-addition"] { --diffs-line-bg: ${t.diffAddedLineBg}; }
-[data-line-type="change-deletion"] { --diffs-line-bg: ${t.diffRemovedLineBg}; }
-[data-separator-content] { background-color: ${t.bgMutedTranslucent}; color: ${t.contentSecondary}; font-size: 12px; }
+[data-line-type="change-addition"] { --diffs-line-bg: var(--diffs-bg-addition-override); }
+[data-line-type="change-deletion"] { --diffs-line-bg: var(--diffs-bg-deletion-override); }
+[data-separator-content] { background-color: ${role.bgMutedTranslucent}; color: ${role.contentSecondary}; font-size: 12px; }
 `;
 
 export function usePierreOptions(layout: "unified" | "split") {
@@ -142,13 +143,13 @@ export function CodeFileHeader({
   const directory = file.path.slice(0, file.path.length - name.length);
 
   return (
-    <div {...stylex.props(styles.header, !collapsed && styles.headerOpen)}>
+    <div {...props(styles.header, !collapsed && styles.headerOpen)}>
       <button
         type="button"
         aria-expanded={!collapsed}
         aria-label={collapsed ? `Expand ${name}` : `Collapse ${name}`}
         onClick={onToggle}
-        {...stylex.props(styles.toggle)}
+        {...props(styles.toggle)}
       >
         <Icon
           name={collapsed ? "chevron-right" : "chevron-down"}
@@ -156,18 +157,17 @@ export function CodeFileHeader({
           xstyle={styles.chevron}
         />
         <FileTypeIcon path={file.path} />
-        <span {...stylex.props(styles.name)}>{name}</span>
-        <Hint
-          content={file.path}
-          trigger={<span {...stylex.props(styles.directory)}>{directory}</span>}
-        />
+        <span {...props(styles.name)}>{name}</span>
+        <Hint content={file.path} trigger={<span {...props(styles.directory)}>{directory}</span>} />
       </button>
-      {justUpdated && <span {...stylex.props(styles.updated)}>Just updated</span>}
-      <span {...stylex.props(styles.counts)}>
-        {file.added > 0 && <span {...stylex.props(styles.added)}>+{file.added}</span>}
-        {file.removed > 0 && <span {...stylex.props(styles.removed)}>−{file.removed}</span>}
+      {justUpdated && <span {...props([intent.warning, styles.updated])}>Just updated</span>}
+      <span {...props(styles.counts)}>
+        {file.added > 0 && <span {...props([intent.success, styles.added])}>+{file.added}</span>}
+        {file.removed > 0 && (
+          <span {...props([intent.danger, styles.removed])}>−{file.removed}</span>
+        )}
       </span>
-      <label {...stylex.props(styles.reviewed)}>
+      <label {...props(styles.reviewed)}>
         <Checkbox
           checked={reviewed === "reviewed"}
           onCheckedChange={(checked) => onReviewed(checked)}
@@ -205,7 +205,7 @@ export function AddToChat({ onAdd }: { readonly onAdd: () => void }): ReactNode 
       title="Add to chat"
       onPointerDown={(event) => event.stopPropagation()}
       onClick={onAdd}
-      {...stylex.props(intent.primary, styles.addToChat)}
+      {...props(intent.primary, styles.addToChat)}
     >
       <Icon name="new-chat" size={12} />
     </button>
@@ -214,14 +214,14 @@ export function AddToChat({ onAdd }: { readonly onAdd: () => void }): ReactNode 
 
 export function Counts({ file }: { readonly file: ReviewFile }): ReactElement {
   return (
-    <span {...stylex.props(styles.counts)}>
-      {file.added > 0 && <span {...stylex.props(styles.added)}>+{file.added}</span>}
-      {file.removed > 0 && <span {...stylex.props(styles.removed)}>−{file.removed}</span>}
+    <span {...props(styles.counts)}>
+      {file.added > 0 && <span {...props([intent.success, styles.added])}>+{file.added}</span>}
+      {file.removed > 0 && <span {...props([intent.danger, styles.removed])}>−{file.removed}</span>}
     </span>
   );
 }
 
-const styles = stylex.create({
+const styles = create({
   addToChat: {
     position: "relative",
     zIndex: 4,
@@ -233,10 +233,10 @@ const styles = stylex.create({
     marginInlineEnd: "calc(-1lh + 1ch)",
     padding: 0,
     borderStyle: "none",
-    borderRadius: t.radius4,
-    backgroundColor: { default: t.buttonFill, ":hover": t.buttonFillHover },
-    color: t.contentOnInteractiveStrong,
-    cursor: t.cursorInteractive,
+    borderRadius: shape.indicator,
+    backgroundColor: { default: role.buttonFill, ":hover": role.buttonFillHover },
+    color: role.contentOnInteractiveStrong,
+    cursor: appearance.cursorInteractive,
   },
   header: {
     display: "flex",
@@ -244,15 +244,15 @@ const styles = stylex.create({
     gap: 8,
     height: 44,
     paddingInlineEnd: 8,
-    backgroundColor: t.bgBase,
-    color: t.contentPrimary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    backgroundColor: role.bgBase,
+    color: role.contentPrimary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   headerOpen: {
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderSecondaryTranslucent,
+    borderBottomColor: role.borderSecondaryTranslucent,
   },
   toggle: {
     display: "flex",
@@ -267,24 +267,24 @@ const styles = stylex.create({
     color: "inherit",
     font: "inherit",
     textAlign: "start",
-    cursor: t.cursorInteractive,
+    cursor: appearance.cursorInteractive,
   },
-  chevron: { color: t.contentInteractiveTertiary, flexShrink: 0 },
+  chevron: { color: role.contentInteractiveTertiary, flexShrink: 0 },
   name: { fontWeight: 500, whiteSpace: "nowrap" },
   directory: {
     minWidth: 0,
     overflow: "hidden",
-    color: t.contentSecondary,
+    color: role.contentSecondary,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
   updated: {
     flexShrink: 0,
     paddingInline: 6,
-    borderRadius: t.radius4,
-    backgroundColor: t.intentWarningBg,
-    color: t.intentWarningContent,
-    fontSize: t.fontXs,
+    borderRadius: shape.indicator,
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    color: role.contentSecondary,
+    fontSize: type.fontXs,
     lineHeight: "18px",
     fontWeight: 500,
   },
@@ -292,18 +292,18 @@ const styles = stylex.create({
     display: "inline-flex",
     gap: 6,
     flexShrink: 0,
-    fontFamily: t.fontMono,
+    fontFamily: type.fontMono,
     fontSize: 11.5,
     fontVariantNumeric: "tabular-nums",
   },
-  added: { color: t.intentSuccessContent },
-  removed: { color: t.intentDangerContent },
+  added: { color: role.contentSecondary },
+  removed: { color: role.contentSecondary },
   reviewed: {
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
     flexShrink: 0,
-    color: t.contentSecondary,
-    cursor: t.cursorInteractive,
+    color: role.contentSecondary,
+    cursor: appearance.cursorInteractive,
   },
 });

@@ -1,3 +1,4 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * The rail: new chat, search, customize, environments, and settings on top,
  * then a persistent workspace collection. Every folder expands independently over its
@@ -19,7 +20,7 @@
 import { draftPreviewText } from "../conversation/message-references.ts";
 import { userDisplayText } from "../conversation/transcript-presentation.ts";
 import { failureNotice } from "../conversation/tool-copy.ts";
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Row } from "@nyte-ai/ui/row";
 import { toast } from "@nyte-ai/ui/toast";
@@ -223,7 +224,7 @@ function SidebarContent({ children }: { readonly children: ReactNode }): ReactEl
     <nav
       ref={contentRef}
       aria-label={settingsOpen ? "Settings" : "Sessions and workspaces"}
-      {...stylex.props(styles.content)}
+      {...props(styles.content)}
     >
       <motion.div
         data-sidebar-layer="workspace"
@@ -231,7 +232,7 @@ function SidebarContent({ children }: { readonly children: ReactNode }): ReactEl
         initial={false}
         animate={{ opacity: settingsOpen ? 0 : 1, x: settingsOpen ? -shift : 0 }}
         transition={transitions.list}
-        {...stylex.props(styles.contentLayer)}
+        {...props(styles.contentLayer)}
       >
         <MotionConfig reducedMotion="never" transition={{ layout: transition }}>
           <LayoutGroup id={layoutId} inherit={false}>
@@ -245,7 +246,7 @@ function SidebarContent({ children }: { readonly children: ReactNode }): ReactEl
         initial={false}
         animate={{ opacity: settingsOpen ? 1 : 0, x: settingsOpen ? 0 : shift }}
         transition={transitions.list}
-        {...stylex.props(styles.contentLayer)}
+        {...props(styles.contentLayer)}
       >
         <SettingsNavigation section={section} />
       </motion.div>
@@ -586,9 +587,7 @@ export function Sidebar(): ReactElement {
           drafts.length === 0 &&
           (completeDirectoryRequired ? (
             <>
-              <div {...stylex.props(styles.quiet, styles.sessionQuiet)}>
-                No chats match these filters
-              </div>
+              <div {...props(styles.quiet, styles.sessionQuiet)}>No chats match these filters</div>
               <Row
                 variant="nav"
                 xstyle={styles.showMore}
@@ -598,7 +597,7 @@ export function Sidebar(): ReactElement {
               </Row>
             </>
           ) : (
-            <div {...stylex.props(styles.quiet, styles.sessionQuiet)}>No sessions yet</div>
+            <div {...props(styles.quiet, styles.sessionQuiet)}>No sessions yet</div>
           ))}
         {drafts.map((draft) => (
           <DraftRow
@@ -684,10 +683,8 @@ export function Sidebar(): ReactElement {
     return (
       <>
         {visibleDrafts.length > 0 && (
-          <div {...stylex.props(styles.section)}>
-            {view.grouping === "status" && (
-              <div {...stylex.props(styles.sessionGroupLabel)}>Draft</div>
-            )}
+          <div {...props(styles.section)}>
+            {view.grouping === "status" && <div {...props(styles.sessionGroupLabel)}>Draft</div>}
             {visibleDrafts.map((draft) => (
               <DraftRow
                 key={draft.id}
@@ -705,9 +702,7 @@ export function Sidebar(): ReactElement {
           displayedSessionCount === 0 &&
           (completeDirectoryRequired ? (
             <>
-              <div {...stylex.props(styles.quiet, styles.sessionQuiet)}>
-                No chats match these filters
-              </div>
+              <div {...props(styles.quiet, styles.sessionQuiet)}>No chats match these filters</div>
               <Row
                 variant="nav"
                 xstyle={styles.showMore}
@@ -717,12 +712,12 @@ export function Sidebar(): ReactElement {
               </Row>
             </>
           ) : (
-            <div {...stylex.props(styles.quiet, styles.sessionQuiet)}>No sessions yet</div>
+            <div {...props(styles.quiet, styles.sessionQuiet)}>No sessions yet</div>
           ))}
         {visibleGroups.map((group) => (
-          <div key={group.key} {...stylex.props(styles.section)}>
+          <div key={group.key} {...props(styles.section)}>
             {group.label !== undefined && (
-              <div {...stylex.props(styles.sessionGroupLabel)}>{group.label}</div>
+              <div {...props(styles.sessionGroupLabel)}>{group.label}</div>
             )}
             {group.sessions.map((session) =>
               sessionRow(place, session, sidebarVisible && collectionExpanded && !collapsed),
@@ -762,10 +757,10 @@ export function Sidebar(): ReactElement {
     !paletteOpen;
 
   return (
-    <aside {...stylex.props(styles.rail)}>
+    <aside {...props(styles.rail)}>
       <SidebarContent>
         <>
-          <div {...stylex.props(styles.primaryActions)}>
+          <div {...props(styles.primaryActions)}>
             <Row
               variant="nav"
               selected={newChatActive}
@@ -773,11 +768,11 @@ export function Sidebar(): ReactElement {
               xstyle={[styles.navRow, newChatActive && styles.navRowActive]}
               onClick={() => panes.newChat()}
             >
-              <Row.Leading>
+              <Row.Leading xstyle={styles.navLeading}>
                 <Icon name="new-chat" size={14} />
               </Row.Leading>
               <Row.Label>New Chat</Row.Label>
-              <span {...stylex.props(styles.shortcutSlot, styles.shortcutPersistent)}>
+              <span {...props(styles.shortcutSlot, styles.shortcutPersistent)}>
                 <Kbd keys={clientActionKeys(clientActions.newChat, mac)} />
               </span>
             </Row>
@@ -805,11 +800,11 @@ export function Sidebar(): ReactElement {
               onOpenCustomize={() => shellActions.openCustomize(activeSessionId)}
               trigger={
                 <Row variant="nav" xstyle={styles.navRow}>
-                  <Row.Leading>
+                  <Row.Leading xstyle={styles.navLeading}>
                     <Icon name="search" size={14} />
                   </Row.Leading>
                   <Row.Label>Search</Row.Label>
-                  <span {...stylex.props(styles.shortcutSlot)}>
+                  <span {...props(styles.shortcutSlot)}>
                     <Kbd keys={clientActionKeys(clientActions.search, mac)} />
                   </span>
                 </Row>
@@ -824,7 +819,7 @@ export function Sidebar(): ReactElement {
               xstyle={styles.navRow}
               onClick={() => shellActions.openCustomize(activeSessionId)}
             >
-              <Row.Leading>
+              <Row.Leading xstyle={styles.navLeading}>
                 <Icon name="customize" size={14} />
               </Row.Leading>
               <Row.Label>Customize</Row.Label>
@@ -839,7 +834,7 @@ export function Sidebar(): ReactElement {
                 xstyle={styles.navRow}
                 onClick={() => shellActions.openEnvironments()}
               >
-                <Row.Leading>
+                <Row.Leading xstyle={styles.navLeading}>
                   <Icon name="server" size={14} />
                 </Row.Leading>
                 <Row.Label>Environments</Row.Label>
@@ -855,7 +850,7 @@ export function Sidebar(): ReactElement {
               }
               xstyle={styles.navRow}
             >
-              <Row.Leading>
+              <Row.Leading xstyle={styles.navLeading}>
                 <Icon name="settings" size={14} />
               </Row.Leading>
               <Row.Label>Settings</Row.Label>
@@ -863,21 +858,19 @@ export function Sidebar(): ReactElement {
             </Row>
           </div>
 
-          <motion.div layoutScroll data-nyte-scrollport {...stylex.props(styles.scroll)}>
-            <section aria-label={flat ? "Chats" : "Workspaces"} {...stylex.props(styles.section)}>
+          <motion.div layoutScroll data-nyte-scrollport {...props(styles.scroll)}>
+            <section aria-label={flat ? "Chats" : "Workspaces"} {...props(styles.section)}>
               <Collapsible.Root
                 open={collectionExpanded}
                 onOpenChange={setCollectionExpanded}
-                {...stylex.props(styles.section)}
+                {...props(styles.section)}
               >
-                <div {...stylex.props(styles.sectionHeader)}>
+                <div {...props(styles.sectionHeader)}>
                   <Collapsible.Trigger
                     aria-controls={workspaceCollectionID}
                     xstyle={[styles.sectionToggle, focus.ringInset]}
                   >
-                    <span {...stylex.props(styles.sectionLabel)}>
-                      {flat ? "Chats" : "Workspaces"}
-                    </span>
+                    <span {...props(styles.sectionLabel)}>{flat ? "Chats" : "Workspaces"}</span>
                     <Collapsible.Chevron xstyle={styles.sectionChevron} />
                   </Collapsible.Trigger>
                   <WorkspaceControls
@@ -901,10 +894,10 @@ export function Sidebar(): ReactElement {
 
                 <Collapsible.Panel
                   id={workspaceCollectionID}
-                  {...stylex.props(styles.workspaceCollection)}
+                  {...props(styles.workspaceCollection)}
                 >
                   {host.isPending && (
-                    <div aria-busy="true" {...stylex.props(styles.quiet)}>
+                    <div aria-busy="true" {...props(styles.quiet)}>
                       Loading…
                     </div>
                   )}
@@ -974,10 +967,7 @@ export function Sidebar(): ReactElement {
                             onRemove={() => void nyte.host.server.disconnect()}
                           >
                             {cloudFailure !== undefined && (
-                              <div
-                                role="status"
-                                {...stylex.props(styles.quiet, styles.sessionQuiet)}
-                              >
+                              <div role="status" {...props(styles.quiet, styles.sessionQuiet)}>
                                 {cloudFailure}
                               </div>
                             )}
@@ -994,8 +984,8 @@ export function Sidebar(): ReactElement {
       </SidebarContent>
 
       {github !== undefined && (
-        <div {...stylex.props(styles.footer)}>
-          <div ref={footerRowRef} {...stylex.props(styles.footerRow)}>
+        <div {...props(styles.footer)}>
+          <div ref={footerRowRef} {...props(styles.footerRow)}>
             <AccountFooterMenu github={github} anchor={footerRowRef} />
           </div>
         </div>
@@ -1003,7 +993,8 @@ export function Sidebar(): ReactElement {
       {confirmation.kind === "delete-session" && (
         <ConfirmDialog
           open
-          title="Delete chat?"
+          title="Delete Chat"
+          confirmLabel="Delete Chat"
           description="The chat disappears now. Undo from the notification before it closes."
           returnFocusRef={confirmationReturnRef}
           onOpenChange={(nextOpen) => {
@@ -1022,10 +1013,10 @@ export function Sidebar(): ReactElement {
           pending={false}
           error={undefined}
           returnFocusRef={confirmationReturnRef}
-          title={`Archive all chats in ${confirmation.workspaceName}?`}
+          title={`Archive All Chats in ${confirmation.workspaceName}`}
           description="Open chats move to the archive. You can restore any of them later."
-          confirmLabel="Archive all"
-          pendingLabel="Archiving…"
+          confirmLabel="Archive All Chats"
+          pendingLabel="Archiving chats…"
           onOpenChange={(nextOpen) => {
             if (!nextOpen) closeConfirmation();
           }}
@@ -1082,7 +1073,7 @@ function AccountFooterMenu({
               {avatarUrl === undefined ? (
                 <Icon name="user" size={14} />
               ) : (
-                <img alt="" src={avatarUrl} {...stylex.props(styles.avatar)} />
+                <img alt="" src={avatarUrl} {...props(styles.avatar)} />
               )}
             </Row.Leading>
             <Row.Label>{label}</Row.Label>
@@ -1175,13 +1166,11 @@ function WorkspaceRow({
         }
       >
         <Row.Leading xstyle={styles.rowIcon}>
-          <span {...stylex.props(styles.workspaceGlyph)}>
-            <span {...stylex.props(styles.workspaceFolder)}>
+          <span {...props(styles.workspaceGlyph)}>
+            <span {...props(styles.workspaceFolder)}>
               <Icon name={expanded ? "folder-open" : "folder"} size={14} />
             </span>
-            <span
-              {...stylex.props(styles.workspaceChevron, expanded && styles.workspaceChevronOpen)}
-            >
+            <span {...props(styles.workspaceChevron, expanded && styles.workspaceChevronOpen)}>
               <Icon name="chevron-down" size={13} />
             </span>
           </span>
@@ -1202,11 +1191,7 @@ function WorkspaceRow({
   );
 
   return (
-    <Collapsible.Root
-      open={expanded}
-      onOpenChange={onExpandedChange}
-      {...stylex.props(styles.section)}
-    >
+    <Collapsible.Root open={expanded} onOpenChange={onExpandedChange} {...props(styles.section)}>
       <ContextMenu label={`Actions for ${name}`} trigger={row}>
         <ContextMenuItem
           icon="new-chat-folder"
@@ -1228,7 +1213,7 @@ function WorkspaceRow({
           Remove from sidebar
         </ContextMenuItem>
       </ContextMenu>
-      <Collapsible.Panel {...stylex.props(styles.sessionList)}>{children}</Collapsible.Panel>
+      <Collapsible.Panel {...props(styles.sessionList)}>{children}</Collapsible.Panel>
     </Collapsible.Root>
   );
 }
@@ -1281,7 +1266,7 @@ function DraftRow({
         onClick={onOpen}
       >
         <Row.Leading xstyle={styles.rowIcon}>
-          <span role="img" aria-label="Draft" {...stylex.props(styles.draftDot)} />
+          <span role="img" aria-label="Draft" {...props(styles.draftDot)} />
         </Row.Leading>
         <Row.Label xstyle={styles.sessionLabel}>{title}</Row.Label>
         <Row.Meta xstyle={styles.rowMeta}>{formatTimeAgo(draft.updatedAt)}</Row.Meta>
@@ -1355,9 +1340,9 @@ function SessionGlyph({
   if (elsewhere === undefined) return <StatusGlyph session={session} mark={mark} />;
 
   return (
-    <span title={elsewhere.name} {...stylex.props(styles.sessionBadgeHost)}>
+    <span title={elsewhere.name} {...props(styles.sessionBadgeHost)}>
       <StatusGlyph session={session} mark={mark} />
-      <span {...stylex.props(styles.sessionBadge)}>
+      <span {...props(styles.sessionBadge)}>
         <Icon name={elsewhere.icon} size={9} label={elsewhere.name} />
       </span>
     </span>
@@ -1546,9 +1531,9 @@ function SessionRow({
           titleLine
         ) : (
           <Row.Body>
-            <span {...stylex.props(styles.sessionTitleLine)}>{titleLine}</span>
+            <span {...props(styles.sessionTitleLine)}>{titleLine}</span>
             <Row.Description
-              xstyle={mark === "failed" ? styles.sessionAskFailed : styles.sessionAskWaiting}
+              xstyle={[mark === "failed" ? intent.danger : intent.warning, styles.sessionAsk]}
             >
               {ask}
             </Row.Description>
@@ -1577,7 +1562,7 @@ function SessionRow({
           aria-label={session.archived ? "Restore" : "Archive"}
           onClick={onArchive}
         >
-          <span {...stylex.props(styles.actionGlyphArchive)}>
+          <span {...props(styles.actionGlyphArchive)}>
             <Icon name={session.archived ? "unarchive" : "archive"} size={12} />
           </span>
         </Button>

@@ -1,3 +1,4 @@
+import { applyDisplayMode } from "@nyte-ai/app/theme/appearance.ts";
 import { props } from "@stylexjs/stylex";
 import { useLayoutEffect, useState, type ReactElement } from "react";
 import { Tabs } from "@nyte-ai/ui/tabs";
@@ -49,7 +50,7 @@ export function EnvironmentsPage(): ReactElement {
   const [shellSelected, setShellSelected] = useState<string | undefined>("Confirm pairing copy");
 
   useLayoutEffect(() => {
-    document.documentElement.dataset.displayMode = appearance;
+    applyDisplayMode(appearance === "dark" ? "dark" : "light");
   }, [appearance]);
 
   const environments = environmentsFor(surface, count === "several");

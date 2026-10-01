@@ -1,3 +1,4 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { AutoLinkNode, LinkNode, autoLinkUrlMatcher, registerAutoLink } from "@lexical/link";
 import { registerPlainText } from "@lexical/plain-text";
@@ -82,7 +83,7 @@ export function useComposerSurface(editable: boolean) {
       nodes: [ComposerReferenceNode, LinkNode, AutoLinkNode],
       theme: {
         paragraph: props(composerStyles.editorParagraph).className,
-        link: props(composerStyles.composerUrlPill).className,
+        link: props(intent.primary, composerStyles.composerUrlPill).className,
       },
       onError: (error) => {
         throw error;

@@ -1,3 +1,5 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * The card of rows Settings uses for anything that connects: the GitHub
  * account and each model provider. A row says where it stands first, then
@@ -7,7 +9,7 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 
 const styles = create({
   row: {
@@ -24,52 +26,49 @@ const styles = create({
       insetInline: settings.rowPadding,
       insetBlockEnd: 0,
       height: 1,
-      backgroundColor: t.borderSecondaryTranslucent,
+      backgroundColor: role.borderSecondaryTranslucent,
       content: '""',
     },
     ":last-child::after": { display: "none" },
   },
-  dimmedGlyph: { color: t.contentTertiary },
-  dimmedText: { color: t.contentTertiary },
+  dimmedGlyph: { color: role.contentTertiary },
+  dimmedText: { color: role.contentTertiary },
   glyph: {
     display: "grid",
     placeItems: "center",
     width: 28,
     height: 28,
-    borderRadius: t.radius6,
-    color: t.contentSecondary,
+    borderRadius: shape.control,
+    color: role.contentSecondary,
     overflow: "hidden",
   },
   body: { display: "flex", flexDirection: "column", minWidth: 0, gap: 1 },
   title: {
-    color: t.contentPrimary,
-    fontSize: t.fontBase,
+    color: role.contentPrimary,
+    fontSize: type.fontBase,
     fontWeight: 400,
-    lineHeight: t.leadingBase,
-    letterSpacing: t.letterBase,
+    lineHeight: type.leadingBase,
+    letterSpacing: type.letterBase,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
   detail: {
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     overflowWrap: "anywhere",
   },
   status: {
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     whiteSpace: "nowrap",
   },
-  statusOn: { color: t.intentSuccessContent },
-  statusWarn: { color: t.intentWarningContent },
-  statusErr: { color: t.intentDangerContent },
-  dot: { width: 6, height: 6, borderRadius: t.radiusFull, backgroundColor: "currentColor" },
+  dot: { width: 6, height: 6, borderRadius: shape.pill, backgroundColor: "currentColor" },
   end: {
     display: "inline-flex",
     alignItems: "center",
@@ -97,10 +96,10 @@ export function ConnectionStatus({
   return (
     <span
       {...props(
+        tone === "on" && intent.success,
+        tone === "warn" && intent.warning,
+        tone === "err" && intent.danger,
         styles.status,
-        tone === "on" && styles.statusOn,
-        tone === "warn" && styles.statusWarn,
-        tone === "err" && styles.statusErr,
       )}
     >
       <span aria-hidden="true" {...props(styles.dot)} />

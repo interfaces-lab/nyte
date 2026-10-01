@@ -9,11 +9,8 @@ that is the generator's job.
 
 Two conventions make the set read as one system:
 
-  * Colour is never literal. Strokes are `currentColor`, an `@nyte-ai/ui` ramp
-    step (`var(--nyte-blue-80)` and the other hues at 80), or the yellow mark,
-    whose saturated step is too light for a page. The SVG
-    is inlined into the page rather than loaded through <img>, which is what
-    makes theme inversion work.
+  * Strokes use `currentColor` or resolved scoped glyph roles from
+    `@nyte-ai/ui`. Each generated colour has a light and dark value.
   * Motion is slow, linear, and endless. These are ambient figures beside a
     paragraph, not animations a reader is meant to watch finish. Every script
     emits a reduced-motion block that stops them outright.
@@ -21,7 +18,9 @@ Two conventions make the set read as one system:
 
 from __future__ import annotations
 
+import json
 import math
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -35,12 +34,25 @@ OUT_DIR = Path(__file__).resolve().parents[2] / "public" / "diagrams"
 # The roles a figure may paint with. `ink` is the page's text colour, so a
 # figure is legible in both themes without a second palette.
 INK = "currentColor"
-ACCENT = "var(--nyte-blue-80)"
-GREEN = "var(--nyte-green-80)"
-AMBER = "var(--nyte-mark-yellow)"
-VIOLET = "var(--nyte-purple-80)"
-CYAN = "var(--nyte-blue-80)"
-GOLD = "var(--nyte-mark-yellow)"
+PALETTE = json.loads(subprocess.check_output([
+    "node", "--input-type=module", "-e",
+    'import { platformScopes } from "./packages/ui/src/platform-colors.ts"; '
+    'console.log(JSON.stringify(platformScopes));',
+], cwd=Path(__file__).resolve().parents[4], text=True))
+
+
+def scoped_color(hue: str) -> str:
+    light = PALETTE["light"][hue]["contentInteractiveTertiary"]
+    dark = PALETTE["dark"][hue]["contentInteractiveTertiary"]
+    return f"light-dark({light}, {dark})"
+
+
+ACCENT = scoped_color("blue")
+GREEN = scoped_color("green")
+AMBER = scoped_color("yellow")
+VIOLET = scoped_color("purple")
+CYAN = ACCENT
+GOLD = AMBER
 
 # Literal values, for figures that keep one appearance wherever they are shown.
 BLACK = "#000000"
@@ -182,7 +194,7 @@ class Canvas:
         """Trace a path on, hold, and start again — growth, not a loop."""
         self.css(
             f".{cls}{{stroke-dasharray:{fmt(length)};stroke-dashoffset:{fmt(length)};"
-            f"animation:{cls}-draw {fmt(seconds)}s var(--nyte-easing-out, ease-out) {fmt(delay)}s infinite}}"
+            f"animation:{cls}-draw {fmt(seconds)}s ease-out {fmt(delay)}s infinite}}"
             f"@keyframes {cls}-draw{{0%{{stroke-dashoffset:{fmt(length)}}}"
             f"55%,100%{{stroke-dashoffset:0}}}}"
         )

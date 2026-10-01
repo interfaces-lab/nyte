@@ -1,3 +1,4 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { useState, type ReactElement } from "react";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
@@ -89,8 +90,8 @@ function SessionRow({
             <Row.Description
               xstyle={
                 row.mark === "failed"
-                  ? sidebarStyles.sessionAskFailed
-                  : sidebarStyles.sessionAskWaiting
+                  ? [intent.danger, sidebarStyles.sessionAsk]
+                  : [intent.warning, sidebarStyles.sessionAsk]
               }
             >
               {row.ask}

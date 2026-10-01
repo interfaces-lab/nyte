@@ -1,30 +1,21 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { registerHooks } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readGroups } from "./tokens.mjs";
 
 const outputPath = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "platform-colors.ts");
 
 const check = process.argv.includes("--check");
 
-// `defineVars` and `defineConsts` are compile-time markers that throw when they
-// run. This generator wants what they were handed, so it imports the token
-// modules with both replaced by the identity function.
-const identityMarkers =
-  "data:text/javascript,const i = (values) => values;export const defineVars = i;export const defineConsts = i;";
-
-registerHooks({
-  resolve(specifier, context, next) {
-    if (specifier !== "@stylexjs/stylex") return next(specifier, context);
-
-    return { url: identityMarkers, shortCircuit: true };
-  },
-});
-
-const { ramps } = await import("../src/ramps.stylex.ts");
-const { theme } = await import("../src/theme.stylex.ts");
-const { roles } = await import("../src/roles.stylex.ts");
-const { appearance, colors } = await import("../src/tokens.stylex.ts");
+const tokenDirectory = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
+const themeGroups = await readGroups(join(tokenDirectory, "theme.stylex.ts"));
+const theme = themeGroups.get("theme").values;
+const roleGroups = await readGroups(join(tokenDirectory, "roles.stylex.ts"));
+const roles = roleGroups.get("roles").values;
+const tinted = roleGroups.get("tinted").values;
+const transparency = (await readGroups(join(tokenDirectory, "tokens.stylex.ts"))).get(
+  "transparency",
+).values;
 
 const defaults = (group) =>
   Object.entries(group).map(([name, value]) => [
@@ -34,7 +25,8 @@ const defaults = (group) =>
 
 // Every declaration a colour can reach, outside any scope and with the
 // appearance inputs at their defaults.
-const declared = Object.fromEntries([ramps, theme, roles, appearance, colors].flatMap(defaults));
+const neutralDeclarations = Object.fromEntries([theme, roles, transparency].flatMap(defaults));
+let declared = neutralDeclarations;
 
 // Role-group and unscoped entries that are not a colour: the hover and press
 // layers are images, the outlined shadow is a shadow, and the swatch follows
@@ -224,17 +216,34 @@ const numeric = (text, trail) => {
 
 /** `oklch(from X calc(l * n) c h)` and `oklch(from X l c h / calc(alpha + n))`. */
 const relativeOklch = (value, mode, trail) => {
-  const match = value.match(
-    /^oklch\(from (var\([^)]+\)) (.+?) c h(?: \/ calc\(alpha \+ ([\d.]+)\))?\)$/,
-  );
-
-  if (!match) return undefined;
-
-  const origin = toOklch(resolve(match[1], mode, trail));
+  if (!value.startsWith("oklch(from ") || !value.endsWith(")")) return undefined;
+  const words = [];
+  let depth = 0;
+  let start = 0;
+  const body = value.slice(6, -1);
+  for (let index = 0; index < body.length; index += 1) {
+    const character = body[index];
+    if (character === "(") depth += 1;
+    else if (character === ")") depth -= 1;
+    else if (character === " " && depth === 0) {
+      if (index > start) words.push(body.slice(start, index));
+      start = index + 1;
+    }
+  }
+  words.push(body.slice(start));
+  if (words[0] !== "from" || words[3] !== "c" || words[4] !== "h") return undefined;
+  const origin = toOklch(resolve(words[1], mode, trail));
+  const cap = words[2].match(/^min\(l, ([\d.]+)\)$/);
   const lightness =
-    match[2] === "l" ? origin.l : origin.l * Number.parseFloat(match[2].match(/\* ([\d.]+)/)[1]);
+    words[2] === "l"
+      ? origin.l
+      : cap
+        ? Math.min(origin.l, Number.parseFloat(cap[1]))
+        : origin.l * Number.parseFloat(words[2].match(/\* ([\d.]+)/)[1]);
   const alpha =
-    match[3] === undefined ? origin.alpha : Math.min(1, origin.alpha + Number.parseFloat(match[3]));
+    words[5] === undefined
+      ? origin.alpha
+      : Math.min(1, origin.alpha + Number.parseFloat(words[6].match(/\+ ([\d.]+)/)[1]));
 
   return fromOklch({ ...origin, l: lightness, alpha });
 };
@@ -341,9 +350,7 @@ const formatHex = (color) => {
 // `var()`, so every colour reduces here to one concrete value per appearance,
 // outside any scope. A colour that fails to reduce has no value to ship and
 // fails the run.
-const colorNames = [...Object.keys(roles), ...Object.keys(colors)].filter(
-  (name) => !nonColors.has(name),
-);
+const colorNames = Object.keys(roles).filter((name) => !nonColors.has(name));
 
 const scheme = (mode) =>
   colorNames
@@ -353,7 +360,35 @@ const scheme = (mode) =>
 const notice =
   "Generated from the @nyte-ai/ui colour tokens. Run pnpm --filter @nyte-ai/ui sync:tokens.";
 
-const generated = `// ${notice}\nexport const platformColors = {\n  light: {\n${scheme("light")}\n  },\n  dark: {\n${scheme("dark")}\n  },\n} as const;\n`;
+const neutralOutput = `export const platformColors = {\n  light: {\n${scheme("light")}\n  },\n  dark: {\n${scheme("dark")}\n  },\n} as const;\n`;
+const hues = [
+  "gray",
+  "brown",
+  "orange",
+  "yellow",
+  "green",
+  "blue",
+  "purple",
+  "pink",
+  "red",
+  "teal",
+];
+const scopedScheme = (mode) =>
+  hues
+    .map((hue) => {
+      declared = {
+        ...neutralDeclarations,
+        ...Object.fromEntries(defaults(themeGroups.get(hue).values)),
+        ...Object.fromEntries(defaults(tinted)),
+      };
+      return `    ${hue}: {\n${scheme(mode)
+        .split("\n")
+        .map((line) => "  " + line)
+        .join("\n")}\n    },`;
+    })
+    .join("\n");
+const scopesOutput = `export const platformScopes = {\n  light: {\n${scopedScheme("light")}\n  },\n  dark: {\n${scopedScheme("dark")}\n  },\n} as const;\n`;
+const generated = `// ${notice}\n${neutralOutput}\n${scopesOutput}`;
 
 if (check) {
   const current = await readFile(outputPath, "utf8");

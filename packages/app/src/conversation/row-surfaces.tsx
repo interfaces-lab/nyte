@@ -1,8 +1,9 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * Row surfaces after shadcn's Message, Bubble and Marker. Each draws one
  * look the transcript already uses and knows nothing about scrolling.
  */
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 import { bubbleStyles, markerStyles, messageStyles } from "./styles.stylex.ts";
 
@@ -14,7 +15,7 @@ export function Message({
   readonly align: "end";
   readonly children: ReactNode;
 }): ReactElement {
-  return <div {...stylex.props(messageStyles[align])}>{children}</div>;
+  return <div {...props(messageStyles[align])}>{children}</div>;
 }
 
 export function Bubble({
@@ -26,7 +27,7 @@ export function Bubble({
   readonly children: ReactNode;
 }): ReactElement {
   return (
-    <div {...stylex.props(bubbleStyles.default, variant === "editable" && bubbleStyles.editable)}>
+    <div {...props(bubbleStyles.default, variant === "editable" && bubbleStyles.editable)}>
       {children}
     </div>
   );
@@ -45,16 +46,13 @@ export function Marker({
     <div
       role={role}
       title={title}
-      {...stylex.props(
+      {...props(
         variant === "retrying" ? markerStyles.retrying : markerStyles.default,
+        variant === "destructive" && intent.danger,
         variant === "destructive" && markerStyles.destructive,
       )}
     >
-      {variant === "retrying" ? (
-        <span {...stylex.props(markerStyles.shimmer)}>{children}</span>
-      ) : (
-        children
-      )}
+      {variant === "retrying" ? <span {...props(markerStyles.shimmer)}>{children}</span> : children}
     </div>
   );
 }

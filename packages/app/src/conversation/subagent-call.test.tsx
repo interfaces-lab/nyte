@@ -39,7 +39,11 @@ vi.hoisted(() => {
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {}, removeItem: () => {} });
   const styleHost = { insertBefore: () => {}, appendChild: () => {}, firstChild: null };
   vi.stubGlobal("document", {
-    documentElement: { dataset: {}, style: { setProperty: () => {} } },
+    documentElement: {
+      classList: { toggle: () => {} },
+      dataset: {},
+      style: { setProperty: () => {} },
+    },
     getElementsByTagName: () => [styleHost],
     createElement: () => ({ setAttribute: () => {}, appendChild: () => {}, textContent: "" }),
     createTextNode: (text: string) => ({ text }),

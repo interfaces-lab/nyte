@@ -1,3 +1,4 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -68,6 +69,7 @@ export function ComposerChipView({
             }
       }
       {...props(
+        reference.kind === "skill" ? intent.warning : intent.primary,
         composerStyles.mentionChip,
         reference.kind === "skill" && composerStyles.mentionChipSkill,
         open !== undefined && focus.ring,

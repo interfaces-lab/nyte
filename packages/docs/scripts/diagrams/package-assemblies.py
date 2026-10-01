@@ -5,9 +5,10 @@ in a one-time random alphanumeric prompt. The prompt is not part of the artwork.
 Run from any directory to regenerate the SVGs in `public/diagrams`.
 """
 from pathlib import Path
+from _canvas import ACCENT
 
 ROOT = Path(__file__).resolve().parents[2]
-INK = "var(--nyte-blue-80)"
+INK = ACCENT
 parts = []
 
 

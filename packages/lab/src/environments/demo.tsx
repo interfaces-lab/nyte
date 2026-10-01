@@ -1,4 +1,5 @@
-import * as stylex from "@stylexjs/stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { bubbleStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
 import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
@@ -21,39 +22,39 @@ function Crumbs({
 }): ReactElement {
   if (environmentsOpen)
     return (
-      <span {...stylex.props(styles.crumbs)}>
-        <span {...stylex.props(styles.crumbTitle)}>Environments</span>
+      <span {...props(styles.crumbs)}>
+        <span {...props(styles.crumbTitle)}>Environments</span>
       </span>
     );
 
   if (row === undefined)
     return (
-      <span {...stylex.props(styles.crumbs)}>
-        <span {...stylex.props(styles.crumbTitle)}>New chat</span>
+      <span {...props(styles.crumbs)}>
+        <span {...props(styles.crumbTitle)}>New chat</span>
       </span>
     );
 
   const elsewhere = row.environment.id !== home;
 
   return (
-    <span {...stylex.props(styles.crumbs)}>
+    <span {...props(styles.crumbs)}>
       {elsewhere && (
         <>
-          <span {...stylex.props(styles.crumb)}>
+          <span {...props(styles.crumb)}>
             <Icon name={row.environment.icon} size={12} />
             {row.environment.name}
             {!row.environment.online && " · offline"}
           </span>
-          <span {...stylex.props(styles.crumbDivider)}>/</span>
+          <span {...props(styles.crumbDivider)}>/</span>
         </>
       )}
       {row.folder !== undefined && (
         <>
-          <span {...stylex.props(styles.crumb)}>{row.folder}</span>
-          <span {...stylex.props(styles.crumbDivider)}>/</span>
+          <span {...props(styles.crumb)}>{row.folder}</span>
+          <span {...props(styles.crumbDivider)}>/</span>
         </>
       )}
-      <span title={row.title} {...stylex.props(styles.crumbTitle)}>
+      <span title={row.title} {...props(styles.crumbTitle)}>
         {row.title}
       </span>
     </span>
@@ -64,38 +65,38 @@ function Thread({ row }: { readonly row: LabRow }): ReactElement {
   const offline = !row.environment.online;
 
   return (
-    <div {...stylex.props(styles.thread)}>
-      <div {...stylex.props(styles.transcript)}>
-        <div {...stylex.props(styles.userTurn)}>
-          <div {...stylex.props(bubbleStyles.default)}>{row.title}</div>
+    <div {...props(styles.thread)}>
+      <div {...props(styles.transcript)}>
+        <div {...props(styles.userTurn)}>
+          <div {...props(bubbleStyles.default)}>{row.title}</div>
         </div>
-        <div {...stylex.props(styles.step)}>
+        <div {...props(styles.step)}>
           <Icon name="file-text" size={13} />
           Read 6 files, edited 2
         </div>
         {row.mark === "waiting" && (
-          <div {...stylex.props(styles.reply)}>
+          <div {...props(styles.reply)}>
             Two wordings fit the pairing screen.{" "}
-            <span {...stylex.props(styles.ask)}>{row.ask}</span>
+            <span {...props([intent.warning, styles.ask])}>{row.ask}</span>
           </div>
         )}
         {row.mark === "failed" && (
-          <div {...stylex.props(styles.reply, styles.failed)}>{row.ask}</div>
+          <div {...props(styles.reply, [intent.danger, styles.failed])}>{row.ask}</div>
         )}
         {(row.mark === "working" || row.mark === "retry") && (
-          <div {...stylex.props(styles.step)}>
+          <div {...props(styles.step)}>
             <StatusDot mark="working" />
             Working
           </div>
         )}
         {row.mark === "idle" && (
-          <div {...stylex.props(styles.reply)}>Done. The change is ready for review.</div>
+          <div {...props(styles.reply)}>Done. The change is ready for review.</div>
         )}
       </div>
-      <div {...stylex.props(styles.dock)}>
-        <div {...stylex.props(styles.composer, offline && styles.composerDisabled)}>
+      <div {...props(styles.dock)}>
+        <div {...props(styles.composer, offline && styles.composerDisabled)}>
           <span>{offline ? `${row.environment.name} is offline` : "Reply"}</span>
-          <span {...stylex.props(styles.send)}>
+          <span {...props(styles.send)}>
             <Icon name="arrow-up" size={14} />
           </span>
         </div>
@@ -126,16 +127,16 @@ export function EnvironmentDemo({
   readonly onOpenEnvironments: () => void;
 }): ReactElement {
   return (
-    <div {...stylex.props(styles.window)}>
-      <div {...stylex.props(styles.titlebar)}>
-        <span {...stylex.props(styles.lights)}>
-          <span {...stylex.props(styles.light)} />
-          <span {...stylex.props(styles.light)} />
-          <span {...stylex.props(styles.light)} />
+    <div {...props(styles.window)}>
+      <div {...props(styles.titlebar)}>
+        <span {...props(styles.lights)}>
+          <span {...props(styles.light)} />
+          <span {...props(styles.light)} />
+          <span {...props(styles.light)} />
         </span>
         <Crumbs row={selected} home={home} environmentsOpen={environmentsOpen} />
       </div>
-      <div {...stylex.props(styles.body)}>
+      <div {...props(styles.body)}>
         <EnvironmentSidebar
           environments={environments}
           home={home}
@@ -145,7 +146,7 @@ export function EnvironmentDemo({
           onNewChat={onNewChat}
           onOpenEnvironments={onOpenEnvironments}
         />
-        <div {...stylex.props(styles.main)}>
+        <div {...props(styles.main)}>
           {environmentsOpen ? (
             <EnvironmentsSurface environments={environments} home={home} />
           ) : selected === undefined ? (

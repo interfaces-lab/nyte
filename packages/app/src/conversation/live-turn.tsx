@@ -3,12 +3,12 @@
  * calls, then streaming prose. Settled turns come from the transcript; this
  * only draws what has not committed yet.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { livePartKey } from "../live.ts";
 import type { LiveSnapshot } from "../live.ts";
 import { conversation } from "../theme/schema.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { motion } from "@nyte-ai/ui/vars.stylex";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { Prose } from "./prose.tsx";
 import { WorkGroupView } from "./tool-group.tsx";
@@ -16,12 +16,12 @@ import { WorkGroupView } from "./tool-group.tsx";
 /** Dimmed while core still holds the message behind a live run; full weight once it lands. */
 const PENDING_OPACITY = 0.6;
 
-const pendingIn = stylex.keyframes({
+const pendingIn = keyframes({
   from: { opacity: 0, transform: "translateY(4px)" },
   to: { opacity: PENDING_OPACITY, transform: "translateY(0)" },
 });
 
-export const liveTurnStyles = stylex.create({
+export const liveTurnStyles = create({
   root: {
     display: "flex",
     flexDirection: "column",
@@ -40,7 +40,7 @@ export const liveTurnStyles = stylex.create({
       "@media (prefers-reduced-motion: reduce)": "none",
     },
     animationDuration: "180ms",
-    animationTimingFunction: t.easeOut,
+    animationTimingFunction: motion.easeOut,
   },
 });
 
@@ -67,7 +67,7 @@ export function LiveTurn({
   if (!hasText && !hasLiveWork && !working) return null;
 
   return (
-    <div {...stylex.props(liveTurnStyles.root)}>
+    <div {...props(liveTurnStyles.root)}>
       {!settledWork && hasLiveWork && (
         <WorkGroupView
           parts={[]}

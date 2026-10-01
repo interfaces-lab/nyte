@@ -183,7 +183,7 @@ export function DemoPopover({
             role="listbox"
             aria-label="Commands, skills, and prompts"
             initialFocus={false}
-            finalFocus={false}
+
             xstyle={composerStyles.suggestionMenu}
           >
             <div {...props(composerStyles.suggestionList)}>
@@ -238,7 +238,8 @@ export function DemoDialog({
     <ConfirmDialog
       open={surface === "dialog"}
       returnFocusRef={returnFocusRef}
-      title="Delete chat?"
+      title="Delete Chat"
+      confirmLabel="Delete Chat"
       description="This removes the chat from the preview."
       onOpenChange={(open) => {
         if (!open) onSurface("none");

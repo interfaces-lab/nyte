@@ -18,15 +18,15 @@ hover, focus, and selection model.
 
 ## Usage
 
-- The default row is 28px tall with a 6px gap, 6px inline padding, and a 15px leading lane. A list
-  that measures differently sets `--nyte-row-height`, `--nyte-row-gap`, `--nyte-row-padding-inline`,
-  and `--nyte-row-leading-size` on its container.
-- `size="lg"` is the settings row, 44px tall with 12px of gap and padding, for a label with a
-  description under it.
+- Geometry comes from the `row` and `glyph` component handles in `@nyte-ai/ui/schema.stylex`.
+  `md` is 28px tall and `lg` is 32px tall. Both grow to 44px under a coarse pointer.
+- Use `xstyle` on `Row` or `Row.Leading` for local geometry. Scope component tokens when a
+  whole list needs different measurements.
 - Typography is inherited. The row sets no font family, size, or line height, so the surface owns
   them.
-- `Row.Primary` renders a `<button type="button">` and is the click target. `Row.Actions` is its
-  sibling, because a button cannot contain another.
+- `Row.Primary` renders a `<button type="button">`. Clicking the painted row activates it,
+  including padding and sibling `Row.Meta`. `Row.Actions` and other child controls keep their
+  own action. Text selection and Shift-click do not activate the row.
 - `interactive` paints the row's fill on hover, on focus within, and while `selected`. A surface
   that writes `--_row-fill` itself owns every state of it and leaves `interactive` off.
 - `variant="nav"` makes the row itself the control, a `<button type="button">` that fills on hover
@@ -86,7 +86,7 @@ hover, focus, and selection model.
     <Row.Description>200K context · $3 / $15</Row.Description>
   </Row.Body>
   <Row.Actions>
-    <Button variant="secondary">Hide</Button>
+    <Button variant="outline">Hide</Button>
   </Row.Actions>
 </Row>
 ```
@@ -129,9 +129,9 @@ See [Collapsible](/cloud/components/collapsible).
 
 ### Actions on hover
 
-`revealActions` hides the action lane until the row is hovered or holds focus. It sets
-`--_row-actions-opacity` and `--_row-actions-pointer-events`, which a surface reads to reclaim the
-room in the same frame rather than repeating the conditions.
+`revealActions` uses `display: none` until hover or focus within. The lane is always visible
+without hover support or under a coarse pointer. `--_row-actions-opacity` lets a surface reserve
+space for the lane only while it is showing.
 
 ```tsx
 <Row interactive revealActions>
@@ -145,13 +145,16 @@ room in the same frame rather than repeating the conditions.
 ```
 
 ```ts
-const styles = stylex.create({
+import { create } from "@stylexjs/stylex";
+
+const styles = create({
   label: { marginInlineEnd: "calc(var(--_row-actions-opacity, 0) * 44px)" },
 });
 ```
 
-`placement="overlay"` floats the lane over the row instead of taking space in it, so the whole row
-stays clickable underneath. The surface reclaims the room itself.
+`placement="overlay"` floats the lane over the row instead of taking space in it, and protects the whole
+action lane, including gaps between its controls, from primary activation. The surface reserves
+room for the visible lane.
 
 ### A selection layer the surface animates
 
@@ -167,16 +170,27 @@ so the backdrop lands behind the row rather than behind the list.
 </Row>
 ```
 
-### Sizing from the list
+### Local geometry
 
 ```ts
-const styles = stylex.create({
-  list: {
-    "--nyte-row-height": "24px",
-    "--nyte-row-padding-inline": "4px",
-    "--nyte-row-leading-size": "16px",
-  },
+import { create } from "@stylexjs/stylex";
+import { glyph, row } from "@nyte-ai/ui/schema.stylex";
+
+const styles = create({
+  row: { minHeight: row.heightMd, gap: row.gap },
+  leading: { width: glyph.box },
 });
+```
+
+```tsx
+<Row xstyle={styles.row}>
+  <Row.Primary onClick={open}>
+    <Row.Leading xstyle={styles.leading}>
+      <Icon name="new-chat" size={14} />
+    </Row.Leading>
+    <Row.Label>{title}</Row.Label>
+  </Row.Primary>
+</Row>
 ```
 
 ## Props
@@ -189,7 +203,7 @@ element, with `className` and `style` replaced by the styled versions, plus:
 | Prop                           | Type                                                   | Default  | Description                                                                                       |
 | ------------------------------ | ------------------------------------------------------ | -------- | ------------------------------------------------------------------------------------------------- |
 | `variant`                      | `"list" \| "nav"`                                      | `"list"` | A row holding a `Row.Primary`, or a row that is itself the button.                                |
-| `size`                         | `"md" \| "lg"`                                         | `"md"`   | Notion Calendar's row sizes: 28px, or 32px with room for a description.                           |
+| `size`                         | `"md" \| "lg"`                                         | `"md"`   | 28px or 32px, both 44px under a coarse pointer.                                                   |
 | `interactive`                  | `boolean`                                              | `false`  | Paints the row's own fill on hover and focus within, and the fill and hairline of a selected row. |
 | `selected`                     | `boolean`                                              | `false`  | Marks the row current. Sets `data-selected`.                                                      |
 | `revealActions`                | `boolean`                                              | `false`  | Hides the action lane until the row is hovered or holds focus.                                    |
@@ -220,7 +234,7 @@ Every part takes `render`, `className`, `style`, `xstyle`, and the props of the 
 | Part              | Renders    | Data slot         | Description                                                                  |
 | ----------------- | ---------- | ----------------- | ---------------------------------------------------------------------------- |
 | `Row.Backdrop`    | `<span>`   | `row-backdrop`    | Sits behind the row's content, for a selection layer the surface animates.   |
-| `Row.Primary`     | `<button>` | `row-primary`     | The click target, wrapping whichever parts should be clickable.              |
+| `Row.Primary`     | `<button>` | `row-primary`     | The primary action for the whole painted row.                                |
 | `Row.Leading`     | `<span>`   | `row-leading`     | A fixed lane, so labels align down the list whatever glyph each row carries. |
 | `Row.Body`        | `<span>`   | `row-body`        | Stacks its children, so a label can carry a description under it.            |
 | `Row.Label`       | `<span>`   | `row-label`       | The row's title. Truncates with an ellipsis.                                 |
@@ -228,36 +242,25 @@ Every part takes `render`, `className`, `style`, `xstyle`, and the props of the 
 | `Row.Meta`        | `<span>`   | `row-meta`        | Trailing text such as a time or a count. Tabular figures, one step smaller.  |
 | `Row.Actions`     | `<span>`   | `row-actions`     | Actions, a switch, or a chevron. A sibling of the primary, never a child.    |
 
-### CSS variables
+### Row state and layout
 
-The surface sets these. The row reads them.
+| Variable                | Default                                        | Description                                                 |
+| ----------------------- | ---------------------------------------------- | ----------------------------------------------------------- |
+| `--_row-padding-inline` | `row.paddingInlineMd` or `row.paddingInlineLg` | Inline padding and overlay action inset.                    |
+| `--_row-fill`           | `transparent`                                  | Background. Leave `interactive` off when owning its states. |
+| `--_row-meta-color`     | `role.contentSecondary`                        | Metadata color.                                             |
+| `--_row-leading-color`  | `role.contentSecondary`                        | Leading lane color.                                         |
 
-| Variable                    | Default                        | Description                                                              |
-| --------------------------- | ------------------------------ | ------------------------------------------------------------------------ |
-| `--nyte-row-height`         | `--nyte-row-height-md`         | Minimum height of the row.                                               |
-| `--nyte-row-gap`            | `--nyte-row-gap`               | Gap between the row's parts.                                             |
-| `--nyte-row-padding-inline` | `--nyte-row-padding-inline-md` | Inline padding, and the overlay inset.                                   |
-| `--nyte-row-leading-size`   | `--nyte-glyph-box`, 15px       | Width of the leading lane.                                               |
-| `--_row-fill`               | `transparent`                  | Background of the row. `interactive` sets it, so leave it off to own it. |
-| `--_row-meta-color`         | `--nyte-content-secondary`     | Color of `Row.Meta`.                                                     |
-
-`revealActions` sets the two below on the row, and `Row.Actions` reads them. A surface reads them
-too, to move with the lane.
-
-| Variable                        | Hidden | Hovered or focused within |
-| ------------------------------- | ------ | ------------------------- |
-| `--_row-actions-opacity`        | `0`    | `1`                       |
-| `--_row-actions-pointer-events` | `none` | `auto`                    |
-
-See [Tokens](/cloud/foundations/tokens) for the variables these fall back to.
+`revealActions` sets `--_row-actions-display` to `none` when hidden and `inline-flex` when
+visible, and `--_row-actions-opacity` to `0` or `1`. Both are visible without hover support.
 
 ## Accessibility
 
 - The row is a `<div>` with no role. Meaning comes from what you render inside it.
 - `Row.Primary` draws the focus ring on keyboard focus, inset by 1px because a row sits flush in a
   scroll container where an outset ring would clip. See [Focus](/cloud/foundations/focus).
-- `Row.Backdrop` is `aria-hidden`. No other part is.
+- `Row.Backdrop` and `Row.Leading` are decorative and `aria-hidden`.
 - `selected` sets `data-selected` and nothing else. Add `aria-current` or `aria-selected` on
   `Row.Primary`.
 - An icon-only button inside `Row.Actions` needs `aria-label`. `revealActions` hides the lane with
-  opacity, so it stays in the tab order, and focus anywhere in the row brings it back.
+  `display: none`, so hidden actions leave the tab order. Focus on the primary reveals them.

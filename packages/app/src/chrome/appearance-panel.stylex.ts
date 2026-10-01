@@ -1,9 +1,10 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /** Controls unique to Settings › Appearance. */
-import * as stylex from "@stylexjs/stylex";
+import { create } from "@stylexjs/stylex";
 import { settings } from "../theme/schema.stylex.ts";
-import { ramp, t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 
-export const appearancePanelStyles = stylex.create({
+export const appearancePanelStyles = create({
   root: { display: "flex", flexDirection: "column", gap: settings.sectionGap },
   tintControl: {
     display: "inline-flex",
@@ -13,7 +14,7 @@ export const appearancePanelStyles = stylex.create({
   },
   tintSlider: { width: 120, minWidth: 0, flex: "0 1 auto" },
   tintThumb: {
-    backgroundColor: t.tintSwatch,
+    backgroundColor: role.bgInteractiveStrong,
   },
   tintSlot: {
     display: "inline-flex",
@@ -29,17 +30,17 @@ export const appearancePanelStyles = stylex.create({
     height: 20,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: t.borderPrimaryTranslucent,
-    borderRadius: t.radiusFull,
-    backgroundColor: t.bgInteractivePrimaryTranslucent,
+    borderColor: role.borderPrimaryTranslucent,
+    borderRadius: shape.pill,
+    backgroundColor: role.bgInteractivePrimaryTranslucent,
   },
   tintSwatchActive: {
-    backgroundColor: t.tintSwatch,
+    backgroundColor: role.bgInteractiveStrong,
   },
   tintValue: {
-    color: t.contentSecondary,
-    fontSize: t.fontXs,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingSm,
     textAlign: "center",
   },
   density: {
@@ -64,8 +65,8 @@ export const appearancePanelStyles = stylex.create({
     left: "50%",
     width: 4,
     height: 4,
-    borderRadius: t.radiusFull,
-    backgroundColor: t.contentTertiary,
+    borderRadius: shape.pill,
+    backgroundColor: role.contentTertiary,
     pointerEvents: "none",
     transform: "translate(-50%, -50%)",
   },
@@ -73,15 +74,15 @@ export const appearancePanelStyles = stylex.create({
     display: "flex",
     justifyContent: "space-between",
     marginTop: 4,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   codeFontPreview: {
     overflow: "hidden",
-    borderRadius: t.radius4,
-    fontFamily: t.fontMono,
-    fontSize: t.fontCode,
+    borderRadius: shape.indicator,
+    fontFamily: type.fontMono,
+    fontSize: type.fontCode,
     lineHeight: "20px",
   },
   diffLine: {
@@ -94,14 +95,14 @@ export const appearancePanelStyles = stylex.create({
   diffRemovedLine: {
     borderInlineStartWidth: 3,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: ramp.red80,
-    backgroundColor: t.diffRemovedLineBg,
+    borderInlineStartColor: role.contentInteractiveTertiary,
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
   },
   diffAddedLine: {
     borderInlineStartWidth: 3,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: ramp.green80,
-    backgroundColor: t.diffAddedLineBg,
+    borderInlineStartColor: role.contentInteractiveTertiary,
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
   },
   codePreviewText: {
     display: "block",
@@ -113,8 +114,8 @@ export const appearancePanelStyles = stylex.create({
     textOverflow: "ellipsis",
     whiteSpace: "pre",
   },
-  diffRemovedNumber: { color: t.intentDangerContent, textAlign: "center" },
-  diffAddedNumber: { color: t.intentSuccessContent, textAlign: "center" },
-  codeKeyword: { color: t.syntaxKeyword },
-  codeIdentifier: { color: t.syntaxIdentifier },
+  diffRemovedNumber: { color: role.contentSecondary, textAlign: "center" },
+  diffAddedNumber: { color: role.contentSecondary, textAlign: "center" },
+  codeKeyword: { color: role.contentSecondary },
+  codeIdentifier: { color: role.contentSecondary },
 });

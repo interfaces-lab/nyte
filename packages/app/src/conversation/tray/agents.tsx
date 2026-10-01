@@ -1,3 +1,5 @@
+import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { shape } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { Row } from "@nyte-ai/ui/row";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -10,7 +12,7 @@ import { warmThread } from "../../live.ts";
 import { nyte } from "../../nyte.ts";
 import { keys, useSession } from "../../queries.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/vars.stylex";
 import { subagentTrayState } from "../agent-status.ts";
 import type { SubagentSession } from "../subagent-sessions.ts";
 import { Tray, TrayIconAction, TrayPill, trayParts, useTrayRoot } from "./tray.tsx";
@@ -36,10 +38,10 @@ const styles = create({
     display: "block",
     width: 6,
     height: 6,
-    borderRadius: t.radiusFull,
-    backgroundColor: t.markYellow,
+    borderRadius: shape.pill,
+    backgroundColor: role.contentInteractiveTertiary,
   },
-  count: { color: t.contentSecondary },
+  count: { color: role.contentSecondary },
   detail: (height: number) => ({
     minHeight: 0,
     height: `min(70dvh, max(220px, ${String(height)}px))`,
@@ -171,7 +173,7 @@ export function SubagentTray({
               <StatusDot mark="working" />
             ) : (
               active.some((agent) => trayState(agent) === "attention") && (
-                <span {...props(styles.attentionDot)} />
+                <span {...props(surfaceTheme.yellow, styles.attentionDot)} />
               )
             )}
           </span>
@@ -195,7 +197,7 @@ export function SubagentTray({
               <span {...props(trayStyles.title)}>Agents</span>
               {stoppable.length > 0 && (
                 <Button
-                  aria-label={
+                  aria-description={
                     stopCandidates === undefined
                       ? "Stop all active agents"
                       : `Confirm stopping ${String(stopCandidates.length)} active agents`
@@ -243,7 +245,7 @@ export function SubagentTray({
                     >
                       <Row.Leading aria-hidden="true">
                         {state === "attention" ? (
-                          <span {...props(styles.attentionDot)} />
+                          <span {...props(surfaceTheme.yellow, styles.attentionDot)} />
                         ) : (
                           state === "working" && <StatusDot mark="working" />
                         )}
@@ -256,7 +258,7 @@ export function SubagentTray({
               })}
             </div>
             {(stop.isError || stopAll.isError) && (
-              <div role="alert" {...props(trayParts.notice, trayParts.error)}>
+              <div role="alert" {...props(intent.danger, trayParts.notice, trayParts.error)}>
                 Couldn’t stop the agent. Try again.
               </div>
             )}
@@ -290,7 +292,7 @@ export function SubagentTray({
             </div>
             <div {...props(styles.detailBody)}>{detail}</div>
             {stop.isError && (
-              <div role="alert" {...props(trayParts.notice, trayParts.error)}>
+              <div role="alert" {...props(intent.danger, trayParts.notice, trayParts.error)}>
                 Couldn’t stop the agent. Try again.
               </div>
             )}

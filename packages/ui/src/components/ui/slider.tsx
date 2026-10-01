@@ -1,63 +1,84 @@
+import { button, shape } from "../../schema.stylex.ts";
 import { Slider as SliderPrimitive } from "@base-ui/react/slider";
 import { create, props } from "@stylexjs/stylex";
-import type { ReactElement } from "react";
+import { createContext, use, type ReactElement } from "react";
 
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
 import { intent } from "../../surface-theme.ts";
-import { t } from "../../vars.stylex.ts";
+import { appearance, role, shadow, type } from "../../vars.stylex.ts";
 
 const styles = create({
   label: {
-    color: t.contentPrimary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    color: role.contentPrimary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
   value: {
-    color: t.contentSecondary,
-    fontSize: t.fontXs,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingSm,
     fontVariantNumeric: "tabular-nums",
   },
   control: {
     display: "flex",
     alignItems: "center",
-    width: "100%",
-    height: 16,
-    cursor: t.cursorInteractive,
+    width: { default: "100%", '[data-orientation="vertical"]': "var(--_slider-hit-size)" },
+    "--_slider-hit-size": {
+      default: `max(24px, ${button.heightSm})`,
+      "@media (pointer: coarse)": `max(44px, ${button.heightSm})`,
+    },
+    height: { default: "var(--_slider-hit-size)", '[data-orientation="vertical"]': "100%" },
+    minWidth: "var(--_slider-hit-size)",
+    minHeight: "var(--_slider-hit-size)",
+    cursor: appearance.cursorInteractive,
     touchAction: "none",
     userSelect: "none",
   },
   track: {
     position: "relative",
-    width: "100%",
-    height: 6,
-    borderRadius: t.radius2,
-    backgroundColor: t.bgControl,
+    width: { default: "100%", '[data-orientation="vertical"]': 6 },
+    height: { default: 6, '[data-orientation="vertical"]': "100%" },
+    borderRadius: shape.indicator,
+    backgroundColor: role.bgControl,
     userSelect: "none",
   },
   // The filled part paints inside the primary intent.
   indicator: {
     height: "100%",
     borderRadius: "inherit",
-    backgroundColor: t.bgControlSelected,
+    backgroundColor: role.bgControlSelected,
   },
   thumb: {
     boxSizing: "border-box",
-    width: 14,
-    height: 14,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: t.borderControl,
-    borderRadius: t.radiusFull,
-    backgroundColor: t.contentOnControl,
-    boxShadow: t.shadowSm,
+    width: "var(--_slider-hit-size)",
+    height: "var(--_slider-hit-size)",
+    "::before": {
+      content: '""',
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      translate: "-50% -50%",
+      boxSizing: "border-box",
+      width: 14,
+      height: 14,
+      borderWidth: 1,
+      borderStyle: "solid",
+      borderColor: role.borderControl,
+      borderRadius: shape.pill,
+      backgroundColor: role.contentOnControl,
+      boxShadow: shadow.shadowSm,
+    },
     outlineStyle: { default: "none", ":focus-within": "solid" },
     outlineWidth: 1,
-    outlineColor: t.focusRing,
-    outlineOffset: 2,
+    outlineColor: appearance.focusRing,
+    outlineOffset: 0,
     userSelect: "none",
   },
 });
+
+// Range thumbs use the control's nearest-thumb hit test instead of overlapping hit boxes.
+const range = create({ thumb: { pointerEvents: "none" } });
+const SliderRangeContext = createContext(false);
 
 export type SliderRootProps<Value extends number | readonly number[]> = StyledProps<
   SliderPrimitive.Root.Props<Value>
@@ -75,8 +96,17 @@ function SliderRoot<Value extends number | readonly number[]>({
   style,
   ...rest
 }: SliderRootProps<Value>): ReactElement {
+  const value = rest.value ?? rest.defaultValue;
+  const isRange = typeof value !== "number" && value !== undefined && value.length > 1;
+
   return (
-    <SliderPrimitive.Root<Value> {...rest} {...mergeStyleProps(props(xstyle), className, style)} />
+    <SliderRangeContext value={isRange}>
+      <SliderPrimitive.Root<Value>
+        thumbAlignment="edge"
+        {...rest}
+        {...mergeStyleProps(props(xstyle), className, style)}
+      />
+    </SliderRangeContext>
   );
 }
 
@@ -131,10 +161,12 @@ function SliderIndicator({
 }
 
 function SliderThumb({ xstyle, className, style, ...rest }: SliderThumbProps): ReactElement {
+  const isRange = use(SliderRangeContext);
+
   return (
     <SliderPrimitive.Thumb
       {...rest}
-      {...mergeStyleProps(props(styles.thumb, xstyle), className, style)}
+      {...mergeStyleProps(props(styles.thumb, isRange && range.thumb, xstyle), className, style)}
     />
   );
 }

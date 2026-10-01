@@ -1,16 +1,50 @@
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
 import { create, props } from "@stylexjs/stylex";
-import type { ReactElement } from "react";
+import { useId, type ReactElement } from "react";
 
 import { focus } from "../../a11y.stylex.ts";
-import { checkbox } from "../../schema.stylex.ts";
+import { checkbox, row, shape } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
 import { intent } from "../../surface-theme.ts";
-import { t } from "../../vars.stylex.ts";
+import { appearance, role, type } from "../../vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 
 const styles = create({
+  target: {
+    "--_checkbox-hit-floor": { default: "24px", "@media (pointer: coarse)": "44px" },
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    width: "max(var(--_checkbox-hit-floor), var(--_checkbox-size))",
+    height: "max(var(--_checkbox-hit-floor), var(--_checkbox-size))",
+  },
+  field: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    width: "100%",
+    minHeight: row.heightMd,
+    color: role.contentPrimary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    cursor: appearance.cursorInteractive,
+  },
+  copy: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
+  description: { color: role.contentSecondary, fontSize: type.fontSm },
   box: {
+    position: "relative",
+    width: "var(--_checkbox-size)",
+    height: "var(--_checkbox-size)",
+    "::before": {
+      content: '""',
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      translate: "-50% -50%",
+      width: "max(var(--_checkbox-hit-floor), var(--_checkbox-size))",
+      height: "max(var(--_checkbox-hit-floor), var(--_checkbox-size))",
+    },
     appearance: "none",
     boxSizing: "border-box",
     display: "inline-flex",
@@ -23,28 +57,28 @@ const styles = create({
     borderRadius: checkbox.radius,
     // Ticked and mixed fill with the selected control; an empty box answers the pointer.
     borderColor: {
-      default: t.bgControlSelected,
-      "[data-unchecked]": t.borderControlTranslucent,
+      default: role.bgControlSelected,
+      "[data-unchecked]": role.borderControlTranslucent,
     },
     backgroundColor: {
-      default: t.bgControlSelected,
+      default: role.bgControlSelected,
       "[data-unchecked]": "transparent",
-      ":hover:not([data-disabled])": t.bgControlSelectedHover,
-      ":hover:is([data-unchecked]):not([data-disabled])": t.bgHover,
-      ":active:not([data-disabled])": t.bgControlSelectedPressed,
-      ":active:is([data-unchecked]):not([data-disabled])": t.bgPressed,
+      ":hover:not([data-disabled])": role.bgControlSelectedHover,
+      ":hover:is([data-unchecked]):not([data-disabled])": role.bgHover,
+      ":active:not([data-disabled])": role.bgControlSelectedPressed,
+      ":active:is([data-unchecked]):not([data-disabled])": role.bgPressed,
     },
-    color: t.contentOnControl,
+    color: role.contentOnControl,
     opacity: { default: 1, "[data-disabled]": 0.5 },
-    cursor: { default: t.cursorInteractive, "[data-disabled]": "default" },
+    cursor: { default: appearance.cursorInteractive, "[data-disabled]": "default" },
   },
-  md: { width: checkbox.sizeMd, height: checkbox.sizeMd },
-  lg: { width: checkbox.sizeLg, height: checkbox.sizeLg },
+  md: { "--_checkbox-size": checkbox.sizeMd },
+  lg: { "--_checkbox-size": checkbox.sizeLg },
   indicator: { display: "contents" },
   dash: {
     width: 8,
     height: 2,
-    borderRadius: t.radiusFull,
+    borderRadius: shape.pill,
     backgroundColor: "currentColor",
   },
 });
@@ -71,26 +105,84 @@ export function Checkbox({
   ...rest
 }: CheckboxProps): ReactElement {
   return (
-    <CheckboxPrimitive.Root
-      {...rest}
-      {...mergeStyleProps(
-        props(intent.primary, styles.box, styles[size], focus.ring, xstyle),
-        className,
-        style,
-      )}
+    <span {...props(styles.target, styles[size])}>
+      <CheckboxPrimitive.Root
+        {...rest}
+        {...mergeStyleProps(
+          props(intent.primary, styles.box, focus.ring, xstyle),
+          className,
+          style,
+        )}
+      >
+        <CheckboxPrimitive.Indicator
+          {...props(styles.indicator)}
+          render={(indicatorProps, state) => (
+            <span {...indicatorProps}>
+              {state.indeterminate ? (
+                <span {...props(styles.dash)} />
+              ) : (
+                <Icon name="checkmark" size={10} />
+              )}
+            </span>
+          )}
+        />
+      </CheckboxPrimitive.Root>
+    </span>
+  );
+}
+
+export type CheckboxFieldProps = Omit<
+  CheckboxProps,
+  "aria-label" | "aria-labelledby" | "nativeButton"
+> & {
+  readonly label: string;
+  readonly description?: string;
+};
+
+export function CheckboxField({
+  label,
+  description,
+  id,
+  xstyle,
+  className,
+  style,
+  ...rest
+}: CheckboxFieldProps): ReactElement {
+  const generatedId = useId();
+  const controlId = id ?? generatedId;
+  const labelId = `${controlId}-label`;
+  const descriptionId = description === undefined ? undefined : `${controlId}-description`;
+
+  return (
+    <label
+      htmlFor={controlId}
+      onClickCapture={(event) => {
+        if (
+          event.shiftKey ||
+          event.currentTarget.ownerDocument.getSelection()?.isCollapsed === false
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
+      {...mergeStyleProps(props(styles.field, xstyle), className, style)}
     >
-      <CheckboxPrimitive.Indicator
-        {...props(styles.indicator)}
-        render={(indicatorProps, state) => (
-          <span {...indicatorProps}>
-            {state.indeterminate ? (
-              <span {...props(styles.dash)} />
-            ) : (
-              <Icon name="checkmark" size={10} />
-            )}
+      <Checkbox
+        {...rest}
+        id={controlId}
+        aria-labelledby={labelId}
+        aria-describedby={
+          [rest["aria-describedby"], descriptionId].filter(Boolean).join(" ") || undefined
+        }
+      />
+      <span {...props(styles.copy)}>
+        <span id={labelId}>{label}</span>
+        {description !== undefined && (
+          <span id={descriptionId} {...props(styles.description)}>
+            {description}
           </span>
         )}
-      />
-    </CheckboxPrimitive.Root>
+      </span>
+    </label>
   );
 }

@@ -1,7 +1,8 @@
-import * as stylex from "@stylexjs/stylex";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { shape } from "@nyte-ai/ui/schema.stylex";
+import { create } from "@stylexjs/stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 
-export const paletteLegendStyles = stylex.create({
+export const paletteLegendStyles = create({
   footer: {
     display: "flex",
     alignItems: "center",
@@ -10,7 +11,7 @@ export const paletteLegendStyles = stylex.create({
     paddingInline: 12,
     borderTopWidth: 1,
     borderTopStyle: "solid",
-    borderTopColor: t.borderSecondaryTranslucent,
+    borderTopColor: role.borderSecondaryTranslucent,
   },
   legend: {
     display: "flex",
@@ -21,10 +22,10 @@ export const paletteLegendStyles = stylex.create({
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
-    letterSpacing: t.letterBase,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+    letterSpacing: type.letterBase,
     whiteSpace: "nowrap",
   },
   keys: {
@@ -40,14 +41,14 @@ export const paletteLegendStyles = stylex.create({
     minWidth: 20,
     height: 20,
     paddingInline: 4,
-    borderRadius: t.radius6,
-    backgroundColor: t.bgMutedTranslucent,
-    boxShadow: `inset 0 0 0 1px ${t.borderSecondaryTranslucent}`,
-    color: t.contentSecondary,
-    fontFamily: t.fontMono,
-    fontSize: t.fontXs,
+    borderRadius: shape.control,
+    backgroundColor: role.bgMutedTranslucent,
+    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    color: role.contentSecondary,
+    fontFamily: type.fontMono,
+    fontSize: type.fontXs,
     fontWeight: 400,
-    lineHeight: t.leadingXs,
+    lineHeight: type.leadingXs,
   },
   keycapIcon: {
     width: 20,
@@ -58,6 +59,6 @@ export const paletteLegendStyles = stylex.create({
     width: 18,
     height: 18,
     marginInlineStart: "auto",
-    color: t.contentSecondary,
+    color: role.contentSecondary,
   },
 });

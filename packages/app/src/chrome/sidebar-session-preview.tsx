@@ -1,18 +1,18 @@
 import { PreviewCard } from "@nyte-ai/ui/preview-card";
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import type { GitHubRepository } from "../bridge.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { ContextMenu } from "@nyte-ai/ui/context-menu";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 
-const styles = stylex.create({
+const styles = create({
   title: {
     overflow: "hidden",
-    color: t.contentPrimary,
-    fontSize: t.fontBase,
+    color: role.contentPrimary,
+    fontSize: type.fontBase,
     fontWeight: 500,
-    lineHeight: t.leadingBase,
+    lineHeight: type.leadingBase,
     whiteSpace: "nowrap",
     textOverflow: "ellipsis",
   },
@@ -27,16 +27,16 @@ const styles = stylex.create({
     gridTemplateColumns: "14px minmax(0, 1fr)",
     alignItems: "center",
     gap: 6,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   detailIcon: {
     display: "grid",
     placeItems: "center",
     width: 14,
-    height: t.leadingSm,
-    color: t.contentTertiary,
+    height: type.leadingSm,
+    color: role.contentTertiary,
   },
   detailText: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
 });
@@ -77,24 +77,24 @@ export function SessionPreviewCard({
       <PreviewCard.Portal>
         <PreviewCard.Positioner side="right" align="start" alignOffset={-4} sideOffset={4}>
           <PreviewCard.Popup aria-label={`Details for ${title}`}>
-            <div {...stylex.props(styles.title)}>{title}</div>
+            <div {...props(styles.title)}>{title}</div>
             {context.kind === "workspace" && (
-              <div {...stylex.props(styles.details)}>
+              <div {...props(styles.details)}>
                 {context.repository !== undefined && (
-                  <div {...stylex.props(styles.detail)}>
-                    <span {...stylex.props(styles.detailIcon)}>
+                  <div {...props(styles.detail)}>
+                    <span {...props(styles.detailIcon)}>
                       <Icon name="git-branch" size={14} />
                     </span>
-                    <span {...stylex.props(styles.detailText)}>
+                    <span {...props(styles.detailText)}>
                       {context.repository.owner}/{context.repository.name}
                     </span>
                   </div>
                 )}
-                <div {...stylex.props(styles.detail)}>
-                  <span {...stylex.props(styles.detailIcon)}>
+                <div {...props(styles.detail)}>
+                  <span {...props(styles.detailIcon)}>
                     <Icon name="folder" size={14} />
                   </span>
-                  <span title={context.path} {...stylex.props(styles.detailText)}>
+                  <span title={context.path} {...props(styles.detailText)}>
                     {context.path}
                   </span>
                 </div>

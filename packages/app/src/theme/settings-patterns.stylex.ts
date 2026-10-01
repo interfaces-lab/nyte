@@ -1,12 +1,13 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /** Shared geometry and typography for the compact Settings surface. */
-import * as stylex from "@stylexjs/stylex";
+import { create } from "@stylexjs/stylex";
 import { settings } from "./schema.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 
-export const settingsPatterns = stylex.create({
+export const settingsPatterns = create({
   pageTitle: {
     margin: 0,
-    color: t.contentPrimary,
+    color: role.contentPrimary,
     fontSize: settings.pageTitleSize,
     fontWeight: 500,
     lineHeight: settings.pageTitleLineHeight,
@@ -26,23 +27,23 @@ export const settingsPatterns = stylex.create({
   },
   sectionTitle: {
     margin: 0,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
     fontWeight: 400,
-    lineHeight: t.leadingSm,
+    lineHeight: type.leadingSm,
   },
   sectionDescription: {
     margin: 0,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   group: {
     display: "flex",
     flexDirection: "column",
     overflow: "clip",
-    borderRadius: t.radius12,
-    backgroundColor: t.bgMutedTranslucent,
+    borderRadius: shape.card,
+    backgroundColor: role.bgMutedTranslucent,
   },
   row: {
     position: "relative",
@@ -67,7 +68,7 @@ export const settingsPatterns = stylex.create({
       insetInline: settings.rowPadding,
       insetBlockStart: 0,
       height: 1,
-      backgroundColor: t.borderSecondaryTranslucent,
+      backgroundColor: role.borderSecondaryTranslucent,
       content: '""',
     },
     ":first-child::before": { display: "none" },
@@ -94,18 +95,18 @@ export const settingsPatterns = stylex.create({
   },
   rowTitle: {
     overflow: "hidden",
-    color: t.contentPrimary,
-    fontSize: t.fontBase,
+    color: role.contentPrimary,
+    fontSize: type.fontBase,
     fontWeight: 400,
-    lineHeight: t.leadingBase,
-    letterSpacing: t.letterBase,
+    lineHeight: type.leadingBase,
+    letterSpacing: type.letterBase,
     textOverflow: "ellipsis",
   },
   rowDescription: {
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
     fontWeight: 400,
-    lineHeight: t.leadingBase,
+    lineHeight: type.leadingBase,
     overflowWrap: "break-word",
   },
   rowControl: {

@@ -1,6 +1,6 @@
-import * as stylex from "@stylexjs/stylex";
+import { create } from "@stylexjs/stylex";
 
-export const sidebarFilterStyles = stylex.create({
+export const sidebarFilterStyles = create({
   controls: { display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0 },
   popup: {
     width: "min(220px, var(--available-width))",

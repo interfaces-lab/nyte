@@ -1,3 +1,4 @@
+import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 /**
  * The input surface has two layouts: the new-chat field stacks above its
  * controls while the follow-up field is one compact row. Attachments stay
@@ -12,7 +13,7 @@
  * and Esc requests a durable abort.
  */
 import { trayStyles } from "../theme/tray.stylex.ts";
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { Delivery, PendingItem, RunId, RunInfo, SessionId } from "@nyte-ai/protocol";
@@ -166,7 +167,7 @@ const SessionModelChip = memo(function SessionModelChip({
       />
       {context?.percent !== undefined && (
         <span
-          {...stylex.props(composerStyles.gauge)}
+          {...props(composerStyles.gauge)}
           title={
             context.contextWindow === undefined
               ? `${String(context.estimatedTokens)} tokens`
@@ -334,12 +335,12 @@ export function ComposerFrame({
   const sendTitle =
     editing?.kind === "queued"
       ? busy
-        ? "Update and interrupt (Enter)"
+        ? "Update and Interrupt (Enter)"
         : editing.delivery === roles.steer
-          ? `Update (Enter) · Queue instead (${modifier}Enter)`
-          : `Update (Enter) · Steer instead (${modifier}Enter)`
+          ? `Update (Enter) · Queue Instead (${modifier}Enter)`
+          : `Update (Enter) · Steer Instead (${modifier}Enter)`
       : editing?.kind === "message"
-        ? "Send edited message (Enter)"
+        ? "Send Edited Message (Enter)"
         : answering
           ? `Answer (Enter) · ${runningMessagePreference === "queue" ? "Steer" : "Queue"} (${modifier}Enter)`
           : busy
@@ -427,7 +428,7 @@ export function ComposerFrame({
     collapsed || attachments.length === 0 ? undefined : (
       <ul
         aria-label="Image attachments"
-        {...stylex.props(
+        {...props(
           composerStyles.attachments,
           surface === "follow-up" && composerStyles.attachmentsInset,
           compact && composerStyles.attachmentsInsetCompact,
@@ -435,7 +436,7 @@ export function ComposerFrame({
         )}
       >
         {attachments.map((attachment) => (
-          <li key={attachment.id} {...stylex.props(composerStyles.attachment)}>
+          <li key={attachment.id} {...props(surfaceTheme.gray, composerStyles.attachment)}>
             <ImagePreview
               src={attachment.previewUrl}
               name={attachment.name}
@@ -447,7 +448,8 @@ export function ComposerFrame({
                 iconOnly
                 icon="x"
                 aria-label={`Remove ${attachment.name}`}
-                variant="inverse"
+                variant="solid"
+                tone="primary"
                 round
                 disabled={disabled}
                 onClick={() => onAttachmentRemove(attachment.id)}
@@ -463,7 +465,8 @@ export function ComposerFrame({
     collapsed || attachmentError === undefined ? undefined : (
       <div
         role="alert"
-        {...stylex.props(
+        {...props(
+          intent.danger,
           composerStyles.attachmentError,
           surface === "follow-up" && composerStyles.attachmentErrorInset,
           compact && composerStyles.attachmentErrorInsetCompact,
@@ -526,7 +529,8 @@ export function ComposerFrame({
           onFilesSelected(Array.from(event.dataTransfer.files));
         }}
         onDragEnd={() => setDragging(false)}
-        {...stylex.props(
+        {...props(
+          dragging && intent.primary,
           composerStyles.frame,
           geometry === "new-chat" && composerStyles.frameNewChat,
           compact && composerStyles.frameFollowUpCompact,
@@ -535,7 +539,7 @@ export function ComposerFrame({
           dragging && composerStyles.frameDragging,
         )}
       >
-        {dragging && <span aria-hidden="true" {...stylex.props(composerStyles.dropGuard)} />}
+        {dragging && <span aria-hidden="true" {...props(composerStyles.dropGuard)} />}
         {canAttach && (
           <input
             ref={fileInputRef}
@@ -543,7 +547,7 @@ export function ComposerFrame({
             multiple
             disabled={disabled}
             tabIndex={-1}
-            {...stylex.props(composerStyles.fileInput)}
+            {...props(composerStyles.fileInput)}
             onChange={(event) => {
               const picked = Array.from(event.currentTarget.files ?? []);
               event.currentTarget.value = "";
@@ -555,14 +559,14 @@ export function ComposerFrame({
         {attachmentList}
         {attachmentAlert}
         <div
-          {...stylex.props(
+          {...props(
             composerStyles.layout,
             geometry === "new-chat" && composerStyles.layoutNewChat,
             compact && composerStyles.layoutCompact,
           )}
         >
           <div
-            {...stylex.props(
+            {...props(
               composerStyles.editor,
               compact && composerStyles.editorCompact,
               collapsed && composerStyles.editorCollapsed,
@@ -574,7 +578,7 @@ export function ComposerFrame({
               ref={areaRef}
               inputRef={inputRef}
               className={
-                stylex.props(
+                props(
                   composerStyles.input,
                   geometry === "new-chat" && composerStyles.inputNewChat,
                   compact && composerStyles.inputCompact,
@@ -645,7 +649,7 @@ export function ComposerFrame({
           </div>
           {suggestionMenu.menu}
           <div
-            {...stylex.props(
+            {...props(
               composerStyles.controls,
               compact && composerStyles.controlsCompact,
               followUpExpanded && composerStyles.controlsInset,
@@ -660,7 +664,7 @@ export function ComposerFrame({
                   iconOnly
                   icon="plus"
                   aria-label="Add to message"
-                  variant="secondary"
+                  variant="outline"
                   round
                   disabled={disabled}
                   xstyle={compact ? composerStyles.addButtonCompact : undefined}
@@ -682,24 +686,18 @@ export function ComposerFrame({
                 </>
               )}
             </Menu>
-            <span
-              {...stylex.props(
-                composerStyles.modelSlot,
-                compact && composerStyles.modelSlotCompact,
-              )}
-            >
+            <span {...props(composerStyles.modelSlot, compact && composerStyles.modelSlotCompact)}>
               {model}
             </span>
-            <span
-              {...stylex.props(composerStyles.spacer, compact && composerStyles.spacerCompact)}
-            />
+            <span {...props(composerStyles.spacer, compact && composerStyles.spacerCompact)} />
             {busy && onAbort !== undefined && (
               <Button
                 iconOnly
                 icon="square"
                 aria-label={stopping ? "Stopping" : "Stop"}
                 title={stopping ? "Stopping…" : "Stop (Esc)"}
-                variant="inverse"
+                variant="solid"
+                tone="primary"
                 round
                 disabled={disabled || stopping}
                 onClick={onAbort}
@@ -713,7 +711,8 @@ export function ComposerFrame({
                 aria-label={sendLabel}
                 title={sendTitle}
                 type="submit"
-                variant="inverse"
+                variant="solid"
+                tone="primary"
                 round
                 disabled={!canSubmit}
                 xstyle={compact ? composerStyles.sendCompact : undefined}
@@ -738,14 +737,14 @@ function QueuedMessageContent({
     const summary = imageCount === 1 ? "1 image" : `${String(imageCount)} images`;
 
     return (
-      <span title={summary} {...stylex.props(composerStyles.queuePreview)}>
+      <span title={summary} {...props(composerStyles.queuePreview)}>
         {summary}
       </span>
     );
   }
 
   return (
-    <span title={text} {...stylex.props(composerStyles.queuePreview)}>
+    <span title={text} {...props(composerStyles.queuePreview)}>
       <UserMessageText text={text} />
     </span>
   );
@@ -1318,16 +1317,16 @@ export function Composer({
 
   const queuedMessages =
     queuedMessageCount === 0 ? undefined : (
-      <section aria-label="Queued messages" {...stylex.props(trayStyles.surface)}>
-        <div {...stylex.props(trayStyles.header)}>
-          <span {...stylex.props(trayStyles.title)}>
+      <section aria-label="Queued messages" {...props(trayStyles.surface)}>
+        <div {...props(trayStyles.header)}>
+          <span {...props(trayStyles.title)}>
             {String(queuedMessageCount)} queued {queuedMessageCount === 1 ? "message" : "messages"}
             {emptyEnterSteers && (
-              <span {...stylex.props(composerStyles.queueHint)}> · Enter to steer</span>
+              <span {...props(composerStyles.queueHint)}> · Enter to steer</span>
             )}
           </span>
         </div>
-        <div {...stylex.props(trayStyles.list, composerStyles.queueList)}>
+        <div {...props(trayStyles.list, composerStyles.queueList)}>
           {pending.map((item) => {
             const action = rowActions.get(item.change);
 
@@ -1343,24 +1342,28 @@ export function Composer({
                 key={item.change}
                 data-editing={editingThis}
                 data-error={action?.kind === "failed"}
-                {...stylex.props(composerStyles.queueRow)}
+                {...props(composerStyles.queueRow)}
               >
-                <div {...stylex.props(composerStyles.queueMessage)}>
+                <div {...props(composerStyles.queueMessage)}>
                   <QueuedMessageContent content={item.source?.label ?? item.content} />
                   {action?.kind === "cancelling" && (
-                    <span {...stylex.props(composerStyles.queuedState)}>Cancelling…</span>
+                    <span {...props(composerStyles.queuedState)}>Cancelling…</span>
                   )}
                   {action?.kind === "failed" && (
                     <span
                       role="alert"
-                      {...stylex.props(composerStyles.queuedState, composerStyles.queuedError)}
+                      {...props(
+                        intent.danger,
+                        composerStyles.queuedState,
+                        composerStyles.queuedError,
+                      )}
                     >
                       {action.message}
                     </span>
                   )}
                 </div>
                 {!busyRow && !editingThis && (
-                  <div {...stylex.props(composerStyles.queueActions)}>
+                  <div {...props(composerStyles.queueActions)}>
                     {item.source?.kind !== "action" && (
                       <Button
                         iconOnly
@@ -1408,21 +1411,25 @@ export function Composer({
                 key={row.key}
                 data-editing={editingThis}
                 data-error={row.state.kind === "retrying"}
-                {...stylex.props(composerStyles.queueRow)}
+                {...props(composerStyles.queueRow)}
               >
-                <div {...stylex.props(composerStyles.queueMessage)}>
+                <div {...props(composerStyles.queueMessage)}>
                   <QueuedMessageContent content={row.input.source?.label ?? row.input.content} />
                   {row.state.kind === "retrying" && (
                     <span
                       role="alert"
-                      {...stylex.props(composerStyles.queuedState, composerStyles.queuedError)}
+                      {...props(
+                        intent.danger,
+                        composerStyles.queuedState,
+                        composerStyles.queuedError,
+                      )}
                     >
                       Couldn't send: {row.state.reason}. Retrying…
                     </span>
                   )}
                 </div>
                 {!editingThis && (
-                  <div {...stylex.props(composerStyles.queueActions)}>
+                  <div {...props(composerStyles.queueActions)}>
                     {row.input.source?.kind !== "action" && row.input.delivery !== roles.steer && (
                       <Button
                         iconOnly
@@ -1469,20 +1476,20 @@ export function Composer({
     );
 
   return (
-    <div {...stylex.props(composerStyles.dock)}>
+    <div {...props(composerStyles.dock)}>
       <MessageScrollerButton />
-      <div role="region" aria-label="Conversation input" {...stylex.props(composerStyles.region)}>
-        <div {...stylex.props(composerStyles.inputStack)}>
-          <div {...stylex.props(composerStyles.preComposerOverlay)}>
+      <div role="region" aria-label="Conversation input" {...props(composerStyles.region)}>
+        <div {...props(composerStyles.inputStack)}>
+          <div {...props(composerStyles.preComposerOverlay)}>
             {feedback !== undefined && (
               <div
                 role={feedback.kind === "error" ? "alert" : "status"}
-                {...stylex.props(composerStyles.queued)}
+                {...props(composerStyles.queued)}
               >
                 <Icon name={feedback.kind === "error" ? "bubble-question" : "sparkle"} />
-                <span {...stylex.props(composerStyles.queuedText)}>{feedback.message}</span>
+                <span {...props(composerStyles.queuedText)}>{feedback.message}</span>
                 {feedback.restore !== undefined && (
-                  <Button variant="link" onClick={feedback.restore}>
+                  <Button variant="text" onClick={feedback.restore}>
                     Restore draft
                   </Button>
                 )}

@@ -6,7 +6,7 @@
  * whatever the session already runs on.
  */
 import { Autocomplete } from "@nyte-ai/ui/autocomplete";
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { useNavigate } from "@tanstack/react-router";
 import { memo, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
@@ -23,7 +23,7 @@ import {
 } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
 import { menu } from "@nyte-ai/ui/schema.stylex";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { nyte, type DesktopCatalog, type DesktopModelOption } from "../nyte.ts";
 import { isSettingsSection } from "../chrome/settings-navigation.tsx";
 import { shellActions } from "../chrome/shell-state.ts";
@@ -48,7 +48,7 @@ export type ModelPickerChange =
       readonly enabled: boolean;
     };
 
-const styles = stylex.create({
+const styles = create({
   trigger: { maxWidth: "100%", flexShrink: 1 },
   triggerName: {
     minWidth: 0,
@@ -56,7 +56,7 @@ const styles = stylex.create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  triggerDetail: { flexShrink: 0, color: t.contentSecondary, whiteSpace: "nowrap" },
+  triggerDetail: { flexShrink: 0, color: role.contentSecondary, whiteSpace: "nowrap" },
   palette: {
     width: `min(${menu.modelWidth}, var(--available-width))`,
     maxWidth: "var(--available-width)",
@@ -74,11 +74,15 @@ const styles = stylex.create({
     flexDirection: "column",
     gap: 2,
     padding: "10px 8px",
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
-  emptyTitle: { color: t.contentSecondary, fontSize: t.fontBase, lineHeight: t.leadingBase },
+  emptyTitle: {
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+  },
 });
 
 interface ModelPickerProps {
@@ -121,7 +125,7 @@ function ModelPickerView({
         : undefined
       : isSettingsSection("providers")
         ? {
-            label: connected ? "Manage providers…" : "Connect a provider…",
+            label: connected ? "Manage Providers…" : "Connect a Provider…",
             open: () =>
               void navigate({ to: "/settings/$section", params: { section: "providers" } }),
           }
@@ -147,16 +151,16 @@ function ModelPickerView({
         <Button
           size="sm"
           disabled={disabled}
-          aria-label={
+          aria-description={
             label.detail === undefined
               ? `Model: ${label.name}`
               : `Model: ${label.name}, ${label.detail}`
           }
           xstyle={styles.trigger}
         >
-          <span {...stylex.props(styles.triggerName)}>{label.name}</span>
+          <span {...props(styles.triggerName)}>{label.name}</span>
           {label.detail !== undefined && (
-            <span {...stylex.props(styles.triggerDetail)}>{label.detail}</span>
+            <span {...props(styles.triggerDetail)}>{label.detail}</span>
           )}
           <Icon name="chevron-down" size={10} />
         </Button>
@@ -238,22 +242,22 @@ function ModelPickerView({
           <MenuSeparator />
           <Autocomplete.List data-nyte-scrollport>
             {groups.length === 0 && (
-              <div {...stylex.props(styles.empty)}>
+              <div {...props(styles.empty)}>
                 {search.trim() !== "" ? (
-                  <span {...stylex.props(styles.emptyTitle)}>No models match</span>
+                  <span {...props(styles.emptyTitle)}>No models match</span>
                 ) : catalog?.source === "server" ? (
                   <>
-                    <span {...stylex.props(styles.emptyTitle)}>No server models available</span>
+                    <span {...props(styles.emptyTitle)}>No server models available</span>
                     <span>Configure provider credentials on the server.</span>
                   </>
                 ) : connected ? (
                   <>
-                    <span {...stylex.props(styles.emptyTitle)}>Every model is hidden</span>
+                    <span {...props(styles.emptyTitle)}>Every model is hidden</span>
                     <span>Enable models in Settings › Providers.</span>
                   </>
                 ) : (
                   <>
-                    <span {...stylex.props(styles.emptyTitle)}>No providers connected</span>
+                    <span {...props(styles.emptyTitle)}>No providers connected</span>
                     <span>Connect a provider in Settings › Providers.</span>
                   </>
                 )}

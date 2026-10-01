@@ -1,7 +1,7 @@
 import { create } from "@stylexjs/stylex";
 import { layer } from "@nyte-ai/ui/schema.stylex";
-import { shell, sidebar } from "../theme/schema.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { shell, sidebar, workbench } from "../theme/schema.stylex.ts";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 
 export const titlebarStyles = create({
   bar: {
@@ -26,9 +26,9 @@ export const titlebarStyles = create({
     insetInlineEnd: 0,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: t.borderSecondaryTranslucent,
+    borderInlineStartColor: role.borderSecondaryTranslucent,
     backgroundClip: "padding-box",
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
     pointerEvents: "none",
   },
   contentFillSidebarHidden: { insetInlineStart: 0, borderInlineStartWidth: 0 },
@@ -40,27 +40,27 @@ export const titlebarStyles = create({
     display: "flex",
     alignItems: "center",
     gap: 2,
-    width: "var(--nyte-active-workbench-width, 500px)",
+    width: workbench.activeWidth,
     minWidth: 0,
     paddingInlineStart: 6,
     paddingInlineEnd: 10,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: t.borderSecondaryTranslucent,
+    borderInlineStartColor: role.borderSecondaryTranslucent,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderSecondaryTranslucent,
-    backgroundColor: t.bgBase,
+    borderBottomColor: role.borderSecondaryTranslucent,
+    backgroundColor: role.bgBase,
     WebkitAppRegion: "no-drag",
   },
   workbenchTrackSidebarHiddenMac: { maxWidth: "calc(100% - 112px)" },
   workbenchTrackSidebarHidden: { maxWidth: "calc(100% - 38px)" },
   workbenchReservation: {
-    width: "calc(var(--nyte-active-workbench-width, 500px) - 10px)",
+    width: `calc(${workbench.activeWidth} - 10px)`,
     flexShrink: 0,
   },
   titleSlotWorkbenchOpen: {
-    insetInlineEnd: "calc(var(--nyte-active-workbench-width, 500px) + 44px)",
+    insetInlineEnd: `calc(${workbench.activeWidth} + 44px)`,
   },
   // macOS reserves a traffic-light lane at the leading edge.
   barMac: { paddingInlineStart: shell.trafficLightInset },
@@ -121,23 +121,23 @@ export const titlebarStyles = create({
     alignItems: "center",
     gap: 4,
     flexShrink: 0,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     whiteSpace: "nowrap",
   },
   sessionCrumbDivider: {
     flexShrink: 0,
-    color: t.contentDisabled,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentDisabled,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   sessionTitle: {
     maxWidth: "min(420px, 50vw)",
     overflow: "hidden",
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },

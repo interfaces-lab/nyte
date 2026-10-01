@@ -162,7 +162,8 @@
     "build": "node scripts/build.mjs && tsc -p tsconfig.build.json",
     "dev": "node scripts/build.mjs --watch",
     "clean": "rm -rf node_modules .turbo dist",
-    "check:tokens": "node scripts/sync-platform-colors.mjs --check",
+    "check:tokens": "node scripts/check-tokens.mjs && node scripts/sync-platform-colors.mjs --check",
+    "lock:tokens": "node scripts/check-tokens.mjs --update",
     "sync:tokens": "node scripts/sync-platform-colors.mjs",
     "typecheck": "pnpm check:tokens && tsc --noEmit"
   },

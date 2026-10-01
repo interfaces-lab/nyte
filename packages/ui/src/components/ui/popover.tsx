@@ -1,12 +1,12 @@
-import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
+import { Popover } from "@base-ui/react/popover";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
 import { floatingSurfaceStyles } from "../../floating-surface.stylex.ts";
-import { layer } from "../../schema.stylex.ts";
+import { layer, shape } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
 import { surfaceTheme, type Tint } from "../../surface-theme.ts";
-import { t } from "../../vars.stylex.ts";
+import { motion, role, type } from "../../vars.stylex.ts";
 import { useOverlayRef } from "./overlay.tsx";
 
 const styles = create({
@@ -14,11 +14,11 @@ const styles = create({
   popup: {
     padding: 8,
     borderStyle: "none",
-    borderRadius: t.radius12,
+    borderRadius: shape.card,
     outline: "none",
-    color: t.contentPrimary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    color: role.contentPrimary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     transformOrigin: "var(--transform-origin)",
     opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
     scale: {
@@ -29,27 +29,46 @@ const styles = create({
     },
     transitionProperty: "opacity, scale",
     transitionDuration: {
-      default: t.durationFast,
+      default: motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: t.easeOut,
+    transitionTimingFunction: motion.easeOut,
   },
   title: {
     margin: 0,
-    color: t.contentPrimary,
-    fontSize: t.fontBase,
+    color: role.contentPrimary,
+    fontSize: type.fontBase,
     fontWeight: 500,
-    lineHeight: t.leadingBase,
+    lineHeight: type.leadingBase,
   },
   description: {
     margin: 0,
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
 });
 
-export type PopoverPositionerProps = StyledProps<PopoverPrimitive.Positioner.Props>;
+export type PopoverBackdropProps = StyledProps<Omit<Popover.Backdrop.Props, "ref">>;
+
+function PopoverBackdrop({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: PopoverBackdropProps): ReactElement {
+  const overlayRef = useOverlayRef();
+
+  return (
+    <Popover.Backdrop
+      {...rest}
+      ref={overlayRef}
+      {...mergeStyleProps(props(xstyle), className, style)}
+    />
+  );
+}
+
+export type PopoverPositionerProps = StyledProps<Popover.Positioner.Props>;
 
 function PopoverPositioner({
   positionMethod = "fixed",
@@ -60,7 +79,7 @@ function PopoverPositioner({
   ...rest
 }: PopoverPositionerProps): ReactElement {
   return (
-    <PopoverPrimitive.Positioner
+    <Popover.Positioner
       positionMethod={positionMethod}
       collisionPadding={collisionPadding}
       {...mergeStyleProps(props(styles.positioner, xstyle), className, style)}
@@ -69,7 +88,7 @@ function PopoverPositioner({
   );
 }
 
-export type PopoverPopupProps = StyledProps<PopoverPrimitive.Popup.Props> & {
+export type PopoverPopupProps = StyledProps<Omit<Popover.Popup.Props, "ref">> & {
   /** Scopes the popup to a hue. */
   readonly tint?: Tint;
 };
@@ -84,7 +103,7 @@ function PopoverPopup({
   const overlayRef = useOverlayRef();
 
   return (
-    <PopoverPrimitive.Popup
+    <Popover.Popup
       ref={overlayRef}
       {...mergeStyleProps(
         props(
@@ -101,18 +120,15 @@ function PopoverPopup({
   );
 }
 
-export type PopoverTitleProps = StyledProps<PopoverPrimitive.Title.Props>;
+export type PopoverTitleProps = StyledProps<Popover.Title.Props>;
 
 function PopoverTitle({ className, style, xstyle, ...rest }: PopoverTitleProps): ReactElement {
   return (
-    <PopoverPrimitive.Title
-      {...mergeStyleProps(props(styles.title, xstyle), className, style)}
-      {...rest}
-    />
+    <Popover.Title {...mergeStyleProps(props(styles.title, xstyle), className, style)} {...rest} />
   );
 }
 
-export type PopoverDescriptionProps = StyledProps<PopoverPrimitive.Description.Props>;
+export type PopoverDescriptionProps = StyledProps<Popover.Description.Props>;
 
 function PopoverDescription({
   className,
@@ -121,24 +137,26 @@ function PopoverDescription({
   ...rest
 }: PopoverDescriptionProps): ReactElement {
   return (
-    <PopoverPrimitive.Description
+    <Popover.Description
       {...mergeStyleProps(props(styles.description, xstyle), className, style)}
       {...rest}
     />
   );
 }
 
-export const Popover = {
-  Root: PopoverPrimitive.Root,
-  Trigger: PopoverPrimitive.Trigger,
-  Portal: PopoverPrimitive.Portal,
-  Backdrop: PopoverPrimitive.Backdrop,
+const popoverParts = {
+  Root: Popover.Root,
+  Trigger: Popover.Trigger,
+  Portal: Popover.Portal,
+  Backdrop: PopoverBackdrop,
   Positioner: PopoverPositioner,
   Popup: PopoverPopup,
-  Arrow: PopoverPrimitive.Arrow,
-  Viewport: PopoverPrimitive.Viewport,
+  Arrow: Popover.Arrow,
+  Viewport: Popover.Viewport,
   Title: PopoverTitle,
   Description: PopoverDescription,
-  Close: PopoverPrimitive.Close,
-  createHandle: PopoverPrimitive.createHandle,
+  Close: Popover.Close,
+  createHandle: Popover.createHandle,
 };
+
+export { popoverParts as Popover };

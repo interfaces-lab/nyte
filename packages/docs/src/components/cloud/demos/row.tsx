@@ -1,7 +1,8 @@
 "use client";
+import { shape } from "@nyte-ai/ui/schema.stylex";
 
 import { Button, Icon, Row } from "@nyte-ai/ui";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
 
@@ -12,22 +13,22 @@ const styles = create({
     gap: 1,
     width: 300,
     padding: 4,
-    borderRadius: t.radius8,
-    backgroundColor: t.sidebarMaterial,
-    boxShadow: `inset 0 0 0 1px ${t.borderSecondaryTranslucent}`,
-    color: t.contentSecondary,
-    fontFamily: t.fontSans,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    borderRadius: shape.control,
+    backgroundColor: role.sidebarMaterial,
+    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    color: role.contentSecondary,
+    fontFamily: type.fontSans,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
   settings: {
     width: 360,
-    borderRadius: t.radius12,
-    backgroundColor: t.bgElevated,
-    boxShadow: `inset 0 0 0 1px ${t.borderSecondaryTranslucent}`,
-    fontFamily: t.fontSans,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    borderRadius: shape.card,
+    backgroundColor: role.bgElevated,
+    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    fontFamily: type.fontSans,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
 });
 
@@ -69,7 +70,7 @@ export function RowLargeDemo() {
           <Row.Description>200K context · $3 / $15</Row.Description>
         </Row.Body>
         <Row.Actions>
-          <Button variant="secondary">Hide</Button>
+          <Button variant="outline">Hide</Button>
         </Row.Actions>
       </Row>
     </div>

@@ -1,13 +1,4 @@
-/**
- * Records how focus last moved, so the accent ring stays keyboard-only.
- *
- * Chromium matches `:focus-visible` on every text field focus, mouse clicks
- * included — the spec assumes a field you clicked still wants the keyboard
- * affordance. So a `:focus-visible` ring snaps an accent box around any input
- * the user merely clicked into, and no selector alone can tell the two apart.
- * appearance.css resolves `--nyte-focus-ring` to `transparent` while the attribute
- * written here reads `pointer`, which leaves the ring to Tab and nothing else.
- */
+import { applyFocusModality } from "./appearance.ts";
 
 /** Input types that hold no caret: a keypress there is navigation, not typing. */
 const NON_TEXT_INPUT_TYPES = new Set([
@@ -56,7 +47,7 @@ function editingText(element: Element | null): boolean {
 }
 
 function setModality(modality: "keyboard" | "pointer"): void {
-  document.documentElement.dataset["nyteFocusModality"] = modality;
+  applyFocusModality(modality);
 }
 
 // Launch quiet: a window that autofocuses its composer should not open ringed.

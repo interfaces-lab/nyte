@@ -17,6 +17,7 @@ import {
   router,
   startRendererStartup,
 } from "@nyte-ai/app";
+import { applyStartupTheme } from "@nyte-ai/app/theme/startup.ts";
 import appIcon from "../../../build/icon-macos.svg";
 
 const container = document.getElementById("root");
@@ -49,6 +50,8 @@ const startupShell = document.getElementById("startup");
 const startupMessage = document.getElementById("startup-message");
 
 const startupRetry = document.getElementById("startup-retry");
+
+applyStartupTheme({ shell: startupShell, retry: startupRetry });
 
 performance.mark("nyte:startup");
 

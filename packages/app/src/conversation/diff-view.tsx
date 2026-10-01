@@ -1,3 +1,5 @@
+import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * One diff surface shared by transcript receipts and the Changes workbench.
  * Pierre renders the patch inside a shadow root; Nyte's tokens reach it as
@@ -19,7 +21,7 @@ import {
 } from "../pierre-worker-provider.tsx";
 import { diffView } from "../theme/schema.stylex.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 import { patchDigest } from "../workbench/changes-viewed.ts";
 import { diffStyles } from "./styles.stylex.ts";
 import type { DiffFilesLoader } from "./diff-expansion.ts";
@@ -28,6 +30,9 @@ type DiffViewVariant = "inline" | "workbench" | "stack";
 
 const SHADOW_CSS = `
 ${PIERRE_TOKEN_CSS}
+:host {
+  color-scheme: inherit;
+}
 /*
  * Context rows and gutter spacers take the plain editor background. This also
  * opts them out of Pierre's hover and selected-line mixes, which the flat
@@ -39,11 +44,11 @@ ${PIERRE_TOKEN_CSS}
 }
 
 [data-line-type="change-addition"] {
-  --diffs-line-bg: ${t.diffAddedLineBg};
+  --diffs-line-bg: var(--diffs-bg-addition);
 }
 
 [data-line-type="change-deletion"] {
-  --diffs-line-bg: ${t.diffRemovedLineBg};
+  --diffs-line-bg: var(--diffs-bg-deletion);
 }
 
 [data-column-number][data-line-type="change-addition"]::before,
@@ -69,7 +74,7 @@ ${PIERRE_TOKEN_CSS}
 }
 
 *:hover {
-  scrollbar-color: ${t.scrollbarThumb} transparent;
+  scrollbar-color: ${role.scrollbarThumb} transparent;
 }
 
 /*
@@ -100,12 +105,8 @@ ${PIERRE_TOKEN_CSS}
  * keeps the band but drops its duplicates, so every control exists once.
  */
 [data-gutter] [data-separator-wrapper] {
-  /* Shared by the band's inset and the buttons drawn over it; an absolutely
-   * positioned child resolves its inset against the padding box, so it cannot
-   * inherit the padding itself. */
-  --nyte-diff-separator-inset: 8px;
   display: flex;
-  padding-inline-start: var(--nyte-diff-separator-inset);
+  padding-inline-start: 8px;
   background-color: transparent;
 }
 
@@ -130,7 +131,7 @@ ${PIERRE_TOKEN_CSS}
  */
 [data-gutter] [data-expand-button] {
   position: absolute;
-  inset-inline-start: var(--nyte-diff-separator-inset);
+  inset-inline-start: 8px;
   inset-block-start: 50%;
   transform: translateY(-50%);
   z-index: 1;
@@ -141,20 +142,20 @@ ${PIERRE_TOKEN_CSS}
   min-width: 0;
   height: 20px;
   border: 0;
-  border-radius: ${t.radius4};
+  border-radius: ${shape.indicator};
   background-color: transparent;
-  color: ${t.contentInteractiveSecondary};
-  cursor: var(--nyte-cursor-interactive);
+  color: ${role.contentInteractiveSecondary};
+  cursor: ${appearance.cursorInteractive};
 }
 
 /* Up and down, when one expansion cannot close the gap, sit side by side. */
 [data-gutter] [data-expand-button] + [data-expand-button] {
-  inset-inline-start: calc(var(--nyte-diff-separator-inset) + 24px);
+  inset-inline-start: 32px;
 }
 
 [data-gutter] [data-expand-button]:hover {
-  background-color: ${t.bgHover};
-  color: ${t.contentInteractivePrimary};
+  background-color: ${role.bgHover};
+  color: ${role.contentInteractivePrimary};
 }
 
 /*
@@ -183,8 +184,8 @@ ${PIERRE_TOKEN_CSS}
 [data-separator-content] {
   /* The band runs the full width of the row, as Cursor's does. */
   flex: 1;
-  background-color: ${t.bgMutedTranslucent};
-  color: ${t.contentSecondary};
+  background-color: ${role.bgMutedTranslucent};
+  color: ${role.contentSecondary};
   /*
    * Fixed like the row it sits in. The diff's line box is a fixed 20px, so a
    * label that tracked the code font would clip against it at large sizes.
@@ -197,14 +198,14 @@ ${PIERRE_TOKEN_CSS}
 /* The two column copies meet, so only the outer corners round. */
 [data-gutter] [data-separator-content] {
   padding-inline: 8px 0;
-  border-start-start-radius: ${t.radius6};
-  border-end-start-radius: ${t.radius6};
+  border-start-start-radius: ${shape.control};
+  border-end-start-radius: ${shape.control};
 }
 
 [data-content] [data-separator-content] {
   padding-inline: 0 8px;
-  border-start-end-radius: ${t.radius6};
-  border-end-end-radius: ${t.radius6};
+  border-start-end-radius: ${shape.control};
+  border-end-end-radius: ${shape.control};
 }
 `;
 
@@ -214,9 +215,53 @@ ${PIERRE_TOKEN_CSS}
  * instance would find that empty `<pre>`, treat it as prerendered HTML, and
  * never render.
  */
+function applyDiffScopes(node: HTMLElement): void {
+  const sample = document.createElement("span");
+  sample.hidden = true;
+  node.after(sample);
+
+  // Scope classes live outside the shadow tree. Copy computed custom properties,
+  // keeping light-dark() intact so system appearance changes still resolve.
+  for (const entry of [
+    {
+      scope: surfaceTheme.green,
+      properties: [
+        ["--diffs-bg-addition-override", role.bgInteractiveSecondaryTranslucent],
+        ["--diffs-bg-addition-emphasis-override", role.bgInteractivePrimaryTranslucent],
+        ["--diffs-addition-color-override", role.contentSecondary],
+      ],
+    },
+    {
+      scope: surfaceTheme.red,
+      properties: [
+        ["--diffs-bg-deletion-override", role.bgInteractiveSecondaryTranslucent],
+        ["--diffs-bg-deletion-emphasis-override", role.bgInteractivePrimaryTranslucent],
+        ["--diffs-deletion-color-override", role.contentSecondary],
+      ],
+    },
+    {
+      scope: surfaceTheme.blue,
+      properties: [["--diffs-modified-color-override", role.contentSecondary]],
+    },
+  ] as const) {
+    sample.className = props(entry.scope).className ?? "";
+    const computed = getComputedStyle(sample);
+
+    for (const [property, handle] of entry.properties) {
+      node.style.setProperty(property, computed.getPropertyValue(handle.slice(4, -1)));
+    }
+  }
+
+  sample.remove();
+}
+
 function onPostRender(...[node, , phase]: [HTMLElement, unknown, PostRenderPhase]): void {
-  if (phase !== "unmount") return;
-  node.shadowRoot?.querySelector("pre")?.remove();
+  if (phase === "unmount") {
+    node.shadowRoot?.querySelector("pre")?.remove();
+    return;
+  }
+
+  applyDiffScopes(node);
 }
 
 const PATCH_OPTIONS = {
@@ -243,7 +288,7 @@ const rawStyles = create({
     padding: "8px 12px",
     overflowX: "auto",
     whiteSpace: "pre",
-    fontFamily: t.fontMono,
+    fontFamily: type.fontMono,
     fontSize: "12px",
     lineHeight: "18px",
   },
@@ -333,8 +378,12 @@ export const DiffView = memo(function DiffView({
             aria-label={`${String(diff.added)} added, ${String(diff.removed)} removed`}
             {...props(diffStyles.stats)}
           >
-            {diff.added > 0 && <span {...props(diffStyles.added)}>+{diff.added}</span>}
-            {diff.removed > 0 && <span {...props(diffStyles.removed)}>-{diff.removed}</span>}
+            {diff.added > 0 && (
+              <span {...props(intent.success, diffStyles.added)}>+{diff.added}</span>
+            )}
+            {diff.removed > 0 && (
+              <span {...props(intent.danger, diffStyles.removed)}>-{diff.removed}</span>
+            )}
           </span>
         </div>
       )}

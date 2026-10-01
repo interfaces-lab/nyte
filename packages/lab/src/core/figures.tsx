@@ -1,3 +1,5 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * The two figures that carry the page's top-down reading: the layer stack,
  * and one message traced through it, each write shown as the `refs.update`
@@ -6,7 +8,7 @@
 import { create, props } from "@stylexjs/stylex";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import type { ReactNode } from "react";
 import { Inline } from "./ui";
 
@@ -15,20 +17,19 @@ const styles = create({
     display: "flex",
     flexDirection: "column",
     marginInline: -12,
-    "--nyte-row-leading-size": "18px",
   },
   /* The glyph sits on the name's line, not the row's centre, when the role wraps. */
   layerPrimary: { alignItems: "flex-start" },
-  layerLeading: { height: t.leadingLg },
+  layerLeading: { width: 18, height: type.leadingLg },
   layerTitle: { display: "flex", alignItems: "baseline", gap: 12, minWidth: 0 },
   layerLabel: { fontWeight: 590 },
-  layerRole: { whiteSpace: "normal", fontSize: t.fontBase, lineHeight: t.leadingBase },
+  layerRole: { whiteSpace: "normal", fontSize: type.fontBase, lineHeight: type.leadingBase },
   layerFiles: {
     display: { default: "inline", "@media (max-width: 700px)": "none" },
     flexShrink: 0,
-    color: t.contentSecondary,
-    fontFamily: t.fontMono,
-    fontSize: t.fontXs,
+    color: role.contentSecondary,
+    fontFamily: type.fontMono,
+    fontSize: type.fontXs,
   },
 
   trace: {
@@ -43,30 +44,30 @@ const styles = create({
   stepHead: { display: "flex", alignItems: "baseline", gap: 8 },
   stepNumber: {
     minWidth: "1.5ch",
-    color: t.contentSecondary,
+    color: role.contentSecondary,
     fontVariantNumeric: "tabular-nums",
     fontWeight: 500,
   },
-  stepTitle: { margin: 0, fontSize: t.fontLg, lineHeight: t.leadingLg, fontWeight: 590 },
+  stepTitle: { margin: 0, fontSize: type.fontLg, lineHeight: type.leadingLg, fontWeight: 590 },
 
   cas: {
     paddingBlock: 8,
     paddingInline: 12,
     overflowX: "auto",
-    borderRadius: t.radius8,
-    backgroundColor: t.bgMutedTranslucent,
-    fontFamily: t.fontMono,
-    fontSize: t.fontCode,
+    borderRadius: shape.control,
+    backgroundColor: role.bgMutedTranslucent,
+    fontFamily: type.fontMono,
+    fontSize: type.fontCode,
     lineHeight: "20px",
   },
-  casHead: { display: "flex", gap: 8, color: t.contentSecondary },
-  reason: { color: t.intentSuccessContent },
-  casNote: { marginInlineStart: "auto", color: t.contentSecondary, fontFamily: t.fontSans },
+  casHead: { display: "flex", gap: 8, color: role.contentSecondary },
+  reason: { color: role.contentSecondary },
+  casNote: { marginInlineStart: "auto", color: role.contentSecondary, fontFamily: type.fontSans },
   casTable: { borderCollapse: "collapse", font: "inherit" },
   casRef: { width: 200, padding: 0, paddingInlineEnd: 16, whiteSpace: "nowrap" },
-  casMove: { padding: 0, color: t.contentSecondary },
-  assertion: { color: t.contentSecondary },
-  arrow: { color: t.contentTertiary },
+  casMove: { padding: 0, color: role.contentSecondary },
+  assertion: { color: role.contentSecondary },
+  arrow: { color: role.contentTertiary },
 });
 
 export interface Layer {
@@ -118,7 +119,7 @@ export function Cas(input: {
     <div role="figure" aria-label={`refs.update, ${input.reason}`} {...props(styles.cas)}>
       <div {...props(styles.casHead)}>
         <span>refs.update</span>
-        <span {...props(styles.reason)}>"{input.reason}"</span>
+        <span {...props([intent.success, styles.reason])}>"{input.reason}"</span>
         {input.note !== undefined && <span {...props(styles.casNote)}>{input.note}</span>}
       </div>
       <table {...props(styles.casTable)}>

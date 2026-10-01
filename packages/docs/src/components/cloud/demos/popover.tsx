@@ -12,14 +12,20 @@ const styles = create({
 export function PopoverDemo() {
   return (
     <Popover.Root>
-      <Popover.Trigger render={<Button variant="secondary" />}>Notifications</Popover.Trigger>
+      <Popover.Trigger render={<Button variant="outline">Notifications</Button>} />
       <Popover.Portal>
         <Popover.Positioner sideOffset={6}>
           <Popover.Popup xstyle={styles.popup}>
             <Popover.Title>Notifications</Popover.Title>
             <Popover.Description>You are all caught up.</Popover.Description>
             <div {...props(styles.actions)}>
-              <Popover.Close render={<Button size="sm" variant="secondary" />}>Close</Popover.Close>
+              <Popover.Close
+                render={
+                  <Button size="sm" variant="outline">
+                    Close
+                  </Button>
+                }
+              />
             </div>
           </Popover.Popup>
         </Popover.Positioner>

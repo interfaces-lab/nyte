@@ -1,3 +1,4 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { hashKey } from "@tanstack/react-query";
 import { useId, useMemo, useState } from "react";
@@ -13,7 +14,8 @@ import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Row } from "@nyte-ai/ui/row";
 import { useWorkspaceSearch } from "../queries.ts";
-import { ramp, t } from "@nyte-ai/ui/vars.stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { useDebouncedValue } from "../use-debounced-value.ts";
 
 type SearchLocation = Pick<WorkspaceSearchResult["files"][number], "path" | "displayPath"> &
@@ -38,10 +40,10 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    fontFamily: t.fontSans,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
-    color: t.contentPrimary,
+    fontFamily: type.fontSans,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    color: role.contentPrimary,
   },
   controls: { display: "flex", flexDirection: "column", gap: 4, padding: 8, flexShrink: 0 },
   toolbar: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 },
@@ -75,8 +77,8 @@ const styles = create({
   },
   filters: { display: "flex", flexDirection: "column", gap: 4 },
   results: { flex: 1, minWidth: 0, minHeight: 0, overflow: "auto", paddingBottom: 8 },
-  status: { margin: 0, paddingBlock: 6, paddingInline: 8, color: t.contentSecondary },
-  error: { color: t.intentDangerContent, overflowWrap: "anywhere" },
+  status: { margin: 0, paddingBlock: 6, paddingInline: 8, color: role.contentSecondary },
+  error: { color: role.contentSecondary, overflowWrap: "anywhere" },
   group: { margin: 0, padding: 0, listStyleType: "none" },
   fileHeading: {
     display: "flex",
@@ -85,8 +87,8 @@ const styles = create({
     margin: 0,
     minHeight: 24,
     paddingInline: 8,
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
     fontWeight: 400,
   },
   path: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
@@ -96,13 +98,13 @@ const styles = create({
     flexShrink: 0,
     height: 18,
     paddingInline: 4,
-    borderRadius: t.radiusFull,
-    backgroundColor: t.bgMutedTranslucent,
-    fontSize: t.fontXs,
+    borderRadius: shape.pill,
+    backgroundColor: role.bgMutedTranslucent,
+    fontSize: type.fontXs,
     fontVariantNumeric: "tabular-nums",
-    color: t.contentSecondary,
+    color: role.contentSecondary,
   },
-  draft: { flexShrink: 0, color: t.intentWarningContent, fontSize: t.fontSm },
+  draft: { flexShrink: 0, color: role.contentSecondary, fontSize: type.fontSm },
   result: {
     display: "flex",
     alignItems: "baseline",
@@ -113,18 +115,18 @@ const styles = create({
     paddingInlineStart: 32,
     paddingInlineEnd: 8,
     marginBlockEnd: 2,
-    borderRadius: t.radius4,
-    backgroundColor: { default: "transparent", ":hover": t.bgHover },
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    borderRadius: shape.indicator,
+    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
   snippet: {
     display: "flex",
     flex: 1,
     minWidth: 0,
     whiteSpace: "pre",
-    fontFamily: t.fontSans,
+    fontFamily: type.fontSans,
     fontSize: "inherit",
   },
   // Keep the match visible even when the host returns 80 columns of leading context.
@@ -135,11 +137,11 @@ const styles = create({
     maxWidth: "65%",
     overflow: "hidden",
     textOverflow: "ellipsis",
-    backgroundColor: t.selection,
-    color: t.contentPrimary,
+    backgroundColor: role.bgInteractivePrimaryTranslucent,
+    color: role.contentPrimary,
     borderRadius: 2,
   },
-  zeroMatch: { display: "inline-block", width: 2, backgroundColor: ramp.blue80 },
+  zeroMatch: { display: "inline-block", width: 2, backgroundColor: role.bgInteractiveStrong },
 });
 
 export function WorkspaceSearch({
@@ -213,6 +215,7 @@ export function WorkspaceSearch({
             />
             <div role="group" aria-label="Search options" {...props(styles.toggles)}>
               <Toggle
+                iconOnly
                 aria-label="Match case"
                 title="Match case"
                 size="sm"
@@ -222,6 +225,7 @@ export function WorkspaceSearch({
                 Aa
               </Toggle>
               <Toggle
+                iconOnly
                 aria-label="Match whole word"
                 title="Match whole word"
                 size="sm"
@@ -231,6 +235,7 @@ export function WorkspaceSearch({
                 ab
               </Toggle>
               <Toggle
+                iconOnly
                 aria-label="Use regular expression"
                 title="Use regular expression"
                 size="sm"
@@ -297,7 +302,11 @@ export function WorkspaceSearchResults({
       <div {...props(styles.results)}>
         <p
           role={state.kind === "error" ? "alert" : "status"}
-          {...props(styles.status, state.kind === "error" && styles.error)}
+          {...props(
+            state.kind === "error" && intent.danger,
+            styles.status,
+            state.kind === "error" && styles.error,
+          )}
         >
           {state.kind === "loading" ? "Searching…" : state.message}
         </p>
@@ -325,7 +334,9 @@ export function WorkspaceSearchResults({
               {file.displayPath}
             </span>
             <span {...props(styles.count)}>{file.matches.length}</span>
-            {file.source === "draft" && <span {...props(styles.draft)}>Unsaved</span>}
+            {file.source === "draft" && (
+              <span {...props(intent.warning, styles.draft)}>Unsaved</span>
+            )}
           </h3>
           <ul {...props(styles.group)}>
             {file.matches.map((match) => {

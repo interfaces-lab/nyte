@@ -1,268 +1,98 @@
 ---
 title: Tokens
-description: "The --nyte-* custom properties every component paints with"
+description: Roles, scoped colours, and component measurements
 ---
 
-Components paint with `--nyte-*` custom properties only. The compiled stylesheet declares every
-token on `:root`, so loading it is enough.
-
-```css
-@import "@nyte-ai/ui/ui.css";
+```ts
+import { role, type, motion, shadow, appearance } from "@nyte-ai/ui/vars.stylex";
+import { button, shape } from "@nyte-ai/ui/schema.stylex";
+import { surfaceTheme, intent } from "@nyte-ai/ui/surface-theme";
 ```
 
-An app that compiles StyleX itself gets the same declarations from the compiler, and reads the
-tokens through typed constants.
+Use a colour role inside a scope. Use component measurements for controls and shape names for
+rounded containers. Ramps, the theme mapping, and size values are private.
 
-```ts
-import { t } from "@nyte-ai/ui/vars.stylex";
-```
+## Usage
 
-```ts
-const styles = stylex.create({
-  note: { color: t.contentSecondary, borderRadius: t.radius6 },
+```tsx
+import { create, props } from "@stylexjs/stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { shape } from "@nyte-ai/ui/schema.stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
+
+const styles = create({
+  status: {
+    color: role.contentSecondary,
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    borderRadius: shape.control,
+    fontSize: type.fontBase,
+  },
 });
+
+export function Status() {
+  return <span {...props(intent.success, styles.status)}>Saved</span>;
+}
 ```
+
+The default scope is neutral gray. `surfaceTheme.gray` uses the tinted mapping over gray.
+`surfaceTheme.custom` follows the host's hue and intensity. Other scopes are `brown`, `orange`,
+`yellow`, `green`, `blue`, `purple`, `pink`, `red`, and `teal`.
+
+| Colour use                    | Scope                                                  | Role                                                                     |
+| ----------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Status text                   | `intent.success`, `intent.warning`, or `intent.danger` | `contentSecondary`                                                       |
+| Filled action                 | `intent.primary`                                       | `buttonFill` and `contentOnInteractiveStrong`                            |
+| Syntax token                  | A hue per token kind                                   | `contentSecondary`                                                       |
+| Dot, file glyph, chart series | A hue per category                                     | `contentInteractiveTertiary`                                             |
+| Added diff line or word       | `surfaceTheme.green`                                   | `bgInteractiveSecondaryTranslucent` or `bgInteractivePrimaryTranslucent` |
+| Removed diff line or word     | `surfaceTheme.red`                                     | The same background roles                                                |
+| Avatar                        | A hue per avatar                                       | `bgInteractiveSecondaryTranslucent` and `contentInteractivePrimary`      |
+
+Apply both parts of a scope through `props(surfaceTheme.blue, styles.item)`. Applying the hue
+alone leaves inherited roles resolved in the parent scope. Scope a list container when all its
+items share a hue.
 
 ## Layers
 
-The tokens follow Notion Calendar's layered system.
+| Kind       | Order                                            | Consumer API                                                                                                           |
+| ---------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Colour     | Ramps → theme → neutral or tinted roles          | `role`                                                                                                                 |
+| Size       | Values → components → app layout                 | `button`, `input`, `switchControl`, `checkbox`, `row`, `menu`, `dialog`, `toast`, `glyph`, `clipboardPreview`, `shape` |
+| Type       | Font inputs and derived type scale               | `type`                                                                                                                 |
+| Motion     | Durations and easing                             | `motion`                                                                                                               |
+| Shadow     | Size values and shadow inks → elevation          | `shadow`                                                                                                               |
+| Appearance | Display, pointer, transparency, and focus inputs | `appearance`                                                                                                           |
 
-| Layer             | Tokens                                                   | What it holds                                                       |
-| ----------------- | -------------------------------------------------------- | ------------------------------------------------------------------- |
-| Ramps             | `--nyte-{hue}-{step}`, `--nyte-translucent-…`            | Ten hues in twenty steps, 0 to 150, in `lab()`                      |
-| Theme             | `--nyte-theme-{step}`, `--nyte-theme-translucent-…`      | The ramp a scope paints with, gray by default                       |
-| Roles             | `--nyte-content-*`, `--nyte-border-*`, `--nyte-bg-*`     | What each step paints: text, edges, and surfaces                    |
-| Component colours | `--nyte-composer-*`, `--nyte-popup-material` …           | Nyte's own surfaces, built on the roles                             |
-| Size primitives   | `--nyte-spacing-*`, `--nyte-sizing-*`, `--nyte-radius-*` | Notion Calendar's length scale                                      |
-| Component sizes   | `--nyte-btn-*`, `--nyte-input-*`, `--nyte-row-*` …       | Control measurements over the primitives, with a coarse-pointer box |
+`shape` has six names: `square`, `indicator`, `control`, `card`, `surface`, and `pill`.
+Component-specific radii remain on their component handles. Component sizes grow under
+`(pointer: coarse)`.
 
-A component names a role, never a ramp step, unless the colour must stay the same everywhere,
-such as a chart series or a status dot. From `@nyte-ai/ui/vars.stylex`, `t` holds the roles,
-component colours, shadows, type, radius, and motion, and `ramp` holds the opaque steps. The
-component sizes come from `@nyte-ai/ui/schema.stylex` as `button`, `input`, `switchControl`,
-`checkbox`, `row`, and `menu`.
+Roles resolve through `light-dark()`. Set `color-scheme` on the host or an ancestor to choose the
+appearance. The focus ring is fixed blue and does not follow a hue scope.
 
-## Light and dark
+Readable text uses `contentPrimary` or `contentSecondary`. `contentTertiary` is for placeholders,
+disabled hints, and decoration. Glyphs use `contentInteractiveTertiary` or a stronger role.
 
-Roles resolve by `color-scheme`: a role is a `light-dark()` pair, a single step both modes share,
-or a colour derived from another role, so a component follows the `color-scheme` in effect rather
-than a class. The package sets no `color-scheme`, so set one. The desktop sets it from
-`data-display-mode` on `<html>`.
+Consumer styles import handles instead of writing `var(--nyte-…)`. Ramps and size primitives are
+data, not custom properties. A measurement without a handle is a literal on the design scale.
+Control measurements belong to components; app layout decisions build on those measurements.
 
-```css
-:root {
-  color-scheme: light;
-}
-
-:root[data-display-mode="dark"] {
-  color-scheme: dark;
-}
-```
-
-A subtree can take the other appearance on its own with `color-scheme` on any ancestor.
-
-## Scopes
-
-A scope paints a subtree in one hue. It swaps the theme layer and re-declares the roles from it,
-which is why both halves travel together: a custom property inherits its computed value, so a
-role resolved above the scope would stay gray.
+## Native colours
 
 ```ts
-import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { platformColors, platformScopes } from "@nyte-ai/ui/platform-colors";
 
-<div {...stylex.props(surfaceTheme.blue, styles.card)} />;
-<div {...stylex.props(intent.danger, styles.banner)} />;
+const page = platformColors.light.bgBase;
+const status = platformScopes.light.green.contentSecondary;
 ```
 
-`intent.primary`, `success`, `warning`, and `danger` are the blue, green, yellow, and red scopes.
-Checked controls and filled buttons paint inside `intent.primary`. The control roles
-(`bg-control`, `border-control`, `content-on-control`) keep their neutral value in every scope, so
-an empty checkbox stays gray inside one. Menus, popovers, dialogs, tooltips, and preview cards take
-a `tint` prop, and `toastTint()` scopes a single toast.
+Native colours are resolved values for each appearance. Choose a scope and a role at the native
+palette boundary rather than defining a fixed status or syntax colour.
 
-`surfaceTheme.custom` builds a hue from Notion Calendar's template ramp at
-`--nyte-custom-hue` and `--nyte-custom-chroma-scale`. The desktop puts it on `<html>` as the
-workspace tint.
+## Compiled styles
 
-## Overriding
-
-Override a ramp step or a role on an ancestor. A scope re-declares every role on the element that
-starts it, so a role overridden on `:root` holds only outside scopes. To recolour a subtree, give
-it a scope.
+Apps that do not compile StyleX load the package stylesheet.
 
 ```css
-.preview {
-  color-scheme: dark;
-  --nyte-bg-base: #101014;
-}
-```
-
-## Ramps
-
-Gray and blue shown; every hue has the same steps. Translucent steps carry a light and a dark
-value.
-
-<TokenTable prefix={["--nyte-gray-", "--nyte-blue-"]} swatch />
-
-<TokenTable prefix={["--nyte-translucent-gray-"]} swatch />
-
-## Roles
-
-Content is text and icons. Text that must be read uses `content-secondary` or stronger;
-`content-tertiary` is for placeholders, disabled text, and decoration. Readable roles take the
-nearest step that reaches 4.5:1 on `bg-base`, `bg-chrome`, and `bg-elevated` in each mode, in the
-neutral roles and in every scope.
-
-<TokenTable prefix="--nyte-content-" swatch />
-
-<TokenTable prefix="--nyte-border-" swatch />
-
-`bg-base` is the page, `bg-elevated` a card or popup above it, and `bg-chrome` the sidebar.
-`bg-hover` and `bg-pressed` are states laid over whatever sits beneath.
-
-<TokenTable prefix="--nyte-bg-" swatch />
-
-## Component colours
-
-Built from the roles, so they re-resolve inside a scope.
-
-<TokenTable
-  prefix={[
-    "--nyte-sidebar-material",
-    "--nyte-popup-material",
-    "--nyte-layer-",
-    "--nyte-scrollbar-thumb",
-    "--nyte-button-fill",
-    "--nyte-conversation-",
-    "--nyte-composer-",
-  ]}
-  swatch
-/>
-
-Status text, syntax, marks, selection, and diffs keep their hue under every scope. Each text
-colour reads at 4.5:1 on the page in both modes, and each mark 3:1.
-
-<TokenTable
-  prefix={[
-    "--nyte-intent-",
-    "--nyte-syntax-",
-    "--nyte-selection",
-    "--nyte-image-bg",
-    "--nyte-diff-",
-  ]}
-  swatch
-/>
-
-## Interaction
-
-`focus-ring` is the keyboard ring; see [Focus](/cloud/foundations/focus). `cursor-interactive` is
-the cursor for clickable elements, and a host can set it to `default` for native desktop behavior.
-
-<TokenTable
-  prefix={[
-    "--nyte-focus-ring",
-    "--nyte-cursor-",
-    "--nyte-popup-material-filter",
-    "--nyte-reduce-transparency",
-  ]}
-/>
-
-## Elevation
-
-<TokenTable prefix="--nyte-shadow-" />
-
-## Type
-
-`--nyte-font-size-base` drives the scale. Every other size and line height is computed from it, so
-one override resizes the set.
-
-<TokenTable
-  prefix={[
-    "--nyte-ui-font-",
-    "--nyte-code-font-",
-    "--nyte-font-",
-    "--nyte-line-height-",
-    "--nyte-letter-spacing-",
-  ]}
-/>
-
-## Size primitives
-
-<TokenTable prefix={["--nyte-radius-", "--nyte-spacing", "--nyte-sizing-"]} />
-
-## Motion
-
-`fast` for state changes on controls, `normal` for popups.
-
-<TokenTable prefix={["--nyte-duration-", "--nyte-easing-"]} />
-
-## Component sizes
-
-Notion Calendar's button, input, switch, checkbox, and row sizes. A coarse pointer gets the larger
-box.
-
-<TokenTable
-  prefix={[
-    "--nyte-btn-",
-    "--nyte-icon-btn-",
-    "--nyte-input-",
-    "--nyte-switch-",
-    "--nyte-checkbox-",
-    "--nyte-row-",
-  ]}
-/>
-
-Nyte's own measurements for menus, dialogs, and toasts.
-
-<TokenTable
-  prefix={[
-    "--nyte-glyph-box",
-    "--nyte-menu-",
-    "--nyte-model-menu-width",
-    "--nyte-parameter-menu-width",
-    "--nyte-dialog-",
-    "--nyte-toast-",
-    "--nyte-clipboard-preview-",
-  ]}
-/>
-
-## Tailwind mapping
-
-`@nyte-ai/ui/tailwind.css` maps Tailwind v4's theme onto the tokens with `@theme inline`, so
-utilities such as `bg-background`, `text-muted-foreground`, and `rounded-md` paint with the same
-values as the components.
-
-```css
-@import "tailwindcss";
 @import "@nyte-ai/ui/ui.css";
-@import "@nyte-ai/ui/tailwind.css";
 ```
-
-| Tailwind token                  | Reads                                         |
-| ------------------------------- | --------------------------------------------- |
-| `--font-sans`, `--font-heading` | `--nyte-font-family-sans`                     |
-| `--font-mono`                   | `--nyte-font-family-mono`                     |
-| `--color-background`            | `--nyte-bg-base`                              |
-| `--color-foreground`            | `--nyte-content-primary`                      |
-| `--color-popover`               | `--nyte-bg-elevated`                          |
-| `--color-popover-foreground`    | `--nyte-content-primary`                      |
-| `--color-sidebar`               | `--nyte-bg-chrome`                            |
-| `--color-primary`               | `--nyte-bg-interactive-strong`                |
-| `--color-primary-foreground`    | `--nyte-content-on-interactive-strong`        |
-| `--color-muted`                 | `--nyte-bg-muted-translucent`                 |
-| `--color-muted-foreground`      | `--nyte-content-secondary`                    |
-| `--color-tertiary-foreground`   | `--nyte-content-tertiary`                     |
-| `--color-fill-hover`            | `--nyte-bg-hover`                             |
-| `--color-fill-selected`         | `--nyte-bg-interactive-secondary-translucent` |
-| `--color-accent`                | `--nyte-intent-primary-content`               |
-| `--color-destructive`           | `--nyte-intent-danger-content`                |
-| `--color-border-subtle`         | `--nyte-border-secondary-translucent`         |
-| `--color-border`                | `--nyte-border-secondary-translucent`         |
-| `--color-border-strong`         | `--nyte-border-primary-translucent`           |
-| `--color-ring`                  | `--nyte-blue-80`                              |
-| `--radius-xs`                   | `--nyte-radius-2`                             |
-| `--radius-sm`                   | `--nyte-radius-4`                             |
-| `--radius-md`                   | `--nyte-radius-6`                             |
-| `--radius-lg`                   | `--nyte-radius-8`                             |
-| `--radius-xl`                   | `--nyte-radius-12`                            |
-| `--radius-2xl`                  | `--nyte-radius-14`                            |

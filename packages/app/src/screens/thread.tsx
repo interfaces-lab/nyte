@@ -7,6 +7,7 @@ import { threadStyles } from "./thread.stylex.ts";
  * only leave that scrollport when the surface holding them is replaced.
  */
 import { props } from "@stylexjs/stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
 import {
   useCallback,
   useLayoutEffect,
@@ -768,7 +769,8 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
         {presentation === "full" && deletion.kind === "open" && (
           <ConfirmDialog
             open
-            title="Delete chat?"
+            title="Delete Chat"
+            confirmLabel="Delete Chat"
             description="The chat disappears now. Undo from the notification before it closes."
             returnFocusRef={paneMenuTrigger}
             onOpenChange={(nextOpen) => {
@@ -990,7 +992,7 @@ function BlankConversation({
             }
           />
           {startFailure !== undefined && (
-            <div role="alert" title={startFailure} {...props(threadStyles.error)}>
+            <div role="alert" title={startFailure} {...props(intent.danger, threadStyles.error)}>
               Couldn&rsquo;t start the chat. Try again.
             </div>
           )}
@@ -1061,7 +1063,7 @@ function DropPreview({
     <div aria-hidden="true" {...props(threadStyles.dropPreviewLayer)}>
       <div
         data-nyte-drop-preview=""
-        {...props(threadStyles.dropPreview)}
+        {...props(intent.primary, threadStyles.dropPreview)}
         style={dropPreviewRect(layout, target)}
       />
     </div>

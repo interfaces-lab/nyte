@@ -220,7 +220,7 @@ test(
       "ABCD-1234",
     ]);
 
-    await page.getByRole("button", { name: "Open github.com" }).click();
+    await page.getByRole("link", { name: "Open github.com" }).click();
     const opened = (await recordedCalls()).filter((call) => call.path === "host.openExternal");
     assert.deepEqual(
       opened.map((call) => call.input),
@@ -311,7 +311,7 @@ test(
     await page.getByText("Waiting for approval").waitFor();
     assert.equal(await cancel.isDisabled(), false, "not stuck on Cancelling");
 
-    await page.getByRole("button", { name: "Open github.com" }).click();
+    await page.getByRole("link", { name: "Open github.com" }).click();
     await page.getByText(/Couldn't open github\.com/).waitFor();
 
     await page.getByRole("button", { name: "Copy code" }).click();

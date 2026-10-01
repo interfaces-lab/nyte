@@ -12,19 +12,19 @@
  */
 import { create } from "@stylexjs/stylex";
 
-import { t } from "./vars.stylex.ts";
+import { appearance } from "./vars.stylex.ts";
 
 export const focus = create({
   ring: {
     outlineStyle: { default: "none", ":focus-visible": "solid" },
     outlineWidth: 1,
-    outlineColor: t.focusRing,
+    outlineColor: appearance.focusRing,
     outlineOffset: 0,
   },
   ringInset: {
     outlineStyle: { default: "none", ":focus-visible": "solid" },
     outlineWidth: 1,
-    outlineColor: t.focusRing,
+    outlineColor: appearance.focusRing,
     outlineOffset: -1,
   },
 });

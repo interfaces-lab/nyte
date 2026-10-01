@@ -9,14 +9,17 @@ export type {
   AvatarTone,
 } from "./components/ui/avatar.tsx";
 
-export { Button, ButtonGroup } from "./components/ui/button.tsx";
+export { Button, ButtonGroup, ButtonLink, SplitButton } from "./components/ui/button.tsx";
 
 export type {
   ButtonGroupProps,
   ButtonLayout,
+  ButtonLinkProps,
   ButtonProps,
   ButtonSize,
   ButtonVariant,
+  ButtonTone,
+  SplitButtonMenuTriggerProps,
 } from "./components/ui/button.tsx";
 
 export { Toggle } from "./components/ui/toggle.tsx";
@@ -111,11 +114,13 @@ export {
   CommandMenu,
   ContextMenu,
   ContextMenuItem,
+  ContextMenuLinkItem,
   ContextMenuSeparator,
   Menu,
   MenuCheckboxItem,
   MenuGroup,
   MenuItem,
+  MenuLinkItem,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
@@ -126,6 +131,7 @@ export {
 export type {
   CommandMenuProps,
   ContextMenuItemProps,
+  ContextMenuLinkItemProps,
   ContextMenuProps,
   ContextMenuSeparatorProps,
   MenuAlign,
@@ -135,6 +141,7 @@ export type {
   MenuItemBackground,
   MenuItemLayout,
   MenuItemProps,
+  MenuLinkItemProps,
   MenuProps,
   MenuRadioItemProps,
   MenuSeparatorProps,
@@ -172,13 +179,13 @@ export { Select } from "./components/ui/select.tsx";
 
 export type { SelectOption, SelectProps, SelectWidth } from "./components/ui/select.tsx";
 
-export { Switch } from "./components/ui/switch.tsx";
+export { Switch, SwitchField } from "./components/ui/switch.tsx";
 
-export type { SwitchProps } from "./components/ui/switch.tsx";
+export type { SwitchFieldProps, SwitchProps } from "./components/ui/switch.tsx";
 
-export { Checkbox } from "./components/ui/checkbox.tsx";
+export { Checkbox, CheckboxField } from "./components/ui/checkbox.tsx";
 
-export type { CheckboxProps, CheckboxSize } from "./components/ui/checkbox.tsx";
+export type { CheckboxFieldProps, CheckboxProps, CheckboxSize } from "./components/ui/checkbox.tsx";
 
 export { NumberField } from "./components/ui/number-field.tsx";
 
@@ -215,6 +222,8 @@ export type {
 export { Autocomplete } from "./components/ui/autocomplete.tsx";
 
 export type {
+  AutocompleteBackdropProps,
+  AutocompleteClearProps,
   AutocompleteEmptyProps,
   AutocompleteGroupLabelProps,
   AutocompleteInputProps,

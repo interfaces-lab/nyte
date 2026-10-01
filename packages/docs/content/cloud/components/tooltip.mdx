@@ -20,13 +20,14 @@ monospace text, such as a pasted snippet, and scrolls past its bounds.
 ## Usage
 
 - `trigger` is the element that opens the hint. It receives the hover and focus handlers, so pass a
-  real control.
+  real control. Do not repeat a visible label.
 - Give the trigger an `aria-label` that matches `content`. The hint does not label the trigger. An
-  icon-size [Button](/cloud/components/button) also sets its label as the native `title`, so pass
+  icon-only [Button](/cloud/components/button) also sets its label as the native `title`, so pass
   `title={undefined}` to keep one tooltip on screen.
 - Wrap the app in `HintProvider` to share one delay. Once one hint is visible, the next opens
   instantly, for `timeout` milliseconds after the last one closed.
-- Hints are disabled on touch devices. Never put information there that a user would miss.
+- Touch and pen users can hold the trigger for 500ms to open it without activating the control.
+  Keep essential instructions and disabled reasons visible or keyboard-reachable outside the hint.
 - For feedback after an action, use [Toast](/cloud/components/toast).
 - The popup attaches the ref from [Overlays](/cloud/foundations/overlays), so a host can keep it
   above native views.
@@ -44,14 +45,14 @@ monospace text, such as a pasted snippet, and scrolls past its bounds.
 />
 <HoverPreview
   content={"const answer = 42;\nconsole.log(answer);"}
-  trigger={<Button variant="secondary">Snippet</Button>}
+  trigger={<Button variant="outline">Snippet</Button>}
 />
 ```
 
-One shared delay for the whole app.
+Defaults are 300ms to open, 100ms to close, and a 200ms group window. Keyboard focus opens immediately.
 
 ```tsx
-<HintProvider delay={600} closeDelay={0} timeout={400}>
+<HintProvider>
   <App />
 </HintProvider>
 ```
@@ -60,13 +61,15 @@ One shared delay for the whole app.
 
 ### Hint
 
-| Prop      | Type                                                                       | Default    | Description                                 |
-| --------- | -------------------------------------------------------------------------- | ---------- | ------------------------------------------- |
-| `content` | `React.ReactNode`                                                          |            | The hint. Line breaks in a string are kept. |
-| `trigger` | `React.ReactElement`                                                       |            | The element that opens it.                  |
-| `side`    | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"` | Side of the trigger to open on.             |
-| `align`   | `"start" \| "center" \| "end"`                                             | `"center"` | Alignment along that side.                  |
-| `xstyle`  | `XStyle`                                                                   |            | Merged last onto the popup.                 |
+| Prop       | Type                                                                       | Default    | Description                                      |
+| ---------- | -------------------------------------------------------------------------- | ---------- | ------------------------------------------------ |
+| `content`  | `React.ReactNode`                                                          |            | The hint. Line breaks in a string are kept.      |
+| `trigger`  | `React.ReactElement`                                                       |            | The element that opens it.                       |
+| `side`     | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"` | Side of the trigger to open on.                  |
+| `align`    | `"start" \| "center" \| "end"`                                             | `"center"` | Alignment along that side.                       |
+| `tint`     | `Tint`                                                                     |            | Scopes the popup to a hue.                       |
+| `disabled` | `boolean`                                                                  | `false`    | Suppresses hover, focus, and long-press opening. |
+| `xstyle`   | `XStyle`                                                                   |            | Merged last onto the popup.                      |
 
 The popup sits 6px from the trigger and keeps 8px from the viewport edge.
 
@@ -76,6 +79,14 @@ Takes `content`, `trigger`, and `side` as `Hint` does.
 
 ### HintProvider
 
+Our defaults replace Base UI's timing.
+
+| Prop         | Default |
+| ------------ | ------- |
+| `delay`      | `300`   |
+| `closeDelay` | `100`   |
+| `timeout`    | `200`   |
+
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
 <include>../../base-ui-reference/tooltip/Provider.md</include>
@@ -84,6 +95,6 @@ The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
 - The hint is a visual aid. Screen reader users get the trigger's `aria-label`, so write the two to
   match.
-- It opens on hover and on keyboard focus of the trigger.
+- It opens on hover, immediately on keyboard focus, or after a 500ms touch or pen hold.
 - Escape closes it. Outside press and pressing the trigger close it.
 - The popup can be hovered without closing.

@@ -1,3 +1,4 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 import {
   DndContext,
   DragOverlay,
@@ -15,7 +16,7 @@ import type {
   DragEndEvent,
   DroppableContainer,
 } from "@dnd-kit/core";
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { useCallback, useMemo } from "react";
 import { Type } from "typebox";
 import type { Static } from "typebox";
@@ -24,7 +25,7 @@ import type { ReactElement, ReactNode } from "react";
 import type { SessionId } from "@nyte-ai/protocol";
 import { sessionId as sessionIdSchema } from "../schemas.ts";
 import { overlayRef } from "../components/overlay-occlusion.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, shadow, type } from "@nyte-ai/ui/vars.stylex";
 import { usePaneActions, usePaneControllerSnapshot } from "./pane-context.tsx";
 import { orderedPanes } from "./pane-layout.ts";
 import type { DropPlacement, PaneId, PaneLayout } from "./pane-layout.ts";
@@ -54,7 +55,7 @@ const sessionDropDataSchema = Type.Object({
 
 type SessionDropData = Static<typeof sessionDropDataSchema>;
 
-const styles = stylex.create({
+const styles = create({
   surface: { display: "contents" },
   overlay: {
     display: "flex",
@@ -62,12 +63,12 @@ const styles = stylex.create({
     width: "100%",
     height: "100%",
     paddingInline: 8,
-    borderRadius: t.radius6,
-    backgroundColor: t.bgElevated,
-    boxShadow: t.shadowMdOutline,
-    color: t.contentPrimary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    borderRadius: shape.control,
+    backgroundColor: role.bgElevated,
+    boxShadow: shadow.shadowMdOutline,
+    color: role.contentPrimary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     cursor: "grabbing",
     pointerEvents: "none",
     userSelect: "none",
@@ -171,14 +172,14 @@ function SessionDragSurface({ children }: { readonly children: ReactNode }): Rea
     <>
       <div
         data-nyte-session-drag-active={dragged === undefined ? undefined : ""}
-        {...stylex.props(styles.surface)}
+        {...props(styles.surface)}
       >
         {children}
       </div>
       <DragOverlay dropAnimation={null} zIndex={10_000}>
         {dragged === undefined ? null : (
-          <div ref={overlayRef} {...stylex.props(styles.overlay)}>
-            <span {...stylex.props(styles.overlayTitle)}>{dragged.title}</span>
+          <div ref={overlayRef} {...props(styles.overlay)}>
+            <span {...props(styles.overlayTitle)}>{dragged.title}</span>
           </div>
         )}
       </DragOverlay>

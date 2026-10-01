@@ -1,16 +1,10 @@
-/**
- * The desktop's app layout measurements, keyed by the custom property each
- * compiles to. A control or row size reads the component token it is; the
- * rest are Nyte's own. The design tokens they build on live in
- * `@nyte-ai/ui/tokens.stylex`; importing this file ships both.
- */
 import { defineVars } from "@stylexjs/stylex";
 import "@nyte-ai/ui/tokens.stylex";
 
-/** The measurements `schema.stylex.ts` names; each is documented at its handle. */
+export const windowInput = defineVars({ "--nyte-window-zoom": "1" });
+
 export const layout = defineVars({
   "--nyte-titlebar-height": "35px",
-  // Main and preload keep the traffic lights in this lane at any zoom.
   "--nyte-titlebar-traffic-light-inset": "calc(72px / var(--nyte-window-zoom, 1))",
   "--nyte-sidebar-width": "220px",
   "--nyte-sidebar-handle-width": "8px",
@@ -49,7 +43,7 @@ export const layout = defineVars({
   "--nyte-composer-inset": "14px",
   "--nyte-composer-new-chat-radius": "22px",
   "--nyte-composer-expanded-radius": "18px",
-  "--nyte-tray-radius": "var(--nyte-radius-12)",
+  "--nyte-tray-radius": "12px",
   "--nyte-tray-gap": "6px",
   "--nyte-tray-padding-inline": "12px",
   "--nyte-tray-header-height": "36px",
@@ -61,6 +55,7 @@ export const layout = defineVars({
   "--nyte-workbench-row-gap": "var(--nyte-row-gap)",
   "--nyte-workbench-row-padding-inline": "6px",
   "--nyte-workbench-heading-height": "24px",
+  "--nyte-active-workbench-width": "500px",
   "--nyte-workbench-panel-width": "384px",
   "--nyte-workbench-header-height": "35px",
   "--nyte-workbench-file-list-width": "200px",

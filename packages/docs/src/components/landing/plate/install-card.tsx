@@ -1,11 +1,12 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { props } from "@stylexjs/stylex";
 import Link from "next/link";
 import { latestMacRelease, releasesUrl } from "~/lib/releases";
 import { CopyCommand } from "./copy-command";
 import { DitherMoon } from "./dither-moon";
 import { DownloadButton } from "./download-button";
 
-const tileClass =
-  "size-8 shrink-0 rounded-[9px] bg-(--nyte-bg-muted-translucent) ring-1 ring-(--nyte-border-secondary-translucent) ring-inset";
+const tileClass = "size-8 shrink-0 rounded-[9px] bg-muted ring-1 ring-border-subtle ring-inset";
 
 export async function InstallCard() {
   const release = await latestMacRelease();
@@ -21,7 +22,7 @@ export async function InstallCard() {
         <div className="absolute inset-x-0 top-1/2 h-20 -translate-y-1/2 [mask-image:linear-gradient(to_right,transparent,black_25%,black_75%,transparent)]">
           <div className="absolute inset-x-0 top-2 h-4 bg-[linear-gradient(90deg,#f472b6,#a78bfa,#60a5fa)] opacity-60 blur-md" />
           <div className="absolute inset-x-0 bottom-2 h-4 bg-[linear-gradient(90deg,#a78bfa,#60a5fa,#22d3ee)] opacity-60 blur-md" />
-          <div className="absolute inset-x-0 inset-y-4 bg-(--nyte-bg-base)" />
+          <div className="absolute inset-x-0 inset-y-4 bg-background" />
         </div>
 
         <div className="relative flex items-center gap-1.5">
@@ -47,23 +48,28 @@ export async function InstallCard() {
       <div className="mt-6">
         <DownloadButton href={release?.downloadUrl ?? `${releasesUrl}/latest`} />
       </div>
-      <p className="mt-3 text-[13px]/5 text-(--nyte-content-secondary)">
+      <p className="mt-3 text-[13px]/5 text-muted-foreground">
         {release ? `${release.version} · ` : null}
         <a
           href={release?.notesUrl ?? releasesUrl}
-          className="text-(--nyte-intent-primary-content) hover:underline"
+          {...props(intent.primary)}
+          className="text-muted-foreground hover:underline"
         >
           Release notes
         </a>
       </p>
 
-      <p className="mt-10 text-[13px]/5 text-(--nyte-content-secondary)">Or install the CLI</p>
+      <p className="mt-10 text-[13px]/5 text-muted-foreground">Or install the CLI</p>
       <div className="mt-2 max-w-full">
         <CopyCommand command="curl -fsSL https://nyte.sh/install | sh" />
       </div>
-      <p className="mt-4 text-[13px]/5 text-(--nyte-content-secondary)">
+      <p className="mt-4 text-[13px]/5 text-muted-foreground">
         Building a host?{" "}
-        <Link href="/docs/sdk" className="text-(--nyte-intent-primary-content) hover:underline">
+        <Link
+          href="/docs/sdk"
+          {...props(intent.primary)}
+          className="text-muted-foreground hover:underline"
+        >
           Read the SDK
         </Link>
       </p>

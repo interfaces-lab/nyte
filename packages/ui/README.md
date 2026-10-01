@@ -32,7 +32,7 @@ Every component rule sits in the `nyte-ui` layer. Declare it below the layers th
 @import "@nyte-ai/ui/tailwind.css";
 ```
 
-A Tailwind class passed through `className` then beats the component rule it targets. `@nyte-ai/ui/tailwind.css` maps Tailwind's theme onto the tokens, so `bg-background`, `text-muted-foreground`, `border-border`, and `rounded-md` paint with the same values as the components. `stylex.create` in the app can read `@nyte-ai/ui/vars.stylex`, which always resolves to source. Put the app's StyleX layers above `nyte-ui` as well.
+A Tailwind class passed through `className` then beats the component rule it targets. `@nyte-ai/ui/tailwind.css` maps Tailwind's theme onto the tokens, so `bg-background`, `text-muted-foreground`, `border-border`, and `rounded-md` paint with the same values as the components. `create` in the app can read `@nyte-ai/ui/vars.stylex`, which always resolves to source. Put the app's StyleX layers above `nyte-ui` as well.
 
 Apps that compile StyleX themselves resolve `src/` instead through the `nyte-source` export condition (named so it never matches another package's generic `source` condition): add `"nyte-source"` ahead of the defaults in Vite's `resolve.conditions` and to `customConditions` in `tsconfig.json`.
 
@@ -48,25 +48,18 @@ An app that paints something above the DOM, such as an Electron browser view, wr
 
 ## Theme it
 
-Components paint with inherited `--nyte-*` custom properties declared on `:root` by `tokens.stylex.ts`, in Notion Calendar's layers: `lab()` ramps (`ramps.stylex.ts`), a theme layer that picks one hue (`theme.stylex.ts`), and the roles every surface paints with (`roles.stylex.ts`). Every role is a `light-dark()` pair, so appearance follows `color-scheme` rather than a class.
-
-A scope paints a subtree in one hue. `@nyte-ai/ui/surface-theme` exports `surfaceTheme` (one entry per hue, plus `custom` for a hue built from `--nyte-custom-hue` and `--nyte-custom-chroma-scale`) and `intent` (`primary`, `success`, `warning`, `danger`). Each bundles the hue's theme with the roles re-declared from it; pass it to `stylex.props` on the element that starts the scope. Popups take a `tint` prop for the same thing, and `toastTint()` scopes one toast.
-
-A scope re-declares every role on its element, so a role overridden on `:root` holds only outside scopes. Override on the element itself, or give the subtree a scope:
-
-```css
-.my-demo {
-  color-scheme: dark;
-  --nyte-bg-base: #101014;
-}
-```
-
-Apps that author StyleX read the tokens through the typed constants in `vars.stylex.ts`: `t` for roles and component tokens, `ramp` for a hue step that must not follow a scope.
+Colour follows ramps → theme → roles. Both the default neutral mapping and the tinted mapping read the theme. Ramps and theme values are private. Use `role` for paint, `type` for text measurements, `motion` for timing, `shadow` for elevation, and `appearance` for cursor, material filter, and focus inputs.
 
 ```ts
-import { ramp, t } from "@nyte-ai/ui/vars.stylex";
+import { role, type, motion, shadow, appearance } from "@nyte-ai/ui/vars.stylex";
+import { button, input, row, menu, shape } from "@nyte-ai/ui/schema.stylex";
+import { surfaceTheme, intent } from "@nyte-ai/ui/surface-theme";
 ```
 
-Native apps import `platformColors` from `@nyte-ai/ui/platform-colors`. Its `light` and `dark` palettes hold every role and component colour as a concrete hex value, named in camelCase without the `--nyte-` prefix, such as `platformColors.dark.contentPrimary`. This entrypoint has no runtime dependencies. Apps map those colours to their own native theme and keep platform typography and touch geometry locally.
+Apply a hue and its roles together with `props(surfaceTheme.blue, styles.item)`. `surfaceTheme.gray` applies the tinted mapping over gray. The default uses the neutral mapping. `custom` follows `--nyte-custom-hue` and `--nyte-custom-chroma-scale`. Status text, syntax, dots, diff lines, and avatars use a hue or intent scope with an ordinary role. There are no fixed-hue handles. The focus ring alone stays blue.
 
-After editing the colour tokens, run `pnpm --dir packages/ui sync:tokens` to regenerate `platform-colors.ts`; `check:tokens` fails when it is stale. The generator imports the token modules with `defineVars` and `defineConsts` stubbed to the identity function, so it reads the declared values rather than parsing them. It resolves the roles and the unscoped colours in both appearances, following `var()`, `light-dark()`, `lab()`, `color-mix(in srgb, …)`, and relative `oklch(from …)` the way CSS does, outside any scope and with reduced transparency off, and rejects any colour that does not reduce to a concrete value, because React Native can evaluate none of them. A colour token that mixes in any space other than sRGB fails the run.
+Size values build component measurements, which build app layout. Consumers use component handles, not size values. `shape` names six rounding decisions: `square`, `indicator`, `control`, `card`, `surface`, and `pill`. Component-specific radii stay on their component handles.
+
+Native apps read `platformColors.light` or `.dark` for neutral roles and `platformScopes.light.green` or `.dark.green` for scoped roles. These palettes contain concrete hex values and have no runtime dependencies. Native typography and touch geometry remain local.
+
+Run `pnpm --dir packages/ui sync:tokens` after editing colour tokens. The generator reads the token AST and resolves CSS colours in each appearance and hue. `check:tokens` rejects stale output. `pnpm --dir packages/ui test` checks token dependencies, consumer access, and the committed schema lock. `typecheck:tokens` checks the foundation separately while consumers are being migrated.

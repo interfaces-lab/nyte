@@ -1,8 +1,9 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * The Diff tab: the file tree beside one virtualized CodeView stack that
  * wears the same header, reviewed state and selection action as the Guide.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { CodeView } from "@pierre/diffs/react";
 import type { CodeViewLineSelection } from "@pierre/diffs";
 import type { CodeViewHandle, CodeViewItem } from "@pierre/diffs/react";
@@ -16,7 +17,7 @@ import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Menu, MenuRadioGroup, MenuRadioItem } from "@nyte-ai/ui/menu";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Hint } from "@nyte-ai/ui/tooltip";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import {
   AddToChat,
   CodeFileHeader,
@@ -80,46 +81,48 @@ function createItemCache() {
     });
 }
 
-export function DiffStack(props: DiffStackProps): ReactElement {
-  const options = usePierreOptions(props.layout);
+export function DiffStack(componentProps: DiffStackProps): ReactElement {
+  const options = usePierreOptions(componentProps.layout);
   const viewer = useRef<CodeViewHandle<undefined, undefined>>(null);
   const [itemsFor] = useState(createItemCache);
   const [treeVisible, setTreeVisible] = useState(true);
   const [active, setActive] = useState<string | undefined>(undefined);
   const selection = useRef<CodeViewLineSelection | null>(null);
-  const files = [...props.files].toSorted((a, b) => a.path.localeCompare(b.path));
-  const items = itemsFor(files, props.collapsed);
-  const implementation = props.files.filter((file) => file.category === "implementation");
+  const files = [...componentProps.files].toSorted((a, b) => a.path.localeCompare(b.path));
+  const items = itemsFor(files, componentProps.collapsed);
+  const implementation = componentProps.files.filter((file) => file.category === "implementation");
   const sum = (list: readonly ReviewFile[], key: "added" | "removed"): number =>
     list.reduce((total, file) => total + file[key], 0);
-  const picked = props.commits.find((entry) => entry.oid === props.commit);
+  const picked = componentProps.commits.find((entry) => entry.oid === componentProps.commit);
 
   useEffect(() => {
-    if (props.focus.revision === 0 || props.focus.path === undefined) return;
+    if (componentProps.focus.revision === 0 || componentProps.focus.path === undefined) return;
     viewer.current?.scrollTo({
       type: "item",
-      id: props.focus.path,
+      id: componentProps.focus.path,
       align: "start",
       behavior: "instant",
     });
-  }, [props.focus]);
+  }, [componentProps.focus]);
 
   return (
-    <div {...stylex.props(styles.panel)}>
+    <div {...props(styles.panel)}>
       <FileTypeIconSprite />
-      <div {...stylex.props(workbenchStyles.toolbar)}>
+      <div {...props(workbenchStyles.toolbar)}>
         <Menu
           label="Commits"
           trigger={<Button icon="git">{picked === undefined ? "All commits" : picked.oid}</Button>}
         >
           <MenuRadioGroup
-            value={props.commit ?? "all"}
-            onValueChange={(value) => props.onCommit(value === "all" ? undefined : String(value))}
+            value={componentProps.commit ?? "all"}
+            onValueChange={(value) =>
+              componentProps.onCommit(value === "all" ? undefined : String(value))
+            }
           >
             <MenuRadioItem value="all" icon="git-branch">
               All commits
             </MenuRadioItem>
-            {props.commits.map((entry) => (
+            {componentProps.commits.map((entry) => (
               <MenuRadioItem key={entry.oid} value={entry.oid} icon="git" meta={entry.oid}>
                 {entry.subject}
               </MenuRadioItem>
@@ -127,22 +130,26 @@ export function DiffStack(props: DiffStackProps): ReactElement {
           </MenuRadioGroup>
         </Menu>
         <Hint
-          content={`${sum(props.files, "added")} added, ${sum(props.files, "removed")} removed in all files`}
+          content={`${sum(componentProps.files, "added")} added, ${sum(componentProps.files, "removed")} removed in all files`}
           trigger={
-            <span {...stylex.props(styles.count)}>
-              <span {...stylex.props(styles.added)}>+{sum(implementation, "added")}</span>
-              <span {...stylex.props(styles.removed)}>−{sum(implementation, "removed")}</span>
-              {implementation.length !== props.files.length && <span>*</span>}
+            <span {...props(styles.count)}>
+              <span {...props([intent.success, styles.added])}>
+                +{sum(implementation, "added")}
+              </span>
+              <span {...props([intent.danger, styles.removed])}>
+                −{sum(implementation, "removed")}
+              </span>
+              {implementation.length !== componentProps.files.length && <span>*</span>}
             </span>
           }
         />
-        <span {...stylex.props(styles.spacer)} />
+        <span {...props(styles.spacer)} />
         <Toggle
           iconOnly
           indicator="glyph"
           aria-label="Split view"
-          pressed={props.layout === "split"}
-          onPressedChange={(pressed) => props.onLayout(pressed ? "split" : "unified")}
+          pressed={componentProps.layout === "split"}
+          onPressedChange={(pressed) => componentProps.onLayout(pressed ? "split" : "unified")}
         >
           <Icon name="split-right" size={16} />
         </Toggle>
@@ -156,7 +163,7 @@ export function DiffStack(props: DiffStackProps): ReactElement {
           <PanelToggleIcon side="right" visible={treeVisible} />
         </Toggle>
       </div>
-      <div {...stylex.props(styles.body)}>
+      <div {...props(styles.body)}>
         <ChangesSidebar
           files={files.map((file) => ({
             path: file.path,
@@ -164,9 +171,9 @@ export function DiffStack(props: DiffStackProps): ReactElement {
             added: file.added,
             removed: file.removed,
             viewed:
-              props.reviewed(file.path) === "reviewed"
+              componentProps.reviewed(file.path) === "reviewed"
                 ? "viewed"
-                : props.reviewed(file.path) === "changed"
+                : componentProps.reviewed(file.path) === "changed"
                   ? "changed"
                   : "unviewed",
           }))}
@@ -181,37 +188,37 @@ export function DiffStack(props: DiffStackProps): ReactElement {
               behavior: "instant",
             });
           }}
-          onAllViewedChange={props.onReviewed}
+          onAllViewedChange={componentProps.onReviewed}
         />
         <PierreWorkerProvider>
           <CodeView
             ref={viewer}
             items={items}
             options={{ ...options, stickyHeaders: true }}
-            className={stylex.props(styles.stack, pierreHost).className}
+            className={props(styles.stack, pierreHost).className}
             onSelectedLinesChange={(next) => {
               selection.current = next;
             }}
             renderCustomHeader={(item) => {
-              const file = props.files.find((entry) => entry.path === item.id);
+              const file = componentProps.files.find((entry) => entry.path === item.id);
 
               if (file === undefined) return null;
 
               return (
                 <CodeFileHeader
                   file={file}
-                  collapsed={props.collapsed(file.path)}
-                  reviewed={props.reviewed(file.path)}
-                  justUpdated={props.justUpdated(file.path)}
-                  onToggle={() => props.onToggle(file.path)}
-                  onReviewed={(next) => props.onReviewed([file.path], next)}
+                  collapsed={componentProps.collapsed(file.path)}
+                  reviewed={componentProps.reviewed(file.path)}
+                  justUpdated={componentProps.justUpdated(file.path)}
+                  onToggle={() => componentProps.onToggle(file.path)}
+                  onReviewed={(next) => componentProps.onReviewed([file.path], next)}
                 />
               );
             }}
             renderGutterUtility={(hovered, item) => (
               <AddToChat
                 onAdd={() => {
-                  const file = props.files.find((entry) => entry.path === item.id);
+                  const file = componentProps.files.find((entry) => entry.path === item.id);
                   const line = hovered();
                   const picked =
                     selection.current?.id === item.id ? selection.current.range : undefined;
@@ -231,7 +238,7 @@ export function DiffStack(props: DiffStackProps): ReactElement {
                         : { start: line.lineNumber, end: line.lineNumber });
 
                   if (file !== undefined && range !== undefined)
-                    props.onReference(referenceOf(file, range));
+                    componentProps.onReference(referenceOf(file, range));
                 }}
               />
             )}
@@ -242,7 +249,7 @@ export function DiffStack(props: DiffStackProps): ReactElement {
   );
 }
 
-const styles = stylex.create({
+const styles = create({
   panel: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   body: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
   stack: { flex: 1, width: "100%", height: "100%", minWidth: 0, minHeight: 0, overflow: "auto" },
@@ -251,10 +258,10 @@ const styles = stylex.create({
     display: "inline-flex",
     gap: 6,
     paddingInline: 6,
-    color: t.contentSecondary,
-    fontFamily: t.fontMono,
+    color: role.contentSecondary,
+    fontFamily: type.fontMono,
     fontSize: 11.5,
   },
-  added: { color: t.intentSuccessContent },
-  removed: { color: t.intentDangerContent },
+  added: { color: role.contentSecondary },
+  removed: { color: role.contentSecondary },
 });

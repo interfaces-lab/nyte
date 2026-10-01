@@ -1,10 +1,11 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * The `@` and `/` completion popup every composer editor shares: the message
  * composer and the in-transcript message edit. The hook owns the open token,
  * ranking, keyboard navigation, and the preview card; the caller wires it to
  * one `ComposerEditor` and renders `menu` beside it.
  */
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { Popover } from "@nyte-ai/ui/popover";
 import { PreviewCard } from "@nyte-ai/ui/preview-card";
 import { useDeferredValue, useId, useMemo, useRef, useState } from "react";
@@ -267,7 +268,9 @@ function HighlightedSuggestionText({
   return (
     <>
       {text.slice(0, match)}
-      <span {...stylex.props(composerStyles.suggestionMatch)}>{text.slice(match, end)}</span>
+      <span {...props(intent.primary, composerStyles.suggestionMatch)}>
+        {text.slice(match, end)}
+      </span>
       {text.slice(end)}
     </>
   );
@@ -282,11 +285,11 @@ function MentionPathPreview({ file }: { readonly file: MentionFile }): ReactElem
   const rows = mentionPreviewRows(file.displayPath);
 
   return (
-    <div {...stylex.props(composerStyles.suggestionPreviewPath)}>
+    <div {...props(composerStyles.suggestionPreviewPath)}>
       {rows.map((row, depth) => (
         <div
           key={`${String(depth)}:${row.label}`}
-          {...stylex.props(
+          {...props(
             composerStyles.suggestionPreviewPathRow,
             composerStyles.suggestionPreviewPathIndent(depth),
             depth === rows.length - 1 && composerStyles.suggestionPreviewPathLeaf,
@@ -295,11 +298,11 @@ function MentionPathPreview({ file }: { readonly file: MentionFile }): ReactElem
           {row.kind === "file" ? (
             <FileTypeIcon path={row.label} />
           ) : (
-            <span aria-hidden="true" {...stylex.props(composerStyles.suggestionPreviewPathIcon)}>
+            <span aria-hidden="true" {...props(composerStyles.suggestionPreviewPathIcon)}>
               <Icon name="folder" size={12} />
             </span>
           )}
-          <span {...stylex.props(composerStyles.suggestionPreviewPathLabel)}>{row.label}</span>
+          <span {...props(composerStyles.suggestionPreviewPathLabel)}>{row.label}</span>
         </div>
       ))}
     </div>
@@ -315,12 +318,12 @@ function SuggestionPreview({
 
   return (
     <>
-      <div {...stylex.props(composerStyles.suggestionPreviewTitle)}>
+      <div {...props(composerStyles.suggestionPreviewTitle)}>
         {suggestionPreviewTitle(suggestion)}
       </div>
       {attribution !== undefined && (
-        <div {...stylex.props(composerStyles.suggestionPreviewAttribution)}>
-          <span aria-hidden="true" {...stylex.props(composerStyles.suggestionPreviewIcon)}>
+        <div {...props(composerStyles.suggestionPreviewAttribution)}>
+          <span aria-hidden="true" {...props(composerStyles.suggestionPreviewIcon)}>
             <Icon name={suggestion.icon} size={12} />
           </span>
           {attribution}
@@ -330,7 +333,7 @@ function SuggestionPreview({
         <MentionPathPreview file={suggestion.file} />
       ) : (
         suggestion.kind !== "mention" && (
-          <div {...stylex.props(composerStyles.suggestionPreviewDescription)}>
+          <div {...props(composerStyles.suggestionPreviewDescription)}>
             {suggestion.description}
           </div>
         )
@@ -586,7 +589,7 @@ export function useComposerSuggestions({
               id={popupId}
               role="listbox"
               initialFocus={false}
-              finalFocus={false}
+
               aria-busy={
                 menu?.kind === "mention"
                   ? mentionFiles.status === "loading"
@@ -600,9 +603,9 @@ export function useComposerSuggestions({
               onMouseDown={(event) => event.preventDefault()}
               xstyle={composerStyles.suggestionMenu}
             >
-              <div ref={listRef} {...stylex.props(composerStyles.suggestionList)}>
+              <div ref={listRef} {...props(composerStyles.suggestionList)}>
                 {suggestions.length === 0 ? (
-                  <div role="status" {...stylex.props(composerStyles.suggestionEmpty)}>
+                  <div role="status" {...props(composerStyles.suggestionEmpty)}>
                     {menu === undefined
                       ? undefined
                       : suggestionEmptyText(
@@ -635,7 +638,7 @@ export function useComposerSuggestions({
                             role="option"
                             tabIndex={-1}
                             aria-selected={selected}
-                            {...stylex.props(
+                            {...props(
                               composerStyles.suggestionItem,
                               startsGroup && composerStyles.suggestionGroupStart,
                             )}
@@ -645,20 +648,17 @@ export function useComposerSuggestions({
                             onPointerDown={(event) => event.preventDefault()}
                             onClick={() => select(suggestion)}
                           >
-                            <span
-                              aria-hidden="true"
-                              {...stylex.props(composerStyles.suggestionIcon)}
-                            >
+                            <span aria-hidden="true" {...props(composerStyles.suggestionIcon)}>
                               <Icon name={suggestion.icon} size={12} />
                             </span>
-                            <span {...stylex.props(composerStyles.suggestionText)}>
-                              <span {...stylex.props(composerStyles.suggestionLabel)}>
+                            <span {...props(composerStyles.suggestionText)}>
+                              <span {...props(composerStyles.suggestionLabel)}>
                                 <HighlightedSuggestionText
                                   text={suggestion.label}
                                   query={deferredQuery}
                                 />
                               </span>
-                              <span {...stylex.props(composerStyles.suggestionDescription)}>
+                              <span {...props(composerStyles.suggestionDescription)}>
                                 <HighlightedSuggestionText
                                   text={description}
                                   query={deferredQuery}

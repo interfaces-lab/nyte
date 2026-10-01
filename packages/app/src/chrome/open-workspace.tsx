@@ -1,3 +1,4 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * Trust is requested when a session reports it through an observer snapshot
  * or activation event. Folder selection failures appear as a dismissible
@@ -5,31 +6,31 @@
  */
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { toast } from "@nyte-ai/ui/toast";
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { SessionActivationState } from "@nyte-ai/protocol";
 import { Button } from "@nyte-ai/ui/button";
 import { keys, queryClient } from "../queries.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { nyte } from "../nyte.ts";
 import type { HostBridge, OpenWorkspaceOutcome } from "../bridge.ts";
 
-const styles = stylex.create({
+const styles = create({
   popup: {
     gap: 12,
     width: "min(460px, calc(100vw - 48px))",
     padding: 20,
     borderStyle: "none",
   },
-  title: { lineHeight: t.leadingBase },
+  title: { lineHeight: type.leadingBase },
   path: {
     padding: "6px 10px",
-    borderRadius: t.radius6,
-    backgroundColor: t.bgMutedTranslucent,
-    color: t.contentSecondary,
-    fontFamily: t.fontMono,
-    fontSize: t.fontCode,
+    borderRadius: shape.control,
+    backgroundColor: role.bgMutedTranslucent,
+    color: role.contentSecondary,
+    fontFamily: type.fontMono,
+    fontSize: type.fontCode,
     overflowWrap: "anywhere",
     userSelect: "text",
   },
@@ -136,7 +137,7 @@ export function WorkspaceDialogHost(): ReactElement | null {
         <Dialog.Title xstyle={styles.title}>
           {trust === undefined ? "This folder is not trusted" : "Do you trust this folder?"}
         </Dialog.Title>
-        <div {...stylex.props(styles.path)}>{current}</div>
+        <div {...props(styles.path)}>{current}</div>
         <Dialog.Description>
           {trust === undefined
             ? "Trust it on the machine running the server. Nyte runs code and reads files only in trusted folders."
@@ -152,7 +153,7 @@ export function WorkspaceDialogHost(): ReactElement | null {
               <Button autoFocus onClick={() => declineTrust(current)}>
                 Cancel
               </Button>
-              <Button variant="inverse" onClick={() => grantTrust(trust, current)}>
+              <Button variant="solid" tone="primary" onClick={() => grantTrust(trust, current)}>
                 Trust and continue
               </Button>
             </>

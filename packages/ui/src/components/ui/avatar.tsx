@@ -1,12 +1,13 @@
+import { shape } from "../../schema.stylex.ts";
 import { Avatar as AvatarPrimitive } from "@base-ui/react/avatar";
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import type * as React from "react";
 
 import { mergeStyleProps, type XStyle } from "../../style.ts";
 import { surfaceTheme } from "../../surface-theme.ts";
-import { t } from "../../vars.stylex.ts";
+import { role, type } from "../../vars.stylex.ts";
 
-const styles = stylex.create({
+const styles = create({
   root: {
     position: "relative",
     display: "flex",
@@ -17,8 +18,8 @@ const styles = stylex.create({
     boxSizing: "border-box",
     borderWidth: 0.5,
     borderStyle: "solid",
-    borderColor: t.borderPrimaryTranslucent,
-    fontFamily: t.fontSans,
+    borderColor: role.borderPrimaryTranslucent,
+    fontFamily: type.fontSans,
     fontWeight: 600,
     lineHeight: 1,
     userSelect: "none",
@@ -42,22 +43,22 @@ const styles = stylex.create({
   },
 });
 
-const sizeStyles = stylex.create({
+const sizeStyles = create({
   xs: { width: 20, height: 20, fontSize: 9 },
   sm: { width: 24, height: 24, fontSize: 10 },
   md: { width: 28, height: 28, fontSize: 11 },
   lg: { width: 36, height: 36, fontSize: 14 },
 });
 
-const shapeStyles = stylex.create({
-  circle: { borderRadius: t.radiusFull },
+const shapeStyles = create({
+  circle: { borderRadius: shape.pill },
   rounded: { borderRadius: "42%" },
 });
 
-const toneFill = stylex.create({
+const toneFill = create({
   base: {
-    backgroundColor: t.bgInteractiveSecondaryTranslucent,
-    color: t.contentInteractivePrimary,
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    color: role.contentInteractivePrimary,
   },
 });
 
@@ -92,7 +93,7 @@ export function Avatar({
   tone = "neutral",
   style,
   xstyle,
-  ...props
+  ...componentProps
 }: AvatarProps) {
   return (
     <AvatarPrimitive.Root
@@ -100,7 +101,7 @@ export function Avatar({
       data-size={size}
       data-tone={tone}
       {...mergeStyleProps(
-        stylex.props(
+        props(
           toneScopes[tone],
           styles.root,
           sizeStyles[size],
@@ -111,7 +112,7 @@ export function Avatar({
         className,
         style,
       )}
-      {...props}
+      {...componentProps}
     />
   );
 }
@@ -122,12 +123,12 @@ export interface AvatarImageProps extends Omit<AvatarPrimitive.Image.Props, "cla
   xstyle?: XStyle;
 }
 
-export function AvatarImage({ className, style, xstyle, ...props }: AvatarImageProps) {
+export function AvatarImage({ className, style, xstyle, ...componentProps2 }: AvatarImageProps) {
   return (
     <AvatarPrimitive.Image
       data-slot="avatar-image"
-      {...mergeStyleProps(stylex.props(styles.image, xstyle), className, style)}
-      {...props}
+      {...mergeStyleProps(props(styles.image, xstyle), className, style)}
+      {...componentProps2}
     />
   );
 }
@@ -141,12 +142,17 @@ export interface AvatarFallbackProps extends Omit<
   xstyle?: XStyle;
 }
 
-export function AvatarFallback({ className, style, xstyle, ...props }: AvatarFallbackProps) {
+export function AvatarFallback({
+  className,
+  style,
+  xstyle,
+  ...componentProps3
+}: AvatarFallbackProps) {
   return (
     <AvatarPrimitive.Fallback
       data-slot="avatar-fallback"
-      {...mergeStyleProps(stylex.props(styles.fallback, xstyle), className, style)}
-      {...props}
+      {...mergeStyleProps(props(styles.fallback, xstyle), className, style)}
+      {...componentProps3}
     />
   );
 }

@@ -17,10 +17,6 @@
 
 :root {
   color-scheme: light;
-  --nyte-font-family-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-
-  --nyte-radius-surface: 16px;
-  --nyte-radius-row: 12px;
 }
 
 .dark {
@@ -208,14 +204,6 @@
   }
 
   /* Anchored to the product window, so the plate turns to paper behind it at every width. */
-  .landing-plate-fade {
-    background: linear-gradient(
-      to bottom,
-      transparent,
-      color-mix(in oklab, var(--plate-haze) 70%, transparent) 22%,
-      var(--nyte-bg-base) 56%
-    );
-  }
 
   /* A pastel aura seen through a 4px halftone screen. */
   .install-halo {
@@ -248,15 +236,6 @@
     display: block;
     --diffs-light-bg: transparent;
     --diffs-dark-bg: transparent;
-    --diffs-light: var(--nyte-content-primary);
-    --diffs-dark: var(--nyte-content-primary);
-    --diffs-bg-buffer-override: var(--nyte-bg-base);
-    --diffs-bg-context-override: var(--nyte-bg-base);
-    --diffs-bg-context-gutter-override: var(--nyte-bg-base);
-    --diffs-bg-addition-override: var(--nyte-diff-added-line-bg);
-    --diffs-bg-deletion-override: var(--nyte-diff-removed-line-bg);
-    --diffs-bg-addition-emphasis-override: var(--nyte-diff-added-text-bg);
-    --diffs-bg-deletion-emphasis-override: var(--nyte-diff-removed-text-bg);
     --diffs-gap-style: none;
     --diffs-gap-block: 0px;
     --diffs-min-number-column-width: calc(4ch + 8px);

@@ -1,6 +1,6 @@
 import { create } from "@stylexjs/stylex";
-import { menu } from "@nyte-ai/ui/schema.stylex";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { menu, shape } from "@nyte-ai/ui/schema.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 
 export const contextStyles = create({
   row: {
@@ -16,11 +16,11 @@ export const contextStyles = create({
     alignItems: "center",
     height: 28,
     paddingInline: 4,
-    color: t.contentSecondary,
-    fontFamily: t.fontSans,
-    fontSize: t.fontBase,
+    color: role.contentSecondary,
+    fontFamily: type.fontSans,
+    fontSize: type.fontBase,
     fontWeight: 400,
-    lineHeight: t.leadingBase,
+    lineHeight: type.leadingBase,
     whiteSpace: "nowrap",
   },
   text: {
@@ -42,27 +42,27 @@ export const contextStyles = create({
     maxWidth: "min(400px, calc(100vw - 16px))",
     paddingBlock: 6,
     paddingInline: 10,
-    borderRadius: t.radius8,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    borderRadius: shape.control,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
   hintHeading: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-    color: t.contentPrimary,
+    color: role.contentPrimary,
     whiteSpace: "nowrap",
   },
-  hintValue: { color: t.contentSecondary, fontSize: t.fontSm, lineHeight: t.leadingSm },
+  hintValue: { color: role.contentSecondary, fontSize: type.fontSm, lineHeight: type.leadingSm },
   keys: { display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0 },
   key: {
     minWidth: 16,
     minHeight: 16,
     padding: 0,
-    borderRadius: t.radius4,
-    fontFamily: t.fontSans,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    borderRadius: shape.indicator,
+    fontFamily: type.fontSans,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
 });

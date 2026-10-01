@@ -1,3 +1,5 @@
+@reference "../../global.css";
+
 /*
  * The core docs' own surfaces. What it shares with /cloud — frame,
  * sidebar, article, prose, code, rail, pager — lives in ../_layout/layout.css,
@@ -12,14 +14,15 @@
 
   .doc-prose img[src^="/tui/"] {
     border-radius: 8px;
-    border: 1px solid var(--nyte-border-secondary-translucent);
+    border: 1px solid;
+    @apply border-border-subtle;
     background: #0a0a0a;
   }
 
   .doc-prose figure:has(img[src^="/tui/"]) figcaption {
     margin-top: 8px;
     font-size: 13px;
-    color: var(--nyte-content-secondary);
+    @apply text-muted-foreground;
   }
 
   .docs-cards {
@@ -34,18 +37,19 @@
     flex-direction: column;
     gap: 8px;
     padding: 16px;
-    border: 0.5px solid var(--nyte-border-secondary-translucent);
+    border: 0.5px solid;
+    @apply border-border-subtle;
     border-radius: 13px;
-    transition: border-color 120ms var(--nyte-easing-out);
+    transition: border-color 120ms ease-out;
   }
 
   .docs-card:hover {
-    border-color: var(--nyte-content-tertiary);
+    @apply border-tertiary-foreground;
   }
 
   .docs-card-icon {
     display: inline-flex;
-    color: var(--nyte-content-primary);
+    @apply text-foreground;
   }
 
   .docs-card strong {
@@ -54,7 +58,7 @@
   }
 
   .docs-card span:last-child {
-    color: var(--nyte-content-secondary);
+    @apply text-muted-foreground;
     font-size: 13px;
     line-height: 20px;
   }

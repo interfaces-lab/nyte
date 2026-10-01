@@ -1,21 +1,22 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * The transcript's shape while a session's snapshot is still on its way:
  * a user card, a work row, and a prose block at the transcript's row gaps so
  * the real rows land in place without a shift. Local sessions resolve in a
  * frame or two and never show it; cloud sessions do.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { conversation } from "../theme/schema.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/vars.stylex";
 
-const pulse = stylex.keyframes({
+const pulse = keyframes({
   "0%": { opacity: 0.55 },
   "50%": { opacity: 1 },
   "100%": { opacity: 0.55 },
 });
 
-const styles = stylex.create({
+const styles = create({
   rows: {
     display: "flex",
     flexDirection: "column",
@@ -33,14 +34,14 @@ const styles = stylex.create({
     boxSizing: "border-box",
     height: 58,
     marginTop: 10,
-    borderRadius: t.radius12,
-    backgroundColor: t.bgMutedTranslucent,
+    borderRadius: shape.card,
+    backgroundColor: role.bgMutedTranslucent,
   },
   line: (width: string) => ({
     width,
     height: 12,
-    borderRadius: t.radiusFull,
-    backgroundColor: t.bgMutedTranslucent,
+    borderRadius: shape.pill,
+    backgroundColor: role.bgMutedTranslucent,
   }),
   row: { display: "flex", flexDirection: "column", gap: 10, paddingBlock: 6 },
 });
@@ -48,22 +49,22 @@ const styles = stylex.create({
 /** Placeholder rows; the caller supplies the transcript's measure and gutter. */
 export function TranscriptSkeleton(): ReactElement {
   return (
-    <div role="status" aria-label="Loading chat" {...stylex.props(styles.rows)}>
-      <div {...stylex.props(styles.turn)}>
-        <div {...stylex.props(styles.card)} />
-        <div {...stylex.props(styles.row)}>
-          <div {...stylex.props(styles.line("28%"))} />
-          <div {...stylex.props(styles.line("92%"))} />
-          <div {...stylex.props(styles.line("84%"))} />
-          <div {...stylex.props(styles.line("61%"))} />
+    <div role="status" aria-label="Loading chat" {...props(styles.rows)}>
+      <div {...props(styles.turn)}>
+        <div {...props(styles.card)} />
+        <div {...props(styles.row)}>
+          <div {...props(styles.line("28%"))} />
+          <div {...props(styles.line("92%"))} />
+          <div {...props(styles.line("84%"))} />
+          <div {...props(styles.line("61%"))} />
         </div>
       </div>
-      <div {...stylex.props(styles.turn)}>
-        <div {...stylex.props(styles.card)} />
-        <div {...stylex.props(styles.row)}>
-          <div {...stylex.props(styles.line("36%"))} />
-          <div {...stylex.props(styles.line("88%"))} />
-          <div {...stylex.props(styles.line("47%"))} />
+      <div {...props(styles.turn)}>
+        <div {...props(styles.card)} />
+        <div {...props(styles.row)}>
+          <div {...props(styles.line("36%"))} />
+          <div {...props(styles.line("88%"))} />
+          <div {...props(styles.line("47%"))} />
         </div>
       </div>
     </div>

@@ -1,26 +1,26 @@
-import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog";
+import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { create, props } from "@stylexjs/stylex";
 import { useRef } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
 
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import type { Tint } from "../../surface-theme.ts";
-import { t } from "../../vars.stylex.ts";
+import { intent, type Tint } from "../../surface-theme.ts";
+import { role, type } from "../../vars.stylex.ts";
 import { Button } from "./button.tsx";
 import { Dialog } from "./dialog.tsx";
 
 const styles = create({
-  error: {
+  text: {
     margin: 0,
-    color: t.intentDangerContent,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
 });
 
-export type AlertDialogRootProps = AlertDialogPrimitive.Root.Props;
+export type AlertDialogRootProps = AlertDialog.Root.Props;
 
-export type AlertDialogTriggerProps = StyledProps<AlertDialogPrimitive.Trigger.Props>;
+export type AlertDialogTriggerProps = StyledProps<AlertDialog.Trigger.Props>;
 
 function AlertDialogTrigger({
   xstyle,
@@ -28,14 +28,12 @@ function AlertDialogTrigger({
   style,
   ...rest
 }: AlertDialogTriggerProps): ReactElement {
-  return (
-    <AlertDialogPrimitive.Trigger {...rest} {...mergeStyleProps(props(xstyle), className, style)} />
-  );
+  return <AlertDialog.Trigger {...rest} {...mergeStyleProps(props(xstyle), className, style)} />;
 }
 
 /** The dialog's parts under a root that ignores outside presses and announces as `alertdialog`. */
-export const AlertDialog = {
-  Root: AlertDialogPrimitive.Root,
+const alertDialogParts = {
+  Root: AlertDialog.Root,
   Trigger: AlertDialogTrigger,
   Popup: Dialog.Popup,
   Header: Dialog.Header,
@@ -49,9 +47,8 @@ export interface ConfirmDialogProps {
   readonly open: boolean;
   readonly title: string;
   readonly description: ReactNode;
-  readonly confirmLabel?: string;
+  readonly confirmLabel: string;
   readonly pendingLabel?: string;
-  /** Disables both actions and keeps the dialog open until it settles. */
   readonly pending?: boolean;
   readonly error?: string;
   /** Where focus lands on close when the dialog has no trigger. */
@@ -66,8 +63,8 @@ export function ConfirmDialog({
   open,
   title,
   description,
-  confirmLabel = "Delete",
-  pendingLabel = "Deleting…",
+  confirmLabel,
+  pendingLabel,
   pending = false,
   error,
   returnFocusRef,
@@ -78,40 +75,50 @@ export function ConfirmDialog({
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   return (
-    <AlertDialog.Root
+    <alertDialogParts.Root
       open={open}
       onOpenChange={(nextOpen) => {
         if (!nextOpen && !pending) onOpenChange(false);
       }}
     >
-      <AlertDialog.Popup
+      <alertDialogParts.Popup
         tint={tint}
         initialFocus={cancelRef}
         finalFocus={returnFocusRef}
         aria-busy={pending}
       >
-        <AlertDialog.Header>
-          <AlertDialog.Title>{title}</AlertDialog.Title>
-          <AlertDialog.Description>{description}</AlertDialog.Description>
-        </AlertDialog.Header>
+        <alertDialogParts.Header>
+          <alertDialogParts.Title>{title}</alertDialogParts.Title>
+          <alertDialogParts.Description>{description}</alertDialogParts.Description>
+        </alertDialogParts.Header>
         {error !== undefined && (
-          <p role="alert" {...props(styles.error)}>
+          <p role="alert" {...props(intent.danger, styles.text)}>
             {error}
           </p>
         )}
-        <AlertDialog.Footer>
-          <AlertDialog.Close
+        {pending && pendingLabel !== undefined && (
+          <p role="status" {...props(styles.text)}>
+            {pendingLabel}
+          </p>
+        )}
+        <alertDialogParts.Footer>
+          <alertDialogParts.Close
             ref={cancelRef}
-            disabled={pending}
-            render={<Button variant="secondary" />}
+            render={
+              <Button variant="outline" loading={pending}>
+                Cancel
+              </Button>
+            }
           >
             Cancel
-          </AlertDialog.Close>
-          <Button variant="danger" disabled={pending} onClick={onConfirm}>
-            {pending ? pendingLabel : confirmLabel}
+          </alertDialogParts.Close>
+          <Button variant="solid" tone="danger" loading={pending} onClick={onConfirm}>
+            {confirmLabel}
           </Button>
-        </AlertDialog.Footer>
-      </AlertDialog.Popup>
-    </AlertDialog.Root>
+        </alertDialogParts.Footer>
+      </alertDialogParts.Popup>
+    </alertDialogParts.Root>
   );
 }
+
+export { alertDialogParts as AlertDialog };

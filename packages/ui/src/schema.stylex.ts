@@ -162,3 +162,12 @@ export const layer = defineConsts({
   command: 81,
   dragPreview: 1000,
 });
+
+export const shape = defineConsts({
+  square: "var(--nyte-shape-square)",
+  indicator: "var(--nyte-shape-indicator)",
+  control: "var(--nyte-shape-control)",
+  card: "var(--nyte-shape-card)",
+  surface: "var(--nyte-shape-surface)",
+  pill: "var(--nyte-shape-pill)",
+});

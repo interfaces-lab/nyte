@@ -1,3 +1,4 @@
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { renderMermaidSVG } from "beautiful-mermaid";
 
 const MAX_SOURCE_LENGTH = 8_000;
@@ -17,14 +18,14 @@ export function renderDiagram(source: string): DiagramResult {
 
   try {
     const svg = renderMermaidSVG(source, {
-      bg: "var(--nyte-conversation-technical-bg)",
-      fg: "var(--nyte-content-primary)",
-      accent: "var(--nyte-blue-80)",
-      muted: "var(--nyte-content-secondary)",
-      surface: "var(--nyte-bg-elevated)",
-      border: "var(--nyte-border-secondary-translucent)",
-      line: "var(--nyte-border-primary-translucent)",
-      font: "var(--nyte-font-family-sans)",
+      bg: role.bgMutedTranslucent,
+      fg: role.contentPrimary,
+      accent: role.contentInteractiveTertiary,
+      muted: role.contentSecondary,
+      surface: role.bgElevated,
+      border: role.borderSecondaryTranslucent,
+      line: role.borderPrimaryTranslucent,
+      font: type.fontSans,
       padding: 24,
       transparent: true,
     });

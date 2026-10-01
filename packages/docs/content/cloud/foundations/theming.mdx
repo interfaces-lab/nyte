@@ -9,22 +9,40 @@ description: "Change what a primitive looks like with token overrides, className
 | `@nyte-ai/ui` | Reusable component styling                       | StyleX `stylex.create` reading [tokens](/cloud/foundations/tokens) |
 | The app       | Layout, typography, product identity, composites | Token overrides, `className`, `xstyle`, own components             |
 
-## Token overrides
+## Colour scopes
 
-Override on an ancestor. The app root is the right place, and a preview container works too.
-A hue scope re-declares every role on the element that starts it, so to recolour a subtree give it
-a scope from `@nyte-ai/ui/surface-theme` rather than overriding roles one by one. See
-[Tokens](/cloud/foundations/tokens).
+Colours follow ramps, a hue theme, and then neutral or tinted roles. Components read the roles,
+not ramp steps. A scope pairs the hue theme with the tinted roles, so apply both through
+`props()` on the element that paints. See [Tokens](/cloud/foundations/tokens).
 
-```css
-.my-preview {
-  color-scheme: dark;
-  --nyte-bg-elevated: #1c1c22;
+```tsx
+import { create, props } from "@stylexjs/stylex";
+import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { role } from "@nyte-ai/ui/vars.stylex";
+
+const styles = create({
+  panel: {
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    color: role.contentSecondary,
+    colorScheme: "dark",
+  },
+});
+
+export function PreviewPanel() {
+  return <section {...props(surfaceTheme.blue, styles.panel)}>Preview</section>;
 }
 ```
 
-Override the tokens that carry identity. Resizing one component to fix one layout is a layout
-problem, so solve that one with `className`.
+Use `intent.primary`, `intent.success`, `intent.warning`, or `intent.danger` for meaning.
+Use `surfaceTheme` for category hues. `surfaceTheme.gray` gives a quieter neutral panel, and
+`surfaceTheme.custom` reads the host's workspace tint.
+
+## Measurements
+
+Sizes follow component measurements and then app layout decisions. Read control geometry from
+`button`, `input`, `row`, or the other component handles in `@nyte-ai/ui/schema.stylex`.
+Those measurements grow under `(pointer: coarse)`. Use a scale literal for layout that has no
+handle. Ramps and size primitives have no custom properties.
 
 ## The three props every styled primitive accepts
 

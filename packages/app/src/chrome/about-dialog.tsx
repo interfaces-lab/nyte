@@ -1,3 +1,4 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
@@ -5,7 +6,7 @@ import type { AppInfo } from "../bridge.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 
 const styles = create({
   popup: {
@@ -28,9 +29,9 @@ const styles = create({
     padding: 0,
     borderStyle: "none",
     borderRadius: "50%",
-    color: t.contentInteractiveSecondary,
-    backgroundColor: { default: "transparent", ":hover": t.bgHover },
-    cursor: t.cursorInteractive,
+    color: role.contentInteractiveSecondary,
+    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    cursor: appearance.cursorInteractive,
   },
   icon: {
     width: 112,
@@ -48,18 +49,18 @@ const styles = create({
   },
   version: {
     margin: "8px 0 0",
-    color: t.contentSecondary,
+    color: role.contentSecondary,
     fontSize: 15,
     lineHeight: 1.5,
     fontVariantNumeric: "tabular-nums",
   },
   credit: {
     margin: "20px 0 24px",
-    color: t.contentSecondary,
+    color: role.contentSecondary,
     fontSize: 13,
     lineHeight: 1.5,
   },
-  error: { margin: "12px 0 0", color: t.intentDangerContent, fontSize: t.fontBase },
+  error: { margin: "12px 0 0", color: role.contentSecondary, fontSize: type.fontBase },
 });
 
 export function AboutDialog({
@@ -89,7 +90,7 @@ export function AboutDialog({
         <Dialog.Description xstyle={styles.version}>Version {info.version}</Dialog.Description>
         <p {...props(styles.credit)}>Made by Interfaces</p>
         <Button
-          variant="secondary"
+          variant="outline"
           onClick={() => {
             void navigator.clipboard
               .writeText(
@@ -109,7 +110,7 @@ export function AboutDialog({
           <span aria-live="polite">{copyStatus === "copied" ? "Copied" : "Copy version info"}</span>
         </Button>
         {copyStatus === "failed" && (
-          <p role="alert" {...props(styles.error)}>
+          <p role="alert" {...props(intent.danger, styles.error)}>
             Couldn't copy version info. Try again.
           </p>
         )}

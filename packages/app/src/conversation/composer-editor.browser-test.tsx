@@ -1,7 +1,7 @@
 import { createRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import "../theme/appearance.css";
+import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 import { ComposerEditor } from "./composer-editor.tsx";
 import type { ComposerEditorHandle } from "./composer-editor.tsx";
@@ -193,3 +193,5 @@ export async function run(): Promise<string> {
     host.remove();
   }
 }
+
+applyDisplayMode("light");

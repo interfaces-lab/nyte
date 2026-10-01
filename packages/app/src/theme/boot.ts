@@ -2,12 +2,17 @@
  * Applies the palette to the static HTML shell before first paint. Keeping it
  * in the boot entry avoids an inline script that the CSP would block.
  */
-import { props } from "@stylexjs/stylex";
-import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { nyte } from "../nyte.ts";
 import type { ThemePreference } from "../nyte.ts";
+import {
+  applyDisplayMode,
+  applyPointerCursors,
+  applyTint,
+  applyTransparency,
+} from "./appearance.ts";
+import { type } from "@nyte-ai/ui/vars.stylex";
 
 const THEME_STORAGE_KEY = "nyte:theme";
 
@@ -39,7 +44,6 @@ export interface AppearanceSettings {
   readonly reduceTransparency: boolean;
   readonly toolCalls: ToolCallDensity;
   readonly codeBlockWordWrap: boolean;
-  readonly themedDiffBackgrounds: boolean;
 }
 
 const DEFAULT_APPEARANCE: AppearanceSettings = {
@@ -55,7 +59,6 @@ const DEFAULT_APPEARANCE: AppearanceSettings = {
   reduceTransparency: false,
   toolCalls: "compact",
   codeBlockWordWrap: false,
-  themedDiffBackgrounds: true,
 };
 
 const LOCAL_FONT_PREFIX = "local:";
@@ -104,7 +107,7 @@ export function uiFontFamily(selection: UiFont): string {
 
   if (local !== undefined) return `${quotedCssFamily(local)}, system-ui, sans-serif`;
 
-  return selection === "inter" ? "var(--nyte-ui-font-inter)" : "var(--nyte-ui-font-system)";
+  return selection === "inter" ? type.uiFontInter : type.uiFontSystem;
 }
 
 export function codeFontFamily(selection: CodeFont): string {
@@ -112,9 +115,7 @@ export function codeFontFamily(selection: CodeFont): string {
 
   if (local !== undefined) return `${quotedCssFamily(local)}, ui-monospace, monospace`;
 
-  return selection === "jetbrains-mono"
-    ? "var(--nyte-code-font-jetbrains-mono)"
-    : "var(--nyte-code-font-system)";
+  return selection === "jetbrains-mono" ? type.codeFontJetbrainsMono : type.codeFontSystem;
 }
 
 const storedAppearanceSchema = Type.Object(
@@ -135,7 +136,6 @@ const storedAppearanceSchema = Type.Object(
     // `auto` was the pre-density name for today's Balanced mode.
     toolCalls: Type.Optional(Type.Enum(["auto", "compact", "balanced", "detailed"])),
     codeBlockWordWrap: Type.Optional(Type.Boolean()),
-    themedDiffBackgrounds: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },
 );
@@ -206,7 +206,6 @@ function storedAppearance(): AppearanceSettings {
       toolCalls:
         stored.toolCalls === "auto" ? "balanced" : (stored.toolCalls ?? fallback.toolCalls),
       codeBlockWordWrap: stored.codeBlockWordWrap ?? fallback.codeBlockWordWrap,
-      themedDiffBackgrounds: stored.themedDiffBackgrounds ?? fallback.themedDiffBackgrounds,
     };
   } catch {
     return fallback;
@@ -215,21 +214,16 @@ function storedAppearance(): AppearanceSettings {
 
 let appearance = storedAppearance();
 
-/** The workspace tint scope: Notion Calendar's custom hue, on <html>. */
-const tintClassName = props(surfaceTheme.custom).className ?? "";
-
 function apply(settings: AppearanceSettings): void {
   const preference = settings.theme;
   const dark = preference === "dark" || (preference === "system" && systemDark());
   const reduceTransparency = settings.reduceTransparency || systemReducesTransparency();
   const root = document.documentElement;
-  root.dataset["displayMode"] = dark ? "dark" : "light";
-  root.dataset["nytePointerCursors"] = settings.pointerCursors ? "true" : "false";
-  root.dataset["reduceTransparency"] = reduceTransparency ? "true" : "false";
-  root.dataset["nyteCodeBlockWordWrap"] = settings.codeBlockWordWrap ? "true" : "false";
-  root.dataset["nyteThemedDiffBackgrounds"] = settings.themedDiffBackgrounds ? "true" : "false";
-  // Intensity scales the tint's chroma; at zero the app stays neutral gray.
-  root.className = settings.tintIntensity > 0 ? tintClassName : "";
+  applyDisplayMode(dark ? "dark" : "light");
+  applyPointerCursors(settings.pointerCursors);
+  applyTransparency(reduceTransparency);
+  root.dataset.nyteCodeBlockWordWrap = settings.codeBlockWordWrap ? "true" : "false";
+  applyTint(settings.tintIntensity > 0);
   root.style.setProperty("--nyte-custom-hue", String(settings.tintHue));
   root.style.setProperty("--nyte-custom-chroma-scale", String(settings.tintIntensity / 100));
   nyte.host.setThemePreference(preference);

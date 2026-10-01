@@ -29,7 +29,7 @@ trailing meta column, so labels line up in every menu whether or not a row uses 
 - Put `danger` on a destructive item, last, after a separator.
 - `MenuItem` and `MenuRadioItem` close the menu on click. `MenuCheckboxItem` stays open. Set
   `closeOnClick` to change either. `MenuSwitchItem` always stays open.
-- `MenuSubmenu` opens on hover and on Arrow Right. `value` shows the current choice before the
+- `MenuSubmenu` opens on click and on Arrow Right. `value` shows the current choice before the
   chevron.
 - `xstyle`, `className`, and `style` go to the popup on `Menu`, `MenuSubmenu`, and `CommandMenu`,
   and to the row on items. Use them for size, such as a wider popup for long labels.
@@ -62,7 +62,7 @@ trailing meta column, so labels line up in every menu whether or not a row uses 
 const [effort, setEffort] = useState("medium");
 const [pinned, setPinned] = useState(false);
 
-<Menu label="Session" trigger={<Button variant="secondary">Session</Button>}>
+<Menu label="Session" trigger={<Button variant="outline">Session</Button>}>
   <MenuGroup label="Session">
     <MenuItem icon="pencil" meta="⌘R" onSelect={rename}>
       Rename

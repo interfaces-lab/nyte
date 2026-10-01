@@ -1,3 +1,5 @@
+import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { create, props } from "@stylexjs/stylex";
 import type { ReactNode } from "react";
 
 /*
@@ -13,8 +15,18 @@ export function Preview({
   align?: "center" | "start" | "stretch";
 }) {
   return (
-    <div className="cloud-preview" data-align={align}>
+    <div {...props(styles.canvas)} className="cloud-preview" data-align={align}>
       {children}
     </div>
   );
 }
+
+const styles = create({
+  canvas: {
+    backgroundImage: `radial-gradient(circle at 1px 1px, ${role.borderSecondaryTranslucent} 1px, transparent 0)`,
+    backgroundSize: "20px 20px",
+    backgroundColor: role.bgBase,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+  },
+});

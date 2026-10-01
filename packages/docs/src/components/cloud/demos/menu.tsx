@@ -18,7 +18,7 @@ export function MenuDemo() {
   const [pinned, setPinned] = useState(false);
 
   return (
-    <Menu label="Session" trigger={<Button variant="secondary">Session</Button>}>
+    <Menu label="Session" trigger={<Button variant="outline">Session</Button>}>
       <MenuGroup label="Session">
         <MenuItem icon="pencil" meta="⌘R" onSelect={() => {}}>
           Rename

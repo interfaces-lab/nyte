@@ -3,27 +3,35 @@ import { create, props } from "@stylexjs/stylex";
 import { createContext, use, type ReactElement } from "react";
 
 import { focus } from "../../a11y.stylex.ts";
-import { button } from "../../schema.stylex.ts";
+import { button, shape } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { t } from "../../vars.stylex.ts";
+import { appearance, motion, role, shadow, type } from "../../vars.stylex.ts";
 
 const lists = create({
   segmented: {
     display: "flex",
     alignItems: "center",
-    gap: 1,
+    gap: 0,
     padding: 2,
-    borderRadius: t.radius8,
-    backgroundColor: t.bgMutedTranslucent,
-    boxShadow: `inset 0 0 0 1px ${t.borderSecondaryTranslucent}`,
+    borderRadius: shape.control,
+    backgroundColor: role.bgMutedTranslucent,
+    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
   },
   underline: {
     display: "flex",
     gap: 16,
-    boxShadow: `inset 0 -1px 0 ${t.borderSecondaryTranslucent}`,
+    boxShadow: `inset 0 -1px 0 ${role.borderSecondaryTranslucent}`,
   },
   pill: { display: "flex", alignItems: "center", gap: 4, paddingBlock: 2 },
   plain: { display: "flex", alignItems: "center", gap: 4 },
+});
+
+const target = create({
+  base: {
+    boxSizing: "border-box",
+    minWidth: { default: 24, "@media (pointer: coarse)": 44 },
+    minHeight: { default: 24, "@media (pointer: coarse)": 44 },
+  },
 });
 
 const tabs = create({
@@ -40,16 +48,16 @@ const tabs = create({
     borderRadius: button.radiusSm,
     backgroundColor: {
       default: "transparent",
-      ":hover:not([data-active])": t.bgHover,
-      "[data-active]": t.bgElevated,
+      ":hover:not([data-active])": role.bgHover,
+      "[data-active]": role.bgElevated,
     },
-    boxShadow: { default: "none", "[data-active]": t.shadowSm },
-    color: { default: t.contentInteractiveSecondary, "[data-active]": t.contentPrimary },
-    fontFamily: t.fontSans,
-    fontSize: t.fontSm,
+    boxShadow: { default: "none", "[data-active]": shadow.shadowSm },
+    color: { default: role.contentInteractiveSecondary, "[data-active]": role.contentPrimary },
+    fontFamily: type.fontSans,
+    fontSize: type.fontSm,
     fontWeight: 500,
-    lineHeight: t.leadingSm,
-    cursor: t.cursorInteractive,
+    lineHeight: type.leadingSm,
+    cursor: appearance.cursorInteractive,
     userSelect: "none",
     whiteSpace: "nowrap",
     scale: {
@@ -57,8 +65,8 @@ const tabs = create({
       ":active": { default: "0.96", "@media (prefers-reduced-motion: reduce)": "1" },
     },
     transitionProperty: "background-color, color, scale",
-    transitionDuration: t.durationFast,
-    transitionTimingFunction: t.easeOut,
+    transitionDuration: motion.durationFast,
+    transitionTimingFunction: motion.easeOut,
   },
   underline: {
     position: "relative",
@@ -67,25 +75,25 @@ const tabs = create({
     borderStyle: "none",
     backgroundColor: "transparent",
     color: {
-      default: t.contentInteractiveSecondary,
-      ":hover": t.contentInteractivePrimary,
-      "[data-active]": t.contentPrimary,
+      default: role.contentInteractiveSecondary,
+      ":hover": role.contentInteractivePrimary,
+      "[data-active]": role.contentPrimary,
     },
-    fontFamily: t.fontSans,
-    fontSize: t.fontSm,
+    fontFamily: type.fontSans,
+    fontSize: type.fontSm,
     fontWeight: 500,
-    lineHeight: t.leadingSm,
-    cursor: t.cursorInteractive,
+    lineHeight: type.leadingSm,
+    cursor: appearance.cursorInteractive,
     userSelect: "none",
     transitionProperty: "color",
-    transitionDuration: t.durationFast,
-    transitionTimingFunction: t.easeOut,
+    transitionDuration: motion.durationFast,
+    transitionTimingFunction: motion.easeOut,
     "::after": {
       position: "absolute",
       insetInline: 0,
       insetBlockEnd: 0,
       height: 1.5,
-      backgroundColor: { default: "transparent", ":is([data-active])": t.contentPrimary },
+      backgroundColor: { default: "transparent", ":is([data-active])": role.contentPrimary },
       content: '""',
     },
   },
@@ -94,46 +102,46 @@ const tabs = create({
     alignItems: "center",
     height: button.heightMd,
     paddingInline: button.pillPaddingInlineMd,
-    borderRadius: t.radiusFull,
+    borderRadius: shape.pill,
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: {
-      default: t.borderSecondaryTranslucent,
-      "[data-active]": t.borderPrimaryTranslucent,
+      default: role.borderSecondaryTranslucent,
+      "[data-active]": role.borderPrimaryTranslucent,
     },
     backgroundColor: {
       default: "transparent",
-      ":hover:not([data-active])": t.bgHover,
-      "[data-active]": t.bgInteractiveSecondaryTranslucent,
+      ":hover:not([data-active])": role.bgHover,
+      "[data-active]": role.bgInteractiveSecondaryTranslucent,
     },
-    color: { default: t.contentInteractiveSecondary, "[data-active]": t.contentPrimary },
-    fontFamily: t.fontSans,
-    fontSize: t.fontSm,
+    color: { default: role.contentInteractiveSecondary, "[data-active]": role.contentPrimary },
+    fontFamily: type.fontSans,
+    fontSize: type.fontSm,
     fontWeight: 500,
-    lineHeight: t.leadingSm,
-    cursor: t.cursorInteractive,
+    lineHeight: type.leadingSm,
+    cursor: appearance.cursorInteractive,
   },
   plain: {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    minHeight: button.heightMd,
+    height: button.heightMd,
     flexShrink: 0,
     paddingBlock: 2,
     paddingInline: 10,
     borderStyle: "none",
-    borderRadius: t.radius4,
+    borderRadius: shape.indicator,
     backgroundColor: {
       default: "transparent",
-      ":hover:not([data-active])": t.bgHover,
-      "[data-active]": t.bgInteractiveSecondaryTranslucent,
+      ":hover:not([data-active])": role.bgHover,
+      "[data-active]": role.bgInteractiveSecondaryTranslucent,
     },
-    color: { default: t.contentInteractiveSecondary, "[data-active]": t.contentPrimary },
-    fontFamily: t.fontSans,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
-    letterSpacing: t.letterBase,
-    cursor: t.cursorInteractive,
+    color: { default: role.contentInteractiveSecondary, "[data-active]": role.contentPrimary },
+    fontFamily: type.fontSans,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    letterSpacing: type.letterBase,
+    cursor: appearance.cursorInteractive,
   },
 });
 
@@ -147,10 +155,10 @@ const indicator = create({
     height: "var(--active-tab-height)",
     transitionProperty: "top, left, width, height",
     transitionDuration: {
-      default: t.durationFast,
+      default: motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: t.easeOut,
+    transitionTimingFunction: motion.easeOut,
   },
 });
 
@@ -193,6 +201,7 @@ function TabsList({ xstyle, className, style, ...rest }: TabsListProps): ReactEl
 
   return (
     <TabsPrimitive.List
+      activateOnFocus={variant === "segmented"}
       {...rest}
       {...mergeStyleProps(props(indicator.list, lists[variant], xstyle), className, style)}
     />
@@ -206,7 +215,12 @@ function TabsTab({ xstyle, className, style, ...rest }: TabsTabProps): ReactElem
     <TabsPrimitive.Tab
       {...rest}
       {...mergeStyleProps(
-        props(tabs[variant], variant === "plain" ? focus.ringInset : focus.ring, xstyle),
+        props(
+          tabs[variant],
+          target.base,
+          variant === "plain" ? focus.ringInset : focus.ring,
+          xstyle,
+        ),
         className,
         style,
       )}

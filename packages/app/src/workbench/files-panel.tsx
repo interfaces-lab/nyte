@@ -1,3 +1,4 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
@@ -16,7 +17,7 @@ import { nyte } from "../nyte.ts";
 import { macPlatform } from "../platform.ts";
 import { refreshVcs, useHostState, useMentionFiles, useVcsSnapshot } from "../queries.ts";
 import { workbench } from "../theme/schema.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import type { WorkbenchViewKey } from "./controller.ts";
 import { WorkspaceFileEditor } from "./file-editor.tsx";
 import type { FileEditorHandle } from "./file-editor.tsx";
@@ -25,6 +26,7 @@ import { fileActions, useFileTabs } from "./file-store.ts";
 import { FilesStack } from "./files-stack.tsx";
 import { WorkspaceSearch } from "./workspace-search.tsx";
 import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
+import { useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const styles = create({
@@ -34,7 +36,7 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
   },
   explorerHeader: {
     display: "flex",
@@ -42,8 +44,8 @@ const styles = create({
     height: workbench.headerHeight,
     flexShrink: 0,
     paddingInline: 10,
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
   },
   path: {
     display: "flex",
@@ -52,8 +54,8 @@ const styles = create({
     minWidth: 0,
     overflow: "hidden",
     paddingInline: 4,
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
     whiteSpace: "nowrap",
   },
   // Folders give up their width first, so a deep path still shows the file name.
@@ -62,10 +64,10 @@ const styles = create({
     display: "inline-flex",
     flexShrink: 0,
     marginInline: 2,
-    color: t.contentTertiary,
+    color: role.contentTertiary,
   },
-  currentCrumb: { flexShrink: 0, maxWidth: "100%", color: t.contentPrimary },
-  dirty: { flexShrink: 0, color: t.contentSecondary, fontSize: t.fontXs },
+  currentCrumb: { flexShrink: 0, maxWidth: "100%", color: role.contentPrimary },
+  dirty: { flexShrink: 0, color: role.contentSecondary, fontSize: type.fontXs },
   body: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
   editors: { position: "relative", display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
   explorer: {
@@ -75,26 +77,26 @@ const styles = create({
     minWidth: 160,
     minHeight: 0,
     flexShrink: 0,
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: t.borderSecondaryTranslucent,
+    borderInlineStartColor: role.borderSecondaryTranslucent,
   },
   search: { width: "min(320px, 50%)", minWidth: 230 },
   sidebarBody: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   hidden: { display: "none" },
-  empty: { padding: 20, color: t.contentSecondary, fontSize: t.fontSm },
+  empty: { padding: 20, color: role.contentSecondary, fontSize: type.fontSm },
   menu: {
     minWidth: "min(220px, var(--available-width))",
     maxWidth: "min(420px, var(--available-width))",
-    borderRadius: t.radius8,
+    borderRadius: shape.control,
   },
   tree: {
     display: "block",
     flex: 1,
     width: "100%",
     minHeight: 0,
-    "--trees-border-radius-override": t.radius2,
+    "--trees-border-radius-override": shape.indicator,
     "--trees-item-margin-x-override": "0px",
     "--trees-item-padding-x-override": "5px",
     "--trees-item-row-gap-override": "4px",
@@ -112,6 +114,7 @@ export function FilesPanel({
   readonly visible: boolean;
   readonly workspaceActive: boolean;
 }): ReactElement {
+  const treeStatusTheme = useTreeStatusTheme();
   const shown = workspaceActive && visible;
   const files = useMentionFiles(shown);
   const fileEntries = useRef(files.data);
@@ -529,7 +532,7 @@ export function FilesPanel({
             )}
             <FileTree
               model={model}
-              className={props(workbenchStyles.treeTheme, styles.tree).className}
+              {...props(workbenchStyles.treeTheme, treeStatusTheme, styles.tree)}
             />
           </div>
           <div

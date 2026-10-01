@@ -3,7 +3,7 @@ import { titlebarStyles } from "./titlebar.stylex.ts";
  * Permanent window chrome. The sidebar toggle stays on the rail side; chat
  * actions and the stage-level workbench entry stay at the trailing edge.
  */
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { useMatch, useRouter } from "@tanstack/react-router";
 // oxlint-disable-next-line no-restricted-imports -- menu commands and shortcuts act on the current workspace state
 import { useCallback, useEffect } from "react";
@@ -57,11 +57,11 @@ function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement 
   if (location.environment === "cloud")
     return (
       <>
-        <span {...stylex.props(titlebarStyles.sessionCrumb)}>
+        <span {...props(titlebarStyles.sessionCrumb)}>
           <Icon name="cloud" size={12} />
           {location.available ? "Cloud" : "Cloud · unavailable"}
         </span>
-        <span {...stylex.props(titlebarStyles.sessionCrumbDivider)}>/</span>
+        <span {...props(titlebarStyles.sessionCrumbDivider)}>/</span>
       </>
     );
 
@@ -71,11 +71,11 @@ function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement 
 
   return (
     <>
-      <span title={path} {...stylex.props(titlebarStyles.sessionCrumb)}>
+      <span title={path} {...props(titlebarStyles.sessionCrumb)}>
         {workspaces.data?.find((workspace) => workspace.path === path)?.name ??
           path.split("/").at(-1)}
       </span>
-      <span {...stylex.props(titlebarStyles.sessionCrumbDivider)}>/</span>
+      <span {...props(titlebarStyles.sessionCrumbDivider)}>/</span>
     </>
   );
 }
@@ -87,9 +87,9 @@ function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
   const title = session.data?.name ?? session.data?.preview ?? "New chat";
 
   return (
-    <span {...stylex.props(titlebarStyles.sessionTitleGroup)}>
+    <span {...props(titlebarStyles.sessionTitleGroup)}>
       {parentSessionId !== undefined && (
-        <span {...stylex.props(titlebarStyles.sessionBack)}>
+        <span {...props(titlebarStyles.sessionBack)}>
           <Button
             iconOnly
             icon="arrow-left"
@@ -99,7 +99,7 @@ function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
         </span>
       )}
       <SessionLocation sessionId={sessionId} />
-      <span title={title} {...stylex.props(titlebarStyles.sessionTitle)}>
+      <span title={title} {...props(titlebarStyles.sessionTitle)}>
         {title}
       </span>
     </span>
@@ -245,22 +245,22 @@ export function Titlebar(): ReactElement {
 
   if (settingsOpen) {
     return (
-      <header {...stylex.props(titlebarStyles.bar, nativeMac && titlebarStyles.barMac)}>
-        <span aria-hidden="true" {...stylex.props(titlebarStyles.contentFill)} />
+      <header {...props(titlebarStyles.bar, nativeMac && titlebarStyles.barMac)}>
+        <span aria-hidden="true" {...props(titlebarStyles.contentFill)} />
       </header>
     );
   }
 
   return (
-    <header {...stylex.props(titlebarStyles.bar, nativeMac && titlebarStyles.barMac)}>
+    <header {...props(titlebarStyles.bar, nativeMac && titlebarStyles.barMac)}>
       <span
         aria-hidden="true"
-        {...stylex.props(
+        {...props(
           titlebarStyles.contentFill,
           !sidebarVisible && titlebarStyles.contentFillSidebarHidden,
         )}
       />
-      <span {...stylex.props(titlebarStyles.actionTrack)}>
+      <span {...props(titlebarStyles.actionTrack)}>
         <Hint
           content={`${sidebarVisible ? "Hide Sidebar" : "Show Sidebar"} ${clientActionShortcut(clientActions.sidebar, mac)}`}
           trigger={
@@ -279,7 +279,7 @@ export function Titlebar(): ReactElement {
         />
       </span>
       {sidebarVisible && (
-        <span {...stylex.props(titlebarStyles.navigationTrack)}>
+        <span {...props(titlebarStyles.navigationTrack)}>
           <Hint
             content={`Go Back ${clientActionShortcut(clientActions.back, mac)}`}
             trigger={
@@ -323,7 +323,7 @@ export function Titlebar(): ReactElement {
       )}
       {workspaceVisible && selection.kind === "session" && (
         <span
-          {...stylex.props(
+          {...props(
             titlebarStyles.titleSlot,
             workbenchOpen && titlebarStyles.titleSlotWorkbenchOpen,
             !sidebarVisible &&
@@ -335,9 +335,9 @@ export function Titlebar(): ReactElement {
           <SessionTitle sessionId={selection.sessionId} />
         </span>
       )}
-      <span {...stylex.props(titlebarStyles.spacer)} />
+      <span {...props(titlebarStyles.spacer)} />
       {workspaceVisible && layout.kind === "single" && !(workbenchOpen && view.maximized) && (
-        <span {...stylex.props(titlebarStyles.actionTrack)}>
+        <span {...props(titlebarStyles.actionTrack)}>
           <Menu
             label="Chat actions"
             align="end"
@@ -362,12 +362,10 @@ export function Titlebar(): ReactElement {
           </Menu>
         </span>
       )}
-      {workbenchOpen && (
-        <span aria-hidden="true" {...stylex.props(titlebarStyles.workbenchReservation)} />
-      )}
+      {workbenchOpen && <span aria-hidden="true" {...props(titlebarStyles.workbenchReservation)} />}
       {workspaceVisible && (
         <div
-          {...stylex.props(
+          {...props(
             workbenchOpen ? titlebarStyles.workbenchTrack : titlebarStyles.actionTrack,
             workbenchOpen &&
               !sidebarVisible &&

@@ -1,7 +1,8 @@
 "use client";
+import { shape } from "@nyte-ai/ui/schema.stylex";
 
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "@nyte-ai/ui/context-menu";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 
 const styles = create({
@@ -12,11 +13,11 @@ const styles = create({
     height: 96,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: t.borderPrimaryTranslucent,
-    borderRadius: t.radius8,
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    borderColor: role.borderPrimaryTranslucent,
+    borderRadius: shape.control,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     userSelect: "none",
   },
 });

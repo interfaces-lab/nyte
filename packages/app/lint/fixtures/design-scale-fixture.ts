@@ -1,9 +1,8 @@
 import { create } from "@stylexjs/stylex";
-import * as stylex from "@stylexjs/stylex";
 
 // Every value here is deliberate. `design-scale.test.ts` asserts the exact set
 // of lines the rules report, so edit the test when you edit this file.
-export const fixtureStyles = stylex.create({
+export const fixtureStyles = create({
   onScale: { gap: 8, paddingInline: 12, marginBlockStart: 0, width: 28, minHeight: 24 },
   offScale: { gap: 7, paddingBlock: 9 },
   aboveScale: { paddingInlineStart: 96 },

@@ -12,7 +12,7 @@ import type { ReactElement } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import "../theme/appearance.css";
+import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
 import { ComposerFrame } from "./composer.tsx";
@@ -209,3 +209,5 @@ export async function run(streaming: boolean): Promise<LatencyReport> {
     coalescedAtMs,
   };
 }
+
+applyDisplayMode("light");

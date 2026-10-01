@@ -1,5 +1,6 @@
 import { workbenchStyles } from "./workbench.stylex.ts";
-import * as stylex from "@stylexjs/stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { props } from "@stylexjs/stylex";
 import { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import type { SessionId } from "@nyte-ai/protocol";
@@ -113,11 +114,9 @@ function RailRow({
 
 function DoubleChevron({ back = false }: { readonly back?: boolean }): ReactElement {
   return (
-    <span
-      {...stylex.props(workbenchStyles.doubleChevron, back && workbenchStyles.doubleChevronBack)}
-    >
+    <span {...props(workbenchStyles.doubleChevron, back && workbenchStyles.doubleChevronBack)}>
       <Icon name="chevron-right" size={11} />
-      <span {...stylex.props(workbenchStyles.doubleChevronTrail)}>
+      <span {...props(workbenchStyles.doubleChevronTrail)}>
         <Icon name="chevron-right" size={11} />
       </span>
     </span>
@@ -137,11 +136,13 @@ function RailChangeStats({ sessionId }: { readonly sessionId: SessionId }): Reac
   return (
     <span
       aria-label={`${String(stats.added)} added, ${String(stats.removed)} removed`}
-      {...stylex.props(workbenchStyles.railStats)}
+      {...props(workbenchStyles.railStats)}
     >
-      {stats.added > 0 && <span {...stylex.props(workbenchStyles.railAdded)}>+{stats.added}</span>}
+      {stats.added > 0 && (
+        <span {...props(intent.success, workbenchStyles.railAdded)}>+{stats.added}</span>
+      )}
       {stats.removed > 0 && (
-        <span {...stylex.props(workbenchStyles.railRemoved)}>-{stats.removed}</span>
+        <span {...props(intent.danger, workbenchStyles.railRemoved)}>-{stats.removed}</span>
       )}
     </span>
   );
@@ -192,10 +193,10 @@ function FloatingWorkbenchPanel({
   );
 
   return (
-    <nav aria-label="Workbench navigation" {...stylex.props(workbenchStyles.rail)}>
-      <section {...stylex.props(workbenchStyles.railSection)}>
-        <div {...stylex.props(workbenchStyles.railHeading)}>
-          <span {...stylex.props(workbenchStyles.railHeadingText)}>Open Tabs</span>
+    <nav aria-label="Workbench navigation" {...props(workbenchStyles.rail)}>
+      <section {...props(workbenchStyles.railSection)}>
+        <div {...props(workbenchStyles.railHeading)}>
+          <span {...props(workbenchStyles.railHeadingText)}>Open Tabs</span>
           <Button
             size="sm"
             iconOnly
@@ -225,9 +226,9 @@ function FloatingWorkbenchPanel({
         })}
       </section>
 
-      <section {...stylex.props(workbenchStyles.railSection)}>
-        <div {...stylex.props(workbenchStyles.railHeading)}>
-          <span {...stylex.props(workbenchStyles.railHeadingText)}>
+      <section {...props(workbenchStyles.railSection)}>
+        <div {...props(workbenchStyles.railHeading)}>
+          <span {...props(workbenchStyles.railHeadingText)}>
             {workspaceName === undefined ? "On This Mac" : `On ${workspaceName}`}
           </span>
         </div>
@@ -260,7 +261,7 @@ function CompactWorkbenchBar({
   readonly capabilities: ClientCapabilities;
 }): ReactElement {
   return (
-    <nav aria-label="Workbench navigation" {...stylex.props(workbenchStyles.iconRail)}>
+    <nav aria-label="Workbench navigation" {...props(workbenchStyles.iconRail)}>
       <Button
         iconOnly
         aria-label="Expand workbench"
@@ -268,7 +269,7 @@ function CompactWorkbenchBar({
       >
         <DoubleChevron back />
       </Button>
-      <span aria-hidden="true" {...stylex.props(workbenchStyles.iconRailDivider)} />
+      <span aria-hidden="true" {...props(workbenchStyles.iconRailDivider)} />
       {workbenchTabs(scope, capabilities).map((kind) => (
         <Button
           iconOnly
@@ -516,7 +517,7 @@ function WorkbenchViewHost({
         hidden={!visible}
         aria-hidden={!visible}
         inert={!visible ? true : undefined}
-        {...stylex.props(workbenchStyles.panelSlot, !visible && workbenchStyles.panelSlotHidden)}
+        {...props(workbenchStyles.panelSlot, !visible && workbenchStyles.panelSlotHidden)}
       >
         <PanelContent
           tab={tab}
@@ -540,7 +541,7 @@ function WorkbenchViewHost({
       hidden={!current}
       aria-hidden={!current}
       inert={!current ? true : undefined}
-      {...stylex.props(
+      {...props(
         workbenchStyles.panel,
         panelVisible && workbenchStyles.panelOpen,
         !panelVisible && (compact ? workbenchStyles.railHostCompact : workbenchStyles.railHost),
@@ -573,7 +574,7 @@ function WorkbenchViewHost({
         ))}
       <div
         hidden={!panelVisible}
-        {...stylex.props(workbenchStyles.panelBody, !panelVisible && workbenchStyles.panelHidden)}
+        {...props(workbenchStyles.panelBody, !panelVisible && workbenchStyles.panelHidden)}
       >
         {panelVisible && !view.maximized && (
           <div
@@ -585,7 +586,11 @@ function WorkbenchViewHost({
             aria-valuemax={bounds.max}
             aria-valuenow={panelWidth}
             title="Drag to resize. Double-click to reset."
-            {...stylex.props(workbenchStyles.sash, resizing && workbenchStyles.sashActive)}
+            {...props(
+              resizing && intent.primary,
+              workbenchStyles.sash,
+              resizing && workbenchStyles.sashActive,
+            )}
             onKeyDown={resizeWithKeyboard}
             onPointerDown={beginResize}
             onPointerMove={moveResize}
@@ -646,7 +651,7 @@ export function Workbench({ workspacePath, sessionId }: WorkbenchProps): ReactEl
   }, []);
 
   return (
-    <aside ref={rootRef} {...stylex.props(workbenchStyles.root)} aria-label="Workbench">
+    <aside ref={rootRef} {...props(workbenchStyles.root)} aria-label="Workbench">
       {views.map((key) => {
         const current = key === viewKey;
         const viewWorkspacePath = key === WORKBENCH_HOME_VIEW_KEY ? undefined : key;

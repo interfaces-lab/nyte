@@ -1,17 +1,19 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * Linear's Guide: one band per section. The left third says what the
  * section changes and why, and lists its files; the right two thirds hold
  * those files' diffs, top-aligned with the section. Core sections come first;
  * order is the only grouping.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import type { SelectedLineRange } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
 import { useRef, type ReactElement } from "react";
 import { FileTypeIcon, FileTypeIconSprite } from "@nyte-ai/app/components/file-type-icon.tsx";
 import { PierreWorkerProvider } from "@nyte-ai/app/pierre-worker-provider.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 import {
   AddToChat,
   CodeFileHeader,
@@ -51,7 +53,7 @@ export interface GuideProps {
 
 function GuideCard({
   file,
-  props,
+  props: componentProps,
   register,
 }: {
   readonly file: ReviewFile;
@@ -60,18 +62,18 @@ function GuideCard({
 }): ReactElement {
   const options = usePierreOptions("unified");
   const selection = useRef<SelectedLineRange | null>(null);
-  const collapsed = props.collapsed(file.path);
+  const collapsed = componentProps.collapsed(file.path);
 
   return (
-    <div ref={(node) => register(file.path, node)} {...stylex.props(styles.card)}>
+    <div ref={(node) => register(file.path, node)} {...props(styles.card)}>
       <CodeFileHeader
         file={file}
         collapsed={collapsed}
-        reviewed={props.reviewed(file.path)}
-        justUpdated={props.justUpdated(file.path)}
-        onToggle={() => props.onToggle(file.path)}
-        onReviewed={(next) => props.onReviewed(file.path, next)}
-        onOpenInDiff={() => props.onOpenInDiff(file.path)}
+        reviewed={componentProps.reviewed(file.path)}
+        justUpdated={componentProps.justUpdated(file.path)}
+        onToggle={() => componentProps.onToggle(file.path)}
+        onReviewed={(next) => componentProps.onReviewed(file.path, next)}
+        onOpenInDiff={() => componentProps.onOpenInDiff(file.path)}
       />
       {!collapsed && file.metadata !== undefined && (
         <FileDiff
@@ -93,59 +95,57 @@ function GuideCard({
                     ? null
                     : { start: line.lineNumber, end: line.lineNumber, side: line.side });
 
-                if (range !== null) props.onReference(referenceOf(file, range));
+                if (range !== null) componentProps.onReference(referenceOf(file, range));
               }}
             />
           )}
-          {...stylex.props(pierreHost)}
+          {...props(pierreHost)}
         />
       )}
     </div>
   );
 }
 
-export function Guide(props: GuideProps): ReactElement {
+export function Guide(componentProps2: GuideProps): ReactElement {
   const cards = useRef(new Map<string, HTMLDivElement>());
   const register = (path: string, node: HTMLDivElement | null): void => {
     if (node === null) cards.current.delete(path);
     else cards.current.set(path, node);
   };
-  const total = String(props.sections.length).padStart(2, "0");
+  const total = String(componentProps2.sections.length).padStart(2, "0");
 
   return (
     <PierreWorkerProvider>
-      <div {...stylex.props(styles.scroll)}>
+      <div {...props(styles.scroll)}>
         <FileTypeIconSprite />
-        <header {...stylex.props(styles.intro)}>
-          <h1 {...stylex.props(styles.title)}>{props.heading.title}</h1>
-          <p {...stylex.props(styles.meta)}>
-            <span {...stylex.props(styles.author)}>{props.heading.author}</span>
+        <header {...props(styles.intro)}>
+          <h1 {...props(styles.title)}>{componentProps2.heading.title}</h1>
+          <p {...props(styles.meta)}>
+            <span {...props(styles.author)}>{componentProps2.heading.author}</span>
             <span>·</span>
-            <span>{props.heading.number}</span>
+            <span>{componentProps2.heading.number}</span>
             <span>·</span>
-            <span {...stylex.props(styles.mono)}>
-              {props.heading.base} <span {...stylex.props(styles.arrow)}>←</span>{" "}
-              {props.heading.head}
+            <span {...props(styles.mono)}>
+              {componentProps2.heading.base} <span {...props(styles.arrow)}>←</span>{" "}
+              {componentProps2.heading.head}
             </span>
           </p>
         </header>
-        {props.sections.map((section, index) => {
+        {componentProps2.sections.map((section, index) => {
           const files = section.paths.flatMap((path) =>
-            props.files.filter((file) => file.path === path),
+            componentProps2.files.filter((file) => file.path === path),
           );
 
           return (
-            <section key={section.title} {...stylex.props(styles.band)}>
-              <div {...stylex.props(styles.story)}>
-                <span {...stylex.props(styles.counter)}>
-                  <span {...stylex.props(styles.counterNow)}>
-                    {String(index + 1).padStart(2, "0")}
-                  </span>{" "}
-                  / {total}
+            <section key={section.title} {...props(styles.band)}>
+              <div {...props(styles.story)}>
+                <span {...props(styles.counter)}>
+                  <span {...props(styles.counterNow)}>{String(index + 1).padStart(2, "0")}</span> /{" "}
+                  {total}
                 </span>
-                <h2 {...stylex.props(styles.sectionTitle)}>{section.title}</h2>
-                <p {...stylex.props(styles.explanation)}>{section.explanation}</p>
-                <div {...stylex.props(styles.fileList)}>
+                <h2 {...props(styles.sectionTitle)}>{section.title}</h2>
+                <p {...props(styles.explanation)}>{section.explanation}</p>
+                <div {...props(styles.fileList)}>
                   {files.map((file) => {
                     const name = file.path.split("/").at(-1) ?? file.path;
 
@@ -158,13 +158,13 @@ export function Guide(props: GuideProps): ReactElement {
                             .get(file.path)
                             ?.scrollIntoView({ block: "start", behavior: "smooth" })
                         }
-                        {...stylex.props(styles.fileRow)}
+                        {...props(styles.fileRow)}
                       >
                         <FileTypeIcon path={file.path} />
-                        <span {...stylex.props(styles.fileName)}>{name}</span>
+                        <span {...props(styles.fileName)}>{name}</span>
                         <Counts file={file} />
-                        <span {...stylex.props(styles.check)}>
-                          {props.reviewed(file.path) === "reviewed" && (
+                        <span {...props(intent.primary, styles.check)}>
+                          {componentProps2.reviewed(file.path) === "reviewed" && (
                             <Icon name="checkmark" size={14} />
                           )}
                         </span>
@@ -173,9 +173,14 @@ export function Guide(props: GuideProps): ReactElement {
                   })}
                 </div>
               </div>
-              <div {...stylex.props(styles.cards)}>
+              <div {...props(styles.cards)}>
                 {files.map((file) => (
-                  <GuideCard key={file.path} file={file} props={props} register={register} />
+                  <GuideCard
+                    key={file.path}
+                    file={file}
+                    props={componentProps2}
+                    register={register}
+                  />
                 ))}
               </div>
             </section>
@@ -186,16 +191,16 @@ export function Guide(props: GuideProps): ReactElement {
   );
 }
 
-const styles = stylex.create({
+const styles = create({
   scroll: { flex: 1, minHeight: 0, overflowY: "auto", paddingInline: 28, paddingBlockEnd: 96 },
   intro: { display: "flex", flexDirection: "column", gap: 8, paddingBlock: "20px 36px" },
   title: {
     margin: 0,
-    color: t.contentPrimary,
-    fontSize: t.font2xl,
+    color: role.contentPrimary,
+    fontSize: type.font2xl,
     lineHeight: 1.25,
     fontWeight: 600,
-    letterSpacing: t.letterLg,
+    letterSpacing: type.letterLg,
   },
   meta: {
     display: "flex",
@@ -203,13 +208,13 @@ const styles = stylex.create({
     alignItems: "center",
     gap: 6,
     margin: 0,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
-  author: { color: t.contentSecondary, fontWeight: 500 },
-  mono: { fontFamily: t.fontMono, fontSize: 11.5 },
-  arrow: { color: t.contentDisabled },
+  author: { color: role.contentSecondary, fontWeight: 500 },
+  mono: { fontFamily: type.fontMono, fontSize: 11.5 },
+  arrow: { color: role.contentDisabled },
   band: {
     display: "grid",
     gridTemplateColumns: "minmax(220px, 1fr) minmax(0, 2fr)",
@@ -225,19 +230,23 @@ const styles = stylex.create({
     minWidth: 0,
     paddingBlockStart: 12,
   },
-  counter: { color: t.contentDisabled, fontSize: t.fontSm, fontVariantNumeric: "tabular-nums" },
-  counterNow: { color: t.contentSecondary },
+  counter: {
+    color: role.contentDisabled,
+    fontSize: type.fontSm,
+    fontVariantNumeric: "tabular-nums",
+  },
+  counterNow: { color: role.contentSecondary },
   sectionTitle: {
     marginBlock: "10px 0",
-    color: t.contentPrimary,
-    fontSize: t.fontLg,
-    lineHeight: t.leadingLg,
+    color: role.contentPrimary,
+    fontSize: type.fontLg,
+    lineHeight: type.leadingLg,
     fontWeight: 600,
   },
   explanation: {
     marginBlock: "14px 0",
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
     lineHeight: 1.6,
     userSelect: "text",
   },
@@ -249,14 +258,14 @@ const styles = stylex.create({
     height: 32,
     paddingInline: 10,
     borderStyle: "none",
-    borderRadius: t.radius8,
-    backgroundColor: { default: t.bgMutedTranslucent, ":hover": t.bgHover },
-    boxShadow: `inset 0 0 0 1px ${t.borderSecondaryTranslucent}`,
-    color: t.contentPrimary,
+    borderRadius: shape.control,
+    backgroundColor: { default: role.bgMutedTranslucent, ":hover": role.bgHover },
+    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    color: role.contentPrimary,
     font: "inherit",
-    fontSize: t.fontSm,
+    fontSize: type.fontSm,
     textAlign: "start",
-    cursor: t.cursorInteractive,
+    cursor: appearance.cursorInteractive,
   },
   fileName: {
     flex: 1,
@@ -270,15 +279,15 @@ const styles = stylex.create({
     display: "inline-grid",
     placeItems: "center",
     width: 14,
-    color: t.intentPrimaryContent,
+    color: role.contentSecondary,
     flexShrink: 0,
   },
   cards: { display: "flex", flexDirection: "column", gap: 12, minWidth: 0 },
   card: {
     overflow: "hidden",
-    borderRadius: t.radius12,
-    backgroundColor: t.bgBase,
-    boxShadow: `0 0 0 1px ${t.borderSecondaryTranslucent}`,
+    borderRadius: shape.card,
+    backgroundColor: role.bgBase,
+    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
     scrollMarginTop: 16,
   },
 });

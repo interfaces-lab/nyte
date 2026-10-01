@@ -38,7 +38,7 @@ function Demo() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <HintProvider delay={400}>
+      <HintProvider>
         <DesktopDemo
           sidebarVisible={reveal > 0}
           onSidebar={() => {

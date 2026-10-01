@@ -1,3 +1,4 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * Settings › Providers: connections, model defaults, and enabled models.
  */
@@ -185,7 +186,12 @@ function ApiKeyForm({
           xstyle={styles.keyInput}
           onValueChange={setKey}
         />
-        <Button type="submit" variant="inverse" disabled={pending || key.trim() === ""}>
+        <Button
+          type="submit"
+          variant="solid"
+          tone="primary"
+          disabled={pending || key.trim() === ""}
+        >
           Save
         </Button>
         <Button disabled={pending} onClick={onCancel}>
@@ -315,7 +321,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
           <>
             {browser !== undefined && (
               <Button
-                variant="primary"
+                variant="ghost"
                 icon="plus"
                 disabled={busy}
                 onClick={() => login.mutate({ kind: "browser" })}
@@ -325,7 +331,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
             )}
             {apiKey !== undefined && (
               <Button
-                variant="primary"
+                variant="ghost"
                 icon={browser === undefined ? "plus" : "key"}
                 disabled={busy}
                 aria-expanded={keyFormOpen}
@@ -342,7 +348,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
           <>
             {!provider.enabled && (
               <Button
-                variant="primary"
+                variant="ghost"
                 disabled={busy}
                 onClick={() =>
                   setPreference.mutate({ kind: "provider", provider: provider.id, enabled: true })
@@ -546,7 +552,7 @@ export function ProvidersSettings(): ReactElement | null {
     if (!catalog.isError) return null;
 
     return (
-      <div role="alert" title={catalog.error.message} {...props(styles.alert)}>
+      <div role="alert" title={catalog.error.message} {...props(intent.danger, styles.alert)}>
         Couldn&rsquo;t load providers. Try again.
       </div>
     );

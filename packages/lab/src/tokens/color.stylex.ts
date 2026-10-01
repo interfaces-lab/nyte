@@ -8,9 +8,9 @@
  * and dark disagree about which steps are alpha, so `green-30` is "the added
  * wash" in both and a translucent value in only one.
  */
-import * as stylex from "@stylexjs/stylex";
+import { defineConsts } from "@stylexjs/stylex";
 
-export const color = stylex.defineConsts({
+export const color = defineConsts({
   surfacePage: "var(--surface-page)",
   surfaceWash: "var(--surface-wash)",
   surfaceElevated: "var(--surface-elevated)",

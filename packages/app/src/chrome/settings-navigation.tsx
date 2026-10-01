@@ -9,7 +9,7 @@
  * separated by space rather than a rule, which is why the gap between them has
  * to beat the gap between two rows.
  */
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { Link, useRouter } from "@tanstack/react-router";
 import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
@@ -177,7 +177,7 @@ export function SettingsNavigation({
   };
 
   return (
-    <div {...stylex.props(styles.navigation)}>
+    <div {...props(styles.navigation)}>
       <Row
         variant="nav"
         data-sidebar-return
@@ -187,13 +187,13 @@ export function SettingsNavigation({
           else void router.navigate({ to: "/", replace: true });
         }}
       >
-        <Row.Leading>
+        <Row.Leading xstyle={rail.navLeading}>
           <Icon name="arrow-left" size={14} />
         </Row.Leading>
         <Row.Label>Back</Row.Label>
       </Row>
       <InputGroup variant="quiet" xstyle={styles.search}>
-        <span {...stylex.props(styles.searchIcon)}>
+        <span {...props(styles.searchIcon)}>
           <Icon name="search" size={14} />
         </span>
         <Input
@@ -211,9 +211,9 @@ export function SettingsNavigation({
           onKeyDown={onSearchKeyDown}
         />
       </InputGroup>
-      <div {...stylex.props(styles.navGroups)}>
+      <div {...props(styles.navGroups)}>
         {groups.map((group) => (
-          <div key={group[0] ?? "no-matches"} {...stylex.props(styles.navList)}>
+          <div key={group[0] ?? "no-matches"} {...props(styles.navList)}>
             {group.map((id, index) => (
               <Row
                 key={id}
@@ -229,7 +229,7 @@ export function SettingsNavigation({
                   index === highlighted && section !== id && styles.navItemHighlighted,
                 ]}
               >
-                <Row.Leading>
+                <Row.Leading xstyle={rail.navLeading}>
                   <Icon name={SECTIONS[id].icon} size={14} />
                 </Row.Leading>
                 <Row.Label>{SECTIONS[id].title}</Row.Label>
@@ -238,7 +238,7 @@ export function SettingsNavigation({
           </div>
         ))}
         {results?.length === 0 && (
-          <span {...stylex.props(styles.emptyNavigation)}>No matching settings</span>
+          <span {...props(styles.emptyNavigation)}>No matching settings</span>
         )}
       </div>
     </div>

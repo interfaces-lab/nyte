@@ -1,4 +1,6 @@
-import * as stylex from "@stylexjs/stylex";
+import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { shape } from "@nyte-ai/ui/schema.stylex";
+import { create, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
@@ -6,20 +8,20 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { Button } from "@nyte-ai/ui/button";
 import { keys } from "../query-keys.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { CodeBlock } from "./code-block.tsx";
 import type { DiagramResult } from "./mermaid-render.ts";
 
-const styles = stylex.create({
+const styles = create({
   figure: {
     boxSizing: "border-box",
     width: "100%",
     marginBlock: 10,
     marginInline: 0,
     overflow: "hidden",
-    borderRadius: t.radius8,
-    backgroundColor: t.conversationTechnicalBg,
-    boxShadow: `inset 0 0 0 1px ${t.conversationTechnicalRing}`,
+    borderRadius: shape.control,
+    backgroundColor: role.bgMutedTranslucent,
+    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
   },
   toolbar: {
     display: "flex",
@@ -38,17 +40,17 @@ const styles = stylex.create({
     display: "flex",
     alignItems: "center",
     minHeight: 96,
-    color: t.contentSecondary,
-    fontFamily: t.fontSans,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontFamily: type.fontSans,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   diagram: {
     display: "flex",
     justifyContent: "center",
     width: "max-content",
     minWidth: "100%",
-    color: t.contentPrimary,
+    color: role.contentPrimary,
     lineHeight: 0,
   },
 });
@@ -122,8 +124,8 @@ export function MermaidDiagram({ source }: { readonly source: string }): ReactEl
   if (rendered.kind === "source") return <CodeBlock code={source} lang="mermaid" />;
 
   return (
-    <figure aria-label="Mermaid diagram" {...stylex.props(styles.figure)}>
-      <figcaption {...stylex.props(styles.toolbar)}>
+    <figure aria-label="Mermaid diagram" {...props(styles.figure)}>
+      <figcaption {...props(styles.toolbar)}>
         <Button
           size="sm"
           aria-expanded={sourceVisible}
@@ -135,14 +137,14 @@ export function MermaidDiagram({ source }: { readonly source: string }): ReactEl
       {sourceVisible ? (
         <CodeBlock code={source} lang="mermaid" />
       ) : (
-        <div data-nyte-scrollport {...stylex.props(styles.viewport)}>
+        <div data-nyte-scrollport {...props(styles.viewport)}>
           {rendered.kind === "pending" ? (
-            <div role="status" {...stylex.props(styles.pending)}>
+            <div role="status" {...props(styles.pending)}>
               Rendering diagram…
             </div>
           ) : (
             <div
-              {...stylex.props(styles.diagram)}
+              {...props(surfaceTheme.blue, styles.diagram)}
               dangerouslySetInnerHTML={{ __html: rendered.svg }}
             />
           )}

@@ -1,16 +1,21 @@
 "use client";
 
-import { Button, ButtonGroup } from "@nyte-ai/ui";
+import { Button, SplitButton } from "@nyte-ai/ui";
 import { Menu, MenuItem } from "@nyte-ai/ui/menu";
 
 export function ButtonVariantsDemo() {
   return (
     <>
-      <Button>Primary</Button>
-      <Button variant="secondary">Secondary</Button>
-      <Button variant="inverse">Inverse</Button>
-      <Button variant="danger">Danger</Button>
-      <Button variant="link">Link</Button>
+      <Button>Ghost</Button>
+      <Button variant="outline">Outline</Button>
+      <Button variant="solid" tone="primary">
+        Solid
+      </Button>
+      <Button variant="solid" tone="danger">
+        Danger
+      </Button>
+      <Button variant="plain">Plain</Button>
+      <Button variant="text">Text</Button>
     </>
   );
 }
@@ -18,11 +23,11 @@ export function ButtonVariantsDemo() {
 export function ButtonSizesDemo() {
   return (
     <>
-      <Button variant="secondary" size="lg">
+      <Button variant="outline" size="lg">
         Large
       </Button>
-      <Button variant="secondary">Medium</Button>
-      <Button variant="secondary" size="sm">
+      <Button variant="outline">Medium</Button>
+      <Button variant="outline" size="sm">
         Small
       </Button>
       <Button iconOnly icon="plus" aria-label="Add" />
@@ -35,14 +40,14 @@ export function ButtonSizesDemo() {
 export function ButtonStatesDemo() {
   return (
     <>
-      <Button variant="secondary" icon="refresh">
+      <Button variant="outline" icon="refresh">
         Refresh
       </Button>
-      <Button variant="secondary" round>
+      <Button variant="outline" round>
         Round
       </Button>
-      <Button variant="secondary" disabled>
-        Disabled
+      <Button variant="outline" disabled disabledReason="No changes to save">
+        Save Changes
       </Button>
     </>
   );
@@ -50,18 +55,24 @@ export function ButtonStatesDemo() {
 
 export function ButtonGroupDemo() {
   return (
-    <ButtonGroup>
-      <Button variant="inverse">Commit and push</Button>
+    <SplitButton.Root>
+      <SplitButton.Main variant="solid" tone="primary">
+        Commit and Push
+      </SplitButton.Main>
       <Menu
         label="Commit actions"
         align="end"
         trigger={
-          <Button variant="inverse" iconOnly icon="chevron-down" aria-label="More commit actions" />
+          <SplitButton.MenuTrigger
+            variant="solid"
+            tone="primary"
+            aria-label="More commit actions"
+          />
         }
       >
         <MenuItem onSelect={() => {}}>Commit</MenuItem>
         <MenuItem onSelect={() => {}}>Push</MenuItem>
       </Menu>
-    </ButtonGroup>
+    </SplitButton.Root>
   );
 }

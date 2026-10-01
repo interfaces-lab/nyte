@@ -3,7 +3,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 // Fenced code paints as escaped plain text immediately. Known grammars upgrade
 // in a bundled worker, keeping grammars and syntax work off the UI thread.
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import type { ReactElement } from "react";
@@ -316,7 +316,7 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
   });
 
   return (
-    <figure ref={figure} {...stylex.props(codeBlockStyles.figure)}>
+    <figure ref={figure} {...props(codeBlockStyles.figure)}>
       <Hint
         content={copied ? "Copied" : "Copy code"}
         trigger={
@@ -334,14 +334,14 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
           />
         }
       />
-      <div data-nyte-scrollport {...stylex.props(codeBlockStyles.scroll)}>
+      <div data-nyte-scrollport {...props(codeBlockStyles.scroll)}>
         {html === undefined ? (
-          <pre {...stylex.props(codeBlockStyles.pre)}>
+          <pre {...props(codeBlockStyles.pre)}>
             <code>{code}</code>
           </pre>
         ) : (
           <div
-            {...stylex.props(codeBlockStyles.pre)}
+            {...props(codeBlockStyles.pre)}
             // Shiki output over escaped code; see module note.
             dangerouslySetInnerHTML={{ __html: html }}
           />

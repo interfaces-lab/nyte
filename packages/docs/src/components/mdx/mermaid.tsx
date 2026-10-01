@@ -1,3 +1,4 @@
+import { role } from "@nyte-ai/ui/vars.stylex";
 import { renderMermaidSVG } from "beautiful-mermaid";
 
 /*
@@ -10,8 +11,8 @@ import { renderMermaidSVG } from "beautiful-mermaid";
 
 export function Mermaid({ chart }: { chart: string }) {
   const svg = renderMermaidSVG(chart.replaceAll("\\n", "\n"), {
-    bg: "var(--nyte-bg-base)",
-    fg: "var(--nyte-content-primary)",
+    bg: role.bgBase,
+    fg: role.contentPrimary,
     transparent: true,
   });
 

@@ -2,7 +2,7 @@ import "../../test/window-bridge.ts";
 import { createRoot } from "react-dom/client";
 import { DiffView } from "./diff-view.tsx";
 import { createDiffFilesLoader } from "./diff-expansion.ts";
-import "../theme/appearance.css";
+import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 
 const PATCH =
@@ -67,3 +67,5 @@ export async function run(): Promise<string> {
     host.remove();
   }
 }
+
+applyDisplayMode("light");

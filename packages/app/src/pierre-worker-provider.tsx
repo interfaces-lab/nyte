@@ -1,3 +1,4 @@
+import { role } from "@nyte-ai/ui/vars.stylex";
 import { WorkerPoolContext } from "@pierre/diffs/react";
 import { WorkerPoolManager } from "@pierre/diffs/worker";
 import type { WorkerInitializationRenderOptions, WorkerPoolOptions } from "@pierre/diffs/worker";
@@ -33,7 +34,7 @@ export const PIERRE_THEME = { light: "github-light", dark: "github-dark" } as co
 /** A selected tree row carries a hairline, so it reads apart from the hovered one. */
 export const PIERRE_TREE_CSS = `
 [data-type="item"][data-item-selected="true"] {
-  box-shadow: inset 0 0 0 1px var(--nyte-border-primary);
+  box-shadow: inset 0 0 0 1px ${role.borderPrimary};
 }
 `;
 

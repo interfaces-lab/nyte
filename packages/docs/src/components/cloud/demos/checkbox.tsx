@@ -1,7 +1,7 @@
 "use client";
 
 import { Checkbox } from "@nyte-ai/ui/checkbox";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
 
@@ -10,10 +10,10 @@ const styles = create({
     display: "flex",
     flexDirection: "column",
     gap: 8,
-    color: t.contentPrimary,
-    fontFamily: t.fontSans,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    color: role.contentPrimary,
+    fontFamily: type.fontSans,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
   item: { display: "flex", alignItems: "center", gap: 8 },
 });

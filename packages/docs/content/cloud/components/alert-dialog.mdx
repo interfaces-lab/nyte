@@ -24,8 +24,8 @@ behavior differs. Reach for it when the user has to answer before anything else 
 - Reach for `ConfirmDialog` first. Build from the `AlertDialog` parts when the question needs other
   content or other actions.
 - The footer needs an explicit way out, a Cancel `AlertDialog.Close`. Outside press does nothing.
-- Title states the question, description states the consequence.
-- The destructive action is the last button and uses `variant="danger"`.
+- Title and `confirmLabel` name the same action and noun, such as "Delete Chat". Description states the consequence.
+- The destructive action is the last button and uses `variant="solid" tone="danger"`.
 - To open it from a button that is not the trigger, control it with `open` and `onOpenChange` and
   drop the trigger.
 - The parts are the [Dialog](/cloud/components/dialog) parts and take the same `xstyle`.
@@ -59,20 +59,21 @@ behavior differs. Reach for it when the user has to answer before anything else 
 ```tsx
 const [open, setOpen] = useState(false);
 
-<Button variant="danger" onClick={() => setOpen(true)}>
-  Delete chat
+<Button variant="solid" tone="danger" onClick={() => setOpen(true)}>
+  Delete Chat
 </Button>
 <ConfirmDialog
   open={open}
-  title="Delete chat?"
+  title="Delete Chat" confirmLabel="Delete Chat"
   description="The chat and its history are removed."
   onOpenChange={setOpen}
   onConfirm={() => setOpen(false)}
 />
 ```
 
-While the action runs, pass `pending` to disable both buttons and keep the dialog open, and
-`error` to show why it failed.
+While the action runs, pass `pending` to keep both actions mounted and focusable with `aria-busy`,
+and keep the dialog open. `pendingLabel` is a separate status, not a replacement for
+`confirmLabel`. Pass `error` to show why the action failed.
 
 ```tsx
 <ConfirmDialog
@@ -80,9 +81,9 @@ While the action runs, pass `pending` to disable both buttons and keep the dialo
   pending={signOut.isPending}
   error={signOut.isError ? "Sign-out failed. Try again." : undefined}
   returnFocusRef={signOutRef}
-  title="Sign out?"
+  title="Sign Out"
   description="Other apps using this login are signed out too."
-  confirmLabel="Sign out"
+  confirmLabel="Sign Out"
   pendingLabel="Signing out…"
   onOpenChange={setOpen}
   onConfirm={() => signOut.mutate(undefined, { onSuccess: () => setOpen(false) })}
@@ -97,17 +98,29 @@ While the action runs, pass `pending` to disable both buttons and keep the dialo
 
 ```tsx
 <AlertDialog.Root>
-  <AlertDialog.Trigger render={<Button variant="danger" />}>Delete session</AlertDialog.Trigger>
+  <AlertDialog.Trigger
+    render={
+      <Button variant="solid" tone="danger">
+        Delete Session
+      </Button>
+    }
+  />
   <AlertDialog.Popup>
     <AlertDialog.Header>
-      <AlertDialog.Title>Delete this session?</AlertDialog.Title>
+      <AlertDialog.Title>Delete Session</AlertDialog.Title>
       <AlertDialog.Description>
         The history tree and every head under it are removed. This cannot be undone.
       </AlertDialog.Description>
     </AlertDialog.Header>
     <AlertDialog.Footer>
-      <AlertDialog.Close render={<Button variant="secondary" />}>Cancel</AlertDialog.Close>
-      <AlertDialog.Close render={<Button variant="danger" />}>Delete</AlertDialog.Close>
+      <AlertDialog.Close render={<Button variant="outline">Cancel</Button>} />
+      <AlertDialog.Close
+        render={
+          <Button variant="solid" tone="danger">
+            Delete Session
+          </Button>
+        }
+      />
     </AlertDialog.Footer>
   </AlertDialog.Popup>
 </AlertDialog.Root>
@@ -117,20 +130,20 @@ While the action runs, pass `pending` to disable both buttons and keep the dialo
 
 ### ConfirmDialog
 
-| Prop             | Type                                   | Default       | Description                                                |
-| ---------------- | -------------------------------------- | ------------- | ---------------------------------------------------------- |
-| `open`           | `boolean`                              |               | Whether the dialog is open.                                |
-| `title`          | `string`                               |               | The question.                                              |
-| `description`    | `React.ReactNode`                      |               | The consequence.                                           |
-| `confirmLabel`   | `string`                               | `"Delete"`    | The danger button's label.                                 |
-| `pendingLabel`   | `string`                               | `"Deleting…"` | Replaces `confirmLabel` while `pending`.                   |
-| `pending`        | `boolean`                              | `false`       | Disables both buttons and ignores requests to close.       |
-| `error`          | `string`                               |               | Shown under the description as an alert.                   |
-| `returnFocusRef` | `React.RefObject<HTMLElement \| null>` |               | Where focus lands on close.                                |
-| `onOpenChange`   | `(open: boolean) => void`              |               | Called with `false` on Cancel or Escape, unless `pending`. |
-| `onConfirm`      | `() => void`                           |               | Called by the danger button. Close the dialog yourself.    |
+| Prop             | Type                                   | Default  | Description                                                |
+| ---------------- | -------------------------------------- | -------- | ---------------------------------------------------------- |
+| `open`           | `boolean`                              |          | Whether the dialog is open.                                |
+| `title`          | `string`                               |          | The question.                                              |
+| `description`    | `React.ReactNode`                      |          | The consequence.                                           |
+| `confirmLabel`   | `string`                               | Required | The destructive action and noun.                           |
+| `pendingLabel`   | `string`                               |          | Separate status while pending.                             |
+| `pending`        | `boolean`                              | `false`  | Makes both actions busy and ignores requests to close.     |
+| `error`          | `string`                               |          | Shown under the description as an alert.                   |
+| `returnFocusRef` | `React.RefObject<HTMLElement \| null>` |          | Where focus lands on close.                                |
+| `onOpenChange`   | `(open: boolean) => void`              |          | Called with `false` on Cancel or Escape, unless `pending`. |
+| `onConfirm`      | `() => void`                           |          | Called by the danger button. Close the dialog yourself.    |
 
-Focus starts on Cancel.
+`tint?: Tint` scopes the popup to a hue. Focus starts on Cancel.
 
 ### Parts
 

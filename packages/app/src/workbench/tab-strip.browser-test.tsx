@@ -1,3 +1,6 @@
+import { create, props } from "@stylexjs/stylex";
+import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { role } from "@nyte-ai/ui/vars.stylex";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { sessionId } from "@nyte-ai/protocol";
@@ -6,8 +9,10 @@ import { WorkbenchTabStrip } from "./tab-strip.tsx";
 import { workbenchController, workbenchViewKey } from "./controller.ts";
 import { fileActions } from "./file-store.ts";
 import { terminalActions } from "./terminal-store.ts";
-import "../theme/appearance.css";
+import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
+
+const styles = create({ agentAccent: { color: role.contentSecondary } });
 
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -81,11 +86,11 @@ export async function run(): Promise<string> {
     const accent = agentTab.querySelector<HTMLElement>('[data-agent-terminal="true"]');
     if (accent === null) throw new Error("Agent terminal has no accent class");
     const probe = document.createElement("span");
-    probe.style.color = "var(--nyte-purple-80)";
+    probe.className = props(surfaceTheme.purple, styles.agentAccent).className ?? "";
     container.append(probe);
     check(
       getComputedStyle(accent).color === getComputedStyle(probe).color,
-      "Agent terminal does not use the agent accent token",
+      "Agent terminal does not use the readable purple accent",
     );
     check(workbenchController.getView(viewKey).active === active, "Rendering changed activation");
     return "passed";
@@ -94,3 +99,5 @@ export async function run(): Promise<string> {
     container.remove();
   }
 }
+
+applyDisplayMode("light");

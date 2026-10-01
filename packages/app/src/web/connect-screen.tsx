@@ -1,9 +1,11 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, shadow, type } from "@nyte-ai/ui/vars.stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { errorMessage } from "../errors.ts";
 import { serverConnectionProblem } from "../server-connection.ts";
 import type { Connection } from "./bridge.ts";
@@ -17,7 +19,7 @@ const styles = create({
     justifyContent: "center",
     height: "100%",
     padding: 24,
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
   },
   card: {
     display: "flex",
@@ -28,21 +30,26 @@ const styles = create({
     padding: 24,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: t.borderSecondaryTranslucent,
-    borderRadius: t.radius12,
-    backgroundColor: t.bgElevated,
-    boxShadow: t.shadowMd,
+    borderColor: role.borderSecondaryTranslucent,
+    borderRadius: shape.card,
+    backgroundColor: role.bgElevated,
+    boxShadow: shadow.shadowMd,
   },
-  heading: { margin: 0, fontSize: t.fontLg, lineHeight: t.leadingLg, fontWeight: 600 },
+  heading: { margin: 0, fontSize: type.fontLg, lineHeight: type.leadingLg, fontWeight: 600 },
   field: {
     display: "flex",
     flexDirection: "column",
     gap: 6,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
-  error: { margin: 0, color: t.intentDangerContent, fontSize: t.fontSm, lineHeight: t.leadingSm },
+  error: {
+    margin: 0,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+  },
 });
 
 interface ConnectScreenProps {
@@ -122,11 +129,11 @@ export function ConnectScreen({ initial, problem, onConnected }: ConnectScreenPr
           />
         </label>
         {error !== undefined && (
-          <p role="alert" {...props(styles.error)}>
+          <p role="alert" {...props(intent.danger, styles.error)}>
             {error}
           </p>
         )}
-        <Button type="submit" variant="inverse" disabled={pending}>
+        <Button type="submit" variant="solid" tone="primary" disabled={pending}>
           {pending ? "Connecting…" : "Connect"}
         </Button>
       </form>

@@ -1,3 +1,5 @@
+import { role } from "@nyte-ai/ui/vars.stylex";
+import { create, props } from "@stylexjs/stylex";
 import { Geist_Pixel } from "next/font/google";
 import { HostStage } from "./host-stage";
 import { DesktopHost } from "./hosts/desktop-host";
@@ -15,7 +17,7 @@ const kbdClass =
 
 export function PlateHero() {
   return (
-    <div className="landing-plate relative isolate mx-(--plate-inset) mt-(--plate-inset) overflow-hidden rounded-(--plate-radius) text-white after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-(--nyte-border-secondary-translucent)">
+    <div className="landing-plate relative isolate mx-(--plate-inset) mt-(--plate-inset) overflow-hidden rounded-(--plate-radius) text-white after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-border-subtle">
       <div
         aria-hidden="true"
         className="landing-plate-grain pointer-events-none absolute inset-0"
@@ -61,6 +63,7 @@ export function PlateHero() {
         <div className="relative mt-12 w-full max-w-[1120px] max-sm:mt-10">
           <div
             aria-hidden="true"
+            {...props(styles.fade)}
             className="landing-plate-fade pointer-events-none absolute inset-x-[-50vw] top-[18%] bottom-0"
           />
           <div className="relative animate-plate-rise [--rise:40px] [animation-delay:260ms] motion-reduce:animate-none">
@@ -75,3 +78,9 @@ export function PlateHero() {
     </div>
   );
 }
+
+const styles = create({
+  fade: {
+    backgroundImage: `linear-gradient(to bottom, transparent, color-mix(in oklab, var(--plate-haze) 70%, transparent) 22%, ${role.bgBase} 56%)`,
+  },
+});

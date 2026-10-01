@@ -10,7 +10,7 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { queryClient, refreshVcs } from "../queries.ts";
 import { ChangesPanel } from "./changes-panel.tsx";
-import "../theme/appearance.css";
+import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 
 function check(condition: boolean, message: string): void {
@@ -214,3 +214,5 @@ export async function run(): Promise<string> {
     container.remove();
   }
 }
+
+applyDisplayMode("light");

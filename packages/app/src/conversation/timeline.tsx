@@ -148,7 +148,7 @@ export function Timeline({
           return (
             <Marker role="alert" variant="destructive">
               Couldn&rsquo;t load this chat.{" "}
-              <Button variant="link" onClick={() => onRetry()}>
+              <Button variant="text" onClick={() => onRetry()}>
                 Try again
               </Button>
             </Marker>

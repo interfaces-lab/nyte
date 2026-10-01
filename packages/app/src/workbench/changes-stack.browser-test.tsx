@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { ChangesStack } from "./changes-stack.tsx";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
-import "../theme/appearance.css";
+import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 
 function patchOf(path: string, prefix: string): string {
@@ -110,3 +110,5 @@ export async function run(): Promise<string> {
     container.remove();
   }
 }
+
+applyDisplayMode("light");

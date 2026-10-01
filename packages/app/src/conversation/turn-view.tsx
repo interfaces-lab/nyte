@@ -1,10 +1,11 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * One transcript item. User prompts are the only ordinary contained message
  * region. Assistant prose stays flat, while reasoning, tools, and system
  * history use compact rows. Parts keep core's stable identity so settled and
  * streaming content exchange in place.
  */
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Row } from "@nyte-ai/ui/row";
 // oxlint-disable-next-line no-restricted-imports -- the outside-click listener lives only while an edit can dismiss
@@ -73,7 +74,7 @@ function UserMessagePreview({ children }: { children: ReactNode }): ReactElement
     <>
       <div
         id={id}
-        {...stylex.props(
+        {...props(
           turnStyles.userPreview,
           !expanded && turnStyles.userPreviewCollapsed,
           !expanded && overflowing && turnStyles.userPreviewFade,
@@ -112,10 +113,7 @@ function UserMessageImages({
       onClick={(event) => {
         if (event.target === event.currentTarget) onEdit?.();
       }}
-      {...stylex.props(
-        turnStyles.userImages,
-        onEdit !== undefined && turnStyles.userImagesEditable,
-      )}
+      {...props(turnStyles.userImages, onEdit !== undefined && turnStyles.userImagesEditable)}
     >
       {images.map((item, index) => (
         <ImagePreview
@@ -317,7 +315,7 @@ export function UserMessageView({
     );
 
   return (
-    <div ref={rowRef} data-sticky-user-message {...stylex.props(turnStyles.userRow)}>
+    <div ref={rowRef} data-sticky-user-message {...props(turnStyles.userRow)}>
       <Message align="end">
         {edit === undefined ? (
           <Bubble variant={onEdit === undefined ? "default" : "editable"}>
@@ -347,12 +345,12 @@ export function UserMessageView({
             </UserMessagePreview>
           </Bubble>
         ) : (
-          <div aria-busy={edit.saving || undefined} {...stylex.props(turnStyles.userEdit)}>
+          <div aria-busy={edit.saving || undefined} {...props(turnStyles.userEdit)}>
             {edit.error !== undefined && (
               <Hint
                 content={edit.error}
                 trigger={
-                  <span role="alert" {...stylex.props(turnStyles.userEditError)}>
+                  <span role="alert" {...props(intent.danger, turnStyles.userEditError)}>
                     {edit.error}
                   </span>
                 }
@@ -449,9 +447,9 @@ function TurnChangesCard({
   const title = filesChangedLabel(files.length);
 
   return (
-    <section aria-label={title} {...stylex.props(turnStyles.changesCard)}>
-      <div {...stylex.props(turnStyles.changesHeader)}>
-        <span {...stylex.props(turnStyles.changesTitle)}>{title}</span>
+    <section aria-label={title} {...props(turnStyles.changesCard)}>
+      <div {...props(turnStyles.changesHeader)}>
+        <span {...props(turnStyles.changesTitle)}>{title}</span>
         <Hint
           content="Open the Changes panel"
           trigger={
@@ -461,7 +459,7 @@ function TurnChangesCard({
           }
         />
       </div>
-      <ul {...stylex.props(turnStyles.changesList)}>
+      <ul {...props(turnStyles.changesList)}>
         {files.map((file) => (
           <Row key={file.path} render={<li />} interactive xstyle={turnStyles.changesFile}>
             <Hint
@@ -477,15 +475,15 @@ function TurnChangesCard({
                   <Row.Label>{file.path.split("/").at(-1) ?? file.path}</Row.Label>
                   <span
                     aria-label={`${String(file.added)} added, ${String(file.removed)} removed`}
-                    {...stylex.props(turnStyles.changesStats)}
+                    {...props(turnStyles.changesStats)}
                   >
                     {file.added > 0 && (
-                      <span {...stylex.props(turnStyles.changesAdded)}>
+                      <span {...props(intent.success, turnStyles.changesAdded)}>
                         +<AnimatedNumber value={file.added} />
                       </span>
                     )}
                     {file.removed > 0 && (
-                      <span {...stylex.props(turnStyles.changesRemoved)}>
+                      <span {...props(intent.danger, turnStyles.changesRemoved)}>
                         -<AnimatedNumber value={file.removed} />
                       </span>
                     )}
@@ -623,7 +621,7 @@ export const TurnView = memo(function TurnView({
       const failure = turn.failure === undefined ? undefined : failureNotice(turn.failure);
 
       return (
-        <div {...stylex.props(turnStyles.turn)}>
+        <div {...props(turnStyles.turn)}>
           {display.map((item, index) => {
             if (item.kind === "work") {
               const first = item.parts[0];

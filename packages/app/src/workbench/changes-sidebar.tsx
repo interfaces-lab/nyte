@@ -1,3 +1,4 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import type { FileTreeBatchOperation } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
@@ -14,11 +15,13 @@ import {
 import { Button } from "@nyte-ai/ui/button";
 import { Checkbox } from "@nyte-ai/ui/checkbox";
 import { workbench } from "../theme/schema.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { changeSelectionSummary, filesChangedLabel, filterChangePaths } from "./change-tree.ts";
 import type { ChangeStatus } from "./change-tree.ts";
 import type { ViewedState } from "./changes-viewed.ts";
 import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
+import { useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 export interface ChangesSidebarFile {
@@ -55,8 +58,8 @@ const styles = create({
     minHeight: 0,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: t.borderSecondaryTranslucent,
-    backgroundColor: t.bgBase,
+    borderInlineStartColor: role.borderSecondaryTranslucent,
+    backgroundColor: role.bgBase,
   },
   railHidden: { display: "none" },
   // The stack's file header sits beside this row, so both take the workbench header height.
@@ -70,7 +73,7 @@ const styles = create({
     paddingInline: 4,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderSecondaryTranslucent,
+    borderBottomColor: role.borderSecondaryTranslucent,
   },
   field: { flex: 1 },
   // Short labels with no icons, so the menu fits them instead of the default menu width.
@@ -81,21 +84,21 @@ const styles = create({
     gap: 4,
     height: 24,
     paddingInline: 6,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     fontWeight: 590,
   },
   overviewLabel: { flex: 1, minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" },
   checkbox: { marginInlineStart: 4 },
   checkboxChanged: {
-    borderColor: t.markYellow,
-    color: t.intentWarningContent,
+    borderColor: role.contentInteractiveTertiary,
+    color: role.contentInteractiveTertiary,
     "::after": {
       content: "''",
       width: 6,
       height: 6,
-      borderRadius: t.radiusFull,
+      borderRadius: shape.pill,
       backgroundColor: "currentColor",
     },
   },
@@ -110,8 +113,8 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     padding: 20,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
     textAlign: "center",
     textWrap: "pretty",
   },
@@ -136,7 +139,11 @@ export function ReviewCheckbox({
       aria-label={label}
       title={label}
       data-viewed-state={state}
-      xstyle={[styles.checkbox, state === "changed" && styles.checkboxChanged]}
+      xstyle={[
+        styles.checkbox,
+        state === "changed" && intent.warning,
+        state === "changed" && styles.checkboxChanged,
+      ]}
       onClick={(event) => event.stopPropagation()}
       onCheckedChange={onChange}
     />
@@ -164,6 +171,7 @@ export const ChangesSidebar = memo(function ChangesSidebar({
   readonly onRevealPath: (path: string) => void;
   readonly onAllViewedChange: (paths: readonly string[], viewed: boolean) => void;
 }): ReactElement {
+  const treeStatusTheme = useTreeStatusTheme();
   const searchId = useId();
   const [query, setQuery] = useState("");
   const [statuses, setStatuses] = useState<readonly ChangeStatus[]>([]);
@@ -356,7 +364,7 @@ export const ChangesSidebar = memo(function ChangesSidebar({
       <FileTree
         model={model}
         aria-label="Changed files"
-        {...props(workbenchStyles.treeTheme, styles.tree)}
+        {...props(workbenchStyles.treeTheme, treeStatusTheme, styles.tree)}
       />
     </div>
   );

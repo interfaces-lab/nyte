@@ -13,7 +13,7 @@ import { PIERRE_TOKEN_CSS, PierreWorkerProvider } from "../pierre-worker-provide
 import { useWorkspaceFiles } from "../queries.ts";
 import type { WorkspaceFileRead } from "../queries.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { StackHeader } from "./changes-stack.tsx";
 
 const styles = create({
@@ -25,14 +25,14 @@ const styles = create({
     minWidth: 0,
     minHeight: 0,
     overflow: "auto",
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
   },
   notice: {
     padding: 10,
-    color: t.contentSecondary,
-    fontFamily: t.fontSans,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontFamily: type.fontSans,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     textWrap: "pretty",
   },
 });

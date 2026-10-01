@@ -1,16 +1,17 @@
-import * as stylex from "@stylexjs/stylex";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { shape } from "@nyte-ai/ui/schema.stylex";
+import { create } from "@stylexjs/stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 
-export const demoStyles = stylex.create({
+export const demoStyles = create({
   window: {
     display: "flex",
     flexDirection: "column",
     height: 680,
     marginInline: 32,
     marginBlockEnd: 40,
-    borderRadius: t.radius12,
-    backgroundColor: t.bgBase,
-    boxShadow: `inset 0 0 0 1px ${t.borderSecondaryTranslucent}`,
+    borderRadius: shape.card,
+    backgroundColor: role.bgBase,
+    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
     overflow: "hidden",
     scrollMarginBlockStart: 24,
   },
@@ -23,14 +24,14 @@ export const demoStyles = stylex.create({
     width: 220,
     height: "100%",
     paddingInline: 14,
-    backgroundColor: t.sidebarMaterial,
+    backgroundColor: role.sidebarMaterial,
     flexShrink: 0,
   },
   light: {
     width: 12,
     height: 12,
-    borderRadius: t.radiusFull,
-    backgroundColor: t.bgInteractivePrimaryTranslucent,
+    borderRadius: shape.pill,
+    backgroundColor: role.bgInteractivePrimaryTranslucent,
   },
   /** `titlebarStyles.sessionTitle`'s type; the crumbs ahead of it drop a tone. */
   crumbs: {
@@ -39,16 +40,16 @@ export const demoStyles = stylex.create({
     gap: 6,
     minWidth: 0,
     paddingInline: 16,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   crumb: { display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 },
-  crumbDivider: { color: t.contentDisabled },
+  crumbDivider: { color: role.contentDisabled },
   crumbTitle: {
     minWidth: 0,
     overflow: "hidden",
-    color: t.contentSecondary,
+    color: role.contentSecondary,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
@@ -59,7 +60,7 @@ export const demoStyles = stylex.create({
     minWidth: 0,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: t.borderSecondaryTranslucent,
+    borderInlineStartColor: role.borderSecondaryTranslucent,
   },
   thread: {
     display: "flex",
@@ -80,16 +81,16 @@ export const demoStyles = stylex.create({
     overflowY: "auto",
   },
   userTurn: { alignSelf: "flex-end", maxWidth: "80%" },
-  reply: { color: t.contentPrimary, fontSize: t.fontLg, lineHeight: t.leadingLg },
+  reply: { color: role.contentPrimary, fontSize: type.fontLg, lineHeight: type.leadingLg },
   step: {
     display: "flex",
     alignItems: "center",
     gap: 6,
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
   },
-  ask: { color: t.intentWarningContent },
-  failed: { color: t.intentDangerContent },
+  ask: { color: role.contentSecondary },
+  failed: { color: role.contentSecondary },
   dock: {
     display: "flex",
     flexDirection: "column",
@@ -107,10 +108,10 @@ export const demoStyles = stylex.create({
     minHeight: 52,
     paddingInlineStart: 14,
     paddingInlineEnd: 10,
-    borderRadius: t.radius14,
-    backgroundColor: t.composerBg,
-    boxShadow: `0 0 0 1px ${t.composerRing}`,
-    color: t.contentTertiary,
+    borderRadius: shape.surface,
+    backgroundColor: role.bgElevated,
+    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    color: role.contentTertiary,
   },
   composerDisabled: { opacity: 0.6 },
   send: {
@@ -118,14 +119,14 @@ export const demoStyles = stylex.create({
     placeItems: "center",
     width: 28,
     height: 28,
-    borderRadius: t.radiusFull,
-    backgroundColor: t.bgInteractivePrimaryTranslucent,
-    color: t.contentInteractiveSecondary,
+    borderRadius: shape.pill,
+    backgroundColor: role.bgInteractivePrimaryTranslucent,
+    color: role.contentInteractiveSecondary,
   },
   notice: {
     paddingInline: 4,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
 });

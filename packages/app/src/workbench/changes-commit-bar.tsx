@@ -10,7 +10,7 @@
  * The surface belongs to the working tree. A turn's changes and a commit's are
  * records of an edit, so the bar is not rendered for those scopes at all.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { Fragment, useState } from "react";
 import type { ReactElement } from "react";
 import { Type } from "typebox";
@@ -24,11 +24,12 @@ import type {
 import type { GitHubPullRequestOutcome } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
 import { Menu, MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
-import { Button, ButtonGroup } from "@nyte-ai/ui/button";
+import { Button, ButtonGroup, ButtonLink } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { nyte } from "../nyte.ts";
 import { keys, queryClient, refreshVcs, refreshVcsSnapshot } from "../queries.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import type { BranchReadout } from "./change-scopes.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
 
@@ -310,7 +311,7 @@ function storeAction(action: CommitAction): void {
   }
 }
 
-const styles = stylex.create({
+const styles = create({
   bar: {
     display: "flex",
     flexDirection: "column",
@@ -319,7 +320,7 @@ const styles = stylex.create({
     padding: 8,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderSecondaryTranslucent,
+    borderBottomColor: role.borderSecondaryTranslucent,
   },
   actions: { display: "flex", alignItems: "center", gap: 4, minWidth: 0 },
   branchField: { flex: 1 },
@@ -328,13 +329,13 @@ const styles = stylex.create({
     display: "flex",
     flexDirection: "column",
     gap: 2,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     textWrap: "pretty",
   },
-  resultError: { color: t.intentDangerContent },
-  resultDetail: { color: t.contentSecondary, fontSize: t.fontXs, lineHeight: t.leadingXs },
+  resultError: { color: role.contentSecondary },
+  resultDetail: { color: role.contentSecondary, fontSize: type.fontXs, lineHeight: type.leadingXs },
   resultActions: { display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" },
 });
 
@@ -552,7 +553,7 @@ export function ChangesCommitBar({
   const showResult = result !== undefined && (result.tone === "error" || successText !== "");
 
   return (
-    <div {...stylex.props(styles.bar)}>
+    <div {...props(styles.bar)}>
       <Input
         type="text"
         aria-label="Commit message"
@@ -564,7 +565,7 @@ export function ChangesCommitBar({
         onValueChange={setMessage}
       />
       {branchPrompt !== undefined && (
-        <div {...stylex.props(styles.actions)}>
+        <div {...props(styles.actions)}>
           <Input
             type="text"
             aria-label="New branch name"
@@ -592,7 +593,7 @@ export function ChangesCommitBar({
       )}
       <ButtonGroup>
         <Button
-          variant="inverse"
+          variant="solid"
           title={primaryDisabledReason}
           disabled={primaryDisabled}
           xstyle={styles.primary}
@@ -605,7 +606,7 @@ export function ChangesCommitBar({
           align="end"
           trigger={
             <Button
-              variant="inverse"
+              variant="solid"
               iconOnly
               icon="chevron-down"
               aria-label="More commit actions"
@@ -636,27 +637,35 @@ export function ChangesCommitBar({
       {showResult && result !== undefined && (
         <div
           role={result.tone === "error" ? "alert" : "status"}
-          {...stylex.props(styles.result, result.tone === "error" && styles.resultError)}
+          {...props(
+            result.tone === "error" && intent.danger,
+            styles.result,
+            result.tone === "error" && styles.resultError,
+          )}
         >
           <span>{result.text.trim()}</span>
           {result.detail !== undefined && result.detail !== "" && (
-            <span {...stylex.props(styles.resultDetail)}>{result.detail}</span>
+            <span {...props(styles.resultDetail)}>{result.detail}</span>
           )}
           {(result.url !== undefined || result.offerPublish === true) && (
-            <span {...stylex.props(styles.resultActions)}>
+            <span {...props(styles.resultActions)}>
               {result.url !== undefined && (
-                <Button
-                  variant="link"
-                  onClick={() => {
+                <ButtonLink
+                  href={result.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  variant="text"
+                  onClick={(event) => {
+                    event.preventDefault();
                     if (result.url !== undefined)
                       void nyte.host.openExternal({ url: result.url }).catch(() => undefined);
                   }}
                 >
                   {result.url}
-                </Button>
+                </ButtonLink>
               )}
               {result.offerPublish === true && (
-                <Button variant="secondary" disabled={running} onClick={publishBranch}>
+                <Button variant="outline" disabled={running} onClick={publishBranch}>
                   Publish branch
                 </Button>
               )}

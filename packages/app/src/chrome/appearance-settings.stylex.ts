@@ -1,9 +1,10 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /** Settings navigation in the persistent sidebar and route-owned page content. */
-import * as stylex from "@stylexjs/stylex";
+import { create } from "@stylexjs/stylex";
 import { settings, sidebar } from "../theme/schema.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 
-export const appearanceSettingsStyles = stylex.create({
+export const appearanceSettingsStyles = create({
   navigation: {
     display: "flex",
     flexDirection: "column",
@@ -23,10 +24,10 @@ export const appearanceSettingsStyles = stylex.create({
     marginBlockEnd: 16,
     paddingInline: sidebar.rowPaddingInline,
     borderWidth: 0,
-    borderRadius: t.radius8,
+    borderRadius: shape.control,
     boxShadow: {
-      default: `inset 0 0 0 1px ${t.borderSecondaryTranslucent}`,
-      ":focus-within": `inset 0 0 0 1px ${t.borderPrimaryTranslucent}`,
+      default: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+      ":focus-within": `inset 0 0 0 1px ${role.borderPrimaryTranslucent}`,
     },
     flexShrink: 0,
   },
@@ -48,19 +49,19 @@ export const appearanceSettingsStyles = stylex.create({
   },
   navList: { display: "flex", flexDirection: "column", gap: sidebar.listGap },
   /** The arrow keys' cursor while searching; the open section keeps its fill. */
-  navItemHighlighted: { "--_row-fill": t.bgHover, color: t.contentPrimary },
+  navItemHighlighted: { "--_row-fill": role.bgHover, color: role.contentPrimary },
   emptyNavigation: {
     padding: "6px 4px",
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   content: {
     flex: 1,
     minWidth: 0,
     minHeight: 0,
     overflowY: "auto",
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
   },
   contentInner: {
     display: "flex",

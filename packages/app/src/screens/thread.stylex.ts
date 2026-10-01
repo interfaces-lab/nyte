@@ -1,7 +1,7 @@
 import { create } from "@stylexjs/stylex";
-import { layer } from "@nyte-ai/ui/schema.stylex";
+import { layer, shape } from "@nyte-ai/ui/schema.stylex";
 import { conversation, pane } from "../theme/schema.stylex.ts";
-import { ramp, t } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 
 export const threadStyles = create({
   stage: {
@@ -28,7 +28,7 @@ export const threadStyles = create({
     minWidth: 0,
     minHeight: 0,
     overflow: "hidden",
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
   },
   paneSingle: { flex: 1 },
   paneLeading: (ratio: number) => ({
@@ -58,15 +58,15 @@ export const threadStyles = create({
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    fontSize: t.fontBase,
+    fontSize: type.fontBase,
     fontWeight: 600,
-    color: t.contentPrimary,
+    color: role.contentPrimary,
   },
   headerActions: { display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0 },
   renameInput: {
     flex: 1,
     height: 24,
-    borderRadius: t.radius4,
+    borderRadius: shape.indicator,
     fontWeight: 600,
   },
   body: { position: "relative", display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
@@ -85,10 +85,10 @@ export const threadStyles = create({
     gap: 8,
     width: "min(608px, calc(100% - 40px))",
   },
-  greeting: { paddingInlineStart: 4, color: t.contentSecondary, fontSize: t.fontLg },
-  blankHint: { paddingInlineStart: 4, color: t.contentSecondary, fontSize: t.fontBase },
+  greeting: { paddingInlineStart: 4, color: role.contentSecondary, fontSize: type.fontLg },
+  blankHint: { paddingInlineStart: 4, color: role.contentSecondary, fontSize: type.fontBase },
   blankActions: { display: "flex", gap: 8, paddingInlineStart: 4 },
-  error: { paddingInlineStart: 4, color: t.intentDangerContent, fontSize: t.fontBase },
+  error: { paddingInlineStart: 4, color: role.contentSecondary, fontSize: type.fontBase },
   sash: {
     position: "relative",
     display: "grid",
@@ -98,12 +98,12 @@ export const threadStyles = create({
     touchAction: "none",
     outlineStyle: { default: "none", ":focus-visible": "solid" },
     outlineWidth: 1,
-    outlineColor: t.focusRing,
+    outlineColor: appearance.focusRing,
     outlineOffset: -1,
   },
   sashRight: { width: pane.sashSize, cursor: "col-resize" },
   sashDown: { height: pane.sashSize, cursor: "row-resize" },
-  sashLine: { backgroundColor: t.borderSecondaryTranslucent, pointerEvents: "none" },
+  sashLine: { backgroundColor: role.borderSecondaryTranslucent, pointerEvents: "none" },
   sashLineRight: { width: 1, height: "100%" },
   sashLineDown: { width: "100%", height: 1 },
   dropPreviewLayer: {
@@ -115,11 +115,11 @@ export const threadStyles = create({
   },
   dropPreview: {
     position: "absolute",
-    borderRadius: t.radius4,
+    borderRadius: shape.indicator,
     borderWidth: 2,
     borderStyle: "solid",
-    borderColor: ramp.blue80,
-    backgroundColor: t.intentPrimaryBg,
+    borderColor: role.borderInteractivePrimary,
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
     pointerEvents: "none",
   },
 });

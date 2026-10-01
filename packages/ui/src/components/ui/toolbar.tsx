@@ -3,15 +3,15 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { t } from "../../vars.stylex.ts";
-import { Button } from "./button.tsx";
+import { role } from "../../vars.stylex.ts";
+import { Button, type ButtonProps } from "./button.tsx";
 
 const styles = create({
   row: {
     display: "flex",
     flexDirection: { default: "row", '[data-orientation="vertical"]': "column" },
     alignItems: "center",
-    gap: 2,
+    gap: { default: 2, "@media (pointer: coarse)": 8 },
   },
   separator: {
     flexShrink: 0,
@@ -19,7 +19,7 @@ const styles = create({
     height: { default: 16, '[data-orientation="horizontal"]': 1 },
     marginInline: { default: 4, '[data-orientation="horizontal"]': 0 },
     marginBlock: { default: 0, '[data-orientation="horizontal"]': 4 },
-    backgroundColor: t.borderSecondaryTranslucent,
+    backgroundColor: role.borderSecondaryTranslucent,
   },
 });
 
@@ -29,7 +29,11 @@ export type ToolbarGroupProps = StyledProps<ToolbarPrimitive.Group.Props>;
 
 export type ToolbarSeparatorProps = StyledProps<ToolbarPrimitive.Separator.Props>;
 
-export type ToolbarButtonProps = ToolbarPrimitive.Button.Props;
+export type ToolbarButtonProps =
+  | (ButtonProps & { readonly render?: never })
+  | (ToolbarPrimitive.Button.Props & {
+      readonly render: NonNullable<ToolbarPrimitive.Button.Props["render"]>;
+    });
 
 function ToolbarRoot({ xstyle, className, style, ...rest }: ToolbarRootProps): ReactElement {
   return (
@@ -64,8 +68,17 @@ function ToolbarSeparator({
 }
 
 /** Renders a `Button` unless `render` passes a `Toggle` or a popup trigger. */
-function ToolbarButton({ render = <Button />, ...rest }: ToolbarButtonProps): ReactElement {
-  return <ToolbarPrimitive.Button render={render} {...rest} />;
+function ToolbarButton(buttonProps: ToolbarButtonProps): ReactElement {
+  if (buttonProps.render !== undefined) {
+    return <ToolbarPrimitive.Button {...buttonProps} />;
+  }
+  return (
+    <ToolbarPrimitive.Button
+      disabled={buttonProps.disabled && !buttonProps.loading}
+      focusableWhenDisabled={buttonProps.disabledReason !== undefined}
+      render={<Button {...buttonProps} />}
+    />
+  );
 }
 
 export const Toolbar = {

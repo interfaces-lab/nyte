@@ -1,3 +1,5 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { create, props } from "@stylexjs/stylex";
 import { Row } from "@nyte-ai/ui/row";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -10,7 +12,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Hint } from "@nyte-ai/ui/tooltip";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { motion, role, type } from "@nyte-ai/ui/vars.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import { NO_WAITS } from "@nyte-ai/app/conversation/transcript-presentation.ts";
@@ -55,11 +57,11 @@ const fixture = create({
     minWidth: 0,
     minHeight: 0,
     overflow: "hidden",
-    backgroundColor: t.sidebarMaterial,
-    color: t.contentPrimary,
-    fontFamily: t.fontSans,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    backgroundColor: role.sidebarMaterial,
+    color: role.contentPrimary,
+    fontFamily: type.fontSans,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     fontWeight: 400,
     WebkitFontSmoothing: "antialiased",
   },
@@ -68,60 +70,59 @@ const fixture = create({
   red: { backgroundColor: "#ff5f57" },
   yellow: { backgroundColor: "#febc2e" },
   green: { backgroundColor: "#28c840" },
-  main: { backgroundColor: t.bgBase },
+  main: { backgroundColor: role.bgBase },
   transcript: { paddingBlockStart: 16, paddingBlockEnd: 8 },
   flowRow: { position: "relative" },
   sidebarSeat: {
     display: "flex",
     flexShrink: 0,
     minHeight: 0,
-    width: "calc(var(--nyte-sidebar-width) * var(--lab-sidebar-reveal, 1))",
+    width: `calc(${sidebar.width} * var(--lab-sidebar-reveal, 1))`,
     overflow: "hidden",
     transitionProperty: "width",
     transitionDuration: {
-      default: "var(--lab-sidebar-duration, var(--nyte-duration-normal))",
+      default: `var(--lab-sidebar-duration, ${motion.durationNormal})`,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: "var(--lab-sidebar-easing, var(--nyte-easing-out-quint))",
+    transitionTimingFunction: `var(--lab-sidebar-easing, ${motion.easeOutQuint})`,
   },
   sidebarSlide: {
-    minWidth: "var(--nyte-sidebar-width)",
-    transform: "translateX(calc((var(--lab-sidebar-reveal, 1) - 1) * var(--nyte-sidebar-width)))",
+    minWidth: `${sidebar.width}`,
+    transform: `translateX(calc((var(--lab-sidebar-reveal, 1) - 1) * ${sidebar.width}))`,
     transitionProperty: "transform",
     transitionDuration: {
-      default: "var(--lab-sidebar-duration, var(--nyte-duration-normal))",
+      default: `var(--lab-sidebar-duration, ${motion.durationNormal})`,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: "var(--lab-sidebar-easing, var(--nyte-easing-out-quint))",
+    transitionTimingFunction: `var(--lab-sidebar-easing, ${motion.easeOutQuint})`,
   },
   titleSlide: {
-    insetInlineStart:
-      "calc(112px + (var(--nyte-sidebar-width) - 100px) * var(--lab-sidebar-reveal, 1))",
+    insetInlineStart: `calc(112px + (${sidebar.width} - 100px) * var(--lab-sidebar-reveal, 1))`,
     transitionProperty: "inset-inline-start",
     transitionDuration: {
-      default: "var(--lab-sidebar-duration, var(--nyte-duration-normal))",
+      default: `var(--lab-sidebar-duration, ${motion.durationNormal})`,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: "var(--lab-sidebar-easing, var(--nyte-easing-out-quint))",
+    transitionTimingFunction: `var(--lab-sidebar-easing, ${motion.easeOutQuint})`,
   },
   fillSlide: {
-    insetInlineStart: "calc((var(--nyte-sidebar-width) - 1px) * var(--lab-sidebar-reveal, 1))",
+    insetInlineStart: `calc((${sidebar.width} - 1px) * var(--lab-sidebar-reveal, 1))`,
     transitionProperty: "inset-inline-start",
     transitionDuration: {
-      default: "var(--lab-sidebar-duration, var(--nyte-duration-normal))",
+      default: `var(--lab-sidebar-duration, ${motion.durationNormal})`,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: "var(--lab-sidebar-easing, var(--nyte-easing-out-quint))",
+    transitionTimingFunction: `var(--lab-sidebar-easing, ${motion.easeOutQuint})`,
   },
   historySlide: {
     opacity: "var(--lab-sidebar-reveal, 1)",
-    transform: "translateX(calc((var(--lab-sidebar-reveal, 1) - 1) * var(--nyte-sidebar-width)))",
+    transform: `translateX(calc((var(--lab-sidebar-reveal, 1) - 1) * ${sidebar.width}))`,
     transitionProperty: "transform, opacity",
     transitionDuration: {
-      default: "var(--lab-sidebar-duration, var(--nyte-duration-normal))",
+      default: `var(--lab-sidebar-duration, ${motion.durationNormal})`,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: "var(--lab-sidebar-easing, var(--nyte-easing-out-quint))",
+    transitionTimingFunction: `var(--lab-sidebar-easing, ${motion.easeOutQuint})`,
   },
   sidebar: {
     position: "relative",
@@ -131,11 +132,11 @@ const fixture = create({
       insetBlock: 0,
       insetInlineEnd: 0,
       width: 1,
-      backgroundColor: t.borderSecondaryTranslucent,
+      backgroundColor: role.borderSecondaryTranslucent,
       pointerEvents: "none",
     },
   },
-  activity: { color: t.intentPrimaryContent },
+  activity: { color: role.contentSecondary },
 });
 
 const workbenchScope = { kind: "project" } as const;
@@ -501,7 +502,10 @@ export function DesktopDemo({
                           <Row.Primary onClick={() => setSelected(title)}>
                             <Row.Leading
                               data-grid-column="sidebar.icons"
-                              xstyle={[sidebarStyles.rowIcon, index < 2 && fixture.activity]}
+                              xstyle={[
+                                sidebarStyles.rowIcon,
+                                index < 2 && [intent.primary, fixture.activity],
+                              ]}
                             >
                               {index < 2 ? (
                                 <Spinner />
@@ -678,7 +682,7 @@ export function DesktopDemo({
                                 iconOnly
                                 icon="plus"
                                 aria-label="Add agents, context, tools"
-                                variant="secondary"
+                                variant="outline"
                                 round
                                 xstyle={composerStyles.addButtonCompact}
                               />
@@ -693,7 +697,8 @@ export function DesktopDemo({
                             iconOnly
                             icon="arrow-up"
                             aria-label="Send message"
-                            variant="inverse"
+                            variant="solid"
+                            tone="primary"
                             round
                             disabled={reply.length === 0}
                             onClick={() => setReply("")}

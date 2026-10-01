@@ -9,14 +9,14 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Row } from "@nyte-ai/ui/row";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
-import { checkbox } from "@nyte-ai/ui/schema.stylex";
+import { checkbox, shape } from "@nyte-ai/ui/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { nyte } from "../../nyte.ts";
 import { loadThread } from "../../live.ts";
 import { keys } from "../../queries.ts";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { Tray, trayParts, useTrayRoot } from "./tray.tsx";
 import {
   acceptsReply,
@@ -34,8 +34,8 @@ const styles = create({
     flexDirection: "column",
     gap: 4,
     minWidth: 0,
-    fontSize: t.fontBase,
-    color: t.contentPrimary,
+    fontSize: type.fontBase,
+    color: role.contentPrimary,
   },
   header: {
     display: "flex",
@@ -49,40 +49,40 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     margin: 0,
-    fontSize: t.fontBase,
+    fontSize: type.fontBase,
     fontWeight: 600,
-    lineHeight: t.leadingBase,
+    lineHeight: type.leadingBase,
     textWrap: "pretty",
   },
   origin: {
     display: "block",
     fontWeight: 400,
-    color: t.contentSecondary,
+    color: role.contentSecondary,
     overflowWrap: "anywhere",
   },
   deadline: {
     flexShrink: 0,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
     fontVariantNumeric: "tabular-nums",
   },
   choices: { display: "flex", flexDirection: "column", gap: 1 },
   choice: {
-    "--_row-fill": { default: "transparent", ":hover:not(:disabled)": t.bgHover },
+    "--_row-fill": { default: "transparent", ":hover:not(:disabled)": role.bgHover },
     alignItems: "flex-start",
     gap: 8,
     minHeight: tray.rowHeight,
     paddingBlock: 4,
     paddingInline: 6,
-    borderRadius: t.radius6,
-    lineHeight: t.leadingBase,
-    color: { default: t.contentPrimary, ":disabled": t.contentDisabled },
+    borderRadius: shape.control,
+    lineHeight: type.leadingBase,
+    color: { default: role.contentPrimary, ":disabled": role.contentDisabled },
   },
   choiceText: { display: "flex", flexDirection: "column", gap: 1, minWidth: 0 },
   description: {
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     textWrap: "pretty",
   },
   box: {
@@ -94,19 +94,19 @@ const styles = create({
     marginTop: 1,
     borderWidth: 1.5,
     borderStyle: "solid",
-    borderColor: t.borderControlTranslucent,
+    borderColor: role.borderControlTranslucent,
     borderRadius: checkbox.radius,
   },
   // A ticked box paints inside the primary intent, as the checkbox does.
   boxChecked: {
-    borderColor: t.bgControlSelected,
-    backgroundColor: t.bgControlSelected,
-    color: t.contentOnControl,
+    borderColor: role.bgControlSelected,
+    backgroundColor: role.bgControlSelected,
+    color: role.contentOnControl,
   },
   footer: { display: "flex", justifyContent: "flex-end", paddingInline: 6, paddingBottom: 6 },
   unready: { visibility: "hidden" },
-  note: { paddingInline: 6, color: t.contentSecondary, fontSize: t.fontSm },
-  error: { color: t.intentDangerContent, fontSize: t.fontSm },
+  note: { paddingInline: 6, color: role.contentSecondary, fontSize: type.fontSm },
+  error: { color: role.contentSecondary, fontSize: type.fontSm },
 });
 
 function useDeadline(until: number | undefined): number | undefined {
@@ -307,7 +307,8 @@ function SelectionCard({
       {selection.multiple === true && (
         <div {...props(styles.footer, selected.length === 0 && styles.unready)}>
           <Button
-            variant="inverse"
+            variant="solid"
+            tone="primary"
             size="sm"
             round
             disabled={blocked || selected.length === 0}
@@ -335,12 +336,12 @@ function SelectionCard({
         </div>
       )}
       {reply.isError && (
-        <div role="alert" {...props(styles.note, styles.error)}>
+        <div role="alert" {...props(intent.danger, styles.note, styles.error)}>
           Couldn&rsquo;t send your answer. Try again.
         </div>
       )}
       {refresh.isError && (
-        <div role="alert" {...props(styles.note, styles.error)}>
+        <div role="alert" {...props(intent.danger, styles.note, styles.error)}>
           Couldn&rsquo;t refresh this session.
           <Button disabled={refresh.isPending} onClick={() => refresh.mutate()}>
             Refresh
@@ -442,7 +443,7 @@ export function Questions({
         )),
       )}
       {children.isError && (
-        <div role="alert" {...props(styles.error)}>
+        <div role="alert" {...props(intent.danger, styles.error)}>
           Couldn&rsquo;t load delegated sessions.
           <Button disabled={children.isFetching} onClick={() => void children.refetch()}>
             Try again

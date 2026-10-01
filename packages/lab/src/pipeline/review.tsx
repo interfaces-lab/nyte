@@ -1,3 +1,4 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * app sidebar | Reviews list | review panel (Activity · Guide · Diff) | side chat
  *
@@ -9,7 +10,7 @@
  * saves your uncommitted work, switches to the PR branch, edits, tests,
  * pushes, switches back and restores it. The diff marks what it touched.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { useEffect, useState, type ReactElement } from "react";
 import type { ToolClass, TurnPart } from "@nyte-ai/protocol";
 import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
@@ -20,7 +21,7 @@ import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Tabs } from "@nyte-ai/ui/tabs";
-import { ramp, t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import {
   parsePatch,
   referenceLabel,
@@ -476,7 +477,7 @@ function JobLeading({ state }: { readonly state: JobState }): ReactElement | nul
   if (state === "skipped") return <Icon name="arrow-right" size={14} />;
   if (state === "queued") return null;
 
-  return <Icon name="checkmark" size={14} xstyle={layout.passed} />;
+  return <Icon name="checkmark" size={14} xstyle={[intent.success, layout.passed]} />;
 }
 
 function checksLabel(pull: Pull): string {
@@ -512,9 +513,9 @@ function ActivityTab({
       : time;
 
   return (
-    <div {...stylex.props(layout.scroll)}>
-      <div {...stylex.props(layout.column)}>
-        <div {...stylex.props(layout.group)}>
+    <div {...props(layout.scroll)}>
+      <div {...props(layout.column)}>
+        <div {...props(layout.group)}>
           <Row>
             <Row.Leading>
               <Icon name="git-branch" size={14} />
@@ -534,7 +535,7 @@ function ActivityTab({
             <Row.Meta>On behalf of you · {AGENT.model}</Row.Meta>
           </Row>
         </div>
-        <div {...stylex.props(layout.group)}>
+        <div {...props(layout.group)}>
           <Row>
             <Row.Label>
               Checks{pipeline === undefined ? "" : ` · #${pipeline.number} on ${pipeline.commit}`}
@@ -555,7 +556,7 @@ function ActivityTab({
             );
           })}
         </div>
-        <div {...stylex.props(layout.group)}>
+        <div {...props(layout.group)}>
           <Row size="lg">
             <Row.Leading>
               {pull.merged ? (
@@ -591,7 +592,7 @@ function ActivityTab({
           </Row>
         </div>
         {activity.length > 0 && (
-          <div {...stylex.props(layout.group)}>
+          <div {...props(layout.group)}>
             <Row>
               <Row.Label>Activity</Row.Label>
             </Row>
@@ -814,9 +815,9 @@ export function Review(): ReactElement {
   };
 
   return (
-    <div {...stylex.props(layout.shell)}>
-      <aside {...stylex.props(sidebarStyles.rail)}>
-        <div {...stylex.props(sidebarStyles.primaryActions)}>
+    <div {...props(layout.shell)}>
+      <aside {...props(sidebarStyles.rail)}>
+        <div {...props(sidebarStyles.primaryActions)}>
           <Row variant="nav" xstyle={sidebarStyles.navRow}>
             <Row.Leading>
               <Icon name="inbox-empty" size={14} />
@@ -838,7 +839,7 @@ export function Review(): ReactElement {
         </div>
       </aside>
       <ReviewList current={row} onOpen={() => setTab("guide")} />
-      <main {...stylex.props(layout.panel)}>
+      <main {...props(layout.panel)}>
         <Tabs.Root
           value={tab}
           onValueChange={(next: unknown) =>
@@ -847,17 +848,17 @@ export function Review(): ReactElement {
           variant="pill"
           xstyle={layout.tabsRoot}
         >
-          <div {...stylex.props(layout.bar)}>
-            <span {...stylex.props(layout.crumb)}>
+          <div {...props(layout.bar)}>
+            <span {...props(layout.crumb)}>
               <Icon name="linear" size={13} />
               {ISSUE.id}
               <Icon name="chevron-right" size={11} />
-              <Icon name="pull-request" size={13} xstyle={layout.open} />
+              <Icon name="pull-request" size={13} xstyle={[intent.success, layout.open]} />
             </span>
-            <span {...stylex.props(layout.barTitle)}>{MERGE_REQUEST.title}</span>
-            <span {...stylex.props(layout.spacer)} />
+            <span {...props(layout.barTitle)}>{MERGE_REQUEST.title}</span>
+            <span {...props(layout.spacer)} />
             <Button
-              variant="secondary"
+              variant="outline"
               disabled={approved || pull.commits.length === 0}
               onClick={() => setApprovedAt(time)}
             >
@@ -875,7 +876,7 @@ export function Review(): ReactElement {
               {pull.merged ? "Merged" : "Merge"}
             </Button>
           </div>
-          <div {...stylex.props(layout.tabs)}>
+          <div {...props(layout.tabs)}>
             <Tabs.List aria-label="Review">
               <Tabs.Tab value="activity">Activity</Tabs.Tab>
               <Tabs.Tab value="guide">Guide</Tabs.Tab>
@@ -887,9 +888,7 @@ export function Review(): ReactElement {
           </Tabs.Panel>
           <Tabs.Panel value="guide" xstyle={layout.tabPanel}>
             {allFiles.length === 0 ? (
-              <p {...stylex.props(layout.empty)}>
-                The guide is written once the branch has a commit.
-              </p>
+              <p {...props(layout.empty)}>The guide is written once the branch has a commit.</p>
             ) : (
               <Guide
                 heading={{
@@ -952,14 +951,14 @@ export function Review(): ReactElement {
   );
 }
 
-const layout = stylex.create({
+const layout = create({
   shell: {
     display: "flex",
     width: "100%",
     height: "100%",
     minHeight: 0,
-    backgroundColor: t.sidebarMaterial,
-    color: t.contentPrimary,
+    backgroundColor: role.sidebarMaterial,
+    color: role.contentPrimary,
   },
   panel: {
     display: "flex",
@@ -967,7 +966,7 @@ const layout = stylex.create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
   },
   tabsRoot: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
   bar: {
@@ -978,18 +977,18 @@ const layout = stylex.create({
     paddingInline: 14,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderSecondaryTranslucent,
+    borderBottomColor: role.borderSecondaryTranslucent,
     flexShrink: 0,
   },
   crumb: {
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
     flexShrink: 0,
   },
-  open: { color: ramp.green80 },
+  open: { color: role.contentInteractiveTertiary },
   barTitle: {
     minWidth: 0,
     overflow: "hidden",
@@ -1000,7 +999,7 @@ const layout = stylex.create({
   spacer: { flex: 1 },
   tabs: { display: "flex", paddingInline: 14, paddingBlock: 10, flexShrink: 0 },
   tabPanel: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
-  empty: { margin: 0, padding: 28, color: t.contentSecondary },
+  empty: { margin: 0, padding: 28, color: role.contentSecondary },
   scroll: { flex: 1, minHeight: 0, overflowY: "auto" },
   column: {
     display: "flex",
@@ -1010,5 +1009,5 @@ const layout = stylex.create({
     paddingBlock: "4px 24px",
   },
   group: { display: "flex", flexDirection: "column", gap: 2 },
-  passed: { color: ramp.green80 },
+  passed: { color: role.contentInteractiveTertiary },
 });

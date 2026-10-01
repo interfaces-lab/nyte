@@ -59,16 +59,16 @@ const replies = [
     "Calendar puts every surface on one of three elevation tiers, and the tier follows the surface's role rather than its size.",
     "- **elevation-low** (`shadow-sm`): ordinary menus and context menus.\n- **elevation-middle** (`shadow-md`): suggestion lists, pickers and the material panel.\n- **elevation-high** (`shadow-lg`): dialogs only.",
     "Our popover token currently paints every floating surface with one stack, so menus land a tier heavier than Calendar draws them. Splitting the token is the smallest change that keeps pickers where they are.",
-    "The inset hairline stays as it is. Calendar draws it with `stroke-secondary`, which already matches `--nyte-border-secondary-translucent` in both appearances.",
+    "The inset hairline stays as it is. Calendar draws it with `stroke-secondary`, which already matches `role.borderSecondaryTranslucent` in both appearances.",
   ],
   [
     "Every step derived from an anchor with alpha: the text ramp at 74, 60 and 36 percent, the icon ramp at 66 and 52, the fill steps and the strokes.",
     "Flattening them to hex breaks as soon as the surface underneath changes, which is exactly what the material menus do: the blur shows the transcript through the fill, so a pre-mixed grey reads darker over white and lighter over the sidebar.",
-    "Keep them as `color-mix(in srgb, var(--nyte-base) 60%, transparent)` and the ramp composites against whatever sits behind it.",
+    "Use translucent colour roles so the fill composites against whatever sits behind it.",
   ],
   [
-    "Two tokens now: `--nyte-shadow-menu` for menus and context menus on `shadow-sm`, and `--nyte-shadow-popover` for suggestion lists, the model picker and toasts on `shadow-md`.",
-    "`floating-surface.stylex.ts` takes the tier as a variant, so every popup names its role once and the shadow follows from it. Dialogs keep `--nyte-shadow-modal` on `shadow-lg`.",
+    "Two tokens now: `shadow.shadowSm` for menus and context menus on `shadow-sm`, and `shadow.shadowMd` for suggestion lists, the model picker and toasts on `shadow-md`.",
+    "`floating-surface.stylex.ts` takes the tier as a variant, so every popup names its role once and the shadow follows from it. Dialogs keep `shadow.shadowLg` on `shadow-lg`.",
     "Nothing else moves: the inset hairline, the radius and the material fill are shared by both tiers.",
   ],
   [

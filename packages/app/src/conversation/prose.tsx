@@ -1,3 +1,4 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * LobeHub Streamdown renders Markdown with raw HTML disabled. Nyte supplies the
  * semantic components so links still cross the desktop host boundary and
@@ -74,7 +75,7 @@ function MarkdownLink({
         <a
           {...elementProps}
           href={href}
-          {...props(proseStyles.link)}
+          {...props(intent.primary, proseStyles.link)}
           onClick={(event) => {
             if (href === undefined) return;
             event.preventDefault();

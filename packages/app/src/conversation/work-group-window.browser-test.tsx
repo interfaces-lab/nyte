@@ -2,7 +2,7 @@ import "../../test/window-bridge.ts";
 import { useLayoutEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import "../theme/appearance.css";
+import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
 import { WorkGroupView } from "./tool-group.tsx";
@@ -310,3 +310,5 @@ export async function run() {
     outer.remove();
   }
 }
+
+applyDisplayMode("light");

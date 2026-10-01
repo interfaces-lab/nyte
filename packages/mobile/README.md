@@ -348,7 +348,8 @@ keeps one dictate control. Message content stays on solid surfaces.
 React Strict DOM supplies the StyleX-compatible `css` API for native layout,
 with no WebView bridge. All screens consume colors, typography, spacing, radii,
 and control metrics from `src/theme.ts`. Colors are generated from the shared
-roles in `packages/ui/src/roles.stylex.ts` through `@nyte-ai/ui/platform-colors`;
+roles and hue scopes in `packages/ui/src/roles.stylex.ts` and
+`packages/ui/src/theme.stylex.ts` through `@nyte-ai/ui/platform-colors`;
 `pnpm --dir packages/ui check:tokens` rejects stale native color output.
 The app follows the system appearance by default: `userInterfaceStyle` is
 `automatic`, RSD `css` tokens resolve light and dark values through
@@ -364,8 +365,9 @@ Controller coordinates the composer and list insets. Enriched Markdown renders
 replies natively and respects iOS Reduce Motion. Expo supplies the native build,
 streaming fetch, and Keychain integration. A fenced code block reads as mono on
 the theme fill with no border, matching the desktop client's treatment, and
-tree-sitter highlighting carries the same GitHub light/dark palettes the
-desktop's Shiki worker loads. While a reply streams, `remend` closes its
+tree-sitter highlighting uses the shared scoped content roles: purple keywords,
+green strings, blue identifiers, teal constants, and orange variables.
+While a reply streams, `remend` closes its
 dangling inline markers and the renderer's `codeBlockMode` defers highlighting
 until the closing fence arrives. Transient host failures (rename, pin, delete,
 opening a link) surface as toasts above the composer rather than alert dialogs,

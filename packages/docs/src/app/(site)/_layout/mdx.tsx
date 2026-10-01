@@ -1,11 +1,15 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { props } from "@stylexjs/stylex";
 import type { MDXComponents } from "mdx/types";
 import Link from "next/link";
 import type { ComponentProps } from "react";
 import { CodeFrame } from "./code-frame";
 
-function Anchor({ href = "", ...props }: ComponentProps<"a">) {
-  if (href.startsWith("/") || href.startsWith("#")) return <Link href={href} {...props} />;
-  return <a href={href} rel="noreferrer" target="_blank" {...props} />;
+function Anchor({ href = "", className, ...rest }: ComponentProps<"a">) {
+  const scopedClass = [props(intent.primary).className, className].filter(Boolean).join(" ");
+  if (href.startsWith("/") || href.startsWith("#"))
+    return <Link href={href} {...rest} className={scopedClass} />;
+  return <a href={href} rel="noreferrer" target="_blank" {...rest} className={scopedClass} />;
 }
 
 function Table(props: ComponentProps<"table">) {

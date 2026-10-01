@@ -1,5 +1,7 @@
 "use client";
 
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { props } from "@stylexjs/stylex";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Column } from "./column";
@@ -60,6 +62,7 @@ export function Toc({ entries }: { entries: TocEntry[] }) {
           {entries.map((entry) => (
             <li key={entry.url}>
               <a
+                {...props(current === entry.url.slice(1) && intent.primary)}
                 href={entry.url}
                 data-depth={entry.depth}
                 aria-current={current === entry.url.slice(1) ? "true" : undefined}

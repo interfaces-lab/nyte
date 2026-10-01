@@ -4,9 +4,10 @@ import { createContext, use, type ReactElement, type Ref } from "react";
 
 import { focus } from "../../a11y.stylex.ts";
 import { floatingSurfaceStyles } from "../../floating-surface.stylex.ts";
-import { button, layer, menu } from "../../schema.stylex.ts";
+import { button, input, layer, menu, shape } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { t } from "../../vars.stylex.ts";
+import { surfaceTheme, type Tint } from "../../surface-theme.ts";
+import { appearance, motion, role, type } from "../../vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 import { useOverlayRef } from "./overlay.tsx";
 
@@ -17,9 +18,10 @@ const styles = create({
     justifyContent: "space-between",
     gap: 6,
     boxSizing: "border-box",
-    minWidth: 0,
+    minWidth: { default: 0, "@media (pointer: coarse)": menu.itemHeight },
     maxWidth: "100%",
-    height: button.heightSm,
+    height: { default: button.heightSm, "@media (pointer: coarse)": menu.itemHeight },
+    minHeight: 24,
     paddingBlock: 0,
     paddingInline: button.paddingInlineSm,
     overflow: "hidden",
@@ -27,20 +29,24 @@ const styles = create({
     borderRadius: button.radiusSm,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: t.borderPrimaryTranslucent,
-    backgroundColor: t.bgInteractiveSecondaryTranslucent,
+    borderColor: role.borderPrimaryTranslucent,
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
     backgroundImage: {
       default: "none",
-      ":hover": t.layerHover,
-      "[data-popup-open]": t.layerHover,
+      ":hover": role.layerHover,
+      "[data-popup-open]": role.layerHover,
       "[data-disabled]": "none",
     },
-    color: { default: t.contentPrimary, "[data-disabled]": t.contentDisabled },
-    fontFamily: t.fontSans,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
-    cursor: { default: t.cursorInteractive, "[data-disabled]": "default" },
+    color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
+    fontFamily: type.fontSans,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+    cursor: { default: appearance.cursorInteractive, "[data-disabled]": "default" },
     flexShrink: 0,
+  },
+  clear: {
+    minWidth: menu.itemHeight,
+    minHeight: menu.itemHeight,
   },
   triggerValue: {
     display: "block",
@@ -48,7 +54,7 @@ const styles = create({
     minWidth: 0,
     overflow: "hidden",
     fontFamily: "inherit",
-    lineHeight: t.leadingSm,
+    lineHeight: type.leadingSm,
     textOverflow: "ellipsis",
     textAlign: "left",
     whiteSpace: "nowrap",
@@ -70,9 +76,9 @@ const styles = create({
     padding: 0,
     overflowY: "hidden",
     borderStyle: "none",
-    borderRadius: t.radius8,
+    borderRadius: shape.control,
     outline: "none",
-    color: t.contentPrimary,
+    color: role.contentPrimary,
     transformOrigin: "var(--transform-origin)",
     opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
     transform: {
@@ -89,16 +95,16 @@ const styles = create({
     },
     transitionProperty: "opacity, transform",
     transitionDuration: {
-      default: t.durationFast,
+      default: motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: t.easeOutQuint,
+    transitionTimingFunction: motion.easeOutQuint,
   },
   input: {
     boxSizing: "border-box",
     flexShrink: 0,
     width: "100%",
-    height: 36,
+    height: input.heightXl,
     margin: 0,
     paddingBlock: 0,
     paddingInline: 12,
@@ -106,12 +112,12 @@ const styles = create({
     borderRadius: 0,
     outline: "none",
     backgroundColor: "transparent",
-    boxShadow: `inset 0 -1px 0 0 ${t.borderSecondaryTranslucent}`,
-    color: t.contentPrimary,
-    fontFamily: t.fontSans,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
-    "::placeholder": { color: t.contentTertiary },
+    boxShadow: `inset 0 -1px 0 0 ${role.borderSecondaryTranslucent}`,
+    color: role.contentPrimary,
+    fontFamily: type.fontSans,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    "::placeholder": { color: role.contentTertiary },
   },
   inputInline: {
     height: menu.itemHeight,
@@ -140,16 +146,16 @@ const styles = create({
     gridTemplateColumns: "minmax(0, 1fr) auto",
     alignItems: "center",
     columnGap: 6,
-    minHeight: 30,
+    minHeight: `max(30px, ${menu.itemHeight})`,
     paddingBlock: 0,
     paddingInline: 12,
-    borderRadius: t.radius6,
+    borderRadius: shape.control,
     outline: "none",
-    backgroundColor: { default: "transparent", "[data-highlighted]": t.bgHover },
-    color: { default: t.contentPrimary, "[data-disabled]": t.contentDisabled },
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
-    letterSpacing: t.letterBase,
+    backgroundColor: { default: "transparent", "[data-highlighted]": role.bgHover },
+    color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    letterSpacing: type.letterBase,
     cursor: "default",
     userSelect: "none",
   },
@@ -162,8 +168,8 @@ const styles = create({
     borderRadius: menu.itemRadius,
   },
   itemSelectedInline: {
-    backgroundColor: t.bgInteractiveSecondaryTranslucent,
-    boxShadow: `inset 0 0 0 1px ${t.borderPrimary}`,
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    boxShadow: `inset 0 0 0 1px ${role.borderPrimary}`,
   },
   itemText: {
     minWidth: 0,
@@ -176,16 +182,16 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     width: 12,
-    color: t.contentSecondary,
+    color: role.contentSecondary,
   },
   itemIndicatorInline: { width: 14 },
   groupLabel: {
     paddingBlockStart: 6,
     paddingBlockEnd: 2,
     paddingInline: 12,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   groupLabelInline: {
     display: "flex",
@@ -193,22 +199,22 @@ const styles = create({
     gap: 6,
     paddingBlockStart: 4,
     paddingInline: 8,
-    fontSize: t.fontXs,
-    lineHeight: t.leadingXs,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
     userSelect: "none",
   },
   separator: {
     flexShrink: 0,
     height: 1,
     marginBlock: 4,
-    backgroundColor: t.borderSecondaryTranslucent,
+    backgroundColor: role.borderSecondaryTranslucent,
   },
   empty: {
     flexShrink: 0,
     padding: "10px 12px",
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   status: { padding: { default: 0, ":not(:empty)": "10px 12px" } },
 });
@@ -257,9 +263,12 @@ function AutocompletePositioner({
   );
 }
 
-export type AutocompletePopupProps = StyledProps<AutocompletePrimitive.Popup.Props>;
+export type AutocompletePopupProps = StyledProps<AutocompletePrimitive.Popup.Props> & {
+  readonly tint?: Tint;
+};
 
 function AutocompletePopup({
+  tint,
   className,
   style,
   xstyle,
@@ -272,7 +281,12 @@ function AutocompletePopup({
       <AutocompletePrimitive.Popup
         ref={overlayRef}
         {...mergeStyleProps(
-          props(floatingSurfaceStyles.popup, styles.popup, xstyle),
+          props(
+            tint !== undefined && surfaceTheme[tint],
+            floatingSurfaceStyles.popup,
+            styles.popup,
+            xstyle,
+          ),
           className,
           style,
         )}
@@ -439,6 +453,41 @@ function AutocompleteStatus({
   );
 }
 
+export type AutocompleteBackdropProps = StyledProps<AutocompletePrimitive.Backdrop.Props>;
+
+function AutocompleteBackdrop({
+  className,
+  style,
+  xstyle,
+  ...rest
+}: AutocompleteBackdropProps): ReactElement {
+  const overlayRef = useOverlayRef();
+
+  return (
+    <AutocompletePrimitive.Backdrop
+      ref={overlayRef}
+      {...rest}
+      {...mergeStyleProps(props(xstyle), className, style)}
+    />
+  );
+}
+
+export type AutocompleteClearProps = StyledProps<AutocompletePrimitive.Clear.Props>;
+
+function AutocompleteClear({
+  className,
+  style,
+  xstyle,
+  ...rest
+}: AutocompleteClearProps): ReactElement {
+  return (
+    <AutocompletePrimitive.Clear
+      {...rest}
+      {...mergeStyleProps(props(styles.clear, focus.ring, xstyle), className, style)}
+    />
+  );
+}
+
 export const Autocomplete = {
   Root: AutocompletePrimitive.Root,
   Value: AutocompletePrimitive.Value,
@@ -446,9 +495,9 @@ export const Autocomplete = {
   InputGroup: AutocompletePrimitive.InputGroup,
   Input: AutocompleteInput,
   Icon: AutocompletePrimitive.Icon,
-  Clear: AutocompletePrimitive.Clear,
+  Clear: AutocompleteClear,
   Portal: AutocompletePrimitive.Portal,
-  Backdrop: AutocompletePrimitive.Backdrop,
+  Backdrop: AutocompleteBackdrop,
   Positioner: AutocompletePositioner,
   Popup: AutocompletePopup,
   Arrow: AutocompletePrimitive.Arrow,

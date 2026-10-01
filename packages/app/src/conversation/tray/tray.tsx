@@ -9,7 +9,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { glyph } from "@nyte-ai/ui/schema.stylex";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 
 /** Parts every composer tray draws: its pill, rows, header actions, and notices. */
 export const trayParts = create({
@@ -26,11 +26,16 @@ export const trayParts = create({
   },
   listHeight: (height: number) => ({ maxHeight: Math.min(260, height) }),
   row: {
-    "--nyte-row-height": tray.rowHeight,
-    "--nyte-row-padding-inline": tray.rowInset,
+    minHeight: tray.rowHeight,
+    "--_row-padding-inline": tray.rowInset,
   },
-  notice: { paddingBlock: 8, paddingInline: 12, color: t.contentSecondary, fontSize: t.fontSm },
-  error: { color: t.intentDangerContent },
+  notice: {
+    paddingBlock: 8,
+    paddingInline: 12,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+  },
+  error: { color: role.contentSecondary },
 });
 
 /**
@@ -81,9 +86,9 @@ export function TrayPill({
     <div {...props(trayParts.pills)}>
       <Button
         ref={ref}
-        variant="secondary"
+        variant="outline"
         round
-        aria-label={label}
+        aria-description={label}
         aria-controls={controls}
         aria-expanded={false}
         onClick={onClick}
@@ -165,7 +170,7 @@ export function Tray({
           key="surface"
           id={id}
           tabIndex={-1}
-          aria-label={label}
+          aria-description={label}
           initial={reducedMotion ? false : { opacity: 0, y: 4, scale: 0.99 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={

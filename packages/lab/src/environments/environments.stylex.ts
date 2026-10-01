@@ -1,15 +1,16 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 import { create } from "@stylexjs/stylex";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 
 export const boardStyles = create({
   page: {
     height: "100%",
     overflowY: "auto",
-    backgroundColor: t.bgBase,
-    color: t.contentPrimary,
-    fontFamily: t.fontSans,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    backgroundColor: role.bgBase,
+    color: role.contentPrimary,
+    fontFamily: type.fontSans,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
     WebkitFontSmoothing: "antialiased",
   },
   header: {
@@ -20,8 +21,8 @@ export const boardStyles = create({
     paddingInline: 32,
     paddingBlock: 20,
   },
-  title: { fontSize: t.fontLg, lineHeight: t.leadingLg, fontWeight: 500 },
-  subtitle: { color: t.contentSecondary, flex: 1, minWidth: 240 },
+  title: { fontSize: type.fontLg, lineHeight: type.leadingLg, fontWeight: 500 },
+  subtitle: { color: role.contentSecondary, flex: 1, minWidth: 240 },
 });
 
 export const newChatStyles = create({
@@ -42,17 +43,17 @@ export const newChatStyles = create({
     alignItems: "center",
     gap: 2,
     minWidth: 0,
-    color: t.contentSecondary,
+    color: role.contentSecondary,
   },
   chipText: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  chipDivider: { color: t.contentDisabled },
+  chipDivider: { color: role.contentDisabled },
   staticChip: {
     display: "inline-flex",
     alignItems: "center",
     gap: 4,
     height: 28,
     paddingInline: 8,
-    color: t.contentSecondary,
+    color: role.contentSecondary,
   },
   composer: {
     display: "flex",
@@ -60,26 +61,26 @@ export const newChatStyles = create({
     justifyContent: "space-between",
     minHeight: 104,
     padding: 12,
-    borderRadius: t.radius14,
-    backgroundColor: t.composerBg,
-    boxShadow: `0 0 0 1px ${t.composerRing}`,
-    color: t.contentTertiary,
+    borderRadius: shape.surface,
+    backgroundColor: role.bgElevated,
+    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    color: role.contentTertiary,
   },
   composerFoot: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
   },
   send: {
     display: "grid",
     placeItems: "center",
     width: 28,
     height: 28,
-    borderRadius: t.radiusFull,
-    backgroundColor: t.bgInteractivePrimaryTranslucent,
-    color: t.contentInteractiveSecondary,
+    borderRadius: shape.pill,
+    backgroundColor: role.bgInteractivePrimaryTranslucent,
+    color: role.contentInteractiveSecondary,
   },
-  menuMeta: { color: t.contentSecondary, fontSize: t.fontSm },
+  menuMeta: { color: role.contentSecondary, fontSize: type.fontSm },
 });

@@ -1,9 +1,14 @@
 import { StrictMode } from "react";
+import { create, props } from "@stylexjs/stylex";
+import { role } from "@nyte-ai/ui/vars.stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import "../theme/appearance.css";
+import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 import { AnimatedNumber } from "./animated-number.tsx";
+
+const styles = create({ count: { color: role.contentSecondary } });
 
 function check(condition: boolean, message: string) {
   if (!condition) throw new Error(message);
@@ -28,7 +33,7 @@ export async function run(reduced: boolean) {
     flushSync(() =>
       root.render(
         <StrictMode>
-          <span id="count" style={{ color: "var(--nyte-intent-success-content)" }}>
+          <span id="count" {...props(intent.success, styles.count)}>
             +{value > 0 && <AnimatedNumber key={scope} value={value} />}
           </span>
           <span id="filename">example.ts</span>
@@ -137,3 +142,5 @@ export async function run(reduced: boolean) {
     container.remove();
   }
 }
+
+applyDisplayMode("light");

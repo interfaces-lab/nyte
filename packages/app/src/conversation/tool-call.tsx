@@ -1,3 +1,4 @@
+import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 /**
  * One tool call: a quiet verb line that expands into its evidence. Ported from
  * the Honk design system's `tool-call.tsx` and recolored onto this palette.
@@ -9,7 +10,7 @@
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/ui/src/tool-call.tsx
  */
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
@@ -102,7 +103,7 @@ function OutputTail({ children }: { children: ReactNode }): ReactElement {
       variant="plain"
       xstyle={[toolCallStyles.outputBody, toolCallStyles.outputTail, focus.ringInset]}
     >
-      <span ref={contentRef} {...stylex.props(toolCallStyles.outputContent)}>
+      <span ref={contentRef} {...props(toolCallStyles.outputContent)}>
         {children}
       </span>
     </Collapsible.Trigger>
@@ -124,13 +125,21 @@ function ToolOutput({
   const lines = (
     <>
       {command !== undefined && (
-        <code {...stylex.props(toolCallStyles.command)}>
-          <span {...stylex.props(toolCallStyles.prompt)}>$ </span>
+        <code {...props(toolCallStyles.command)}>
+          <span {...props(toolCallStyles.prompt)}>$ </span>
           {shellTokens(command).map((token, index) =>
             token.kind === "space" ? (
               token.text
             ) : (
-              <span key={index} {...stylex.props(shellTokenStyles[token.kind])}>
+              <span
+                key={index}
+                {...props(
+                  token.kind === "flag" && surfaceTheme.teal,
+                  token.kind === "string" && surfaceTheme.green,
+                  token.kind === "variable" && surfaceTheme.orange,
+                  shellTokenStyles[token.kind],
+                )}
+              >
                 {token.text}
               </span>
             ),
@@ -142,9 +151,9 @@ function ToolOutput({
   );
 
   return (
-    <div {...stylex.props(toolCallStyles.output)}>
+    <div {...props(toolCallStyles.output)}>
       {open ? (
-        <span {...stylex.props(toolCallStyles.outputActions)}>
+        <span {...props(toolCallStyles.outputActions)}>
           <Hint
             content={copied ? "Copied" : "Copy output"}
             trigger={
@@ -174,7 +183,7 @@ function ToolOutput({
         data-tool-body
         xstyle={[toolCallStyles.outputBody, toolCallStyles.outputScroll]}
       >
-        <span {...stylex.props(toolCallStyles.outputContent)}>{lines}</span>
+        <span {...props(toolCallStyles.outputContent)}>{lines}</span>
       </Collapsible.Panel>
     </div>
   );
@@ -255,7 +264,7 @@ export const ToolCallView = memo(function ToolCallView({
   const lineContent = (
     <>
       <span
-        {...stylex.props(
+        {...props(
           toolCallStyles.verb,
           toolClass.kind === "custom" && toolCallStyles.verbLong,
           toolClass.kind === "custom" && phase !== "running" && toolCallStyles.verbWrap,
@@ -266,21 +275,21 @@ export const ToolCallView = memo(function ToolCallView({
       </span>
       {/* A custom label is a name, not a verb; the phase words already say failed or stopped. */}
       {phase === "running" && toolClass.kind === "custom" && (
-        <span {...stylex.props(srOnly)}>Running</span>
+        <span {...props(srOnly)}>Running</span>
       )}
       {detail !== undefined && (
         <Hint
           content={detail.title ?? detail.text}
-          trigger={<span {...stylex.props(toolCallStyles.detail)}>{detail.text}</span>}
+          trigger={<span {...props(toolCallStyles.detail)}>{detail.text}</span>}
         />
       )}
       {toolClass.kind === "file_patch" && (toolClass.added > 0 || toolClass.removed > 0) && (
-        <span {...stylex.props(toolCallStyles.stats, editDiff && toolCallStyles.editStats)}>
+        <span {...props(toolCallStyles.stats, editDiff && toolCallStyles.editStats)}>
           {toolClass.added > 0 && (
-            <span {...stylex.props(toolCallStyles.added)}>+{toolClass.added}</span>
+            <span {...props(intent.success, toolCallStyles.added)}>+{toolClass.added}</span>
           )}
           {toolClass.removed > 0 && (
-            <span {...stylex.props(toolCallStyles.removed)}>-{toolClass.removed}</span>
+            <span {...props(intent.danger, toolCallStyles.removed)}>-{toolClass.removed}</span>
           )}
         </span>
       )}
@@ -294,6 +303,7 @@ export const ToolCallView = memo(function ToolCallView({
         toolCallStyles.line,
         editDiff && toolCallStyles.editLine,
         density === "detailed" && toolCallStyles.lineDetailed,
+        phase === "failed" && intent.danger,
         phase === "failed" && toolCallStyles.failed,
       ]}
     >
@@ -303,10 +313,11 @@ export const ToolCallView = memo(function ToolCallView({
   ) : (
     <div
       data-tool-status={phase}
-      {...stylex.props(
+      {...props(
         toolCallStyles.line,
         density === "detailed" && toolCallStyles.lineDetailed,
         toolCallStyles.lineStatic,
+        phase === "failed" && intent.danger,
         phase === "failed" && toolCallStyles.failed,
       )}
     >
@@ -318,8 +329,8 @@ export const ToolCallView = memo(function ToolCallView({
     <Collapsible.Root
       disabled={!expandable}
       xstyle={toolCallStyles.root}
-      render={(props, state) => (
-        <div {...props}>
+      render={(componentProps, state) => (
+        <div {...componentProps}>
           {line}
           {body.kind === "output" && (
             <ToolOutput command={body.command} text={body.text} open={state.open} />

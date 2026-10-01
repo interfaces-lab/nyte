@@ -1,14 +1,15 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /** Customize inventory feature styles. */
-import * as stylex from "@stylexjs/stylex";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { create } from "@stylexjs/stylex";
+import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 
-export const customizeStyles = stylex.create({
+export const customizeStyles = create({
   surface: {
     flex: 1,
     minWidth: 0,
     minHeight: 0,
     overflowY: "auto",
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
   },
   root: {
     display: "flex",
@@ -26,11 +27,11 @@ export const customizeStyles = stylex.create({
     height: 32,
     gap: 6,
     paddingInline: 10,
-    borderRadius: t.radius8,
-    borderColor: t.borderSecondaryTranslucent,
+    borderRadius: shape.control,
+    borderColor: role.borderSecondaryTranslucent,
     outlineStyle: { default: "none", ":focus-within": "solid" },
     outlineWidth: 1,
-    outlineColor: t.focusRing,
+    outlineColor: appearance.focusRing,
     outlineOffset: -1,
   },
   searchInput: { height: "100%" },
@@ -38,17 +39,21 @@ export const customizeStyles = stylex.create({
   inventoryHeading: { display: "flex", alignItems: "baseline", gap: 6, paddingInline: 6 },
   inventoryTitle: {
     margin: 0,
-    color: t.contentPrimary,
-    fontSize: t.fontBase,
+    color: role.contentPrimary,
+    fontSize: type.fontBase,
     fontWeight: 600,
-    lineHeight: t.leadingBase,
+    lineHeight: type.leadingBase,
   },
-  inventoryCount: { color: t.contentSecondary, fontSize: t.fontSm, lineHeight: t.leadingSm },
+  inventoryCount: {
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+  },
   settingsNote: {
     paddingInline: 6,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
   },
   list: {
     display: "flex",
@@ -56,46 +61,49 @@ export const customizeStyles = stylex.create({
     gap: 1,
     padding: 1,
     overflow: "hidden",
-    borderRadius: t.radius12,
-    backgroundColor: t.borderSecondaryTranslucent,
+    borderRadius: shape.card,
+    backgroundColor: role.borderSecondaryTranslucent,
   },
   row: {
-    "--nyte-row-height": "48px",
-    "--nyte-row-gap": "10px",
-    "--nyte-row-padding-inline": "10px",
-    "--nyte-row-leading-size": "16px",
+    minHeight: { default: 48, "@media (pointer: coarse)": 60 },
+    gap: 8,
+    "--_row-padding-inline": "8px",
     // The list paints its hairlines as 1px gaps in its own background, so every
     // row needs an opaque resting fill and square corners to cover them.
-    "--_row-fill": t.bgBase,
+    "--_row-fill": role.bgBase,
     paddingBlock: 6,
     borderRadius: 0,
   },
+  rowLeading: { width: 16 },
   rowTitle: { fontWeight: 500 },
   badge: {
     flexShrink: 0,
     padding: "2px 6px",
-    borderRadius: t.radiusFull,
-    backgroundColor: t.bgMutedTranslucent,
-    color: t.contentSecondary,
-    fontSize: t.fontXs,
-    lineHeight: t.leadingXs,
+    borderRadius: shape.pill,
+    backgroundColor: role.bgMutedTranslucent,
+    color: role.contentSecondary,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
   },
-  failedBadge: { backgroundColor: t.intentDangerBg, color: t.intentDangerContent },
+  failedBadge: {
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    color: role.contentSecondary,
+  },
   quiet: {
     minHeight: 48,
     display: "flex",
     alignItems: "center",
     paddingInline: 10,
-    backgroundColor: t.bgBase,
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    backgroundColor: role.bgBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
   loadingLine: {
     width: "42%",
     height: 8,
-    borderRadius: t.radiusFull,
-    backgroundColor: t.bgMutedTranslucent,
+    borderRadius: shape.pill,
+    backgroundColor: role.bgMutedTranslucent,
   },
-  error: { color: t.intentDangerContent, fontSize: t.fontSm, lineHeight: t.leadingSm },
+  error: { color: role.contentSecondary, fontSize: type.fontSm, lineHeight: type.leadingSm },
 });

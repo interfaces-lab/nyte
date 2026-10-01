@@ -1,5 +1,3 @@
-@import "./appearance.css";
-
 /*
  * StyleX emits every rule inside `@layer priority1..6` (`useCSSLayers` in the
  * vite config), and unlayered author styles outrank every layer. So the resets
@@ -67,7 +65,7 @@
   }
 
   ::selection {
-    background: var(--nyte-selection);
+    background: var(--nyte-bg-interactive-primary-translucent);
   }
 
   /*

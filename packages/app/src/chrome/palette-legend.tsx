@@ -1,4 +1,4 @@
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { paletteLegendStyles as styles } from "./palette-legend.stylex.ts";
@@ -47,7 +47,7 @@ function Keycap({
   readonly label?: string;
 }): ReactElement {
   return (
-    <kbd aria-label={label} {...stylex.props(styles.keycap, icon && styles.keycapIcon)}>
+    <kbd aria-label={label} {...props(styles.keycap, icon && styles.keycapIcon)}>
       {children}
     </kbd>
   );
@@ -71,10 +71,10 @@ function DitherMark(): ReactElement {
 
 export function PaletteLegend(): ReactElement {
   return (
-    <footer aria-label="Keyboard shortcuts" {...stylex.props(styles.footer)}>
-      <div {...stylex.props(styles.legend)}>
-        <span {...stylex.props(styles.item)}>
-          <span {...stylex.props(styles.keys)}>
+    <footer aria-label="Keyboard shortcuts" {...props(styles.footer)}>
+      <div {...props(styles.legend)}>
+        <span {...props(styles.item)}>
+          <span {...props(styles.keys)}>
             <Keycap icon label="Up arrow">
               <Icon name="arrow-up" size={12} />
             </Keycap>
@@ -84,18 +84,18 @@ export function PaletteLegend(): ReactElement {
           </span>
           Navigate
         </span>
-        <span {...stylex.props(styles.item)}>
+        <span {...props(styles.item)}>
           <Keycap icon label="Enter">
             <Icon name="return" size={12} />
           </Keycap>
           Select
         </span>
-        <span {...stylex.props(styles.item)}>
+        <span {...props(styles.item)}>
           <Keycap>esc</Keycap>
           Close
         </span>
       </div>
-      <span {...stylex.props(styles.mark)}>
+      <span {...props(styles.mark)}>
         <DitherMark />
       </span>
     </footer>

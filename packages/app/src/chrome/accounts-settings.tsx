@@ -1,3 +1,4 @@
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * Settings › Accounts: the shared GitHub CLI account and the selected repository.
  * The account row says whether it is connected and offers the single action
@@ -15,11 +16,11 @@ import type {
   GitHubRepository,
 } from "../bridge.ts";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
-import { Button } from "@nyte-ai/ui/button";
+import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { nyte } from "../nyte.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+
 import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
 import { signOutDescription, useGitHubAccount } from "./github-account.ts";
 import { DeviceCodePanel } from "./sign-in-panels.tsx";
@@ -29,19 +30,25 @@ const styles = create({
     display: "block",
     width: "100%",
     height: "100%",
-    borderRadius: t.radiusFull,
+    borderRadius: shape.pill,
     objectFit: "cover",
   },
 });
 
 function OpenOnGitHub({ url }: { url: string }): ReactElement {
   return (
-    <Button
+    <ButtonLink
+      href={url}
+      target="_blank"
+      rel="noreferrer"
       icon="github"
-      onClick={() => void nyte.host.openExternal({ url }).catch(() => undefined)}
+      onClick={(event) => {
+        event.preventDefault();
+        void nyte.host.openExternal({ url }).catch(() => undefined);
+      }}
     >
       Open on GitHub
-    </Button>
+    </ButtonLink>
   );
 }
 
@@ -82,7 +89,7 @@ function AccountRow({
         status={<ConnectionStatus tone="err">Unavailable</ConnectionStatus>}
         actions={
           <Button
-            variant="secondary"
+            variant="outline"
             disabled={query.isFetching}
             onClick={() => {
               auth.reset();
@@ -122,16 +129,20 @@ function AccountRow({
           }
           status={<ConnectionStatus tone="off">CLI not found</ConnectionStatus>}
           actions={
-            <Button
-              variant="secondary"
-              onClick={() =>
+            <ButtonLink
+              href={"https://cli.github.com"}
+              target="_blank"
+              rel="noreferrer"
+              variant="outline"
+              onClick={(event) => {
+                event.preventDefault();
                 void nyte.host
                   .openExternal({ url: "https://cli.github.com" })
-                  .catch(() => undefined)
-              }
+                  .catch(() => undefined);
+              }}
             >
               Install GitHub CLI
-            </Button>
+            </ButtonLink>
           }
         />
       );
@@ -143,7 +154,7 @@ function AccountRow({
           detail={undefined}
           status={<ConnectionStatus tone="off">Not connected</ConnectionStatus>}
           actions={
-            <Button variant="secondary" disabled={busy} onClick={() => auth.mutate("signIn")}>
+            <Button variant="outline" disabled={busy} onClick={() => auth.mutate("signIn")}>
               Sign in
             </Button>
           }

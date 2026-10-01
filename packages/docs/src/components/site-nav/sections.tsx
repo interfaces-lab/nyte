@@ -1,5 +1,8 @@
 "use client";
 
+import { shadow } from "@nyte-ai/ui/vars.stylex";
+import { create, props } from "@stylexjs/stylex";
+
 import { IconBookSimple, IconLayersThree } from "central-icons";
 import { useCallback, useRef, useState } from "react";
 import { SITE_SECTIONS, type SiteFeature, type SiteFeatureIcon } from "~/lib/site-sections";
@@ -21,20 +24,18 @@ function Feature({ feature }: { feature: SiteFeature }) {
   return (
     <a
       href={feature.href}
-      className="flex items-center gap-2.5 rounded-(--nyte-radius-row) p-2 hover:bg-(--nyte-content-primary)/5"
+      className="flex items-center gap-2.5 rounded-xl p-2 hover:bg-foreground/5"
     >
-      <span className="inline-flex size-6 shrink-0 items-center justify-center text-(--nyte-content-primary)">
+      <span className="inline-flex size-6 shrink-0 items-center justify-center text-foreground">
         <FeatureGlyph icon={feature.icon} />
       </span>
-      <span className="min-w-0 text-sm/5 font-medium text-(--nyte-content-primary)">
-        {feature.title}
-      </span>
+      <span className="min-w-0 text-sm/5 font-medium text-foreground">{feature.title}</span>
     </a>
   );
 }
 
 const itemClass =
-  "relative inline-flex h-(--site-nav-control) items-center rounded-(--nyte-radius-full) px-2.5 text-[15px] font-medium text-(--nyte-content-primary) hero:text-white";
+  "relative inline-flex h-(--site-nav-control) items-center rounded-full px-2.5 text-[15px] font-medium text-foreground hero:text-white";
 
 interface Indicator {
   x: number;
@@ -85,7 +86,7 @@ export function SiteNavSections({ githubHref }: Props) {
       {indicator ? (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute top-0 left-0 h-(--site-nav-control) rounded-(--nyte-radius-full) bg-current/10 opacity-0 [transition:transform_520ms_var(--ease-nav),width_520ms_var(--ease-nav),opacity_220ms_ease] data-on:opacity-100 motion-reduce:transition-none"
+          className="pointer-events-none absolute top-0 left-0 h-(--site-nav-control) rounded-full bg-current/10 opacity-0 [transition:transform_520ms_var(--ease-nav),width_520ms_var(--ease-nav),opacity_220ms_ease] data-on:opacity-100 motion-reduce:transition-none"
           data-on={active ? "" : undefined}
           style={{ transform: `translateX(${indicator.x}px)`, width: indicator.width }}
         />
@@ -116,7 +117,8 @@ export function SiteNavSections({ githubHref }: Props) {
           <div
             key={section.id}
             data-direction={direction}
-            className="w-79 max-w-full animate-nav-panel-content-in rounded-(--nyte-radius-surface) border border-(--nyte-border-secondary-translucent) bg-(--nyte-bg-elevated) p-1 text-(--nyte-content-primary) shadow-[0_8px_30px_color-mix(in_srgb,var(--nyte-content-primary)_10%,transparent)] data-[direction=-1]:[--enter-x:-24px] data-[direction=1]:[--enter-x:24px] motion-reduce:animate-none"
+            {...props(styles.panel)}
+            className="w-79 max-w-full animate-nav-panel-content-in rounded-2xl border border-border-subtle bg-popover p-1 text-foreground data-[direction=-1]:[--enter-x:-24px] data-[direction=1]:[--enter-x:24px] motion-reduce:animate-none"
           >
             {section.features.map((feature, i) => (
               <div
@@ -133,3 +135,5 @@ export function SiteNavSections({ githubHref }: Props) {
     </nav>
   );
 }
+
+const styles = create({ panel: { boxShadow: shadow.shadowLg } });

@@ -1,3 +1,4 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * The rail's seat in the stage owns visibility and the resize handle, so the
  * rail itself only ever renders at its full width.
@@ -11,12 +12,12 @@
  * Sidebar geometry is 220px by default, clamped from 190px to 400px, with an
  * 8px pointer target on the trailing edge and 8px keyboard steps.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { useMatch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { sidebar } from "../theme/schema.stylex.ts";
-import { ramp, t } from "@nyte-ai/ui/vars.stylex";
+import { motion, role } from "@nyte-ai/ui/vars.stylex";
 import {
   clampSidebarWidth,
   SIDEBAR_WIDTH_MAX,
@@ -26,7 +27,7 @@ import {
   useShellState,
 } from "./shell-state.ts";
 
-const styles = stylex.create({
+const styles = create({
   seat: {
     position: "relative",
     display: "flex",
@@ -56,7 +57,7 @@ const styles = stylex.create({
     insetInlineEnd: 0,
     width: sidebar.handleWidth,
     cursor: "col-resize",
-    touchAction: "none",
+
     outlineStyle: "none",
     "::after": {
       content: '""',
@@ -64,15 +65,15 @@ const styles = stylex.create({
       insetBlock: 0,
       insetInlineEnd: 0,
       width: 1,
-      backgroundColor: t.borderSecondaryTranslucent,
+      backgroundColor: role.borderSecondaryTranslucent,
       transitionProperty: "background-color",
-      transitionDuration: t.durationFast,
-      transitionTimingFunction: t.easeOut,
+      transitionDuration: motion.durationFast,
+      transitionTimingFunction: motion.easeOut,
     },
-    ":hover::after": { backgroundColor: t.borderPrimaryTranslucent },
-    ":focus-visible::after": { backgroundColor: ramp.blue80 },
+    ":hover::after": { backgroundColor: role.borderPrimaryTranslucent },
+    ":focus-visible::after": { backgroundColor: role.contentInteractiveTertiary },
   },
-  handleActive: { "::after": { backgroundColor: ramp.blue80 } },
+  handleActive: { "::after": { backgroundColor: role.contentInteractiveTertiary } },
 });
 
 interface ResizeState {
@@ -152,11 +153,11 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
   };
 
   return (
-    <div {...stylex.props(styles.seat, !visible && styles.seatHidden)}>
+    <div {...props(styles.seat, !visible && styles.seatHidden)}>
       <div
         aria-hidden={!visible}
         inert={visible ? undefined : true}
-        {...stylex.props(styles.rail, !visible && styles.railHidden)}
+        {...props(styles.rail, !visible && styles.railHidden)}
       >
         {children}
       </div>
@@ -169,7 +170,7 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
           aria-valuemin={SIDEBAR_WIDTH_MIN}
           aria-valuemax={SIDEBAR_WIDTH_MAX}
           aria-valuenow={sidebarWidth}
-          {...stylex.props(styles.handle, resizing && styles.handleActive)}
+          {...props(intent.primary, styles.handle, resizing && styles.handleActive)}
           onKeyDown={resizeWithKeyboard}
           onPointerDown={beginResize}
           onPointerMove={moveResize}

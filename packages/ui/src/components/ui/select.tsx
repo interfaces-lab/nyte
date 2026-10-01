@@ -3,9 +3,10 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
 import { focus } from "../../a11y.stylex.ts";
-import { button, layer, menu } from "../../schema.stylex.ts";
+import { button, layer, menu, shape } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { t } from "../../vars.stylex.ts";
+import { surfaceTheme, type Tint } from "../../surface-theme.ts";
+import { appearance, motion, role, shadow, type } from "../../vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 import { useOverlayRef } from "./overlay.tsx";
 
@@ -24,7 +25,7 @@ const styles = create({
     boxSizing: "border-box",
     minWidth: 112,
     maxWidth: 180,
-    height: button.heightSm,
+    height: { default: button.heightSm, "@media (pointer: coarse)": menu.itemHeight },
     paddingBlock: 0,
     paddingInline: button.paddingInlineSm,
     overflow: "hidden",
@@ -32,19 +33,19 @@ const styles = create({
     borderRadius: button.radiusSm,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: t.borderPrimaryTranslucent,
-    backgroundColor: t.bgInteractiveSecondaryTranslucent,
+    borderColor: role.borderPrimaryTranslucent,
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
     backgroundImage: {
       default: "none",
-      ":hover": t.layerHover,
-      "[data-popup-open]": t.layerHover,
+      ":hover": role.layerHover,
+      "[data-popup-open]": role.layerHover,
       "[data-disabled]": "none",
     },
-    color: { default: t.contentPrimary, "[data-disabled]": t.contentDisabled },
-    fontFamily: t.fontSans,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
-    cursor: { default: t.cursorInteractive, "[data-disabled]": "default" },
+    color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
+    fontFamily: type.fontSans,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+    cursor: { default: appearance.cursorInteractive, "[data-disabled]": "default" },
     flexShrink: 0,
   },
   triggerWide: { minWidth: 0, maxWidth: "100%" },
@@ -54,7 +55,7 @@ const styles = create({
     minWidth: 0,
     overflow: "hidden",
     fontFamily: "inherit",
-    lineHeight: t.leadingSm,
+    lineHeight: type.leadingSm,
     textOverflow: "ellipsis",
     textAlign: "left",
     whiteSpace: "nowrap",
@@ -78,20 +79,20 @@ const styles = create({
     overflowY: "auto",
     overscrollBehavior: "contain",
     borderStyle: "none",
-    borderRadius: t.radius8,
+    borderRadius: shape.control,
     outline: "none",
-    backgroundColor: t.popupMaterial,
-    backdropFilter: t.popupMaterialFilter,
-    boxShadow: t.shadowLg,
+    backgroundColor: role.popupMaterial,
+    backdropFilter: appearance.popupMaterialFilter,
+    boxShadow: shadow.shadowLg,
     "::after": {
       content: '""',
       position: "absolute",
       inset: 0,
       borderRadius: "inherit",
-      boxShadow: `inset 0 0 0 1px ${t.borderSecondaryTranslucent}`,
+      boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
       pointerEvents: "none",
     },
-    color: t.contentPrimary,
+    color: role.contentPrimary,
     transformOrigin: "var(--transform-origin)",
     opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
     transform: {
@@ -108,10 +109,10 @@ const styles = create({
     },
     transitionProperty: "opacity, transform",
     transitionDuration: {
-      default: t.durationFast,
+      default: motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: t.easeOutQuint,
+    transitionTimingFunction: motion.easeOutQuint,
   },
   list: {
     display: "flex",
@@ -130,16 +131,16 @@ const styles = create({
     outline: "none",
     backgroundColor: {
       default: "transparent",
-      "[data-highlighted]": t.bgHover,
-      "[data-selected]": t.bgInteractiveSecondaryTranslucent,
-      "[data-selected][data-highlighted]": t.bgInteractiveSecondaryTranslucent,
+      "[data-highlighted]": role.bgHover,
+      "[data-selected]": role.bgInteractiveSecondaryTranslucent,
+      "[data-selected][data-highlighted]": role.bgInteractiveSecondaryTranslucent,
     },
     // A selected row carries a hairline, so it reads apart from the hovered one.
-    boxShadow: { default: "none", "[data-selected]": `inset 0 0 0 1px ${t.borderPrimary}` },
-    color: { default: t.contentPrimary, "[data-disabled]": t.contentDisabled },
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
-    letterSpacing: t.letterBase,
+    boxShadow: { default: "none", "[data-selected]": `inset 0 0 0 1px ${role.borderPrimary}` },
+    color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    letterSpacing: type.letterBase,
     cursor: "default",
     userSelect: "none",
   },
@@ -154,7 +155,7 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     width: 12,
-    color: t.contentSecondary,
+    color: role.contentSecondary,
   },
 });
 
@@ -173,6 +174,7 @@ export type SelectProps<T extends string> = StyledProps<{
   readonly value: T;
   readonly options: readonly SelectOption<T>[];
   readonly disabled?: boolean;
+  readonly tint?: Tint;
   /** `wide` lets the trigger fill its container instead of stopping at 180px. */
   readonly width?: SelectWidth;
   readonly onValueChange: (value: T) => void;
@@ -184,6 +186,7 @@ export function Select<T extends string>({
   value,
   options,
   disabled = false,
+  tint,
   width = "standard",
   onValueChange,
   xstyle,
@@ -232,7 +235,10 @@ export function Select<T extends string>({
           alignItemWithTrigger={false}
           {...props(styles.positioner)}
         >
-          <SelectPrimitive.Popup ref={overlayRef} {...props(styles.popup)}>
+          <SelectPrimitive.Popup
+            ref={overlayRef}
+            {...props(tint !== undefined && surfaceTheme[tint], styles.popup)}
+          >
             <SelectPrimitive.List {...props(styles.list)}>
               {options.map((option) => (
                 <SelectPrimitive.Item

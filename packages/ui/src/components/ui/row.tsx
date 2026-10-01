@@ -1,64 +1,55 @@
+import { mergeProps } from "@base-ui/react/merge-props";
+import type { BaseUIEvent } from "@base-ui/react/types";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { useRender } from "@base-ui/react/use-render";
 import { create, props, type StyleXStyles } from "@stylexjs/stylex";
 
 import { focus } from "../../a11y.stylex.ts";
 import { glyph, row } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { t } from "../../vars.stylex.ts";
+import { appearance, motion, role, type } from "../../vars.stylex.ts";
 
 const styles = create({
   root: {
     boxSizing: "border-box",
     position: "relative",
-    // `Row.Backdrop` sits at `z-index: -1`; this keeps it behind the row, not the list.
     isolation: "isolate",
     display: "flex",
     alignItems: "center",
     width: "100%",
     minWidth: 0,
-    minHeight: `var(--nyte-row-height, ${row.heightMd})`,
-    gap: `var(--nyte-row-gap, ${row.gap})`,
-    paddingInline: `var(--nyte-row-padding-inline, ${row.paddingInlineMd})`,
+    minHeight: row.heightMd,
+    gap: row.gap,
+    "--_row-padding-inline": row.paddingInlineMd,
+    paddingInline: "var(--_row-padding-inline)",
     borderStyle: "none",
     borderRadius: row.radius,
     backgroundColor: "var(--_row-fill, transparent)",
-    color: t.contentPrimary,
-    // Typography is inherited: the surface owns the family and the size.
+    color: role.contentPrimary,
     textAlign: "start",
     transitionProperty: "background-color, color",
     transitionDuration: {
-      default: t.durationFast,
+      default: motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: t.easeOut,
+    transitionTimingFunction: motion.easeOut,
   },
   lg: {
-    "--nyte-row-height": row.heightLg,
-    "--nyte-row-padding-inline": row.paddingInlineLg,
+    minHeight: row.heightLg,
+    "--_row-padding-inline": row.paddingInlineLg,
     paddingBlock: 6,
   },
-  /*
-   * One declaration owns the fill. StyleX merges a property's conditions into
-   * one key, so a second style naming `--_row-fill` replaces these states.
-   */
   interactive: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.bgHover },
-      ":focus-within": t.bgHover,
-      "[data-selected]": t.bgInteractiveSecondaryTranslucent,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":focus-within": role.bgHover,
     },
-    // A selected row carries a hairline, so it reads apart from the hovered one.
-    boxShadow: { default: "none", "[data-selected]": `inset 0 0 0 1px ${t.borderPrimary}` },
   },
-  /*
-   * The row is the control. Its label brightens on hover and on keyboard focus,
-   * and the leading glyph follows the label.
-   */
   nav: {
     "--_row-fill": {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.bgHover },
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
     },
     "--_row-leading-color": "currentColor",
     flexShrink: 0,
@@ -66,31 +57,42 @@ const styles = create({
     paddingBlock: 0,
     borderRadius: row.radius,
     color: {
-      default: t.contentChrome,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.contentPrimary },
-      ":focus-visible": t.contentPrimary,
-      ":disabled": t.contentDisabled,
+      default: role.contentChrome,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":focus-visible": role.contentPrimary,
+      ":disabled": role.contentDisabled,
     },
     font: "inherit",
     textDecoration: "none",
     appearance: "none",
-    cursor: { default: t.cursorInteractive, ":disabled": "default" },
+    cursor: { default: appearance.cursorInteractive, ":disabled": "default" },
   },
-  navSelected: {
-    "--_row-fill": t.bgInteractiveSecondaryTranslucent,
-    boxShadow: `inset 0 0 0 1px ${t.borderPrimary}`,
-    color: t.contentPrimary,
+  selected: {
+    "--_row-fill": role.bgInteractiveSecondaryTranslucent,
+    boxShadow: `inset 0 0 0 1px ${role.borderPrimary}`,
+    color: role.contentPrimary,
   },
-  /*
-   * A surface reclaiming room multiplies this value rather than repeating the
-   * conditions: `calc(var(--_row-actions-opacity, 0) * 44px)`.
-   */
-  revealActions: {
-    "--_row-actions-opacity": { default: 0, ":hover": 1, ":focus-within": 1 },
-    "--_row-actions-pointer-events": {
+  primaryFocus: {
+    outlineStyle: {
       default: "none",
-      ":hover": "auto",
-      ":focus-within": "auto",
+      ':has([data-slot="row-primary"]:focus-visible)': "solid",
+    },
+    outlineWidth: 1,
+    outlineColor: appearance.focusRing,
+    outlineOffset: -1,
+  },
+  revealActions: {
+    "--_row-actions-display": {
+      default: "none",
+      ":hover": "inline-flex",
+      ":focus-within": "inline-flex",
+      "@media (hover: none), (pointer: coarse)": "inline-flex",
+    },
+    "--_row-actions-opacity": {
+      default: 0,
+      ":hover": 1,
+      ":focus-within": 1,
+      "@media (hover: none), (pointer: coarse)": 1,
     },
   },
   primary: {
@@ -100,7 +102,6 @@ const styles = create({
     gap: "inherit",
     flex: 1,
     minWidth: 0,
-    // A `button` or an `a` brings user agent padding, borders, background, and font.
     margin: 0,
     padding: 0,
     borderStyle: "none",
@@ -112,7 +113,8 @@ const styles = create({
     textAlign: "start",
     textDecoration: "none",
     appearance: "none",
-    cursor: { default: t.cursorInteractive, ":disabled": "default" },
+    outlineStyle: "none",
+    cursor: { default: appearance.cursorInteractive, ":disabled": "default" },
   },
   backdrop: {
     position: "absolute",
@@ -125,9 +127,9 @@ const styles = create({
     display: "grid",
     placeItems: "center",
     flexShrink: 0,
-    width: `var(--nyte-row-leading-size, ${glyph.box})`,
+    width: glyph.box,
     lineHeight: 0,
-    color: `var(--_row-leading-color, ${t.contentSecondary})`,
+    color: `var(--_row-leading-color, ${role.contentSecondary})`,
   },
   body: {
     display: "flex",
@@ -147,32 +149,32 @@ const styles = create({
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
   },
   meta: {
     display: "inline-flex",
     alignItems: "center",
     flexShrink: 0,
-    color: `var(--_row-meta-color, ${t.contentSecondary})`,
-    fontSize: t.fontSm,
-    // A time or a count updates in place; tabular figures keep it from shifting.
+    color: `var(--_row-meta-color, ${role.contentSecondary})`,
+    fontSize: type.fontSm,
     fontVariantNumeric: "tabular-nums",
   },
   actions: {
-    display: "inline-flex",
+    position: "relative",
+    zIndex: 1,
+    display: "var(--_row-actions-display, inline-flex)",
     alignItems: "center",
-    gap: 4,
+    gap: 8,
     flexShrink: 0,
-    opacity: "var(--_row-actions-opacity, 1)",
-    pointerEvents: "var(--_row-actions-pointer-events, auto)",
+    alignSelf: "stretch",
+    minWidth: 24,
   },
   actionsOverlay: {
     position: "absolute",
     zIndex: 1,
-    insetInlineEnd: `var(--nyte-row-padding-inline, ${row.paddingInlineMd})`,
-    top: "50%",
-    transform: "translateY(-50%)",
+    insetInlineEnd: "var(--_row-padding-inline)",
+    insetBlock: 0,
   },
 });
 
@@ -198,7 +200,7 @@ interface RowOwnProps {
   readonly interactive?: boolean;
   /** Marks the row current. Surfaces style it through `[data-selected]`. */
   readonly selected?: boolean;
-  /** Hides the action lane until the row is hovered or holds focus. */
+  /** Hides actions until hover or focus; always visible without hover support. */
   readonly revealActions?: boolean;
 }
 
@@ -206,14 +208,47 @@ export type RowProps =
   | (RowElementProps & RowOwnProps & { readonly variant?: "list" })
   | (RowButtonProps & RowOwnProps & { readonly variant: "nav" });
 
-/**
- * One row of a list.
- *
- * Geometry arrives as `--nyte-row-height`, `--nyte-row-gap`,
- * `--nyte-row-padding-inline`, and `--nyte-row-leading-size`, which a surface
- * sets on its list container; `size="lg"` sets them on the row. Fill is a
- * variable: the row reads `--_row-fill` and `interactive` writes it.
- */
+type RowClickEvent = BaseUIEvent<ReactMouseEvent<HTMLElement>>;
+
+function rowClickTarget(event: RowClickEvent) {
+  const target = event.target;
+  const root = event.currentTarget;
+  if (!(target instanceof Element) || target.closest('[data-slot="row"]') !== root) return;
+  if (target.closest('[data-slot="row-actions"]')) return;
+
+  const primary =
+    root.dataset.variant === "nav" ? root : root.querySelector('[data-slot="row-primary"]');
+  if (!(primary instanceof HTMLElement)) return;
+
+  const control = target.closest(
+    'button, a[href], input, select, textarea, summary, [tabindex], [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="slider"], [role="combobox"], [role="spinbutton"], [role="textbox"], [contenteditable]:not([contenteditable="false"])',
+  );
+  if (control && control !== primary) return;
+  return primary;
+}
+
+function preserveRowSelection(event: RowClickEvent) {
+  if (!rowClickTarget(event)) return;
+  if (!event.shiftKey && !event.currentTarget.ownerDocument.getSelection()?.toString()) return;
+  event.preventDefault();
+  event.stopPropagation();
+  event.preventBaseUIHandler();
+}
+
+function activateRow(event: RowClickEvent) {
+  if (event.defaultPrevented) return;
+  const primary = rowClickTarget(event);
+  if (!primary || primary === event.currentTarget) return;
+  if (event.target instanceof Node && primary.contains(event.target)) return;
+  if (primary.matches(':disabled, [aria-disabled="true"]')) return;
+
+  event.stopPropagation();
+  event.preventBaseUIHandler();
+  primary.focus({ preventScroll: true });
+  if (!primary.dispatchEvent(new MouseEvent("click", event.nativeEvent))) event.preventDefault();
+}
+
+/** One painted target, with sibling controls excluded from its primary action. */
 export function Row({
   className,
   interactive = false,
@@ -232,17 +267,22 @@ export function Row({
     defaultTagName: nav ? "button" : "div",
     render,
     props: {
+      ...mergeProps<"button" | "div">(rest, {
+        onClickCapture: preserveRowSelection,
+        onClick: activateRow,
+      }),
       "data-slot": "row",
+      "data-variant": variant,
       "data-selected": selected ? "" : undefined,
       type: nav && render === undefined ? "button" : undefined,
-      ...rest,
       ...mergeStyleProps(
         props(
           styles.root,
           size === "lg" && styles.lg,
           interactive && styles.interactive,
           revealActions && styles.revealActions,
-          nav && [styles.nav, selected && styles.navSelected, focus.ringInset],
+          nav ? [styles.nav, focus.ringInset] : styles.primaryFocus,
+          (interactive || nav) && selected && styles.selected,
           xstyle,
         ),
         className,
@@ -276,9 +316,8 @@ function rowPart(slot: RowSlot, part: StyleXStyles, decorative = false) {
 }
 
 /**
- * The click target, wrapping whichever parts should be clickable. It renders a
- * `<button type="button">`; `render` swaps it for a link or another trigger.
- * Actions live outside it: a button cannot contain one.
+ * The primary action for the whole row, including padding and sibling metadata.
+ * `render` swaps the button for a link or another trigger. Actions remain siblings.
  */
 function RowPrimary({
   className,
@@ -294,7 +333,7 @@ function RowPrimary({
       "data-slot": "row-primary",
       type: render === undefined ? "button" : undefined,
       ...rest,
-      ...mergeStyleProps(props(styles.primary, focus.ringInset, xstyle), className, style),
+      ...mergeStyleProps(props(styles.primary, xstyle), className, style),
     },
   });
 }
@@ -319,8 +358,8 @@ export type RowActionsPlacement = "inline" | "overlay";
 
 /**
  * Actions, a switch, or a chevron. A sibling of the primary, never a child.
- * `overlay` floats the lane over the row instead of taking space in it, so the
- * whole row stays clickable underneath; the surface reclaims the room itself.
+ * `overlay` floats the lane without taking layout space. The entire lane,
+ * including gaps between controls, is excluded from primary activation.
  */
 function RowActions({
   className,

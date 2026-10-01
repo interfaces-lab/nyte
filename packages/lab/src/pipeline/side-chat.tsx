@@ -1,10 +1,12 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * The side chat is the PR's own Nyte session: the product transcript
  * (`TurnView`) and composer, with selected code attached as references. Its
  * header says which branch your checkout is on, because the agent may leave
  * it to edit the PR and must bring you back.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { FileTypeIcon } from "@nyte-ai/app/components/file-type-icon.tsx";
 import { composerStyles, messageScrollerStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
@@ -14,7 +16,7 @@ import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 import { workspace } from "../shell/host-stub";
 import { referenceLabel, type CodeReference } from "./code";
 
@@ -62,29 +64,29 @@ export function SideChat({
   };
 
   return (
-    <aside aria-label="Side chat" {...stylex.props(styles.pane)}>
-      <div {...stylex.props(styles.head)}>
+    <aside aria-label="Side chat" {...props(styles.pane)}>
+      <div {...props(styles.head)}>
         <Icon name="robot" size={14} />
-        <span {...stylex.props(styles.title)}>{title}</span>
+        <span {...props(styles.title)}>{title}</span>
         <span
           title={
             agentBranch === undefined
               ? `Your checkout is on ${checkout}`
               : `Nyte is on ${agentBranch} and will switch back to ${checkout}`
           }
-          {...stylex.props(styles.branch, agentBranch !== undefined && styles.branchAway)}
+          {...props(
+            styles.branch,
+            agentBranch !== undefined && [intent.warning, styles.branchAway],
+          )}
         >
           <Icon name="git-branch" size={12} />
-          <span {...stylex.props(styles.branchName)}>{agentBranch ?? checkout}</span>
+          <span {...props(styles.branchName)}>{agentBranch ?? checkout}</span>
         </span>
       </div>
-      <div ref={scroller} {...stylex.props(messageScrollerStyles.viewport)}>
-        <div {...stylex.props(styles.transcript)}>
+      <div ref={scroller} {...props(messageScrollerStyles.viewport)}>
+        <div {...props(styles.transcript)}>
           {turns.map((turn, index) => (
-            <div
-              key={turn.kind === "turn" ? turn.id : String(index)}
-              {...stylex.props(styles.turn)}
-            >
+            <div key={turn.kind === "turn" ? turn.id : String(index)} {...props(styles.turn)}>
               <TurnView
                 turn={turn}
                 liveTools={NO_LIVE_TOOLS}
@@ -97,25 +99,19 @@ export function SideChat({
           ))}
         </div>
       </div>
-      <div {...stylex.props(composerStyles.dock)}>
+      <div {...props(composerStyles.dock)}>
         <div
           role="region"
           aria-label="Message Nyte"
-          {...stylex.props(composerStyles.region, styles.region)}
+          {...props(composerStyles.region, styles.region)}
         >
-          <div
-            {...stylex.props(
-              composerStyles.frame,
-              composerStyles.frameFollowUpExpanded,
-              styles.frame,
-            )}
-          >
+          <div {...props(composerStyles.frame, composerStyles.frameFollowUpExpanded, styles.frame)}>
             {references.length > 0 && (
-              <div {...stylex.props(styles.references)}>
+              <div {...props(styles.references)}>
                 {references.map((reference, index) => (
                   <span
                     key={`${reference.path}:${reference.start}:${reference.end}:${reference.side}`}
-                    {...stylex.props(styles.reference)}
+                    {...props(styles.reference)}
                   >
                     <FileTypeIcon path={reference.path} />
                     {referenceLabel(reference)}
@@ -123,7 +119,7 @@ export function SideChat({
                       type="button"
                       aria-label={`Remove ${referenceLabel(reference)}`}
                       onClick={() => onRemoveReference(index)}
-                      {...stylex.props(styles.remove)}
+                      {...props(styles.remove)}
                     >
                       <Icon name="x" size={10} />
                     </button>
@@ -143,15 +139,16 @@ export function SideChat({
                   send();
                 }
               }}
-              {...stylex.props(composerStyles.input, styles.input)}
+              {...props(composerStyles.input, styles.input)}
             />
-            <div {...stylex.props(styles.controls)}>
-              <span {...stylex.props(styles.spacer)} />
+            <div {...props(styles.controls)}>
+              <span {...props(styles.spacer)} />
               <Button
                 iconOnly
                 icon="arrow-up"
                 aria-label="Send"
-                variant="inverse"
+                variant="solid"
+                tone="primary"
                 round
                 disabled={!ready}
                 onClick={send}
@@ -164,17 +161,17 @@ export function SideChat({
   );
 }
 
-const styles = stylex.create({
+const styles = create({
   pane: {
     display: "flex",
     flexDirection: "column",
     width: 400,
     flexShrink: 0,
     minHeight: 0,
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: t.borderSecondaryTranslucent,
+    borderInlineStartColor: role.borderSecondaryTranslucent,
   },
   head: {
     display: "flex",
@@ -184,15 +181,15 @@ const styles = stylex.create({
     paddingInline: 14,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderSecondaryTranslucent,
-    color: t.contentSecondary,
+    borderBottomColor: role.borderSecondaryTranslucent,
+    color: role.contentSecondary,
     flexShrink: 0,
   },
   title: {
     flex: 1,
     minWidth: 72,
     overflow: "hidden",
-    color: t.contentPrimary,
+    color: role.contentPrimary,
     fontWeight: 500,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
@@ -205,14 +202,17 @@ const styles = stylex.create({
     maxWidth: "65%",
     paddingInline: 6,
     height: 20,
-    borderRadius: t.radius4,
-    backgroundColor: t.bgMutedTranslucent,
-    color: t.contentSecondary,
-    fontFamily: t.fontMono,
+    borderRadius: shape.indicator,
+    backgroundColor: role.bgMutedTranslucent,
+    color: role.contentSecondary,
+    fontFamily: type.fontMono,
     fontSize: 11,
   },
   branchName: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  branchAway: { backgroundColor: t.intentWarningBg, color: t.intentWarningContent },
+  branchAway: {
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    color: role.contentSecondary,
+  },
   transcript: { display: "flex", flexDirection: "column", paddingBlock: 16 },
   turn: {
     paddingInline: conversation.gutter,
@@ -227,11 +227,11 @@ const styles = stylex.create({
     gap: 6,
     height: 24,
     paddingInline: "6px 4px",
-    borderRadius: t.radius6,
-    backgroundColor: t.bgMutedTranslucent,
-    boxShadow: `inset 0 0 0 1px ${t.borderSecondaryTranslucent}`,
-    color: t.contentSecondary,
-    fontFamily: t.fontMono,
+    borderRadius: shape.control,
+    backgroundColor: role.bgMutedTranslucent,
+    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
+    color: role.contentSecondary,
+    fontFamily: type.fontMono,
     fontSize: 11.5,
   },
   remove: {
@@ -240,10 +240,10 @@ const styles = stylex.create({
     width: 16,
     height: 16,
     borderStyle: "none",
-    borderRadius: t.radius4,
-    backgroundColor: { default: "transparent", ":hover": t.bgHover },
-    color: t.contentInteractiveSecondary,
-    cursor: t.cursorInteractive,
+    borderRadius: shape.indicator,
+    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    color: role.contentInteractiveSecondary,
+    cursor: appearance.cursorInteractive,
   },
   input: {
     minHeight: 40,
@@ -251,7 +251,7 @@ const styles = stylex.create({
     borderStyle: "none",
     outlineStyle: "none",
     backgroundColor: "transparent",
-    color: t.contentPrimary,
+    color: role.contentPrimary,
     font: "inherit",
   },
   controls: { display: "flex", alignItems: "center", gap: 8 },

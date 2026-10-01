@@ -11,10 +11,10 @@
  * legible only under the pointer and a long name wraps instead of being cut off.
  */
 import { ResponsiveLine } from "@nivo/line";
-import type { LineSeries, SliceTooltipProps } from "@nivo/line";
+import type { LineCustomSvgLayerProps, LineSeries, SliceTooltipProps } from "@nivo/line";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -22,7 +22,8 @@ import { Button } from "@nyte-ai/ui/button";
 import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { useAccountLimits, useUsageReport } from "../queries.ts";
-import { ramp, t } from "@nyte-ai/ui/vars.stylex";
+import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { isOption } from "./sidebar-view.ts";
 import { skeletonStyles as bone, usageStyles as styles } from "./usage-settings.stylex.ts";
 import {
@@ -77,31 +78,30 @@ type UsageTab = (typeof USAGE_TABS)[number];
 const WHERE_TABS = ["folders", "chats"] as const;
 
 /** One colour per rank, shared by a bar segment and the row that names it. */
-const RANK_COLOURS = [
-  styles.series0,
-  styles.series1,
-  styles.series2,
-  styles.series3,
-  styles.series4,
+const RANK_TINTS = [
+  surfaceTheme.blue,
+  surfaceTheme.purple,
+  surfaceTheme.teal,
+  surfaceTheme.orange,
+  surfaceTheme.green,
 ] as const;
 
 /** Tokens by kind, on the same ramp as the ranked lists so colour means one thing. */
 const TOKEN_SERIES = [
-  { id: "Input", colour: ramp.blue80, swatch: styles.series0, read: (p: UsagePoint) => p.input },
+  { id: "Input", tint: surfaceTheme.blue, read: (p: UsagePoint) => p.input },
   {
     id: "Output",
-    colour: ramp.purple80,
-    swatch: styles.series1,
+    tint: surfaceTheme.purple,
     read: (p: UsagePoint) => p.output,
   },
-  { id: "Cached", colour: t.markTeal, swatch: styles.series2, read: (p: UsagePoint) => p.cached },
+  { id: "Cached", tint: surfaceTheme.teal, read: (p: UsagePoint) => p.cached },
 ] as const;
 
 /** Ticks under the curve: the ends and a few evenly between, never every bucket. */
 const CHART_TICKS = 5;
 
-function rankColour(rank: number): stylex.StyleXStyles {
-  return RANK_COLOURS[rank % RANK_COLOURS.length] ?? styles.series0;
+function rankTint(rank: number) {
+  return RANK_TINTS[rank % RANK_TINTS.length] ?? surfaceTheme.blue;
 }
 
 function percentOf(share: number): string {
@@ -115,7 +115,7 @@ function Bone({
   readonly width: number | string;
   readonly height: number;
 }): ReactElement {
-  return <span aria-hidden="true" {...stylex.props(bone.bone)} style={{ width, height }} />;
+  return <span aria-hidden="true" {...props(bone.bone)} style={{ width, height }} />;
 }
 
 /** The line under the strip: when this tab's numbers are from, and its controls. */
@@ -127,9 +127,9 @@ function PanelHead({
   readonly actions?: ReactNode;
 }): ReactElement {
   return (
-    <div {...stylex.props(styles.heading)}>
-      <span {...stylex.props(styles.hint)}>{hint}</span>
-      {actions !== undefined && <span {...stylex.props(styles.headingActions)}>{actions}</span>}
+    <div {...props(styles.heading)}>
+      <span {...props(styles.hint)}>{hint}</span>
+      {actions !== undefined && <span {...props(styles.headingActions)}>{actions}</span>}
     </div>
   );
 }
@@ -151,18 +151,18 @@ function Breakdown({
   const hidden = rows.length - shown.length;
 
   return (
-    <div {...stylex.props(styles.group)}>
+    <div {...props(styles.group)}>
       {shown.length === 0 ? (
-        <p {...stylex.props(styles.row, styles.meta)}>{empty}</p>
+        <p {...props(styles.row, styles.meta)}>{empty}</p>
       ) : (
         <>
-          <span aria-hidden="true" {...stylex.props(styles.barSlot)}>
-            <span {...stylex.props(styles.bar)}>
+          <span aria-hidden="true" {...props(styles.barSlot)}>
+            <span {...props(styles.bar)}>
               {shown.map((row, rank) =>
                 row.share <= 0 ? null : (
                   <span
                     key={row.key}
-                    {...stylex.props(styles.barSegment, rankColour(rank))}
+                    {...props(rankTint(rank), styles.barSegment, styles.series)}
                     style={{ flexBasis: percentOf(row.share) }}
                   />
                 ),
@@ -171,23 +171,24 @@ function Breakdown({
           </span>
           <div role="list" aria-label={label}>
             {shown.map((row, rank) => (
-              <div role="listitem" key={row.key} {...stylex.props(styles.row)}>
-                <span {...stylex.props(styles.rowCopy)}>
-                  <span {...stylex.props(styles.rowName)}>
-                    <span aria-hidden="true" {...stylex.props(styles.dot, rankColour(rank))} />
+              <div role="listitem" key={row.key} {...props(styles.row)}>
+                <span {...props(styles.rowCopy)}>
+                  <span {...props(styles.rowName)}>
+                    <span
+                      aria-hidden="true"
+                      {...props(rankTint(rank), styles.dot, styles.series)}
+                    />
                     {row.label}
                   </span>
-                  <span {...stylex.props(styles.rowMeta, styles.rowMetaInset)}>{row.meta}</span>
+                  <span {...props(styles.rowMeta, styles.rowMetaInset)}>{row.meta}</span>
                 </span>
-                <span
-                  {...stylex.props(styles.rowValue, row.value.kind === "absent" && styles.absent)}
-                >
+                <span {...props(styles.rowValue, row.value.kind === "absent" && styles.absent)}>
                   {row.value.text}
                 </span>
-                <span {...stylex.props(styles.rowShare)}>{formatPercent(row.share)}</span>
+                <span {...props(styles.rowShare)}>{formatPercent(row.share)}</span>
               </div>
             ))}
-            {hidden > 0 && <p {...stylex.props(styles.more)}>+{String(hidden)} more</p>}
+            {hidden > 0 && <p {...props(styles.more)}>+{String(hidden)} more</p>}
           </div>
         </>
       )}
@@ -204,14 +205,14 @@ function BreakdownSkeleton({
   readonly bar?: boolean;
 }): ReactElement {
   return (
-    <div aria-busy="true" {...stylex.props(styles.group)}>
+    <div aria-busy="true" {...props(styles.group)}>
       {bar && (
-        <span {...stylex.props(styles.barSlot)}>
-          <span {...stylex.props(styles.bar)} />
+        <span {...props(styles.barSlot)}>
+          <span {...props(styles.bar)} />
         </span>
       )}
       {Array.from({ length: rows }, (_slot, index) => (
-        <span key={index} {...stylex.props(styles.row, bone.row)}>
+        <span key={index} {...props(styles.row, bone.row)}>
           <Bone width={index === 0 ? 168 : 124} height={10} />
           <Bone width={index === 0 ? "58%" : "34%"} height={8} />
         </span>
@@ -236,16 +237,16 @@ function TokenCurve({ usage }: { readonly usage: UsageDerived }): ReactElement |
   const labelAt = (index: number): string => usage.points[index]?.label ?? "";
 
   return (
-    <div {...stylex.props(styles.chart)}>
-      <span {...stylex.props(styles.chartLegend)}>
+    <div {...props(styles.chart)}>
+      <span {...props(styles.chartLegend)}>
         {series.map((kind) => (
-          <span key={kind.id} {...stylex.props(styles.chartKey)}>
-            <span aria-hidden="true" {...stylex.props(styles.chartSwatch, kind.swatch)} />
+          <span key={kind.id} {...props(styles.chartKey)}>
+            <span aria-hidden="true" {...props(kind.tint, styles.chartSwatch, styles.series)} />
             {kind.id}
           </span>
         ))}
       </span>
-      <div {...stylex.props(styles.chartPlot)}>
+      <div {...props(styles.chartPlot)}>
         <ResponsiveLine
           data={series.map((kind) => ({
             id: kind.id,
@@ -259,7 +260,8 @@ function TokenCurve({ usage }: { readonly usage: UsageDerived }): ReactElement |
           xFormat={labelAt}
           yFormat={formatTokens}
           curve="monotoneX"
-          colors={series.map((kind) => kind.colour)}
+          colors={() => role.contentInteractiveTertiary}
+          layers={["grid", "markers", "axes", TokenCurveLayers, "crosshair", "slices"]}
           lineWidth={2}
           enablePoints={false}
           enableArea
@@ -273,10 +275,10 @@ function TokenCurve({ usage }: { readonly usage: UsageDerived }): ReactElement |
           crosshairType="x"
           animate={false}
           theme={{
-            text: { fontFamily: t.fontSans, fontSize: 11, fill: t.contentSecondary },
-            grid: { line: { stroke: t.borderSecondaryTranslucent, strokeWidth: 1 } },
+            text: { fontFamily: type.fontSans, fontSize: 11, fill: role.contentSecondary },
+            grid: { line: { stroke: role.borderSecondaryTranslucent, strokeWidth: 1 } },
             crosshair: {
-              line: { stroke: t.borderPrimaryTranslucent, strokeWidth: 1, strokeOpacity: 1 },
+              line: { stroke: role.borderPrimaryTranslucent, strokeWidth: 1, strokeOpacity: 1 },
             },
           }}
           sliceTooltip={TokenSliceTooltip}
@@ -286,17 +288,51 @@ function TokenCurve({ usage }: { readonly usage: UsageDerived }): ReactElement |
   );
 }
 
+function TokenCurveLayers<Series extends LineSeries>({
+  series,
+  lineGenerator,
+  areaGenerator,
+  lineWidth,
+  areaOpacity,
+}: LineCustomSvgLayerProps<Series>): ReactElement {
+  const paintOrder = series.toReversed();
+
+  return (
+    <>
+      {paintOrder.map((serie) => (
+        <path
+          key={serie.id}
+          d={areaGenerator(serie.data.map((datum) => datum.position)) ?? undefined}
+          fillOpacity={areaOpacity}
+          {...props(TOKEN_SERIES.find((kind) => kind.id === serie.id)?.tint, styles.chartArea)}
+        />
+      ))}
+      {paintOrder.map((serie) => (
+        <path
+          key={serie.id}
+          d={lineGenerator(serie.data.map((datum) => datum.position)) ?? undefined}
+          strokeWidth={lineWidth}
+          {...props(TOKEN_SERIES.find((kind) => kind.id === serie.id)?.tint, styles.chartLine)}
+        />
+      ))}
+    </>
+  );
+}
+
 function TokenSliceTooltip({ slice }: SliceTooltipProps<LineSeries>): ReactElement {
   return (
-    <div {...stylex.props(styles.chartTip)}>
-      <span {...stylex.props(styles.chartTipLabel)}>{slice.points[0]?.data.xFormatted}</span>
+    <div {...props(styles.chartTip)}>
+      <span {...props(styles.chartTipLabel)}>{slice.points[0]?.data.xFormatted}</span>
       {slice.points.map((point) => (
-        <span key={point.id} {...stylex.props(styles.chartTipRow)}>
-          <span {...stylex.props(styles.chartKey)}>
+        <span key={point.id} {...props(styles.chartTipRow)}>
+          <span {...props(styles.chartKey)}>
             <span
               aria-hidden="true"
-              {...stylex.props(styles.chartSwatch)}
-              style={{ backgroundColor: point.seriesColor }}
+              {...props(
+                TOKEN_SERIES.find((kind) => kind.id === point.seriesId)?.tint,
+                styles.chartSwatch,
+                styles.series,
+              )}
             />
             {point.seriesId}
           </span>
@@ -319,15 +355,16 @@ function LimitMeter({
   const tier = limitTier(used);
 
   return (
-    <div {...stylex.props(styles.row)}>
-      <span {...stylex.props(styles.meter, styles.rowCopy)}>
-        <span {...stylex.props(styles.meterHead)}>
-          <span {...stylex.props(styles.rowName)}>{label}</span>
+    <div {...props(styles.row)}>
+      <span {...props(styles.meter, styles.rowCopy)}>
+        <span {...props(styles.meterHead)}>
+          <span {...props(styles.rowName)}>{label}</span>
           <span
-            {...stylex.props(
+            {...props(
+              tier === "warm" && intent.warning,
+              tier === "hot" && intent.danger,
               styles.rowValue,
-              tier === "warm" && styles.warm,
-              tier === "hot" && styles.hot,
+              tier !== "calm" && styles.statusText,
             )}
           >
             {String(used)}% used
@@ -340,18 +377,17 @@ function LimitMeter({
           aria-valuemax={100}
           aria-valuenow={used}
           aria-valuetext={`${String(used)}% used`}
-          {...stylex.props(styles.meterTrack)}
+          {...props(styles.meterTrack)}
         >
           <span
-            {...stylex.props(
+            {...props(
+              tier === "warm" ? intent.warning : tier === "hot" ? intent.danger : intent.primary,
               styles.meterFill,
-              tier === "warm" && styles.meterFillWarm,
-              tier === "hot" && styles.meterFillHot,
             )}
             style={{ width: percentOf(used / 100) }}
           />
         </span>
-        <span {...stylex.props(styles.rowMeta)}>{reset}</span>
+        <span {...props(styles.rowMeta)}>{reset}</span>
       </span>
     </div>
   );
@@ -367,13 +403,17 @@ function Notice({
   readonly action?: ReactNode;
 }): ReactElement {
   return (
-    <p role={alert === true ? "alert" : "status"} {...stylex.props(styles.notice)}>
+    <p role={alert === true ? "alert" : "status"} {...props(styles.notice)}>
       <Icon
         name="warning"
         size={14}
-        {...stylex.props(styles.noticeIcon, alert === true && styles.noticeIconAlert)}
+        {...props(
+          alert === true && intent.warning,
+          styles.noticeIcon,
+          alert === true && styles.noticeIconAlert,
+        )}
       />
-      <span {...stylex.props(styles.noticeCopy)}>{children}</span>
+      <span {...props(styles.noticeCopy)}>{children}</span>
       {action}
     </p>
   );
@@ -389,10 +429,10 @@ function EmptyPanel({
   readonly action: ReactNode;
 }): ReactElement {
   return (
-    <div {...stylex.props(styles.panel)}>
-      <span {...stylex.props(styles.panelTitle)}>{title}</span>
-      <p {...stylex.props(styles.panelBody)}>{body}</p>
-      <span {...stylex.props(styles.panelActions)}>{action}</span>
+    <div {...props(styles.panel)}>
+      <span {...props(styles.panelTitle)}>{title}</span>
+      <p {...props(styles.panelBody)}>{body}</p>
+      <span {...props(styles.panelActions)}>{action}</span>
     </div>
   );
 }
@@ -474,7 +514,7 @@ export function UsageSettings(): ReactElement {
   const hottestTier = hottest === undefined ? "calm" : limitTier(hottest.used);
 
   const refreshButton = (
-    <Button variant="secondary" disabled={isFetching} onClick={refresh}>
+    <Button variant="outline" disabled={isFetching} onClick={refresh}>
       {isFetching ? "Reading…" : "Refresh"}
     </Button>
   );
@@ -517,7 +557,7 @@ export function UsageSettings(): ReactElement {
         body={empty.body}
         action={
           empty.offerAllTime ? (
-            <Button variant="inverse" onClick={() => setRange("all")}>
+            <Button variant="solid" tone="primary" onClick={() => setRange("all")}>
               Show all time
             </Button>
           ) : (
@@ -547,7 +587,7 @@ export function UsageSettings(): ReactElement {
       xstyle={styles.page}
     >
       {report === undefined && (
-        <span role="status" {...stylex.props(srOnly)}>
+        <span role="status" {...props(srOnly)}>
           Reading local history…
         </span>
       )}
@@ -556,17 +596,17 @@ export function UsageSettings(): ReactElement {
         <Tabs.Tab value="spend">
           Spend
           {usage !== undefined && empty === undefined && (
-            <span {...stylex.props(styles.tabSummary)}>{formatUsd(usage.totals.cost)}</span>
+            <span {...props(styles.tabSummary)}>{formatUsd(usage.totals.cost)}</span>
           )}
         </Tabs.Tab>
         <Tabs.Tab value="limits">
           Limits
           {hottest !== undefined && hottestTier !== "calm" && (
             <span
-              {...stylex.props(
+              {...props(
+                hottestTier === "warm" && intent.warning,
+                hottestTier === "hot" && intent.danger,
                 styles.tabSummary,
-                hottestTier === "warm" && styles.warm,
-                hottestTier === "hot" && styles.hot,
               )}
             >
               {hottest.plan.split(" · ")[0]} {String(hottest.used)}%
@@ -576,7 +616,7 @@ export function UsageSettings(): ReactElement {
         <Tabs.Tab value="where">Where</Tabs.Tab>
         <Tabs.Tab value="tools">
           All tools
-          {tools !== undefined && <span {...stylex.props(styles.tabSummary)}>{tools.amount}</span>}
+          {tools !== undefined && <span {...props(styles.tabSummary)}>{tools.amount}</span>}
         </Tabs.Tab>
       </Tabs.List>
 
@@ -594,7 +634,7 @@ export function UsageSettings(): ReactElement {
           <Notice
             alert
             action={
-              <Button variant="link" onClick={refresh}>
+              <Button variant="text" onClick={refresh}>
                 Refresh
               </Button>
             }
@@ -611,7 +651,7 @@ export function UsageSettings(): ReactElement {
 
         {usage === undefined ? (
           <>
-            <span {...stylex.props(styles.headline)}>
+            <span {...props(styles.headline)}>
               <Bone width={148} height={28} />
               <Bone width={264} height={10} />
             </span>
@@ -620,19 +660,18 @@ export function UsageSettings(): ReactElement {
         ) : (
           (emptyPanel ?? (
             <>
-              <span {...stylex.props(styles.headline)}>
-                <span {...stylex.props(styles.amount)}>
-                  {formatTokens(usage.totals.tokens)} tokens
-                </span>
-                <span {...stylex.props(styles.meta)}>
+              <span {...props(styles.headline)}>
+                <span {...props(styles.amount)}>{formatTokens(usage.totals.tokens)} tokens</span>
+                <span {...props(styles.meta)}>
                   {formatUsd(usage.totals.cost)} · {describeTotals(usage.totals)}
                   {change !== undefined && (
                     <>
                       {" · "}
                       <span
-                        {...stylex.props(
-                          change.direction === "up" && styles.changeUp,
-                          change.direction === "down" && styles.changeDown,
+                        {...props(
+                          change.direction === "up" && intent.warning,
+                          change.direction === "down" && intent.success,
+                          styles.statusText,
                         )}
                       >
                         {change.label}
@@ -643,7 +682,7 @@ export function UsageSettings(): ReactElement {
                 </span>
               </span>
               <TokenCurve usage={usage} />
-              <h3 {...stylex.props(styles.label)}>By model</h3>
+              <h3 {...props(styles.label)}>By model</h3>
               <Breakdown
                 label="Nyte spend by model"
                 rows={usage.models}
@@ -662,9 +701,9 @@ export function UsageSettings(): ReactElement {
           <BreakdownSkeleton rows={2} bar={false} />
         ) : (
           plans.map((plan) => (
-            <div key={plan.title} {...stylex.props(styles.stack)}>
-              <h3 {...stylex.props(styles.label)}>{plan.title}</h3>
-              <div {...stylex.props(styles.group)}>
+            <div key={plan.title} {...props(styles.stack)}>
+              <h3 {...props(styles.label)}>{plan.title}</h3>
+              <div {...props(styles.group)}>
                 {plan.message === undefined ? (
                   plan.meters.map((meter) => (
                     <LimitMeter
@@ -675,10 +714,7 @@ export function UsageSettings(): ReactElement {
                     />
                   ))
                 ) : (
-                  <p
-                    role={plan.failed ? "alert" : undefined}
-                    {...stylex.props(styles.row, styles.meta)}
-                  >
+                  <p role={plan.failed ? "alert" : undefined} {...props(styles.row, styles.meta)}>
                     {plan.message}
                   </p>
                 )}
@@ -721,11 +757,11 @@ export function UsageSettings(): ReactElement {
 
       <Tabs.Panel value="tools" keepMounted xstyle={styles.tabPanel}>
         <PanelHead hint="All time · from each tool's local history" actions={refreshButton} />
-        <span {...stylex.props(styles.headline)}>
-          <span {...stylex.props(styles.amount)}>
+        <span {...props(styles.headline)}>
+          <span {...props(styles.amount)}>
             {tools === undefined ? <Bone width={120} height={28} /> : tools.amount}
           </span>
-          <span {...stylex.props(styles.meta)}>
+          <span {...props(styles.meta)}>
             {tools === undefined ? <Bone width={248} height={10} /> : tools.meta}
           </span>
         </span>
@@ -742,10 +778,10 @@ export function UsageSettings(): ReactElement {
 
             if (history.kind === "message") {
               return (
-                <div {...stylex.props(styles.group)}>
+                <div {...props(styles.group)}>
                   <p
                     role={history.failed ? "alert" : undefined}
-                    {...stylex.props(styles.row, styles.meta)}
+                    {...props(styles.row, styles.meta)}
                   >
                     {history.message}
                   </p>
@@ -760,7 +796,7 @@ export function UsageSettings(): ReactElement {
                   rows={history.rows}
                   empty="No usage records in the readable history."
                 />
-                {history.note !== undefined && <p {...stylex.props(styles.note)}>{history.note}</p>}
+                {history.note !== undefined && <p {...props(styles.note)}>{history.note}</p>}
               </>
             );
           }}

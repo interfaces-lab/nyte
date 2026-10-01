@@ -1,134 +1,127 @@
 /**
- * The roles: Notion Calendar's colour roles, each a light and a dark step
- * through `light-dark()`, which follows `color-scheme`. These are the neutral
- * values, except that readable text takes the nearest step reaching 4.5:1 on
- * the base, chrome, and elevated surfaces, and interactive glyphs the nearest
- * reaching 3:1. `surface-theme.ts` re-declares the
- * scoped subset from the theme
- * layer, and because a theme class re-declares this whole group on its
- * element, everything defined here re-resolves inside a scope. Hover and
- * pressed carry Notion's multipliers inline: a number cannot switch through
- * `light-dark()`.
+ * Notion Calendar's colour roles over the theme layer. Each role names a light
+ * and a dark theme step; `light-dark()` picks one by `color-scheme`. Hover and
+ * pressed states derive from their base role, so a scope that moves the base
+ * moves them too.
+ *
+ * `roles` holds the neutral steps the page uses. `tinted` is what a scope
+ * applies with a hue: a theme class re-declares this whole group on its
+ * element, so every role re-resolves from the scoped theme, and `tinted` only
+ * lists the roles whose steps differ. Gray with `tinted` is a second, softer
+ * gray.
  */
-import { defineVars } from "@stylexjs/stylex";
-
-import "./ramps.stylex.ts";
+import { createTheme, defineVars } from "@stylexjs/stylex";
 import "./theme.stylex.ts";
 
-export const roles = defineVars({
-  "--nyte-content-primary": "light-dark(var(--nyte-gray-130), var(--nyte-gray-30))",
-  "--nyte-content-secondary": "light-dark(var(--nyte-gray-100), var(--nyte-gray-70))",
-  "--nyte-content-tertiary": "light-dark(var(--nyte-gray-70), var(--nyte-gray-100))",
-  "--nyte-content-disabled": "light-dark(var(--nyte-gray-40), var(--nyte-gray-120))",
-  "--nyte-content-chrome": "light-dark(var(--nyte-gray-100), var(--nyte-gray-60))",
-  "--nyte-content-interactive-primary": "light-dark(var(--nyte-gray-120), var(--nyte-gray-20))",
-  "--nyte-content-disabled-translucent":
-    "light-dark(var(--nyte-translucent-gray-40), var(--nyte-translucent-gray-120))",
-  "--nyte-content-interactive-secondary": "light-dark(var(--nyte-gray-100), var(--nyte-gray-50))",
-  "--nyte-content-interactive-tertiary": "light-dark(var(--nyte-gray-80), var(--nyte-gray-90))",
-  "--nyte-content-on-interactive-strong": "var(--nyte-gray-0)",
-  "--nyte-content-on-control": "var(--nyte-gray-0)",
-  "--nyte-border-primary": "light-dark(var(--nyte-gray-30), var(--nyte-gray-120))",
-  "--nyte-border-secondary": "light-dark(var(--nyte-gray-20), var(--nyte-gray-135))",
-  "--nyte-border-strong": "light-dark(var(--nyte-gray-40), var(--nyte-gray-100))",
-  "--nyte-border-interactive-primary": "var(--nyte-gray-80)",
-  "--nyte-border-primary-translucent":
-    "light-dark(var(--nyte-translucent-gray-30), var(--nyte-translucent-gray-120))",
-  "--nyte-border-secondary-translucent":
-    "light-dark(var(--nyte-translucent-gray-20), var(--nyte-translucent-gray-135))",
-  "--nyte-border-strong-translucent":
-    "light-dark(var(--nyte-translucent-gray-40), var(--nyte-translucent-gray-100))",
-  "--nyte-border-control": "light-dark(var(--nyte-gray-40), var(--nyte-gray-100))",
-  "--nyte-border-interactive-primary-translucent": "var(--nyte-translucent-gray-80)",
-  "--nyte-border-control-translucent":
-    "light-dark(var(--nyte-translucent-gray-40), var(--nyte-translucent-gray-100))",
-  "--nyte-bg-base": "light-dark(var(--nyte-gray-0), var(--nyte-gray-145))",
-  "--nyte-bg-muted": "light-dark(var(--nyte-gray-10), var(--nyte-gray-140))",
-  "--nyte-bg-elevated": "light-dark(var(--nyte-gray-0), var(--nyte-gray-140))",
-  "--nyte-bg-interactive-primary": "light-dark(var(--nyte-gray-30), var(--nyte-gray-120))",
-  "--nyte-bg-interactive-primary-hover":
-    "light-dark(oklch(from var(--nyte-bg-interactive-primary) calc(l * 0.95) c h), oklch(from var(--nyte-bg-interactive-primary) calc(l * 1.05) c h))",
-  "--nyte-bg-interactive-primary-pressed":
-    "light-dark(oklch(from var(--nyte-bg-interactive-primary) calc(l * 0.88) c h), oklch(from var(--nyte-bg-interactive-primary) calc(l * 1.12) c h))",
-  "--nyte-bg-interactive-secondary": "light-dark(var(--nyte-gray-15), var(--nyte-gray-135))",
-  "--nyte-bg-interactive-secondary-hover":
-    "light-dark(oklch(from var(--nyte-bg-interactive-secondary) calc(l * 0.95) c h), oklch(from var(--nyte-bg-interactive-secondary) calc(l * 1.05) c h))",
-  "--nyte-bg-interactive-secondary-pressed":
-    "light-dark(oklch(from var(--nyte-bg-interactive-secondary) calc(l * 0.88) c h), oklch(from var(--nyte-bg-interactive-secondary) calc(l * 1.12) c h))",
-  "--nyte-bg-interactive-strong": "light-dark(var(--nyte-gray-130), var(--nyte-gray-100))",
-  "--nyte-bg-interactive-strong-hover":
-    "light-dark(oklch(from var(--nyte-bg-interactive-strong) calc(l * 1.2) c h), oklch(from var(--nyte-bg-interactive-strong) calc(l * 1.05) c h))",
-  "--nyte-bg-interactive-strong-pressed":
-    "light-dark(oklch(from var(--nyte-bg-interactive-strong) calc(l * 1.27) c h), oklch(from var(--nyte-bg-interactive-strong) calc(l * 1.12) c h))",
-  "--nyte-bg-inverse": "light-dark(var(--nyte-gray-130), var(--nyte-gray-120))",
-  "--nyte-bg-control-selected": "light-dark(var(--nyte-gray-130), var(--nyte-gray-100))",
-  "--nyte-bg-control-selected-hover":
-    "light-dark(oklch(from var(--nyte-bg-control-selected) calc(l * 0.95) c h), oklch(from var(--nyte-bg-control-selected) calc(l * 1.05) c h))",
-  "--nyte-bg-control-selected-pressed":
-    "light-dark(oklch(from var(--nyte-bg-control-selected) calc(l * 0.88) c h), oklch(from var(--nyte-bg-control-selected) calc(l * 1.12) c h))",
-  "--nyte-bg-control": "light-dark(var(--nyte-gray-40), var(--nyte-gray-100))",
-  "--nyte-bg-control-hover":
-    "light-dark(oklch(from var(--nyte-bg-control) calc(l * 0.95) c h), oklch(from var(--nyte-bg-control) calc(l * 1.05) c h))",
-  "--nyte-bg-control-pressed":
-    "light-dark(oklch(from var(--nyte-bg-control) calc(l * 0.88) c h), oklch(from var(--nyte-bg-control) calc(l * 1.12) c h))",
-  "--nyte-bg-chrome": "light-dark(var(--nyte-gray-5), var(--nyte-gray-150))",
-  "--nyte-bg-base-translucent":
-    "light-dark(var(--nyte-translucent-gray-0), var(--nyte-translucent-gray-150))",
-  "--nyte-bg-chrome-translucent":
-    "light-dark(var(--nyte-translucent-gray-5), var(--nyte-translucent-gray-145))",
-  "--nyte-bg-muted-translucent":
-    "light-dark(var(--nyte-translucent-gray-10), var(--nyte-translucent-gray-140))",
-  "--nyte-bg-interactive-primary-translucent":
-    "light-dark(var(--nyte-translucent-gray-30), var(--nyte-translucent-gray-120))",
-  "--nyte-bg-interactive-primary-translucent-hover":
-    "oklch(from var(--nyte-bg-interactive-primary-translucent) l c h / calc(alpha + 0.055))",
-  "--nyte-bg-interactive-primary-translucent-pressed":
-    "oklch(from var(--nyte-bg-interactive-primary-translucent) l c h / calc(alpha + 0.1))",
-  "--nyte-bg-interactive-secondary-translucent":
-    "light-dark(var(--nyte-translucent-gray-15), var(--nyte-translucent-gray-135))",
-  "--nyte-bg-interactive-secondary-translucent-hover":
-    "oklch(from var(--nyte-bg-interactive-secondary-translucent) l c h / calc(alpha + 0.055))",
-  "--nyte-bg-interactive-secondary-translucent-pressed":
-    "oklch(from var(--nyte-bg-interactive-secondary-translucent) l c h / calc(alpha + 0.1))",
-  "--nyte-bg-scrim-translucent":
-    "light-dark(var(--nyte-translucent-gray-40), var(--nyte-translucent-gray-100))",
-  "--nyte-bg-scrim": "light-dark(#00000026, #000000bf)",
-  "--nyte-bg-hover": "var(--nyte-bg-interactive-secondary-translucent)",
-  "--nyte-bg-pressed":
-    "oklch(from var(--nyte-bg-interactive-secondary-translucent) l c h / calc(alpha + 0.045))",
+const step = (light: number, dark: number) =>
+  `light-dark(var(--nyte-theme-${light}), var(--nyte-theme-${dark}))`;
+const glass = (light: number, dark: number) =>
+  `light-dark(var(--nyte-theme-translucent-${light}), var(--nyte-theme-translucent-${dark}))`;
+const shade = (role: string, light: number, dark: number) =>
+  `light-dark(oklch(from var(--nyte-${role}) calc(l * ${light}) c h), oklch(from var(--nyte-${role}) calc(l * ${dark}) c h))`;
+const lift = (role: string, alpha: number) =>
+  `oklch(from var(--nyte-${role}) l c h / calc(alpha + ${alpha}))`;
 
-  // Component colours built from the roles. They live in this group so a
-  // scope that re-declares the roles re-resolves them on the same element.
-  // Dark lets 64% of the window's vibrancy through the sidebar.
+export const roles = defineVars({
+  "--nyte-content-primary": step(130, 30),
+  "--nyte-content-secondary": step(100, 70),
+  "--nyte-content-tertiary": step(70, 100),
+  "--nyte-content-disabled": step(40, 120),
+  "--nyte-content-disabled-translucent": glass(40, 120),
+  "--nyte-content-chrome": step(100, 60),
+  "--nyte-content-interactive-primary": step(120, 20),
+  "--nyte-content-interactive-secondary": step(100, 50),
+  "--nyte-content-interactive-tertiary": step(80, 90),
+  "--nyte-content-on-interactive-strong": "var(--nyte-theme-0)",
+  "--nyte-content-on-control": "var(--nyte-theme-0)",
+
+  "--nyte-border-primary": step(30, 120),
+  "--nyte-border-secondary": step(20, 135),
+  "--nyte-border-strong": step(40, 100),
+  "--nyte-border-control": step(40, 100),
+  "--nyte-border-interactive-primary": "var(--nyte-theme-80)",
+  "--nyte-border-primary-translucent": glass(30, 120),
+  "--nyte-border-secondary-translucent": glass(20, 135),
+  "--nyte-border-strong-translucent": glass(40, 100),
+  "--nyte-border-control-translucent": glass(40, 100),
+  "--nyte-border-interactive-primary-translucent": "var(--nyte-theme-translucent-80)",
+
+  "--nyte-bg-base": step(0, 145),
+  "--nyte-bg-chrome": step(5, 150),
+  "--nyte-bg-muted": step(10, 140),
+  "--nyte-bg-elevated": step(0, 140),
+  "--nyte-bg-inverse": step(130, 120),
+  "--nyte-bg-base-translucent": glass(0, 150),
+  "--nyte-bg-chrome-translucent": glass(5, 145),
+  "--nyte-bg-muted-translucent": glass(10, 140),
+  "--nyte-bg-scrim": "light-dark(#00000026, #000000bf)",
+  "--nyte-bg-scrim-translucent": glass(40, 100),
+
+  "--nyte-bg-interactive-primary": step(30, 120),
+  "--nyte-bg-interactive-primary-hover": shade("bg-interactive-primary", 0.95, 1.05),
+  "--nyte-bg-interactive-primary-pressed": shade("bg-interactive-primary", 0.88, 1.12),
+  "--nyte-bg-interactive-secondary": step(15, 135),
+  "--nyte-bg-interactive-secondary-hover": shade("bg-interactive-secondary", 0.95, 1.05),
+  "--nyte-bg-interactive-secondary-pressed": shade("bg-interactive-secondary", 0.88, 1.12),
+  "--nyte-bg-interactive-strong": step(130, 100),
+  "--nyte-bg-interactive-strong-hover": shade("bg-interactive-strong", 1.2, 1.05),
+  "--nyte-bg-interactive-strong-pressed": shade("bg-interactive-strong", 1.27, 1.12),
+  "--nyte-bg-interactive-primary-translucent": glass(30, 120),
+  "--nyte-bg-interactive-primary-translucent-hover": lift(
+    "bg-interactive-primary-translucent",
+    0.055,
+  ),
+  "--nyte-bg-interactive-primary-translucent-pressed": lift(
+    "bg-interactive-primary-translucent",
+    0.1,
+  ),
+  "--nyte-bg-interactive-secondary-translucent": glass(15, 135),
+  "--nyte-bg-interactive-secondary-translucent-hover": lift(
+    "bg-interactive-secondary-translucent",
+    0.055,
+  ),
+  "--nyte-bg-interactive-secondary-translucent-pressed": lift(
+    "bg-interactive-secondary-translucent",
+    0.1,
+  ),
+  "--nyte-bg-hover": glass(15, 135),
+  "--nyte-bg-pressed": lift("bg-hover", 0.045),
+
+  "--nyte-bg-control": step(40, 100),
+  "--nyte-bg-control-hover": shade("bg-control", 0.95, 1.05),
+  "--nyte-bg-control-pressed": shade("bg-control", 0.88, 1.12),
+  "--nyte-bg-control-selected": step(130, 100),
+  "--nyte-bg-control-selected-hover": shade("bg-control-selected", 0.95, 1.05),
+  "--nyte-bg-control-selected-pressed": shade("bg-control-selected", 0.88, 1.12),
+
+  // Notion's step 80, capped in lightness so a white label reads at 4.5:1 in every hue.
+  "--nyte-button-fill": "oklch(from var(--nyte-theme-80) min(l, 0.55) c h)",
+  "--nyte-button-fill-hover": shade("button-fill", 0.95, 1.05),
+  "--nyte-button-fill-pressed": shade("button-fill", 0.88, 1.12),
+
   "--nyte-sidebar-material":
     "light-dark(var(--nyte-bg-chrome), color-mix(in srgb, var(--nyte-bg-chrome) calc(36% + 64% * var(--nyte-reduce-transparency)), transparent))",
-  // The floating material behind menus, popovers, the palette, and dialogs.
   "--nyte-popup-material":
     "light-dark(color-mix(in srgb, var(--nyte-bg-elevated) calc(80% + 20% * var(--nyte-reduce-transparency)), transparent), color-mix(in srgb, var(--nyte-bg-elevated) calc(90% + 10% * var(--nyte-reduce-transparency)), transparent))",
-  // A control's hover and press, as layers over its own fill.
   "--nyte-layer-hover": "linear-gradient(var(--nyte-bg-hover), var(--nyte-bg-hover))",
   "--nyte-layer-pressed": "linear-gradient(var(--nyte-bg-pressed), var(--nyte-bg-pressed))",
-  // Notion's interactive tertiary steps at half strength: the thumb stays as
-  // light as Notion draws it, below the glyph role's 3:1 step.
-  "--nyte-scrollbar-thumb":
-    "color-mix(in srgb, light-dark(var(--nyte-gray-70), var(--nyte-gray-90)) 50%, transparent)",
-  "--nyte-shadow-md-outline":
-    "0px 8px 12px 0px #42230308, 0px 2px 6px 0px #42230308, 0 0 0 1px light-dark(var(--nyte-border-secondary-translucent), transparent), inset 0 0 0 1px light-dark(transparent, var(--nyte-border-secondary-translucent))",
-  // A filled button's label needs 4.5:1, which the strong step does not give.
-  "--nyte-button-fill": "var(--nyte-theme-100)",
-  "--nyte-button-fill-hover":
-    "light-dark(oklch(from var(--nyte-button-fill) calc(l * 0.95) c h), oklch(from var(--nyte-button-fill) calc(l * 1.05) c h))",
-  "--nyte-button-fill-pressed":
-    "light-dark(oklch(from var(--nyte-button-fill) calc(l * 0.88) c h), oklch(from var(--nyte-button-fill) calc(l * 1.12) c h))",
+  "--nyte-scrollbar-thumb": `color-mix(in srgb, ${step(70, 90)} 50%, transparent)`,
   "--nyte-conversation-user-shell-bg": "color-mix(in srgb, var(--nyte-bg-chrome) 60%, transparent)",
-  "--nyte-conversation-user-bg": "var(--nyte-bg-elevated)",
-  "--nyte-conversation-user-ring": "var(--nyte-border-secondary-translucent)",
-  "--nyte-conversation-user-ring-active": "var(--nyte-border-primary-translucent)",
-  "--nyte-conversation-technical-bg": "var(--nyte-bg-muted-translucent)",
-  "--nyte-conversation-technical-ring": "var(--nyte-border-secondary-translucent)",
-  "--nyte-conversation-guide": "var(--nyte-border-primary-translucent)",
-  // Trays stack on the composer, so both take one fill.
-  "--nyte-composer-bg": "var(--nyte-bg-elevated)",
-  "--nyte-composer-ring": "var(--nyte-border-secondary-translucent)",
-  "--nyte-composer-ring-active": "var(--nyte-border-primary-translucent)",
+  "--nyte-shadow-md-outline":
+    "0 8px 12px #42230308, 0 2px 6px #42230308, 0 0 0 1px light-dark(var(--nyte-border-secondary-translucent), transparent), inset 0 0 0 1px light-dark(transparent, var(--nyte-border-secondary-translucent))",
+});
+
+export const tinted = createTheme(roles, {
+  "--nyte-content-primary": step(110, 30),
+  "--nyte-content-tertiary": step(60, 100),
+  "--nyte-content-interactive-primary": step(100, 70),
+  "--nyte-content-interactive-secondary": step(100, 70),
+  "--nyte-content-interactive-tertiary": step(100, 90),
+  "--nyte-border-primary": step(30, 110),
+  "--nyte-bg-scrim-translucent": glass(40, 130),
+  "--nyte-bg-interactive-strong": "var(--nyte-theme-80)",
+  "--nyte-bg-interactive-strong-hover": shade("bg-interactive-strong", 0.95, 1.05),
+  "--nyte-bg-interactive-strong-pressed": shade("bg-interactive-strong", 0.88, 1.12),
+  "--nyte-bg-control-selected": "var(--nyte-theme-80)",
+  "--nyte-scrollbar-thumb": `color-mix(in srgb, ${step(50, 100)} 50%, transparent)`,
 });

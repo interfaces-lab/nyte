@@ -29,28 +29,21 @@
         height: 100%;
       }
       #startup {
-        --startup-bg: var(
-          --nyte-bg-base,
-          light-dark(lab(99.9996% -0.00357628 -0.0378609), lab(9.7636% 0 0))
-        );
-        --startup-text: var(
-          --nyte-content-primary,
-          light-dark(lab(17.9803% -0.180662 0.655705), lab(90.9749% 0.0809431 1.06326))
-        );
-        /* The retry button is the primary intent's filled button. */
-        --startup-fill: var(--nyte-blue-100, lab(38.8331% -4.16589 -29.326));
-        --startup-hover: var(--nyte-bg-hover, light-dark(#3b14000d, #ffffff0f));
-        --startup-on-fill: var(--nyte-gray-0, lab(99.9996% -0.00357628 -0.0378609));
-        --startup-accent: var(--nyte-focus-ring, lab(53.1052% -1.53607 -54.9391));
         --startup-moon-color: light-dark(#232a44, #c1d0f6);
         box-sizing: border-box;
         height: 100dvh;
         overflow: hidden;
         display: grid;
         grid-template-rows: auto 1fr;
-        background: var(--startup-bg);
-        color: var(--startup-text);
-        font-family: var(--nyte-font-family-sans, system-ui, sans-serif);
+        background: var(
+          --startup-bg,
+          light-dark(lab(99.9996% -0.00357628 -0.0378609), lab(9.7636% 0 0))
+        );
+        color: var(
+          --startup-text,
+          light-dark(lab(17.9803% -0.180662 0.655705), lab(90.9749% 0.0809431 1.06326))
+        );
+        font-family: var(--startup-font, system-ui, sans-serif);
         font-size: 13px;
         -webkit-font-smoothing: antialiased;
       }
@@ -201,21 +194,21 @@
         padding: 0 14px;
         border: 0;
         border-radius: 8px;
-        background: var(--startup-fill);
-        color: var(--startup-on-fill);
+        background: var(--startup-fill, lab(38.8331% -4.16589 -29.326));
+        color: var(--startup-on-fill, lab(99.9996% -0.00357628 -0.0378609));
         font: inherit;
         font-weight: 500;
         cursor: default;
         -webkit-app-region: no-drag;
       }
       #startup-retry:hover {
-        background-image: linear-gradient(var(--startup-hover), var(--startup-hover));
+        background: var(--startup-hover, lab(38.8331% -4.16589 -29.326));
       }
       #startup-retry:active {
-        opacity: 0.8;
+        background: var(--startup-pressed, lab(38.8331% -4.16589 -29.326));
       }
       #startup-retry:focus-visible {
-        outline: 2px solid var(--startup-accent);
+        outline: 2px solid var(--startup-accent, lab(53.1052% -1.53607 -54.9391));
         outline-offset: 2px;
       }
       .startup-assistive {

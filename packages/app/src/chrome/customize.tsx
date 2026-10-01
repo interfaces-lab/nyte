@@ -1,4 +1,5 @@
-import * as stylex from "@stylexjs/stylex";
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { props } from "@stylexjs/stylex";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { Row } from "@nyte-ai/ui/row";
 import { useQuery } from "@tanstack/react-query";
@@ -90,10 +91,10 @@ function pluginDetail(plugin: PluginInfo): string {
 
 function InventoryLoading(): ReactElement {
   return (
-    <div aria-busy="true" aria-label="Loading inventory" {...stylex.props(styles.list)}>
+    <div aria-busy="true" aria-label="Loading inventory" {...props(styles.list)}>
       {(["first", "second", "third"] as const).map((key) => (
-        <div key={key} {...stylex.props(styles.quiet)}>
-          <div {...stylex.props(styles.loadingLine)} />
+        <div key={key} {...props(styles.quiet)}>
+          <div {...props(styles.loadingLine)} />
         </div>
       ))}
     </div>
@@ -113,7 +114,7 @@ export function PluginSettings({
 
   return (
     <>
-      <div {...stylex.props(styles.list)}>
+      <div {...props(styles.list)}>
         {settings.map((setting) => {
           const choice = setting.choices.find((choice) => choice.id === setting.current);
           const detail = choice?.status ?? choice?.description;
@@ -144,12 +145,12 @@ export function PluginSettings({
         })}
       </div>
       {sessionId === undefined && (
-        <div {...stylex.props(styles.settingsNote)}>
+        <div {...props(styles.settingsNote)}>
           Defaults shown. Open a chat to change its settings.
         </div>
       )}
       {apply.isError && (
-        <div role="alert" title={apply.error.message} {...stylex.props(styles.error)}>
+        <div role="alert" title={apply.error.message} {...props(intent.danger, styles.error)}>
           Couldn&rsquo;t change that setting. Try again.
         </div>
       )}
@@ -169,10 +170,10 @@ function Inventory({
   switch (tab) {
     case "plugins":
       return (
-        <div {...stylex.props(styles.list)}>
+        <div {...props(styles.list)}>
           {inventory.plugins.map((plugin) => (
             <Row key={plugin.id} xstyle={styles.row}>
-              <Row.Leading>
+              <Row.Leading xstyle={styles.rowLeading}>
                 <Icon name="mcp" size={14} />
               </Row.Leading>
               <Row.Body>
@@ -182,7 +183,11 @@ function Inventory({
                 </Row.Description>
               </Row.Body>
               <span
-                {...stylex.props(styles.badge, plugin.status === "failed" && styles.failedBadge)}
+                {...props(
+                  plugin.status === "failed" && intent.danger,
+                  styles.badge,
+                  plugin.status === "failed" && styles.failedBadge,
+                )}
               >
                 {plugin.status}
               </span>
@@ -192,10 +197,10 @@ function Inventory({
       );
     case "skills":
       return (
-        <div {...stylex.props(styles.list)}>
+        <div {...props(styles.list)}>
           {inventory.skills.map((skill) => (
             <Row key={skill.filePath} xstyle={styles.row}>
-              <Row.Leading>
+              <Row.Leading xstyle={styles.rowLeading}>
                 <Icon name="skills" size={14} />
               </Row.Leading>
               <Row.Body>
@@ -267,7 +272,7 @@ export function CustomizeSurface({
   const searching = query.trim() !== "";
 
   return (
-    <div data-nyte-customize-surface {...stylex.props(styles.surface)}>
+    <div data-nyte-customize-surface {...props(styles.surface)}>
       <Tabs.Root
         variant="pill"
         value={tab}
@@ -276,7 +281,7 @@ export function CustomizeSurface({
           if (isOption(value, CUSTOMIZE_TAB_IDS)) setTab(value);
         }}
       >
-        <search {...stylex.props(styles.searchRow)}>
+        <search {...props(styles.searchRow)}>
           <InputGroup variant="quiet" xstyle={styles.searchField}>
             <Icon name="search" size={13} />
             <Input
@@ -310,10 +315,10 @@ export function CustomizeSurface({
               render={<section />}
               xstyle={styles.inventory}
             >
-              <div {...stylex.props(styles.inventoryHeading)}>
-                <h1 {...stylex.props(styles.inventoryTitle)}>Installed</h1>
+              <div {...props(styles.inventoryHeading)}>
+                <h1 {...props(styles.inventoryTitle)}>Installed</h1>
                 {inventory.data !== undefined && (
-                  <span aria-live="polite" {...stylex.props(styles.inventoryCount)}>
+                  <span aria-live="polite" {...props(styles.inventoryCount)}>
                     {visibleCount}
                   </span>
                 )}
@@ -321,14 +326,16 @@ export function CustomizeSurface({
 
               {inventory.isPending && <InventoryLoading />}
               {inventory.isError && (
-                <div role="alert" title={inventory.error.message} {...stylex.props(styles.error)}>
+                <div
+                  role="alert"
+                  title={inventory.error.message}
+                  {...props(intent.danger, styles.error)}
+                >
                   Couldn&rsquo;t load plugins and skills. Try again.
                 </div>
               )}
               {inventory.data !== undefined && visibleCount === 0 && (
-                <div {...stylex.props(styles.quiet)}>
-                  {emptyInventoryMessage(panelTab, searching)}
-                </div>
+                <div {...props(styles.quiet)}>{emptyInventoryMessage(panelTab, searching)}</div>
               )}
               {inventory.data !== undefined && visibleCount > 0 && (
                 <Inventory sessionId={sessionId} inventory={filtered} tab={panelTab} />

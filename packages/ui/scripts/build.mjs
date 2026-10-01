@@ -1,5 +1,5 @@
 import { glob, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import stylex from "@stylexjs/unplugin";
@@ -28,6 +28,16 @@ const layerStylesheet = {
       const css = await readFile(collected, "utf8");
       await writeFile(join(outdir, "ui.css"), `@layer nyte-ui {\n${css}\n}\n`);
       await rm(collected);
+      for (const entry of entryPoints) {
+        if (
+          entry.endsWith(".stylex.ts") ||
+          ["style.ts", "surface-theme.ts", "platform-colors.ts"].includes(basename(entry))
+        )
+          continue;
+        const compiled = join(outdir, `${basename(entry, ".ts")}.js`);
+        const javascript = await readFile(compiled, "utf8");
+        await writeFile(compiled, `"use client";\n${javascript}`);
+      }
     });
   },
 };

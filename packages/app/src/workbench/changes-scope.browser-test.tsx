@@ -22,7 +22,7 @@ import {
   workbenchViewKey,
   type WorkbenchViewKey,
 } from "./controller.ts";
-import "../theme/appearance.css";
+import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 
 const viewKey: WorkbenchViewKey = workbenchViewKey("/workspace/changes-scope");
@@ -125,7 +125,7 @@ export async function run(): Promise<string> {
   const text = (element: Element | null): string | null =>
     element === null ? null : (element.textContent ?? "");
   const trigger = (): HTMLElement => {
-    const found = container.querySelector('[aria-label^="Select scope, showing "]');
+    const found = container.querySelector('button[aria-haspopup="menu"]');
     if (!(found instanceof HTMLElement)) throw new Error("Missing scope trigger");
     return found;
   };
@@ -135,7 +135,7 @@ export async function run(): Promise<string> {
   const observe = (step: string): void => {
     const observation: Observation = {
       step,
-      scopeLabel: trigger().getAttribute("aria-label"),
+      scopeLabel: text(trigger()),
       alert: text(container.querySelector('[role="alert"]')),
       stackPaths: Array.from(container.querySelectorAll("[data-change-path]")).map(
         (item) => item.getAttribute("data-change-path") ?? "",
@@ -325,3 +325,5 @@ export async function run(): Promise<string> {
     container.remove();
   }
 }
+
+applyDisplayMode("light");

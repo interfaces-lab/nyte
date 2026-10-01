@@ -1,12 +1,13 @@
 import { Tooltip } from "@base-ui/react/tooltip";
 import { create, props } from "@stylexjs/stylex";
+import { createContext, use, useId, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 
-import { clipboardPreview, layer } from "../../schema.stylex.ts";
+import { clipboardPreview, layer, shape } from "../../schema.stylex.ts";
 import type { XStyle } from "../../style.ts";
 import { surfaceTheme, type Tint } from "../../surface-theme.ts";
-import { t } from "../../vars.stylex.ts";
-import { useOverlayRef } from "./overlay.tsx";
+import { motion, role, shadow, type } from "../../vars.stylex.ts";
+import { useLongPressPreview, useOverlayRef } from "./overlay.tsx";
 
 const styles = create({
   positioner: { zIndex: layer.tooltip, outline: "none" },
@@ -14,12 +15,12 @@ const styles = create({
     maxWidth: 260,
     paddingBlock: 4,
     paddingInline: 6,
-    borderRadius: t.radius6,
-    backgroundColor: t.bgElevated,
-    boxShadow: t.shadowMdOutline,
-    color: t.contentSecondary,
-    fontSize: t.fontXs,
-    lineHeight: t.leadingXs,
+    borderRadius: shape.control,
+    backgroundColor: role.bgElevated,
+    boxShadow: shadow.shadowMdOutline,
+    color: role.contentSecondary,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
     whiteSpace: "pre-line",
     overflowWrap: "anywhere",
     transformOrigin: "var(--transform-origin)",
@@ -32,17 +33,17 @@ const styles = create({
     },
     transitionProperty: "opacity, scale",
     transitionDuration: {
-      default: t.durationFast,
+      default: motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: t.easeOut,
+    transitionTimingFunction: motion.easeOut,
   },
   preview: {
     maxWidth: clipboardPreview.maxWidth,
     maxHeight: clipboardPreview.maxHeight,
     overflowY: "auto",
     overflowWrap: "anywhere",
-    fontFamily: t.fontMono,
+    fontFamily: type.fontMono,
     whiteSpace: "pre-wrap",
   },
 });
@@ -61,8 +62,24 @@ export type HintProps = Pick<Tooltip.Root.Props, "disabled"> &
     readonly xstyle?: XStyle;
   };
 
-/** Shares one open delay across every `Hint` inside it. */
-export const HintProvider = Tooltip.Provider;
+const HintTimingContext = createContext({ delay: 300, closeDelay: 100 });
+
+export type HintProviderProps = Tooltip.Provider.Props;
+
+export function HintProvider({
+  delay = 300,
+  closeDelay = 100,
+  timeout = 200,
+  children,
+}: HintProviderProps): ReactElement {
+  return (
+    <HintTimingContext value={{ delay, closeDelay }}>
+      <Tooltip.Provider delay={delay} closeDelay={closeDelay} timeout={timeout}>
+        {children}
+      </Tooltip.Provider>
+    </HintTimingContext>
+  );
+}
 
 export function Hint({
   content,
@@ -74,10 +91,23 @@ export function Hint({
   xstyle,
 }: HintProps): ReactElement {
   const overlayRef = useOverlayRef();
+  const timing = use(HintTimingContext);
+  const [handle] = useState(() => Tooltip.createHandle());
+  const [open, setOpen] = useState(false);
+  const triggerId = useId();
+  const popupId = `${triggerId}-hint`;
+  const longPress = useLongPressPreview(() => handle.open(triggerId), disabled);
 
   return (
-    <Tooltip.Root disabled={disabled}>
-      <Tooltip.Trigger render={trigger} />
+    <Tooltip.Root disabled={disabled} handle={handle} onOpenChange={setOpen}>
+      <Tooltip.Trigger
+        {...longPress}
+        id={triggerId}
+        aria-describedby={open ? popupId : undefined}
+        render={trigger}
+        delay={timing.delay}
+        closeDelay={timing.closeDelay}
+      />
       <Tooltip.Portal>
         <Tooltip.Positioner
           positionMethod="fixed"
@@ -89,6 +119,8 @@ export function Hint({
         >
           <Tooltip.Popup
             ref={overlayRef}
+            id={popupId}
+            role="tooltip"
             {...props(tint !== undefined && surfaceTheme[tint], styles.popup, xstyle)}
           >
             {content}
@@ -99,9 +131,24 @@ export function Hint({
   );
 }
 
-export type HoverPreviewProps = Omit<HintProps, "align" | "tint" | "xstyle">;
+export type HoverPreviewProps = Omit<HintProps, "align" | "xstyle">;
 
 /** A `Hint` for long monospace text such as a pasted snippet, scrolling past its bounds. */
-export function HoverPreview({ content, trigger, side }: HoverPreviewProps): ReactElement {
-  return <Hint content={content} trigger={trigger} side={side} xstyle={styles.preview} />;
+export function HoverPreview({
+  content,
+  trigger,
+  side,
+  disabled,
+  tint,
+}: HoverPreviewProps): ReactElement {
+  return (
+    <Hint
+      content={content}
+      trigger={trigger}
+      side={side}
+      disabled={disabled}
+      tint={tint}
+      xstyle={styles.preview}
+    />
+  );
 }

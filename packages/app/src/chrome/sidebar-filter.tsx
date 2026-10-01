@@ -1,4 +1,4 @@
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { IconFilter2, IconFolderAddRight } from "central-icons";
 import type { ReactElement } from "react";
 import {
@@ -153,7 +153,7 @@ export function WorkspaceControls({
   };
 
   return (
-    <span {...stylex.props(styles.controls)}>
+    <span {...props(styles.controls)}>
       <Menu
         label="Customize sidebar"
         side="right"

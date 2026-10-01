@@ -1,3 +1,5 @@
+import { intent } from "@nyte-ai/ui/surface-theme";
+import { props } from "@stylexjs/stylex";
 import { cn } from "cn";
 import Link from "next/link";
 
@@ -67,7 +69,7 @@ export function CallPath() {
             <span
               aria-hidden
               className={cn(
-                "absolute top-[14px] bottom-0 left-[5px] w-0 border-l border-(--nyte-border-secondary-translucent)",
+                "absolute top-[14px] bottom-0 left-[5px] w-0 border-l border-border-subtle",
                 stage.hop === "dashed" && "border-dashed",
               )}
             />
@@ -75,11 +77,10 @@ export function CallPath() {
 
           <span
             aria-hidden
+            {...props(stage.built && intent.primary)}
             className={cn(
               "absolute top-[9px] left-[2px] size-1.5",
-              stage.built
-                ? "bg-(--nyte-intent-primary-content)"
-                : "border border-(--nyte-content-tertiary) bg-(--nyte-bg-base)",
+              stage.built ? "bg-primary" : "border border-tertiary-foreground bg-background",
             )}
           />
 
@@ -100,21 +101,19 @@ function StageRow({ stage, isLast }: { stage: Stage; isLast: boolean }) {
           className={cn(
             "shrink-0",
             stage.built
-              ? "text-(--nyte-content-primary) underline decoration-transparent decoration-1 underline-offset-4 transition-[text-decoration-color] duration-(--nyte-duration-fast) hover:decoration-(--nyte-intent-primary-content)"
-              : "text-(--nyte-content-secondary)",
+              ? "text-foreground underline decoration-transparent decoration-1 underline-offset-4 transition-[text-decoration-color] duration-100 hover:decoration-current"
+              : "text-muted-foreground",
           )}
         >
           {stage.name}
         </span>
         <span
           aria-hidden
-          className="min-w-6 flex-1 translate-y-[-3px] border-b border-dotted border-(--nyte-border-secondary-translucent)"
+          className="min-w-6 flex-1 translate-y-[-3px] border-b border-dotted border-border-subtle"
         />
-        <span className="hidden shrink-0 text-(--nyte-content-secondary) sm:inline">
-          {stage.note}
-        </span>
+        <span className="hidden shrink-0 text-muted-foreground sm:inline">{stage.note}</span>
       </span>
-      <span className="mt-2 block text-(--nyte-content-secondary) sm:hidden">{stage.note}</span>
+      <span className="mt-2 block text-muted-foreground sm:hidden">{stage.note}</span>
     </>
   );
 

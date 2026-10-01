@@ -20,6 +20,7 @@ import { Svg, Polyline } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { css, html } from "react-strict-dom";
+import { platformScopes } from "@nyte-ai/ui/platform-colors";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { prepareImage } from "../media/attachments.ts";
 import {
@@ -39,7 +40,7 @@ import {
   typography,
 } from "../theme.ts";
 
-const MARK_COLOR = "#FF453A";
+const MARK_COLOR = platformScopes.dark.red.bgInteractiveStrong;
 
 const TAP_TOLERANCE = 8;
 
@@ -437,7 +438,7 @@ const nativeStyles = {
     height: "80%",
     borderRadius: radii.control,
     overflow: "hidden",
-    backgroundColor: "#111",
+    backgroundColor: overCamera.backdrop,
   } satisfies ViewStyle,
   canvasImage: { width: "100%", height: "100%" } satisfies ImageStyle,
   commentShell: {

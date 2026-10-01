@@ -4,11 +4,11 @@
  * Models and Settings › Accounts both use them. The row that holds a panel
  * owns its Cancel button, so a panel never repeats it.
  */
-import * as stylex from "@stylexjs/stylex";
+import { props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
-import { Button } from "@nyte-ai/ui/button";
+import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { toast } from "@nyte-ai/ui/toast";
 import type { BrowserSignIn, DeviceCode } from "../bridge.ts";
@@ -42,20 +42,18 @@ export function DeviceCodePanel({
   const openLabel = host === undefined ? "Open link" : `Open ${host}`;
 
   return (
-    <div {...stylex.props(styles.deviceCodePanel)}>
-      <span {...stylex.props(styles.deviceCodeLead)}>
+    <div {...props(styles.deviceCodePanel)}>
+      <span {...props(styles.deviceCodeLead)}>
         Enter this code at {verificationUri} to continue signing in.
         {expiryMinutes !== undefined && ` It expires in about ${String(expiryMinutes)} min.`}
       </span>
-      {instructions !== undefined && (
-        <span {...stylex.props(styles.deviceCodeNote)}>{instructions}</span>
-      )}
-      <div {...stylex.props(styles.deviceCodeRow)}>
-        <code aria-label="Device code" {...stylex.props(styles.deviceCode)}>
+      {instructions !== undefined && <span {...props(styles.deviceCodeNote)}>{instructions}</span>}
+      <div {...props(styles.deviceCodeRow)}>
+        <code aria-label="Device code" {...props(styles.deviceCode)}>
           {userCode}
         </code>
         <Button
-          variant="secondary"
+          variant="outline"
           icon={copyStatus === "copied" ? "checkmark" : "copy"}
           onClick={() => {
             void navigator.clipboard.writeText(userCode).then(
@@ -66,25 +64,30 @@ export function DeviceCodePanel({
         >
           {copyStatus === "copied" ? "Copied" : "Copy code"}
         </Button>
-        <Button
-          variant="inverse"
-          onClick={() =>
+        <ButtonLink
+          href={verificationUri}
+          target="_blank"
+          rel="noreferrer"
+          variant="solid"
+          tone="primary"
+          onClick={(event) => {
+            event.preventDefault();
             void nyte.host
               .openExternal({ url: verificationUri })
               .catch(() =>
                 toast.error(`Couldn't open ${host ?? "the link"}. Enter the code there yourself.`),
-              )
-          }
+              );
+          }}
         >
           {openLabel}
-        </Button>
+        </ButtonLink>
       </div>
       {copyStatus === "failed" && (
-        <span role="alert" {...stylex.props(styles.deviceCodeNote)}>
+        <span role="alert" {...props(styles.deviceCodeNote)}>
           Couldn&rsquo;t copy the code. Select it and copy it yourself.
         </span>
       )}
-      <span role="status" aria-live="polite" {...stylex.props(styles.deviceCodeNote)}>
+      <span role="status" aria-live="polite" {...props(styles.deviceCodeNote)}>
         {message ?? "Nyte connects on its own once you approve."}
       </span>
     </div>
@@ -102,7 +105,7 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
 
   if (send.isSuccess) {
     return (
-      <span role="status" {...stylex.props(styles.deviceCodeNote)}>
+      <span role="status" {...props(styles.deviceCodeNote)}>
         Finishing sign-in…
       </span>
     );
@@ -110,7 +113,7 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
 
   return (
     <form
-      {...stylex.props(styles.keyRow)}
+      {...props(styles.keyRow)}
       onSubmit={(event) => {
         event.preventDefault();
 
@@ -128,7 +131,7 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
         xstyle={styles.keyInput}
         onValueChange={setCode}
       />
-      <Button type="submit" variant="secondary" disabled={send.isPending || code.trim() === ""}>
+      <Button type="submit" variant="outline" disabled={send.isPending || code.trim() === ""}>
         Continue
       </Button>
     </form>
@@ -154,32 +157,37 @@ export function BrowserSignInPanel({
   const answerLogin = browser.acceptsCode ? nyte.host.answerLogin : undefined;
 
   return (
-    <div {...stylex.props(styles.deviceCodePanel)}>
+    <div {...props(styles.deviceCodePanel)}>
       {answerLogin !== undefined && (
-        <span {...stylex.props(styles.deviceCodeLead)}>
+        <span {...props(styles.deviceCodeLead)}>
           Sign in at {host ?? "the provider's page"}, then paste the code it shows or the address it
           ends on.
         </span>
       )}
       {browser.instructions !== undefined && (
-        <span {...stylex.props(styles.deviceCodeNote)}>{browser.instructions}</span>
+        <span {...props(styles.deviceCodeNote)}>{browser.instructions}</span>
       )}
-      <div {...stylex.props(styles.deviceCodeRow)}>
-        <Button
-          variant="inverse"
-          onClick={() =>
+      <div {...props(styles.deviceCodeRow)}>
+        <ButtonLink
+          href={browser.url}
+          target="_blank"
+          rel="noreferrer"
+          variant="solid"
+          tone="primary"
+          onClick={(event) => {
+            event.preventDefault();
             void nyte.host
               .openExternal({ url: browser.url })
-              .catch(() => toast.error(`Couldn't open ${host ?? "the sign-in page"}.`))
-          }
+              .catch(() => toast.error(`Couldn't open ${host ?? "the sign-in page"}.`));
+          }}
         >
           {host === undefined ? "Open sign-in page" : `Open ${host}`}
-        </Button>
+        </ButtonLink>
       </div>
       {answerLogin !== undefined && (
         <AnswerForm answer={(code) => answerLogin({ attempt, code })} />
       )}
-      <span role="status" aria-live="polite" {...stylex.props(styles.deviceCodeNote)}>
+      <span role="status" aria-live="polite" {...props(styles.deviceCodeNote)}>
         {message ??
           (answerLogin === undefined ? "Nyte connects on its own once you sign in." : undefined)}
       </span>

@@ -15,7 +15,7 @@ import {
   useVcsDiff,
   useVcsSnapshot,
 } from "../queries.ts";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import {
   branchReadout,
   changesScopeLabel,
@@ -77,7 +77,7 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    backgroundColor: t.bgBase,
+    backgroundColor: role.bgBase,
   },
   body: { display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
   empty: {
@@ -87,8 +87,8 @@ const styles = create({
     justifyContent: "center",
     minHeight: 0,
     padding: 20,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
     textAlign: "center",
     textWrap: "pretty",
   },

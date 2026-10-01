@@ -1,3 +1,4 @@
+import { applyDisplayMode } from "@nyte-ai/app/theme/appearance.ts";
 import { useLayoutEffect } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { Review } from "./review";
@@ -9,7 +10,7 @@ export function PipelinePage() {
   });
 
   useLayoutEffect(() => {
-    document.documentElement.dataset.displayMode = theme;
+    applyDisplayMode(theme === "dark" ? "dark" : "light");
   }, [theme]);
 
   return <Review />;

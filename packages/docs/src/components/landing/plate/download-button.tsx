@@ -22,7 +22,7 @@ function detectPlatform(): Platform {
 const noop = () => () => {};
 
 const segmentClass =
-  "inline-flex h-11 items-center bg-(--nyte-content-primary) text-(--nyte-bg-base) outline-none transition-[background-color,opacity] focus-visible:ring-2 focus-visible:ring-(--nyte-intent-primary-content) focus-visible:ring-offset-2 focus-visible:ring-offset-(--nyte-bg-base)";
+  "inline-flex h-11 items-center bg-foreground text-background outline-none transition-[background-color,opacity] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 /*
  * The platform is read from the browser after hydration; the server renders the
@@ -40,7 +40,7 @@ export function DownloadButton({ href }: { href: string }) {
       {platform.value === "mac" ? (
         <a
           href={href}
-          className={`${segmentClass} gap-2 rounded-l-full pr-4 pl-5 text-[15px] font-medium hover:bg-(--nyte-content-primary)/85`}
+          className={`${segmentClass} gap-2 rounded-l-full pr-4 pl-5 text-[15px] font-medium hover:bg-foreground/85`}
         >
           <IconArrowDown size={16} />
           Download (Apple Silicon)
@@ -62,7 +62,7 @@ export function DownloadButton({ href }: { href: string }) {
           <button
             type="button"
             aria-label="Choose a platform"
-            className={`${segmentClass} cursor-pointer rounded-r-full pr-3.5 pl-2.5 hover:bg-(--nyte-content-primary)/85`}
+            className={`${segmentClass} cursor-pointer rounded-r-full pr-3.5 pl-2.5 hover:bg-foreground/85`}
           >
             <IconChevronDownSmall size={16} />
           </button>

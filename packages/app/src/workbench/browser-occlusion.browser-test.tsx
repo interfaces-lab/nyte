@@ -15,7 +15,7 @@ import { Menu, MenuItem } from "@nyte-ai/ui/menu";
 import { OverlayRefProvider } from "@nyte-ai/ui/overlay";
 import { overlayRef } from "../components/overlay-occlusion.ts";
 import { BrowserPanel } from "./browser-panel.tsx";
-import "../theme/appearance.css";
+import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 
 const URL_UNDER_TEST = "https://example.com/";
@@ -130,3 +130,5 @@ export async function run(): Promise<string> {
   await until(() => last().visible, "the page to come back when the menu closes");
   return "passed";
 }
+
+applyDisplayMode("light");

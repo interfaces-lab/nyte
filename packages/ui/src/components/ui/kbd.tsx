@@ -1,8 +1,9 @@
+import { shape } from "../../schema.stylex.ts";
 import { create, props } from "@stylexjs/stylex";
 import type { CSSProperties, ReactElement } from "react";
 
 import { mergeStyleProps, type XStyle } from "../../style.ts";
-import { t } from "../../vars.stylex.ts";
+import { role, type } from "../../vars.stylex.ts";
 
 const styles = create({
   kbd: {
@@ -14,15 +15,15 @@ const styles = create({
     minHeight: 18,
     paddingBlock: 1,
     paddingInline: 4,
-    borderRadius: t.radius6,
-    backgroundColor: t.bgMutedTranslucent,
-    color: t.contentSecondary,
-    fontSize: t.fontSm,
-    fontFamily: t.fontMono,
+    borderRadius: shape.control,
+    backgroundColor: role.bgMutedTranslucent,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    fontFamily: type.fontMono,
     fontWeight: 400,
     fontVariantLigatures: "none",
     letterSpacing: 0,
-    lineHeight: t.leadingSm,
+    lineHeight: type.leadingSm,
     whiteSpace: "nowrap",
   },
   plain: { padding: 0, backgroundColor: "transparent" },

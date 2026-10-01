@@ -1,3 +1,5 @@
+@reference "../../global.css";
+
 /*
  * Cloud's own surfaces. What it shares with /docs — frame, sidebar,
  * article, prose, code, rail, pager — lives in ../_layout/layout.css, which loads
@@ -30,8 +32,8 @@
   }
 
   .doc a.cloud-cta-primary {
-    background: var(--nyte-content-primary);
-    color: var(--nyte-bg-base);
+    @apply bg-foreground;
+    @apply text-background;
   }
 
   .cloud-cta-primary:hover {
@@ -39,12 +41,12 @@
   }
 
   .cloud-cta-secondary {
-    background: var(--nyte-bg-interactive-primary-translucent);
-    color: var(--nyte-content-primary);
+    @apply bg-fill-selected;
+    @apply text-foreground;
   }
 
   .cloud-cta-secondary:hover {
-    background: color-mix(in srgb, var(--nyte-content-primary) 10%, transparent);
+    @apply bg-fill-hover;
   }
 
   /* ---- feature grid ---------------------------------------------------- */
@@ -79,7 +81,7 @@
     flex: none;
     width: 28px;
     height: 28px;
-    color: var(--nyte-content-secondary);
+    @apply text-muted-foreground;
   }
 
   .doc-prose a.cloud-feature strong {
@@ -96,7 +98,7 @@
   .doc-prose a.cloud-feature > span:last-child span {
     display: block;
     margin: 4px 0 0;
-    color: var(--nyte-content-secondary);
+    @apply text-muted-foreground;
     font-size: 14px;
     line-height: 22px;
     letter-spacing: -0.18px;
@@ -113,20 +115,11 @@
     min-height: 144px;
     margin: 0 0 13px;
     padding: 34px 21px;
-    border: 0.5px solid var(--nyte-border-secondary-translucent);
+    border: 0.5px solid;
+    @apply border-border-subtle;
     border-radius: 13px;
-    background:
-      radial-gradient(
-          circle at 1px 1px,
-          var(--nyte-border-secondary-translucent) 1px,
-          transparent 0
-        )
-        0 0 / 21px 21px,
-      var(--nyte-bg-base);
-    color: var(--nyte-content-primary);
+    @apply text-foreground;
     font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-    font-size: var(--nyte-font-size-base);
-    line-height: var(--nyte-line-height-base);
   }
 
   .cloud-preview[data-align="start"] {
@@ -149,7 +142,8 @@
     height: 13px;
     margin-inline-end: 8px;
     border-radius: 999px;
-    border: 0.5px solid var(--nyte-border-secondary-translucent);
+    border: 0.5px solid;
+    @apply border-border-subtle;
     vertical-align: -2px;
   }
 }

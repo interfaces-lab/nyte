@@ -1,15 +1,15 @@
 "use client";
 
 import { Tabs } from "@nyte-ai/ui/tabs";
-import { t } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { create } from "@stylexjs/stylex";
 
 const styles = create({
   root: { display: "flex", flexDirection: "column", gap: 12, width: 320 },
   panel: {
-    color: t.contentSecondary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
 });
 
