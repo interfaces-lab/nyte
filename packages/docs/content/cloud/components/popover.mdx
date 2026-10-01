@@ -4,37 +4,14 @@ description: "An accessible popup anchored to a button"
 ---
 
 ```ts title="Import"
-import { Popover } from "@nyte-ai/ui";
-```
-
-The same `Popover` is exported from its own subpath. Pick one path per file.
-
-```ts title="Subpath"
 import { Popover } from "@nyte-ai/ui/popover";
 ```
 
-A raised panel anchored to the element that opens it. Reach for it when the content is interactive
-and belongs next to its trigger.
+An interactive panel anchored to its trigger.
 
 ## Usage
 
-- `Popover.Popup` paints the raised surface with 8px padding and fades in with a slight scale. Lay
-  out its content with `xstyle`.
-- `Popover.Title` and `Popover.Description` set the heading and body text, and name and describe the
-  popup. Render them rather than writing your own ARIA.
-- Render the trigger and close as buttons with `render={<Button />}`.
-- `Popover.Positioner` defaults to `side="bottom"`, `align="center"`, `positionMethod="fixed"`, and
-  `collisionPadding={8}`. Pass `sideOffset` for the gap between the anchor and the popup.
-- `openOnHover` on the trigger opens the popup on hover after `delay`, which is 300ms. Set
-  `closeDelay` to hold it open while the pointer travels.
-- The popover is non-modal by default. With `modal={true}`, focus trapping turns on only when
-  `Popover.Close` is rendered inside `Popover.Popup`.
-- Pass `open` and `onOpenChange` on `Popover.Root` to drive it from your own state. With no trigger
-  inside the root, point the positioner at an element with `anchor`.
-- To open from a trigger outside the root, pass one handle from `Popover.createHandle()` to both the
-  trigger and the root.
-- The popup attaches the ref from [Overlays](/cloud/foundations/overlays), so a host can keep it
-  above native views.
+- With `modal` set, focus stays trapped only while a `Popover.Close` is inside `Popover.Popup`.
 
 ## Anatomy
 
@@ -95,8 +72,6 @@ const styles = create({
 
 ### Controlled with an anchor
 
-A popup your own state opens, placed against an element outside the root.
-
 ```tsx
 const [open, setOpen] = useState(false);
 const anchor = useRef<HTMLDivElement>(null);
@@ -113,8 +88,6 @@ const anchor = useRef<HTMLDivElement>(null);
 ```
 
 ### Detached triggers
-
-One popover driven by two triggers, each passing its own payload.
 
 ```tsx
 const details = Popover.createHandle<{ name: string }>();
@@ -137,8 +110,8 @@ const details = Popover.createHandle<{ name: string }>();
 
 ## Props
 
-`Popover.Positioner`, `Popover.Popup`, `Popover.Title`, and `Popover.Description` take `xstyle`, and
-`className` and `style` as plain values, not functions of state. See
+`Popover.Backdrop`, `Popover.Positioner`, `Popover.Popup`, `Popover.Title`, and
+`Popover.Description` take `xstyle`. Their `className` and `style` cannot be functions of state. See
 [Theming](/cloud/foundations/theming). The other parts are Base UI's.
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
@@ -160,8 +133,6 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 <include>../../base-ui-reference/popover/Backdrop.md</include>
 
 ### Positioner
-
-Our defaults replace two of Base UI's.
 
 | Prop               | Type                    | Default   |
 | ------------------ | ----------------------- | --------- |
@@ -196,15 +167,10 @@ Our defaults replace two of Base UI's.
 
 ## Accessibility
 
-- The trigger carries `data-popup-open` while the popup is open, and `data-pressed` while it is
-  pressed.
 - `Popover.Title` renders an `<h2>` that labels the popup. `Popover.Description` renders a `<p>`
   that describes it.
-- Escape closes the popup. Outside press closes it. Focus leaving the popup closes it.
-- Focus moves to the first tabbable element inside the popup on open, except when the popover was
-  opened by touch, where the popup itself takes focus. `initialFocus` and `finalFocus` on the popup
-  override this.
-- On close, focus returns to the trigger or to the previously focused element.
-- Render `Popover.Close` inside the popup when `modal` is `true` or `'trap-focus'` so touch screen
-  reader users can leave it.
+- Escape, an outside press, and focus leaving the popup close it.
+- On open, focus moves to the first tabbable element in the popup, or to the popup itself when
+  opened by touch. On close, it returns to the trigger or the previously focused element.
+  `initialFocus` and `finalFocus` on the popup override both.
 - The popup appears without motion under `prefers-reduced-motion: reduce`.
