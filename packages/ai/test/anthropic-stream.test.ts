@@ -1,3 +1,4 @@
+import { normalizeContext } from "@nyte-ai/schema";
 import assert from "node:assert/strict";
 import { expect, test } from "vitest";
 import { stream, type AnthropicOptions } from "../src/api/anthropic-messages.ts";
@@ -62,7 +63,7 @@ async function run(
   const chunkBytes = options?.chunkBytes ?? Math.max(1, bytes.length);
   const source = stream(
     model,
-    { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+    normalizeContext({ messages: [{ role: "user", content: "hi", timestamp: 0 }] }),
     {
       apiKey: "test",
       maxRetries: 0,
@@ -375,15 +376,11 @@ test("malformed frames cancel the remaining response body", async () => {
       cancelled.resolve();
     },
   });
-  const result = await stream(
-    model,
-    { messages: [] },
-    {
-      apiKey: "test",
-      maxRetries: 0,
-      fetch: async () => new Response(body, { headers: { "content-type": "text/event-stream" } }),
-    },
-  ).result();
+  const result = await stream(model, normalizeContext({ messages: [] }), {
+    apiKey: "test",
+    maxRetries: 0,
+    fetch: async () => new Response(body, { headers: { "content-type": "text/event-stream" } }),
+  }).result();
   await cancelled.promise;
   assert.equal(result.stopReason, "error");
   assert.deepEqual(result.content, [{ type: "text", text: "answer" }]);
@@ -407,16 +404,12 @@ test("abort interrupts a blocked response read and retains partial content", asy
     { highWaterMark: 0 },
   );
   const controller = new AbortController();
-  const source = stream(
-    model,
-    { messages: [] },
-    {
-      apiKey: "test",
-      maxRetries: 0,
-      signal: controller.signal,
-      fetch: async () => new Response(body, { headers: { "content-type": "text/event-stream" } }),
-    },
-  );
+  const source = stream(model, normalizeContext({ messages: [] }), {
+    apiKey: "test",
+    maxRetries: 0,
+    signal: controller.signal,
+    fetch: async () => new Response(body, { headers: { "content-type": "text/event-stream" } }),
+  });
   await blocked.promise;
   controller.abort();
   const result = await source.result();

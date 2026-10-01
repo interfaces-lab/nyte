@@ -1,3 +1,4 @@
+import { normalizeContext } from "@nyte-ai/schema";
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import { openAICompletionsApi } from "../src/api/openai-completions.lazy.ts";
@@ -179,18 +180,17 @@ describe("GitHub Copilot transport", () => {
     };
     // `high` (16384 tokens) exceeds the range and clamps to the highest offered level.
     await completions
-      .streamSimple(
-        model,
-        { messages: [user("hi", 0)] },
-        { apiKey: SESSION_TOKEN, reasoning: "high", fetch: transport.fetch },
-      )
+      .streamSimple(model, normalizeContext({ messages: [user("hi", 0)] }), {
+        apiKey: SESSION_TOKEN,
+        reasoning: "high",
+        fetch: transport.fetch,
+      })
       .result();
     await completions
-      .streamSimple(
-        model,
-        { messages: [user("hi", 0)] },
-        { apiKey: SESSION_TOKEN, fetch: transport.fetch },
-      )
+      .streamSimple(model, normalizeContext({ messages: [user("hi", 0)] }), {
+        apiKey: SESSION_TOKEN,
+        fetch: transport.fetch,
+      })
       .result();
     const requests = transport.requests.filter(
       (request) => request.url === `${ORIGIN}/chat/completions`,
@@ -290,17 +290,13 @@ describe("GitHub Copilot transport", () => {
     assert.ok(hasApi(model, "openai-responses"));
 
     const first = await copilot
-      .streamSimple(
-        model,
-        { messages: [user("read it", 0)], tools },
-        {
-          apiKey: SESSION_TOKEN,
-          sessionId: "s-2",
-          reasoning: "medium",
-          cacheRetention: "none",
-          fetch: transport.fetch,
-        },
-      )
+      .streamSimple(model, normalizeContext({ messages: [user("read it", 0)], tools }), {
+        apiKey: SESSION_TOKEN,
+        sessionId: "s-2",
+        reasoning: "medium",
+        cacheRetention: "none",
+        fetch: transport.fetch,
+      })
       .result();
     assert.equal(first.stopReason, "toolUse");
     const call = first.content.find((block) => block.type === "toolCall");
@@ -310,7 +306,7 @@ describe("GitHub Copilot transport", () => {
     await copilot
       .streamSimple(
         model,
-        { messages: [user("read it", 0), first, toolResult("call_1")], tools },
+        normalizeContext({ messages: [user("read it", 0), first, toolResult("call_1")], tools }),
         {
           apiKey: SESSION_TOKEN,
           sessionId: "s-2",
@@ -360,7 +356,7 @@ describe("GitHub Copilot transport", () => {
       },
     };
     const transport = fakeFetch({
-      [`POST ${ORIGIN}/v1/messages`]: () => {
+      [`POST ${ORIGIN}/v1/messages?beta=true`]: () => {
         turn += 1;
         return turn === 1
           ? anthropicSse([
@@ -401,23 +397,19 @@ describe("GitHub Copilot transport", () => {
     assert.ok(hasApi(model, "anthropic-messages"));
 
     const first = await copilot
-      .streamSimple(
-        model,
-        { messages: [user("read it", 0)], tools },
-        {
-          apiKey: SESSION_TOKEN,
-          sessionId: "s-3",
-          reasoning: "high",
-          cacheRetention: "none",
-          fetch: transport.fetch,
-        },
-      )
+      .streamSimple(model, normalizeContext({ messages: [user("read it", 0)], tools }), {
+        apiKey: SESSION_TOKEN,
+        sessionId: "s-3",
+        reasoning: "high",
+        cacheRetention: "none",
+        fetch: transport.fetch,
+      })
       .result();
     assert.equal(first.stopReason, "toolUse");
     const second = await copilot
       .streamSimple(
         model,
-        { messages: [user("read it", 0), first, toolResult("toolu_1")], tools },
+        normalizeContext({ messages: [user("read it", 0), first, toolResult("toolu_1")], tools }),
         {
           apiKey: SESSION_TOKEN,
           sessionId: "s-3",
@@ -429,7 +421,9 @@ describe("GitHub Copilot transport", () => {
     assert.equal(second.stopReason, "stop");
     assert.equal(second.usage.input, 1);
 
-    const sent = transport.requests.filter((request) => request.url === `${ORIGIN}/v1/messages`);
+    const sent = transport.requests.filter(
+      (request) => request.url === `${ORIGIN}/v1/messages?beta=true`,
+    );
     assert.equal(sent.length, 2);
     const initial = sent[0];
     const followUp = sent[1];
@@ -460,7 +454,7 @@ describe("GitHub Copilot transport", () => {
 
   test("a budget Messages definition sends token thinking and clamps unavailable effort", async () => {
     const transport = fakeFetch({
-      [`POST ${ORIGIN}/v1/messages`]: () =>
+      [`POST ${ORIGIN}/v1/messages?beta=true`]: () =>
         anthropicSse([
           {
             type: "message_start",
@@ -489,13 +483,15 @@ describe("GitHub Copilot transport", () => {
       thinkingLevelMap: { medium: null, high: null, xhigh: null, max: null },
     };
     await copilot
-      .streamSimple(
-        model,
-        { messages: [user("hi", 0)] },
-        { apiKey: SESSION_TOKEN, reasoning: "high", fetch: transport.fetch },
-      )
+      .streamSimple(model, normalizeContext({ messages: [user("hi", 0)] }), {
+        apiKey: SESSION_TOKEN,
+        reasoning: "high",
+        fetch: transport.fetch,
+      })
       .result();
-    const request = transport.requests.find((entry) => entry.url === `${ORIGIN}/v1/messages`);
+    const request = transport.requests.find(
+      (entry) => entry.url === `${ORIGIN}/v1/messages?beta=true`,
+    );
     assert.ok(request);
     const body = requestBody(request.body);
     assert.ok(isObject(body.thinking));
@@ -524,11 +520,12 @@ describe("GitHub Copilot chat completions reasoning state", () => {
       [`POST ${ORIGIN}/chat/completions`]: () => sse(chunks),
     });
     const result = await completions
-      .stream(
-        chatModel,
-        { messages, tools },
-        { apiKey: "gh-token", maxRetries: 0, fetch: transport.fetch, sessionId: "session-1" },
-      )
+      .stream(chatModel, normalizeContext({ messages, tools }), {
+        apiKey: "gh-token",
+        maxRetries: 0,
+        fetch: transport.fetch,
+        sessionId: "session-1",
+      })
       .result();
     const request = transport.requests[0];
     assert.ok(request);
@@ -660,21 +657,21 @@ describe("GitHub Copilot chat completions reasoning state", () => {
       baseUrl: "https://example.test/v1",
     };
     const first = await completions
-      .stream(
-        other,
-        { messages: [user("hello", 0)] },
-        { apiKey: "k", maxRetries: 0, fetch: transport.fetch },
-      )
+      .stream(other, normalizeContext({ messages: [user("hello", 0)] }), {
+        apiKey: "k",
+        maxRetries: 0,
+        fetch: transport.fetch,
+      })
       .result();
     const thinking = first.content.find((block) => block.type === "thinking");
     assert.ok(thinking && thinking.type === "thinking");
     assert.equal(thinking.thinkingSignature, "reasoning_content");
     await completions
-      .stream(
-        other,
-        { messages: [user("hello", 0), first, user("go", 1)] },
-        { apiKey: "k", maxRetries: 0, fetch: transport.fetch },
-      )
+      .stream(other, normalizeContext({ messages: [user("hello", 0), first, user("go", 1)] }), {
+        apiKey: "k",
+        maxRetries: 0,
+        fetch: transport.fetch,
+      })
       .result();
     const replay = transport.requests[1];
     assert.ok(replay);

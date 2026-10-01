@@ -1,3 +1,4 @@
+import { normalizeContext } from "@nyte-ai/schema";
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import { streamSimple as streamAnthropic } from "../src/api/anthropic-messages.ts";
@@ -111,7 +112,7 @@ async function runRequest(
     captured.headers = new Headers(init.headers);
     return createSseResponse(model.id, responseSpeed);
   };
-  const message = await streamAnthropic(model, context, {
+  const message = await streamAnthropic(model, normalizeContext(context), {
     apiKey: "sk-ant-test",
     cacheRetention: "none",
     fetch,
@@ -149,7 +150,7 @@ describe("Anthropic fast mode", () => {
       createModel("claude-fast", "anthropic-compatible-test"),
     ]) {
       let fetchCalled = false;
-      const message = await streamAnthropic(model, context, {
+      const message = await streamAnthropic(model, normalizeContext(context), {
         apiKey: "sk-ant-test",
         fast: true,
         fetch: async () => {

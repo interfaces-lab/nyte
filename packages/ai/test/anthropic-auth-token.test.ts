@@ -1,3 +1,4 @@
+import { normalizeContext } from "@nyte-ai/schema";
 import { arch, platform, release } from "node:os";
 import { beforeEach, describe, expect, it } from "vitest";
 import { stream } from "../src/api/anthropic-messages.ts";
@@ -125,7 +126,7 @@ describe("Anthropic auth token env", () => {
   it("reports account-limit events without adding them to the message stream", async () => {
     const observed: unknown[] = [];
     const eventTypes: string[] = [];
-    const source = stream(anthropicModel, context, {
+    const source = stream(anthropicModel, normalizeContext(context), {
       headers: { Authorization: "Bearer test" },
       fetch,
       onAccountLimits: (limits) => {
@@ -156,7 +157,7 @@ describe("Anthropic auth token env", () => {
   });
 
   it("uses Authorization headers without OAuth-mode request shaping", async () => {
-    const result = await stream(anthropicModel, context, {
+    const result = await stream(anthropicModel, normalizeContext(context), {
       headers: { Authorization: "Bearer gateway-token" },
       fetch,
       cacheRetention: "none",
@@ -248,7 +249,7 @@ describe("Anthropic auth token env", () => {
 
 describe("Anthropic-compatible user agents", () => {
   it("uses Nyte's User-Agent by default for Anthropic Messages requests", async () => {
-    const result = await stream(anthropicModel, context, {
+    const result = await stream(anthropicModel, normalizeContext(context), {
       apiKey: "anthropic-key",
       fetch,
     }).result();
@@ -261,7 +262,7 @@ describe("Anthropic-compatible user agents", () => {
   });
 
   it("lets explicit headers override the default Anthropic Messages User-Agent", async () => {
-    const result = await stream(kimiCodingModel, context, {
+    const result = await stream(kimiCodingModel, normalizeContext(context), {
       apiKey: "kimi-key",
       headers: { "User-Agent": "custom-client" },
       fetch,

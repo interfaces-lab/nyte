@@ -1,3 +1,4 @@
+import { normalizeContext } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { describe, expect, it } from "vitest";
 import { stream } from "../src/api/anthropic-messages.ts";
@@ -70,7 +71,7 @@ async function captureAnthropicRequest(input: {
   let requestCount = 0;
   const result = await stream(
     { ...model, compat: { forceAdaptiveThinking: true, ...input.compat } },
-    input.context,
+    normalizeContext(input.context),
     {
       apiKey: "test-key",
       cacheRetention: "none",

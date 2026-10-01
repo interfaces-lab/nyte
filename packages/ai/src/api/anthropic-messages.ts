@@ -2,15 +2,15 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Type, type Static } from "typebox";
 import { IsProperties, IsRequired } from "typebox/schema";
 import { Value } from "typebox/value";
-import type { MessageCreateParamsStreaming as BetaMessageCreateParamsStreaming } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import type {
-  CacheControlEphemeral,
-  ContentBlockParam,
-  ImageBlockParam,
+  BetaTool,
+  BetaCacheControlEphemeral,
+  BetaContentBlockParam,
+  BetaImageBlockParam,
   MessageCreateParamsStreaming,
-  MessageParam,
-  TextBlockParam,
-} from "@anthropic-ai/sdk/resources/messages.js";
+  BetaMessageParam,
+  BetaTextBlockParam,
+} from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import { calculateCost, clampThinkingLevel } from "../models.ts";
 import { ANTHROPIC_FAST_MODE_COST_MULTIPLIER } from "../model-pricing.ts";
 import { resolveCacheRetention } from "../prompt-cache.ts";
@@ -20,7 +20,6 @@ import type {
   AccountLimits,
   AssistantMessage,
   CacheRetention,
-  Context,
   ImageContent,
   Message,
   Model,
@@ -35,6 +34,7 @@ import type {
   Tool,
   ToolCall,
   ToolResultMessage,
+  TranscriptContext,
   Usage,
 } from "../types.ts";
 import { combineAbortSignals } from "../utils/abort-signals.ts";
@@ -45,6 +45,14 @@ import { repairJson, parseStreamingJson } from "../utils/json-parse.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
+import { getSystemMessageText, renderSystemMessageUpdate } from "../utils/text.ts";
+import {
+  getCurrentTools,
+  getDeclaredTools,
+  getInitialSystemMessage,
+  hasToolRedefinitions,
+  resolveTranscript,
+} from "../utils/transcript.ts";
 
 import {
   AnthropicEventSchema,
@@ -68,12 +76,12 @@ function getCacheControl(
   model: Model<"anthropic-messages">,
   cacheRetention?: CacheRetention,
   env?: ProviderEnv,
-): CacheControlEphemeral | undefined {
+): BetaCacheControlEphemeral | undefined {
   const retention = resolveCacheRetention(cacheRetention, env);
 
   if (retention === "none") return undefined;
 
-  const cacheControl: CacheControlEphemeral = { type: "ephemeral" };
+  const cacheControl: BetaCacheControlEphemeral = { type: "ephemeral" };
 
   if (retention === "long" && getAnthropicCompat(model).supportsLongCacheRetention) {
     cacheControl.ttl = "1h";
@@ -126,7 +134,7 @@ const fromClaudeCodeName = (name: string, tools?: Tool[]) => {
 
 const ANTHROPIC_IMAGE_MEDIA_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"] as const;
 
-function convertImageBlock(image: ImageContent): ImageBlockParam {
+function convertImageBlock(image: ImageContent): BetaImageBlockParam {
   const mediaType = ANTHROPIC_IMAGE_MEDIA_TYPES.find((type) => type === image.mimeType);
 
   if (mediaType === undefined) {
@@ -141,7 +149,7 @@ function convertImageBlock(image: ImageContent): ImageBlockParam {
  */
 function convertContentBlocks(
   content: (TextContent | ImageContent)[],
-): string | Array<TextBlockParam | ImageBlockParam> {
+): string | Array<BetaTextBlockParam | BetaImageBlockParam> {
   // If only text blocks, return as concatenated string for simplicity
   const hasImages = content.some((c) => c.type === "image");
 
@@ -150,7 +158,7 @@ function convertContentBlocks(
   }
 
   // If we have images, convert to content block array
-  const blocks = content.map((block): TextBlockParam | ImageBlockParam =>
+  const blocks = content.map((block): BetaTextBlockParam | BetaImageBlockParam =>
     block.type === "text"
       ? { type: "text", text: sanitizeSurrogates(block.text) }
       : convertImageBlock(block),
@@ -175,11 +183,6 @@ export type AnthropicEffort = (typeof ANTHROPIC_EFFORTS)[number];
 
 export type AnthropicThinkingDisplay = "summarized" | "omitted";
 
-type MessageCreateParamsStreamingWithFallbacks = MessageCreateParamsStreaming &
-  Pick<BetaMessageCreateParamsStreaming, "speed"> & {
-    fallbacks?: readonly { model: string }[];
-  };
-
 const FINE_GRAINED_TOOL_STREAMING_BETA = "fine-grained-tool-streaming-2025-05-14";
 
 const FAST_MODE_BETA = "fast-mode-2026-02-01";
@@ -187,6 +190,22 @@ const FAST_MODE_BETA = "fast-mode-2026-02-01";
 const INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14";
 
 const SERVER_SIDE_FALLBACK_BETA = "server-side-fallback-2026-07-01";
+
+const MID_CONVERSATION_TOOL_CHANGES_BETA = "mid-conversation-tool-changes-2026-07-01";
+
+/**
+ * Stable deferred tool declared whenever native tool changes are in use. Anthropic adds
+ * hidden prompt scaffolding as soon as any tool has `defer_loading`; declaring this
+ * placeholder from the first request keeps that scaffolding in the cached prefix, so the
+ * first real late tool does not invalidate the cache (measured: full miss without it).
+ * It is never activated and the model cannot see it.
+ */
+const DEFERRED_TOOL_PLACEHOLDER: BetaTool = {
+  name: "__pi_deferred_placeholder__",
+  description: "Reserved placeholder. Never available. Never call this.",
+  input_schema: { type: "object", properties: {}, required: [] },
+  defer_loading: true,
+};
 
 function supportsAnthropicFastMode(model: Model<"anthropic-messages">): boolean {
   return model.provider === "anthropic" && model.modes?.includes("fast") === true;
@@ -217,9 +236,31 @@ function getAnthropicCompat(
     supportsTemperature: model.compat?.supportsTemperature ?? true,
     allowEmptySignature: model.compat?.allowEmptySignature ?? false,
     supportsStrictTools: model.compat?.supportsStrictTools ?? false,
+    supportsMidConvoSystemMessages: model.compat?.supportsMidConvoSystemMessages ?? false,
+    supportsMidConvoToolChanges: model.compat?.supportsMidConvoToolChanges ?? false,
     supportsToolReferences:
       model.compat?.supportsToolReferences ?? defaultSupportsToolReferences(model),
   };
+}
+
+/**
+ * Native tool changes reference tools by name, so a redefined name cannot be expressed,
+ * and Anthropic rejects a tool list where every tool is deferred, so there must be an
+ * initial active tool to anchor the deferred ones. Otherwise the current tool list is sent.
+ */
+function usesNativeToolChanges(
+  model: Model<"anthropic-messages">,
+  context: TranscriptContext,
+): boolean {
+  const compat = getAnthropicCompat(model);
+  const initialTools = getInitialSystemMessage(context.messages)?.toolsAdded ?? [];
+
+  return (
+    compat.supportsMidConvoSystemMessages &&
+    compat.supportsMidConvoToolChanges &&
+    initialTools.length > 0 &&
+    !hasToolRedefinitions(context.messages)
+  );
 }
 
 /**
@@ -243,7 +284,7 @@ export interface AnthropicOptions extends StreamOptions {
    * Anthropic inference speed. Fast mode is available only for first-party
    * Claude Opus 5 and Claude Opus 4.8 requests.
    */
-  speed?: NonNullable<BetaMessageCreateParamsStreaming["speed"]>;
+  speed?: NonNullable<MessageCreateParamsStreaming["speed"]>;
   /**
    * Enable extended thinking.
    * For adaptive thinking models: the model decides when/how much to think.
@@ -807,10 +848,18 @@ async function* iterateAnthropicEvents(
 
 export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
   model: Model<"anthropic-messages">,
-  context: Context,
+  context: TranscriptContext,
   options?: AnthropicOptions,
 ): AssistantMessageEventStream => {
   const stream = new AssistantMessageEventStream();
+
+  const normalizedContext = resolveTranscript(
+    context,
+    getAnthropicCompat(model).supportsMidConvoSystemMessages,
+  );
+
+  const currentTools = getCurrentTools(normalizedContext.messages);
+  const nativeToolChanges = usesNativeToolChanges(model, normalizedContext);
 
   (async () => {
     const output: AssistantMessage = {
@@ -852,7 +901,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 
         if (model.provider === "github-copilot") {
           copilotDynamicHeaders = buildCopilotDynamicHeaders({
-            messages: context.messages,
+            messages: normalizedContext.messages,
             sessionId: options?.sessionId,
           });
         }
@@ -864,9 +913,10 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
           model,
           apiKey,
           options?.interleavedThinking ?? true,
-          shouldUseFineGrainedToolStreamingBeta(model, context),
+          shouldUseFineGrainedToolStreamingBeta(model, normalizedContext),
           shouldUseServerSideFallbackBeta(model),
           options?.speed === "fast",
+          nativeToolChanges,
           options?.headers,
           options?.fetch,
           copilotDynamicHeaders,
@@ -877,7 +927,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
         isOAuth = created.isOAuthToken;
       }
 
-      let params = buildParams(model, context, isOAuth, options);
+      let params = buildParams(model, normalizedContext, isOAuth, nativeToolChanges, options);
       const nextParams = await options?.onPayload?.(params, model);
 
       if (nextParams !== undefined) {
@@ -892,15 +942,22 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 
       if (options?.timeoutMs !== undefined) requestOptions.timeout = options.timeoutMs;
 
-      if (options?.client && options.speed === "fast") {
-        requestOptions.headers = appendAnthropicBeta(
-          mergeHeaders(model.headers, options.headers),
-          FAST_MODE_BETA,
-        );
+      if (options?.client) {
+        const requestBetas = [
+          ...(options.speed === "fast" ? [FAST_MODE_BETA] : []),
+          ...(nativeToolChanges ? [MID_CONVERSATION_TOOL_CHANGES_BETA] : []),
+        ];
+
+        if (requestBetas.length > 0) {
+          requestOptions.headers = requestBetas.reduce(
+            appendAnthropicBeta,
+            mergeHeaders(model.headers, options.headers),
+          );
+        }
       }
 
       const response = await retryProviderRequest(
-        () => client.messages.create({ ...params, stream: true }, requestOptions).asResponse(),
+        () => client.beta.messages.create({ ...params, stream: true }, requestOptions).asResponse(),
         {
           maxRetries: options?.maxRetries,
           maxRetryDelayMs: options?.maxRetryDelayMs,
@@ -987,7 +1044,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
               block = {
                 type: "toolCall",
                 id: content.id,
-                name: isOAuth ? fromClaudeCodeName(content.name, context.tools) : content.name,
+                name: isOAuth ? fromClaudeCodeName(content.name, currentTools) : content.name,
                 arguments: content.input ?? {},
               };
               break;
@@ -1163,7 +1220,7 @@ function mapThinkingLevelToEffort(
 
 export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOptions> = (
   model: Model<"anthropic-messages">,
-  context: Context,
+  context: TranscriptContext,
   options?: SimpleStreamOptions,
 ): AssistantMessageEventStream => {
   assertRequestAuth(model.provider, options?.apiKey, options?.headers);
@@ -1234,6 +1291,7 @@ function createClient(
   useFineGrainedToolStreamingBeta: boolean,
   useServerSideFallbackBeta: boolean,
   useFastModeBeta: boolean,
+  useMidConversationToolChangesBeta: boolean,
   optionsHeaders?: ProviderHeaders,
   fetch?: typeof globalThis.fetch,
   dynamicHeaders?: ProviderHeaders,
@@ -1253,6 +1311,10 @@ function createClient(
 
   if (useServerSideFallbackBeta) {
     betaFeatures.push(SERVER_SIDE_FALLBACK_BETA);
+  }
+
+  if (useMidConversationToolChangesBeta) {
+    betaFeatures.push(MID_CONVERSATION_TOOL_CHANGES_BETA);
   }
 
   const browserHeaders: ProviderHeaders = {
@@ -1337,9 +1399,9 @@ function createClient(
 
 function systemBlock(
   text: string,
-  cacheControl: CacheControlEphemeral | undefined,
-): TextBlockParam {
-  const block: TextBlockParam = { type: "text", text };
+  cacheControl: BetaCacheControlEphemeral | undefined,
+): BetaTextBlockParam {
+  const block: BetaTextBlockParam = { type: "text", text };
 
   if (cacheControl) block.cache_control = cacheControl;
 
@@ -1350,18 +1412,30 @@ const AnthropicMetadataSchema = Type.Object({ user_id: Type.String() });
 
 function buildParams(
   model: Model<"anthropic-messages">,
-  context: Context,
+  context: TranscriptContext,
   isOAuthToken: boolean,
+  nativeToolChanges: boolean,
   options?: AnthropicOptions,
-): MessageCreateParamsStreamingWithFallbacks {
+): MessageCreateParamsStreaming {
   const cacheControl = getCacheControl(model, options?.cacheRetention, options?.env);
   const compat = getAnthropicCompat(model);
+  const initialSystemMessage = getInitialSystemMessage(context.messages);
+  const initialSystemText = initialSystemMessage ? getSystemMessageText(initialSystemMessage) : "";
   const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
-  const normalizeToolName = isOAuthToken ? toClaudeCodeName : (name: string) => name;
 
+  const conversationMessages = initialSystemMessage
+    ? transformedMessages.slice(1)
+    : transformedMessages;
+
+  const normalizeToolName = isOAuthToken ? toClaudeCodeName : (name: string) => name;
+  const initialTools = initialSystemMessage?.toolsAdded ?? [];
+
+  // Native tool changes anchor every later declaration at its system message, so tool
+  // results carry no `tool_reference` loads; otherwise the current tool list is split
+  // between up-front definitions and the ones the transcript loaded via `addedToolNames`.
   const toolPlacement = splitDeferredTools(
-    { ...context, messages: transformedMessages },
-    compat.supportsToolReferences,
+    { messages: conversationMessages, tools: getCurrentTools(context.messages) },
+    compat.supportsToolReferences && !nativeToolChanges,
     normalizeToolName,
   );
 
@@ -1375,15 +1449,16 @@ function buildParams(
 
   const deferredToolNames = new Set(deferredTools.map((tool) => normalizeToolName(tool.name)));
 
-  const params: MessageCreateParamsStreamingWithFallbacks = {
+  const params: MessageCreateParamsStreaming = {
     model: model.id,
     messages: convertMessages(
-      transformedMessages,
+      conversationMessages,
       isOAuthToken,
       cacheControl,
       compat.allowEmptySignature,
       deferredToolNames,
       normalizeToolName,
+      nativeToolChanges,
     ),
     max_tokens: options?.maxTokens ?? model.maxTokens,
     stream: true,
@@ -1399,12 +1474,12 @@ function buildParams(
       systemBlock("You are Claude Code, Anthropic's official CLI for Claude.", cacheControl),
     ];
 
-    if (context.systemPrompt) {
-      params.system.push(systemBlock(sanitizeSurrogates(context.systemPrompt), cacheControl));
+    if (initialSystemText) {
+      params.system.push(systemBlock(sanitizeSurrogates(initialSystemText), cacheControl));
     }
-  } else if (context.systemPrompt) {
+  } else if (initialSystemText) {
     // Add cache control to system prompt for non-OAuth tokens
-    params.system = [systemBlock(sanitizeSurrogates(context.systemPrompt), cacheControl)];
+    params.system = [systemBlock(sanitizeSurrogates(initialSystemText), cacheControl)];
   }
 
   // Temperature is incompatible with extended thinking and unsupported on Claude Opus 4.7+.
@@ -1416,14 +1491,43 @@ function buildParams(
     params.temperature = options.temperature;
   }
 
-  if (immediateTools.length > 0 || deferredTools.length > 0) {
+  const toolCacheControl = compat.supportsCacheControlOnTools ? cacheControl : undefined;
+
+  if (nativeToolChanges) {
+    // Initial tools stay active with the cache breakpoint on the last one. Every later
+    // declaration is deferred and only surfaced by its `tool_addition` block; removed
+    // tools stay declared and are withdrawn by `tool_removal`. The request-level list
+    // therefore only grows, keeping the cached prefix intact across tool changes.
+    const initialNames = new Set(initialTools.map((tool) => tool.name));
+
+    const laterTools = getDeclaredTools(context.messages).filter(
+      (tool) => !initialNames.has(tool.name),
+    );
+
+    params.tools = [
+      ...convertTools(
+        initialTools,
+        isOAuthToken,
+        compat.supportsEagerToolInputStreaming,
+        compat.supportsStrictTools,
+        toolCacheControl,
+      ),
+      DEFERRED_TOOL_PLACEHOLDER,
+      ...convertTools(
+        laterTools,
+        isOAuthToken,
+        compat.supportsEagerToolInputStreaming,
+        compat.supportsStrictTools,
+      ).map((tool) => ({ ...tool, defer_loading: true })),
+    ];
+  } else if (immediateTools.length > 0 || deferredTools.length > 0) {
     params.tools = [
       ...convertTools(
         immediateTools,
         isOAuthToken,
         compat.supportsEagerToolInputStreaming,
         compat.supportsStrictTools,
-        compat.supportsCacheControlOnTools ? cacheControl : undefined,
+        toolCacheControl,
       ),
       ...convertTools(
         deferredTools,
@@ -1498,8 +1602,8 @@ function normalizeToolCallId(id: string): string {
 }
 
 interface ConvertedToolResult {
-  toolResult: ContentBlockParam;
-  siblingContent: ContentBlockParam[];
+  toolResult: BetaContentBlockParam;
+  siblingContent: BetaContentBlockParam[];
 }
 
 function convertToolResult(
@@ -1544,18 +1648,62 @@ function convertToolResult(
 function convertMessages(
   transformedMessages: Message[],
   isOAuthToken: boolean,
-  cacheControl?: CacheControlEphemeral,
+  cacheControl?: BetaCacheControlEphemeral,
   allowEmptySignature = false,
   deferredToolNames: ReadonlySet<string> = new Set(),
   normalizeToolName: (name: string) => string = (name) => name,
-): MessageParam[] {
-  const params: MessageParam[] = [];
+  nativeToolChanges = false,
+): BetaMessageParam[] {
+  const params: BetaMessageParam[] = [];
   const loadedToolNames = new Set<string>();
+
+  // Later system messages are held back and emitted directly before the next assistant
+  // message (or at the end of the transcript). Anthropic requires `tool_result` blocks to
+  // immediately follow their `tool_use`, so a system message between them is rejected.
+  // As a result an update placed before a user message in the transcript lands after it
+  // on the wire.
+  const pendingSystemMessages: BetaMessageParam[] = [];
+
+  const flushPendingSystemMessages = (): void => {
+    params.push(...pendingSystemMessages);
+    pendingSystemMessages.length = 0;
+  };
 
   for (let i = 0; i < transformedMessages.length; i++) {
     const msg = transformedMessages[i];
 
-    if (msg.role === "user") {
+    if (msg.role === "system") {
+      // Later system messages only reach this point when the model accepts them natively;
+      // otherwise the transcript was collapsed into the leading message before conversion.
+      const text = renderSystemMessageUpdate(msg);
+      const blocks: BetaContentBlockParam[] = [];
+
+      if (text.length > 0) blocks.push({ type: "text", text: sanitizeSurrogates(text) });
+
+      if (nativeToolChanges) {
+        for (const tool of msg.toolsRemoved ?? []) {
+          blocks.push({
+            type: "tool_removal",
+            tool: {
+              type: "tool_reference",
+              name: isOAuthToken ? toClaudeCodeName(tool.name) : tool.name,
+            },
+          });
+        }
+
+        for (const tool of msg.toolsAdded ?? []) {
+          blocks.push({
+            type: "tool_addition",
+            tool: {
+              type: "tool_reference",
+              name: isOAuthToken ? toClaudeCodeName(tool.name) : tool.name,
+            },
+          });
+        }
+      }
+
+      if (blocks.length > 0) pendingSystemMessages.push({ role: "system", content: blocks });
+    } else if (msg.role === "user") {
       if (!Array.isArray(msg.content)) {
         if (msg.content.trim().length > 0) {
           params.push({
@@ -1564,7 +1712,7 @@ function convertMessages(
           });
         }
       } else {
-        const blocks: ContentBlockParam[] = msg.content.map((item) => {
+        const blocks: BetaContentBlockParam[] = msg.content.map((item) => {
           if (item.type === "text") {
             return {
               type: "text",
@@ -1590,7 +1738,8 @@ function convertMessages(
         });
       }
     } else if (msg.role === "assistant") {
-      const blocks: ContentBlockParam[] = [];
+      flushPendingSystemMessages();
+      const blocks: BetaContentBlockParam[] = [];
 
       for (const block of msg.content) {
         if (block.type === "text") {
@@ -1654,8 +1803,8 @@ function convertMessages(
       });
     } else if (msg.role === "toolResult") {
       // Collect all consecutive toolResult messages, needed for z.ai Anthropic endpoint.
-      const toolResults: ContentBlockParam[] = [];
-      const siblingContent: ContentBlockParam[] = [];
+      const toolResults: BetaContentBlockParam[] = [];
+      const siblingContent: BetaContentBlockParam[] = [];
       let j = i;
 
       for (; j < transformedMessages.length; j++) {
@@ -1686,11 +1835,13 @@ function convertMessages(
     }
   }
 
-  // Add cache_control to the last user message to cache conversation history
+  flushPendingSystemMessages();
+
+  // Add cache_control to the last user or system message to cache conversation history
   if (cacheControl && params.length > 0) {
     const lastMessage = params[params.length - 1];
 
-    if (lastMessage.role === "user") {
+    if (lastMessage.role === "user" || lastMessage.role === "system") {
       if (Array.isArray(lastMessage.content)) {
         const lastBlock = lastMessage.content[lastMessage.content.length - 1];
 
@@ -1698,7 +1849,9 @@ function convertMessages(
           lastBlock &&
           (lastBlock.type === "text" ||
             lastBlock.type === "image" ||
-            lastBlock.type === "tool_result")
+            lastBlock.type === "tool_result" ||
+            lastBlock.type === "tool_addition" ||
+            lastBlock.type === "tool_removal")
         ) {
           lastBlock.cache_control = cacheControl;
         }
@@ -1719,9 +1872,12 @@ function convertMessages(
 
 function shouldUseFineGrainedToolStreamingBeta(
   model: Model<"anthropic-messages">,
-  context: Context,
+  context: TranscriptContext,
 ): boolean {
-  return !!context.tools?.length && !getAnthropicCompat(model).supportsEagerToolInputStreaming;
+  return (
+    getCurrentTools(context.messages).length > 0 &&
+    !getAnthropicCompat(model).supportsEagerToolInputStreaming
+  );
 }
 
 function convertTools(
@@ -1729,9 +1885,9 @@ function convertTools(
   isOAuthToken: boolean,
   supportsEagerToolInputStreaming: boolean,
   supportsStrictTools: boolean,
-  cacheControl?: CacheControlEphemeral,
+  cacheControl?: BetaCacheControlEphemeral,
   deferLoading = false,
-): Anthropic.Messages.Tool[] {
+): BetaTool[] {
   if (!tools) return [];
 
   return tools.map((tool, index) => {
@@ -1744,7 +1900,7 @@ function convertTools(
       required: IsRequired(parameters) ? parameters.required : [],
     };
 
-    const converted: Anthropic.Messages.Tool = {
+    const converted: BetaTool = {
       name: isOAuthToken ? toClaudeCodeName(tool.name) : tool.name,
       description: tool.description,
       input_schema: strict === true ? { ...parameters, ...legacyInputSchema } : legacyInputSchema,
