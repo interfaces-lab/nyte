@@ -1,9 +1,6 @@
 /**
- * Right-click menus are native. Cursor takes the same route on the desktop —
- * its bundles ship no menu widget CSS, only the `vscode:showContextMenu`
- * channel — and a native popup sits above the `WebContentsView`s that browser
- * panels composite over the renderer, which a DOM menu cannot do without
- * registering for overlay occlusion.
+ * Native right-click menus sit above the browser panels' `WebContentsView`s.
+ * A DOM menu would need to register for overlay occlusion.
  */
 import type { ContextMenuTemplateItem, HostBridge, HostState } from "../bridge.ts";
 import { macPlatform } from "../platform.ts";
@@ -13,7 +10,7 @@ export type ContextMenuEntry =
   | Exclude<ContextMenuTemplateItem, { kind: "item" }>
   | (Extract<ContextMenuTemplateItem, { kind: "item" }> & { readonly run: () => void });
 
-/** Matches the system file manager, the way Cursor labels the same action. */
+/** Matches the system file manager. */
 export function revealLabel(platform: HostState["platform"] | undefined): string {
   if (macPlatform(platform)) return "Reveal in Finder";
 

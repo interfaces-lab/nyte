@@ -3,8 +3,7 @@
  * way down, the mentioned file or folder last. Deep paths keep their tail and
  * collapse the folders above it into a single row, so the card stays short.
  *
- * Based on Cursor's file and folder path staircases in
- * `/Applications/Cursor.app/Contents/Resources/app/out/vs/workbench/workbench.glass.main.js`.
+ * Source attribution: THIRD-PARTY-NOTICES.md.
  */
 
 /** Folders that keep a row of their own; the ones above them share the first. */

@@ -48,7 +48,7 @@ const SHELL_TOKEN = /\s+|"(?:[^"\\]|\\.)*"?|'[^']*'?|&&|\|\||[|;<>]|[^\s|;<>"']+
 
 const SEPARATOR = /^(?:&&|\|\||[|;])$/u;
 
-/** Cursor's reading of a command: the first word after a separator is the program. */
+/** The first word after a separator is the program. */
 function shellTokens(
   command: string,
 ): readonly { readonly kind: ShellTokenKind; readonly text: string }[] {
