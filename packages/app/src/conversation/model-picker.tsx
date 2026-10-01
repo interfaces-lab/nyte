@@ -5,7 +5,14 @@
  * decides which models are listed (Settings › Models); the picker also keeps
  * whatever the session already runs on.
  */
-import { Autocomplete } from "@nyte-ai/ui/autocomplete";
+import {
+  Autocomplete,
+  AutocompleteGroup,
+  AutocompleteGroupLabel,
+  AutocompleteInput,
+  AutocompleteItem,
+  AutocompleteList,
+} from "@nyte-ai/ui/autocomplete";
 import { create, props } from "@stylexjs/stylex";
 import { useNavigate } from "@tanstack/react-router";
 import { memo, useMemo, useRef, useState } from "react";
@@ -14,13 +21,17 @@ import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import { Icon } from "@nyte-ai/ui/icon";
 import {
   Menu,
+  MenuContent,
   MenuItem,
   MenuLinkItem,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
-  MenuSubmenu,
+  MenuSub,
+  MenuSubContent,
+  MenuSubTrigger,
   MenuSwitchItem,
+  MenuTrigger,
 } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
 import { menu } from "@nyte-ai/ui/schema.stylex";
@@ -94,7 +105,6 @@ interface ModelPickerProps {
   fastEnabled: ReadonlySet<string>;
   disabled?: boolean;
   loading?: boolean;
-  disabledReason?: string;
   onChange: (change: ModelPickerChange) => void;
 }
 
@@ -105,7 +115,6 @@ function ModelPickerView({
   fastEnabled,
   disabled = false,
   loading = false,
-  disabledReason,
   onChange,
 }: ModelPickerProps): ReactElement {
   const navigate = useNavigate();
@@ -146,193 +155,195 @@ function ModelPickerView({
 
   return (
     <Menu
-      label="Model"
       open={open}
       onOpenChange={setOpen}
-      xstyle={styles.palette}
       onOpenChangeComplete={(nextOpen) => {
         if (!nextOpen) setSearch("");
       }}
-      trigger={
-        <Button
-          size="sm"
-          disabled={disabled || disabledReason !== undefined}
-          disabledReason={disabledReason}
-          loading={loading}
-          aria-description={
-            label.detail === undefined
-              ? `Model: ${label.name}`
-              : `Model: ${label.name}, ${label.detail}`
-          }
-          xstyle={styles.trigger}
-        >
-          <span {...props(styles.triggerName)}>{label.name}</span>
-          {label.detail !== undefined && (
-            <span {...props(styles.triggerDetail)}>{label.detail}</span>
-          )}
-          <Icon name="chevron-down" size={10} />
-        </Button>
-      }
     >
-      {fast?.kind === "available" && (
-        <MenuSwitchItem
-          layout="plain"
-          checked={fastOn}
-          onCheckedChange={(enabled) =>
-            onChange({ kind: "fast", settingId: fast.settingId, enabled })
-          }
-        >
-          Fast
-        </MenuSwitchItem>
-      )}
-
-      {levels.length > 1 && (
-        <MenuSubmenu
-          label="Reasoning"
-          layout="plain"
-          align="center"
-          value={THINKING_LABELS[level]}
-          xstyle={[styles.palette, styles.parameterPalette]}
-        >
-          <MenuRadioGroup
-            value={level}
-            onValueChange={(value) => {
-              const next = levels.find((candidate) => candidate === value);
-
-              if (next !== undefined) onChange({ kind: "thinking", thinkingLevel: next });
-            }}
+      <MenuTrigger
+        render={
+          <Button
+            size="sm"
+            disabled={disabled}
+            loading={loading}
+            aria-description={
+              label.detail === undefined
+                ? `Model: ${label.name}`
+                : `Model: ${label.name}, ${label.detail}`
+            }
+            xstyle={styles.trigger}
           >
-            {levels.map((candidate) => (
-              <MenuRadioItem key={candidate} value={candidate} layout="plain">
-                {THINKING_LABELS[candidate]}
-              </MenuRadioItem>
-            ))}
-          </MenuRadioGroup>
-        </MenuSubmenu>
-      )}
-
-      {hasParameters && <MenuSeparator />}
-
-      <MenuSubmenu
-        label="Model"
-        layout="plain"
-        align="center"
-        value={current?.name ?? "None"}
-        xstyle={[styles.palette, styles.modelPopup]}
-        onOpenChangeComplete={(modelOpen) => {
-          if (!modelOpen) {
-            setSearch("");
-
-            return;
-          }
-
-          window.requestAnimationFrame(() => {
-            currentOptionRef.current?.scrollIntoView({ block: "nearest" });
-            searchRef.current?.focus({ preventScroll: true });
-          });
-        }}
-      >
-        <Autocomplete.Root
-          inline
-          open
-          mode="none"
-          autoHighlight
-          items={groups.flatMap((group) => group.options)}
-          value={search}
-          itemToStringValue={(option) => option.name}
-          onValueChange={setSearch}
-        >
-          <Autocomplete.Input
-            ref={searchRef}
-            aria-label="Search models"
-            placeholder="Search models"
-          />
-          <MenuSeparator />
-          <Autocomplete.List data-nyte-scrollport>
-            {groups.length === 0 && (
-              <div {...props(styles.empty)}>
-                {search.trim() !== "" ? (
-                  <span {...props(styles.emptyTitle)}>No models match "{search.trim()}"</span>
-                ) : catalog?.source === "server" ? (
-                  <>
-                    <span {...props(styles.emptyTitle)}>No server models available</span>
-                    <span>Configure provider credentials on the server.</span>
-                  </>
-                ) : connected ? (
-                  <>
-                    <span {...props(styles.emptyTitle)}>Every model is hidden</span>
-                    <span>Enable models in Settings › Providers.</span>
-                  </>
-                ) : (
-                  <>
-                    <span {...props(styles.emptyTitle)}>No providers connected</span>
-                    <span>Connect a provider in Settings › Providers.</span>
-                  </>
-                )}
-              </div>
+            <span {...props(styles.triggerName)}>{label.name}</span>
+            {label.detail !== undefined && (
+              <span {...props(styles.triggerDetail)}>{label.detail}</span>
             )}
-            {groups.map((group) => (
-              <Autocomplete.Group key={group.provider.id}>
-                <Autocomplete.GroupLabel>
-                  <span>{group.provider.name}</span>
-                  {!group.provider.enabled ? (
-                    <span>· Off</span>
-                  ) : group.provider.connection.kind === "disconnected" ? (
-                    <span>· Not connected</span>
-                  ) : null}
-                </Autocomplete.GroupLabel>
-                {group.options.map((option) => (
-                  <Autocomplete.Item
-                    key={option.key}
-                    ref={option.key === current?.key ? currentOptionRef : undefined}
-                    value={option}
-                    selected={option.key === current?.key}
-                    onClick={() => {
-                      onChange({
-                        kind: "model",
-                        option,
-                        thinkingLevel: supportedThinkingLevel(option, level),
-                      });
-                      setOpen(false);
-                    }}
-                  >
-                    {option.name}
-                  </Autocomplete.Item>
-                ))}
-              </Autocomplete.Group>
-            ))}
-          </Autocomplete.List>
-        </Autocomplete.Root>
-        {manage !== undefined && (
-          <>
-            <MenuSeparator />
-            {manage.href !== undefined ? (
-              <MenuLinkItem
-                layout="plain"
-                href={manage.href}
-                onClick={(event) => {
-                  if (
-                    event.button !== 0 ||
-                    event.metaKey ||
-                    event.ctrlKey ||
-                    event.shiftKey ||
-                    event.altKey
-                  )
-                    return;
-                  event.preventDefault();
-                  manage.open();
+            <Icon name="chevron-down" size={10} />
+          </Button>
+        }
+      />
+      <MenuContent xstyle={styles.palette}>
+        {fast?.kind === "available" && (
+          <MenuSwitchItem
+            layout="plain"
+            checked={fastOn}
+            onCheckedChange={(enabled) =>
+              onChange({ kind: "fast", settingId: fast.settingId, enabled })
+            }
+          >
+            Fast
+          </MenuSwitchItem>
+        )}
+
+        {levels.length > 1 && (
+          <MenuSub>
+            <MenuSubTrigger layout="plain" value={THINKING_LABELS[level]}>
+              Reasoning
+            </MenuSubTrigger>
+            <MenuSubContent align="center" xstyle={[styles.palette, styles.parameterPalette]}>
+              <MenuRadioGroup
+                value={level}
+                onValueChange={(value) => {
+                  const next = levels.find((candidate) => candidate === value);
+
+                  if (next !== undefined) onChange({ kind: "thinking", thinkingLevel: next });
                 }}
               >
-                {manage.label}
-              </MenuLinkItem>
-            ) : (
-              <MenuItem layout="plain" onSelect={manage.open}>
-                {manage.label}
-              </MenuItem>
-            )}
-          </>
+                {levels.map((candidate) => (
+                  <MenuRadioItem key={candidate} value={candidate} layout="plain">
+                    {THINKING_LABELS[candidate]}
+                  </MenuRadioItem>
+                ))}
+              </MenuRadioGroup>
+            </MenuSubContent>
+          </MenuSub>
         )}
-      </MenuSubmenu>
+
+        {hasParameters && <MenuSeparator />}
+
+        <MenuSub
+          onOpenChangeComplete={(modelOpen) => {
+            if (!modelOpen) {
+              setSearch("");
+
+              return;
+            }
+
+            window.requestAnimationFrame(() => {
+              currentOptionRef.current?.scrollIntoView({ block: "nearest" });
+              searchRef.current?.focus({ preventScroll: true });
+            });
+          }}
+        >
+          <MenuSubTrigger layout="plain" value={current?.name ?? "None"}>
+            Model
+          </MenuSubTrigger>
+          <MenuSubContent align="center" xstyle={[styles.palette, styles.modelPopup]}>
+            <Autocomplete
+              inline
+              open
+              mode="none"
+              autoHighlight
+              items={groups.flatMap((group) => group.options)}
+              value={search}
+              itemToStringValue={(option) => option.name}
+              onValueChange={setSearch}
+            >
+              <AutocompleteInput
+                variant="inline"
+                ref={searchRef}
+                aria-label="Search models"
+                placeholder="Search models"
+              />
+              <MenuSeparator />
+              <AutocompleteList variant="inline" data-nyte-scrollport>
+                {groups.length === 0 && (
+                  <div {...props(styles.empty)}>
+                    {search.trim() !== "" ? (
+                      <span {...props(styles.emptyTitle)}>No models match "{search.trim()}"</span>
+                    ) : catalog?.source === "server" ? (
+                      <>
+                        <span {...props(styles.emptyTitle)}>No server models available</span>
+                        <span>Configure provider credentials on the server.</span>
+                      </>
+                    ) : connected ? (
+                      <>
+                        <span {...props(styles.emptyTitle)}>Every model is hidden</span>
+                        <span>Enable models in Settings › Providers.</span>
+                      </>
+                    ) : (
+                      <>
+                        <span {...props(styles.emptyTitle)}>No providers connected</span>
+                        <span>Connect a provider in Settings › Providers.</span>
+                      </>
+                    )}
+                  </div>
+                )}
+                {groups.map((group) => (
+                  <AutocompleteGroup key={group.provider.id}>
+                    <AutocompleteGroupLabel variant="inline">
+                      <span>{group.provider.name}</span>
+                      {!group.provider.enabled ? (
+                        <span>· Off</span>
+                      ) : group.provider.connection.kind === "disconnected" ? (
+                        <span>· Not connected</span>
+                      ) : null}
+                    </AutocompleteGroupLabel>
+                    {group.options.map((option) => (
+                      <AutocompleteItem
+                        variant="inline"
+                        key={option.key}
+                        ref={option.key === current?.key ? currentOptionRef : undefined}
+                        value={option}
+                        selected={option.key === current?.key}
+                        onClick={() => {
+                          onChange({
+                            kind: "model",
+                            option,
+                            thinkingLevel: supportedThinkingLevel(option, level),
+                          });
+                          setOpen(false);
+                        }}
+                      >
+                        {option.name}
+                      </AutocompleteItem>
+                    ))}
+                  </AutocompleteGroup>
+                ))}
+              </AutocompleteList>
+            </Autocomplete>
+            {manage !== undefined && (
+              <>
+                <MenuSeparator />
+                {manage.href !== undefined ? (
+                  <MenuLinkItem
+                    layout="plain"
+                    href={manage.href}
+                    onClick={(event) => {
+                      if (
+                        event.button !== 0 ||
+                        event.metaKey ||
+                        event.ctrlKey ||
+                        event.shiftKey ||
+                        event.altKey
+                      )
+                        return;
+                      event.preventDefault();
+                      manage.open();
+                    }}
+                  >
+                    {manage.label}
+                  </MenuLinkItem>
+                ) : (
+                  <MenuItem layout="plain" onClick={manage.open}>
+                    {manage.label}
+                  </MenuItem>
+                )}
+              </>
+            )}
+          </MenuSubContent>
+        </MenuSub>
+      </MenuContent>
     </Menu>
   );
 }
