@@ -233,20 +233,15 @@ export function unfinishedTask(task: Task): boolean {
     : task.job.phase.kind === "running";
 }
 
-/** Whether a job runs in the background: foreground work is the transcript's tool card, not a task row. */
-export function backgroundJob(job: JobInfo): boolean {
-  return job.phase.kind === "running" && job.phase.mode === "background";
-}
-
 export function projectTasks(
   children: readonly SessionState[],
   jobs: readonly JobInfo[] = [],
 ): Task[] {
   return [
     ...children.map((state): Task => ({ kind: "agent", id: state.sessionId, state })),
-    ...jobs.flatMap((job): Task[] =>
-      job.phase.kind !== "running" || backgroundJob(job) ? [{ kind: "job", id: job.id, job }] : [],
-    ),
+    ...jobs
+      .filter((job) => job.isBackgrounded)
+      .map((job): Task => ({ kind: "job", id: job.id, job })),
   ];
 }
 
@@ -257,10 +252,10 @@ interface TaskIndexOptions {
 }
 
 /**
- * One observer per child. A settled delegate call names its child, so that
- * signal follows it directly; a call that parks on a child (task, await) has
- * created it by then, so its wait lists. The session listing otherwise runs
- * only at deliberate boundaries (initial load, reconnect, opening Tasks).
+ * One observer per child. A settled create names its child, so that signal
+ * follows it directly; a task that parks has created its child by then, so its
+ * wait lists. The session listing otherwise runs only at deliberate boundaries
+ * (initial load, reconnect, opening Tasks).
  */
 export class TaskIndex {
   private parent: SessionState | undefined;
@@ -289,15 +284,11 @@ export class TaskIndex {
     // TaskBrowser handles parent changes; this index notifies when children change.
     this.parent = state;
 
-    if (event?.kind === "commit" && "calls" in event.item.commit) {
-      for (const call of Object.values(event.item.commit.calls)) {
-        if (call.kind === "delegate") {
-          const sessions =
-            call.target.kind === "one" ? [call.target.session] : call.target.sessions;
+    if (event?.kind === "commit") {
+      const { commit } = event.item;
 
-          for (const session of sessions) void this.follow(session);
-        }
-      }
+      if ("call" in commit && commit.call.kind === "delegate" && commit.call.role === "create")
+        void this.follow(commit.call.target.session);
 
       return;
     }

@@ -1,6 +1,6 @@
 import type { JobInfo, Nyte, SessionEvent, SessionId } from "@nyte-ai/core";
 import { BoxRenderable, ScrollBoxRenderable, StyledText, TextRenderable, fg } from "@opentui/core";
-import { GLYPHS, keycap } from "./constants.ts";
+import { keycap } from "./constants.ts";
 import { formatDuration } from "./format.ts";
 import { registerChatLayer } from "./keymap.ts";
 import type { InlineMenu, MenuScreen } from "./picker.ts";
@@ -11,7 +11,6 @@ import type { Shell } from "./app/ui.ts";
 
 import {
   TaskIndex,
-  backgroundJob,
   projectTasks,
   statusMark,
   taskAgent,
@@ -102,7 +101,6 @@ class TaskInspector {
       fg(theme.dim)(
         [
           status,
-          task.kind === "job" && backgroundJob(task.job) ? "background" : undefined,
           ...(task.kind === "agent"
             ? [task.state.config.model?.id, task.state.config.thinkingLevel]
             : []),
@@ -157,8 +155,8 @@ interface TaskBrowserOptions {
   readonly onError: (cause: unknown) => void;
 }
 
-function foregroundJob(job: JobInfo): boolean {
-  return job.phase.kind === "running" && job.phase.mode === "foreground";
+function isForegroundJob(job: JobInfo): boolean {
+  return job.phase.kind === "running" && !job.isBackgrounded;
 }
 
 /** Session-owned jobs stay alive when their menu or output view closes. */
@@ -256,7 +254,7 @@ export class TaskBrowser {
       });
 
       if (generation !== this.generation) return;
-      const foreground = jobs.filter(foregroundJob);
+      const foreground = jobs.filter(isForegroundJob);
 
       if (foreground.length === 0) {
         notice(this.options.shell, "No foreground work to background.");
@@ -288,7 +286,7 @@ export class TaskBrowser {
 
   /** Foreground work is not a task row, but it is what Ctrl+Z moves. */
   get hasForegroundWork(): boolean {
-    return this.jobs.some(foregroundJob);
+    return this.jobs.some(isForegroundJob);
   }
 
   get waiting() {
@@ -311,16 +309,10 @@ export class TaskBrowser {
         ? []
         : [
             {
-              command: "chat.job.background",
-              label: "background",
-              keepOpen: true,
-              run: (id) => this.selectedAction(id, "background"),
-            },
-            {
               command: "chat.task.stop",
               label: "cancel",
               keepOpen: true,
-              run: (id) => this.selectedAction(id, "cancel"),
+              run: (id) => this.cancelTask(id),
             },
           ],
       onSelect: (id) => {
@@ -395,7 +387,7 @@ export class TaskBrowser {
           return {
             id: task.id,
             mark: { text: mark.glyph, tone: mark.tone },
-            label: `${task.kind === "job" && backgroundJob(task.job) ? `${GLYPHS.steer} ` : ""}${taskAgent(task)} · ${taskLabel(task)}`,
+            label: `${taskAgent(task)} · ${taskLabel(task)}`,
             description: [
               elapsed === undefined ? undefined : formatDuration(Math.max(0, elapsed)),
               ...(task.kind === "agent"
@@ -419,9 +411,7 @@ export class TaskBrowser {
   private repaint(): void {
     const { shell } = this.options;
 
-    const active = this.tasks.filter((task) =>
-      task.kind === "job" ? backgroundJob(task.job) : unfinishedTask(task),
-    ).length;
+    const active = this.tasks.filter(unfinishedTask).length;
 
     shell.taskStatus.visible = active > 0;
     // A background child waiting on the user outranks the count: it is the one thing to act on.
@@ -449,9 +439,6 @@ export class TaskBrowser {
             `${keycap("chat.interrupt")} back`,
             `${keycap("chat.history.previous", "symbol")}${keycap("chat.history.next", "symbol")} scroll`,
             ...(canStopTask(task) ? [`${keycap("chat.task.stop")} cancel`] : []),
-            ...(task.kind === "job" && foregroundJob(task.job)
-              ? [`${keycap("chat.job.background")} background`]
-              : []),
             `${keycap("chat.tools.toggle")} follow`,
           ].join(" · "),
         );
@@ -468,7 +455,7 @@ export class TaskBrowser {
     this.menuHasTasks = choices.length > 1;
   }
 
-  private async selectedAction(id: string, action: "background" | "cancel"): Promise<void> {
+  private async cancelTask(id: string): Promise<void> {
     const state = this.state;
     const task = this.tasks.find((candidate) => candidate.id === id);
 
@@ -477,7 +464,7 @@ export class TaskBrowser {
     if (this.inspector === undefined) this.close();
 
     if (task.kind === "agent") {
-      if (action !== "cancel" || !canStopTask(task)) return;
+      if (!canStopTask(task)) return;
       notice(this.options.shell, "Cancellation requested.");
       await this.options.nyte.runs.abort({
         sessionId: task.state.sessionId,
@@ -493,13 +480,7 @@ export class TaskBrowser {
       return;
     }
 
-    if (action === "background" && backgroundJob(task.job)) {
-      notice(this.options.shell, "This task is already running in background.");
-
-      return;
-    }
-
-    await this.act(state.sessionId, task.job.id, action);
+    await this.act(state.sessionId, task.job.id, "cancel");
   }
 
   private async act(
@@ -527,7 +508,7 @@ export class TaskBrowser {
         notice(this.options.shell, "This task is no longer available.");
         break;
       case "finished":
-        notice(this.options.shell, "This task has already finished. /tasks opens its output.");
+        notice(this.options.shell, "This command has already finished.");
         break;
       default: {
         const exhaustive: never = outcome;
@@ -559,19 +540,7 @@ export class TaskBrowser {
         "chat.task.stop": {
           title: "Cancel task",
           run: () => {
-            void this.selectedAction(this.inspector?.id ?? id, "cancel").catch(
-              this.options.onError,
-            );
-
-            return true;
-          },
-        },
-        "chat.job.background": {
-          title: "Background task",
-          run: () => {
-            void this.selectedAction(this.inspector?.id ?? id, "background").catch(
-              this.options.onError,
-            );
+            void this.cancelTask(this.inspector?.id ?? id).catch(this.options.onError);
 
             return true;
           },

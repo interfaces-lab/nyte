@@ -591,6 +591,9 @@ const long: Scenario = {
             screen.text.includes("QA tool heartbeat"),
           );
           await independent.alive();
+          await command(terminal, "tasks", (screen) => screen.text.includes("Finished · 0"));
+          assert.ok(!terminal.screen().lines.some((line) => line.includes("command ·")));
+          await press(terminal, "picker.close", (screen) => !screen.text.includes("Finished ·"));
           await press(terminal, "chat.job.background", (screen) =>
             screen.text.includes("Running in background."),
           );
@@ -610,6 +613,23 @@ const long: Scenario = {
             );
             await stopTask(terminal, "independent");
             await independent.stopped(true);
+            await command(terminal, "tasks", (screen) => screen.text.includes("Finished · 1"));
+            assert.ok(!terminal.screen().text.includes("running in background"));
+            await press(
+              terminal,
+              "picker.accept",
+              (screen) =>
+                screen.text.includes("Tasks · Finished") &&
+                screen.lines.some(
+                  (line) => line.includes("command ·") && line.includes("independent"),
+                ),
+            );
+            await press(
+              terminal,
+              "picker.close",
+              (screen) => !screen.text.includes("Tasks · Finished"),
+            );
+            await press(terminal, "picker.close", (screen) => !screen.text.includes("Finished ·"));
             assert.ok(
               !provider.events.some(
                 (event) => event.requestId === parent.id && event.stage === "aborted",
@@ -866,10 +886,12 @@ const long: Scenario = {
             await press(
               terminal,
               "chat.queue.down",
-              (screen) =>
-                screen.lines.some((line) => line.includes("saved composer draft")) &&
-                screen.lines.findIndex((line) => line.includes("↓ saved composer draft")) <
-                  screen.lines.findIndex((line) => line.includes("↓ queued original revised")),
+              (screen) => {
+                const earlier = screen.lines.findIndex((line) => line.includes("saved composer draft"));
+                const later = screen.lines.findIndex((line) => line.includes("queued original revised"));
+
+                return earlier !== -1 && later > earlier;
+              },
             );
             await press(
               terminal,
@@ -939,7 +961,7 @@ const long: Scenario = {
               const input = terminal.text(character);
               await terminal.waitForScreen(
                 (screen) =>
-                  screen.text.includes(`/ ${query}`) &&
+                  (screen.lines[screen.cursor.y]?.trimStart().startsWith(query) ?? false) &&
                   (screen.cursor.x !== input.before.cursor.x ||
                     screen.cursor.y !== input.before.cursor.y),
                 deadline(),
