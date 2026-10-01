@@ -14,6 +14,7 @@ import {
 } from "react";
 import type { MouseEvent, ReactElement, Ref } from "react";
 import type { WorkspaceFileDocument } from "@nyte-ai/protocol";
+import { button } from "@nyte-ai/ui/schema.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { diffStyles } from "../conversation/styles.stylex.ts";
 import { revealLabel, showContextMenu } from "../components/context-menu.ts";
@@ -38,6 +39,7 @@ type TextFile = Extract<WorkspaceFileDocument, { readonly kind: "text" }>;
 export interface FileEditorHandle {
   save(): Promise<void>;
   discard(): Promise<void>;
+  format(): Promise<void>;
 }
 
 interface FileEditorProps {
@@ -80,7 +82,6 @@ const styles = create({
     minHeight: 0,
     backgroundColor: role.bgBase,
   },
-  actions: { display: "flex", justifyContent: "flex-end", flexShrink: 0, padding: 4 },
   // Keep each tab's viewport measurable so virtualized editors retain their scroll position.
   hidden: { visibility: "hidden", pointerEvents: "none" },
   code: {
@@ -102,7 +103,7 @@ const styles = create({
     alignItems: "center",
     gap: 8,
     flexShrink: 0,
-    minHeight: 26,
+    minHeight: button.heightMd,
     paddingInline: 10,
     borderTopWidth: 1,
     borderTopStyle: "solid",
@@ -397,8 +398,6 @@ function TextFileEditor({
     buffer.discard(result.data);
   };
 
-  useImperativeHandle(ref, () => ({ save, discard }));
-
   /** Formatting lands as an ordinary edit, so it stays on the undo stack. */
   const format = async (): Promise<void> => {
     const current = buffer.getSnapshot();
@@ -413,6 +412,8 @@ function TextFileEditor({
     if (result.kind === "formatted") buffer.edit(result.contents);
   };
 
+  useImperativeHandle(ref, () => ({ save, discard, format }));
+
   const contextMenu = nyte.host.contextMenu;
   const revealPath = nyte.host.revealPath;
 
@@ -421,12 +422,7 @@ function TextFileEditor({
       ? undefined
       : (event: MouseEvent<HTMLElement>): void => {
           event.preventDefault();
-          const bounds = event.currentTarget.getBoundingClientRect();
-          const anchor =
-            event.currentTarget instanceof HTMLButtonElement
-              ? { clientX: bounds.left, clientY: bounds.bottom }
-              : event;
-          void showContextMenu(contextMenu, anchor, [
+          void showContextMenu(contextMenu, event, [
             { kind: "role", role: "cut", label: "Cut" },
             { kind: "role", role: "copy", label: "Copy" },
             { kind: "role", role: "paste", label: "Paste" },
@@ -485,17 +481,6 @@ function TextFileEditor({
       onContextMenu={openContextMenu}
       {...props(styles.root, !active && styles.hidden)}
     >
-      {openContextMenu !== undefined && (
-        <div {...props(styles.actions)}>
-          <Button
-            iconOnly
-            icon="more-horizontal"
-            aria-label={`Options for ${file.displayPath}`}
-            aria-haspopup="menu"
-            onClick={openContextMenu}
-          />
-        </div>
-      )}
       <PierreWorkerProvider>
         <EditProvider createEditor={createEditor}>
           <CodeView

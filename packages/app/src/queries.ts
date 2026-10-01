@@ -6,11 +6,10 @@ import {
   queryOptions,
   useMutation,
   useMutationState,
-  useQueries,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import type { MutationState, UseQueryResult } from "@tanstack/react-query";
+import type { MutationState } from "@tanstack/react-query";
 import { projectPreference } from "./preference-projection.ts";
 import { useSyncExternalStore } from "react";
 import { keys } from "./query-keys.ts";
@@ -627,37 +626,6 @@ export function useWorkspaceFile(path: string | undefined) {
     },
     enabled: path !== undefined,
     staleTime: 1_000,
-  });
-}
-
-export type WorkspaceFileRead =
-  | WorkspaceFileDocument
-  | { readonly kind: "pending" }
-  | { readonly kind: "failed" };
-
-const PENDING_FILE = { kind: "pending" } as const;
-
-const FAILED_FILE = { kind: "failed" } as const;
-
-// Module scope keeps the combined array stable until a read changes.
-function workspaceFileReads(
-  results: readonly UseQueryResult<WorkspaceFileDocument>[],
-): readonly WorkspaceFileRead[] {
-  return results.map((result) => result.data ?? (result.isError ? FAILED_FILE : PENDING_FILE));
-}
-
-export function useWorkspaceFiles(
-  paths: readonly string[],
-  enabled: boolean,
-): readonly WorkspaceFileRead[] {
-  return useQueries({
-    queries: paths.map((path) => ({
-      queryKey: keys.workspaceFile(path),
-      queryFn: () => nyte.workspace.read({ target: { kind: "workspace" }, path }),
-      enabled,
-      staleTime: 1_000,
-    })),
-    combine: workspaceFileReads,
   });
 }
 

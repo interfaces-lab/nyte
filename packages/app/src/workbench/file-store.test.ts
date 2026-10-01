@@ -3,9 +3,9 @@ import { describe, test } from "vitest";
 import { createWorkbenchController, workbenchViewKey } from "./controller.ts";
 import { createFileTabStore } from "./file-store.ts";
 
-const first = { path: "/workspace/src/a.ts", displayPath: "src/a.ts" };
-const second = { path: "/workspace/src/b.ts", displayPath: "src/b.ts" };
-const third = { path: "/workspace/src/c.ts", displayPath: "src/c.ts" };
+const first = { path: "/workspace/src/a.ts" };
+const second = { path: "/workspace/src/b.ts" };
+const third = { path: "/workspace/src/c.ts" };
 const key = workbenchViewKey("/workspace");
 
 describe("file runtime store", () => {

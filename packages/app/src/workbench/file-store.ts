@@ -10,7 +10,6 @@ import type { FileDocumentSnapshot } from "./file-document.ts";
 
 interface FileLocation {
   readonly path: string;
-  readonly displayPath: string;
   readonly line?: number;
   readonly column?: number;
   readonly length?: number;
@@ -26,6 +25,7 @@ interface FileRuntime extends Omit<FileLocation, "path"> {
 }
 
 export interface FileTab extends FileRuntime {
+  readonly displayPath: string;
   readonly id: WorkbenchTabId;
   readonly path: string;
   readonly preview: boolean;
@@ -76,7 +76,6 @@ function visit(
     ...current.history.slice(0, current.historyIndex + 1),
     {
       path: location.path,
-      displayPath: location.displayPath,
       line: location.line,
       column: location.column,
       length: location.length,
@@ -103,9 +102,8 @@ export function createFileTabStore(
   const getRuntimeView = (key: WorkbenchViewKey): FileViewRuntime => views.get(key) ?? EMPTY_VIEW;
 
   // Restored tabs have no runtime until they are opened again.
-  const runtime = (tab: { readonly id: WorkbenchTabId; readonly path: string }): FileRuntime =>
-    documents.get(tab.id) ?? {
-      displayPath: tab.path,
+  const runtime = (id: WorkbenchTabId): FileRuntime =>
+    documents.get(id) ?? {
       navigationRevision: 0,
       saving: false,
       draft: undefined,
@@ -121,13 +119,16 @@ export function createFileTabStore(
   const fileTabs = (key: WorkbenchViewKey): readonly FileTab[] =>
     controller.getView(key).tabs.flatMap((tab) => {
       if (tab.kind !== "file") return [];
-      const current = runtime(tab);
+      const current = runtime(tab.id);
+      const path = tab.path.replaceAll("\\", "/");
+      const prefix = `${key.replaceAll("\\", "/").replace(/\/$/, "")}/`;
 
       return [
         {
           ...current,
           id: tab.id,
           path: tab.path,
+          displayPath: path.startsWith(prefix) ? path.slice(prefix.length) : path,
           preview: tab.preview,
           dirty: current.draft !== undefined,
         },
@@ -218,10 +219,9 @@ export function createFileTabStore(
       activate: true,
     });
 
-    const previous = runtime({ id, path: location.path });
+    const previous = runtime(id);
     documents.set(id, {
       ...previous,
-      displayPath: location.displayPath,
       line: location.line,
       column: location.column,
       length: location.length,
@@ -285,7 +285,7 @@ export function createFileTabStore(
       const tab = find(key, path);
 
       if (tab === undefined || tab.saving === saving) return;
-      documents.set(tab.id, { ...runtime(tab), saving });
+      documents.set(tab.id, { ...runtime(tab.id), saving });
       publish(key, getRuntimeView(key));
     },
     /** An edit pins a preview tab, so the next preview cannot replace it. */
@@ -301,7 +301,7 @@ export function createFileTabStore(
         return;
       }
 
-      documents.set(tab.id, { ...runtime(tab), draft });
+      documents.set(tab.id, { ...runtime(tab.id), draft });
 
       if (draft !== undefined) pin(key, tab);
       publish(key, getRuntimeView(key));

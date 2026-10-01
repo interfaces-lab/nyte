@@ -5,15 +5,22 @@ import { create, props } from "@stylexjs/stylex";
 import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { worktreeFiles } from "@nyte-ai/client";
+import type { MentionFile } from "@nyte-ai/client";
 import { errorMessage } from "../errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
-import { Menu, MenuItem, MenuSeparator, MenuSwitchItem } from "@nyte-ai/ui/menu";
+import {
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuSeparator,
+  MenuSwitchItem,
+  MenuTrigger,
+} from "@nyte-ai/ui/menu";
 import type { HostBridge } from "../bridge.ts";
 import { revealLabel, showContextMenu } from "../components/context-menu.ts";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { Tabs } from "@nyte-ai/ui/tabs";
 import { WorkspaceFileTree } from "./file-tree.tsx";
 import { nyte } from "../nyte.ts";
 import { macPlatform } from "../platform.ts";
@@ -25,7 +32,7 @@ import { WorkspaceFileEditor } from "./file-editor.tsx";
 import type { FileEditorHandle } from "./file-editor.tsx";
 import { setFilePreference, useFilePreferences } from "./file-preferences.ts";
 import { fileActions, useFileTabs } from "./file-store.ts";
-import { FilesStack } from "./files-stack.tsx";
+import { Popover } from "@nyte-ai/ui/popover";
 import { WorkspaceSearch } from "./workspace-search.tsx";
 import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
 import { useTreeStatusTheme } from "./tree-theme.ts";
@@ -50,26 +57,6 @@ const styles = create({
     color: role.contentSecondary,
     fontSize: type.fontBase,
   },
-  path: {
-    display: "flex",
-    alignItems: "center",
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-    paddingInline: 4,
-    color: role.contentSecondary,
-    fontSize: type.fontBase,
-    whiteSpace: "nowrap",
-  },
-  // Folders give up their width first, so a deep path still shows the file name.
-  crumb: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
-  crumbSeparator: {
-    display: "inline-flex",
-    flexShrink: 0,
-    marginInline: 2,
-    color: role.contentTertiary,
-  },
-  currentCrumb: { flexShrink: 0, maxWidth: "100%", color: role.contentPrimary },
   dirty: { flexShrink: 0, color: role.contentSecondary, fontSize: type.fontXs },
   body: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
   editors: { position: "relative", display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
@@ -129,7 +116,7 @@ export function FilesPanel({
   const tabs = useFileTabs(viewKey);
   const preferences = useFilePreferences();
   const [sidebar, setSidebar] = useState<"explorer" | "search">("explorer");
-  const [sidebarVisible, setSidebarVisible] = useState(true);
+  const [sidebarVisible, setSidebarVisible] = useState(false);
   const [searchOpened, setSearchOpened] = useState(false);
   const [discardPath, setDiscardPath] = useState<string>();
   const [discarding, setDiscarding] = useState(false);
@@ -144,7 +131,8 @@ export function FilesPanel({
     hostState.current = host.data;
   }, [host.data]);
   const activeFile = tabs.active;
-  const browsing = activeFile === undefined;
+
+  const unsaved = activeFile?.dirty === true;
 
   const showSearch = (): void => {
     setSidebarVisible(true);
@@ -215,7 +203,9 @@ export function FilesPanel({
   const { model } = useFileTree({
     paths: [],
     density: "compact",
-    itemHeight: window.matchMedia("(pointer: coarse)").matches ? 44 : 24,
+    itemHeight: Number.parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--nyte-target-min"),
+    ),
     unsafeCSS: PIERRE_TREE_CSS,
     flattenEmptyDirectories: true,
     initialExpansion: 1,
@@ -235,10 +225,6 @@ export function FilesPanel({
     },
   });
 
-  /**
-   * Files open from row clicks, not selection changes: the stack keeps the
-   * selection on the file in view, and clicking a selected row changes nothing.
-   */
   const openFromTree = (event: Event, preview: boolean): void => {
     if (
       event
@@ -260,15 +246,6 @@ export function FilesPanel({
     const file = files.data?.find((candidate) => candidate.displayPath === row.dataset.itemPath);
 
     if (file !== undefined) fileActions.open(viewKey, { ...file, preview });
-  };
-
-  const selectInTree = (path: string): void => {
-    for (const selected of model.getSelectedPaths()) {
-      if (selected !== path) model.getItem(selected)?.deselect();
-    }
-
-    model.getItem(path)?.select();
-    model.scrollToPath(path, { focus: false, offset: "nearest" });
   };
 
   const paths = useMemo(() => (files.data ?? []).map((file) => file.displayPath), [files.data]);
@@ -361,148 +338,144 @@ export function FilesPanel({
           disabled={!tabs.canGoForward}
           onClick={() => fileActions.forward(viewKey)}
         />
-        <span title={activeFile?.displayPath} {...props(styles.path)}>
-          {activeFile === undefined ? (
-            <span {...props(styles.currentCrumb)}>Files</span>
-          ) : (
-            activeFile.displayPath.split("/").map((segment, index, segments) => (
-              <Fragment key={segments.slice(0, index + 1).join("/")}>
-                {index > 0 && (
-                  <span aria-hidden="true" {...props(styles.crumbSeparator)}>
-                    <Icon name="chevron-right" size={10} />
-                  </span>
-                )}
-                <span
-                  {...props(styles.crumb, index === segments.length - 1 && styles.currentCrumb)}
-                >
-                  {segment}
-                </span>
-              </Fragment>
-            ))
-          )}
-        </span>
+        <FileBreadcrumbs
+          path={activeFile?.displayPath}
+          files={files.data}
+          onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
+        />
         {activeFile?.dirty && (
           <span aria-label="Unsaved changes" {...props(styles.dirty)}>
             ●
           </span>
         )}
-        <Menu
-          label="File options"
-          align="end"
-          xstyle={styles.menu}
-          trigger={
-            <Button iconOnly ref={menuRef} icon="more-horizontal" aria-label="File options" />
-          }
-        >
-          <MenuItem
-            background="highlightOnly"
-            layout="plain"
-            meta={macPlatform(undefined) ? "⌘S" : "Ctrl+S"}
-            disabledReason={
-              activeFile === undefined
-                ? "No file open"
-                : !activeFile.dirty
-                  ? "No unsaved changes"
-                  : undefined
+        <Menu>
+          <MenuTrigger
+            render={
+              <Button iconOnly ref={menuRef} icon="more-horizontal" aria-label="File options" />
             }
-            onSelect={() => {
-              if (activeFile !== undefined) void editors.current.get(activeFile.path)?.save();
-            }}
-          >
-            Save File
-          </MenuItem>
-          <MenuSeparator inset />
-          <MenuItem
-            background="highlightOnly"
-            layout="plain"
-            disabledReason={activeFile === undefined ? "No file open" : undefined}
-            onSelect={() => {
-              if (activeFile !== undefined) copyPath(activeFile.displayPath);
-            }}
-          >
-            Copy Relative Path
-          </MenuItem>
-          <MenuSeparator inset />
-          <MenuSwitchItem
-            background="highlightOnly"
-            layout="plain"
-            checked={preferences.lineNumbers}
-            onCheckedChange={(checked) => setFilePreference("lineNumbers", checked)}
-          >
-            Line Numbers
-          </MenuSwitchItem>
-          <MenuSwitchItem
-            background="highlightOnly"
-            layout="plain"
-            checked={preferences.wordWrap}
-            onCheckedChange={(checked) => setFilePreference("wordWrap", checked)}
-          >
-            Word Wrap
-          </MenuSwitchItem>
-          <MenuSwitchItem
-            background="highlightOnly"
-            layout="plain"
-            checked={preferences.gitBlame}
-            onCheckedChange={(checked) => setFilePreference("gitBlame", checked)}
-          >
-            Git Blame
-          </MenuSwitchItem>
-          <MenuSwitchItem
-            background="highlightOnly"
-            layout="plain"
-            checked={preferences.autoSave}
-            onCheckedChange={(checked) => setFilePreference("autoSave", checked)}
-          >
-            Auto Save
-          </MenuSwitchItem>
-          <MenuSwitchItem
-            background="highlightOnly"
-            layout="plain"
-            checked={preferences.formatOnSave}
-            onCheckedChange={(checked) => setFilePreference("formatOnSave", checked)}
-          >
-            Format on Save
-          </MenuSwitchItem>
-          <MenuSeparator inset />
-          <MenuItem
-            background="highlightOnly"
-            layout="plain"
-            danger
-            disabledReason={
-              activeFile === undefined
-                ? "No file open"
-                : !activeFile.dirty
-                  ? "No unsaved changes"
-                  : undefined
-            }
-            onSelect={() => {
-              setDiscardError(undefined);
-              setDiscardPath(activeFile?.path);
-            }}
-          >
-            Discard Changes…
-          </MenuItem>
+          />
+          <MenuContent align="end" xstyle={styles.menu}>
+            <MenuItem
+              background="highlightOnly"
+              layout="plain"
+              meta={macPlatform(undefined) ? "⌘S" : "Ctrl+S"}
+              disabled={!unsaved}
+              onClick={() => {
+                if (activeFile !== undefined) void editors.current.get(activeFile.path)?.save();
+              }}
+            >
+              Save File
+            </MenuItem>
+            <MenuItem
+              background="highlightOnly"
+              layout="plain"
+              disabled={activeFile === undefined}
+              onClick={() => {
+                if (activeFile !== undefined) void editors.current.get(activeFile.path)?.format();
+              }}
+            >
+              Format Document
+            </MenuItem>
+            <MenuSeparator inset />
+            <MenuItem
+              background="highlightOnly"
+              layout="plain"
+              disabled={activeFile === undefined}
+              onClick={() => {
+                if (activeFile !== undefined) copyPath(activeFile.path);
+              }}
+            >
+              Copy Path
+            </MenuItem>
+            <MenuItem
+              background="highlightOnly"
+              layout="plain"
+              disabled={activeFile === undefined}
+              onClick={() => {
+                if (activeFile !== undefined) copyPath(activeFile.displayPath);
+              }}
+            >
+              Copy Relative Path
+            </MenuItem>
+            {revealPath !== undefined && (
+              <MenuItem
+                background="highlightOnly"
+                layout="plain"
+                disabled={activeFile === undefined}
+                onClick={() => {
+                  if (activeFile !== undefined) void revealPath({ path: activeFile.path });
+                }}
+              >
+                {revealLabel(host.data?.platform)}
+              </MenuItem>
+            )}
+            <MenuSeparator inset />
+            <MenuSwitchItem
+              background="highlightOnly"
+              layout="plain"
+              checked={preferences.lineNumbers}
+              onCheckedChange={(checked) => setFilePreference("lineNumbers", checked)}
+            >
+              Line Numbers
+            </MenuSwitchItem>
+            <MenuSwitchItem
+              background="highlightOnly"
+              layout="plain"
+              checked={preferences.wordWrap}
+              onCheckedChange={(checked) => setFilePreference("wordWrap", checked)}
+            >
+              Word Wrap
+            </MenuSwitchItem>
+            <MenuSwitchItem
+              background="highlightOnly"
+              layout="plain"
+              checked={preferences.gitBlame}
+              onCheckedChange={(checked) => setFilePreference("gitBlame", checked)}
+            >
+              Git Blame
+            </MenuSwitchItem>
+            <MenuSwitchItem
+              background="highlightOnly"
+              layout="plain"
+              checked={preferences.autoSave}
+              onCheckedChange={(checked) => setFilePreference("autoSave", checked)}
+            >
+              Auto Save
+            </MenuSwitchItem>
+            <MenuSwitchItem
+              background="highlightOnly"
+              layout="plain"
+              checked={preferences.formatOnSave}
+              onCheckedChange={(checked) => setFilePreference("formatOnSave", checked)}
+            >
+              Format on Save
+            </MenuSwitchItem>
+            <MenuSeparator inset />
+            <MenuItem
+              background="highlightOnly"
+              layout="plain"
+              variant={unsaved ? "danger" : "default"}
+              disabled={!unsaved}
+              onClick={() => {
+                setDiscardError(undefined);
+                setDiscardPath(activeFile?.path);
+              }}
+            >
+              Discard Changes…
+            </MenuItem>
+          </MenuContent>
         </Menu>
-        <Tabs.Root
-          variant="segmented"
-          value={sidebar}
-          onValueChange={(value) => {
-            if (value === "search") showSearch();
-            else if (value === "explorer") {
-              setSidebarVisible(true);
-              setSidebar(value);
-            }
-          }}
-        >
-          <Tabs.List aria-label="Files sidebar view">
-            <Tabs.Tab value="explorer">Explorer</Tabs.Tab>
-            <Tabs.Tab value="search">Search</Tabs.Tab>
-          </Tabs.List>
-        </Tabs.Root>
+        <Toggle
+          iconOnly
+          icon="search"
+          aria-label="Search Files"
+          pressed={sidebarVisible && sidebar === "search"}
+          onPressedChange={(pressed) => (pressed ? showSearch() : setSidebar("explorer"))}
+        />
         <Toggle
           iconOnly
           indicator="glyph"
-          aria-label="Show files sidebar"
+          aria-label="Files Sidebar"
           pressed={sidebarVisible}
           onPressedChange={setSidebarVisible}
         >
@@ -515,7 +488,8 @@ export function FilesPanel({
         </div>
       )}
       <div {...props(styles.body)}>
-        <div {...props(styles.editors, browsing && styles.hidden)}>
+        <div {...props(styles.editors)}>
+          {activeFile === undefined && <div {...props(styles.empty)}>Select a file to edit.</div>}
           {tabs.tabs.map((file) => (
             <WorkspaceFileEditor
               key={file.path}
@@ -537,14 +511,6 @@ export function FilesPanel({
             />
           ))}
         </div>
-        <FilesStack
-          files={files.data}
-          active={shown && browsing}
-          lineNumbers={preferences.lineNumbers}
-          wordWrap={preferences.wordWrap}
-          onActivePath={selectInTree}
-          onOpen={(file) => fileActions.open(viewKey, file)}
-        />
         <aside
           aria-label={sidebar === "search" ? "Workspace search" : "Explorer"}
           {...props(
@@ -603,5 +569,166 @@ export function FilesPanel({
         onConfirm={() => void discard()}
       />
     </section>
+  );
+}
+
+const breadcrumbStyles = create({
+  path: {
+    display: "flex",
+    alignItems: "center",
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    whiteSpace: "nowrap",
+  },
+  crumb: { minWidth: 0, flexShrink: 1 },
+  label: { overflow: "hidden", textOverflow: "ellipsis" },
+  separator: { display: "inline-flex", flexShrink: 0, color: role.contentTertiary },
+  current: { flexShrink: 0, maxWidth: "100%" },
+  popup: { width: "min(320px, var(--available-width))", padding: 0 },
+  tree: { display: "block", height: "min(320px, var(--available-height))", width: "100%" },
+});
+
+function FileBreadcrumbs({
+  path,
+  files,
+  onOpen,
+}: {
+  readonly path: string | undefined;
+  readonly files: readonly MentionFile[] | undefined;
+  readonly onOpen: (file: MentionFile) => void;
+}): ReactElement {
+  return (
+    <nav aria-label="File path" {...props(breadcrumbStyles.path)}>
+      {path === undefined
+        ? "Files"
+        : path.split("/").map((segment, index, segments) => (
+            <Fragment key={segments.slice(0, index + 1).join("/")}>
+              {index > 0 && (
+                <span aria-hidden="true" {...props(breadcrumbStyles.separator)}>
+                  <Icon name="chevron-right" size={10} />
+                </span>
+              )}
+              <FileCrumb
+                label={segment}
+                path={segments.slice(0, index + 1).join("/")}
+                directory={segments
+                  .slice(0, index === segments.length - 1 ? index : index + 1)
+                  .join("/")}
+                current={index === segments.length - 1}
+                files={files}
+                onOpen={onOpen}
+              />
+            </Fragment>
+          ))}
+    </nav>
+  );
+}
+
+function FileCrumb({
+  label,
+  path,
+  directory,
+  current,
+  files,
+  onOpen,
+}: {
+  readonly label: string;
+  readonly path: string;
+  readonly directory: string;
+  readonly current: boolean;
+  readonly files: readonly MentionFile[] | undefined;
+  readonly onOpen: (file: MentionFile) => void;
+}): ReactElement {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger
+        render={
+          <Button
+            title={path}
+            aria-current={current ? "page" : undefined}
+            xstyle={[breadcrumbStyles.crumb, current && breadcrumbStyles.current]}
+          >
+            <span {...props(breadcrumbStyles.label)}>{label}</span>
+          </Button>
+        }
+      />
+      <Popover.Portal>
+        <Popover.Positioner align="start">
+          <Popover.Popup
+            aria-label={directory || "Workspace files"}
+            xstyle={breadcrumbStyles.popup}
+          >
+            {open && (
+              <BreadcrumbTree
+                directory={directory}
+                files={files}
+                onOpen={(file) => {
+                  setOpen(false);
+                  onOpen(file);
+                }}
+              />
+            )}
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+function BreadcrumbTree({
+  directory,
+  files,
+  onOpen,
+}: {
+  readonly directory: string;
+  readonly files: readonly MentionFile[] | undefined;
+  readonly onOpen: (file: MentionFile) => void;
+}): ReactElement {
+  const prefix = directory === "" ? "" : `${directory}/`;
+  const paths = useMemo(
+    () =>
+      (files ?? [])
+        .filter((file) => file.displayPath.startsWith(prefix))
+        .map((file) => file.displayPath.slice(prefix.length)),
+    [files, prefix],
+  );
+  const { model } = useFileTree({
+    paths: [],
+    density: "compact",
+    itemHeight: Number.parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--nyte-target-min"),
+    ),
+    unsafeCSS: PIERRE_TREE_CSS,
+    initialExpansion: 0,
+    search: false,
+  });
+
+  useLayoutEffect(() => model.resetPaths(paths), [model, paths]);
+
+  const openFile = (event: Event): void => {
+    const row = event
+      .composedPath()
+      .find((target) => target instanceof HTMLElement && target.dataset.type === "item");
+    if (!(row instanceof HTMLElement) || row.dataset.itemType !== "file") return;
+    const file = files?.find(
+      (candidate) => candidate.displayPath === `${prefix}${row.dataset.itemPath}`,
+    );
+    if (file !== undefined) onOpen(file);
+  };
+
+  return (
+    <WorkspaceFileTree
+      model={model}
+      onClick={(event) => openFile(event.nativeEvent)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") openFile(event.nativeEvent);
+      }}
+      {...props(workbenchStyles.treeTheme, breadcrumbStyles.tree)}
+    />
   );
 }

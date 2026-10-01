@@ -38,7 +38,7 @@ const styles = create({
     boxSizing: "border-box",
     width: "100%",
     minHeight: workbench.headerHeight,
-    paddingBlock: { default: 0, "@media (pointer: coarse)": 4 },
+    paddingBlock: workbench.headerPaddingBlock,
     paddingInlineEnd: 8,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
@@ -259,7 +259,7 @@ export function ChangesStack({
   );
 }
 
-export function StackHeader({
+function StackHeader({
   path,
   added = 0,
   removed = 0,
