@@ -1,36 +1,35 @@
 ---
 title: Tooltip
-description: "A short hint on hover or keyboard focus"
+description: "A short label for a control on hover or keyboard focus"
 ---
 
 ```ts title="Import"
-import { Hint, HintProvider, HoverPreview } from "@nyte-ai/ui";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 ```
 
-The same names are exported from their own subpath. Pick one path per file.
-
-```ts title="Subpath"
-import { Hint, HintProvider, HoverPreview } from "@nyte-ai/ui/tooltip";
-```
-
-`Hint` shows a short label beside a control on hover or keyboard focus. Reach for it to name an
-icon-only control in a dense interface. `HoverPreview` is the same popup sized for a long block of
-monospace text, such as a pasted snippet, and scrolls past its bounds.
+A visible label and optional shortcut for a control with an accessible name. For longer content,
+use [Preview card](/cloud/components/preview-card).
 
 ## Usage
 
-- `trigger` is the element that opens the hint. It receives the hover and focus handlers, so pass a
-  real control. Do not repeat a visible label.
-- Give the trigger an `aria-label` that matches `content`. The hint does not label the trigger. An
-  icon-only [Button](/cloud/components/button) also sets its label as the native `title`, so pass
-  `title={undefined}` to keep one tooltip on screen.
-- Wrap the app in `HintProvider` to share one delay. Once one hint is visible, the next opens
-  instantly, for `timeout` milliseconds after the last one closed.
-- Touch and pen users can hold the trigger for 500ms to open it without activating the control.
-  Keep essential instructions and disabled reasons visible or keyboard-reachable outside the hint.
-- For feedback after an action, use [Toast](/cloud/components/toast).
-- The popup attaches the ref from [Overlays](/cloud/foundations/overlays), so a host can keep it
-  above native views.
+- Pass the control to `TooltipTrigger` through `render`. Give the control its own `aria-label`,
+  because the tooltip does not name it.
+- An icon-only [Button](/cloud/components/button) also sets its label as the native `title`. Pass
+  `title={undefined}` so only one tooltip appears.
+- `TooltipContent` keeps line breaks in its text.
+- Wrap the app once in `TooltipProvider`. A trigger's own `delay` or `closeDelay` overrides it.
+- Keep instructions and disabled reasons visible outside the tooltip.
+
+## Anatomy
+
+```tsx
+<TooltipProvider>
+  <Tooltip>
+    <TooltipTrigger />
+    <TooltipContent />
+  </Tooltip>
+</TooltipProvider>
+```
 
 ## Examples
 
@@ -39,47 +38,62 @@ monospace text, such as a pasted snippet, and scrolls past its bounds.
 </Preview>
 
 ```tsx
-<Hint
-  content="Copy output"
-  trigger={<Button iconOnly icon="copy" aria-label="Copy output" title={undefined} />}
-/>
-<HoverPreview
-  content={"const answer = 42;\nconsole.log(answer);"}
-  trigger={<Button variant="outline">Snippet</Button>}
-/>
-```
+import { Button } from "@nyte-ai/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 
-Defaults are 300ms to open, 100ms to close, and a 200ms group window. Keyboard focus opens immediately.
-
-```tsx
-<HintProvider>
-  <App />
-</HintProvider>
+<TooltipProvider>
+  <Tooltip>
+    <TooltipTrigger
+      render={<Button iconOnly icon="copy" aria-label="Copy output" title={undefined} />}
+    />
+    <TooltipContent>Copy output</TooltipContent>
+  </Tooltip>
+  <Tooltip>
+    <TooltipTrigger
+      render={<Button iconOnly icon="trash" aria-label="Delete session" title={undefined} />}
+    />
+    <TooltipContent>Delete session ⌘⌫</TooltipContent>
+  </Tooltip>
+</TooltipProvider>;
 ```
 
 ## Props
 
-### Hint
+`TooltipContent` takes `xstyle`, `className`, and `style`. See
+[Theming](/cloud/foundations/theming). `Tooltip` and `TooltipTrigger` are Base UI's.
 
-| Prop       | Type                                                                       | Default    | Description                                      |
-| ---------- | -------------------------------------------------------------------------- | ---------- | ------------------------------------------------ |
-| `content`  | `React.ReactNode`                                                          |            | The hint. Line breaks in a string are kept.      |
-| `trigger`  | `React.ReactElement`                                                       |            | The element that opens it.                       |
-| `side`     | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"` | Side of the trigger to open on.                  |
-| `align`    | `"start" \| "center" \| "end"`                                             | `"center"` | Alignment along that side.                       |
-| `tint`     | `Tint`                                                                     |            | Scopes the popup to a hue.                       |
-| `disabled` | `boolean`                                                                  | `false`    | Suppresses hover, focus, and long-press opening. |
-| `xstyle`   | `XStyle`                                                                   |            | Merged last onto the popup.                      |
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
-The popup sits 6px from the trigger and keeps 8px from the viewport edge.
+### Tooltip
 
-### HoverPreview
+<include>../../base-ui-reference/tooltip/Root.md</include>
 
-Takes `content`, `trigger`, and `side` as `Hint` does.
+### TooltipTrigger
 
-### HintProvider
+<include>../../base-ui-reference/tooltip/Trigger.md</include>
 
-Our defaults replace Base UI's timing.
+### TooltipContent
+
+Renders the portal, positioner, and popup. Positioning props go to the positioner and the rest to
+the popup.
+
+| Prop          | Type                                                                       | Default    |
+| ------------- | -------------------------------------------------------------------------- | ---------- |
+| `side`        | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"` |
+| `align`       | `"start" \| "center" \| "end"`                                             | `"center"` |
+| `sideOffset`  | `number \| OffsetFunction`                                                 | `6`        |
+| `alignOffset` | `number \| OffsetFunction`                                                 |            |
+| `tint`        | `Tint`                                                                     |            |
+
+#### Positioner
+
+<include>../../base-ui-reference/tooltip/Positioner.md</include>
+
+#### Popup
+
+<include>../../base-ui-reference/tooltip/Popup.md</include>
+
+### TooltipProvider
 
 | Prop         | Default |
 | ------------ | ------- |
@@ -87,14 +101,10 @@ Our defaults replace Base UI's timing.
 | `closeDelay` | `100`   |
 | `timeout`    | `200`   |
 
-The reference table below comes from Base UI, MIT, © Material-UI SAS.
-
 <include>../../base-ui-reference/tooltip/Provider.md</include>
 
 ## Accessibility
 
-- The hint is a visual aid. Screen reader users get the trigger's `aria-label`, so write the two to
-  match.
-- It opens on hover, immediately on keyboard focus, or after a 500ms touch or pen hold.
-- Escape closes it. Outside press and pressing the trigger close it.
-- The popup can be hovered without closing.
+- Hover opens after `delay`. Keyboard focus opens at once.
+- Escape, an outside press, and a trigger click close it.
+- The popup appears without motion under `prefers-reduced-motion: reduce`.
