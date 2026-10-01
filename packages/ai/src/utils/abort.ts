@@ -2,8 +2,16 @@
  * AbortSignal helpers: an operation-local signal for optional-signal APIs, and racing a promise against a signal while still observing the abandoned promise.
  *
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/abort.ts
- * Synced with pi 7ebf9087e.
+ * Synced with pi 7fbbd5f4a.
  */
+function abortReason(signal: AbortSignal): unknown {
+  if (signal.reason !== undefined) return signal.reason;
+  const error = new Error("The operation was aborted");
+  error.name = "AbortError";
+
+  return error;
+}
+
 /** Create an operation-local signal for public APIs whose signal is optional. */
 export function operationSignal(signal?: AbortSignal): AbortSignal {
   return signal ?? new AbortController().signal;
@@ -17,7 +25,7 @@ export function raceWithAbortSignal<T>(operation: Promise<T>, signal: AbortSigna
   if (signal.aborted) {
     void operation.catch(() => {});
 
-    return Promise.reject(signal.reason);
+    return Promise.reject(abortReason(signal));
   }
 
   return new Promise<T>((resolve, reject) => {
@@ -28,7 +36,7 @@ export function raceWithAbortSignal<T>(operation: Promise<T>, signal: AbortSigna
       if (settled) return;
       settled = true;
       cleanup();
-      reject(signal.reason);
+      reject(abortReason(signal));
     };
 
     signal.addEventListener("abort", onAbort, { once: true });
