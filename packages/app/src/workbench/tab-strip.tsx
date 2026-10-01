@@ -8,14 +8,20 @@ import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
-import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "@nyte-ai/ui/context-menu";
-import { Menu, MenuItem } from "@nyte-ai/ui/menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@nyte-ai/ui/context-menu";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { nyte } from "../nyte.ts";
-import { button, glyph, shape } from "@nyte-ai/ui/schema.stylex";
+import { button, glyph, shape, target } from "@nyte-ai/ui/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, motion, role, type } from "@nyte-ai/ui/vars.stylex";
 import {
   activeWorkbenchTab,
   defaultWorkbenchTab,
@@ -37,31 +43,47 @@ import { isJobTerminal, terminalActions, useTerminalRuntime } from "./terminal-s
 import type { TerminalTab } from "./terminal-store.ts";
 import { fileActions, useFileTabs } from "./file-store.ts";
 
+const TAB_CONTENT_FADE =
+  "linear-gradient(to right, black calc(100% - 36px), transparent calc(100% - 12px))";
+
 const styles = create({
   root: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: 1,
     flex: 1,
     minWidth: 0,
     WebkitAppRegion: "drag",
   },
   control: { WebkitAppRegion: "no-drag" },
   tabs: { display: "flex", minWidth: 0, overflowX: "auto", scrollbarWidth: "none" },
-  list: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    minWidth: 0,
-  },
+  list: { display: "flex", alignItems: "center", gap: 1, minWidth: 0 },
   item: {
+    "--_tab-close-opacity": {
+      default: "0",
+      ":hover": "1",
+      ":focus-within": "1",
+      "@media (hover: none)": "1",
+    },
+    "--_tab-close-pointer-events": {
+      default: "none",
+      ":hover": "auto",
+      ":focus-within": "auto",
+      "@media (hover: none)": "auto",
+    },
+    "--_tab-content-mask": {
+      default: "none",
+      ":hover": TAB_CONTENT_FADE,
+      ":focus-within": TAB_CONTENT_FADE,
+      "@media (hover: none)": TAB_CONTENT_FADE,
+    },
     position: "relative",
     display: "flex",
     alignItems: "center",
     flexShrink: 0,
     maxWidth: 200,
     height: button.heightSm,
-    minHeight: { default: 24, "@media (pointer: coarse)": 44 },
+    minHeight: target.min,
     WebkitAppRegion: "no-drag",
     borderRadius: shape.control,
     backgroundColor: { default: "transparent", ":hover": role.bgHover },
@@ -89,6 +111,8 @@ const styles = create({
     alignItems: "center",
     gap: 6,
     minWidth: 0,
+    WebkitMaskImage: "var(--_tab-content-mask)",
+    maskImage: "var(--_tab-content-mask)",
   },
   agentTerminal: {
     color: {
@@ -113,15 +137,19 @@ const styles = create({
     height: glyph.box,
     flexShrink: 0,
   },
+  // The tab reveals its close button over the faded end of its label.
   close: {
+    position: "absolute",
+    insetBlock: 0,
+    insetInlineEnd: 4,
+    zIndex: 1,
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    width: { default: 24, "@media (pointer: coarse)": 44 },
-    height: "100%",
-    marginInlineStart: 4,
-    marginInlineEnd: 8,
+    opacity: "var(--_tab-close-opacity)",
+    pointerEvents: "var(--_tab-close-pointer-events)",
+    transitionProperty: "opacity",
+    transitionDuration: motion.durationFast,
+    transitionTimingFunction: motion.easeOut,
   },
 });
 
@@ -334,7 +362,7 @@ export function WorkbenchTabStrip({
                 </Tabs.Tab>
                 <span {...props(styles.close)}>
                   <Button
-                    size="sm"
+                    size="2xs"
                     variant="plain"
                     iconOnly
                     icon="x"
@@ -363,56 +391,59 @@ export function WorkbenchTabStrip({
             return terminal === undefined ? (
               trigger
             ) : (
-              <ContextMenu key={tab.id} label={`${label} actions`} trigger={trigger}>
-                {capabilities.terminal && (
-                  <ContextMenuItem
-                    icon="console"
-                    onSelect={() => newTerminal(viewKey, workspacePath)}
-                  >
-                    New Terminal
+              <ContextMenu key={tab.id}>
+                <ContextMenuTrigger render={trigger} />
+                <ContextMenuContent aria-label={`${label} actions`}>
+                  {capabilities.terminal && (
+                    <ContextMenuItem
+                      icon="console"
+                      onClick={() => newTerminal(viewKey, workspacePath)}
+                    >
+                      New Terminal
+                    </ContextMenuItem>
+                  )}
+                  <ContextMenuItem icon="copy" onClick={() => copyTerminal(terminal.id)}>
+                    Copy Selection
                   </ContextMenuItem>
-                )}
-                <ContextMenuItem icon="copy" onSelect={() => copyTerminal(terminal.id)}>
-                  Copy Selection
-                </ContextMenuItem>
-                <ContextMenuItem icon="refresh" onSelect={() => clearTerminal(terminal.id)}>
-                  Clear Terminal
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-                <ContextMenuItem icon="x" onSelect={() => closeTab(tab)}>
-                  Close Tab
-                </ContextMenuItem>
+                  <ContextMenuItem icon="refresh" onClick={() => clearTerminal(terminal.id)}>
+                    Clear Terminal
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem icon="x" onClick={() => closeTab(tab)}>
+                    Close Tab
+                  </ContextMenuItem>
+                </ContextMenuContent>
               </ContextMenu>
             );
           })}
         </Tabs.List>
       </Tabs.Root>
       <span {...props(styles.control)}>
-        <Menu
-          label="New workbench tab"
-          trigger={<Button iconOnly icon="plus" aria-label="New workbench tab" />}
-        >
-          {workbenchTabs(scope, capabilities).map((kind) => (
-            <MenuItem
-              key={kind}
-              icon={tabIcons[kind]}
-              onSelect={() => {
-                if (kind === "terminal") {
-                  newTerminal(viewKey, workspacePath);
+        <Menu>
+          <MenuTrigger render={<Button iconOnly icon="plus" aria-label="New workbench tab" />} />
+          <MenuContent>
+            {workbenchTabs(scope, capabilities).map((kind) => (
+              <MenuItem
+                key={kind}
+                icon={tabIcons[kind]}
+                onClick={() => {
+                  if (kind === "terminal") {
+                    newTerminal(viewKey, workspacePath);
 
-                  return;
-                }
+                    return;
+                  }
 
-                workbenchController.actions.openTab({
-                  view: viewKey,
-                  tab: defaultWorkbenchTab(kind),
-                  activate: true,
-                });
-              }}
-            >
-              {workbenchKindLabel(kind)}
-            </MenuItem>
-          ))}
+                  workbenchController.actions.openTab({
+                    view: viewKey,
+                    tab: defaultWorkbenchTab(kind),
+                    activate: true,
+                  });
+                }}
+              >
+                {workbenchKindLabel(kind)}
+              </MenuItem>
+            ))}
+          </MenuContent>
         </Menu>
       </span>
       <ConfirmDialog

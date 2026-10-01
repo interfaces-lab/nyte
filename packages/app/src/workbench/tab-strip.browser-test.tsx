@@ -25,7 +25,8 @@ export async function run(): Promise<string> {
     origin: { kind: "run", runId: "run", callId: "call" },
     head: "main",
     command: "pnpm test",
-    phase: { kind: "running", mode: "background" },
+    isBackgrounded: true,
+    phase: { kind: "running" },
     startedAt: 1,
     updatedAt: 1,
     output: "running\n",
@@ -48,7 +49,7 @@ export async function run(): Promise<string> {
     activate: false,
   });
   terminalActions.openJob({ id: terminalId, sessionId: session, job });
-  fileActions.open(viewKey, { path: "/workspace/src/app.ts", displayPath: "src/app.ts" });
+  fileActions.open(viewKey, { path: "/workspace/src/app.ts" });
   const active = workbenchController.getView(viewKey).active;
 
   const container = document.createElement("div");
