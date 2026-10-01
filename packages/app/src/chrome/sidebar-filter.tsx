@@ -6,12 +6,17 @@ import type { ReactElement } from "react";
 import {
   Menu,
   MenuCheckboxItem,
+  MenuContent,
   MenuGroup,
+  MenuGroupLabel,
   MenuItem,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
-  MenuSubmenu,
+  MenuSub,
+  MenuSubContent,
+  MenuSubTrigger,
+  MenuTrigger,
 } from "@nyte-ai/ui/menu";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { StatusDot } from "../components/ui.tsx";
@@ -158,192 +163,223 @@ export function WorkspaceControls({
   return (
     <span {...props(styles.controls)}>
       <Menu
-        label="Customize sidebar"
         onOpenChange={(open, details) => {
           if (open && filterDisabled) details.cancel();
         }}
-        side="right"
-        align="start"
-        xstyle={styles.popup}
-        trigger={
-          <Toggle
-            size="sm"
-            iconOnly
-            aria-disabled={filterDisabled || undefined}
-            aria-describedby={filterDisabled ? loadingReasonId : undefined}
-            aria-label="Customize sidebar"
-            pressed={filtersActive}
-            onPressedChange={() => undefined}
-          >
-            <Icon name="filters" size={14} />
-          </Toggle>
-        }
       >
-        <MenuSubmenu label="Grouping" icon="folder" xstyle={styles.popup}>
-          <MenuRadioGroup
-            value={value.grouping}
-            onValueChange={(grouping) => {
-              if (isOption(grouping, GROUPINGS)) onChange({ ...value, grouping });
-            }}
-          >
-            <MenuRadioItem value="none" icon="list" closeOnClick={false}>
-              None
-            </MenuRadioItem>
-            <MenuRadioItem value="repository" icon="github" closeOnClick={false}>
-              Repository
-            </MenuRadioItem>
-            <MenuRadioItem value="workspace" icon="folder" closeOnClick={false}>
-              Workspace
-            </MenuRadioItem>
-            <MenuRadioItem value="updated" icon="clock" closeOnClick={false}>
-              Updated
-            </MenuRadioItem>
-            <MenuRadioItem value="status" icon="square" closeOnClick={false}>
-              Status
-            </MenuRadioItem>
-            <MenuRadioItem value="environment" icon="globe" closeOnClick={false}>
-              Environment
-            </MenuRadioItem>
-          </MenuRadioGroup>
-        </MenuSubmenu>
-        <MenuSubmenu label="Ordering" icon="clock" xstyle={styles.popup}>
-          <MenuRadioGroup
-            value={value.ordering}
-            onValueChange={(ordering) => {
-              if (isOption(ordering, ORDERINGS)) onChange({ ...value, ordering });
-            }}
-          >
-            <MenuRadioItem value="updated" icon="clock" closeOnClick={false}>
-              Updated
-            </MenuRadioItem>
-            <MenuRadioItem value="status" icon="square" closeOnClick={false}>
-              Status
-            </MenuRadioItem>
-          </MenuRadioGroup>
-        </MenuSubmenu>
-        <MenuSubmenu label="Show" icon="eye" xstyle={styles.popup}>
-          <MenuCheckboxItem checked={homeVisible} onCheckedChange={onHomeVisibleChange}>
-            Home
-          </MenuCheckboxItem>
-          <MenuSeparator />
-          {SHOW_FIELDS.map((field) => (
-            <MenuCheckboxItem
-              key={field}
-              icon={SHOW_FIELD_ICONS[field]}
-              checked={value.show.includes(field)}
-              onCheckedChange={(checked) =>
-                onChange({
-                  ...value,
-                  show: toggleOption(SHOW_FIELDS, value.show, field, checked),
-                })
-              }
+        <MenuTrigger
+          render={
+            <Toggle
+              size="sm"
+              iconOnly
+              aria-disabled={filterDisabled || undefined}
+              aria-describedby={filterDisabled ? loadingReasonId : undefined}
+              aria-label="Customize sidebar"
+              pressed={filtersActive}
+              onPressedChange={() => undefined}
             >
-              {field === "pr" ? "PR" : field[0]?.toLocaleUpperCase() + field.slice(1)}
+              <Icon name="filters" size={14} />
+            </Toggle>
+          }
+        />
+        <MenuContent side="right" align="start" xstyle={styles.popup}>
+          <MenuSub>
+            <MenuSubTrigger icon="folder">Grouping</MenuSubTrigger>
+            <MenuSubContent xstyle={styles.popup}>
+              <MenuRadioGroup
+                value={value.grouping}
+                onValueChange={(grouping) => {
+                  if (isOption(grouping, GROUPINGS)) onChange({ ...value, grouping });
+                }}
+              >
+                <MenuRadioItem value="none" icon="list" closeOnClick={false}>
+                  None
+                </MenuRadioItem>
+                <MenuRadioItem value="repository" icon="github" closeOnClick={false}>
+                  Repository
+                </MenuRadioItem>
+                <MenuRadioItem value="workspace" icon="folder" closeOnClick={false}>
+                  Workspace
+                </MenuRadioItem>
+                <MenuRadioItem value="updated" icon="clock" closeOnClick={false}>
+                  Updated
+                </MenuRadioItem>
+                <MenuRadioItem value="status" icon="square" closeOnClick={false}>
+                  Status
+                </MenuRadioItem>
+                <MenuRadioItem value="environment" icon="globe" closeOnClick={false}>
+                  Environment
+                </MenuRadioItem>
+              </MenuRadioGroup>
+            </MenuSubContent>
+          </MenuSub>
+          <MenuSub>
+            <MenuSubTrigger icon="clock">Ordering</MenuSubTrigger>
+            <MenuSubContent xstyle={styles.popup}>
+              <MenuRadioGroup
+                value={value.ordering}
+                onValueChange={(ordering) => {
+                  if (isOption(ordering, ORDERINGS)) onChange({ ...value, ordering });
+                }}
+              >
+                <MenuRadioItem value="updated" icon="clock" closeOnClick={false}>
+                  Updated
+                </MenuRadioItem>
+                <MenuRadioItem value="status" icon="square" closeOnClick={false}>
+                  Status
+                </MenuRadioItem>
+              </MenuRadioGroup>
+            </MenuSubContent>
+          </MenuSub>
+          <MenuSub>
+            <MenuSubTrigger icon="eye">Show</MenuSubTrigger>
+            <MenuSubContent xstyle={styles.popup}>
+              <MenuCheckboxItem checked={homeVisible} onCheckedChange={onHomeVisibleChange}>
+                Home
+              </MenuCheckboxItem>
+              <MenuSeparator />
+              {SHOW_FIELDS.map((field) => (
+                <MenuCheckboxItem
+                  key={field}
+                  icon={SHOW_FIELD_ICONS[field]}
+                  checked={value.show.includes(field)}
+                  onCheckedChange={(checked) =>
+                    onChange({
+                      ...value,
+                      show: toggleOption(SHOW_FIELDS, value.show, field, checked),
+                    })
+                  }
+                >
+                  {field === "pr" ? "PR" : field[0]?.toLocaleUpperCase() + field.slice(1)}
+                </MenuCheckboxItem>
+              ))}
+            </MenuSubContent>
+          </MenuSub>
+          <MenuSeparator />
+          <MenuGroup>
+            <div {...props(styles.groupHeading)}>
+              <MenuGroupLabel xstyle={styles.groupLabel}>Filters</MenuGroupLabel>
+              {filtersActive && (
+                <MenuItem
+                  layout="plain"
+                  closeOnClick={false}
+                  xstyle={styles.groupAction}
+                  onClick={resetFilters}
+                >
+                  Reset
+                </MenuItem>
+              )}
+            </div>
+            <MenuSub>
+              <MenuSubTrigger icon="square">Status</MenuSubTrigger>
+              <MenuSubContent xstyle={styles.popup}>
+                {STATUSES.map((status) => (
+                  <MenuCheckboxItem
+                    key={status}
+                    icon={statusIcon(status)}
+                    checked={value.statuses.includes(status)}
+                    leading={
+                      status === "needs-attention" ? (
+                        <StatusDot mark="waiting" />
+                      ) : status === "working" ? (
+                        <StatusDot mark="working" />
+                      ) : undefined
+                    }
+                    onCheckedChange={(checked) =>
+                      onChange({
+                        ...value,
+                        statuses: toggleOption(STATUSES, value.statuses, status, checked),
+                      })
+                    }
+                  >
+                    {STATUS_LABELS[status]}
+                  </MenuCheckboxItem>
+                ))}
+              </MenuSubContent>
+            </MenuSub>
+            <MenuSub>
+              <MenuSubTrigger icon="pull-request">PR</MenuSubTrigger>
+              <MenuSubContent xstyle={styles.popup}>
+                {PULL_REQUESTS.map((pullRequest) => (
+                  <MenuCheckboxItem
+                    key={pullRequest}
+                    icon={PR_ICONS[pullRequest]}
+                    checked={value.pullRequests.includes(pullRequest)}
+                    onCheckedChange={(checked) =>
+                      onChange({
+                        ...value,
+                        pullRequests: toggleOption(
+                          PULL_REQUESTS,
+                          value.pullRequests,
+                          pullRequest,
+                          checked,
+                        ),
+                      })
+                    }
+                  >
+                    {PR_LABELS[pullRequest]}
+                  </MenuCheckboxItem>
+                ))}
+              </MenuSubContent>
+            </MenuSub>
+            <MenuSub>
+              <MenuSubTrigger icon="globe">Environment</MenuSubTrigger>
+              <MenuSubContent xstyle={styles.popup}>
+                {ENVIRONMENTS.map((environment) => (
+                  <MenuCheckboxItem
+                    key={environment}
+                    icon={ENVIRONMENT_ICONS[environment]}
+                    checked={value.environments.includes(environment)}
+                    onCheckedChange={(checked) =>
+                      onChange({
+                        ...value,
+                        environments: toggleOption(
+                          ENVIRONMENTS,
+                          value.environments,
+                          environment,
+                          checked,
+                        ),
+                      })
+                    }
+                  >
+                    {environment === "cloud" ? "Cloud" : "Local"}
+                  </MenuCheckboxItem>
+                ))}
+              </MenuSubContent>
+            </MenuSub>
+            <MenuSub>
+              <MenuSubTrigger icon="apps">Source</MenuSubTrigger>
+              <MenuSubContent xstyle={styles.popup}>
+                {SOURCES.map((source) => (
+                  <MenuCheckboxItem
+                    key={source}
+                    icon={SOURCE_ICONS[source]}
+                    checked={value.sources.includes(source)}
+                    onCheckedChange={(checked) =>
+                      onChange({
+                        ...value,
+                        sources: toggleOption(SOURCES, value.sources, source, checked),
+                      })
+                    }
+                  >
+                    {SOURCE_LABELS[source]}
+                  </MenuCheckboxItem>
+                ))}
+              </MenuSubContent>
+            </MenuSub>
+            <MenuCheckboxItem
+              checked={value.archived}
+              icon="archive"
+              onCheckedChange={(archived) => onChange({ ...value, archived })}
+            >
+              Archived
             </MenuCheckboxItem>
-          ))}
-        </MenuSubmenu>
-        <MenuSeparator />
-        <MenuGroup
-          label="Filters"
-          action={filtersActive ? { label: "Reset", onSelect: resetFilters } : undefined}
-        >
-          <MenuSubmenu label="Status" icon="square" xstyle={styles.popup}>
-            {STATUSES.map((status) => (
-              <MenuCheckboxItem
-                key={status}
-                icon={statusIcon(status)}
-                checked={value.statuses.includes(status)}
-                leading={
-                  status === "needs-attention" ? (
-                    <StatusDot mark="waiting" />
-                  ) : status === "working" ? (
-                    <StatusDot mark="working" />
-                  ) : undefined
-                }
-                onCheckedChange={(checked) =>
-                  onChange({
-                    ...value,
-                    statuses: toggleOption(STATUSES, value.statuses, status, checked),
-                  })
-                }
-              >
-                {STATUS_LABELS[status]}
-              </MenuCheckboxItem>
-            ))}
-          </MenuSubmenu>
-          <MenuSubmenu label="PR" icon="pull-request" xstyle={styles.popup}>
-            {PULL_REQUESTS.map((pullRequest) => (
-              <MenuCheckboxItem
-                key={pullRequest}
-                icon={PR_ICONS[pullRequest]}
-                checked={value.pullRequests.includes(pullRequest)}
-                onCheckedChange={(checked) =>
-                  onChange({
-                    ...value,
-                    pullRequests: toggleOption(
-                      PULL_REQUESTS,
-                      value.pullRequests,
-                      pullRequest,
-                      checked,
-                    ),
-                  })
-                }
-              >
-                {PR_LABELS[pullRequest]}
-              </MenuCheckboxItem>
-            ))}
-          </MenuSubmenu>
-          <MenuSubmenu label="Environment" icon="globe" xstyle={styles.popup}>
-            {ENVIRONMENTS.map((environment) => (
-              <MenuCheckboxItem
-                key={environment}
-                icon={ENVIRONMENT_ICONS[environment]}
-                checked={value.environments.includes(environment)}
-                onCheckedChange={(checked) =>
-                  onChange({
-                    ...value,
-                    environments: toggleOption(
-                      ENVIRONMENTS,
-                      value.environments,
-                      environment,
-                      checked,
-                    ),
-                  })
-                }
-              >
-                {environment === "cloud" ? "Cloud" : "Local"}
-              </MenuCheckboxItem>
-            ))}
-          </MenuSubmenu>
-          <MenuSubmenu label="Source" icon="apps" xstyle={styles.popup}>
-            {SOURCES.map((source) => (
-              <MenuCheckboxItem
-                key={source}
-                icon={SOURCE_ICONS[source]}
-                checked={value.sources.includes(source)}
-                onCheckedChange={(checked) =>
-                  onChange({
-                    ...value,
-                    sources: toggleOption(SOURCES, value.sources, source, checked),
-                  })
-                }
-              >
-                {SOURCE_LABELS[source]}
-              </MenuCheckboxItem>
-            ))}
-          </MenuSubmenu>
-          <MenuCheckboxItem
-            checked={value.archived}
-            icon="archive"
-            onCheckedChange={(archived) => onChange({ ...value, archived })}
-          >
-            Archived
-          </MenuCheckboxItem>
-        </MenuGroup>
-        <MenuSeparator />
-        <MenuItem icon="folder" onSelect={onCollapseAll}>
-          Collapse All Workspaces
-        </MenuItem>
+          </MenuGroup>
+          <MenuSeparator />
+          <MenuItem icon="folder" onClick={onCollapseAll}>
+            Collapse All Workspaces
+          </MenuItem>
+        </MenuContent>
       </Menu>
       {filterDisabled && (
         <span id={loadingReasonId} {...props(srOnly)}>
