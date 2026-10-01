@@ -1,10 +1,11 @@
 import { props } from "@stylexjs/stylex";
 import { useLayoutEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon, type IconProps } from "@nyte-ai/ui/icon";
 import { Kbd, type KbdProps } from "@nyte-ai/ui/kbd";
-import { Menu, type MenuProps } from "@nyte-ai/ui/menu";
-import { TooltipContent } from "@nyte-ai/ui/tooltip";
+import { Menu, MenuContent, MenuTrigger } from "@nyte-ai/ui/menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import {
   clientActionAriaShortcut,
   clientActionKeys,
@@ -45,11 +46,12 @@ export function ContextSelector({
   icon,
   active,
   children,
-}: Pick<MenuProps, "children"> & {
+}: {
   readonly action: (typeof clientActions)["selectWorkspace" | "selectEnvironment"];
   readonly value: string;
   readonly icon?: IconProps["name"];
   readonly active: boolean;
+  readonly children: ReactNode;
 }) {
   const host = useHostState();
   const mac = macPlatform(host.data?.platform);
@@ -79,40 +81,39 @@ export function ContextSelector({
   }, [action, active, mac]);
 
   return (
-    <Menu
-      label={action.label}
-      side="top"
-      xstyle={contextStyles.menu}
-      open={open}
-      onOpenChange={setOpen}
-      hint={{
-        disabled: open,
-        content: (
-          <TooltipContent side="top" xstyle={contextStyles.hint}>
-            <ContextHint label={action.label} value={value} keys={clientActionKeys(action, mac)} />
-          </TooltipContent>
-        ),
-      }}
-      trigger={
-        <Button
-          ref={triggerRef}
-          variant="plain"
-          aria-keyshortcuts={clientActionAriaShortcut(action, mac)}
-          xstyle={contextStyles.controlLayout}
-        >
-          {icon !== undefined && (
-            <span {...props(contextStyles.icon)}>
-              <Icon name={icon} size={14} />
-            </span>
-          )}
-          <span {...props(contextStyles.text)}>{value}</span>
-          <span {...props(contextStyles.icon)}>
-            <Icon name="chevron-down" size={12} />
-          </span>
-        </Button>
-      }
-    >
-      {children}
+    <Menu open={open} onOpenChange={setOpen}>
+      <Tooltip disabled={open}>
+        <TooltipTrigger
+          render={
+            <MenuTrigger
+              render={
+                <Button
+                  ref={triggerRef}
+                  variant="plain"
+                  aria-keyshortcuts={clientActionAriaShortcut(action, mac)}
+                  xstyle={contextStyles.controlLayout}
+                >
+                  {icon !== undefined && (
+                    <span {...props(contextStyles.icon)}>
+                      <Icon name={icon} size={14} />
+                    </span>
+                  )}
+                  <span {...props(contextStyles.text)}>{value}</span>
+                  <span {...props(contextStyles.icon)}>
+                    <Icon name="chevron-down" size={12} />
+                  </span>
+                </Button>
+              }
+            />
+          }
+        />
+        <TooltipContent side="top" xstyle={contextStyles.hint}>
+          <ContextHint label={action.label} value={value} keys={clientActionKeys(action, mac)} />
+        </TooltipContent>
+      </Tooltip>
+      <MenuContent side="top" xstyle={contextStyles.menu}>
+        {children}
+      </MenuContent>
     </Menu>
   );
 }

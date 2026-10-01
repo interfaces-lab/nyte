@@ -1,12 +1,11 @@
 import { create } from "@stylexjs/stylex";
-import { menu, shape } from "@nyte-ai/ui/schema.stylex";
+import { button, glyph, menu, shape } from "@nyte-ai/ui/schema.stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 
 export const contextStyles = create({
   row: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
     gap: 8,
     minWidth: 0,
   },
@@ -14,7 +13,7 @@ export const contextStyles = create({
   readout: {
     display: "inline-flex",
     alignItems: "center",
-    height: 28,
+    height: button.heightMd,
     paddingInline: 4,
     color: role.contentSecondary,
     fontFamily: type.fontSans,
@@ -57,8 +56,8 @@ export const contextStyles = create({
   hintValue: { color: role.contentSecondary, fontSize: type.fontSm, lineHeight: type.leadingSm },
   keys: { display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0 },
   key: {
-    minWidth: 16,
-    minHeight: 16,
+    minWidth: glyph.md,
+    minHeight: glyph.md,
     padding: 0,
     borderRadius: shape.indicator,
     fontFamily: type.fontSans,

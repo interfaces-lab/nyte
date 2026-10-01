@@ -1,11 +1,14 @@
 import { props } from "@stylexjs/stylex";
 import {
   MenuGroup,
+  MenuGroupLabel,
   MenuItem,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
-  MenuSubmenu,
+  MenuSub,
+  MenuSubContent,
+  MenuSubTrigger,
 } from "@nyte-ai/ui/menu";
 import { useGitHubState } from "../chrome/github-account.ts";
 import { folderPicker, handleOpenOutcome } from "../chrome/open-workspace.tsx";
@@ -46,13 +49,6 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
       value={candidate.path}
       icon="folder"
       disabled={candidate.available === false}
-      disabledReason={
-        candidate.available === false
-          ? openFolder === undefined
-            ? "Folder inaccessible"
-            : "Open Folder to reconnect"
-          : undefined
-      }
     >
       <span title={candidate.path}>{candidate.name}</span>
     </MenuRadioItem>
@@ -83,18 +79,22 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
             </MenuRadioItem>
           )}
           {workspaceItems.length > 0 && (
-            <MenuGroup label="Recent Workspaces">{workspaceItems.slice(0, 8)}</MenuGroup>
+            <MenuGroup>
+              <MenuGroupLabel>Recent Workspaces</MenuGroupLabel>
+              {workspaceItems.slice(0, 8)}
+            </MenuGroup>
           )}
           {workspaceItems.length > 8 && (
-            <MenuSubmenu label="More Workspaces" icon="folder">
-              {workspaceItems.slice(8)}
-            </MenuSubmenu>
+            <MenuSub>
+              <MenuSubTrigger icon="folder">More Workspaces</MenuSubTrigger>
+              <MenuSubContent>{workspaceItems.slice(8)}</MenuSubContent>
+            </MenuSub>
           )}
         </MenuRadioGroup>
         {openFolder !== undefined && (
           <>
             <MenuSeparator />
-            <MenuItem icon="folder-add" onSelect={openFolder}>
+            <MenuItem icon="folder-add" onClick={openFolder}>
               Open Folder…
             </MenuItem>
           </>
@@ -103,7 +103,7 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
       {branch !== undefined && (
         <span {...props(contextStyles.readout, contextStyles.controlLayout)}>
           <span {...props(contextStyles.text)} title={branch}>
-            Agent Branch: {branch}
+            {branch}
           </span>
         </span>
       )}

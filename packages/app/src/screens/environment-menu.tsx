@@ -48,20 +48,13 @@ export function EnvironmentMenu({ active }: { readonly active: boolean }): React
           This Mac
         </MenuRadioItem>
         {configured && (
-          <MenuRadioItem
-            value="cloud"
-            icon="cloud"
-            disabled={!cloudReady || starting}
-            disabledReason={
-              starting ? "Starting a chat" : !cloudReady ? "Connect in Environments" : undefined
-            }
-          >
+          <MenuRadioItem value="cloud" icon="cloud" disabled={!cloudReady || starting}>
             Cloud
           </MenuRadioItem>
         )}
       </MenuRadioGroup>
       <MenuSeparator />
-      <MenuItem icon="server" onSelect={() => shellActions.openEnvironments()}>
+      <MenuItem icon="server" onClick={() => shellActions.openEnvironments()}>
         Environments…
       </MenuItem>
     </ContextSelector>
