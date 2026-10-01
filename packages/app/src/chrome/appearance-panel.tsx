@@ -1,8 +1,14 @@
 /** Settings that affect the renderer's palette, typography, and conversation density. */
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { NumberField } from "@nyte-ai/ui/number-field";
-import { Select, type SelectOption } from "@nyte-ai/ui/select";
-import { Slider } from "@nyte-ai/ui/slider";
+import {
+  NumberField,
+  NumberFieldDecrement,
+  NumberFieldGroup,
+  NumberFieldIncrement,
+  NumberFieldInput,
+} from "@nyte-ai/ui/number-field";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
+import { Slider, type SliderRootProps } from "@nyte-ai/ui/slider";
 import { props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactElement } from "react";
@@ -29,6 +35,7 @@ import {
   CODE_FONT_CATALOG_TITLE,
   fontSelectGroups,
   UI_FONT_CATALOG_TITLE,
+  type FontOption,
 } from "./font-select-groups.ts";
 import { SettingsRow, SettingsSwitchRow } from "./settings-controls.tsx";
 
@@ -41,7 +48,7 @@ const THEME_OPTIONS = [
 const UI_FONT_OPTIONS = [
   { value: "inter", label: "Inter", fontFamily: uiFontFamily("inter") },
   { value: "system", label: "System UI", fontFamily: uiFontFamily("system") },
-] as const satisfies readonly SelectOption<UiFont>[];
+] as const satisfies readonly FontOption<UiFont>[];
 
 const CODE_FONT_OPTIONS = [
   { value: "system", label: "System Mono", fontFamily: codeFontFamily("system") },
@@ -50,7 +57,7 @@ const CODE_FONT_OPTIONS = [
     label: "JetBrains Mono",
     fontFamily: codeFontFamily("jetbrains-mono"),
   },
-] as const satisfies readonly SelectOption<CodeFont>[];
+] as const satisfies readonly FontOption<CodeFont>[];
 
 const TOOL_CALL_DENSITIES = [
   "compact",
@@ -95,6 +102,25 @@ function CodeFontPreview(): ReactElement {
   );
 }
 
+function SettingsSlider({
+  label,
+  valueText,
+  ...rest
+}: Pick<SliderRootProps<number>, "max" | "value" | "onValueChange" | "xstyle"> & {
+  readonly label: string;
+  readonly valueText: string;
+}): ReactElement {
+  return (
+    <Slider.Root {...rest}>
+      <Slider.Control>
+        <Slider.Track>
+          <Slider.Thumb aria-label={label} aria-valuetext={valueText} />
+        </Slider.Track>
+      </Slider.Control>
+    </Slider.Root>
+  );
+}
+
 function HueControl({
   value,
   active,
@@ -106,25 +132,14 @@ function HueControl({
 }): ReactElement {
   return (
     <span {...props(styles.tintControl)}>
-      <Slider.Root
-        min={0}
+      <SettingsSlider
+        label="Tint hue"
+        valueText={`${String(value)} degrees`}
         max={360}
-        step={1}
         value={value}
-        thumbAlignment="edge"
         xstyle={styles.tintSlider}
         onValueChange={onValueChange}
-      >
-        <Slider.Control>
-          <Slider.Track>
-            <Slider.Thumb
-              aria-label="Tint hue"
-              aria-valuetext={`${String(value)} degrees`}
-              xstyle={[surfaceTheme.custom, styles.tintThumb]}
-            />
-          </Slider.Track>
-        </Slider.Control>
-      </Slider.Root>
+      />
       <span {...props(styles.tintValue)}>{value}°</span>
       <span aria-hidden="true" {...props(styles.tintSlot)}>
         <span
@@ -148,25 +163,14 @@ function IntensityControl({
 }): ReactElement {
   return (
     <span {...props(styles.tintControl)}>
-      <Slider.Root
-        min={0}
+      <SettingsSlider
+        label="Tint intensity"
+        valueText={`${String(value)} percent`}
         max={100}
-        step={1}
         value={value}
-        thumbAlignment="edge"
         xstyle={styles.tintSlider}
         onValueChange={onValueChange}
-      >
-        <Slider.Control>
-          <Slider.Track>
-            <Slider.Thumb
-              aria-label="Tint intensity"
-              aria-valuetext={`${String(value)} percent`}
-              xstyle={[surfaceTheme.custom, styles.tintThumb]}
-            />
-          </Slider.Track>
-        </Slider.Control>
-      </Slider.Root>
+      />
       <span {...props(styles.tintSlot)}>
         <span {...props(styles.tintValue)}>{value}%</span>
       </span>
@@ -185,29 +189,18 @@ function DensityControl({
 
   return (
     <span {...props(styles.density)}>
-      <Slider.Root
-        min={0}
+      <SettingsSlider
+        label="Conversation density"
+        valueText={TOOL_CALL_DENSITY_LABELS[value]}
         max={TOOL_CALL_DENSITIES.length - 1}
-        step={1}
         value={index}
-        thumbAlignment="edge"
         xstyle={styles.densitySlider}
         onValueChange={(nextIndex) => {
           const next = TOOL_CALL_DENSITIES[nextIndex];
 
           if (next !== undefined) onValueChange(next);
         }}
-      >
-        <Slider.Control>
-          <Slider.Track>
-            <span aria-hidden="true" {...props(styles.densityDetent)} />
-            <Slider.Thumb
-              aria-label="Conversation density"
-              aria-valuetext={TOOL_CALL_DENSITY_LABELS[value]}
-            />
-          </Slider.Track>
-        </Slider.Control>
-      </Slider.Root>
+      />
       <span aria-hidden="true" {...props(styles.densityLabels)}>
         <span>{TOOL_CALL_DENSITY_LABELS[value]}</span>
       </span>
@@ -244,12 +237,24 @@ export function AppearanceSettings(): ReactElement {
     <div {...props(styles.root)}>
       <div {...props(settingsPatterns.group)}>
         <SettingsRow title="Theme" description="Choose between light and dark themes">
-          <Select<ThemePreference>
-            label="Theme"
+          <Select
+            items={THEME_OPTIONS}
             value={settings.theme}
-            options={THEME_OPTIONS}
-            onValueChange={(theme) => update(settings, { theme })}
-          />
+            onValueChange={(theme) => {
+              if (theme !== null) update(settings, { theme });
+            }}
+          >
+            <SelectTrigger aria-label="Theme">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {THEME_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value} label={option.label}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </SettingsRow>
         <SettingsSwitchRow
           title="Use Pointer Cursors"
@@ -303,11 +308,7 @@ export function AppearanceSettings(): ReactElement {
           </SettingsRow>
           <SettingsSwitchRow
             title="Reduce Transparency"
-            description={
-              systemTransparency
-                ? "Enabled by macOS Reduce Transparency. Change it in System Settings."
-                : "Replace translucent surfaces with opaque backgrounds"
-            }
+            description="Replace translucent surfaces with opaque backgrounds"
             checked={settings.reduceTransparency || systemTransparency}
             disabled={systemTransparency}
             onCheckedChange={(reduceTransparency) => update(settings, { reduceTransparency })}
@@ -322,21 +323,35 @@ export function AppearanceSettings(): ReactElement {
         <div {...props(settingsPatterns.group)}>
           <SettingsRow title="UI Font Size" description="Font size for the Nyte user interface">
             <NumberField
-              label="UI Font Size"
-              value={settings.uiFontSize}
+              defaultValue={settings.uiFontSize}
               min={12}
               max={16}
-              onValueChange={(uiFontSize) => update(settings, { uiFontSize })}
-            />
+              onValueCommitted={(uiFontSize) => {
+                if (uiFontSize !== null) update(settings, { uiFontSize });
+              }}
+            >
+              <NumberFieldGroup>
+                <NumberFieldDecrement />
+                <NumberFieldInput aria-label="UI Font Size" />
+                <NumberFieldIncrement />
+              </NumberFieldGroup>
+            </NumberField>
           </SettingsRow>
           <SettingsRow title="Code Font Size" description="Font size for code editors and diffs">
             <NumberField
-              label="Code Font Size"
-              value={settings.codeFontSize}
+              defaultValue={settings.codeFontSize}
               min={11}
               max={15}
-              onValueChange={(codeFontSize) => update(settings, { codeFontSize })}
-            />
+              onValueCommitted={(codeFontSize) => {
+                if (codeFontSize !== null) update(settings, { codeFontSize });
+              }}
+            >
+              <NumberFieldGroup>
+                <NumberFieldDecrement />
+                <NumberFieldInput aria-label="Code Font Size" />
+                <NumberFieldIncrement />
+              </NumberFieldGroup>
+            </NumberField>
           </SettingsRow>
           <SettingsRow
             title="UI Font Family"

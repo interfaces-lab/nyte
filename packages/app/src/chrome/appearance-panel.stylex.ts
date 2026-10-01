@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { glyph, shape } from "@nyte-ai/ui/schema.stylex";
 /** Controls unique to Settings › Appearance. */
 import { create } from "@stylexjs/stylex";
 import { settings } from "../theme/schema.stylex.ts";
@@ -13,21 +13,17 @@ export const appearancePanelStyles = create({
     width: 180,
   },
   tintSlider: { width: 120, minWidth: 0, flex: "0 1 auto" },
-  tintThumb: {
-    backgroundColor: role.bgInteractiveStrong,
-  },
   tintSlot: {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    // Wide enough for "100%"; the hue swatch centers in the same slot.
-    width: 26,
+    minWidth: glyph.lg,
     flexShrink: 0,
   },
   tintSwatch: {
     display: "block",
-    width: 20,
-    height: 20,
+    width: glyph.lg,
+    height: glyph.lg,
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderPrimaryTranslucent,
@@ -60,17 +56,6 @@ export const appearancePanelStyles = create({
     width: "100%",
     paddingBlock: 8,
   },
-  densityDetent: {
-    position: "absolute",
-    top: "50%",
-    left: "50%",
-    width: 4,
-    height: 4,
-    borderRadius: shape.pill,
-    backgroundColor: role.contentTertiary,
-    pointerEvents: "none",
-    transform: "translate(-50%, -50%)",
-  },
   densityLabels: {
     display: "flex",
     justifyContent: "space-between",
@@ -89,7 +74,6 @@ export const appearancePanelStyles = create({
   diffLine: {
     display: "grid",
     gridTemplateColumns: "32px minmax(0, 1fr)",
-    minHeight: 20,
     paddingInlineEnd: 8,
     whiteSpace: "pre",
   },
