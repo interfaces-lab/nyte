@@ -1,6 +1,18 @@
 "use client";
 
-import { Autocomplete } from "@nyte-ai/ui/autocomplete";
+import {
+  Autocomplete,
+  AutocompleteCollection,
+  AutocompleteContent,
+  AutocompleteEmpty,
+  AutocompleteGroup,
+  AutocompleteGroupLabel,
+  AutocompleteInput,
+  AutocompleteItem,
+  AutocompleteList,
+  AutocompleteSeparator,
+  AutocompleteTrigger,
+} from "@nyte-ai/ui/autocomplete";
 import { useState } from "react";
 
 interface ModelGroup {
@@ -19,7 +31,7 @@ export function AutocompleteDemo() {
   const [search, setSearch] = useState("");
 
   return (
-    <Autocomplete.Root
+    <Autocomplete
       items={groups}
       value={search}
       autoHighlight
@@ -28,35 +40,31 @@ export function AutocompleteDemo() {
         if (!open) setSearch("");
       }}
     >
-      <Autocomplete.Trigger aria-label="Model">{model}</Autocomplete.Trigger>
-      <Autocomplete.Portal>
-        <Autocomplete.Positioner sideOffset={4}>
-          <Autocomplete.Popup>
-            <Autocomplete.Input aria-label="Search models" placeholder="Search models" />
-            <Autocomplete.List>
-              {(group: ModelGroup, index: number) => (
-                <Autocomplete.Group key={group.label} items={group.items}>
-                  {index > 0 && <Autocomplete.Separator />}
-                  <Autocomplete.GroupLabel>{group.label}</Autocomplete.GroupLabel>
-                  <Autocomplete.Collection>
-                    {(item: string) => (
-                      <Autocomplete.Item
-                        key={item}
-                        value={item}
-                        selected={item === model}
-                        onClick={() => setModel(item)}
-                      >
-                        {item}
-                      </Autocomplete.Item>
-                    )}
-                  </Autocomplete.Collection>
-                </Autocomplete.Group>
-              )}
-            </Autocomplete.List>
-            <Autocomplete.Empty>No models match</Autocomplete.Empty>
-          </Autocomplete.Popup>
-        </Autocomplete.Positioner>
-      </Autocomplete.Portal>
-    </Autocomplete.Root>
+      <AutocompleteTrigger aria-label="Model">{model}</AutocompleteTrigger>
+      <AutocompleteContent>
+        <AutocompleteInput aria-label="Search models" placeholder="Search models" />
+        <AutocompleteList>
+          {(group: ModelGroup, index: number) => (
+            <AutocompleteGroup key={group.label} items={group.items}>
+              {index > 0 && <AutocompleteSeparator />}
+              <AutocompleteGroupLabel>{group.label}</AutocompleteGroupLabel>
+              <AutocompleteCollection>
+                {(item: string) => (
+                  <AutocompleteItem
+                    key={item}
+                    value={item}
+                    selected={item === model}
+                    onClick={() => setModel(item)}
+                  >
+                    {item}
+                  </AutocompleteItem>
+                )}
+              </AutocompleteCollection>
+            </AutocompleteGroup>
+          )}
+        </AutocompleteList>
+        <AutocompleteEmpty>No models match</AutocompleteEmpty>
+      </AutocompleteContent>
+    </Autocomplete>
   );
 }

@@ -1,13 +1,13 @@
 import { Autocomplete as AutocompletePrimitive } from "@base-ui/react/autocomplete";
 import { create, props } from "@stylexjs/stylex";
-import { createContext, use, type ReactElement, type Ref } from "react";
+import type { ReactElement } from "react";
 
-import { focus } from "../../a11y.stylex.ts";
-import { floatingSurfaceStyles } from "../../floating-surface.stylex.ts";
-import { button, input, layer, menu, shape } from "../../schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { surfaceTheme, type Tint } from "../../surface-theme.ts";
-import { appearance, motion, role, type } from "../../vars.stylex.ts";
+import { focus } from "./a11y.stylex.ts";
+import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
+import { button, glyph, input, layer, menu, shape, target } from "./schema.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { surfaceTheme, type Tint } from "./surface-theme.ts";
+import { appearance, motion, role, type } from "./vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 import { useOverlayRef } from "./overlay.tsx";
 
@@ -18,10 +18,10 @@ const styles = create({
     justifyContent: "space-between",
     gap: 6,
     boxSizing: "border-box",
-    minWidth: { default: 0, "@media (pointer: coarse)": menu.itemHeight },
+    minWidth: target.min,
     maxWidth: "100%",
-    height: { default: button.heightSm, "@media (pointer: coarse)": menu.itemHeight },
-    minHeight: 24,
+    height: button.heightSm,
+    minHeight: target.min,
     paddingBlock: 0,
     paddingInline: button.paddingInlineSm,
     overflow: "hidden",
@@ -119,11 +119,6 @@ const styles = create({
     lineHeight: type.leadingBase,
     "::placeholder": { color: role.contentTertiary },
   },
-  inputInline: {
-    height: menu.itemHeight,
-    paddingInline: 8,
-    boxShadow: "none",
-  },
   list: {
     display: "flex",
     flexDirection: "column",
@@ -134,19 +129,12 @@ const styles = create({
     overscrollBehavior: "contain",
     outline: "none",
   },
-  listInline: {
-    display: "block",
-    flex: 1,
-    marginInline: -4,
-    paddingBlock: 0,
-    paddingInline: 4,
-  },
   item: {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) auto",
     alignItems: "center",
     columnGap: 6,
-    minHeight: `max(30px, ${menu.itemHeight})`,
+    minHeight: menu.itemHeight,
     paddingBlock: 0,
     paddingInline: 12,
     borderRadius: shape.control,
@@ -158,18 +146,6 @@ const styles = create({
     letterSpacing: type.letterBase,
     cursor: "default",
     userSelect: "none",
-  },
-  itemInline: {
-    gridTemplateColumns: "minmax(0, 1fr) 14px",
-    columnGap: 8,
-    minHeight: menu.itemHeight,
-    paddingBlock: 4,
-    paddingInline: 8,
-    borderRadius: menu.itemRadius,
-  },
-  itemSelectedInline: {
-    backgroundColor: role.bgInteractiveSecondaryTranslucent,
-    boxShadow: `inset 0 0 0 1px ${role.borderPrimary}`,
   },
   itemText: {
     minWidth: 0,
@@ -184,7 +160,6 @@ const styles = create({
     width: 12,
     color: role.contentSecondary,
   },
-  itemIndicatorInline: { width: 14 },
   groupLabel: {
     paddingBlockStart: 6,
     paddingBlockEnd: 2,
@@ -192,16 +167,6 @@ const styles = create({
     color: role.contentSecondary,
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
-  },
-  groupLabelInline: {
-    display: "flex",
-    alignItems: "baseline",
-    gap: 6,
-    paddingBlockStart: 4,
-    paddingInline: 8,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingXs,
-    userSelect: "none",
   },
   separator: {
     flexShrink: 0,
@@ -219,11 +184,74 @@ const styles = create({
   status: { padding: { default: 0, ":not(:empty)": "10px 12px" } },
 });
 
-const InPopupContext = createContext(false);
+/**
+ * `popup` sits inside `AutocompleteContent`; `inline` sits in a host surface such as
+ * a menu, which already supplies the padding and the item rhythm.
+ */
+const inputVariants = create({
+  popup: {},
+  inline: { height: menu.itemHeight, paddingInline: 8, boxShadow: "none" },
+});
+
+const listVariants = create({
+  popup: {},
+  inline: { display: "block", flex: 1, marginInline: -4, paddingBlock: 0, paddingInline: 4 },
+});
+
+const itemVariants = create({
+  popup: {},
+  inline: {
+    gridTemplateColumns: `minmax(0, 1fr) ${glyph.sm}`,
+    columnGap: 8,
+    minHeight: menu.itemHeight,
+    paddingBlock: 4,
+    paddingInline: 8,
+    borderRadius: menu.itemRadius,
+  },
+});
+
+const selectedItemVariants = create({
+  popup: {},
+  inline: {
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    boxShadow: `inset 0 0 0 1px ${role.borderPrimary}`,
+  },
+});
+
+const itemIndicatorVariants = create({
+  popup: {},
+  inline: { width: glyph.sm },
+});
+
+const groupLabelVariants = create({
+  popup: {},
+  inline: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: 6,
+    paddingBlockStart: 4,
+    paddingInline: 8,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
+    userSelect: "none",
+  },
+});
+
+export type AutocompleteVariant = keyof typeof inputVariants;
+
+export const Autocomplete = AutocompletePrimitive.Root;
+
+export const AutocompleteValue = AutocompletePrimitive.Value;
+
+export const AutocompleteInputGroup = AutocompletePrimitive.InputGroup;
+
+export const AutocompleteGroup = AutocompletePrimitive.Group;
+
+export const AutocompleteCollection = AutocompletePrimitive.Collection;
 
 export type AutocompleteTriggerProps = StyledProps<AutocompletePrimitive.Trigger.Props>;
 
-function AutocompleteTrigger({
+export function AutocompleteTrigger({
   children,
   className,
   style,
@@ -232,6 +260,7 @@ function AutocompleteTrigger({
 }: AutocompleteTriggerProps): ReactElement {
   return (
     <AutocompletePrimitive.Trigger
+      data-slot="autocomplete-trigger"
       {...mergeStyleProps(props(styles.trigger, focus.ring, xstyle), className, style)}
       {...rest}
     >
@@ -243,112 +272,128 @@ function AutocompleteTrigger({
   );
 }
 
-export type AutocompletePositionerProps = StyledProps<AutocompletePrimitive.Positioner.Props>;
+export type AutocompleteClearProps = StyledProps<AutocompletePrimitive.Clear.Props>;
 
-function AutocompletePositioner({
-  positionMethod = "fixed",
-  collisionPadding = 8,
+export function AutocompleteClear({
   className,
   style,
   xstyle,
   ...rest
-}: AutocompletePositionerProps): ReactElement {
+}: AutocompleteClearProps): ReactElement {
   return (
-    <AutocompletePrimitive.Positioner
-      positionMethod={positionMethod}
-      collisionPadding={collisionPadding}
-      {...mergeStyleProps(props(styles.positioner, xstyle), className, style)}
+    <AutocompletePrimitive.Clear
+      data-slot="autocomplete-clear"
+      {...mergeStyleProps(props(styles.clear, focus.ring, xstyle), className, style)}
       {...rest}
     />
   );
 }
 
-export type AutocompletePopupProps = StyledProps<AutocompletePrimitive.Popup.Props> & {
-  readonly tint?: Tint;
-};
+export type AutocompleteContentProps = StyledProps<Omit<AutocompletePrimitive.Popup.Props, "ref">> &
+  Pick<
+    AutocompletePrimitive.Positioner.Props,
+    "side" | "align" | "sideOffset" | "alignOffset" | "anchor" | "collisionAvoidance"
+  > & {
+    /** Scopes the popup to a hue. */
+    readonly tint?: Tint;
+  };
 
-function AutocompletePopup({
+export function AutocompleteContent({
+  side = "bottom",
+  align = "start",
+  sideOffset = 4,
+  alignOffset,
+  anchor,
+  collisionAvoidance,
   tint,
   className,
   style,
   xstyle,
   ...rest
-}: AutocompletePopupProps): ReactElement {
+}: AutocompleteContentProps): ReactElement {
   const overlayRef = useOverlayRef();
 
   return (
-    <InPopupContext value>
-      <AutocompletePrimitive.Popup
-        ref={overlayRef}
-        {...mergeStyleProps(
-          props(
-            tint !== undefined && surfaceTheme[tint],
-            floatingSurfaceStyles.popup,
-            styles.popup,
-            xstyle,
-          ),
-          className,
-          style,
-        )}
-        {...rest}
-      />
-    </InPopupContext>
+    <AutocompletePrimitive.Portal>
+      <AutocompletePrimitive.Positioner
+        positionMethod="fixed"
+        side={side}
+        align={align}
+        sideOffset={sideOffset}
+        alignOffset={alignOffset}
+        anchor={anchor}
+        collisionAvoidance={collisionAvoidance}
+        collisionPadding={8}
+        {...props(styles.positioner)}
+      >
+        <AutocompletePrimitive.Popup
+          ref={overlayRef}
+          data-slot="autocomplete-content"
+          {...mergeStyleProps(
+            props(
+              tint !== undefined && surfaceTheme[tint],
+              floatingSurfaceStyles.popup,
+              styles.popup,
+              xstyle,
+            ),
+            className,
+            style,
+          )}
+          {...rest}
+        />
+      </AutocompletePrimitive.Positioner>
+    </AutocompletePrimitive.Portal>
   );
 }
 
 export type AutocompleteInputProps = StyledProps<AutocompletePrimitive.Input.Props> & {
-  readonly ref?: Ref<HTMLInputElement>;
+  readonly variant?: AutocompleteVariant;
 };
 
-function AutocompleteInput({
+export function AutocompleteInput({
+  variant = "popup",
   className,
   style,
   xstyle,
   ...rest
 }: AutocompleteInputProps): ReactElement {
-  const inPopup = use(InPopupContext);
-
   return (
     <AutocompletePrimitive.Input
-      {...mergeStyleProps(
-        props(styles.input, !inPopup && styles.inputInline, xstyle),
-        className,
-        style,
-      )}
+      data-slot="autocomplete-input"
+      {...mergeStyleProps(props(styles.input, inputVariants[variant], xstyle), className, style)}
       {...rest}
     />
   );
 }
 
-export type AutocompleteListProps = StyledProps<AutocompletePrimitive.List.Props>;
+export type AutocompleteListProps = StyledProps<AutocompletePrimitive.List.Props> & {
+  readonly variant?: AutocompleteVariant;
+};
 
-function AutocompleteList({
+export function AutocompleteList({
+  variant = "popup",
   className,
   style,
   xstyle,
   ...rest
 }: AutocompleteListProps): ReactElement {
-  const inPopup = use(InPopupContext);
-
   return (
     <AutocompletePrimitive.List
-      {...mergeStyleProps(
-        props(styles.list, !inPopup && styles.listInline, xstyle),
-        className,
-        style,
-      )}
+      data-slot="autocomplete-list"
+      {...mergeStyleProps(props(styles.list, listVariants[variant], xstyle), className, style)}
       {...rest}
     />
   );
 }
 
 export type AutocompleteItemProps = StyledProps<AutocompletePrimitive.Item.Props> & {
-  readonly ref?: Ref<HTMLDivElement>;
+  readonly variant?: AutocompleteVariant;
   /** Marks the current value with a trailing checkmark. */
   readonly selected?: boolean;
 };
 
-function AutocompleteItem({
+export function AutocompleteItem({
+  variant = "popup",
   selected = false,
   children,
   className,
@@ -356,15 +401,14 @@ function AutocompleteItem({
   xstyle,
   ...rest
 }: AutocompleteItemProps): ReactElement {
-  const inPopup = use(InPopupContext);
-
   return (
     <AutocompletePrimitive.Item
+      data-slot="autocomplete-item"
       {...mergeStyleProps(
         props(
           styles.item,
-          !inPopup && styles.itemInline,
-          !inPopup && selected && styles.itemSelectedInline,
+          itemVariants[variant],
+          selected && selectedItemVariants[variant],
           xstyle,
         ),
         className,
@@ -373,30 +417,29 @@ function AutocompleteItem({
       {...rest}
     >
       <span {...props(styles.itemText)}>{children}</span>
-      <span
-        aria-hidden="true"
-        {...props(styles.itemIndicator, !inPopup && styles.itemIndicatorInline)}
-      >
+      <span aria-hidden="true" {...props(styles.itemIndicator, itemIndicatorVariants[variant])}>
         {selected ? <Icon name="checkmark" size={11} /> : null}
       </span>
     </AutocompletePrimitive.Item>
   );
 }
 
-export type AutocompleteGroupLabelProps = StyledProps<AutocompletePrimitive.GroupLabel.Props>;
+export type AutocompleteGroupLabelProps = StyledProps<AutocompletePrimitive.GroupLabel.Props> & {
+  readonly variant?: AutocompleteVariant;
+};
 
-function AutocompleteGroupLabel({
+export function AutocompleteGroupLabel({
+  variant = "popup",
   className,
   style,
   xstyle,
   ...rest
 }: AutocompleteGroupLabelProps): ReactElement {
-  const inPopup = use(InPopupContext);
-
   return (
     <AutocompletePrimitive.GroupLabel
+      data-slot="autocomplete-group-label"
       {...mergeStyleProps(
-        props(styles.groupLabel, !inPopup && styles.groupLabelInline, xstyle),
+        props(styles.groupLabel, groupLabelVariants[variant], xstyle),
         className,
         style,
       )}
@@ -407,7 +450,7 @@ function AutocompleteGroupLabel({
 
 export type AutocompleteSeparatorProps = StyledProps<AutocompletePrimitive.Separator.Props>;
 
-function AutocompleteSeparator({
+export function AutocompleteSeparator({
   className,
   style,
   xstyle,
@@ -415,6 +458,7 @@ function AutocompleteSeparator({
 }: AutocompleteSeparatorProps): ReactElement {
   return (
     <AutocompletePrimitive.Separator
+      data-slot="autocomplete-separator"
       {...mergeStyleProps(props(styles.separator, xstyle), className, style)}
       {...rest}
     />
@@ -423,7 +467,7 @@ function AutocompleteSeparator({
 
 export type AutocompleteEmptyProps = StyledProps<AutocompletePrimitive.Empty.Props>;
 
-function AutocompleteEmpty({
+export function AutocompleteEmpty({
   className,
   style,
   xstyle,
@@ -431,6 +475,7 @@ function AutocompleteEmpty({
 }: AutocompleteEmptyProps): ReactElement {
   return (
     <AutocompletePrimitive.Empty
+      data-slot="autocomplete-empty"
       {...mergeStyleProps(props(styles.empty, xstyle), className, style)}
       {...rest}
     />
@@ -439,7 +484,7 @@ function AutocompleteEmpty({
 
 export type AutocompleteStatusProps = StyledProps<AutocompletePrimitive.Status.Props>;
 
-function AutocompleteStatus({
+export function AutocompleteStatus({
   className,
   style,
   xstyle,
@@ -447,69 +492,9 @@ function AutocompleteStatus({
 }: AutocompleteStatusProps): ReactElement {
   return (
     <AutocompletePrimitive.Status
+      data-slot="autocomplete-status"
       {...mergeStyleProps(props(styles.empty, styles.status, xstyle), className, style)}
       {...rest}
     />
   );
 }
-
-export type AutocompleteBackdropProps = StyledProps<AutocompletePrimitive.Backdrop.Props>;
-
-function AutocompleteBackdrop({
-  className,
-  style,
-  xstyle,
-  ...rest
-}: AutocompleteBackdropProps): ReactElement {
-  const overlayRef = useOverlayRef();
-
-  return (
-    <AutocompletePrimitive.Backdrop
-      ref={overlayRef}
-      {...rest}
-      {...mergeStyleProps(props(xstyle), className, style)}
-    />
-  );
-}
-
-export type AutocompleteClearProps = StyledProps<AutocompletePrimitive.Clear.Props>;
-
-function AutocompleteClear({
-  className,
-  style,
-  xstyle,
-  ...rest
-}: AutocompleteClearProps): ReactElement {
-  return (
-    <AutocompletePrimitive.Clear
-      {...rest}
-      {...mergeStyleProps(props(styles.clear, focus.ring, xstyle), className, style)}
-    />
-  );
-}
-
-export const Autocomplete = {
-  Root: AutocompletePrimitive.Root,
-  Value: AutocompletePrimitive.Value,
-  Trigger: AutocompleteTrigger,
-  InputGroup: AutocompletePrimitive.InputGroup,
-  Input: AutocompleteInput,
-  Icon: AutocompletePrimitive.Icon,
-  Clear: AutocompleteClear,
-  Portal: AutocompletePrimitive.Portal,
-  Backdrop: AutocompleteBackdrop,
-  Positioner: AutocompletePositioner,
-  Popup: AutocompletePopup,
-  Arrow: AutocompletePrimitive.Arrow,
-  Status: AutocompleteStatus,
-  Empty: AutocompleteEmpty,
-  List: AutocompleteList,
-  Group: AutocompletePrimitive.Group,
-  GroupLabel: AutocompleteGroupLabel,
-  Collection: AutocompletePrimitive.Collection,
-  Item: AutocompleteItem,
-  Row: AutocompletePrimitive.Row,
-  Separator: AutocompleteSeparator,
-  useFilter: AutocompletePrimitive.useFilter,
-  useFilteredItems: AutocompletePrimitive.useFilteredItems,
-};

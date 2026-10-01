@@ -1,72 +1,62 @@
 ---
 title: Autocomplete
-description: "A text input that suggests matching items as you type"
+description: "A list that filters as the user types"
 ---
 
 ```ts title="Import"
-import { Autocomplete } from "@nyte-ai/ui";
+import {
+  Autocomplete,
+  AutocompleteCollection,
+  AutocompleteContent,
+  AutocompleteEmpty,
+  AutocompleteGroup,
+  AutocompleteGroupLabel,
+  AutocompleteInput,
+  AutocompleteItem,
+  AutocompleteList,
+  AutocompleteSeparator,
+  AutocompleteStatus,
+  AutocompleteTrigger,
+} from "@nyte-ai/ui/autocomplete";
 ```
 
-The same `Autocomplete` is exported from its own subpath. Pick one path per file.
-
-```ts title="Subpath"
-import { Autocomplete } from "@nyte-ai/ui/autocomplete";
-```
-
-A search field that filters a list as the user types. Reach for it when a choice comes from a list
-too long to scan, such as fonts or models.
+A search field for a long list, such as fonts or models. For a short list, use
+[Select](/cloud/components/select).
 
 ## Usage
 
-- `Autocomplete.Trigger` is a compact select-style button. Its children become the ellipsised value
-  and a chevron follows them.
-- `Autocomplete.Popup` is a 280px panel, at most 320px tall, with no padding. An
-  `Autocomplete.Input` inside it is a search bar with a hairline beneath. The list scrolls below it.
-- Rendered with `inline` and no popup, for example inside a [Menu](/cloud/components/menu), the
-  input, list, rows, and group labels take menu row geometry instead.
-- `selected` on `Autocomplete.Item` shows a trailing checkmark for the current value. Inline, the
-  row is also filled.
-- Pass the data to `items` on the root and render each entry from a function child on
-  `Autocomplete.List`. Inside a group, render the group's entries with `Autocomplete.Collection`.
-- Each `Autocomplete.Item` takes a `value` identifying it. Pass the item being rendered so props like
-  `itemToStringValue` receive it. Act on a pick in its `onClick`.
-- `value` with `onValueChange` on the root controls the search text. Clear it in `onOpenChange` so
-  the next open starts fresh.
-- `mode` decides how filtering and inline completion work. `"list"`, the default, filters items and
-  leaves the input alone. `"none"` does neither, for a list you filter yourself.
-- `autoHighlight` highlights the first match as the user types.
-- Keep `Autocomplete.Status` and `Autocomplete.Empty` mounted. Their content is announced politely,
-  so update their children instead of hiding the element. `Autocomplete.Status` takes padding only
-  while it has content.
-- `Autocomplete.Positioner` defaults to `side="bottom"`, `align="center"`, `positionMethod="fixed"`,
-  and `collisionPadding={8}`.
-- The popup attaches the ref from [Overlays](/cloud/foundations/overlays), so a host can keep it
-  above native views.
+- Pass the current value as the children of `AutocompleteTrigger`.
+- Pass the data to `items` on `Autocomplete` and render each entry from a function child of
+  `AutocompleteList`. Inside an `AutocompleteGroup`, render its entries with
+  `AutocompleteCollection`.
+- Give each `AutocompleteItem` a `value`. Act on a pick in its `onClick`, and mark the current one
+  with `selected`.
+- `value` is the search text. Clear it in `onOpenChange` so the next open starts empty.
+- To nest the list in another surface, such as a submenu, set `inline` and `open` on
+  `Autocomplete`, drop `AutocompleteContent`, and set [`variant="inline"`](#variant).
+- Keep `AutocompleteStatus` and `AutocompleteEmpty` mounted and change their children, so screen
+  readers announce the change.
 
 ## Anatomy
 
 ```tsx
-<Autocomplete.Root>
-  <Autocomplete.Trigger />
-  <Autocomplete.Portal>
-    <Autocomplete.Positioner>
-      <Autocomplete.Popup>
-        <Autocomplete.Input />
-        <Autocomplete.Status />
-        <Autocomplete.List>
-          <Autocomplete.Group>
-            <Autocomplete.Separator />
-            <Autocomplete.GroupLabel />
-            <Autocomplete.Collection>
-              <Autocomplete.Item />
-            </Autocomplete.Collection>
-          </Autocomplete.Group>
-        </Autocomplete.List>
-        <Autocomplete.Empty />
-      </Autocomplete.Popup>
-    </Autocomplete.Positioner>
-  </Autocomplete.Portal>
-</Autocomplete.Root>
+<Autocomplete>
+  <AutocompleteTrigger />
+  <AutocompleteContent>
+    <AutocompleteInput />
+    <AutocompleteStatus />
+    <AutocompleteList>
+      <AutocompleteGroup>
+        <AutocompleteSeparator />
+        <AutocompleteGroupLabel />
+        <AutocompleteCollection>
+          <AutocompleteItem />
+        </AutocompleteCollection>
+      </AutocompleteGroup>
+    </AutocompleteList>
+    <AutocompleteEmpty />
+  </AutocompleteContent>
+</Autocomplete>
 ```
 
 ## Examples
@@ -92,7 +82,7 @@ const groups: readonly ModelGroup[] = [
 const [model, setModel] = useState("claude-sonnet-4-6");
 const [search, setSearch] = useState("");
 
-<Autocomplete.Root
+<Autocomplete
   items={groups}
   value={search}
   autoHighlight
@@ -101,185 +91,180 @@ const [search, setSearch] = useState("");
     if (!open) setSearch("");
   }}
 >
-  <Autocomplete.Trigger aria-label="Model">{model}</Autocomplete.Trigger>
-  <Autocomplete.Portal>
-    <Autocomplete.Positioner sideOffset={4}>
-      <Autocomplete.Popup>
-        <Autocomplete.Input aria-label="Search models" placeholder="Search models" />
-        <Autocomplete.List>
-          {(group: ModelGroup, index: number) => (
-            <Autocomplete.Group key={group.label} items={group.items}>
-              {index > 0 && <Autocomplete.Separator />}
-              <Autocomplete.GroupLabel>{group.label}</Autocomplete.GroupLabel>
-              <Autocomplete.Collection>
-                {(item: string) => (
-                  <Autocomplete.Item
-                    key={item}
-                    value={item}
-                    selected={item === model}
-                    onClick={() => setModel(item)}
-                  >
-                    {item}
-                  </Autocomplete.Item>
-                )}
-              </Autocomplete.Collection>
-            </Autocomplete.Group>
-          )}
-        </Autocomplete.List>
-        <Autocomplete.Empty>No models match</Autocomplete.Empty>
-      </Autocomplete.Popup>
-    </Autocomplete.Positioner>
-  </Autocomplete.Portal>
-</Autocomplete.Root>;
+  <AutocompleteTrigger aria-label="Model">{model}</AutocompleteTrigger>
+  <AutocompleteContent>
+    <AutocompleteInput aria-label="Search models" placeholder="Search models" />
+    <AutocompleteList>
+      {(group: ModelGroup, index: number) => (
+        <AutocompleteGroup key={group.label} items={group.items}>
+          {index > 0 && <AutocompleteSeparator />}
+          <AutocompleteGroupLabel>{group.label}</AutocompleteGroupLabel>
+          <AutocompleteCollection>
+            {(item: string) => (
+              <AutocompleteItem
+                key={item}
+                value={item}
+                selected={item === model}
+                onClick={() => setModel(item)}
+              >
+                {item}
+              </AutocompleteItem>
+            )}
+          </AutocompleteCollection>
+        </AutocompleteGroup>
+      )}
+    </AutocompleteList>
+    <AutocompleteEmpty>No models match</AutocompleteEmpty>
+  </AutocompleteContent>
+</Autocomplete>;
 ```
 
-### Inside a menu
+### Inside a submenu
 
-With `inline` and `open`, the list renders in place. The rows match the menu's.
+The [Menu](/cloud/components/menu) submenu supplies the popup. `mode="none"` leaves filtering to
+you.
 
 ```tsx
-<MenuSubmenu label="Model" value={model}>
-  <Autocomplete.Root inline open items={models} value={search} onValueChange={setSearch}>
-    <Autocomplete.Input aria-label="Search models" placeholder="Search models" />
+<MenuSubContent>
+  <Autocomplete
+    inline
+    open
+    mode="none"
+    autoHighlight
+    items={options}
+    value={search}
+    onValueChange={setSearch}
+  >
+    <AutocompleteInput variant="inline" aria-label="Search models" placeholder="Search models" />
     <MenuSeparator />
-    <Autocomplete.List>
-      {(item: string) => (
-        <Autocomplete.Item
-          key={item}
-          value={item}
-          selected={item === model}
-          onClick={() => setModel(item)}
+    <AutocompleteList variant="inline">
+      {(option: ModelOption) => (
+        <AutocompleteItem
+          variant="inline"
+          key={option.key}
+          value={option}
+          selected={option.key === current}
+          onClick={() => choose(option)}
         >
-          {item}
-        </Autocomplete.Item>
+          {option.name}
+        </AutocompleteItem>
       )}
-    </Autocomplete.List>
-  </Autocomplete.Root>
-</MenuSubmenu>
+    </AutocompleteList>
+  </Autocomplete>
+</MenuSubContent>
 ```
 
 ## Props
 
-`Autocomplete.Trigger`, `Input`, `Positioner`, `Popup`, `Status`, `Empty`, `List`, `GroupLabel`,
-`Item`, and `Separator` take `xstyle`, and `className` and `style` as plain values, not functions of
-state. See [Theming](/cloud/foundations/theming). The other parts are Base UI's.
-
-### Item
-
-| Prop       | Type      | Default | Description                                                   |
-| ---------- | --------- | ------- | ------------------------------------------------------------- |
-| `selected` | `boolean` | `false` | Shows the trailing checkmark. Inline, the row is also filled. |
+Styled parts take `xstyle`, `className`, and `style`; see
+[Theming](/cloud/foundations/theming). Each sets `data-slot` to its kebab-case name, such as
+`autocomplete-item`. `Autocomplete`, `AutocompleteValue`, `AutocompleteInputGroup`,
+`AutocompleteGroup`, and `AutocompleteCollection` pass through Base UI.
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
-<include>../../base-ui-reference/autocomplete/Item.md</include>
-
-### Root
+### Autocomplete
 
 <include>../../base-ui-reference/autocomplete/Root.md</include>
 
-### Trigger
+### AutocompleteTrigger
 
 <include>../../base-ui-reference/autocomplete/Trigger.md</include>
 
-### Input
-
-<include>../../base-ui-reference/autocomplete/Input.md</include>
-
-### InputGroup
-
-<include>../../base-ui-reference/autocomplete/InputGroup.md</include>
-
-### Icon
-
-<include>../../base-ui-reference/autocomplete/Icon.md</include>
-
-### Clear
-
-<include>../../base-ui-reference/autocomplete/Clear.md</include>
-
-### Value
+### AutocompleteValue
 
 <include>../../base-ui-reference/autocomplete/Value.md</include>
 
-### Portal
+### AutocompleteClear
 
-<include>../../base-ui-reference/autocomplete/Portal.md</include>
+<include>../../base-ui-reference/autocomplete/Clear.md</include>
 
-### Backdrop
+### AutocompleteContent
 
-<include>../../base-ui-reference/autocomplete/Backdrop.md</include>
+Renders the portal, positioner, and popup. The positioning props below go to the positioner.
+Everything else goes to the popup.
 
-### Positioner
+| Prop                 | Type                                                                       | Default    | Description                              |
+| -------------------- | -------------------------------------------------------------------------- | ---------- | ---------------------------------------- |
+| `side`               | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"` |                                          |
+| `align`              | `"start" \| "center" \| "end"`                                             | `"start"`  |                                          |
+| `sideOffset`         | `number \| OffsetFunction`                                                 | `4`        | Pixels.                                  |
+| `alignOffset`        | `number \| OffsetFunction`                                                 |            |                                          |
+| `anchor`             | `AutocompleteContentProps["anchor"]`                                       |            | Element or virtual element to open from. |
+| `collisionAvoidance` | `CollisionAvoidance`                                                       |            |                                          |
+| `tint`               | `Tint`                                                                     |            | Scopes the popup to a hue.               |
 
-Our defaults replace two of Base UI's.
-
-| Prop               | Type                    | Default   |
-| ------------------ | ----------------------- | --------- |
-| `positionMethod`   | `'absolute' \| 'fixed'` | `'fixed'` |
-| `collisionPadding` | `Padding`               | `8`       |
+#### Positioner
 
 <include>../../base-ui-reference/autocomplete/Positioner.md</include>
 
-### Popup
+#### Popup
 
 <include>../../base-ui-reference/autocomplete/Popup.md</include>
 
-### Arrow
+### AutocompleteInput
 
-<include>../../base-ui-reference/autocomplete/Arrow.md</include>
+<include>../../base-ui-reference/autocomplete/Input.md</include>
 
-### List
+### AutocompleteInputGroup
+
+<include>../../base-ui-reference/autocomplete/InputGroup.md</include>
+
+### AutocompleteList
 
 <include>../../base-ui-reference/autocomplete/List.md</include>
 
-### Row
+### AutocompleteItem
 
-<include>../../base-ui-reference/autocomplete/Row.md</include>
+| Prop       | Type                  | Default   | Description                                                              |
+| ---------- | --------------------- | --------- | ------------------------------------------------------------------------ |
+| `variant`  | `"popup" \| "inline"` | `"popup"` | See [Variant](#variant).                                                 |
+| `selected` | `boolean`             | `false`   | Shows a trailing checkmark. With `variant="inline"`, also fills the row. |
 
-### Collection
+<include>../../base-ui-reference/autocomplete/Item.md</include>
+
+### AutocompleteCollection
 
 <include>../../base-ui-reference/autocomplete/Collection.md</include>
 
-### Group
+### AutocompleteGroup
 
 <include>../../base-ui-reference/autocomplete/Group.md</include>
 
-### GroupLabel
+### AutocompleteGroupLabel
 
 <include>../../base-ui-reference/autocomplete/GroupLabel.md</include>
 
-### Separator
+### AutocompleteSeparator
 
 <include>../../base-ui-reference/autocomplete/Separator.md</include>
 
-### Empty
+### AutocompleteEmpty
 
 <include>../../base-ui-reference/autocomplete/Empty.md</include>
 
-### Status
+### AutocompleteStatus
+
+Takes up no space while empty.
 
 <include>../../base-ui-reference/autocomplete/Status.md</include>
 
-### useFilter
+### Variant
 
-<include>../../base-ui-reference/autocomplete/useFilter.md</include>
+`AutocompleteInput`, `AutocompleteList`, `AutocompleteItem`, and `AutocompleteGroupLabel` take
+`variant`.
 
-### useFilteredItems
-
-<include>../../base-ui-reference/autocomplete/useFilteredItems.md</include>
+| Value      | Geometry                                         |
+| ---------- | ------------------------------------------------ |
+| `"popup"`  | Default. Sized for `AutocompleteContent`.        |
+| `"inline"` | Menu row geometry, for a host such as a submenu. |
 
 ## Accessibility
 
-- Name the input with an `aria-label`. Give the trigger an `aria-label` naming the field, since its
-  text is only the current value.
-- `Autocomplete.Input` renders `role="combobox"`, `Autocomplete.List` renders `role="listbox"`, and
-  each `Autocomplete.Item` renders `role="option"`. The checkmark is hidden from assistive
-  technology.
-- Arrow Down and Up move the highlight through the items. `loopFocus` wraps at the ends. Enter picks
-  the highlighted item. Escape closes the popup.
-- `Autocomplete.Status` and `Autocomplete.Empty` announce their content politely, which covers async
-  loading and empty results.
-- `Autocomplete.GroupLabel` labels its parent group.
-- The trigger shows the focus ring on keyboard focus. See [Focus](/cloud/foundations/focus).
-- The popup appears without motion under `prefers-reduced-motion: reduce`.
+- Name the input and the trigger with `aria-label`. The trigger's text is only the current value.
+- `AutocompleteList` renders `role="listbox"` and each `AutocompleteItem` `role="option"`. The
+  checkmark is hidden from assistive technology.
+- Arrow Down and Up move the highlight. The input is part of the loop. Enter picks the highlighted
+  item. Escape closes the popup.
+- `AutocompleteGroupLabel` names its group.
+- Keyboard focus on the trigger shows the [focus ring](/cloud/foundations/focus).
