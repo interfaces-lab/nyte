@@ -7,11 +7,11 @@ import {
   type ToasterProps as SonnerToasterProps,
 } from "sonner";
 
-import { focus } from "../../a11y.stylex.ts";
-import { button, layer, shape, toast } from "../../schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { intent, surfaceTheme, type Tint } from "../../surface-theme.ts";
-import { appearance, motion, role, shadow, type } from "../../vars.stylex.ts";
+import { focus } from "./a11y.stylex.ts";
+import { button, glyph, layer, shape, target, toast } from "./schema.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { intent, surfaceTheme, type Tint } from "./surface-theme.ts";
+import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 import { useOverlayRef } from "./overlay.tsx";
 
@@ -33,12 +33,9 @@ const styles = create({
     gap: 8,
     boxSizing: "border-box",
     width: "var(--width)",
-    minHeight: { default: 48, "@media (pointer: coarse)": 64 },
+    minHeight: toast.minHeight,
     padding: 12,
-    paddingInlineEnd: {
-      default: toast.closeGutter,
-      "@media (pointer: coarse)": `calc(max(44px, ${button.heightSm}) + 20px)`,
-    },
+    paddingInlineEnd: toast.closeGutter,
     overflow: "visible",
     borderStyle: "none",
     borderRadius: shape.surface,
@@ -73,7 +70,7 @@ const styles = create({
     placeItems: "center",
     alignSelf: "flex-start",
     flexShrink: 0,
-    width: 16,
+    width: glyph.md,
     height: type.leadingBase,
     color: role.contentSecondary,
   },
@@ -84,11 +81,8 @@ const styles = create({
     justifyContent: "center",
     flexShrink: 0,
     boxSizing: "border-box",
-    minHeight: {
-      default: button.heightSm,
-      "@media (pointer: coarse)": `max(44px, ${button.heightSm})`,
-    },
-    minWidth: { default: 24, "@media (pointer: coarse)": 44 },
+    minHeight: target.min,
+    minWidth: target.min,
     paddingBlock: 0,
     paddingInline: button.paddingInlineSm,
     appearance: "none",
@@ -124,8 +118,8 @@ const styles = create({
     boxSizing: "border-box",
     width: button.heightSm,
     height: button.heightSm,
-    minWidth: { default: 24, "@media (pointer: coarse)": 44 },
-    minHeight: { default: 24, "@media (pointer: coarse)": 44 },
+    minWidth: target.min,
+    minHeight: target.min,
     padding: 0,
     appearance: "none",
     borderStyle: "none",
@@ -241,3 +235,7 @@ function StyledToaster({ tint, xstyle, className, style, ...rest }: ToasterProps
 }
 
 export { StyledToaster as Toaster };
+
+export { toast } from "sonner";
+
+export type { ExternalToast } from "sonner";

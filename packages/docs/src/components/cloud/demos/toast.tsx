@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@nyte-ai/ui";
+import { Button } from "@nyte-ai/ui/button";
 import { Toaster, toast } from "@nyte-ai/ui/toast";
 
 export function ToastDemo() {
