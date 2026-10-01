@@ -8,8 +8,8 @@ import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { TranscriptSkeleton } from "../screens/transcript-skeleton.tsx";
 import { LiveTurn, liveTurnStyles } from "./live-turn.tsx";
-import { MessageScrollerContent } from "./message-scroller.tsx";
-import { Marker } from "./row-surfaces.tsx";
+import { TranscriptContent } from "./transcript.tsx";
+import { StatusMarker } from "./row-surfaces.tsx";
 import { TurnView, UserMessageView } from "./turn-view.tsx";
 import type { BranchModelChoice, BranchModelPicker, TurnChangesTarget } from "./turn-view.tsx";
 import { NO_WAITS } from "./transcript-presentation.ts";
@@ -146,12 +146,12 @@ export function Timeline({
           return <TranscriptSkeleton />;
         case "error":
           return (
-            <Marker role="alert" variant="destructive">
+            <StatusMarker role="alert" variant="destructive">
               Couldn&rsquo;t load this chat.{" "}
               <Button variant="text" onClick={() => onRetry()}>
                 Try Again
               </Button>
-            </Marker>
+            </StatusMarker>
           );
         case "turn": {
           if (row.trailing && working) {
@@ -190,9 +190,9 @@ export function Timeline({
           );
         case "retry":
           return (
-            <Marker role="status" variant="retrying" title={row.message}>
+            <StatusMarker role="status" variant="retrying" title={row.message}>
               Retrying…
-            </Marker>
+            </StatusMarker>
           );
         case "live":
           return (
@@ -225,7 +225,7 @@ export function Timeline({
   );
 
   return (
-    <MessageScrollerContent
+    <TranscriptContent
       items={rows}
       ready={ready}
       density={density}

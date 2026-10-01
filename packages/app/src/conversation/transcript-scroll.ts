@@ -61,9 +61,8 @@ export function activeStickyCandidate(
  * is sent instead would leave dead space whenever the reply came back short,
  * and taking that hole back later would move the content under the reader.
  *
- * The slack is a fifth of the scrollport, bounded, as in Cursor's
- * `--composer-messages-bottom-overscroll`. A scrollport that has not reported
- * its height yet gets the padding alone.
+ * The slack is a fifth of the scrollport, bounded to 80 to 240px. A scrollport
+ * that has not reported its height yet gets the padding alone.
  */
 export function transcriptPaddingEnd(viewportHeight: number): number {
   if (viewportHeight <= 0) return TRANSCRIPT_PADDING_END;

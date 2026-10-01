@@ -3,6 +3,7 @@ import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
+import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Button } from "@nyte-ai/ui/button";
 import { isFolder, referenceLabel, referenceTitle } from "./message-references.ts";
@@ -97,12 +98,12 @@ export function ComposerChipView({
 
   if (reference.kind === "clipboard") {
     return (
-      <Tooltip>
-        <TooltipTrigger render={chip} />
-        <TooltipContent side="top" xstyle={composerStyles.clipboardPreview}>
+      <PreviewCard>
+        <PreviewCardTrigger render={chip} />
+        <PreviewCardContent side="top" xstyle={composerStyles.clipboardPreview}>
           {reference.body}
-        </TooltipContent>
-      </Tooltip>
+        </PreviewCardContent>
+      </PreviewCard>
     );
   }
 

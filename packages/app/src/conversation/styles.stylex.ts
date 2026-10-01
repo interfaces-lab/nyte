@@ -6,7 +6,16 @@
  * Based on https://github.com/b-nnett/grok-bot-0.18-reconstructed/blob/a9f633e09d49a85829b8236331b9e21f7e612634/frontend/src/recovered/features/conversation/workspace/view.css
  */
 import { create, keyframes } from "@stylexjs/stylex";
-import { button, clipboardPreview, layer, menu, row, shape } from "@nyte-ai/ui/schema.stylex";
+import {
+  button,
+  clipboardPreview,
+  glyph,
+  layer,
+  menu,
+  row,
+  shape,
+  target,
+} from "@nyte-ai/ui/schema.stylex";
 import { conversation, diffView, pane, tray } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/vars.stylex";
 
@@ -109,11 +118,11 @@ export const proseStyles = create({
         "@media (hover: hover) and (pointer: fine)": role.bgInteractiveSecondaryTranslucent,
       },
     },
-    display: { default: "inline", "@media (pointer: coarse)": "inline-block" },
-    marginInline: { default: -2, "@media (pointer: coarse)": 0 },
+    display: "inline-block",
+    marginInline: -2,
     paddingInline: 2,
-    paddingBlock: { default: 2, "@media (pointer: coarse)": 10 },
-    minHeight: { default: 0, "@media (pointer: coarse)": 44 },
+    paddingBlock: `max(2px, (${target.min} - ${type.leadingLg}) / 2)`,
+    minHeight: target.min,
     boxSizing: "border-box",
     borderRadius: 4,
     fontWeight: 500,
@@ -220,10 +229,7 @@ export const composerStyles = create({
   // The dock is an opaque base layer. Transcript content never shows through
   // the composer or its queue controls.
   //
-  // Rows dissolve into the dock instead of being cut at its edge. Cursor's
-  // glass build masks the scroller itself, which needs the composer to sit
-  // outside it; ours is sticky inside, so this is Cursor's overlay recipe for
-  // that case (`.composer-fade-overlay`): one solid block of the dock's own
+  // Rows dissolve into the sticky dock through a solid block of its own
   // colour, masked away upward. A painted gradient would interpolate toward
   // transparent black and cast grey over the rows it is meant to fade.
   dock: {
@@ -325,7 +331,7 @@ export const composerStyles = create({
     display: "flex",
     alignItems: "center",
     gap: 8,
-    minHeight: 30,
+    minHeight: button.heightMd,
     paddingInline: 10,
     borderRadius: shape.control,
     backgroundColor: role.bgMutedTranslucent,
@@ -494,7 +500,7 @@ export const composerStyles = create({
   },
   inputNewChat: { minHeight: 54, maxHeight: 340 },
   inputCompact: {
-    minHeight: 24,
+    minHeight: type.leadingLg,
     minWidth: 0,
     overflowX: "auto",
     overflowY: "hidden",
@@ -533,7 +539,7 @@ export const composerStyles = create({
     paddingInline: USER_PROMPT_PADDING_INLINE,
   },
   // Clips a multi-line draft to the compact row; `inputCompact`'s nowrap does not stop hard line breaks.
-  editorCollapsed: { maxHeight: 28 },
+  editorCollapsed: { maxHeight: type.leadingLg },
   mentionChip: {
     position: "relative",
     display: "inline-flex",
@@ -554,16 +560,21 @@ export const composerStyles = create({
     justifyContent: "center",
     alignSelf: "center",
     width: 12,
-    height: 14,
+    height: glyph.sm,
     marginInlineEnd: 4,
   },
   mentionChipRemove: { flexShrink: 0 },
   /** A pasted snippet, scrolling past its bounds. */
   clipboardPreview: {
+    display: "block",
     maxWidth: clipboardPreview.maxWidth,
     maxHeight: clipboardPreview.maxHeight,
     overflowY: "auto",
+    overflowWrap: "anywhere",
+    color: role.contentSecondary,
     fontFamily: type.fontMono,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
     whiteSpace: "pre-wrap",
   },
   layout: {
@@ -574,18 +585,15 @@ export const composerStyles = create({
   layoutNewChat: { gap: 6 },
   layoutCompact: {
     display: "grid",
-    gridTemplateColumns: {
-      default: `${button.heightMd} minmax(64px, 1fr) minmax(0, auto) auto`,
-      "@media (pointer: coarse)": `${row.heightMd} minmax(64px, 1fr) minmax(0, auto) auto`,
-    },
+    gridTemplateColumns: `${button.heightMd} minmax(64px, 1fr) minmax(0, auto) auto`,
     alignItems: "center",
     gap: 8,
   },
   controls: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
-    minHeight: 28,
+    gap: target.gap,
+    minHeight: button.heightMd,
   },
   controlsInset: { paddingInline: 8, paddingBlockEnd: 8 },
   controlsCompact: { display: "contents" },
@@ -725,7 +733,7 @@ export const composerStyles = create({
     },
   },
   suggestionEmpty: {
-    minHeight: 28,
+    minHeight: menu.itemHeight,
     display: "flex",
     alignItems: "center",
     paddingInline: 8,
@@ -764,8 +772,8 @@ export const composerStyles = create({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 14,
-    height: 14,
+    width: glyph.sm,
+    height: glyph.sm,
     color: role.contentTertiary,
   },
   suggestionPreviewDescription: {
@@ -801,8 +809,8 @@ export const composerStyles = create({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    width: 16,
-    height: 16,
+    width: glyph.md,
+    height: glyph.md,
     color: role.contentTertiary,
   },
   suggestionPreviewPathIndent: (depth: number) => ({ paddingInlineStart: depth * 12 }),
@@ -873,7 +881,7 @@ export const diffStyles = create({
     alignItems: "center",
     gap: 8,
     width: "100%",
-    minHeight: 36,
+    minHeight: row.heightLg,
     margin: 0,
     paddingLeft: 12,
     paddingRight: 8,
@@ -892,8 +900,8 @@ export const diffStyles = create({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 16,
-    height: 16,
+    width: glyph.md,
+    height: glyph.md,
     flexShrink: 0,
   },
   stackHeaderIcon: { display: "var(--_stack-icon-display)" },
@@ -918,7 +926,7 @@ export const diffStyles = create({
     display: "flex",
     alignItems: "center",
     gap: 8,
-    minHeight: 30,
+    minHeight: row.heightMd,
     paddingInline: 12,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
@@ -1009,7 +1017,7 @@ export const toolCallStyles = create({
     width: "100%",
     maxWidth: "100%",
     minWidth: 0,
-    minHeight: { default: button.heightSm, "@media (pointer: coarse)": 44 },
+    minHeight: button.heightSm,
     paddingInline: 0,
     overflow: "hidden",
     borderStyle: "none",
@@ -1029,7 +1037,7 @@ export const toolCallStyles = create({
       ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
     },
   },
-  editLine: { minHeight: { default: button.heightMd, "@media (pointer: coarse)": 44 } },
+  editLine: { minHeight: button.heightMd },
   lineStatic: {
     cursor: "default",
     "--_verb-color": role.contentSecondary,
@@ -1037,7 +1045,7 @@ export const toolCallStyles = create({
   },
   lineDetailed: {
     width: "100%",
-    minHeight: { default: 32, "@media (pointer: coarse)": 44 },
+    minHeight: button.heightLg,
     paddingInline: 8,
     borderRadius: shape.control,
     backgroundColor: role.bgMutedTranslucent,
@@ -1087,12 +1095,11 @@ export const toolCallStyles = create({
   added: { color: role.contentSecondary },
   removed: { color: role.contentSecondary },
   chevron: {
-    width: 16,
-    height: 16,
+    width: glyph.md,
+    height: glyph.md,
     transitionTimingFunction: "ease-in-out",
   },
   /**
-   * Every call's evidence reads as a terminal, after Cursor's shell tool call.
    * The body keeps the newest lines at the bottom (column-reverse): closed it is
    * five lines tall and fades at the top when clipped; open it scrolls, so
    * opening grows the tail upward and a running command stays in view.
@@ -1146,10 +1153,7 @@ export const toolCallStyles = create({
     maxHeight: diffView.previewMaxHeight,
     overflowY: "auto",
     userSelect: "text",
-    paddingInlineEnd: {
-      default: `calc(${button.heightSm} + 8px)`,
-      "@media (pointer: coarse)": `calc(max(44px, ${button.heightSm}) + 8px)`,
-    },
+    paddingInlineEnd: `calc(${button.heightSm} + 8px)`,
   },
   outputContent: { display: "block", minWidth: 0 },
   // Clears the copy button; `code` would otherwise take the UA monospace.
@@ -1182,7 +1186,7 @@ export const subagentCallStyles = create({
     minWidth: 0,
     paddingBlock: 0,
     paddingInline: 0,
-    minHeight: { default: button.heightSm, "@media (pointer: coarse)": 44 },
+    minHeight: button.heightSm,
     textAlign: "left",
   },
   header: { paddingBlock: 6 },
@@ -1195,7 +1199,7 @@ export const subagentCallStyles = create({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    width: 20,
+    width: glyph.lg,
     height: type.leadingLg,
     paddingLeft: 2,
   },
@@ -1255,7 +1259,7 @@ export const toolGroupStyles = create({
     gap: 4,
     width: "100%",
     maxWidth: "100%",
-    minHeight: { default: button.heightSm, "@media (pointer: coarse)": 44 },
+    minHeight: button.heightSm,
     minWidth: 0,
     textAlign: "start",
     color: {
@@ -1267,7 +1271,7 @@ export const toolGroupStyles = create({
     userSelect: "none",
   },
   disclosure: {
-    width: { default: button.heightSm, "@media (pointer: coarse)": 44 },
+    width: button.heightSm,
     flexShrink: 0,
     justifyContent: "center",
   },
@@ -1336,7 +1340,7 @@ export const USER_MESSAGE_PREVIEW_LINES = 3.5;
 const USER_PREVIEW_BLEED_TOP = 2;
 
 /**
- * Cursor's collapsed-message fade (`UMs`): it spans the clipped fractional line
+ * The collapsed-message fade spans the clipped fractional line
  * plus the whole line above it, and runs out through the prompt's bottom
  * padding. The half line is gone before the clip, so nothing reads as sliced
  * text against the prompt's edge.
@@ -1577,7 +1581,6 @@ export const turnStyles = create({
     display: "flex",
     alignItems: "center",
     gap: 12,
-    minHeight: 24,
   },
   changesTitle: {
     flex: 1,
@@ -1603,7 +1606,7 @@ export const turnStyles = create({
     fontSize: type.fontLg,
     lineHeight: type.leadingLg,
   },
-  changesFileIcon: { width: 16, transform: "translateY(1px)" },
+  changesFileIcon: { width: glyph.md, transform: "translateY(1px)" },
   changesStats: {
     display: "inline-flex",
     alignItems: "center",

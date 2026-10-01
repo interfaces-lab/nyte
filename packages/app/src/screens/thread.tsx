@@ -42,7 +42,7 @@ import { WorkspaceContext } from "./workspace-context.tsx";
 import { draftConfiguration, updateDraftModel } from "../conversation/blank-draft.ts";
 import { Input } from "@nyte-ai/ui/input";
 import { FileTypeIconSprite } from "../components/file-type-icon.tsx";
-import { Menu, MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
 import {
   usePaneActions,
@@ -88,10 +88,7 @@ import { sessionReadState } from "../session-read-state.ts";
 import { BackgroundWork } from "../conversation/tray/terminals.tsx";
 import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
 import { Timeline } from "../conversation/timeline.tsx";
-import {
-  MessageScrollerProvider,
-  MessageScrollerViewport,
-} from "../conversation/message-scroller.tsx";
+import { TranscriptProvider, TranscriptViewport } from "../conversation/transcript.tsx";
 import { QuestionTray, useComposerAnswer } from "../conversation/tray/questions.tsx";
 import {
   NO_WAITS,
@@ -168,45 +165,38 @@ function PaneHeader({
   const actions = usePaneActions();
   const host = useHostState();
   const canSplit = useCanSplitPane();
-  const { layout } = usePaneControllerSnapshot();
-  const splitReason = canSplit
-    ? undefined
-    : layout.kind === "split"
-      ? "Close a pane to split again"
-      : "Widen the window to split";
   const mac = macPlatform(host.data?.platform);
 
   return (
     <div {...props(threadStyles.header)}>
       <span {...props(threadStyles.title)}>{title}</span>
       <span {...props(threadStyles.headerActions)}>
-        <Menu
-          label="Pane actions"
-          align="end"
-          trigger={<Button iconOnly ref={menuTriggerRef} icon="more" aria-label="Pane actions" />}
-        >
-          <MenuItem
-            icon="split-down"
-            meta={clientActionShortcut(clientActions.splitDown, mac)}
-            disabled={!canSplit}
-            disabledReason={splitReason}
-            onSelect={() => actions.split("down")}
-          >
-            {clientActions.splitDown.label}
-          </MenuItem>
-          <MenuItem
-            icon="split-right"
-            meta={clientActionShortcut(clientActions.splitRight, mac)}
-            disabled={!canSplit}
-            disabledReason={splitReason}
-            onSelect={() => actions.split("right")}
-          >
-            {clientActions.splitRight.label}
-          </MenuItem>
-          <MenuItem icon="x" onSelect={() => actions.close(paneId)}>
-            Close Pane
-          </MenuItem>
-          {sessionItems}
+        <Menu>
+          <MenuTrigger
+            render={<Button iconOnly ref={menuTriggerRef} icon="more" aria-label="Pane actions" />}
+          />
+          <MenuContent align="end">
+            <MenuItem
+              icon="split-down"
+              meta={clientActionShortcut(clientActions.splitDown, mac)}
+              disabled={!canSplit}
+              onClick={() => actions.split("down")}
+            >
+              {clientActions.splitDown.label}
+            </MenuItem>
+            <MenuItem
+              icon="split-right"
+              meta={clientActionShortcut(clientActions.splitRight, mac)}
+              disabled={!canSplit}
+              onClick={() => actions.split("right")}
+            >
+              {clientActions.splitRight.label}
+            </MenuItem>
+            <MenuItem icon="x" onClick={() => actions.close(paneId)}>
+              Close Pane
+            </MenuItem>
+            {sessionItems}
+          </MenuContent>
         </Menu>
       </span>
     </div>
@@ -656,11 +646,11 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
             sessionItems={
               <>
                 <MenuSeparator />
-                <MenuItem icon="pencil" onSelect={() => setDraftName(title)}>
+                <MenuItem icon="pencil" onClick={() => setDraftName(title)}>
                   Rename Chat…
                 </MenuItem>
                 <MenuSeparator />
-                <MenuItem icon="trash" danger onSelect={requestDelete}>
+                <MenuItem icon="trash" variant="danger" onClick={requestDelete}>
                   Delete Chat…
                 </MenuItem>
               </>
@@ -670,13 +660,14 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
 
         <div {...props(threadStyles.body)}>
           <div {...props(threadStyles.conversation)}>
-            <MessageScrollerProvider
+            <TranscriptProvider
               paneId={paneId}
               sessionId={sessionId}
+              ready={ready}
               autoScroll
               scrollEdgeThreshold={60}
             >
-              <MessageScrollerViewport ref={setScroll}>
+              <TranscriptViewport ref={setScroll}>
                 <Timeline
                   sessionId={sessionId}
                   ready={ready}
@@ -770,8 +761,8 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
                     autoFocus={false}
                   />
                 )}
-              </MessageScrollerViewport>
-            </MessageScrollerProvider>
+              </TranscriptViewport>
+            </TranscriptProvider>
           </div>
         </div>
         {presentation === "full" && deletion.kind === "open" && (

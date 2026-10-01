@@ -20,8 +20,9 @@ import type { Delivery, PendingItem, RunId, RunInfo, SessionId } from "@nyte-ai/
 import { isTerminalPhase } from "@nyte-ai/client";
 import { errorMessage } from "../errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
-import { Menu, MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
+import { AttachmentAction } from "@nyte-ai/ui/attachment";
 import { refreshThread, requestStop } from "../live.ts";
 import {
   keys,
@@ -68,7 +69,7 @@ import {
   type RunningMessagePreference,
 } from "./running-message-preference.ts";
 import { composerStyles } from "./styles.stylex.ts";
-import { MessageScrollerButton } from "./message-scroller.tsx";
+import { TranscriptButton, useTranscriptDock } from "./transcript.tsx";
 import type { ComposerAnswer } from "./tray/questions.tsx";
 
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
@@ -163,7 +164,7 @@ const SessionModelChip = memo(function SessionModelChip({
         }
         fastEnabled={fastEnabled}
         loading={catalog.isPending}
-        disabledReason={catalog.isError ? "Models could not be loaded." : undefined}
+        disabled={catalog.isError}
         onChange={handleChange}
       />
       {catalog.isError && (
@@ -436,14 +437,20 @@ export function ComposerFrame({
               compact={!messageEdit}
             />
             {onAttachmentRemove !== undefined && (
-              <Button
-                size="sm"
-                iconOnly
-                icon="x"
+              <AttachmentAction
+                size="icon-sm"
                 aria-label={`Remove ${attachment.name}`}
                 disabled={disabled}
                 onClick={() => onAttachmentRemove(attachment.id)}
-                xstyle={composerStyles.attachmentRemove}
+                render={
+                  <Button
+                    size="sm"
+                    iconOnly
+                    icon="x"
+                    aria-label={`Remove ${attachment.name}`}
+                    xstyle={composerStyles.attachmentRemove}
+                  />
+                }
               />
             )}
           </li>
@@ -645,36 +652,39 @@ export function ComposerFrame({
               followUpExpanded && composerStyles.controlsInset,
             )}
           >
-            <Menu
-              label="Add to message"
-              xstyle={composerStyles.addMenu}
-              finalFocus={() => areaRef.current?.element}
-              trigger={
-                <Button
-                  iconOnly
-                  icon="plus"
-                  aria-label="Add to message"
-                  variant="outline"
-                  round
-                  disabled={disabled}
-                  xstyle={compact ? composerStyles.addButtonCompact : undefined}
-                />
-              }
-            >
-              <MenuItem icon="skills" meta="/" onSelect={() => suggestionMenu.insertTrigger("/")}>
-                Commands, Skills, and Prompts
-              </MenuItem>
-              <MenuItem icon="more" meta="@" onSelect={() => suggestionMenu.insertTrigger("@")}>
-                Mention Context
-              </MenuItem>
-              {canAttach && (
-                <>
-                  <MenuSeparator />
-                  <MenuItem icon="paperclip" onSelect={() => fileInputRef.current?.click()}>
-                    Attach Files…
-                  </MenuItem>
-                </>
-              )}
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    iconOnly
+                    icon="plus"
+                    aria-label="Add to message"
+                    variant="outline"
+                    round
+                    disabled={disabled}
+                    xstyle={compact ? composerStyles.addButtonCompact : undefined}
+                  />
+                }
+              />
+              <MenuContent
+                xstyle={composerStyles.addMenu}
+                finalFocus={() => areaRef.current?.element}
+              >
+                <MenuItem icon="skills" meta="/" onClick={() => suggestionMenu.insertTrigger("/")}>
+                  Commands, Skills, and Prompts
+                </MenuItem>
+                <MenuItem icon="more" meta="@" onClick={() => suggestionMenu.insertTrigger("@")}>
+                  Mention Context
+                </MenuItem>
+                {canAttach && (
+                  <>
+                    <MenuSeparator />
+                    <MenuItem icon="paperclip" onClick={() => fileInputRef.current?.click()}>
+                      Attach Files…
+                    </MenuItem>
+                  </>
+                )}
+              </MenuContent>
             </Menu>
             <span {...props(composerStyles.modelSlot, compact && composerStyles.modelSlotCompact)}>
               {model}
@@ -919,6 +929,7 @@ export function Composer({
   answer?: ComposerAnswer;
 }): ReactElement {
   const runningMessagePreference = useRunningMessagePreference();
+  const attachTranscriptDock = useTranscriptDock();
   const [currentViewState, setCurrentViewState] = useState(initialViewState);
   const [attachments, setAttachments] = useState<readonly ComposerImageAttachment[]>([]);
   const [attachmentReads, setAttachmentReads] = useState(0);
@@ -1255,10 +1266,9 @@ export function Composer({
     pendingEdit === undefined &&
     !disabled;
 
-  const queuedEditReason = canBeginEdit
-    ? undefined
-    : disabled
-      ? "Message editing is unavailable."
+  const queuedEditReason =
+    canBeginEdit || disabled
+      ? undefined
       : pendingEdit !== undefined
         ? "Finish editing the queued message first."
         : "Send or clear your draft to edit this message.";
@@ -1559,8 +1569,8 @@ export function Composer({
     );
 
   return (
-    <div {...props(composerStyles.dock)}>
-      <MessageScrollerButton />
+    <div ref={attachTranscriptDock} {...props(composerStyles.dock)}>
+      <TranscriptButton />
       <div role="region" aria-label="Conversation input" {...props(composerStyles.region)}>
         <div {...props(composerStyles.inputStack)}>
           <div {...props(composerStyles.preComposerOverlay)}>
