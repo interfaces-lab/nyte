@@ -276,6 +276,8 @@ export class MenuList {
     this.container = new ScrollBoxRenderable(options.renderer, {
       id: options.nextId("menu"),
       width: "100%",
+      flexShrink: 1,
+      minHeight: 0,
       scrollY: true,
       scrollX: false,
       verticalScrollbarOptions: { showArrows: false },
@@ -399,7 +401,7 @@ export class MenuList {
   }
 
   private resizeViewport(): void {
-    this.container.height = Math.max(1, this.visibleCount);
+    this.container.flexBasis = Math.max(1, this.visibleCount);
   }
 
   private scrollIntoView(index: number): void {

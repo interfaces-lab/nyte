@@ -1,10 +1,11 @@
 import {
-  BoxRenderable,
   CliRenderEvents,
   RenderableEvents,
   ScrollBoxRenderable,
   TextRenderable,
 } from "@opentui/core";
+import type { BoxRenderable } from "@opentui/core";
+import { PanelLayout } from "./panel-layout.ts";
 import { commandBindings, formatCommandBindings } from "@opentui/keymap/extras";
 import { CHAT_KEYBINDS } from "./constants.ts";
 import { closePanel, openPanel } from "./app/ui.ts";
@@ -13,33 +14,24 @@ import { displayWidth } from "./width.ts";
 
 /** Explicit diagnostics keep their own viewport and never edit the composer. */
 class DiagnosticReport implements EphemeralPanel {
+  readonly layout: PanelLayout;
   readonly container: BoxRenderable;
   readonly rows = 0;
   readonly hints = "";
   private readonly text: TextRenderable;
 
   constructor(shell: Shell, title: string, lines: readonly string[], close: () => void) {
-    this.container = new BoxRenderable(shell.renderer, {
-      id: shell.nextId("report"),
-      position: "absolute",
-      top: 0,
-      left: 0,
-      width: "100%",
-      height: "100%",
-      zIndex: 1,
-      flexDirection: "column",
-      backgroundColor: shell.theme.background,
-      focusable: true,
-      paddingX: 1,
-    });
-
-    const heading = new TextRenderable(shell.renderer, {
-      content: title,
-      fg: shell.theme.foreground,
-      height: 1,
-      flexShrink: 0,
-      selectable: false,
-    });
+    const layout = new PanelLayout({ ...shell, title });
+    this.layout = layout;
+    this.container = layout.container;
+    this.container.position = "absolute";
+    this.container.top = 0;
+    this.container.left = 0;
+    this.container.right = 0;
+    this.container.height = "100%";
+    this.container.zIndex = 1;
+    this.container.backgroundColor = shell.theme.background;
+    this.container.focusable = true;
 
     const controls = new TextRenderable(shell.renderer, {
       height: 2,
@@ -89,11 +81,10 @@ class DiagnosticReport implements EphemeralPanel {
     });
 
     scroll.add(this.text);
-    this.container.add(heading);
-    this.container.add(controls);
-    this.container.add(navigation);
-    this.container.add(scroll);
-    this.container.add(position);
+    layout.body.add(controls);
+    layout.body.add(navigation);
+    layout.body.add(scroll);
+    layout.body.add(position);
 
     const actions = [
       {
@@ -142,10 +133,10 @@ class DiagnosticReport implements EphemeralPanel {
 
       const primary = entries.filter(({ command }) => command.name === "report.close");
       const secondary = entries.filter(({ command }) => command.name !== "report.close");
-      const nextControls = reportControlRows(primary, shell.renderer.width - 2);
+      const nextControls = reportControlRows(primary, Math.max(1, layout.body.width));
 
       if (nextControls !== lastControls) controls.content = lastControls = nextControls;
-      const nextNavigation = reportControlRows(secondary, shell.renderer.width - 2);
+      const nextNavigation = reportControlRows(secondary, Math.max(1, layout.body.width));
 
       if (nextNavigation !== lastNavigation) {
         navigation.content = lastNavigation = nextNavigation;
@@ -163,6 +154,7 @@ class DiagnosticReport implements EphemeralPanel {
       if (nextPosition !== lastPosition) position.content = lastPosition = nextPosition;
     };
 
+    layout.body.onSizeChange = paintControls;
     paintControls();
     const unsubscribe = shell.keymap.on("state", paintControls);
     shell.renderer.on(CliRenderEvents.RESIZE, paintControls);

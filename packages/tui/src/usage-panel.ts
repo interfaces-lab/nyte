@@ -1,6 +1,5 @@
 import {
   bold,
-  BoxRenderable,
   CliRenderEvents,
   fg,
   RenderableEvents,
@@ -8,12 +7,13 @@ import {
   StyledText,
   TextRenderable,
 } from "@opentui/core";
-import type { CliRenderer } from "@opentui/core";
+import type { BoxRenderable } from "@opentui/core";
 import { GLYPHS, keycap } from "./constants.ts";
 import { registerChatLayer } from "./keymap.ts";
 import type { EphemeralPanel, Shell } from "./app/ui.ts";
 import type { CliTheme } from "./theme.ts";
 import type { UsageCard, UsageCardRow } from "./usage.ts";
+import { PanelLayout } from "./panel-layout.ts";
 import { displayWidth, padDisplay } from "./width.ts";
 
 const BAR_CELLS = 20;
@@ -26,7 +26,7 @@ type UsagePanelState =
 /** A read-only report. The shell owns focus; the native scroll box owns scrolling and selection. */
 export class UsagePanel implements EphemeralPanel {
   readonly container: BoxRenderable;
-  private readonly renderer: CliRenderer;
+  readonly layout: PanelLayout;
   private readonly onRows: (rows: number) => void;
   readonly hints = `${keycap("chat.interrupt")} close · ${keycap("chat.history.previous")}/${keycap("chat.history.next")} scroll · ${keycap("chat.scroll.page.up")}/${keycap("chat.scroll.page.down")} page`;
   private readonly scroll: ScrollBoxRenderable;
@@ -39,26 +39,11 @@ export class UsagePanel implements EphemeralPanel {
     onClose: () => void,
     onRows: (rows: number) => void,
   ) {
-    this.renderer = shell.renderer;
     this.onRows = onRows;
     this.theme = shell.theme;
-    this.container = new BoxRenderable(shell.renderer, {
-      id: shell.nextId("usage"),
-      height: this.rows,
-      flexShrink: 0,
-      flexDirection: "column",
-      backgroundColor: shell.theme.background,
-      focusable: true,
-      paddingX: 1,
-    });
-
-    const title = new TextRenderable(shell.renderer, {
-      content: new StyledText([bold(fg(shell.theme.foreground)("Usage"))]),
-      height: 1,
-      flexShrink: 0,
-      selectable: false,
-    });
-
+    this.layout = new PanelLayout({ ...shell, title: "Usage" });
+    this.container = this.layout.container;
+    this.container.focusable = true;
     this.scroll = new ScrollBoxRenderable(shell.renderer, {
       id: shell.nextId("usage-scroll"),
       flexGrow: 1,
@@ -84,8 +69,7 @@ export class UsagePanel implements EphemeralPanel {
       selectionFg: shell.theme.selectionForeground,
     });
     this.scroll.add(this.text);
-    this.container.add(title);
-    this.container.add(this.scroll);
+    this.layout.body.add(this.scroll);
 
     const onSizeChange = this.scroll.viewport.onSizeChange;
     this.scroll.viewport.onSizeChange = () => {
@@ -148,13 +132,10 @@ export class UsagePanel implements EphemeralPanel {
   }
 
   get rows(): number {
-    return this.state.kind === "ready"
-      ? Math.max(3, Math.min(16, Math.floor(this.renderer.height * 0.4)))
-      : 2;
+    return this.state.kind === "ready" ? this.layout.rows + 13 : this.layout.rows + 1;
   }
 
   private readonly resize = (): void => {
-    this.container.height = this.rows;
     this.onRows(this.rows);
   };
 

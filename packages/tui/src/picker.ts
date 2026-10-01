@@ -1,23 +1,14 @@
 import { matchesKeyName } from "./keymap.ts";
-import {
-  bold,
-  BoxRenderable,
-  CliRenderEvents,
-  fg,
-  InputRenderable,
-  InputRenderableEvents,
-  StyledText,
-  TextRenderable,
-} from "@opentui/core";
-import type { CliRenderer, KeyEvent } from "@opentui/core";
-import { CHAT_KEYBINDS, GLYPHS, keycap } from "./constants.ts";
+import { CliRenderEvents, InputRenderableEvents, TextRenderable } from "@opentui/core";
+import type { BoxRenderable, CliRenderer, InputRenderable, KeyEvent } from "@opentui/core";
+import { CHAT_KEYBINDS, keycap } from "./constants.ts";
 import type { ChatCommand } from "./constants.ts";
 import type { createChatKeymap } from "./keymap.ts";
 import { commandBindings } from "@opentui/keymap/extras";
 import { MenuList } from "./menu-list.ts";
 import type { MenuItem } from "./menu-list.ts";
 import type { CliTheme } from "./theme.ts";
-import { wrappedRows } from "./width.ts";
+import { PanelLayout } from "./panel-layout.ts";
 
 export type Choice = MenuItem;
 
@@ -44,6 +35,7 @@ export interface MenuScreen {
   readonly title: string;
   readonly choices: readonly Choice[];
   readonly load?: () => Promise<readonly Choice[]>;
+  readonly emptyLabel?: string;
   readonly selectedId?: string;
   readonly maxVisible?: number;
   readonly actions?: readonly ChoiceAction[];
@@ -96,41 +88,14 @@ function filterChoices(choices: readonly Choice[], value: string): readonly Choi
 
 const MAX_ROWS = 10;
 
-const CHROME_ROWS = 7;
-
-/** The panel's own rows: padding above, the search row, padding below. */
-const PANEL_CHROME_ROWS = 3;
-
 const COUNT_MIN_WIDTH = 48;
 
-const TITLE_MIN_WIDTH = 32;
-
-const PADDING_LEFT = 2;
-
-const PADDING_RIGHT = 1;
-
-/** Cells a panel row loses to its margins and padding. */
-const PANEL_INSET = 1 + PADDING_LEFT + PADDING_RIGHT + 1;
-
-/** A typed answer lines up with the labels, past the highlighted row's `❯ `. */
-const TYPED_INSET = 2;
-
-/**
- * Searchable choices under the composer. Settings, thinking levels, and
- * slash commands share this menu; model configuration has its own panel.
- * A typed screen asks a question instead: its title wraps on rows of its own
- * and the answer field follows the choices, so neither is cut to fit the other.
- *
- * Based on https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/src/views/slash_dropdown.rs
- */
 export class InlineMenu {
   readonly container: BoxRenderable;
   readonly queryInput: InputRenderable;
 
   private readonly renderer: CliRenderer;
-  private readonly theme: CliTheme;
-  private readonly heading: TextRenderable;
-  private readonly title: TextRenderable;
+  private readonly layout: PanelLayout;
   private readonly list: MenuList;
   private readonly count: TextRenderable;
   private readonly empty: TextRenderable;
@@ -149,7 +114,6 @@ export class InlineMenu {
   constructor(options: InlineMenuOptions, screen: MenuScreen) {
     this.options = options;
     this.renderer = options.renderer;
-    this.theme = options.theme;
     this.onError = options.onError;
     this.onRows = options.onRows;
     this.screen = screen;
@@ -157,58 +121,9 @@ export class InlineMenu {
     this.matches = screen.choices;
     const { theme, nextId } = options;
 
-    this.container = new BoxRenderable(options.renderer, {
-      id: nextId("menu-panel"),
-      flexShrink: 0,
-      flexDirection: "column",
-      backgroundColor: theme.transparent,
-      marginLeft: 1,
-      marginRight: 1,
-      paddingLeft: PADDING_LEFT,
-      paddingRight: PADDING_RIGHT,
-      paddingTop: 1,
-      paddingBottom: 1,
-    });
-
-    const queryRow = new BoxRenderable(options.renderer, {
-      id: nextId("menu-query-row"),
-      height: 1,
-      flexShrink: 0,
-      flexDirection: "row",
-      paddingLeft: screen.typed === undefined ? 0 : TYPED_INSET,
-    });
-
-    this.heading = new TextRenderable(options.renderer, {
-      id: nextId("menu-heading"),
-      content: new StyledText([bold(fg(theme.accent)(screen.title))]),
-      wrapMode: "word",
-      flexShrink: 0,
-      visible: screen.typed !== undefined,
-    });
-
-    this.title = new TextRenderable(options.renderer, {
-      id: nextId("menu-title"),
-      content: this.titleText(screen.title),
-      wrapMode: "none",
-      flexShrink: 0,
-    });
-    queryRow.add(this.title);
-    this.queryInput = new InputRenderable(options.renderer, {
-      id: nextId("menu-query"),
-      flexGrow: 1,
-      flexBasis: 0,
-      minWidth: 1,
-      placeholder: screen.typed?.placeholder ?? FILTER_PLACEHOLDER,
-      placeholderColor: theme.muted,
-      backgroundColor: theme.transparent,
-      focusedBackgroundColor: theme.transparent,
-      textColor: theme.foreground,
-      focusedTextColor: theme.foreground,
-      cursorColor: theme.accent,
-      selectionBg: theme.selectionBackground,
-      selectionFg: theme.selectionForeground,
-    });
-    queryRow.add(this.queryInput);
+    this.layout = new PanelLayout({ ...options, title: screen.title });
+    this.container = this.layout.container;
+    this.queryInput = this.layout.addSearch(screen.typed?.placeholder ?? FILTER_PLACEHOLDER);
     this.count = new TextRenderable(options.renderer, {
       id: nextId("menu-count"),
       content: this.countText(),
@@ -216,14 +131,14 @@ export class InlineMenu {
       wrapMode: "none",
       flexShrink: 0,
     });
-    queryRow.add(this.count);
+    this.layout.searchRow.add(this.count);
 
     this.list = new MenuList({
       renderer: options.renderer,
       theme,
       nextId,
       background: theme.transparent,
-      maxVisible: this.maxVisibleForHeight(options.renderer.height),
+      maxVisible: this.maxVisible,
       items: this.matches,
       selectedIndex: this.indexOf(screen.selectedId),
       onSelect: (item) => this.activate(item.id),
@@ -234,32 +149,25 @@ export class InlineMenu {
       content: "no matches",
       fg: theme.dim,
       visible: false,
+      height: 1,
+      flexShrink: 0,
     });
 
-    this.container.add(this.heading);
-
-    if (screen.typed === undefined) this.container.add(queryRow);
-    this.container.add(this.list.container);
-    this.container.add(this.empty);
-
-    if (screen.typed !== undefined) this.container.add(queryRow);
+    this.layout.body.onSizeChange = () => this.resizeList();
+    this.layout.body.add(this.list.container);
+    this.layout.body.add(this.empty);
+    this.placeInput();
 
     options.renderer.keyInput.on("keypress", this.onKeyPress);
     options.renderer.on(CliRenderEvents.RESIZE, this.onResize);
     this.queryInput.on(InputRenderableEvents.INPUT, this.onInput);
-    this.applyWidth(options.renderer.width);
-    this.repaintStatus();
     this.startLoad();
     this.registerActions();
   }
 
   /** Rows the panel needs right now: declared, never measured. */
   get rows(): number {
-    return (
-      PANEL_CHROME_ROWS +
-      this.headingRows(this.renderer.width) +
-      Math.max(1, Math.min(this.matches.length, this.maxVisibleForHeight(this.renderer.height)))
-    );
+    return this.layout.rows + Math.max(1, Math.min(this.matches.length, this.maxVisible));
   }
 
   /** Keycap row for the shell's hint line while this menu owns the input. */
@@ -276,16 +184,13 @@ export class InlineMenu {
     if (this.destroyed) return;
     this.screen = screen;
     this.choices = screen.choices;
-    this.heading.content = new StyledText([bold(fg(this.theme.accent)(screen.title))]);
-    this.heading.visible = screen.typed !== undefined;
-    this.title.content = this.titleText(screen.title);
+    this.layout.setTitle(screen.title);
     this.queryInput.placeholder = screen.typed?.placeholder ?? FILTER_PLACEHOLDER;
+    this.placeInput();
     this.setQuery("");
     this.matches = screen.choices;
-    this.applyWidth(this.renderer.width);
-    this.list.setMaxVisible(this.maxVisibleForHeight(this.renderer.height));
+    this.resizeList();
     this.list.setItems(this.matches, this.indexOf(screen.selectedId));
-    this.repaintStatus();
     this.startLoad();
     this.registerActions();
   }
@@ -295,7 +200,8 @@ export class InlineMenu {
     if (this.destroyed) return;
     const selected = selectedId ?? this.list.selectedItem?.id;
     this.choices = choices;
-    this.matches = filterChoices(choices, this.queryInput.value);
+    this.matches =
+      this.screen.typed === undefined ? filterChoices(choices, this.queryInput.value) : choices;
     this.list.setItems(this.matches, this.indexOf(selected));
     this.repaintStatus();
   }
@@ -319,30 +225,34 @@ export class InlineMenu {
     this.container.destroyRecursively();
   }
 
-  /** Fills a screen from its slow source, dropping results the user moved past. */
-  private startLoad(): void {
-    const { screen } = this;
+  private placeInput(): void {
+    const { searchRow, body } = this.layout;
+    this.container.remove(searchRow);
+    searchRow.paddingLeft = this.screen.typed === undefined ? 0 : 2;
 
-    if (screen.load === undefined) return;
-    this.loading = true;
+    if (this.screen.typed === undefined) this.container.insertBefore(searchRow, body);
+    else this.container.add(searchRow);
+  }
+
+  private startLoad(): void {
+    this.layout.cancelLoad();
+    const { screen } = this;
+    const { load } = screen;
+    this.loading = load !== undefined;
     this.repaintStatus();
-    void screen
-      .load()
-      .then((choices) => {
-        if (this.destroyed || this.screen !== screen) return;
-        const highlighted = this.list.selectedItem?.id;
-        this.choices = choices;
-        this.matches = filterChoices(choices, this.queryInput.value);
-        this.list.setItems(this.matches, this.indexOf(highlighted ?? screen.selectedId));
-        this.onRows(this.rows);
-      })
-      .catch(this.onError)
-      .finally(() => {
-        if (this.destroyed || this.screen !== screen) return;
+    if (load === undefined) return;
+    this.layout.load(
+      load,
+      (choices) => {
+        this.loading = false;
+        this.setChoices(choices, this.list.selectedItem?.id ?? screen.selectedId);
+      },
+      (cause) => {
         this.loading = false;
         this.repaintStatus();
-        this.renderer.requestRender();
-      });
+        this.onError(cause);
+      },
+    );
   }
 
   private registerActions(): void {
@@ -373,13 +283,6 @@ export class InlineMenu {
     });
   }
 
-  private titleText(title: string): StyledText {
-    return new StyledText([
-      bold(fg(this.theme.accent)(title)),
-      fg(this.theme.muted)(`  ${GLYPHS.separator} `),
-    ]);
-  }
-
   private countText(): string {
     const total = this.choices.length;
 
@@ -404,34 +307,29 @@ export class InlineMenu {
   private repaintStatus(): void {
     this.count.content = this.countText();
     // A match count describes a filter; a typed answer has nothing to count.
-    this.count.visible = this.screen.typed === undefined && this.renderer.width >= COUNT_MIN_WIDTH;
-    this.empty.content = this.loading ? "loading" : "no matches";
+    this.count.visible =
+      !this.loading && this.screen.typed === undefined && this.renderer.width >= COUNT_MIN_WIDTH;
+    this.empty.content = this.loading
+      ? "Loading…"
+      : this.choices.length === 0
+        ? (this.screen.emptyLabel ?? "No choices")
+        : "No matches";
     this.list.container.visible = this.matches.length > 0;
     this.empty.visible = this.matches.length === 0;
     this.onRows(this.rows);
   }
 
-  private maxVisibleForHeight(height: number): number {
-    const cap = Math.max(1, Math.floor(this.screen.maxVisible ?? MAX_ROWS));
-
-    return Math.max(1, Math.min(cap, height - CHROME_ROWS - this.headingRows(this.renderer.width)));
+  private get maxVisible(): number {
+    return Math.max(1, Math.floor(this.screen.maxVisible ?? MAX_ROWS));
   }
 
-  private headingRows(width: number): number {
-    if (this.screen.typed === undefined) return 0;
-
-    return wrappedRows(this.screen.title, width - PANEL_INSET, this.renderer.widthMethod);
+  private resizeList(): void {
+    this.list.setMaxVisible(Math.max(1, Math.min(this.maxVisible, this.layout.body.height)));
   }
 
-  private applyWidth(width: number): void {
-    this.title.visible = this.screen.typed === undefined && width >= TITLE_MIN_WIDTH;
-    this.count.visible = this.screen.typed === undefined && width >= COUNT_MIN_WIDTH;
-  }
-
-  private readonly onResize = (width: number, height: number): void => {
-    this.applyWidth(width);
-    this.list.setMaxVisible(this.maxVisibleForHeight(height));
-    this.onRows(this.rows);
+  private readonly onResize = (): void => {
+    this.resizeList();
+    this.repaintStatus();
   };
 
   private readonly onInput = (value: string): void => {

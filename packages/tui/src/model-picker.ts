@@ -12,16 +12,16 @@ import {
   BoxRenderable,
   CliRenderEvents,
   fg,
-  InputRenderable,
   InputRenderableEvents,
   StyledText,
   TextRenderable,
 } from "@opentui/core";
-import type { CliRenderer, KeyEvent } from "@opentui/core";
+import type { CliRenderer, InputRenderable, KeyEvent } from "@opentui/core";
 import type { EphemeralPanel } from "./app/ui.ts";
 import { GLYPHS, keycap } from "./constants.ts";
 import type { CliTheme } from "./theme.ts";
 import { padDisplay, truncateDisplay } from "./width.ts";
+import { PanelLayout } from "./panel-layout.ts";
 
 export interface ModelSelection {
   readonly model: Model<Api>;
@@ -76,6 +76,7 @@ export class ModelPicker implements EphemeralPanel {
   readonly container: BoxRenderable;
   readonly queryInput: InputRenderable;
   private readonly options: ModelPickerOptions;
+  private readonly layout: PanelLayout;
   private readonly above: TextRenderable;
   private readonly below: TextRenderable;
   private readonly list: BoxRenderable;
@@ -104,54 +105,15 @@ export class ModelPicker implements EphemeralPanel {
       this.matches.findIndex((model) => identity(model) === current),
     );
     const { renderer, theme, nextId } = options;
-    this.container = new BoxRenderable(renderer, {
-      id: nextId("model-picker"),
-      flexDirection: "column",
-      flexShrink: 0,
-      marginLeft: 1,
-      marginRight: 1,
-      paddingLeft: 2,
-      paddingRight: 1,
-      paddingTop: 1,
-      paddingBottom: 1,
-    });
-
-    const query = new BoxRenderable(renderer, {
-      id: nextId("model-search"),
-      flexDirection: "row",
-      height: 1,
-      flexShrink: 0,
-    });
-
-    query.add(
-      new TextRenderable(renderer, {
-        id: nextId("model-search-prefix"),
-        content: "/ ",
-        fg: theme.accent,
-      }),
-    );
-    this.queryInput = new InputRenderable(renderer, {
-      id: nextId("model-query"),
-      flexGrow: 1,
-      flexBasis: 0,
-      minWidth: 1,
-      placeholder: "Type to search",
-      placeholderColor: theme.muted,
-      backgroundColor: theme.transparent,
-      focusedBackgroundColor: theme.transparent,
-      textColor: theme.foreground,
-      focusedTextColor: theme.foreground,
-      cursorColor: theme.accent,
-      selectionBg: theme.selectionBackground,
-      selectionFg: theme.selectionForeground,
-    });
-    query.add(this.queryInput);
+    this.layout = new PanelLayout({ renderer, theme, nextId, title: "Models" });
+    this.container = this.layout.container;
+    this.queryInput = this.layout.addSearch("Type to search");
     this.count = new TextRenderable(renderer, {
       id: nextId("model-count"),
       fg: theme.dim,
       flexShrink: 0,
     });
-    query.add(this.count);
+    this.layout.searchRow.add(this.count);
     this.above = new TextRenderable(renderer, {
       id: nextId("model-above"),
       height: 1,
@@ -181,30 +143,29 @@ export class ModelPicker implements EphemeralPanel {
       wrapMode: "none",
       flexShrink: 0,
     });
-    this.container.add(query);
-    this.container.add(this.above);
-    this.container.add(this.list);
-    this.container.add(this.below);
-    this.container.add(this.details);
+    this.layout.body.add(this.above);
+    this.layout.body.add(this.list);
+    this.layout.body.add(this.below);
+    this.layout.body.add(this.details);
+    this.layout.body.onSizeChange = this.repaint;
     renderer.keyInput.on("keypress", this.onKeyPress);
     renderer.on(CliRenderEvents.RESIZE, this.repaint);
     this.queryInput.on(InputRenderableEvents.INPUT, this.filter);
     this.repaint();
-    void options
-      .load()
-      .then((models) => {
-        if (this.destroyed) return;
+    this.layout.load(
+      options.load,
+      (models) => {
         this.catalogStatus = "ready";
         this.models = models;
         this.costCeiling = undefined;
         this.filter();
-      })
-      .catch((cause: unknown) => {
-        if (this.destroyed) return;
+      },
+      (cause) => {
         this.catalogStatus = "failed";
         options.onError(cause);
         this.repaint();
-      });
+      },
+    );
   }
 
   private get selectedModel(): Model<Api> | undefined {
@@ -212,18 +173,22 @@ export class ModelPicker implements EphemeralPanel {
   }
 
   private get detailRows(): number {
-    return this.options.renderer.height >= 19 ? 6 : 1;
+    return this.layout.body.height >= 9 ? 6 : this.layout.body.height >= 4 ? 1 : 0;
   }
 
   private get visibleCount(): number {
     return Math.max(
-      1,
-      Math.min(10, this.options.renderer.height - 10 - this.detailRows, this.matches.length),
+      0,
+      Math.min(
+        10,
+        this.layout.body.height - this.detailRows - (this.layout.body.height >= 4 ? 2 : 0),
+        Math.max(1, this.matches.length),
+      ),
     );
   }
 
   get rows(): number {
-    return 5 + this.visibleCount + this.detailRows;
+    return this.layout.rows + 8 + Math.max(1, Math.min(10, this.matches.length));
   }
 
   private fields(model: Model<Api>): readonly Field[] {
@@ -288,6 +253,7 @@ export class ModelPicker implements EphemeralPanel {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.layout.cancelLoad();
     this.options.renderer.keyInput.off("keypress", this.onKeyPress);
     this.options.renderer.off(CliRenderEvents.RESIZE, this.repaint);
     this.queryInput.off(InputRenderableEvents.INPUT, this.filter);
@@ -507,13 +473,15 @@ export class ModelPicker implements EphemeralPanel {
   private readonly repaint = (): void => {
     if (this.destroyed) return;
     const { renderer, theme, nextId } = this.options;
-    const width = Math.max(1, renderer.width - 5);
+    const width = Math.max(1, this.layout.body.width);
     const count = this.visibleCount;
     this.offset = Math.max(0, Math.min(this.offset, this.selected, this.matches.length - count));
 
     if (this.selected >= this.offset + count) this.offset = this.selected - count + 1;
     this.count.content = ` ${String(this.matches.length)}/${String(this.models.length)}`;
     this.count.visible = width >= 40;
+    this.above.visible = this.layout.body.height >= 4;
+    this.below.visible = this.layout.body.height >= 4;
     this.above.content = this.offset > 0 ? "  ↑ more above" : "";
     this.below.content = this.offset + count < this.matches.length ? "  ↓ more below" : "";
 
@@ -565,6 +533,7 @@ export class ModelPicker implements EphemeralPanel {
     }
 
     this.list.height = count;
+    this.details.visible = this.detailRows > 0;
     this.details.height = this.detailRows;
     this.details.content =
       this.selectedModel === undefined ? "" : this.detail(this.selectedModel, width);
