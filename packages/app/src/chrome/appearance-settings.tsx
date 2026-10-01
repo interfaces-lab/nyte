@@ -1,5 +1,5 @@
 /** The route-owned desktop Settings content. */
-import { Select } from "@nyte-ai/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { props } from "@stylexjs/stylex";
 import { useParams } from "@tanstack/react-router";
 import type { ReactElement } from "react";
@@ -29,6 +29,24 @@ import { UsageSettings } from "./usage-settings.tsx";
 import { SettingsRow } from "./settings-controls.tsx";
 import { settingsTitle, type SettingsSection } from "./settings-navigation.tsx";
 
+const STARTUP_OPTIONS = [
+  { value: "new-chat", label: "New chat" },
+  { value: "last-session", label: "Last chat" },
+] as const satisfies readonly { readonly value: StartupDestination; readonly label: string }[];
+
+const RUNNING_MESSAGE_OPTIONS = [
+  { value: "queue", label: "Queue" },
+  { value: "steer", label: "Steer" },
+] as const satisfies readonly {
+  readonly value: RunningMessagePreference;
+  readonly label: string;
+}[];
+
+const LINK_OPTIONS = [
+  { value: "built-in", label: "Built-in browser" },
+  { value: "external", label: "External browser" },
+] as const satisfies readonly { readonly value: LinkPreference; readonly label: string }[];
+
 function GeneralSettings(): ReactElement {
   const destination = useStartupDestination();
   const runningMessagePreference = useRunningMessagePreference();
@@ -42,15 +60,24 @@ function GeneralSettings(): ReactElement {
       </div>
       <div {...props(settingsPatterns.group)}>
         <SettingsRow title="Window restoration" description="Choose what opens when Nyte starts">
-          <Select<StartupDestination>
-            label="Window restoration"
+          <Select
+            items={STARTUP_OPTIONS}
             value={destination}
-            options={[
-              { value: "new-chat", label: "New chat" },
-              { value: "last-session", label: "Last chat" },
-            ]}
-            onValueChange={setStartupDestination}
-          />
+            onValueChange={(next) => {
+              if (next !== null) setStartupDestination(next);
+            }}
+          >
+            <SelectTrigger aria-label="Window restoration">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STARTUP_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value} label={option.label}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </SettingsRow>
       </div>
       <div {...props(settingsPatterns.sectionHeader)}>
@@ -61,15 +88,24 @@ function GeneralSettings(): ReactElement {
           title="Messages while running"
           description="Choose what Enter does while the agent is working"
         >
-          <Select<RunningMessagePreference>
-            label="Messages while running"
+          <Select
+            items={RUNNING_MESSAGE_OPTIONS}
             value={runningMessagePreference}
-            options={[
-              { value: "queue", label: "Queue" },
-              { value: "steer", label: "Steer" },
-            ]}
-            onValueChange={setRunningMessagePreference}
-          />
+            onValueChange={(next) => {
+              if (next !== null) setRunningMessagePreference(next);
+            }}
+          >
+            <SelectTrigger aria-label="Messages while running">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RUNNING_MESSAGE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value} label={option.label}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </SettingsRow>
       </div>
       {browser && (
@@ -79,15 +115,24 @@ function GeneralSettings(): ReactElement {
           </div>
           <div {...props(settingsPatterns.group)}>
             <SettingsRow title="Open links in" description="Applies to links in chat">
-              <Select<LinkPreference>
-                label="Open links in"
+              <Select
+                items={LINK_OPTIONS}
                 value={linkPreference}
-                options={[
-                  { value: "built-in", label: "Built-in browser" },
-                  { value: "external", label: "External browser" },
-                ]}
-                onValueChange={setLinkPreference}
-              />
+                onValueChange={(next) => {
+                  if (next !== null) setLinkPreference(next);
+                }}
+              >
+                <SelectTrigger aria-label="Open links in">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LINK_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value} label={option.label}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </SettingsRow>
           </div>
         </>

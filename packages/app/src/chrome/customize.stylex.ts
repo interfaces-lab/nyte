@@ -1,6 +1,7 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { glyph, input, shape } from "@nyte-ai/ui/schema.stylex";
 /** Customize inventory feature styles. */
 import { create } from "@stylexjs/stylex";
+import { settings } from "../theme/schema.stylex.ts";
 import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 
 export const customizeStyles = create({
@@ -24,7 +25,7 @@ export const customizeStyles = create({
   searchRow: { display: "flex", alignItems: "center", gap: 8 },
   searchField: {
     width: "100%",
-    height: 32,
+    height: input.heightLg,
     gap: 6,
     paddingInline: 10,
     borderRadius: shape.control,
@@ -65,7 +66,7 @@ export const customizeStyles = create({
     backgroundColor: role.borderSecondaryTranslucent,
   },
   row: {
-    minHeight: { default: 48, "@media (pointer: coarse)": 60 },
+    minHeight: settings.inventoryRowHeight,
     gap: 8,
     "--_row-padding-inline": "8px",
     // The list paints its hairlines as 1px gaps in its own background, so every
@@ -74,7 +75,7 @@ export const customizeStyles = create({
     paddingBlock: 6,
     borderRadius: 0,
   },
-  rowLeading: { width: 16 },
+  rowLeading: { width: glyph.md },
   rowTitle: { fontWeight: 500 },
   badge: {
     flexShrink: 0,

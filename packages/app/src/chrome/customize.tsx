@@ -8,7 +8,7 @@ import type { ReactElement } from "react";
 import type { PluginInfo, SessionId, SettingInfo } from "@nyte-ai/protocol";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
-import { Select } from "@nyte-ai/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { useChromeTab } from "./use-chrome-tab.ts";
 import { isOption } from "./sidebar-view.ts";
 import { nyte } from "../nyte.ts";
@@ -129,17 +129,28 @@ export function PluginSettings({
               </Row.Body>
               <Row.Actions>
                 <Select
-                  label={setting.label}
-                  disabled={sessionId === undefined || apply.isPending}
-                  value={setting.current}
-                  options={setting.choices.map((choice) => ({
+                  items={setting.choices.map((choice) => ({
                     value: choice.id,
                     label: choice.label,
                   }))}
+                  disabled={sessionId === undefined || apply.isPending}
+                  value={setting.current}
                   onValueChange={(choiceId) => {
-                    if (sessionId !== undefined) apply.mutate({ id: setting.id, choiceId });
+                    if (choiceId !== null && sessionId !== undefined)
+                      apply.mutate({ id: setting.id, choiceId });
                   }}
-                />
+                >
+                  <SelectTrigger aria-label={setting.label}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {setting.choices.map((choice) => (
+                      <SelectItem key={choice.id} value={choice.id} label={choice.label}>
+                        {choice.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Row.Actions>
             </Row>
           );

@@ -76,7 +76,6 @@ export const appearanceSettingsStyles = create({
   titleRow: {
     display: "flex",
     alignItems: "center",
-    minHeight: 22,
     paddingInline: 8,
   },
   panel: { display: "flex", flexDirection: "column", gap: settings.sectionGap },
