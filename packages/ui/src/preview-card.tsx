@@ -2,11 +2,11 @@ import { PreviewCard as PreviewCardPrimitive } from "@base-ui/react/preview-card
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { floatingSurfaceStyles } from "../../floating-surface.stylex.ts";
-import { layer, shape } from "../../schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { surfaceTheme, type Tint } from "../../surface-theme.ts";
-import { motion, role, type } from "../../vars.stylex.ts";
+import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
+import { layer, shape } from "./schema.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { surfaceTheme, type Tint } from "./surface-theme.ts";
+import { motion, role, type } from "./vars.stylex.ts";
 import { useOverlayRef } from "./overlay.tsx";
 
 const styles = create({
