@@ -2,10 +2,10 @@ import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import { create, props } from "@stylexjs/stylex";
 import { createContext, use, type ReactElement } from "react";
 
-import { focus } from "../../a11y.stylex.ts";
-import { button, shape } from "../../schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { appearance, motion, role, shadow, type } from "../../vars.stylex.ts";
+import { focus } from "./a11y.stylex.ts";
+import { button, shape, target } from "./schema.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
 
 const lists = create({
   segmented: {
@@ -26,11 +26,11 @@ const lists = create({
   plain: { display: "flex", alignItems: "center", gap: 4 },
 });
 
-const target = create({
+const hitArea = create({
   base: {
     boxSizing: "border-box",
-    minWidth: { default: 24, "@media (pointer: coarse)": 44 },
-    minHeight: { default: 24, "@media (pointer: coarse)": 44 },
+    minWidth: target.min,
+    minHeight: target.min,
   },
 });
 
@@ -217,7 +217,7 @@ function TabsTab({ xstyle, className, style, ...rest }: TabsTabProps): ReactElem
       {...mergeStyleProps(
         props(
           tabs[variant],
-          target.base,
+          hitArea.base,
           variant === "plain" ? focus.ringInset : focus.ring,
           xstyle,
         ),

@@ -4,31 +4,19 @@ description: "Switches between related panels on the same page"
 ---
 
 ```ts title="Import"
-import { Tabs } from "@nyte-ai/ui";
-```
-
-The same `Tabs` is exported from its own subpath. Pick one path per file.
-
-```ts title="Subpath"
 import { Tabs } from "@nyte-ai/ui/tabs";
 ```
 
-One list of tabs, one panel visible at a time. Reach for it when the panels are peers and the reader
-only needs one of them at a time.
-
 ## Usage
 
-- `variant` on `Tabs.Root` sets the look of its list and every tab in it. A nested `Tabs.Root` sets
-  its own.
-- Each `Tabs.Tab` and each `Tabs.Panel` needs a matching `value`. Without `defaultValue` on the
-  root, the first tab starts active.
+- `variant` styles the list and its tabs. Nested roots set their own.
+- Each `Tabs.Tab` and `Tabs.Panel` needs a matching `value`. Without `defaultValue`, the first tab
+  starts active.
 - `value` with `onValueChange` controls the root. `value={null}` leaves no tab active.
-- Tabs activate on Enter or Space. `activateOnFocus` on the list activates them on arrow key focus
-  instead.
-- A hidden panel unmounts unless you pass `keepMounted`. A kept panel carries `hidden`, so a panel
-  whose `xstyle` sets `display` has to hide itself under `[hidden]`.
+- A hidden panel unmounts unless you pass `keepMounted`. A kept panel carries `hidden`, so an
+  `xstyle` that sets `display` must also hide it under `[hidden]`.
 - `Tabs.Root` and `Tabs.Panel` bring no look of their own. Lay them out with `xstyle`.
-- `Tabs.Indicator` is optional. It sits over the active tab and follows it. Paint it with `xstyle`.
+- Paint the optional `Tabs.Indicator` with `xstyle`.
 
 ## Anatomy
 
@@ -63,8 +51,6 @@ only needs one of them at a time.
 
 ### Segmented
 
-The tabs share a track and split its width. The active tab is raised.
-
 <Preview>
   <TabsSegmentedDemo />
 </Preview>
@@ -81,8 +67,6 @@ The tabs share a track and split its width. The active tab is raised.
 
 ### Underline
 
-For a strip nested inside another tab.
-
 <Preview>
   <TabsUnderlineDemo />
 </Preview>
@@ -98,8 +82,6 @@ For a strip nested inside another tab.
 ```
 
 ### Pill
-
-For filtering one list by kind.
 
 <Preview>
   <TabsPillDemo />
@@ -122,9 +104,9 @@ See [Theming](/cloud/foundations/theming).
 
 ### Root
 
-| Prop      | Type                                              | Default   | Description                         |
-| --------- | ------------------------------------------------- | --------- | ----------------------------------- |
-| `variant` | `"plain" \| "segmented" \| "underline" \| "pill"` | `"plain"` | The look of the list and every tab. |
+| Prop      | Type                                              | Default   | Description |
+| --------- | ------------------------------------------------- | --------- | ----------- |
+| `variant` | `"plain" \| "segmented" \| "underline" \| "pill"` | `"plain"` |             |
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
@@ -152,7 +134,7 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
   `role="presentation"`.
 - Label `Tabs.List` with `aria-label` or `aria-labelledby`.
 - Arrow keys move focus along the list. Focus wraps at the end unless you pass `loopFocus={false}`.
-- Enter and Space activate the focused tab, unless `activateOnFocus` activates it on focus.
-- A disabled first tab is skipped and the next enabled tab is selected. Server rendering does not
-  know which tabs are disabled, so set `defaultValue` or `value` to an enabled tab.
-- The focus ring appears on keyboard focus. See [Focus](/cloud/foundations/focus).
+- Enter and Space activate the focused tab. With `activateOnFocus`, focus activates it. `segmented`
+  turns `activateOnFocus` on by default.
+- A disabled first tab is skipped. Server rendering cannot skip it, so set `defaultValue` or `value`
+  to an enabled tab.
