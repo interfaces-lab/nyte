@@ -24,6 +24,7 @@ import type {
   KnownProvider,
   Model,
   ModelCost,
+  ModelPromptCache,
   OpenAICompletionsCompat,
   OpenAIResponsesCompat,
 } from "../src/types.ts";
@@ -357,6 +358,8 @@ const OPENAI_TOOL_SEARCH_MODEL_IDS = new Set([
 // https://developers.openai.com/api/docs/guides/tools-tool-search#add-tools-at-a-specific-point-in-the-input
 const OPENAI_ADDITIONAL_TOOLS_MODEL_IDS = OPENAI_TOOL_SEARCH_MODEL_IDS;
 
+const OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS = OPENAI_TOOL_SEARCH_MODEL_IDS;
+
 const OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS = new Set([
   "gpt-5.6-sol",
   "gpt-5.6-terra",
@@ -689,6 +692,14 @@ function isAnthropicTemperatureUnsupportedModel(modelId: string): boolean {
   );
 }
 
+function supportsAnthropicMidConvoSystemMessages(modelId: string): boolean {
+  return (
+    /^claude-opus-(?:4[.-]8|5(?:[.-]5)?)(?:-\d{8})?$/.test(modelId) ||
+    /^claude-sonnet-5[.-]5(?:-\d{8})?$/.test(modelId) ||
+    /^claude-(?:fable|mythos)-5(?:[.-]1)?(?:-\d{8})?$/.test(modelId)
+  );
+}
+
 type OpenAICompletionsResolvedCompat = Required<
   Omit<
     OpenAICompletionsCompat,
@@ -722,6 +733,8 @@ const OPENAI_COMPLETIONS_DEFAULT_COMPAT: OpenAICompletionsResolvedCompat = {
   zaiToolStream: false,
   supportsStrictMode: true,
   supportsOpenAIGrammarTools: false,
+  supportsMidConvoSystemMessages: false,
+  supportsMidConvoToolAdditions: false,
   sendSessionAffinityHeaders: false,
   supportsLongCacheRetention: true,
 };
@@ -836,6 +849,8 @@ function detectOpenAICompletionsCompat(model: Model<Api>): OpenAICompletionsReso
     zaiToolStream: false,
     supportsStrictMode: !isMoonshot && !isTogether && !isCloudflareAiGateway && !isNvidia,
     supportsOpenAIGrammarTools: false,
+    supportsMidConvoSystemMessages: false,
+    supportsMidConvoToolAdditions: false,
     cacheControlFormat,
     sendSessionAffinityHeaders: false,
     supportsLongCacheRetention: !(
@@ -989,6 +1004,68 @@ function applyOpenAIToolSearchMetadata(model: Model<Api>): void {
   model.compat = compat;
 }
 
+// Moonshot Kimi K2.6/K2.7 accept system text after the conversation starts but reject
+// tool-bearing system messages. Kimi K3 accepts both forms; Fireworks and OpenCode pass
+// its tool-bearing form through. GitHub Copilot forwards K3 text but silently drops its
+// tool-bearing message. DeepSeek V4 Pro and OpenAI models behind OpenRouter also accept
+// plain system text in place.
+function applyOpenAICompletionsTranscriptMetadata(model: Model<Api>): void {
+  if (model.api !== "openai-completions") return;
+
+  const isKimiK3 =
+    (model.provider.startsWith("moonshot") && model.id === "kimi-k3") ||
+    (model.provider === "fireworks" && model.id.includes("kimi-k3")) ||
+    ((model.provider === "opencode" || model.provider === "opencode-go") && model.id === "kimi-k3");
+
+  const isMoonshotKimiK2 =
+    model.provider.startsWith("moonshot") &&
+    (model.id === "kimi-k2.6" ||
+      model.id === "kimi-k2.7-code" ||
+      model.id === "kimi-k2.7-code-highspeed");
+
+  const isTextOnly =
+    isMoonshotKimiK2 ||
+    (model.provider === "github-copilot" && model.id === "kimi-k3") ||
+    (model.provider === "deepseek" && model.id === "deepseek-v4-pro") ||
+    (model.provider === "openrouter" &&
+      model.id.startsWith("openai/") &&
+      OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS.has(model.id.slice("openai/".length)));
+
+  if (!isKimiK3 && !isTextOnly) return;
+  model.compat = {
+    ...model.compat,
+    supportsMidConvoSystemMessages: true,
+    ...(isKimiK3 ? { supportsMidConvoToolAdditions: true } : {}),
+  };
+}
+
+// Newer OpenAI Responses models accept developer messages after the conversation has started.
+// OpenCode Zen, OpenCode Go, and GitHub Copilot pass both those messages and
+// `additional_tools` items through to OpenAI unchanged; tool search is not verified
+// through those proxies.
+const OPENAI_RESPONSES_PROXY_PROVIDERS = new Set(["opencode", "opencode-go", "github-copilot"]);
+
+function applyOpenAIResponsesTranscriptMetadata(model: Model<Api>): void {
+  const isOpenAIResponses = model.provider === "openai" && model.api === "openai-responses";
+  const isOpenAICodex = model.provider === "openai-codex" && model.api === "openai-codex-responses";
+
+  const isProxiedResponses =
+    OPENAI_RESPONSES_PROXY_PROVIDERS.has(model.provider) && model.api === "openai-responses";
+
+  if (
+    !(isOpenAIResponses || isOpenAICodex || isProxiedResponses) ||
+    !OPENAI_MID_CONVO_SYSTEM_MESSAGE_MODEL_IDS.has(model.id)
+  ) {
+    return;
+  }
+
+  model.compat = {
+    ...model.compat,
+    supportsMidConvoSystemMessages: true,
+    ...(isProxiedResponses ? { supportsAdditionalTools: true } : {}),
+  };
+}
+
 // OpenAI charges prompt-cache writes starting with the GPT-5.6 family, and exactly
 // those models accept `prompt_cache_options`; older models reject the parameter.
 // https://developers.openai.com/api/docs/guides/prompt-caching
@@ -1000,6 +1077,21 @@ function applyOpenAIExplicitPromptCacheMetadata(model: Model<Api>): void {
     ...model.compat,
     supportsExplicitPromptCacheMode: true,
   };
+}
+
+// Anthropic ephemeral entries have a hard five-minute lifetime; `ttl: "1h"`
+// extends it to one hour. Only direct Anthropic is annotated so cache warming
+// does not assume equivalent behavior through proxies.
+// https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+const ANTHROPIC_PROMPT_CACHE: ModelPromptCache = { short: 300, long: 3600 };
+
+function applyPromptCacheMetadata(model: Model<Api>): void {
+  if (model.provider === "anthropic" && model.api === "anthropic-messages") {
+    model.promptCache = ANTHROPIC_PROMPT_CACHE;
+  }
+  // Do not add OpenAI lifetimes yet. Before enabling warming for explicit
+  // OpenAI caches, re-evaluate it using observed expiry, replay, and billing
+  // behavior; a documented TTL alone does not establish full cache loss.
 }
 
 function isGemini3ProModel(modelId: string): boolean {
@@ -1198,6 +1290,20 @@ function getAnthropicMessagesCompat(
   modelId: string,
 ): AnthropicMessagesCompat | undefined {
   const compat: AnthropicMessagesCompat = {};
+
+  if (provider === "anthropic" && supportsAnthropicMidConvoSystemMessages(modelId)) {
+    compat.supportsMidConvoSystemMessages = true;
+    compat.supportsMidConvoToolChanges = true;
+  }
+
+  // OpenCode Zen and GitHub Copilot forward mid-conversation system messages but reject
+  // `tool_addition`/`tool_removal` blocks, so tool changes stay top-level there.
+  if (
+    (provider === "opencode" || provider === "github-copilot") &&
+    supportsAnthropicMidConvoSystemMessages(modelId)
+  ) {
+    compat.supportsMidConvoSystemMessages = true;
+  }
 
   if (EAGER_TOOL_INPUT_STREAMING_UNSUPPORTED_ANTHROPIC_MODELS.has(`${provider}:${modelId}`)) {
     compat.supportsEagerToolInputStreaming = false;
@@ -3268,7 +3374,10 @@ async function generateModels() {
     applyStrictToolCompatMetadata(model);
     applyOpenAIGrammarToolCompatMetadata(model);
     applyOpenAIToolSearchMetadata(model);
+    applyOpenAICompletionsTranscriptMetadata(model);
+    applyOpenAIResponsesTranscriptMetadata(model);
     applyOpenAIExplicitPromptCacheMetadata(model);
+    applyPromptCacheMetadata(model);
   }
 
   applyAnthropicAllowedFallbackModelMetadata(allModels.filter(isAnthropicFallbackMetadataModel));
