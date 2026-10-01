@@ -49,5 +49,9 @@ export function toolErrorResult(
     result.title = lastPartial.title;
   }
 
+  if (lastPartial?.structuredContent !== undefined) {
+    result.structuredContent = lastPartial.structuredContent;
+  }
+
   return result;
 }

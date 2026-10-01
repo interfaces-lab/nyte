@@ -7,8 +7,9 @@
  * Synced with pi d4edf066f.
  */
 
-import type { AssistantMessage, Context, ToolResultMessage } from "@nyte-ai/ai/types";
+import type { AssistantMessage, ToolResultMessage } from "@nyte-ai/ai/types";
 import { validateToolArguments } from "@nyte-ai/ai/utils/validation";
+import { normalizeContext } from "@nyte-ai/schema";
 import type {
   AgentContext,
   AgentEvent,
@@ -25,7 +26,9 @@ export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
 
 /**
  * Stream one assistant response and emit message_start, message_update, and
- * message_end. This is the first half of a turn.
+ * message_end. This is the first half of a turn. The request is the
+ * transformed transcript as is: its system messages carry the prompt and the
+ * tool declarations, so nothing is folded in here.
  */
 export async function generateAssistant(
   context: AgentContext,
@@ -64,13 +67,9 @@ export async function generateAssistant(
     return message;
   }
 
-  const llmContext: Context = {
-    systemPrompt: context.systemPrompt,
-    messages,
-    tools: context.tools,
-  };
-
-  if (context.checkpoint !== undefined) llmContext.checkpoint = context.checkpoint;
+  const llmContext = normalizeContext(
+    context.checkpoint === undefined ? { messages } : { messages, checkpoint: context.checkpoint },
+  );
   const response = await streamFn(config.model, llmContext, { ...config, signal });
 
   let partial: AssistantMessage | undefined;
@@ -162,7 +161,15 @@ export async function executeToolCalls(
       finalizedCalls.push(Promise.resolve(finalized));
     } else {
       const completion = (async () => {
-        const executed = await executePreparedToolCall(preparation, signal, emit);
+        const executed = await executePreparedToolCall(preparation, signal, (partialResult) =>
+          emit({
+            type: "tool_execution_update",
+            toolCallId: toolCall.id,
+            toolName: toolCall.name,
+            args: toolCall.arguments,
+            partialResult,
+          }),
+        );
 
         const finalized = await finalizeExecutedToolCall(
           currentContext,
@@ -249,14 +256,55 @@ function prepareToolCallArguments(tool: AgentTool, toolCall: AgentToolCall): Age
   };
 }
 
+type ToolCallHooks = Pick<AgentLoopConfig, "beforeToolCall" | "afterToolCall">;
+
+export interface RunToolCallOptions extends ToolCallHooks {
+  tools: readonly AgentTool[];
+  assistantMessage: AssistantMessage;
+  context: AgentContext;
+  signal?: AbortSignal;
+  onUpdate?: (partialResult: AgentToolResult<unknown>) => Promise<void> | void;
+}
+
+export async function runToolCall(
+  toolCall: AgentToolCall,
+  options: RunToolCallOptions,
+): Promise<FinalizedToolCallOutcome> {
+  const { context, assistantMessage, signal } = options;
+  const preparation = await prepareToolCall(
+    context,
+    assistantMessage,
+    toolCall,
+    options,
+    signal,
+    options.tools,
+  );
+  if (preparation.kind === "immediate") {
+    return { toolCall, result: preparation.result, isError: preparation.isError };
+  }
+  const executed = await executePreparedToolCall(preparation, signal, options.onUpdate);
+  return finalizeExecutedToolCall(
+    context,
+    assistantMessage,
+    preparation,
+    executed,
+    options,
+    signal,
+  );
+}
+
 async function prepareToolCall(
   currentContext: AgentContext,
   assistantMessage: AssistantMessage,
   toolCall: AgentToolCall,
-  config: AgentLoopConfig,
+  config: ToolCallHooks,
   signal: AbortSignal | undefined,
+  tools: readonly AgentTool[] = currentContext.tools ?? [],
 ): Promise<PreparedToolCall | ImmediateToolCallOutcome> {
-  const tool = currentContext.tools?.find((t) => t.name === toolCall.name);
+  if (signal?.aborted) {
+    return { kind: "immediate", result: createErrorToolResult("Operation aborted"), isError: true };
+  }
+  const tool = tools.find((t) => t.name === toolCall.name);
 
   if (!tool) {
     return {
@@ -332,7 +380,7 @@ async function prepareToolCall(
 async function executePreparedToolCall(
   prepared: PreparedToolCall,
   signal: AbortSignal | undefined,
-  emit: AgentEventSink,
+  onUpdate?: (partialResult: AgentToolResult<unknown>) => Promise<void> | void,
 ): Promise<ExecutedToolCallOutcome> {
   const updateEvents: Promise<void>[] = [];
   let acceptingUpdates = true;
@@ -342,17 +390,7 @@ async function executePreparedToolCall(
     const result = await prepared.execute(signal, (partialResult) => {
       if (!acceptingUpdates) return;
       lastPartial = partialResult;
-      updateEvents.push(
-        Promise.resolve(
-          emit({
-            type: "tool_execution_update",
-            toolCallId: prepared.toolCall.id,
-            toolName: prepared.toolCall.name,
-            args: prepared.toolCall.arguments,
-            partialResult,
-          }),
-        ),
-      );
+      updateEvents.push(Promise.resolve(onUpdate?.(partialResult)));
     });
 
     acceptingUpdates = false;
@@ -376,7 +414,7 @@ async function finalizeExecutedToolCall(
   assistantMessage: AssistantMessage,
   prepared: PreparedToolCall,
   executed: ExecutedToolCallOutcome,
-  config: AgentLoopConfig,
+  config: ToolCallHooks,
   signal: AbortSignal | undefined,
 ): Promise<FinalizedToolCallOutcome> {
   let result = executed.result;
@@ -402,11 +440,19 @@ async function finalizeExecutedToolCall(
           content: afterResult.content ?? result.content,
           details: afterResult.details === undefined ? result.details : afterResult.details,
           usage: afterResult.usage ?? result.usage,
+          structuredContent:
+            afterResult.structuredContent === undefined
+              ? result.structuredContent
+              : afterResult.structuredContent,
         };
         isError = afterResult.isError ?? isError;
       }
     } catch (error) {
-      result = toolErrorResult(error);
+      result = toolErrorResult(error, {
+        content: [],
+        details: {},
+        structuredContent: result.structuredContent,
+      });
       isError = true;
     }
   }
@@ -471,6 +517,8 @@ export function toolResultMessage(
     isError,
     timestamp: Date.now(),
   };
+
+  if (result.structuredContent !== undefined) message.structuredContent = result.structuredContent;
 
   if (result.title !== undefined) message.title = result.title;
 

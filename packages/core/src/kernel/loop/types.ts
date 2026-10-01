@@ -33,6 +33,10 @@ import type { Static, TSchema } from "typebox";
  * Stream function used by the agent loop. `Models.streamSimple` satisfies
  * this contract.
  *
+ * The loop passes a normalized transcript: the system prompt and tool
+ * declarations are carried by the transcript's system messages, never by
+ * `context.systemPrompt` or `context.tools`.
+ *
  * Contract:
  * - Must not throw or return a rejected promise for request/model/runtime failures.
  * - Must return an AssistantMessageEventStream.
@@ -125,6 +129,7 @@ export interface BeforeToolCallResult {
 export interface AfterToolCallResult {
   content?: (TextContent | ImageContent)[];
   details?: unknown;
+  structuredContent?: JsonValue;
   isError?: boolean;
   /** Usage from the final tool execution itself, if available. Not used for main LLM context accounting. */
   usage?: Usage;
@@ -232,6 +237,7 @@ export interface AgentToolResult<T> {
   content: (TextContent | ImageContent)[];
   /** Arbitrary structured details for logs or UI rendering. */
   details: T;
+  structuredContent?: JsonValue;
   /** Heading the tool chose for this call, e.g. the path it read. Clients fall back to the tool name. */
   title?: string;
   /** Usage from the final tool execution itself, if available. Not used for main LLM context accounting. */
@@ -372,6 +378,17 @@ export type ToolWake = (wait: WaitingCall, context: ToolWakeContext) => Promise<
 export interface ToolExecutionContext {
   readonly runId: string;
   readonly head: string;
+  readonly parentToolCallId?: string;
+  history?(this: void): Promise<readonly Message[]>;
+  readonly tools?: {
+    list(): readonly AgentTool[];
+    execute(
+      name: string,
+      args: unknown,
+      options?: { signal?: AbortSignal; onUpdate?: AgentToolUpdateCallback },
+    ): Promise<{ result: AgentToolResult<unknown>; isError: boolean }>;
+    activate(names: readonly string[]): void;
+  };
 }
 
 /** The call `present` classifies: the run and head that committed it, and its call id. */
@@ -386,6 +403,9 @@ export interface AgentTool<
   TParameters extends TSchema = TSchema,
   TDetails = unknown,
 > extends Tool<TParameters> {
+  exposure?: "direct" | "codemode" | "deferred" | "model-only" | "hidden";
+  namespace?: { name: string; description?: string; instructions?: string };
+  outputSchema?: TSchema;
   /**
    * Optional compatibility shim for raw tool-call arguments before schema validation.
    * The returned value is validated against `TParameters` before execution.
@@ -423,15 +443,17 @@ export interface AgentTool<
   wake?: ToolWake;
 }
 
-/** Context snapshot passed into the low-level agent loop. */
+/**
+ * Context snapshot passed into the low-level agent loop. The prompt and the
+ * declared tools are carried by the transcript's system messages; `tools` is
+ * what the runtime can execute.
+ */
 export interface AgentContext {
-  /** System prompt included with the request. */
-  systemPrompt: string;
   /** Provider-native replacement for the history before `messages`. */
   checkpoint?: ProviderCheckpointMaterial;
   /** Transcript visible to the model after the checkpoint, if any. */
   messages: Message[];
-  /** Tools available for this run. */
+  /** Executable tools for this run. */
   tools?: AgentTool[];
 }
 

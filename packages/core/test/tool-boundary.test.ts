@@ -78,7 +78,7 @@ test("heterogeneous registry tools keep their schema after wrapping and rebuildi
   for (let rebuild = 0; rebuild < 2; rebuild += 1) {
     assert.deepEqual(registry.rebuild().errors, []);
     const messages = await executeToolCalls(
-      { systemPrompt: "", messages: [], tools: registry.values() },
+      { messages: [], tools: registry.values() },
       assistant("", {
         calls: [
           call("a", "count", { count: "21", optional: null }),
@@ -114,7 +114,7 @@ test("compatibility runs before validation and hook replacements are revalidated
     { replacement: { count: {} }, isError: true },
   ]) {
     const result = await executeToolCalls(
-      { systemPrompt: "", messages: [], tools: [tool] },
+      { messages: [], tools: [tool] },
       assistant("", { calls: [call("a", "count", { legacy: "2" })] }),
       {
         ...config,
@@ -153,7 +153,7 @@ test("concurrent results retain source order and identity; failed tools retain p
   });
   const events: AgentEvent[] = [];
   const batch = executeToolCalls(
-    { systemPrompt: "", messages: [], tools: [tool] },
+    { messages: [], tools: [tool] },
     assistant("", {
       calls: [call("first", "work", { fail: false }), call("second", "work", { fail: true })],
     }),
@@ -192,7 +192,6 @@ test("after hooks retain every falsy details override", async () => {
   for (const details of [null, false, 0, ""]) {
     const messages = await executeToolCalls(
       {
-        systemPrompt: "",
         messages: [],
         tools: [
           bindTool({

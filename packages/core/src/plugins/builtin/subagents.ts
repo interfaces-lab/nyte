@@ -18,6 +18,7 @@ import {
   type AgentTool,
   type AgentToolResult,
   type ToolPresentContext,
+  type ToolExecutionContext,
   type ToolWakeContext,
 } from "../../kernel/loop/types.ts";
 import { ToolError, toolResultContent } from "../../kernel/loop/tool-result.ts";
@@ -397,16 +398,17 @@ export function subagentsPlugin(host: SubagentHost) {
     agents: readonly SessionId[],
     mode: "any" | "all",
     timeoutMs: number,
-    head: string,
+    context: ToolExecutionContext,
   ) => {
     const statuses = await host.status(agents);
 
     if (satisfied(statuses, mode) || statuses.some((status) => status.kind === "not_found"))
       return awaitResult(statuses, "settled");
 
-    if (timeoutMs === 0) return awaitResult(statuses, "timeout");
+    if (timeoutMs === 0 || context.parentToolCallId !== undefined)
+      return awaitResult(statuses, "timeout");
 
-    if (await host.inputPending(head)) return awaitResult(statuses, "yield");
+    if (await host.inputPending(context.head)) return awaitResult(statuses, "yield");
     throw new ToolWait({ until: Date.now() + timeoutMs });
   };
 
@@ -479,7 +481,7 @@ If the user sends something while you wait, this returns early so you can answer
 
       return settle(
         forAgent(
-          await awaitAgents([agent], "all", input.waitMs ?? DEFAULT_TASK_WAIT_MS, context.head),
+          await awaitAgents([agent], "all", input.waitMs ?? DEFAULT_TASK_WAIT_MS, context),
           agent,
         ),
       );
@@ -587,7 +589,7 @@ If the user sends something while you wait, this returns early so you can answer
       }
 
       return settle(
-        forAgent(await awaitAgents([input.agent], "all", input.waitMs, context.head), input.agent),
+        forAgent(await awaitAgents([input.agent], "all", input.waitMs, context), input.agent),
       );
     },
     wake: async (call, context) => {
@@ -626,7 +628,7 @@ If the user sends something while you wait, this returns early so you can answer
     async execute(_callId, input, _signal, _onUpdate, context) {
       if (context === undefined) throw new Error("Await execution requires a run context");
 
-      return settle(await awaitAgents(input.agents, input.mode, input.timeoutMs, context.head));
+      return settle(await awaitAgents(input.agents, input.mode, input.timeoutMs, context));
     },
     wake: async (call, context) => {
       if (!Value.Check(awaitParameters, call.args)) throw new Error("Await arguments are invalid");

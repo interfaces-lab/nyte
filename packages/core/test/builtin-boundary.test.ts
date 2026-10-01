@@ -39,7 +39,7 @@ test("ls retains preparer rejection while schema parsing coerces and omits optio
   assert.throws(() => ls.prepareArguments?.({ limit: Number.NaN }), /limit must be number/);
   for (const args of [{ limit: "1" }, { limit: null }, { path: null }, { path: 1 }]) {
     const result = await executeToolCalls(
-      { systemPrompt: "", messages: [], tools: [bindTool(ls)] },
+      { messages: [], tools: [bindTool(ls)] },
       assistant("", { calls: [call("ls", "ls", args)] }),
       config,
       undefined,
@@ -48,7 +48,7 @@ test("ls retains preparer rejection while schema parsing coerces and omits optio
     assert.equal(result[0]?.isError, true);
   }
   const result = await executeToolCalls(
-    { systemPrompt: "", messages: [], tools: [bindTool(ls)] },
+    { messages: [], tools: [bindTool(ls)] },
     assistant("", { calls: [call("ls", "ls", { limit: 2 })] }),
     { ...config, beforeToolCall: async () => ({ args: { path: null, limit: "1" } }) },
     undefined,
