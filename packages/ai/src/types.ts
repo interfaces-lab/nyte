@@ -8,7 +8,14 @@
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/types.ts
  * Synced with pi 7ebf9087e.
  */
-import type { Api, Context, DeferredHandle, Model, ThinkingLevel } from "@nyte-ai/schema";
+import type {
+  Api,
+  CacheRetention,
+  DeferredHandle,
+  Model,
+  ThinkingLevel,
+  TranscriptContext,
+} from "@nyte-ai/schema";
 import type { TelemetryContext } from "@nyte-ai/telemetry";
 import type { AnthropicOptions } from "./api/anthropic-messages.ts";
 import type { GoogleOptions } from "./api/google-generative-ai.ts";
@@ -23,6 +30,8 @@ export type {
   KnownProvider,
   OpenAICompletionsCompat,
   BedrockCompat,
+  CacheRetention,
+  ModelPromptCache,
   OpenRouterRouting,
   VercelGatewayRouting,
   ChatTemplateKwargValue,
@@ -54,6 +63,7 @@ export type {
   ProviderId,
   SessionAffinityFormat,
   StopReason,
+  SystemMessage,
   TextContent,
   TextSignatureV1,
   ThinkingContent,
@@ -61,7 +71,9 @@ export type {
   ThinkingLevelMap,
   Tool,
   ToolCall,
+  ToolReference,
   ToolResultMessage,
+  TranscriptContext,
   Usage,
   UserMessage,
 } from "@nyte-ai/schema";
@@ -75,9 +87,6 @@ export interface ThinkingBudgets {
   medium?: number;
   high?: number;
 }
-
-// Base options all providers share
-export type CacheRetention = "none" | "short" | "long";
 
 export type CachedRetention = Exclude<CacheRetention, "none">;
 
@@ -253,9 +262,8 @@ export interface ApiOptionsMap {
  * Full stream options for an API. Known APIs resolve to their concrete option
  * type; custom API strings fall back to the generic shape.
  */
-export type ApiStreamOptions<TApi extends Api> = TApi extends keyof ApiOptionsMap
-  ? ApiOptionsMap[TApi]
-  : StreamOptions & Record<string, unknown>;
+export type ApiStreamOptions<TApi extends Api> = StreamOptions &
+  (TApi extends keyof ApiOptionsMap ? ApiOptionsMap[TApi] : Record<string, unknown>);
 
 /**
  * The uniform stream contract of an API implementation module: every module
@@ -266,10 +274,14 @@ export type ApiStreamOptions<TApi extends Api> = TApi extends keyof ApiOptionsMa
  * `Provider.stream()` via `ApiStreamOptions`.
  */
 export interface ProviderStreams {
-  stream(model: Model<Api>, context: Context, options?: StreamOptions): AssistantMessageEventStream;
+  stream(
+    model: Model<Api>,
+    context: TranscriptContext,
+    options?: StreamOptions,
+  ): AssistantMessageEventStream;
   streamSimple(
     model: Model<Api>,
-    context: Context,
+    context: TranscriptContext,
     options?: SimpleStreamOptions,
   ): AssistantMessageEventStream;
   fetchDeferred?(
@@ -300,6 +312,8 @@ export interface SimpleStreamOptions extends StreamOptions {
 // Generic StreamFunction with typed options.
 //
 // Contract:
+// - Receives a normalized transcript: the system prompt and tools live in the
+//   leading system message, never on the context itself.
 // - Must return an AssistantMessageEventStream.
 // - Once invoked, request/model/runtime failures should be encoded in the
 //   returned stream, not thrown.
@@ -308,4 +322,8 @@ export interface SimpleStreamOptions extends StreamOptions {
 export type StreamFunction<
   TApi extends Api = Api,
   TOptions extends StreamOptions = StreamOptions,
-> = (model: Model<TApi>, context: Context, options?: TOptions) => AssistantMessageEventStream;
+> = (
+  model: Model<TApi>,
+  context: TranscriptContext,
+  options?: TOptions,
+) => AssistantMessageEventStream;

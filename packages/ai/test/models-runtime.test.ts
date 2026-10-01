@@ -1070,41 +1070,57 @@ describe("Models runtime", () => {
     expect(calls[0].options?.env).toEqual({ ACCOUNT_ID: "acct" });
   });
 
-  it("merges resolved auth into stream options; explicit options win per field", async () => {
-    const calls: ProviderCall[] = [];
-    const apiKey: ApiKeyAuth = {
-      name: "Test",
-      resolve: async () => ({
-        auth: {
-          apiKey: "resolved-key",
-          headers: { Authorization: "Bearer resolved-key", "x-a": "auth", "x-b": "auth" },
-          baseUrl: "https://auth.test/v1",
-        },
-      }),
-    };
-    const models = createModels();
-    models.setProvider(testProvider({ id: "p1", auth: { apiKey }, calls }));
-    const model = testModel("p1", "model-a");
+  it.each(["simple", "api"] as const)(
+    "merges auth without dropping %s request options",
+    async (mode) => {
+      const calls: ProviderCall[] = [];
+      const apiKey: ApiKeyAuth = {
+        name: "Test",
+        resolve: async () => ({
+          auth: {
+            apiKey: "resolved-key",
+            headers: { Authorization: "Bearer resolved-key", "x-a": "auth", "x-b": "auth" },
+            baseUrl: "https://auth.test/v1",
+          },
+        }),
+      };
+      const models = createModels();
+      models.setProvider(testProvider({ id: "p1", auth: { apiKey }, calls }));
+      const model = testModel("p1", "model-a");
 
-    const result = await models.completeSimple(model, context, {
-      apiKey: "explicit-key",
-      headers: { authorization: "Explicit token", "x-b": "explicit" },
-    });
-    expect(result.stopReason).toBe("stop");
-    expect(calls).toHaveLength(1);
-    expect(calls[0].options?.apiKey).toBe("explicit-key");
-    expect(calls[0].options?.headers).toEqual({
-      authorization: "Explicit token",
-      "x-a": "auth",
-      "x-b": "explicit",
-    });
-    expect(calls[0].model.baseUrl).toBe("https://auth.test/v1");
+      const options = {
+        apiKey: "explicit-key",
+        headers: { authorization: "Explicit token", "x-b": "explicit" },
+        temperature: 0.2,
+        maxTokens: 7,
+        vendor_field: { enabled: true },
+      };
+      const result = await (mode === "simple"
+        ? models.completeSimple(model, context, options)
+        : models.complete(model, context, options));
+      expect(result.stopReason).toBe("stop");
+      expect(calls).toHaveLength(1);
+      expect(calls[0].options).toMatchObject({
+        apiKey: "explicit-key",
+        temperature: 0.2,
+        maxTokens: 7,
+        vendor_field: { enabled: true },
+      });
+      expect(calls[0].options?.headers).toEqual({
+        authorization: "Explicit token",
+        "x-a": "auth",
+        "x-b": "explicit",
+      });
+      expect(calls[0].model.baseUrl).toBe("https://auth.test/v1");
 
-    // without explicit options, resolved auth applies
-    const result2 = await models.completeSimple(model, context);
-    expect(result2.stopReason).toBe("stop");
-    expect(calls[1].options?.apiKey).toBe("resolved-key");
-  });
+      // without explicit options, resolved auth applies
+      const result2 = await (mode === "simple"
+        ? models.completeSimple(model, context)
+        : models.complete(model, context));
+      expect(result2.stopReason).toBe("stop");
+      expect(calls[1].options?.apiKey).toBe("resolved-key");
+    },
+  );
 
   it("adds model headers only for model auth and transforms assembled headers once", async () => {
     const calls: ProviderCall[] = [];

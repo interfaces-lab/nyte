@@ -1,4 +1,4 @@
-import { MODEL_THINKING_LEVELS, ModelSchema } from "@nyte-ai/schema";
+import { MODEL_THINKING_LEVELS, ModelSchema, normalizeContext } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
 import { lazyStream } from "./api/lazy.ts";
 import { defaultProviderAuthContext as defaultAuthContext } from "./auth/context.ts";
@@ -39,6 +39,7 @@ import type {
   ProviderRequestOptions,
   ProviderStreams,
   SimpleStreamOptions,
+  TranscriptContext,
   Usage,
 } from "./types.ts";
 import { operationSignal, raceWithAbortSignal } from "./utils/abort.ts";
@@ -154,15 +155,16 @@ export interface Provider<TApi extends Api = Api> {
     credential: Credential | undefined,
   ): readonly Model<TApi>[];
 
+  /** Stream a normalized transcript. `Models` normalizes the caller's `Context` before dispatching here. */
   stream<T extends TApi>(
     model: Model<T>,
-    context: Context,
+    context: TranscriptContext,
     options?: ApiStreamOptions<T>,
   ): AssistantMessageEventStream;
 
   streamSimple(
     model: Model<TApi>,
-    context: Context,
+    context: TranscriptContext,
     options?: SimpleStreamOptions,
   ): AssistantMessageEventStream;
   fetchDeferred?(
@@ -849,15 +851,7 @@ class ModelsImpl implements MutableModels {
   private async applyAuth<
     TModel extends Model<Api>,
     TOptions extends ProviderRequestOptions & ModelsRequestTransforms,
-  >(
-    model: TModel,
-    options: TOptions | undefined,
-  ): Promise<{
-    requestModel: TModel;
-    requestOptions: Omit<TOptions, "transformHeaders"> & ProviderRequestOptions;
-  }> {
-    this.requireProvider(model);
-
+  >(model: TModel, options: TOptions | undefined) {
     const resolution = await this.getAuth(model, {
       apiKey: options?.apiKey,
       env: options?.env,
@@ -884,12 +878,7 @@ class ModelsImpl implements MutableModels {
     const requestModel = auth.baseUrl ? { ...model, baseUrl: auth.baseUrl } : model;
     const { transformHeaders: _transformHeaders, ...providerOptions } = options ?? {};
 
-    // SAFETY: providerOptions is TOptions minus transformHeaders; the spread only overrides ProviderRequestOptions fields.
-    const requestOptions = { ...providerOptions, apiKey, headers, env } as Omit<
-      TOptions,
-      "transformHeaders"
-    > &
-      ProviderRequestOptions;
+    const requestOptions = { ...providerOptions, apiKey, headers, env };
 
     return { requestModel, requestOptions };
   }
@@ -899,17 +888,14 @@ class ModelsImpl implements MutableModels {
     context: Context,
     options?: ModelsApiStreamOptions<TApi>,
   ): AssistantMessageEventStream {
+    const transcript = normalizeContext(context);
+
     return lazyStream(model, async () => {
       const provider = this.requireProvider(model);
 
-      const { requestModel, requestOptions } = await this.applyAuth(
-        model,
-        // SAFETY: every ApiStreamOptions<TApi> extends ProviderRequestOptions; TypeScript cannot resolve the conditional type for a generic TApi.
-        options as ModelsApiStreamOptions<Api> | undefined,
-      );
+      const { requestModel, requestOptions } = await this.applyAuth(model, options);
 
-      // SAFETY: requestOptions is the caller's ModelsApiStreamOptions<TApi> with only auth fields replaced.
-      return provider.stream(requestModel, context, requestOptions as ApiStreamOptions<TApi>);
+      return provider.stream<Api>(requestModel, transcript, requestOptions);
     });
   }
 
@@ -926,11 +912,13 @@ class ModelsImpl implements MutableModels {
     context: Context,
     options?: ModelsSimpleStreamOptions,
   ): AssistantMessageEventStream {
+    const transcript = normalizeContext(context);
+
     return lazyStream(model, async () => {
       const provider = this.requireProvider(model);
       const { requestModel, requestOptions } = await this.applyAuth(model, options);
 
-      return provider.streamSimple(requestModel, context, requestOptions);
+      return provider.streamSimple(requestModel, transcript, requestOptions);
     });
   }
 

@@ -1,19 +1,5 @@
 /**
- * Extract text from message content blocks.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/text.ts
- * Synced with pi 7ebf9087e.
+ * Text helpers live in @nyte-ai/schema so clients can render replayed system
+ * messages without the provider layer; re-exported here for the ai layout.
  */
-import type { ImageContent, TextContent, ThinkingContent, ToolCall } from "@nyte-ai/schema";
-
-type Content = TextContent | ImageContent | ThinkingContent | ToolCall;
-
-/** Extract and join text from message content. */
-export function contentText(content: string | readonly Content[], separator = "\n"): string {
-  if (typeof content === "string") return content;
-
-  return content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join(separator);
-}
+export { contentText, getSystemMessageText, renderSystemMessageUpdate } from "@nyte-ai/schema";

@@ -88,8 +88,6 @@ export * from "./session-resources.ts";
 
 export * from "./types.ts";
 
-export * from "./utils/assistant-message-frame.ts";
-
 export * from "./utils/diagnostics.ts";
 
 export * from "./utils/estimate.ts";
@@ -104,7 +102,9 @@ export * from "./utils/overflow.ts";
 
 export * from "./utils/retry.ts";
 
-export { contentText } from "./utils/text.ts";
+export { contentText, getSystemMessageText, renderSystemMessageUpdate } from "./utils/text.ts";
+
+export * from "./utils/transcript.ts";
 
 export * from "./utils/typebox-helpers.ts";
 

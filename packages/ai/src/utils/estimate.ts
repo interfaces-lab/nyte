@@ -11,8 +11,11 @@ import type {
   TextContent,
   Tool,
   ToolCall,
+  ToolReference,
+  TranscriptContext,
   Usage,
 } from "@nyte-ai/schema";
+import { getSystemMessageText } from "@nyte-ai/schema";
 
 export interface ContextUsageEstimate {
   /** Estimated total context tokens. */
@@ -33,7 +36,9 @@ export function calculateContextTokens(usage: Usage): number {
   return usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
 }
 
-function safeJsonStringify(value: ToolCall["arguments"] | readonly Tool[]): string {
+function safeJsonStringify(
+  value: ToolCall["arguments"] | readonly (Tool | ToolReference)[],
+): string {
   try {
     return JSON.stringify(value) ?? "undefined";
   } catch {
@@ -66,6 +71,14 @@ export function estimateTextAndImageContentTokens(
 
 export function estimateMessageTokens(message: Message): number {
   let chars = 0;
+
+  if (message.role === "system") {
+    return (
+      estimateTextTokens(getSystemMessageText(message)) +
+      estimateToolsTokens(message.toolsAdded) +
+      estimateToolsTokens(message.toolsRemoved)
+    );
+  }
 
   if (message.role === "user") return estimateTextAndImageContentTokens(message.content);
 
@@ -140,20 +153,27 @@ function estimateMessages(messages: readonly Message[]): ContextUsageEstimate {
   return { tokens, usageTokens: 0, trailingTokens: tokens, lastUsageIndex: null };
 }
 
-function estimateToolsTokens(tools: readonly Tool[] | undefined): number {
+function estimateToolsTokens(tools: readonly (Tool | ToolReference)[] | undefined): number {
   if (!tools || tools.length === 0) return 0;
 
   return estimateTextTokens(safeJsonStringify(tools));
 }
 
-function isMessageArray(value: Context | readonly Message[]): value is readonly Message[] {
+function isMessageArray(
+  value: Context | TranscriptContext | readonly Message[],
+): value is readonly Message[] {
   return Array.isArray(value);
 }
 
-export function estimateContextTokens(context: Context | readonly Message[]): ContextUsageEstimate {
+export function estimateContextTokens(
+  context: Context | TranscriptContext | readonly Message[],
+): ContextUsageEstimate {
   if (isMessageArray(context)) return estimateMessages(context);
 
   const estimate = estimateMessages(context.messages);
+
+  // A transcript carries its prompt and tools in system messages, counted above.
+  if (!("systemPrompt" in context) && !("tools" in context)) return estimate;
 
   if (estimate.lastUsageIndex !== null) {
     const addedNames = new Set(

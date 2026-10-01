@@ -21,6 +21,7 @@
     "./utils/overflow": "./src/utils/overflow.ts",
     "./utils/retry": "./src/utils/retry.ts",
     "./utils/text": "./src/utils/text.ts",
+    "./utils/transcript": "./src/utils/transcript.ts",
     "./utils/uuid": "./src/utils/uuid.ts",
     "./utils/validation": "./src/utils/validation.ts"
   },
