@@ -2,21 +2,20 @@ import { Switch as SwitchPrimitive } from "@base-ui/react/switch";
 import { create, props } from "@stylexjs/stylex";
 import { useId, type ReactElement } from "react";
 
-import { focus } from "../../a11y.stylex.ts";
-import { row, shape, switchControl } from "../../schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { intent } from "../../surface-theme.ts";
-import { appearance, motion, role, shadow, type } from "../../vars.stylex.ts";
+import { focus } from "./a11y.stylex.ts";
+import { row, shape, switchControl, target } from "./schema.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { intent } from "./surface-theme.ts";
+import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
 
 const styles = create({
   target: {
-    "--_switch-hit-floor": { default: "24px", "@media (pointer: coarse)": "44px" },
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    width: `max(var(--_switch-hit-floor), ${switchControl.widthMd})`,
-    height: `max(var(--_switch-hit-floor), ${switchControl.heightMd})`,
+    width: `max(${target.min}, ${switchControl.widthMd})`,
+    height: `max(${target.min}, ${switchControl.heightMd})`,
   },
   field: {
     display: "flex",
@@ -39,8 +38,8 @@ const styles = create({
       top: "50%",
       left: "50%",
       translate: "-50% -50%",
-      width: `max(var(--_switch-hit-floor), ${switchControl.widthMd})`,
-      height: `max(var(--_switch-hit-floor), ${switchControl.heightMd})`,
+      width: `max(${target.min}, ${switchControl.widthMd})`,
+      height: `max(${target.min}, ${switchControl.heightMd})`,
     },
     appearance: "none",
     boxSizing: "border-box",

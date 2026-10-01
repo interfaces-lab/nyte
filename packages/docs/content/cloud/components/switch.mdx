@@ -4,25 +4,14 @@ description: "A control that turns a setting on or off"
 ---
 
 ```ts title="Import"
-import { Switch } from "@nyte-ai/ui";
-```
-
-The same `Switch` is exported from its own subpath. Pick one path per file.
-
-```ts title="Subpath"
 import { Switch } from "@nyte-ai/ui/switch";
 ```
 
-A 30 by 18px track with a sliding thumb, accent when on. Use it for a setting that applies the
-moment it changes.
+Use it for a setting that applies on change.
 
 ## Usage
 
-- `label` is required and becomes the switch's `aria-label`. A row that shows the same text beside
-  the switch still passes it.
-- `checked` with `onCheckedChange` controls the switch. `defaultChecked` leaves it uncontrolled.
-- A switch commits on change. If the setting needs a save step, use a checkbox instead.
-- `disabled` dims the switch to half opacity. Pair it with `title` to say why.
+- Pass `label` even when the same text sits beside the switch. It becomes the `aria-label`.
 
 ## Examples
 
@@ -39,13 +28,12 @@ const [wrap, setWrap] = useState(true);
 
 ## Props
 
-Every Base UI `Switch.Root` prop passes through, except `render` and `children`. The thumb is built
-in.
+Takes every Base UI `Switch.Root` prop except `render` and `children`. The thumb is built in.
 
-| Prop                           | Type                                      | Default | Description                    |
-| ------------------------------ | ----------------------------------------- | ------- | ------------------------------ |
-| `label`                        | `string`                                  |         | Accessible name of the switch. |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |         |                                |
+| Prop                           | Type                                      | Default | Description |
+| ------------------------------ | ----------------------------------------- | ------- | ----------- |
+| `label`                        | `string`                                  |         | Required.   |
+| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |         |             |
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
@@ -54,6 +42,5 @@ The reference table below comes from Base UI, MIT, © Material-UI SAS.
 ## Accessibility
 
 - The root carries `role="switch"` and `aria-checked`. Space and Enter toggle it.
-- `readOnly` keeps the switch focusable and blocks the change. `disabled` removes it from the tab
-  order.
-- The focus ring appears on keyboard focus. See [Focus](/cloud/foundations/focus).
+- `readOnly` keeps the switch focusable but blocks changes.
+- Keyboard focus shows the [focus ring](/cloud/foundations/focus).

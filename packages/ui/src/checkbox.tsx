@@ -2,22 +2,21 @@ import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
 import { create, props } from "@stylexjs/stylex";
 import { useId, type ReactElement } from "react";
 
-import { focus } from "../../a11y.stylex.ts";
-import { checkbox, row, shape } from "../../schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { intent } from "../../surface-theme.ts";
-import { appearance, role, type } from "../../vars.stylex.ts";
+import { focus } from "./a11y.stylex.ts";
+import { checkbox, row, shape, target } from "./schema.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { intent } from "./surface-theme.ts";
+import { appearance, role, type } from "./vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 
 const styles = create({
   target: {
-    "--_checkbox-hit-floor": { default: "24px", "@media (pointer: coarse)": "44px" },
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    width: "max(var(--_checkbox-hit-floor), var(--_checkbox-size))",
-    height: "max(var(--_checkbox-hit-floor), var(--_checkbox-size))",
+    width: `max(${target.min}, var(--_checkbox-size))`,
+    height: `max(${target.min}, var(--_checkbox-size))`,
   },
   field: {
     display: "flex",
@@ -42,8 +41,8 @@ const styles = create({
       top: "50%",
       left: "50%",
       translate: "-50% -50%",
-      width: "max(var(--_checkbox-hit-floor), var(--_checkbox-size))",
-      height: "max(var(--_checkbox-hit-floor), var(--_checkbox-size))",
+      width: `max(${target.min}, var(--_checkbox-size))`,
+      height: `max(${target.min}, var(--_checkbox-size))`,
     },
     appearance: "none",
     boxSizing: "border-box",
@@ -83,7 +82,7 @@ const styles = create({
   },
 });
 
-/** Notion Calendar's checkbox sizes: `md` is 16px beside 16px glyphs, `lg` 20px. */
+/** Checkbox sizes: `md` is 16px beside 16px glyphs, `lg` 20px. */
 export type CheckboxSize = "md" | "lg";
 
 export type CheckboxProps = StyledProps<
