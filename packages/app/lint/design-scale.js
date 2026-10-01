@@ -402,7 +402,63 @@ const noRawColors = {
   },
 };
 
+/**
+ * A box between 14 and 36px is a glyph slot, an avatar, a control, or a row,
+ * and each of those already has a size: `glyph`, `avatar`, `button`, `input`,
+ * `row`, `menu`, and `target` in `@nyte-ai/ui/schema.stylex`. A literal there
+ * is a size that will not follow the component, nor grow for touch.
+ */
+const CONTROL_SIZE_MIN = 14;
+const CONTROL_SIZE_MAX = 36;
+
+const controlSize = styleValueRule(
+  "Size glyph slots, avatars, controls, and rows from their component tokens.",
+  (context, property, value, member) => {
+    if (!SIZE_PROPERTIES.has(property)) return;
+    const size = Math.abs(value);
+
+    if (size < CONTROL_SIZE_MIN || size > CONTROL_SIZE_MAX) return;
+    context.report({
+      node: member,
+      message:
+        `"${property}: ${value}" sizes a box by hand. Use glyph.sm|md|lg for a glyph slot, ` +
+        `avatar.* for an avatar, button.* / input.* / row.* / menu.* for a control or the row ` +
+        `that holds one, or target.min for a hit area (all in @nyte-ai/ui/schema.stylex). If ` +
+        `padding and line height already give the height, drop it.`,
+    });
+  },
+);
+
+/**
+ * Touch sizes are a token decision: `target.min`, `target.gap`, and every
+ * component token already grow under a coarse pointer. A call site that adds
+ * its own coarse branch forks that policy.
+ */
+const touchInTokens = {
+  meta: { docs: { description: "Keep coarse-pointer sizes in the tokens." } },
+  create(context) {
+    return eachCreatedStyle(isLengthProperty, (property, _value, member) => {
+      const condition = keyName(member.key, member.computed);
+
+      if (condition === null || !condition.includes("pointer: coarse")) return;
+      context.report({
+        node: member,
+        message:
+          `"${property}" grows for touch by hand. Read target.min, target.gap, or a component ` +
+          `token from @nyte-ai/ui/schema.stylex, which already grow under a coarse pointer; a ` +
+          `layout measurement that must grow belongs in ${SCHEMA_PATH}.`,
+      });
+    });
+  },
+};
+
 export default {
   meta: { name: "nyte-design" },
-  rules: { "spacing-scale": spacingScale, "size-grid": sizeGrid, "no-raw-colors": noRawColors },
+  rules: {
+    "spacing-scale": spacingScale,
+    "size-grid": sizeGrid,
+    "no-raw-colors": noRawColors,
+    "control-size": controlSize,
+    "touch-in-tokens": touchInTokens,
+  },
 };
