@@ -1,9 +1,9 @@
-import { shape } from "../../schema.stylex.ts";
+import { shape } from "./schema.stylex.ts";
 import { create, props } from "@stylexjs/stylex";
 import type { CSSProperties, ReactElement } from "react";
 
-import { mergeStyleProps, type XStyle } from "../../style.ts";
-import { role, type } from "../../vars.stylex.ts";
+import { mergeStyleProps, type XStyle } from "./style.ts";
+import { role, type } from "./vars.stylex.ts";
 
 const styles = create({
   kbd: {
@@ -12,7 +12,6 @@ const styles = create({
     justifyContent: "center",
     gap: 2,
     flexShrink: 0,
-    minHeight: 18,
     paddingBlock: 1,
     paddingInline: 4,
     borderRadius: shape.control,

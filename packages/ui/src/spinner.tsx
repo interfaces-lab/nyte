@@ -2,8 +2,8 @@ import { create, keyframes, props } from "@stylexjs/stylex";
 import { useLayoutEffect, useRef } from "react";
 import type { CSSProperties, ReactElement } from "react";
 
-import { glyph } from "../../schema.stylex.ts";
-import { mergeStyleProps, type XStyle } from "../../style.ts";
+import { glyph } from "./schema.stylex.ts";
+import { mergeStyleProps, type XStyle } from "./style.ts";
 
 /*
  * The app icon's dithered moon, 5 cells across on a 3px pitch, with the sun
