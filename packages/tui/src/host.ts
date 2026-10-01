@@ -18,11 +18,13 @@ import type { Session } from "@nyte-ai/core/store";
 import { createHost } from "@nyte-ai/host";
 import type { HostOptions } from "@nyte-ai/host";
 import type { Usage } from "@nyte-ai/schema";
+import { createBunPluginSources } from "./plugin-loader.ts";
+import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
 
 type StoredCommit = Awaited<ReturnType<Session["objects"]["commits"]>>[number];
 
 interface HostCloseFailure {
-  readonly resource: "sdk" | "store";
+  readonly resource: "sdk" | "plugins" | "store";
   readonly cause: unknown;
 }
 
@@ -56,12 +58,19 @@ export class Host {
   readonly nyte: Nyte;
   readonly store: Store;
   readonly cwd: string;
+  readonly pluginSources: ReturnType<typeof createBunPluginSources>;
   private closing: Promise<HostCloseOutcome> | undefined;
 
-  private constructor(nyte: Nyte, store: Store, cwd: string) {
+  private constructor(
+    nyte: Nyte,
+    store: Store,
+    cwd: string,
+    pluginSources: ReturnType<typeof createBunPluginSources>,
+  ) {
     this.nyte = nyte;
     this.store = store;
     this.cwd = cwd;
+    this.pluginSources = pluginSources;
   }
 
   static async open(options: OpenHostOptions): Promise<Host> {
@@ -74,11 +83,22 @@ export class Host {
       watchPollIntervalMs === undefined ? storeOptions : { ...storeOptions, watchPollIntervalMs },
     );
 
+    const pluginSources = createBunPluginSources();
+
     try {
       await store.ready();
+      const plugins =
+        host.plugins.kind === "workspace"
+          ? {
+              ...host.plugins,
+              sources: pluginSources,
+              codemode: host.plugins.codemode ?? codemodeRuntimeOptions(),
+            }
+          : host.plugins;
 
-      return new Host(await createHost({ ...host, store }), store, cwd);
+      return new Host(await createHost({ ...host, plugins, store }), store, cwd, pluginSources);
     } catch (cause) {
+      pluginSources.dispose();
       await store.close().catch(() => undefined);
       throw cause;
     }
@@ -154,6 +174,12 @@ export class Host {
         await this.nyte.close();
       } catch (cause) {
         failures.push({ resource: "sdk", cause });
+      }
+
+      try {
+        this.pluginSources.dispose();
+      } catch (cause) {
+        failures.push({ resource: "plugins", cause });
       }
 
       try {

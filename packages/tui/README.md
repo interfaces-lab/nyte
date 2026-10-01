@@ -103,6 +103,25 @@ the current app action, including cancellation. Editor selections still copy wit
 either mode. Other keys clear transcript selections but preserve editor selection handling.
 There is no app-level Cmd+C binding, matching OpenCode; native Cmd+C belongs to the terminal.
 
+## Local plugins and reload
+
+Install each plugin under `~/.nyte/plugins/<id>/` or `.nyte/plugins/<id>/`.
+`index.ts` exports the session plugin and optional `tui.ts` exports the TUI definition.
+Compiled entries use `index.js` or `tui.js` instead. Both exports use the directory's id.
+A workspace unit replaces the entire user unit with the same id.
+
+Filesystem changes reload changed content automatically. `/reload` also rereads settings
+and retries unchanged failed plugin imports and setups. A failed import, manifest read,
+or directory scan leaves the active snapshot in place. Session behavior and TUI setup
+activate separately; a failed replacement keeps that entry's previous activation.
+
+TUI setup receives `context.signal`, aborted on replacement, disposal, or the default five-second
+setup budget. Listen for abort and return a cleanup function. Cooperative cleanup finishes
+before the renderer closes. Aborted candidates cannot register listeners or slots, show
+toasts, or change plugin memory through the context API. The budget does not stop JavaScript
+or revoke renderer/client references a plugin already retained; a cleanup returned after
+the budget still runs when setup eventually settles.
+
 ## Working directory
 
 `/cd <path>` changes the current chat's working directory without losing its history.

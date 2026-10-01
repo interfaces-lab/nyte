@@ -97,13 +97,13 @@ export async function createWorkspace(options: {
     }
 
     if (options.question === true) {
-      const plugins = join(cwd, ".nyte", "plugins");
+      const plugins = join(cwd, ".nyte", "plugins", "question");
 
       // Bundle the public example's dependencies, but use the binary's plugin API.
       const built = await Bun.build({
         entrypoints: [fileURLToPath(import.meta.resolve("@nyte-ai/plugin/examples/question"))],
         outdir: plugins,
-        naming: "question.js",
+        naming: "index.js",
         target: "bun",
         format: "esm",
         external: ["@nyte-ai/plugin"],
