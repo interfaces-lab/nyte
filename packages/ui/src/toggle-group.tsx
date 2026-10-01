@@ -1,10 +1,10 @@
-import { shape } from "../../schema.stylex.ts";
+import { shape } from "./schema.stylex.ts";
 import { ToggleGroup as ToggleGroupPrimitive } from "@base-ui/react/toggle-group";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { role } from "../../vars.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { role } from "./vars.stylex.ts";
 
 const styles = create({
   group: {

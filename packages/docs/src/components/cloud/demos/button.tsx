@@ -1,7 +1,7 @@
 "use client";
 
-import { Button, SplitButton } from "@nyte-ai/ui";
-import { Menu, MenuItem } from "@nyte-ai/ui/menu";
+import { Button, SplitButton } from "@nyte-ai/ui/button";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 
 export function ButtonVariantsDemo() {
   return (
@@ -59,19 +59,20 @@ export function ButtonGroupDemo() {
       <SplitButton.Main variant="solid" tone="primary">
         Commit and Push
       </SplitButton.Main>
-      <Menu
-        label="Commit actions"
-        align="end"
-        trigger={
-          <SplitButton.MenuTrigger
-            variant="solid"
-            tone="primary"
-            aria-label="More commit actions"
-          />
-        }
-      >
-        <MenuItem onSelect={() => {}}>Commit</MenuItem>
-        <MenuItem onSelect={() => {}}>Push</MenuItem>
+      <Menu>
+        <MenuTrigger
+          render={
+            <SplitButton.MenuTrigger
+              variant="solid"
+              tone="primary"
+              aria-label="More commit actions"
+            />
+          }
+        />
+        <MenuContent align="end">
+          <MenuItem onClick={() => {}}>Commit</MenuItem>
+          <MenuItem onClick={() => {}}>Push</MenuItem>
+        </MenuContent>
       </Menu>
     </SplitButton.Root>
   );

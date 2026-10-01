@@ -4,39 +4,22 @@ description: "Buttons and links with five looks, six sizes, and joined actions"
 ---
 
 ```ts title="Import"
-import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui";
-```
-
-The same names are exported from their own subpath. Pick one path per file.
-
-```ts title="Subpath"
 import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button";
 ```
 
-`Button` acts. `ButtonLink` navigates with a native `<a href>`. Use `ghost` for a quiet control,
-`outline` for a framed action, `solid` for a filled action, `plain` for a context value, and
-`text` for an action in running text. `tone` names its intent separately from its look.
+`Button` acts. `ButtonLink` navigates with a native `<a href>`.
 
 ## Usage
 
-- `md` is the default size. Painted heights range from 16px to 36px and grow by 12px under a
-  coarse pointer. Fine-pointer targets have an invisible 24px minimum.
-- `icon` leads a visible label. An icon-only control declares `iconOnly` and `aria-label` at
-  every size. A control with visible text omits `aria-label`.
+- An icon-only control needs `iconOnly` and `aria-label`. A control with visible text omits
+  `aria-label`.
 - The icon-only label doubles as the native `title`. Inside a
   [Tooltip](/cloud/components/tooltip), pass `title={undefined}` to keep one tooltip on screen.
-- Use `variant="solid" tone="primary"` for the committing action and
-  `variant="solid" tone="danger"` for a destructive action.
-- `loading` keeps the control mounted and focusable with `aria-busy`. It blocks activation
-  without native disabling. Reserve `disabled` for an impossible action and give its reason
-  with `disabledReason` or visible nearby text.
-- `xstyle` places the control. The look belongs to `variant`, `tone`, and `size`.
-- `type` defaults to `"button"`. Use `type="submit"` for a form submission.
-- Popup triggers can use a `Button` as their `render` element. Put the visible text inside the
-  button, such as `<Popover.Trigger render={<Button>Open</Button>} />`.
-- `ButtonGroup` joins its controls with rounded outer corners and inset dividers. Give its
-  parts the same size. `SplitButton.Root`, `.Main`, and `.MenuTrigger` describe an action
-  beside a menu of alternatives. The menu trigger requires an action-and-target label.
+- Reserve `disabled` for an impossible action. Give the reason with `disabledReason` or nearby text.
+- In a popup trigger's `render`, put the text inside the `Button`, as in
+  `<Popover.Trigger render={<Button>Open</Button>} />`.
+- Give every `ButtonGroup` part the same size. `SplitButton.MenuTrigger` needs a label that names
+  the action and its target.
 
 ## Examples
 
@@ -100,15 +83,16 @@ import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button
   <SplitButton.Main variant="solid" tone="primary">
     Commit and Push
   </SplitButton.Main>
-  <Menu
-    label="Commit actions"
-    align="end"
-    trigger={
-      <SplitButton.MenuTrigger variant="solid" tone="primary" aria-label="More commit actions" />
-    }
-  >
-    <MenuItem onSelect={commit}>Commit</MenuItem>
-    <MenuItem onSelect={push}>Push</MenuItem>
+  <Menu>
+    <MenuTrigger
+      render={
+        <SplitButton.MenuTrigger variant="solid" tone="primary" aria-label="More commit actions" />
+      }
+    />
+    <MenuContent align="end">
+      <MenuItem onClick={commit}>Commit</MenuItem>
+      <MenuItem onClick={push}>Push</MenuItem>
+    </MenuContent>
   </Menu>
 </SplitButton.Root>
 ```
@@ -117,31 +101,30 @@ import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button
 
 ### Button and ButtonLink
 
-Native attributes pass through. `ButtonLink` requires `href` and does not take `disabled`,
-`loading`, or `disabledReason`.
+Native attributes pass through.
 
-| Prop                 | Type                                                           | Default                                       | Description                                                |
-| -------------------- | -------------------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------- |
-| `variant`            | `"ghost" \| "outline" \| "solid" \| "plain" \| "text"`         | `"ghost"`                                     | Fill, frame, and ink.                                      |
-| `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"` | `"primary"` for `text`, otherwise `"neutral"` | Color intent.                                              |
-| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                | `"md"`                                        | 16, 20, 24, 28, 32, or 36px tall.                          |
-| `iconOnly`           | `boolean`                                                      | `false`                                       | Square control. Requires `aria-label`.                     |
-| `icon`               | `IconName`                                                     |                                               | Leading or standalone glyph.                               |
-| `children`           | `ReactNode`                                                    |                                               | Required for visible-text controls.                        |
-| `round`              | `boolean`                                                      | `false`                                       | Fully rounded corners.                                     |
-| `xstyle`             | `ButtonLayout`                                                 |                                               | Position, inset, margin, flex, grid, order, and width.     |
-| `className`, `style` | See [Theming](/cloud/foundations/theming)                      |                                               | Merged with the component's styling.                       |
-| `loading`            | `boolean`                                                      | `false`                                       | Button only. Busy, focusable, and blocked from activation. |
-| `disabledReason`     | `string`                                                       |                                               | Button only. Shows and associates a disabled reason.       |
-| `type`               | `"button" \| "submit" \| "reset"`                              | `"button"`                                    | Button only.                                               |
-| `href`               | `string`                                                       | Required for ButtonLink                       | Navigation destination.                                    |
+| Prop                 | Type                                                           | Default                                       | Description                                            |
+| -------------------- | -------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------ |
+| `variant`            | `"ghost" \| "outline" \| "solid" \| "plain" \| "text"`         | `"ghost"`                                     |                                                        |
+| `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"` | `"primary"` for `text`, otherwise `"neutral"` |                                                        |
+| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                | `"md"`                                        | 16, 20, 24, 28, 32, or 36px tall.                      |
+| `iconOnly`           | `boolean`                                                      | `false`                                       | Square control.                                        |
+| `icon`               | `IconName`                                                     |                                               | Leading or standalone glyph.                           |
+| `children`           | `ReactNode`                                                    |                                               | Required for visible-text controls.                    |
+| `round`              | `boolean`                                                      | `false`                                       | Fully rounded corners.                                 |
+| `xstyle`             | `ButtonLayout`                                                 |                                               | Position, inset, margin, flex, grid, order, and width. |
+| `className`, `style` | See [Theming](/cloud/foundations/theming)                      |                                               | Applied to the control.                                |
+| `loading`            | `boolean`                                                      | `false`                                       | Button only. Blocks activation but stays focusable.    |
+| `disabledReason`     | `string`                                                       |                                               | Button only. Shows and associates a disabled reason.   |
+| `type`               | `"button" \| "submit" \| "reset"`                              | `"button"`                                    | Button only.                                           |
+| `href`               | `string`                                                       | Required for ButtonLink                       |                                                        |
 
 ### ButtonGroup and SplitButton
 
-`ButtonGroup` and `SplitButton.Root` render a `<div role="group">` and accept native `<div>`
-attributes plus `xstyle`, `className`, and `style`. `SplitButton.Main` takes `ButtonProps`.
-`SplitButton.MenuTrigger` takes button props except `children` and `iconOnly`. It requires
-`aria-label`, defaults its glyph to `chevron-down`, and sets `aria-haspopup="menu"`.
+`ButtonGroup` and `SplitButton.Root` render a `<div role="group">` with native `<div>` attributes
+plus `xstyle`, `className`, and `style`. `SplitButton.Main` is a `Button`.
+`SplitButton.MenuTrigger` is an icon-only `Button` that requires `aria-label`, takes no `children`,
+and defaults `icon` to `chevron-down`.
 
 The exported types include `ButtonProps`, `ButtonLinkProps`, `ButtonGroupProps`, `ButtonVariant`,
 `ButtonTone`, `ButtonSize`, `ButtonLayout`, and `SplitButtonMenuTriggerProps`.
@@ -149,7 +132,6 @@ The exported types include `ButtonProps`, `ButtonLinkProps`, `ButtonGroupProps`,
 ## Accessibility
 
 - Enter and Space activate `Button`. Enter follows `ButtonLink`.
-- `loading` preserves focus and the control's accessible name.
-- `disabledReason` keeps a disabled button keyboard-reachable and associates the visible reason.
-- The focus ring appears on keyboard focus. `2xs` draws it inset.
+- `loading` sets `aria-busy` and keeps focus and the accessible name.
+- `disabledReason` keeps a disabled button focusable and links the reason with `aria-describedby`.
 - Name a group with `aria-label` when its parts do not name it. Every part keeps its own tab stop.

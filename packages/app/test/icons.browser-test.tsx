@@ -2,7 +2,10 @@ import { create, props } from "@stylexjs/stylex";
 import { role } from "@nyte-ai/ui/vars.stylex";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
-import { Button, Icon, PanelToggleIcon, Toggle, Toolbar } from "@nyte-ai/ui";
+import { Button } from "@nyte-ai/ui/button";
+import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
+import { Toggle } from "@nyte-ai/ui/toggle";
+import { Toolbar } from "@nyte-ai/ui/toolbar";
 import { iconReferences } from "../../ui/test/icon-references.ts";
 import { applyDisplayMode } from "../src/theme/appearance.ts";
 import "../src/theme/tokens.stylex.ts";
@@ -11,7 +14,6 @@ const styles = create({
   host: { color: role.contentSecondary },
   secondary: { color: role.contentSecondary },
   primary: { color: role.contentPrimary },
-  disabled: { color: role.contentDisabled },
   solid: { color: role.contentOnInteractiveStrong },
   text: { color: role.contentInteractivePrimary },
 });
@@ -185,6 +187,7 @@ export async function run(): Promise<string> {
         );
       }
       const colors = new Map<string, string>();
+      const opacities = new Map<string, string>();
       for (const sample of host.querySelectorAll("[data-control]")) {
         const control = sample.querySelector("button");
         if (!control) throw new Error("Missing control");
@@ -195,15 +198,15 @@ export async function run(): Promise<string> {
         );
         const name = sample.getAttribute("data-control") ?? "";
         colors.set(name, actual.color);
+        opacities.set(name, getComputedStyle(control).opacity);
         if (name.startsWith("button:")) {
           const variant = name.split(":")[1];
           const disabled = name.endsWith(":true");
           const forced = document.documentElement.dataset.iconForced !== undefined;
-          const expectedStyle = disabled
-            ? styles.disabled
-            : variant === "solid"
+          const expectedStyle =
+            variant === "solid"
               ? styles.solid
-              : forced
+              : forced && !disabled
                 ? styles.primary
                 : variant === "text"
                   ? styles.text
@@ -214,6 +217,10 @@ export async function run(): Promise<string> {
           const expected = getComputedStyle(probe).color;
           probe.remove();
           check(actual.color === expected, `${mode} ${name} must use its control-state role`);
+          check(
+            (getComputedStyle(control).opacity === "0.5") === disabled,
+            `${mode} ${name} must dim only when disabled`,
+          );
         }
 
         if (name.startsWith("button:") || name === "toolbar" || name === "local") {
@@ -221,8 +228,10 @@ export async function run(): Promise<string> {
             `[data-icon-pair="arrow-left:${name === "toolbar" || name === "local" ? "outlined" : "filled"}"] [data-reference]`,
           );
           if (!reference) throw new Error("Missing button reference");
+          // A disabled control dims as a whole; only the glyph's own opacity must not leak.
+          const dimming = Number(getComputedStyle(control).opacity);
           check(
-            Math.abs(actual.ink / (await raster(reference)).ink - 1) < 0.05,
+            Math.abs(actual.ink / ((await raster(reference)).ink * dimming) - 1) < 0.05,
             `${mode} local opacity changed control ink`,
           );
         }
@@ -231,10 +240,7 @@ export async function run(): Promise<string> {
         colors.get("false:false") !== colors.get("false:true"),
         "Selection must change the control color",
       );
-      check(
-        colors.get("false:false") !== colors.get("true:false"),
-        "Disabled must change the control color",
-      );
+      check(opacities.get("true:false") === "0.5", "Disabled must dim the control");
       check(
         colors.get("true:false") === colors.get("true:true"),
         "Disabled must win over selection",

@@ -2,25 +2,23 @@ import { create, props, type StyleXStyles } from "@stylexjs/stylex";
 import {
   createContext,
   use,
-  useId,
   type CSSProperties,
   type JSX,
   type ReactElement,
   type ReactNode,
 } from "react";
 
-import { focus } from "../../a11y.stylex.ts";
-import { button, shape } from "../../schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { intent } from "../../surface-theme.ts";
-import { appearance, motion, role, shadow, type } from "../../vars.stylex.ts";
+import { focus } from "./a11y.stylex.ts";
+import { button, shape, target } from "./schema.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { intent } from "./surface-theme.ts";
+import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
 import { ControlGlyphs, Icon, type IconName } from "./icon.tsx";
 import { Spinner } from "./spinner.tsx";
 
 const control = create({
   base: {
-    "--_btn-target": { default: "24px", "@media (pointer: coarse)": button.heightLg },
-    "--_btn-hit-inset": "calc(max(0px, var(--_btn-target) - var(--_btn-height)) / 2)",
+    "--_btn-hit-inset": `calc(max(0px, ${target.min} - var(--_btn-height)) / 2)`,
     position: "relative",
     display: "inline-flex",
     alignItems: "center",
@@ -28,7 +26,7 @@ const control = create({
     boxSizing: "border-box",
     flexShrink: 0,
     height: "var(--_btn-height)",
-    minWidth: "var(--_btn-target)",
+    minWidth: target.min,
     marginBlock: "var(--_btn-hit-inset)",
     paddingBlock: 0,
     borderRadius: "var(--_btn-radius)",
@@ -55,9 +53,6 @@ const control = create({
       "[data-pressed]:not([data-disabled])": role.contentPrimary,
       '[aria-pressed="true"]:not([aria-disabled="true"]):not(:disabled)': role.contentPrimary,
       '[aria-expanded="true"]:not([aria-disabled="true"]):not(:disabled)': role.contentPrimary,
-      ":disabled": role.contentDisabled,
-      "[data-disabled]": role.contentDisabled,
-      '[aria-disabled="true"]:not([aria-busy="true"])': role.contentDisabled,
     },
     touchAction: "manipulation",
     transitionProperty: "background-color, color, opacity",
@@ -80,7 +75,7 @@ const control = create({
   round: { borderRadius: shape.pill },
   joined: {
     "--_btn-hit-inset": "0px",
-    height: "max(var(--_btn-height), var(--_btn-target))",
+    height: `max(var(--_btn-height), ${target.min})`,
     borderStartStartRadius: { default: 0, ":first-of-type": "var(--_btn-radius)" },
     borderEndStartRadius: { default: 0, ":first-of-type": "var(--_btn-radius)" },
     borderStartEndRadius: { default: 0, ":last-of-type": "var(--_btn-radius)" },
@@ -95,11 +90,25 @@ const control = create({
       pointerEvents: "none",
     },
   },
-  joinedIcon: { width: "max(var(--_btn-height), var(--_btn-target))" },
+  joinedIcon: { width: `max(var(--_btn-height), ${target.min})` },
+  /**
+   * Disabled is one state merged after the variant, so label, glyph, and fill
+   * dim together in every variant. A joined button leaves the dimming to its
+   * group, which fades as one surface.
+   */
+  inactive: { backgroundImage: "none", cursor: "default" },
+  dimmed: { opacity: 0.5 },
 });
 
 const group = create({
-  base: { display: "inline-flex", alignItems: "center", gap: 0, minWidth: 0, flexWrap: "wrap" },
+  base: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 0,
+    minWidth: 0,
+    flexWrap: "wrap",
+    opacity: { default: 1, ":has([data-disabled])": 0.5 },
+  },
 });
 const ButtonGroupContext = createContext(false);
 const buttonSizes = create({
@@ -175,19 +184,7 @@ const buttonVariants = create({
     boxShadow: `inset 0 0 0 1px ${role.borderPrimary}, ${shadow.shadowSm}`,
   },
   solid: {
-    color: {
-      default: role.contentOnInteractiveStrong,
-      ":hover:not([aria-disabled='true']):not(:disabled)": role.contentOnInteractiveStrong,
-      ":active:not([aria-disabled='true']):not(:disabled)": role.contentOnInteractiveStrong,
-      "[data-pressed]:not([data-disabled])": role.contentOnInteractiveStrong,
-      '[aria-pressed="true"]:not([aria-disabled="true"]):not(:disabled)':
-        role.contentOnInteractiveStrong,
-      '[aria-expanded="true"]:not([aria-disabled="true"]):not(:disabled)':
-        role.contentOnInteractiveStrong,
-      ":disabled": role.contentDisabled,
-      "[data-disabled]": role.contentDisabled,
-      '[aria-disabled="true"]:not([aria-busy="true"])': role.contentDisabled,
-    },
+    color: role.contentOnInteractiveStrong,
     backgroundColor: {
       default: role.buttonFill,
       ":hover:not([aria-disabled='true']):not(:disabled)": role.buttonFillHover,
@@ -232,8 +229,6 @@ const contentStyles = create({
     justifyContent: "center",
     pointerEvents: "none",
   },
-  reason: { fontWeight: 400, fontSize: type.fontSm },
-  joinedReason: { order: 1, flexBasis: "100%" },
   glyphPressed: { backgroundColor: "transparent" },
 });
 
@@ -322,11 +317,16 @@ export function buttonStyle(
     iconOnly = false,
     round = false,
     joined = false,
+    disabled = false,
     tone = variant === "text" ? "primary" : "neutral",
     xstyle,
     className,
     style,
-  }: ButtonAppearance & { readonly iconOnly?: boolean; readonly joined?: boolean },
+  }: ButtonAppearance & {
+    readonly iconOnly?: boolean;
+    readonly joined?: boolean;
+    readonly disabled?: boolean;
+  },
   glyphPressed = false,
 ) {
   return mergeStyleProps(
@@ -343,6 +343,8 @@ export function buttonStyle(
       size === "2xs" ? focus.ringInset : focus.ring,
       xstyle,
       glyphPressed && contentStyles.glyphPressed,
+      disabled && control.inactive,
+      disabled && !joined && control.dimmed,
     ),
     className,
     style,
@@ -400,53 +402,49 @@ export function Button({
   ...rest
 }: ButtonProps): ReactElement {
   const joined = use(ButtonGroupContext);
-  const reasonId = useId();
   const showReason = disabled && disabledReason !== undefined;
   const unavailable = loading || disabled;
 
   return (
-    <>
-      <button
-        title={tooltipTitle(iconOnly, rest["aria-label"])}
-        {...rest}
-        type={type}
-        disabled={disabled && !showReason && !loading}
-        aria-disabled={unavailable || undefined}
-        aria-busy={loading || undefined}
-        aria-describedby={
-          showReason
-            ? [rest["aria-describedby"], reasonId].filter(Boolean).join(" ")
-            : rest["aria-describedby"]
+    <button
+      title={showReason ? disabledReason : tooltipTitle(iconOnly, rest["aria-label"])}
+      {...rest}
+      type={type}
+      disabled={disabled && !showReason && !loading}
+      aria-disabled={unavailable || undefined}
+      aria-busy={loading || undefined}
+      data-disabled={disabled ? "" : undefined}
+      onClick={(event) => {
+        if (unavailable) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
         }
-        data-disabled={disabled ? "" : undefined}
-        onClick={(event) => {
-          if (unavailable) {
-            event.preventDefault();
-            event.stopPropagation();
-            return;
-          }
-          onClick?.(event);
-        }}
-        onKeyDown={(event) => {
-          if (unavailable && (event.key === "Enter" || event.key === " ")) {
-            event.preventDefault();
-            event.stopPropagation();
-            return;
-          }
-          onKeyDown?.(event);
-        }}
-        {...buttonStyle(variant, size, { iconOnly, round, joined, tone, xstyle, className, style })}
-      >
-        <ButtonContent icon={icon} size={size} iconOnly={iconOnly} loading={loading}>
-          {children}
-        </ButtonContent>
-      </button>
-      {showReason && (
-        <span id={reasonId} {...props(contentStyles.reason, joined && contentStyles.joinedReason)}>
-          {disabledReason}
-        </span>
-      )}
-    </>
+        onClick?.(event);
+      }}
+      onKeyDown={(event) => {
+        if (unavailable && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        onKeyDown?.(event);
+      }}
+      {...buttonStyle(variant, size, {
+        iconOnly,
+        round,
+        joined,
+        disabled,
+        tone,
+        xstyle,
+        className,
+        style,
+      })}
+    >
+      <ButtonContent icon={icon} size={size} iconOnly={iconOnly} loading={loading}>
+        {children}
+      </ButtonContent>
+    </button>
   );
 }
 
@@ -500,14 +498,16 @@ export function ButtonGroup({
 
 export type SplitButtonMenuTriggerProps = Omit<
   ButtonProps,
-  "iconOnly" | "children" | "aria-label" | "aria-haspopup"
-> & { readonly "aria-label": string };
+  "iconOnly" | "children" | "aria-label"
+> & {
+  readonly "aria-label": string;
+};
 
 function SplitButtonMenuTrigger({
   icon = "chevron-down",
   ...rest
 }: SplitButtonMenuTriggerProps): ReactElement {
-  return <Button {...rest} icon={icon} iconOnly aria-haspopup="menu" />;
+  return <Button {...rest} icon={icon} iconOnly />;
 }
 
 export const SplitButton = { Root: ButtonGroup, Main: Button, MenuTrigger: SplitButtonMenuTrigger };

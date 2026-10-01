@@ -52,7 +52,7 @@ export function Toggle({
       {...buttonStyle(
         "ghost",
         size,
-        { iconOnly, round, tone, xstyle, className, style },
+        { iconOnly, round, disabled, tone, xstyle, className, style },
         indicator === "glyph",
       )}
     >

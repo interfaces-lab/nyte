@@ -4,27 +4,14 @@ description: "A button that holds a pressed state"
 ---
 
 ```ts title="Import"
-import { Toggle } from "@nyte-ai/ui";
-```
-
-The same `Toggle` is exported from its own subpath. Pick one path per file.
-
-```ts title="Subpath"
 import { Toggle } from "@nyte-ai/ui/toggle";
 ```
 
-A [Button](/cloud/components/button) in the `primary` variant that stays pressed. Reach for it when
-one control switches one thing on and off in place, without a form value.
+Use it to switch one thing on and off without a form value.
 
 ## Usage
 
-- `pressed` with `onPressedChange` controls the state. `defaultPressed` leaves it uncontrolled.
-- The pressed state takes the selected fill. `indicator="glyph"` drops the fill, for a glyph that
-  already draws its own state, such as a panel icon.
-- Give it `value` when it sits inside a [Toggle group](/cloud/components/toggle-group). The group
-  reads that string.
-- Sizes, `icon`, `round`, `xstyle`, and the `aria-label` rule for icon sizes work as on
-  [Button](/cloud/components/button).
+- `iconOnly` requires `aria-label`, which also becomes the native `title`.
 
 ## Examples
 
@@ -43,27 +30,24 @@ const [pinned, setPinned] = useState(true);
 
 ## Props
 
-Every native `<button>` attribute passes through, except `onClick`, `aria-pressed`, and
-`defaultValue`. `className` and `style` merge with the component's own.
+Takes every native `<button>` attribute except `onClick`, `aria-pressed`, and `defaultValue`.
 
-| Prop              | Type                                            | Default  | Description                                         |
-| ----------------- | ----------------------------------------------- | -------- | --------------------------------------------------- |
-| `pressed`         | `boolean`                                       |          | Controlled pressed state.                           |
-| `defaultPressed`  | `boolean`                                       | `false`  | Uncontrolled initial state.                         |
-| `onPressedChange` | `(pressed: boolean, eventDetails) => void`      |          | Called when the state changes.                      |
-| `value`           | `string`                                        |          | Identifies the toggle inside a toggle group.        |
-| `indicator`       | `"fill" \| "glyph"`                             | `"fill"` | Whether the pressed state paints the selected fill. |
-| `size`            | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"` | `"md"`   | See [Button](/cloud/components/button).             |
-| `iconOnly`        | `boolean`                                       | `false`  | See [Button](/cloud/components/button).             |
-| `icon`            | `IconName`                                      |          | See [Button](/cloud/components/button).             |
-| `round`           | `boolean`                                       | `false`  | Fully rounded corners.                              |
-| `xstyle`          | `ButtonLayout`                                  |          | Placement only.                                     |
-| `className`       | `string`                                        |          | See [Theming](/cloud/foundations/theming).          |
-| `style`           | `React.CSSProperties`                           |          | See [Theming](/cloud/foundations/theming).          |
+| Prop                 | Type                                            | Default  | Description                                  |
+| -------------------- | ----------------------------------------------- | -------- | -------------------------------------------- |
+| `pressed`            | `boolean`                                       |          |                                              |
+| `defaultPressed`     | `boolean`                                       | `false`  |                                              |
+| `onPressedChange`    | `(pressed: boolean, eventDetails) => void`      |          |                                              |
+| `value`              | `string`                                        |          | Identifies the toggle inside a toggle group. |
+| `indicator`          | `"fill" \| "glyph"`                             | `"fill"` | `"glyph"` drops the pressed fill.            |
+| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"` | `"md"`   | See [Button](/cloud/components/button).      |
+| `iconOnly`           | `boolean`                                       | `false`  |                                              |
+| `icon`               | `IconName`                                      |          |                                              |
+| `round`              | `boolean`                                       | `false`  | Pill corners.                                |
+| `xstyle`             | `ButtonLayout`                                  |          | Placement and width only.                    |
+| `className`, `style` | see [Theming](/cloud/foundations/theming)       |          |                                              |
 
 ## Accessibility
 
 - Renders a native `<button>` with `aria-pressed`. Enter and Space flip it.
 - The `aria-label` names the control, not the current state.
-- `disabled` sets the native attribute and stops interaction.
-- The focus ring appears on keyboard focus. See [Focus](/cloud/foundations/focus).
+- Keyboard focus shows the [focus ring](/cloud/foundations/focus).
