@@ -28,15 +28,15 @@ export const layer = defineConsts({
 });
 
 /**
- * Notion's radius scale at its audited face values, plus the one role name.
+ * Radius steps and the floating panel role.
  *
  * `floating` is what the material paints, and it is the name a child reads
  * when it has to stay concentric with the panel around it. Reading the role
  * rather than the step means the step can move without every child following
  * it by hand.
  *
- * DERIVED: `full`. Notion ships `--radius-full` but not its face value. A
- * large length rather than `50%` so a pill keeps its ends whatever its width.
+ * DERIVED: `full` uses a large length rather than `50%` so a pill keeps
+ * rounded ends at any width.
  */
 export const radius = defineConsts({
   floating: "12px",
@@ -64,30 +64,18 @@ export const radius = defineConsts({
 export const edge = defineConsts({
   hairline: "1px",
   /*
-   * DERIVED. Notion publishes no focus ring. Two hairlines, so the ring reads
-   * as a deliberate second edge rather than a thickened border, and it stays
-   * on the same ladder as the border it sits outside.
+   * DERIVED: two hairlines make the focus ring a separate edge.
    */
   focusRing: "2px",
 });
 
 /**
- * DERIVED mapping. Notion publishes the shadow ramp and the material's own
- * shadow, but no layer-to-shadow table.
+ * DERIVED: shadows follow layers. Base and scrim cast none, raised takes
+ * shadow-sm, popover and submenu take shadow-md, and dialog takes shadow-lg.
  *
- * base and scrim cast nothing. raised takes shadow-sm, fixed by the surface
- * contract. popover takes shadow-md, the material's audited light shadow.
- * dialog takes shadow-lg as the only thing that sits above the scrim, which
- * matches the material's audited dark shadow.
- *
- * submenu shares the popover shadow on purpose. It is the same material one
- * step up, the z-index is what separates it, and a heavier shadow would read
- * as a different kind of surface rather than a nearer one.
- *
- * Notion raises the material from shadow-md to shadow-lg in dark. We do not.
- * palette.css already deepens every shadow token in dark, so a second bump
- * would apply the change twice and leave a shadow that no longer names its
- * layer.
+ * Submenus share the popover shadow; their z-index separates them.
+ * Shadow tiers stay the same across appearances because palette.css already
+ * deepens each shadow in dark mode.
  *
  * `none` rather than an omitted property: a variant is applied after a frame,
  * so it has to overwrite whatever that frame set.

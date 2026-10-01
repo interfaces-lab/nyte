@@ -27,11 +27,8 @@ const frame = create({
   wash: { backgroundColor: color.surfaceWash },
 
   /**
-   * DERIVED: the stroke and the radius. Notion audits neither for an opaque
-   * card. stroke-primary rather than the material's stroke-secondary because
-   * secondary reads at 0.08 and needs the blur behind the material to be
-   * visible at all; over an opaque fill it disappears. The radius matches the
-   * material so a card and a menu are the same kind of panel.
+   * DERIVED: opaque cards use stroke-primary for a visible border without
+   * backdrop blur. Their radius matches floating panels.
    */
   raised: {
     backgroundColor: color.surfaceElevated,

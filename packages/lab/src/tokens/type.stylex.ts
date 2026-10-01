@@ -1,13 +1,9 @@
 /**
  * Type steps and motion.
  *
- * A step is a size and a leading together, the way Notion pairs them, so
- * these are styles rather than loose tokens: a call site cannot take the size
- * and leave the leading behind, or scale one without the other.
- *
- * Weights come from NOTION-TOKENS.md (450 / 550 / 650 / 700) and are read
- * through the shared colour file, which is where those custom properties are
- * already declared. Sizes and leadings are not in the audit and are DERIVED.
+ * Each step pairs font size with line height so call sites cannot scale one
+ * without the other. Weights use the shared colour custom properties.
+ * Sizes and line heights are DERIVED.
  *
  * Leadings are all multiples of four so a stack of text stays on the same
  * grid as the rows in space.stylex.ts. Sizes are not grid quantities and are

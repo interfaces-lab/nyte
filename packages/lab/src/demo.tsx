@@ -68,7 +68,7 @@ document.addEventListener("keydown", (event) => {
 
   if (event.code === "Digit1" || event.code === "Digit2") {
     event.preventDefault();
-    document.documentElement.dataset.labTokens = event.code === "Digit1" ? "nyte" : "calendar";
+    document.documentElement.dataset.labTokens = event.code === "Digit1" ? "nyte" : "lab";
   }
 });
 

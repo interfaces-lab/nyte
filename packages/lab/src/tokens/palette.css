@@ -1,9 +1,5 @@
 /*
- * Notion Calendar's palette, lifted value for value from cron-D7Buzshw.js.
- * Audited: 198 of 198 ramp values exact across both modes.
- *
- * Shared. Nobody edits this file. Everything else in the package reads it
- * through src/tokens/color.stylex.ts.
+ * Shared light and dark palette, read through src/tokens/color.stylex.ts.
  *
  * The ramps are warm-neutral: ink is rgba(50,48,44) and strokes mix from
  * rgba(84,72,49). They are also deliberately mixed between alpha and solid,
@@ -140,7 +136,7 @@
 
   --state-hover: rgba(0, 0, 0, 0.04);
   --state-pressed: rgba(0, 0, 0, 0.08);
-  /* DERIVED: Notion ships no selected state. Ordered under pressed. */
+  /* DERIVED: selected is stronger than hover and weaker than pressed. */
   --state-selected: rgba(0, 0, 0, 0.06);
 
   --shadow-2xs: 0 0 0 1px rgba(84, 72, 49, 0.15);
@@ -148,7 +144,7 @@
   --shadow-sm: 0px 4px 12px -2px rgba(0, 0, 0, 0.08);
   --shadow-md: 0px 14px 28px -6px rgba(0, 0, 0, 0.1), 0px 2px 4px -1px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0px 24px 48px -8px rgba(0, 0, 0, 0.24), 0px 4px 12px -1px rgba(0, 0, 0, 0.12);
-  /* DERIVED: Notion ships no scrim token. */
+  /* DERIVED: translucent backdrop for modal dialogs. */
   --scrim: rgba(29, 27, 22, 0.28);
 
   --ease-default: cubic-bezier(0.45, 0, 0.55, 1);
