@@ -519,7 +519,7 @@ function WorkbenchViewHost({
     fileTab !== undefined;
 
   const renderSlot = (tab: WorkbenchTab, visible: boolean, id: string): ReactElement => {
-    const sidebarVisible = sidebars.get(tab.id) ?? tab.kind === "changes";
+    const sidebarVisible = sidebars.get(tab.id) ?? false;
 
     return (
       <div

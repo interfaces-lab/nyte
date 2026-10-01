@@ -11,7 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import type { ReactElement } from "react";
-import { Menu, MenuItem } from "@nyte-ai/ui/menu";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { OverlayRefProvider } from "@nyte-ai/ui/overlay";
 import { overlayRef } from "../components/overlay-occlusion.ts";
 import { BrowserPanel } from "./browser-panel.tsx";
@@ -77,17 +77,17 @@ function Harness({ menuOpen }: { menuOpen: boolean }): ReactElement {
         onUrlChange={() => undefined}
         workspacePath={null}
       />
-      <Menu
-        label="Overlay"
-        open={menuOpen}
-        onOpenChange={() => undefined}
-        trigger={
-          <button type="button" style={{ position: "fixed", top: "50%", left: "50%" }}>
-            Open
-          </button>
-        }
-      >
-        <MenuItem onSelect={() => undefined}>Files</MenuItem>
+      <Menu open={menuOpen} onOpenChange={() => undefined}>
+        <MenuTrigger
+          render={
+            <button type="button" style={{ position: "fixed", top: "50%", left: "50%" }}>
+              Open
+            </button>
+          }
+        />
+        <MenuContent>
+          <MenuItem>Files</MenuItem>
+        </MenuContent>
       </Menu>
     </>
   );

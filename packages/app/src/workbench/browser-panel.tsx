@@ -1,4 +1,4 @@
-import { input, shape } from "@nyte-ai/ui/schema.stylex";
+import { button, input, row, shape } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- the native surface follows its surface, workspace, and url
@@ -44,7 +44,7 @@ const styles = create({
     alignItems: "center",
     gap: 8,
     flexShrink: 0,
-    minHeight: { default: 32, "@media (pointer: coarse)": 44 },
+    minHeight: button.heightMd,
     paddingInline: 6,
     overflowX: "auto",
     borderBottomWidth: 1,
@@ -128,7 +128,7 @@ const styles = create({
     lineHeight: type.leadingSm,
   },
   historyEntry: {
-    minHeight: { default: 32, "@media (pointer: coarse)": 44 },
+    minHeight: row.heightLg,
     paddingBlock: 6,
     color: { default: role.contentSecondary, "[data-selected]": role.contentPrimary },
     fontSize: type.fontSm,
@@ -480,7 +480,6 @@ export function BrowserPanel({
           icon="arrow-left"
           aria-label="Go back"
           disabled={state?.canGoBack !== true}
-          disabledReason="No previous page"
           onClick={() => navigate("back")}
         />
         <Button
@@ -488,7 +487,6 @@ export function BrowserPanel({
           icon="arrow-right"
           aria-label="Go forward"
           disabled={state?.canGoForward !== true}
-          disabledReason="No next page"
           onClick={() => navigate("forward")}
         />
         <Button
@@ -496,7 +494,6 @@ export function BrowserPanel({
           icon={loading ? "x" : "refresh"}
           aria-label={loading ? "Stop loading page" : "Reload page"}
           disabled={!hasPage}
-          disabledReason="Open a page first"
           onClick={() => navigate(loading ? "stop" : "reload")}
         />
         <form {...props(styles.addressForm)} onSubmit={submit}>
@@ -558,13 +555,7 @@ export function BrowserPanel({
             }}
           />
         ) : (
-          <Button
-            iconOnly
-            icon="globe"
-            aria-label="Open in system browser"
-            disabled
-            disabledReason="Open a page first"
-          />
+          <Button iconOnly icon="globe" aria-label="Open in system browser" disabled />
         )}
         <Button
           iconOnly
@@ -600,7 +591,6 @@ export function BrowserPanel({
           <Button
             variant="outline"
             disabled={!hasPage}
-            disabledReason="Open a page first"
             onClick={() => toggleBookmark({ url: currentUrl, title: state?.title || currentUrl })}
           >
             {bookmarks.items.some((item) => item.url === currentUrl)

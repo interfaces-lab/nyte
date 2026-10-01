@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { layer, row } from "@nyte-ai/ui/schema.stylex";
+import { layer, row, target } from "@nyte-ai/ui/schema.stylex";
 import { workbench } from "../theme/schema.stylex.ts";
 import { appearance, role, shadow, type } from "@nyte-ai/ui/vars.stylex";
 
@@ -24,9 +24,9 @@ export const workbenchStyles = create({
   toolbar: {
     display: "flex",
     alignItems: "center",
-    gap: { default: 2, "@media (pointer: coarse)": 8 },
+    gap: target.gap,
     minHeight: workbench.headerHeight,
-    paddingBlock: { default: 0, "@media (pointer: coarse)": 4 },
+    paddingBlock: workbench.headerPaddingBlock,
     flexShrink: 0,
     paddingInline: 6,
     borderBottomWidth: 1,
@@ -41,8 +41,8 @@ export const workbenchStyles = create({
   },
   railHost: { width: workbench.railWidth, minWidth: workbench.railWidth },
   railHostCompact: {
-    width: { default: 46, "@media (pointer: coarse)": 64 },
-    minWidth: { default: 46, "@media (pointer: coarse)": 64 },
+    width: `calc(${workbench.iconRailWidth} + 12px)`,
+    minWidth: `calc(${workbench.iconRailWidth} + 12px)`,
   },
   panelOverlay: {
     position: "absolute",
@@ -68,7 +68,7 @@ export const workbenchStyles = create({
   railSection: {
     display: "flex",
     flexDirection: "column",
-    gap: { default: 1, "@media (pointer: coarse)": 8 },
+    gap: target.gap,
     minWidth: 0,
   },
   railHeading: {
@@ -114,9 +114,9 @@ export const workbenchStyles = create({
   iconRail: {
     display: "flex",
     flexDirection: "column",
-    gap: { default: 1, "@media (pointer: coarse)": 8 },
+    gap: target.gap,
     boxSizing: "border-box",
-    width: { default: 34, "@media (pointer: coarse)": 52 },
+    width: workbench.iconRailWidth,
     marginBlockStart: 4,
     marginInline: 6,
     padding: 2,
@@ -141,8 +141,8 @@ export const workbenchStyles = create({
     position: "absolute",
     zIndex: 2,
     insetBlock: 0,
-    insetInlineStart: { default: -24, "@media (pointer: coarse)": -44 },
-    width: { default: 24, "@media (pointer: coarse)": 44 },
+    insetInlineStart: `calc(${target.min} * -1)`,
+    width: target.min,
     borderStyle: "none",
     outlineStyle: { default: "none", ":focus-visible": "solid" },
     outlineWidth: 1,
