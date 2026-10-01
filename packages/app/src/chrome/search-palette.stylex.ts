@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { glyph, shape } from "@nyte-ai/ui/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 
@@ -23,6 +23,7 @@ export const searchPaletteStyles = create({
   },
   input: { height: 40 },
   tabs: {
+    flexShrink: 0,
     paddingInline: 8,
     paddingBlock: 6,
     overflowX: "auto",
@@ -70,8 +71,8 @@ export const searchPaletteStyles = create({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 16,
-    height: 16,
+    width: glyph.md,
+    height: glyph.md,
     color: role.contentSecondary,
   },
   empty: {

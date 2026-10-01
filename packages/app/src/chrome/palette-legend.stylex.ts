@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { glyph, shape } from "@nyte-ai/ui/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 
@@ -38,8 +38,8 @@ export const paletteLegendStyles = create({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 20,
-    height: 20,
+    minWidth: glyph.lg,
+    height: glyph.lg,
     paddingInline: 4,
     borderRadius: shape.control,
     backgroundColor: role.bgMutedTranslucent,
@@ -51,13 +51,13 @@ export const paletteLegendStyles = create({
     lineHeight: type.leadingXs,
   },
   keycapIcon: {
-    width: 20,
+    width: glyph.lg,
     paddingInline: 0,
   },
   mark: {
     display: "inline-flex",
-    width: 18,
-    height: 18,
+    width: glyph.lg,
+    height: glyph.lg,
     marginInlineStart: "auto",
     color: role.contentSecondary,
   },

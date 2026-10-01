@@ -4,7 +4,7 @@ import { props } from "@stylexjs/stylex";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
-import { CommandMenu, MenuItem } from "@nyte-ai/ui/menu";
+import { CommandMenuContent, Menu, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Input } from "@nyte-ai/ui/input";
 import { formatTimeAgo, StatusDot } from "../components/ui.tsx";
@@ -107,6 +107,7 @@ export function SearchPalette({
   const popupRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsID = useId();
+  const triggerID = useId();
   const readSessions = useReadSessions();
   const optimisticSessions = useOptimisticSessionIds();
   const [query, setQuery] = useState("");
@@ -274,8 +275,8 @@ export function SearchPalette({
               />
             }
             meta={formatTimeAgo(session.lastActivityAt)}
-            textValue={sessionTitle(session)}
-            onSelect={() =>
+            label={sessionTitle(session)}
+            onClick={() =>
               run(() => {
                 sessionReadState.markRead(session);
                 onOpenSession(session.sessionId);
@@ -290,103 +291,68 @@ export function SearchPalette({
   };
 
   return (
-    <CommandMenu
-      label="Search"
-      trigger={trigger}
-      open={open}
-      onOpenChange={changeOpen}
-      popupRef={popupRef}
-    >
-      <Tabs.Root
-        variant="pill"
-        value={tab}
-        xstyle={styles.root}
-        onValueChange={(value) => {
-          if (isOption(value, TABS)) setTab(value);
-        }}
-      >
-        <search {...props(styles.searchRow)}>
-          <Icon name="search" size={15} />
-          <Input
-            ref={inputRef}
-            variant="bare"
-            size="xl"
-            aria-label="Search"
-            aria-controls={`${resultsID}-${tab}`}
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="Search chats and actions…"
-            value={query}
-            xstyle={styles.input}
-            onValueChange={setQuery}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                focusResult("first");
-              } else if (event.key === "ArrowUp") {
-                event.preventDefault();
-                focusResult("last");
-              } else if (
-                event.key === "Home" ||
-                event.key === "End" ||
-                (event.key.length === 1 && !event.metaKey && !event.ctrlKey)
-              ) {
-                // The menu's typeahead and list navigation would cancel text editing.
-                event.stopPropagation();
-              }
-            }}
-          />
-          <Kbd keys={clientActionKeys(clientActions.search, mac)} />
-        </search>
-        <Tabs.List aria-label="Search categories" xstyle={styles.tabs}>
-          {TABS.map((option) => (
-            <Tabs.Tab key={option} value={option}>
-              {tabLabel(option)}
-            </Tabs.Tab>
-          ))}
-        </Tabs.List>
-        <div role="status" {...props(srOnly)}>
-          {`${String(resultCount)} ${resultCount === 1 ? "result" : "results"}`}
-        </div>
-        <Tabs.Panel id={`${resultsID}-agents`} value="agents" xstyle={styles.results}>
-          {agentContent()}
-        </Tabs.Panel>
-        <Tabs.Panel id={`${resultsID}-all`} value="all" xstyle={styles.results}>
-          {agentContent(true)}
-          {visibleActions.length > 0 && (
-            <>
-              <div {...props(styles.groupLabel)}>Actions</div>
-              {visibleActions.map((action) => (
-                <MenuItem
-                  key={action.key}
-                  xstyle={styles.result}
-                  leading={
-                    <span {...props(styles.resultIcon)}>
-                      <Icon name={action.icon} size={16} />
-                    </span>
-                  }
-                  meta={action.meta}
-                  textValue={action.label}
-                  onSelect={() => run(action.run)}
-                >
-                  {action.label}
-                </MenuItem>
-              ))}
-            </>
-          )}
-        </Tabs.Panel>
-        {(["actions", "settings"] as const).map((panelTab) => (
-          <Tabs.Panel
-            key={panelTab}
-            id={`${resultsID}-${panelTab}`}
-            value={panelTab}
-            xstyle={styles.results}
-          >
-            {visibleActions.length === 0 ? (
-              <div {...props(styles.empty)}>No {panelTab} match this search.</div>
-            ) : (
+    <Menu open={open} triggerId={triggerID} onOpenChange={changeOpen}>
+      <MenuTrigger id={triggerID} render={trigger} />
+      <CommandMenuContent ref={popupRef}>
+        <Tabs.Root
+          variant="pill"
+          value={tab}
+          xstyle={styles.root}
+          onValueChange={(value) => {
+            if (isOption(value, TABS)) setTab(value);
+          }}
+        >
+          <search {...props(styles.searchRow)}>
+            <Icon name="search" size={15} />
+            <Input
+              ref={inputRef}
+              variant="bare"
+              size="xl"
+              aria-label="Search"
+              aria-controls={`${resultsID}-${tab}`}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="Search chats and actions…"
+              value={query}
+              xstyle={styles.input}
+              onValueChange={setQuery}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  focusResult("first");
+                } else if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  focusResult("last");
+                } else if (
+                  event.key === "Home" ||
+                  event.key === "End" ||
+                  (event.key.length === 1 && !event.metaKey && !event.ctrlKey)
+                ) {
+                  // The menu's typeahead and list navigation would cancel text editing.
+                  event.stopPropagation();
+                }
+              }}
+            />
+            <Kbd keys={clientActionKeys(clientActions.search, mac)} />
+          </search>
+          <Tabs.List aria-label="Search categories" xstyle={styles.tabs}>
+            {TABS.map((option) => (
+              <Tabs.Tab key={option} value={option}>
+                {tabLabel(option)}
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
+          <div role="status" {...props(srOnly)}>
+            {`${String(resultCount)} ${resultCount === 1 ? "result" : "results"}`}
+          </div>
+          <Tabs.Panel id={`${resultsID}-agents`} value="agents" xstyle={styles.results}>
+            {agentContent()}
+          </Tabs.Panel>
+          <Tabs.Panel id={`${resultsID}-all`} value="all" xstyle={styles.results}>
+            {agentContent(true)}
+            {visibleActions.length > 0 && (
               <>
-                <div {...props(styles.groupLabel)}>{tabLabel(panelTab)}</div>
+                <div {...props(styles.groupLabel)}>Actions</div>
                 {visibleActions.map((action) => (
                   <MenuItem
                     key={action.key}
@@ -397,8 +363,8 @@ export function SearchPalette({
                       </span>
                     }
                     meta={action.meta}
-                    textValue={action.label}
-                    onSelect={() => run(action.run)}
+                    label={action.label}
+                    onClick={() => run(action.run)}
                   >
                     {action.label}
                   </MenuItem>
@@ -406,9 +372,41 @@ export function SearchPalette({
               </>
             )}
           </Tabs.Panel>
-        ))}
-      </Tabs.Root>
-      <PaletteLegend />
-    </CommandMenu>
+          {(["actions", "settings"] as const).map((panelTab) => (
+            <Tabs.Panel
+              key={panelTab}
+              id={`${resultsID}-${panelTab}`}
+              value={panelTab}
+              xstyle={styles.results}
+            >
+              {visibleActions.length === 0 ? (
+                <div {...props(styles.empty)}>No {panelTab} match this search.</div>
+              ) : (
+                <>
+                  <div {...props(styles.groupLabel)}>{tabLabel(panelTab)}</div>
+                  {visibleActions.map((action) => (
+                    <MenuItem
+                      key={action.key}
+                      xstyle={styles.result}
+                      leading={
+                        <span {...props(styles.resultIcon)}>
+                          <Icon name={action.icon} size={16} />
+                        </span>
+                      }
+                      meta={action.meta}
+                      label={action.label}
+                      onClick={() => run(action.run)}
+                    >
+                      {action.label}
+                    </MenuItem>
+                  ))}
+                </>
+              )}
+            </Tabs.Panel>
+          ))}
+        </Tabs.Root>
+        <PaletteLegend />
+      </CommandMenuContent>
+    </Menu>
   );
 }
