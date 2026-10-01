@@ -152,17 +152,6 @@ test("titlebar controls and workbench stay aligned at every zoom and on every di
   await setZoom(1);
 }, 90_000);
 
-test("unavailable history stays keyboard reachable and explains its constraint", async () => {
-  await setZoom(1);
-  const back = page.locator("header").getByRole("button", { name: "Go back", exact: true });
-  await expect(back).toHaveAttribute("aria-disabled", "true");
-  await expect(back).toHaveAccessibleDescription("No earlier page");
-  await back.focus();
-  await expect(back).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(back).toHaveAttribute("aria-disabled", "true");
-});
-
 test("chrome stages restore their tabs on refresh and history navigation", async () => {
   const sidebar = page.getByRole("navigation", { name: "Sessions and workspaces" });
   await sidebar.getByRole("button", { name: "Customize", exact: true }).click();

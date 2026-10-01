@@ -10,7 +10,7 @@ import { useCallback, useEffect } from "react";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/protocol";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
-import { Menu, MenuItem } from "@nyte-ai/ui/menu";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Toggle } from "@nyte-ai/ui/toggle";
@@ -298,10 +298,8 @@ export function Titlebar(): ReactElement {
                     icon="arrow-left"
                     aria-label="Go back"
                     disabled={!canGoBack}
-                    disabledReason={!canGoBack ? "No earlier page" : undefined}
                     aria-keyshortcuts={clientActionAriaShortcut(clientActions.back, mac)}
                     onClick={() => {
-                      if (!canGoBack) return;
                       if (stage.kind !== "workspace" && !shellRouter.history.canGoBack()) {
                         shellActions.showWorkspace();
 
@@ -314,11 +312,7 @@ export function Titlebar(): ReactElement {
                   />
                 }
               />
-              <TooltipContent>
-                {canGoBack
-                  ? `Go Back ${clientActionShortcut(clientActions.back, mac)}`
-                  : "No earlier page"}
-              </TooltipContent>
+              <TooltipContent>{`Go Back ${clientActionShortcut(clientActions.back, mac)}`}</TooltipContent>
             </Tooltip>
           </span>
           <span {...props(titlebarStyles.historyControl)}>
@@ -330,21 +324,13 @@ export function Titlebar(): ReactElement {
                     icon="arrow-right"
                     aria-label="Go forward"
                     disabled={!canGoForward}
-                    disabledReason={!canGoForward ? "No later page" : undefined}
                     aria-keyshortcuts={clientActionAriaShortcut(clientActions.forward, mac)}
-                    onClick={() => {
-                      if (!canGoForward) return;
-                      shellRouter.history.forward();
-                    }}
+                    onClick={() => shellRouter.history.forward()}
                     title={undefined}
                   />
                 }
               />
-              <TooltipContent>
-                {canGoForward
-                  ? `Go Forward ${clientActionShortcut(clientActions.forward, mac)}`
-                  : "No later page"}
-              </TooltipContent>
+              <TooltipContent>{`Go Forward ${clientActionShortcut(clientActions.forward, mac)}`}</TooltipContent>
             </Tooltip>
           </span>
         </span>
@@ -367,29 +353,26 @@ export function Titlebar(): ReactElement {
       <span {...props(titlebarStyles.spacer)} />
       {workspaceVisible && layout.kind === "single" && !(workbenchOpen && view.maximized) && (
         <span {...props(titlebarStyles.actionTrack)}>
-          <Menu
-            label="Chat actions"
-            align="end"
-            trigger={<Button iconOnly icon="more" aria-label="Chat actions" />}
-          >
-            <MenuItem
-              icon="split-down"
-              meta={clientActionShortcut(clientActions.splitDown, mac)}
-              disabled={!canSplit}
-              disabledReason={!canSplit ? "Open a chat to split the pane" : undefined}
-              onSelect={() => panes.split("down")}
-            >
-              {clientActions.splitDown.label}
-            </MenuItem>
-            <MenuItem
-              icon="split-right"
-              meta={clientActionShortcut(clientActions.splitRight, mac)}
-              disabled={!canSplit}
-              disabledReason={!canSplit ? "Open a chat to split the pane" : undefined}
-              onSelect={() => panes.split("right")}
-            >
-              {clientActions.splitRight.label}
-            </MenuItem>
+          <Menu>
+            <MenuTrigger render={<Button iconOnly icon="more" aria-label="Chat actions" />} />
+            <MenuContent align="end">
+              <MenuItem
+                icon="split-down"
+                meta={clientActionShortcut(clientActions.splitDown, mac)}
+                disabled={!canSplit}
+                onClick={() => panes.split("down")}
+              >
+                {clientActions.splitDown.label}
+              </MenuItem>
+              <MenuItem
+                icon="split-right"
+                meta={clientActionShortcut(clientActions.splitRight, mac)}
+                disabled={!canSplit}
+                onClick={() => panes.split("right")}
+              >
+                {clientActions.splitRight.label}
+              </MenuItem>
+            </MenuContent>
           </Menu>
         </span>
       )}
@@ -419,12 +402,11 @@ export function Titlebar(): ReactElement {
                 <Tooltip>
                   <TooltipTrigger
                     render={
-                      <Toggle
+                      <Button
                         iconOnly
                         icon={view.maximized ? "minimize" : "expand"}
                         aria-label={view.maximized ? "Restore workbench width" : "Expand workbench"}
-                        pressed={view.maximized}
-                        onPressedChange={() =>
+                        onClick={() =>
                           workbenchController.actions.toggleMaximized({ view: viewKey })
                         }
                         title={undefined}
