@@ -1,8 +1,6 @@
 /**
  * One leaf owns Nyte's icon family. Feature components choose a semantic
  * name; they never sketch SVG paths or import individual glyphs.
- *
- * Based on https://github.com/interfaces-lab/honk/blob/main/packages/ui/src/icon.tsx
  */
 import { create, props } from "@stylexjs/stylex";
 import {
@@ -27,7 +25,7 @@ import {
   IconBuildingBlocks,
   IconCanvasGrid,
   IconChanges,
-  IconCheckmark1,
+  IconCheckmark1Medium,
   IconChevronDownMedium,
   IconChevronRightMedium,
   IconCircleX,
@@ -134,7 +132,7 @@ import FilledIconBug from "central-icons-filled/IconBug";
 import FilledIconBuildingBlocks from "central-icons-filled/IconBuildingBlocks";
 import FilledIconCanvasGrid from "central-icons-filled/IconCanvasGrid";
 import FilledIconChanges from "central-icons-filled/IconChanges";
-import FilledIconCheckmark1 from "central-icons-filled/IconCheckmark1";
+import FilledIconCheckmark1Medium from "central-icons-filled/IconCheckmark1Medium";
 import FilledIconChevronDownMedium from "central-icons-filled/IconChevronDownMedium";
 import FilledIconChevronRightMedium from "central-icons-filled/IconChevronRightMedium";
 import FilledIconCircleX from "central-icons-filled/IconCircleX";
@@ -226,7 +224,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { mergeStyleProps, type XStyle } from "../../style.ts";
+import { mergeStyleProps, type XStyle } from "./style.ts";
 
 type Glyph = ComponentType<CentralIconBaseProps>;
 
@@ -259,7 +257,7 @@ const GLYPHS = {
   bug: pair(IconBug, FilledIconBug),
   "canvas-grid": pair(IconCanvasGrid, FilledIconCanvasGrid),
   chart: pair(IconAnalytics, FilledIconAnalytics),
-  checkmark: pair(IconCheckmark1, FilledIconCheckmark1),
+  checkmark: pair(IconCheckmark1Medium, FilledIconCheckmark1Medium),
   "chevron-down": pair(IconChevronDownMedium, FilledIconChevronDownMedium),
   "chevron-right": pair(IconChevronRightMedium, FilledIconChevronRightMedium),
   "circle-x": pair(IconCircleX, FilledIconCircleX),

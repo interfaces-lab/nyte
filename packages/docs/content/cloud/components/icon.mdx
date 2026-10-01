@@ -4,27 +4,13 @@ description: "Named glyphs from Central Icons, outlined or filled"
 ---
 
 ```ts title="Import"
-import { Icon, PanelToggleIcon } from "@nyte-ai/ui";
-```
-
-The same names are exported from their own subpath. Pick one path per file.
-
-```ts title="Subpath"
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 ```
 
-A glyph chosen by a semantic name. Reach for it wherever a surface needs an icon, rather than
-importing a glyph from Central Icons.
-
 ## Usage
 
-- An icon is decorative and hidden from assistive tech unless it has a `label`. Label it only when
-  nothing beside it says the same thing.
-- It takes the text color of its parent.
-- Controls draw their glyphs at 12, 14, or 16. [Button](/cloud/components/button) picks the size
-  from its own `size` through the `icon` prop.
-- `PanelToggleIcon` draws a panel outline whose divider moves as a panel shows or hides. The
-  motion drops out under reduced motion.
+- `Icon` takes the text color of its parent.
+- `PanelToggleIcon` animates its divider as the panel shows or hides, except under reduced motion.
 
 ## Examples
 
@@ -63,9 +49,9 @@ const [visible, setVisible] = useState(true);
 
 | Prop        | Type                     | Default      | Description                                 |
 | ----------- | ------------------------ | ------------ | ------------------------------------------- |
-| `name`      | `IconName`               |              | One of the names under `IconName`.          |
+| `name`      | `IconName`               |              |                                             |
 | `size`      | `number`                 | `16`         | Width and height in pixels.                 |
-| `variant`   | `"outlined" \| "filled"` | `"outlined"` | Stroke or fill drawing of the same glyph.   |
+| `variant`   | `"outlined" \| "filled"` | `"outlined"` | Stroke or fill.                             |
 | `label`     | `string`                 |              | Announced as `role="img"`. Omit to hide it. |
 | `xstyle`    | `XStyle`                 |              | See [Theming](/cloud/foundations/theming).  |
 | `className` | `string`                 |              | See [Theming](/cloud/foundations/theming).  |
@@ -73,18 +59,17 @@ const [visible, setVisible] = useState(true);
 
 ### PanelToggleIcon
 
-| Prop      | Type                | Default | Description                      |
-| --------- | ------------------- | ------- | -------------------------------- |
-| `side`    | `"left" \| "right"` |         | The edge the panel sits against. |
-| `visible` | `boolean`           |         | Whether the panel is showing.    |
-| `size`    | `number`            | `15`    | Width and height in pixels.      |
+| Prop      | Type                | Default | Description                   |
+| --------- | ------------------- | ------- | ----------------------------- |
+| `side`    | `"left" \| "right"` |         | The panel's edge.             |
+| `visible` | `boolean`           |         | Whether the panel is showing. |
+| `size`    | `number`            | `16`    | Width and height in pixels.   |
 
 ### IconName
 
-`apps`, `archive`, `arrow-down`, `arrow-left`, `arrow-right`, `arrow-up`, `arrow-wall-left`, `bell`, `bolt`, `book`, `box-3d`, `bubble-question`, `bug`, `canvas-grid`, `chart`, `checkmark`, `chevron-down`, `chevron-right`, `circle-x`, `circles`, `clock`, `close`, `cloud`, `cloud-api`, `code-brackets`, `computer`, `console`, `copy`, `customize`, `devices`, `drag-handle`, `draft`, `expand`, `eye`, `file`, `file-text`, `filters`, `folder`, `folder-add`, `folder-open`, `git`, `git-branch`, `github`, `globe`, `grok`, `inbox-checked`, `inbox-empty`, `javascript`, `key`, `keyboard`, `layers`, `linear`, `list`, `loader`, `lock`, `mcp`, `merged`, `minimize`, `model-anthropic`, `model-generic`, `model-kimi`, `model-openai`, `model-zai`, `more`, `more-horizontal`, `new-chat`, `new-chat-folder`, `panel-left`, `panel-right`, `paperclip`, `pencil`, `phone`, `pin`, `plus`, `provider-opencode`, `pull-request`, `pull-request-closed`, `react`, `refresh`, `return`, `robot`, `search`, `server`, `settings`, `shield`, `slack`, `skills`, `sparkle`, `split-down`, `split-right`, `square`, `square-checklist`, `test-tube`, `trash`, `trending`, `typescript`, `unarchive`, `unpin`, `user`, `user-key`, `warning`, `website`, `window-app`, `x`.
+`apps`, `archive`, `arrow-down`, `arrow-left`, `arrow-right`, `arrow-up`, `arrow-wall-left`, `bell`, `bolt`, `book`, `box-3d`, `bubble-question`, `bug`, `canvas-grid`, `chart`, `checkmark`, `chevron-down`, `chevron-right`, `circle-x`, `circles`, `clock`, `close`, `cloud`, `cloud-api`, `code-brackets`, `computer`, `console`, `copy`, `customize`, `devices`, `drag-handle`, `draft`, `expand`, `eye`, `file`, `file-text`, `filters`, `folder`, `folder-add`, `folder-open`, `git`, `git-branch`, `github`, `globe`, `grok`, `inbox-checked`, `inbox-empty`, `javascript`, `key`, `keyboard`, `laptop`, `layers`, `linear`, `list`, `loader`, `lock`, `mcp`, `merged`, `minimize`, `model-anthropic`, `model-generic`, `model-kimi`, `model-openai`, `model-zai`, `more`, `more-horizontal`, `new-chat`, `new-chat-folder`, `panel-left`, `panel-right`, `paperclip`, `pencil`, `phone`, `pin`, `plus`, `provider-opencode`, `pull-request`, `pull-request-closed`, `react`, `refresh`, `return`, `robot`, `search`, `server`, `settings`, `shield`, `slack`, `skills`, `sparkle`, `split-down`, `split-right`, `square`, `square-checklist`, `test-tube`, `trash`, `trending`, `typescript`, `unarchive`, `unpin`, `user`, `user-key`, `warning`, `website`, `window-app`, `x`.
 
 ## Accessibility
 
-- Without `label`, the icon carries `aria-hidden`. An icon-only control needs its own
-  `aria-label`.
+- Without `label`, the icon is `aria-hidden`. An icon-only control needs its own `aria-label`.
 - `PanelToggleIcon` is always hidden. Name the control that holds it.

@@ -28,8 +28,8 @@ import IconCanvasGrid from "central-icons/IconCanvasGrid";
 import FilledIconCanvasGrid from "central-icons-filled/IconCanvasGrid";
 import IconAnalytics from "central-icons/IconAnalytics";
 import FilledIconAnalytics from "central-icons-filled/IconAnalytics";
-import IconCheckmark1 from "central-icons/IconCheckmark1";
-import FilledIconCheckmark1 from "central-icons-filled/IconCheckmark1";
+import IconCheckmark1Medium from "central-icons/IconCheckmark1Medium";
+import FilledIconCheckmark1Medium from "central-icons-filled/IconCheckmark1Medium";
 import IconChevronDownMedium from "central-icons/IconChevronDownMedium";
 import FilledIconChevronDownMedium from "central-icons-filled/IconChevronDownMedium";
 import IconChevronRightMedium from "central-icons/IconChevronRightMedium";
@@ -206,7 +206,7 @@ import IconWindowApp from "central-icons/IconWindowApp";
 import FilledIconWindowApp from "central-icons-filled/IconWindowApp";
 import IconCrossSmall from "central-icons/IconCrossSmall";
 import FilledIconCrossSmall from "central-icons-filled/IconCrossSmall";
-import type { IconName } from "../src/icon.ts";
+import type { IconName } from "../src/icon.tsx";
 import type { ComponentType } from "react";
 
 export const iconReferences = [
@@ -225,7 +225,7 @@ export const iconReferences = [
   { name: "bug", outlined: IconBug, filled: FilledIconBug },
   { name: "canvas-grid", outlined: IconCanvasGrid, filled: FilledIconCanvasGrid },
   { name: "chart", outlined: IconAnalytics, filled: FilledIconAnalytics },
-  { name: "checkmark", outlined: IconCheckmark1, filled: FilledIconCheckmark1 },
+  { name: "checkmark", outlined: IconCheckmark1Medium, filled: FilledIconCheckmark1Medium },
   { name: "chevron-down", outlined: IconChevronDownMedium, filled: FilledIconChevronDownMedium },
   { name: "chevron-right", outlined: IconChevronRightMedium, filled: FilledIconChevronRightMedium },
   { name: "circle-x", outlined: IconCircleX, filled: FilledIconCircleX },
