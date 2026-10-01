@@ -883,16 +883,16 @@ const long: Scenario = {
             );
             // Move the edited message behind the draft, then reopen: the menu's
             // cursor starts on the first row, which is now the one to remove.
-            await press(
-              terminal,
-              "chat.queue.down",
-              (screen) => {
-                const earlier = screen.lines.findIndex((line) => line.includes("saved composer draft"));
-                const later = screen.lines.findIndex((line) => line.includes("queued original revised"));
+            await press(terminal, "chat.queue.down", (screen) => {
+              const earlier = screen.lines.findIndex((line) =>
+                line.includes("saved composer draft"),
+              );
+              const later = screen.lines.findIndex((line) =>
+                line.includes("queued original revised"),
+              );
 
-                return earlier !== -1 && later > earlier;
-              },
-            );
+              return earlier !== -1 && later > earlier;
+            });
             await press(
               terminal,
               "picker.close",
