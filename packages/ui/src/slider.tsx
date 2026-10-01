@@ -1,11 +1,11 @@
-import { button, shape } from "../../schema.stylex.ts";
+import { shape, slider, target } from "./schema.stylex.ts";
 import { Slider as SliderPrimitive } from "@base-ui/react/slider";
 import { create, props } from "@stylexjs/stylex";
 import { createContext, use, type ReactElement } from "react";
 
-import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { intent } from "../../surface-theme.ts";
-import { appearance, role, shadow, type } from "../../vars.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { intent } from "./surface-theme.ts";
+import { appearance, role, shadow, type } from "./vars.stylex.ts";
 
 const styles = create({
   label: {
@@ -22,14 +22,10 @@ const styles = create({
   control: {
     display: "flex",
     alignItems: "center",
-    width: { default: "100%", '[data-orientation="vertical"]': "var(--_slider-hit-size)" },
-    "--_slider-hit-size": {
-      default: `max(24px, ${button.heightSm})`,
-      "@media (pointer: coarse)": `max(44px, ${button.heightSm})`,
-    },
-    height: { default: "var(--_slider-hit-size)", '[data-orientation="vertical"]': "100%" },
-    minWidth: "var(--_slider-hit-size)",
-    minHeight: "var(--_slider-hit-size)",
+    width: { default: "100%", '[data-orientation="vertical"]': target.min },
+    height: { default: target.min, '[data-orientation="vertical"]': "100%" },
+    minWidth: target.min,
+    minHeight: target.min,
     cursor: appearance.cursorInteractive,
     touchAction: "none",
     userSelect: "none",
@@ -50,8 +46,8 @@ const styles = create({
   },
   thumb: {
     boxSizing: "border-box",
-    width: "var(--_slider-hit-size)",
-    height: "var(--_slider-hit-size)",
+    width: target.min,
+    height: target.min,
     "::before": {
       content: '""',
       position: "absolute",
@@ -59,8 +55,8 @@ const styles = create({
       left: "50%",
       translate: "-50% -50%",
       boxSizing: "border-box",
-      width: 14,
-      height: 14,
+      width: slider.thumb,
+      height: slider.thumb,
       borderWidth: 1,
       borderStyle: "solid",
       borderColor: role.borderControl,

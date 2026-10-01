@@ -4,26 +4,35 @@ description: "A compact stepper with decrement and increment buttons"
 ---
 
 ```ts title="Import"
-import { NumberField } from "@nyte-ai/ui";
+import {
+  NumberField,
+  NumberFieldDecrement,
+  NumberFieldGroup,
+  NumberFieldIncrement,
+  NumberFieldInput,
+} from "@nyte-ai/ui/number-field";
 ```
 
-The same `NumberField` is exported from its own subpath. Pick one path per file.
-
-```ts title="Subpath"
-import { NumberField } from "@nyte-ai/ui/number-field";
-```
-
-A 24px stepper. A minus button, the value, and a plus button share one frame. Reach for it for a
-small bounded integer, such as a font size.
+For a small bounded value, such as a font size.
 
 ## Usage
 
-- `label` is required. It names the input, and the buttons become "Decrease …" and "Increase …"
-  with the label in lower case.
-- `value` with `onValueChange` controls the field. `defaultValue` leaves it uncontrolled.
-- `onValueChange` receives a number. Clearing the input does not call it.
-- `min`, `max`, and `step` bound the value. `step` defaults to 1.
-- `format` takes `Intl.NumberFormatOptions`, so a percent is a format option, not a suffix.
+- Both value callbacks receive `null` when the input is cleared.
+- Save in `onValueCommitted`. It fires when the user leaves the input, releases a button, or presses
+  an arrow key, not on every keystroke.
+- The buttons default to "−" and "+". Pass children to replace them.
+
+## Anatomy
+
+```tsx
+<NumberField>
+  <NumberFieldGroup>
+    <NumberFieldDecrement />
+    <NumberFieldInput />
+    <NumberFieldIncrement />
+  </NumberFieldGroup>
+</NumberField>
+```
 
 ## Examples
 
@@ -32,29 +41,59 @@ small bounded integer, such as a font size.
 </Preview>
 
 ```tsx
-const [size, setSize] = useState(13);
+<NumberField defaultValue={13} min={12} max={16}>
+  <NumberFieldGroup>
+    <NumberFieldDecrement />
+    <NumberFieldInput aria-label="UI font size" />
+    <NumberFieldIncrement />
+  </NumberFieldGroup>
+</NumberField>
+```
 
-<NumberField label="UI font size" value={size} min={12} max={16} onValueChange={setSize} />;
+```tsx
+<NumberField
+  defaultValue={settings.uiFontSize}
+  min={12}
+  max={16}
+  onValueCommitted={(uiFontSize) => {
+    if (uiFontSize !== null) save({ uiFontSize });
+  }}
+>
+  …
+</NumberField>
 ```
 
 ## Props
 
-Every Base UI `NumberField.Root` prop passes through, except `render` and `children`, and
-`onValueChange` is narrowed to numbers.
+Styled parts take `xstyle`, `className`, and `style`; see
+[Theming](/cloud/foundations/theming). Each sets `data-slot` to its kebab-case name, such as
+`number-field-input`. `NumberField` passes through Base UI.
 
-| Prop                           | Type                                      | Default | Description                          |
-| ------------------------------ | ----------------------------------------- | ------- | ------------------------------------ |
-| `label`                        | `string`                                  |         | Names the input and its two buttons. |
-| `onValueChange`                | `(value: number) => void`                 |         | Called with each committed number.   |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |         |                                      |
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
-The reference table below comes from Base UI, MIT, © Material-UI SAS.
+### NumberField
 
 <include>../../base-ui-reference/number-field/Root.md</include>
 
+### NumberFieldGroup
+
+<include>../../base-ui-reference/number-field/Group.md</include>
+
+### NumberFieldDecrement
+
+<include>../../base-ui-reference/number-field/Decrement.md</include>
+
+### NumberFieldInput
+
+<include>../../base-ui-reference/number-field/Input.md</include>
+
+### NumberFieldIncrement
+
+<include>../../base-ui-reference/number-field/Increment.md</include>
+
 ## Accessibility
 
-- Arrow Up and Arrow Down step the value. Home and End jump to `min` and `max`, when those bounds
-  are set.
-- Alt with an arrow key steps by `smallStep`, Shift by `largeStep`.
-- The frame shows the focus ring while the input inside it has keyboard focus.
+- Name `NumberFieldInput` with `aria-label` or a label.
+- Arrow Up and Arrow Down step the value. Home and End jump to `min` and `max` when set.
+- Alt with an arrow steps by `smallStep`, Shift by `largeStep`.
+- The group shows the focus outline while anything inside it has focus.

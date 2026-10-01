@@ -4,32 +4,14 @@ description: "A value picked by dragging a thumb along a track"
 ---
 
 ```ts title="Import"
-import { Slider } from "@nyte-ai/ui";
-```
-
-The same `Slider` is exported from its own subpath. Pick one path per file.
-
-```ts title="Subpath"
 import { Slider } from "@nyte-ai/ui/slider";
 ```
 
-A value picked by dragging along a 6px track. Every part carries its Nyte styling. The thumb is a
-14px inverse disc, and `Slider.Indicator` fills the track up to it in the accent color.
+A single-value or range slider.
 
 ## Usage
 
-- Name the control. Use `Slider.Label` when the label is visible, or `aria-label` on each
-  `Slider.Thumb` when it is not.
-- `value` with `onValueChange` controls the slider. `defaultValue` leaves it uncontrolled.
-- A range slider takes an array for `value` or `defaultValue` and one `Slider.Thumb` per entry. For
-  server rendering, give each thumb an explicit `index`.
-- `step` snaps the value. `largeStep` sets the jump for Page Up, Page Down, and Shift with an arrow
-  key.
-- Set `orientation="vertical"` on `Slider.Root` for a vertical slider.
-- Render tick marks yourself, positioning each along the track as a percentage of the value range.
-  Pair them with `step` so the thumb lands on each one.
-- `Slider.Root` has no size of its own. Give it a width through `xstyle` or the parent.
-- Recolor a thumb through its `xstyle`, for example to paint the value it picks.
+- For server rendering, give each range thumb an explicit `index`.
 
 ## Anatomy
 
@@ -69,12 +51,6 @@ A value picked by dragging along a 6px track. Every part carries its Nyte stylin
 </Slider.Root>
 ```
 
-Without a visible label, name the thumb instead.
-
-```tsx
-<Slider.Thumb aria-label="Volume" />
-```
-
 ### Controlled
 
 ```tsx
@@ -93,10 +69,6 @@ const [volume, setVolume] = useState(0.5);
 
 ### A range
 
-`thumbCollisionBehavior` decides what two thumbs do when a drag pushes one into the other. `"push"`
-is the default, `"swap"` trades their places when one is dragged past the other, and `"none"` stops
-them from passing.
-
 ```tsx
 <Slider.Root defaultValue={[25, 75]} thumbCollisionBehavior="swap">
   <Slider.Label>Price range</Slider.Label>
@@ -112,12 +84,8 @@ them from passing.
 
 ### Thumb alignment
 
-`thumbAlignment="edge"` insets the thumb so its edge lines up with the edge of the control at `min`
-and `max`, instead of overflowing the control the way the default `"center"` does.
-`"edge-client-only"` does the same but renders after hydration, which costs less bundle.
-
 ```tsx
-<Slider.Root thumbAlignment="edge" />
+<Slider.Root thumbAlignment="center" />
 ```
 
 ### In a form
@@ -136,12 +104,14 @@ and `max`, instead of overflowing the control the way the default `"center"` doe
 
 ## Props
 
-Every part takes its Base UI props, with `className` and `style` replaced by the styled versions,
-plus `xstyle`. See [Theming](/cloud/foundations/theming).
+Every part adds `xstyle`, and its `className` and `style` take plain values. See
+[Theming](/cloud/foundations/theming).
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Root
+
+Defaults `thumbAlignment` to `"edge"`, not `"center"`.
 
 <include>../../base-ui-reference/slider/Root.md</include>
 
@@ -174,10 +144,8 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 - Each thumb renders a nested `<input type="range">`. Arrow keys move by `step`, and Home and End
   jump to the ends of the range.
 - Page Up, Page Down, and Shift with an arrow key move by `largeStep`.
-- `Slider.Label` associates itself with the thumbs. A multi-thumb slider still needs `aria-label` on
-  each thumb to tell them apart.
-- `aria-valuetext` on a thumb replaces the announced number. `getAriaValueText` takes precedence
-  over it.
+- `Slider.Label` names every thumb. In a range, or without a visible label, give each thumb an
+  `aria-label`.
+- `aria-valuetext` on a thumb replaces the announced number. `getAriaValueText` overrides it.
 - `Slider.Value` renders an `<output>` element.
-- The root reflects `data-dragging` and `data-orientation`.
-- The thumb shows the focus ring on keyboard focus. See [Focus](/cloud/foundations/focus).
+- Keyboard focus on a thumb shows the [focus ring](/cloud/foundations/focus).

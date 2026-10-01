@@ -1,12 +1,21 @@
 "use client";
 
-import { NumberField } from "@nyte-ai/ui/number-field";
-import { useState } from "react";
+import {
+  NumberField,
+  NumberFieldDecrement,
+  NumberFieldGroup,
+  NumberFieldIncrement,
+  NumberFieldInput,
+} from "@nyte-ai/ui/number-field";
 
 export function NumberFieldDemo() {
-  const [size, setSize] = useState(13);
-
   return (
-    <NumberField label="UI font size" value={size} min={12} max={16} onValueChange={setSize} />
+    <NumberField defaultValue={13} min={12} max={16}>
+      <NumberFieldGroup>
+        <NumberFieldDecrement />
+        <NumberFieldInput aria-label="UI font size" />
+        <NumberFieldIncrement />
+      </NumberFieldGroup>
+    </NumberField>
   );
 }
