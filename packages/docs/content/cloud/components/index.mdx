@@ -1,51 +1,51 @@
 ---
 title: Overview
-description: "Every component @nyte-ai/ui exports, and the import path for each"
+description: "Every @nyte-ai/ui component and its import path"
 ---
-
-`@nyte-ai/ui` is one set of styled components, built on Base UI and StyleX with `--nyte-*` tokens.
-The package root exports every component. Each subpath named for a component exports the same
-component, so pick one path per file.
 
 ```ts
 import "@nyte-ai/ui/ui.css";
-import { Button } from "@nyte-ai/ui";
+import { Button } from "@nyte-ai/ui/button";
 import { Popover } from "@nyte-ai/ui/popover";
 ```
 
 ## Components
 
-| Component                                      | Subpath                    |
-| ---------------------------------------------- | -------------------------- |
-| [Alert dialog](/cloud/components/alert-dialog) | `@nyte-ai/ui/alert-dialog` |
-| [Autocomplete](/cloud/components/autocomplete) | `@nyte-ai/ui/autocomplete` |
-| [Avatar](/cloud/components/avatar)             | None                       |
-| [Button](/cloud/components/button)             | `@nyte-ai/ui/button`       |
-| [Checkbox](/cloud/components/checkbox)         | `@nyte-ai/ui/checkbox`     |
-| [Collapsible](/cloud/components/collapsible)   | `@nyte-ai/ui/collapsible`  |
-| [Context menu](/cloud/components/context-menu) | `@nyte-ai/ui/context-menu` |
-| [Dialog](/cloud/components/dialog)             | `@nyte-ai/ui/dialog`       |
-| [Icon](/cloud/components/icon)                 | `@nyte-ai/ui/icon`         |
-| [Input](/cloud/components/input)               | `@nyte-ai/ui/input`        |
-| [Kbd](/cloud/components/kbd)                   | `@nyte-ai/ui/kbd`          |
-| [Menu](/cloud/components/menu)                 | `@nyte-ai/ui/menu`         |
-| [Number field](/cloud/components/number-field) | `@nyte-ai/ui/number-field` |
-| [Popover](/cloud/components/popover)           | `@nyte-ai/ui/popover`      |
-| [Preview card](/cloud/components/preview-card) | `@nyte-ai/ui/preview-card` |
-| [Row](/cloud/components/row)                   | `@nyte-ai/ui/row`          |
-| [Select](/cloud/components/select)             | `@nyte-ai/ui/select`       |
-| [Slider](/cloud/components/slider)             | `@nyte-ai/ui/slider`       |
-| [Spinner](/cloud/components/spinner)           | `@nyte-ai/ui/spinner`      |
-| [Switch](/cloud/components/switch)             | `@nyte-ai/ui/switch`       |
-| [Tabs](/cloud/components/tabs)                 | `@nyte-ai/ui/tabs`         |
-| [Textarea](/cloud/components/textarea)         | `@nyte-ai/ui/textarea`     |
-| [Toast](/cloud/components/toast)               | `@nyte-ai/ui/toast`        |
-| [Toggle](/cloud/components/toggle)             | `@nyte-ai/ui/toggle`       |
-| [Toggle group](/cloud/components/toggle-group) | `@nyte-ai/ui/toggle-group` |
-| [Toolbar](/cloud/components/toolbar)           | `@nyte-ai/ui/toolbar`      |
-| [Tooltip](/cloud/components/tooltip)           | `@nyte-ai/ui/tooltip`      |
+| Component                                              | Subpath                        |
+| ------------------------------------------------------ | ------------------------------ |
+| [Alert dialog](/cloud/components/alert-dialog)         | `@nyte-ai/ui/alert-dialog`     |
+| [Autocomplete](/cloud/components/autocomplete)         | `@nyte-ai/ui/autocomplete`     |
+| [Attachment](/cloud/components/attachment)             | `@nyte-ai/ui/attachment`       |
+| [Avatar](/cloud/components/avatar)                     | `@nyte-ai/ui/avatar`           |
+| [Bubble](/cloud/components/bubble)                     | `@nyte-ai/ui/bubble`           |
+| [Button](/cloud/components/button)                     | `@nyte-ai/ui/button`           |
+| [Checkbox](/cloud/components/checkbox)                 | `@nyte-ai/ui/checkbox`         |
+| [Collapsible](/cloud/components/collapsible)           | `@nyte-ai/ui/collapsible`      |
+| [Context menu](/cloud/components/context-menu)         | `@nyte-ai/ui/context-menu`     |
+| [Dialog](/cloud/components/dialog)                     | `@nyte-ai/ui/dialog`           |
+| [Icon](/cloud/components/icon)                         | `@nyte-ai/ui/icon`             |
+| [Input](/cloud/components/input)                       | `@nyte-ai/ui/input`            |
+| [Kbd](/cloud/components/kbd)                           | `@nyte-ai/ui/kbd`              |
+| [Marker](/cloud/components/marker)                     | `@nyte-ai/ui/marker`           |
+| [Menu](/cloud/components/menu)                         | `@nyte-ai/ui/menu`             |
+| [Message](/cloud/components/message)                   | `@nyte-ai/ui/message`          |
+| [Message scroller](/cloud/components/message-scroller) | `@nyte-ai/ui/message-scroller` |
+| [Number field](/cloud/components/number-field)         | `@nyte-ai/ui/number-field`     |
+| [Popover](/cloud/components/popover)                   | `@nyte-ai/ui/popover`          |
+| [Preview card](/cloud/components/preview-card)         | `@nyte-ai/ui/preview-card`     |
+| [Questionnaire](/cloud/components/questionnaire)       | `@nyte-ai/ui/questionnaire`    |
+| [Row](/cloud/components/row)                           | `@nyte-ai/ui/row`              |
+| [Select](/cloud/components/select)                     | `@nyte-ai/ui/select`           |
+| [Slider](/cloud/components/slider)                     | `@nyte-ai/ui/slider`           |
+| [Spinner](/cloud/components/spinner)                   | `@nyte-ai/ui/spinner`          |
+| [Switch](/cloud/components/switch)                     | `@nyte-ai/ui/switch`           |
+| [Tabs](/cloud/components/tabs)                         | `@nyte-ai/ui/tabs`             |
+| [Textarea](/cloud/components/textarea)                 | `@nyte-ai/ui/textarea`         |
+| [Toast](/cloud/components/toast)                       | `@nyte-ai/ui/toast`            |
+| [Toggle](/cloud/components/toggle)                     | `@nyte-ai/ui/toggle`           |
+| [Toggle group](/cloud/components/toggle-group)         | `@nyte-ai/ui/toggle-group`     |
+| [Toolbar](/cloud/components/toolbar)                   | `@nyte-ai/ui/toolbar`          |
+| [Tooltip](/cloud/components/tooltip)                   | `@nyte-ai/ui/tooltip`          |
 
-Change a component's look through `xstyle`, `className`, or `style`, covered in
-[Theming](/cloud/foundations/theming). Import from `@nyte-ai/ui` rather than from
-`@base-ui/react`. When `render` produces something other than a `<button>`, pass
-`nativeButton={false}` so Base UI keeps button semantics.
+Import these subpaths instead of `@base-ui/react`. When `render` produces something other than a `<button>`, pass `nativeButton={false}` so
+Base UI keeps button semantics.

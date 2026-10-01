@@ -9,8 +9,8 @@ import { button, shape } from "@nyte-ai/ui/schema.stylex";
 import { surfaceTheme, intent } from "@nyte-ai/ui/surface-theme";
 ```
 
-Use a colour role inside a scope. Use component measurements for controls and shape names for
-rounded containers. Ramps, the theme mapping, and size values are private.
+Use colour roles inside scopes, component handles for controls, and shape names for rounded
+containers. Ramps, theme mappings, and size values are private.
 
 ## Usage
 
@@ -34,8 +34,9 @@ export function Status() {
 }
 ```
 
-The default scope is neutral gray. `surfaceTheme.gray` uses the tinted mapping over gray.
-`surfaceTheme.custom` follows the host's hue and intensity. Other scopes are `brown`, `orange`,
+The default scope is neutral gray. `surfaceTheme.gray` applies tinted roles over gray, and
+`surfaceTheme.custom` takes its hue from `--nyte-custom-hue` and `--nyte-custom-chroma-scale`. Other
+scopes are `brown`, `orange`,
 `yellow`, `green`, `blue`, `purple`, `pink`, `red`, and `teal`.
 
 | Colour use                    | Scope                                                  | Role                                                                     |
@@ -48,9 +49,8 @@ The default scope is neutral gray. `surfaceTheme.gray` uses the tinted mapping o
 | Removed diff line or word     | `surfaceTheme.red`                                     | The same background roles                                                |
 | Avatar                        | A hue per avatar                                       | `bgInteractiveSecondaryTranslucent` and `contentInteractivePrimary`      |
 
-Apply both parts of a scope through `props(surfaceTheme.blue, styles.item)`. Applying the hue
-alone leaves inherited roles resolved in the parent scope. Scope a list container when all its
-items share a hue.
+Apply a scope with `props(surfaceTheme.blue, styles.item)`. Scope the list when every item shares a
+hue.
 
 ## Layers
 
@@ -64,18 +64,16 @@ items share a hue.
 | Appearance | Display, pointer, transparency, and focus inputs | `appearance`                                                                                                           |
 
 `shape` has six names: `square`, `indicator`, `control`, `card`, `surface`, and `pill`.
-Component-specific radii remain on their component handles. Component sizes grow under
-`(pointer: coarse)`.
+Component radii stay on their component handles. Component sizes grow under `(pointer: coarse)`.
 
-Roles resolve through `light-dark()`. Set `color-scheme` on the host or an ancestor to choose the
-appearance. The focus ring is fixed blue and does not follow a hue scope.
+Roles resolve through `light-dark()`, so `color-scheme` on an ancestor picks the appearance. The
+focus ring ignores hue scopes.
 
 Readable text uses `contentPrimary` or `contentSecondary`. `contentTertiary` is for placeholders,
 disabled hints, and decoration. Glyphs use `contentInteractiveTertiary` or a stronger role.
 
-Consumer styles import handles instead of writing `var(--nyte-…)`. Ramps and size primitives are
-data, not custom properties. A measurement without a handle is a literal on the design scale.
-Control measurements belong to components; app layout decisions build on those measurements.
+Import handles instead of writing `var(--nyte-…)`. Use a design-scale literal when no handle
+exists.
 
 ## Native colours
 
@@ -86,12 +84,12 @@ const page = platformColors.light.bgBase;
 const status = platformScopes.light.green.contentSecondary;
 ```
 
-Native colours are resolved values for each appearance. Choose a scope and a role at the native
-palette boundary rather than defining a fixed status or syntax colour.
+Native colours contain resolved values for each appearance. Use a scope and role instead of a
+fixed status or syntax colour.
 
 ## Compiled styles
 
-Apps that do not compile StyleX load the package stylesheet.
+Without a StyleX compiler, load the package stylesheet.
 
 ```css
 @import "@nyte-ai/ui/ui.css";

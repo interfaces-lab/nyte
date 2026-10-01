@@ -1,65 +1,57 @@
 ---
 title: Theming and styling channels
-description: "Change what a primitive looks like with token overrides, className, and xstyle"
+description: "Token overrides, className, and xstyle"
 ---
 
-| Layer         | Owns                                             | Mechanism                                                          |
-| ------------- | ------------------------------------------------ | ------------------------------------------------------------------ |
-| Base UI       | Interaction, focus, ARIA, data attributes        | Headless components                                                |
-| `@nyte-ai/ui` | Reusable component styling                       | StyleX `stylex.create` reading [tokens](/cloud/foundations/tokens) |
-| The app       | Layout, typography, product identity, composites | Token overrides, `className`, `xstyle`, own components             |
+| Layer                       | Owns                                             | Mechanism                                                          |
+| --------------------------- | ------------------------------------------------ | ------------------------------------------------------------------ |
+| Base UI and `@shadcn/react` | Interaction, focus, ARIA, data attributes        | Components and scroll/form controllers                             |
+| `@nyte-ai/ui`               | Reusable component styling                       | StyleX `stylex.create` reading [tokens](/cloud/foundations/tokens) |
+| The app                     | Layout, typography, product identity, composites | Token overrides, `className`, `xstyle`, own components             |
 
 ## Colour scopes
 
-Colours follow ramps, a hue theme, and then neutral or tinted roles. Components read the roles,
-not ramp steps. A scope pairs the hue theme with the tinted roles, so apply both through
-`props()` on the element that paints. See [Tokens](/cloud/foundations/tokens).
+Pass a scope such as `surfaceTheme.blue` to `props()`, and components inside read that hue's colour
+roles. See [Tokens](/cloud/foundations/tokens).
 
 ```tsx
 import { create, props } from "@stylexjs/stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { role } from "@nyte-ai/ui/vars.stylex";
-
-const styles = create({
-  panel: {
-    backgroundColor: role.bgInteractiveSecondaryTranslucent,
-    color: role.contentSecondary,
-    colorScheme: "dark",
-  },
-});
-
-export function PreviewPanel() {
-  return <section {...props(surfaceTheme.blue, styles.panel)}>Preview</section>;
-}
 ```
 
-Use `intent.primary`, `intent.success`, `intent.warning`, or `intent.danger` for meaning.
-Use `surfaceTheme` for category hues. `surfaceTheme.gray` gives a quieter neutral panel, and
-`surfaceTheme.custom` reads the host's workspace tint.
+```ts
+const styles = create({
+  panel: { backgroundColor: role.bgInteractiveSecondaryTranslucent },
+});
+```
+
+```tsx
+<section {...props(surfaceTheme.blue, styles.panel)}>Preview</section>
+```
+
+Use `intent` scopes for meaning and `surfaceTheme` scopes for category hues.
 
 ## Measurements
 
-Sizes follow component measurements and then app layout decisions. Read control geometry from
-`button`, `input`, `row`, or the other component handles in `@nyte-ai/ui/schema.stylex`.
-Those measurements grow under `(pointer: coarse)`. Use a scale literal for layout that has no
-handle. Ramps and size primitives have no custom properties.
+Read control geometry from handles in `@nyte-ai/ui/schema.stylex`, such as `button`, `input`, and
+`row`. They grow under `(pointer: coarse)`. Use a scale literal when no handle exists.
 
-## The three props every styled primitive accepts
+## Styling a component
 
-| Prop        | Type                  | Purpose                                                                                                          |
-| ----------- | --------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `className` | `string`              | Consumer layout, including Tailwind utilities. Appended after the StyleX class.                                  |
-| `style`     | `React.CSSProperties` | Inline overrides. Spread after StyleX's inline style, so it wins.                                                |
-| `xstyle`    | `XStyle`              | A deliberate StyleX override. Passed as the last argument to `stylex.props`, so it wins by StyleX's merge rules. |
+Each prop below overrides component styles. Chat layout parts accept only native `className` and
+`style`.
 
-`XStyle` accepts one compiled style, an array, or a conditional. `Button` and `Toggle` narrow
-`xstyle` to `ButtonLayout`, placement properties only, so the look stays with the variant. `Hint`
-renders no element of its own and takes `xstyle` alone, for the popup.
+| Prop        | Takes                                 |
+| ----------- | ------------------------------------- |
+| `xstyle`    | Styles from your `create()`           |
+| `className` | Any class, such as a Tailwind utility |
+| `style`     | Inline values, which beat both        |
+
+Set a property through `xstyle` or `className`, not both. `Button` and `Toggle` take only placement
+properties in `xstyle`, typed as `ButtonLayout`.
 
 ## Data attributes
-
-The primitives below set `data-slot="<part>"`, so you can target a part from CSS without knowing
-the StyleX class. Variant-bearing ones also expose their appearance.
 
 | Component        | Attributes                                     |
 | ---------------- | ---------------------------------------------- |
@@ -69,10 +61,10 @@ the StyleX class. Variant-bearing ones also expose their appearance.
 | `Input`          | `data-slot="input"`                            |
 | `Textarea`       | `data-slot="textarea"`                         |
 
-Base UI adds its own state attributes on top, such as `data-disabled`, `data-popup-open`,
-`data-highlighted`, and `data-checked`. Each component page lists them.
+Base UI also sets state attributes such as `data-disabled`, `data-popup-open`, `data-highlighted`,
+and `data-checked`.
 
 ## Dark mode
 
-Tokens use `light-dark()`, so a component follows whichever `color-scheme` is in effect. The
-components read no `.dark` class. An app that toggles a class sets `color-scheme: dark` under it.
+Tokens follow the active `color-scheme` through `light-dark()`, not a `.dark` class. An app that
+toggles `.dark` sets `color-scheme: dark` under it.

@@ -1,19 +1,15 @@
 ---
 title: Introduction
-description: "Tokens and styled components, shipped as @nyte-ai/ui"
+description: "Tokens and styled components in @nyte-ai/ui"
 ---
 
-`@nyte-ai/ui` wraps [Base UI](https://base-ui.com) in StyleX styles driven by `--nyte-*` custom
-properties. Every component is styled. Import it from the package root or from the subpath named
-for it.
+`@nyte-ai/ui` has styled [Base UI](https://base-ui.com) controls and chat components, each
+imported from its own subpath.
 
 ```ts
 import "@nyte-ai/ui/ui.css";
-import { Button } from "@nyte-ai/ui";
+import { Button } from "@nyte-ai/ui/button";
 import { Popover } from "@nyte-ai/ui/popover";
 ```
-
-Change how a primitive looks with [token overrides, `className`, or
-`xstyle`](/cloud/foundations/theming).
 
 <CloudFeatures />

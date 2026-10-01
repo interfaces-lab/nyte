@@ -1,13 +1,12 @@
 ---
 title: Focus and keyboard
-description: "The focus ring, the pointer and keyboard modality switch, and the keyboard model from Base UI"
+description: "Focus rings, modality, and Base UI keyboard behavior"
 ---
 
 ## The ring
 
-A focusable component draws a 1px outline using `appearance.focusRing` on `:focus-visible`.
-The ring stays blue inside every hue scope. The same styles are exported for your own focusable
-elements.
+Focusable components draw a 1px `appearance.focusRing` outline on `:focus-visible`. Hue scopes do
+not change its color.
 
 ```ts title="Import"
 import { focus, srOnly } from "@nyte-ai/ui/a11y.stylex";
@@ -25,16 +24,13 @@ import { focus, srOnly } from "@nyte-ai/ui/a11y.stylex";
 </a>
 ```
 
-`Input`, `InputGroup`, and `Textarea` draw no ring. Their border takes
-`role.borderInteractivePrimary` on focus in the `raised` variant and
-`role.borderPrimaryTranslucent` in the `quiet` one.
+`Input`, `InputGroup`, and `Textarea` draw no ring. On focus, their border takes
+`appearance.focusColor` in the `raised` variant and `role.borderPrimaryTranslucent` in `quiet`.
 
 ## Focus modality
 
-Chromium matches `:focus-visible` on every text field focus, pointer clicks included, so the ring
-color is the gate. The host marks the document with `data-nyte-focus-modality="pointer"` when the
-last focus move came from a pointer and `"keyboard"` when it came from a key, and clears the ring
-while the attribute reads `pointer`.
+Chromium matches `:focus-visible` on every text field focus, pointer clicks included. The host sets
+`data-nyte-focus-modality="pointer"` or `"keyboard"` on the document, and pointer mode hides the ring.
 
 ```css
 :root[data-nyte-focus-modality="pointer"] {
@@ -42,28 +38,21 @@ while the attribute reads `pointer`.
 }
 ```
 
-Start the document at `pointer`, so a window that autofocuses a field does not open ringed. Inside
-a text field, count only Tab as a keyboard move, since letters and Cmd+A are edits. Elsewhere,
-count any non-modifier key. Listen in the capture phase, so the modality is settled before a
+Start at `pointer` so autofocus draws no ring. Inside a text field, only Tab switches to keyboard
+mode. Elsewhere, any non-modifier key does. Listen in the capture phase so modality changes before a
 handler moves focus.
 
-A host that skips this gets a ring on click as well as on Tab, which is fine. Hiding the ring on
-keyboard focus is not.
+Without this switch, clicks into a text field draw a ring too. Never hide the ring for keyboard focus.
 
 ## Keyboard model
 
-Base UI owns keyboard behavior and the primitives do not intercept it.
-
-| Component            | Keys                                                                                                                                                                                                           |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Button, Toggle       | Enter and Space activate. Toggle flips `aria-pressed`.                                                                                                                                                         |
-| Dialog, Alert dialog | Focus moves into the popup on open and returns to the trigger on close. Tab is trapped inside. Escape closes a Dialog. Alert dialog ignores outside press and Escape unless its dismissal props say otherwise. |
-| Dropdown menu        | Arrow Down and Up move the highlight, Home and End jump, type-ahead matches item text, Enter and Space activate, Escape closes, Arrow Right opens a submenu and Arrow Left closes it.                          |
-| Input                | Native.                                                                                                                                                                                                        |
-
-The full key tables are on the [component pages](/cloud/components), reproduced from Base UI.
+| Component            | Keys                                                                                                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Button, Toggle       | Enter and Space activate. Toggle flips `aria-pressed`.                                                                                                                                |
+| Dialog, Alert dialog | Focus moves into the popup on open and returns to the trigger on close. Tab is trapped inside. Escape closes both. Alert dialog ignores outside presses.                              |
+| Menu                 | Arrow Down and Up move the highlight, Home and End jump, type-ahead matches item text, Enter and Space activate, Escape closes, Arrow Right opens a submenu and Arrow Left closes it. |
+| Input                | Native.                                                                                                                                                                               |
 
 ## Disabled
 
-`Button` and `Toggle` drop to half opacity when disabled. A disabled menu item takes
-`--nyte-content-disabled`.
+Disabled buttons, toggles, and menu items take `--nyte-content-disabled`.

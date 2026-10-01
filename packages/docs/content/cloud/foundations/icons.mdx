@@ -3,15 +3,15 @@ title: Icons
 description: "Central Icons at radius 2, outlined and filled, behind one Icon component"
 ---
 
-Nyte draws every glyph from [Central Icons](https://centralicons.com). `@nyte-ai/ui` installs two
-sets under aliases and reaches both through [Icon](/cloud/components/icon).
+[Icon](/cloud/components/icon) draws [Central Icons](https://centralicons.com) from two aliased
+packages.
 
 | Alias                  | Package                                                   |
 | ---------------------- | --------------------------------------------------------- |
 | `central-icons`        | `@central-icons-react/round-outlined-radius-2-stroke-1.5` |
 | `central-icons-filled` | `@central-icons-react/round-filled-radius-2-stroke-1.5`   |
 
-Central Icons needs a license key at install time (`CENTRAL_LICENSE_KEY`).
+Installing Central Icons needs `CENTRAL_LICENSE_KEY`.
 
 ## Usage
 
@@ -23,15 +23,14 @@ import { Icon } from "@nyte-ai/ui/icon";
 <Button size="sm" iconOnly icon="plus" aria-label="Add" />
 ```
 
-- Choose a glyph by its semantic name. Do not import a glyph from the icon packages beside `Icon`,
-  so one surface never mixes two geometries.
-- Give an icon-only control an `aria-label`. The glyph is decorative.
-- Sizes are 12, 14, or 16 inside controls.
+- Choose a semantic `Icon` name. Do not import glyphs directly.
+- Give icon-only controls an `aria-label`.
+- `Icon` defaults to 16px. `Button` and `Toggle` size their `icon` to the control.
 
 ## Stroke weight
 
-The sets draw a 1.5-unit stroke on a 24-unit grid, which reads thin at 10 to 17px. Every `Icon`
-frame carries `data-nyte-icon`, so an app can thicken the stroke in its global stylesheet.
+The sets use a 1.5-unit stroke on a 24-unit grid. Override it through the `data-nyte-icon` attribute
+on each `Icon` frame.
 
 ```css
 [data-nyte-icon] svg [stroke]:not([stroke="none"]) {

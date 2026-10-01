@@ -4,36 +4,20 @@ description: "Telling a host which floating surfaces are open"
 ---
 
 ```ts title="Import"
-import { OverlayRefProvider, useOverlayRef } from "@nyte-ai/ui";
-```
-
-The same names are exported from their own subpath. Pick one path per file.
-
-```ts title="Subpath"
 import { OverlayRefProvider, useOverlayRef } from "@nyte-ai/ui/overlay";
 ```
 
-A host that paints something above the DOM, such as a native web view, cannot be covered by any
-z-index. It has to step aside while a popup is open. `OverlayRefProvider` hands one ref callback to
-the package's floating surfaces, and each attaches it to its popup element, so the host learns what
-is open and where.
+Native layers such as web views paint above the DOM whatever the z-index. `OverlayRefProvider` tells
+the host which floating elements are open so it can move those layers aside.
 
-The popups of [Tooltip](/cloud/components/tooltip), [Menu](/cloud/components/menu),
-[Context menu](/cloud/components/context-menu), [Popover](/cloud/components/popover),
-[Preview card](/cloud/components/preview-card), [Select](/cloud/components/select), and
-[Autocomplete](/cloud/components/autocomplete) attach it, as does the command menu's scrim.
-[Dialog](/cloud/components/dialog) and [Alert dialog](/cloud/components/alert-dialog) attach it to
-the popup and the scrim. The [Toast](/cloud/components/toast) list attaches it while a toast is
-open. Without a provider nothing is attached.
+Every popup and backdrop in the package attaches the callback. The [Toast](/cloud/components/toast)
+list attaches it while a toast is open.
 
 ## Usage
 
-- Provide it once, at the app root. Popups render through portals, and the context follows them.
-- Pass a stable function, such as one declared at module scope. A new function on every render
-  detaches and reattaches every open popup.
-- The callback runs with the mounted element and returns its cleanup, which runs when the element
-  unmounts.
-- A floating surface built outside the package attaches `useOverlayRef()` as its `ref`.
+- Provide it once at the app root. Its context reaches portalled popups.
+- Keep the callback stable. A new function detaches and reattaches every open popup.
+- For surfaces outside the package, attach `useOverlayRef()` as the `ref`.
 
 ## Examples
 
