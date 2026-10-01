@@ -35,7 +35,6 @@ export default defineConfig(({ command }) => ({
     rolldownOptions: {
       input: {
         index: "index.html",
-        demo: "demo.html",
       },
     },
   },
