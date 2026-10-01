@@ -17,6 +17,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import solidPlugin from "@opentui/solid/bun-plugin";
+import { codemodePlugin } from "./codemode-plugin.ts";
 
 const packages = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -50,10 +51,11 @@ for (const target of targets) {
     entrypoints: [
       join(packages, "tui/src/binary.ts"),
       join(packages, "core/src/kernel/store-worker.ts"),
+      join(packages, "tui/src/codemode-worker.ts"),
     ],
     root: packages,
     target: "bun",
-    plugins: [solidPlugin],
+    plugins: [solidPlugin, codemodePlugin],
     define: {
       "process.platform": JSON.stringify(target.platform),
       "process.arch": JSON.stringify(target.arch),

@@ -1,8 +1,7 @@
 /**
  * Compiles the TUI into `bin/nyte`. `Bun.build` rather than the CLI because
- * the Solid JSX transform is a bundler plugin. Two entries: the app and the
- * store worker, named from `packages/` so the binary embeds the worker at
- * `/$bunfs/root/core/src/kernel/store-worker.js`, where `src/host.ts` opens it.
+ * the Solid JSX transform is a bundler plugin. Worker entries are named from
+ * `packages/` so the host can resolve them in the embedded module graph.
  */
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
@@ -10,6 +9,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import solidPlugin from "@opentui/solid/bun-plugin";
+import { codemodePlugin } from "./codemode-plugin.ts";
 
 const destination = fileURLToPath(new URL("../../../bin/", import.meta.url));
 
@@ -43,10 +43,11 @@ try {
     entrypoints: [
       join(packages, "tui/src/binary.ts"),
       join(packages, "core/src/kernel/store-worker.ts"),
+      join(packages, "tui/src/codemode-worker.ts"),
     ],
     root: packages,
     target: "bun",
-    plugins: [solidPlugin],
+    plugins: [solidPlugin, codemodePlugin],
     // `@opentui/core` selects its native module by reading OPENTUI_LIBC, and pnpm
     // installs only the host's libc variant. Left dynamic, the bundler has to
     // resolve both branches and fails on the absent one; pinning the value lets
