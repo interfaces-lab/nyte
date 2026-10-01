@@ -1,53 +1,64 @@
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import type { ReactNode } from "react";
+import { AlertDialog, ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import {
-  AlertDialog,
   Autocomplete,
-  Button,
-  ButtonGroup,
-  ButtonLink,
-  Checkbox,
-  CheckboxField,
-  Collapsible,
-  CommandMenu,
-  ConfirmDialog,
-  ContextMenu,
-  ContextMenuItem,
-  ContextMenuLinkItem,
-  Dialog,
-  Input,
-  InputGroup,
+  AutocompleteClear,
+  AutocompleteContent,
+  AutocompleteInput,
+  AutocompleteInputGroup,
+  AutocompleteItem,
+  AutocompleteList,
+  AutocompleteTrigger,
+} from "@nyte-ai/ui/autocomplete";
+import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button";
+import { Checkbox, CheckboxField } from "@nyte-ai/ui/checkbox";
+import { Collapsible } from "@nyte-ai/ui/collapsible";
+import {
+  CommandMenuContent,
   Menu,
   MenuCheckboxItem,
+  MenuContent,
   MenuItem,
   MenuLinkItem,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
-  MenuSubmenu,
+  MenuSub,
+  MenuSubContent,
+  MenuSubTrigger,
   MenuSwitchItem,
+  MenuTrigger,
+} from "@nyte-ai/ui/menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLinkItem,
+  ContextMenuTrigger,
+} from "@nyte-ai/ui/context-menu";
+import { Dialog } from "@nyte-ai/ui/dialog";
+import { Input, InputGroup, Textarea } from "@nyte-ai/ui/input";
+import {
   NumberField,
-  Popover,
-  PreviewCard,
-  PreviewCardTrigger,
-  Row,
-  Select,
-  Slider,
-  SplitButton,
-  Switch,
-  SwitchField,
-  Tabs,
-  Textarea,
-  Toggle,
-  ToggleGroup,
-  Toolbar,
-  Tooltip,
-  TooltipProvider,
-  TooltipTrigger,
-  Toaster,
-  toast,
-} from "@nyte-ai/ui";
+  NumberFieldDecrement,
+  NumberFieldGroup,
+  NumberFieldIncrement,
+  NumberFieldInput,
+} from "@nyte-ai/ui/number-field";
+import { Popover } from "@nyte-ai/ui/popover";
+import { PreviewCard, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
+import { Row } from "@nyte-ai/ui/row";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
+import { Slider } from "@nyte-ai/ui/slider";
+import { Switch, SwitchField } from "@nyte-ai/ui/switch";
+import { Tabs } from "@nyte-ai/ui/tabs";
+import { Toggle } from "@nyte-ai/ui/toggle";
+import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
+import { Toolbar } from "@nyte-ai/ui/toolbar";
+import { Tooltip, TooltipProvider, TooltipTrigger } from "@nyte-ai/ui/tooltip";
+import { Toaster, toast } from "@nyte-ai/ui/toast";
 import "../src/theme/tokens.stylex.ts";
 
 const selector =
@@ -188,13 +199,18 @@ export async function run(): Promise<string> {
             </Sample>
           ))}
           <Sample>
-            <Select
-              label="Environment"
-              value="local"
-              options={[{ value: "local", label: "Local" }]}
-              onValueChange={() => {}}
-            />
-            <NumberField label="Count" defaultValue={2} />
+            <Select items={[{ value: "local", label: "Local" }]} value="local">
+              <SelectTrigger aria-label="Environment">
+                <SelectValue />
+              </SelectTrigger>
+            </Select>
+            <NumberField defaultValue={2}>
+              <NumberFieldGroup>
+                <NumberFieldDecrement />
+                <NumberFieldInput aria-label="Count" />
+                <NumberFieldIncrement />
+              </NumberFieldGroup>
+            </NumberField>
           </Sample>
           <Sample>
             <Slider.Root defaultValue={50} style={{ width: 240 }}>
@@ -253,13 +269,13 @@ export async function run(): Promise<string> {
             </PreviewCard>
           </Sample>
           <Sample>
-            <Autocomplete.Root items={["Alpha", "Beta"]} defaultValue="Alpha">
-              <Autocomplete.InputGroup>
-                <Autocomplete.Input aria-label="Search" />
-                <Autocomplete.Trigger aria-label="Show suggestions" />
-                <Autocomplete.Clear aria-label="Clear search" />
-              </Autocomplete.InputGroup>
-            </Autocomplete.Root>
+            <Autocomplete items={["Alpha", "Beta"]} defaultValue="Alpha">
+              <AutocompleteInputGroup>
+                <AutocompleteInput aria-label="Search" />
+                <AutocompleteTrigger aria-label="Show suggestions" />
+                <AutocompleteClear aria-label="Clear search" />
+              </AutocompleteInputGroup>
+            </Autocomplete>
           </Sample>
         </TooltipProvider>,
       ),
@@ -282,22 +298,28 @@ export async function run(): Promise<string> {
     }
     flushSync(() =>
       root.render(
-        <Menu open label="Options" trigger={<Button>Options</Button>}>
-          <MenuItem onSelect={() => {}}>Rename File</MenuItem>
-          <MenuLinkItem href="#">View File</MenuLinkItem>
-          <MenuCheckboxItem checked onCheckedChange={() => {}}>
-            Show Files
-          </MenuCheckboxItem>
-          <MenuRadioGroup value="a">
-            <MenuRadioItem value="a">Local</MenuRadioItem>
-          </MenuRadioGroup>
-          <MenuSwitchItem checked onCheckedChange={() => {}}>
-            Enable
-          </MenuSwitchItem>
-          <MenuSeparator />
-          <MenuSubmenu label="More">
-            <MenuItem onSelect={() => {}}>Copy File</MenuItem>
-          </MenuSubmenu>
+        <Menu open>
+          <MenuTrigger render={<Button>Options</Button>} />
+          <MenuContent>
+            <MenuItem>Rename File</MenuItem>
+            <MenuLinkItem href="#">View File</MenuLinkItem>
+            <MenuCheckboxItem checked onCheckedChange={() => {}}>
+              Show Files
+            </MenuCheckboxItem>
+            <MenuRadioGroup value="a">
+              <MenuRadioItem value="a">Local</MenuRadioItem>
+            </MenuRadioGroup>
+            <MenuSwitchItem checked onCheckedChange={() => {}}>
+              Enable
+            </MenuSwitchItem>
+            <MenuSeparator />
+            <MenuSub>
+              <MenuSubTrigger>More</MenuSubTrigger>
+              <MenuSubContent>
+                <MenuItem>Copy File</MenuItem>
+              </MenuSubContent>
+            </MenuSub>
+          </MenuContent>
         </Menu>,
       ),
     );
@@ -308,36 +330,33 @@ export async function run(): Promise<string> {
     if (popup === null) throw new Error("Missing menu popup");
     measure(popup);
     await paint(
-      <ContextMenu open label="File options" trigger={<div>File</div>}>
-        <ContextMenuItem onSelect={() => {}}>Rename File</ContextMenuItem>
-        <ContextMenuLinkItem href="#">View File</ContextMenuLinkItem>
+      <ContextMenu open>
+        <ContextMenuTrigger render={<div>File</div>} />
+        <ContextMenuContent aria-label="File options">
+          <ContextMenuItem>Rename File</ContextMenuItem>
+          <ContextMenuLinkItem href="#">View File</ContextMenuLinkItem>
+        </ContextMenuContent>
       </ContextMenu>,
       '[role="menu"]',
     );
     await paint(
-      <CommandMenu
-        open
-        label="Commands"
-        onOpenChange={() => {}}
-        trigger={<Button>Commands</Button>}
-      >
-        <MenuItem onSelect={() => {}}>Open File</MenuItem>
-      </CommandMenu>,
+      <Menu open onOpenChange={() => {}}>
+        <MenuTrigger render={<Button>Commands</Button>} />
+        <CommandMenuContent>
+          <MenuItem>Open File</MenuItem>
+        </CommandMenuContent>
+      </Menu>,
       '[role="menu"]',
     );
     await paint(
-      <Autocomplete.Root open items={["Alpha", "Beta"]}>
-        <Autocomplete.Input aria-label="Find" />
-        <Autocomplete.Portal>
-          <Autocomplete.Positioner>
-            <Autocomplete.Popup>
-              <Autocomplete.List>
-                {(item: string) => <Autocomplete.Item value={item}>{item}</Autocomplete.Item>}
-              </Autocomplete.List>
-            </Autocomplete.Popup>
-          </Autocomplete.Positioner>
-        </Autocomplete.Portal>
-      </Autocomplete.Root>,
+      <Autocomplete open items={["Alpha", "Beta"]}>
+        <AutocompleteInput aria-label="Find" />
+        <AutocompleteContent>
+          <AutocompleteList>
+            {(item: string) => <AutocompleteItem value={item}>{item}</AutocompleteItem>}
+          </AutocompleteList>
+        </AutocompleteContent>
+      </Autocomplete>,
       '[role="listbox"]',
     );
     await paint(
@@ -364,14 +383,24 @@ export async function run(): Promise<string> {
     flushSync(() =>
       root.render(
         <Select
-          label="Environment"
-          value="local"
-          options={[
+          items={[
             { value: "local", label: "Local" },
             { value: "cloud", label: "Cloud" },
           ]}
-          onValueChange={() => {}}
-        />,
+          value="local"
+        >
+          <SelectTrigger aria-label="Environment">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="local" label="Local">
+              Local
+            </SelectItem>
+            <SelectItem value="cloud" label="Cloud">
+              Cloud
+            </SelectItem>
+          </SelectContent>
+        </Select>,
       ),
     );
     host.querySelector("button")?.click();
