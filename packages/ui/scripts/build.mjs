@@ -11,8 +11,7 @@ const outdir = join(packageRoot, "dist");
 
 const watch = process.argv.includes("--watch");
 
-// Every top-level module is an entry, so `dist/<name>.js` mirrors `src/<name>.ts`.
-const entryPoints = await Array.fromAsync(glob("src/*.ts", { cwd: packageRoot }));
+const entryPoints = await Array.fromAsync(glob(["src/*.ts", "src/*.tsx"], { cwd: packageRoot }));
 
 // StyleX's esbuild hook writes every collected rule to `dist/stylex.css`. The
 // sheet ships as `dist/ui.css` inside one `nyte-ui` layer, so a consumer that
@@ -34,7 +33,7 @@ const layerStylesheet = {
           ["style.ts", "surface-theme.ts", "platform-colors.ts"].includes(basename(entry))
         )
           continue;
-        const compiled = join(outdir, `${basename(entry, ".ts")}.js`);
+        const compiled = join(outdir, `${basename(entry).replace(/\.tsx?$/, "")}.js`);
         const javascript = await readFile(compiled, "utf8");
         await writeFile(compiled, `"use client";\n${javascript}`);
       }

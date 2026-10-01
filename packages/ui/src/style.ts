@@ -1,5 +1,7 @@
-import type * as React from "react";
+import type { CSSProperties, HTMLAttributes } from "react";
 import type { CompiledStyles, InlineStyles, StyleXArray, props } from "@stylexjs/stylex";
+
+export { cn } from "cn";
 
 export type XStyle = StyleXArray<
   null | undefined | boolean | CompiledStyles | readonly [CompiledStyles, InlineStyles]
@@ -7,15 +9,15 @@ export type XStyle = StyleXArray<
 
 export type StyledProps<Props> = Omit<Props, "className" | "style"> & {
   className?: string;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   xstyle?: XStyle;
 };
 
 export function mergeStyleProps(
   base: ReturnType<typeof props>,
   className?: string,
-  style?: React.CSSProperties,
-): Pick<React.HTMLAttributes<HTMLElement>, "className" | "style"> {
+  style?: CSSProperties,
+): Pick<HTMLAttributes<HTMLElement>, "className" | "style"> {
   return {
     className: [base.className, className].filter(Boolean).join(" ") || undefined,
     style: { ...base.style, ...style },
