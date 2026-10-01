@@ -6,9 +6,8 @@ anything, and stay inside the files you own.
 ## What this package is
 
 A blank room. StyleX and React, no Tailwind, no inherited palette, no product
-CSS. It exists to answer one question properly: what does a strict,
-Notion-Calendar-grade layering, dialog and spacing system look like when
-nothing is inherited and nothing is fudged?
+CSS. It explores layering, dialogs and spacing with shared tokens and no
+inherited styles.
 
 Everything visible must come from `src/tokens/*`. No component may write a
 literal colour, a literal radius, a literal shadow, or a raw pixel gap.
@@ -30,11 +29,12 @@ These come from the repository's `AGENTS.md` and are not negotiable.
 
 ## Source of truth
 
-Every Notion value is already extracted and verified. Do not re-derive, do not
-guess, do not "improve" a number.
+Current token definitions are the source of truth:
 
-- `docs/NOTION-TOKENS.md` in this package holds the audited values.
-- Anything not in that file is DERIVED and must be commented as such.
+- `../ui/src/theme.stylex.ts` defines the shared colour ramps and themes.
+- `../ui/src/roles.stylex.ts` maps colours to interface roles.
+- `../ui/src/tokens.stylex.ts` defines shared measurements and appearance inputs.
+- `src/tokens/*` defines this lab's experimental tokens.
 
 ## File ownership
 
