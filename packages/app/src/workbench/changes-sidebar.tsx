@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { shape, target } from "@nyte-ai/ui/schema.stylex";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import type { FileTreeBatchOperation } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
@@ -8,9 +8,11 @@ import { Input } from "@nyte-ai/ui/input";
 import {
   Menu,
   MenuCheckboxItem,
+  MenuContent,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
+  MenuTrigger,
 } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
 import { Checkbox } from "@nyte-ai/ui/checkbox";
@@ -69,7 +71,7 @@ const styles = create({
     gap: 8,
     boxSizing: "border-box",
     minHeight: workbench.headerHeight,
-    paddingBlock: { default: 0, "@media (pointer: coarse)": 4 },
+    paddingBlock: workbench.headerPaddingBlock,
     flexShrink: 0,
     paddingInline: 4,
     borderBottomWidth: 1,
@@ -83,7 +85,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     gap: 4,
-    minHeight: { default: 24, "@media (pointer: coarse)": 44 },
+    minHeight: target.min,
     paddingInline: 6,
     color: role.contentSecondary,
     fontSize: type.fontSm,
@@ -188,7 +190,9 @@ export const ChangesSidebar = memo(function ChangesSidebar({
   const { model } = useFileTree({
     paths: [],
     density: "compact",
-    itemHeight: window.matchMedia("(pointer: coarse)").matches ? 44 : 24,
+    itemHeight: Number.parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--nyte-target-min"),
+    ),
     unsafeCSS: PIERRE_TREE_CSS,
     initialExpansion: "open",
     onSelectionChange: (selected) => {
@@ -301,51 +305,51 @@ export const ChangesSidebar = memo(function ChangesSidebar({
           xstyle={styles.field}
           onValueChange={setQuery}
         />
-        <Menu
-          label="Filter changes"
-          align="end"
-          xstyle={styles.filterMenu}
-          trigger={
-            <Button
-              iconOnly
-              icon="filters"
-              aria-label="Change file filters"
-              aria-pressed={filtering}
-            />
-          }
-        >
-          {STATUS_FILTERS.map((option) => (
-            <MenuCheckboxItem
-              key={option.value}
-              layout="plain"
-              checked={statuses.includes(option.value)}
-              closeOnClick={false}
-              onCheckedChange={(checked) => {
-                setStatuses((current) =>
-                  checked
-                    ? [...current, option.value]
-                    : current.filter((status) => status !== option.value),
-                );
+        <Menu>
+          <MenuTrigger
+            render={
+              <Button
+                iconOnly
+                icon="filters"
+                aria-label="Change file filters"
+                aria-pressed={filtering}
+              />
+            }
+          />
+          <MenuContent align="end" xstyle={styles.filterMenu}>
+            {STATUS_FILTERS.map((option) => (
+              <MenuCheckboxItem
+                key={option.value}
+                layout="plain"
+                checked={statuses.includes(option.value)}
+                closeOnClick={false}
+                onCheckedChange={(checked) => {
+                  setStatuses((current) =>
+                    checked
+                      ? [...current, option.value]
+                      : current.filter((status) => status !== option.value),
+                  );
+                }}
+              >
+                {option.label}
+              </MenuCheckboxItem>
+            ))}
+            <MenuSeparator />
+            <MenuRadioGroup
+              value={viewedMode}
+              onValueChange={(value) => {
+                const found = VIEWED_FILTERS.find((option) => option.value === value);
+
+                if (found !== undefined) setViewedMode(found.value);
               }}
             >
-              {option.label}
-            </MenuCheckboxItem>
-          ))}
-          <MenuSeparator />
-          <MenuRadioGroup
-            value={viewedMode}
-            onValueChange={(value) => {
-              const found = VIEWED_FILTERS.find((option) => option.value === value);
-
-              if (found !== undefined) setViewedMode(found.value);
-            }}
-          >
-            {VIEWED_FILTERS.map((option) => (
-              <MenuRadioItem key={option.value} value={option.value} layout="plain">
-                {option.label}
-              </MenuRadioItem>
-            ))}
-          </MenuRadioGroup>
+              {VIEWED_FILTERS.map((option) => (
+                <MenuRadioItem key={option.value} value={option.value} layout="plain">
+                  {option.label}
+                </MenuRadioItem>
+              ))}
+            </MenuRadioGroup>
+          </MenuContent>
         </Menu>
       </div>
       <div {...props(styles.overviewTitle)}>

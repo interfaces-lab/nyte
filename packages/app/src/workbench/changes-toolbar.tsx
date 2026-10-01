@@ -19,11 +19,15 @@ import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import {
   Menu,
   MenuCheckboxItem,
+  MenuContent,
   MenuItem,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
-  MenuSubmenu,
+  MenuSub,
+  MenuSubContent,
+  MenuSubTrigger,
+  MenuTrigger,
 } from "@nyte-ai/ui/menu";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
@@ -81,7 +85,7 @@ type ShortcutEvent = Pick<
 >;
 
 /**
- * Cursor's Changes bindings, matched only while focus is inside the panel.
+ * Changes shortcuts apply only while focus is inside the panel.
  * They are deliberately not window actions: ⌘R and ⌘F belong to whatever
  * surface has focus, and the panel must not take them from an editor or a page.
  */
@@ -352,9 +356,7 @@ function CommitScopeItems({
   return (
     <>
       {page === 1 && commits.length === 0 && (
-        <MenuItem disabled onSelect={() => undefined}>
-          {log.isPending ? "Reading history…" : "No commits yet"}
-        </MenuItem>
+        <MenuItem disabled>{log.isPending ? "Reading history…" : "No commits yet"}</MenuItem>
       )}
       {commitScopeOptions(commits, readByOid).map((option) => (
         <ScopeRadioItem key={changesScopeValue(option.scope)} option={option} />
@@ -371,7 +373,7 @@ function CommitScopeItems({
           <MenuItem
             icon="clock"
             closeOnClick={false}
-            onSelect={() => {
+            onClick={() => {
               setShowNextPage(true);
             }}
           >
@@ -509,130 +511,142 @@ export function ChangesToolbar({
   return (
     <>
       <div {...props(workbenchStyles.toolbar)}>
-        <Menu
-          label="Select changes"
-          alignOffset={-4}
-          xstyle={styles.scopeMenu}
-          trigger={
-            <Button icon={scopeIcon(scope)} xstyle={styles.scopeTriggerLayout}>
-              <span {...props(styles.scopeLabel)}>{scopeLabel}</span>
-              <ScopeMeta key={scopeKey} stats={scopeStats} fileCount={scopeFileCount} />
-              <span {...props(styles.scopeChevron)}>
-                <Icon name="chevron-down" size={10} />
-              </span>
-            </Button>
-          }
-        >
-          <MenuRadioGroup value={scopeKey} onValueChange={selectScope}>
-            <WorkingTreeScopeItems
-              snapshot={snapshot}
-              repository={repository}
-              ignoreWhitespace={viewOptions.ignoreWhitespace}
-            />
-            {repository !== undefined && (
-              <MenuSubmenu
-                label="Commits"
-                icon="git"
-                value={scope.kind === "commit" ? scopeLabel : undefined}
-                xstyle={styles.scopeMenu}
-              >
-                <MenuRadioGroup value={scopeKey} onValueChange={selectScope}>
-                  <CommitScopeItems
-                    repository={repository}
-                    readByOid={commitReads}
-                    before={undefined}
-                    page={1}
-                  />
-                </MenuRadioGroup>
-              </MenuSubmenu>
+        <Menu>
+          <MenuTrigger
+            render={
+              <Button icon={scopeIcon(scope)} xstyle={styles.scopeTriggerLayout}>
+                <span {...props(styles.scopeLabel)}>{scopeLabel}</span>
+                <ScopeMeta key={scopeKey} stats={scopeStats} fileCount={scopeFileCount} />
+                <span {...props(styles.scopeChevron)}>
+                  <Icon name="chevron-down" size={10} />
+                </span>
+              </Button>
+            }
+          />
+          <MenuContent alignOffset={-4} xstyle={styles.scopeMenu}>
+            <MenuRadioGroup value={scopeKey} onValueChange={selectScope}>
+              <WorkingTreeScopeItems
+                snapshot={snapshot}
+                repository={repository}
+                ignoreWhitespace={viewOptions.ignoreWhitespace}
+              />
+              {repository !== undefined && (
+                <MenuSub>
+                  <MenuSubTrigger
+                    icon="git"
+                    value={scope.kind === "commit" ? scopeLabel : undefined}
+                  >
+                    Commits
+                  </MenuSubTrigger>
+                  <MenuSubContent xstyle={styles.scopeMenu}>
+                    <MenuRadioGroup value={scopeKey} onValueChange={selectScope}>
+                      <CommitScopeItems
+                        repository={repository}
+                        readByOid={commitReads}
+                        before={undefined}
+                        page={1}
+                      />
+                    </MenuRadioGroup>
+                  </MenuSubContent>
+                </MenuSub>
+              )}
+              {visibleTurns.length > 0 && <MenuSeparator />}
+              {visibleTurns.map((option) => (
+                <MenuRadioItem
+                  key={option.scope.turnId}
+                  value={changesScopeValue(option.scope)}
+                  icon={turnHasChanges(option) ? "git-branch" : undefined}
+                  meta={<ChangeStats {...option.stats} />}
+                >
+                  {option.label}
+                </MenuRadioItem>
+              ))}
+            </MenuRadioGroup>
+            {hasEmptyTurns && (
+              <>
+                <MenuSeparator />
+                <MenuCheckboxItem
+                  checked={showAllTurns}
+                  closeOnClick={false}
+                  onCheckedChange={setShowAllTurns}
+                >
+                  Show All Turns
+                </MenuCheckboxItem>
+              </>
             )}
-            {visibleTurns.length > 0 && <MenuSeparator />}
-            {visibleTurns.map((option) => (
-              <MenuRadioItem
-                key={option.scope.turnId}
-                value={changesScopeValue(option.scope)}
-                icon={turnHasChanges(option) ? "git-branch" : undefined}
-                meta={<ChangeStats {...option.stats} />}
-              >
-                {option.label}
-              </MenuRadioItem>
-            ))}
-          </MenuRadioGroup>
-          {hasEmptyTurns && (
-            <>
-              <MenuSeparator />
-              <MenuCheckboxItem
-                checked={showAllTurns}
-                closeOnClick={false}
-                onCheckedChange={setShowAllTurns}
-              >
-                Show All Turns
-              </MenuCheckboxItem>
-            </>
-          )}
+          </MenuContent>
         </Menu>
         {branch !== undefined && <BranchReadoutChip branch={branch} />}
         <span {...props(styles.spacer)} />
         <Button iconOnly icon="refresh" aria-label="Refresh changes" onClick={onRefresh} />
-        <Menu
-          label="Changes view options"
-          align="end"
-          trigger={<Button iconOnly icon="more-horizontal" aria-label="More changes options" />}
-        >
-          <MenuSubmenu
-            label="Layout"
-            icon="split-right"
-            value={viewOptions.layout === "split" ? "Split" : "Unified"}
-          >
-            <MenuRadioGroup
-              value={viewOptions.layout}
-              onValueChange={(value) => {
-                const layout: ChangesLayout = value === "split" ? "split" : "unified";
-                onViewOptionsChange({ layout });
+        <Menu>
+          <MenuTrigger
+            render={<Button iconOnly icon="more-horizontal" aria-label="More changes options" />}
+          />
+          <MenuContent align="end">
+            <MenuSub>
+              <MenuSubTrigger
+                icon="split-right"
+                value={viewOptions.layout === "split" ? "Split" : "Unified"}
+              >
+                Layout
+              </MenuSubTrigger>
+              <MenuSubContent>
+                <MenuRadioGroup
+                  value={viewOptions.layout}
+                  onValueChange={(value) => {
+                    const layout: ChangesLayout = value === "split" ? "split" : "unified";
+                    onViewOptionsChange({ layout });
+                  }}
+                >
+                  <MenuRadioItem value="unified" icon="list">
+                    Unified
+                  </MenuRadioItem>
+                  <MenuRadioItem value="split" icon="split-right">
+                    Split
+                  </MenuRadioItem>
+                </MenuRadioGroup>
+              </MenuSubContent>
+            </MenuSub>
+            <MenuCheckboxItem
+              checked={viewOptions.ignoreWhitespace}
+              meta={changesShortcutLabel("ignore-whitespace", mac)}
+              onCheckedChange={(checked) => {
+                onViewOptionsChange({ ignoreWhitespace: checked });
               }}
             >
-              <MenuRadioItem value="unified" icon="list">
-                Unified
-              </MenuRadioItem>
-              <MenuRadioItem value="split" icon="split-right">
-                Split
-              </MenuRadioItem>
-            </MenuRadioGroup>
-          </MenuSubmenu>
-          <MenuCheckboxItem
-            checked={viewOptions.ignoreWhitespace}
-            meta={changesShortcutLabel("ignore-whitespace", mac)}
-            onCheckedChange={(checked) => {
-              onViewOptionsChange({ ignoreWhitespace: checked });
-            }}
-          >
-            Ignore Whitespace
-          </MenuCheckboxItem>
-          <MenuCheckboxItem
-            checked={viewOptions.wordWrap}
-            onCheckedChange={(checked) => {
-              onViewOptionsChange({ wordWrap: checked });
-            }}
-          >
-            Word Wrap
-          </MenuCheckboxItem>
-          <MenuSeparator />
-          <MenuItem
-            icon="search"
-            meta={changesShortcutLabel("filter-files", mac)}
-            onSelect={onFilterFiles}
-          >
-            Filter Files
-          </MenuItem>
-          <MenuItem
-            icon={allFilesCollapsed ? "chevron-down" : "chevron-right"}
-            onSelect={onToggleCollapseAll}
-          >
-            {allFilesCollapsed ? "Expand All Files" : "Collapse All Files"}
-          </MenuItem>
-          <MenuItem icon="refresh" meta={changesShortcutLabel("refresh", mac)} onSelect={onRefresh}>
-            Refresh Changes
-          </MenuItem>
+              Ignore Whitespace
+            </MenuCheckboxItem>
+            <MenuCheckboxItem
+              checked={viewOptions.wordWrap}
+              onCheckedChange={(checked) => {
+                onViewOptionsChange({ wordWrap: checked });
+              }}
+            >
+              Word Wrap
+            </MenuCheckboxItem>
+            <MenuSeparator />
+            <MenuItem
+              icon="search"
+              meta={changesShortcutLabel("filter-files", mac)}
+              onClick={onFilterFiles}
+            >
+              Filter Files
+            </MenuItem>
+            <MenuItem
+              icon={allFilesCollapsed ? "chevron-down" : "chevron-right"}
+              onClick={onToggleCollapseAll}
+            >
+              {allFilesCollapsed ? "Expand All Files" : "Collapse All Files"}
+            </MenuItem>
+            <MenuItem
+              icon="refresh"
+              meta={changesShortcutLabel("refresh", mac)}
+              onClick={onRefresh}
+            >
+              Refresh Changes
+            </MenuItem>
+          </MenuContent>
         </Menu>
         <Toggle
           iconOnly
