@@ -82,7 +82,7 @@ function AvailableBackgroundWork({
   });
 
   const liveTerminals = (jobs.data ?? [])
-    .filter((job) => job.phase.kind === "running" && job.phase.mode === "background")
+    .filter((job) => job.isBackgrounded && job.phase.kind === "running")
     .toSorted((left, right) => right.updatedAt - left.updatedAt);
 
   const hasTerminals = liveTerminals.length > 0;
@@ -153,7 +153,6 @@ function AvailableBackgroundWork({
             tone="danger"
             loading={stopAll.isPending}
             disabled={cancel.isPending}
-            disabledReason="A terminal is stopping."
             onClick={() => {
               if (stopCandidates === undefined) {
                 setStopCandidates(liveTerminals.map((job) => job.id));
@@ -201,7 +200,6 @@ function AvailableBackgroundWork({
                   tone="danger"
                   loading={stopAll.isPending || (cancel.isPending && cancel.variables === job.id)}
                   disabled={pendingAction}
-                  disabledReason="A terminal is stopping."
                   onClick={() => cancel.mutate(job.id)}
                 >
                   Stop Terminal

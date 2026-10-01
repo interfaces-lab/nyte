@@ -118,14 +118,22 @@ function commit(
             run,
             at: seq,
           } satisfies CommitEvent["item"]["commit"])
-        : ({
-            kind: "commit",
-            parent,
-            body: { kind: "message", message },
-            start: { kind: "none" },
-            run,
-            at: seq,
-          } satisfies CommitEvent["item"]["commit"]);
+        : message.role === "system"
+          ? ({
+              kind: "commit",
+              parent,
+              body: { kind: "message", message },
+              run,
+              at: seq,
+            } satisfies CommitEvent["item"]["commit"])
+          : ({
+              kind: "commit",
+              parent,
+              body: { kind: "message", message },
+              start: { kind: "none" },
+              run,
+              at: seq,
+            } satisfies CommitEvent["item"]["commit"]);
   return {
     kind: "commit",
     head: "main",

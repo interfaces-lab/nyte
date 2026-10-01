@@ -210,7 +210,6 @@ export function SubagentTray({
                   tone="danger"
                   loading={stopAll.isPending}
                   disabled={stop.isPending}
-                  disabledReason="An agent is stopping."
                   onClick={() => {
                     if (stopCandidates === undefined) {
                       setStopCandidates(stoppable.map((agent) => agent.sessionId));
