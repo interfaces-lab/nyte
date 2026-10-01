@@ -4,7 +4,7 @@
 #
 # Workspace package directories are deliberately NOT excluded. pnpm-lock.yaml
 # lists all eighteen as importers, and a frozen-lockfile install fails when one
-# is missing. The app icon also resolves to packages/desktop/build/icon.png.
+# is missing. The app icon also resolves to packages/desktop/build/icon-ios.png.
 
 # --- Mirrors the repository's .gitignore files ---
 node_modules/
@@ -32,12 +32,12 @@ packages/docs/.next/
 *.tsbuildinfo
 packages/docs/next-env.d.ts
 
-# packages/ios: regenerated on the build worker by prebuild and pod install.
-packages/ios/.expo/
-packages/ios/ios/
-packages/ios/android/
-packages/ios/.voltra/
-packages/ios/build/
+# packages/mobile: regenerated on the build worker by prebuild and pod install.
+packages/mobile/.expo/
+packages/mobile/ios/
+packages/mobile/android/
+packages/mobile/.voltra/
+packages/mobile/build/
 
 # --- Not needed to build the app ---
 
