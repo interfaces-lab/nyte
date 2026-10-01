@@ -5,6 +5,7 @@
  * Synced with pi 77f2d1235.
  */
 import OpenAI from "openai";
+import type { Stream } from "openai/streaming";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import type {
@@ -41,6 +42,7 @@ import type {
   ThinkingTokenBudgetField,
   Tool,
   ToolCall,
+  TranscriptContext,
 } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
@@ -50,6 +52,12 @@ import { parseStreamingJson } from "../utils/json-parse.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
+import { getSystemMessageText, renderSystemMessageUpdate } from "../utils/text.ts";
+import {
+  getDeclaredTools,
+  resolveTranscript,
+  resolveTranscriptTools,
+} from "../utils/transcript.ts";
 import {
   appendGrammarToolInputJsonDelta,
   createGrammarToolInputProperties,
@@ -158,11 +166,15 @@ type ResolvedOpenAICompletionsCompat = Omit<
   | "deferredToolsMode"
   | "supportsThinkingTokenBudget"
   | "thinkingTokenBudgetField"
+  | "supportsMidConvoSystemMessages"
+  | "supportsMidConvoToolAdditions"
 > & {
   cacheControlFormat?: OpenAICompletionsCompat["cacheControlFormat"];
   deferredToolsMode?: OpenAICompletionsCompat["deferredToolsMode"];
   supportsThinkingTokenBudget?: OpenAICompletionsCompat["supportsThinkingTokenBudget"];
   thinkingTokenBudgetField?: OpenAICompletionsCompat["thinkingTokenBudgetField"];
+  supportsMidConvoSystemMessages?: OpenAICompletionsCompat["supportsMidConvoSystemMessages"];
+  supportsMidConvoToolAdditions?: OpenAICompletionsCompat["supportsMidConvoToolAdditions"];
 };
 
 type ResolvedChatTemplateKwargValue = string | number | boolean | null;
@@ -171,12 +183,32 @@ type CompatToolResultMessage = ChatCompletionToolMessageParam & { name?: string 
 
 type ChatCompletionInstructionMessageParam =
   | ChatCompletionDeveloperMessageParam
-  | ChatCompletionSystemMessageParam;
+  | ChatCompletionSystemMessageParam
+  | KimiToolSystemMessageParam;
 
 type KimiToolSystemMessageParam = {
   role: "system";
+  content?: never;
   tools?: OpenAI.Chat.Completions.ChatCompletionTool[];
 };
+
+type CompletionsMessage = ChatCompletionMessageParam | KimiToolSystemMessageParam;
+type CompletionsRequest = Omit<
+  OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
+  "messages"
+> & {
+  messages: CompletionsMessage[];
+};
+
+function kimiToolSystemMessage(
+  tools: Tool[],
+  compat: ResolvedOpenAICompletionsCompat,
+): KimiToolSystemMessageParam {
+  return {
+    role: "system",
+    tools: convertTools(tools, compat),
+  };
+}
 
 const reasoningDetailFields = {
   id: Type.Optional(Type.Union([Type.String(), Type.Null()])),
@@ -318,10 +350,15 @@ type ChatCompletionTextPartWithCacheControl = ChatCompletionContentPartText & {
 
 export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptions> = (
   model: Model<"openai-completions">,
-  context: Context,
+  context: TranscriptContext,
   options?: OpenAICompletionsOptions,
 ): AssistantMessageEventStream => {
   const stream = new AssistantMessageEventStream();
+
+  const normalizedContext = resolveTranscript(
+    context,
+    getCompat(model).supportsMidConvoSystemMessages,
+  );
 
   (async () => {
     interface StreamingToolCallBlock extends ToolCall {
@@ -361,16 +398,24 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
       const compat = getCompat(model);
 
       const grammarToolInputProperties = createGrammarToolInputProperties(
-        context.tools,
+        getDeclaredTools(normalizedContext.messages),
         compat.supportsOpenAIGrammarTools,
       );
 
       const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
-      const client = createClient({ model, context, apiKey, options, cacheRetention, compat });
+
+      const client = createClient({
+        model,
+        context: normalizedContext,
+        apiKey,
+        options,
+        cacheRetention,
+        compat,
+      });
 
       let params = buildParams(
         model,
-        context,
+        normalizedContext,
         options,
         compat,
         cacheRetention,
@@ -393,7 +438,15 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
       if (options?.timeoutMs !== undefined) requestOptions.timeout = options.timeoutMs;
 
       const result = await retryProviderRequest(
-        () => client.chat.completions.create(params, requestOptions).withResponse(),
+        () =>
+          client
+            .post<Stream<ChatCompletionChunk>>("/chat/completions", {
+              body: params,
+              ...requestOptions,
+              stream: true,
+              __security: { bearerAuth: true },
+            })
+            .withResponse(),
         {
           maxRetries: options?.maxRetries,
           maxRetryDelayMs: options?.maxRetryDelayMs,
@@ -821,7 +874,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 
 export const streamSimple: StreamFunction<"openai-completions", SimpleStreamOptions> = (
   model: Model<"openai-completions">,
-  context: Context,
+  context: TranscriptContext,
   options?: SimpleStreamOptions,
 ): AssistantMessageEventStream => {
   getClientApiKey(model.provider, options?.apiKey, options?.headers);
@@ -846,7 +899,7 @@ export const streamSimple: StreamFunction<"openai-completions", SimpleStreamOpti
 
 function createClient(input: {
   model: Model<"openai-completions">;
-  context: Context;
+  context: TranscriptContext;
   apiKey: string;
   options: Pick<OpenAICompletionsOptions, "fetch" | "headers" | "sessionId"> | undefined;
   cacheRetention: CacheRetention;
@@ -894,19 +947,24 @@ function createClient(input: {
 
 function buildParams(
   model: Model<"openai-completions">,
-  context: Context,
+  context: TranscriptContext,
   options?: OpenAICompletionsOptions,
   compat: ResolvedOpenAICompletionsCompat = getCompat(model),
   cacheRetention: CacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env),
   grammarToolInputProperties: ReadonlyMap<string, string> = createGrammarToolInputProperties(
-    context.tools,
+    getDeclaredTools(context.messages),
     compat.supportsOpenAIGrammarTools,
   ),
 ) {
+  const transcriptTools = resolveTranscriptTools(
+    context.messages,
+    compat.supportsMidConvoSystemMessages === true && compat.supportsMidConvoToolAdditions === true,
+  );
+
   const messages = convertMessages(model, context, compat, { grammarToolInputProperties });
   const cacheControl = getCompatCacheControl(compat, cacheRetention);
 
-  const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
+  const params: CompletionsRequest = {
     model: model.id,
     messages,
     stream: true,
@@ -944,9 +1002,11 @@ function buildParams(
       ? getDeferredToolNames(context.messages)
       : new Set<string>();
 
-  const activeTools = context.tools?.filter((tool) => !deferredToolNames.has(tool.name));
+  const activeTools = transcriptTools.requestTools.filter(
+    (tool) => !deferredToolNames.has(tool.name),
+  );
 
-  if (activeTools && activeTools.length > 0) {
+  if (activeTools.length > 0) {
     params.tools = convertTools(activeTools, compat);
 
     if (compat.zaiToolStream) {
@@ -1219,7 +1279,7 @@ function getCompatCacheControl(
 }
 
 function applyAnthropicCacheControl(
-  messages: ChatCompletionMessageParam[],
+  messages: CompletionsMessage[],
   tools: OpenAI.Chat.Completions.ChatCompletionTool[] | undefined,
   cacheControl: OpenAICompatCacheControl,
 ): void {
@@ -1229,7 +1289,7 @@ function applyAnthropicCacheControl(
 }
 
 function addCacheControlToSystemPrompt(
-  messages: ChatCompletionMessageParam[],
+  messages: CompletionsMessage[],
   cacheControl: OpenAICompatCacheControl,
 ): void {
   for (const message of messages) {
@@ -1242,7 +1302,7 @@ function addCacheControlToSystemPrompt(
 }
 
 function addCacheControlToLastConversationMessage(
-  messages: ChatCompletionMessageParam[],
+  messages: CompletionsMessage[],
   cacheControl: OpenAICompatCacheControl,
 ): void {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -1275,7 +1335,7 @@ function addCacheControlToInstructionMessage(
 }
 
 function addCacheControlToMessage(
-  message: ChatCompletionMessageParam,
+  message: CompletionsMessage,
   cacheControl: OpenAICompatCacheControl,
 ): boolean {
   if (message.role === "user" || message.role === "assistant" || message.role === "tool") {
@@ -1321,11 +1381,12 @@ function addCacheControlToTextContent(
 
 export function convertMessages(
   model: Model<"openai-completions">,
-  context: Context,
+  context: TranscriptContext,
   compat: ResolvedOpenAICompletionsCompat,
   options?: ConvertCompletionsMessagesOptions,
-): ChatCompletionMessageParam[] {
-  const params: ChatCompletionMessageParam[] = [];
+): CompletionsMessage[] {
+  const normalizedContext = resolveTranscript(context, compat.supportsMidConvoSystemMessages);
+  const params: CompletionsMessage[] = [];
 
   const normalizeToolCallId = (id: string): string => {
     // Handle pipe-separated IDs from OpenAI Responses API
@@ -1357,15 +1418,19 @@ export function convertMessages(
     return id;
   };
 
-  const transformedMessages = transformMessages(context.messages, model, (id) =>
+  const transformedMessages = transformMessages(normalizedContext.messages, model, (id) =>
     normalizeToolCallId(id),
   );
 
-  if (context.systemPrompt) {
-    const useDeveloperRole = model.reasoning && compat.supportsDeveloperRole;
-    const role = useDeveloperRole ? "developer" : "system";
-    params.push({ role: role, content: sanitizeSurrogates(context.systemPrompt) });
-  }
+  const transcriptTools = resolveTranscriptTools(
+    normalizedContext.messages,
+    compat.supportsMidConvoSystemMessages === true && compat.supportsMidConvoToolAdditions === true,
+  );
+
+  // Request-list tools that tool results load via `addedToolNames`; anchored
+  // additions are not in the request list, so neither path declares a tool twice.
+  const requestTools = compat.deferredToolsMode === "kimi" ? transcriptTools.requestTools : [];
+  const instructionRole = model.reasoning && compat.supportsDeveloperRole ? "developer" : "system";
 
   let lastRole: string | null = null;
 
@@ -1385,7 +1450,19 @@ export function convertMessages(
       });
     }
 
-    if (msg.role === "user") {
+    if (msg.role === "system") {
+      const addedTools = i > 0 && transcriptTools.anchorsAdditions ? (msg.toolsAdded ?? []) : [];
+
+      if (addedTools.length > 0) {
+        params.push(kimiToolSystemMessage(addedTools, compat));
+      }
+
+      const text = i === 0 ? getSystemMessageText(msg) : renderSystemMessageUpdate(msg);
+
+      if (text.length > 0) {
+        params.push({ role: instructionRole, content: sanitizeSurrogates(text) });
+      }
+    } else if (msg.role === "user") {
       if (!Array.isArray(msg.content)) {
         params.push({
           role: "user",
@@ -1659,17 +1736,10 @@ export function convertMessages(
       }
 
       if (deferredToolNames.size > 0) {
-        const deferredTools = getToolsByName(context.tools, deferredToolNames);
+        const deferredTools = getToolsByName(requestTools, deferredToolNames);
 
         if (deferredTools.length > 0) {
-          const kimiToolMessage: KimiToolSystemMessageParam = {
-            role: "system",
-            tools: convertTools(deferredTools, compat),
-          };
-
-          // SAFETY: Kimi accepts a system message that carries tools and omits the standard
-          // content field; the SDK's system message type requires content.
-          params.push(kimiToolMessage as ChatCompletionMessageParam);
+          params.push(kimiToolSystemMessage(deferredTools, compat));
         }
       }
 
@@ -1904,6 +1974,8 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
     thinkingTokenBudgetField: undefined,
     supportsStrictMode: !isMoonshot && !isTogether && !isCloudflareAiGateway && !isNvidia,
     supportsOpenAIGrammarTools: false,
+    supportsMidConvoSystemMessages: false,
+    supportsMidConvoToolAdditions: false,
     cacheControlFormat,
     sendSessionAffinityHeaders: false,
     deferredToolsMode: undefined,
@@ -1956,6 +2028,10 @@ function getCompat(model: Model<"openai-completions">): ResolvedOpenAICompletion
     supportsStrictMode: model.compat.supportsStrictMode ?? detected.supportsStrictMode,
     supportsOpenAIGrammarTools:
       model.compat.supportsOpenAIGrammarTools ?? detected.supportsOpenAIGrammarTools,
+    supportsMidConvoSystemMessages:
+      model.compat.supportsMidConvoSystemMessages ?? detected.supportsMidConvoSystemMessages,
+    supportsMidConvoToolAdditions:
+      model.compat.supportsMidConvoToolAdditions ?? detected.supportsMidConvoToolAdditions,
     cacheControlFormat: model.compat.cacheControlFormat ?? detected.cacheControlFormat,
     sendSessionAffinityHeaders:
       model.compat.sendSessionAffinityHeaders ?? detected.sendSessionAffinityHeaders,

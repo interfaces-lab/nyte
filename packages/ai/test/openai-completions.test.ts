@@ -1,3 +1,4 @@
+import { normalizeContext } from "@nyte-ai/schema";
 import assert from "node:assert/strict";
 import { expect, test } from "vitest";
 import { stream } from "../src/api/openai-completions.ts";
@@ -34,7 +35,7 @@ async function exchange(input: {
   let body = "";
   const result = await stream(
     { ...model, compat: input.compat },
-    { messages: input.messages ?? [] },
+    normalizeContext({ messages: input.messages ?? [] }),
     {
       apiKey: "test",
       maxRetries: 0,
