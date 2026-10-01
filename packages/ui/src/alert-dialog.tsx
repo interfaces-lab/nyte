@@ -3,9 +3,9 @@ import { create, props } from "@stylexjs/stylex";
 import { useRef } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
 
-import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { intent, type Tint } from "../../surface-theme.ts";
-import { role, type } from "../../vars.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { intent, type Tint } from "./surface-theme.ts";
+import { role, type } from "./vars.stylex.ts";
 import { Button } from "./button.tsx";
 import { Dialog } from "./dialog.tsx";
 

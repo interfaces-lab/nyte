@@ -4,31 +4,16 @@ description: "A modal panel centered over a scrim"
 ---
 
 ```ts title="Import"
-import { Dialog } from "@nyte-ai/ui";
-```
-
-The same `Dialog` is exported from its own subpath. Pick one path per file.
-
-```ts title="Subpath"
 import { Dialog } from "@nyte-ai/ui/dialog";
 ```
 
-A modal that opens over the page and takes focus. Reach for it when a task needs the user's full
-attention and can be cancelled. For a question that must be answered, use
+A cancellable modal that takes focus. For a required response, use
 [Alert dialog](/cloud/components/alert-dialog).
 
 ## Usage
 
-- `Dialog.Popup` renders the portal, the scrim, and the panel as one unit.
-- Every dialog needs a `Dialog.Title`. It becomes the accessible name. Hide it with `srOnly` from
-  [Focus](/cloud/foundations/focus) rather than omitting it.
-- Use `Dialog.Description` for the one sentence that explains the consequence. Longer content goes
-  in the body.
-- `Dialog.Trigger` and `Dialog.Close` carry no look. Pass `render={<Button … />}` or give them
-  `xstyle`.
-- The panel is a column with a 16px gap. Change its width, padding, or gap through `xstyle` on
-  `Dialog.Popup`.
-- The popup and the scrim attach the ref from [Overlays](/cloud/foundations/overlays).
+- Every dialog needs a `Dialog.Title` as its accessible name. To hide it, use `srOnly` from
+  [Focus](/cloud/foundations/focus).
 
 ## Anatomy
 
@@ -78,9 +63,6 @@ attention and can be cancelled. For a question that must be answered, use
 </Dialog.Root>
 ```
 
-Pass `open` and `onOpenChange` to drive the dialog from your own state, which is how you open it
-from a menu item or close it after a submit.
-
 ```tsx
 const [open, setOpen] = useState(false);
 
@@ -99,10 +81,8 @@ const [open, setOpen] = useState(false);
 </Dialog.Root>;
 ```
 
-A wider panel with no padding, for content that draws its own edges.
-
 ```tsx
-import { Dialog } from "@nyte-ai/ui";
+import { Dialog } from "@nyte-ai/ui/dialog";
 import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { create } from "@stylexjs/stylex";
 
@@ -117,21 +97,20 @@ const styles = create({
 
 ## Props
 
-| Part                 | Renders                        | Styling                                                               |
-| -------------------- | ------------------------------ | --------------------------------------------------------------------- |
-| `Dialog.Root`        | Nothing                        | None                                                                  |
-| `Dialog.Trigger`     | `<button>`                     | None                                                                  |
-| `Dialog.Popup`       | A portal, the scrim, a `<div>` | 400px wide, 24px padding, 16px gap, hairline border, translucent fill |
-| `Dialog.Header`      | `<div>`                        | Stacks title and description 4px apart                                |
-| `Dialog.Title`       | `<h2>`                         | Large, semibold                                                       |
-| `Dialog.Description` | `<p>`                          | Body size, secondary text                                             |
-| `Dialog.Footer`      | `<div>`                        | Right-aligns its buttons 8px apart                                    |
-| `Dialog.Close`       | `<button>`                     | None                                                                  |
+| Part                 | Renders                        | Styling                      |
+| -------------------- | ------------------------------ | ---------------------------- |
+| `Dialog.Root`        | Nothing                        | None                         |
+| `Dialog.Trigger`     | `<button>`                     | None                         |
+| `Dialog.Popup`       | A portal, the scrim, a `<div>` | Bordered translucent panel   |
+| `Dialog.Header`      | `<div>`                        | Stacks title and description |
+| `Dialog.Title`       | `<h2>`                         | Large, semibold              |
+| `Dialog.Description` | `<p>`                          | Body size, secondary text    |
+| `Dialog.Footer`      | `<div>`                        | Right-aligns its buttons     |
+| `Dialog.Close`       | `<button>`                     | None                         |
 
-Every part except `Dialog.Root` accepts `xstyle`, merged last. `className` takes a string and
-`style` an object, both merged with the part's own. `Dialog.Popup` takes the Base UI popup props
-except `ref`. The panel is capped at 48px less than the window in both directions and scrolls when
-its content is taller.
+Except `Dialog.Root`, each part takes `xstyle`, `className`, and `style`. See
+[Theming](/cloud/foundations/theming). `Dialog.Popup` takes the Base UI popup props except `ref` and
+scrolls when its content is taller than the window.
 
 The part tables below come from Base UI, MIT, © Material-UI SAS.
 
@@ -165,5 +144,5 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
 - Focus moves into the popup on open and returns to the trigger on close. Tab cycles inside the
   popup.
 - Escape closes. Outside press closes unless `disablePointerDismissal` is set on the root.
-- Content outside the dialog is inert while it is open, and background scroll is locked.
+- While open, outside content is inert and page scroll is locked.
 - `initialFocus` and `finalFocus` on the popup override where focus lands.

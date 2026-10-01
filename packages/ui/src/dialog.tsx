@@ -7,11 +7,11 @@ import { Dialog } from "@base-ui/react/dialog";
 import { create, props } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement } from "react";
 
-import { floatingSurfaceStyles } from "../../floating-surface.stylex.ts";
-import { dialog, layer } from "../../schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { surfaceTheme, type Tint } from "../../surface-theme.ts";
-import { role, shadow, type } from "../../vars.stylex.ts";
+import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
+import { dialog, layer } from "./schema.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { surfaceTheme, type Tint } from "./surface-theme.ts";
+import { role, shadow, type } from "./vars.stylex.ts";
 import { useOverlayRef } from "./overlay.tsx";
 
 const styles = create({

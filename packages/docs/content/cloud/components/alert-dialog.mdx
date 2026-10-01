@@ -4,31 +4,18 @@ description: "A modal that asks a question the user has to answer"
 ---
 
 ```ts title="Import"
-import { AlertDialog, ConfirmDialog } from "@nyte-ai/ui";
-```
-
-The same names are exported from their own subpath. Pick one path per file.
-
-```ts title="Subpath"
 import { AlertDialog, ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 ```
 
-The [Dialog](/cloud/components/dialog) panel with alert semantics. The two look identical, the
-behavior differs. Reach for it when the user has to answer before anything else happens.
-`ConfirmDialog` is the whole thing assembled for a destructive yes-or-no question.
+A [Dialog](/cloud/components/dialog) with alert semantics. `ConfirmDialog` is a prebuilt destructive
+confirmation.
 
 ## Usage
 
-- Use it for a decision the user cannot back out of by clicking away. Delete, discard, overwrite,
-  revoke.
-- Reach for `ConfirmDialog` first. Build from the `AlertDialog` parts when the question needs other
-  content or other actions.
-- The footer needs an explicit way out, a Cancel `AlertDialog.Close`. Outside press does nothing.
-- Title and `confirmLabel` name the same action and noun, such as "Delete Chat". Description states the consequence.
-- The destructive action is the last button and uses `variant="solid" tone="danger"`.
-- To open it from a button that is not the trigger, control it with `open` and `onOpenChange` and
-  drop the trigger.
-- The parts are the [Dialog](/cloud/components/dialog) parts and take the same `xstyle`.
+- Start with `ConfirmDialog`. Use the parts for other content or actions.
+- Include a Cancel `AlertDialog.Close`.
+- Title and `confirmLabel` name the same action and noun.
+- Put the destructive action last with `variant="solid" tone="danger"`.
 
 ## Anatomy
 
@@ -70,10 +57,6 @@ const [open, setOpen] = useState(false);
   onConfirm={() => setOpen(false)}
 />
 ```
-
-While the action runs, pass `pending` to keep both actions mounted and focusable with `aria-busy`,
-and keep the dialog open. `pendingLabel` is a separate status, not a replacement for
-`confirmLabel`. Pass `error` to show why the action failed.
 
 ```tsx
 <ConfirmDialog
@@ -130,20 +113,19 @@ and keep the dialog open. `pendingLabel` is a separate status, not a replacement
 
 ### ConfirmDialog
 
-| Prop             | Type                                   | Default  | Description                                                |
-| ---------------- | -------------------------------------- | -------- | ---------------------------------------------------------- |
-| `open`           | `boolean`                              |          | Whether the dialog is open.                                |
-| `title`          | `string`                               |          | The question.                                              |
-| `description`    | `React.ReactNode`                      |          | The consequence.                                           |
-| `confirmLabel`   | `string`                               | Required | The destructive action and noun.                           |
-| `pendingLabel`   | `string`                               |          | Separate status while pending.                             |
-| `pending`        | `boolean`                              | `false`  | Makes both actions busy and ignores requests to close.     |
-| `error`          | `string`                               |          | Shown under the description as an alert.                   |
-| `returnFocusRef` | `React.RefObject<HTMLElement \| null>` |          | Where focus lands on close.                                |
-| `onOpenChange`   | `(open: boolean) => void`              |          | Called with `false` on Cancel or Escape, unless `pending`. |
-| `onConfirm`      | `() => void`                           |          | Called by the danger button. Close the dialog yourself.    |
-
-`tint?: Tint` scopes the popup to a hue. Focus starts on Cancel.
+| Prop             | Type                                   | Default | Description                                                |
+| ---------------- | -------------------------------------- | ------- | ---------------------------------------------------------- |
+| `open`           | `boolean`                              |         |                                                            |
+| `title`          | `string`                               |         |                                                            |
+| `description`    | `React.ReactNode`                      |         | The consequence.                                           |
+| `confirmLabel`   | `string`                               |         |                                                            |
+| `pendingLabel`   | `string`                               |         | Status line shown while `pending`.                         |
+| `pending`        | `boolean`                              | `false` | Makes both actions busy and ignores requests to close.     |
+| `error`          | `string`                               |         | Shown under the description as an alert.                   |
+| `returnFocusRef` | `React.RefObject<HTMLElement \| null>` |         | Where focus lands on close.                                |
+| `onOpenChange`   | `(open: boolean) => void`              |         | Called with `false` on Cancel or Escape, unless `pending`. |
+| `onConfirm`      | `() => void`                           |         | Called by the danger button. Close the dialog yourself.    |
+| `tint`           | `Tint`                                 |         |                                                            |
 
 ### Parts
 
@@ -158,7 +140,8 @@ and keep the dialog open. `pendingLabel` is a separate status, not a replacement
 | `AlertDialog.Footer`      | `<div>`                        | As `Dialog.Footer`      |
 | `AlertDialog.Close`       | `<button>`                     | None                    |
 
-Every part except `AlertDialog.Root` accepts `xstyle`, merged last, with `className` and `style`.
+Except `AlertDialog.Root`, each part takes `xstyle`, `className`, and `style`. See
+[Theming](/cloud/foundations/theming).
 
 The part tables below come from Base UI, MIT, © Material-UI SAS.
 
@@ -194,5 +177,6 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
   `onOpenChange` when `details.reason` is `escape-key`.
 - Focus moves into the popup on open and returns to the trigger on close. Tab cycles inside the
   popup.
-- Content outside the dialog is inert while it is open, and background scroll is locked.
-- `ConfirmDialog` sets `aria-busy` on the popup while `pending`, and its error has `role="alert"`.
+- While open, outside content is inert and page scroll is locked.
+- `ConfirmDialog` focuses Cancel on open, sets `aria-busy` while `pending`, and gives its error
+  `role="alert"`.
