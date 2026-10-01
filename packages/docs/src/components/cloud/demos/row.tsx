@@ -1,7 +1,9 @@
 "use client";
 import { shape } from "@nyte-ai/ui/schema.stylex";
 
-import { Button, Icon, Row } from "@nyte-ai/ui";
+import { Button } from "@nyte-ai/ui/button";
+import { Icon } from "@nyte-ai/ui/icon";
+import { Row } from "@nyte-ai/ui/row";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useState } from "react";

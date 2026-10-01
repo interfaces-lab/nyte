@@ -4,34 +4,16 @@ description: "One row of a list with a leading lane, a body, and an action lane"
 ---
 
 ```ts title="Import"
-import { Row } from "@nyte-ai/ui";
-```
-
-The same `Row` is exported from its own subpath. Pick one path per file.
-
-```ts title="Subpath"
 import { Row } from "@nyte-ai/ui/row";
 ```
 
-One row of a list. Reach for it when a list needs its items to align down a column and share one
-hover, focus, and selection model.
-
 ## Usage
 
-- Geometry comes from the `row` and `glyph` component handles in `@nyte-ai/ui/schema.stylex`.
-  `md` is 28px tall and `lg` is 32px tall. Both grow to 44px under a coarse pointer.
-- Use `xstyle` on `Row` or `Row.Leading` for local geometry. Scope component tokens when a
-  whole list needs different measurements.
-- Typography is inherited. The row sets no font family, size, or line height, so the surface owns
-  them.
-- `Row.Primary` renders a `<button type="button">`. Clicking the painted row activates it,
-  including padding and sibling `Row.Meta`. `Row.Actions` and other child controls keep their
-  own action. Text selection and Shift-click do not activate the row.
-- `interactive` paints the row's fill on hover, on focus within, and while `selected`. A surface
-  that writes `--_row-fill` itself owns every state of it and leaves `interactive` off.
-- `variant="nav"` makes the row itself the control, a `<button type="button">` that fills on hover
-  and brightens its label, for a navigation list. It takes no `Row.Primary`.
-- Omit `Row.Body` when there is only a label. Use it to stack a description under the label.
+- The row inherits its typography.
+- Clicking anywhere on the painted row activates `Row.Primary`, including padding and sibling
+  `Row.Meta`. Child controls keep their own actions. Text selection and Shift-click do not activate
+  the row.
+- Omit `Row.Body` when there is no `Row.Description`.
 
 ## Anatomy
 
@@ -113,9 +95,6 @@ hover, focus, and selection model.
 
 ### A link or another trigger
 
-`render` on `Row.Primary` swaps the button for another element or component. The row resets the
-padding, border, background, and font that a `button` or an `a` brings.
-
 ```tsx
 <Row interactive>
   <Row.Primary render={<a href={session.url} />}>
@@ -124,14 +103,7 @@ padding, border, background, and font that a `button` or an `a` brings.
 </Row>
 ```
 
-A row that opens a panel renders `Row.Primary` as a `Collapsible.Trigger` with `variant="plain"`.
-See [Collapsible](/cloud/components/collapsible).
-
 ### Actions on hover
-
-`revealActions` uses `display: none` until hover or focus within. The lane is always visible
-without hover support or under a coarse pointer. `--_row-actions-opacity` lets a surface reserve
-space for the lane only while it is showing.
 
 ```tsx
 <Row interactive revealActions>
@@ -152,14 +124,7 @@ const styles = create({
 });
 ```
 
-`placement="overlay"` floats the lane over the row instead of taking space in it, and protects the whole
-action lane, including gaps between its controls, from primary activation. The surface reserves
-room for the visible lane.
-
 ### A selection layer the surface animates
-
-`Row.Backdrop` sits behind the row's content at `z-index: -1`. The row declares `isolation: isolate`
-so the backdrop lands behind the row rather than behind the list.
 
 ```tsx
 <Row selected={selected}>
@@ -197,29 +162,25 @@ const styles = create({
 
 ### Row
 
-Renders a `<div>`, or a `<button>` with `variant="nav"`. `RowProps` takes every prop of that
-element, with `className` and `style` replaced by the styled versions, plus:
+Renders a `<div>`, or a `<button>` with `variant="nav"`, and takes that element's props plus:
 
-| Prop                           | Type                                                   | Default  | Description                                                                                       |
-| ------------------------------ | ------------------------------------------------------ | -------- | ------------------------------------------------------------------------------------------------- |
-| `variant`                      | `"list" \| "nav"`                                      | `"list"` | A row holding a `Row.Primary`, or a row that is itself the button.                                |
-| `size`                         | `"md" \| "lg"`                                         | `"md"`   | 28px or 32px, both 44px under a coarse pointer.                                                   |
-| `interactive`                  | `boolean`                                              | `false`  | Paints the row's own fill on hover and focus within, and the fill and hairline of a selected row. |
-| `selected`                     | `boolean`                                              | `false`  | Marks the row current. Sets `data-selected`.                                                      |
-| `revealActions`                | `boolean`                                              | `false`  | Hides the action lane until the row is hovered or holds focus.                                    |
-| `render`                       | `ReactElement \| ((props: HTMLProps) => ReactElement)` |          | Replaces the element, or composes the row with another component.                                 |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming)              |          |                                                                                                   |
+| Prop                           | Type                                                   | Default  | Description                                            |
+| ------------------------------ | ------------------------------------------------------ | -------- | ------------------------------------------------------ |
+| `variant`                      | `"list" \| "nav"`                                      | `"list"` | `nav` is itself the button and takes no `Row.Primary`. |
+| `size`                         | `"md" \| "lg"`                                         | `"md"`   | 28px or 32px, 44px on a coarse pointer.                |
+| `interactive`                  | `boolean`                                              | `false`  | Paints hover, focus, and selected states.              |
+| `selected`                     | `boolean`                                              | `false`  | Sets `data-selected`.                                  |
+| `revealActions`                | `boolean`                                              | `false`  | Hides actions until hover or focus.                    |
+| `render`                       | `ReactElement \| ((props: HTMLProps) => ReactElement)` |          |                                                        |
+| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming)              |          |                                                        |
 
 `RowSize` and `RowVariant` are the exported types for `size` and `variant`.
 
 ### Row.Primary
 
-Renders a `<button type="button">` and takes every `<button>` prop, plus `render`, `className`,
-`style`, and `xstyle`.
+`type="button"` applies unless `render` replaces the element.
 
 ### Row.Actions
-
-Renders a `<span>`.
 
 | Prop        | Type                    | Default    | Description                                               |
 | ----------- | ----------------------- | ---------- | --------------------------------------------------------- |
@@ -231,16 +192,16 @@ Renders a `<span>`.
 
 Every part takes `render`, `className`, `style`, `xstyle`, and the props of the element it renders.
 
-| Part              | Renders    | Data slot         | Description                                                                  |
-| ----------------- | ---------- | ----------------- | ---------------------------------------------------------------------------- |
-| `Row.Backdrop`    | `<span>`   | `row-backdrop`    | Sits behind the row's content, for a selection layer the surface animates.   |
-| `Row.Primary`     | `<button>` | `row-primary`     | The primary action for the whole painted row.                                |
-| `Row.Leading`     | `<span>`   | `row-leading`     | A fixed lane, so labels align down the list whatever glyph each row carries. |
-| `Row.Body`        | `<span>`   | `row-body`        | Stacks its children, so a label can carry a description under it.            |
-| `Row.Label`       | `<span>`   | `row-label`       | The row's title. Truncates with an ellipsis.                                 |
-| `Row.Description` | `<span>`   | `row-description` | A second line under the label, one step smaller. Truncates with an ellipsis. |
-| `Row.Meta`        | `<span>`   | `row-meta`        | Trailing text such as a time or a count. Tabular figures, one step smaller.  |
-| `Row.Actions`     | `<span>`   | `row-actions`     | Actions, a switch, or a chevron. A sibling of the primary, never a child.    |
+| Part              | Renders    | Data slot         | Description                         |
+| ----------------- | ---------- | ----------------- | ----------------------------------- |
+| `Row.Backdrop`    | `<span>`   | `row-backdrop`    | Selection layer behind the content. |
+| `Row.Primary`     | `<button>` | `row-primary`     | Primary action for the painted row. |
+| `Row.Leading`     | `<span>`   | `row-leading`     | Fixed-width lane.                   |
+| `Row.Body`        | `<span>`   | `row-body`        | Label and description stack.        |
+| `Row.Label`       | `<span>`   | `row-label`       | Ellipsized title.                   |
+| `Row.Description` | `<span>`   | `row-description` | Smaller, ellipsized second line.    |
+| `Row.Meta`        | `<span>`   | `row-meta`        | Trailing text with tabular figures. |
+| `Row.Actions`     | `<span>`   | `row-actions`     | Action lane next to `Row.Primary`.  |
 
 ### Row state and layout
 
@@ -256,11 +217,9 @@ visible, and `--_row-actions-opacity` to `0` or `1`. Both are visible without ho
 
 ## Accessibility
 
-- The row is a `<div>` with no role. Meaning comes from what you render inside it.
-- `Row.Primary` draws the focus ring on keyboard focus, inset by 1px because a row sits flush in a
-  scroll container where an outset ring would clip. See [Focus](/cloud/foundations/focus).
-- `Row.Backdrop` and `Row.Leading` are decorative and `aria-hidden`.
-- `selected` sets `data-selected` and nothing else. Add `aria-current` or `aria-selected` on
-  `Row.Primary`.
+- A `list` row is a `<div>` with no role.
+- `Row.Primary` draws the focus ring on keyboard focus.
+- `Row.Backdrop` is `aria-hidden`.
+- `selected` adds no ARIA. Add `aria-current` or `aria-selected` on `Row.Primary`.
 - An icon-only button inside `Row.Actions` needs `aria-label`. `revealActions` hides the lane with
   `display: none`, so hidden actions leave the tab order. Focus on the primary reveals them.

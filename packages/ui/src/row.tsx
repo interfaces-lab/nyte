@@ -4,10 +4,10 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useRender } from "@base-ui/react/use-render";
 import { create, props, type StyleXStyles } from "@stylexjs/stylex";
 
-import { focus } from "../../a11y.stylex.ts";
-import { glyph, row } from "../../schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { appearance, motion, role, type } from "../../vars.stylex.ts";
+import { focus } from "./a11y.stylex.ts";
+import { glyph, row, target } from "./schema.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { appearance, motion, role, type } from "./vars.stylex.ts";
 
 const styles = create({
   root: {
@@ -164,10 +164,10 @@ const styles = create({
     zIndex: 1,
     display: "var(--_row-actions-display, inline-flex)",
     alignItems: "center",
-    gap: 8,
+    gap: target.gap,
     flexShrink: 0,
     alignSelf: "stretch",
-    minWidth: 24,
+    minWidth: target.min,
   },
   actionsOverlay: {
     position: "absolute",
@@ -181,7 +181,7 @@ type RowElementProps = StyledProps<useRender.ComponentProps<"div">>;
 
 type RowButtonProps = StyledProps<useRender.ComponentProps<"button">>;
 
-/** Notion Calendar's row sizes. `lg` is taller, with room for a description under the label. */
+/** Row sizes. `lg` is taller, with room for a description under the label. */
 export type RowSize = "md" | "lg";
 
 /**
