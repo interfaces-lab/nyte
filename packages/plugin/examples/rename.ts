@@ -78,7 +78,7 @@ const MAX_OUTPUT_TOKENS = 64;
 export type TitleModels = Pick<Models, "getModels" | "streamSimple">;
 
 function spoken(message: Message): string | undefined {
-  if (message.role === "toolResult") return undefined;
+  if (message.role === "toolResult" || message.role === "system") return undefined;
   const text = contentText(message.content, "").trim();
 
   return text === "" ? undefined : text;

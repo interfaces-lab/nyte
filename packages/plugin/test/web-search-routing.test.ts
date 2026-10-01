@@ -1,3 +1,4 @@
+import { getCurrentTools } from "@nyte-ai/schema";
 import assert from "node:assert/strict";
 import { afterEach, describe, expect, test } from "vitest";
 import type { Nyte, SessionId, StreamFn } from "@nyte-ai/core";
@@ -91,8 +92,8 @@ function searchFixture() {
   }));
   let call = 0;
   const streamFn: StreamFn = (model, context) => {
-    state.offered.push((context.tools ?? []).map((tool) => tool.name));
-    const last = context.messages.at(-1);
+    state.offered.push(getCurrentTools(context.messages).map((tool) => tool.name));
+    const last = context.messages.findLast((message) => message.role !== "system");
     if (last?.role === "user" && state.offered.at(-1)?.includes(WEB_SEARCH_TOOL_NAME)) {
       const text = Array.isArray(last.content)
         ? last.content

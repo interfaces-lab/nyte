@@ -10,6 +10,7 @@ import { projectUsage } from "@nyte-ai/client";
 import type { Nyte, SessionEvent, SessionId, StreamFn } from "@nyte-ai/core";
 import { openaiCodexProvider, openaiProvider, type AuthResult, type Models } from "@nyte-ai/ai";
 import { inlinePlugin, systemPromptPlugin } from "@nyte-ai/plugin";
+import { normalizeContext } from "@nyte-ai/schema";
 import type { Api, JsonValue, Model } from "@nyte-ai/schema";
 import { activate } from "../../core/src/kernel/sdk/activation.ts";
 import { writeCheckpoint } from "../../core/src/kernel/compaction.ts";
@@ -275,12 +276,12 @@ async function open(
   const publicApi = openaiProvider();
   const streamFn: StreamFn = (used, context, options) =>
     used.api === "openai-codex-responses"
-      ? codex.stream({ ...used, api: "openai-codex-responses" }, context, {
+      ? codex.stream({ ...used, api: "openai-codex-responses" }, normalizeContext(context), {
           ...options,
           ...auth.auth,
           transport: "sse",
         })
-      : publicApi.streamSimple({ ...used, api: "openai-responses" }, context, {
+      : publicApi.streamSimple({ ...used, api: "openai-responses" }, normalizeContext(context), {
           ...options,
           ...auth.auth,
         });

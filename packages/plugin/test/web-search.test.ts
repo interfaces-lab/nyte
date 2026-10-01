@@ -1,3 +1,4 @@
+import { getCurrentTools } from "@nyte-ai/schema";
 /**
  * Web search from a user's seat: the model asks for a search, the provider
  * the routing choice names is called the way its route expects, and the
@@ -87,7 +88,7 @@ function searchingModel(query: string): StreamFn {
 /** A model that records the tools it was offered, then answers without calling one. */
 function toolNamesModel(seen: string[][]): StreamFn {
   return (model, context) => {
-    seen.push((context.tools ?? []).map((tool) => tool.name));
+    seen.push(getCurrentTools(context.messages).map((tool) => tool.name));
     return respond(model, [{ type: "text", text: "done" }]);
   };
 }

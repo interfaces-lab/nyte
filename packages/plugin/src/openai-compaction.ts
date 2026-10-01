@@ -5,6 +5,7 @@ import {
   type Models,
 } from "@nyte-ai/ai";
 import { definePlugin } from "@nyte-ai/core/plugins";
+import { normalizeContext } from "@nyte-ai/schema";
 
 export const OPENAI_COMPACTION_PLUGIN_ID = "openai/compaction";
 
@@ -52,15 +53,16 @@ export function openaiCompactionPlugin({ models }: OpenAICompactionOptions) {
         if (auth === undefined) return undefined;
         const requestModel = { ...model, baseUrl: auth.auth.baseUrl ?? model.baseUrl };
 
-        const context =
-          event.customInstructions === undefined
-            ? event.context
-            : {
-                ...event.context,
-                systemPrompt: [event.context.systemPrompt, event.customInstructions]
-                  .filter((part) => part !== undefined)
-                  .join("\n\n"),
-              };
+        const context = normalizeContext({
+          ...event.context,
+          messages:
+            event.customInstructions === undefined
+              ? event.context.messages
+              : [
+                  ...event.context.messages,
+                  { role: "system", content: event.customInstructions, timestamp: Date.now() },
+                ],
+        });
 
         const options = { apiKey: auth.auth.apiKey, headers: auth.auth.headers, signal };
 
