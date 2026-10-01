@@ -1,31 +1,32 @@
 ---
 title: Select
-description: "A compact trigger that picks one value from a short list"
+description: "A compact trigger that picks one value from a list"
 ---
 
 ```ts title="Import"
-import { Select } from "@nyte-ai/ui";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 ```
 
-The same `Select` is exported from its own subpath. Pick one path per file.
-
-```ts title="Subpath"
-import { Select } from "@nyte-ai/ui/select";
-```
-
-A 24px trigger showing the current option. It opens a list below itself and writes back the
-option the user picks. Reach for it when a setting takes one of a few named values. For a
-searchable list use [Autocomplete](/cloud/components/autocomplete).
+For a searchable list, use [Autocomplete](/cloud/components/autocomplete).
 
 ## Usage
 
-- `options` is the whole list. Each option has a `value`, a `label`, and an optional `fontFamily`
-  that renders that option in its own typeface.
-- The select is controlled. Pass `value` and update it in `onValueChange`, which receives the
-  option's `value` typed as `T`.
-- `label` names the trigger for assistive technology. It is not rendered.
-- The trigger is 112 to 180px wide. `width="wide"` lets it fill its container.
-- The list opens below the trigger, aligned to its end, and flips above when there is no room.
+- Pass `items` to `Select` so `SelectValue` shows the chosen label instead of the raw value.
+- `onValueChange` can receive `null`.
+- Name the trigger with `aria-label`.
+
+## Anatomy
+
+```tsx
+<Select>
+  <SelectTrigger>
+    <SelectValue />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="choice">Choice</SelectItem>
+  </SelectContent>
+</Select>
+```
 
 ## Examples
 
@@ -34,39 +35,108 @@ searchable list use [Autocomplete](/cloud/components/autocomplete).
 </Preview>
 
 ```tsx
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
+import { useState } from "react";
+
 type Theme = "system" | "light" | "dark";
 
 const themes = [
   { value: "system", label: "System" },
   { value: "light", label: "Light" },
   { value: "dark", label: "Dark" },
-] as const satisfies readonly SelectOption<Theme>[];
+] as const satisfies readonly { readonly value: Theme; readonly label: string }[];
 
-const [theme, setTheme] = useState<Theme>("system");
+function ThemeSelect() {
+  const [theme, setTheme] = useState<Theme>("system");
 
-<Select<Theme> label="Theme" value={theme} options={themes} onValueChange={setTheme} />;
+  return (
+    <Select
+      items={themes}
+      value={theme}
+      onValueChange={(next) => {
+        if (next !== null) setTheme(next);
+      }}
+    >
+      <SelectTrigger aria-label="Theme">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {themes.map((option) => (
+          <SelectItem key={option.value} value={option.value} label={option.label}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+```
+
+```tsx
+<SelectTrigger aria-label="Default model" width="wide">
+  <SelectValue />
+</SelectTrigger>
 ```
 
 ## Props
 
-`xstyle`, `className`, and `style` land on the trigger.
+Styled parts take `xstyle`, `className`, and `style`; see
+[Theming](/cloud/foundations/theming). Each sets `data-slot` to its kebab-case name, such as
+`select-item`. `Select` passes through Base UI.
 
-| Prop                           | Type                                      | Default      | Description                            |
-| ------------------------------ | ----------------------------------------- | ------------ | -------------------------------------- |
-| `label`                        | `string`                                  |              | Accessible name of the trigger.        |
-| `value`                        | `T extends string`                        |              | The selected option's value.           |
-| `options`                      | `readonly SelectOption<T>[]`              |              | The list, in order.                    |
-| `onValueChange`                | `(value: T) => void`                      |              | Called with the picked option's value. |
-| `disabled`                     | `boolean`                                 | `false`      | Dims the trigger and blocks opening.   |
-| `width`                        | `"standard" \| "wide"`                    | `"standard"` | `wide` fills the container.            |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |              |                                        |
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
-`SelectOption<T>` is `{ value: T; label: string; fontFamily?: string }`.
+### Select
+
+<include>../../base-ui-reference/select/Root.md</include>
+
+### SelectTrigger
+
+| Prop    | Type                   | Default      | Description                                         |
+| ------- | ---------------------- | ------------ | --------------------------------------------------- |
+| `width` | `"standard" \| "wide"` | `"standard"` | `wide` removes the 112px minimum and 180px maximum. |
+
+<include>../../base-ui-reference/select/Trigger.md</include>
+
+### SelectValue
+
+<include>../../base-ui-reference/select/Value.md</include>
+
+### SelectContent
+
+Renders the portal, positioner, popup, and list. The positioning props below go to the positioner.
+Everything else goes to the popup.
+
+| Prop                   | Type                                                                       | Default                                                      | Description                                      |
+| ---------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------ |
+| `side`                 | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"`                                                   |                                                  |
+| `align`                | `"start" \| "center" \| "end"`                                             | `"end"`                                                      |                                                  |
+| `sideOffset`           | `number \| OffsetFunction`                                                 | `4`                                                          | Pixels.                                          |
+| `alignOffset`          | `number \| OffsetFunction`                                                 |                                                              |                                                  |
+| `alignItemWithTrigger` | `boolean`                                                                  | `false`                                                      | Overlaps the trigger to line up the chosen item. |
+| `collisionAvoidance`   | `CollisionAvoidance`                                                       | `{ side: "flip", align: "shift", fallbackAxisSide: "none" }` |                                                  |
+| `tint`                 | `Tint`                                                                     |                                                              | Scopes the popup to a hue.                       |
+
+#### Positioner
+
+<include>../../base-ui-reference/select/Positioner.md</include>
+
+#### Popup
+
+<include>../../base-ui-reference/select/Popup.md</include>
+
+#### List
+
+<include>../../base-ui-reference/select/List.md</include>
+
+### SelectItem
+
+<include>../../base-ui-reference/select/Item.md</include>
 
 ## Accessibility
 
-- The trigger renders `role="combobox"`, the list `role="listbox"`, and each option `role="option"`
+- The trigger has `role="combobox"`, the list `role="listbox"`, and each option `role="option"`
   with `aria-selected`.
-- Arrow keys move the highlight, Enter selects, and Escape closes the list.
-- Typing matches option labels.
-- The focus ring appears on keyboard focus. See [Focus](/cloud/foundations/focus).
+- Arrow keys move through the options, Enter picks, and Escape closes. Typing matches option
+  labels.
+- Keyboard focus on the trigger shows the [focus ring](/cloud/foundations/focus).

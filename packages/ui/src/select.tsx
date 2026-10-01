@@ -2,11 +2,11 @@ import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { focus } from "../../a11y.stylex.ts";
-import { button, layer, menu, shape } from "../../schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { surfaceTheme, type Tint } from "../../surface-theme.ts";
-import { appearance, motion, role, shadow, type } from "../../vars.stylex.ts";
+import { focus } from "./a11y.stylex.ts";
+import { button, layer, menu, shape, target } from "./schema.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { surfaceTheme, type Tint } from "./surface-theme.ts";
+import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 import { useOverlayRef } from "./overlay.tsx";
 
@@ -25,7 +25,8 @@ const styles = create({
     boxSizing: "border-box",
     minWidth: 112,
     maxWidth: 180,
-    height: { default: button.heightSm, "@media (pointer: coarse)": menu.itemHeight },
+    height: button.heightSm,
+    minHeight: target.min,
     paddingBlock: 0,
     paddingInline: button.paddingInlineSm,
     overflow: "hidden",
@@ -48,7 +49,6 @@ const styles = create({
     cursor: { default: appearance.cursorInteractive, "[data-disabled]": "default" },
     flexShrink: 0,
   },
-  triggerWide: { minWidth: 0, maxWidth: "100%" },
   value: {
     display: "block",
     flex: 1,
@@ -159,113 +159,130 @@ const styles = create({
   },
 });
 
-export interface SelectOption<T extends string> {
-  readonly value: T;
-  readonly label: string;
-  /** Renders the option in its own typeface, such as a font picker's families. */
-  readonly fontFamily?: string;
-}
+const triggerWidths = create({
+  standard: {},
+  wide: { minWidth: 0, maxWidth: "100%" },
+});
 
-export type SelectWidth = "standard" | "wide";
+export const Select = SelectPrimitive.Root;
 
-export type SelectProps<T extends string> = StyledProps<{
-  /** Names the trigger for assistive technology. */
-  readonly label: string;
-  readonly value: T;
-  readonly options: readonly SelectOption<T>[];
-  readonly disabled?: boolean;
-  readonly tint?: Tint;
+export type SelectTriggerProps = StyledProps<SelectPrimitive.Trigger.Props> & {
   /** `wide` lets the trigger fill its container instead of stopping at 180px. */
-  readonly width?: SelectWidth;
-  readonly onValueChange: (value: T) => void;
-}>;
+  readonly width?: keyof typeof triggerWidths;
+};
 
-/** A compact trigger that opens a list of options below it and writes back the chosen one. */
-export function Select<T extends string>({
-  label,
-  value,
-  options,
-  disabled = false,
-  tint,
+export function SelectTrigger({
   width = "standard",
-  onValueChange,
+  children,
   xstyle,
   className,
   style,
-}: SelectProps<T>): ReactElement {
+  ...rest
+}: SelectTriggerProps): ReactElement {
+  return (
+    <SelectPrimitive.Trigger
+      data-slot="select-trigger"
+      {...mergeStyleProps(
+        props(styles.trigger, triggerWidths[width], focus.ring, xstyle),
+        className,
+        style,
+      )}
+      {...rest}
+    >
+      {children}
+      <SelectPrimitive.Icon {...props(styles.icon)}>
+        <Icon name="chevron-down" size={11} />
+      </SelectPrimitive.Icon>
+    </SelectPrimitive.Trigger>
+  );
+}
+
+export type SelectValueProps = StyledProps<SelectPrimitive.Value.Props>;
+
+export function SelectValue({ xstyle, className, style, ...rest }: SelectValueProps): ReactElement {
+  return (
+    <SelectPrimitive.Value
+      data-slot="select-value"
+      {...mergeStyleProps(props(styles.value, xstyle), className, style)}
+      {...rest}
+    />
+  );
+}
+
+export type SelectContentProps = StyledProps<Omit<SelectPrimitive.Popup.Props, "ref">> &
+  Pick<
+    SelectPrimitive.Positioner.Props,
+    "side" | "align" | "sideOffset" | "alignOffset" | "alignItemWithTrigger" | "collisionAvoidance"
+  > & {
+    /** Scopes the popup to a hue. */
+    readonly tint?: Tint;
+  };
+
+export function SelectContent({
+  side = "bottom",
+  align = "end",
+  sideOffset = 4,
+  alignOffset,
+  alignItemWithTrigger = false,
+  collisionAvoidance = COLLISION,
+  tint,
+  children,
+  xstyle,
+  className,
+  style,
+  ...rest
+}: SelectContentProps): ReactElement {
   const overlayRef = useOverlayRef();
-  const selected = options.find((option) => option.value === value);
 
   return (
-    <SelectPrimitive.Root<T>
-      items={options}
-      value={value}
-      disabled={disabled}
-      onValueChange={(candidate) => {
-        if (candidate === null) return;
-        const option = options.find((entry) => entry.value === candidate);
-
-        if (option !== undefined) onValueChange(option.value);
-      }}
-    >
-      <SelectPrimitive.Trigger
-        type="button"
-        aria-label={label}
-        {...mergeStyleProps(
-          props(styles.trigger, width === "wide" && styles.triggerWide, focus.ring, xstyle),
-          className,
-          style,
-        )}
+    <SelectPrimitive.Portal>
+      <SelectPrimitive.Positioner
+        positionMethod="fixed"
+        side={side}
+        align={align}
+        sideOffset={sideOffset}
+        alignOffset={alignOffset}
+        alignItemWithTrigger={alignItemWithTrigger}
+        collisionPadding={8}
+        collisionAvoidance={collisionAvoidance}
+        {...props(styles.positioner)}
       >
-        <SelectPrimitive.Value {...props(styles.value)}>
-          {selected?.label ?? value}
-        </SelectPrimitive.Value>
-        <SelectPrimitive.Icon {...props(styles.icon)}>
-          <Icon name="chevron-down" size={11} />
-        </SelectPrimitive.Icon>
-      </SelectPrimitive.Trigger>
-      <SelectPrimitive.Portal>
-        <SelectPrimitive.Positioner
-          positionMethod="fixed"
-          side="bottom"
-          align="end"
-          sideOffset={4}
-          collisionPadding={8}
-          collisionAvoidance={COLLISION}
-          alignItemWithTrigger={false}
-          {...props(styles.positioner)}
+        <SelectPrimitive.Popup
+          ref={overlayRef}
+          data-slot="select-content"
+          {...mergeStyleProps(
+            props(tint !== undefined && surfaceTheme[tint], styles.popup, xstyle),
+            className,
+            style,
+          )}
+          {...rest}
         >
-          <SelectPrimitive.Popup
-            ref={overlayRef}
-            {...props(tint !== undefined && surfaceTheme[tint], styles.popup)}
-          >
-            <SelectPrimitive.List {...props(styles.list)}>
-              {options.map((option) => (
-                <SelectPrimitive.Item
-                  key={option.value}
-                  value={option.value}
-                  label={option.label}
-                  {...props(styles.item)}
-                >
-                  <SelectPrimitive.ItemText
-                    style={
-                      option.fontFamily === undefined
-                        ? undefined
-                        : { fontFamily: option.fontFamily }
-                    }
-                    {...props(styles.itemText)}
-                  >
-                    {option.label}
-                  </SelectPrimitive.ItemText>
-                  <SelectPrimitive.ItemIndicator {...props(styles.itemIndicator)}>
-                    <Icon name="checkmark" size={11} />
-                  </SelectPrimitive.ItemIndicator>
-                </SelectPrimitive.Item>
-              ))}
-            </SelectPrimitive.List>
-          </SelectPrimitive.Popup>
-        </SelectPrimitive.Positioner>
-      </SelectPrimitive.Portal>
-    </SelectPrimitive.Root>
+          <SelectPrimitive.List {...props(styles.list)}>{children}</SelectPrimitive.List>
+        </SelectPrimitive.Popup>
+      </SelectPrimitive.Positioner>
+    </SelectPrimitive.Portal>
+  );
+}
+
+export type SelectItemProps = StyledProps<SelectPrimitive.Item.Props>;
+
+export function SelectItem({
+  children,
+  xstyle,
+  className,
+  style,
+  ...rest
+}: SelectItemProps): ReactElement {
+  return (
+    <SelectPrimitive.Item
+      data-slot="select-item"
+      {...mergeStyleProps(props(styles.item, xstyle), className, style)}
+      {...rest}
+    >
+      <SelectPrimitive.ItemText {...props(styles.itemText)}>{children}</SelectPrimitive.ItemText>
+      <SelectPrimitive.ItemIndicator {...props(styles.itemIndicator)}>
+        <Icon name="checkmark" size={11} />
+      </SelectPrimitive.ItemIndicator>
+    </SelectPrimitive.Item>
   );
 }
