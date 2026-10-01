@@ -174,6 +174,17 @@ export default defineConfig({
       },
     },
     {
+      files: [
+        "packages/app/src/**/*.{ts,tsx}",
+        "packages/ui/src/**/*.{ts,tsx}",
+        "packages/lab/src/**/*.{ts,tsx}",
+      ],
+      rules: {
+        "nyte-design/control-size": "error",
+        "nyte-design/touch-in-tokens": "error",
+      },
+    },
+    {
       files: ["packages/app/src/**/*.{ts,tsx}", "packages/ui/src/**/*.{ts,tsx}"],
       rules: {
         "nyte-interactions/no-clickable-non-control": "error",
@@ -181,6 +192,7 @@ export default defineConfig({
         "nyte-interactions/no-hover-submenus": "error",
         "nyte-interactions/restore-popup-focus": "error",
         "nyte-interactions/specific-confirm-label": "error",
+        "nyte-interactions/no-disabled-caption": "error",
         "nyte-interactions/title-case-control-label": "error",
       },
     },
