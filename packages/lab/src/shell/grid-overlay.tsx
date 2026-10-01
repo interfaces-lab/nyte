@@ -17,7 +17,7 @@ type GuideBox = {
 type GuideColumn = { name: string; left: number; top: number; height: number; popup: boolean };
 
 const popupSelector =
-  '[role="menu"], [role="listbox"], [role="dialog"], [role="alertdialog"], [role="tooltip"]';
+  '[role="menu"], [role="listbox"], [role="dialog"], [role="alertdialog"], [data-slot="tooltip-content"]';
 
 const rowSelector =
   '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"]';

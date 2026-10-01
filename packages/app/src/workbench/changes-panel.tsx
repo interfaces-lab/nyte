@@ -148,7 +148,7 @@ export interface RevertTarget {
 export function revertConfirmation(target: RevertTarget) {
   if (target.untracked) {
     return {
-      title: "Move to Trash?",
+      title: "Move to Trash",
       description: `${target.path} is untracked, so reverting it moves the file to the trash.`,
       confirmLabel: "Move to Trash",
       pendingLabel: "Moving…",
@@ -156,9 +156,9 @@ export function revertConfirmation(target: RevertTarget) {
   }
 
   return {
-    title: "Revert changes?",
+    title: "Revert Changes",
     description: `${target.path} goes back to the last commit, and its changes are lost. This can’t be undone.`,
-    confirmLabel: "Revert",
+    confirmLabel: "Revert Changes",
     pendingLabel: "Reverting…",
   };
 }

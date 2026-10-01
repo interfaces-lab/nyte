@@ -1,5 +1,7 @@
+import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { useId } from "react";
 import { props } from "@stylexjs/stylex";
-import { IconFilter2, IconFolderAddRight } from "central-icons";
+import { Icon } from "@nyte-ai/ui/icon";
 import type { ReactElement } from "react";
 import {
   Menu,
@@ -14,7 +16,7 @@ import {
 import type { IconName } from "@nyte-ai/ui/icon";
 import { StatusDot } from "../components/ui.tsx";
 import { Button } from "@nyte-ai/ui/button";
-import { Hint } from "@nyte-ai/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { sidebarFilterStyles as styles } from "./sidebar-filter.stylex.ts";
 import {
@@ -46,7 +48,7 @@ const SHOW_FIELD_ICONS = {
 } as const satisfies Readonly<Record<SessionShowField, IconName>>;
 
 const STATUS_LABELS = {
-  "needs-attention": "Needs attention",
+  "needs-attention": "Needs Attention",
   unread: "Unread",
   working: "Working",
   draft: "Draft",
@@ -82,7 +84,7 @@ const SOURCE_LABELS = {
   setup: "Setup",
   slack: "Slack",
   linear: "Linear",
-  "source-control": "Source control",
+  "source-control": "Source Control",
   "grok-bot": "Grok Bot",
   sdk: "SDK",
   api: "API",
@@ -147,6 +149,7 @@ export function WorkspaceControls({
   onCollapseAll,
 }: WorkspaceControlsProps): ReactElement {
   const filtersActive = hasSessionFilters(value);
+  const loadingReasonId = useId();
 
   const resetFilters = (): void => {
     onChange(clearSessionFilters(value));
@@ -156,6 +159,9 @@ export function WorkspaceControls({
     <span {...props(styles.controls)}>
       <Menu
         label="Customize sidebar"
+        onOpenChange={(open, details) => {
+          if (open && filterDisabled) details.cancel();
+        }}
         side="right"
         align="start"
         xstyle={styles.popup}
@@ -163,12 +169,13 @@ export function WorkspaceControls({
           <Toggle
             size="sm"
             iconOnly
-            disabled={filterDisabled}
+            aria-disabled={filterDisabled || undefined}
+            aria-describedby={filterDisabled ? loadingReasonId : undefined}
             aria-label="Customize sidebar"
             pressed={filtersActive}
             onPressedChange={() => undefined}
           >
-            <IconFilter2 ariaHidden mode="raw" size={13} />
+            <Icon name="filters" size={14} />
           </Toggle>
         }
       >
@@ -335,29 +342,33 @@ export function WorkspaceControls({
         </MenuGroup>
         <MenuSeparator />
         <MenuItem icon="folder" onSelect={onCollapseAll}>
-          Collapse all
-        </MenuItem>
-        <MenuItem icon="inbox-checked" disabled onSelect={() => undefined}>
-          Mark all as read
+          Collapse All Workspaces
         </MenuItem>
       </Menu>
+      {filterDisabled && (
+        <span id={loadingReasonId} {...props(srOnly)}>
+          Chats are loading
+        </span>
+      )}
       {onOpenFolder !== undefined && (
-        <Hint
-          content="Open Workspace"
-          side="bottom"
-          align="end"
-          trigger={
-            <Button
-              size="sm"
-              iconOnly
-              aria-label="Open folder…"
-              onClick={onOpenFolder}
-              title={undefined}
-            >
-              <IconFolderAddRight ariaHidden mode="raw" size={13} />
-            </Button>
-          }
-        />
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="sm"
+                iconOnly
+                aria-label="Open folder"
+                onClick={onOpenFolder}
+                title={undefined}
+              >
+                <Icon name="folder-add" size={14} />
+              </Button>
+            }
+          />
+          <TooltipContent side="bottom" align="end">
+            Open Workspace
+          </TooltipContent>
+        </Tooltip>
       )}
     </span>
   );

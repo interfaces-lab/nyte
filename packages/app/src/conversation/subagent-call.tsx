@@ -8,7 +8,7 @@ import { TextRoll } from "../components/text-roll.tsx";
 import { UnreadMark } from "../components/ui.tsx";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { Hint } from "@nyte-ai/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Row } from "@nyte-ai/ui/row";
 import { useSessionFrameSelector } from "../live.ts";
 import type { SessionFrame } from "../live.ts";
@@ -136,11 +136,7 @@ function SubagentRow({
   if (open === undefined) return <div {...props(subagentCallStyles.row, xstyle)}>{content}</div>;
 
   return (
-    <Row.Primary
-      aria-label={`Open ${title}`}
-      onClick={open}
-      xstyle={[subagentCallStyles.row, xstyle, focus.ring]}
-    >
+    <Row.Primary onClick={open} xstyle={[subagentCallStyles.row, xstyle, focus.ring]}>
       {content}
     </Row.Primary>
   );
@@ -258,7 +254,10 @@ export function SubagentLineView({
         {toolVerb(toolClass, phase)}
       </span>
       {label !== undefined && (
-        <Hint content={label} trigger={<span {...props(toolCallStyles.detail)}>{label}</span>} />
+        <Tooltip>
+          <TooltipTrigger render={<span {...props(toolCallStyles.detail)}>{label}</span>} />
+          <TooltipContent>{label}</TooltipContent>
+        </Tooltip>
       )}
       {phase === "running" && until !== undefined && (
         <span {...props(toolCallStyles.detail)}>

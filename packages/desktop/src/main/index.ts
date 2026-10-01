@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, screen, shell } from "electron";
 import { createNyteModels } from "@nyte-ai/ai";
 import { nyteHome } from "@nyte-ai/host";
 import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
@@ -38,7 +38,6 @@ import {
 interface NyteWindow {
   readonly window: BrowserWindow;
   readonly menuCommands: ReturnType<typeof createMenuCommandDelivery>;
-  windowButtonZoomFactor: number | undefined;
   /**
    * Whether the window has been shown at least once. Synthesized mouse input
    * is silently dropped until the first show, so the explicit signal avoids
@@ -228,13 +227,11 @@ function senderWindow(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent
 }
 
 function updateWindowButtonPosition(entry: NyteWindow): void {
-  if (process.platform !== "darwin") return;
+  if (process.platform !== "darwin" || entry.window.isDestroyed()) return;
 
   const zoomFactor = entry.window.webContents.getZoomFactor();
 
-  if (zoomFactor === entry.windowButtonZoomFactor) return;
   entry.window.setWindowButtonPosition(macOSTrafficLightPosition(zoomFactor));
-  entry.windowButtonZoomFactor = zoomFactor;
 }
 
 function registerIpc(): void {
@@ -310,7 +307,6 @@ function createWindow(): NyteWindow {
       openWindow: () => reveal(created),
       send: (command) => created.webContents.send(APP_MENU_COMMAND_CHANNEL, command),
     }),
-    windowButtonZoomFactor: process.platform === "darwin" ? 1 : undefined,
     shown: false,
   };
 
@@ -325,9 +321,13 @@ function createWindow(): NyteWindow {
   };
 
   created.webContents.on("render-process-gone", releaseRendererWork);
-  created.webContents.on("did-finish-load", () => {
-    updateWindowButtonPosition(entry);
-  });
+  const syncWindowChrome = (): void => updateWindowButtonPosition(entry);
+  created.webContents.on("did-finish-load", syncWindowChrome);
+  created.webContents.on("zoom-changed", syncWindowChrome);
+  created.on("move", syncWindowChrome);
+  created.on("resize", syncWindowChrome);
+  created.on("leave-full-screen", syncWindowChrome);
+  screen.on("display-metrics-changed", syncWindowChrome);
   // Only a committed main-frame navigation has left the document behind. The
   // start event fires before `will-navigate` can cancel, and would tear down
   // under a renderer that stays.
@@ -386,6 +386,7 @@ function createWindow(): NyteWindow {
   created.on("closed", () => {
     entry.menuCommands.reset();
     nativeTheme.off("updated", updateWindowBackground);
+    screen.off("display-metrics-changed", syncWindowChrome);
     windows.delete(id);
     browserSurfaces.releaseWindow(id);
     desktopHost?.closeWindow(id);

@@ -26,18 +26,31 @@ const poolOptions = {
 /** Workers highlight with this pair; the editor's own tokenizer must match it. */
 export const PIERRE_THEME = { light: "github-light", dark: "github-dark" } as const;
 
-/**
- * Pierre reads token weight, style, and decoration through light-dark(), which
- * accepts only colors, so Chromium drops bold and italic. The paired GitHub
- * themes agree on these, so the light values serve both schemes.
- */
 /** A selected tree row carries a hairline, so it reads apart from the hovered one. */
 export const PIERRE_TREE_CSS = `
+:host {
+  --trees-action-lane-width-override: 24px;
+}
+[data-type="context-menu-trigger"] {
+  margin: 0;
+  height: var(--trees-row-height);
+}
+@media (pointer: coarse) {
+  :host {
+    --trees-action-lane-width-override: 44px;
+  }
+}
+
 [data-type="item"][data-item-selected="true"] {
   box-shadow: inset 0 0 0 1px ${role.borderPrimary};
 }
 `;
 
+/**
+ * Pierre reads token weight, style, and decoration through light-dark(), which
+ * accepts only colors, so Chromium drops bold and italic. The paired GitHub
+ * themes agree on these, so the light values serve both schemes.
+ */
 export const PIERRE_TOKEN_CSS = `
 [data-line] span,
 [data-edit-prediction-suffix] span {

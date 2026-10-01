@@ -85,7 +85,7 @@ function start(connection: Connection): void {
       root.render(
         <main {...props(styles.failure)}>
           <p role="alert">Couldn’t open the workspace on {displayAddress(connection)}.</p>
-          <Button onClick={retry}>Try again</Button>
+          <Button onClick={retry}>Try Again</Button>
         </main>,
       );
     },

@@ -168,6 +168,12 @@ function PaneHeader({
   const actions = usePaneActions();
   const host = useHostState();
   const canSplit = useCanSplitPane();
+  const { layout } = usePaneControllerSnapshot();
+  const splitReason = canSplit
+    ? undefined
+    : layout.kind === "split"
+      ? "Close a pane to split again"
+      : "Widen the window to split";
   const mac = macPlatform(host.data?.platform);
 
   return (
@@ -183,6 +189,7 @@ function PaneHeader({
             icon="split-down"
             meta={clientActionShortcut(clientActions.splitDown, mac)}
             disabled={!canSplit}
+            disabledReason={splitReason}
             onSelect={() => actions.split("down")}
           >
             {clientActions.splitDown.label}
@@ -191,12 +198,13 @@ function PaneHeader({
             icon="split-right"
             meta={clientActionShortcut(clientActions.splitRight, mac)}
             disabled={!canSplit}
+            disabledReason={splitReason}
             onSelect={() => actions.split("right")}
           >
             {clientActions.splitRight.label}
           </MenuItem>
           <MenuItem icon="x" onSelect={() => actions.close(paneId)}>
-            Close pane
+            Close Pane
           </MenuItem>
           {sessionItems}
         </Menu>
@@ -649,11 +657,11 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
               <>
                 <MenuSeparator />
                 <MenuItem icon="pencil" onSelect={() => setDraftName(title)}>
-                  Rename
+                  Rename Chat…
                 </MenuItem>
                 <MenuSeparator />
                 <MenuItem icon="trash" danger onSelect={requestDelete}>
-                  Delete
+                  Delete Chat…
                 </MenuItem>
               </>
             }
@@ -1154,9 +1162,29 @@ function SplitSash({
   ratio: number;
   dragRatio: number | undefined;
   onDragRatio: (ratio: number | undefined) => void;
-  containerRef: React.RefObject<HTMLDivElement | null>;
+  containerRef: RefObject<HTMLDivElement | null>;
 }): ReactElement {
   const actions = usePaneActions();
+  const sashRef = useRef<HTMLDivElement>(null);
+  const [availableWidth, setAvailableWidth] = useState(Number.NaN);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const sash = sashRef.current;
+
+    if (container === null || sash === null) return;
+    const measure = (): void => {
+      setAvailableWidth(
+        container.getBoundingClientRect().width -
+          (direction === "right" ? sash.getBoundingClientRect().width : 0),
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    observer.observe(sash);
+    return () => observer.disconnect();
+  }, [containerRef, direction]);
 
   /**
    * Only a side-by-side split can starve a pane of width, so the pixel floor
@@ -1166,33 +1194,45 @@ function SplitSash({
   const clampRatio = (nextRatio: number, width: number): number =>
     direction === "right" ? clampSplitRatioForSize(nextRatio, width) : clampSplitRatio(nextRatio);
 
+  useLayoutEffect(() => {
+    const clamped =
+      direction === "right"
+        ? clampSplitRatioForSize(ratio, availableWidth)
+        : clampSplitRatio(ratio);
+    if (clamped !== ratio) actions.resize(clamped);
+  }, [actions, availableWidth, direction, ratio]);
+
   const ratioFromPointer = (event: PointerEvent<HTMLDivElement>): number | undefined => {
     const container = containerRef.current;
 
     if (container === null) return undefined;
     const bounds = container.getBoundingClientRect();
-    const size = direction === "right" ? bounds.width : bounds.height;
+    const lane = event.currentTarget.getBoundingClientRect();
+    const laneSize = direction === "right" ? lane.width : lane.height;
+    const size = (direction === "right" ? bounds.width : bounds.height) - laneSize;
 
     if (size <= 0) return undefined;
     const pixels = direction === "right" ? event.clientX - bounds.left : event.clientY - bounds.top;
 
-    return clampRatio(pixels / size, bounds.width);
+    return clampRatio((pixels - laneSize / 2) / size, availableWidth);
   };
 
   return (
     <div
+      ref={sashRef}
       role="separator"
       tabIndex={0}
       aria-label="Resize chat panes"
       aria-orientation={direction === "right" ? "vertical" : "horizontal"}
-      aria-valuemin={20}
-      aria-valuemax={80}
-      aria-valuenow={Math.round(ratio * 100)}
+      aria-valuemin={Math.round(clampRatio(0, availableWidth) * 100)}
+      aria-valuemax={Math.round(clampRatio(1, availableWidth) * 100)}
+      aria-valuenow={Math.round((dragRatio ?? ratio) * 100)}
       {...props(
         threadStyles.sash,
         direction === "right" ? threadStyles.sashRight : threadStyles.sashDown,
       )}
       onPointerDown={(event) => {
+        if (event.button !== 0) return;
         const nextRatio = ratioFromPointer(event);
 
         if (nextRatio === undefined) return;
@@ -1207,24 +1247,37 @@ function SplitSash({
         if (nextRatio !== undefined) onDragRatio(nextRatio);
       }}
       onPointerUp={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-          event.currentTarget.releasePointerCapture(event.pointerId);
-        }
-
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+        const nextRatio = ratioFromPointer(event);
+        event.currentTarget.releasePointerCapture(event.pointerId);
         onDragRatio(undefined);
-
-        if (dragRatio !== undefined) actions.resize(dragRatio);
+        if (nextRatio !== undefined) actions.resize(nextRatio);
+      }}
+      onLostPointerCapture={() => onDragRatio(undefined)}
+      onDoubleClick={() => {
+        onDragRatio(undefined);
+        actions.resize(0.5);
       }}
       onPointerCancel={() => onDragRatio(undefined)}
       onKeyDown={(event) => {
         const previous = direction === "right" ? "ArrowLeft" : "ArrowUp";
         const next = direction === "right" ? "ArrowRight" : "ArrowDown";
 
-        if (event.key !== previous && event.key !== next) return;
+        if (
+          event.key !== previous &&
+          event.key !== next &&
+          event.key !== "Home" &&
+          event.key !== "End"
+        )
+          return;
         event.preventDefault();
-        const step = event.shiftKey ? 0.1 : 0.02;
-        const width = containerRef.current?.getBoundingClientRect().width ?? Number.NaN;
-        actions.resize(clampRatio(ratio + (event.key === previous ? -step : step), width));
+        const nextRatio =
+          event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? 1
+              : ratio + (event.key === previous ? -0.02 : 0.02);
+        actions.resize(clampRatio(nextRatio, availableWidth));
       }}
     >
       <span

@@ -7,7 +7,12 @@ import { intent } from "@nyte-ai/ui/surface-theme";
  */
 import { props } from "@stylexjs/stylex";
 import { Popover } from "@nyte-ai/ui/popover";
-import { PreviewCard } from "@nyte-ai/ui/preview-card";
+import {
+  createPreviewCardHandle,
+  PreviewCard,
+  PreviewCardContent,
+  PreviewCardTrigger,
+} from "@nyte-ai/ui/preview-card";
 import { useDeferredValue, useId, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import type { MentionFile } from "@nyte-ai/client";
@@ -396,7 +401,7 @@ export function useComposerSuggestions({
   const [menu, setMenu] = useState<SuggestionMenuState>();
   const [index, setIndex] = useState(0);
   const popupId = useId();
-  const [previewHandle] = useState(() => PreviewCard.createHandle<ComposerSuggestion>());
+  const [previewHandle] = useState(() => createPreviewCardHandle<ComposerSuggestion>());
   const deferredQuery = useDeferredValue(menu?.query ?? "");
   const commands = suggestionCatalog.status === "ready" ? suggestionCatalog.data.commands : NONE;
   const skills = suggestionCatalog.status === "ready" ? suggestionCatalog.data.skills : NONE;
@@ -626,7 +631,7 @@ export function useComposerSuggestions({
                     const description = descriptionExcerpt(suggestion.description, deferredQuery);
 
                     return (
-                      <PreviewCard.Trigger
+                      <PreviewCardTrigger
                         key={suggestion.id}
                         id={optionId}
                         handle={previewHandle}
@@ -676,28 +681,22 @@ export function useComposerSuggestions({
           </Popover.Positioner>
         </Popover.Portal>
       </Popover.Root>
-      <PreviewCard.Root handle={previewHandle}>
+      <PreviewCard handle={previewHandle}>
         {({ payload }) =>
           payload === undefined ? null : (
-            <PreviewCard.Portal>
-              <PreviewCard.Positioner
-                side="right"
-                align="end"
-                sideOffset={6}
-                collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
-                xstyle={composerStyles.suggestionPreviewPositioner}
-              >
-                <PreviewCard.Popup
-                  aria-label={`Details for ${payload.label}`}
-                  xstyle={composerStyles.suggestionPreview}
-                >
-                  <SuggestionPreview suggestion={payload} />
-                </PreviewCard.Popup>
-              </PreviewCard.Positioner>
-            </PreviewCard.Portal>
+            <PreviewCardContent
+              side="right"
+              align="end"
+              sideOffset={6}
+              collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
+              aria-label={`Details for ${payload.label}`}
+              xstyle={composerStyles.suggestionPreview}
+            >
+              <SuggestionPreview suggestion={payload} />
+            </PreviewCardContent>
           )
         }
-      </PreviewCard.Root>
+      </PreviewCard>
     </>
   );
 

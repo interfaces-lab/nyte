@@ -31,7 +31,7 @@ import {
 } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
 
-const TABS = ["all", "agents", "files", "actions", "settings"] as const;
+const TABS = ["all", "agents", "actions", "settings"] as const;
 
 type PaletteTab = (typeof TABS)[number];
 
@@ -79,8 +79,6 @@ function tabLabel(tab: PaletteTab): string {
       return "All";
     case "agents":
       return "Chats";
-    case "files":
-      return "Files";
     case "actions":
       return "Actions";
     case "settings":
@@ -182,13 +180,11 @@ export function SearchPalette({
   // One stable node the whole time the palette is open: a live region that
   // appears and disappears with the list announces nothing.
   const resultCount =
-    tab === "files"
-      ? 0
-      : tab === "agents"
-        ? sessions.length
-        : tab === "all"
-          ? sessions.length + visibleActions.length
-          : visibleActions.length;
+    tab === "agents"
+      ? sessions.length
+      : tab === "all"
+        ? sessions.length + visibleActions.length
+        : visibleActions.length;
 
   const changeOpen = (nextOpen: boolean): void => {
     if (nextOpen) setTab("all");
@@ -319,7 +315,7 @@ export function SearchPalette({
             aria-controls={`${resultsID}-${tab}`}
             autoComplete="off"
             spellCheck={false}
-            placeholder="Search chats, files, and actions…"
+            placeholder="Search chats and actions…"
             value={query}
             xstyle={styles.input}
             onValueChange={setQuery}
@@ -354,9 +350,6 @@ export function SearchPalette({
         </div>
         <Tabs.Panel id={`${resultsID}-agents`} value="agents" xstyle={styles.results}>
           {agentContent()}
-        </Tabs.Panel>
-        <Tabs.Panel id={`${resultsID}-files`} value="files" xstyle={styles.results}>
-          <div {...props(styles.empty)}>No recent files.</div>
         </Tabs.Panel>
         <Tabs.Panel id={`${resultsID}-all`} value="all" xstyle={styles.results}>
           {agentContent(true)}

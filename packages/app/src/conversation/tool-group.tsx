@@ -28,7 +28,7 @@ import { Prose } from "./prose.tsx";
 import { NO_WAITS } from "./transcript-presentation.ts";
 import type { LiveWaits, WorkTurnPart } from "./transcript-presentation.ts";
 import { FOLLOW_RESUME_MS, followOnScroll, overflows } from "./tool-group-follow.ts";
-import { WorkGroupWindow, opensWorkGroup } from "./work-group-window.tsx";
+import { WorkGroupWindow } from "./work-group-window.tsx";
 import { workGroupBody } from "./work-group-body.ts";
 import { createWorkGroupEntries } from "./work-group-entries.ts";
 import {
@@ -453,6 +453,7 @@ export function WorkGroupView({
           <Collapsible.Trigger
             aria-label={listed ? "Hide work details" : "Show work details"}
             {...disclosure}
+            xstyle={[disclosure.xstyle, toolGroupStyles.disclosure]}
           >
             <Collapsible.Chevron />
           </Collapsible.Trigger>
@@ -463,14 +464,6 @@ export function WorkGroupView({
           id={panelId}
           ref={viewportRef}
           data-nyte-scrollport={preview || undefined}
-          onClick={
-            preview
-              ? (event) => {
-                  if (opensWorkGroup(event.target, window.getSelection(), event.currentTarget))
-                    setReveal("open");
-                }
-              : undefined
-          }
           {...props(preview && toolGroupStyles.preview)}
         >
           <div {...props(toolGroupStyles.calls)}>

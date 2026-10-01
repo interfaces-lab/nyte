@@ -113,113 +113,118 @@ import {
 } from "central-icons";
 import FilledIconMacbook from "central-icons-filled/IconMacbook";
 import type { CentralIconBaseProps } from "central-icons/CentralIconBase";
-import {
-  Icon3dBoxTop as FilledIcon3dBoxTop,
-  IconAnalytics as FilledIconAnalytics,
-  IconApps as FilledIconApps,
-  IconArchive1 as FilledIconArchive1,
-  IconArrowCornerDownLeft as FilledIconArrowCornerDownLeft,
-  IconArrowDown as FilledIconArrowDown,
-  IconArrowLeft as FilledIconArrowLeft,
-  IconArrowRight as FilledIconArrowRight,
-  IconArrowRotateClockwise as FilledIconArrowRotateClockwise,
-  IconArrowUp as FilledIconArrowUp,
-  IconArrowWallLeft as FilledIconArrowWallLeft,
-  IconBell as FilledIconBell,
-  IconBlocks as FilledIconBlocks,
-  IconBolt as FilledIconBolt,
-  IconBook as FilledIconBook,
-  IconBranch as FilledIconBranch,
-  IconBubbleQuestion as FilledIconBubbleQuestion,
-  IconBug as FilledIconBug,
-  IconBuildingBlocks as FilledIconBuildingBlocks,
-  IconCanvasGrid as FilledIconCanvasGrid,
-  IconChanges as FilledIconChanges,
-  IconCheckmark1 as FilledIconCheckmark1,
-  IconChevronDownMedium as FilledIconChevronDownMedium,
-  IconChevronRightMedium as FilledIconChevronRightMedium,
-  IconCircleX as FilledIconCircleX,
-  IconCirclesThree as FilledIconCirclesThree,
-  IconClaudeai as FilledIconClaudeai,
-  IconClipboard as FilledIconClipboard,
-  IconCloudApi as FilledIconCloudApi,
-  IconCloudSimple as FilledIconCloudSimple,
-  IconCodeBrackets as FilledIconCodeBrackets,
-  IconCollaborationPointerRight as FilledIconCollaborationPointerRight,
-  IconComputerUse as FilledIconComputerUse,
-  IconConsole as FilledIconConsole,
-  IconCrossLarge as FilledIconCrossLarge,
-  IconCrossSmall as FilledIconCrossSmall,
-  IconDevices as FilledIconDevices,
-  IconDotGrid1x3HorizontalTight as FilledIconDotGrid1x3HorizontalTight,
-  IconDotGrid1x3VerticalTight as FilledIconDotGrid1x3VerticalTight,
-  IconDotGrid2x3 as FilledIconDotGrid2x3,
-  IconDraft as FilledIconDraft,
-  IconExclamationTriangle as FilledIconExclamationTriangle,
-  IconExpand45 as FilledIconExpand45,
-  IconEyeOpen as FilledIconEyeOpen,
-  IconFileText as FilledIconFileText,
-  IconFolder1 as FilledIconFolder1,
-  IconFolderAddRight as FilledIconFolderAddRight,
-  IconFolderOpen as FilledIconFolderOpen,
-  IconGit as FilledIconGit,
-  IconGithub as FilledIconGithub,
-  IconGlobe as FilledIconGlobe,
-  IconGrok as FilledIconGrok,
-  IconInboxChecked as FilledIconInboxChecked,
-  IconInboxEmpty as FilledIconInboxEmpty,
-  IconJavascript as FilledIconJavascript,
-  IconKey1 as FilledIconKey1,
-  IconKeyboard as FilledIconKeyboard,
-  IconKimi as FilledIconKimi,
-  IconLayersTwo as FilledIconLayersTwo,
-  IconLayoutLeftRight as FilledIconLayoutLeftRight,
-  IconLayoutTopBottom as FilledIconLayoutTopBottom,
-  IconLinear as FilledIconLinear,
-  IconListBullets as FilledIconListBullets,
-  IconLoader as FilledIconLoader,
-  IconLock as FilledIconLock,
-  IconMagnifyingGlass as FilledIconMagnifyingGlass,
-  IconMerged as FilledIconMerged,
-  IconMinimize45 as FilledIconMinimize45,
-  IconModelcontextprotocol as FilledIconModelcontextprotocol,
-  IconOngoing as FilledIconOngoing,
-  IconOpenai as FilledIconOpenai,
-  IconOpencode as FilledIconOpencode,
-  IconPaperclip1 as FilledIconPaperclip1,
-  IconPencilLine as FilledIconPencilLine,
-  IconPhone as FilledIconPhone,
-  IconPin as FilledIconPin,
-  IconPlusMedium as FilledIconPlusMedium,
-  IconPlusSmall as FilledIconPlusSmall,
-  IconPullRequest as FilledIconPullRequest,
-  IconPullRequestClosedSimple as FilledIconPullRequestClosedSimple,
-  IconReact as FilledIconReact,
-  IconRobot as FilledIconRobot,
-  IconServer as FilledIconServer,
-  IconSettingsGear2 as FilledIconSettingsGear2,
-  IconSettingsSliderHor as FilledIconSettingsSliderHor,
-  IconShield as FilledIconShield,
-  IconSidebarHiddenLeftWide as FilledIconSidebarHiddenLeftWide,
-  IconSidebarHiddenRightWide as FilledIconSidebarHiddenRightWide,
-  IconSlack as FilledIconSlack,
-  IconSparklesSoft as FilledIconSparklesSoft,
-  IconSquareChecklist as FilledIconSquareChecklist,
-  IconStop as FilledIconStop,
-  IconTestTube as FilledIconTestTube,
-  IconTrashCan as FilledIconTrashCan,
-  IconTrending4 as FilledIconTrending4,
-  IconTypescript as FilledIconTypescript,
-  IconUnarchiv as FilledIconUnarchiv,
-  IconUnpin as FilledIconUnpin,
-  IconUser as FilledIconUser,
-  IconUserKey as FilledIconUserKey,
-  IconWebsite as FilledIconWebsite,
-  IconWindowApp as FilledIconWindowApp,
-  IconZai as FilledIconZai,
-} from "central-icons-filled";
+import FilledIcon3dBoxTop from "central-icons-filled/Icon3dBoxTop";
+import FilledIconAnalytics from "central-icons-filled/IconAnalytics";
+import FilledIconApps from "central-icons-filled/IconApps";
+import FilledIconArchive1 from "central-icons-filled/IconArchive1";
+import FilledIconArrowCornerDownLeft from "central-icons-filled/IconArrowCornerDownLeft";
+import FilledIconArrowDown from "central-icons-filled/IconArrowDown";
+import FilledIconArrowLeft from "central-icons-filled/IconArrowLeft";
+import FilledIconArrowRight from "central-icons-filled/IconArrowRight";
+import FilledIconArrowRotateClockwise from "central-icons-filled/IconArrowRotateClockwise";
+import FilledIconArrowUp from "central-icons-filled/IconArrowUp";
+import FilledIconArrowWallLeft from "central-icons-filled/IconArrowWallLeft";
+import FilledIconBell from "central-icons-filled/IconBell";
+import FilledIconBlocks from "central-icons-filled/IconBlocks";
+import FilledIconBolt from "central-icons-filled/IconBolt";
+import FilledIconBook from "central-icons-filled/IconBook";
+import FilledIconBranch from "central-icons-filled/IconBranch";
+import FilledIconBubbleQuestion from "central-icons-filled/IconBubbleQuestion";
+import FilledIconBug from "central-icons-filled/IconBug";
+import FilledIconBuildingBlocks from "central-icons-filled/IconBuildingBlocks";
+import FilledIconCanvasGrid from "central-icons-filled/IconCanvasGrid";
+import FilledIconChanges from "central-icons-filled/IconChanges";
+import FilledIconCheckmark1 from "central-icons-filled/IconCheckmark1";
+import FilledIconChevronDownMedium from "central-icons-filled/IconChevronDownMedium";
+import FilledIconChevronRightMedium from "central-icons-filled/IconChevronRightMedium";
+import FilledIconCircleX from "central-icons-filled/IconCircleX";
+import FilledIconCirclesThree from "central-icons-filled/IconCirclesThree";
+import FilledIconClaudeai from "central-icons-filled/IconClaudeai";
+import FilledIconClipboard from "central-icons-filled/IconClipboard";
+import FilledIconCloudApi from "central-icons-filled/IconCloudApi";
+import FilledIconCloudSimple from "central-icons-filled/IconCloudSimple";
+import FilledIconCodeBrackets from "central-icons-filled/IconCodeBrackets";
+import FilledIconCollaborationPointerRight from "central-icons-filled/IconCollaborationPointerRight";
+import FilledIconComputerUse from "central-icons-filled/IconComputerUse";
+import FilledIconConsole from "central-icons-filled/IconConsole";
+import FilledIconCrossLarge from "central-icons-filled/IconCrossLarge";
+import FilledIconCrossSmall from "central-icons-filled/IconCrossSmall";
+import FilledIconDevices from "central-icons-filled/IconDevices";
+import FilledIconDotGrid1x3HorizontalTight from "central-icons-filled/IconDotGrid1x3HorizontalTight";
+import FilledIconDotGrid1x3VerticalTight from "central-icons-filled/IconDotGrid1x3VerticalTight";
+import FilledIconDotGrid2x3 from "central-icons-filled/IconDotGrid2x3";
+import FilledIconDraft from "central-icons-filled/IconDraft";
+import FilledIconExclamationTriangle from "central-icons-filled/IconExclamationTriangle";
+import FilledIconExpand45 from "central-icons-filled/IconExpand45";
+import FilledIconEyeOpen from "central-icons-filled/IconEyeOpen";
+import FilledIconFileText from "central-icons-filled/IconFileText";
+import FilledIconFolder1 from "central-icons-filled/IconFolder1";
+import FilledIconFolderAddRight from "central-icons-filled/IconFolderAddRight";
+import FilledIconFolderOpen from "central-icons-filled/IconFolderOpen";
+import FilledIconGit from "central-icons-filled/IconGit";
+import FilledIconGithub from "central-icons-filled/IconGithub";
+import FilledIconGlobe from "central-icons-filled/IconGlobe";
+import FilledIconGrok from "central-icons-filled/IconGrok";
+import FilledIconInboxChecked from "central-icons-filled/IconInboxChecked";
+import FilledIconInboxEmpty from "central-icons-filled/IconInboxEmpty";
+import FilledIconJavascript from "central-icons-filled/IconJavascript";
+import FilledIconKey1 from "central-icons-filled/IconKey1";
+import FilledIconKeyboard from "central-icons-filled/IconKeyboard";
+import FilledIconKimi from "central-icons-filled/IconKimi";
+import FilledIconLayersTwo from "central-icons-filled/IconLayersTwo";
+import FilledIconLayoutLeftRight from "central-icons-filled/IconLayoutLeftRight";
+import FilledIconLayoutTopBottom from "central-icons-filled/IconLayoutTopBottom";
+import FilledIconLinear from "central-icons-filled/IconLinear";
+import FilledIconListBullets from "central-icons-filled/IconListBullets";
+import FilledIconLoader from "central-icons-filled/IconLoader";
+import FilledIconLock from "central-icons-filled/IconLock";
+import FilledIconMagnifyingGlass from "central-icons-filled/IconMagnifyingGlass";
+import FilledIconMerged from "central-icons-filled/IconMerged";
+import FilledIconMinimize45 from "central-icons-filled/IconMinimize45";
+import FilledIconModelcontextprotocol from "central-icons-filled/IconModelcontextprotocol";
+import FilledIconOngoing from "central-icons-filled/IconOngoing";
+import FilledIconOpenai from "central-icons-filled/IconOpenai";
+import FilledIconOpencode from "central-icons-filled/IconOpencode";
+import FilledIconPaperclip1 from "central-icons-filled/IconPaperclip1";
+import FilledIconPencilLine from "central-icons-filled/IconPencilLine";
+import FilledIconPhone from "central-icons-filled/IconPhone";
+import FilledIconPin from "central-icons-filled/IconPin";
+import FilledIconPlusMedium from "central-icons-filled/IconPlusMedium";
+import FilledIconPlusSmall from "central-icons-filled/IconPlusSmall";
+import FilledIconPullRequest from "central-icons-filled/IconPullRequest";
+import FilledIconPullRequestClosedSimple from "central-icons-filled/IconPullRequestClosedSimple";
+import FilledIconReact from "central-icons-filled/IconReact";
+import FilledIconRobot from "central-icons-filled/IconRobot";
+import FilledIconServer from "central-icons-filled/IconServer";
+import FilledIconSettingsGear2 from "central-icons-filled/IconSettingsGear2";
+import FilledIconSettingsSliderHor from "central-icons-filled/IconSettingsSliderHor";
+import FilledIconShield from "central-icons-filled/IconShield";
+import FilledIconSidebarHiddenLeftWide from "central-icons-filled/IconSidebarHiddenLeftWide";
+import FilledIconSidebarHiddenRightWide from "central-icons-filled/IconSidebarHiddenRightWide";
+import FilledIconSlack from "central-icons-filled/IconSlack";
+import FilledIconSparklesSoft from "central-icons-filled/IconSparklesSoft";
+import FilledIconSquareChecklist from "central-icons-filled/IconSquareChecklist";
+import FilledIconStop from "central-icons-filled/IconStop";
+import FilledIconTestTube from "central-icons-filled/IconTestTube";
+import FilledIconTrashCan from "central-icons-filled/IconTrashCan";
+import FilledIconTrending4 from "central-icons-filled/IconTrending4";
+import FilledIconTypescript from "central-icons-filled/IconTypescript";
+import FilledIconUnarchiv from "central-icons-filled/IconUnarchiv";
+import FilledIconUnpin from "central-icons-filled/IconUnpin";
+import FilledIconUser from "central-icons-filled/IconUser";
+import FilledIconUserKey from "central-icons-filled/IconUserKey";
+import FilledIconWebsite from "central-icons-filled/IconWebsite";
+import FilledIconWindowApp from "central-icons-filled/IconWindowApp";
+import FilledIconZai from "central-icons-filled/IconZai";
 import { motion, useReducedMotion } from "motion/react";
-import type { ComponentType, CSSProperties, ReactElement, ReactNode } from "react";
+import {
+  createContext,
+  use,
+  type ComponentType,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 
 import { mergeStyleProps, type XStyle } from "../../style.ts";
 
@@ -358,12 +363,11 @@ const styles = create({
   },
 });
 
-/**
- * Central Icons draw a 1.5-unit stroke on a 24-unit grid, which renders too
- * thin at the 10–17px sizes the desktop uses. Every frame carries the
- * `data-nyte-icon` hook so an app stylesheet can thicken those strokes;
- * StyleX cannot reach into the glyph's paths itself.
- */
+const ControlGlyphContext = createContext(false);
+
+export function ControlGlyphs({ children }: { readonly children: ReactNode }): ReactElement {
+  return <ControlGlyphContext value={true}>{children}</ControlGlyphContext>;
+}
 interface IconFrameProps {
   /** Announced to assistive tech. Without it the icon is decorative and hidden. */
   readonly label?: string;
@@ -374,13 +378,16 @@ interface IconFrameProps {
 }
 
 function IconFrame({ label, children, className, style, xstyle }: IconFrameProps): ReactElement {
+  const controlled = use(ControlGlyphContext);
   const a11y = label === undefined ? { "aria-hidden": true } : { role: "img", "aria-label": label };
+  const frame = mergeStyleProps(props(styles.frame, xstyle), className, style);
 
   return (
     <span
       {...a11y}
       data-nyte-icon=""
-      {...mergeStyleProps(props(styles.frame, xstyle), className, style)}
+      {...frame}
+      style={controlled ? { ...frame.style, color: "inherit", opacity: 1 } : frame.style}
     >
       {children}
     </span>
@@ -423,19 +430,19 @@ export type PanelSide = "left" | "right";
  * toward the edge it collapsed into.
  */
 const DIVIDER_X: Readonly<Record<PanelSide, Readonly<Record<"visible" | "hidden", number>>>> = {
-  left: { visible: 9, hidden: 7 },
-  right: { visible: 15, hidden: 17 },
+  left: { visible: 9, hidden: 6.25 },
+  right: { visible: 15, hidden: 17.75 },
 };
 
 // Both paths keep three points so the two shapes can morph into each other.
 function panelDividerPath(side: PanelSide, visible: boolean): string {
   const x = String(DIVIDER_X[side][visible ? "visible" : "hidden"]);
 
-  return visible ? `M${x} 5V12V19` : `M${x} 9V12V15`;
+  return visible ? `M${x} 4.75V12V19.25` : `M${x} 8.25V12V15.75`;
 }
 
 const PANEL_FRAME_PATH =
-  "M3 8C3 6.34 4.34 5 6 5H18C19.66 5 21 6.34 21 8V16C21 17.66 19.66 19 18 19H6C4.34 19 3 17.66 3 16V8Z";
+  "M2.75 6.75C2.75 5.64543 3.64543 4.75 4.75 4.75H19.25C20.3546 4.75 21.25 5.64543 21.25 6.75V17.25C21.25 18.3546 20.3546 19.25 19.25 19.25H4.75C3.64543 19.25 2.75 18.3546 2.75 17.25V6.75Z";
 
 export interface PanelToggleIconProps {
   readonly side: PanelSide;
@@ -447,7 +454,7 @@ export interface PanelToggleIconProps {
  * A side-aware panel outline whose divider reflects the current panel state.
  * Only the glyph moves; the panel geometry still changes immediately.
  */
-export function PanelToggleIcon({ side, visible, size = 15 }: PanelToggleIconProps): ReactElement {
+export function PanelToggleIcon({ side, visible, size = 16 }: PanelToggleIconProps): ReactElement {
   const reducedMotion = useReducedMotion();
 
   return (

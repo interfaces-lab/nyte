@@ -6,7 +6,7 @@
  * Based on https://github.com/b-nnett/grok-bot-0.18-reconstructed/blob/a9f633e09d49a85829b8236331b9e21f7e612634/frontend/src/recovered/features/conversation/workspace/view.css
  */
 import { create, keyframes } from "@stylexjs/stylex";
-import { layer, menu, row, shape } from "@nyte-ai/ui/schema.stylex";
+import { button, clipboardPreview, layer, menu, row, shape } from "@nyte-ai/ui/schema.stylex";
 import { conversation, diffView, pane, tray } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/vars.stylex";
 
@@ -28,9 +28,6 @@ const textShimmer = keyframes({
 const ACTIVITY_SHIMMER = `linear-gradient(90deg, ${role.contentSecondary} 0%, ${role.contentSecondary} 28%, ${role.contentPrimary} 58%, ${role.contentSecondary} 76%, ${role.contentSecondary} 100%)`;
 
 const CODE_RING = `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`;
-
-// Full-bleed preview covers an inset ring on the tile; ::after paints it above.
-const ATTACHMENT_RING = `inset 0 0 0 1px ${role.borderSecondaryTranslucent}, inset 0 0 0 1px ${role.bgElevated}`;
 
 const COMPOSER_RING_DROP = `0 0 0 2px ${role.borderInteractivePrimary}`;
 
@@ -112,8 +109,12 @@ export const proseStyles = create({
         "@media (hover: hover) and (pointer: fine)": role.bgInteractiveSecondaryTranslucent,
       },
     },
-    marginInline: -2,
-    padding: 2,
+    display: { default: "inline", "@media (pointer: coarse)": "inline-block" },
+    marginInline: { default: -2, "@media (pointer: coarse)": 0 },
+    paddingInline: 2,
+    paddingBlock: { default: 2, "@media (pointer: coarse)": 10 },
+    minHeight: { default: 0, "@media (pointer: coarse)": 44 },
+    boxSizing: "border-box",
     borderRadius: 4,
     fontWeight: 500,
     textDecorationLine: { default: "none", ":hover": "underline" },
@@ -266,21 +267,13 @@ export const composerStyles = create({
   },
   queueList: { maxHeight: 200 },
   queueRow: {
-    "--_queue-actions-opacity": {
-      default: "0",
-      ":hover": "1",
-      ":focus-within": "1",
-      "[data-editing='true']": "1",
-      "[data-error='true']": "1",
-      "@media (hover: none)": "1",
-    },
-    "--_queue-actions-events": {
+    "--_queue-actions-display": {
       default: "none",
-      ":hover": "auto",
-      ":focus-within": "auto",
-      "[data-editing='true']": "auto",
-      "[data-error='true']": "auto",
-      "@media (hover: none)": "auto",
+      ":hover": "flex",
+      ":focus-within": "flex",
+      "[data-editing='true']": "flex",
+      "[data-error='true']": "flex",
+      "@media (hover: none), (pointer: coarse)": "flex",
     },
     display: "flex",
     alignItems: "flex-start",
@@ -322,19 +315,11 @@ export const composerStyles = create({
     WebkitLineClamp: 2,
   },
   queueActions: {
-    display: "flex",
+    display: "var(--_queue-actions-display)",
     alignItems: "center",
     flexShrink: 0,
-    gap: 2,
+    gap: 8,
     marginInlineStart: "auto",
-    opacity: "var(--_queue-actions-opacity)",
-    pointerEvents: "var(--_queue-actions-events)",
-    transitionProperty: "opacity",
-    transitionDuration: {
-      default: "100ms",
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: "ease-in-out",
   },
   queued: {
     display: "flex",
@@ -415,15 +400,14 @@ export const composerStyles = create({
   fileInput: { display: "none" },
   attachments: {
     display: "flex",
-    gap: 6,
+    gap: 8,
     width: "100%",
     margin: 0,
     padding: 0,
     listStyle: "none",
     paddingBlockStart: 6,
-    paddingInlineEnd: 24,
     overflowX: "auto",
-    scrollPaddingInline: 24,
+    scrollPaddingInline: 8,
   },
   attachmentsInset: { width: "auto", marginInline: 12 },
   attachmentsInsetCompact: { marginInline: 2 },
@@ -433,26 +417,12 @@ export const composerStyles = create({
     paddingBlockStart: USER_PROMPT_PADDING_BLOCK,
   },
   attachment: {
-    position: "relative",
     display: "flex",
+    alignItems: "flex-start",
+    gap: 8,
     flexShrink: 0,
-    borderRadius: shape.control,
-    backgroundColor: role.bgBase,
-    "::after": {
-      content: '""',
-      position: "absolute",
-      inset: 0,
-      borderRadius: "inherit",
-      boxShadow: ATTACHMENT_RING,
-      pointerEvents: "none",
-    },
   },
-  attachmentRemove: {
-    position: "absolute",
-    insetBlockStart: -5,
-    insetInlineEnd: -5,
-    zIndex: 1,
-  },
+  attachmentRemove: { alignSelf: "flex-start" },
   attachmentError: {
     color: role.contentSecondary,
     fontSize: type.fontSm,
@@ -568,20 +538,16 @@ export const composerStyles = create({
     position: "relative",
     display: "inline-flex",
     flexShrink: 0,
-    alignItems: "baseline",
+    alignItems: "center",
     verticalAlign: "baseline",
-    padding: 0,
-    borderStyle: "none",
-    backgroundColor: "transparent",
+    gap: 8,
     color: role.contentSecondary,
     fontSize: "inherit",
     fontWeight: 400,
     lineHeight: "inherit",
     whiteSpace: "nowrap",
-    cursor: { default: null, "[data-openable='true']": appearance.cursorInteractive },
-    backgroundImage: { default: "none", "[data-openable='true']:active": role.layerPressed },
   },
-  mentionChipSkill: { color: role.contentSecondary },
+  mentionChipLabel: { display: "inline-flex", alignItems: "baseline" },
   mentionChipLeading: {
     display: "inline-flex",
     alignItems: "center",
@@ -591,10 +557,14 @@ export const composerStyles = create({
     height: 14,
     marginInlineEnd: 4,
   },
-  mentionChipRemove: {
-    position: "absolute",
-    insetBlockStart: "calc(50% - 8px)",
-    insetInlineStart: 0,
+  mentionChipRemove: { flexShrink: 0 },
+  /** A pasted snippet, scrolling past its bounds. */
+  clipboardPreview: {
+    maxWidth: clipboardPreview.maxWidth,
+    maxHeight: clipboardPreview.maxHeight,
+    overflowY: "auto",
+    fontFamily: type.fontMono,
+    whiteSpace: "pre-wrap",
   },
   layout: {
     display: "flex",
@@ -604,7 +574,10 @@ export const composerStyles = create({
   layoutNewChat: { gap: 6 },
   layoutCompact: {
     display: "grid",
-    gridTemplateColumns: "28px minmax(64px, 1fr) minmax(0, auto) 28px",
+    gridTemplateColumns: {
+      default: `${button.heightMd} minmax(64px, 1fr) minmax(0, auto) auto`,
+      "@media (pointer: coarse)": `${row.heightMd} minmax(64px, 1fr) minmax(0, auto) auto`,
+    },
     alignItems: "center",
     gap: 8,
   },
@@ -621,7 +594,7 @@ export const composerStyles = create({
   modelSlot: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 4,
+    gap: 8,
     minWidth: 0,
   },
   modelSlotCompact: {
@@ -666,11 +639,6 @@ export const composerStyles = create({
     "::-webkit-scrollbar": { display: "none" },
   },
   suggestionItem: {
-    "--_suggestion-icon-color": {
-      default: role.contentInteractiveTertiary,
-      ":hover": role.contentSecondary,
-      "[aria-selected='true']": role.contentSecondary,
-    },
     position: "relative",
     display: "grid",
     gridTemplateColumns: "12px minmax(0, 1fr) auto",
@@ -707,7 +675,6 @@ export const composerStyles = create({
     alignItems: "center",
     justifyContent: "center",
     width: 12,
-    color: "var(--_suggestion-icon-color)",
   },
   suggestionText: {
     display: "flex",
@@ -765,10 +732,6 @@ export const composerStyles = create({
     color: role.contentSecondary,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
-  },
-  suggestionPreviewPositioner: {
-    zIndex: layer.submenu,
-    borderRadius: shape.card,
   },
   suggestionPreview: {
     display: "flex",
@@ -850,6 +813,7 @@ export const composerStyles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
+  sendActions: { display: "flex", alignItems: "center", gap: 8 },
   sendCompact: { gridColumn: 4, gridRow: 1 },
 });
 
@@ -931,7 +895,6 @@ export const diffStyles = create({
     width: 16,
     height: 16,
     flexShrink: 0,
-    color: role.contentInteractiveTertiary,
   },
   stackHeaderIcon: { display: "var(--_stack-icon-display)" },
   stackHeaderChevron: { display: "var(--_stack-chevron-display)" },
@@ -1043,10 +1006,10 @@ export const toolCallStyles = create({
     display: "inline-flex",
     alignItems: "center",
     gap: 4,
-    width: "fit-content",
+    width: "100%",
     maxWidth: "100%",
     minWidth: 0,
-    minHeight: 24,
+    minHeight: { default: button.heightSm, "@media (pointer: coarse)": 44 },
     paddingInline: 0,
     overflow: "hidden",
     borderStyle: "none",
@@ -1066,7 +1029,7 @@ export const toolCallStyles = create({
       ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
     },
   },
-  editLine: { minHeight: 30 },
+  editLine: { minHeight: { default: button.heightMd, "@media (pointer: coarse)": 44 } },
   lineStatic: {
     cursor: "default",
     "--_verb-color": role.contentSecondary,
@@ -1074,7 +1037,7 @@ export const toolCallStyles = create({
   },
   lineDetailed: {
     width: "100%",
-    minHeight: 32,
+    minHeight: { default: 32, "@media (pointer: coarse)": 44 },
     paddingInline: 8,
     borderRadius: shape.control,
     backgroundColor: role.bgMutedTranslucent,
@@ -1144,25 +1107,12 @@ export const toolCallStyles = create({
     borderColor: role.borderSecondaryTranslucent,
     borderRadius: shape.control,
     backgroundColor: role.bgBase,
-    "--_output-actions-opacity": {
-      default: "0",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": "1" },
-      ":focus-within": "1",
-      "@media (hover: none)": "1",
-    },
   },
   outputActions: {
     position: "absolute",
     insetBlockStart: 4,
     insetInlineEnd: 4,
     zIndex: 1,
-    opacity: "var(--_output-actions-opacity)",
-    transitionProperty: "opacity",
-    transitionDuration: {
-      default: motion.durationNormal,
-      "@media (prefers-reduced-motion: reduce)": "0s",
-    },
-    transitionTimingFunction: motion.easeOut,
   },
   outputBody: {
     appearance: "none",
@@ -1192,13 +1142,20 @@ export const toolCallStyles = create({
       "[data-overflow]": "linear-gradient(to bottom, transparent 0px, black 16px)",
     },
   },
-  outputScroll: { maxHeight: diffView.previewMaxHeight, overflowY: "auto", userSelect: "text" },
+  outputScroll: {
+    maxHeight: diffView.previewMaxHeight,
+    overflowY: "auto",
+    userSelect: "text",
+    paddingInlineEnd: {
+      default: `calc(${button.heightSm} + 8px)`,
+      "@media (pointer: coarse)": `calc(max(44px, ${button.heightSm}) + 8px)`,
+    },
+  },
   outputContent: { display: "block", minWidth: 0 },
   // Clears the copy button; `code` would otherwise take the UA monospace.
   command: {
     display: "block",
     paddingBlockEnd: 6,
-    paddingInlineEnd: 24,
     fontFamily: "inherit",
     fontSize: "inherit",
   },
@@ -1225,6 +1182,7 @@ export const subagentCallStyles = create({
     minWidth: 0,
     paddingBlock: 0,
     paddingInline: 0,
+    minHeight: { default: button.heightSm, "@media (pointer: coarse)": 44 },
     textAlign: "left",
   },
   header: { paddingBlock: 6 },
@@ -1240,7 +1198,6 @@ export const subagentCallStyles = create({
     width: 20,
     height: type.leadingLg,
     paddingLeft: 2,
-    color: role.contentTertiary,
   },
   dot: { width: 6, height: 6, borderRadius: shape.pill },
   attention: { backgroundColor: role.contentInteractiveTertiary },
@@ -1284,8 +1241,8 @@ export const toolGroupStyles = create({
     display: "inline-flex",
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    width: "fit-content",
+    gap: 8,
+    width: "100%",
     maxWidth: "100%",
     minHeight: conversation.rowMinHeight,
     color: role.contentSecondary,
@@ -1296,9 +1253,11 @@ export const toolGroupStyles = create({
     display: "inline-flex",
     alignItems: "center",
     gap: 4,
-    width: "fit-content",
+    width: "100%",
     maxWidth: "100%",
-    minHeight: conversation.rowMinHeight,
+    minHeight: { default: button.heightSm, "@media (pointer: coarse)": 44 },
+    minWidth: 0,
+    textAlign: "start",
     color: {
       default: role.contentSecondary,
       ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
@@ -1306,6 +1265,11 @@ export const toolGroupStyles = create({
     fontSize: type.fontLg,
     lineHeight: type.leadingLg,
     userSelect: "none",
+  },
+  disclosure: {
+    width: { default: button.heightSm, "@media (pointer: coarse)": 44 },
+    flexShrink: 0,
+    justifyContent: "center",
   },
   verb: { flexShrink: 0 },
   summary: {
@@ -1340,7 +1304,6 @@ export const toolGroupStyles = create({
     paddingBlockStart: 6,
     overflowX: "hidden",
     overflowY: "auto",
-    cursor: appearance.cursorInteractive,
     overscrollBehavior: "auto",
     maskImage: {
       default: null,
@@ -1571,8 +1534,11 @@ export const turnStyles = create({
       "[data-sticky-active='true']": shadow.shadowSm,
     },
   },
-  userPreview: { overflow: "hidden" },
-  userPreviewCollapsed: { maxHeight: `calc(${type.leadingLg} * ${USER_MESSAGE_PREVIEW_LINES})` },
+  userPreview: { display: "block", minWidth: 0 },
+  userPreviewCollapsed: {
+    overflow: "hidden",
+    maxHeight: `calc(${type.leadingLg} * ${USER_MESSAGE_PREVIEW_LINES})`,
+  },
   // The preview bleeds into the prompt's padding so the fade has somewhere to
   // finish; negative margins give the bleed back, leaving the row's height and
   // the toggle's place unchanged.
@@ -1584,23 +1550,14 @@ export const turnStyles = create({
     marginBottom: -USER_PROMPT_PADDING_BLOCK,
     maskImage: `linear-gradient(to bottom, #000 calc(100% - ${USER_PREVIEW_FADE}), transparent 100%)`,
   },
-  userPreviewToggle: { marginBlockStart: 4 },
+  userPreviewToggle: { marginBlockStart: 4, marginInlineEnd: 8 },
   userImages: {
     display: "flex",
     flexWrap: "wrap",
     gap: USER_IMAGES_GAP,
     paddingBlockEnd: USER_IMAGES_GAP,
   },
-  userImagesEditable: { cursor: "text" },
-  userPromptHit: {
-    outlineStyle: "none",
-    display: "block",
-    boxSizing: "border-box",
-    width: "100%",
-    whiteSpace: "inherit",
-    overflowWrap: "anywhere",
-    cursor: "text",
-  },
+  userEditTrigger: { marginBlockStart: 4 },
   changesCard: {
     boxSizing: "border-box",
     display: "flex",

@@ -1,5 +1,5 @@
 import { shape } from "@nyte-ai/ui/schema.stylex";
-import { FileTree, useFileTree } from "@pierre/trees/react";
+import { useFileTree } from "@pierre/trees/react";
 import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
 import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +13,8 @@ import { revealLabel, showContextMenu } from "../components/context-menu.ts";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
+import { Tabs } from "@nyte-ai/ui/tabs";
+import { WorkspaceFileTree } from "./file-tree.tsx";
 import { nyte } from "../nyte.ts";
 import { macPlatform } from "../platform.ts";
 import { refreshVcs, useHostState, useMentionFiles, useVcsSnapshot } from "../queries.ts";
@@ -38,6 +40,7 @@ const styles = create({
     minHeight: 0,
     backgroundColor: role.bgBase,
   },
+  toolbar: { gap: 8, height: "auto", minHeight: workbench.headerHeight },
   explorerHeader: {
     display: "flex",
     alignItems: "center",
@@ -125,7 +128,8 @@ export function FilesPanel({
   const host = useHostState();
   const tabs = useFileTabs(viewKey);
   const preferences = useFilePreferences();
-  const [sidebar, setSidebar] = useState<"explorer" | "search" | "hidden">("explorer");
+  const [sidebar, setSidebar] = useState<"explorer" | "search">("explorer");
+  const [sidebarVisible, setSidebarVisible] = useState(true);
   const [searchOpened, setSearchOpened] = useState(false);
   const [discardPath, setDiscardPath] = useState<string>();
   const [discarding, setDiscarding] = useState(false);
@@ -143,6 +147,7 @@ export function FilesPanel({
   const browsing = activeFile === undefined;
 
   const showSearch = (): void => {
+    setSidebarVisible(true);
     setSearchOpened(true);
     setSidebar("search");
     requestAnimationFrame(() => searchRef.current?.querySelector("input")?.focus());
@@ -183,7 +188,7 @@ export function FilesPanel({
       [
         file !== undefined && {
           kind: "item",
-          label: "Open",
+          label: "Open File",
           run: () => fileActions.open(viewKey, file),
         },
         absolutePath !== undefined &&
@@ -210,6 +215,7 @@ export function FilesPanel({
   const { model } = useFileTree({
     paths: [],
     density: "compact",
+    itemHeight: window.matchMedia("(pointer: coarse)").matches ? 44 : 24,
     unsafeCSS: PIERRE_TREE_CSS,
     flattenEmptyDirectories: true,
     initialExpansion: 1,
@@ -221,7 +227,7 @@ export function FilesPanel({
           ? undefined
           : {
               triggerMode: "both",
-              buttonVisibility: "when-needed",
+              buttonVisibility: "always",
               // The native menu replaces the tree's own surface for both triggers.
               render: () => null,
               onOpen: (item, context) => openRowMenu(contextMenu, item, context),
@@ -234,6 +240,18 @@ export function FilesPanel({
    * selection on the file in view, and clicking a selected row changes nothing.
    */
   const openFromTree = (event: Event, preview: boolean): void => {
+    if (
+      event
+        .composedPath()
+        .some(
+          (target) =>
+            target instanceof HTMLElement &&
+            (target.dataset.type === "context-menu-trigger" ||
+              target.dataset.type === "context-menu-anchor"),
+        )
+    )
+      return;
+    if (window.getSelection()?.toString()) return;
     const row = event
       .composedPath()
       .find((target) => target instanceof HTMLElement && target.dataset.type === "item");
@@ -328,18 +346,18 @@ export function FilesPanel({
         }
       }}
     >
-      <div {...props(workbenchStyles.toolbar)}>
+      <div {...props(workbenchStyles.toolbar, styles.toolbar)}>
         <Button
           iconOnly
           icon="arrow-left"
-          aria-label="Go Back"
+          aria-label="Go back"
           disabled={!tabs.canGoBack}
           onClick={() => fileActions.back(viewKey)}
         />
         <Button
           iconOnly
           icon="arrow-right"
-          aria-label="Go Forward"
+          aria-label="Go forward"
           disabled={!tabs.canGoForward}
           onClick={() => fileActions.forward(viewKey)}
         />
@@ -380,29 +398,24 @@ export function FilesPanel({
             background="highlightOnly"
             layout="plain"
             meta={macPlatform(undefined) ? "⌘S" : "Ctrl+S"}
-            disabled={activeFile === undefined || !activeFile.dirty}
+            disabledReason={
+              activeFile === undefined
+                ? "No file open"
+                : !activeFile.dirty
+                  ? "No unsaved changes"
+                  : undefined
+            }
             onSelect={() => {
               if (activeFile !== undefined) void editors.current.get(activeFile.path)?.save();
             }}
           >
             Save File
           </MenuItem>
-          <MenuItem
-            background="highlightOnly"
-            layout="plain"
-            disabled={activeFile === undefined || !activeFile.dirty}
-            onSelect={() => {
-              setDiscardError(undefined);
-              setDiscardPath(activeFile?.path);
-            }}
-          >
-            Discard Changes
-          </MenuItem>
           <MenuSeparator inset />
           <MenuItem
             background="highlightOnly"
             layout="plain"
-            disabled={activeFile === undefined}
+            disabledReason={activeFile === undefined ? "No file open" : undefined}
             onSelect={() => {
               if (activeFile !== undefined) copyPath(activeFile.displayPath);
             }}
@@ -450,22 +463,50 @@ export function FilesPanel({
           >
             Format on Save
           </MenuSwitchItem>
+          <MenuSeparator inset />
+          <MenuItem
+            background="highlightOnly"
+            layout="plain"
+            danger
+            disabledReason={
+              activeFile === undefined
+                ? "No file open"
+                : !activeFile.dirty
+                  ? "No unsaved changes"
+                  : undefined
+            }
+            onSelect={() => {
+              setDiscardError(undefined);
+              setDiscardPath(activeFile?.path);
+            }}
+          >
+            Discard Changes…
+          </MenuItem>
         </Menu>
-        <Toggle
-          iconOnly
-          icon="search"
-          aria-label="Search Files"
-          pressed={sidebar === "search"}
-          onPressedChange={showSearch}
-        />
+        <Tabs.Root
+          variant="segmented"
+          value={sidebar}
+          onValueChange={(value) => {
+            if (value === "search") showSearch();
+            else if (value === "explorer") {
+              setSidebarVisible(true);
+              setSidebar(value);
+            }
+          }}
+        >
+          <Tabs.List aria-label="Files sidebar view">
+            <Tabs.Tab value="explorer">Explorer</Tabs.Tab>
+            <Tabs.Tab value="search">Search</Tabs.Tab>
+          </Tabs.List>
+        </Tabs.Root>
         <Toggle
           iconOnly
           indicator="glyph"
-          aria-label="Browse Files"
-          pressed={sidebar === "explorer"}
-          onPressedChange={() => setSidebar(sidebar === "explorer" ? "hidden" : "explorer")}
+          aria-label="Show files sidebar"
+          pressed={sidebarVisible}
+          onPressedChange={setSidebarVisible}
         >
-          <PanelToggleIcon side="right" visible={sidebar === "explorer"} />
+          <PanelToggleIcon side="right" visible={sidebarVisible} />
         </Toggle>
       </div>
       {copyError !== undefined && (
@@ -509,29 +550,27 @@ export function FilesPanel({
           {...props(
             styles.explorer,
             sidebar === "search" && styles.search,
-            sidebar === "hidden" && styles.hidden,
+            !sidebarVisible && styles.hidden,
           )}
         >
-          <div
-            {...props(styles.sidebarBody, sidebar !== "explorer" && styles.hidden)}
-            onClick={(event) => {
-              if (!(event.metaKey || event.ctrlKey || event.shiftKey)) {
-                openFromTree(event.nativeEvent, true);
-              }
-            }}
-            onDoubleClick={(event) => openFromTree(event.nativeEvent, false)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") openFromTree(event.nativeEvent, true);
-            }}
-          >
+          <div {...props(styles.sidebarBody, sidebar !== "explorer" && styles.hidden)}>
             <div {...props(styles.explorerHeader)}>{host.data?.workspace?.name ?? "Workspace"}</div>
             {files.isError && (
               <div role="alert" {...props(styles.empty)}>
                 Could not load files. {files.error.message}
               </div>
             )}
-            <FileTree
+            <WorkspaceFileTree
               model={model}
+              onClick={(event) => {
+                if (!(event.metaKey || event.ctrlKey || event.shiftKey)) {
+                  openFromTree(event.nativeEvent, true);
+                }
+              }}
+              onDoubleClick={(event) => openFromTree(event.nativeEvent, false)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") openFromTree(event.nativeEvent, true);
+              }}
               {...props(workbenchStyles.treeTheme, treeStatusTheme, styles.tree)}
             />
           </div>
@@ -541,7 +580,7 @@ export function FilesPanel({
           >
             {searchOpened && (
               <WorkspaceSearch
-                active={shown && sidebar === "search"}
+                active={shown && sidebarVisible && sidebar === "search"}
                 drafts={drafts}
                 onOpen={(location) => fileActions.open(viewKey, location)}
               />
@@ -554,7 +593,7 @@ export function FilesPanel({
         pending={discarding}
         error={discardError}
         returnFocusRef={menuRef}
-        title="Discard changes?"
+        title="Discard Changes"
         description="Your unsaved edits will be replaced by the current file on disk."
         confirmLabel="Discard Changes"
         pendingLabel="Reloading…"

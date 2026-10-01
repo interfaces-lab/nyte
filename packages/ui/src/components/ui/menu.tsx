@@ -20,7 +20,7 @@ import { intent, surfaceTheme, type Tint } from "../../surface-theme.ts";
 import { motion, role, shadow, type } from "../../vars.stylex.ts";
 import { Icon, type IconName } from "./icon.tsx";
 import { useOverlayRef } from "./overlay.tsx";
-import { Hint, type HintProps } from "./tooltip.tsx";
+import { Tooltip, TooltipTrigger } from "./tooltip.tsx";
 
 const MENU_COLLISION: NonNullable<MenuPrimitive.Positioner.Props["collisionAvoidance"]> = {
   side: "flip",
@@ -125,9 +125,7 @@ const styles = create({
     justifyContent: "center",
     width: 14,
     height: type.leadingBase,
-    color: role.contentSecondary,
   },
-  iconDisabled: { color: role.contentTertiary },
   label: {
     minWidth: 0,
     overflow: "hidden",
@@ -343,7 +341,8 @@ export type MenuProps = MenuStyleProps &
   Pick<MenuPrimitive.Popup.Props, "id" | "finalFocus"> & {
     readonly label: string;
     readonly trigger: NonNullable<MenuPrimitive.Trigger.Props["render"]>;
-    readonly hint?: Omit<HintProps, "trigger">;
+    /** A `TooltipContent` for the trigger. */
+    readonly hint?: { readonly content: ReactElement; readonly disabled?: boolean };
     /** Scopes the popup to a hue. */
     readonly tint?: Tint;
     readonly children: ReactNode;
@@ -387,7 +386,10 @@ export function Menu({
       {hint === undefined ? (
         <MenuPrimitive.Trigger render={trigger} />
       ) : (
-        <Hint {...hint} trigger={<MenuPrimitive.Trigger render={trigger} />} />
+        <Tooltip disabled={hint.disabled}>
+          <TooltipTrigger render={<MenuPrimitive.Trigger render={trigger} />} />
+          {hint.content}
+        </Tooltip>
       )}
       <MenuPrimitive.Portal>
         <MenuPrimitive.Positioner
@@ -447,7 +449,6 @@ interface ItemBodyProps {
 }
 
 function ItemBody({
-  danger = false,
   disabledReason,
   disabled = false,
   icon,
@@ -455,18 +456,11 @@ function ItemBody({
   meta,
   layout = "menu",
   children,
-}: ItemBodyProps & { readonly danger?: boolean; readonly disabled?: boolean }): ReactElement {
+}: ItemBodyProps & { readonly disabled?: boolean }): ReactElement {
   return (
     <>
       {layout !== "plain" && (
-        <span
-          aria-hidden="true"
-          {...props(
-            danger && !disabled && intent.danger,
-            styles.icon,
-            disabled && styles.iconDisabled,
-          )}
-        >
+        <span aria-hidden="true" {...props(styles.icon)}>
           {leading ?? (icon !== undefined && <Icon name={icon} size={14} />)}
         </span>
       )}
@@ -547,7 +541,6 @@ export function MenuItem({
       onPointerMove={onPointerMove}
     >
       <ItemBody
-        danger={danger}
         disabled={disabled || disabledReason !== undefined}
         disabledReason={disabledReason}
         icon={icon}
@@ -1071,7 +1064,6 @@ export function ContextMenuItem({
       onClick={onSelect}
     >
       <ItemBody
-        danger={danger}
         disabled={disabled || disabledReason !== undefined}
         disabledReason={disabledReason}
         icon={icon}

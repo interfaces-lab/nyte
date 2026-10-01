@@ -2,8 +2,8 @@ import type { NyteClient } from "@nyte-ai/client";
 import type { ModelInfo, ModelRef } from "@nyte-ai/protocol";
 import { LegendList } from "@legendapp/list/react-native";
 import { SymbolView } from "expo-symbols";
-import { useState } from "react";
-import { ActivityIndicator, Modal, TextInput, View } from "react-native";
+import { useRef, useState } from "react";
+import { ActivityIndicator, Modal, Pressable, TextInput, View } from "react-native";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { css, html } from "react-strict-dom";
 import { EmptyState } from "../ui/empty-state.tsx";
@@ -65,6 +65,7 @@ function SheetBody({
 }: Parameters<typeof ModelPickerSheet>[0]) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const searchRef = useRef<TextInput>(null);
   const [query, setQuery] = useState("");
   // Each open starts a clean search; the reset rides the prop, not an effect.
   const [seenOpen, setSeenOpen] = useState(open);
@@ -121,27 +122,35 @@ function SheetBody({
               iconOnly
             />
           </html.div>
-          <html.div style={styles.searchField}>
-            <SymbolView name="magnifyingglass" size={controls.iconSm} tintColor={theme.muted} />
-            <TextInput
-              accessibilityLabel="Search models"
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search models or providers"
-              placeholderTextColor={theme.muted}
-              selectionColor={theme.accent}
-              autoCorrect={false}
-              autoCapitalize="none"
-              clearButtonMode="while-editing"
-              returnKeyType="search"
-              style={{
-                ...typography.body,
-                color: theme.foreground,
-                flexGrow: 1,
-                padding: 0,
-              }}
-            />
-          </html.div>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Focus model search"
+            onPress={() => searchRef.current?.focus()}
+          >
+            <html.div style={styles.searchField}>
+              <SymbolView name="magnifyingglass" size={controls.iconSm} tintColor={theme.muted} />
+              <TextInput
+                ref={searchRef}
+                accessibilityLabel="Search models"
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search models or providers"
+                placeholderTextColor={theme.muted}
+                selectionColor={theme.accent}
+                autoCorrect={false}
+                autoCapitalize="none"
+                clearButtonMode="while-editing"
+                returnKeyType="search"
+                style={{
+                  ...typography.body,
+                  color: theme.foreground,
+                  flexGrow: 1,
+                  minHeight: controls.touchTarget,
+                  padding: 0,
+                }}
+              />
+            </html.div>
+          </Pressable>
           {modelError && (
             <html.p role="alert" style={[textStyles.error, styles.notice]}>
               {modelError}
@@ -163,7 +172,7 @@ function SheetBody({
               <html.p role="alert" style={textStyles.error}>
                 {catalog.message}
               </html.p>
-              <GlassButton label="Try again" onPress={refresh} fill />
+              <GlassButton label="Try Again" onPress={refresh} fill />
             </html.div>
           ) : (
             <LegendList
@@ -194,7 +203,7 @@ function SheetBody({
                         name="checkmark"
                         size={controls.iconSm}
                         weight="semibold"
-                        tintColor={theme.accent}
+                        tintColor={theme.foreground}
                       />
                     )}
                   </html.button>
@@ -241,7 +250,7 @@ const styles = css.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    height: controls.chipHeight,
+    minHeight: controls.touchTarget,
     borderRadius: radii.control,
     backgroundColor: tokens.fill,
     paddingInline: spacing.sm,

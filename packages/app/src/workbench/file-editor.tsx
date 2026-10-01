@@ -80,6 +80,7 @@ const styles = create({
     minHeight: 0,
     backgroundColor: role.bgBase,
   },
+  actions: { display: "flex", justifyContent: "flex-end", flexShrink: 0, padding: 4 },
   // Keep each tab's viewport measurable so virtualized editors retain their scroll position.
   hidden: { visibility: "hidden", pointerEvents: "none" },
   code: {
@@ -418,9 +419,14 @@ function TextFileEditor({
   const openContextMenu =
     contextMenu === undefined
       ? undefined
-      : (event: MouseEvent<HTMLDivElement>): void => {
+      : (event: MouseEvent<HTMLElement>): void => {
           event.preventDefault();
-          void showContextMenu(contextMenu, event, [
+          const bounds = event.currentTarget.getBoundingClientRect();
+          const anchor =
+            event.currentTarget instanceof HTMLButtonElement
+              ? { clientX: bounds.left, clientY: bounds.bottom }
+              : event;
+          void showContextMenu(contextMenu, anchor, [
             { kind: "role", role: "cut", label: "Cut" },
             { kind: "role", role: "copy", label: "Copy" },
             { kind: "role", role: "paste", label: "Paste" },
@@ -479,6 +485,17 @@ function TextFileEditor({
       onContextMenu={openContextMenu}
       {...props(styles.root, !active && styles.hidden)}
     >
+      {openContextMenu !== undefined && (
+        <div {...props(styles.actions)}>
+          <Button
+            iconOnly
+            icon="more-horizontal"
+            aria-label={`Options for ${file.displayPath}`}
+            aria-haspopup="menu"
+            onClick={openContextMenu}
+          />
+        </div>
+      )}
       <PierreWorkerProvider>
         <EditProvider createEditor={createEditor}>
           <CodeView
@@ -537,7 +554,9 @@ function TextFileEditor({
                   ? "This file changed on disk. Your draft is preserved. Discard changes to reload the disk version."
                   : snapshot.status.message}
           </span>
-          {snapshot.status.kind === "error" && <Button onClick={() => void save()}>Retry</Button>}
+          {snapshot.status.kind === "error" && (
+            <Button onClick={() => void save()}>Retry Save</Button>
+          )}
         </div>
       )}
     </div>

@@ -80,7 +80,13 @@ const styles = create({
       flexWrap: "wrap",
     },
   },
-  actions: { display: "inline-flex", justifyContent: "flex-end", gap: 6, minWidth: 104 },
+  actions: {
+    display: "inline-flex",
+    justifyContent: "flex-end",
+    gap: 8,
+    flexWrap: "wrap",
+    minWidth: 104,
+  },
   expansion: { gridColumn: "1 / -1", paddingTop: 4 },
 });
 

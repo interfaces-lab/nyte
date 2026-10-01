@@ -37,7 +37,7 @@ export default defineConfig({
   ignorePatterns: ["output/**", ".agents/**"],
   plugins: ["react", "eslint", "typescript", "unicorn", "import"],
   // The desktop design scale: enforced on StyleX sources, not wrapped in tokens.
-  jsPlugins: ["./packages/app/lint/design-scale.js"],
+  jsPlugins: ["./packages/app/lint/design-scale.js", "./packages/app/lint/interactions.js"],
   categories: {
     correctness: "error",
   },
@@ -174,6 +174,33 @@ export default defineConfig({
       },
     },
     {
+      files: ["packages/app/src/**/*.{ts,tsx}", "packages/ui/src/**/*.{ts,tsx}"],
+      rules: {
+        "nyte-interactions/no-clickable-non-control": "error",
+        "nyte-interactions/drag-only-touch-action": "error",
+        "nyte-interactions/no-hover-submenus": "error",
+        "nyte-interactions/restore-popup-focus": "error",
+        "nyte-interactions/specific-confirm-label": "error",
+        "nyte-interactions/title-case-control-label": "error",
+      },
+    },
+    {
+      files: [
+        "packages/app/**/*.{ts,tsx}",
+        "packages/ui/**/*.{ts,tsx}",
+        "packages/lab/**/*.{ts,tsx}",
+        "packages/mobile/**/*.{ts,tsx}",
+      ],
+      rules: { "nyte-interactions/named-stylex-imports": "error" },
+    },
+    {
+      files: ["packages/mobile/src/**/*.{ts,tsx}"],
+      rules: {
+        "nyte-interactions/accessible-pressable": "error",
+        "nyte-interactions/specific-confirm-label": "error",
+      },
+    },
+    {
       // The restriction above keeps Node-only core code out of the shipped
       // renderer bundle. A Node-run unit test is not part of that bundle, so it
       // may import the full surface; `*.browser-test.tsx` still loads in a real
@@ -188,6 +215,7 @@ export default defineConfig({
       files: ["packages/app/src/**/*.browser-test.tsx"],
       rules: {
         "react/forbid-elements": "off",
+        "nyte-interactions/no-clickable-non-control": "off",
       },
     },
     {

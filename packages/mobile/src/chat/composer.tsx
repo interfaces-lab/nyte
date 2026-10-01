@@ -32,6 +32,7 @@ import {
   controlSize,
   font,
   foregroundStyle,
+  frame,
   menuIndicator,
 } from "@expo/ui/swift-ui/modifiers";
 import { SymbolView } from "expo-symbols";
@@ -213,7 +214,9 @@ export const Composer = memo(function Composer({
   const attachDisabled = busy || images.length >= MAX_ATTACHMENTS;
   const gaugeFromRight = running && !dictation.recording ? GAUGE_RIGHT_RUNNING : GAUGE_RIGHT;
 
-  const focus = useDerivedValue(() => Math.max(keyboard.progress.get(), focusDrive.get()));
+  const focus = useDerivedValue(() =>
+    Math.max(keyboard.progress.get(), focusDrive.get(), dictation.recording ? 1 : 0),
+  );
 
   // Distance from the window bottom to the card's bottom edge. OverKeyboardView
   // is a full-screen window, so both overlays park against this instead of
@@ -584,8 +587,12 @@ export const Composer = memo(function Composer({
     const amount = focus.get();
 
     return {
-      left: interpolate(amount, [0, 1], [50, 16]),
-      right: interpolate(amount, [0, 1], [80, 16]),
+      left: interpolate(amount, [0, 1], [ICON_ROW_INSET + COMPOSER.hit / 2 + 8, 16]),
+      right: interpolate(
+        amount,
+        [0, 1],
+        [(running ? GAUGE_RIGHT : ICON_ROW_INSET) + COMPOSER.hit / 2 + 8, 16],
+      ),
       bottom: interpolate(amount, [0, 1], [24, 66]) - 11,
     };
   });
@@ -705,7 +712,12 @@ export const Composer = memo(function Composer({
           onChooseHead={chooseHead}
         />
         <AnimatedGlass isInteractive style={[field.card, cardStyle]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => fieldRef.current?.focus()} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Focus message field"
+            style={StyleSheet.absoluteFill}
+            onPress={() => fieldRef.current?.focus()}
+          />
           <AnimatedTextInput
             ref={fieldRef}
             style={[
@@ -744,10 +756,10 @@ export const Composer = memo(function Composer({
           />
           <View style={[field.hit, field.plus]} pointerEvents="box-none">
             <Pressable
+              accessibilityRole="button"
               accessibilityLabel="Add attachment"
               disabled={attachDisabled}
               onPress={openAttach}
-              hitSlop={8}
               style={[StyleSheet.absoluteFill, field.center, attachDisabled && field.disabled]}
             >
               {attachVisible ? null : (
@@ -755,14 +767,21 @@ export const Composer = memo(function Composer({
               )}
             </Pressable>
           </View>
-          {catalog.kind === "ready" ? (
+          {catalog.kind === "ready" && !dictation.recording ? (
             <Animated.View
               style={[
                 field.model,
                 modelStyle,
-                { right: (canThink ? gaugeFromRight : ICON_ROW_INSET) + COMPOSER.hit / 2 + 8 },
+                {
+                  right:
+                    (canThink ? gaugeFromRight : running ? GAUGE_RIGHT : ICON_ROW_INSET) +
+                    COMPOSER.hit / 2 +
+                    8,
+                },
               ]}
-              pointerEvents="box-none"
+              pointerEvents={focused ? "box-none" : "none"}
+              accessibilityElementsHidden={!focused}
+              importantForAccessibility={focused ? "auto" : "no-hide-descendants"}
             >
               <Host matchContents={{ horizontal: true }} style={modelHost} ignoreSafeArea="all">
                 <Menu
@@ -773,6 +792,7 @@ export const Composer = memo(function Composer({
                   }
                   modifiers={[
                     buttonStyle("plain"),
+                    frame({ minHeight: controls.touchTarget }),
                     buttonBorderShape("capsule"),
                     controlSize("mini"),
                     menuIndicator("hidden"),
@@ -796,15 +816,17 @@ export const Composer = memo(function Composer({
               </Host>
             </Animated.View>
           ) : null}
-          {canThink ? (
+          {canThink && !dictation.recording ? (
             <Animated.View
               style={[field.hit, { right: gaugeFromRight - COMPOSER.hit / 2 }, revealStyle]}
-              pointerEvents="box-none"
+              pointerEvents={focused ? "box-none" : "none"}
+              accessibilityElementsHidden={!focused}
+              importantForAccessibility={focused ? "auto" : "no-hide-descendants"}
             >
               <Pressable
+                accessibilityRole="button"
                 accessibilityLabel="Thinking level"
                 onPress={openSelector}
-                hitSlop={10}
                 style={field.center}
               >
                 <GaugeIcon
@@ -819,12 +841,12 @@ export const Composer = memo(function Composer({
           ) : null}
           {running && !dictation.recording ? (
             <Pressable
-              accessibilityLabel={stopping ? "Stopping" : "Stop"}
-              disabled={stopping}
+              accessibilityRole="button"
+              accessibilityLabel="Stop response"
+              accessibilityState={{ busy: stopping }}
               onPress={() => {
-                if (target.kind === "session") target.onStop();
+                if (!stopping && target.kind === "session") target.onStop();
               }}
-              hitSlop={8}
               style={[field.hit, field.stop, stopping && field.disabled]}
             >
               <SymbolView name="stop.fill" size={18} tintColor={theme.foreground} />
@@ -832,6 +854,7 @@ export const Composer = memo(function Composer({
           ) : null}
           {dictation.recording ? (
             <Pressable
+              accessibilityRole="button"
               accessibilityLabel={`Stop dictation, ${formatElapsed(dictation.elapsed)}`}
               onPress={dictation.stop}
               style={field.recorder}
@@ -858,28 +881,32 @@ export const Composer = memo(function Composer({
             </Pressable>
           ) : hasContent ? (
             <Pressable
-              accessibilityLabel={sending ? "Sending" : "Send"}
-              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel="Send message"
+              accessibilityState={{ busy: sending }}
+              disabled={staging && !sending}
               onPress={() => {
                 void submit();
               }}
-              style={[field.send, { backgroundColor: theme.accentFill }, busy && field.disabled]}
+              style={[field.hit, field.primary, busy && field.disabled]}
             >
-              <SymbolView
-                name="arrow.up"
-                size={16}
-                tintColor={theme.onAccentFill}
-                weight="semibold"
-              />
+              <View style={[field.send, { backgroundColor: theme.accentFill }]}>
+                <SymbolView
+                  name="arrow.up"
+                  size={16}
+                  tintColor={theme.onAccentFill}
+                  weight="semibold"
+                />
+              </View>
             </Pressable>
           ) : (
             <Pressable
+              accessibilityRole="button"
               accessibilityLabel="Dictate"
               disabled={busy}
               onPress={() => {
                 void startDictation();
               }}
-              hitSlop={8}
               style={[field.hit, field.primary, busy && field.disabled]}
             >
               <SymbolView name="mic.fill" size={22} tintColor={theme.foreground} />
@@ -982,9 +1009,6 @@ const field = StyleSheet.create({
   stop: { right: GAUGE_RIGHT - COMPOSER.hit / 2 },
   primary: { right: ICON_ROW_INSET - COMPOSER.hit / 2 },
   send: {
-    position: "absolute",
-    right: ICON_ROW_INSET - COMPOSER.sendSize / 2,
-    bottom: ICON_ROW_INSET - COMPOSER.sendSize / 2,
     width: COMPOSER.sendSize,
     height: COMPOSER.sendSize,
     borderRadius: COMPOSER.sendSize / 2,
@@ -1025,8 +1049,18 @@ const styles = css.create({
     gap: spacing.xs,
     paddingTop: spacing.xs,
   },
-  attachment: { position: "relative", width: media.attachmentSize, height: media.attachmentSize },
-  attachmentButton: { borderWidth: 0, padding: 0, width: "100%", height: "100%" },
+  attachment: {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  attachmentButton: {
+    borderWidth: 0,
+    padding: 0,
+    width: media.attachmentSize,
+    height: media.attachmentSize,
+  },
   attachmentImage: {
     width: "100%",
     height: "100%",
@@ -1035,11 +1069,8 @@ const styles = css.create({
   },
   removePhoto: {
     opacity: { default: 1, ":active": controls.disabledOpacity },
-    position: "absolute",
-    top: -spacing.sm,
-    right: -spacing.sm,
-    width: controls.photoRemoveTarget,
-    height: controls.photoRemoveTarget,
+    width: controls.touchTarget,
+    height: controls.touchTarget,
     borderWidth: 0,
     display: "flex",
     justifyContent: "center",

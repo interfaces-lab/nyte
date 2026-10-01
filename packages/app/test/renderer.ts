@@ -11,7 +11,19 @@ import { build, defaultClientConditions } from "vite";
 const execute = promisify(execFile);
 
 /** Run a fixture's exported run() in an isolated, styled Electron renderer. */
-export async function testRenderer(entry: URL, setup = ""): Promise<string> {
+export async function testRenderer(
+  entry: URL,
+  setup = "",
+  {
+    pointer = "fine",
+    forcePseudoClasses = [],
+    forcePseudoSelector = "button",
+  }: {
+    pointer?: "fine" | "coarse";
+    forcePseudoClasses?: readonly string[];
+    forcePseudoSelector?: string;
+  } = {},
+): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "nyte-renderer-test-"));
   try {
     await mkdir(join(directory, "profile"));
@@ -68,8 +80,25 @@ app.whenReady().then(async () => {
     // Hidden test windows need focus emulation to dispatch native focus/blur events.
     await window.webContents.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true });
     await window.webContents.debugger.sendCommand("Emulation.setEmulatedMedia", {
-      features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+      features: [
+        { name: "prefers-reduced-motion", value: "reduce" },
+        { name: "pointer", value: ${JSON.stringify(pointer)} },
+        { name: "hover", value: ${JSON.stringify(pointer === "coarse" ? "none" : "hover")} },
+      ],
     });
+    await window.webContents.debugger.sendCommand("Emulation.setTouchEmulationEnabled", {
+      enabled: ${JSON.stringify(pointer === "coarse")},
+    });
+    if (${forcePseudoClasses.length} > 0) {
+      await window.webContents.executeJavaScript("RendererTest.mount()");
+      await window.webContents.debugger.sendCommand("DOM.enable");
+      await window.webContents.debugger.sendCommand("CSS.enable");
+      const { root } = await window.webContents.debugger.sendCommand("DOM.getDocument");
+      const { nodeIds } = await window.webContents.debugger.sendCommand("DOM.querySelectorAll", { nodeId: root.nodeId, selector: ${JSON.stringify(forcePseudoSelector)} });
+      for (const nodeId of nodeIds) {
+        await window.webContents.debugger.sendCommand("CSS.forcePseudoState", { nodeId, forcedPseudoClasses: ${JSON.stringify(forcePseudoClasses)} });
+      }
+    }
     const result = await window.webContents.executeJavaScript('(async () => { try { if (window.fixtureFailure) return window.fixtureFailure; return await RendererTest.run(); } catch (error) { return error instanceof Error ? error.stack ?? error.message : String(error); } })()');
     writeFileSync(${JSON.stringify(join(directory, "result.txt"))}, result);
     app.exit(0);

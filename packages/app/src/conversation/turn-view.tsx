@@ -19,7 +19,7 @@ import { filesChangedLabel } from "../workbench/change-tree.ts";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { Button } from "@nyte-ai/ui/button";
-import { Hint } from "@nyte-ai/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
@@ -37,8 +37,8 @@ import { UserMessageText, messageImages, userMessageText } from "./message-conte
 import { messageDraftText } from "./message-references.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import type { ModelPickerChange } from "./model-picker.tsx";
-import { USER_MESSAGE_PREVIEW_LINES, turnStyles } from "./styles.stylex.ts";
-import { Bubble, Marker, Message } from "./row-surfaces.tsx";
+import { USER_MESSAGE_PREVIEW_LINES, bubbleStyles, turnStyles } from "./styles.stylex.ts";
+import { Marker, Message } from "./row-surfaces.tsx";
 import { ToolCallView } from "./tool-call.tsx";
 import { WorkGroupView } from "./tool-group.tsx";
 import { failureNotice } from "./tool-copy.ts";
@@ -89,32 +89,20 @@ function UserMessagePreview({ children }: { children: ReactNode }): ReactElement
           xstyle={turnStyles.userPreviewToggle}
           onClick={() => setExpanded((current) => !current)}
         >
-          {expanded ? "Show less" : "Show more"}
+          {expanded ? "Show Less" : "Show More"}
         </Button>
       )}
     </>
   );
 }
 
-function UserMessageImages({
-  content,
-  onEdit,
-}: {
-  content: UserTurnPart["content"];
-  onEdit?: () => void;
-}): ReactElement | null {
+function UserMessageImages({ content }: { content: UserTurnPart["content"] }): ReactElement | null {
   const images = messageImages(content);
 
   if (images.length === 0) return null;
 
   return (
-    <div
-      aria-label="Image attachments"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onEdit?.();
-      }}
-      {...props(turnStyles.userImages, onEdit !== undefined && turnStyles.userImagesEditable)}
-    >
+    <div {...props(turnStyles.userImages)}>
       {images.map((item, index) => (
         <ImagePreview
           key={index}
@@ -318,43 +306,50 @@ export function UserMessageView({
     <div ref={rowRef} data-sticky-user-message {...props(turnStyles.userRow)}>
       <Message align="end">
         {edit === undefined ? (
-          <Bubble variant={onEdit === undefined ? "default" : "editable"}>
-            <UserMessageImages
-              content={content}
-              onEdit={onEdit === undefined ? undefined : begin}
-            />
-            <UserMessagePreview>
-              {onEdit === undefined ? (
+          <Row xstyle={[bubbleStyles.default, onEdit !== undefined && bubbleStyles.editable]}>
+            <UserMessageImages content={content} />
+            {original !== "" && (
+              <UserMessagePreview>
                 <UserMessageText text={original} />
-              ) : (
-                <Row.Primary
-                  aria-label={
-                    original === "" ? "Edit message" : `Edit message: ${userDisplayText(original)}`
-                  }
-                  xstyle={turnStyles.userPromptHit}
-                  onClick={begin}
-                  onKeyDown={(event) => {
-                    if (event.key !== "F2") return;
-                    event.preventDefault();
-                    begin();
-                  }}
-                >
-                  <UserMessageText text={original} />
-                </Row.Primary>
-              )}
-            </UserMessagePreview>
-          </Bubble>
+              </UserMessagePreview>
+            )}
+            {onEdit !== undefined && (
+              <Row.Primary
+                render={
+                  <Button
+                    size="xs"
+                    variant="plain"
+                    aria-keyshortcuts="F2"
+                    aria-description={original === "" ? undefined : userDisplayText(original)}
+                    xstyle={turnStyles.userEditTrigger}
+                    onClick={(event) => {
+                      if (!event.shiftKey) begin();
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "F2" || event.shiftKey) return;
+                      event.preventDefault();
+                      begin();
+                    }}
+                  >
+                    Edit Message
+                  </Button>
+                }
+              />
+            )}
+          </Row>
         ) : (
           <div aria-busy={edit.saving || undefined} {...props(turnStyles.userEdit)}>
             {edit.error !== undefined && (
-              <Hint
-                content={edit.error}
-                trigger={
-                  <span role="alert" {...props(intent.danger, turnStyles.userEditError)}>
-                    {edit.error}
-                  </span>
-                }
-              />
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span role="alert" {...props(intent.danger, turnStyles.userEditError)}>
+                      {edit.error}
+                    </span>
+                  }
+                />
+                <TooltipContent>{edit.error}</TooltipContent>
+              </Tooltip>
             )}
             <ComposerFrame
               surface="follow-up"
@@ -450,47 +445,51 @@ function TurnChangesCard({
     <section aria-label={title} {...props(turnStyles.changesCard)}>
       <div {...props(turnStyles.changesHeader)}>
         <span {...props(turnStyles.changesTitle)}>{title}</span>
-        <Hint
-          content="Open the Changes panel"
-          trigger={
-            <Button onClick={onReview} xstyle={turnStyles.changesReview}>
-              Review
-            </Button>
-          }
-        />
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button onClick={onReview} xstyle={turnStyles.changesReview}>
+                Review Changes
+              </Button>
+            }
+          />
+          <TooltipContent>Open the Changes panel</TooltipContent>
+        </Tooltip>
       </div>
       <ul {...props(turnStyles.changesList)}>
         {files.map((file) => (
           <Row key={file.path} render={<li />} interactive xstyle={turnStyles.changesFile}>
-            <Hint
-              content={`Open ${file.path} in Changes`}
-              trigger={
-                <Row.Primary
-                  aria-label={`Open ${file.path} in Changes`}
-                  onClick={() => onOpenFile(file.path)}
-                >
-                  <Row.Leading xstyle={turnStyles.changesFileIcon}>
-                    <FileTypeIcon path={file.path} />
-                  </Row.Leading>
-                  <Row.Label>{file.path.split("/").at(-1) ?? file.path}</Row.Label>
-                  <span
-                    aria-label={`${String(file.added)} added, ${String(file.removed)} removed`}
-                    {...props(turnStyles.changesStats)}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Row.Primary
+                    aria-label={`Open ${file.path} in Changes`}
+                    onClick={() => onOpenFile(file.path)}
                   >
-                    {file.added > 0 && (
-                      <span {...props(intent.success, turnStyles.changesAdded)}>
-                        +<AnimatedNumber value={file.added} />
-                      </span>
-                    )}
-                    {file.removed > 0 && (
-                      <span {...props(intent.danger, turnStyles.changesRemoved)}>
-                        -<AnimatedNumber value={file.removed} />
-                      </span>
-                    )}
-                  </span>
-                </Row.Primary>
-              }
-            />
+                    <Row.Leading xstyle={turnStyles.changesFileIcon}>
+                      <FileTypeIcon path={file.path} />
+                    </Row.Leading>
+                    <Row.Label>{file.path.split("/").at(-1) ?? file.path}</Row.Label>
+                    <span
+                      aria-label={`${String(file.added)} added, ${String(file.removed)} removed`}
+                      {...props(turnStyles.changesStats)}
+                    >
+                      {file.added > 0 && (
+                        <span {...props(intent.success, turnStyles.changesAdded)}>
+                          +<AnimatedNumber value={file.added} />
+                        </span>
+                      )}
+                      {file.removed > 0 && (
+                        <span {...props(intent.danger, turnStyles.changesRemoved)}>
+                          -<AnimatedNumber value={file.removed} />
+                        </span>
+                      )}
+                    </span>
+                  </Row.Primary>
+                }
+              />
+              <TooltipContent>{`Open ${file.path} in Changes`}</TooltipContent>
+            </Tooltip>
           </Row>
         ))}
       </ul>

@@ -9,7 +9,7 @@ import { threadStyles } from "@nyte-ai/app/screens/thread.stylex.ts";
 import { composerStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { Hint } from "@nyte-ai/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { motion, role, type } from "@nyte-ai/ui/vars.stylex";
@@ -379,42 +379,48 @@ export function DesktopDemo({
                 scope={workbenchScope}
                 workspacePath={workspace.path}
               />
-              <Hint
-                content={view.maximized ? "Restore Workbench Width" : "Expand Workbench"}
-                trigger={
-                  <Toggle
-                    iconOnly
-                    icon={view.maximized ? "minimize" : "expand"}
-                    aria-label={view.maximized ? "Restore workbench width" : "Expand workbench"}
-                    pressed={view.maximized}
-                    onPressedChange={() =>
-                      workbenchController.actions.toggleMaximized({ view: workbenchView })
-                    }
-                    title={undefined}
-                  />
-                }
-              />
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Toggle
+                      iconOnly
+                      icon={view.maximized ? "minimize" : "expand"}
+                      aria-label={view.maximized ? "Restore workbench width" : "Expand workbench"}
+                      pressed={view.maximized}
+                      onPressedChange={() =>
+                        workbenchController.actions.toggleMaximized({ view: workbenchView })
+                      }
+                      title={undefined}
+                    />
+                  }
+                />
+                <TooltipContent>
+                  {view.maximized ? "Restore Workbench Width" : "Expand Workbench"}
+                </TooltipContent>
+              </Tooltip>
             </>
           )}
-          <Hint
-            content={`${workbenchOpen ? "Close Workbench Panel" : "Open Workbench Panel"} ${clientActionShortcut(clientActions.workbench, true)}`}
-            trigger={
-              <Toggle
-                iconOnly
-                aria-label={workbenchOpen ? "Close workbench panel" : "Open workbench panel"}
-                pressed={workbenchOpen}
-                onPressedChange={() =>
-                  workbenchController.actions.toggleWorkbench({
-                    view: workbenchView,
-                    scope: workbenchScope,
-                  })
-                }
-                title={undefined}
-              >
-                <PanelToggleIcon side="right" visible={workbenchOpen} />
-              </Toggle>
-            }
-          />
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  iconOnly
+                  aria-label={workbenchOpen ? "Close workbench panel" : "Open workbench panel"}
+                  pressed={workbenchOpen}
+                  onPressedChange={() =>
+                    workbenchController.actions.toggleWorkbench({
+                      view: workbenchView,
+                      scope: workbenchScope,
+                    })
+                  }
+                  title={undefined}
+                >
+                  <PanelToggleIcon side="right" visible={workbenchOpen} />
+                </Toggle>
+              }
+            />
+            <TooltipContent>{`${workbenchOpen ? "Close Workbench Panel" : "Open Workbench Panel"} ${clientActionShortcut(clientActions.workbench, true)}`}</TooltipContent>
+          </Tooltip>
         </div>
       </header>
       <div {...props(threadStyles.body)}>
@@ -513,11 +519,7 @@ export function DesktopDemo({
                                 <Icon name="pin" size={14} />
                               ) : null}
                             </Row.Leading>
-                            <Row.Label
-                              data-grid-text=""
-                              data-grid-column="sidebar.labels"
-                              xstyle={sidebarStyles.sessionLabel}
-                            >
+                            <Row.Label data-grid-text="" data-grid-column="sidebar.labels">
                               {title}
                             </Row.Label>
                             <Row.Meta
@@ -527,10 +529,7 @@ export function DesktopDemo({
                               {index < 3 ? "now" : index === 3 ? "34m" : `${index}h`}
                             </Row.Meta>
                           </Row.Primary>
-                          <Row.Actions
-                            placement="overlay"
-                            xstyle={[sidebarStyles.rowActions, sidebarStyles.rowActionsBesideMeta]}
-                          >
+                          <Row.Actions>
                             <Button
                               size="2xs"
                               iconOnly
@@ -544,9 +543,7 @@ export function DesktopDemo({
                               aria-label={`Archive ${title}`}
                               onClick={() => archive(title)}
                             >
-                              <span {...props(sidebarStyles.actionGlyphArchive)}>
-                                <Icon name="archive" size={12} />
-                              </span>
+                              <Icon name="archive" size={12} />
                             </Button>
                           </Row.Actions>
                         </Row>
@@ -564,19 +561,20 @@ export function DesktopDemo({
                   </Row.Leading>
                   <Row.Label>Itsnotaka</Row.Label>
                 </Row>
-                <Hint
-                  content="Settings"
-                  side="top"
-                  trigger={
-                    <Button
-                      iconOnly
-                      icon="settings"
-                      aria-label="Settings"
-                      onClick={() => onSurface("menu")}
-                      title={undefined}
-                    />
-                  }
-                />
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        iconOnly
+                        icon="settings"
+                        aria-label="Settings"
+                        onClick={() => onSurface("menu")}
+                        title={undefined}
+                      />
+                    }
+                  />
+                  <TooltipContent side="top">Settings</TooltipContent>
+                </Tooltip>
               </div>
             </div>
           </aside>
@@ -595,11 +593,7 @@ export function DesktopDemo({
                     key={turn.kind === "turn" ? turn.id : index}
                     data-lab-turn=""
                     data-grid-row="turn"
-                    {...props(
-                      threadStyles.row,
-                      index === 0 && threadStyles.rowFirst,
-                      fixture.flowRow,
-                    )}
+                    {...props(threadStyles.row, fixture.flowRow)}
                   >
                     <TurnView
                       turn={turn}
@@ -632,13 +626,7 @@ export function DesktopDemo({
                           trayView.kind === "detail" ? (
                             <div {...props(threadStyles.scroll)}>
                               <div {...props(threadStyles.transcript, fixture.transcript)}>
-                                <div
-                                  {...props(
-                                    threadStyles.row,
-                                    threadStyles.rowFirst,
-                                    fixture.flowRow,
-                                  )}
-                                >
+                                <div {...props(threadStyles.row, fixture.flowRow)}>
                                   <TurnView
                                     turn={turns[0]}
                                     liveTools={noLiveTools}

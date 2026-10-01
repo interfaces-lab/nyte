@@ -160,6 +160,13 @@ function ToastCard({ item }: { item: ToastItem }) {
               <html.p style={[textStyles.caption, styles.body]}>{item.body}</html.p>
             )}
           </html.div>
+          <html.button
+            aria-label={`Dismiss ${item.title}`}
+            onClick={() => dismiss(item.id)}
+            style={styles.dismiss}
+          >
+            <SymbolView name="xmark" size={controls.iconSm} tintColor={theme.foreground} />
+          </html.button>
         </html.div>
       </Animated.View>
     </GestureDetector>
@@ -211,6 +218,16 @@ const styles = css.create({
     borderColor: tokens.border,
     backgroundColor: tokens.surface,
     boxShadow: tokens.shadow,
+  },
+  dismiss: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    width: controls.touchTarget,
+    height: controls.touchTarget,
+    backgroundColor: "transparent",
+    borderWidth: 0,
   },
   text: {
     display: "flex",

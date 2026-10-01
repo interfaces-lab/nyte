@@ -5,6 +5,7 @@ import type { ReactElement } from "react";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
 import { role } from "../../vars.stylex.ts";
 import { Button, type ButtonProps } from "./button.tsx";
+import { ControlGlyphs } from "./icon.tsx";
 
 const styles = create({
   row: {
@@ -70,7 +71,11 @@ function ToolbarSeparator({
 /** Renders a `Button` unless `render` passes a `Toggle` or a popup trigger. */
 function ToolbarButton(buttonProps: ToolbarButtonProps): ReactElement {
   if (buttonProps.render !== undefined) {
-    return <ToolbarPrimitive.Button {...buttonProps} />;
+    return (
+      <ControlGlyphs>
+        <ToolbarPrimitive.Button {...buttonProps} />
+      </ControlGlyphs>
+    );
   }
   return (
     <ToolbarPrimitive.Button

@@ -2,7 +2,7 @@ import "./shell/host-stub";
 import { StrictMode, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { HintProvider } from "@nyte-ai/ui/tooltip";
+import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import "@fontsource-variable/inter/opsz.css";
 import "@fontsource-variable/inter/opsz-italic.css";
 import "@nyte-ai/app/theme/global.css";
@@ -38,7 +38,7 @@ function Demo() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <HintProvider>
+      <TooltipProvider>
         <DesktopDemo
           sidebarVisible={reveal > 0}
           onSidebar={() => {
@@ -58,7 +58,7 @@ function Demo() {
             revision,
           }}
         />
-      </HintProvider>
+      </TooltipProvider>
     </QueryClientProvider>
   );
 }

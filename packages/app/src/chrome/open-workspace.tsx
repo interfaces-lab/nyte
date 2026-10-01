@@ -135,7 +135,7 @@ export function WorkspaceDialogHost(): ReactElement | null {
     <Dialog.Root key={current} defaultOpen onOpenChange={(open) => !open && declineTrust(current)}>
       <Dialog.Popup xstyle={styles.popup}>
         <Dialog.Title xstyle={styles.title}>
-          {trust === undefined ? "This folder is not trusted" : "Do you trust this folder?"}
+          {trust === undefined ? "This folder is not trusted" : "Trust Folder"}
         </Dialog.Title>
         <div {...props(styles.path)}>{current}</div>
         <Dialog.Description>
@@ -154,7 +154,7 @@ export function WorkspaceDialogHost(): ReactElement | null {
                 Cancel
               </Button>
               <Button variant="solid" tone="primary" onClick={() => grantTrust(trust, current)}>
-                Trust and continue
+                Trust Folder
               </Button>
             </>
           )}

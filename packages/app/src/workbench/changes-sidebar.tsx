@@ -43,9 +43,9 @@ const STATUS_FILTERS: readonly { readonly value: ChangeStatus; readonly label: s
 ];
 
 const VIEWED_FILTERS: readonly { readonly value: ViewedFilterMode; readonly label: string }[] = [
-  { value: "all", label: "All files" },
+  { value: "all", label: "All Files" },
   { value: "viewed", label: "Viewed" },
-  { value: "not-viewed", label: "Not viewed" },
+  { value: "not-viewed", label: "Not Viewed" },
 ];
 
 const styles = create({
@@ -66,9 +66,10 @@ const styles = create({
   search: {
     display: "flex",
     alignItems: "center",
-    gap: 4,
+    gap: 8,
     boxSizing: "border-box",
-    height: workbench.headerHeight,
+    minHeight: workbench.headerHeight,
+    paddingBlock: { default: 0, "@media (pointer: coarse)": 4 },
     flexShrink: 0,
     paddingInline: 4,
     borderBottomWidth: 1,
@@ -82,7 +83,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     gap: 4,
-    height: 24,
+    minHeight: { default: 24, "@media (pointer: coarse)": 44 },
     paddingInline: 6,
     color: role.contentSecondary,
     fontSize: type.fontSm,
@@ -187,6 +188,7 @@ export const ChangesSidebar = memo(function ChangesSidebar({
   const { model } = useFileTree({
     paths: [],
     density: "compact",
+    itemHeight: window.matchMedia("(pointer: coarse)").matches ? 44 : 24,
     unsafeCSS: PIERRE_TREE_CSS,
     initialExpansion: "open",
     onSelectionChange: (selected) => {
@@ -307,7 +309,7 @@ export const ChangesSidebar = memo(function ChangesSidebar({
             <Button
               iconOnly
               icon="filters"
-              aria-label={filtering ? "Filters on" : "Filter changes"}
+              aria-label="Change file filters"
               aria-pressed={filtering}
             />
           }

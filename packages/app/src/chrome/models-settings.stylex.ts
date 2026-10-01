@@ -76,18 +76,7 @@ export const modelsSettingsStyles = create({
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
   },
-  groupActions: { display: "inline-flex", gap: 2, marginInlineStart: "auto" },
-  modelRow: {
-    "::after": {
-      position: "absolute",
-      insetInline: 12,
-      insetBlockEnd: 0,
-      height: 1,
-      backgroundColor: role.borderSecondaryTranslucent,
-      content: '""',
-    },
-    ":last-child::after": { display: "none" },
-  },
+  groupActions: { display: "inline-flex", gap: 8, flexWrap: "wrap", marginInlineStart: "auto" },
   quiet: {
     display: "flex",
     alignItems: "center",
@@ -100,7 +89,7 @@ export const modelsSettingsStyles = create({
     lineHeight: type.leadingBase,
   },
   keyForm: { display: "flex", flexDirection: "column", gap: 6 },
-  keyRow: { display: "flex", alignItems: "center", gap: 6 },
+  keyRow: { display: "flex", alignItems: "center", gap: 8 },
   keyInput: {
     flex: 1,
     height: 26,
@@ -116,7 +105,7 @@ export const modelsSettingsStyles = create({
     lineHeight: type.leadingBase,
     overflowWrap: "anywhere",
   },
-  deviceCodeRow: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 },
+  deviceCodeRow: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 },
   // The code is the one thing to read here: mono, wide-tracked, and selected
   // whole so a click cannot grab half of it.
   deviceCode: {

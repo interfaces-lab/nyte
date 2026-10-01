@@ -15,6 +15,7 @@ import { Icon } from "@nyte-ai/ui/icon";
 import {
   Menu,
   MenuItem,
+  MenuLinkItem,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
@@ -92,6 +93,8 @@ interface ModelPickerProps {
   /** Setting ids whose current choice is on. */
   fastEnabled: ReadonlySet<string>;
   disabled?: boolean;
+  loading?: boolean;
+  disabledReason?: string;
   onChange: (change: ModelPickerChange) => void;
 }
 
@@ -101,6 +104,8 @@ function ModelPickerView({
   thinkingLevel,
   fastEnabled,
   disabled = false,
+  loading = false,
+  disabledReason,
   onChange,
 }: ModelPickerProps): ReactElement {
   const navigate = useNavigate();
@@ -126,6 +131,7 @@ function ModelPickerView({
       : isSettingsSection("providers")
         ? {
             label: connected ? "Manage Providers…" : "Connect a Provider…",
+            href: "/settings/providers",
             open: () =>
               void navigate({ to: "/settings/$section", params: { section: "providers" } }),
           }
@@ -150,7 +156,9 @@ function ModelPickerView({
       trigger={
         <Button
           size="sm"
-          disabled={disabled}
+          disabled={disabled || disabledReason !== undefined}
+          disabledReason={disabledReason}
+          loading={loading}
           aria-description={
             label.detail === undefined
               ? `Model: ${label.name}`
@@ -244,7 +252,7 @@ function ModelPickerView({
             {groups.length === 0 && (
               <div {...props(styles.empty)}>
                 {search.trim() !== "" ? (
-                  <span {...props(styles.emptyTitle)}>No models match</span>
+                  <span {...props(styles.emptyTitle)}>No models match "{search.trim()}"</span>
                 ) : catalog?.source === "server" ? (
                   <>
                     <span {...props(styles.emptyTitle)}>No server models available</span>
@@ -298,9 +306,30 @@ function ModelPickerView({
         {manage !== undefined && (
           <>
             <MenuSeparator />
-            <MenuItem layout="plain" onSelect={manage.open}>
-              {manage.label}
-            </MenuItem>
+            {manage.href !== undefined ? (
+              <MenuLinkItem
+                layout="plain"
+                href={manage.href}
+                onClick={(event) => {
+                  if (
+                    event.button !== 0 ||
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  )
+                    return;
+                  event.preventDefault();
+                  manage.open();
+                }}
+              >
+                {manage.label}
+              </MenuLinkItem>
+            ) : (
+              <MenuItem layout="plain" onSelect={manage.open}>
+                {manage.label}
+              </MenuItem>
+            )}
           </>
         )}
       </MenuSubmenu>

@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { layer, shape } from "@nyte-ai/ui/schema.stylex";
+import { input, layer, shape } from "@nyte-ai/ui/schema.stylex";
 import { conversation, pane } from "../theme/schema.stylex.ts";
 import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 
@@ -34,7 +34,7 @@ export const threadStyles = create({
   paneLeading: (ratio: number) => ({
     flexGrow: 0,
     flexShrink: 0,
-    flexBasis: `${String(ratio * 100)}%`,
+    flexBasis: `calc((100% - ${pane.sashSize}) * ${String(ratio)})`,
   }),
   paneTrailing: { flex: 1 },
   screen: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 },
@@ -65,7 +65,7 @@ export const threadStyles = create({
   headerActions: { display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0 },
   renameInput: {
     flex: 1,
-    height: 24,
+    height: input.heightMd,
     borderRadius: shape.indicator,
     fontWeight: 600,
   },

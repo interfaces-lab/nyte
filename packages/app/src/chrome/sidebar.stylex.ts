@@ -11,7 +11,7 @@ export const sidebarStyles = create({
   rail: {
     display: "flex",
     flexDirection: "column",
-    width: sidebar.width,
+    width: "100%",
     minWidth: 0,
     minHeight: 0,
     flexShrink: 0,
@@ -152,9 +152,6 @@ export const sidebarStyles = create({
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
   },
-  rowPrimary: {
-    "::before": { content: "''", position: "absolute", inset: 0 },
-  },
   /**
    * A folder header is a group label, not a list cell: it leaves `--_row-fill`
    * unset, so the revealed action's own hover fill is the only background. It
@@ -175,19 +172,6 @@ export const sidebarStyles = create({
     cursor: appearance.cursorInteractive,
     flexShrink: 0,
   },
-  /** Room for the create action, which floats over the row rather than in it. */
-  workspacePrimary: {
-    paddingInlineEnd: `calc(${sidebar.actionSize} + 2px)`,
-  },
-  /**
-   * The row owns the fill for itself and its action lane. The lane floats over
-   * the row, so it stays a descendant: a pointer on a revealed action is still
-   * inside the row, and `:hover` holds the fill under it.
-   *
-   * The isolation is for the selection layer, which `Row.Backdrop` paints at
-   * `z-index: -1`; without a stacking context here it would sink behind the
-   * list instead of behind the row.
-   */
   sessionRow: {
     "--_row-meta-color": role.contentSecondary,
     "--_row-fill": {
@@ -195,27 +179,10 @@ export const sidebarStyles = create({
       ":hover": role.bgHover,
       ":focus-within": role.bgHover,
     },
-    /*
-     * The trailing lane is reserved only for what is showing. The time, when
-     * the row carries one, sits in flow and always holds its column; the
-     * actions claim their width only once they appear. Reserving them
-     * permanently costs every row 44px of title for a state it is almost never
-     * in, and re-running the ellipsis on hover is the cheaper of the two, being
-     * the state the eye is already moving through.
-     */
     cursor: appearance.cursorInteractive,
 
-    userSelect: "none",
+    touchAction: "pan-y",
     WebkitUserDrag: "none",
-  },
-  /**
-   * Opening the room between the title and the time, rather than at the end of
-   * the row, keeps the time where it was: the title is the only thing that
-   * gives way to the actions. The width multiplies `Row`'s own reveal flag, so
-   * the room and the lane cannot fall out of step.
-   */
-  sessionLabel: {
-    marginInlineEnd: `calc(var(--_row-actions-opacity, 0) * ${sidebar.trailingWidth})`,
   },
   /**
    * A row that needs you carries a second line: the question asked, or why the
@@ -233,12 +200,6 @@ export const sidebarStyles = create({
     alignItems: "center",
     gap: sidebar.rowGap,
     minWidth: 0,
-  },
-  /** The actions cover the title line's box, clear of the second line. */
-  rowActionsAsk: {
-    top: 4,
-    height: type.leadingBase,
-    transform: "none",
   },
   rowIconAsk: { alignSelf: "flex-start", paddingBlockStart: 2 },
   sessionAsk: { color: role.contentSecondary },
@@ -299,7 +260,6 @@ export const sidebarStyles = create({
   rowIcon: {
     width: sidebar.iconSlot,
     height: sidebar.iconSlot,
-    color: role.contentTertiary,
   },
   draftDot: {
     width: 8,
@@ -332,7 +292,7 @@ export const sidebarStyles = create({
     transitionTimingFunction: motion.easeOut,
   },
   workspaceChevronOpen: { transform: "rotate(0deg)" },
-  workspaceUnavailable: { color: role.contentTertiary },
+  workspaceUnavailable: { color: role.contentSecondary },
   rowMeta: {
     minWidth: sidebar.metaWidth,
     justifyContent: "flex-end",
@@ -341,30 +301,11 @@ export const sidebarStyles = create({
     lineHeight: type.leadingXs,
     letterSpacing: 0.07,
   },
-  rowActions: {
-    gap: 2,
-  },
-  /** On a timed row the lane stops a row gap short of the time's column. */
-  rowActionsBesideMeta: {
-    insetInlineEnd: `calc(${sidebar.rowPaddingInline} + ${sidebar.metaWidth} + ${sidebar.rowGap})`,
-  },
-  /** Archive's box+lid is heavy below the grid; lift the glyph, not the hit target. */
-  actionGlyphArchive: {
-    display: "grid",
-    placeItems: "center",
-    lineHeight: 0,
-    transform: "translateY(-1px)",
-  },
   rowDragging: {
     cursor: "grabbing",
     opacity: 0.65,
     userSelect: "none",
     WebkitUserDrag: "none",
-  },
-  workspaceActions: {
-    transitionProperty: "opacity",
-    transitionDuration: motion.durationFast,
-    transitionTimingFunction: motion.easeOut,
   },
   sessionList: {
     display: { default: "flex", "[hidden]": "none" },

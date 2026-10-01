@@ -1,7 +1,7 @@
 import type { JobInfo } from "@nyte-ai/protocol";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- job query results sync into the terminal store
 import { useCallback, useEffect, useState } from "react";
 import type { ReactElement } from "react";
@@ -38,9 +38,13 @@ function TerminalCanvas({
 function TerminalStatus({
   tab,
   restart,
+  stop,
+  stopping,
 }: {
   readonly tab: TerminalTab;
   readonly restart: () => void;
+  readonly stop: () => void;
+  readonly stopping: boolean;
 }): ReactElement | null {
   if (isJobTerminal(tab)) {
     if (tab.rendering.kind === "failed") {
@@ -56,7 +60,14 @@ function TerminalStatus({
 
     switch (tab.state.kind) {
       case "running":
-        return <div {...props(terminalStyles.state)}>Agent command · read-only</div>;
+        return (
+          <div {...props(terminalStyles.state)}>
+            <span>Agent command · read-only</span>
+            <Button variant="outline" loading={stopping} onClick={stop}>
+              Stop Command
+            </Button>
+          </div>
+        );
       case "completed":
         return (
           <div role="status" {...props(terminalStyles.state)}>
@@ -119,7 +130,7 @@ function TerminalStatus({
               : "Shell exited with code " + String(tab.state.exitCode)}
           </span>
           <Button variant="outline" onClick={restart}>
-            Restart
+            Restart Terminal
           </Button>
         </div>
       );
@@ -150,6 +161,14 @@ export function TerminalPanel({
       jobSessionId === null ? Promise.resolve([]) : nyte.jobs.list({ sessionId: jobSessionId }),
     enabled: jobSessionId !== null,
     refetchInterval: jobRunning ? 2_000 : false,
+  });
+
+  const cancellation = useMutation({
+    mutationFn: (current: TerminalTab) => {
+      if (!isJobTerminal(current)) throw new Error("Only agent commands can be stopped here");
+      return nyte.jobs.cancel({ sessionId: current.source.sessionId, jobId: current.source.jobId });
+    },
+    onSuccess: () => jobs.refetch(),
   });
 
   // The conversation reads the same key; the store follows the settled data
@@ -183,6 +202,8 @@ export function TerminalPanel({
           <div {...props(terminalStyles.panel)}>
             <TerminalStatus
               tab={tab}
+              stopping={cancellation.isPending}
+              stop={() => cancellation.mutate(tab)}
               restart={() => {
                 void restart(tab);
               }}
@@ -197,8 +218,22 @@ export function TerminalPanel({
         <div role="alert" {...props(intent.danger, terminalStyles.state, terminalStyles.failure)}>
           <span>Couldn’t refresh command output. Showing the last received output.</span>
           <Button variant="outline" onClick={() => void jobs.refetch()}>
-            Try again
+            Try Again
           </Button>
+        </div>
+      )}
+      {cancellation.isSuccess && (
+        <div role="status" {...props(terminalStyles.state)}>
+          {cancellation.data.kind === "applied"
+            ? "Cancellation requested."
+            : cancellation.data.kind === "finished"
+              ? "This command has already finished."
+              : "This command is no longer available."}
+        </div>
+      )}
+      {cancellation.isError && (
+        <div role="alert" {...props(intent.danger, terminalStyles.state, terminalStyles.failure)}>
+          {errorMessage(cancellation.error)}
         </div>
       )}
       {error !== undefined && (

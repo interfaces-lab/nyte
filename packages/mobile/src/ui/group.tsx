@@ -1,4 +1,6 @@
 import { Children, createContext, Fragment, use, type ReactNode } from "react";
+import { Pressable } from "react-native";
+import { Link, type Href } from "expo-router";
 import { css, html } from "react-strict-dom";
 import { SymbolView } from "expo-symbols";
 import { controls, list, radii, spacing, tokens, useTheme } from "../theme.ts";
@@ -60,17 +62,22 @@ const trails = {
 export function GroupRow({
   children,
   onClick,
+  href,
+  busy = false,
+  role,
+  checked,
   disabled = false,
   align = "start",
   trail,
 }: {
   children: ReactNode;
-  onClick?: () => void;
   disabled?: boolean;
+  busy?: boolean;
   align?: "start" | "center";
-  /** push = the row opens another screen; link = it leaves the app. */
-  trail?: keyof typeof trails;
-}) {
+} & (
+  | { href: Href; onClick?: never; trail?: keyof typeof trails; role?: never; checked?: never }
+  | { href?: never; onClick?: () => void; trail?: "link"; role?: "switch"; checked?: boolean }
+)) {
   const theme = useTheme();
   const isFlat = use(flat);
 
@@ -97,9 +104,35 @@ export function GroupRow({
     </>
   );
 
+  if (href !== undefined) {
+    return (
+      <Link
+        href={href}
+        asChild
+        onPress={(event) => {
+          if (disabled || busy) event.preventDefault();
+        }}
+      >
+        <Pressable accessibilityRole="link" accessibilityState={{ disabled, busy }}>
+          <html.div style={style}>{content}</html.div>
+        </Pressable>
+      </Link>
+    );
+  }
+
   if (onClick !== undefined) {
     return (
-      <html.button onClick={onClick} disabled={disabled} aria-disabled={disabled} style={style}>
+      <html.button
+        onClick={() => {
+          if (!busy) onClick();
+        }}
+        role={role}
+        aria-checked={checked}
+        disabled={disabled}
+        aria-disabled={disabled}
+        aria-busy={busy}
+        style={style}
+      >
         {content}
       </html.button>
     );

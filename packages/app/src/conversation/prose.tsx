@@ -13,7 +13,7 @@ import { CachedMarkdown, Streamdown } from "@lobehub/streamdown";
 import type { Components, ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remend from "remend";
-import { Hint } from "@nyte-ai/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { openConversationLink } from "./link-preference.ts";
 import { useMentionFiles } from "../queries.ts";
 import { CodeBlock } from "./code-block.tsx";
@@ -69,21 +69,23 @@ function MarkdownLink({
   const opener = useReferenceOpener();
 
   return (
-    <Hint
-      content={href}
-      trigger={
-        <a
-          {...elementProps}
-          href={href}
-          {...props(intent.primary, proseStyles.link)}
-          onClick={(event) => {
-            if (href === undefined) return;
-            event.preventDefault();
-            openConversationLink(href, opener);
-          }}
-        />
-      }
-    />
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <a
+            {...elementProps}
+            href={href}
+            {...props(intent.primary, proseStyles.link)}
+            onClick={(event) => {
+              if (href === undefined) return;
+              event.preventDefault();
+              openConversationLink(href, opener);
+            }}
+          />
+        }
+      />
+      <TooltipContent>{href}</TooltipContent>
+    </Tooltip>
   );
 }
 

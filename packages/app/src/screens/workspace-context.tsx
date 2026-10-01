@@ -1,12 +1,18 @@
 import { props } from "@stylexjs/stylex";
-import { Hint } from "@nyte-ai/ui/tooltip";
-import { MenuItem, MenuRadioGroup, MenuRadioItem, MenuSeparator } from "@nyte-ai/ui/menu";
+import {
+  MenuGroup,
+  MenuItem,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuSubmenu,
+} from "@nyte-ai/ui/menu";
 import { useGitHubState } from "../chrome/github-account.ts";
 import { folderPicker, handleOpenOutcome } from "../chrome/open-workspace.tsx";
 import { clientActions } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
 import { useHostState, useVcsSnapshot, useWorkspaces } from "../queries.ts";
-import { ContextHint, ContextSelector } from "./context-selector.tsx";
+import { ContextSelector } from "./context-selector.tsx";
 import { contextStyles } from "./context-selector.stylex.ts";
 import { EnvironmentMenu } from "./environment-menu.tsx";
 
@@ -31,6 +37,26 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
         ? `Detached ${head.oid.slice(0, 7)}`
         : head.branch;
   const openFolder = folderPicker();
+  const recentWorkspaces = (workspaces.data ?? []).filter(
+    (candidate) => candidate.path !== workspace?.path,
+  );
+  const workspaceItems = recentWorkspaces.map((candidate) => (
+    <MenuRadioItem
+      key={candidate.path}
+      value={candidate.path}
+      icon="folder"
+      disabled={candidate.available === false}
+      disabledReason={
+        candidate.available === false
+          ? openFolder === undefined
+            ? "Folder inaccessible"
+            : "Open Folder to reconnect"
+          : undefined
+      }
+    >
+      <span title={candidate.path}>{candidate.name}</span>
+    </MenuRadioItem>
+  ));
 
   if (host.data === undefined) return null;
 
@@ -56,40 +82,30 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
               <span title={workspace.path}>{workspaceName}</span>
             </MenuRadioItem>
           )}
-          {(workspaces.data ?? [])
-            .filter((candidate) => candidate.path !== workspace?.path)
-            .map((candidate) => (
-              <MenuRadioItem
-                key={candidate.path}
-                value={candidate.path}
-                icon="folder"
-                disabled={candidate.available === false}
-                meta={candidate.available === false ? "Unavailable" : undefined}
-              >
-                <span title={candidate.path}>{candidate.name}</span>
-              </MenuRadioItem>
-            ))}
+          {workspaceItems.length > 0 && (
+            <MenuGroup label="Recent Workspaces">{workspaceItems.slice(0, 8)}</MenuGroup>
+          )}
+          {workspaceItems.length > 8 && (
+            <MenuSubmenu label="More Workspaces" icon="folder">
+              {workspaceItems.slice(8)}
+            </MenuSubmenu>
+          )}
         </MenuRadioGroup>
         {openFolder !== undefined && (
           <>
             <MenuSeparator />
             <MenuItem icon="folder-add" onSelect={openFolder}>
-              Open folder…
+              Open Folder…
             </MenuItem>
           </>
         )}
       </ContextSelector>
       {branch !== undefined && (
-        <Hint
-          side="top"
-          xstyle={contextStyles.hint}
-          content={<ContextHint label="Agent Branch" value={branch} />}
-          trigger={
-            <span {...props(contextStyles.readout, contextStyles.controlLayout)}>
-              <span {...props(contextStyles.text)}>{branch}</span>
-            </span>
-          }
-        />
+        <span {...props(contextStyles.readout, contextStyles.controlLayout)}>
+          <span {...props(contextStyles.text)} title={branch}>
+            Agent Branch: {branch}
+          </span>
+        </span>
       )}
       {nyte.clientSurface === "desktop" && <EnvironmentMenu active={active} />}
     </div>

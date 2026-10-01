@@ -1,6 +1,6 @@
 import { shape } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
@@ -60,12 +60,15 @@ interface ConnectScreenProps {
 }
 
 export function ConnectScreen({ initial, problem, onConnected }: ConnectScreenProps): ReactElement {
+  const errorId = useId();
+  const connecting = useRef(false);
   const [address, setAddress] = useState(initial?.url ?? "");
   const [token, setToken] = useState(initial?.token ?? "");
   const [error, setError] = useState(problem);
   const [pending, setPending] = useState(false);
 
   const connect = async (): Promise<void> => {
+    if (connecting.current) return;
     let connection: Connection;
 
     try {
@@ -77,12 +80,14 @@ export function ConnectScreen({ initial, problem, onConnected }: ConnectScreenPr
     }
 
     setError(undefined);
+    connecting.current = true;
     setPending(true);
 
     try {
       await webBridge.connect(connection);
     } catch (cause) {
       setError(serverConnectionProblem(cause).message);
+      connecting.current = false;
       setPending(false);
 
       return;
@@ -96,6 +101,7 @@ export function ConnectScreen({ initial, problem, onConnected }: ConnectScreenPr
     <main {...props(styles.page)}>
       <form
         {...props(styles.card)}
+        aria-busy={pending}
         onSubmit={(event) => {
           event.preventDefault();
           void connect();
@@ -111,8 +117,9 @@ export function ConnectScreen({ initial, problem, onConnected }: ConnectScreenPr
             spellCheck={false}
             placeholder="http://100.64.0.1:52000"
             value={address}
-            disabled={pending}
+            readOnly={pending}
             aria-invalid={error !== undefined}
+            aria-describedby={error !== undefined ? errorId : undefined}
             onValueChange={setAddress}
           />
         </label>
@@ -123,18 +130,19 @@ export function ConnectScreen({ initial, problem, onConnected }: ConnectScreenPr
             autoComplete="off"
             spellCheck={false}
             value={token}
-            disabled={pending}
+            readOnly={pending}
             aria-invalid={error !== undefined}
+            aria-describedby={error !== undefined ? errorId : undefined}
             onValueChange={setToken}
           />
         </label>
         {error !== undefined && (
-          <p role="alert" {...props(intent.danger, styles.error)}>
+          <p id={errorId} role="alert" {...props(intent.danger, styles.error)}>
             {error}
           </p>
         )}
-        <Button type="submit" variant="solid" tone="primary" disabled={pending}>
-          {pending ? "Connecting…" : "Connect"}
+        <Button type="submit" variant="solid" tone="primary" loading={pending}>
+          Connect to Mac
         </Button>
       </form>
     </main>

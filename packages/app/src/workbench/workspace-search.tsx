@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { row, shape } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { hashKey } from "@tanstack/react-query";
 import { useId, useMemo, useState } from "react";
@@ -47,34 +47,14 @@ const styles = create({
   },
   controls: { display: "flex", flexDirection: "column", gap: 4, padding: 8, flexShrink: 0 },
   toolbar: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 },
-  searchField: {
-    "--_search-options-opacity": { default: "0", ":hover": "1", ":focus-within": "1" },
-    "--_search-options-events": { default: "none", ":hover": "auto", ":focus-within": "auto" },
-    "--_search-options-space": { default: "0px", ":hover": "74px", ":focus-within": "74px" },
-    position: "relative",
-  },
-  populated: {
-    "--_search-options-opacity": "1",
-    "--_search-options-events": "auto",
-    "--_search-options-space": "74px",
-  },
-  searchInput: { paddingInlineEnd: "var(--_search-options-space)" },
   searchIcon: { display: "inline-flex", alignItems: "center", height: 20, marginTop: -1 },
   field: { flex: 1 },
   toggles: {
     display: "flex",
     alignItems: "center",
-    gap: 1,
-    position: "absolute",
-    insetInlineEnd: 4,
-    top: 0,
-    height: 26,
-    opacity: "var(--_search-options-opacity)",
-    pointerEvents: "var(--_search-options-events)",
-    transitionProperty: "opacity",
-    transitionDuration: "100ms",
-    transitionTimingFunction: "ease",
+    gap: { default: 2, "@media (pointer: coarse)": 8 },
   },
+  filterLabel: { display: "flex", flexDirection: "column", gap: 4 },
   filters: { display: "flex", flexDirection: "column", gap: 4 },
   results: { flex: 1, minWidth: 0, minHeight: 0, overflow: "auto", paddingBottom: 8 },
   status: { margin: 0, paddingBlock: 6, paddingInline: 8, color: role.contentSecondary },
@@ -109,7 +89,7 @@ const styles = create({
     display: "flex",
     alignItems: "baseline",
     gap: 8,
-    minHeight: 24,
+    minHeight: row.heightMd,
     width: "100%",
     paddingBlock: 2,
     paddingInlineStart: 32,
@@ -199,52 +179,19 @@ export function WorkspaceSearch({
     <section aria-label="Workspace search" {...props(styles.panel)}>
       <div {...props(styles.controls)}>
         <div {...props(styles.toolbar)}>
-          <InputGroup xstyle={[styles.field, styles.searchField, query !== "" && styles.populated]}>
+          <InputGroup xstyle={styles.field}>
             <span {...props(styles.searchIcon)}>
               <Icon name="search" size={12} />
             </span>
             <Input
               type="text"
               aria-label="Search workspace"
-              placeholder="Search"
+              placeholder="Search workspace"
               autoComplete="off"
               spellCheck={false}
               value={query}
               onValueChange={setQuery}
-              xstyle={styles.searchInput}
             />
-            <div role="group" aria-label="Search options" {...props(styles.toggles)}>
-              <Toggle
-                iconOnly
-                aria-label="Match case"
-                title="Match case"
-                size="sm"
-                pressed={caseSensitive}
-                onPressedChange={setCaseSensitive}
-              >
-                Aa
-              </Toggle>
-              <Toggle
-                iconOnly
-                aria-label="Match whole word"
-                title="Match whole word"
-                size="sm"
-                pressed={wholeWord}
-                onPressedChange={setWholeWord}
-              >
-                ab
-              </Toggle>
-              <Toggle
-                iconOnly
-                aria-label="Use regular expression"
-                title="Use regular expression"
-                size="sm"
-                pressed={regex}
-                onPressedChange={setRegex}
-              >
-                .*
-              </Toggle>
-            </div>
           </InputGroup>
           <Button
             size="sm"
@@ -256,30 +203,60 @@ export function WorkspaceSearch({
             onClick={() => setFiltersOpen((current) => !current)}
           />
         </div>
+        <div role="group" aria-label="Search options" {...props(styles.toggles)}>
+          <Toggle
+            iconOnly
+            aria-label="Match case"
+            title="Match case"
+            size="sm"
+            pressed={caseSensitive}
+            onPressedChange={setCaseSensitive}
+          >
+            Aa
+          </Toggle>
+          <Toggle
+            iconOnly
+            aria-label="Match whole word"
+            title="Match whole word"
+            size="sm"
+            pressed={wholeWord}
+            onPressedChange={setWholeWord}
+          >
+            ab
+          </Toggle>
+          <Toggle
+            iconOnly
+            aria-label="Use regular expression"
+            title="Use regular expression"
+            size="sm"
+            pressed={regex}
+            onPressedChange={setRegex}
+          >
+            .*
+          </Toggle>
+        </div>
         <div id={filtersId} hidden={!filtersOpen}>
           <div {...props(styles.filters)}>
-            <InputGroup xstyle={styles.field}>
+            <label {...props(styles.filterLabel)}>
+              Files to include
               <Input
                 type="text"
-                aria-label="Files to include"
-                placeholder="Files to include"
-                title="Glob patterns separated by semicolons, for example src/**; lib/**"
+                placeholder="src/**; lib/**"
                 value={include}
                 spellCheck={false}
                 onValueChange={setInclude}
               />
-            </InputGroup>
-            <InputGroup xstyle={styles.field}>
+            </label>
+            <label {...props(styles.filterLabel)}>
+              Files to exclude
               <Input
                 type="text"
-                aria-label="Files to exclude"
-                placeholder="Files to exclude"
-                title="Glob patterns separated by semicolons, for example **/*.test.*"
+                placeholder="**/*.test.*"
                 value={exclude}
                 spellCheck={false}
                 onValueChange={setExclude}
               />
-            </InputGroup>
+            </label>
           </div>
         </div>
       </div>

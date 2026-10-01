@@ -31,7 +31,6 @@ type ChatScreenProps = {
   delegateNames: ReadonlyMap<SessionId, string>;
   changes: readonly FileChange[] | undefined;
   onAskMerge: () => void;
-  onOpenReview: () => void;
   prefill: { text: string; nonce: number } | undefined;
 };
 
@@ -46,7 +45,6 @@ export function ChatScreen({
   delegateNames,
   changes,
   onAskMerge,
-  onOpenReview,
   prefill,
 }: ChatScreenProps) {
   const theme = useTheme();
@@ -105,7 +103,11 @@ export function ChatScreen({
           >
             {changes !== undefined ? (
               <html.div style={styles.gutters(layout.paddingLeft, layout.paddingRight)}>
-                <ReviewStrip changes={changes} onReview={onOpenReview} onAskMerge={onAskMerge} />
+                <ReviewStrip
+                  changes={changes}
+                  sessionId={state.info.sessionId}
+                  onAskMerge={onAskMerge}
+                />
               </html.div>
             ) : null}
             <Composer

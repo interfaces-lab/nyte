@@ -1,7 +1,9 @@
 import type { ComponentProps } from "react";
-import type { ViewStyle } from "react-native";
+import { Pressable, View, type ViewStyle } from "react-native";
+import { Link, router, type Href } from "expo-router";
 import { Button, Host } from "@expo/ui/swift-ui";
 import {
+  accessibilityHidden,
   buttonBorderShape,
   buttonStyle,
   controlSize,
@@ -16,12 +18,13 @@ import { css, html } from "react-strict-dom";
 import { controls, radii, spacing, themes, tokens, typography, useTheme } from "../theme.ts";
 
 /** Label, action, and icon keep the names and types the native control uses. */
-type Common = Required<Pick<ComponentProps<typeof Button>, "label" | "onPress">> &
+type Common = Required<Pick<ComponentProps<typeof Button>, "label">> &
   Pick<ComponentProps<typeof Button>, "systemImage"> & {
     disabled?: boolean;
+    busy?: boolean;
     /** The action the screen is for: tinted with the accent rather than neutral. */
     prominent?: boolean;
-  };
+  } & ({ onPress: () => void; href?: never } | { href: Href; onPress?: never });
 
 /**
  * A filling button spans its row, so the options that only make sense for a
@@ -48,20 +51,30 @@ type GlassButtonProps =
  */
 export function GlassButton(props: GlassButtonProps) {
   const theme = useTheme();
-  const { label, onPress, systemImage, disabled: isDisabled = false, prominent = false } = props;
+  const {
+    label,
+    systemImage,
+    disabled: isDisabled = false,
+    busy = false,
+    prominent = false,
+  } = props;
+  function activate() {
+    if (isDisabled || busy) return;
+    if (props.href !== undefined) {
+      router.navigate(props.href);
+      return;
+    }
+    props.onPress();
+  }
 
   if (props.fill === true) {
-    return (
-      <html.button
-        onClick={onPress}
-        disabled={isDisabled}
-        aria-disabled={isDisabled}
-        style={[
-          styles.fill,
-          prominent ? styles.prominent : styles.neutral,
-          isDisabled && styles.disabled,
-        ]}
-      >
+    const style = [
+      styles.fill,
+      prominent ? styles.prominent : styles.neutral,
+      isDisabled && styles.disabled,
+    ];
+    const content = (
+      <>
         {systemImage === undefined ? null : (
           <SymbolView
             name={systemImage}
@@ -72,6 +85,32 @@ export function GlassButton(props: GlassButtonProps) {
         <html.span style={[styles.label, prominent ? styles.onAccentFill : styles.onNeutral]}>
           {label}
         </html.span>
+      </>
+    );
+    if (props.href !== undefined) {
+      return (
+        <Link
+          href={props.href}
+          asChild
+          onPress={(event) => {
+            if (isDisabled || busy) event.preventDefault();
+          }}
+        >
+          <Pressable accessibilityRole="link" accessibilityState={{ disabled: isDisabled, busy }}>
+            <html.div style={style}>{content}</html.div>
+          </Pressable>
+        </Link>
+      );
+    }
+    return (
+      <html.button
+        onClick={activate}
+        disabled={isDisabled}
+        aria-disabled={isDisabled}
+        aria-busy={busy}
+        style={style}
+      >
+        {content}
       </html.button>
     );
   }
@@ -87,32 +126,41 @@ export function GlassButton(props: GlassButtonProps) {
     : { height };
 
   return (
-    <Host
-      style={hostStyle}
-      matchContents={!iconOnly ? { horizontal: true } : false}
-      colorScheme={scheme}
-      ignoreSafeArea="all"
+    <View
+      accessible
+      accessibilityRole={props.href === undefined ? "button" : "link"}
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: isDisabled, busy }}
+      onAccessibilityTap={activate}
     >
-      <Button
-        label={label}
-        systemImage={systemImage}
-        onPress={onPress}
-        modifiers={[
-          frame({ minWidth: controls.touchTarget, minHeight: height }),
-          buttonStyle(prominent ? "glassProminent" : "glass"),
-          controlSize("regular"),
-          buttonBorderShape(iconOnly ? "circle" : "capsule"),
-          tint(prominent ? palette.accentFill : palette.foreground),
-          font(
-            iconOnly
-              ? { size: typography.title.fontSize, weight: "regular" }
-              : { size: typography.button.fontSize, weight: "medium" },
-          ),
-          labelStyle(iconOnly ? "iconOnly" : systemImage ? "titleAndIcon" : "titleOnly"),
-          disabled(isDisabled),
-        ]}
-      />
-    </Host>
+      <Host
+        style={hostStyle}
+        matchContents={!iconOnly ? { horizontal: true } : false}
+        colorScheme={scheme}
+        ignoreSafeArea="all"
+      >
+        <Button
+          label={label}
+          systemImage={systemImage}
+          onPress={activate}
+          modifiers={[
+            accessibilityHidden(),
+            frame({ minWidth: controls.touchTarget, minHeight: height }),
+            buttonStyle(prominent ? "glassProminent" : "glass"),
+            controlSize("regular"),
+            buttonBorderShape(iconOnly ? "circle" : "capsule"),
+            tint(prominent ? palette.accentFill : palette.foreground),
+            font(
+              iconOnly
+                ? { size: typography.title.fontSize, weight: "regular" }
+                : { size: typography.button.fontSize, weight: "medium" },
+            ),
+            labelStyle(iconOnly ? "iconOnly" : systemImage ? "titleAndIcon" : "titleOnly"),
+            disabled(isDisabled),
+          ]}
+        />
+      </Host>
+    </View>
   );
 }
 

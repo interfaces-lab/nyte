@@ -1,9 +1,8 @@
-export { PreviewCard } from "./components/ui/preview-card.tsx";
-
-export type {
-  PreviewCardBackdropProps,
-  PreviewCardPopupProps,
-  PreviewCardPositionerProps,
-  PreviewCardRootProps,
-  PreviewCardTriggerProps,
+export {
+  createPreviewCardHandle,
+  PreviewCard,
+  PreviewCardContent,
+  PreviewCardTrigger,
 } from "./components/ui/preview-card.tsx";
+
+export type { PreviewCardContentProps } from "./components/ui/preview-card.tsx";

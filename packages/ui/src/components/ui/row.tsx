@@ -51,7 +51,6 @@ const styles = create({
       default: "transparent",
       ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
     },
-    "--_row-leading-color": "currentColor",
     flexShrink: 0,
     margin: 0,
     paddingBlock: 0,
@@ -129,7 +128,7 @@ const styles = create({
     flexShrink: 0,
     width: glyph.box,
     lineHeight: 0,
-    color: `var(--_row-leading-color, ${role.contentSecondary})`,
+    color: "inherit",
   },
   body: {
     display: "flex",

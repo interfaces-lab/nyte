@@ -59,13 +59,14 @@ export function SettingsScreen() {
 
   // Disconnecting deletes the saved token, so reconnecting means copying it from the Mac again.
   function confirmDisconnect() {
+    if (busy) return;
     Alert.alert(
-      `Disconnect from ${connection.name}?`,
+      "Disconnect Mac",
       "To connect again, you'll need the address and token from your Mac.",
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Disconnect",
+          text: "Disconnect Mac",
           style: "destructive",
           onPress: () => {
             setBusy(true);
@@ -113,7 +114,7 @@ export function SettingsScreen() {
           </html.div>
         </GroupRow>
         <GroupRow
-          disabled={status === "checking"}
+          busy={status === "checking"}
           onClick={() => {
             void check.refetch();
             void workspacesQuery.refetch();
@@ -121,13 +122,13 @@ export function SettingsScreen() {
         >
           <IconRing name="arrow.clockwise" />
           <html.span style={textStyles.body}>
-            {status === "unreachable" ? "Try again" : "Check connection"}
+            {status === "unreachable" ? "Retry Connection" : "Check Connection"}
           </html.span>
         </GroupRow>
-        <GroupRow onClick={edit} trail="push">
+        <GroupRow onClick={edit}>
           <IconRing name="pencil" />
           <html.div style={styles.rowText}>
-            <html.span style={textStyles.body}>Edit address and token</html.span>
+            <html.span style={textStyles.body}>Edit Connection…</html.span>
             <html.span style={textStyles.caption}>
               Your Mac issues a new pair each time sharing starts.
             </html.span>
@@ -142,7 +143,7 @@ export function SettingsScreen() {
       <SectionHeader label="Style" />
       <Group variant="flat">
         <ChoiceRow label="Appearance" icon="circle.lefthalf.filled" setting={appearance} />
-        <ChoiceRow label="Transcript font" icon="textformat" setting={transcriptFont} />
+        <ChoiceRow label="Transcript Font" icon="textformat" setting={transcriptFont} />
       </Group>
       <SectionHeader label="List" />
       <Group variant="flat">
@@ -183,10 +184,10 @@ export function SettingsScreen() {
       ) : null}
       <SectionHeader label="Danger Zone" tone="danger" />
       <Group variant="flat">
-        <GroupRow disabled={busy} onClick={confirmDisconnect}>
+        <GroupRow busy={busy} onClick={confirmDisconnect}>
           <IconRing name="rectangle.portrait.and.arrow.right" color={theme.danger} />
           <html.span style={[textStyles.body, styles.danger]}>
-            {busy ? "Disconnecting…" : "Disconnect"}
+            {busy ? "Disconnecting…" : "Disconnect Mac"}
           </html.span>
         </GroupRow>
       </Group>

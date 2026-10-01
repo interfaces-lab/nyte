@@ -375,7 +375,7 @@ function CommitScopeItems({
               setShowNextPage(true);
             }}
           >
-            Load older commits
+            Load Older Commits
           </MenuItem>
         ))}
     </>
@@ -566,7 +566,7 @@ export function ChangesToolbar({
                 closeOnClick={false}
                 onCheckedChange={setShowAllTurns}
               >
-                Show all turns
+                Show All Turns
               </MenuCheckboxItem>
             </>
           )}
@@ -606,7 +606,7 @@ export function ChangesToolbar({
               onViewOptionsChange({ ignoreWhitespace: checked });
             }}
           >
-            Ignore whitespace
+            Ignore Whitespace
           </MenuCheckboxItem>
           <MenuCheckboxItem
             checked={viewOptions.wordWrap}
@@ -614,7 +614,7 @@ export function ChangesToolbar({
               onViewOptionsChange({ wordWrap: checked });
             }}
           >
-            Word wrap
+            Word Wrap
           </MenuCheckboxItem>
           <MenuSeparator />
           <MenuItem
@@ -622,16 +622,16 @@ export function ChangesToolbar({
             meta={changesShortcutLabel("filter-files", mac)}
             onSelect={onFilterFiles}
           >
-            Filter files
+            Filter Files
           </MenuItem>
           <MenuItem
             icon={allFilesCollapsed ? "chevron-down" : "chevron-right"}
             onSelect={onToggleCollapseAll}
           >
-            {allFilesCollapsed ? "Expand all files" : "Collapse all files"}
+            {allFilesCollapsed ? "Expand All Files" : "Collapse All Files"}
           </MenuItem>
           <MenuItem icon="refresh" meta={changesShortcutLabel("refresh", mac)} onSelect={onRefresh}>
-            Refresh changes
+            Refresh Changes
           </MenuItem>
         </Menu>
         <Toggle

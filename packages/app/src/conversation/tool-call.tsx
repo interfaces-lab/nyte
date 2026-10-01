@@ -18,7 +18,7 @@ import { parsePatchFacts } from "@nyte-ai/client";
 import type { ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
 import { focus, srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
-import { Hint } from "@nyte-ai/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { DiffView } from "./diff-view.tsx";
 import type { DiffFacts } from "./diff-view.tsx";
@@ -154,24 +154,27 @@ function ToolOutput({
     <div {...props(toolCallStyles.output)}>
       {open ? (
         <span {...props(toolCallStyles.outputActions)}>
-          <Hint
-            content={copied ? "Copied" : "Copy output"}
-            trigger={
-              <Button
-                size="sm"
-                iconOnly
-                icon={copied ? "checkmark" : "copy"}
-                aria-label={copied ? "Output copied" : "Copy output"}
-                title={undefined}
-                onClick={() => {
-                  navigator.clipboard
-                    .writeText(transcript)
-                    .then(() => setCopiedTranscript(transcript))
-                    .catch(() => undefined);
-                }}
-              />
-            }
-          />
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  size="sm"
+                  iconOnly
+                  icon={copied ? "checkmark" : "copy"}
+                  aria-label={
+                    command === undefined ? "Copy tool output" : `Copy output for ${command}`
+                  }
+                  onClick={() => {
+                    navigator.clipboard
+                      .writeText(transcript)
+                      .then(() => setCopiedTranscript(transcript))
+                      .catch(() => undefined);
+                  }}
+                />
+              }
+            />
+            <TooltipContent>{copied ? "Copied" : "Copy output"}</TooltipContent>
+          </Tooltip>
         </span>
       ) : (
         <OutputTail>{lines}</OutputTail>
@@ -278,10 +281,10 @@ export const ToolCallView = memo(function ToolCallView({
         <span {...props(srOnly)}>Running</span>
       )}
       {detail !== undefined && (
-        <Hint
-          content={detail.title ?? detail.text}
-          trigger={<span {...props(toolCallStyles.detail)}>{detail.text}</span>}
-        />
+        <Tooltip>
+          <TooltipTrigger render={<span {...props(toolCallStyles.detail)}>{detail.text}</span>} />
+          <TooltipContent>{detail.title ?? detail.text}</TooltipContent>
+        </Tooltip>
       )}
       {toolClass.kind === "file_patch" && (toolClass.added > 0 || toolClass.removed > 0) && (
         <span {...props(toolCallStyles.stats, editDiff && toolCallStyles.editStats)}>

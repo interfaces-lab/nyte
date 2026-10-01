@@ -285,13 +285,13 @@ function syncWindowZoom(): void {
   ipcRenderer.send(WINDOW_ZOOM_CHANNEL);
 }
 
-if (process.platform === "darwin") window.addEventListener("resize", syncWindowZoom);
+window.addEventListener("resize", syncWindowZoom);
 
 window.addEventListener(
   "DOMContentLoaded",
   () => {
     document.documentElement.dataset["platform"] = process.platform;
-    if (process.platform === "darwin") syncWindowZoom();
+    syncWindowZoom();
   },
   { once: true },
 );

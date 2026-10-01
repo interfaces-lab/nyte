@@ -10,7 +10,7 @@ export const appearancePanelStyles = create({
     display: "inline-flex",
     alignItems: "center",
     gap: 8,
-    width: 150,
+    width: 180,
   },
   tintSlider: { width: 120, minWidth: 0, flex: "0 1 auto" },
   tintThumb: {
@@ -42,6 +42,7 @@ export const appearancePanelStyles = create({
     fontSize: type.fontXs,
     lineHeight: type.leadingSm,
     textAlign: "center",
+    fontVariantNumeric: "tabular-nums",
   },
   density: {
     display: "flex",

@@ -9,6 +9,7 @@ import type { PluginInfo, SessionId, SettingInfo } from "@nyte-ai/protocol";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Select } from "@nyte-ai/ui/select";
+import { useChromeTab } from "./use-chrome-tab.ts";
 import { isOption } from "./sidebar-view.ts";
 import { nyte } from "../nyte.ts";
 import {
@@ -27,7 +28,7 @@ const CUSTOMIZE_TABS = [
   ["settings", "Settings"],
 ] as const satisfies readonly (readonly [CustomizeTab, string])[];
 
-const CUSTOMIZE_TAB_IDS = CUSTOMIZE_TABS.map(([id]) => id);
+const CUSTOMIZE_TAB_IDS = ["plugins", "skills", "settings"] as const;
 
 const EMPTY_INVENTORY: CustomizeInventory = { plugins: [], settings: [], skills: [] };
 
@@ -244,7 +245,7 @@ export function CustomizeSurface({
 }: {
   sessionId: SessionId | undefined;
 }): ReactElement {
-  const [tab, setTab] = useState<CustomizeTab>("plugins");
+  const [tab, setTab] = useChromeTab("customize", CUSTOMIZE_TAB_IDS);
   const [query, setQuery] = useState("");
   const projectSettings = usePluginSettingsProjection(sessionId);
 

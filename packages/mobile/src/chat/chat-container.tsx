@@ -10,6 +10,7 @@ import type { SessionId } from "@nyte-ai/protocol";
 import { changesFromTurns, waitingCall } from "@nyte-ai/client";
 import { useHost } from "../connection/host-context.tsx";
 import { describeHostError } from "../connection/connection.ts";
+import { navigationMenuAction } from "../ui/navigation-menu.tsx";
 import { toast } from "../ui/toast.tsx";
 import { TranscriptSkeleton } from "../ui/skeleton.tsx";
 import { spacing, textStyles, tokens } from "../theme.ts";
@@ -74,24 +75,16 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   const overflow = (
     <Stack.Toolbar placement="right">
       <Stack.Toolbar.Menu icon="ellipsis" accessibilityLabel="Conversation options">
-        <Stack.Toolbar.MenuAction
-          icon="checklist"
-          onPress={() => {
-            Keyboard.dismiss();
-            router.push(`/review/${sessionId}`);
-          }}
-        >
-          Review
-        </Stack.Toolbar.MenuAction>
-        <Stack.Toolbar.MenuAction
-          icon="doc.text"
-          onPress={() => {
-            Keyboard.dismiss();
-            router.push(`/changes/${sessionId}`);
-          }}
-        >
-          Changed Files
-        </Stack.Toolbar.MenuAction>
+        {navigationMenuAction({
+          href: `/review/${sessionId}`,
+          icon: "checklist",
+          children: "Review Changes",
+        })}
+        {navigationMenuAction({
+          href: `/changes/${sessionId}`,
+          icon: "doc.text",
+          children: "View Changed Files",
+        })}
         <Stack.Toolbar.MenuAction
           icon="cpu"
           onPress={() => {
@@ -105,7 +98,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
           icon="pencil"
           onPress={() => {
             Alert.prompt(
-              "Rename conversation",
+              "Rename Conversation",
               undefined,
               (entered) => {
                 const trimmed = entered?.trim();
@@ -120,7 +113,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
             );
           }}
         >
-          Rename…
+          Rename Conversation…
         </Stack.Toolbar.MenuAction>
         <Stack.Toolbar.MenuAction
           icon={info?.pinned === true ? "pin.slash" : "pin"}
@@ -130,16 +123,16 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
               .catch(report(info?.pinned === true ? "Couldn't unpin" : "Couldn't pin"));
           }}
         >
-          {info?.pinned === true ? "Unpin" : "Pin"}
+          {info?.pinned === true ? "Unpin Conversation" : "Pin Conversation"}
         </Stack.Toolbar.MenuAction>
         <Stack.Toolbar.MenuAction
           icon="trash"
           destructive
           onPress={() => {
-            Alert.alert("Delete this conversation?", "This can't be undone.", [
+            Alert.alert("Delete Conversation", "This can't be undone.", [
               { text: "Cancel", style: "cancel" },
               {
-                text: "Delete",
+                text: "Delete Conversation",
                 style: "destructive",
                 onPress: () => {
                   void client.sessions
@@ -151,7 +144,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
             ]);
           }}
         >
-          Delete
+          Delete Conversation
         </Stack.Toolbar.MenuAction>
       </Stack.Toolbar.Menu>
     </Stack.Toolbar>
@@ -190,7 +183,6 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
                 })),
             })
           }
-          onOpenReview={() => router.push(`/review/${sessionId}`)}
         />
       </>
     );

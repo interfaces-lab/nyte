@@ -75,14 +75,14 @@ export async function run(): Promise<string> {
     check(host.textContent?.includes("/review") === true, "skill invocation renders a chip");
     check(!host.textContent?.includes("Hidden instructions"), "instructions stay hidden");
     check(
-      host.querySelector('[data-composer-chip="skill"] button') === null,
+      host.querySelector('[data-composer-chip="skill"] button[aria-label^="Remove " ]') === null,
       "readonly has no remove control",
     );
     check(
       document.activeElement === input && input.selectionStart === 2 && input.selectionEnd === 5,
       "render does not steal focus or selection",
     );
-    const chip = host.querySelector('[data-composer-chip="skill"]');
+    const chip = host.querySelector('[data-composer-chip="skill"] button');
     if (!(chip instanceof HTMLElement)) throw new Error("missing chip");
     chip.click();
     check(opened === 1 && edited === 0, "chip opens without editing message");

@@ -10,7 +10,7 @@ export const COMPOSER = {
   collapsed: { inset: 16, height: 48, radius: 24, gap: 4 },
   /** Focused: a 94pt two-row card, flush with the gutters. */
   expanded: { inset: 0, height: 94, radius: 28, gap: 12 },
-  hit: 34,
+  hit: 44,
   sendSize: 32,
   fontSize: 17,
 } as const;
@@ -63,7 +63,7 @@ export const SPRING = {
 export const ICON_ROW_INSET = 24;
 
 /** The gauge's anchor from the card's right edge; Stop claims it while running. */
-export const GAUGE_RIGHT = 68.5;
+export const GAUGE_RIGHT = ICON_ROW_INSET + COMPOSER.hit + 8;
 
 /** Where the gauge anchors while Stop holds its spot. */
-export const GAUGE_RIGHT_RUNNING = 109;
+export const GAUGE_RIGHT_RUNNING = GAUGE_RIGHT + COMPOSER.hit + 8;

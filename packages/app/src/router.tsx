@@ -8,7 +8,7 @@
  * Settings, ⌘D and ⇧⌘D split the stage — because the renderer owns chords.
  */
 import { create, props } from "@stylexjs/stylex";
-import { HintProvider } from "@nyte-ai/ui/tooltip";
+import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -16,7 +16,6 @@ import {
   createRouter,
   Matches,
   redirect,
-  useMatch,
   useRouter,
 } from "@tanstack/react-router";
 // oxlint-disable-next-line no-restricted-imports -- shortcuts act on the current pane state
@@ -25,7 +24,7 @@ import { AboutDialog } from "./chrome/about-dialog.tsx";
 import type { ReactElement } from "react";
 import { WorkspaceDialogHost } from "./chrome/open-workspace.tsx";
 import { isSettingsSection } from "./chrome/settings-navigation.tsx";
-import { shellActions, useShellState } from "./chrome/shell-state.ts";
+import { shellActions, subscribeShellStage, useShellState } from "./chrome/shell-state.ts";
 import { SidebarPane } from "./chrome/sidebar-pane.tsx";
 import { Sidebar } from "./chrome/sidebar.tsx";
 import { Button } from "@nyte-ai/ui/button";
@@ -92,11 +91,11 @@ export function Shell({ appIcon }: { appIcon: string }): ReactElement {
   const host = useHostState();
 
   return (
-    <HintProvider>
+    <TooltipProvider>
       <PaneControllerProvider workspaceKey={host.data?.workspace?.path}>
         <ShellChrome appIcon={appIcon} />
       </PaneControllerProvider>
-    </HintProvider>
+    </TooltipProvider>
   );
 }
 
@@ -145,19 +144,17 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       } else if (action.id === "back" && settingsOpen) {
         event.preventDefault();
         shellRouter.history.back();
+      } else if (action.id === "back" && shellRouter.history.canGoBack()) {
+        event.preventDefault();
+        shellRouter.history.back();
       } else if (action.id === "back" && stageOpen) {
         event.preventDefault();
         shellActions.showWorkspace();
-      } else if (action.id === "back" && shellRouter.history.canGoBack()) {
-        event.preventDefault();
-        shellActions.showWorkspace();
-        shellRouter.history.back();
       } else if (
         action.id === "forward" &&
         shellRouter.history.location.state.__TSR_index < shellRouter.history.length - 1
       ) {
         event.preventDefault();
-        shellActions.showWorkspace();
         shellRouter.history.forward();
       } else if (action.id === "sidebar") {
         event.preventDefault();
@@ -200,7 +197,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
             <Sidebar />
           </SidebarPane>
           <main {...props(styles.surface)}>
-            <StageContent shellStage={shellStage} />
+            <Matches />
           </main>
         </SessionDndProvider>
       </div>
@@ -216,18 +213,12 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   );
 }
 
-function StageContent({
-  shellStage,
-}: {
-  readonly shellStage: ReturnType<typeof useShellState>["stage"];
-}): ReactElement | null {
-  const settings = useMatch({ from: "/settings/$section", shouldThrow: false });
-
-  if (settings !== undefined) return <Matches />;
+function WorkspaceRouteStage(): ReactElement {
+  const { stage: shellStage } = useShellState();
 
   switch (shellStage.kind) {
     case "workspace":
-      return <Matches />;
+      return <WorkspaceStage />;
     case "customize":
       return <CustomizeSurface sessionId={shellStage.sessionId} />;
     case "environments":
@@ -240,7 +231,14 @@ function StageContent({
   }
 }
 
-const rootRoute = createRootRoute();
+const rootRoute = createRootRoute({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { customize?: string; environment?: string } => ({
+    customize: typeof search.customize === "string" ? search.customize : undefined,
+    environment: typeof search.environment === "string" ? search.environment : undefined,
+  }),
+});
 
 /**
  * The stage route. `workspace` is undefined until a folder opens; the stage
@@ -249,7 +247,7 @@ const rootRoute = createRootRoute();
 const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "_workspace",
-  component: WorkspaceStage,
+  component: WorkspaceRouteStage,
 });
 
 let startupDestinationPending = true;
@@ -257,7 +255,8 @@ let startupDestinationPending = true;
 const indexRoute = createRoute({
   getParentRoute: () => workspaceRoute,
   path: "/",
-  beforeLoad: async () => {
+  beforeLoad: async ({ search }) => {
+    if (search.customize !== undefined || search.environment !== undefined) return;
     if (!startupDestinationPending) return;
     startupDestinationPending = false;
 
@@ -287,7 +286,7 @@ function ThreadRouteError(): ReactElement {
     <div role="alert" {...props(styles.loadError)}>
       <p {...props(styles.loadErrorText)}>Couldn&rsquo;t open this chat.</p>
       <Button variant="outline" onClick={() => void threadRouter.invalidate()}>
-        Try again
+        Try Again
       </Button>
     </div>
   );
@@ -340,7 +339,15 @@ const workspaceRouteTree = workspaceRoute.addChildren([indexRoute, threadRoute])
 
 const routeTree = rootRoute.addChildren([workspaceRouteTree, settingsRoute]);
 
-const history = createMemoryHistory({ initialEntries: ["/"] });
+function initialChromeRoute(): string {
+  try {
+    return window.sessionStorage.getItem("nyte.chrome.route") ?? "/";
+  } catch {
+    return "/";
+  }
+}
+
+const history = createMemoryHistory({ initialEntries: [initialChromeRoute()] });
 
 export const router = createRouter({
   routeTree,
@@ -352,6 +359,46 @@ export const router = createRouter({
   defaultPreloadStaleTime: 0,
   defaultStructuralSharing: true,
 });
+
+function restoreChromeStage(): void {
+  const search = new URLSearchParams(router.state.location.searchStr);
+  if (search.has("customize")) shellActions.openCustomize(currentRouteSession());
+  else if (search.has("environment")) shellActions.openEnvironments();
+  else shellActions.showWorkspace();
+}
+
+subscribeShellStage((stage) => {
+  const search = new URLSearchParams(router.state.location.searchStr);
+  if (
+    (stage.kind === "customize" && search.has("customize") && !search.has("environment")) ||
+    (stage.kind === "environments" && search.has("environment") && !search.has("customize")) ||
+    (stage.kind === "workspace" && !search.has("customize") && !search.has("environment"))
+  )
+    return;
+  void router.navigate({
+    to: ".",
+    search: (previous) => {
+      const { customize, environment, ...rest } = previous;
+      if (stage.kind === "customize") return { ...rest, customize: customize ?? "plugins" };
+      if (stage.kind === "environments")
+        return { ...rest, environment: environment ?? "connections" };
+      return rest;
+    },
+  });
+});
+
+router.subscribe("onResolved", () => {
+  restoreChromeStage();
+  try {
+    if (
+      router.state.location.searchStr.includes("customize=") ||
+      router.state.location.searchStr.includes("environment=")
+    ) {
+      window.sessionStorage.setItem("nyte.chrome.route", router.state.location.href);
+    } else window.sessionStorage.removeItem("nyte.chrome.route");
+  } catch {}
+});
+restoreChromeStage();
 
 /** The chat the current location shows, if it is one. */
 export function currentRouteSession(): SessionId | undefined {

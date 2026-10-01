@@ -7,7 +7,7 @@ import {
   Image,
   Keyboard,
   PanResponder,
-  Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
@@ -59,6 +59,7 @@ type ResponderDeps = {
   size: Canvas | undefined;
   saving: boolean;
   nextNumber: number;
+  marks: readonly Mark[];
   addMark: (mark: Mark) => void;
   setDrawing: (points: readonly Spot[] | undefined) => void;
   setSelected: (n: number) => void;
@@ -78,7 +79,8 @@ function spotOf(x: number, y: number, size: Canvas): Spot {
  * commits it as a mark.
  */
 function createAnnotateResponder(deps: ResponderDeps) {
-  const { size, saving, nextNumber, addMark, setDrawing, setSelected } = deps;
+  const { size, saving, nextNumber, marks, addMark, setDrawing, setSelected } = deps;
+  const points = marks.flatMap((mark) => (mark.kind === "point" ? [mark.point] : []));
   let start: Spot | null = null;
   let stroke: readonly Spot[] | null = null;
 
@@ -121,6 +123,18 @@ function createAnnotateResponder(deps: ResponderDeps) {
       }
 
       const at = spotOf(event.nativeEvent.locationX, event.nativeEvent.locationY, size);
+      let nearest: AnnotationPoint | undefined;
+      let distance = controls.touchTarget / 2;
+      for (const point of points) {
+        const delta = Math.hypot((point.x - at.x) * size.width, (point.y - at.y) * size.height);
+        if (delta > distance) continue;
+        nearest = point;
+        distance = delta;
+      }
+      if (nearest !== undefined) {
+        setSelected(nearest.n);
+        return;
+      }
       addMark({ kind: "point", point: { n: nextNumber, ...at, comment: "" } });
       setSelected(nextNumber);
     },
@@ -169,11 +183,12 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
         size,
         saving,
         nextNumber,
+        marks,
         addMark: (mark) => setMarks((current) => [...current, mark]),
         setDrawing,
         setSelected,
       }),
-    [size, saving, nextNumber],
+    [size, saving, nextNumber, marks],
   );
 
   function writeComment(n: number, comment: string) {
@@ -181,6 +196,24 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
       current.map((mark) =>
         mark.kind === "point" && mark.point.n === n
           ? { kind: "point", point: { ...mark.point, comment } }
+          : mark,
+      ),
+    );
+  }
+
+  function movePoint(n: number, dx: number, dy: number) {
+    if (saving) return;
+    setMarks((current) =>
+      current.map((mark) =>
+        mark.kind === "point" && mark.point.n === n
+          ? {
+              kind: "point",
+              point: {
+                ...mark.point,
+                x: Math.min(1, Math.max(0, mark.point.x + dx)),
+                y: Math.min(1, Math.max(0, mark.point.y + dy)),
+              },
+            }
           : mark,
       ),
     );
@@ -205,9 +238,9 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
       return;
     }
 
-    Alert.alert("Discard markup?", "Your points and marks on this photo are removed.", [
-      { text: "Keep editing", style: "cancel" },
-      { text: "Discard", style: "destructive", onPress: () => router.back() },
+    Alert.alert("Discard Markup", "Your points and marks on this photo are removed.", [
+      { text: "Keep Editing", style: "cancel" },
+      { text: "Discard Markup", style: "destructive", onPress: () => router.back() },
     ]);
   }
 
@@ -250,6 +283,7 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
           systemImage="xmark"
           iconOnly
           scheme="dark"
+          busy={saving}
           onPress={discard}
         />
         <html.span style={[textStyles.title, styles.titleDark]}>Markup</html.span>
@@ -259,7 +293,8 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
             systemImage="arrow.uturn.backward"
             iconOnly
             scheme="dark"
-            disabled={marks.length === 0 || saving}
+            disabled={marks.length === 0}
+            busy={saving}
             onPress={undo}
           />
           <GlassButton
@@ -267,7 +302,8 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
             systemImage="trash"
             iconOnly
             scheme="dark"
-            disabled={!hasMarks || saving}
+            disabled={!hasMarks}
+            busy={saving}
             onPress={() => {
               setMarks([]);
               setDrawing(undefined);
@@ -275,8 +311,8 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
             }}
           />
           <GlassButton
-            label={saving ? "Saving markup" : "Done"}
-            disabled={saving}
+            label="Save Markup"
+            busy={saving}
             scheme="dark"
             prominent
             onPress={() => void done()}
@@ -296,7 +332,14 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
           }
           {...responder.panHandlers}
         >
-          <Image source={{ uri: baseUri }} style={nativeStyles.canvasImage} resizeMode="contain" />
+          <Image
+            source={{ uri: baseUri }}
+            style={nativeStyles.canvasImage}
+            resizeMode="contain"
+            accessible
+            accessibilityLabel={`Photo with ${points.length} points and ${strokes.length} strokes`}
+            accessibilityHint="Use Add Point, then the move controls to position a mark."
+          />
           {size !== undefined ? (
             <Svg style={StyleOverlay} pointerEvents="none">
               {[...strokes, ...(drawing === undefined ? [] : [drawing])].map((stroke, index) => (
@@ -318,12 +361,10 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
           ) : null}
           {size !== undefined
             ? points.map((point) => (
-                <Pressable
+                <View
                   key={point.n}
-                  accessibilityLabel={`Point ${point.n}${point.comment === "" ? "" : `, ${point.comment}`}`}
-                  onPress={() => {
-                    setSelected(point.n);
-                  }}
+                  accessible={false}
+                  pointerEvents="none"
                   style={[
                     markerStyles.marker,
                     markerStyles.position(point.x * size.width, point.y * size.height),
@@ -331,7 +372,7 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
                   ]}
                 >
                   <Text style={markerStyles.markerText}>{point.n}</Text>
-                </Pressable>
+                </View>
               ))
             : null}
         </View>
@@ -345,6 +386,70 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
               {error}
             </html.p>
           ) : null}
+          <ScrollView horizontal contentContainerStyle={{ alignItems: "center", gap: spacing.sm }}>
+            <GlassButton
+              label="Add Point"
+              systemImage="plus"
+              scheme="dark"
+              busy={saving}
+              onPress={() => {
+                setMarks((current) => [
+                  ...current,
+                  { kind: "point", point: { n: nextNumber, x: 0.5, y: 0.5, comment: "" } },
+                ]);
+                setSelected(nextNumber);
+              }}
+            />
+            {points.map((point) => (
+              <GlassButton
+                key={point.n}
+                label={`Point ${point.n}${point.comment === "" ? "" : `, ${point.comment}`}`}
+                scheme="dark"
+                busy={saving}
+                prominent={point.n === selected}
+                onPress={() => setSelected(point.n)}
+              />
+            ))}
+          </ScrollView>
+          {selectedPoint !== undefined ? (
+            <html.div style={styles.positionRow}>
+              <html.span aria-live="polite" style={[textStyles.secondary, styles.hint]}>
+                {`${Math.round(selectedPoint.x * 100)}% across, ${Math.round(selectedPoint.y * 100)}% down`}
+              </html.span>
+              <GlassButton
+                label={`Move point ${selectedPoint.n} left`}
+                systemImage="arrow.left"
+                iconOnly
+                scheme="dark"
+                busy={saving}
+                onPress={() => movePoint(selectedPoint.n, -0.05, 0)}
+              />
+              <GlassButton
+                label={`Move point ${selectedPoint.n} up`}
+                systemImage="arrow.up"
+                iconOnly
+                scheme="dark"
+                busy={saving}
+                onPress={() => movePoint(selectedPoint.n, 0, -0.05)}
+              />
+              <GlassButton
+                label={`Move point ${selectedPoint.n} down`}
+                systemImage="arrow.down"
+                iconOnly
+                scheme="dark"
+                busy={saving}
+                onPress={() => movePoint(selectedPoint.n, 0, 0.05)}
+              />
+              <GlassButton
+                label={`Move point ${selectedPoint.n} right`}
+                systemImage="arrow.right"
+                iconOnly
+                scheme="dark"
+                busy={saving}
+                onPress={() => movePoint(selectedPoint.n, 0.05, 0)}
+              />
+            </html.div>
+          ) : null}
           {selectedPoint !== undefined ? (
             <html.div style={styles.commentRow}>
               <View style={markerStyles.marker}>
@@ -353,7 +458,7 @@ export function AnnotateScreen({ imageId, uri }: { imageId: string; uri: string 
               <View style={nativeStyles.commentShell}>
                 <TextInput
                   key={selectedPoint.n}
-                  autoFocus
+                  editable={!saving}
                   accessibilityLabel={`Comment for point ${selectedPoint.n}`}
                   value={selectedPoint.comment}
                   onChangeText={(text) => writeComment(selectedPoint.n, text)}
@@ -429,6 +534,7 @@ const styles = css.create({
     gap: spacing.sm,
     minHeight: controls.touchTarget,
   },
+  positionRow: { display: "flex", flexDirection: "row", alignItems: "center", gap: spacing.sm },
   hint: { flexGrow: 1, flexShrink: 1 },
 });
 

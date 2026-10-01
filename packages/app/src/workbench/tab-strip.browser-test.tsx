@@ -92,6 +92,12 @@ export async function run(): Promise<string> {
       getComputedStyle(accent).color === getComputedStyle(probe).color,
       "Agent terminal does not use the readable purple accent",
     );
+    const glyph = agentTab.querySelector("svg");
+    if (glyph === null) throw new Error("Missing agent terminal glyph");
+    check(
+      getComputedStyle(glyph).color === getComputedStyle(agentTab).color,
+      "Agent terminal glyph must use its tab control color",
+    );
     check(workbenchController.getView(viewKey).active === active, "Rendering changed activation");
     return "passed";
   } finally {

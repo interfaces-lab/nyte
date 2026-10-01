@@ -1,5 +1,6 @@
 "use client";
 
+import { PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { PreviewCard } from "@nyte-ai/ui/preview-card";
@@ -19,21 +20,18 @@ const styles = create({
 
 export function PreviewCardDemo() {
   return (
-    <PreviewCard.Root>
-      <PreviewCard.Trigger
+    <PreviewCard>
+      <PreviewCardTrigger
         href="/cloud/components/button"
         {...props(intent.primary, styles.link, focus.ring)}
       >
         Button
-      </PreviewCard.Trigger>
-      <PreviewCard.Portal>
-        <PreviewCard.Positioner sideOffset={8}>
-          <PreviewCard.Popup>
-            <span {...props(styles.title)}>Button</span>
-            <span {...props(styles.detail)}>Variants and sizes.</span>
-          </PreviewCard.Popup>
-        </PreviewCard.Positioner>
-      </PreviewCard.Portal>
-    </PreviewCard.Root>
+      </PreviewCardTrigger>
+
+      <PreviewCardContent sideOffset={8}>
+        <span {...props(styles.title)}>Button</span>
+        <span {...props(styles.detail)}>Variants and sizes.</span>
+      </PreviewCardContent>
+    </PreviewCard>
   );
 }

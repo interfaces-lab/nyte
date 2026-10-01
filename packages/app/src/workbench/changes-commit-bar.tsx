@@ -24,7 +24,7 @@ import type {
 import type { GitHubPullRequestOutcome } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
 import { Menu, MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
-import { Button, ButtonGroup, ButtonLink } from "@nyte-ai/ui/button";
+import { Button, ButtonLink, SplitButton } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { nyte } from "../nyte.ts";
 import { keys, queryClient, refreshVcs, refreshVcsSnapshot } from "../queries.ts";
@@ -102,21 +102,21 @@ function commitActionGroup(action: CommitAction): "branch" | "commit" | "push" {
 export function commitActionLabel(action: CommitAction): string {
   switch (action) {
     case "branch-commit":
-      return "Create branch and commit";
+      return "Create Branch and Commit Changes…";
     case "branch-commit-push":
-      return "Create branch, commit and push";
+      return "Create Branch, Commit and Push…";
     case "branch":
-      return "Create branch";
+      return "Create Branch…";
     case "commit":
-      return "Commit";
+      return "Commit Changes";
     case "commit-push":
-      return "Commit and push";
+      return "Commit and Push Changes";
     case "commit-pull-request":
-      return "Commit and create pull request";
+      return "Commit and Create Pull Request";
     case "push":
-      return "Push";
+      return "Push Branch";
     case "pull-request":
-      return "Create pull request";
+      return "Create Pull Request";
   }
 }
 
@@ -322,7 +322,7 @@ const styles = create({
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
   },
-  actions: { display: "flex", alignItems: "center", gap: 4, minWidth: 0 },
+  actions: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 },
   branchField: { flex: 1 },
   primary: { flexGrow: 1, flexShrink: 1, minWidth: 0 },
   result: {
@@ -336,7 +336,7 @@ const styles = create({
   },
   resultError: { color: role.contentSecondary },
   resultDetail: { color: role.contentSecondary, fontSize: type.fontXs, lineHeight: type.leadingXs },
-  resultActions: { display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" },
+  resultActions: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
 });
 
 export interface ChangesCommitBarProps {
@@ -371,14 +371,15 @@ export function ChangesCommitBar({
   const [interrupted, setInterrupted] = useState<CommitAction | undefined>(undefined);
 
   const state: CommitBarState = { scope, fileCount, message, branch };
-  const primaryDisabledReason = commitActionDisabledReason(action, state);
-  // The chevron locks with the primary, so the pair never shows two states at once.
-  const primaryDisabled =
-    running ||
-    primaryDisabledReason !== undefined ||
-    (branchPrompt !== undefined && branchName.trim() === "");
+  const primaryDisabledReason =
+    commitActionDisabledReason(action, state) ??
+    (branchPrompt !== undefined && branchName.trim() === ""
+      ? "Write a branch name first"
+      : undefined);
+  const primaryDisabled = primaryDisabledReason !== undefined;
 
   const run = async (chosen: CommitAction, options: RunOptions = {}): Promise<void> => {
+    if (running) return;
     const plan = commitActionPlan(chosen);
     let expect = { revision };
     setRunning(true);
@@ -523,6 +524,7 @@ export function ChangesCommitBar({
   };
 
   const start = (chosen: CommitAction): void => {
+    if (running || commitActionDisabledReason(chosen, state) !== undefined) return;
     setAction(chosen);
     storeAction(chosen);
     setResult(undefined);
@@ -540,7 +542,7 @@ export function ChangesCommitBar({
   const confirmBranch = (): void => {
     const pending = branchPrompt;
 
-    if (pending === undefined || branchName.trim() === "") return;
+    if (running || primaryDisabled || pending === undefined) return;
     void run(pending, { branchName: branchName.trim() });
   };
 
@@ -553,15 +555,23 @@ export function ChangesCommitBar({
   const showResult = result !== undefined && (result.tone === "error" || successText !== "");
 
   return (
-    <div {...props(styles.bar)}>
+    <form
+      {...props(styles.bar)}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (running || primaryDisabled) return;
+        if (branchPrompt === undefined) start(action);
+        else confirmBranch();
+      }}
+    >
       <Input
         type="text"
         aria-label="Commit message"
-        placeholder="Commit message"
+        placeholder="Fix tab close behavior"
         autoComplete="off"
         spellCheck
         value={message}
-        disabled={running}
+        readOnly={running}
         onValueChange={setMessage}
       />
       {branchPrompt !== undefined && (
@@ -569,48 +579,42 @@ export function ChangesCommitBar({
           <Input
             type="text"
             aria-label="New branch name"
-            placeholder="Branch name"
+            placeholder="fix/tab-close"
             autoComplete="off"
             spellCheck={false}
             autoFocus
             value={branchName}
-            disabled={running}
+            readOnly={running}
             xstyle={styles.branchField}
             onValueChange={setBranchName}
             onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                confirmBranch();
-              }
-
-              if (event.key === "Escape") setBranchPrompt(undefined);
+              if (!running && event.key === "Escape") setBranchPrompt(undefined);
             }}
           />
-          <Button disabled={running} onClick={() => setBranchPrompt(undefined)}>
+          <Button loading={running} onClick={() => setBranchPrompt(undefined)}>
             Cancel
           </Button>
         </div>
       )}
-      <ButtonGroup>
-        <Button
+      <SplitButton.Root>
+        <SplitButton.Main
+          type="submit"
           variant="solid"
-          title={primaryDisabledReason}
           disabled={primaryDisabled}
+          disabledReason={primaryDisabledReason}
+          loading={running}
           xstyle={styles.primary}
-          onClick={() => (branchPrompt === undefined ? start(action) : confirmBranch())}
         >
-          {commitActionLabel(action)}
-        </Button>
+          {commitActionLabel(action).replace(/…$/, branchPrompt === undefined ? "…" : "")}
+        </SplitButton.Main>
         <Menu
           label="Commit actions"
           align="end"
           trigger={
-            <Button
+            <SplitButton.MenuTrigger
               variant="solid"
-              iconOnly
-              icon="chevron-down"
               aria-label="More commit actions"
-              disabled={primaryDisabled}
+              loading={running}
             />
           }
         >
@@ -623,7 +627,7 @@ export function ChangesCommitBar({
                   commitActionGroup(previous) !== commitActionGroup(candidate) && <MenuSeparator />}
                 <MenuItem
                   layout="plain"
-                  disabled={commitActionDisabledReason(candidate, state) !== undefined}
+                  disabledReason={commitActionDisabledReason(candidate, state)}
                   selected={candidate === action}
                   onSelect={() => start(candidate)}
                 >
@@ -633,7 +637,7 @@ export function ChangesCommitBar({
             );
           })}
         </Menu>
-      </ButtonGroup>
+      </SplitButton.Root>
       {showResult && result !== undefined && (
         <div
           role={result.tone === "error" ? "alert" : "status"}
@@ -665,14 +669,14 @@ export function ChangesCommitBar({
                 </ButtonLink>
               )}
               {result.offerPublish === true && (
-                <Button variant="outline" disabled={running} onClick={publishBranch}>
-                  Publish branch
+                <Button variant="outline" loading={running} onClick={publishBranch}>
+                  Publish Branch
                 </Button>
               )}
             </span>
           )}
         </div>
       )}
-    </div>
+    </form>
   );
 }

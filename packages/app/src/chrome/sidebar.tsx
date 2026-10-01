@@ -277,6 +277,7 @@ type SidebarConfirmation =
     };
 
 export function Sidebar(): ReactElement {
+  const sessionListId = useId();
   const panes = usePaneActions();
   const host = useHostState();
   const open = host.data?.workspace;
@@ -534,6 +535,16 @@ export function Sidebar(): ReactElement {
    * One list across every folder, ranked by what each chat needs. Anything
    * running or waiting on you always shows; finished chats fold after a few.
    */
+  const revealSessionList = (key: string, listId: string, visibleCount: number): void => {
+    setExpandedSessionLists((current) => new Set([...current, key]));
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(listId)
+        ?.querySelectorAll<HTMLElement>('[data-slot="row-primary"]')
+        [visibleCount]?.focus();
+    });
+  };
+
   const chatsPanel = (): ReactElement | null => {
     const directories = sessionDirectory.data;
     const drafts = draftsMatchView(view) ? activeWorkspaceDrafts : [];
@@ -581,8 +592,10 @@ export function Sidebar(): ReactElement {
     const visible = listExpanded || !hasOverflow ? rows : rows.slice(0, limit);
     const layoutEnabled = sidebarVisible && collectionExpanded;
 
+    const listId = `${sessionListId}-chats`;
+
     return (
-      <>
+      <div id={listId} {...props(styles.section)}>
         {rows.length === 0 &&
           drafts.length === 0 &&
           (completeDirectoryRequired ? (
@@ -593,7 +606,7 @@ export function Sidebar(): ReactElement {
                 xstyle={styles.showMore}
                 onClick={() => setSessionView(clearSessionFilters(view))}
               >
-                Clear filters
+                Clear Filters
               </Row>
             </>
           ) : (
@@ -610,26 +623,18 @@ export function Sidebar(): ReactElement {
           />
         ))}
         {visible.map(({ place, session }) => sessionRow(place, session, layoutEnabled))}
-        {hasOverflow && (
+        {hasOverflow && !listExpanded && (
           <Row
             variant="nav"
-            aria-expanded={listExpanded}
+            aria-expanded={false}
+            aria-controls={listId}
             xstyle={styles.showMore}
-            onClick={() =>
-              setExpandedSessionLists((current) => {
-                const next = new Set(current);
-
-                if (next.has("chats")) next.delete("chats");
-                else next.add("chats");
-
-                return next;
-              })
-            }
+            onClick={() => revealSessionList("chats", listId, visible.length + drafts.length)}
           >
-            {listExpanded ? "Show less" : "Show more"}
+            Show {rows.length - visible.length} More
           </Row>
         )}
-      </>
+      </div>
     );
   };
 
@@ -680,8 +685,10 @@ export function Sidebar(): ReactElement {
       return visibleSessions.length === 0 ? [] : [{ ...group, sessions: visibleSessions }];
     });
 
+    const listId = `${sessionListId}-${encodeURIComponent(listKey)}`;
+
     return (
-      <>
+      <div id={listId} {...props(styles.section)}>
         {visibleDrafts.length > 0 && (
           <div {...props(styles.section)}>
             {view.grouping === "status" && <div {...props(styles.sessionGroupLabel)}>Draft</div>}
@@ -708,7 +715,7 @@ export function Sidebar(): ReactElement {
                 xstyle={styles.showMore}
                 onClick={() => setSessionView(clearSessionFilters(view))}
               >
-                Clear filters
+                Clear Filters
               </Row>
             </>
           ) : (
@@ -724,26 +731,18 @@ export function Sidebar(): ReactElement {
             )}
           </div>
         ))}
-        {hasOverflow && (
+        {hasOverflow && !listExpanded && (
           <Row
             variant="nav"
-            aria-expanded={listExpanded}
+            aria-expanded={false}
+            aria-controls={listId}
             xstyle={styles.showMore}
-            onClick={() =>
-              setExpandedSessionLists((current) => {
-                const next = new Set(current);
-
-                if (next.has(listKey)) next.delete(listKey);
-                else next.add(listKey);
-
-                return next;
-              })
-            }
+            onClick={() => revealSessionList(listKey, listId, visibleLimit)}
           >
-            {listExpanded ? "Show less" : "Show more"}
+            Show {displayedSessionCount - visibleLimit} More
           </Row>
         )}
-      </>
+      </div>
     );
   };
 
@@ -1015,7 +1014,7 @@ export function Sidebar(): ReactElement {
           returnFocusRef={confirmationReturnRef}
           title={`Archive All Chats in ${confirmation.workspaceName}`}
           description="Open chats move to the archive. You can restore any of them later."
-          confirmLabel="Archive All Chats"
+          confirmLabel={`Archive All Chats in ${confirmation.workspaceName}`}
           pendingLabel="Archiving chats…"
           onOpenChange={(nextOpen) => {
             if (!nextOpen) closeConfirmation();
@@ -1065,8 +1064,7 @@ function AccountFooterMenu({
           <Row
             ref={triggerRef}
             variant="nav"
-            aria-label={`${label} menu`}
-            disabled={account.busy}
+            aria-busy={account.busy || undefined}
             xstyle={[styles.navRow, styles.accountButton]}
           >
             <Row.Leading xstyle={styles.avatarSlot}>
@@ -1085,13 +1083,13 @@ function AccountFooterMenu({
           xstyle={styles.accountMenuItem}
           onSelect={() => void nyte.host.openExternal({ url: REPORT_ISSUE_URL })}
         >
-          Report issue
+          Report Issue
         </MenuItem>
         {state?.kind === "ready" && (
           <>
             <MenuSeparator inset />
             <MenuItem icon="arrow-wall-left" danger onSelect={() => setConfirmingSignOut(true)}>
-              Sign out
+              Sign Out of GitHub CLI…
             </MenuItem>
           </>
         )}
@@ -1106,9 +1104,9 @@ function AccountFooterMenu({
               : undefined
           }
           returnFocusRef={triggerRef}
-          title="Sign out of GitHub CLI?"
+          title="Sign Out of GitHub CLI"
           description={signOutDescription(state.account.login)}
-          confirmLabel="Sign out"
+          confirmLabel="Sign Out of GitHub CLI"
           pendingLabel="Signing out…"
           onOpenChange={setConfirmingSignOut}
           onConfirm={() =>
@@ -1150,13 +1148,38 @@ function WorkspaceRow({
   readonly onRemove: () => void;
   readonly children: ReactNode;
 }): ReactElement {
+  const menuItems = (context: boolean): ReactElement => {
+    const Item = context ? ContextMenuItem : MenuItem;
+    const Separator = context ? ContextMenuSeparator : MenuSeparator;
+
+    return (
+      <>
+        <Item
+          icon="new-chat-folder"
+          disabled={onNewChat === undefined}
+          disabledReason={onNewChat === undefined ? "Folder unavailable" : undefined}
+          onSelect={() => onNewChat?.()}
+        >
+          New Chat
+        </Item>
+        {onArchiveAll !== undefined && (
+          <Item icon="archive" onSelect={onArchiveAll}>
+            Archive All Chats…
+          </Item>
+        )}
+        <Separator />
+        <Item icon="trash" danger onSelect={onRemove}>
+          Remove Workspace from Sidebar
+        </Item>
+      </>
+    );
+  };
+
   const row = (
     <Row
-      revealActions
       xstyle={[styles.rowSurface, styles.workspaceRow, !available && styles.workspaceUnavailable]}
     >
       <Row.Primary
-        xstyle={[styles.rowPrimary, styles.workspacePrimary]}
         render={
           <Collapsible.Trigger
             variant="plain"
@@ -1177,41 +1200,22 @@ function WorkspaceRow({
         </Row.Leading>
         <Row.Label>{name}</Row.Label>
       </Row.Primary>
-      <Row.Actions placement="overlay" xstyle={styles.workspaceActions}>
-        <Button
-          size="sm"
-          iconOnly
-          icon="new-chat-folder"
-          aria-label={`New chat in ${name}`}
-          onClick={onNewChat}
-          disabled={onNewChat === undefined}
-        />
+      <Row.Actions>
+        <Menu
+          label={`Options for ${name}`}
+          align="end"
+          trigger={<Button size="sm" iconOnly icon="more" aria-label={`Options for ${name}`} />}
+        >
+          {menuItems(false)}
+        </Menu>
       </Row.Actions>
     </Row>
   );
 
   return (
     <Collapsible.Root open={expanded} onOpenChange={onExpandedChange} {...props(styles.section)}>
-      <ContextMenu label={`Actions for ${name}`} trigger={row}>
-        <ContextMenuItem
-          icon="new-chat-folder"
-          disabled={onNewChat === undefined}
-          onSelect={() => onNewChat?.()}
-        >
-          New chat
-        </ContextMenuItem>
-        {onArchiveAll !== undefined && (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem icon="archive" onSelect={onArchiveAll}>
-              Archive all chats
-            </ContextMenuItem>
-          </>
-        )}
-        <ContextMenuSeparator />
-        <ContextMenuItem icon="trash" danger onSelect={onRemove}>
-          Remove from sidebar
-        </ContextMenuItem>
+      <ContextMenu label={`Options for ${name}`} trigger={row}>
+        {menuItems(true)}
       </ContextMenu>
       <Collapsible.Panel {...props(styles.sessionList)}>{children}</Collapsible.Panel>
     </Collapsible.Root>
@@ -1237,7 +1241,6 @@ function DraftRow({
     <Row
       render={<motion.div layout={layoutEnabled ? "position" : false} initial={false} />}
       selected={selected}
-      revealActions
       xstyle={[
         styles.rowSurface,
         styles.sessionRow,
@@ -1260,7 +1263,6 @@ function DraftRow({
         />
       )}
       <Row.Primary
-        xstyle={styles.rowPrimary}
         title={`Draft: ${title}`}
         aria-current={selected ? "page" : undefined}
         onClick={onOpen}
@@ -1268,32 +1270,29 @@ function DraftRow({
         <Row.Leading xstyle={styles.rowIcon}>
           <span role="img" aria-label="Draft" {...props(styles.draftDot)} />
         </Row.Leading>
-        <Row.Label xstyle={styles.sessionLabel}>{title}</Row.Label>
+        <Row.Label>{title}</Row.Label>
         <Row.Meta xstyle={styles.rowMeta}>{formatTimeAgo(draft.updatedAt)}</Row.Meta>
       </Row.Primary>
-      <Row.Actions
-        placement="overlay"
-        data-nyte-session-row-actions=""
-        xstyle={[styles.rowActions, styles.rowActionsBesideMeta]}
-      >
-        <Button
-          size="2xs"
-          iconOnly
-          icon="trash"
-          aria-label={`Delete draft: ${title}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete();
-          }}
-        />
+      <Row.Actions data-nyte-session-row-actions="">
+        <Menu
+          label={`Options for draft: ${title}`}
+          align="end"
+          trigger={
+            <Button size="sm" iconOnly icon="more" aria-label={`Options for draft: ${title}`} />
+          }
+        >
+          <MenuItem icon="trash" danger onSelect={onDelete}>
+            Delete Draft
+          </MenuItem>
+        </Menu>
       </Row.Actions>
     </Row>
   );
 
   return (
-    <ContextMenu label={`Actions for draft: ${title}`} trigger={row}>
+    <ContextMenu label={`Options for draft: ${title}`} trigger={row}>
       <ContextMenuItem icon="trash" danger onSelect={onDelete}>
-        Delete draft
+        Delete Draft
       </ContextMenuItem>
     </ContextMenu>
   );
@@ -1471,9 +1470,38 @@ function SessionRow({
     );
   }
 
+  const menuItems = (context: boolean): ReactElement => {
+    const Item = context ? ContextMenuItem : MenuItem;
+    const Separator = context ? ContextMenuSeparator : MenuSeparator;
+
+    return (
+      <>
+        <Item icon={session.pinned ? "unpin" : "pin"} onSelect={onPin}>
+          {session.pinned ? "Unpin Chat" : "Pin Chat"}
+        </Item>
+        <Item icon="pencil" onSelect={() => setDraftName(title)}>
+          Rename Chat…
+        </Item>
+        <Item icon="split-right" onSelect={onOpenBeside}>
+          Open Chat to the Side
+        </Item>
+        <Item icon="copy" onSelect={() => void navigator.clipboard.writeText(title)}>
+          Copy Chat Title
+        </Item>
+        <Item icon={session.archived ? "unarchive" : "archive"} onSelect={onArchive}>
+          {session.archived ? "Restore Chat" : "Archive Chat"}
+        </Item>
+        <Separator />
+        <Item icon="trash" danger onSelect={onDelete}>
+          Delete Chat…
+        </Item>
+      </>
+    );
+  };
+
   const titleLine = (
     <>
-      <Row.Label xstyle={styles.sessionLabel}>{title}</Row.Label>
+      <Row.Label>{title}</Row.Label>
       {showUpdated && (
         <Row.Meta xstyle={styles.rowMeta}>{formatTimeAgo(session.lastActivityAt)}</Row.Meta>
       )}
@@ -1486,7 +1514,6 @@ function SessionRow({
         <motion.div ref={setNodeRef} layout={layoutEnabled ? "position" : false} initial={false} />
       }
       selected={selected}
-      revealActions
       xstyle={[
         styles.rowSurface,
         styles.sessionRow,
@@ -1519,7 +1546,7 @@ function SessionRow({
         />
       )}
       <Row.Primary
-        xstyle={[styles.rowPrimary, unreachable && styles.sessionUnreachable]}
+        xstyle={unreachable && styles.sessionUnreachable}
         aria-current={selected ? "page" : undefined}
         onClick={onOpen}
         {...listeners}
@@ -1540,32 +1567,14 @@ function SessionRow({
           </Row.Body>
         )}
       </Row.Primary>
-      <Row.Actions
-        placement="overlay"
-        data-nyte-session-row-actions=""
-        xstyle={[
-          styles.rowActions,
-          showUpdated && styles.rowActionsBesideMeta,
-          ask !== undefined && styles.rowActionsAsk,
-        ]}
-      >
-        <Button
-          size="2xs"
-          iconOnly
-          icon={session.pinned ? "unpin" : "pin"}
-          aria-label={session.pinned ? "Unpin" : "Pin"}
-          onClick={onPin}
-        />
-        <Button
-          size="2xs"
-          iconOnly
-          aria-label={session.archived ? "Restore" : "Archive"}
-          onClick={onArchive}
+      <Row.Actions data-nyte-session-row-actions="">
+        <Menu
+          label={`Options for ${title}`}
+          align="end"
+          trigger={<Button size="sm" iconOnly icon="more" aria-label={`Options for ${title}`} />}
         >
-          <span {...props(styles.actionGlyphArchive)}>
-            <Icon name={session.archived ? "unarchive" : "archive"} size={12} />
-          </span>
-        </Button>
+          {menuItems(false)}
+        </Menu>
       </Row.Actions>
     </Row>
   );
@@ -1575,30 +1584,7 @@ function SessionRow({
       title={title}
       context={previewContext}
       trigger={row}
-      contextMenu={
-        <>
-          <ContextMenuItem icon={session.pinned ? "unpin" : "pin"} onSelect={onPin}>
-            {session.pinned ? "Unpin" : "Pin"}
-          </ContextMenuItem>
-          <ContextMenuItem icon="pencil" onSelect={() => setDraftName(title)}>
-            Rename
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem icon="split-right" onSelect={onOpenBeside}>
-            Open to the side
-          </ContextMenuItem>
-          <ContextMenuItem icon="copy" onSelect={() => void navigator.clipboard.writeText(title)}>
-            Copy title
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem icon={session.archived ? "unarchive" : "archive"} onSelect={onArchive}>
-            {session.archived ? "Restore" : "Archive"}
-          </ContextMenuItem>
-          <ContextMenuItem icon="trash" danger onSelect={onDelete}>
-            Delete
-          </ContextMenuItem>
-        </>
-      }
+      contextMenu={menuItems(true)}
     />
   );
 }

@@ -104,7 +104,6 @@ const styles = create({
     color: role.contentOnControl,
   },
   footer: { display: "flex", justifyContent: "flex-end", paddingInline: 6, paddingBottom: 6 },
-  unready: { visibility: "hidden" },
   note: { paddingInline: 6, color: role.contentSecondary, fontSize: type.fontSm },
   error: { color: role.contentSecondary, fontSize: type.fontSm },
 });
@@ -305,16 +304,18 @@ function SelectionCard({
         })}
       </div>
       {selection.multiple === true && (
-        <div {...props(styles.footer, selected.length === 0 && styles.unready)}>
+        <div {...props(styles.footer)}>
           <Button
             variant="solid"
             tone="primary"
             size="sm"
             round
+            loading={reply.isPending}
             disabled={blocked || selected.length === 0}
+            disabledReason={selected.length === 0 ? "Select an answer first." : undefined}
             onClick={() => send({ choices: selected })}
           >
-            Answer
+            Send Answer
           </Button>
         </div>
       )}
@@ -343,7 +344,7 @@ function SelectionCard({
       {refresh.isError && (
         <div role="alert" {...props(intent.danger, styles.note, styles.error)}>
           Couldn&rsquo;t refresh this session.
-          <Button disabled={refresh.isPending} onClick={() => refresh.mutate()}>
+          <Button loading={refresh.isPending} onClick={() => refresh.mutate()}>
             Refresh
           </Button>
         </div>
@@ -445,8 +446,8 @@ export function Questions({
       {children.isError && (
         <div role="alert" {...props(intent.danger, styles.error)}>
           Couldn&rsquo;t load delegated sessions.
-          <Button disabled={children.isFetching} onClick={() => void children.refetch()}>
-            Try again
+          <Button loading={children.isFetching} onClick={() => void children.refetch()}>
+            Try Again
           </Button>
         </div>
       )}

@@ -205,6 +205,7 @@ export function renamePlugin(deps: { readonly models: TitleModels; readonly mode
             "subject, or when the chat turns to something its current name no longer describes. " +
             "This names the conversation; it does not rename files.",
           parameters: renameParameters,
+          availability: "foreground",
           // Renaming is idempotent, so a call whose outcome was lost can run again.
           replay: "safe",
           execute: async (_callId, params) => {

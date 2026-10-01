@@ -39,7 +39,7 @@ export function DeviceCodePanel({
   const expiryMinutes =
     expiresInSeconds === undefined ? undefined : Math.max(1, Math.round(expiresInSeconds / 60));
 
-  const openLabel = host === undefined ? "Open link" : `Open ${host}`;
+  const openLabel = host === undefined ? "Open Link" : `Open ${host}`;
 
   return (
     <div {...props(styles.deviceCodePanel)}>
@@ -62,7 +62,7 @@ export function DeviceCodePanel({
             );
           }}
         >
-          {copyStatus === "copied" ? "Copied" : "Copy code"}
+          Copy Sign-In Code
         </Button>
         <ButtonLink
           href={verificationUri}
@@ -82,6 +82,11 @@ export function DeviceCodePanel({
           {openLabel}
         </ButtonLink>
       </div>
+      {copyStatus === "copied" && (
+        <span role="status" {...props(styles.deviceCodeNote)}>
+          Sign-in code copied
+        </span>
+      )}
       {copyStatus === "failed" && (
         <span role="alert" {...props(styles.deviceCodeNote)}>
           Couldn&rsquo;t copy the code. Select it and copy it yourself.
@@ -117,7 +122,7 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
       onSubmit={(event) => {
         event.preventDefault();
 
-        if (code.trim() !== "") send.mutate(code.trim());
+        if (!send.isPending && code.trim() !== "") send.mutate(code.trim());
       }}
     >
       <Input
@@ -131,8 +136,14 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
         xstyle={styles.keyInput}
         onValueChange={setCode}
       />
-      <Button type="submit" variant="outline" disabled={send.isPending || code.trim() === ""}>
-        Continue
+      <Button
+        type="submit"
+        variant="outline"
+        loading={send.isPending}
+        disabled={code.trim() === ""}
+        disabledReason="Enter a sign-in code or callback address"
+      >
+        Finish Sign-In
       </Button>
     </form>
   );
@@ -181,7 +192,7 @@ export function BrowserSignInPanel({
               .catch(() => toast.error(`Couldn't open ${host ?? "the sign-in page"}.`));
           }}
         >
-          {host === undefined ? "Open sign-in page" : `Open ${host}`}
+          {host === undefined ? "Open Sign-In Page" : `Open ${host}`}
         </ButtonLink>
       </div>
       {answerLogin !== undefined && (

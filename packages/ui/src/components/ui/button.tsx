@@ -14,7 +14,7 @@ import { button, shape } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
 import { intent } from "../../surface-theme.ts";
 import { appearance, motion, role, shadow, type } from "../../vars.stylex.ts";
-import { Icon, type IconName } from "./icon.tsx";
+import { ControlGlyphs, Icon, type IconName } from "./icon.tsx";
 import { Spinner } from "./spinner.tsx";
 
 const control = create({
@@ -48,7 +48,17 @@ const control = create({
     whiteSpace: "nowrap",
     userSelect: "none",
     textDecoration: "none",
-    opacity: { default: 1, ":disabled": 0.5, "[data-disabled]": 0.5 },
+    color: {
+      default: role.contentSecondary,
+      ":hover:not([aria-disabled='true']):not(:disabled)": role.contentPrimary,
+      ":active:not([aria-disabled='true']):not(:disabled)": role.contentPrimary,
+      "[data-pressed]:not([data-disabled])": role.contentPrimary,
+      '[aria-pressed="true"]:not([aria-disabled="true"]):not(:disabled)': role.contentPrimary,
+      '[aria-expanded="true"]:not([aria-disabled="true"]):not(:disabled)': role.contentPrimary,
+      ":disabled": role.contentDisabled,
+      "[data-disabled]": role.contentDisabled,
+      '[aria-disabled="true"]:not([aria-busy="true"])': role.contentDisabled,
+    },
     touchAction: "manipulation",
     transitionProperty: "background-color, color, opacity",
     transitionDuration: motion.durationFast,
@@ -154,12 +164,6 @@ const pillSizes = create({
 
 const buttonVariants = create({
   ghost: {
-    color: {
-      default: role.contentSecondary,
-      ":hover:not([aria-disabled='true']):not(:disabled)": role.contentPrimary,
-      "[data-pressed]": role.contentPrimary,
-      '[aria-expanded="true"]': role.contentPrimary,
-    },
     backgroundColor: {
       default: "transparent",
       "[data-pressed]": role.bgInteractiveSecondaryTranslucent,
@@ -167,12 +171,23 @@ const buttonVariants = create({
     },
   },
   outline: {
-    color: role.contentPrimary,
     backgroundColor: role.bgElevated,
     boxShadow: `inset 0 0 0 1px ${role.borderPrimary}, ${shadow.shadowSm}`,
   },
   solid: {
-    color: role.contentOnInteractiveStrong,
+    color: {
+      default: role.contentOnInteractiveStrong,
+      ":hover:not([aria-disabled='true']):not(:disabled)": role.contentOnInteractiveStrong,
+      ":active:not([aria-disabled='true']):not(:disabled)": role.contentOnInteractiveStrong,
+      "[data-pressed]:not([data-disabled])": role.contentOnInteractiveStrong,
+      '[aria-pressed="true"]:not([aria-disabled="true"]):not(:disabled)':
+        role.contentOnInteractiveStrong,
+      '[aria-expanded="true"]:not([aria-disabled="true"]):not(:disabled)':
+        role.contentOnInteractiveStrong,
+      ":disabled": role.contentDisabled,
+      "[data-disabled]": role.contentDisabled,
+      '[aria-disabled="true"]:not([aria-busy="true"])': role.contentDisabled,
+    },
     backgroundColor: {
       default: role.buttonFill,
       ":hover:not([aria-disabled='true']):not(:disabled)": role.buttonFillHover,
@@ -183,7 +198,6 @@ const buttonVariants = create({
   plain: {
     fontWeight: 400,
     backgroundImage: "none",
-    color: role.contentSecondary,
     backgroundColor: {
       default: "transparent",
       '[aria-expanded="true"]': role.bgInteractiveSecondaryTranslucent,
@@ -192,7 +206,6 @@ const buttonVariants = create({
   text: {
     paddingInline: 0,
     backgroundImage: "none",
-    color: role.contentSecondary,
     fontSize: "inherit",
     fontWeight: "inherit",
     lineHeight: "inherit",
@@ -353,7 +366,7 @@ function ButtonContent({
   readonly loading?: boolean;
 }): ReactElement {
   return (
-    <>
+    <ControlGlyphs>
       <span {...props(contentStyles.content, loading && contentStyles.loading)}>
         {icon !== undefined && <Icon name={icon} size={buttonGlyphSize(size, iconOnly)} />}
         {children}
@@ -363,7 +376,7 @@ function ButtonContent({
           <Spinner />
         </span>
       )}
-    </>
+    </ControlGlyphs>
   );
 }
 

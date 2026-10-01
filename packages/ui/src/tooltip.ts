@@ -1,9 +1,8 @@
-export { Hint, HintProvider, HoverPreview } from "./components/ui/tooltip.tsx";
-
-export type {
-  HintAlign,
-  HintProps,
-  HintProviderProps,
-  HintSide,
-  HoverPreviewProps,
+export {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "./components/ui/tooltip.tsx";
+
+export type { TooltipContentProps, TooltipProviderProps } from "./components/ui/tooltip.tsx";

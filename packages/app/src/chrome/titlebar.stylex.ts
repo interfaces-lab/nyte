@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { layer } from "@nyte-ai/ui/schema.stylex";
+import { button, layer } from "@nyte-ai/ui/schema.stylex";
 import { shell, sidebar, workbench } from "../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 
@@ -10,10 +10,7 @@ export const titlebarStyles = create({
     display: "flex",
     alignItems: "center",
     height: shell.titlebarHeight,
-    // The traffic lights centre 17px down the 35px bar (src/main/index.ts
-    // floors their inset), so each track gives up its last pixel to centre
-    // its controls on that line instead of half a pixel below it.
-    paddingBlockEnd: 1,
+    minHeight: button.heightMd,
     paddingInlineEnd: 10,
     paddingInlineStart: 10,
     flexShrink: 0,
@@ -39,7 +36,7 @@ export const titlebarStyles = create({
     insetInlineEnd: 0,
     display: "flex",
     alignItems: "center",
-    gap: 2,
+    gap: 8,
     width: workbench.activeWidth,
     minWidth: 0,
     paddingInlineStart: 6,
@@ -47,14 +44,14 @@ export const titlebarStyles = create({
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
     borderInlineStartColor: role.borderSecondaryTranslucent,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
+    boxShadow: `inset 0 -1px ${role.borderSecondaryTranslucent}`,
     backgroundColor: role.bgBase,
-    WebkitAppRegion: "no-drag",
+    WebkitAppRegion: "drag",
   },
-  workbenchTrackSidebarHiddenMac: { maxWidth: "calc(100% - 112px)" },
-  workbenchTrackSidebarHidden: { maxWidth: "calc(100% - 38px)" },
+  workbenchTrackSidebarHiddenMac: {
+    maxWidth: `calc(100% - ${shell.trafficLightInset} - ${button.heightMd} - 12px)`,
+  },
+  workbenchTrackSidebarHidden: { maxWidth: `calc(100% - ${button.heightMd} - 20px)` },
   workbenchReservation: {
     width: `calc(${workbench.activeWidth} - 10px)`,
     flexShrink: 0,
@@ -68,8 +65,8 @@ export const titlebarStyles = create({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 28,
-    height: 28,
+    width: button.heightMd,
+    height: button.heightMd,
     flexShrink: 0,
     position: "relative",
     zIndex: 1,
@@ -78,14 +75,30 @@ export const titlebarStyles = create({
   navigationTrack: {
     position: "absolute",
     zIndex: 2,
-    insetInlineStart: `calc(${sidebar.width} - 64px)`,
+    insetInlineStart: `calc(${sidebar.width} - ${button.heightMd} * 2 - 16px)`,
     insetBlock: 0,
     display: "inline-flex",
     alignItems: "center",
-    paddingBlockEnd: 1,
-    gap: 2,
+    gap: 8,
+    WebkitAppRegion: "drag",
+  },
+  navigationTrackMac: {
+    insetInlineStart: `max(calc(${sidebar.width} - ${button.heightMd} * 2 - 16px), calc(${shell.trafficLightInset} + ${button.heightMd} + 8px))`,
+  },
+  titleSlotMac: {
+    insetInlineStart: `max(calc(${sidebar.width} + 12px), calc(${shell.trafficLightInset} + ${button.heightMd} * 3 + 28px))`,
+  },
+  historyControl: {
+    display: "inline-flex",
+    flexDirection: "column",
+    flexShrink: 0,
+    width: button.heightMd,
+    height: button.heightMd,
+    overflow: "clip",
+    overflowClipMargin: 2,
     WebkitAppRegion: "no-drag",
   },
+  control: { display: "inline-flex", flexShrink: 0, WebkitAppRegion: "no-drag" },
   spacer: { flex: 1, minWidth: 0 },
   titleSlot: {
     position: "absolute",
@@ -95,14 +108,15 @@ export const titlebarStyles = create({
     insetInlineEnd: 96,
     display: "flex",
     alignItems: "center",
-    paddingBlockEnd: 1,
     minWidth: 0,
     pointerEvents: "none",
   },
   // 72px of traffic lights, the 28px toggle, then a 12px title gap on macOS;
   // elsewhere the toggle alone.
-  titleSlotSidebarHiddenMac: { insetInlineStart: 112 },
-  titleSlotSidebarHidden: { insetInlineStart: 38 },
+  titleSlotSidebarHiddenMac: {
+    insetInlineStart: `calc(${shell.trafficLightInset} + ${button.heightMd} + 12px)`,
+  },
+  titleSlotSidebarHidden: { insetInlineStart: `calc(${button.heightMd} + 20px)` },
   sessionTitleGroup: {
     display: "flex",
     alignItems: "center",

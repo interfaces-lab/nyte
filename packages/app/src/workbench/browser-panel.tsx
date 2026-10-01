@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { input, shape } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- the native surface follows its surface, workspace, and url
@@ -38,19 +38,20 @@ const styles = create({
     minHeight: 0,
     backgroundColor: role.bgBase,
   },
+  toolbar: { gap: 8 },
   bookmarks: {
     display: "flex",
     alignItems: "center",
-    gap: 4,
+    gap: 8,
     flexShrink: 0,
-    minHeight: 32,
+    minHeight: { default: 32, "@media (pointer: coarse)": 44 },
     paddingInline: 6,
     overflowX: "auto",
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
   },
-  bookmark: { display: "flex", alignItems: "center", flexShrink: 0, maxWidth: 220 },
+  bookmark: { display: "flex", alignItems: "center", gap: 8, flexShrink: 0, maxWidth: 220 },
   bookmarkButton: { flex: 1, minWidth: 0 },
   bookmarkLabel: {
     display: "block",
@@ -69,7 +70,7 @@ const styles = create({
   addressWrap: {
     flex: 1,
     gap: 6,
-    height: 26,
+    height: input.heightMd,
     paddingInline: 8,
     borderColor: role.borderSecondaryTranslucent,
     borderRadius: shape.control,
@@ -473,26 +474,29 @@ export function BrowserPanel({
 
   return (
     <section aria-label="Browser" {...props(styles.panel)}>
-      <div {...props(workbenchStyles.toolbar)}>
+      <div {...props(workbenchStyles.toolbar, styles.toolbar)}>
         <Button
           iconOnly
           icon="arrow-left"
-          aria-label="Back"
+          aria-label="Go back"
           disabled={state?.canGoBack !== true}
+          disabledReason="No previous page"
           onClick={() => navigate("back")}
         />
         <Button
           iconOnly
           icon="arrow-right"
-          aria-label="Forward"
+          aria-label="Go forward"
           disabled={state?.canGoForward !== true}
+          disabledReason="No next page"
           onClick={() => navigate("forward")}
         />
         <Button
           iconOnly
           icon={loading ? "x" : "refresh"}
-          aria-label={loading ? "Stop" : "Reload"}
+          aria-label={loading ? "Stop loading page" : "Reload page"}
           disabled={!hasPage}
+          disabledReason="Open a page first"
           onClick={() => navigate(loading ? "stop" : "reload")}
         />
         <form {...props(styles.addressForm)} onSubmit={submit}>
@@ -554,7 +558,13 @@ export function BrowserPanel({
             }}
           />
         ) : (
-          <Button iconOnly icon="globe" aria-label="Open in system browser" disabled />
+          <Button
+            iconOnly
+            icon="globe"
+            aria-label="Open in system browser"
+            disabled
+            disabledReason="Open a page first"
+          />
         )}
         <Button
           iconOnly
@@ -590,24 +600,29 @@ export function BrowserPanel({
           <Button
             variant="outline"
             disabled={!hasPage}
+            disabledReason="Open a page first"
             onClick={() => toggleBookmark({ url: currentUrl, title: state?.title || currentUrl })}
           >
             {bookmarks.items.some((item) => item.url === currentUrl)
-              ? "Remove bookmark"
-              : "Bookmark this page"}
+              ? "Remove Bookmark"
+              : "Bookmark Page"}
           </Button>
           {bookmarks.items.map((item) => (
             <div key={item.url} {...props(styles.bookmark)}>
-              <Button
+              <ButtonLink
+                href={item.url}
                 variant="outline"
                 title={item.url}
                 xstyle={styles.bookmarkButton}
-                onClick={() => onUrlChange(item.url)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onUrlChange(item.url);
+                }}
               >
                 <span {...props(styles.bookmarkLabel)}>
                   {item.title || displayAddress(item.url)}
                 </span>
-              </Button>
+              </ButtonLink>
               <Button
                 iconOnly
                 icon="x"
@@ -632,12 +647,12 @@ export function BrowserPanel({
               dismissRefusedDownload(surface);
             }}
           >
-            Open in system browser
+            Open in System Browser
           </ButtonLink>
           <Button
             iconOnly
             icon="x"
-            aria-label="Dismiss"
+            aria-label="Dismiss download notice"
             onClick={() => dismissRefusedDownload(surface)}
           />
         </div>
@@ -660,7 +675,7 @@ export function BrowserPanel({
                 {state.error.description} ({String(state.error.code)})
               </span>
               <Button variant="outline" onClick={() => navigate("reload")}>
-                Try again
+                Try Again
               </Button>
             </div>
           )}
@@ -679,9 +694,11 @@ export function BrowserPanel({
                   xstyle={styles.historyEntry}
                 >
                   <Row.Primary
+                    render={<a href={entry.url} />}
                     title={entry.url}
                     aria-current={entry.url === currentUrl ? "page" : undefined}
-                    onClick={() => {
+                    onClick={(event) => {
+                      event.preventDefault();
                       setDraft(undefined);
                       setFailure(undefined);
                       onUrlChange(entry.url);

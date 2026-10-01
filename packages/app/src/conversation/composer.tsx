@@ -15,7 +15,7 @@ import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { trayStyles } from "../theme/tray.stylex.ts";
 import { props } from "@stylexjs/stylex";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ReactElement, ReactNode } from "react";
+import type { KeyboardEvent, ReactElement, ReactNode } from "react";
 import type { Delivery, PendingItem, RunId, RunInfo, SessionId } from "@nyte-ai/protocol";
 import { isTerminalPhase } from "@nyte-ai/client";
 import { errorMessage } from "../errors.ts";
@@ -162,9 +162,15 @@ const SessionModelChip = memo(function SessionModelChip({
           snapshot.data?.session.config.thinkingLevel ?? snapshot.data?.config.thinkingLevel
         }
         fastEnabled={fastEnabled}
-        disabled={catalog.isError || catalog.isPending}
+        loading={catalog.isPending}
+        disabledReason={catalog.isError ? "Models could not be loaded." : undefined}
         onChange={handleChange}
       />
+      {catalog.isError && (
+        <Button size="sm" onClick={() => void catalog.refetch()} loading={catalog.isFetching}>
+          Retry Models
+        </Button>
+      )}
       {context?.percent !== undefined && (
         <span
           {...props(composerStyles.gauge)}
@@ -317,20 +323,7 @@ export function ComposerFrame({
 
   const modifier = modifierKeyLabel(macPlatform(host.data?.platform));
 
-  const sendLabel =
-    editing?.kind === "queued"
-      ? busy
-        ? "Update and interrupt"
-        : "Update queued message"
-      : editing?.kind === "message"
-        ? "Send edited message"
-        : answering
-          ? "Answer"
-          : busy
-            ? runningMessagePreference === "queue"
-              ? "Queue message"
-              : "Steer agent"
-            : "Send";
+  const sendLabel = answering ? "Send answer" : "Send message";
 
   const sendTitle =
     editing?.kind === "queued"
@@ -342,12 +335,12 @@ export function ComposerFrame({
       : editing?.kind === "message"
         ? "Send Edited Message (Enter)"
         : answering
-          ? `Answer (Enter) · ${runningMessagePreference === "queue" ? "Steer" : "Queue"} (${modifier}Enter)`
+          ? `Send Answer (Enter) · ${runningMessagePreference === "queue" ? "Steer" : "Queue"} (${modifier}Enter)`
           : busy
             ? runningMessagePreference === "queue"
               ? `Queue (Enter) · Steer (${modifier}Enter)`
               : `Steer (Enter) · Queue (${modifier}Enter)`
-            : "Send (Enter)";
+            : "Send Message (Enter)";
 
   // Follow-up text scrolls on one line so the composer stays compact. An explicit
   // line break expands the card; width alone must not make the controls overflow.
@@ -444,13 +437,10 @@ export function ComposerFrame({
             />
             {onAttachmentRemove !== undefined && (
               <Button
-                size="2xs"
+                size="sm"
                 iconOnly
                 icon="x"
                 aria-label={`Remove ${attachment.name}`}
-                variant="solid"
-                tone="primary"
-                round
                 disabled={disabled}
                 onClick={() => onAttachmentRemove(attachment.id)}
                 xstyle={composerStyles.attachmentRemove}
@@ -672,16 +662,16 @@ export function ComposerFrame({
               }
             >
               <MenuItem icon="skills" meta="/" onSelect={() => suggestionMenu.insertTrigger("/")}>
-                Commands, skills, and prompts
+                Commands, Skills, and Prompts
               </MenuItem>
               <MenuItem icon="more" meta="@" onSelect={() => suggestionMenu.insertTrigger("@")}>
-                Mention context
+                Mention Context
               </MenuItem>
               {canAttach && (
                 <>
                   <MenuSeparator />
                   <MenuItem icon="paperclip" onSelect={() => fileInputRef.current?.click()}>
-                    Files
+                    Attach Files…
                   </MenuItem>
                 </>
               )}
@@ -690,34 +680,36 @@ export function ComposerFrame({
               {model}
             </span>
             <span {...props(composerStyles.spacer, compact && composerStyles.spacerCompact)} />
-            {busy && onAbort !== undefined && (
-              <Button
-                iconOnly
-                icon="square"
-                aria-label={stopping ? "Stopping" : "Stop"}
-                title={stopping ? "Stopping…" : "Stop (Esc)"}
-                variant="solid"
-                tone="primary"
-                round
-                disabled={disabled || stopping}
-                onClick={onAbort}
-                xstyle={compact ? composerStyles.sendCompact : undefined}
-              />
-            )}
-            {(!busy || onAbort === undefined || hasSubmission) && (
-              <Button
-                iconOnly
-                icon="arrow-up"
-                aria-label={sendLabel}
-                title={sendTitle}
-                type="submit"
-                variant="solid"
-                tone="primary"
-                round
-                disabled={!canSubmit}
-                xstyle={compact ? composerStyles.sendCompact : undefined}
-              />
-            )}
+            <span {...props(composerStyles.sendActions, compact && composerStyles.sendCompact)}>
+              {busy && onAbort !== undefined && (
+                <Button
+                  iconOnly
+                  icon="square"
+                  aria-label="Stop response"
+                  title="Stop response (Esc)"
+                  variant="solid"
+                  tone="primary"
+                  round
+                  disabled={disabled}
+                  loading={stopping}
+                  onClick={onAbort}
+                />
+              )}
+              {(!busy || onAbort === undefined || hasSubmission || submitting) && (
+                <Button
+                  iconOnly
+                  icon="arrow-up"
+                  aria-label={sendLabel}
+                  title={sendTitle}
+                  type="submit"
+                  variant="solid"
+                  tone="primary"
+                  round
+                  disabled={disabled || attachmentBusy || !hasSubmission}
+                  loading={submitting}
+                />
+              )}
+            </span>
           </div>
         </div>
       </form>
@@ -938,6 +930,9 @@ export function Composer({
   const stopping = liveRun?.abortRequested === true;
 
   const [pendingEdit, setPendingEdit] = useState<PendingEdit>();
+  const [activeQueued, setActiveQueued] = useState<string>();
+  const host = useHostState();
+  const queueRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<ComposerEditorHandle | null>(null);
   const pluginCatalog = usePluginCatalog();
   const suggestionCatalog = composerSource(pluginCatalog.data, pluginCatalog.isError);
@@ -1260,6 +1255,14 @@ export function Composer({
     pendingEdit === undefined &&
     !disabled;
 
+  const queuedEditReason = canBeginEdit
+    ? undefined
+    : disabled
+      ? "Message editing is unavailable."
+      : pendingEdit !== undefined
+        ? "Finish editing the queued message first."
+        : "Send or clear your draft to edit this message.";
+
   const beginEdit = (item: PendingItem | OutboxRow): void => {
     if (!canBeginEdit) return;
     const input = "input" in item ? item.input : item;
@@ -1313,6 +1316,94 @@ export function Composer({
     if (button === document.activeElement) editorRef.current?.focus({ preventScroll: true });
   };
 
+  const removeOutboxRow = (row: OutboxRow): void => {
+    const withdrawal = outbox.withdraw(row.key);
+    if (withdrawal === undefined) return;
+    void withdrawal
+      .then(async (outcome) => {
+        if (outcome.kind === "durable") {
+          await nyte.messages.cancel({ sessionId, change: outcome.change });
+        }
+      })
+      .catch((cause: unknown) => {
+        setFeedback({
+          kind: "error",
+          message: `Couldn't remove the message: ${errorMessage(cause)}`,
+        });
+      });
+  };
+
+  const sendOutboxRowNow = (row: OutboxRow): void => {
+    if (row.state.kind !== "durable") {
+      setFeedback({ kind: "status", message: "Wait for the message to finish sending." });
+      return;
+    }
+    void nyte.messages
+      .redeliver({ sessionId, change: row.state.change, delivery: roles.steer })
+      .catch((cause: unknown) => {
+        setFeedback({ kind: "error", message: `Couldn't send: ${errorMessage(cause)}` });
+      });
+  };
+
+  const queueKeys = [...pending.map((item) => item.change), ...unsent.map((row) => row.key)];
+  const focusedQueueKey =
+    activeQueued !== undefined && queueKeys.includes(activeQueued) ? activeQueued : queueKeys[0];
+  const queueDeleteKey = macPlatform(host.data?.platform) ? "Meta+Backspace" : "Control+Delete";
+
+  const queueKeyDown = (
+    event: KeyboardEvent<HTMLDivElement>,
+    item: PendingItem | OutboxRow,
+  ): void => {
+    if (event.defaultPrevented || event.target !== event.currentTarget) return;
+    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+      const rows = [...(queueRef.current?.querySelectorAll("[data-queue-row]") ?? [])];
+      const index = rows.indexOf(event.currentTarget);
+      const next =
+        rows[Math.max(0, Math.min(rows.length - 1, index + (event.key === "ArrowUp" ? -1 : 1)))];
+      if (next instanceof HTMLElement) next.focus({ preventScroll: true });
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      editorRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    if (disabled || event.repeat) return;
+    const editingThis =
+      "input" in item
+        ? pendingEdit?.kind === "outbox" && pendingEdit.key === item.key
+        : pendingEdit?.kind === "durable" && pendingEdit.change === item.change;
+    const action = "input" in item ? undefined : rowActions.get(item.change);
+    if (editingThis || action?.kind === "sending" || action?.kind === "cancelling") return;
+    const remove = macPlatform(host.data?.platform)
+      ? event.metaKey && event.key === "Backspace"
+      : event.ctrlKey && event.key === "Delete";
+    if (remove) {
+      event.preventDefault();
+      editorRef.current?.focus({ preventScroll: true });
+      if ("input" in item) removeOutboxRow(item);
+      else void cancelPending(item);
+      return;
+    }
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      editorRef.current?.focus({ preventScroll: true });
+      if ("input" in item) sendOutboxRowNow(item);
+      else if (item.delivery !== roles.steer) void sendPendingNow(item);
+      return;
+    }
+    if (event.key === " " || event.key === "ArrowRight") {
+      event.preventDefault();
+      if (queuedEditReason !== undefined) {
+        setFeedback({ kind: "status", message: queuedEditReason });
+        return;
+      }
+      beginEdit(item);
+    }
+  };
+
   const queuedMessageCount = pending.length + unsent.length;
 
   const queuedMessages =
@@ -1326,7 +1417,7 @@ export function Composer({
             )}
           </span>
         </div>
-        <div {...props(trayStyles.list, composerStyles.queueList)}>
+        <div ref={queueRef} role="list" {...props(trayStyles.list, composerStyles.queueList)}>
           {pending.map((item) => {
             const action = rowActions.get(item.change);
 
@@ -1338,8 +1429,14 @@ export function Composer({
 
             return (
               <div
-                role="status"
+                role="listitem"
                 key={item.change}
+                data-queue-row={item.change}
+                tabIndex={focusedQueueKey === item.change ? 0 : -1}
+                aria-keyshortcuts={`ArrowUp ArrowDown Enter Space ArrowRight Escape ${queueDeleteKey}`}
+                aria-description={`Enter sends now. Space or Right Arrow edits. ${macPlatform(host.data?.platform) ? "Command+Backspace" : "Ctrl+Delete"} removes. Escape returns to the composer.`}
+                onFocus={() => setActiveQueued(item.change)}
+                onKeyDown={(event) => queueKeyDown(event, item)}
                 data-editing={editingThis}
                 data-error={action?.kind === "failed"}
                 {...props(composerStyles.queueRow)}
@@ -1368,12 +1465,9 @@ export function Composer({
                       <Button
                         iconOnly
                         icon="pencil"
-                        aria-label={
-                          canBeginEdit
-                            ? "Edit queued message"
-                            : "Send or clear your draft to edit this"
-                        }
+                        aria-label="Edit queued message"
                         disabled={!canBeginEdit}
+                        disabledReason={queuedEditReason}
                         onClick={() => beginEdit(item)}
                       />
                     )}
@@ -1407,8 +1501,14 @@ export function Composer({
 
             return (
               <div
-                role="status"
+                role="listitem"
                 key={row.key}
+                data-queue-row={row.key}
+                tabIndex={focusedQueueKey === row.key ? 0 : -1}
+                aria-keyshortcuts={`ArrowUp ArrowDown Enter Space ArrowRight Escape ${queueDeleteKey}`}
+                aria-description={`Enter sends now. Space or Right Arrow edits. ${macPlatform(host.data?.platform) ? "Command+Backspace" : "Ctrl+Delete"} removes. Escape returns to the composer.`}
+                onFocus={() => setActiveQueued(row.key)}
+                onKeyDown={(event) => queueKeyDown(event, row)}
                 data-editing={editingThis}
                 data-error={row.state.kind === "retrying"}
                 {...props(composerStyles.queueRow)}
@@ -1434,12 +1534,9 @@ export function Composer({
                       <Button
                         iconOnly
                         icon="pencil"
-                        aria-label={
-                          canBeginEdit
-                            ? "Edit queued message"
-                            : "Send or clear your draft to edit this"
-                        }
+                        aria-label="Edit queued message"
                         disabled={!canBeginEdit}
+                        disabledReason={queuedEditReason}
                         onClick={() => beginEdit(row)}
                       />
                     )}
@@ -1449,21 +1546,7 @@ export function Composer({
                       aria-label="Remove queued message"
                       onClick={(event) => {
                         releaseFocus(event.currentTarget);
-                        const withdrawal = outbox.withdraw(row.key);
-
-                        if (withdrawal === undefined) return;
-                        void withdrawal
-                          .then(async (outcome) => {
-                            if (outcome.kind === "durable") {
-                              await nyte.messages.cancel({ sessionId, change: outcome.change });
-                            }
-                          })
-                          .catch((cause: unknown) => {
-                            setFeedback({
-                              kind: "error",
-                              message: `Couldn't remove the message: ${errorMessage(cause)}`,
-                            });
-                          });
+                        removeOutboxRow(row);
                       }}
                     />
                   </div>
@@ -1490,13 +1573,13 @@ export function Composer({
                 <span {...props(composerStyles.queuedText)}>{feedback.message}</span>
                 {feedback.restore !== undefined && (
                   <Button variant="text" onClick={feedback.restore}>
-                    Restore draft
+                    Restore Draft
                   </Button>
                 )}
                 <Button
                   iconOnly
                   icon="x"
-                  aria-label="Dismiss"
+                  aria-label="Dismiss notification"
                   onClick={() => setFeedback(undefined)}
                 />
               </div>

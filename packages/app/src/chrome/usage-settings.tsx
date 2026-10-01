@@ -13,17 +13,16 @@
 import { ResponsiveLine } from "@nivo/line";
 import type { LineCustomSvgLayerProps, LineSeries, SliceTooltipProps } from "@nivo/line";
 import { Tabs } from "@nyte-ai/ui/tabs";
-import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import { props } from "@stylexjs/stylex";
 import { useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { srOnly } from "@nyte-ai/ui/a11y.stylex";
-import { Toggle } from "@nyte-ai/ui/toggle";
 import { useAccountLimits, useUsageReport } from "../queries.ts";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { useChromeTab } from "./use-chrome-tab.ts";
 import { isOption } from "./sidebar-view.ts";
 import { skeletonStyles as bone, usageStyles as styles } from "./usage-settings.stylex.ts";
 import {
@@ -72,8 +71,6 @@ function limitTier(used: number): LimitTier {
 }
 
 const USAGE_TABS = ["spend", "limits", "where", "tools"] as const;
-
-type UsageTab = (typeof USAGE_TABS)[number];
 
 const WHERE_TABS = ["folders", "chats"] as const;
 
@@ -439,17 +436,19 @@ function EmptyPanel({
 
 /** A second strip inside a tab, underlined rather than chipped so it reads as nested. */
 function SubTabs<Value extends string>({
+  searchKey,
   label,
   options,
   labels,
   children,
 }: {
+  readonly searchKey: string;
   readonly label: string;
   readonly options: readonly [Value, ...Value[]];
   readonly labels: Readonly<Record<Value, string>>;
   readonly children: (value: Value) => ReactNode;
 }): ReactElement {
-  const [value, setValue] = useState<Value>(options[0]);
+  const [value, setValue] = useChromeTab(searchKey, options);
 
   return (
     <Tabs.Root
@@ -479,7 +478,7 @@ function SubTabs<Value extends string>({
 export function UsageSettings(): ReactElement {
   // Keep the heading and the query on the same day if the panel stays open past midnight.
   const [openedAt] = useState(() => Date.now());
-  const [tab, setTab] = useState<UsageTab>("spend");
+  const [tab, setTab] = useChromeTab("usage", USAGE_TABS);
   const [range, setRange] = useState<UsageRange>("30d");
   const view = useMemo(() => usageWindow(range, openedAt), [range, openedAt]);
 
@@ -514,27 +513,27 @@ export function UsageSettings(): ReactElement {
   const hottestTier = hottest === undefined ? "calm" : limitTier(hottest.used);
 
   const refreshButton = (
-    <Button variant="outline" disabled={isFetching} onClick={refresh}>
-      {isFetching ? "Reading…" : "Refresh"}
+    <Button variant="outline" loading={isFetching} onClick={refresh}>
+      Refresh Usage
     </Button>
   );
 
   const rangePicker = (
-    <ToggleGroup value={[range]} aria-label="Usage range">
-      {USAGE_RANGES.map((option) => (
-        <Toggle
-          key={option}
-          value={option}
-          size="sm"
-          pressed={range === option}
-          onPressedChange={(pressed) => {
-            if (pressed) setRange(option);
-          }}
-        >
-          {USAGE_RANGE_LABELS[option]}
-        </Toggle>
-      ))}
-    </ToggleGroup>
+    <Tabs.Root
+      variant="segmented"
+      value={range}
+      onValueChange={(value) => {
+        if (isOption(value, USAGE_RANGES)) setRange(value);
+      }}
+    >
+      <Tabs.List aria-label="Usage range">
+        {USAGE_RANGES.map((option) => (
+          <Tabs.Tab key={option} value={option}>
+            {USAGE_RANGE_LABELS[option]}
+          </Tabs.Tab>
+        ))}
+      </Tabs.List>
+    </Tabs.Root>
   );
 
   if (report === undefined && error !== null) {
@@ -558,7 +557,7 @@ export function UsageSettings(): ReactElement {
         action={
           empty.offerAllTime ? (
             <Button variant="solid" tone="primary" onClick={() => setRange("all")}>
-              Show all time
+              Show All Time
             </Button>
           ) : (
             refreshButton
@@ -635,7 +634,7 @@ export function UsageSettings(): ReactElement {
             alert
             action={
               <Button variant="text" onClick={refresh}>
-                Refresh
+                Refresh Usage
               </Button>
             }
           >
@@ -731,6 +730,7 @@ export function UsageSettings(): ReactElement {
         ) : (
           (emptyPanel ?? (
             <SubTabs
+              searchKey="usageWhere"
               label="Where it went"
               options={WHERE_TABS}
               labels={{ folders: "Folders", chats: "Chats" }}
@@ -770,7 +770,12 @@ export function UsageSettings(): ReactElement {
         ) : (
           <Breakdown label="Spend by tool" rows={tools.rows} empty="No tool history read." />
         )}
-        <SubTabs label="Tool by model" options={LOCAL_TOOLS} labels={USAGE_TOOL_LABELS}>
+        <SubTabs
+          searchKey="usageTool"
+          label="Tool by model"
+          options={LOCAL_TOOLS}
+          labels={USAGE_TOOL_LABELS}
+        >
           {(tool) => {
             const history = histories?.find((entry) => entry.tool === tool)?.history;
 

@@ -8,7 +8,7 @@ import stylex from "@stylexjs/unplugin";
 import electron from "electron";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { build } from "vite";
+import { build, defaultClientConditions } from "vite";
 import { afterAll, beforeAll, expect, test } from "vitest";
 
 const execute = promisify(execFile);
@@ -35,6 +35,7 @@ beforeAll(async () => {
   // Production mode: the measurement must not carry dev-only React checks.
   await build({
     configFile: false,
+    resolve: { conditions: ["nyte-source", ...defaultClientConditions] },
     mode: "production",
     // Vitest runs with NODE_ENV=test, which would otherwise pick the dev JSX runtime.
     esbuild: { jsxDev: false },

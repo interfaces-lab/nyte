@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useMountEffect } from "../use-mount-effect.ts";
 import {
   AppState,
+  AccessibilityInfo,
   Image,
   Pressable,
   StyleSheet,
@@ -32,10 +33,10 @@ import {
   usePhotoOutput,
 } from "react-native-vision-camera";
 import { GlassSurface, HAS_GLASS } from "./composer-glass.tsx";
-import { SPRING, ICON_ROW_INSET } from "./composer-geometry.ts";
+import { COMPOSER, SPRING, ICON_ROW_INSET } from "./composer-geometry.ts";
 import { prepareImage, type StagedImage } from "../media/attachments.ts";
 import type { PhotoAccess, RecentPhoto } from "../media/recent-photos.ts";
-import { overCamera, spacing, typography, useTheme } from "../theme.ts";
+import { controls, overCamera, spacing, typography, useTheme } from "../theme.ts";
 
 const AnimatedGlassView = Animated.createAnimatedComponent(GlassView);
 
@@ -44,7 +45,7 @@ const MENU_ITEMS = [
   { label: "Photos", symbol: "photo", mode: "photos" },
 ] as const;
 
-const CLOSED = 34;
+const CLOSED = COMPOSER.hit;
 
 const OPEN_WIDTH = 220;
 
@@ -55,7 +56,7 @@ const OPEN_PAD = spacing.lg;
 const OPEN_GAP = spacing.md;
 
 const OPEN_HEIGHT =
-  OPEN_PAD * 2 + ITEM_ICON * MENU_ITEMS.length + OPEN_GAP * (MENU_ITEMS.length - 1);
+  OPEN_PAD * 2 + controls.touchTarget * MENU_ITEMS.length + OPEN_GAP * (MENU_ITEMS.length - 1);
 
 type ExtendMode = (typeof MENU_ITEMS)[number]["mode"];
 
@@ -215,11 +216,16 @@ export function AttachmentsMenu({
       <Animated.View style={[styles.plusIcon, plusIconStyle]} pointerEvents="none">
         <SymbolView name="plus" size={20} tintColor={theme.foreground} weight="regular" />
       </Animated.View>
-      <Animated.View style={[styles.itemList, itemListStyle]}>
+      <Animated.View
+        style={[styles.itemList, itemListStyle]}
+        pointerEvents={extended ? "none" : "auto"}
+        accessibilityElementsHidden={extended}
+        importantForAccessibility={extended ? "no-hide-descendants" : "auto"}
+      >
         {MENU_ITEMS.map((item) => (
           <Pressable
             key={item.label}
-            accessibilityLabel={item.label}
+            accessibilityRole="button"
             disabled={disabled}
             onPress={() => expandTo(item.mode)}
             style={styles.item}
@@ -252,6 +258,7 @@ export function AttachmentsMenu({
                 showsVerticalScrollIndicator={false}
                 renderItem={({ item }) => (
                   <Pressable
+                    accessibilityRole="button"
                     accessibilityLabel="Attach photo"
                     disabled={disabled}
                     onPress={() => onPick(item)}
@@ -274,7 +281,12 @@ export function AttachmentsMenu({
   return (
     <OverKeyboardView visible>
       <GestureHandlerRootView style={styles.fullScreen}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss attachment menu"
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+        />
         <View style={styles.fullScreen} pointerEvents="box-none">
           {HAS_GLASS ? (
             <AnimatedGlassView
@@ -290,7 +302,11 @@ export function AttachmentsMenu({
           {extended ? (
             <>
               <Animated.View style={[styles.backButton, gridButtonsStyle]}>
-                <Pressable accessibilityLabel="Back to attachment choices" onPress={collapseToMenu}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Back to attachment choices"
+                  onPress={collapseToMenu}
+                >
                   <GlassSurface
                     isInteractive
                     glassEffectStyle="regular"
@@ -302,7 +318,7 @@ export function AttachmentsMenu({
               </Animated.View>
               {mode === "photos" ? (
                 <Animated.View style={[styles.allPhotosButton, gridButtonsStyle]}>
-                  <Pressable accessibilityLabel="Choose more photos" onPress={onManageAccess}>
+                  <Pressable accessibilityRole="button" onPress={onManageAccess}>
                     <GlassSurface
                       isInteractive
                       glassEffectStyle="regular"
@@ -360,6 +376,7 @@ function AttachCamera({
   const capture = () => {
     if (disabled || !ready || busy || !active || !hasPermission || device === undefined) return;
     setBusy(true);
+    AccessibilityInfo.announceForAccessibility("Taking photo");
     void output
       .capturePhotoToFile({ flashMode: "off" }, {})
       .then((photo) => prepareImage(photo.filePath))
@@ -384,8 +401,10 @@ function AttachCamera({
       )}
       <Animated.View style={[styles.captureButton, shutterStyle]} pointerEvents="box-none">
         <Pressable
+          accessibilityRole="button"
           accessibilityLabel="Take photo"
-          disabled={disabled || !ready || busy || !active || !hasPermission || device === undefined}
+          accessibilityState={{ busy }}
+          disabled={disabled || !ready || !active || !hasPermission || device === undefined}
           onPress={capture}
           style={styles.captureOuter}
         >
@@ -424,6 +443,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   item: {
+    minHeight: controls.touchTarget,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,

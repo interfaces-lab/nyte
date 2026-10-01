@@ -5,7 +5,6 @@
  * other devices sending chats to this Mac.
  */
 import { props } from "@stylexjs/stylex";
-import { useState } from "react";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Tabs } from "@nyte-ai/ui/tabs";
@@ -13,19 +12,18 @@ import { useServerState } from "../queries.ts";
 import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
 import { customizeStyles as styles } from "./customize.stylex.ts";
 import { CloudConnection, RemoteAccess, useWindowFocused } from "./server-settings.tsx";
+import { useChromeTab } from "./use-chrome-tab.ts";
 import { isOption } from "./sidebar-view.ts";
 
 const ENVIRONMENT_TABS = [
   ["connections", "Connections"],
-  ["remote", "Remote access"],
+  ["remote", "Remote Access"],
 ] as const;
 
-const ENVIRONMENT_TAB_IDS = ENVIRONMENT_TABS.map(([id]) => id);
-
-type EnvironmentTab = (typeof ENVIRONMENT_TAB_IDS)[number];
+const ENVIRONMENT_TAB_IDS = ["connections", "remote"] as const;
 
 export function EnvironmentsSurface(): ReactElement {
-  const [tab, setTab] = useState<EnvironmentTab>("connections");
+  const [tab, setTab] = useChromeTab("environment", ENVIRONMENT_TAB_IDS);
   const active = useWindowFocused();
   const server = useServerState(active);
   const connections = server.data === undefined || server.data.kind === "none" ? 1 : 2;

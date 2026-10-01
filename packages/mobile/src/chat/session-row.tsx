@@ -1,7 +1,8 @@
+import { Link } from "expo-router";
 import type { SessionInfo } from "@nyte-ai/protocol";
 import { sessionMark } from "@nyte-ai/client";
 import { SymbolView } from "expo-symbols";
-import { ActivityIndicator } from "react-native";
+import { ActivityIndicator, Pressable } from "react-native";
 import { css, html } from "react-strict-dom";
 import { controls, list, useTheme, radii, textStyles, tokens, typography } from "../theme.ts";
 import { elapsed, formatActivity, latestRun, rowStatus } from "./sessions.ts";
@@ -87,31 +88,32 @@ export function SessionRow({
   now,
   last = false,
   twoLines = false,
-  onPress,
 }: {
   session: SessionInfo;
   now: number;
   last?: boolean;
   /** Lets the status-and-preview line wrap onto a second line. */
   twoLines?: boolean;
-  onPress: () => void;
 }) {
   return (
-    <html.button
-      aria-label={`${session.name || "Untitled conversation"}, ${rowStatus(session)}`}
-      onClick={onPress}
-      style={styles.row}
-    >
-      <html.div style={styles.leading}>
-        <Status session={session} />
-      </html.div>
-      <html.div style={[styles.text, !last && styles.separator]}>
-        <html.span style={[textStyles.body, styles.title]}>
-          {session.name || "Untitled conversation"}
-        </html.span>
-        <Meta session={session} now={now} twoLines={twoLines} />
-      </html.div>
-    </html.button>
+    <Link href={`/chat/${session.sessionId}`} asChild>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={`${session.name || "Untitled conversation"}, ${rowStatus(session)}`}
+      >
+        <html.div style={styles.row}>
+          <html.div style={styles.leading}>
+            <Status session={session} />
+          </html.div>
+          <html.div style={[styles.text, !last && styles.separator]}>
+            <html.span style={[textStyles.body, styles.title]}>
+              {session.name || "Untitled conversation"}
+            </html.span>
+            <Meta session={session} now={now} twoLines={twoLines} />
+          </html.div>
+        </html.div>
+      </Pressable>
+    </Link>
   );
 }
 
@@ -123,6 +125,7 @@ const styles = css.create({
     // Content-box sizing: a width of 100% plus the gutter would overflow the list.
     paddingInlineStart: list.gutter,
     borderWidth: 0,
+    textDecoration: "none",
     backgroundColor: { default: "transparent", ":active": tokens.fill },
   },
   leading: {

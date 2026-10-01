@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { layer } from "@nyte-ai/ui/schema.stylex";
+import { layer, row } from "@nyte-ai/ui/schema.stylex";
 import { workbench } from "../theme/schema.stylex.ts";
 import { appearance, role, shadow, type } from "@nyte-ai/ui/vars.stylex";
 
@@ -24,8 +24,9 @@ export const workbenchStyles = create({
   toolbar: {
     display: "flex",
     alignItems: "center",
-    gap: 2,
-    height: workbench.headerHeight,
+    gap: { default: 2, "@media (pointer: coarse)": 8 },
+    minHeight: workbench.headerHeight,
+    paddingBlock: { default: 0, "@media (pointer: coarse)": 4 },
     flexShrink: 0,
     paddingInline: 6,
     borderBottomWidth: 1,
@@ -39,7 +40,10 @@ export const workbenchStyles = create({
     borderInlineStartColor: role.borderSecondaryTranslucent,
   },
   railHost: { width: workbench.railWidth, minWidth: workbench.railWidth },
-  railHostCompact: { width: 46, minWidth: 46 },
+  railHostCompact: {
+    width: { default: 46, "@media (pointer: coarse)": 64 },
+    minWidth: { default: 46, "@media (pointer: coarse)": 64 },
+  },
   panelOverlay: {
     position: "absolute",
     zIndex: layer.workbench,
@@ -61,7 +65,12 @@ export const workbenchStyles = create({
     paddingInline: 8,
     color: role.contentSecondary,
   },
-  railSection: { display: "flex", flexDirection: "column", gap: 1, minWidth: 0 },
+  railSection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: { default: 1, "@media (pointer: coarse)": 8 },
+    minWidth: 0,
+  },
   railHeading: {
     display: "flex",
     alignItems: "center",
@@ -83,7 +92,7 @@ export const workbenchStyles = create({
   doubleChevronBack: { transform: "scaleX(-1)" },
   doubleChevronTrail: { display: "inline-flex", marginInlineStart: -4 },
   railRow: {
-    minHeight: workbench.rowHeight,
+    minHeight: row.heightMd,
     gap: workbench.rowGap,
     "--_row-padding-inline": workbench.rowPaddingInline,
     paddingBlock: 2,
@@ -105,9 +114,9 @@ export const workbenchStyles = create({
   iconRail: {
     display: "flex",
     flexDirection: "column",
-    gap: 1,
+    gap: { default: 1, "@media (pointer: coarse)": 8 },
     boxSizing: "border-box",
-    width: 34,
+    width: { default: 34, "@media (pointer: coarse)": 52 },
     marginBlockStart: 4,
     marginInline: 6,
     padding: 2,
@@ -132,19 +141,32 @@ export const workbenchStyles = create({
     position: "absolute",
     zIndex: 2,
     insetBlock: 0,
-    insetInlineStart: -6,
-    width: 12,
+    insetInlineStart: { default: -24, "@media (pointer: coarse)": -44 },
+    width: { default: 24, "@media (pointer: coarse)": 44 },
     borderStyle: "none",
     outlineStyle: { default: "none", ":focus-visible": "solid" },
     outlineWidth: 1,
     outlineColor: appearance.focusRing,
     outlineOffset: -1,
-    backgroundColor: { default: "transparent", ":hover": role.bgHover },
+    backgroundColor: "transparent",
+    "--_sash-rule": {
+      default: role.borderSecondaryTranslucent,
+      ":hover": role.bgInteractiveStrong,
+      ":focus-visible": role.bgInteractiveStrong,
+    },
+    "::after": {
+      content: "''",
+      position: "absolute",
+      insetBlock: 0,
+      insetInlineEnd: 0,
+      width: 1,
+      backgroundColor: "var(--_sash-rule)",
+    },
     cursor: "col-resize",
     touchAction: "none",
     WebkitAppRegion: "no-drag",
   },
-  sashActive: { backgroundColor: role.bgInteractiveStrong },
+  sashActive: { "--_sash-rule": role.bgInteractiveStrong },
   treeTheme: {
     "--trees-bg-override": role.bgBase,
     "--trees-bg-muted-override": role.bgHover,

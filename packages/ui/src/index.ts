@@ -76,14 +76,14 @@ export { Kbd } from "./components/ui/kbd.tsx";
 
 export type { KbdProps } from "./components/ui/kbd.tsx";
 
-export { Hint, HintProvider, HoverPreview } from "./components/ui/tooltip.tsx";
-
-export type {
-  HintAlign,
-  HintProps,
-  HintSide,
-  HoverPreviewProps,
+export {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "./components/ui/tooltip.tsx";
+
+export type { TooltipContentProps, TooltipProviderProps } from "./components/ui/tooltip.tsx";
 
 export { OverlayRefProvider, useOverlayRef } from "./components/ui/overlay.tsx";
 
@@ -212,12 +212,14 @@ export type {
   PopoverTitleProps,
 } from "./components/ui/popover.tsx";
 
-export { PreviewCard } from "./components/ui/preview-card.tsx";
-
-export type {
-  PreviewCardPopupProps,
-  PreviewCardPositionerProps,
+export {
+  createPreviewCardHandle,
+  PreviewCard,
+  PreviewCardContent,
+  PreviewCardTrigger,
 } from "./components/ui/preview-card.tsx";
+
+export type { PreviewCardContentProps } from "./components/ui/preview-card.tsx";
 
 export { Autocomplete } from "./components/ui/autocomplete.tsx";
 

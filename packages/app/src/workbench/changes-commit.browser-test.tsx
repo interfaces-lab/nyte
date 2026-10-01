@@ -77,7 +77,7 @@ export async function run(): Promise<string> {
   };
   const primary = (): HTMLButtonElement => {
     const found = Array.from(container.querySelectorAll("button")).find((item) =>
-      /^(Commit|Create branch|Push|Create pull request)/.test(item.textContent?.trim() ?? ""),
+      /^(Commit|Create Branch|Push|Create Pull Request)/.test(item.textContent?.trim() ?? ""),
     );
     if (found === undefined) throw new Error("Missing the primary commit action");
     return found;
@@ -117,14 +117,33 @@ export async function run(): Promise<string> {
 
     // The default action is Cursor's, and it cannot run without a message.
     check(
-      primary().textContent?.trim() === "Commit and push",
+      primary().textContent?.trim() === "Commit and Push Changes",
       `Default action: ${String(primary().textContent)}`,
     );
-    check(primary().disabled, "An empty message cannot be committed");
+    check(
+      primary().getAttribute("aria-disabled") === "true",
+      "An empty message cannot be committed",
+    );
+    const disabledMenu = await openActionMenu();
+    const disabledCommit = menuItem(disabledMenu, "Commit Changes");
+    check(
+      disabledCommit.textContent?.includes("Write a commit message first") === true,
+      "The unavailable commit action explains why it cannot run",
+    );
+    disabledMenu.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await until(
+      () => document.querySelector('[aria-label="Commit actions"]') === null,
+      "the menu to close",
+    );
 
     await type("Commit message", "feat(desktop): add the commit bar");
-    await until(() => !primary().disabled, "the action to become available");
-    primary().click();
+    await until(
+      () => primary().getAttribute("aria-disabled") !== "true",
+      "the action to become available",
+    );
+    const form = field("Commit message").form;
+    check(form !== null, "The single-line message belongs to a submit form");
+    form?.requestSubmit();
     await until(() => commitScript.commits.length === 1, "the commit call");
     check(
       commitScript.commits[0]?.message === "feat(desktop): add the commit bar",
@@ -147,11 +166,14 @@ export async function run(): Promise<string> {
       { kind: "pushed", remote: "origin", branch: "feature" },
     ];
     await type("Commit message", "fix(desktop): report a push");
-    await until(() => !primary().disabled, "the action to become available again");
+    await until(
+      () => primary().getAttribute("aria-disabled") !== "true",
+      "the action to become available again",
+    );
     primary().click();
     await until(() => report().includes("tracks no remote branch yet"), `no upstream: ${report()}`);
     check(commitScript.commits.length === 2, "The commit ran before the push failed");
-    buttonNamed("Publish branch").click();
+    buttonNamed("Publish Branch").click();
     await until(() => commitScript.pushes.length === 3, "the publishing push");
     check(commitScript.pushes[2]?.setUpstream === true, "Publishing sets the upstream");
     check(commitScript.commits.length === 2, "Publishing does not commit again");
@@ -161,7 +183,10 @@ export async function run(): Promise<string> {
     restoreWorkingTree();
     commitScript.pushResults = [{ kind: "rejected", reason: "non-fast-forward" }];
     await type("Commit message", "fix(desktop): pull first");
-    await until(() => !primary().disabled, "the action after a rejected push");
+    await until(
+      () => primary().getAttribute("aria-disabled") !== "true",
+      "the action after a rejected push",
+    );
     primary().click();
     await until(() => report().includes("Pull them, then push again."), `rejected: ${report()}`);
     check(report().includes("non-fast-forward"), "Git's own words are kept");
@@ -172,7 +197,10 @@ export async function run(): Promise<string> {
     commitScript.commitResults = [{ kind: "nothing_to_commit" }];
     commitScript.pushResults = [];
     await type("Commit message", "chore(desktop): nothing here");
-    await until(() => !primary().disabled, "the action before an empty commit");
+    await until(
+      () => primary().getAttribute("aria-disabled") !== "true",
+      "the action before an empty commit",
+    );
     primary().click();
     await until(() => report().includes("Nothing to commit."), `nothing to commit: ${report()}`);
     check(
@@ -184,15 +212,19 @@ export async function run(): Promise<string> {
     commitScript.commitResults = [];
     commitScript.branchResults = [{ kind: "exists" }, { kind: "created" }];
     const menu = await openActionMenu();
-    menuItem(menu, "Create branch and commit").click();
+    menuItem(menu, "Create Branch and Commit Changes").click();
     await until(
       () => container.querySelector('input[aria-label="New branch name"]') !== null,
       "the branch field",
     );
     check(commitScript.branches.length === 0, "Naming the branch is what creates it");
     await type("New branch name", "feature/commit-bar");
-    await until(() => !buttonNamed("Create branch and commit").disabled, "the branch confirmation");
-    buttonNamed("Create branch and commit").click();
+    await until(
+      () =>
+        buttonNamed("Create Branch and Commit Changes").getAttribute("aria-disabled") !== "true",
+      "the branch confirmation",
+    );
+    buttonNamed("Create Branch and Commit Changes").click();
     await until(() => report().includes("already exists"), `branch exists: ${report()}`);
     check(commitScript.branches[0]?.checkout === true, "A created branch is checked out");
     check(
@@ -201,7 +233,7 @@ export async function run(): Promise<string> {
     );
     // The last action chosen is the one the primary button now offers.
     check(
-      primary().textContent?.trim() === "Create branch and commit",
+      primary().textContent?.trim() === "Create Branch and Commit Changes",
       `Remembered action: ${String(primary().textContent)}`,
     );
 
@@ -209,19 +241,22 @@ export async function run(): Promise<string> {
     commitScript.refuseCommit = true;
     commitScript.branchResults = [{ kind: "created" }];
     await type("New branch name", "feature/second");
-    buttonNamed("Create branch and commit").click();
+    buttonNamed("Create Branch and Commit Changes").click();
     await until(() => report().includes("Trust this workspace"), `trust refusal: ${report()}`);
 
     // A pull request pushes its branch first, and a refused push never reaches GitHub.
     const pushed = commitScript.pushes.length;
     commitScript.pushResults = [{ kind: "rejected", reason: "non-fast-forward" }];
     const refusedMenu = await openActionMenu();
-    menuItem(refusedMenu, "Create pull request").click();
+    menuItem(refusedMenu, "Create Pull Request").click();
     await until(
       () => commitScript.pushes.length === pushed + 1,
       "the push before the pull request",
     );
-    await until(() => !primary().disabled, "the refused pull request to settle");
+    await until(
+      () => primary().getAttribute("aria-disabled") !== "true",
+      "the refused pull request to settle",
+    );
     check(report().includes("Pull them, then push again."), `refused push: ${report()}`);
     check(commitScript.pullRequests.length === 0, "A refused push never reaches GitHub");
 
@@ -229,7 +264,7 @@ export async function run(): Promise<string> {
     commitScript.pushResults = [];
     commitScript.pullRequestResults = [{ kind: "cli_missing" }];
     const prMenu = await openActionMenu();
-    menuItem(prMenu, "Create pull request").click();
+    menuItem(prMenu, "Create Pull Request").click();
     await until(() => report().includes("GitHub CLI"), `pull request: ${report()}`);
     check(
       commitScript.pushes.length === pushed + 2,

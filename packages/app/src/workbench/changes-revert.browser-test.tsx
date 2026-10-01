@@ -159,7 +159,7 @@ export async function run(): Promise<string> {
     revertScript.skipReason = "This file has no changes to revert.";
     button(`Revert ${TRACKED}`).click();
     await until(() => dialog() !== null, "the confirmation to reopen");
-    dialogButton("Revert").click();
+    dialogButton("Revert Changes").click();
     await until(
       () => dialogText().includes("no changes to revert"),
       `the skip reason: ${dialogText()}`,

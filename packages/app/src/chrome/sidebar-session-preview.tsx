@@ -1,4 +1,4 @@
-import { PreviewCard } from "@nyte-ai/ui/preview-card";
+import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import type { GitHubRepository } from "../bridge.ts";
@@ -63,46 +63,48 @@ export function SessionPreviewCard({
   readonly contextMenu?: ReactNode;
 }): ReactElement {
   return (
-    <PreviewCard.Root>
+    <PreviewCard>
       {contextMenu === undefined ? (
-        <PreviewCard.Trigger render={trigger} delay={600} closeDelay={100} />
+        <PreviewCardTrigger render={trigger} delay={600} closeDelay={100} />
       ) : (
         <ContextMenu
-          label={`Actions for ${title}`}
-          trigger={<PreviewCard.Trigger render={trigger} delay={600} closeDelay={100} />}
+          label={`Options for ${title}`}
+          trigger={<PreviewCardTrigger render={trigger} delay={600} closeDelay={100} />}
         >
           {contextMenu}
         </ContextMenu>
       )}
-      <PreviewCard.Portal>
-        <PreviewCard.Positioner side="right" align="start" alignOffset={-4} sideOffset={4}>
-          <PreviewCard.Popup aria-label={`Details for ${title}`}>
-            <div {...props(styles.title)}>{title}</div>
-            {context.kind === "workspace" && (
-              <div {...props(styles.details)}>
-                {context.repository !== undefined && (
-                  <div {...props(styles.detail)}>
-                    <span {...props(styles.detailIcon)}>
-                      <Icon name="git-branch" size={14} />
-                    </span>
-                    <span {...props(styles.detailText)}>
-                      {context.repository.owner}/{context.repository.name}
-                    </span>
-                  </div>
-                )}
-                <div {...props(styles.detail)}>
-                  <span {...props(styles.detailIcon)}>
-                    <Icon name="folder" size={14} />
-                  </span>
-                  <span title={context.path} {...props(styles.detailText)}>
-                    {context.path}
-                  </span>
-                </div>
+      <PreviewCardContent
+        side="right"
+        align="start"
+        alignOffset={-4}
+        sideOffset={4}
+        aria-label={`Details for ${title}`}
+      >
+        <div {...props(styles.title)}>{title}</div>
+        {context.kind === "workspace" && (
+          <div {...props(styles.details)}>
+            {context.repository !== undefined && (
+              <div {...props(styles.detail)}>
+                <span {...props(styles.detailIcon)}>
+                  <Icon name="git-branch" size={14} />
+                </span>
+                <span {...props(styles.detailText)}>
+                  {context.repository.owner}/{context.repository.name}
+                </span>
               </div>
             )}
-          </PreviewCard.Popup>
-        </PreviewCard.Positioner>
-      </PreviewCard.Portal>
-    </PreviewCard.Root>
+            <div {...props(styles.detail)}>
+              <span {...props(styles.detailIcon)}>
+                <Icon name="folder" size={14} />
+              </span>
+              <span title={context.path} {...props(styles.detailText)}>
+                {context.path}
+              </span>
+            </div>
+          </div>
+        )}
+      </PreviewCardContent>
+    </PreviewCard>
   );
 }

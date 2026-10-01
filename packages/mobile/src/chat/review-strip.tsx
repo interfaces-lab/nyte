@@ -1,4 +1,5 @@
 import { css, html } from "react-strict-dom";
+import type { SessionId } from "@nyte-ai/protocol";
 import type { FileChange } from "@nyte-ai/client";
 import { Chip } from "../ui/chip.tsx";
 import { spacing, tokens } from "../theme.ts";
@@ -6,11 +7,11 @@ import { spacing, tokens } from "../theme.ts";
 /** The review actions that float above the composer once work finished. */
 export function ReviewStrip({
   changes,
-  onReview,
+  sessionId,
   onAskMerge,
 }: {
   changes: readonly FileChange[];
-  onReview: () => void;
+  sessionId: SessionId;
   onAskMerge: () => void;
 }) {
   const added = changes.reduce((total, file) => total + file.added, 0);
@@ -18,12 +19,12 @@ export function ReviewStrip({
 
   return (
     <html.div style={styles.row}>
-      <Chip onClick={onReview}>
+      <Chip href={`/review/${sessionId}`}>
         <html.span>Review </html.span>
         <html.span style={styles.success}>{`+${String(added)} `}</html.span>
         <html.span style={styles.danger}>{`\u2212${String(removed)}`}</html.span>
       </Chip>
-      <Chip onClick={onAskMerge}>Ask to merge</Chip>
+      <Chip onClick={onAskMerge}>Ask to Merge</Chip>
     </html.div>
   );
 }

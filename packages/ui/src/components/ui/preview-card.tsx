@@ -1,15 +1,13 @@
-import { mergeProps } from "@base-ui/react/merge-props";
-import { PreviewCard } from "@base-ui/react/preview-card";
+import { PreviewCard as PreviewCardPrimitive } from "@base-ui/react/preview-card";
 import { create, props } from "@stylexjs/stylex";
-import { createContext, use, useId, useState } from "react";
-import type { ReactElement, RefAttributes } from "react";
+import type { ReactElement } from "react";
 
 import { floatingSurfaceStyles } from "../../floating-surface.stylex.ts";
 import { layer, shape } from "../../schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "../../style.ts";
 import { surfaceTheme, type Tint } from "../../surface-theme.ts";
 import { motion, role, type } from "../../vars.stylex.ts";
-import { useLongPressPreview, useOverlayRef } from "./overlay.tsx";
+import { useOverlayRef } from "./overlay.tsx";
 
 const styles = create({
   positioner: { zIndex: layer.menu, outline: "none" },
@@ -42,125 +40,63 @@ const styles = create({
   },
 });
 
-const PreviewHandleContext = createContext<
-  Pick<PreviewCard.Handle<unknown>, "open" | "close"> | undefined
->(undefined);
+export const PreviewCard = PreviewCardPrimitive.Root;
 
-export type PreviewCardRootProps<Payload = unknown> = PreviewCard.Root.Props<Payload>;
+export const PreviewCardTrigger = PreviewCardPrimitive.Trigger;
 
-function PreviewCardRoot<Payload>({
-  handle: externalHandle,
-  ...rest
-}: PreviewCardRootProps<Payload>): ReactElement {
-  const [internalHandle] = useState(() => PreviewCard.createHandle<Payload>());
-  const handle = externalHandle ?? internalHandle;
+export const createPreviewCardHandle = PreviewCardPrimitive.createHandle;
 
-  return (
-    <PreviewHandleContext value={handle}>
-      <PreviewCard.Root {...rest} handle={handle} />
-    </PreviewHandleContext>
-  );
-}
+export type PreviewCardContentProps = StyledProps<Omit<PreviewCardPrimitive.Popup.Props, "ref">> &
+  Pick<
+    PreviewCardPrimitive.Positioner.Props,
+    "side" | "align" | "sideOffset" | "alignOffset" | "collisionAvoidance"
+  > & {
+    /** Scopes the popup to a hue. */
+    readonly tint?: Tint;
+  };
 
-export type PreviewCardTriggerProps<Payload = unknown> = PreviewCard.Trigger.Props<Payload> &
-  RefAttributes<HTMLElement>;
-
-function PreviewCardTrigger<Payload>({
-  handle,
-  id,
-  ...rest
-}: PreviewCardTriggerProps<Payload>): ReactElement {
-  const contextHandle = use(PreviewHandleContext);
-  const generatedId = useId();
-  const triggerId = id ?? generatedId;
-  const longPress = useLongPressPreview(() => {
-    (handle ?? contextHandle)?.open(triggerId);
-  });
-
-  return <PreviewCard.Trigger {...mergeProps(rest, longPress)} id={triggerId} handle={handle} />;
-}
-
-export type PreviewCardBackdropProps = StyledProps<Omit<PreviewCard.Backdrop.Props, "ref">>;
-
-function PreviewCardBackdrop({
-  xstyle,
-  className,
-  style,
-  ...rest
-}: PreviewCardBackdropProps): ReactElement {
-  const overlayRef = useOverlayRef();
-
-  return (
-    <PreviewCard.Backdrop
-      {...rest}
-      ref={overlayRef}
-      {...mergeStyleProps(props(xstyle), className, style)}
-    />
-  );
-}
-
-export type PreviewCardPositionerProps = StyledProps<PreviewCard.Positioner.Props>;
-
-function PreviewCardPositioner({
-  positionMethod = "fixed",
-  collisionPadding = 8,
-  className,
-  style,
-  xstyle,
-  ...rest
-}: PreviewCardPositionerProps): ReactElement {
-  return (
-    <PreviewCard.Positioner
-      positionMethod={positionMethod}
-      collisionPadding={collisionPadding}
-      {...mergeStyleProps(props(styles.positioner, xstyle), className, style)}
-      {...rest}
-    />
-  );
-}
-
-export type PreviewCardPopupProps = StyledProps<Omit<PreviewCard.Popup.Props, "ref">> & {
-  /** Scopes the popup to a hue. */
-  readonly tint?: Tint;
-};
-
-function PreviewCardPopup({
+export function PreviewCardContent({
+  side = "bottom",
+  align = "center",
+  sideOffset = 4,
+  alignOffset,
+  collisionAvoidance,
   tint,
+  xstyle,
   className,
   style,
-  xstyle,
   ...rest
-}: PreviewCardPopupProps): ReactElement {
+}: PreviewCardContentProps): ReactElement {
   const overlayRef = useOverlayRef();
 
   return (
-    <PreviewCard.Popup
-      ref={overlayRef}
-      {...mergeStyleProps(
-        props(
-          tint !== undefined && surfaceTheme[tint],
-          floatingSurfaceStyles.popup,
-          styles.popup,
-          xstyle,
-        ),
-        className,
-        style,
-      )}
-      {...rest}
-    />
+    <PreviewCardPrimitive.Portal>
+      <PreviewCardPrimitive.Positioner
+        positionMethod="fixed"
+        side={side}
+        align={align}
+        sideOffset={sideOffset}
+        alignOffset={alignOffset}
+        collisionAvoidance={collisionAvoidance}
+        collisionPadding={8}
+        {...props(styles.positioner)}
+      >
+        <PreviewCardPrimitive.Popup
+          ref={overlayRef}
+          data-slot="preview-card-content"
+          {...mergeStyleProps(
+            props(
+              tint !== undefined && surfaceTheme[tint],
+              floatingSurfaceStyles.popup,
+              styles.popup,
+              xstyle,
+            ),
+            className,
+            style,
+          )}
+          {...rest}
+        />
+      </PreviewCardPrimitive.Positioner>
+    </PreviewCardPrimitive.Portal>
   );
 }
-
-const previewCardParts = {
-  Root: PreviewCardRoot,
-  Trigger: PreviewCardTrigger,
-  Portal: PreviewCard.Portal,
-  Backdrop: PreviewCardBackdrop,
-  Positioner: PreviewCardPositioner,
-  Popup: PreviewCardPopup,
-  Arrow: PreviewCard.Arrow,
-  Viewport: PreviewCard.Viewport,
-  createHandle: PreviewCard.createHandle,
-};
-
-export { previewCardParts as PreviewCard };

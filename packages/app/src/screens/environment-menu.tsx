@@ -17,6 +17,7 @@ export function EnvironmentMenu({ active }: { readonly active: boolean }): React
   const cloudReady = server.data?.kind === "connected";
 
   const startCloudChat = async (): Promise<void> => {
+    if (starting) return;
     setStarting(true);
 
     try {
@@ -51,7 +52,9 @@ export function EnvironmentMenu({ active }: { readonly active: boolean }): React
             value="cloud"
             icon="cloud"
             disabled={!cloudReady || starting}
-            meta={cloudReady ? undefined : "Unavailable"}
+            disabledReason={
+              starting ? "Starting a chat" : !cloudReady ? "Connect in Environments" : undefined
+            }
           >
             Cloud
           </MenuRadioItem>

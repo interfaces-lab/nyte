@@ -6,6 +6,7 @@ import {
   Linking,
   Pressable,
   useColorScheme,
+  View,
 } from "react-native";
 import { setStringAsync } from "expo-clipboard";
 import { SymbolView } from "expo-symbols";
@@ -84,10 +85,9 @@ function Row({ layout, children }: { layout: ConversationLayout; children: React
   );
 }
 
-/** Long-press copy keeps the transcript free of per-row copy buttons. */
 function copySheet(text: string) {
   ActionSheetIOS.showActionSheetWithOptions(
-    { options: ["Cancel", "Copy"], cancelButtonIndex: 0 },
+    { options: ["Cancel", "Copy Message"], cancelButtonIndex: 0 },
     (index) => {
       if (index === 1) void setStringAsync(text);
     },
@@ -108,7 +108,24 @@ function UserMessage({
 
   return (
     <Row layout={layout}>
-      <Pressable onLongPress={() => copySheet(text)}>
+      <Pressable
+        accessible
+        accessibilityRole="text"
+        accessibilityLabel={[
+          text,
+          Array.isArray(content) && content.some((part) => part.type !== "text")
+            ? "Attached photos"
+            : undefined,
+          note,
+        ]
+          .filter(Boolean)
+          .join(". ")}
+        accessibilityActions={text === "" ? [] : [{ name: "copy", label: "Copy Message" }]}
+        onAccessibilityAction={({ nativeEvent }) => {
+          if (nativeEvent.actionName === "copy") void setStringAsync(text);
+        }}
+        onLongPress={() => copySheet(text)}
+      >
         <Message align="end">
           <Bubble maxWidth={Math.floor(layout.contentWidth * media.bubbleMaxWidthRatio)}>
             {Array.isArray(content) ? (
@@ -148,21 +165,35 @@ function AssistantMessage({
 }) {
   return (
     <Row layout={layout}>
-      <Pressable
-        onLongPress={() => {
-          if (!streaming) copySheet(text);
-        }}
-      >
-        <Message>
-          <Bubble variant="ghost">
-            <Markdown
-              text={text}
-              width={layout.contentWidth - conversation.textInset * 2}
-              streaming={streaming}
-            />
-          </Bubble>
-        </Message>
-      </Pressable>
+      <Message>
+        <Bubble variant="ghost">
+          <Markdown
+            text={text}
+            width={layout.contentWidth - conversation.textInset * 2}
+            streaming={streaming}
+          />
+        </Bubble>
+        {!streaming ? (
+          <View style={{ alignItems: "flex-start" }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityActions={[{ name: "copy", label: "Copy Message" }]}
+              onAccessibilityAction={({ nativeEvent }) => {
+                if (nativeEvent.actionName === "copy") void setStringAsync(text);
+              }}
+              onPress={() => void setStringAsync(text)}
+              style={{
+                minWidth: controls.touchTarget,
+                minHeight: controls.touchTarget,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <html.span style={textStyles.caption}>Copy Message</html.span>
+            </Pressable>
+          </View>
+        ) : null}
+      </Message>
     </Row>
   );
 }
@@ -188,12 +219,7 @@ function Disclosure({
       >
         <html.span style={[textStyles.secondary, styles.disclosureTitle]}>{title}</html.span>
         <html.div style={styles.chevron(expanded)}>
-          <SymbolView
-            name="chevron.right"
-            size={11}
-            weight="semibold"
-            tintColor={theme.interactiveTertiary}
-          />
+          <SymbolView name="chevron.right" size={11} weight="semibold" tintColor={theme.muted} />
         </html.div>
       </html.button>
       {expanded ? (
@@ -225,7 +251,7 @@ function EditRow({
       <html.span style={[textStyles.caption, styles.editTotals]}>
         {`+${String(patch.added)} \u2212${String(patch.removed)}`}
       </html.span>
-      <SymbolView name="chevron.right" size={13} tintColor={theme.interactiveTertiary} />
+      <SymbolView name="chevron.right" size={13} tintColor={theme.muted} />
     </html.button>
   );
 }
@@ -318,7 +344,6 @@ function WorkRow({
       <html.div style={styles.work}>
         <html.button
           aria-expanded={expanded}
-          aria-label={label}
           disabled={parts.length === 0 && !live}
           onClick={() => setExpanded(!expanded)}
           style={styles.workButton}
@@ -345,7 +370,7 @@ function WorkRow({
                 name="chevron.right"
                 size={13}
                 weight="semibold"
-                tintColor={theme.interactiveTertiary}
+                tintColor={failed ? theme.danger : theme.muted}
               />
             </html.div>
           ) : null}

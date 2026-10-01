@@ -201,19 +201,21 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
             </html.p>
           )}
           {waiting !== undefined ? (
-            <GlassButton label="Answer in chat" prominent fill onPress={() => router.back()} />
+            <GlassButton label="Answer in Chat" prominent fill href={`/chat/${sessionId}`} />
           ) : changes.length > 0 ? (
             <>
               <GlassButton
-                label={merging ? "Asking Nyte to merge…" : "Ask to merge"}
-                disabled={running || merging}
+                label="Ask to Merge"
+                busy={merging}
+                disabled={running}
                 prominent
                 fill
                 onPress={() => confirmMergeRequest({ onSend: () => void merge() })}
               />
-              <html.p style={textStyles.caption}>
-                Sends a follow-up to the agent on your Mac. It runs git there and replies in the
-                conversation.
+              <html.p aria-live="polite" style={textStyles.caption}>
+                {merging
+                  ? "Asking Nyte to merge…"
+                  : "Sends a follow-up to the agent on your Mac. It runs git there and replies in the conversation."}
               </html.p>
             </>
           ) : null}
@@ -225,9 +227,8 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
               {changes.map((file) => (
                 <GroupRow
                   key={file.path}
-                  onClick={() =>
-                    router.push(`/changes/${sessionId}?path=${encodeURIComponent(file.path)}`)
-                  }
+                  href={`/changes/${sessionId}?path=${encodeURIComponent(file.path)}`}
+                  trail="push"
                 >
                   <IconTile name="doc.text" />
                   <html.div style={styles.fileText}>
@@ -240,12 +241,6 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
                     <html.span style={styles.added}>{`+${String(file.added)} `}</html.span>
                     <html.span style={styles.removed}>{`\u2212${String(file.removed)}`}</html.span>
                   </html.span>
-                  <SymbolView
-                    name="chevron.right"
-                    size={13}
-                    weight="semibold"
-                    tintColor={theme.interactiveTertiary}
-                  />
                 </GroupRow>
               ))}
             </Group>

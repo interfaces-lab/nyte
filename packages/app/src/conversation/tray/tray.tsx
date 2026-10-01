@@ -6,6 +6,7 @@ import type { ReactElement, ReactNode, Ref } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
+import { useOverlayRef } from "@nyte-ai/ui/overlay";
 import { glyph } from "@nyte-ai/ui/schema.stylex";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
@@ -162,11 +163,13 @@ export function Tray({
   readonly children: ReactNode;
 }): ReactElement {
   const reducedMotion = useReducedMotion();
+  const overlayRef = useOverlayRef();
 
   return (
     <AnimatePresence initial={false}>
       {open && (
         <motion.section
+          ref={overlayRef}
           key="surface"
           id={id}
           tabIndex={-1}

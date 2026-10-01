@@ -1,3 +1,4 @@
+import { SwitchField, type SwitchFieldProps } from "@nyte-ai/ui/switch";
 import { props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
@@ -40,4 +41,11 @@ export function SettingsRow({
       {detail !== undefined && <div {...props(settingsPatterns.rowDetail)}>{detail}</div>}
     </div>
   );
+}
+
+export function SettingsSwitchRow({
+  title,
+  ...rest
+}: Omit<SwitchFieldProps, "label" | "xstyle"> & { readonly title: string }): ReactElement {
+  return <SwitchField {...rest} label={title} xstyle={settingsPatterns.row} />;
 }

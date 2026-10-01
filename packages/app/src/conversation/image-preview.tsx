@@ -1,11 +1,11 @@
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { row, shape } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
-import { Hint } from "@nyte-ai/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 
 const styles = create({
@@ -68,13 +68,17 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    width: 40,
-    height: 40,
+    width: { default: 40, "@media (pointer: coarse)": row.heightMd },
+    height: { default: 40, "@media (pointer: coarse)": row.heightMd },
     padding: 0,
     borderStyle: "none",
     borderRadius: shape.control,
     backgroundColor: { default: "transparent", ":hover": role.bgHover },
-    color: role.contentInteractiveSecondary,
+    color: {
+      default: role.contentSecondary,
+      ":hover": role.contentPrimary,
+      ":active": role.contentPrimary,
+    },
     cursor: appearance.cursorInteractive,
   },
   image: {
@@ -101,18 +105,20 @@ export function ImagePreview({
 }): ReactElement {
   return (
     <Dialog.Root>
-      <Hint
-        content={name}
-        trigger={
-          <Dialog.Trigger
-            type="button"
-            aria-label={`Preview ${name}`}
-            xstyle={[surfaceTheme.gray, styles.trigger, focus.ring]}
-          >
-            <img src={src} alt={name} {...props(styles.thumbnail, compact && styles.compact)} />
-          </Dialog.Trigger>
-        }
-      />
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Dialog.Trigger
+              type="button"
+              aria-label={`Preview ${name}`}
+              xstyle={[surfaceTheme.gray, styles.trigger, focus.ring]}
+            >
+              <img src={src} alt={name} {...props(styles.thumbnail, compact && styles.compact)} />
+            </Dialog.Trigger>
+          }
+        />
+        <TooltipContent>{name}</TooltipContent>
+      </Tooltip>
       <Dialog.Popup xstyle={styles.popup}>
         <div {...props(styles.toolbar)}>
           <Dialog.Title xstyle={styles.title}>{name}</Dialog.Title>

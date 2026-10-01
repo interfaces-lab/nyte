@@ -1,5 +1,5 @@
 import { HStack, Host, Image, Menu, Text, Button } from "@expo/ui/swift-ui";
-import { buttonStyle, font, foregroundStyle } from "@expo/ui/swift-ui/modifiers";
+import { buttonStyle, frame, font, foregroundStyle } from "@expo/ui/swift-ui/modifiers";
 import { controls, typography, useTheme } from "../theme.ts";
 
 /**
@@ -28,7 +28,7 @@ export function ContextRow({
             <Image systemName="chevron.down" size={10} modifiers={[foregroundStyle(theme.muted)]} />
           </HStack>
         }
-        modifiers={[buttonStyle("plain")]}
+        modifiers={[buttonStyle("plain"), frame({ minHeight: controls.touchTarget })]}
       >
         {heads.map((name) => (
           <Button
@@ -45,4 +45,4 @@ export function ContextRow({
 
 const chipFont = { size: typography.caption.fontSize, weight: "medium" } as const;
 
-const headHost = { height: controls.metaTarget } as const;
+const headHost = { height: controls.touchTarget } as const;

@@ -4,6 +4,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Icon, type IconProps } from "@nyte-ai/ui/icon";
 import { Kbd, type KbdProps } from "@nyte-ai/ui/kbd";
 import { Menu, type MenuProps } from "@nyte-ai/ui/menu";
+import { TooltipContent } from "@nyte-ai/ui/tooltip";
 import {
   clientActionAriaShortcut,
   clientActionKeys,
@@ -85,11 +86,11 @@ export function ContextSelector({
       open={open}
       onOpenChange={setOpen}
       hint={{
-        side: "top",
         disabled: open,
-        xstyle: contextStyles.hint,
         content: (
-          <ContextHint label={action.label} value={value} keys={clientActionKeys(action, mac)} />
+          <TooltipContent side="top" xstyle={contextStyles.hint}>
+            <ContextHint label={action.label} value={value} keys={clientActionKeys(action, mac)} />
+          </TooltipContent>
         ),
       }}
       trigger={

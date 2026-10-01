@@ -7,7 +7,7 @@ import "@fontsource-variable/inter/opsz.css";
 import "@nyte-ai/app/theme/global.css";
 import "@nyte-ai/app/theme/focus-modality.ts";
 import "./shell/reset.css";
-import { HintProvider } from "@nyte-ai/ui/tooltip";
+import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { queryClient } from "@nyte-ai/app/queries.ts";
 import { router } from "./router";
 
@@ -18,9 +18,9 @@ if (root === null) throw new Error("index.html is missing #root");
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <HintProvider>
+      <TooltipProvider>
         <RouterProvider router={router} />
-      </HintProvider>
+      </TooltipProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

@@ -191,6 +191,11 @@ export function SubagentTray({
         onClose={close}
         xstyle={view.kind === "detail" && styles.detail(availableHeight)}
       >
+        {pendingAction && (
+          <div role="status" {...props(trayParts.notice)}>
+            {stopAll.isPending ? "Stopping agents…" : "Stopping agent…"}
+          </div>
+        )}
         {view.kind === "list" && (
           <>
             <div {...props(trayStyles.header)}>
@@ -202,7 +207,10 @@ export function SubagentTray({
                       ? "Stop all active agents"
                       : `Confirm stopping ${String(stopCandidates.length)} active agents`
                   }
-                  disabled={pendingAction}
+                  tone="danger"
+                  loading={stopAll.isPending}
+                  disabled={stop.isPending}
+                  disabledReason="An agent is stopping."
                   onClick={() => {
                     if (stopCandidates === undefined) {
                       setStopCandidates(stoppable.map((agent) => agent.sessionId));
@@ -219,11 +227,17 @@ export function SubagentTray({
                     setStopCandidates(undefined);
                   }}
                 >
-                  {stopCandidates === undefined ? "Stop all" : "Confirm"}
+                  Stop Agents
                 </Button>
               )}
               <TrayIconAction icon="close" label="Close agents" onClick={close} />
             </div>
+            {stopCandidates !== undefined && (
+              <div role="status" {...props(trayParts.notice)}>
+                Stop {String(stopCandidates.length)} active agents? Select Stop Agents again to stop
+                them.
+              </div>
+            )}
             <div
               data-nyte-scrollport
               {...props(trayStyles.list, trayParts.listHeight(availableHeight))}
@@ -278,8 +292,12 @@ export function SubagentTray({
               {selected !== undefined &&
                 !("kind" in selected) &&
                 trayState(selected) !== "inactive" && (
-                  <Button disabled={pendingAction} onClick={() => stop.mutate(selectedId)}>
-                    Stop
+                  <Button
+                    tone="danger"
+                    loading={pendingAction}
+                    onClick={() => stop.mutate(selectedId)}
+                  >
+                    Stop Agent
                   </Button>
                 )}
               <TrayIconAction

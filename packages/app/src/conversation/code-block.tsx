@@ -7,7 +7,7 @@ import { props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import type { ReactElement } from "react";
-import { Hint } from "@nyte-ai/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Button } from "@nyte-ai/ui/button";
 import { keys } from "../query-keys.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
@@ -317,23 +317,25 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
 
   return (
     <figure ref={figure} {...props(codeBlockStyles.figure)}>
-      <Hint
-        content={copied ? "Copied" : "Copy code"}
-        trigger={
-          <Button
-            iconOnly
-            icon={copied ? "checkmark" : "copy"}
-            aria-label={copied ? "Code copied" : "Copy code"}
-            onClick={() => {
-              navigator.clipboard
-                .writeText(code)
-                .then(() => setCopiedCode(code))
-                .catch(() => undefined);
-            }}
-            xstyle={codeBlockStyles.copy}
-          />
-        }
-      />
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              iconOnly
+              icon={copied ? "checkmark" : "copy"}
+              aria-label={language === "" ? "Copy code block" : `Copy ${language} code block`}
+              onClick={() => {
+                navigator.clipboard
+                  .writeText(code)
+                  .then(() => setCopiedCode(code))
+                  .catch(() => undefined);
+              }}
+              xstyle={codeBlockStyles.copy}
+            />
+          }
+        />
+        <TooltipContent>{copied ? "Copied" : "Copy code"}</TooltipContent>
+      </Tooltip>
       <div data-nyte-scrollport {...props(codeBlockStyles.scroll)}>
         {html === undefined ? (
           <pre {...props(codeBlockStyles.pre)}>

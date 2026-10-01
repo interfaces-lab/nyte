@@ -13,9 +13,9 @@ import { Menu, MenuItem } from "@nyte-ai/ui/menu";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { nyte } from "../nyte.ts";
-import { glyph, shape } from "@nyte-ai/ui/schema.stylex";
+import { button, glyph, shape } from "@nyte-ai/ui/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { appearance, motion, role, type } from "@nyte-ai/ui/vars.stylex";
+import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 import {
   activeWorkbenchTab,
   defaultWorkbenchTab,
@@ -37,38 +37,32 @@ import { isJobTerminal, terminalActions, useTerminalRuntime } from "./terminal-s
 import type { TerminalTab } from "./terminal-store.ts";
 import { fileActions, useFileTabs } from "./file-store.ts";
 
-const TAB_CONTENT_FADE =
-  "linear-gradient(to right, black calc(100% - 36px), transparent calc(100% - 12px))";
-
 const styles = create({
-  root: { display: "flex", alignItems: "center", gap: 1, flex: 1, minWidth: 0 },
+  root: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+    WebkitAppRegion: "drag",
+  },
+  control: { WebkitAppRegion: "no-drag" },
   tabs: { display: "flex", minWidth: 0, overflowX: "auto", scrollbarWidth: "none" },
-  list: { display: "flex", alignItems: "center", gap: 1, minWidth: 0 },
+  list: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    minWidth: 0,
+  },
   item: {
-    "--_tab-close-opacity": {
-      default: "0",
-      ":hover": "1",
-      ":focus-within": "1",
-      "@media (hover: none)": "1",
-    },
-    "--_tab-close-pointer-events": {
-      default: "none",
-      ":hover": "auto",
-      ":focus-within": "auto",
-      "@media (hover: none)": "auto",
-    },
-    "--_tab-content-mask": {
-      default: "none",
-      ":hover": TAB_CONTENT_FADE,
-      ":focus-within": TAB_CONTENT_FADE,
-      "@media (hover: none)": TAB_CONTENT_FADE,
-    },
     position: "relative",
     display: "flex",
     alignItems: "center",
     flexShrink: 0,
     maxWidth: 200,
-    height: 26,
+    height: button.heightSm,
+    minHeight: { default: 24, "@media (pointer: coarse)": 44 },
+    WebkitAppRegion: "no-drag",
     borderRadius: shape.control,
     backgroundColor: { default: "transparent", ":hover": role.bgHover },
     color: role.contentInteractiveSecondary,
@@ -95,11 +89,14 @@ const styles = create({
     alignItems: "center",
     gap: 6,
     minWidth: 0,
-    paddingInlineEnd: 0,
-    WebkitMaskImage: "var(--_tab-content-mask)",
-    maskImage: "var(--_tab-content-mask)",
   },
-  agentTerminal: { color: role.contentSecondary },
+  agentTerminal: {
+    color: {
+      default: role.contentSecondary,
+      ":hover": role.contentPrimary,
+      ":focus-within": role.contentPrimary,
+    },
+  },
   label: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
   preview: { fontStyle: "italic" },
   tabIcon: { display: "inline-flex" },
@@ -116,19 +113,15 @@ const styles = create({
     height: glyph.box,
     flexShrink: 0,
   },
-  // The tab reveals its close button; the button itself stays stock.
   close: {
-    position: "absolute",
-    insetBlock: 0,
-    insetInlineEnd: 4,
-    zIndex: 1,
     display: "flex",
     alignItems: "center",
-    opacity: "var(--_tab-close-opacity)",
-    pointerEvents: "var(--_tab-close-pointer-events)",
-    transitionProperty: "opacity",
-    transitionDuration: motion.durationFast,
-    transitionTimingFunction: motion.easeOut,
+    justifyContent: "center",
+    flexShrink: 0,
+    width: { default: 24, "@media (pointer: coarse)": 44 },
+    height: "100%",
+    marginInlineStart: 4,
+    marginInlineEnd: 8,
   },
 });
 
@@ -272,7 +265,12 @@ export function WorkbenchTabStrip({
               <div
                 key={tab.id}
                 role="presentation"
-                {...props(styles.item, activeValue === tab.id && styles.active)}
+                {...props(
+                  agentTerminal && surfaceTheme.purple,
+                  styles.item,
+                  agentTerminal && styles.agentTerminal,
+                  activeValue === tab.id && styles.active,
+                )}
                 onAuxClick={(event) => {
                   if (event.button === 1) {
                     event.preventDefault();
@@ -310,11 +308,7 @@ export function WorkbenchTabStrip({
                 >
                   <span
                     data-agent-terminal={agentTerminal ? "true" : undefined}
-                    {...props(
-                      agentTerminal && surfaceTheme.purple,
-                      styles.content,
-                      agentTerminal && styles.agentTerminal,
-                    )}
+                    {...props(styles.content)}
                   >
                     {tab.kind === "file" ? (
                       <FileTypeIcon path={tab.path} />
@@ -340,7 +334,8 @@ export function WorkbenchTabStrip({
                 </Tabs.Tab>
                 <span {...props(styles.close)}>
                   <Button
-                    size="2xs"
+                    size="sm"
+                    variant="plain"
                     iconOnly
                     icon="x"
                     aria-label={`Close ${label} tab`}
@@ -392,41 +387,43 @@ export function WorkbenchTabStrip({
           })}
         </Tabs.List>
       </Tabs.Root>
-      <Menu
-        label="New workbench tab"
-        trigger={<Button iconOnly icon="plus" aria-label="New workbench tab" />}
-      >
-        {workbenchTabs(scope, capabilities).map((kind) => (
-          <MenuItem
-            key={kind}
-            icon={tabIcons[kind]}
-            onSelect={() => {
-              if (kind === "terminal") {
-                newTerminal(viewKey, workspacePath);
+      <span {...props(styles.control)}>
+        <Menu
+          label="New workbench tab"
+          trigger={<Button iconOnly icon="plus" aria-label="New workbench tab" />}
+        >
+          {workbenchTabs(scope, capabilities).map((kind) => (
+            <MenuItem
+              key={kind}
+              icon={tabIcons[kind]}
+              onSelect={() => {
+                if (kind === "terminal") {
+                  newTerminal(viewKey, workspacePath);
 
-                return;
-              }
+                  return;
+                }
 
-              workbenchController.actions.openTab({
-                view: viewKey,
-                tab: defaultWorkbenchTab(kind),
-                activate: true,
-              });
-            }}
-          >
-            {workbenchKindLabel(kind)}
-          </MenuItem>
-        ))}
-      </Menu>
+                workbenchController.actions.openTab({
+                  view: viewKey,
+                  tab: defaultWorkbenchTab(kind),
+                  activate: true,
+                });
+              }}
+            >
+              {workbenchKindLabel(kind)}
+            </MenuItem>
+          ))}
+        </Menu>
+      </span>
       <ConfirmDialog
         open={pendingFile !== undefined}
         pending={pendingFile?.saving === true}
         pendingLabel="Saving…"
         error={undefined}
         returnFocusRef={fileCloseRef}
-        title="Discard unsaved changes?"
+        title="Discard Changes"
         description={`Your changes to ${pendingFile?.displayPath ?? "this file"} will be lost.`}
-        confirmLabel="Discard changes"
+        confirmLabel="Discard Changes"
         onOpenChange={() => fileActions.cancelClose(viewKey)}
         onConfirm={() => {
           fileActions.discardClose(viewKey);
@@ -438,13 +435,9 @@ export function WorkbenchTabStrip({
         pending={terminalClose.kind === "closing"}
         error={terminalClose.kind === "confirming" ? terminalClose.error : undefined}
         returnFocusRef={terminalCloseRef}
-        title={
-          terminalClose.kind === "closed"
-            ? "Close terminal?"
-            : `Close ${terminalClose.terminal.title}?`
-        }
+        title="Close Terminal"
         description="This ends this shell session and any processes running in it."
-        confirmLabel="Close terminal"
+        confirmLabel="Close Terminal"
         pendingLabel="Closing…"
         onOpenChange={() => setTerminalClose({ kind: "closed" })}
         onConfirm={() => {

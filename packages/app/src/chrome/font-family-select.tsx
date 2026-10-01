@@ -88,7 +88,7 @@ export function FontFamilySelect<T extends string>({
                 </Autocomplete.Group>
               )}
             </Autocomplete.List>
-            <Autocomplete.Empty>No matching fonts</Autocomplete.Empty>
+            <Autocomplete.Empty>No fonts match &quot;{search}&quot;</Autocomplete.Empty>
           </Autocomplete.Popup>
         </Autocomplete.Positioner>
       </Autocomplete.Portal>

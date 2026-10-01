@@ -61,7 +61,6 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    color: role.contentInteractiveTertiary,
     transform: "rotate(var(--_collapsible-chevron-rotate, 0deg))",
     transitionProperty: "transform",
     transitionDuration: {

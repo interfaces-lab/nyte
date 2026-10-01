@@ -73,7 +73,7 @@ function SessionRow({
     >
       {selected && <Row.Backdrop xstyle={sidebarStyles.sessionSelection} />}
       <Row.Primary
-        xstyle={[sidebarStyles.rowPrimary, unreachable && styles.unreachable]}
+        xstyle={[unreachable && styles.unreachable]}
         aria-current={selected ? "page" : undefined}
         onClick={onSelect}
       >
@@ -83,10 +83,10 @@ function SessionRow({
           <Leading row={row} elsewhere={elsewhere} />
         </Row.Leading>
         {row.ask === undefined ? (
-          <Row.Label xstyle={sidebarStyles.sessionLabel}>{row.title}</Row.Label>
+          <Row.Label>{row.title}</Row.Label>
         ) : (
           <Row.Body>
-            <Row.Label xstyle={sidebarStyles.sessionLabel}>{row.title}</Row.Label>
+            <Row.Label>{row.title}</Row.Label>
             <Row.Description
               xstyle={
                 row.mark === "failed"
@@ -100,15 +100,10 @@ function SessionRow({
         )}
         <Row.Meta xstyle={sidebarStyles.rowMeta}>{row.elapsed}</Row.Meta>
       </Row.Primary>
-      <Row.Actions
-        placement="overlay"
-        xstyle={[sidebarStyles.rowActions, sidebarStyles.rowActionsBesideMeta]}
-      >
+      <Row.Actions>
         <Button size="2xs" iconOnly icon="pin" aria-label="Pin" />
         <Button size="2xs" iconOnly aria-label="Archive">
-          <span {...props(sidebarStyles.actionGlyphArchive)}>
-            <Icon name="archive" size={12} />
-          </span>
+          <Icon name="archive" size={12} />
         </Button>
       </Row.Actions>
     </Row>

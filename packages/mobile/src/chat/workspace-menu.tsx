@@ -1,9 +1,17 @@
 import { useRef, useState } from "react";
 import { Button, HStack, Host, Image, Menu, Text } from "@expo/ui/swift-ui";
-import { buttonStyle, font, foregroundStyle } from "@expo/ui/swift-ui/modifiers";
+import {
+  buttonStyle,
+  disabled,
+  frame,
+  font,
+  foregroundStyle,
+  accessibilityValue,
+} from "@expo/ui/swift-ui/modifiers";
 import type { NyteClient } from "@nyte-ai/client";
 import type { WorkspaceInfo, WorkspaceSelectInput, WorkspaceSelection } from "@nyte-ai/protocol";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AccessibilityInfo } from "react-native";
 import { css, html } from "react-strict-dom";
 import { describeHostError } from "../connection/connection.ts";
 import { controls, spacing, textStyles, typography, useTheme } from "../theme.ts";
@@ -53,7 +61,8 @@ export function WorkspacePicker({
     },
   });
 
-  const switching = useRef(false);
+  const inFlight = useRef(false);
+  const [switching, setSwitching] = useState(false);
   const [caption, setCaption] = useState<string>();
 
   const menu: WorkspaceMenu =
@@ -70,19 +79,17 @@ export function WorkspacePicker({
   const choose = (input: WorkspaceSelectInput) => {
     const data = menuQuery.data;
 
-    if (data == null || switching.current) return;
+    if (data == null || inFlight.current) return;
 
     if (selectionMatches(data.selection, input)) return;
-    // One flight at a time: the ref latches before the host call starts, so a
-    // second tap can never enter while a select is in flight.
-    switching.current = true;
+    inFlight.current = true;
+    setSwitching(true);
+    AccessibilityInfo.announceForAccessibility("Switching workspace");
     setCaption(undefined);
     const flight = client.workspace.select(input);
     onSelecting?.(flight.then(() => undefined));
     void flight
       .then((outcome) => {
-        switching.current = false;
-
         if (outcome.kind === "opened") {
           queryClient.setQueryData(
             ["workspace-picker"],
@@ -95,8 +102,11 @@ export function WorkspacePicker({
         }
       })
       .catch((cause: unknown) => {
-        switching.current = false;
         setCaption(describeHostError(cause));
+      })
+      .finally(() => {
+        inFlight.current = false;
+        setSwitching(false);
       });
   };
 
@@ -113,7 +123,7 @@ export function WorkspacePicker({
   const selected = menu.selection;
 
   return (
-    <html.div style={styles.row}>
+    <html.div style={styles.row} aria-busy={switching}>
       <Host matchContents={{ horizontal: true }} style={chipHost} ignoreSafeArea="all">
         <Menu
           label={
@@ -128,10 +138,16 @@ export function WorkspacePicker({
               />
             </HStack>
           }
-          modifiers={[buttonStyle("plain")]}
+          modifiers={[
+            buttonStyle("plain"),
+            frame({ minHeight: controls.touchTarget }),
+            disabled(switching),
+            accessibilityValue(switching ? "Switching workspace" : workspaceChipLabel(selected)),
+          ]}
         >
           <Button
             label="Home"
+            modifiers={[disabled(switching)]}
             systemImage={selected.kind === "home" ? "checkmark" : undefined}
             onPress={() => choose({ kind: "home" })}
           />
@@ -139,6 +155,7 @@ export function WorkspacePicker({
             <Button
               key={item.path}
               label={item.name}
+              modifiers={[disabled(switching)]}
               systemImage={
                 selected.kind === "project" && selected.workspace.path === item.path
                   ? "checkmark"
@@ -149,7 +166,11 @@ export function WorkspacePicker({
           ))}
         </Menu>
       </Host>
-      {caption === undefined ? null : (
+      {switching ? (
+        <html.p role="status" style={textStyles.caption}>
+          Switching workspace…
+        </html.p>
+      ) : caption === undefined ? null : (
         <html.p role="status" style={textStyles.caption}>
           {caption}
         </html.p>
@@ -160,7 +181,7 @@ export function WorkspacePicker({
 
 const chipFont = { size: typography.caption.fontSize, weight: "medium" } as const;
 
-const chipHost = { height: controls.metaTarget } as const;
+const chipHost = { height: controls.touchTarget } as const;
 
 const styles = css.create({
   row: {

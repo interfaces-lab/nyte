@@ -178,3 +178,7 @@ export const shellActions = Object.freeze({
 export function useShellState(): ShellState {
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
+
+export function subscribeShellStage(listener: (stage: ShellStage) => void): () => void {
+  return subscribe(() => listener(state.stage));
+}

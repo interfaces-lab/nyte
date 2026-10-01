@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { useMountEffect } from "../use-mount-effect.ts";
-import { StyleSheet, Text, useWindowDimensions, View, useColorScheme } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+  useColorScheme,
+} from "react-native";
 import { BlurView } from "expo-blur";
 import { OverKeyboardView } from "react-native-keyboard-controller";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
@@ -198,16 +205,53 @@ export function ThinkingSelector({
       scheduleOnRN(onCommit, snapped);
     });
 
-  const backdrop = Gesture.Tap().onEnd(() => scheduleOnRN(onClose));
+  const commitLevel = (index: number) => {
+    const next = Math.round(clamp(index, 0, span));
+    level.set(next);
+    onCommit(next);
+  };
+
+  const actionsStyle = useAnimatedStyle(() => ({
+    bottom:
+      cardDock.get() +
+      ICON_ROW_INSET +
+      SELECTOR.trackHeight / 2 +
+      SELECTOR.labelGap +
+      SELECTOR.labelSize * 1.2 +
+      8,
+  }));
 
   return (
     <OverKeyboardView visible>
       <GestureHandlerRootView style={styles.fill}>
-        <GestureDetector gesture={backdrop}>
-          <Animated.View
-            style={[StyleSheet.absoluteFill, scrimStyle, { backgroundColor: colors.scrim }]}
+        <Animated.View style={[StyleSheet.absoluteFill, scrimStyle]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close thinking selector"
+            onPress={onClose}
+            style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]}
           />
-        </GestureDetector>
+        </Animated.View>
+
+        <Animated.View style={[styles.actions, actionsStyle, rootStyle]}>
+          {levels.map((entry, index) => (
+            <Pressable
+              key={entry}
+              accessibilityRole="button"
+              accessibilityState={{ selected: titles[index] === title }}
+              onPress={() => commitLevel(index)}
+              style={[
+                styles.levelButton,
+                {
+                  backgroundColor: colors.track,
+                  borderColor: titles[index] === title ? colors.accent : colors.track,
+                },
+              ]}
+            >
+              <Text style={{ color: colors.text }}>{THINKING_LABELS[entry]}</Text>
+            </Pressable>
+          ))}
+        </Animated.View>
 
         <Animated.View style={[styles.labelHost, labelStyle]} pointerEvents="none">
           <Text style={[styles.label, { color: colors.text }]}>{title}</Text>
@@ -266,7 +310,23 @@ export function ThinkingSelector({
           </Animated.View>
 
           <GestureDetector gesture={pan}>
-            <View style={StyleSheet.absoluteFill} />
+            <View
+              style={StyleSheet.absoluteFill}
+              accessible
+              accessibilityRole="adjustable"
+              accessibilityLabel="Thinking level"
+              accessibilityValue={{
+                min: 0,
+                max: span,
+                now: Math.max(0, titles.indexOf(title)),
+                text: title,
+              }}
+              accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
+              onAccessibilityAction={({ nativeEvent }) => {
+                if (nativeEvent.actionName === "increment") commitLevel(level.get() + 1);
+                if (nativeEvent.actionName === "decrement") commitLevel(level.get() - 1);
+              }}
+            />
           </GestureDetector>
         </Animated.View>
       </GestureHandlerRootView>
@@ -333,6 +393,24 @@ function Tick({
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  actions: {
+    position: "absolute",
+    left: SELECTOR.trackInset,
+    right: SELECTOR.trackInset,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 8,
+  },
+  levelButton: {
+    borderWidth: 1,
+    minWidth: 44,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   track: {
     position: "absolute",
     justifyContent: "center",

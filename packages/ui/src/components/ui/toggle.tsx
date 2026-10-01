@@ -9,7 +9,7 @@ import {
   type ButtonElementProps,
   type ButtonSizing,
 } from "./button.tsx";
-import { Icon } from "./icon.tsx";
+import { ControlGlyphs, Icon } from "./icon.tsx";
 
 export type ToggleProps = Omit<
   ButtonElementProps,
@@ -56,8 +56,10 @@ export function Toggle({
         indicator === "glyph",
       )}
     >
-      {icon !== undefined && <Icon name={icon} size={buttonGlyphSize(size, iconOnly)} />}
-      {children}
+      <ControlGlyphs>
+        {icon !== undefined && <Icon name={icon} size={buttonGlyphSize(size, iconOnly)} />}
+        {children}
+      </ControlGlyphs>
     </TogglePrimitive>
   );
 }

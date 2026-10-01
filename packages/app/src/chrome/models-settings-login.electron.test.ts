@@ -159,7 +159,7 @@ beforeEach(async () => {
   await page.reload();
   await page.locator("#root").waitFor();
   await catalogBecomes(disconnected);
-  await page.getByRole("button", { name: "Connect", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Connect Provider", exact: true }).waitFor();
 });
 
 /** The host's catalog changed; the renderer must re-read it, as after any sign-in. */
@@ -188,7 +188,7 @@ function setFailures(failures: Partial<HarnessFailures>): Promise<void> {
 
 /** Start a connection and answer with the attempt ID the renderer chose. */
 async function startSignIn(): Promise<string> {
-  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await page.getByRole("button", { name: "Connect Provider", exact: true }).click();
   await page.getByText("Waiting for the browser").waitFor();
   const calls = await recordedCalls();
   const login = calls.find((call) => call.path === "host.login");
@@ -214,8 +214,8 @@ test(
     await instructions.waitFor();
     assert.equal(await page.getByRole("button", { name: "Cancel" }).count(), 1);
 
-    await page.getByRole("button", { name: "Copy code" }).click();
-    await page.getByRole("button", { name: "Copied" }).waitFor();
+    await page.getByRole("button", { name: "Copy Sign-In Code" }).click();
+    await page.getByRole("status").filter({ hasText: "Sign-in code copied" }).waitFor();
     assert.deepEqual(await page.evaluate(() => [...window.nyteLoginHarness.clipboard]), [
       "ABCD-1234",
     ]);
@@ -244,7 +244,7 @@ test(
     await page.getByText("Connected to GitHub Copilot").waitFor();
     await page.getByRole("region", { name: "Connected providers" }).waitFor();
     await code.waitFor({ state: "detached" });
-    await page.getByRole("button", { name: "Disconnect", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Disconnect Provider", exact: true }).waitFor();
     const defaultModel = page.getByRole("combobox", { name: "Default model" });
     await defaultModel.waitFor();
     assert.equal(await defaultModel.isDisabled(), false, "two listed models make it a choice");
@@ -277,7 +277,8 @@ test(
     const cancel = page.getByRole("button", { name: "Cancel" });
     await cancel.click();
     await page.getByText("Cancelling").waitFor();
-    assert.equal(await cancel.isDisabled(), true);
+    assert.equal(await cancel.getAttribute("aria-busy"), "true");
+    assert.equal(await cancel.evaluate((button) => button.matches(":disabled")), false);
     const cancels = (await recordedCalls()).filter((call) => call.path === "host.cancelLogin");
     assert.deepEqual(
       cancels.map((call) => call.input),
@@ -285,7 +286,7 @@ test(
     );
 
     await settleLogin({ kind: "cancelled" });
-    await page.getByRole("button", { name: "Connect", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Connect Provider", exact: true }).waitFor();
     await page.getByRole("region", { name: "Popular providers" }).waitFor();
     await page.getByLabel("Device code").waitFor({ state: "detached" });
     assert.equal(
@@ -314,7 +315,7 @@ test(
     await page.getByRole("link", { name: "Open github.com" }).click();
     await page.getByText(/Couldn't open github\.com/).waitFor();
 
-    await page.getByRole("button", { name: "Copy code" }).click();
+    await page.getByRole("button", { name: "Copy Sign-In Code" }).click();
     await page
       .getByRole("alert")
       .filter({ hasText: /Couldn’t copy the code/ })
@@ -325,7 +326,7 @@ test(
     await setFailures({ cancel: false });
     await cancel.click();
     await settleLogin({ kind: "cancelled" });
-    await page.getByRole("button", { name: "Connect", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Connect Provider", exact: true }).waitFor();
     assert.deepEqual(pageErrors, []);
   },
   TEST_TIMEOUT,
@@ -338,7 +339,7 @@ test(
     await emit(deviceCode(attempt));
     await page.evaluate(() => window.nyteLoginHarness.rejectLogin());
     await page.getByText(/Couldn't sign in to GitHub Copilot/).waitFor();
-    await page.getByRole("button", { name: "Connect", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Connect Provider", exact: true }).waitFor();
     await page.getByLabel("Device code").waitFor({ state: "detached" });
     assert.deepEqual(pageErrors, []);
   },

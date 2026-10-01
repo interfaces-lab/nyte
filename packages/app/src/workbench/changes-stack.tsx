@@ -34,10 +34,11 @@ const styles = create({
   headerRow: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
     boxSizing: "border-box",
     width: "100%",
-    height: workbench.headerHeight,
+    minHeight: workbench.headerHeight,
+    paddingBlock: { default: 0, "@media (pointer: coarse)": 4 },
     paddingInlineEnd: 8,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
@@ -183,20 +184,21 @@ export function ChangesStack({
           collapsed={collapsed.has(item.path)}
           onToggleCollapsed={onToggleCollapsed}
         >
-          <Button
-            iconOnly
-            icon="refresh"
-            aria-label={`Revert ${item.path}`}
-            disabled={onRevertPath === undefined}
-            onClick={() => onRevertPath?.(item.path)}
-          />
+          {onRevertPath !== undefined && (
+            <Button
+              iconOnly
+              icon="refresh"
+              aria-label={`Revert ${item.path}`}
+              onClick={() => onRevertPath(item.path)}
+            />
+          )}
           <ReviewCheckbox
             state={viewed}
             label={
               viewed === "viewed"
                 ? `Mark ${item.path} not viewed`
                 : viewed === "changed"
-                  ? `${item.path} changed since you viewed it`
+                  ? `Mark ${item.path} viewed; changed since last view`
                   : `Mark ${item.path} viewed`
             }
             onChange={(next) => onViewedChange(item.path, next)}

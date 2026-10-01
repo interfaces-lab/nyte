@@ -16,7 +16,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Menu, MenuRadioGroup, MenuRadioItem } from "@nyte-ai/ui/menu";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { Hint } from "@nyte-ai/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import {
   AddToChat,
@@ -129,20 +129,22 @@ export function DiffStack(componentProps: DiffStackProps): ReactElement {
             ))}
           </MenuRadioGroup>
         </Menu>
-        <Hint
-          content={`${sum(componentProps.files, "added")} added, ${sum(componentProps.files, "removed")} removed in all files`}
-          trigger={
-            <span {...props(styles.count)}>
-              <span {...props([intent.success, styles.added])}>
-                +{sum(implementation, "added")}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span {...props(styles.count)}>
+                <span {...props([intent.success, styles.added])}>
+                  +{sum(implementation, "added")}
+                </span>
+                <span {...props([intent.danger, styles.removed])}>
+                  −{sum(implementation, "removed")}
+                </span>
+                {implementation.length !== componentProps.files.length && <span>*</span>}
               </span>
-              <span {...props([intent.danger, styles.removed])}>
-                −{sum(implementation, "removed")}
-              </span>
-              {implementation.length !== componentProps.files.length && <span>*</span>}
-            </span>
-          }
-        />
+            }
+          />
+          <TooltipContent>{`${sum(componentProps.files, "added")} added, ${sum(componentProps.files, "removed")} removed in all files`}</TooltipContent>
+        </Tooltip>
         <span {...props(styles.spacer)} />
         <Toggle
           iconOnly

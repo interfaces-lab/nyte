@@ -119,7 +119,7 @@ function AvailableBackgroundWork({
       {jobs.isError && (
         <div role="alert" {...props(intent.danger, trayParts.notice, trayParts.error)}>
           Couldn’t load background work.
-          <Button onClick={() => void jobs.refetch()}>Try again</Button>
+          <Button onClick={() => void jobs.refetch()}>Try Again</Button>
         </div>
       )}
       {!trayOpen && hasTerminals && (
@@ -150,7 +150,10 @@ function AvailableBackgroundWork({
                 ? `Confirm stopping ${String(stopCandidates.length)} running terminals`
                 : "Stop all running terminals"
             }
-            disabled={pendingAction}
+            tone="danger"
+            loading={stopAll.isPending}
+            disabled={cancel.isPending}
+            disabledReason="A terminal is stopping."
             onClick={() => {
               if (stopCandidates === undefined) {
                 setStopCandidates(liveTerminals.map((job) => job.id));
@@ -162,16 +165,22 @@ function AvailableBackgroundWork({
               setStopCandidates(undefined);
             }}
           >
-            {stopCandidates !== undefined ? "Confirm" : "Stop all"}
+            Stop Terminals
           </Button>
           <TrayIconAction icon="close" label="Close terminal list" onClick={close} />
         </div>
+        {stopCandidates !== undefined && (
+          <div role="status" {...props(trayParts.notice)}>
+            Stop {String(stopCandidates.length)} running terminals? Select Stop Terminals again to
+            stop them.
+          </div>
+        )}
         <div
           data-nyte-scrollport
           {...props(trayStyles.list, trayParts.listHeight(availableHeight))}
         >
           {liveTerminals.map((job) => (
-            <Row key={job.id} xstyle={[trayParts.row, styles.row]} interactive revealActions>
+            <Row key={job.id} xstyle={[trayParts.row, styles.row]} interactive>
               <Row.Primary
                 id={`${trayId}-${job.id}`}
                 aria-label={`Open terminal for ${job.command}`}
@@ -189,15 +198,23 @@ function AvailableBackgroundWork({
               <Row.Actions>
                 <Button
                   aria-description={`Stop ${job.command}`}
+                  tone="danger"
+                  loading={stopAll.isPending || (cancel.isPending && cancel.variables === job.id)}
                   disabled={pendingAction}
+                  disabledReason="A terminal is stopping."
                   onClick={() => cancel.mutate(job.id)}
                 >
-                  Stop
+                  Stop Terminal
                 </Button>
               </Row.Actions>
             </Row>
           ))}
         </div>
+        {pendingAction && (
+          <div role="status" {...props(trayParts.notice)}>
+            {stopAll.isPending ? "Stopping terminals…" : "Stopping terminal…"}
+          </div>
+        )}
         {cancel.isSuccess && (
           <div role="status" {...props(trayParts.notice)}>
             {jobActionMessage(cancel.data)}

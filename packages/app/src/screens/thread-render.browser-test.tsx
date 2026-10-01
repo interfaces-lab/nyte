@@ -1,5 +1,5 @@
 import "../../test/window-bridge.ts";
-import { HintProvider } from "@nyte-ai/ui/tooltip";
+import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,
@@ -122,9 +122,12 @@ function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
 
+let renderFailure: unknown;
+
 async function until(predicate: () => boolean, what: string): Promise<void> {
   const deadline = performance.now() + 5_000;
   while (!predicate()) {
+    if (renderFailure !== undefined) throw renderFailure;
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
     await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
   }
@@ -165,18 +168,23 @@ export async function runTest(): Promise<string> {
   const container = document.createElement("div");
   container.style.cssText = "display:flex;width:900px;height:700px";
   document.body.append(container);
-  const root = createRoot(container);
+  renderFailure = undefined;
+  const root = createRoot(container, {
+    onUncaughtError: (error) => {
+      renderFailure = error;
+    },
+  });
   flushSync(() =>
     root.render(
       <QueryClientProvider client={queryClient}>
         <RouterContextProvider router={router}>
-          <HintProvider delay={0} closeDelay={0} timeout={0}>
+          <TooltipProvider delay={0} closeDelay={0} timeout={0}>
             <PaneControllerProvider workspaceKey="thread-render-test">
               <SessionDndProvider>
                 <ThreadScreen routeSessionId={ID} />
               </SessionDndProvider>
             </PaneControllerProvider>
-          </HintProvider>
+          </TooltipProvider>
         </RouterContextProvider>
       </QueryClientProvider>,
     ),
@@ -224,12 +232,27 @@ export async function runTest(): Promise<string> {
       "The landed message replaced its transcript row",
     );
     check(
-      container.querySelector('button[aria-label="Edit message: Pending prompt"]') === null,
+      !Array.from(pending.querySelectorAll("button")).some(
+        (button) => button.textContent?.trim() === "Edit Message",
+      ),
       "Action messages must remain read-only after landing",
     );
-    check(
-      container.querySelector('button[aria-label^="Edit message: Prompt line"]') !== null,
-      "Ordinary user messages must remain editable",
+    const editMessage = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.trim() === "Edit Message",
+    );
+    if (editMessage === undefined) throw new Error("Ordinary user messages must remain editable");
+    const editableRow = editMessage.closest("[data-sticky-user-message]");
+    if (editableRow === null) throw new Error("Missing editable message row");
+    editMessage.click();
+    await until(
+      () => editableRow.querySelector('[contenteditable="true"]') !== null,
+      "the message editor to open",
+    );
+    const editor = editableRow.querySelector('[contenteditable="true"]');
+    editor?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await until(
+      () => editableRow.querySelector('[contenteditable="true"]') === null,
+      "the message edit to cancel",
     );
     check(
       !container.textContent?.includes("Instructions for the selected Git action."),
@@ -252,18 +275,18 @@ export async function runTest(): Promise<string> {
     await until(
       () =>
         Array.from(container.querySelectorAll("button")).some(
-          (button) => button.textContent?.trim() === "Show more",
+          (button) => button.textContent?.trim() === "Show More",
         ),
       "the settled message disclosure",
     );
     const stable = textNode(container, "Stable answer")?.closest<HTMLDivElement>("[data-index]");
     const disclosure = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent?.trim() === "Show more",
+      (button) => button.textContent?.trim() === "Show More",
     );
     check(stable !== undefined, "The settled answer has a transcript row");
     if (disclosure === undefined) throw new Error("The settled message has no disclosure");
     disclosure.click();
-    await until(() => disclosure.textContent?.trim() === "Show less", "the message to expand");
+    await until(() => disclosure.textContent?.trim() === "Show Less", "the message to expand");
 
     for (let index = 0; index < 20; index += 1) {
       emit({
@@ -283,7 +306,7 @@ export async function runTest(): Promise<string> {
       "Live deltas replaced a settled transcript row",
     );
     const expandedDisclosure = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent?.trim() === "Show less",
+      (button) => button.textContent?.trim() === "Show Less",
     );
     if (expandedDisclosure === undefined)
       throw new Error("Live deltas collapsed the settled message");

@@ -8,14 +8,12 @@ import { intent } from "@nyte-ai/ui/surface-theme";
  * intermediate flickering state. Resizing writes the width straight to the
  * root variable on every pointer move and commits to the store on release,
  * so the drag never waits for React.
- *
- * Sidebar geometry is 220px by default, clamped from 190px to 400px, with an
- * 8px pointer target on the trailing edge and 8px keyboard steps.
  */
 import { create, props } from "@stylexjs/stylex";
 import { useMatch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
+import { button } from "@nyte-ai/ui/schema.stylex";
 import { sidebar } from "../theme/schema.stylex.ts";
 import { motion, role } from "@nyte-ai/ui/vars.stylex";
 import {
@@ -43,8 +41,11 @@ const styles = create({
   },
   rail: {
     display: "flex",
-    width: sidebar.width,
-    minWidth: sidebar.width,
+    width: {
+      default: `calc(${sidebar.width} - 24px)`,
+      "@media (pointer: coarse)": `calc(${sidebar.width} - ${button.heightLg})`,
+    },
+    minWidth: 0,
     minHeight: 0,
     flexShrink: 0,
     opacity: 1,
@@ -55,8 +56,9 @@ const styles = create({
     zIndex: 5,
     insetBlock: 0,
     insetInlineEnd: 0,
-    width: sidebar.handleWidth,
+    width: { default: 24, "@media (pointer: coarse)": button.heightLg },
     cursor: "col-resize",
+    touchAction: "none",
 
     outlineStyle: "none",
     "::after": {

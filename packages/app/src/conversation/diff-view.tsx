@@ -1,5 +1,5 @@
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { button, shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * One diff surface shared by transcript receipts and the Changes workbench.
  * Pierre renders the patch inside a shadow root; Nyte's tokens reach it as
@@ -13,7 +13,7 @@ import { FileDiff } from "@pierre/diffs/react";
 import { memo, useMemo } from "react";
 import type { ReactElement } from "react";
 import type { ParsedPatch } from "@nyte-ai/client";
-import { Hint } from "@nyte-ai/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import {
   PIERRE_THEME,
   PIERRE_TOKEN_CSS,
@@ -77,70 +77,35 @@ ${PIERRE_TOKEN_CSS}
   scrollbar-color: ${role.scrollbarThumb} transparent;
 }
 
-/*
- * Collapsed context between hunks. Pierre emits the row once per grid column
- * and hides the wrapper in the code column, so the count lands in the line
- * number gutter, where it is clipped to a few characters, and the wide column
- * shows a bare tinted band. Cursor puts the count in the code column instead,
- * on a band the width of the code, which is what the row is for.
- */
 [data-separator] {
   background-color: transparent;
-  /*
-   * Two rows: a band the height of one line with room above and below, so the
-   * gap reads as a break rather than another line, and the stack's arithmetic
-   * still lands on whole rows. A minimum rather than a height, because Pierre
-   * pins this row type to 32px and an expanded region has to be able to grow
-   * the row past two lines.
-   */
   height: auto;
-  min-height: calc(${diffView.lineHeight} * 2);
+  min-height: max(calc(${diffView.lineHeight} * 2), calc(${button.heightSm} + 8px));
 }
 
-/*
- * The count and the expand controls live in the gutter copy and overflow
- * across the band. That copy is the one Pierre pins while the code scrolls,
- * and it carries a z-index of 3, so they stay put, stay on top of the line
- * numbers, and stay reachable at any horizontal scroll offset. The code copy
- * keeps the band but drops its duplicates, so every control exists once.
- */
 [data-gutter] [data-separator-wrapper] {
   display: flex;
-  padding-inline-start: 8px;
+  gap: 8px;
+  width: max-content;
+  padding-inline: 8px;
   background-color: transparent;
 }
 
-[data-gutter] [data-separator-content],
-[data-gutter] [data-unmodified-lines] {
-  /* Only the text escapes the gutter; the tint must not, or it double-paints
-   * over the code copy's band. */
-  min-width: 0;
-  overflow: visible;
-}
-
-[data-content] [data-unmodified-lines],
-[data-content] [data-expand-button] {
+[data-content] [data-separator-wrapper] {
   display: none;
 }
 
-/*
- * Expansion controls. Pierre lays the buttons out as grid columns ahead of the
- * band; in this gutter copy there is no room for them, so they are lifted out
- * of flow and drawn over the leading edge of the band, where Cursor puts them,
- * and the count is indented to clear them.
- */
 [data-gutter] [data-expand-button] {
-  position: absolute;
-  inset-inline-start: 8px;
-  inset-block-start: 50%;
-  transform: translateY(-50%);
-  z-index: 1;
-  display: flex;
+  appearance: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  min-width: 0;
-  height: 20px;
+  flex: none;
+  width: ${button.heightSm};
+  min-width: 24px;
+  height: ${button.heightSm};
+  min-height: 24px;
+  padding: 0;
   border: 0;
   border-radius: ${shape.indicator};
   background-color: transparent;
@@ -148,65 +113,46 @@ ${PIERRE_TOKEN_CSS}
   cursor: ${appearance.cursorInteractive};
 }
 
-/* Up and down, when one expansion cannot close the gap, sit side by side. */
-[data-gutter] [data-expand-button] + [data-expand-button] {
-  inset-inline-start: 32px;
-}
-
 [data-gutter] [data-expand-button]:hover {
   background-color: ${role.bgHover};
   color: ${role.contentInteractivePrimary};
 }
 
-/*
- * Pierre's trailing "Expand all" stays hidden, as it is by default: the pinned
- * gutter copy is a few characters wide, so a trailing text button has nowhere
- * to sit, and repeated clicks on the chevrons reach the same lines.
- */
-[data-expand-button][data-expand-all-button] {
+[data-gutter] [data-expand-button]:focus-visible {
+  outline: 2px solid ${role.borderInteractivePrimary};
+  outline-offset: 2px;
+}
+
+[data-gutter] [data-expand-button][data-unmodified-lines] {
+  width: auto;
+  padding-inline: 8px;
+  background-color: ${role.bgMutedTranslucent};
+  color: ${role.contentSecondary};
+  font-size: 12px;
+}
+
+[data-gutter] [data-expand-all-button]:not([data-unmodified-lines]):not([data-expand-both]) {
   display: none;
 }
 
-[data-gutter] [data-separator][data-expand-index] [data-separator-content] {
-  padding-inline-start: 24px;
-}
-
-[data-gutter] [data-separator-wrapper][data-separator-multi-button] [data-separator-content] {
-  padding-inline-start: 48px;
-}
-
-[data-content] [data-separator-wrapper] {
-  display: flex;
-  padding-inline-end: 8px;
-  background-color: transparent;
-}
-
-[data-separator-content] {
-  /* The band runs the full width of the row, as Cursor's does. */
-  flex: 1;
-  background-color: ${role.bgMutedTranslucent};
-  color: ${role.contentSecondary};
-  /*
-   * Fixed like the row it sits in. The diff's line box is a fixed 20px, so a
-   * label that tracked the code font would clip against it at large sizes.
-   */
-  height: calc(${diffView.lineHeight} + 8px);
-  font-size: 12px;
-  line-height: calc(${diffView.lineHeight} + 8px);
-}
-
-/* The two column copies meet, so only the outer corners round. */
 [data-gutter] [data-separator-content] {
-  padding-inline: 8px 0;
-  border-start-start-radius: ${shape.control};
-  border-end-start-radius: ${shape.control};
+  min-width: 0;
+  padding: 0;
+  background-color: transparent;
+  overflow: visible;
 }
 
-[data-content] [data-separator-content] {
-  padding-inline: 0 8px;
-  border-start-end-radius: ${shape.control};
-  border-end-end-radius: ${shape.control};
+@media (pointer: coarse) {
+  [data-separator] {
+    min-height: 52px;
+  }
+
+  [data-gutter] [data-expand-button] {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
+
 `;
 
 /**
@@ -255,6 +201,43 @@ function applyDiffScopes(node: HTMLElement): void {
   sample.remove();
 }
 
+function adaptDiffExpanders(node: HTMLElement): void {
+  const root = node.shadowRoot;
+
+  if (root === null) return;
+
+  for (const control of root.querySelectorAll(
+    "[data-expand-index] [data-expand-button], [data-expand-index] [data-unmodified-lines]",
+  )) {
+    if (control instanceof HTMLButtonElement) continue;
+    const button = document.createElement("button");
+    button.type = "button";
+
+    for (const attribute of control.attributes) {
+      if (attribute.name !== "role") button.setAttribute(attribute.name, attribute.value);
+    }
+
+    const entireRegion =
+      control.hasAttribute("data-unmodified-lines") ||
+      control.hasAttribute("data-expand-both") ||
+      control.hasAttribute("data-expand-all-button");
+
+    if (entireRegion) {
+      button.setAttribute("data-expand-button", "");
+      button.setAttribute("data-expand-all-button", "");
+    }
+
+    button.setAttribute(
+      "aria-label",
+      entireRegion
+        ? "Expand the entire hidden region"
+        : `Show ${String(EXPANSION_LINE_COUNT)} more lines ${control.hasAttribute("data-expand-up") ? "above" : "below"}`,
+    );
+    button.append(...control.childNodes);
+    control.replaceWith(button);
+  }
+}
+
 function onPostRender(...[node, , phase]: [HTMLElement, unknown, PostRenderPhase]): void {
   if (phase === "unmount") {
     node.shadowRoot?.querySelector("pre")?.remove();
@@ -262,6 +245,7 @@ function onPostRender(...[node, , phase]: [HTMLElement, unknown, PostRenderPhase
   }
 
   applyDiffScopes(node);
+  adaptDiffExpanders(node);
 }
 
 const PATCH_OPTIONS = {
@@ -373,7 +357,10 @@ export const DiffView = memo(function DiffView({
     >
       {headed && (
         <div {...props(diffStyles.header)}>
-          <Hint content={path} trigger={<span {...props(diffStyles.path)}>{label ?? path}</span>} />
+          <Tooltip>
+            <TooltipTrigger render={<span {...props(diffStyles.path)}>{label ?? path}</span>} />
+            <TooltipContent>{path}</TooltipContent>
+          </Tooltip>
           <span
             aria-label={`${String(diff.added)} added, ${String(diff.removed)} removed`}
             {...props(diffStyles.stats)}

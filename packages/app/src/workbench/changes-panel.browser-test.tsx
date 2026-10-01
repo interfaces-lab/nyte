@@ -158,7 +158,10 @@ export async function run(): Promise<string> {
     checkTree([COMMITTED]);
     checkStack([COMMITTED]);
     checkStats(COMMITTED, "2 added, 1 removed");
-    check(revertButton(COMMITTED).disabled, "A commit diff cannot be reverted");
+    check(
+      header(COMMITTED).querySelector(`button[aria-label="Revert ${COMMITTED}"]`) === null,
+      "A historical commit offers no revert action",
+    );
 
     render({ kind: "commit", oid: PENDING_OID });
     await until(

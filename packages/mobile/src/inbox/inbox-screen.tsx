@@ -1,4 +1,4 @@
-import { router, useFocusEffect } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { Stack } from "expo-router/stack";
 import { useCallback, useRef, useState } from "react";
 import { RefreshControl, ScrollView, View } from "react-native";
@@ -75,7 +75,6 @@ function SessionSection({
           now={now}
           last={index === sessions.length - 1}
           twoLines={twoLines}
-          onPress={() => router.push(`/chat/${session.sessionId}`)}
         />
       ))}
     </>
@@ -163,11 +162,14 @@ export function InboxScreen() {
   return (
     <View style={{ flex: 1 }}>
       <Stack.Toolbar placement="left">
-        <Stack.Toolbar.Button
-          icon="laptopcomputer"
-          accessibilityLabel={`${connection.name} settings`}
-          onPress={() => router.push("/settings")}
-        />
+        <Stack.Toolbar.View>
+          <GlassButton
+            label={`${connection.name} settings`}
+            systemImage="laptopcomputer"
+            iconOnly
+            href="/settings"
+          />
+        </Stack.Toolbar.View>
       </Stack.Toolbar>
       <Stack.Toolbar placement="right"></Stack.Toolbar>
       <Stack.SearchBar
@@ -248,11 +250,7 @@ export function InboxScreen() {
           >
             <html.div style={styles.stateActions}>
               <GlassButton label="Try again" onPress={refresh} />
-              <GlassButton
-                label="Connection"
-                systemImage="gearshape"
-                onPress={() => router.push("/settings")}
-              />
+              <GlassButton label="Connection" systemImage="gearshape" href="/settings" />
             </html.div>
           </EmptyState>
         )}
@@ -294,8 +292,16 @@ export function InboxScreen() {
             ))
           ))}
         {list.kind === "ready" && list.next !== undefined && (
-          <html.button onClick={more} disabled={busy} style={styles.showMore}>
-            <html.span style={textStyles.secondary}>{busy ? "Loading…" : "Show more"}</html.span>
+          <html.button
+            onClick={() => {
+              if (!busy) more();
+            }}
+            aria-busy={busy}
+            style={styles.showMore}
+          >
+            <html.span aria-live="polite" style={textStyles.secondary}>
+              {busy ? "Loading…" : "Show More"}
+            </html.span>
           </html.button>
         )}
         {error !== undefined && (

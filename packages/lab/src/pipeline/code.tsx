@@ -15,7 +15,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Checkbox } from "@nyte-ai/ui/checkbox";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuItem } from "@nyte-ai/ui/menu";
-import { Hint } from "@nyte-ai/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 import { fileAt } from "./scenario";
 
@@ -158,7 +158,10 @@ export function CodeFileHeader({
         />
         <FileTypeIcon path={file.path} />
         <span {...props(styles.name)}>{name}</span>
-        <Hint content={file.path} trigger={<span {...props(styles.directory)}>{directory}</span>} />
+        <Tooltip>
+          <TooltipTrigger render={<span {...props(styles.directory)}>{directory}</span>} />
+          <TooltipContent>{file.path}</TooltipContent>
+        </Tooltip>
       </button>
       {justUpdated && <span {...props([intent.warning, styles.updated])}>Just updated</span>}
       <span {...props(styles.counts)}>

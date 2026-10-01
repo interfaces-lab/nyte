@@ -133,14 +133,14 @@ export const clientActions = {
   },
   splitRight: {
     id: "split-right",
-    label: "Split right",
+    label: "Split Right",
     key: "d",
     chord: "primary",
     scope: "workspace",
   },
   splitDown: {
     id: "split-down",
-    label: "Split down",
+    label: "Split Down",
     key: "d",
     chord: "primary-shift",
     scope: "workspace",

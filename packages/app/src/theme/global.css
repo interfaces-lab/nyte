@@ -45,14 +45,6 @@
     box-sizing: border-box;
   }
 
-  /*
-   * Central Icons draw a 1.5-unit stroke on a 24-unit grid. The desktop only
-   * renders them at 10–17px, where 1.875 units (1.25px at 16px) reads right.
-   */
-  [data-nyte-icon] svg [stroke]:not([stroke="none"]) {
-    stroke-width: 1.875;
-  }
-
   button,
   input,
   textarea {

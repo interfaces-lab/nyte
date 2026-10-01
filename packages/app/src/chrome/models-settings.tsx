@@ -8,13 +8,13 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { toast } from "@nyte-ai/ui/toast";
-import { Row } from "@nyte-ai/ui/row";
 import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
-import { Button } from "@nyte-ai/ui/button";
+import { Button, SplitButton } from "@nyte-ai/ui/button";
+import { Menu, MenuItem } from "@nyte-ai/ui/menu";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Select } from "@nyte-ai/ui/select";
-import { Switch } from "@nyte-ai/ui/switch";
+import { SwitchField } from "@nyte-ai/ui/switch";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import {
   formatContextWindow,
@@ -118,7 +118,7 @@ function DefaultsSection({
             label="Default model"
             width="wide"
             value={chosen?.key ?? ""}
-            disabled={candidates.length <= 1 || setPreference.isPending}
+            disabled={candidates.length === 0}
             options={candidates.map((option) => ({
               value: option.key,
               label: `${option.name} · ${providerNames.get(option.provider) ?? option.provider}`,
@@ -126,7 +126,7 @@ function DefaultsSection({
             onValueChange={(key) => {
               const option = candidates.find((candidate) => candidate.key === key);
 
-              if (option === undefined) return;
+              if (option === undefined || setPreference.isPending) return;
               setPreference.mutate({
                 kind: "defaults",
                 model: { provider: option.provider, id: option.id },
@@ -138,11 +138,12 @@ function DefaultsSection({
           <Select<ModelThinkingLevel>
             label="Default reasoning"
             value={defaults.thinkingLevel}
-            disabled={levels.length <= 1 || setPreference.isPending}
+            disabled={levels.length === 0}
             options={levels.map((level) => ({ value: level, label: THINKING_LABELS[level] }))}
-            onValueChange={(thinkingLevel) =>
-              setPreference.mutate({ kind: "defaults", thinkingLevel })
-            }
+            onValueChange={(thinkingLevel) => {
+              if (!setPreference.isPending)
+                setPreference.mutate({ kind: "defaults", thinkingLevel });
+            }}
           />
         </SettingsRow>
       </div>
@@ -169,7 +170,7 @@ function ApiKeyForm({
       onSubmit={(event) => {
         event.preventDefault();
 
-        if (key.trim() !== "") onSubmit(key.trim());
+        if (!pending && key.trim() !== "") onSubmit(key.trim());
       }}
     >
       <div {...props(styles.keyRow)}>
@@ -190,11 +191,17 @@ function ApiKeyForm({
           type="submit"
           variant="solid"
           tone="primary"
-          disabled={pending || key.trim() === ""}
+          loading={pending}
+          disabled={key.trim() === ""}
+          disabledReason="Enter an API key"
         >
-          Save
+          Save API Key
         </Button>
-        <Button disabled={pending} onClick={onCancel}>
+        <Button
+          disabled={pending}
+          disabledReason={pending ? "Wait for the API key to finish saving" : undefined}
+          onClick={onCancel}
+        >
           Cancel
         </Button>
       </div>
@@ -314,36 +321,59 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
       status={status}
       actions={
         attempt !== undefined && attempt.method === "browser" ? (
-          <Button disabled={attempt.cancelling} onClick={cancelLogin}>
+          <Button loading={attempt.cancelling} onClick={cancelLogin}>
             Cancel
           </Button>
         ) : connection.kind === "disconnected" ? (
-          <>
-            {browser !== undefined && (
-              <Button
-                variant="ghost"
+          browser === undefined && apiKey === undefined ? undefined : browser !== undefined &&
+            apiKey !== undefined ? (
+            <SplitButton.Root>
+              <SplitButton.Main
                 icon="plus"
-                disabled={busy}
+                disabled={logout.isPending || setPreference.isPending}
+                loading={login.isPending}
                 onClick={() => login.mutate({ kind: "browser" })}
               >
-                {apiKey === undefined ? "Connect" : browser.label}
-              </Button>
-            )}
-            {apiKey !== undefined && (
-              <Button
-                variant="ghost"
-                icon={browser === undefined ? "plus" : "key"}
-                disabled={busy}
-                aria-expanded={keyFormOpen}
-                onClick={() => {
+                Connect Provider
+              </SplitButton.Main>
+              <Menu
+                label={`Connection options for ${provider.name}`}
+                trigger={
+                  <SplitButton.MenuTrigger
+                    aria-label={`Connection options for ${provider.name}`}
+                    disabled={busy}
+                    disabledReason={busy ? "Provider connection is updating" : undefined}
+                  />
+                }
+              >
+                <MenuItem
+                  icon="key"
+                  onSelect={() => {
+                    login.reset();
+                    setKeyFormOpen(true);
+                  }}
+                >
+                  Add API Key…
+                </MenuItem>
+              </Menu>
+            </SplitButton.Root>
+          ) : (
+            <Button
+              icon="plus"
+              loading={login.isPending}
+              disabled={logout.isPending || setPreference.isPending}
+              aria-expanded={apiKey !== undefined ? keyFormOpen : undefined}
+              onClick={() => {
+                if (browser !== undefined) login.mutate({ kind: "browser" });
+                else {
                   login.reset();
                   setKeyFormOpen((open) => !open);
-                }}
-              >
-                {browser === undefined ? "Connect" : "Add API key"}
-              </Button>
-            )}
-          </>
+                }
+              }}
+            >
+              {apiKey !== undefined ? "Connect Provider…" : "Connect Provider"}
+            </Button>
+          )
         ) : (
           <>
             {!provider.enabled && (
@@ -354,12 +384,16 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
                   setPreference.mutate({ kind: "provider", provider: provider.id, enabled: true })
                 }
               >
-                Enable models
+                Enable Models
               </Button>
             )}
             {canSignOut && (
-              <Button disabled={busy} onClick={() => logout.mutate()}>
-                {logout.isPending ? "Disconnecting…" : "Disconnect"}
+              <Button
+                loading={logout.isPending}
+                disabled={login.isPending || setPreference.isPending}
+                onClick={() => logout.mutate()}
+              >
+                Disconnect Provider
               </Button>
             )}
           </>
@@ -488,7 +522,6 @@ function EnabledModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEl
             <div {...props(styles.groupHeading)}>
               {needle === "" ? (
                 <Collapsible.Trigger
-                  aria-label={`${provider.name} models`}
                   xstyle={[styles.groupLabel, styles.groupTrigger, focus.ringInset]}
                 >
                   {heading}
@@ -498,44 +531,42 @@ function EnabledModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEl
               )}
               <span {...props(styles.groupActions)}>
                 <Button
-                  disabled={active === all.length || setPreference.isPending}
+                  loading={setPreference.isPending}
+                  disabled={active === all.length}
+                  disabledReason="All models are enabled"
                   onClick={() => setAll(false)}
                 >
-                  Enable all
+                  Enable All Models
                 </Button>
                 <Button
-                  disabled={active === 0 || setPreference.isPending}
+                  loading={setPreference.isPending}
+                  disabled={active === 0}
+                  disabledReason="All models are disabled"
                   onClick={() => setAll(true)}
                 >
-                  Disable all
+                  Disable All Models
                 </Button>
               </span>
             </div>
             <Collapsible.Panel xstyle={styles.groupPanel}>
               {matching.map((option) => (
-                <Row key={option.key} size="lg" xstyle={styles.modelRow}>
-                  <Row.Body>
-                    <Row.Label>{option.name}</Row.Label>
-                    <Row.Description title="Context window · price per million tokens, input / output">
-                      {formatContextWindow(option.contextWindow)} · {formatPricing(option.cost)}
-                    </Row.Description>
-                  </Row.Body>
-                  <Row.Actions>
-                    <Switch
-                      label={`Enable ${option.name}`}
-                      checked={!option.hidden}
-                      disabled={setPreference.isPending}
-                      onCheckedChange={(show) =>
-                        setPreference.mutate({
-                          kind: "models",
-                          provider: provider.id,
-                          ids: [option.id],
-                          hidden: !show,
-                        })
-                      }
-                    />
-                  </Row.Actions>
-                </Row>
+                <SwitchField
+                  key={option.key}
+                  label={option.name}
+                  description={`${formatContextWindow(option.contextWindow)} · ${formatPricing(option.cost)}`}
+                  xstyle={settingsPatterns.row}
+                  checked={!option.hidden}
+                  aria-busy={setPreference.isPending || undefined}
+                  onCheckedChange={(show) => {
+                    if (setPreference.isPending) return;
+                    setPreference.mutate({
+                      kind: "models",
+                      provider: provider.id,
+                      ids: [option.id],
+                      hidden: !show,
+                    });
+                  }}
+                />
               ))}
             </Collapsible.Panel>
           </Collapsible.Root>

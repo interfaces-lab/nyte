@@ -160,10 +160,10 @@ export function ConnectScreen({
           {edit === undefined ? null : (
             <html.div style={styles.navBar}>
               <GlassButton
-                label="Cancel"
+                label="Cancel connection editing"
                 systemImage="chevron.left"
                 iconOnly
-                disabled={busy}
+                busy={busy}
                 onPress={edit.onCancel}
               />
             </html.div>
@@ -293,26 +293,28 @@ export function ConnectScreen({
               </html.div>
             </html.div>
           )}
-          {busy ? (
-            <html.div style={styles.actions}>
+          <html.div style={styles.actions}>
+            {busy ? (
               <html.div style={styles.progress} aria-live="polite">
                 <ActivityIndicator color={theme.foreground} />
                 <html.span style={textStyles.title}>{connectCopy(stage).title}</html.span>
               </html.div>
-              <GlassButton label="Cancel" fill onPress={() => attempt.current?.abort()} />
-            </html.div>
-          ) : (
-            <html.div style={styles.actions}>
-              {/* Always actionable: an empty field is explained by the alert above,
-                not by a dead grey button. */}
+            ) : null}
+            <GlassButton
+              label={edit === undefined ? "Connect Mac" : "Save Connection"}
+              busy={busy}
+              prominent
+              fill
+              onPress={() => void connect()}
+            />
+            {busy ? (
               <GlassButton
-                label={alert?.retry ?? (edit === undefined ? "Connect" : "Save connection")}
-                prominent
+                label="Cancel Connection"
                 fill
-                onPress={() => void connect()}
+                onPress={() => attempt.current?.abort()}
               />
-            </html.div>
-          )}
+            ) : null}
+          </html.div>
           <html.p style={[textStyles.caption, styles.footnote]}>
             A loopback address reaches only a simulator on your Mac. The token stays in Keychain.
           </html.p>

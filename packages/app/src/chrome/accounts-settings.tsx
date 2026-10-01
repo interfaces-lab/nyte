@@ -70,6 +70,11 @@ function AccountRow({
         title="GitHub"
         detail={undefined}
         status={<ConnectionStatus tone="warn">Signing in…</ConnectionStatus>}
+        actions={
+          <Button variant="outline" loading>
+            Sign In to GitHub
+          </Button>
+        }
       />
     );
   }
@@ -84,19 +89,19 @@ function AccountRow({
             ? query.data.message
             : auth.isError
               ? "GitHub sign-in or sign-out failed. Run gh auth status in a terminal, then refresh."
-              : "Failed to read GitHub status. Try again."
+              : "Failed to read GitHub status. Refresh GitHub."
         }
         status={<ConnectionStatus tone="err">Unavailable</ConnectionStatus>}
         actions={
           <Button
             variant="outline"
-            disabled={query.isFetching}
+            loading={query.isFetching}
             onClick={() => {
               auth.reset();
               void query.refetch();
             }}
           >
-            Try again
+            Refresh GitHub
           </Button>
         }
       />
@@ -154,8 +159,8 @@ function AccountRow({
           detail={undefined}
           status={<ConnectionStatus tone="off">Not connected</ConnectionStatus>}
           actions={
-            <Button variant="outline" disabled={busy} onClick={() => auth.mutate("signIn")}>
-              Sign in
+            <Button variant="outline" loading={busy} onClick={() => auth.mutate("signIn")}>
+              Sign In to GitHub
             </Button>
           }
         />
@@ -168,7 +173,7 @@ function AccountRow({
           detail={undefined}
           status={<ConnectionStatus tone="warn">Waiting for approval</ConnectionStatus>}
           actions={
-            <Button disabled={busy} onClick={() => auth.mutate("signOut")}>
+            <Button loading={busy} onClick={() => auth.mutate("signOut")}>
               Cancel
             </Button>
           }
@@ -192,8 +197,8 @@ function AccountRow({
             detail={`@${login}`}
             status={<ConnectionStatus tone="on">Connected</ConnectionStatus>}
             actions={
-              <Button ref={signOutRef} disabled={busy} onClick={() => setConfirmSignOut(true)}>
-                Sign out
+              <Button ref={signOutRef} loading={busy} onClick={() => setConfirmSignOut(true)}>
+                Sign Out of GitHub CLI…
               </Button>
             }
           />
@@ -202,9 +207,9 @@ function AccountRow({
             pending={busy}
             error={undefined}
             returnFocusRef={signOutRef}
-            title="Sign out of GitHub CLI?"
+            title="Sign Out of GitHub CLI"
             description={signOutDescription(login)}
-            confirmLabel="Sign out"
+            confirmLabel="Sign Out of GitHub CLI"
             pendingLabel="Signing out…"
             onOpenChange={setConfirmSignOut}
             onConfirm={() => auth.mutate("signOut", { onSuccess: () => setConfirmSignOut(false) })}
@@ -305,7 +310,7 @@ function PullRequestRow({
           title="Pull request"
           detail={context.message}
           status={<ConnectionStatus tone="err">Unavailable</ConnectionStatus>}
-          actions={<Button onClick={refresh}>Try again</Button>}
+          actions={<Button onClick={refresh}>Refresh GitHub</Button>}
         />
       );
     default: {
@@ -350,8 +355,8 @@ function GitHubSettings({ github }: { github: GitHubBridge }): ReactElement {
           <PullRequestRow context={state.pullRequest} refresh={refresh} />
         )}
       </ConnectionList>
-      <Button disabled={account.query.isFetching || account.busy} onClick={refresh}>
-        {account.query.isFetching ? "Refreshing…" : "Refresh GitHub"}
+      <Button loading={account.query.isFetching} disabled={account.busy} onClick={refresh}>
+        Refresh GitHub
       </Button>
     </section>
   );

@@ -9,8 +9,6 @@ import { shape } from "@nyte-ai/ui/schema.stylex";
  */
 import { create, props } from "@stylexjs/stylex";
 import { focusManager, useMutation, useQueryClient } from "@tanstack/react-query";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import type { Transition } from "motion/react";
 import { useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import { toast } from "@nyte-ai/ui/toast";
@@ -24,7 +22,9 @@ import type {
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
-import { Toggle } from "@nyte-ai/ui/toggle";
+import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { Tabs } from "@nyte-ai/ui/tabs";
+import { Menu, MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import { nyte } from "../nyte.ts";
 import { keys, useRemoteAccessState, useServerState } from "../queries.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
@@ -34,11 +34,8 @@ import { PairingCode, pairingPayload } from "./pairing-code.tsx";
 
 const shareStyles = create({
   panel: { display: "flex", flexDirection: "column", gap: 8 },
-  // The pane keeps one height per step and animates between them, so the row
-  // below it never jumps while the user switches.
-  steps: { display: "grid", overflow: "hidden" },
-  step: { gridArea: "1 / 1", display: "flex", flexDirection: "column", gap: 8 },
-  switcher: { display: "inline-flex", gap: 2, alignSelf: "flex-start" },
+  step: { display: "flex", flexDirection: "column", gap: 8 },
+  switcher: { display: "inline-flex", gap: 8, alignSelf: "flex-start" },
   scan: { display: "flex", alignItems: "center", gap: 12 },
   scanText: { display: "flex", flexDirection: "column", gap: 4, minWidth: 0 },
   // One grid for both fields so the value boxes share a left edge and width.
@@ -54,7 +51,7 @@ const shareStyles = create({
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
   },
-  fieldActions: { display: "inline-flex", gap: 2 },
+  fieldActions: { display: "inline-flex", gap: 8 },
   // Selected whole so a click cannot grab half of a token or address.
   value: {
     boxSizing: "border-box",
@@ -98,7 +95,7 @@ function ConnectForm({
       onSubmit={(event) => {
         event.preventDefault();
 
-        if (ready) onSubmit({ baseUrl: baseUrl.trim(), token: token.trim() });
+        if (!pending && ready) onSubmit({ baseUrl: baseUrl.trim(), token: token.trim() });
       }}
     >
       <div {...props(styles.keyRow)}>
@@ -129,18 +126,27 @@ function ConnectForm({
           xstyle={styles.keyInput}
           onValueChange={setToken}
         />
-        <Button type="submit" variant="solid" tone="primary" disabled={pending || !ready}>
-          {pending ? "Connecting…" : "Connect"}
+        <Button
+          type="submit"
+          variant="solid"
+          tone="primary"
+          loading={pending}
+          disabled={!ready}
+          disabledReason="Enter the server URL and token"
+        >
+          Connect Server
         </Button>
         {onCancel !== undefined && (
-          <Button disabled={pending} onClick={onCancel}>
+          <Button
+            disabled={pending}
+            disabledReason={pending ? "Wait for the server connection to finish" : undefined}
+            onClick={onCancel}
+          >
             Cancel
           </Button>
         )}
       </div>
-      <span {...props(styles.keyHint)}>
-        Stored on this Mac in ~/.nyte/server.json. The desktop proves the token before saving it.
-      </span>
+      <span {...props(styles.keyHint)}>Stored on this Mac in ~/.nyte/server.json.</span>
     </form>
   );
 }
@@ -237,15 +243,32 @@ export function CloudConnection({ active }: { readonly active: boolean }): React
           }
           actions={
             <>
-              <Button disabled={pending || server.isFetching} onClick={() => void server.refetch()}>
-                Check connection
+              <Button
+                loading={server.isFetching}
+                disabled={pending}
+                disabledReason={pending ? "Server connection is updating" : undefined}
+                onClick={() => void server.refetch()}
+              >
+                Check Connection
               </Button>
-              <Button disabled={pending} onClick={() => setEditing(true)}>
-                Change
-              </Button>
-              <Button disabled={pending} onClick={() => disconnect.mutate()}>
-                Disconnect
-              </Button>
+              <Menu
+                label={`Options for server ${state.baseUrl}`}
+                trigger={
+                  <Button
+                    iconOnly
+                    icon="more-horizontal"
+                    aria-label={`Options for server ${state.baseUrl}`}
+                    loading={disconnect.isPending}
+                    disabled={connect.isPending}
+                  />
+                }
+              >
+                <MenuItem onSelect={() => setEditing(true)}>Change Connection…</MenuItem>
+                <MenuSeparator />
+                <MenuItem danger onSelect={() => disconnect.mutate()}>
+                  Disconnect Server
+                </MenuItem>
+              </Menu>
             </>
           }
           expansion={editing ? form : undefined}
@@ -259,22 +282,27 @@ function CopyButton({ label, value }: { label: string; value: string }): ReactEl
   const [copied, setCopied] = useState(false);
 
   return (
-    <Button
-      iconOnly
-      icon={copied ? "checkmark" : "copy"}
-      aria-label={copied ? "Copied" : `Copy ${label.toLocaleLowerCase()}`}
-      onClick={() => {
-        void navigator.clipboard.writeText(value).then(
-          () => setCopied(true),
-          () => {
-            setCopied(false);
-            toast.error(
-              `Couldn't copy the ${label.toLocaleLowerCase()}. Select it and copy it yourself.`,
-            );
-          },
-        );
-      }}
-    />
+    <>
+      <Button
+        iconOnly
+        icon={copied ? "checkmark" : "copy"}
+        aria-label={`Copy ${label.toLocaleLowerCase()}`}
+        onClick={() => {
+          void navigator.clipboard.writeText(value).then(
+            () => setCopied(true),
+            () => {
+              setCopied(false);
+              toast.error(
+                `Couldn't copy the ${label.toLocaleLowerCase()}. Select it and copy it yourself.`,
+              );
+            },
+          );
+        }}
+      />
+      <span role="status" {...props(srOnly)}>
+        {copied ? `${label} copied` : ""}
+      </span>
+    </>
   );
 }
 
@@ -288,26 +316,26 @@ function servedTargetLabel(target: Serving["target"]): string {
 function ServingPanel({ state }: { state: Serving }) {
   const [revealed, setRevealed] = useState(false);
   const [step, setStep] = useState<"scan" | "details">("scan");
-  const reducedMotion = useReducedMotion();
-
-  const transition: Transition =
-    reducedMotion === true ? { duration: 0 } : { type: "spring", duration: 0.28, bounce: 0 };
-
-  // Forward and back read as movement in opposite directions.
-  const offset = step === "scan" ? -8 : 8;
   const payload = pairingPayload({ address: state.address, token: state.token });
 
   const hidden = "••••••••••••••••";
 
   return (
-    <div {...props(shareStyles.panel)}>
+    <Tabs.Root
+      variant="segmented"
+      value={step}
+      onValueChange={(value) => {
+        if (value === "scan" || value === "details") setStep(value);
+      }}
+      {...props(shareStyles.panel)}
+    >
       <div {...props(shareStyles.fields)}>
         <span {...props(shareStyles.label)}>Link</span>
         <code aria-label="Pairing link" {...props(shareStyles.value)}>
           {revealed ? state.pairingUrl : state.pairingUrl.replace(state.token, hidden)}
         </code>
         <span {...props(shareStyles.fieldActions)}>
-          <CopyButton label="Link" value={state.pairingUrl} />
+          <CopyButton label="Pairing link" value={state.pairingUrl} />
           <ButtonLink
             href={state.pairingUrl}
             target="_blank"
@@ -319,86 +347,59 @@ function ServingPanel({ state }: { state: Serving }) {
               });
             }}
           >
-            Open
+            Open Pairing Link
           </ButtonLink>
         </span>
       </div>
-      <div {...props(shareStyles.switcher)} role="group" aria-label="Pairing method">
-        <Toggle pressed={step === "scan"} onPressedChange={() => setStep("scan")}>
-          Scan
-        </Toggle>
-        <Toggle pressed={step === "details"} onPressedChange={() => setStep("details")}>
-          Address and token
-        </Toggle>
-      </div>
-      <motion.div layout {...props(shareStyles.steps)} transition={transition}>
-        <AnimatePresence initial={false} mode="popLayout">
-          {step === "scan" ? (
-            <motion.div
-              key="scan"
-              layout="position"
-              initial={{ opacity: 0, x: offset }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: offset }}
-              transition={transition}
-              {...props(shareStyles.step)}
-            >
-              <div {...props(shareStyles.scan)}>
-                <PairingCode value={payload} size={132} />
-                <span {...props(shareStyles.scanText)}>
-                  <span {...props(shareStyles.label)}>
-                    In the iOS app, tap Scan QR code on the connect screen.
-                  </span>
-                  <span {...props(styles.deviceCodeNote)}>
-                    The code carries the token, so treat it like the token itself. It stops working
-                    when you stop.
-                  </span>
-                </span>
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="details"
-              layout="position"
-              initial={{ opacity: 0, x: offset }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: offset }}
-              transition={transition}
-              {...props(shareStyles.step)}
-            >
-              <div {...props(shareStyles.fields)}>
-                <span {...props(shareStyles.label)}>Address</span>
-                <code aria-label="Address" {...props(shareStyles.value)}>
-                  {state.address}
-                </code>
-                <span {...props(shareStyles.fieldActions)}>
-                  <CopyButton label="Address" value={state.address} />
-                </span>
-                <span {...props(shareStyles.label)}>Token</span>
-                <code aria-label="Token" {...props(shareStyles.value)}>
-                  {revealed ? state.token : hidden}
-                </code>
-                <span {...props(shareStyles.fieldActions)}>
-                  <CopyButton label="Token" value={state.token} />
-                  <Button
-                    iconOnly
-                    icon="eye"
-                    aria-label={revealed ? "Hide token" : "Reveal token"}
-                    aria-pressed={revealed}
-                    onClick={() => setRevealed((value) => !value)}
-                  />
-                </span>
-              </div>
-              <span {...props(styles.deviceCodeNote)}>
-                {state.reach === "tailnet"
-                  ? "Reachable from your signed-in Tailscale devices on any network, and from nothing else. The token is new each time and never written to disk."
-                  : "Only this Mac can reach this address, so a physical phone can't. The token is new each time and never written to disk."}
-              </span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
-    </div>
+      <Tabs.List aria-label="Pairing method" xstyle={shareStyles.switcher}>
+        <Tabs.Tab value="scan">Scan</Tabs.Tab>
+        <Tabs.Tab value="details">Address and Token</Tabs.Tab>
+      </Tabs.List>
+      <Tabs.Panel value="scan" xstyle={shareStyles.step}>
+        <div {...props(shareStyles.scan)}>
+          <PairingCode value={payload} size={132} />
+          <span {...props(shareStyles.scanText)}>
+            <span {...props(shareStyles.label)}>
+              In the iOS app, tap Scan QR code on the connect screen.
+            </span>
+            <span {...props(styles.deviceCodeNote)}>
+              The code carries the token, so treat it like the token itself. It stops working when
+              you stop.
+            </span>
+          </span>
+        </div>
+      </Tabs.Panel>
+      <Tabs.Panel value="details" xstyle={shareStyles.step}>
+        <div {...props(shareStyles.fields)}>
+          <span {...props(shareStyles.label)}>Address</span>
+          <code aria-label="Address" {...props(shareStyles.value)}>
+            {state.address}
+          </code>
+          <span {...props(shareStyles.fieldActions)}>
+            <CopyButton label="Address" value={state.address} />
+          </span>
+          <span {...props(shareStyles.label)}>Token</span>
+          <code aria-label="Token" {...props(shareStyles.value)}>
+            {revealed ? state.token : hidden}
+          </code>
+          <span {...props(shareStyles.fieldActions)}>
+            <CopyButton label="Token" value={state.token} />
+            <Button
+              iconOnly
+              icon="eye"
+              aria-label={revealed ? "Hide token" : "Reveal token"}
+              aria-pressed={revealed}
+              onClick={() => setRevealed((value) => !value)}
+            />
+          </span>
+        </div>
+        <span {...props(styles.deviceCodeNote)}>
+          {state.reach === "tailnet"
+            ? "Reachable from your signed-in Tailscale devices on any network, and from nothing else. The token is new each time and never written to disk."
+            : "Only this Mac can reach this address, so a physical phone can't. The token is new each time and never written to disk."}
+        </span>
+      </Tabs.Panel>
+    </Tabs.Root>
   );
 }
 
@@ -444,8 +445,12 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
             title="This Mac only"
             detail="Serves the selected folder. Switching folders here afterwards doesn't move it; a connected client can."
             actions={
-              <Button disabled={pending} onClick={() => start.mutate("local")}>
-                {start.isPending && start.variables === "local" ? "Starting…" : "Start"}
+              <Button
+                loading={start.isPending && start.variables === "local"}
+                disabled={pending && start.variables !== "local"}
+                onClick={() => start.mutate("local")}
+              >
+                Start Remote Access
               </Button>
             }
           />
@@ -457,10 +462,16 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
               <Button
                 variant="solid"
                 tone="primary"
-                disabled={pending || state.tailnet.kind !== "ready"}
+                loading={start.isPending && start.variables === "tailnet"}
+                disabled={
+                  state.tailnet.kind !== "ready" || (pending && start.variables !== "tailnet")
+                }
+                disabledReason={
+                  state.tailnet.kind !== "ready" ? tailnetDetail(state.tailnet) : undefined
+                }
                 onClick={() => start.mutate("tailnet")}
               >
-                {start.isPending && start.variables === "tailnet" ? "Starting…" : "Start"}
+                Start Remote Access
               </Button>
             }
           />
@@ -476,8 +487,12 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
             </ConnectionStatus>
           }
           actions={
-            <Button disabled={pending} onClick={() => stop.mutate()}>
-              {stop.isPending ? "Stopping…" : "Stop"}
+            <Button
+              loading={stop.isPending}
+              disabled={start.isPending}
+              onClick={() => stop.mutate()}
+            >
+              Stop Remote Access
             </Button>
           }
           expansion={<ServingPanel state={state} />}

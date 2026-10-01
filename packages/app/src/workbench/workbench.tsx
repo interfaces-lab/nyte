@@ -426,7 +426,7 @@ function WorkbenchViewHost({
   const bounds = workbenchWidthBounds(stageWidth);
   const compact = view.collapsed === "compact" || bounds.kind === "overlay";
   const panelWidth = view.maximized ? stageWidth : clampWorkbenchWidthToBounds(view.width, bounds);
-  const defaultWidth = clampWorkbenchWidthToBounds(WORKBENCH_WIDTH_DEFAULT, bounds);
+  const defaultWidth = clampWorkbenchWidthToBounds(stageWidth / 2, bounds);
 
   const resetWidth = useCallback(
     () => workbenchController.actions.setWidth({ view: viewKey, width: defaultWidth }),
@@ -454,8 +454,11 @@ function WorkbenchViewHost({
       bounds,
     );
 
-    if (panelRef.current !== null) panelRef.current.style.width = `${String(resize.nextWidth)}px`;
-    setActiveWidth(resize.nextWidth);
+    const panel = panelRef.current;
+    if (panel !== null) {
+      panel.style.width = `${String(resize.nextWidth)}px`;
+      setActiveWidth(panel.getBoundingClientRect().width);
+    }
   };
 
   const endResize = (event: PointerEvent<HTMLDivElement>): void => {
@@ -475,8 +478,8 @@ function WorkbenchViewHost({
   const resizeWithKeyboard = (event: KeyboardEvent<HTMLDivElement>): void => {
     let width: number | undefined;
 
-    if (event.key === "ArrowLeft") width = panelWidth + 20;
-    else if (event.key === "ArrowRight") width = panelWidth - 20;
+    if (event.key === "ArrowLeft") width = panelWidth + stageWidth * 0.02;
+    else if (event.key === "ArrowRight") width = panelWidth - stageWidth * 0.02;
     else if (event.key === "Home") width = bounds.min;
     else if (event.key === "End") width = bounds.max;
 
@@ -491,7 +494,17 @@ function WorkbenchViewHost({
   const activeTab = activeWorkbenchTab(view, scope, capabilities);
   const panelVisible = current && view.expanded && activeTab !== null;
   useLayoutEffect(() => {
-    if (panelVisible) setActiveWidth(panelWidth);
+    const panel = panelRef.current;
+    if (!panelVisible || panel === null) return;
+    const update = (): void => setActiveWidth(panel.getBoundingClientRect().width);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(panel);
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
   }, [panelVisible, panelWidth]);
 
   const mountedTabs = view.tabs.filter((tab) =>
@@ -582,10 +595,11 @@ function WorkbenchViewHost({
             tabIndex={0}
             aria-label="Resize workbench"
             aria-orientation="vertical"
-            aria-valuemin={bounds.min}
-            aria-valuemax={bounds.max}
-            aria-valuenow={panelWidth}
-            title="Drag to resize. Double-click to reset."
+            aria-valuemin={Math.round((bounds.min / stageWidth) * 100)}
+            aria-valuemax={Math.round((bounds.max / stageWidth) * 100)}
+            aria-valuenow={Math.round((panelWidth / stageWidth) * 100)}
+            aria-valuetext={`${String(Math.round((panelWidth / stageWidth) * 100))}%`}
+            title="Drag to resize. Double-click for equal panels."
             {...props(
               resizing && intent.primary,
               workbenchStyles.sash,

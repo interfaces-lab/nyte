@@ -3,7 +3,6 @@ import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { NumberField } from "@nyte-ai/ui/number-field";
 import { Select, type SelectOption } from "@nyte-ai/ui/select";
 import { Slider } from "@nyte-ai/ui/slider";
-import { Switch } from "@nyte-ai/ui/switch";
 import { props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactElement } from "react";
@@ -31,7 +30,7 @@ import {
   fontSelectGroups,
   UI_FONT_CATALOG_TITLE,
 } from "./font-select-groups.ts";
-import { SettingsRow } from "./settings-controls.tsx";
+import { SettingsRow, SettingsSwitchRow } from "./settings-controls.tsx";
 
 const THEME_OPTIONS = [
   { value: "system", label: "System" },
@@ -126,6 +125,7 @@ function HueControl({
           </Slider.Track>
         </Slider.Control>
       </Slider.Root>
+      <span {...props(styles.tintValue)}>{value}°</span>
       <span aria-hidden="true" {...props(styles.tintSlot)}>
         <span
           {...props(
@@ -209,8 +209,7 @@ function DensityControl({
         </Slider.Control>
       </Slider.Root>
       <span aria-hidden="true" {...props(styles.densityLabels)}>
-        <span>Compact</span>
-        <span>Detailed</span>
+        <span>{TOOL_CALL_DENSITY_LABELS[value]}</span>
       </span>
     </span>
   );
@@ -252,16 +251,12 @@ export function AppearanceSettings(): ReactElement {
             onValueChange={(theme) => update(settings, { theme })}
           />
         </SettingsRow>
-        <SettingsRow
+        <SettingsSwitchRow
           title="Use Pointer Cursors"
           description="Change the cursor to a pointer when hovering over any interactive elements"
-        >
-          <Switch
-            label="Use Pointer Cursors"
-            checked={settings.pointerCursors}
-            onCheckedChange={(pointerCursors) => update(settings, { pointerCursors })}
-          />
-        </SettingsRow>
+          checked={settings.pointerCursors}
+          onCheckedChange={(pointerCursors) => update(settings, { pointerCursors })}
+        />
       </div>
 
       <section {...props(settingsPatterns.section)}>
@@ -279,16 +274,12 @@ export function AppearanceSettings(): ReactElement {
               onValueChange={(toolCalls) => update(settings, { toolCalls })}
             />
           </SettingsRow>
-          <SettingsRow
+          <SettingsSwitchRow
             title="Code Block Word Wrap"
             description="Wrap long lines in Agent conversation code blocks"
-          >
-            <Switch
-              label="Code Block Word Wrap"
-              checked={settings.codeBlockWordWrap}
-              onCheckedChange={(codeBlockWordWrap) => update(settings, { codeBlockWordWrap })}
-            />
-          </SettingsRow>
+            checked={settings.codeBlockWordWrap}
+            onCheckedChange={(codeBlockWordWrap) => update(settings, { codeBlockWordWrap })}
+          />
         </div>
       </section>
 
@@ -310,22 +301,17 @@ export function AppearanceSettings(): ReactElement {
               onValueChange={(tintIntensity) => update(settings, { tintIntensity })}
             />
           </SettingsRow>
-          <SettingsRow
+          <SettingsSwitchRow
             title="Reduce Transparency"
-            description="Replace translucent surfaces with opaque backgrounds"
-          >
-            <Switch
-              label="Reduce Transparency"
-              checked={settings.reduceTransparency || systemTransparency}
-              disabled={systemTransparency}
-              title={
-                systemTransparency
-                  ? "Your system has Reduce Transparency turned on right now"
-                  : undefined
-              }
-              onCheckedChange={(reduceTransparency) => update(settings, { reduceTransparency })}
-            />
-          </SettingsRow>
+            description={
+              systemTransparency
+                ? "Enabled by macOS Reduce Transparency. Change it in System Settings."
+                : "Replace translucent surfaces with opaque backgrounds"
+            }
+            checked={settings.reduceTransparency || systemTransparency}
+            disabled={systemTransparency}
+            onCheckedChange={(reduceTransparency) => update(settings, { reduceTransparency })}
+          />
         </div>
       </section>
 
@@ -380,15 +366,14 @@ export function AppearanceSettings(): ReactElement {
             />
           </SettingsRow>
           {mac && (
-            <SettingsRow title="Font Smoothing" description="Use native macOS font anti-aliasing">
-              <Switch
-                label="Font Smoothing"
-                checked={settings.fontSmoothing === "antialiased"}
-                onCheckedChange={(antialiased) =>
-                  update(settings, { fontSmoothing: antialiased ? "antialiased" : "auto" })
-                }
-              />
-            </SettingsRow>
+            <SettingsSwitchRow
+              title="Font Smoothing"
+              description="Use native macOS font anti-aliasing"
+              checked={settings.fontSmoothing === "antialiased"}
+              onCheckedChange={(antialiased) =>
+                update(settings, { fontSmoothing: antialiased ? "antialiased" : "auto" })
+              }
+            />
           )}
         </div>
       </section>
