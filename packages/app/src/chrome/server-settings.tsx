@@ -24,7 +24,7 @@ import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { Tabs } from "@nyte-ai/ui/tabs";
-import { Menu, MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { nyte } from "../nyte.ts";
 import { keys, useRemoteAccessState, useServerState } from "../queries.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
@@ -56,7 +56,6 @@ const shareStyles = create({
   value: {
     boxSizing: "border-box",
     minWidth: 0,
-    minHeight: 26,
     paddingInline: 8,
     paddingBlock: 4,
     borderRadius: shape.control,
@@ -126,22 +125,11 @@ function ConnectForm({
           xstyle={styles.keyInput}
           onValueChange={setToken}
         />
-        <Button
-          type="submit"
-          variant="solid"
-          tone="primary"
-          loading={pending}
-          disabled={!ready}
-          disabledReason="Enter the server URL and token"
-        >
+        <Button type="submit" variant="solid" tone="primary" loading={pending} disabled={!ready}>
           Connect Server
         </Button>
         {onCancel !== undefined && (
-          <Button
-            disabled={pending}
-            disabledReason={pending ? "Wait for the server connection to finish" : undefined}
-            onClick={onCancel}
-          >
+          <Button disabled={pending} onClick={onCancel}>
             Cancel
           </Button>
         )}
@@ -246,28 +234,29 @@ export function CloudConnection({ active }: { readonly active: boolean }): React
               <Button
                 loading={server.isFetching}
                 disabled={pending}
-                disabledReason={pending ? "Server connection is updating" : undefined}
                 onClick={() => void server.refetch()}
               >
                 Check Connection
               </Button>
-              <Menu
-                label={`Options for server ${state.baseUrl}`}
-                trigger={
-                  <Button
-                    iconOnly
-                    icon="more-horizontal"
-                    aria-label={`Options for server ${state.baseUrl}`}
-                    loading={disconnect.isPending}
-                    disabled={connect.isPending}
-                  />
-                }
-              >
-                <MenuItem onSelect={() => setEditing(true)}>Change Connection…</MenuItem>
-                <MenuSeparator />
-                <MenuItem danger onSelect={() => disconnect.mutate()}>
-                  Disconnect Server
-                </MenuItem>
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button
+                      iconOnly
+                      icon="more-horizontal"
+                      aria-label={`Options for server ${state.baseUrl}`}
+                      loading={disconnect.isPending}
+                      disabled={connect.isPending}
+                    />
+                  }
+                />
+                <MenuContent>
+                  <MenuItem onClick={() => setEditing(true)}>Change Connection…</MenuItem>
+                  <MenuSeparator />
+                  <MenuItem variant="danger" onClick={() => disconnect.mutate()}>
+                    Disconnect Server
+                  </MenuItem>
+                </MenuContent>
               </Menu>
             </>
           }
@@ -465,9 +454,6 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
                 loading={start.isPending && start.variables === "tailnet"}
                 disabled={
                   state.tailnet.kind !== "ready" || (pending && start.variables !== "tailnet")
-                }
-                disabledReason={
-                  state.tailnet.kind !== "ready" ? tailnetDetail(state.tailnet) : undefined
                 }
                 onClick={() => start.mutate("tailnet")}
               >
