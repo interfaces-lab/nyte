@@ -1,11 +1,11 @@
-import { shape } from "../../schema.stylex.ts";
+import { avatar, shape } from "./schema.stylex.ts";
 import { Avatar as AvatarPrimitive } from "@base-ui/react/avatar";
 import { create, props } from "@stylexjs/stylex";
-import type * as React from "react";
+import type { CSSProperties } from "react";
 
-import { mergeStyleProps, type XStyle } from "../../style.ts";
-import { surfaceTheme } from "../../surface-theme.ts";
-import { role, type } from "../../vars.stylex.ts";
+import { mergeStyleProps, type XStyle } from "./style.ts";
+import { surfaceTheme } from "./surface-theme.ts";
+import { role, type } from "./vars.stylex.ts";
 
 const styles = create({
   root: {
@@ -44,10 +44,10 @@ const styles = create({
 });
 
 const sizeStyles = create({
-  xs: { width: 20, height: 20, fontSize: 9 },
-  sm: { width: 24, height: 24, fontSize: 10 },
-  md: { width: 28, height: 28, fontSize: 11 },
-  lg: { width: 36, height: 36, fontSize: 14 },
+  xs: { width: avatar.xs, height: avatar.xs, fontSize: 9 },
+  sm: { width: avatar.sm, height: avatar.sm, fontSize: 10 },
+  md: { width: avatar.md, height: avatar.md, fontSize: 11 },
+  lg: { width: avatar.lg, height: avatar.lg, fontSize: 14 },
 });
 
 const shapeStyles = create({
@@ -82,7 +82,7 @@ export interface AvatarProps extends Omit<AvatarPrimitive.Root.Props, "className
   shape?: AvatarShape;
   size?: AvatarSize;
   tone?: AvatarTone;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   xstyle?: XStyle;
 }
 
@@ -119,7 +119,7 @@ export function Avatar({
 
 export interface AvatarImageProps extends Omit<AvatarPrimitive.Image.Props, "className" | "style"> {
   className?: string;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   xstyle?: XStyle;
 }
 
@@ -138,7 +138,7 @@ export interface AvatarFallbackProps extends Omit<
   "className" | "style"
 > {
   className?: string;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   xstyle?: XStyle;
 }
 

@@ -4,17 +4,17 @@ description: "Image with initials fallback in four sizes, two shapes, and five t
 ---
 
 ```ts title="Import"
-import { Avatar, AvatarFallback, AvatarImage } from "@nyte-ai/ui";
+import { Avatar, AvatarFallback, AvatarImage } from "@nyte-ai/ui/avatar";
 ```
 
 An image that falls back to initials while it loads or when it fails.
 
 ## Usage
 
-- Always include `AvatarFallback`. It renders until the image loads and again if the image fails.
-- Fallback text is two characters. Nothing longer fits at `xs`.
-- `tone` is for identity, not status. Do not use `green` to mean online.
-- `AvatarImage` needs `alt`. If the avatar sits beside the name it repeats, use `alt=""`.
+- Always include `AvatarFallback`.
+- Keep fallback text to two characters.
+- `tone` marks identity, not status.
+- `AvatarImage` needs `alt`. Use `alt=""` beside a visible name.
 
 ## Anatomy
 
@@ -70,7 +70,7 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 | `tone`                         | `"neutral" \| "orange" \| "blue" \| "violet" \| "green"` | `"neutral"` | Background and foreground pair. |
 | `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming)                |             |                                 |
 
-`size` and `tone` are also reflected as `data-size` and `data-tone` on the root.
+`size` and `tone` also land on the root as `data-size` and `data-tone`.
 
 <include>../../base-ui-reference/avatar/Root.md</include>
 
@@ -85,5 +85,3 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 ## Accessibility
 
 - The root is a `<span>` with no role. Meaning comes from the image's `alt` or the text around it.
-- The fallback shows while the image loads and after it errors. `delay` on the fallback avoids a
-  flash for fast loads.

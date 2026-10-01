@@ -1,6 +1,6 @@
 "use client";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@nyte-ai/ui";
+import { Avatar, AvatarFallback, AvatarImage } from "@nyte-ai/ui/avatar";
 
 export function AvatarDemo() {
   return (
