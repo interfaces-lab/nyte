@@ -8,7 +8,7 @@ import {
   IconSidebarHiddenRightWide,
   IconUser,
 } from "central-icons";
-import { Avatar, AvatarFallback } from "@nyte-ai/ui";
+import { Avatar, AvatarFallback } from "@nyte-ai/ui/avatar";
 
 export type DesktopPreviewScenario = "conversation" | "search" | "details";
 

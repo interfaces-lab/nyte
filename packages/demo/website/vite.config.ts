@@ -1,4 +1,4 @@
-import stylex from "@stylexjs/unplugin";
+import { stylex } from "@nyte-ai/ui/stylex";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
