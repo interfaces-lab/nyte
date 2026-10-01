@@ -67,7 +67,7 @@ function getRetryDelayMs(
   if (retryAfterMs) {
     const value = Number.parseFloat(retryAfterMs);
 
-    if (!Number.isNaN(value))
+    if (Number.isFinite(value))
       return validateServerRetryDelayMs(value, maxRetryDelayMs, error.message);
   }
 
@@ -77,7 +77,8 @@ function getRetryDelayMs(
     const seconds = Number.parseFloat(retryAfter);
     const delayMs = Number.isNaN(seconds) ? Date.parse(retryAfter) - Date.now() : seconds * 1000;
 
-    return validateServerRetryDelayMs(delayMs, maxRetryDelayMs, error.message);
+    if (Number.isFinite(delayMs))
+      return validateServerRetryDelayMs(delayMs, maxRetryDelayMs, error.message);
   }
 
   const exponentialDelay = Math.min(0.5 * 2 ** retryIndex, 8) * 1000;

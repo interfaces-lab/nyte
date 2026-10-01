@@ -44,6 +44,23 @@ describe("provider request retries", () => {
     assert.equal(request.mock.calls.length, 2);
   });
 
+  test.each([
+    ["retry-after-ms", "Infinity"],
+    ["retry-after", "not a date"],
+    ["retry-after", "Infinity"],
+  ])("backs off and recovers when %s is %s", async (name, value) => {
+    vi.useFakeTimers();
+    const request = flakyRequest(providerError(429, { [name]: value }), 1);
+    const result = retryProviderRequest(request, { maxRetries: 1 }).then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    assert.equal(request.mock.calls.length, 1);
+    await vi.advanceTimersByTimeAsync(500);
+    assert.deepEqual(await result, { value: "ok" });
+  });
+
   test("does not retry errors the provider marks as non-retryable", async () => {
     const error = providerError(429, { "x-should-retry": "false" });
     const request = vi.fn(async (): Promise<string> => {
