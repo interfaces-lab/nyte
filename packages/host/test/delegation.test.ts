@@ -1,3 +1,4 @@
+import { getCurrentTools } from "@nyte-ai/schema";
 /**
  * Delegation through a real host: the SDK checks the exact requested model
  * against `models.getAvailable`, so a provider's `filterModels` can refuse it
@@ -95,7 +96,7 @@ async function fixture(
   const stream = (selected: Model<Api>, context: Context) => {
     const tail = context.messages.findLast((item) => item.role === "user");
     const prompt = tail === undefined ? "" : contentText(tail.content);
-    const task = context.tools?.find((tool) => tool.name === "task");
+    const task = getCurrentTools(context.messages).find((tool) => tool.name === "task");
     const request: Request = { model: selected, prompt, hasTask: task !== undefined };
     requests.push(request);
     options.onRequest?.(request, block);

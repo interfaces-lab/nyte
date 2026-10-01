@@ -38,8 +38,7 @@ a plugin list. The caller opens the store and closes it after `nyte.close()`.
   merges `~/.nyte/nyte.json` and `<cwd>/.nyte/nyte.json`: `plugins` disables
   ids, `mcp` names servers whose tools the `mcp` built-in contributes through
   one process-wide connection pool. `pluginWatchTargets` is what a host
-  watches to re-resolve; pass `nyte.holdPlugins` as the watcher's `hold` so
-  runners wait for the swap. `target` is `{ kind: "home" }`, `{ kind: "project", workspace }`
+  watches to re-resolve through `watchPluginDirectories` from `@nyte-ai/host/plugins`. `target` is `{ kind: "home" }`, `{ kind: "project", workspace }`
   where `workspace` is a `TrustedWorkspace` (only the workspace store makes one), or
   `{ kind: "deferred", resolve }` to open storage now and resolve the target
   when the first session activates. `extra` appends client-specific built-ins.
@@ -48,6 +47,82 @@ a plugin list. The caller opens the store and closes it after `nyte.close()`.
 `nyteHome()` is `NYTE_HOME` or `~/.nyte`. `createWorkspaceStore()` names the
 file there that every client shares: `workspaces.json`, which records each
 workspace's trust grant and when it was last opened.
+
+## MCP and code mode
+
+MCP connections use `@earendil-works/pi-mcp`; JavaScript tool orchestration uses
+`@earendil-works/pi-codemode`. Workspace hosts provide `codemode` and `tool_search`
+independently of MCP servers or plugin registration order. Both use the executing
+session's filtered tool catalog. Each MCP server in `nyte.json` can set `exposure`:
+
+- `codemode`, the default: discover and call its tools from JavaScript without
+  declaring every MCP tool to the model.
+- `deferred`: `tool_search` finds tools and declares matches on the next model call.
+- `direct`: declare the tools immediately.
+- `hidden`: exclude the tools from discovery and execution.
+
+`toolExposure` overrides individual tool names or `*` patterns. Exact names win,
+then patterns in configuration order. Tool names use `mcp__<server>__<tool>` with
+hash suffixes for collisions or names longer than 64 characters.
+
+Code mode provides `searchTools`, `describeTool`, and `describeNamespace`. Calls
+use the executing session's allowed tools and pass through its validation and
+hooks. Successful `store()` writes and discovered tools follow the conversation
+branch. Scripts are not automatically replayed after interruption.
+
+Bundled hosts pass worker and WASM locations through `plugins.codemode` in
+workspace mode, or `resolveHostPlugins`'s `codemode` option. WASM loads on the first
+code-mode execution, not when the host opens. Source Node hosts use the installed
+package defaults.
+
+## Cache warming
+
+Hosts read `cacheWarming` from `~/.nyte/settings.json` when opening, or from
+`NYTE_HOME/settings.json` when set. Project settings cannot enable it.
+
+- `streaming`, the default, keeps an eligible request warm while its agent run
+  remains active, including time spent executing tools.
+- `idle` also permits refreshes between runs.
+- `off` disables refreshes.
+
+Core replays the finalized request with one output token. Pi's cache lifetime,
+replay-safety, cost, and expiry checks decide whether to send it. Refresh usage
+counts toward billing but never enters the conversation or executes tools.
+
+Embedded hosts can supply `cacheWarming: () => mode` and call
+`nyte.cacheWarming.modeChanged()` after changing it. Status is available through
+`nyte.cacheWarming.status({ sessionId, head })`.
+
+## Local plugins
+
+Each plugin is one directory under a plugin root:
+
+```text
+plugins/<id>/
+  index.ts   session behavior in the host
+  tui.ts     terminal UI setup
+```
+
+Either entry can be omitted. Compiled entries use `index.js` or `tui.js` instead;
+keep one entry per role. The export's id must match the directory name. A later
+root replaces the whole unit, including omitted entries, without changing its
+position. Loose files and `plugins/tui/` are not plugin layouts.
+
+`resolveHostPlugins` captures context files, skills, manifests, and plugin sources
+before activation. Versions hash content, including local helpers and unit data.
+Node and Bun use the shared source cache and watches with separate runtime loaders.
+Session and TUI entries activate separately. Workspace hosts rescan the session's
+frozen, trusted directory before each model response. After a tool writes a plugin,
+an otherwise-idle activation can use it on the next request without waiting for a
+filesystem event. Active callbacks or another head's parked calls keep publication
+queued; that activation continues using its previous catalog.
+
+A failed import, invalid manifest, or unreadable plugin directory aborts preparation
+without replacing the active snapshot. Automatic scans cache unchanged import
+failures. `PluginSources.invalidate()` retries them explicitly; the TUI's `/reload`
+does this for both session and TUI entries. Context candidate names are watched in
+the global directory and every workspace ancestor. Context activation uses the same
+files whose contents were hashed.
 
 ## Delegated models
 

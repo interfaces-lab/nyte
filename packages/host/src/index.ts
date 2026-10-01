@@ -5,6 +5,7 @@
  * workspace must have granted before project code runs.
  */
 import { homedir } from "node:os";
+import { realpath, stat } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import type { MutableModels } from "@nyte-ai/ai";
@@ -15,20 +16,26 @@ import type {
   LoadedPlugin,
   Nyte,
   NyteOptions,
-  ResolvedPlugins,
   SessionActivation,
+  SessionId,
+  TrustedWorkspace,
 } from "@nyte-ai/core";
 import { inlinePlugin, systemPromptPlugin } from "@nyte-ai/core/plugins";
 import type { Plugin, PluginEnv } from "@nyte-ai/core/plugins";
 import { openaiCompactionPlugin } from "@nyte-ai/plugin/openai-compaction";
 import { openaiAstraContextPlugin } from "@nyte-ai/plugin/openai-astra-context";
+import type { CodemodeSandboxOptions } from "@nyte-ai/plugin/codemode-runtime";
 import type { Api, Model } from "@nyte-ai/schema";
 import { createModelCatalog, createModelPreferencesStore } from "./catalog.ts";
 import { nyteHome } from "./paths.ts";
 import type { PluginTarget } from "./paths.ts";
-import { resolveHostPlugins } from "./plugins.ts";
+import { PluginPreparationError, resolveHostPlugins, samePluginSources } from "./plugins.ts";
+import type { PluginSources, ResolvedPlugins } from "./plugins.ts";
 import { providerOverrides } from "./provider-plugins.ts";
 import { WorkspaceStore } from "./workspace-store.ts";
+import { readCacheWarmingMode } from "./settings.ts";
+
+export { cacheWarmingMode } from "./settings.ts";
 
 export {
   manifestPaths,
@@ -104,6 +111,8 @@ export type HostPlugins =
         | { readonly kind: "deferred"; readonly resolve: () => Promise<DeferredPluginTarget> };
       /** Client-specific built-ins, appended after the shared set. */
       readonly extra?: readonly Plugin[];
+      readonly sources?: PluginSources<unknown>;
+      readonly codemode?: Pick<CodemodeSandboxOptions, "workerUrl" | "wasm">;
       readonly onFailure?: (failure: ResolvedPlugins["failures"][number]) => void;
     }
   /** Plugins the caller loaded itself (an embedded product, a test), passed through unchanged. */
@@ -111,7 +120,7 @@ export type HostPlugins =
 
 export type HostOptions = Omit<
   NyteOptions,
-  "streamFn" | "models" | "plugins" | "env" | "resolveActivation"
+  "streamFn" | "models" | "plugins" | "env" | "resolveActivation" | "prepareResponsePlugins"
 > & {
   /** Supplies both the catalog and the stream function. */
   readonly models: MutableModels;
@@ -144,14 +153,27 @@ export async function resolveModel(models: MutableModels, ref: string): Promise<
 export async function createHost(options: HostOptions): Promise<Nyte> {
   const { models, plugins, ...base } = options;
   const providers = providerOverrides(models);
+  const relocatedWorkspaces = new Map<SessionId, TrustedWorkspace>();
 
   const create = async (input: NyteOptions): Promise<Nyte> => {
     const resolveActivation = input.resolveActivation;
+    const prepareResponsePlugins = input.prepareResponsePlugins;
+    const responsePreparation: Pick<NyteOptions, "prepareResponsePlugins"> = {
+      prepareResponsePlugins:
+        prepareResponsePlugins === undefined
+          ? undefined
+          : async (request) => providers.wrap(await prepareResponsePlugins(request)),
+    };
 
     const sdk = await (resolveActivation === undefined
-      ? createNyte({ ...input, plugins: providers.wrap(input.plugins ?? []) })
+      ? createNyte({
+          ...input,
+          ...responsePreparation,
+          plugins: providers.wrap(input.plugins ?? []),
+        })
       : createNyte({
           ...input,
+          ...responsePreparation,
           resolveActivation: async (target) => {
             const activation = await resolveActivation(target);
 
@@ -164,7 +186,11 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
     const setPlugins = sdk.setPlugins.bind(sdk);
     const relocate = sdk.relocate.bind(sdk);
     sdk.setPlugins = (next, target) => setPlugins(providers.wrap(next), target);
-    sdk.relocate = (target) => relocate({ ...target, plugins: providers.wrap(target.plugins) });
+    sdk.relocate = async (target) => {
+      const outcome = await relocate({ ...target, plugins: providers.wrap(target.plugins) });
+      if (outcome.kind === "relocated") relocatedWorkspaces.set(target.sessionId, target.workspace);
+      return outcome;
+    };
 
     return sdk;
   };
@@ -172,8 +198,14 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
   // Delegation can choose a provider other than the parent before any picker opens.
   await models.refresh({ allowNetwork: false });
 
+  let cacheWarming = options.cacheWarming;
+  if (cacheWarming === undefined) {
+    const mode = await readCacheWarmingMode();
+    cacheWarming = () => mode;
+  }
   const shared = {
     ...base,
+    cacheWarming,
     models: createModelCatalog(models, createModelPreferencesStore()),
     drain: "all",
     streamFn: providers.stream,
@@ -193,20 +225,51 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
     case "custom":
       return create({ ...shared, plugins: plugins.plugins, env: plugins.env });
     case "workspace": {
-      const activate = async (target: PluginTarget): Promise<ActiveSessionActivation> => {
+      const workspaces = createWorkspaceStore();
+      let activeTarget: PluginTarget | undefined;
+      let snapshot: readonly LoadedPlugin[] | undefined;
+      const prepare = async (target: PluginTarget): Promise<readonly LoadedPlugin[]> => {
         const resolved = await resolveHostPlugins(target, {
           models,
           model: options.model,
           extra: plugins.extra,
+          sources: plugins.sources,
+          codemode: plugins.codemode,
+        }).catch((cause: unknown) => {
+          if (cause instanceof PluginPreparationError)
+            for (const failure of cause.failures) plugins.onFailure?.(failure);
+          throw cause;
         });
 
-        for (const failure of resolved.failures) plugins.onFailure?.(failure);
-
+        if (snapshot !== undefined && samePluginSources(snapshot, resolved.plugins))
+          return snapshot;
+        snapshot = resolved.plugins;
+        return snapshot;
+      };
+      const activate = async (target: PluginTarget): Promise<ActiveSessionActivation> => {
+        const prepared = await prepare(target);
+        activeTarget = target;
         return {
           kind: "active",
-          plugins: resolved.plugins,
+          plugins: prepared,
           env: { cwd: target.kind === "project" ? target.workspace.cwd : homedir() },
         };
+      };
+      const prepareResponsePlugins: NonNullable<NyteOptions["prepareResponsePlugins"]> = async ({
+        sessionId,
+        cwd,
+      }) => {
+        const relocated = relocatedWorkspaces.get(sessionId);
+        const target: PluginTarget | undefined =
+          relocated === undefined ? activeTarget : { kind: "project", workspace: relocated };
+        if (target === undefined) throw new Error("Workspace plugins are not activated");
+        const realCwd = await realpath(cwd);
+        if (!(await stat(realCwd)).isDirectory())
+          throw new Error(`Not a workspace directory: ${realCwd}`);
+        const authorizedCwd =
+          target.kind === "project" ? target.workspace.cwd : await realpath(homedir());
+        if (realCwd === authorizedCwd) return prepare(target);
+        return prepare({ kind: "project", workspace: await workspaces.require(realCwd) });
       };
 
       const { target } = plugins;
@@ -215,7 +278,7 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
         case "home":
         case "project":
           return activate(target).then((active) =>
-            create({ ...shared, plugins: active.plugins, env: active.env }),
+            create({ ...shared, plugins: active.plugins, env: active.env, prepareResponsePlugins }),
           );
         case "deferred": {
           let active: ActiveSessionActivation | undefined;
@@ -223,6 +286,7 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
 
           return create({
             ...shared,
+            prepareResponsePlugins,
             resolveActivation: () => {
               if (active !== undefined) return active;
 
