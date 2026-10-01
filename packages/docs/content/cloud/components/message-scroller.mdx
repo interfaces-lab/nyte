@@ -1,0 +1,94 @@
+---
+title: Message scroller
+description: "Transcript scrolling and message anchors"
+---
+
+```ts title="Import"
+import {
+  MessageScrollerProvider,
+  MessageScroller,
+  MessageScrollerViewport,
+} from "@nyte-ai/ui/message-scroller";
+```
+
+A transcript scroll controller for ID jumps and streaming content.
+
+## Usage
+
+- Wrap the root, controls and hook consumers in one `MessageScrollerProvider`.
+- Set the viewport height and overflow with `className` or `style`, not `xstyle`. Parts have no default layout.
+- `scrollToMessage` only reaches mounted items with a matching `messageId`.
+- `MessageScrollerButton` uses Nyte button styles unless `render` replaces it.
+
+## Anatomy
+
+| Part                      | Element                    | Parent                        |
+| ------------------------- | -------------------------- | ----------------------------- |
+| `MessageScrollerProvider` | Context only               | Transcript and hook consumers |
+| `MessageScroller`         | `div`                      | Provider                      |
+| `MessageScrollerViewport` | `div`                      | Root                          |
+| `MessageScrollerContent`  | `div` plus internal spacer | Viewport                      |
+| `MessageScrollerItem`     | `div`                      | Content                       |
+| `MessageScrollerButton`   | `button`, or `render`      | Provider                      |
+
+## Examples
+
+```tsx
+const messages = (
+  <MessageScrollerContent>
+    <MessageScrollerItem messageId="welcome">Hello.</MessageScrollerItem>
+  </MessageScrollerContent>
+);
+```
+
+```tsx
+const viewport = (
+  <MessageScrollerViewport style={{ height: 240, overflowY: "auto" }}>
+    {messages}
+  </MessageScrollerViewport>
+);
+```
+
+```tsx
+<MessageScrollerProvider autoScroll>
+  <MessageScroller>{viewport}</MessageScroller>
+</MessageScrollerProvider>
+```
+
+## Props
+
+DOM parts take native props and refs and set a matching `data-slot`. Button render callbacks get `active` and `direction` state.
+
+| Part     | Prop                      | Type                                                                                         | Default       |
+| -------- | ------------------------- | -------------------------------------------------------------------------------------------- | ------------- |
+| Provider | `autoScroll`              | `boolean`                                                                                    | `false`       |
+| Provider | `defaultScrollPosition`   | `"start" \| "end" \| "last-anchor"`                                                          | `"end"`       |
+| Provider | `scrollEdgeThreshold`     | `number`                                                                                     | `8`           |
+| Provider | `scrollPreviousItemPeek`  | `number`                                                                                     | `64`          |
+| Provider | `scrollMargin`            | `number`                                                                                     | `0`           |
+| Viewport | `preserveScrollOnPrepend` | `boolean`                                                                                    | `true`        |
+| Content  | `spacerClassName`         | `string`                                                                                     | None          |
+| Item     | `messageId`               | `string`                                                                                     | None          |
+| Item     | `scrollAnchor`            | `boolean`                                                                                    | `false`       |
+| Button   | `direction`               | `"start" \| "end"`                                                                           | `"end"`       |
+| Button   | `behavior`                | `ScrollBehavior`                                                                             | `"smooth"`    |
+| Button   | `variant`                 | `"default" \| "outline" \| "secondary" \| "ghost" \| "destructive" \| "link" \| null`        | `"secondary"` |
+| Button   | `size`                    | `"default" \| "xs" \| "sm" \| "lg" \| "icon" \| "icon-xs" \| "icon-sm" \| "icon-lg" \| null` | `"icon-sm"`   |
+
+The button sets `data-direction`, `data-variant`, `data-size` and `data-active`. Without children, it shows an arrow and a visually hidden "Scroll to end" or "Scroll to start" label. Items set `data-message-id` and `data-scroll-anchor="true"` or `"false"`.
+
+### Hooks
+
+| Hook                             | Result                                                                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `useMessageScroller()`           | `scrollToStart(options?)`, `scrollToEnd(options?)`, `scrollToMessage(messageId, options?)`; each returns `boolean` |
+| `useMessageScrollerScrollable()` | `{ start: boolean, end: boolean }`                                                                                 |
+| `useMessageScrollerVisibility()` | `{ currentAnchorId: string \| null, visibleMessageIds: string[] }`                                                 |
+
+`MessageScrollerScrollOptions` has `align: "start" | "center" | "end" | "nearest"`, `behavior: ScrollBehavior` and `scrollMargin: number`.
+
+The [headless scroller reference](https://ui.shadcn.com/docs/react/message-scroller) covers controller behavior.
+
+## Accessibility
+
+The viewport defaults to `role="region"`, `aria-label="Messages"` and `tabIndex={0}`. Content defaults to `role="log"` and `aria-relevant="additions"`. Inactive scroll buttons are inert. Use `behavior="auto"` to scroll without animation.
