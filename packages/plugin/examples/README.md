@@ -1,13 +1,16 @@
 # Plugin examples
 
-These plugins demonstrate Nyte's public `@nyte-ai/plugin` contract. Hosts preinstall rename, fast mode, warming, and web search. The question tool is not preinstalled: it is the extensibility demo, and installing it from a discovered directory is the whole setup. Every client then renders it, because what it asks the user to pick travels with the waiting call rather than with the plugin:
+These plugins demonstrate Nyte's public `@nyte-ai/plugin` contract. Hosts preinstall rename, fast mode, and web search. The question tool is not preinstalled: it is the extensibility demo, and installing it from a discovered directory is the whole setup. Every client then renders it, because what it asks the user to pick travels with the waiting call rather than with the plugin:
 
 ```sh
-mkdir -p ~/.nyte/plugins
-ln -s "$PWD/packages/plugin/examples/question.ts" ~/.nyte/plugins/question.ts
+mkdir -p ~/.nyte/plugins/question
+ln -s "$PWD/packages/plugin/examples/question.ts" ~/.nyte/plugins/question/index.ts
 ```
 
-A plugin with the same id in a discovered directory replaces a preinstalled copy.
+Each directory is one plugin unit. `index.ts` exports its session plugin; optional
+`tui.ts` exports its terminal UI definition. The directory name matches both ids.
+A later plugin root replaces the whole unit. A discovered session plugin with the
+same id as a preinstalled copy replaces it.
 
 | Plugin | What it demonstrates |
 | --- | --- |
@@ -16,7 +19,6 @@ A plugin with the same id in a discovered directory replaces a preinstalled copy
 | `fast-mode.ts` | A host-configured plugin factory with a durable `/fast` command, a per-provider setting, and a `before_request` hook |
 | `web-search/` | A plugin set: one tool plugin plus one plugin per search provider, each joining the tool through `tools.update`. Host-owned credentials, a routing setting that can withhold the tool, and stateless `tools/call` requests |
 | `notifications.ts` | An observer: `api.events.subscribe` folds the same `SessionEvent` stream a client folds and asks for attention through `diagnostics.notify`. Nothing it returns reaches the run |
-| `warming.ts` | A background setting-driven plugin that re-sends the chat's own context on a timer to keep the provider's cached prefix warm |
 | `anthropic-proxy.ts` | A toggleable replacement for the default Anthropic provider's session requests, using the existing credentials and model IDs |
 
 ## Provider overrides
@@ -34,7 +36,7 @@ export default providerPlugin({
 });
 ```
 
-The provider must keep the default provider ID, `anthropic` in this example. Save the entry as `anthropic-override.ts` in a discovered plugin directory. Its toggle appears in the existing plugin settings. `/anthropic-override on` and `/anthropic-override off` change the same setting; calling it without an argument toggles it.
+The provider must keep the default provider ID, `anthropic` in this example. Save the entry as `anthropic-override/index.ts` under a plugin root. Its toggle appears in the existing plugin settings. `/anthropic-override on` and `/anthropic-override off` change the same setting; calling it without an argument toggles it.
 
 - Settings belong to the chat and survive restart. Other chats keep their own settings.
 - The last enabled matching provider plugin in load order handles the next model request. Disabling it reveals an earlier override, or the default provider.
@@ -48,8 +50,8 @@ The provider must keep the default provider ID, `anthropic` in this example. Sav
 Set `ANTHROPIC_BASE_URL` to a proxy you trust before starting Nyte, then install the example:
 
 ```sh
-mkdir -p ~/.nyte/plugins
-ln -s "$PWD/packages/plugin/examples/anthropic-proxy.ts" ~/.nyte/plugins/anthropic-proxy.ts
+mkdir -p ~/.nyte/plugins/anthropic-proxy
+ln -s "$PWD/packages/plugin/examples/anthropic-proxy.ts" ~/.nyte/plugins/anthropic-proxy/index.ts
 ```
 
 It starts off. Use `/anthropic-proxy on` or the existing plugin setting to enable it for a chat. The proxy receives that chat's model requests and Anthropic credentials. `/anthropic-proxy off` returns subsequent requests to the default endpoint.

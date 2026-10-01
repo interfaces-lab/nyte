@@ -1,14 +1,10 @@
-/**
- * Source fingerprints and import attempts, kept together so filesystem events
- * reload changed local graphs without repeating unchanged evaluations. A
- * `Prepare` walks one entry's local import graph for its runtime, reporting
- * every file to `track`, and returns a loader. Based on opencode v2
- * `plugin/src/source.ts`.
- */
 import { readdirSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { dirname } from "node:path";
+import { isFileError } from "../paths.ts";
+import { unitDataFiles } from "./units.ts";
 
-export type Track = (file: string, directory?: boolean) => void;
+export type Track = (file: string, directory?: boolean, content?: string | Uint8Array) => void;
 
 export interface Prepared<T> {
   load(): Promise<T>;
@@ -31,7 +27,6 @@ export interface PluginSources<T> {
   /** Cached until a tracked file's digest changes. A failed attempt is cached too. */
   read(entry: string): Promise<Loaded<T>>;
   retain(entries: ReadonlySet<string>): void;
-  /** Every later read prepares afresh under a new version, unchanged bytes included. */
   invalidate(): void;
   dispose(): void;
 }
@@ -66,21 +61,36 @@ export function createPluginSources<T>(
 
       const files: Source<T>["files"] = new Map();
 
-      const track: Track = (file, directory = false) => {
-        if (files.has(file)) return;
-        files.set(file, { digest: digest(file, directory), directory });
+      const track: Track = (file, directory = false, content) => {
+        if (files.has(file)) {
+          if (content !== undefined) files.set(file, { digest: hash(content), directory });
+          return;
+        }
+        files.set(file, {
+          digest: content === undefined ? digest(file, directory) : hash(content),
+          directory,
+        });
         const pending = watch(file).finally(() => watching.delete(pending));
         watching.add(pending);
         void pending.catch(() => undefined);
       };
 
       track(entry);
-      const prepared = await prepare(entry, track, ++instances);
-
-      const loaded = prepared.load().then((value) => ({
-        version: versionOf(files, epoch),
-        value,
-      }));
+      const instance = ++instances;
+      const sourceEpoch = epoch;
+      const loaded = Promise.resolve().then(async () => {
+        const unit = await unitDataFiles(dirname(entry)).catch((cause: unknown) => {
+          sources.delete(entry);
+          throw cause;
+        });
+        for (const directory of unit.directories) track(directory, true);
+        for (const file of unit.files) track(file);
+        const prepared = await prepare(entry, track, instance);
+        const value = await prepared.load();
+        if (![...files].every(([file, item]) => item.digest === digest(file, item.directory)))
+          throw new Error(`${entry}: plugin sources changed while loading`);
+        return { version: versionOf(files, sourceEpoch), value };
+      });
 
       sources.set(entry, { loaded, files, epoch });
 
@@ -110,16 +120,18 @@ function versionOf(files: Source<unknown>["files"], epoch: number): string {
   }
 
   if (epoch > 0) hash.update(`epoch:${String(epoch)}`);
-
   return hash.digest("hex").slice(0, 16);
+}
+
+function hash(content: string | Uint8Array): string {
+  return createHash("sha256").update(content).digest("hex");
 }
 
 function digest(file: string, directory: boolean): string {
   try {
-    return createHash("sha256")
-      .update(directory ? JSON.stringify(readdirSync(file).sort()) : readFileSync(file))
-      .digest("hex");
-  } catch {
-    return "missing";
+    return hash(directory ? JSON.stringify(readdirSync(file).sort()) : readFileSync(file));
+  } catch (cause) {
+    if (isFileError(cause, ["ENOENT"])) return "missing";
+    throw cause;
   }
 }

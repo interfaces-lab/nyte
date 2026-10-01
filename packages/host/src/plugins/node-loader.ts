@@ -7,7 +7,7 @@
  * re-export the host's own instance, so `instanceof` checks hold across the
  * boundary. Based on opencode v2 `plugin/src/source.node.ts`.
  */
-import { registerHooks } from "node:module";
+import Module from "node:module";
 import { dirname, isAbsolute, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Prepare, Track } from "./sources.ts";
@@ -44,7 +44,7 @@ function install(): Installed {
   installed = state;
   Object.defineProperty(globalThis, MODULES, { value: state.modules });
 
-  registerHooks({
+  Module.registerHooks({
     resolve(specifier, context, next) {
       if (state.modules.has(specifier)) {
         return { url: `${HOST_SCHEME}${specifier}`, format: "module", shortCircuit: true };
@@ -53,7 +53,8 @@ function install(): Installed {
       const parent = context.parentURL === undefined ? undefined : new URL(context.parentURL);
       const rev = parent?.searchParams.get(REV);
 
-      if (parent === undefined || rev === null || rev === undefined) return next(specifier, context);
+      if (parent === undefined || rev === null || rev === undefined)
+        return next(specifier, context);
       const tracker = state.trackers.get(rev);
 
       const resolved = (() => {
@@ -73,7 +74,7 @@ function install(): Installed {
         }
       })();
 
-      if (!resolved.url.startsWith("file:")) return resolved;
+      if (!isLocal(specifier) || !resolved.url.startsWith("file:")) return resolved;
       const file = fileURLToPath(resolved.url);
 
       if (inNodeModules(file)) return resolved;
@@ -84,13 +85,32 @@ function install(): Installed {
       return { ...resolved, url: url.href };
     },
     load(url, context, next) {
-      if (!url.startsWith(HOST_SCHEME)) return next(url, context);
+      if (!url.startsWith(HOST_SCHEME)) {
+        const loaded = next(url, context);
+        if (url.startsWith("file:")) {
+          const requested = new URL(url);
+          const rev = requested.searchParams.get(REV);
+          const source = loaded.source;
+          if (rev !== null && source !== null && source !== undefined) {
+            const content =
+              typeof source === "string"
+                ? source
+                : ArrayBuffer.isView(source)
+                  ? new Uint8Array(source.buffer, source.byteOffset, source.byteLength)
+                  : new Uint8Array(source);
+            state.trackers.get(rev)?.(fileURLToPath(requested), false, content);
+          }
+        }
+        return loaded;
+      }
       const name = url.slice(HOST_SCHEME.length);
       const module = state.modules.get(name);
 
       if (module === undefined) throw new Error(`Unknown host module: ${name}`);
 
-      const names = Object.keys(module).filter((key) => key !== "default" && /^[A-Za-z_$][\w$]*$/.test(key));
+      const names = Object.keys(module).filter(
+        (key) => key !== "default" && /^[A-Za-z_$][\w$]*$/.test(key),
+      );
 
       const source = [
         `const m = globalThis[Symbol.for(${JSON.stringify(MODULES.description)})].get(${JSON.stringify(name)});`,

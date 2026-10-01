@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, test, vi } from "vitest";
 import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
 import type { MutableModels } from "@nyte-ai/ai";
 import type { Api, Model } from "@nyte-ai/schema";
 import { SKILLS_PLUGIN_ID } from "@nyte-ai/core/plugins";
-import { WARMING_PLUGIN_ID } from "@nyte-ai/plugin/examples/warming";
 import {
   createWorkspaceStore,
   nyteHome,
@@ -63,14 +62,14 @@ test("home paths use only user directories; project paths preserve override orde
   assert.equal(nyteHome(), join(homedir(), ".nyte"));
 });
 
-test("the manifest accepts disable entries, JSON options, and MCP servers, user under project", async () => {
+test("the manifest accepts string entries and MCP servers, user under project", async () => {
   const f = await fixture();
   const project = { kind: "project", workspace: f.workspace } as const;
   assert.deepEqual(await readManifest(project), {});
   await mkdir(join(f.cwd, ".nyte"));
   await mkdir(f.home, { recursive: true });
   const manifest = {
-    plugins: ["-rename", { id: "custom", options: { enabled: true, nested: [1, null] } }],
+    plugins: ["-rename", "custom"],
     mcp: {
       docs: { url: "https://mcp.example.invalid/mcp", headers: { Authorization: "Bearer x" } },
       shared: { command: "project-server" },
@@ -107,6 +106,8 @@ test("invalid JSON and invalid manifest shapes identify the manifest path", asyn
     "[]",
     '{"plugins": 1}',
     '{"plugins": [{"id": 1}]}',
+    '{"plugins": [{"id": "custom"}]}',
+    '{"plugins": [{"id": "custom", "options": {"enabled": true}}]}',
     '{"plugins": [{"id": "x", "extra": true}]}',
     '{"extra": true}',
     '{"mcp": {"x": {}}}',
@@ -121,18 +122,27 @@ test("invalid JSON and invalid manifest shapes identify the manifest path", asyn
   }
 });
 
-test("plugin resolution watches its sources whole and the home directory by manifest name only", async () => {
+test("plugin watches cover manifests, roots, and every context candidate without home store churn", async () => {
   const f = await fixture();
-  assert.deepEqual(pluginWatchTargets({ kind: "project", workspace: f.workspace }), [
-    { path: f.home, recursive: false, names: ["nyte.json"] },
-    { path: join(f.cwd, ".nyte"), recursive: true },
-    { path: join(f.home, "plugins"), recursive: true },
-    { path: join(f.cwd, ".agents", "skills"), recursive: true },
-    { path: join(f.cwd, ".claude", "skills"), recursive: true },
-    { path: join(f.home, "skills"), recursive: true },
-    { path: join(homedir(), ".agents", "skills"), recursive: true },
-    { path: join(homedir(), ".claude", "skills"), recursive: true },
-  ]);
+  const targets = pluginWatchTargets({ kind: "project", workspace: f.workspace });
+  const home = targets.find((target) => target.path === f.home);
+  assert.equal(home?.recursive, false);
+  assert.ok(home?.names?.includes("nyte.json"));
+  assert.ok(!home?.names?.includes("sessions.db"));
+  for (const directory of [f.home, f.cwd, dirname(f.cwd), "/"]) {
+    const target = targets.find((target) => target.path === directory);
+    assert.equal(target?.recursive, false);
+    for (const name of ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"])
+      assert.ok(target?.names?.includes(name));
+  }
+  for (const root of pluginDirectories({ kind: "project", workspace: f.workspace }))
+    assert.ok(
+      targets.some(
+        (target) =>
+          (target.path === root.path || root.path.startsWith(target.path + "/")) &&
+          target.recursive,
+      ),
+    );
 });
 
 const model: Model<Api> = {
@@ -168,27 +178,22 @@ function offlineModels(): MutableModels {
   return models;
 }
 
-test("the desktop host installs warming and a discovered default plugin can replace it", async () => {
+test("a discovered plugin can replace a host builtin", async () => {
   const f = await fixture();
   const context = { models: offlineModels(), model };
   const builtins = await resolveHostPlugins({ kind: "home" }, context);
-  assert.equal(
-    builtins.plugins.find((plugin) => plugin.id === WARMING_PLUGIN_ID)?.source,
-    "builtin",
-  );
+  assert.equal(builtins.plugins.find((plugin) => plugin.id === "rename")?.source, "builtin");
 
   const plugins = join(f.home, "plugins");
   await mkdir(plugins, { recursive: true });
-  const path = join(plugins, `${WARMING_PLUGIN_ID}.ts`);
-  await writeFile(
-    path,
-    `export default { id: ${JSON.stringify(WARMING_PLUGIN_ID)}, session() {} };\n`,
-  );
+  await mkdir(join(plugins, "rename"));
+  const path = join(plugins, "rename", "index.ts");
+  await writeFile(path, `export default { id: ${JSON.stringify("rename")}, session() {} };\n`);
   const overridden = await resolveHostPlugins({ kind: "home" }, context);
   assert.deepEqual(overridden.failures, []);
-  const warming = overridden.plugins.find((plugin) => plugin.id === WARMING_PLUGIN_ID);
-  assert.equal(warming?.source, "user");
-  assert.equal(warming?.path, path);
+  const renamed = overridden.plugins.find((plugin) => plugin.id === "rename");
+  assert.equal(renamed?.source, "user");
+  assert.equal(renamed?.path, path);
 });
 
 function skillsVersion(resolved: Awaited<ReturnType<typeof resolveHostPlugins>>): string {

@@ -6,7 +6,9 @@ import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import process from "node:process";
 import { DatabaseSync } from "node:sqlite";
-import type { PluginDirectory, TrustedWorkspace, WatchTarget } from "@nyte-ai/core";
+import type { TrustedWorkspace } from "@nyte-ai/core";
+import type { PluginRoot } from "./plugins/units.ts";
+import type { WatchTarget } from "./plugins/watch.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 
@@ -18,8 +20,8 @@ export function nyteHome(): string {
   return resolve(process.env.NYTE_HOME ?? join(homedir(), ".nyte"));
 }
 
-export function pluginDirectories(target: PluginTarget): PluginDirectory[] {
-  const user: PluginDirectory = { path: join(nyteHome(), "plugins"), source: "user" };
+export function pluginDirectories(target: PluginTarget): PluginRoot[] {
+  const user: PluginRoot = { path: join(nyteHome(), "plugins"), source: "user" };
 
   switch (target.kind) {
     case "home":
@@ -69,11 +71,27 @@ export function pluginWatchTargets(target: PluginTarget): WatchTarget[] {
   ];
 
   return [
-    { path: nyteHome(), recursive: false, names: [MANIFEST_NAME] },
+    { path: nyteHome(), recursive: false, names: [MANIFEST_NAME, ...CONTEXT_NAMES] },
+    ...contextDirectories(target)
+      .filter((path) => path !== nyteHome())
+      .map((path) => ({ path, recursive: false, names: CONTEXT_NAMES })),
     ...deep.flatMap((path) =>
       deep.some((other) => path.startsWith(other + sep)) ? [] : [{ path, recursive: true }],
     ),
   ];
+}
+
+const CONTEXT_NAMES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
+
+function contextDirectories(target: PluginTarget): string[] {
+  const directories = [];
+  let path = target.kind === "project" ? target.workspace.cwd : homedir();
+  while (true) {
+    directories.push(path);
+    const parent = dirname(path);
+    if (parent === path) return directories;
+    path = parent;
+  }
 }
 
 export function skillDirectories(target: PluginTarget): string[] {
