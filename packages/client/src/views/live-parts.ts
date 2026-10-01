@@ -127,6 +127,7 @@ export function foldLiveParts(parts: LiveParts, event: SessionEvent): LiveParts 
             (part) => part.kind !== "tool" || part.callId !== message.toolCallId,
           );
         case "user":
+        case "system":
           return parts;
         default: {
           const exhaustive: never = message;

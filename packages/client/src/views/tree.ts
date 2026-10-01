@@ -54,7 +54,7 @@ function compareCommits(left: StoredCommit, right: StoredCommit): number {
   return left.commit.at - right.commit.at || left.oid.localeCompare(right.oid);
 }
 
-/** Fold every supplied commit into a forest. Commits may arrive in any order. */
+/** Fold every supplied commit into a forest. Commits may arrive in any order; billing commits are not rows. */
 export function projectTree(
   commits: readonly StoredCommit[],
   options: {
@@ -64,7 +64,9 @@ export function projectTree(
 ): SessionTree {
   const byOid = new Map<Oid, Commit>();
 
-  for (const item of commits) byOid.set(item.oid, item.commit);
+  for (const item of commits) {
+    if (item.commit.body.kind !== "usage") byOid.set(item.oid, item.commit);
+  }
   const activePath = activePathOids(byOid, options.tip);
 
   const headsAt = new Map<Oid, string[]>();
@@ -131,6 +133,7 @@ export function navigationTarget(selected: StoredCommit | undefined): Navigation
           return { kind: "restore", to: selected.commit.parent, commit: selected };
         case "assistant":
         case "toolResult":
+        case "system":
           return { kind: "move", to: selected.oid };
         default: {
           const _exhaustive: never = body.message;
@@ -143,6 +146,7 @@ export function navigationTarget(selected: StoredCommit | undefined): Navigation
     case "checkpoint":
     case "summary":
     case "config":
+    case "usage":
       return { kind: "move", to: selected.oid };
     default: {
       const _exhaustive: never = body;

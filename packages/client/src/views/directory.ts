@@ -61,6 +61,7 @@ function messagePreview(body: CommitBody): string | undefined {
           text = assistantText(body.message.content);
           break;
         case "toolResult":
+        case "system":
           return undefined;
         default: {
           const _exhaustive: never = body.message;
@@ -78,6 +79,7 @@ function messagePreview(body: CommitBody): string | undefined {
     case "checkpoint":
     case "summary":
     case "config":
+    case "usage":
       return undefined;
     default: {
       const _exhaustive: never = body;

@@ -5,6 +5,7 @@
  * Synced with pi d4edf066f.
  */
 import type { JsonValue, Message, ToolResultMessage, Usage, UserMessage } from "@nyte-ai/schema";
+import { getCurrentSystemMessage } from "@nyte-ai/schema";
 import { contextMessages, modelContext } from "../context.ts";
 import type { ContextStatus } from "@nyte-ai/protocol";
 import type { Commit } from "@nyte-ai/protocol";
@@ -22,6 +23,7 @@ function assistantUsage(message: Message): Usage | undefined {
         : undefined;
     case "user":
     case "toolResult":
+    case "system":
       return undefined;
     default: {
       const _exhaustive: never = message;
@@ -72,6 +74,16 @@ export function estimateTokens(message: Message): number {
   let chars = 0;
 
   switch (message.role) {
+    case "system":
+      chars = estimateTextAndImageContentChars(message.content);
+
+      for (const section of Object.values(message.sections ?? {})) {
+        if (section !== null) chars += section.length;
+      }
+
+      if (message.toolsAdded !== undefined) chars += JSON.stringify(message.toolsAdded).length;
+
+      return Math.ceil(chars / 4);
     case "user":
       return Math.ceil(estimateTextAndImageContentChars(message.content) / 4);
     case "assistant":
@@ -103,6 +115,21 @@ export function estimateTokens(message: Message): number {
       return _exhaustive;
     }
   }
+}
+
+/**
+ * Estimate without usage. System deltas replay into one leading message so a
+ * redefined or removed tool is counted once, as the provider receives it.
+ */
+function estimateReplayedTokens(messages: readonly Message[]): number {
+  const system = getCurrentSystemMessage(messages);
+  let tokens = system === undefined ? 0 : estimateTokens(system);
+
+  for (const message of messages) {
+    if (message.role !== "system") tokens += estimateTokens(message);
+  }
+
+  return tokens;
 }
 
 export interface AssistantUsageInfo {
@@ -147,7 +174,7 @@ function estimateContextTokensFromUsage(
   usageInfo: AssistantUsageInfo | undefined,
 ): ContextUsageEstimate {
   if (usageInfo === undefined) {
-    const tokens = messages.reduce((sum, message) => sum + estimateTokens(message), 0);
+    const tokens = estimateReplayedTokens(messages);
 
     return { tokens, usageTokens: 0, trailingTokens: tokens, lastUsageIndex: null };
   }
@@ -215,10 +242,7 @@ function estimateProjectedModelContextTokens(
     );
   }
 
-  const trailingTokens = context.messages.reduce(
-    (sum, message) => sum + estimateTokens(message),
-    0,
-  );
+  const trailingTokens = estimateReplayedTokens(context.messages);
 
   if (context.checkpoint === undefined) {
     // A different model receives the expanded portable backup; native usage

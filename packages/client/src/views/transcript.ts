@@ -299,6 +299,8 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
           builder.toolCalls?.clear();
           appendUser(items, item, body.message, "source" in body ? body.source : undefined);
           break;
+        case "system":
+          break;
         default: {
           const _exhaustive: never = body.message;
 
@@ -332,6 +334,8 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
       break;
     case "config":
       items.push({ kind: "config", commit: item.oid, at: item.commit.at, body });
+      break;
+    case "usage":
       break;
     default: {
       const _exhaustive: never = body;

@@ -10,7 +10,7 @@ export type UsageSubject =
 export interface ModelUsage {
   readonly provider: string;
   readonly model: string;
-  /** Assistant messages folded into this row. */
+  /** Billed requests folded into this row: assistant messages and usage commits. */
   readonly turns: number;
   readonly usage: Usage;
 }
@@ -64,6 +64,7 @@ export function commitUsage(
             ? undefined
             : { subject: { kind: "tool" }, usage: body.message.usage };
         case "user":
+        case "system":
           return undefined;
         default: {
           const _exhaustive: never = body.message;
@@ -72,6 +73,11 @@ export function commitUsage(
         }
       }
 
+    case "usage":
+      return {
+        subject: { kind: "model", provider: body.provider, model: body.model },
+        usage: body.usage,
+      };
     case "checkpoint":
     case "summary":
       return body.usage === undefined

@@ -98,6 +98,11 @@ function enforceToolPairs(messages: readonly Message[]): Message[] {
   };
 
   for (const message of messages) {
+    if (message.role === "system") {
+      output.push(message);
+      continue;
+    }
+
     if (message.role === "toolResult") {
       if (!open.delete(message.toolCallId)) continue;
       output.push(message);
@@ -173,14 +178,21 @@ export function contextMessages(commits: readonly Commit[]): Message[] {
         });
         break;
       case "checkpoint":
+        if (body.systemMessage !== undefined) messages.push(body.systemMessage);
+
         if (body.summary !== "")
           messages.push(createCompactionSummaryMessage(body.summary, commit.at));
-        messages.push(...body.retainedTail.filter(isContextMessage));
+
+        for (const message of body.retainedTail) {
+          if (message.role !== "system" && isContextMessage(message)) messages.push(message);
+        }
+
         break;
       case "summary":
         if (body.text !== "") messages.push(createBranchSummaryMessage(body.text, commit.at));
         break;
       case "config":
+      case "usage":
         break;
       default: {
         const _exhaustive: never = body;
@@ -206,9 +218,11 @@ export function modelContext(
     first.body.material.api === target.api &&
     first.body.material.model === target.model
   ) {
+    const lead = first.body.systemMessage === undefined ? [] : [first.body.systemMessage];
+
     return {
       checkpoint: first.body.material,
-      messages: contextMessages(commits.slice(1)),
+      messages: [...lead, ...contextMessages(commits.slice(1))],
     };
   }
 
@@ -241,6 +255,7 @@ export function branchConfig(commits: readonly Pick<Commit, "body">[]): BranchCo
       case "completion":
       case "checkpoint":
       case "summary":
+      case "usage":
         break;
       default: {
         const _exhaustive: never = body;

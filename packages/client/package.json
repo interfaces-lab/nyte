@@ -14,11 +14,11 @@
   },
   "dependencies": {
     "@nyte-ai/protocol": "workspace:*",
+    "@nyte-ai/schema": "workspace:*",
     "diff": "^9.0.0",
     "typebox": "1.3.7"
   },
   "devDependencies": {
-    "@nyte-ai/schema": "workspace:*",
     "typescript": "^7.0.2",
     "vitest": "^5.0.2"
   }
