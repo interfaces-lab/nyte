@@ -3,8 +3,8 @@
  * cannot interleave on one file. Ported from pi (earendil-works).
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/tools/file-mutation-queue.ts
+ * Synced with pi 7fbbd5f4a.
  */
-import { existsSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -12,10 +12,25 @@ const fileMutationQueues = new Map<string, Promise<void>>();
 
 let registrationQueue = Promise.resolve();
 
+function isMissingPathError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error.code === "ENOENT" || error.code === "ENOTDIR")
+  );
+}
+
 async function getMutationQueueKey(filePath: string): Promise<string> {
   const resolvedPath = resolve(filePath);
 
-  return existsSync(resolvedPath) ? realpath(resolvedPath) : resolvedPath;
+  try {
+    return await realpath(resolvedPath);
+  } catch (error) {
+    if (isMissingPathError(error)) return resolvedPath;
+
+    throw error;
+  }
 }
 
 /**
