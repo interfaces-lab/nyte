@@ -11,6 +11,7 @@
  */
 import { props } from "@stylexjs/stylex";
 import { Link, useRouter } from "@tanstack/react-router";
+import { closeSettings } from "./settings-return.ts";
 import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
@@ -182,10 +183,7 @@ export function SettingsNavigation({
         variant="nav"
         data-sidebar-return
         xstyle={[rail.navRow, styles.back]}
-        onClick={() => {
-          if (router.history.canGoBack()) router.history.back();
-          else void router.navigate({ to: "/", replace: true });
-        }}
+        onClick={() => closeSettings(router)}
       >
         <Row.Leading xstyle={rail.navLeading}>
           <Icon name="arrow-left" size={14} />

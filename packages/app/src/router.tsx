@@ -47,6 +47,7 @@ import { clientCapabilities, resolveClientAction } from "./client-actions.ts";
 import { CustomizeSurface } from "./chrome/customize.tsx";
 import { EnvironmentsSurface } from "./chrome/environments.tsx";
 import { SettingsSurface } from "./chrome/appearance-settings.tsx";
+import { closeSettings, rememberWorkspaceHref } from "./chrome/settings-return.ts";
 
 const styles = create({
   shell: {
@@ -115,6 +116,13 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
         (match) => match.routeId === settingsRoute.id,
       );
 
+      if (settingsOpen && event.key === "Escape" && !event.defaultPrevented && !event.isComposing) {
+        event.preventDefault();
+        closeSettings(shellRouter);
+
+        return;
+      }
+
       const action = resolveClientAction(
         event,
         mac,
@@ -143,7 +151,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
         panes.newChat();
       } else if (action.id === "back" && settingsOpen) {
         event.preventDefault();
-        shellRouter.history.back();
+        closeSettings(shellRouter);
       } else if (action.id === "back" && shellRouter.history.canGoBack()) {
         event.preventDefault();
         shellRouter.history.back();
@@ -388,6 +396,8 @@ subscribeShellStage((stage) => {
 });
 
 router.subscribe("onResolved", () => {
+  if (!router.state.matches.some((match) => match.routeId === settingsRoute.id))
+    rememberWorkspaceHref(router.state.location.href);
   restoreChromeStage();
   try {
     if (
