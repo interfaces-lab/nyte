@@ -1,8 +1,8 @@
 /**
- * Header helpers: flatten a fetch Headers object, and drop null entries from caller-supplied ProviderHeaders (null suppresses a default header).
+ * Header helpers: flatten a fetch Headers object, and merge caller-supplied ProviderHeaders case-insensitively, where a later null removes an earlier header.
  *
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/headers.ts
- * Synced with pi 7ebf9087e.
+ * Synced with pi 7fbbd5f4a.
  */
 import type { ProviderHeaders } from "../types.ts";
 
@@ -11,14 +11,18 @@ export function headersToRecord(headers: Headers) {
 }
 
 export function providerHeadersToRecord(
-  headers: ProviderHeaders | undefined,
+  ...headerSources: (ProviderHeaders | undefined)[]
 ): Record<string, string> | undefined {
-  if (!headers) return undefined;
-  const result: Record<string, string> = {};
+  const merged = new Map<string, [string, string]>();
 
-  for (const [key, value] of Object.entries(headers)) {
-    if (value !== null) result[key] = value;
+  for (const source of headerSources) {
+    for (const [name, value] of Object.entries(source ?? {})) {
+      const normalizedName = name.toLowerCase();
+      merged.delete(normalizedName);
+
+      if (value !== null) merged.set(normalizedName, [name, value]);
+    }
   }
 
-  return Object.keys(result).length > 0 ? result : undefined;
+  return merged.size > 0 ? Object.fromEntries(merged.values()) : undefined;
 }
