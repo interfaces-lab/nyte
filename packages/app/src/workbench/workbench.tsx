@@ -492,7 +492,7 @@ function WorkbenchViewHost({
   };
 
   const activeTab = activeWorkbenchTab(view, scope, capabilities);
-  const panelVisible = current && view.expanded && activeTab !== null;
+  const panelVisible = current && view.expanded;
   useLayoutEffect(() => {
     const panel = panelRef.current;
     if (!panelVisible || panel === null) return;
@@ -615,6 +615,23 @@ function WorkbenchViewHost({
         )}
         {fileTab !== undefined && renderSlot(fileTab, fileVisible, "files")}
         {panelTabs.map((tab) => renderSlot(tab, panelVisible && activeTab?.id === tab.id, tab.id))}
+        {panelVisible && activeTab === null && (
+          <div {...props(workbenchStyles.launcher)}>
+            {workbenchTabs(scope, capabilities).map((kind) => (
+              <Row
+                key={kind}
+                variant="nav"
+                xstyle={workbenchStyles.launcherCard}
+                onClick={() =>
+                  openWorkbenchTab({ view: viewKey, kind, workspacePath, capabilities })
+                }
+              >
+                <Icon name={tabIcons[kind]} size={20} />
+                {workbenchKindLabel(kind)}
+              </Row>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

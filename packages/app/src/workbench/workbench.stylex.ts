@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { layer, row, target } from "@nyte-ai/ui/schema.stylex";
+import { layer, row, shape, target } from "@nyte-ai/ui/schema.stylex";
 import { workbench } from "../theme/schema.stylex.ts";
 import { appearance, role, shadow, type } from "@nyte-ai/ui/vars.stylex";
 
@@ -137,6 +137,34 @@ export const workbenchStyles = create({
     minHeight: 0,
   },
   panelSlotHidden: { display: "none" },
+  launcher: {
+    display: "grid",
+    gridTemplateColumns: `repeat(2, ${workbench.launcherCardSize})`,
+    gridAutoRows: workbench.launcherCardSize,
+    gap: 8,
+    placeContent: "center",
+    flex: 1,
+    minHeight: 0,
+    padding: 16,
+  },
+  launcherCard: {
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: 8,
+    paddingBlock: 12,
+    paddingInline: 12,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: role.borderSecondaryTranslucent,
+    borderRadius: shape.card,
+    backgroundImage: { default: "none", ":active": role.layerPressed },
+    color: {
+      default: role.contentSecondary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
+      ":focus-visible": role.contentPrimary,
+    },
+    textAlign: "center",
+  },
   sash: {
     position: "absolute",
     zIndex: 2,

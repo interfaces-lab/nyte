@@ -222,15 +222,9 @@ export interface WorkbenchController {
       readonly id: WorkbenchTabId;
       readonly scrollTop: number;
     }) => void;
-    readonly toggle: (input: {
-      readonly view: WorkbenchViewKey;
-      readonly scope: WorkbenchScope;
-    }) => void;
+    readonly toggle: (input: { readonly view: WorkbenchViewKey }) => void;
     readonly toggleCollapsed: (input: { readonly view: WorkbenchViewKey }) => void;
-    readonly toggleWorkbench: (input: {
-      readonly view: WorkbenchViewKey;
-      readonly scope: WorkbenchScope;
-    }) => void;
+    readonly toggleWorkbench: (input: { readonly view: WorkbenchViewKey }) => void;
     readonly toggleMaximized: (input: { readonly view: WorkbenchViewKey }) => void;
     readonly setWidth: (input: { readonly view: WorkbenchViewKey; readonly width: number }) => void;
   };
@@ -336,7 +330,6 @@ export function activeWorkbenchTab(
   scope: WorkbenchScope,
   capabilities: ClientCapabilities,
 ): WorkbenchTab | null {
-  if (view.active === null) return null;
   const active = view.tabs.find((tab) => tab.id === view.active);
 
   if (active !== undefined && workbenchTabAvailable(scope, active.kind, capabilities))
@@ -440,7 +433,7 @@ export function decodePersistedWorkbenchSnapshot(
 
       return (
         ids.size === view.tabs.length &&
-        (view.active === null ? view.tabs.length === 0 && !view.expanded : ids.has(view.active))
+        (view.active === null ? view.tabs.length === 0 : ids.has(view.active))
       );
     });
 
@@ -473,7 +466,7 @@ function restoreSnapshot(
       Object.freeze({
         tabs: Object.freeze(tabs.map((tab) => Object.freeze(tab))),
         active,
-        expanded: stored.expanded && active !== null,
+        expanded: stored.expanded,
         collapsed: "floating",
         maximized: stored.maximized,
         width: clampWorkbenchWidth(stored.width),
@@ -500,7 +493,7 @@ function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnapshot {
         key,
         tabs,
         active,
-        expanded: view.expanded && active !== null,
+        expanded: view.expanded,
         maximized: view.maximized,
         width: view.width,
       };
@@ -654,12 +647,7 @@ export function createWorkbenchController(
         const active =
           current.active === id ? (tabs[index]?.id ?? tabs[index - 1]?.id ?? null) : current.active;
 
-        return {
-          ...current,
-          tabs,
-          active,
-          expanded: current.expanded && active !== null,
-        };
+        return { ...current, tabs, active, expanded: current.expanded && active !== null };
       });
     },
     moveTab({ view, id, index }) {
@@ -728,27 +716,8 @@ export function createWorkbenchController(
         };
       });
     },
-    toggle({ view, scope }) {
-      const current = snapshot.views.get(view) ?? DEFAULT_VIEW;
-
-      if (current.expanded) {
-        publish(view, { ...current, expanded: false });
-
-        return;
-      }
-
-      const active = activeWorkbenchTab(current, scope, capabilities());
-
-      if (active !== null) {
-        publish(view, { ...current, active: active.id, expanded: true });
-
-        return;
-      }
-
-      const kind = workbenchTabs(scope, capabilities())[0];
-
-      if (kind !== undefined)
-        actions.openTab({ view, tab: defaultWorkbenchTab(kind), activate: true });
+    toggle({ view }) {
+      update(view, (current) => ({ ...current, expanded: !current.expanded }));
     },
     toggleCollapsed({ view }) {
       update(view, (current) => ({
@@ -759,8 +728,8 @@ export function createWorkbenchController(
     toggleMaximized({ view }) {
       update(view, (current) => ({ ...current, maximized: !current.maximized }));
     },
-    toggleWorkbench({ view, scope }) {
-      actions.toggle({ view, scope });
+    toggleWorkbench({ view }) {
+      actions.toggle({ view });
     },
     setWidth({ view, width }) {
       const nextWidth = clampWorkbenchWidth(width);

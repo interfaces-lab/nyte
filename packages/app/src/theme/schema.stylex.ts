@@ -86,6 +86,7 @@ export const workbench = defineConsts({
   headerPaddingBlock: "var(--nyte-workbench-header-padding-block)",
   iconRailWidth: "var(--nyte-workbench-icon-rail-width)",
   fileListWidth: "var(--nyte-workbench-file-list-width)",
+  launcherCardSize: "var(--nyte-workbench-launcher-card-size)",
 });
 
 export const pane = defineConsts({

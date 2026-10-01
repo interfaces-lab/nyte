@@ -63,6 +63,7 @@ export const layout = defineVars({
   "--nyte-workbench-header-padding-block": { default: "0px", "@media (pointer: coarse)": "4px" },
   "--nyte-workbench-icon-rail-width": { default: "34px", "@media (pointer: coarse)": "52px" },
   "--nyte-workbench-file-list-width": "200px",
+  "--nyte-workbench-launcher-card-size": "112px",
   "--nyte-pane-sash-size": { default: "24px", "@media (pointer: coarse)": "44px" },
   "--nyte-pane-divider-gap": "5px",
   "--nyte-diff-line-height": "20px",

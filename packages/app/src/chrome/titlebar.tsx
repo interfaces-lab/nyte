@@ -5,6 +5,7 @@ import { titlebarStyles } from "./titlebar.stylex.ts";
  */
 import { props } from "@stylexjs/stylex";
 import { useMatch, useRouter } from "@tanstack/react-router";
+import { closeSettings } from "./settings-return.ts";
 // oxlint-disable-next-line no-restricted-imports -- menu commands and shortcuts act on the current workspace state
 import { useCallback, useEffect } from "react";
 import type { ReactElement } from "react";
@@ -137,7 +138,7 @@ export function Titlebar(): ReactElement {
   const settingsMatch = useMatch({ from: "/settings/$section", shouldThrow: false });
   const settingsOpen = settingsMatch !== undefined;
   const workspaceVisible = !settingsOpen && stage.kind === "workspace";
-  const workbenchOpen = workspaceVisible && view.expanded && activeTab !== null;
+  const workbenchOpen = workspaceVisible && view.expanded;
   const canGoBack = stage.kind !== "workspace" || settingsOpen || shellRouter.history.canGoBack();
   const historyIndex = shellRouter.history.location.state.__TSR_index;
   const canGoForward = historyIndex < shellRouter.history.length - 1;
@@ -155,7 +156,7 @@ export function Titlebar(): ReactElement {
 
   useEffect(() => {
     const showWorkspace = (): void => {
-      if (settingsOpen) shellRouter.history.back();
+      if (settingsOpen) closeSettings(shellRouter);
       shellActions.showWorkspace();
     };
 
@@ -219,7 +220,7 @@ export function Titlebar(): ReactElement {
         event.preventDefault();
 
         if (action.id === "terminal" && workbenchOpen && activeTab?.kind === "terminal") {
-          workbenchController.actions.toggle({ view: viewKey, scope });
+          workbenchController.actions.toggle({ view: viewKey });
         } else if (action.id === "terminal" && userTerminals[0] !== undefined) {
           workbenchController.actions.activateTab({ view: viewKey, id: userTerminals[0].id });
         } else {
@@ -231,22 +232,13 @@ export function Titlebar(): ReactElement {
 
       if (action?.id !== "workbench") return;
       event.preventDefault();
-      workbenchController.actions.toggleWorkbench({ view: viewKey, scope });
+      workbenchController.actions.toggleWorkbench({ view: viewKey });
     };
 
     window.addEventListener("keydown", onKeyDown);
 
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [
-    activeTab,
-    mac,
-    openTerminal,
-    scope,
-    userTerminals,
-    viewKey,
-    workbenchOpen,
-    workspaceVisible,
-  ]);
+  }, [activeTab, mac, openTerminal, userTerminals, viewKey, workbenchOpen, workspaceVisible]);
 
   if (settingsOpen) {
     return (
@@ -432,7 +424,7 @@ export function Titlebar(): ReactElement {
                     pressed={workbenchOpen}
                     aria-keyshortcuts={clientActionAriaShortcut(clientActions.workbench, mac)}
                     onPressedChange={() =>
-                      workbenchController.actions.toggleWorkbench({ view: viewKey, scope })
+                      workbenchController.actions.toggleWorkbench({ view: viewKey })
                     }
                     title={undefined}
                   >
