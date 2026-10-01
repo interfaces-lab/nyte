@@ -141,7 +141,6 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
         variant="outline"
         loading={send.isPending}
         disabled={code.trim() === ""}
-        disabledReason="Enter a sign-in code or callback address"
       >
         Finish Sign-In
       </Button>

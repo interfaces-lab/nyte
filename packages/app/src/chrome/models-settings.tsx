@@ -8,12 +8,11 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { toast } from "@nyte-ai/ui/toast";
-import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Button, SplitButton } from "@nyte-ai/ui/button";
-import { Menu, MenuItem } from "@nyte-ai/ui/menu";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
-import { Select } from "@nyte-ai/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { SwitchField } from "@nyte-ai/ui/switch";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import {
@@ -99,6 +98,13 @@ function DefaultsSection({
   const candidates = chosen !== undefined && !chosen.listed ? [chosen, ...listed] : listed;
   const levels = thinkingLevelsFor(chosen);
 
+  const modelOptions = candidates.map((option) => ({
+    value: option.key,
+    label: `${option.name} · ${providerNames.get(option.provider) ?? option.provider}`,
+  }));
+
+  const levelOptions = levels.map((level) => ({ value: level, label: THINKING_LABELS[level] }));
+
   return (
     <section {...props(settingsPatterns.section)}>
       <div {...props(settingsPatterns.sectionHeader)}>
@@ -115,14 +121,9 @@ function DefaultsSection({
           }
         >
           <Select
-            label="Default model"
-            width="wide"
+            items={modelOptions}
             value={chosen?.key ?? ""}
             disabled={candidates.length === 0}
-            options={candidates.map((option) => ({
-              value: option.key,
-              label: `${option.name} · ${providerNames.get(option.provider) ?? option.provider}`,
-            }))}
             onValueChange={(key) => {
               const option = candidates.find((candidate) => candidate.key === key);
 
@@ -132,19 +133,40 @@ function DefaultsSection({
                 model: { provider: option.provider, id: option.id },
               });
             }}
-          />
+          >
+            <SelectTrigger aria-label="Default model" width="wide">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {modelOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value} label={option.label}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </SettingsRow>
         <SettingsRow title="Reasoning" description="How long the model thinks before it answers">
-          <Select<ModelThinkingLevel>
-            label="Default reasoning"
+          <Select
+            items={levelOptions}
             value={defaults.thinkingLevel}
             disabled={levels.length === 0}
-            options={levels.map((level) => ({ value: level, label: THINKING_LABELS[level] }))}
             onValueChange={(thinkingLevel) => {
-              if (!setPreference.isPending)
+              if (thinkingLevel !== null && !setPreference.isPending)
                 setPreference.mutate({ kind: "defaults", thinkingLevel });
             }}
-          />
+          >
+            <SelectTrigger aria-label="Default reasoning">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {levelOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value} label={option.label}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </SettingsRow>
       </div>
     </section>
@@ -193,15 +215,10 @@ function ApiKeyForm({
           tone="primary"
           loading={pending}
           disabled={key.trim() === ""}
-          disabledReason="Enter an API key"
         >
           Save API Key
         </Button>
-        <Button
-          disabled={pending}
-          disabledReason={pending ? "Wait for the API key to finish saving" : undefined}
-          onClick={onCancel}
-        >
+        <Button disabled={pending} onClick={onCancel}>
           Cancel
         </Button>
       </div>
@@ -336,25 +353,26 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
               >
                 Connect Provider
               </SplitButton.Main>
-              <Menu
-                label={`Connection options for ${provider.name}`}
-                trigger={
-                  <SplitButton.MenuTrigger
-                    aria-label={`Connection options for ${provider.name}`}
-                    disabled={busy}
-                    disabledReason={busy ? "Provider connection is updating" : undefined}
-                  />
-                }
-              >
-                <MenuItem
-                  icon="key"
-                  onSelect={() => {
-                    login.reset();
-                    setKeyFormOpen(true);
-                  }}
-                >
-                  Add API Key…
-                </MenuItem>
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <SplitButton.MenuTrigger
+                      aria-label={`Connection options for ${provider.name}`}
+                      disabled={busy}
+                    />
+                  }
+                />
+                <MenuContent>
+                  <MenuItem
+                    icon="key"
+                    onClick={() => {
+                      login.reset();
+                      setKeyFormOpen(true);
+                    }}
+                  >
+                    Add API Key…
+                  </MenuItem>
+                </MenuContent>
               </Menu>
             </SplitButton.Root>
           ) : (
@@ -533,7 +551,6 @@ function EnabledModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEl
                 <Button
                   loading={setPreference.isPending}
                   disabled={active === all.length}
-                  disabledReason="All models are enabled"
                   onClick={() => setAll(false)}
                 >
                   Enable All Models
@@ -541,7 +558,6 @@ function EnabledModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEl
                 <Button
                   loading={setPreference.isPending}
                   disabled={active === 0}
-                  disabledReason="All models are disabled"
                   onClick={() => setAll(true)}
                 >
                   Disable All Models

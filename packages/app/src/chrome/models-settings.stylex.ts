@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { input, shape } from "@nyte-ai/ui/schema.stylex";
 /** Settings › Models geometry beyond the shared settings patterns. */
 import { create } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
@@ -33,7 +33,7 @@ export const modelsSettingsStyles = create({
     fontWeight: 400,
     lineHeight: type.leadingSm,
   },
-  search: { height: "auto", minHeight: 28, paddingBlock: 6 },
+  search: { height: "auto", paddingBlock: 6 },
   groupHeading: {
     display: "flex",
     alignItems: "center",
@@ -51,7 +51,6 @@ export const modelsSettingsStyles = create({
     alignItems: "center",
     flex: "1 1 auto",
     minWidth: 0,
-    minHeight: 36,
     gap: 8,
     padding: 6,
     color: role.contentSecondary,
@@ -92,7 +91,7 @@ export const modelsSettingsStyles = create({
   keyRow: { display: "flex", alignItems: "center", gap: 8 },
   keyInput: {
     flex: 1,
-    height: 26,
+    height: input.heightMd,
     backgroundColor: role.bgBase,
     fontFamily: type.fontMono,
     "::placeholder": { fontFamily: type.fontSans },
@@ -110,7 +109,6 @@ export const modelsSettingsStyles = create({
   // whole so a click cannot grab half of it.
   deviceCode: {
     boxSizing: "border-box",
-    minHeight: 32,
     paddingInline: 10,
     paddingBlock: 4,
     borderRadius: shape.control,
