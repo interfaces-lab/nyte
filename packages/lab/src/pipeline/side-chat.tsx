@@ -1,5 +1,5 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { shape, target } from "@nyte-ai/ui/schema.stylex";
 /**
  * The side chat is the PR's own Nyte session: the product transcript
  * (`TurnView`) and composer, with selected code attached as references. Its
@@ -201,7 +201,7 @@ const styles = create({
     minWidth: 0,
     maxWidth: "65%",
     paddingInline: 6,
-    height: 20,
+    height: type.leadingLg,
     borderRadius: shape.indicator,
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentSecondary,
@@ -225,7 +225,7 @@ const styles = create({
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    height: 24,
+    minHeight: target.min,
     paddingInline: "6px 4px",
     borderRadius: shape.control,
     backgroundColor: role.bgMutedTranslucent,
@@ -237,8 +237,8 @@ const styles = create({
   remove: {
     display: "inline-grid",
     placeItems: "center",
-    width: 16,
-    height: 16,
+    width: target.min,
+    height: target.min,
     borderStyle: "none",
     borderRadius: shape.indicator,
     backgroundColor: { default: "transparent", ":hover": role.bgHover },

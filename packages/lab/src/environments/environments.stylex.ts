@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { button, shape } from "@nyte-ai/ui/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 
@@ -51,7 +51,7 @@ export const newChatStyles = create({
     display: "inline-flex",
     alignItems: "center",
     gap: 4,
-    height: 28,
+    height: button.heightMd,
     paddingInline: 8,
     color: role.contentSecondary,
   },
@@ -76,8 +76,8 @@ export const newChatStyles = create({
   send: {
     display: "grid",
     placeItems: "center",
-    width: 28,
-    height: 28,
+    width: button.heightMd,
+    height: button.heightMd,
     borderRadius: shape.pill,
     backgroundColor: role.bgInteractivePrimaryTranslucent,
     color: role.contentInteractiveSecondary,

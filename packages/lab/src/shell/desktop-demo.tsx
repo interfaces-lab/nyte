@@ -1,3 +1,4 @@
+import { glyph } from "@nyte-ai/ui/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { create, props } from "@stylexjs/stylex";
@@ -66,7 +67,12 @@ const fixture = create({
     WebkitFontSmoothing: "antialiased",
   },
   lights: { position: "absolute", left: 11, top: 10, display: "flex", gap: 8 },
-  light: { width: 14, height: 14, borderRadius: "50%", boxShadow: "inset 0 0 0 1px #ffffff26" },
+  light: {
+    width: glyph.sm,
+    height: glyph.sm,
+    borderRadius: "50%",
+    boxShadow: "inset 0 0 0 1px #ffffff26",
+  },
   red: { backgroundColor: "#ff5f57" },
   yellow: { backgroundColor: "#febc2e" },
   green: { backgroundColor: "#28c840" },

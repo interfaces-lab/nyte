@@ -1,4 +1,5 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
+import { glyph } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -415,7 +416,7 @@ const styles = create({
   prompt: { display: "flex", gap: 6, maxWidth: 700, margin: 0, marginBlockEnd: 2, fontWeight: 500 },
   number: {
     flexShrink: 0,
-    width: 15,
+    width: glyph.box,
     textAlign: "center",
     color: role.contentSecondary,
     fontVariantNumeric: "tabular-nums",

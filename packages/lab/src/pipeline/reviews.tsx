@@ -1,5 +1,5 @@
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { avatar, glyph, row, shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * The Reviews list beside the app sidebar: For me or Created, grouped by
  * what each pull request needs from you, closest to shipping first.
@@ -242,7 +242,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     gap: 6,
-    height: 30,
+    height: row.heightMd,
     paddingInline: 8,
     borderStyle: "none",
     borderRadius: shape.control,
@@ -296,8 +296,8 @@ const styles = create({
   mark: {
     display: "inline-grid",
     placeItems: "center",
-    width: 16,
-    height: 16,
+    width: glyph.md,
+    height: glyph.md,
     borderRadius: shape.indicator,
     flexShrink: 0,
   },
@@ -320,8 +320,8 @@ const styles = create({
   avatar: {
     display: "inline-grid",
     placeItems: "center",
-    width: 16,
-    height: 16,
+    width: avatar.xs,
+    height: avatar.xs,
     borderRadius: shape.pill,
     backgroundColor: role.bgInteractivePrimaryTranslucent,
     color: role.contentSecondary,

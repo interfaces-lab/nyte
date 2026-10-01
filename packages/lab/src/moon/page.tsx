@@ -1,4 +1,5 @@
 import { applyDisplayMode } from "@nyte-ai/app/theme/appearance.ts";
+import { glyph, row } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { MOON_STATES, type MoonState } from "./dither";
@@ -73,13 +74,19 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     gap: 8,
-    blockSize: 28,
+    blockSize: row.heightMd,
     paddingInline: 8,
     borderRadius: 8,
     fontSize: 13,
     color: "#d4d4d4",
   },
-  glyph: { inlineSize: 15, blockSize: 15, flexShrink: 0, display: "grid", placeItems: "center" },
+  glyph: {
+    inlineSize: glyph.box,
+    blockSize: glyph.box,
+    flexShrink: 0,
+    display: "grid",
+    placeItems: "center",
+  },
   terminal: {
     fontFamily: "ui-monospace, Menlo, monospace",
     fontSize: 14,

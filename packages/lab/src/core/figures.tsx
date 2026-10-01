@@ -1,5 +1,5 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { glyph, shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * The two figures that carry the page's top-down reading: the layer stack,
  * and one message traced through it, each write shown as the `refs.update`
@@ -20,7 +20,7 @@ const styles = create({
   },
   /* The glyph sits on the name's line, not the row's centre, when the role wraps. */
   layerPrimary: { alignItems: "flex-start" },
-  layerLeading: { width: 18, height: type.leadingLg },
+  layerLeading: { width: glyph.lg, height: type.leadingLg },
   layerTitle: { display: "flex", alignItems: "baseline", gap: 12, minWidth: 0 },
   layerLabel: { fontWeight: 590 },
   layerRole: { whiteSpace: "normal", fontSize: type.fontBase, lineHeight: type.leadingBase },

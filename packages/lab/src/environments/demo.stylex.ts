@@ -1,4 +1,5 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { button, shape } from "@nyte-ai/ui/schema.stylex";
+import { shell } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { create } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 
@@ -15,8 +16,7 @@ export const demoStyles = create({
     overflow: "hidden",
     scrollMarginBlockStart: 24,
   },
-  /** The shipping titlebar: 36px, the rail's colour under the traffic lights. */
-  titlebar: { display: "flex", alignItems: "center", height: 36, flexShrink: 0 },
+  titlebar: { display: "flex", alignItems: "center", height: shell.titlebarHeight, flexShrink: 0 },
   lights: {
     display: "flex",
     alignItems: "center",
@@ -117,8 +117,8 @@ export const demoStyles = create({
   send: {
     display: "grid",
     placeItems: "center",
-    width: 28,
-    height: 28,
+    width: button.heightMd,
+    height: button.heightMd,
     borderRadius: shape.pill,
     backgroundColor: role.bgInteractivePrimaryTranslucent,
     color: role.contentInteractiveSecondary,

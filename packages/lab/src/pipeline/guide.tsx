@@ -1,5 +1,5 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { glyph, row, shape } from "@nyte-ai/ui/schema.stylex";
 /**
  * Linear's Guide: one band per section. The left third says what the
  * section changes and why, and lists its files; the right two thirds hold
@@ -255,7 +255,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     gap: 6,
-    height: 32,
+    height: row.heightLg,
     paddingInline: 10,
     borderStyle: "none",
     borderRadius: shape.control,
@@ -278,7 +278,7 @@ const styles = create({
   check: {
     display: "inline-grid",
     placeItems: "center",
-    width: 14,
+    width: glyph.sm,
     color: role.contentSecondary,
     flexShrink: 0,
   },
