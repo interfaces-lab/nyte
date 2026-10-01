@@ -25,8 +25,7 @@ export const conversation = defineConsts({
   rowMinHeight: "var(--nyte-conversation-row-min-height)",
   /**
    * How far a row dissolves at a scrollport edge: the strip above the composer
-   * and the transcript's own top fade. Cursor uses `--cursor-spacing-8` for
-   * the same pair.
+   * and the transcript's own top fade.
    */
   edgeFade: "var(--nyte-conversation-edge-fade)",
   composerInset: "var(--nyte-composer-inset)",
@@ -47,6 +46,7 @@ export const sidebar = defineConsts({
   width: "var(--nyte-sidebar-width)",
   handleWidth: "var(--nyte-sidebar-handle-width)",
   rowHeight: "var(--nyte-sidebar-row-height)",
+  askRowHeight: "var(--nyte-sidebar-ask-row-height)",
   gutter: "var(--nyte-sidebar-gutter)",
   rowPaddingInline: "var(--nyte-sidebar-row-padding-inline)",
   rowGap: "var(--nyte-sidebar-row-gap)",
@@ -62,6 +62,7 @@ export const settings = defineConsts({
   contentWidth: "var(--nyte-settings-content-width)",
   contentGutter: "var(--nyte-settings-content-gutter)",
   rowMinHeight: "var(--nyte-settings-row-min-height)",
+  inventoryRowHeight: "var(--nyte-settings-inventory-row-height)",
   sliderRowMinHeight: "var(--nyte-settings-slider-row-min-height)",
   sectionGap: "var(--nyte-settings-section-gap)",
   cardGap: "var(--nyte-settings-card-gap)",
@@ -82,6 +83,8 @@ export const workbench = defineConsts({
   headingHeight: "var(--nyte-workbench-heading-height)",
   panelWidth: "var(--nyte-workbench-panel-width)",
   headerHeight: "var(--nyte-workbench-header-height)",
+  headerPaddingBlock: "var(--nyte-workbench-header-padding-block)",
+  iconRailWidth: "var(--nyte-workbench-icon-rail-width)",
   fileListWidth: "var(--nyte-workbench-file-list-width)",
 });
 

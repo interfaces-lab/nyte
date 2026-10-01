@@ -1,5 +1,5 @@
 /**
- * Notion Calendar's colour roles over the theme layer. Each role names a light
+ * Colour roles over the theme layer. Each role names a light
  * and a dark theme step; `light-dark()` picks one by `color-scheme`. Hover and
  * pressed states derive from their base role, so a scope that moves the base
  * moves them too.
@@ -97,7 +97,7 @@ export const roles = defineVars({
   "--nyte-bg-control-selected-hover": shade("bg-control-selected", 0.95, 1.05),
   "--nyte-bg-control-selected-pressed": shade("bg-control-selected", 0.88, 1.12),
 
-  // Notion's step 80, capped in lightness so a white label reads at 4.5:1 in every hue.
+  // Step 80, capped in lightness so a white label reads at 4.5:1 in every hue.
   "--nyte-button-fill": "oklch(from var(--nyte-theme-80) min(l, 0.55) c h)",
   "--nyte-button-fill-hover": shade("button-fill", 0.95, 1.05),
   "--nyte-button-fill-pressed": shade("button-fill", 0.88, 1.12),

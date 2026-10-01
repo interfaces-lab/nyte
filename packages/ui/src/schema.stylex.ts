@@ -7,8 +7,6 @@
  * Every length reads a custom property rather than holding a number: a dev
  * build transforms each file alone, where a numeric const compiles to a
  * variable nothing declares there and the sizing is dropped.
- *
- * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/workbench-layout.stylex.ts
  */
 import { defineConsts } from "@stylexjs/stylex";
 
@@ -21,7 +19,27 @@ import "./tokens.stylex.ts";
  * than rounded onto the 2px sizing grid.
  */
 export const glyph = defineConsts({
+  sm: "var(--nyte-glyph-sm)",
+  md: "var(--nyte-glyph-md)",
+  lg: "var(--nyte-glyph-lg)",
   box: "var(--nyte-glyph-box)",
+});
+
+/** A control's minimum hit area and the gap between independent controls: 24 and 2, or 44 and 8 for touch. */
+export const target = defineConsts({
+  min: "var(--nyte-target-min)",
+  gap: "var(--nyte-target-gap)",
+});
+
+export const avatar = defineConsts({
+  xs: "var(--nyte-avatar-xs)",
+  sm: "var(--nyte-avatar-sm)",
+  md: "var(--nyte-avatar-md)",
+  lg: "var(--nyte-avatar-lg)",
+});
+
+export const slider = defineConsts({
+  thumb: "var(--nyte-slider-thumb)",
 });
 
 /**
@@ -29,6 +47,7 @@ export const glyph = defineConsts({
  * is 24px wide at an 8px inset.
  */
 export const toast = defineConsts({
+  minHeight: "var(--nyte-toast-min-height)",
   closeGutter: "var(--nyte-toast-close-gutter)",
 });
 
@@ -37,7 +56,7 @@ export const clipboardPreview = defineConsts({
   maxHeight: "var(--nyte-clipboard-preview-max-height)",
 });
 
-/** Notion Calendar's button sizes, 2xs to xl. An icon-only button is a square of the height. */
+/** Button sizes, 2xs to xl. An icon-only button is a square of the height. */
 export const button = defineConsts({
   height2xs: "var(--nyte-btn-height-2xs)",
   paddingInline2xs: "var(--nyte-btn-padding-inline-2xs)",
@@ -98,10 +117,6 @@ export const switchControl = defineConsts({
   heightMd: "var(--nyte-switch-height-md)",
   paddingMd: "var(--nyte-switch-padding-md)",
   knobMd: "var(--nyte-switch-knob-md)",
-  widthSm: "var(--nyte-switch-width-sm)",
-  heightSm: "var(--nyte-switch-height-sm)",
-  paddingSm: "var(--nyte-switch-padding-sm)",
-  knobSm: "var(--nyte-switch-knob-sm)",
 });
 
 export const checkbox = defineConsts({
@@ -125,6 +140,7 @@ export const row = defineConsts({
  */
 export const menu = defineConsts({
   itemHeight: "var(--nyte-menu-item-height)",
+  metaMinWidth: "var(--nyte-menu-meta-min-width)",
   padding: "var(--nyte-menu-padding)",
   radius: "var(--nyte-menu-radius)",
   itemRadius: "var(--nyte-menu-item-radius)",

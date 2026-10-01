@@ -5,7 +5,7 @@
  * all of them.
  *
  * Component measurements are named decisions on the 2px grid. A coarse
- * pointer gets the larger box Notion Calendar gives touch.
+ * pointer gets larger controls.
  */
 import { defineVars } from "@stylexjs/stylex";
 import "./theme.stylex.ts";
@@ -26,7 +26,7 @@ export const transparency = defineVars({
 });
 
 /**
- * Notion's fixed blue-80 marks focus. A field shows it whenever it holds the
+ * Fixed blue marks focus. A field shows it whenever it holds the
  * caret; the ring around other controls clears while focus arrives by pointer.
  */
 export const focusModality = defineVars({
@@ -266,22 +266,6 @@ export const components = defineVars({
     default: "14px",
     "@media (pointer: coarse)": "22px",
   },
-  "--nyte-switch-width-sm": {
-    default: "20px",
-    "@media (pointer: coarse)": "48px",
-  },
-  "--nyte-switch-height-sm": {
-    default: "12px",
-    "@media (pointer: coarse)": "28px",
-  },
-  "--nyte-switch-padding-sm": {
-    default: "2px",
-    "@media (pointer: coarse)": "3px",
-  },
-  "--nyte-switch-knob-sm": {
-    default: "8px",
-    "@media (pointer: coarse)": "22px",
-  },
   "--nyte-checkbox-size-md": {
     default: "16px",
     "@media (pointer: coarse)": "20px",
@@ -300,11 +284,25 @@ export const components = defineVars({
   "--nyte-row-padding-inline-lg": "6px",
   "--nyte-row-gap": "6px",
   "--nyte-row-radius": "8px",
+  // The one touch policy: a control's hit area and the space between
+  // independent controls. Every coarse-pointer size reads these.
+  "--nyte-target-min": { default: "24px", "@media (pointer: coarse)": "44px" },
+  "--nyte-target-gap": { default: "2px", "@media (pointer: coarse)": "8px" },
+  // The slot a glyph sits in, sized to the icon it holds.
+  "--nyte-glyph-sm": "14px",
+  "--nyte-glyph-md": "16px",
+  "--nyte-glyph-lg": "20px",
   "--nyte-glyph-box": "15px",
+  "--nyte-avatar-xs": "20px",
+  "--nyte-avatar-sm": "24px",
+  "--nyte-avatar-md": "28px",
+  "--nyte-avatar-lg": "36px",
+  "--nyte-slider-thumb": { default: "14px", "@media (pointer: coarse)": "22px" },
   "--nyte-menu-item-height": {
     default: "28px",
     "@media (pointer: coarse)": "44px",
   },
+  "--nyte-menu-meta-min-width": "32px",
   "--nyte-menu-padding": "6px",
   "--nyte-menu-radius": "14px",
   "--nyte-menu-item-radius": "8px",
@@ -322,7 +320,8 @@ export const components = defineVars({
   "--nyte-dialog-padding": "24px",
   "--nyte-dialog-gap": "16px",
   "--nyte-dialog-radius": "16px",
-  "--nyte-toast-close-gutter": "44px",
+  "--nyte-toast-min-height": { default: "48px", "@media (pointer: coarse)": "64px" },
+  "--nyte-toast-close-gutter": "calc(var(--nyte-target-min) + 20px)",
   "--nyte-clipboard-preview-max-width": "360px",
   "--nyte-clipboard-preview-max-height": "240px",
   "--nyte-shape-square": "0px",

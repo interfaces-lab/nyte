@@ -35,7 +35,7 @@ export const surfaceTheme = {
 
 export type Tint = keyof typeof surfaceTheme;
 
-/** Notion Calendar's intents: what a control means picks its hue. */
+/** Control intents select a hue by meaning. */
 export const intent = {
   primary: surfaceTheme.blue,
   success: surfaceTheme.green,

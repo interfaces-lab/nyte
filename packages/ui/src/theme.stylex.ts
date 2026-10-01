@@ -1,14 +1,13 @@
 /**
- * The ramps and the theme layer the roles read. Every ramp keeps Notion
- * Calendar's lightness and alpha per step, so text and fills land on the
- * same contrast; the hues Nyte owns (blue, red, green, yellow, orange,
- * purple, teal, pink) take Nyte's hue, with chroma scaled so step 80 carries
- * Nyte's colour. Gray and brown stay Notion's.
+ * The ramps and the theme layer the roles read. Each ramp defines lightness
+ * and alpha per step. Blue, red, green, yellow, orange, purple, teal, and pink
+ * use Nyte's hues, with chroma scaled so step 80 carries Nyte's colour.
+ * Gray and brown use fixed ramps.
  *
  * The ramps are data, not custom properties: nothing outside this file can
  * name a hue step. `theme` holds one ramp at a time, gray by default; each
  * hue export is a theme that swaps in its ramp, and `custom` builds one from
- * Notion's template at the workspace tint's hue and chroma.
+ * the template at the workspace tint's hue and chroma.
  */
 import { createTheme, defineVars } from "@stylexjs/stylex";
 
@@ -464,7 +463,7 @@ const translucent = {
   ],
 };
 
-/** Notion's template for a custom hue: lightness and chroma, opaque then translucent. */
+/** Custom hue template: lightness and chroma, opaque then translucent. */
 const template = {
   l: [
     "100%",
@@ -589,8 +588,8 @@ const ramp = (hue: keyof typeof opaque) => ({
 });
 
 /**
- * Notion keeps controls gray in every scope: an unchecked switch or checkbox
- * inside a blue panel is still gray. These gray steps never swap with a hue.
+ * Unchecked switches and checkboxes stay gray inside a tinted scope.
+ * These gray steps never swap with a hue.
  */
 const neutral = (step: number) => ({
   [`--nyte-neutral-${step}`]: opaque.gray[steps.indexOf(step)],
