@@ -89,8 +89,8 @@ export async function run(): Promise<string> {
   // The action menu is portalled out of the panel, so it is read from the page.
   const openActionMenu = async (): Promise<HTMLElement> => {
     buttonNamed("More commit actions").click();
-    await until(() => document.querySelector('[aria-label="Commit actions"]') !== null, "the menu");
-    const menu = document.querySelector('[aria-label="Commit actions"]');
+    await until(() => document.querySelector('[role="menu"]') !== null, "the menu");
+    const menu = document.querySelector('[role="menu"]');
     if (!(menu instanceof HTMLElement)) throw new Error("Missing the commit actions menu");
     return menu;
   };
@@ -115,7 +115,7 @@ export async function run(): Promise<string> {
       "bar",
     );
 
-    // The default action is Cursor's, and it cannot run without a message.
+    // The default action cannot run without a message.
     check(
       primary().textContent?.trim() === "Commit and Push Changes",
       `Default action: ${String(primary().textContent)}`,
@@ -127,14 +127,11 @@ export async function run(): Promise<string> {
     const disabledMenu = await openActionMenu();
     const disabledCommit = menuItem(disabledMenu, "Commit Changes");
     check(
-      disabledCommit.textContent?.includes("Write a commit message first") === true,
-      "The unavailable commit action explains why it cannot run",
+      disabledCommit.getAttribute("aria-disabled") === "true",
+      "The commit action is unavailable without a message",
     );
     disabledMenu.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    await until(
-      () => document.querySelector('[aria-label="Commit actions"]') === null,
-      "the menu to close",
-    );
+    await until(() => document.querySelector('[role="menu"]') === null, "the menu to close");
 
     await type("Commit message", "feat(desktop): add the commit bar");
     await until(

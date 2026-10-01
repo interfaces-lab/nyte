@@ -23,7 +23,7 @@ import type {
 } from "@nyte-ai/protocol";
 import type { GitHubPullRequestOutcome } from "../bridge.ts";
 import { errorMessage } from "../errors.ts";
-import { Menu, MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button, ButtonLink, SplitButton } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { nyte } from "../nyte.ts";
@@ -47,7 +47,7 @@ export const COMMIT_ACTIONS = [
 
 export type CommitAction = (typeof COMMIT_ACTIONS)[number];
 
-/** Cursor's default: the action a reader who never opened the menu gets. */
+/** The default action before the user chooses one from the menu. */
 export const DEFAULT_COMMIT_ACTION: CommitAction = "commit-push";
 
 const STORAGE_KEY = "nyte.desktop.changes-commit-action.v1";
@@ -134,7 +134,7 @@ export interface CommitBarState {
 }
 
 /**
- * Why an action cannot run, in the words shown on its menu row. An action that
+ * Why an action cannot run, when the bar does not already show it. An action that
  * creates a branch first leaves a detached or unborn HEAD behind, so those
  * checks apply only to the actions that push or open a pull request as they stand.
  */
@@ -143,12 +143,6 @@ export function commitActionDisabledReason(
   state: CommitBarState,
 ): string | undefined {
   const plan = commitActionPlan(action);
-
-  if (plan.commit) {
-    if (state.fileCount === 0) return "Nothing to commit in this scope";
-
-    if (state.message.trim() === "") return "Write a commit message first";
-  }
 
   if (plan.pullRequest && !isWorkingTreeScope(state.scope))
     return "Pull requests apply to the working tree";
@@ -162,6 +156,13 @@ export function commitActionDisabledReason(
     return "This branch has no commits yet";
 
   return undefined;
+}
+
+function commitActionDisabled(action: CommitAction, state: CommitBarState): boolean {
+  return (
+    (commitActionPlan(action).commit && (state.fileCount === 0 || state.message.trim() === "")) ||
+    commitActionDisabledReason(action, state) !== undefined
+  );
 }
 
 /** What a step left behind, as the bar reports it. */
@@ -371,12 +372,8 @@ export function ChangesCommitBar({
   const [interrupted, setInterrupted] = useState<CommitAction | undefined>(undefined);
 
   const state: CommitBarState = { scope, fileCount, message, branch };
-  const primaryDisabledReason =
-    commitActionDisabledReason(action, state) ??
-    (branchPrompt !== undefined && branchName.trim() === ""
-      ? "Write a branch name first"
-      : undefined);
-  const primaryDisabled = primaryDisabledReason !== undefined;
+  const primaryDisabled =
+    commitActionDisabled(action, state) || (branchPrompt !== undefined && branchName.trim() === "");
 
   const run = async (chosen: CommitAction, options: RunOptions = {}): Promise<void> => {
     if (running) return;
@@ -524,7 +521,7 @@ export function ChangesCommitBar({
   };
 
   const start = (chosen: CommitAction): void => {
-    if (running || commitActionDisabledReason(chosen, state) !== undefined) return;
+    if (running || commitActionDisabled(chosen, state)) return;
     setAction(chosen);
     storeAction(chosen);
     setResult(undefined);
@@ -601,41 +598,43 @@ export function ChangesCommitBar({
           type="submit"
           variant="solid"
           disabled={primaryDisabled}
-          disabledReason={primaryDisabledReason}
+          disabledReason={commitActionDisabledReason(action, state)}
           loading={running}
           xstyle={styles.primary}
         >
           {commitActionLabel(action).replace(/…$/, branchPrompt === undefined ? "…" : "")}
         </SplitButton.Main>
-        <Menu
-          label="Commit actions"
-          align="end"
-          trigger={
-            <SplitButton.MenuTrigger
-              variant="solid"
-              aria-label="More commit actions"
-              loading={running}
-            />
-          }
-        >
-          {actions.map((candidate, index) => {
-            const previous = actions[index - 1];
-
-            return (
-              <Fragment key={candidate}>
-                {previous !== undefined &&
-                  commitActionGroup(previous) !== commitActionGroup(candidate) && <MenuSeparator />}
-                <MenuItem
-                  layout="plain"
-                  disabledReason={commitActionDisabledReason(candidate, state)}
-                  selected={candidate === action}
-                  onSelect={() => start(candidate)}
-                >
-                  {commitActionLabel(candidate)}
-                </MenuItem>
-              </Fragment>
-            );
-          })}
+        <Menu>
+          <MenuTrigger
+            render={
+              <SplitButton.MenuTrigger
+                variant="solid"
+                aria-label="More commit actions"
+                loading={running}
+              />
+            }
+          />
+          <MenuContent align="end">
+            {actions.map((candidate, index) => {
+              const previous = actions[index - 1];
+              return (
+                <Fragment key={candidate}>
+                  {previous !== undefined &&
+                    commitActionGroup(previous) !== commitActionGroup(candidate) && (
+                      <MenuSeparator />
+                    )}
+                  <MenuItem
+                    layout="plain"
+                    disabled={commitActionDisabled(candidate, state)}
+                    selected={candidate === action}
+                    onClick={() => start(candidate)}
+                  >
+                    {commitActionLabel(candidate)}
+                  </MenuItem>
+                </Fragment>
+              );
+            })}
+          </MenuContent>
         </Menu>
       </SplitButton.Root>
       {showResult && result !== undefined && (
