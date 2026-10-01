@@ -2,12 +2,23 @@ import { create, props } from "@stylexjs/stylex";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- the deadline timer follows the call's until
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { SelectionReply, SessionId, SessionSnapshot } from "@nyte-ai/protocol";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Row } from "@nyte-ai/ui/row";
+import {
+  Questionnaire,
+  QuestionnaireActions,
+  QuestionnaireChoice,
+  QuestionnaireChoiceDescription,
+  QuestionnaireChoices,
+  QuestionnaireError,
+  QuestionnaireItem,
+  QuestionnaireSubmit,
+  QuestionnaireTitle,
+} from "@nyte-ai/ui/questionnaire";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { checkbox, shape } from "@nyte-ai/ui/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
@@ -249,107 +260,162 @@ function SelectionCard({
   if (expired) return <></>;
 
   return (
-    <section aria-labelledby={`${id}-title`} {...props(styles.card)}>
-      <div {...props(styles.header)}>
-        <h2 id={`${id}-title`} {...props(styles.heading)}>
-          {model !== undefined && <span {...props(styles.origin)}>Asked by {model}</span>}
-          {selection.title}
-        </h2>
-        {remaining !== undefined && (
-          <span {...props(styles.deadline)}>Closes in {deadlineLabel(remaining)}</span>
-        )}
-      </div>
-      <div
-        role="group"
+    <Questionnaire
+      aria-labelledby={`${id}-title`}
+      item={call.waitId}
+      items={[
+        {
+          name: call.waitId,
+          required: true,
+          choices: selection.choices.map((choice) => ({ value: choice.id, disabled: blocked })),
+        },
+      ]}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (selection.multiple === true) send({ choices: selected });
+      }}
+      {...props(styles.card)}
+    >
+      <QuestionnaireItem
+        name={call.waitId}
+        multiple={selection.multiple === true}
+        required
         aria-labelledby={`${id}-title`}
-        aria-busy={reply.isPending}
-        {...props(styles.choices)}
+        {...props(trayParts.presence)}
       >
-        {selection.choices.map((choice, index) => {
-          const checked = selected.includes(choice.id);
-          const descriptionId = `${id}-choice-${String(index)}-description`;
+        <div {...props(styles.header)}>
+          <QuestionnaireTitle render={<h2 />} id={`${id}-title`} {...props(styles.heading)}>
+            {model !== undefined && <span {...props(styles.origin)}>Asked by {model}</span>}
+            {selection.title}
+          </QuestionnaireTitle>
+          {remaining !== undefined && (
+            <span {...props(styles.deadline)}>Closes in {deadlineLabel(remaining)}</span>
+          )}
+        </div>
+        <QuestionnaireChoices
+          role="group"
+          aria-labelledby={`${id}-title`}
+          aria-busy={reply.isPending}
+          {...props(styles.choices)}
+        >
+          {selection.choices.map((choice, index) => {
+            const checked = selected.includes(choice.id);
+            const descriptionId = `${id}-choice-${String(index)}-description`;
 
-          return (
-            <Row
-              key={choice.id}
-              variant="nav"
-              aria-label={choice.label}
-              aria-describedby={choice.description === undefined ? undefined : descriptionId}
-              aria-pressed={selection.multiple === true ? checked : undefined}
-              disabled={blocked}
-              xstyle={[styles.choice, focus.ring]}
-              onClick={() => {
-                if (selection.multiple === true) toggle(choice.id);
-                else send({ choices: [choice.id] });
-              }}
-            >
-              {selection.multiple === true && (
-                <span
-                  aria-hidden="true"
-                  {...props(styles.box, checked && [intent.primary, styles.boxChecked])}
+            return (
+              <Fragment key={choice.id}>
+                <QuestionnaireChoice
+                  hidden
+                  value={choice.id}
+                  checked={checked}
+                  disabled={blocked}
+                  onChange={() => {
+                    if (selection.multiple === true) toggle(choice.id);
+                    else send({ choices: [choice.id] });
+                  }}
                 >
-                  {checked && <Icon name="checkmark" size={12} />}
-                </span>
-              )}
-              <span {...props(styles.choiceText)}>
-                <span>{choice.label}</span>
-                {choice.description !== undefined && (
-                  <span id={descriptionId} {...props(styles.description)}>
-                    {choice.description}
+                  {choice.label}
+                </QuestionnaireChoice>
+                <Row
+                  variant="nav"
+                  aria-label={choice.label}
+                  aria-describedby={choice.description === undefined ? undefined : descriptionId}
+                  aria-pressed={selection.multiple === true ? checked : undefined}
+                  disabled={blocked}
+                  xstyle={[styles.choice, focus.ring]}
+                  onClick={(event) => {
+                    const input =
+                      event.currentTarget.previousElementSibling?.querySelector("input");
+                    if (input instanceof HTMLInputElement) input.click();
+                  }}
+                >
+                  {selection.multiple === true && (
+                    <span
+                      aria-hidden="true"
+                      {...props(styles.box, checked && [intent.primary, styles.boxChecked])}
+                    >
+                      {checked && <Icon name="checkmark" size={12} />}
+                    </span>
+                  )}
+                  <span {...props(styles.choiceText)}>
+                    <span>{choice.label}</span>
+                    {choice.description !== undefined && (
+                      <QuestionnaireChoiceDescription
+                        id={descriptionId}
+                        {...props(styles.description)}
+                      >
+                        {choice.description}
+                      </QuestionnaireChoiceDescription>
+                    )}
                   </span>
-                )}
-              </span>
-            </Row>
-          );
-        })}
-      </div>
-      {selection.multiple === true && (
-        <div {...props(styles.footer)}>
-          <Button
-            variant="solid"
-            tone="primary"
-            size="sm"
-            round
-            loading={reply.isPending}
-            disabled={blocked || selected.length === 0}
-            disabledReason={selected.length === 0 ? "Select an answer first." : undefined}
-            onClick={() => send({ choices: selected })}
+                </Row>
+              </Fragment>
+            );
+          })}
+        </QuestionnaireChoices>
+        {selection.multiple === true && (
+          <QuestionnaireActions {...props(styles.footer)}>
+            <QuestionnaireSubmit
+              disabled={blocked || selected.length === 0}
+              render={
+                <Button
+                  variant="solid"
+                  tone="primary"
+                  size="sm"
+                  round
+                  loading={reply.isPending}
+                  disabled={blocked || selected.length === 0}
+                >
+                  Send Answer
+                </Button>
+              }
+            >
+              Send Answer
+            </QuestionnaireSubmit>
+          </QuestionnaireActions>
+        )}
+        {reply.isPending && (
+          <div role="status" {...props(styles.note)}>
+            Sending answer…
+          </div>
+        )}
+        {refresh.isPending && !reply.isPending && (
+          <div role="status" {...props(styles.note)}>
+            Refreshing…
+          </div>
+        )}
+        {reply.isSuccess && (
+          <div role="status" {...props(styles.note)}>
+            {reply.data.kind === "signalled"
+              ? "Answer sent."
+              : "This is no longer waiting for an answer."}
+          </div>
+        )}
+        {reply.isError && (
+          <QuestionnaireError
+            hidden={false}
+            render={<div />}
+            role="alert"
+            {...props(intent.danger, styles.note, styles.error)}
           >
-            Send Answer
-          </Button>
-        </div>
-      )}
-      {reply.isPending && (
-        <div role="status" {...props(styles.note)}>
-          Sending answer…
-        </div>
-      )}
-      {refresh.isPending && !reply.isPending && (
-        <div role="status" {...props(styles.note)}>
-          Refreshing…
-        </div>
-      )}
-      {reply.isSuccess && (
-        <div role="status" {...props(styles.note)}>
-          {reply.data.kind === "signalled"
-            ? "Answer sent."
-            : "This is no longer waiting for an answer."}
-        </div>
-      )}
-      {reply.isError && (
-        <div role="alert" {...props(intent.danger, styles.note, styles.error)}>
-          Couldn&rsquo;t send your answer. Try again.
-        </div>
-      )}
-      {refresh.isError && (
-        <div role="alert" {...props(intent.danger, styles.note, styles.error)}>
-          Couldn&rsquo;t refresh this session.
-          <Button loading={refresh.isPending} onClick={() => refresh.mutate()}>
-            Refresh
-          </Button>
-        </div>
-      )}
-    </section>
+            Couldn&rsquo;t send your answer. Try again.
+          </QuestionnaireError>
+        )}
+        {refresh.isError && (
+          <QuestionnaireError
+            hidden={false}
+            render={<div />}
+            role="alert"
+            {...props(intent.danger, styles.note, styles.error)}
+          >
+            Couldn&rsquo;t refresh this session.
+            <Button loading={refresh.isPending} onClick={() => refresh.mutate()}>
+              Refresh
+            </Button>
+          </QuestionnaireError>
+        )}
+      </QuestionnaireItem>
+    </Questionnaire>
   );
 }
 
