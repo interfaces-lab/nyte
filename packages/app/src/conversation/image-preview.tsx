@@ -1,7 +1,8 @@
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { row, shape } from "@nyte-ai/ui/schema.stylex";
+import { shape, target } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
+import { AttachmentTrigger } from "@nyte-ai/ui/attachment";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
@@ -68,8 +69,10 @@ const styles = create({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    width: { default: 40, "@media (pointer: coarse)": row.heightMd },
-    height: { default: 40, "@media (pointer: coarse)": row.heightMd },
+    width: 40,
+    height: 40,
+    minWidth: target.min,
+    minHeight: target.min,
     padding: 0,
     borderStyle: "none",
     borderRadius: shape.control,
@@ -108,13 +111,13 @@ export function ImagePreview({
       <Tooltip>
         <TooltipTrigger
           render={
-            <Dialog.Trigger
+            <AttachmentTrigger
               type="button"
               aria-label={`Preview ${name}`}
-              xstyle={[surfaceTheme.gray, styles.trigger, focus.ring]}
+              render={<Dialog.Trigger xstyle={[surfaceTheme.gray, styles.trigger, focus.ring]} />}
             >
               <img src={src} alt={name} {...props(styles.thumbnail, compact && styles.compact)} />
-            </Dialog.Trigger>
+            </AttachmentTrigger>
           }
         />
         <TooltipContent>{name}</TooltipContent>
