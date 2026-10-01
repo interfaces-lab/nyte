@@ -1,0 +1,80 @@
+---
+title: Questionnaire
+description: "Questions, answers and navigation"
+---
+
+```ts title="Import"
+import { Questionnaire, QuestionnaireItem, QuestionnaireChoice } from "@nyte-ai/ui/questionnaire";
+```
+
+A form that shows one question at a time. Your app handles persistence and submission.
+
+## Usage
+
+- Style with `className` and `style`, not `xstyle`. Navigation uses Nyte button styles unless `render` replaces them.
+- Give each item a unique `name`.
+- Pass `items` to server-render the initial order and state. Control the step with `item` and `onItemChange`.
+- Read answers from `FormData` in the root's `onSubmit`.
+
+## Anatomy
+
+| Part                             | Element                                      | Parent          |
+| -------------------------------- | -------------------------------------------- | --------------- |
+| `Questionnaire`                  | `form`                                       | Your container  |
+| `QuestionnaireProgress`          | `div`                                        | Root            |
+| `QuestionnaireItem`              | `fieldset`                                   | Root            |
+| `QuestionnaireTitle`             | `legend`                                     | Item            |
+| `QuestionnaireDescription`       | `p`                                          | Item            |
+| `QuestionnaireChoices`           | `div`                                        | Item            |
+| `QuestionnaireChoice`            | `label` with input, label and shortcut spans | Item or Choices |
+| `QuestionnaireChoiceDescription` | `span`                                       | Choice          |
+| `QuestionnaireInput`             | `input`                                      | Item            |
+| `QuestionnaireError`             | `p`                                          | Item            |
+| `QuestionnaireActions`           | `div`                                        | Root            |
+| `QuestionnairePrevious`          | `button`                                     | Actions         |
+| `QuestionnaireSkip`              | `button`                                     | Actions         |
+| `QuestionnaireNext`              | `button`                                     | Actions         |
+| `QuestionnaireSubmit`            | `button`                                     | Actions         |
+
+## Examples
+
+```tsx
+<Questionnaire items={[{ name: "timing", choices: [{ value: "now" }] }]}>
+  <QuestionnaireItem name="timing" aria-label="When?">
+    <QuestionnaireChoice value="now">Now</QuestionnaireChoice>
+  </QuestionnaireItem>
+</Questionnaire>
+```
+
+## Props
+
+Parts take native props and refs and set a matching `data-slot`.
+
+| Part       | Prop                                          | Type                                                                                                                                     | Default                                                    |
+| ---------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Root       | `item`, `defaultItem`                         | `string`                                                                                                                                 | First enabled item                                         |
+| Root       | `onItemChange`                                | `(item: string) => void`                                                                                                                 | None                                                       |
+| Root       | `items`                                       | Readonly item definitions with `name`, optional `choices`, `disabled`, `required`                                                        | Registered items                                           |
+| Root       | `shortcuts`                                   | `"letters" \| "numbers"`                                                                                                                 | Off                                                        |
+| Root       | `noValidate`                                  | `boolean`                                                                                                                                | `true`                                                     |
+| Item       | `name`                                        | `string`                                                                                                                                 | Required                                                   |
+| Item       | `multiple`, `required`, `invalid`, `disabled` | `boolean`                                                                                                                                | `false`                                                    |
+| Item       | `onStatusChange`                              | `(status: "unanswered" \| "answered" \| "skipped") => void`                                                                              | None                                                       |
+| Choice     | `value`                                       | `string`                                                                                                                                 | Required                                                   |
+| Choice     | `checked`, `defaultChecked`, `disabled`       | `boolean`                                                                                                                                | Uncontrolled; default checked and disabled are `false`     |
+| Choice     | `onChange`                                    | Native input change handler                                                                                                              | None                                                       |
+| Input      | `type`                                        | `"date" \| "datetime-local" \| "email" \| "month" \| "number" \| "password" \| "search" \| "tel" \| "text" \| "time" \| "url" \| "week"` | `"text"`                                                   |
+| Navigation | `variant`                                     | `"default" \| "outline" \| "secondary" \| "ghost" \| "destructive" \| "link" \| null`                                                    | Previous and Skip `"outline"`; Next and Submit `"default"` |
+| Navigation | `size`                                        | `"default" \| "xs" \| "sm" \| "lg" \| "icon" \| "icon-xs" \| "icon-sm" \| "icon-lg" \| null`                                             | `"default"`                                                |
+
+Input takes its item's `name`, so it has no `name` or `form` prop. Choice visually hides its input and shortcut.
+
+Progress, Title, Description, Choices, Choice, Input, Error and navigation accept `render`. Callbacks receive HTML props and the [headless part state](https://ui.shadcn.com/docs/react/questionnaire#api-reference). `className` and `style` take plain values, not state callbacks.
+
+Without children, navigation shows "Previous", "Skip", "Next" or "Submit", Progress shows "Question N of M" and Error shows validation text for an invalid item. Submit is `type="submit"` and the others are `type="button"`.
+
+The [headless questionnaire reference](https://ui.shadcn.com/docs/react/questionnaire) covers item definitions, validation and navigation visibility.
+
+## Accessibility
+
+The item's `aria-describedby` includes Description and, when invalid, Error. Inactive items and unavailable actions are hidden and inert. Progress is a polite live `progressbar`. Up and Down move between answers, Left and Right between steps. Ctrl+Enter and Cmd+Enter advance or submit. Letter and number shortcuts require `shortcuts`.
