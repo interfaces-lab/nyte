@@ -29,7 +29,8 @@ import { clampThinkingLevel, getSupportedThinkingLevels } from "@nyte-ai/ai";
 import type { Api, AuthInteraction, Model } from "@nyte-ai/ai";
 import { collectAbandoned, projectTree } from "@nyte-ai/client";
 import { isTerminalPhase } from "@nyte-ai/protocol";
-import { MAIN, sessionId, watchPluginDirectories } from "@nyte-ai/core";
+import { MAIN, sessionId } from "@nyte-ai/core";
+import { watchPluginDirectories } from "@nyte-ai/host/plugins";
 import type {
   CommandInfo,
   Delivery,
@@ -43,8 +44,9 @@ import type {
   TrustedWorkspace,
 } from "@nyte-ai/core";
 import type { JsonValue, Skill } from "@nyte-ai/schema";
-import { loginProvider, logoutProvider } from "./auth.ts";
+import { authProviderChoices, loginProvider, logoutProvider } from "./auth.ts";
 import { readAuthPrompt } from "./auth-prompt.ts";
+import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
 import {
   cachedAuthenticatedModels,
   defaultModel,
@@ -407,20 +409,13 @@ export async function runTui(
     }
   };
 
+  let closing: Promise<void> | undefined;
+
   const requestShutdown = (requested: TuiExit = { kind: "quit" }): void => {
     if (requested.kind === "signal") exit = requested;
-    // Disposal clears the followed session before the terminal has shut down.
     resumeId ??= app?.sessionId;
-
-    try {
-      void app
-        ?.dispose()
-        .catch((cause) => failures.push(`TUI cleanup failed: ${errorMessage(cause)}`));
-    } catch (cause) {
-      failures.push(`TUI cleanup failed: ${errorMessage(cause)}`);
-    } finally {
-      renderer.destroy();
-    }
+    startupAbort.abort();
+    closing ??= cleanup("TUI", () => app?.dispose()).finally(() => renderer.destroy());
   };
 
   const onSigint = (): void => requestShutdown({ kind: "signal", signal: "SIGINT" });
@@ -451,11 +446,16 @@ export async function runTui(
   renderer.keyInput.on("keypress", takeNoticeBack);
   renderer.on(CliRenderEvents.THEME_MODE, onStartupTheme);
   let host: Host | undefined;
-  const otel = createOtelExport({ serviceName: "nyte-tui" });
+  let otel: ReturnType<typeof createOtelExport> | undefined;
   let app: Interactive | undefined;
   const disposers: (() => void)[] = [];
 
   const boot = async (): Promise<void> => {
+    renderer.requestRender();
+    await renderer.idle();
+
+    if (startupAbort.signal.aborted) return;
+    otel = createOtelExport({ serviceName: "nyte-tui" });
     const trustStore = createWorkspaceStore();
     const resolution = await trustStore.resolve(process.cwd());
 
@@ -508,10 +508,10 @@ export async function runTui(
     disposers.push(() => renderer.off(CliRenderEvents.THEME_MODE, updateTheme));
     shell.setUi("loading", "Loading providers…");
     const bootNotices: string[] = [];
-    const signedIn = await resolveRuntime(flags, settings);
+    const signedIn = await resolveRuntime(flags, settings, startupAbort.signal);
 
     if (startupAbort.signal.aborted) return;
-    const runtime = signedIn ?? (await signedOutRuntime(flags, settings));
+    const runtime = signedIn ?? (await signedOutRuntime(flags, settings, startupAbort.signal));
 
     if (startupAbort.signal.aborted) return;
 
@@ -559,7 +559,6 @@ export async function runTui(
       workspace,
       fallback,
       themeMode: resolveThemeMode(settings.theme, renderer.themeMode),
-      onSettings: () => {},
       requestShutdown,
     });
     renderer.keyInput.off("keypress", onStartupKey);
@@ -571,7 +570,7 @@ export async function runTui(
   };
 
   const booting = boot().catch((cause: unknown) => {
-    failures.unshift(`error: ${errorMessage(cause)}`);
+    if (!startupAbort.signal.aborted) failures.unshift(`error: ${errorMessage(cause)}`);
     requestShutdown();
   });
 
@@ -603,7 +602,7 @@ export async function runTui(
         }
       }
     });
-    await cleanup("Telemetry", () => otel.shutdown());
+    await cleanup("Telemetry", () => otel?.shutdown());
     process.off("SIGINT", onSigint);
     process.off("SIGTERM", onSigterm);
   }
@@ -634,7 +633,6 @@ interface InteractiveOptions {
   readonly workspace: TrustedWorkspace;
   readonly fallback: RunChoice;
   readonly themeMode: ThemeMode;
-  readonly onSettings: (settings: ResolvedSettings) => void;
   readonly requestShutdown: () => void;
   readonly clipboard?: ClipboardService;
 }
@@ -681,7 +679,7 @@ class Interactive {
   private composerActions: ComposerActions | undefined;
   private mentionFiles: readonly MentionFile[] = [];
   private mentionController: AbortController | undefined;
-  private readonly disposers: (() => void)[] = [];
+  private readonly disposers: (() => void | Promise<void>)[] = [];
   /** Sessions this process drives; a run started here keeps going after switching away. */
   private readonly attachments = new Map<SessionId, () => void>();
   private submitting = false;
@@ -741,7 +739,8 @@ class Interactive {
     options.shell.previewSlot.add(this.attachmentPreview.container);
     this.disposers.push(() => {
       this.attachmentPreview.close();
-      void this.clipboard.dispose().catch(this.reportError);
+
+      return this.clipboard.dispose();
     });
     this.tasks = new TaskBrowser({
       shell: options.shell,
@@ -808,7 +807,9 @@ class Interactive {
     };
 
     this.renderer.on(CliRenderEvents.THEME_MODE, onTerminalTheme);
-    this.disposers.push(() => this.renderer.off(CliRenderEvents.THEME_MODE, onTerminalTheme));
+    this.disposers.push(() => {
+      this.renderer.off(CliRenderEvents.THEME_MODE, onTerminalTheme);
+    });
     const info = await targetSession(this.host.nyte, flags.resume);
 
     if (this.disposed) return;
@@ -831,7 +832,7 @@ class Interactive {
     this.stopped.abort();
     this.shell.dismissInfoPanel?.();
     this.tasks.dispose();
-    void this.tuiPlugins.dispose().catch(this.reportError);
+    const plugins = this.tuiPlugins.dispose();
     this.closeQueue();
     this.asking?.abort();
     this.compaction?.abort();
@@ -842,18 +843,24 @@ class Interactive {
     for (const detach of this.attachments.values()) detach();
     this.attachments.clear();
 
-    for (const dispose of this.disposers.splice(0).toReversed()) {
-      try {
-        dispose();
-      } catch {}
-    }
+    const disposed = this.disposers
+      .splice(0)
+      .toReversed()
+      .map(async (dispose) => dispose());
 
     this.autocomplete?.destroy();
     this.renderer.setTerminalTitle(TERMINAL_TITLE_BASE);
-    this.closing = Promise.all(
-      [...this.shellCommands.values()].map((entry) => entry.process.done),
-    ).then(() => {
+    this.closing = Promise.allSettled([
+      plugins,
+      ...disposed,
+      ...[...this.shellCommands.values()].map((entry) => entry.process.done),
+    ]).then((outcomes) => {
       this.shellCommands.clear();
+      const failures = outcomes.flatMap((outcome) =>
+        outcome.status === "rejected" ? [outcome.reason] : [],
+      );
+
+      if (failures.length > 0) throw new AggregateError(failures, "TUI cleanup failed");
     });
 
     return this.closing;
@@ -2669,8 +2676,12 @@ class Interactive {
     this.disposers.push(
       keymap.on("state", scheduleHints),
       keymap.intercept("key:after", scheduleHints),
-      () => this.renderer.off(CliRenderEvents.SELECTION, scheduleHints),
-      () => this.renderer.off(CliRenderEvents.RESIZE, scheduleHints),
+      () => {
+        this.renderer.off(CliRenderEvents.SELECTION, scheduleHints);
+      },
+      () => {
+        this.renderer.off(CliRenderEvents.RESIZE, scheduleHints);
+      },
     );
     const onRun = (): void => this.document.invalidate();
     this.disposers.push(
@@ -2927,7 +2938,9 @@ class Interactive {
     };
 
     this.renderer.keyInput.on("keypress", onKeyPress);
-    this.disposers.push(() => this.renderer.keyInput.off("keypress", onKeyPress));
+    this.disposers.push(() => {
+      this.renderer.keyInput.off("keypress", onKeyPress);
+    });
   }
 
   private async stopRun(session: FollowedSession): Promise<void> {
@@ -3115,7 +3128,6 @@ class Interactive {
 
   private updateSettings(patch: Omit<SettingsPatch, "compaction">): void {
     this.settings = { ...this.settings, ...patch };
-    this.options.onSettings(this.settings);
     void this.settingsStore.updateGlobal(patch).catch(this.reportError);
   }
 
@@ -3183,16 +3195,14 @@ class Interactive {
       {
         model: this.config.model,
         models: this.runtime.models,
-        extra: tuiPlugins(this.runtime.models),
+        extra: tuiPlugins(),
+        sources: this.host.pluginSources,
+        codemode: codemodeRuntimeOptions(),
       },
     );
 
     this.stopped.signal.throwIfAborted();
 
-    if (resolved.failures.length > 0)
-      throw new Error(
-        `Failed to load destination plugins: ${resolved.failures.map((failure) => `${failure.path}: ${failure.error}`).join("; ")}`,
-      );
     const outcome = await this.host.relocate(id, workspace, resolved.plugins);
 
     if (outcome.kind === "busy")
@@ -3241,10 +3251,13 @@ class Interactive {
   private watchWorkspacePlugins(): void {
     this.stopPluginWatch?.();
     this.stopPluginWatch = watchPluginDirectories({
-      directories: pluginWatchTargets({ kind: "project", workspace: this.workspace }),
-      // Runners wait on the hold, so a tool the model just wrote is in its next request.
-      hold: () => this.host.nyte.holdPlugins(),
-      onChange: () => this.reloadPlugins(),
+      directories: [
+        ...pluginWatchTargets({ kind: "project", workspace: this.workspace }),
+        ...this.settingsStore.watchTargets(this.workspace.cwd),
+      ],
+      onChange: async () => {
+        await this.reloadPlugins();
+      },
       onError: (error) => this.reportError(error),
     });
   }
@@ -3275,24 +3288,28 @@ class Interactive {
     await this.refreshMentionFiles();
   }
 
-  private async reloadPlugins(): Promise<void> {
-    if (this.changingDirectory || this.switchingSession) return;
+  private async reloadPlugins(
+    options: { readonly retry?: boolean } = {},
+  ): Promise<Awaited<ReturnType<Host["nyte"]["setPlugins"]>> | undefined> {
+    if (this.changingDirectory || this.switchingSession) return undefined;
     const workspace = this.workspace;
     const session = this.session;
-    await this.tuiPlugins.reconcile();
+
+    if (options.retry === true) this.host.pluginSources.invalidate();
+    await this.tuiPlugins.reconcile(options);
 
     const resolved = await resolveHostPlugins(
       { kind: "project", workspace: this.workspace },
       {
         model: this.config.model,
         models: this.runtime.models,
-        extra: tuiPlugins(this.runtime.models),
+        extra: tuiPlugins(),
+        sources: this.host.pluginSources,
+        codemode: codemodeRuntimeOptions(),
       },
     );
 
-    for (const failure of resolved.failures) {
-      notice(this.shell, `plugin ${failure.path}: ${failure.error}`, this.shell.theme.error);
-    }
+    const settings = await this.settingsStore.read(workspace.cwd);
 
     if (
       this.disposed ||
@@ -3301,14 +3318,36 @@ class Interactive {
       this.workspace !== workspace ||
       this.session !== session
     )
-      return;
+      return undefined;
 
-    if (workspace.cwd === this.host.cwd) await this.host.nyte.setPlugins(resolved.plugins);
+    const outcome =
+      workspace.cwd === this.host.cwd
+        ? await this.host.nyte.setPlugins(resolved.plugins)
+        : session === undefined
+          ? undefined
+          : await this.host.nyte.setPlugins(resolved.plugins, { sessionId: session.sessionId });
 
-    if (session !== undefined) {
-      await this.host.nyte.setPlugins(resolved.plugins, { sessionId: session.sessionId });
-      await this.refreshContributions(session);
+    if (outcome?.kind === "rejected") throw new Error(outcome.error);
+    this.settings = {
+      ...settings,
+      transport: this.settings.transport,
+      compaction: this.settings.compaction,
+    };
+    this.shell.setScrollAcceleration(settings.scrollAcceleration);
+    const mode = resolveThemeMode(settings.theme, this.renderer.themeMode);
+
+    if (mode !== this.themeMode) {
+      this.themeMode = mode;
+      this.shell.setTheme(themeForMode(mode));
+      this.autocomplete?.retheme(this.shell.theme);
+      this.tuiPlugins.refresh();
     }
+
+    if (session !== undefined && outcome?.kind === "applied")
+      await this.refreshContributions(session);
+    this.refreshHints();
+
+    return outcome;
   }
 
   private async checkUpdate(): Promise<void> {
@@ -3338,14 +3377,21 @@ class Interactive {
   // Sessions
   // -------------------------------------------------------------------------
 
-  private async switchSession(info: SessionInfo, announce: boolean): Promise<void> {
+  private async switchSession(load: () => Promise<SessionInfo>, announce: boolean): Promise<void> {
     if (this.switchingSession || this.changingDirectory)
       throw new Error("A chat switch is already in progress");
     this.switchingSession = true;
+    this.shell.setUi("loading", "Loading session…");
+    this.renderer.requestRender();
 
     try {
+      await this.renderer.idle();
+      if (this.disposed) return;
+      const info = await load();
+      if (this.disposed) return;
       await this.follow(info);
 
+      if (this.disposed) return;
       if (!this.shell.ui.selecting) this.focusComposer();
 
       if (announce) {
@@ -3357,33 +3403,33 @@ class Interactive {
       }
     } finally {
       this.switchingSession = false;
+      if (!this.disposed) this.shell.setUi("loading", undefined);
     }
   }
 
   private async resumeSession(): Promise<void> {
     const current = this.requireSession();
-    const { items } = await this.host.nyte.sessions.list({ parent: null });
-
-    const sessions: Choice[] = items
-      .filter((session) => session.heads.some((head) => head.tip !== null))
-      .toSorted((left, right) => right.lastActivityAt - left.lastActivityAt)
-      .map((session) => {
-        const title = session.name ?? session.preview ?? shortId(session.sessionId);
-        const currentLabel = session.sessionId === current.sessionId ? " (current)" : "";
-        const savedAt = new Date(session.lastActivityAt).toLocaleString();
-        const description = `${savedAt} · ${shortId(session.sessionId)}`;
-
-        return { id: session.sessionId, label: `${title}${currentLabel}`, description };
-      });
-
-    if (sessions.length === 0) {
-      notice(this.shell, "No saved chats");
-
-      return;
-    }
-
-    const chosen = await selectChoice(this.shell, "Resume chat", sessions, {
+    const chosen = await selectChoice(this.shell, "Resume chat", [], {
       selectedId: current.sessionId,
+      emptyLabel: "No saved chats",
+      load: async () => {
+        const { items } = await this.host.nyte.sessions.list({ parent: null });
+
+        return items
+          .filter((session) => session.heads.some((head) => head.tip !== null))
+          .toSorted((left, right) => right.lastActivityAt - left.lastActivityAt)
+          .map((session) => {
+            const title = session.name ?? session.preview ?? shortId(session.sessionId);
+            const currentLabel = session.sessionId === current.sessionId ? " (current)" : "";
+            const savedAt = new Date(session.lastActivityAt).toLocaleString();
+
+            return {
+              id: session.sessionId,
+              label: `${title}${currentLabel}`,
+              description: `${savedAt} · ${shortId(session.sessionId)}`,
+            };
+          });
+      },
     });
 
     if (chosen === current.sessionId) {
@@ -3392,21 +3438,19 @@ class Interactive {
       return;
     }
 
-    const info = await this.host.nyte.sessions.get({ sessionId: sessionId(chosen) });
+    await this.switchSession(async () => {
+      const info = await this.host.nyte.sessions.get({ sessionId: sessionId(chosen) });
 
-    if (info === undefined) throw new Error(`Session not found: ${chosen}`);
-    await this.switchSession(info, true);
+      if (info === undefined) throw new Error(`Session not found: ${chosen}`);
+      return info;
+    }, true);
   }
 
   // -------------------------------------------------------------------------
   // Tree navigation
   // -------------------------------------------------------------------------
 
-  private selectTreeCommit(options: {
-    readonly tree: ReturnType<typeof projectTree>;
-    readonly selectedOid?: Oid | null;
-    readonly filter?: TreeFilter;
-  }): Promise<Oid> {
+  private selectTreeCommit(options: ConstructorParameters<typeof TreeSelector>[1]): Promise<Oid> {
     const restoredHints = this.shell.ui.hints;
 
     return new Promise<Oid>((resolveSelection, reject) => {
@@ -3434,6 +3478,7 @@ class Interactive {
             onRows: (rows) => setSlotRows(this.shell, rows),
             onSelect: (oid) => settle(() => resolveSelection(oid)),
             onCancel: () => settle(() => reject(new PickerCancelled())),
+            onError: (cause) => settle(() => reject(cause)),
           },
           options,
         ),
@@ -3543,21 +3588,17 @@ class Interactive {
     const session = this.requireSession();
 
     if (this.busy) throw new Error("Wait for the current run before changing the session branch");
-    const commits = await this.host.sessionCommits(session.sessionId);
-
-    if (commits.length === 0) {
-      notice(this.shell, "No messages to branch from");
-
-      return;
-    }
-
+    let commits: Awaited<ReturnType<Host["sessionCommits"]>> = [];
     const tip = session.state.transcript.tip;
-    const tree = projectTree(commits, { tip, heads: session.state.info.heads });
     let picked: Oid;
 
     try {
       picked = await this.selectTreeCommit({
-        tree,
+        load: async () => {
+          commits = await this.host.sessionCommits(session.sessionId);
+
+          return projectTree(commits, { tip, heads: session.state.info.heads });
+        },
         selectedOid: options.selectedOid ?? tip,
         filter: options.filter ?? "default",
       });
@@ -4067,10 +4108,24 @@ class Interactive {
     const interaction = this.authInteraction(signal);
 
     try {
+      const providerId =
+        argument === ""
+          ? await selectChoice(
+              this.shell,
+              action === "login" ? "Sign in to a provider" : "Remove a stored credential",
+              [],
+              {
+                signal,
+                load: () => authProviderChoices({ action, models, signal }),
+                emptyLabel:
+                  action === "login" ? "No providers support login" : "No stored credentials",
+              },
+            )
+          : argument;
       const wasSignedOut =
         action === "login" && (await models.checkAuth(current.provider, { signal })) === undefined;
 
-      const input = { models, interaction, providerId: argument === "" ? undefined : argument };
+      const input = { models, interaction, providerId };
 
       const result =
         action === "login"
@@ -4186,7 +4241,7 @@ class Interactive {
   }
 
   /** Read once, then display the complete report in the composer panel. */
-  private async openUsage(): Promise<void> {
+  private openUsage(): void {
     const session = this.requireSession();
 
     if (this.disposed || this.shell.ui.selecting || this.shell.ui.prompting) return;
@@ -4216,36 +4271,41 @@ class Interactive {
       !controller.signal.aborted &&
       this.shell.dismissInfoPanel === close;
 
-    try {
-      const accountSignal = AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]);
-
-      const [report, local, accounts] = await Promise.all([
-        this.host.workspaceUsage(session.sessionId),
-        readLocalUsage({
-          models: this.runtime.models,
-          signal: controller.signal,
-          caches: this.usageCaches,
-        }),
-        Promise.all([
-          readAccountUsage({
+    panel.layout.load(
+      async () => {
+        const accountSignal = AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]);
+        const [report, local, accounts] = await Promise.all([
+          this.host.workspaceUsage(session.sessionId),
+          readLocalUsage({
             models: this.runtime.models,
-            provider: "anthropic",
-            signal: accountSignal,
+            signal: controller.signal,
+            caches: this.usageCaches,
           }),
-          readAccountUsage({
-            models: this.runtime.models,
-            provider: "openai-codex",
-            signal: accountSignal,
-          }),
-        ]),
-      ]);
+          Promise.all([
+            readAccountUsage({
+              models: this.runtime.models,
+              provider: "anthropic",
+              signal: accountSignal,
+            }),
+            readAccountUsage({
+              models: this.runtime.models,
+              provider: "openai-codex",
+              signal: accountSignal,
+            }),
+          ]),
+        ]);
 
-      if (active()) panel.update({ kind: "ready", card: usageCard(report, local, accounts) });
-    } catch (cause) {
-      if (active()) panel.update({ kind: "failed", message: errorMessage(cause) });
-    } finally {
-      controller.abort();
-    }
+        return usageCard(report, local, accounts);
+      },
+      (card) => {
+        if (active()) panel.update({ kind: "ready", card });
+        controller.abort();
+      },
+      (cause) => {
+        if (active()) panel.update({ kind: "failed", message: errorMessage(cause) });
+        controller.abort();
+      },
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -4379,11 +4439,13 @@ class Interactive {
         return;
       case "new": {
         noArgument();
-        const info = await this.host.nyte.sessions.create();
+        await this.switchSession(async () => {
+          const info = await this.host.nyte.sessions.create();
 
-        if (this.workspace.cwd !== this.host.cwd)
-          await this.relocateSession(info.sessionId, this.workspace);
-        await this.switchSession(info, false);
+          if (this.workspace.cwd !== this.host.cwd)
+            await this.relocateSession(info.sessionId, this.workspace);
+          return info;
+        }, false);
 
         return;
       }
@@ -4450,7 +4512,7 @@ class Interactive {
 
       case "usage":
         noArgument();
-        await this.openUsage();
+        this.openUsage();
 
         return;
       case "tasks":
@@ -4477,42 +4539,47 @@ class Interactive {
 
         if (panel === undefined) return;
 
-        try {
-          const plugins = await this.host.nyte.plugins.list({ sessionId: session.sessionId });
+        panel.layout.load(
+          () => this.host.nyte.plugins.list({ sessionId: session.sessionId }),
+          (plugins) => {
+            if (this.disposed || this.session !== session) return;
+            const lines = plugins.map((plugin) => {
+              const where =
+                plugin.path === undefined ? plugin.source : `${plugin.source} ${plugin.path}`;
 
-          if (this.disposed || this.session !== session) return;
+              return plugin.status === "failed"
+                ? `${plugin.id} ${where} failed: ${plugin.error}`
+                : `${plugin.id} ${where}`;
+            });
+            lines.unshift(
+              ...this.tuiPlugins.registered().map((plugin) => `${plugin.id} TUI ${plugin.target}`),
+            );
+            const commands = [...session.commands.keys()];
 
-          const lines = plugins.map((plugin) => {
-            const where =
-              plugin.path === undefined ? plugin.source : `${plugin.source} ${plugin.path}`;
-
-            return plugin.status === "failed"
-              ? `${plugin.id} ${where} failed: ${plugin.error}`
-              : `${plugin.id} ${where}`;
-          });
-
-          lines.unshift(
-            ...this.tuiPlugins.registered().map((plugin) => `${plugin.id} TUI ${plugin.target}`),
-          );
-          const commands = [...session.commands.keys()];
-
-          if (commands.length > 0)
-            lines.push(`Commands: ${commands.map((command) => `/${command}`).join(" ")}`);
-          panel.update(lines.length === 0 ? ["No plugins"] : lines);
-        } catch (cause) {
-          if (!this.disposed && this.session === session)
-            panel.update([`Failed to list plugins: ${errorMessage(cause)}`]);
-        }
+            if (commands.length > 0)
+              lines.push(`Commands: ${commands.map((command) => `/${command}`).join(" ")}`);
+            panel.update(lines.length === 0 ? ["No plugins"] : lines);
+          },
+          (cause) => panel.update([`Failed to list plugins: ${errorMessage(cause)}`]),
+        );
 
         return;
       }
 
       case "reload": {
         noArgument();
-        whenIdle("reloading");
-        await this.reloadPlugins();
-        // Plugin renderables mark themselves dirty during reconciliation.
+        notice(this.shell, "Reloading…");
         this.renderer.requestRender();
+        await this.renderer.idle();
+        const outcome = await this.reloadPlugins({ retry: true });
+
+        if (outcome === undefined) return;
+
+        if (outcome.kind === "queued") {
+          notice(this.shell, "Reload queued until active calls finish.");
+
+          return;
+        }
 
         const pluginCount = (await this.host.nyte.plugins.list({ sessionId: session.sessionId }))
           .length;

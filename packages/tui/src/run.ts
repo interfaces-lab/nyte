@@ -10,7 +10,6 @@ import type { Nyte, SessionInfo, ThinkingLevel, TrustedWorkspace } from "@nyte-a
 import type { Plugin } from "@nyte-ai/core/plugins";
 import { workspaceStorePath } from "@nyte-ai/host";
 import { notificationsPlugin } from "@nyte-ai/plugin/examples/notifications";
-import { warmingPlugin } from "@nyte-ai/plugin/examples/warming";
 import type { TelemetryContext } from "@nyte-ai/telemetry";
 import {
   DEFAULT_THINKING_LEVEL,
@@ -77,12 +76,13 @@ function resolveRunModel(
 export async function resolveRuntime(
   flags: RunFlags,
   settings: ResolvedSettings,
+  signal?: AbortSignal,
 ): Promise<Runtime | undefined> {
   const models = createNyteModels();
-  await loadAuthenticatedModels(models);
+  await loadAuthenticatedModels(models, { signal });
 
   for (const provider of runProviderCandidates(models, flags.provider, settings)) {
-    const modelCandidates = await models.getAvailable(provider.id);
+    const modelCandidates = await models.getAvailable(provider.id, { signal });
 
     if (modelCandidates.length === 0) continue;
 
@@ -96,6 +96,7 @@ export async function resolveRuntime(
 export async function signedOutRuntime(
   flags: RunFlags,
   settings: ResolvedSettings,
+  signal?: AbortSignal,
 ): Promise<Runtime> {
   const models = createNyteModels();
   const preferred = runProviderCandidates(models, flags.provider, settings);
@@ -103,7 +104,7 @@ export async function signedOutRuntime(
     .getProviders()
     .filter((provider) => !preferred.some((candidate) => candidate.id === provider.id));
 
-  await models.refresh();
+  await models.refresh({ signal });
 
   for (const provider of [...preferred, ...remaining]) {
     const modelCandidates = models.getModels(provider.id);
@@ -144,8 +145,8 @@ export function hostFallbacks(
 }
 
 /** The terminal's own built-ins, after the shared set: attention comes through the shell. */
-export function tuiPlugins(models: Models): Plugin[] {
-  return [warmingPlugin({ models }), notificationsPlugin];
+export function tuiPlugins(): Plugin[] {
+  return [notificationsPlugin];
 }
 
 interface OpenWorkspaceHostOptions {
@@ -174,7 +175,7 @@ export async function openWorkspaceHost(options: OpenWorkspaceHostOptions): Prom
     plugins: {
       kind: "workspace",
       target: { kind: "project", workspace: options.workspace },
-      extra: tuiPlugins(options.runtime.models),
+      extra: tuiPlugins(),
       onFailure: (failure) => options.report(`plugin ${failure.path}: ${failure.error}`),
     },
     compaction: options.settings.compaction,

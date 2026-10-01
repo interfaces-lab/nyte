@@ -18,6 +18,42 @@ function loginMethods(provider: Provider) {
   return methods;
 }
 
+export async function authProviderChoices(input: {
+  readonly action: "login" | "logout";
+  readonly models: Models;
+  readonly signal?: AbortSignal;
+  readonly credentials?: CredentialStore;
+}) {
+  if (input.action === "login") {
+    const statuses = await providerAuthStatuses(input.models, { signal: input.signal });
+
+    return statuses
+      .filter((status) => loginMethods(status.provider).length > 0)
+      .map((status) => ({
+        id: status.provider.id,
+        label: status.provider.name,
+        description: status.kind === "authenticated" ? "signed in" : "",
+      }));
+  }
+
+  const credentials = input.credentials ?? new FileCredentialStore();
+  const stored = await credentials.list({ signal: input.signal });
+
+  return stored.flatMap((credential) => {
+    const provider = input.models.getProvider(credential.providerId);
+
+    return provider === undefined
+      ? []
+      : [
+          {
+            id: provider.id,
+            label: provider.name,
+            description: credential.type === "oauth" ? "OAuth" : "API key",
+          },
+        ];
+  });
+}
+
 /** CLI and full-screen clients differ only in how they present provider-owned prompts. */
 export async function loginProvider(input: {
   readonly models: Models;
@@ -52,9 +88,7 @@ export async function loginProvider(input: {
 
     const providers =
       input.providerId === undefined
-        ? (await providerAuthStatuses(input.models, { signal })).filter(
-            (status) => loginMethods(status.provider).length > 0,
-          )
+        ? await authProviderChoices({ action: "login", models: input.models, signal })
         : undefined;
 
     if (providers?.length === 0) throw new Error("No providers support interactive login.");
@@ -64,11 +98,7 @@ export async function loginProvider(input: {
       (await interaction.prompt({
         type: "select",
         message: "Sign in to a provider",
-        options: (providers ?? []).map((status) => ({
-          id: status.provider.id,
-          label: status.provider.name,
-          description: status.kind === "authenticated" ? "signed in" : "",
-        })),
+        options: providers ?? [],
       }));
 
     signal.throwIfAborted();
@@ -115,13 +145,15 @@ export async function logoutProvider(input: {
 
   // Validate an explicit target before reading or mutating storage.
   if (input.providerId !== undefined) requireProvider(input.models, input.providerId);
-  const stored = await credentials.list(options);
-
-  const providers = stored.flatMap((credential) => {
-    const provider = input.models.getProvider(credential.providerId);
-
-    return provider === undefined ? [] : [{ provider, credential }];
-  });
+  const providers =
+    input.providerId === undefined
+      ? await authProviderChoices({
+          action: "logout",
+          models: input.models,
+          credentials,
+          ...options,
+        })
+      : [];
 
   if (input.providerId === undefined && providers.length === 0)
     throw new Error("No stored credentials found.");
@@ -131,11 +163,7 @@ export async function logoutProvider(input: {
     (await input.interaction.prompt({
       type: "select",
       message: "Remove a stored credential",
-      options: providers.map(({ provider, credential }) => ({
-        id: provider.id,
-        label: provider.name,
-        description: credential.type === "oauth" ? "OAuth" : "API key",
-      })),
+      options: providers,
     }));
 
   const provider = requireProvider(input.models, providerId);

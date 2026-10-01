@@ -287,7 +287,7 @@ async function print(flags: RunFlags): Promise<PrintOutcome> {
   const settingsStore = new FileSettingsStore();
   const settings = await settingsStore.read(workspace.cwd);
   signal.throwIfAborted();
-  const runtime = await resolveRuntime(flags, settings);
+  const runtime = await resolveRuntime(flags, settings, signal);
   signal.throwIfAborted();
 
   if (runtime === undefined)
