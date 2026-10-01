@@ -51,12 +51,14 @@ async function putCommit(
             calls: {},
             outcome: { kind: "ok" },
           } satisfies Commit)
-        : ({
-            ...common,
-            body: { kind: "message", message },
-            call: { kind: "custom", label: message.toolName },
-            tree: null,
-          } satisfies Commit);
+        : message.role === "system"
+          ? ({ ...common, body: { kind: "message", message } } satisfies Commit)
+          : ({
+              ...common,
+              body: { kind: "message", message },
+              call: { kind: "custom", label: message.toolName },
+              tree: null,
+            } satisfies Commit);
 
   const [oid] = await session.objects.put([run === undefined ? commit : { ...commit, run }]);
 

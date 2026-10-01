@@ -14,6 +14,9 @@ function transcriptCommit(
   at: number,
 ): Commit {
   const message = body.message;
+  if (message.role === "system") {
+    return { kind: "commit", parent, body: { kind: "message", message }, at };
+  }
   if (message.role === "user") {
     return {
       kind: "commit",
