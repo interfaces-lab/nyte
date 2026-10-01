@@ -56,6 +56,10 @@ export interface Tool<TParameters extends TSchema = TSchema> {
   constrainedSampling?: false | ConstrainedSamplingConfig;
 }
 
+export interface ToolReference {
+  name: string;
+}
+
 /** Opaque context material that only its producing provider/API/model may replay. */
 export interface ProviderCheckpointMaterial {
   type: "provider";
@@ -65,7 +69,12 @@ export interface ProviderCheckpointMaterial {
   data: JsonValue;
 }
 
-/** One provider request: system prompt, optional native checkpoint, history, and tools. */
+/**
+ * Request input accepted by the public stream entry points (`Models.stream()`,
+ * `streamSimple()`, ...). `systemPrompt` and `tools` are shorthand for a leading
+ * system message; `normalizeContext()` folds them into one before the request
+ * reaches a provider.
+ */
 export interface Context {
   systemPrompt?: string;
   checkpoint?: ProviderCheckpointMaterial;

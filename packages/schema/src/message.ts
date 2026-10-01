@@ -20,6 +20,7 @@ export type JsonValue =
 
 import { Type } from "typebox";
 import type { Api, ProviderId } from "./model.ts";
+import type { Tool, ToolReference } from "./tool.ts";
 import { object, typed } from "./typed.ts";
 
 export interface TextSignatureV1 {
@@ -135,6 +136,35 @@ export interface AssistantMessageDiagnostic {
   details?: Record<string, unknown>;
 }
 
+/**
+ * System instructions and tool declarations at one point in the transcript.
+ *
+ * The leading system message is the system prompt. Later system messages change it:
+ * `content` adds instructions from that point on, `sections` replace or remove named
+ * prompt sections, and `toolsAdded`/`toolsRemoved` change the tool set. Replaying
+ * every system message in order yields the current prompt and tools. Providers that
+ * accept system messages mid-conversation send each one in place; other providers
+ * rebuild the leading system message from the replayed state.
+ */
+export interface SystemMessage {
+  role: "system";
+  /** Instruction text. On the leading message this is the base prompt; later, additional instructions. */
+  content: string | TextContent[];
+  /**
+   * Named, ordered prompt sections rendered verbatim after `content`. The leading message
+   * declares them; later messages replace sections by name, and `null` removes one. Keep
+   * each section self-delimiting (a tag, a heading) so the model can relate an update to
+   * the original. Avoid integer-like names; JSON objects reorder those.
+   */
+  sections?: Record<string, string | null>;
+  /** Complete definitions of tools that become available at this point. */
+  toolsAdded?: Tool[];
+  /** Tools that stop being available at this point. */
+  toolsRemoved?: ToolReference[];
+  /** Unix timestamp in milliseconds. */
+  timestamp: number;
+}
+
 export interface UserMessage {
   role: "user";
   content: string | (TextContent | ImageContent)[];
@@ -195,6 +225,7 @@ export interface ToolResultMessage<TDetails = any> {
   toolName: string;
   content: (TextContent | ImageContent)[];
   details?: TDetails;
+  structuredContent?: JsonValue;
   /** Heading the tool chose for this call. Clients fall back to the tool name. */
   title?: string;
   /** Usage from the tool execution itself, if available. Not part of main LLM context accounting. */
@@ -210,7 +241,7 @@ export interface ToolResultMessage<TDetails = any> {
   timestamp: number;
 }
 
-export type Message = UserMessage | AssistantMessage | ToolResultMessage;
+export type Message = SystemMessage | UserMessage | AssistantMessage | ToolResultMessage;
 
 /**
  * Event protocol for an assistant message stream.
