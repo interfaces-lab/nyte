@@ -36,8 +36,8 @@ import type { ChatDraft } from "../layout/session-view-state.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Input } from "@nyte-ai/ui/input";
-import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "@nyte-ai/ui/context-menu";
-import { Menu, MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@nyte-ai/ui/context-menu";
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { formatTimeAgo, StatusDot } from "../components/ui.tsx";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
@@ -1053,46 +1053,47 @@ function AccountFooterMenu({
 
   return (
     <>
-      <Menu
-        label="Account menu"
-        side="top"
-        align="start"
-        anchor={anchor}
-        sideOffset={4}
-        highlightItemOnHover={false}
-        trigger={
-          <Row
-            ref={triggerRef}
-            variant="nav"
-            aria-busy={account.busy || undefined}
-            xstyle={[styles.navRow, styles.accountButton]}
+      <Menu highlightItemOnHover={false}>
+        <MenuTrigger
+          render={
+            <Row
+              ref={triggerRef}
+              variant="nav"
+              aria-busy={account.busy || undefined}
+              xstyle={[styles.navRow, styles.accountButton]}
+            >
+              <Row.Leading xstyle={styles.avatarSlot}>
+                {avatarUrl === undefined ? (
+                  <Icon name="user" size={14} />
+                ) : (
+                  <img alt="" src={avatarUrl} {...props(styles.avatar)} />
+                )}
+              </Row.Leading>
+              <Row.Label>{label}</Row.Label>
+            </Row>
+          }
+        />
+        <MenuContent side="top" align="start" anchor={anchor} sideOffset={4} matchAnchorWidth>
+          <MenuItem
+            icon="bubble-question"
+            xstyle={styles.accountMenuItem}
+            onClick={() => void nyte.host.openExternal({ url: REPORT_ISSUE_URL })}
           >
-            <Row.Leading xstyle={styles.avatarSlot}>
-              {avatarUrl === undefined ? (
-                <Icon name="user" size={14} />
-              ) : (
-                <img alt="" src={avatarUrl} {...props(styles.avatar)} />
-              )}
-            </Row.Leading>
-            <Row.Label>{label}</Row.Label>
-          </Row>
-        }
-      >
-        <MenuItem
-          icon="bubble-question"
-          xstyle={styles.accountMenuItem}
-          onSelect={() => void nyte.host.openExternal({ url: REPORT_ISSUE_URL })}
-        >
-          Report Issue
-        </MenuItem>
-        {state?.kind === "ready" && (
-          <>
-            <MenuSeparator inset />
-            <MenuItem icon="arrow-wall-left" danger onSelect={() => setConfirmingSignOut(true)}>
-              Sign Out of GitHub CLI…
-            </MenuItem>
-          </>
-        )}
+            Report Issue
+          </MenuItem>
+          {state?.kind === "ready" && (
+            <>
+              <MenuSeparator inset />
+              <MenuItem
+                icon="arrow-wall-left"
+                variant="danger"
+                onClick={() => setConfirmingSignOut(true)}
+              >
+                Sign Out of GitHub CLI…
+              </MenuItem>
+            </>
+          )}
+        </MenuContent>
       </Menu>
       {state?.kind === "ready" && (
         <ConfirmDialog
@@ -1148,38 +1149,34 @@ function WorkspaceRow({
   readonly onRemove: () => void;
   readonly children: ReactNode;
 }): ReactElement {
-  const menuItems = (context: boolean): ReactElement => {
-    const Item = context ? ContextMenuItem : MenuItem;
-    const Separator = context ? ContextMenuSeparator : MenuSeparator;
-
-    return (
-      <>
-        <Item
-          icon="new-chat-folder"
-          disabled={onNewChat === undefined}
-          disabledReason={onNewChat === undefined ? "Folder unavailable" : undefined}
-          onSelect={() => onNewChat?.()}
-        >
-          New Chat
-        </Item>
-        {onArchiveAll !== undefined && (
-          <Item icon="archive" onSelect={onArchiveAll}>
-            Archive All Chats…
-          </Item>
-        )}
-        <Separator />
-        <Item icon="trash" danger onSelect={onRemove}>
-          Remove Workspace from Sidebar
-        </Item>
-      </>
-    );
-  };
+  const menuItems = (
+    <>
+      <MenuItem
+        icon="new-chat-folder"
+        disabled={onNewChat === undefined}
+        onClick={() => onNewChat?.()}
+      >
+        New Chat
+      </MenuItem>
+      {onArchiveAll !== undefined && (
+        <MenuItem icon="archive" onClick={onArchiveAll}>
+          Archive All Chats…
+        </MenuItem>
+      )}
+      <MenuSeparator />
+      <MenuItem icon="trash" variant="danger" onClick={onRemove}>
+        Remove Workspace from Sidebar
+      </MenuItem>
+    </>
+  );
 
   const row = (
     <Row
+      revealActions
       xstyle={[styles.rowSurface, styles.workspaceRow, !available && styles.workspaceUnavailable]}
     >
       <Row.Primary
+        xstyle={styles.workspacePrimary}
         render={
           <Collapsible.Trigger
             variant="plain"
@@ -1200,22 +1197,24 @@ function WorkspaceRow({
         </Row.Leading>
         <Row.Label>{name}</Row.Label>
       </Row.Primary>
-      <Row.Actions>
-        <Menu
-          label={`Options for ${name}`}
-          align="end"
-          trigger={<Button size="sm" iconOnly icon="more" aria-label={`Options for ${name}`} />}
-        >
-          {menuItems(false)}
-        </Menu>
+      <Row.Actions placement="overlay">
+        <Button
+          size="sm"
+          iconOnly
+          icon="new-chat-folder"
+          aria-label={`New Chat in ${name}`}
+          disabled={onNewChat === undefined}
+          onClick={onNewChat}
+        />
       </Row.Actions>
     </Row>
   );
 
   return (
     <Collapsible.Root open={expanded} onOpenChange={onExpandedChange} {...props(styles.section)}>
-      <ContextMenu label={`Options for ${name}`} trigger={row}>
-        {menuItems(true)}
+      <ContextMenu>
+        <ContextMenuTrigger render={row} />
+        <ContextMenuContent aria-label={`Options for ${name}`}>{menuItems}</ContextMenuContent>
       </ContextMenu>
       <Collapsible.Panel {...props(styles.sessionList)}>{children}</Collapsible.Panel>
     </Collapsible.Root>
@@ -1241,6 +1240,7 @@ function DraftRow({
     <Row
       render={<motion.div layout={layoutEnabled ? "position" : false} initial={false} />}
       selected={selected}
+      revealActions
       xstyle={[
         styles.rowSurface,
         styles.sessionRow,
@@ -1270,30 +1270,33 @@ function DraftRow({
         <Row.Leading xstyle={styles.rowIcon}>
           <span role="img" aria-label="Draft" {...props(styles.draftDot)} />
         </Row.Leading>
-        <Row.Label>{title}</Row.Label>
+        <Row.Label xstyle={styles.draftLabel}>{title}</Row.Label>
         <Row.Meta xstyle={styles.rowMeta}>{formatTimeAgo(draft.updatedAt)}</Row.Meta>
       </Row.Primary>
-      <Row.Actions data-nyte-session-row-actions="">
-        <Menu
-          label={`Options for draft: ${title}`}
-          align="end"
-          trigger={
-            <Button size="sm" iconOnly icon="more" aria-label={`Options for draft: ${title}`} />
-          }
-        >
-          <MenuItem icon="trash" danger onSelect={onDelete}>
-            Delete Draft
-          </MenuItem>
-        </Menu>
+      <Row.Actions
+        placement="overlay"
+        data-nyte-session-row-actions=""
+        xstyle={styles.rowActionsBesideMeta}
+      >
+        <Button
+          size="2xs"
+          iconOnly
+          icon="trash"
+          aria-label={`Delete Draft: ${title}`}
+          onClick={onDelete}
+        />
       </Row.Actions>
     </Row>
   );
 
   return (
-    <ContextMenu label={`Options for draft: ${title}`} trigger={row}>
-      <ContextMenuItem icon="trash" danger onSelect={onDelete}>
-        Delete Draft
-      </ContextMenuItem>
+    <ContextMenu>
+      <ContextMenuTrigger render={row} />
+      <ContextMenuContent aria-label={`Options for draft: ${title}`}>
+        <MenuItem icon="trash" variant="danger" onClick={onDelete}>
+          Delete Draft
+        </MenuItem>
+      </ContextMenuContent>
     </ContextMenu>
   );
 }
@@ -1470,38 +1473,33 @@ function SessionRow({
     );
   }
 
-  const menuItems = (context: boolean): ReactElement => {
-    const Item = context ? ContextMenuItem : MenuItem;
-    const Separator = context ? ContextMenuSeparator : MenuSeparator;
-
-    return (
-      <>
-        <Item icon={session.pinned ? "unpin" : "pin"} onSelect={onPin}>
-          {session.pinned ? "Unpin Chat" : "Pin Chat"}
-        </Item>
-        <Item icon="pencil" onSelect={() => setDraftName(title)}>
-          Rename Chat…
-        </Item>
-        <Item icon="split-right" onSelect={onOpenBeside}>
-          Open Chat to the Side
-        </Item>
-        <Item icon="copy" onSelect={() => void navigator.clipboard.writeText(title)}>
-          Copy Chat Title
-        </Item>
-        <Item icon={session.archived ? "unarchive" : "archive"} onSelect={onArchive}>
-          {session.archived ? "Restore Chat" : "Archive Chat"}
-        </Item>
-        <Separator />
-        <Item icon="trash" danger onSelect={onDelete}>
-          Delete Chat…
-        </Item>
-      </>
-    );
-  };
+  const menuItems = (
+    <>
+      <MenuItem icon={session.pinned ? "unpin" : "pin"} onClick={onPin}>
+        {session.pinned ? "Unpin Chat" : "Pin Chat"}
+      </MenuItem>
+      <MenuItem icon="pencil" onClick={() => setDraftName(title)}>
+        Rename Chat…
+      </MenuItem>
+      <MenuItem icon="split-right" onClick={onOpenBeside}>
+        Open Chat to the Side
+      </MenuItem>
+      <MenuItem icon="copy" onClick={() => void navigator.clipboard.writeText(title)}>
+        Copy Chat Title
+      </MenuItem>
+      <MenuItem icon={session.archived ? "unarchive" : "archive"} onClick={onArchive}>
+        {session.archived ? "Restore Chat" : "Archive Chat"}
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem icon="trash" variant="danger" onClick={onDelete}>
+        Delete Chat…
+      </MenuItem>
+    </>
+  );
 
   const titleLine = (
     <>
-      <Row.Label>{title}</Row.Label>
+      <Row.Label xstyle={styles.sessionLabel}>{title}</Row.Label>
       {showUpdated && (
         <Row.Meta xstyle={styles.rowMeta}>{formatTimeAgo(session.lastActivityAt)}</Row.Meta>
       )}
@@ -1514,6 +1512,7 @@ function SessionRow({
         <motion.div ref={setNodeRef} layout={layoutEnabled ? "position" : false} initial={false} />
       }
       selected={selected}
+      revealActions
       xstyle={[
         styles.rowSurface,
         styles.sessionRow,
@@ -1567,14 +1566,31 @@ function SessionRow({
           </Row.Body>
         )}
       </Row.Primary>
-      <Row.Actions data-nyte-session-row-actions="">
-        <Menu
-          label={`Options for ${title}`}
-          align="end"
-          trigger={<Button size="sm" iconOnly icon="more" aria-label={`Options for ${title}`} />}
+      <Row.Actions
+        placement="overlay"
+        data-nyte-session-row-actions=""
+        xstyle={[
+          showUpdated && styles.rowActionsBesideMeta,
+          ask !== undefined && styles.rowActionsAsk,
+        ]}
+      >
+        <Button
+          size="2xs"
+          iconOnly
+          icon={session.pinned ? "unpin" : "pin"}
+          aria-label={`${session.pinned ? "Unpin" : "Pin"} ${title}`}
+          onClick={onPin}
+        />
+        <Button
+          size="2xs"
+          iconOnly
+          aria-label={`${session.archived ? "Restore" : "Archive"} ${title}`}
+          onClick={onArchive}
         >
-          {menuItems(false)}
-        </Menu>
+          <span {...props(styles.actionGlyphArchive)}>
+            <Icon name={session.archived ? "unarchive" : "archive"} size={12} />
+          </span>
+        </Button>
       </Row.Actions>
     </Row>
   );
@@ -1584,7 +1600,7 @@ function SessionRow({
       title={title}
       context={previewContext}
       trigger={row}
-      contextMenu={menuItems(true)}
+      contextMenu={menuItems}
     />
   );
 }

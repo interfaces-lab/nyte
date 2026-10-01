@@ -3,8 +3,9 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import type { GitHubRepository } from "../bridge.ts";
 import { Icon } from "@nyte-ai/ui/icon";
-import { ContextMenu } from "@nyte-ai/ui/context-menu";
+import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@nyte-ai/ui/context-menu";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { glyph } from "@nyte-ai/ui/schema.stylex";
 
 const styles = create({
   title: {
@@ -34,7 +35,7 @@ const styles = create({
   detailIcon: {
     display: "grid",
     placeItems: "center",
-    width: 14,
+    width: glyph.sm,
     height: type.leadingSm,
     color: role.contentTertiary,
   },
@@ -67,11 +68,11 @@ export function SessionPreviewCard({
       {contextMenu === undefined ? (
         <PreviewCardTrigger render={trigger} delay={600} closeDelay={100} />
       ) : (
-        <ContextMenu
-          label={`Options for ${title}`}
-          trigger={<PreviewCardTrigger render={trigger} delay={600} closeDelay={100} />}
-        >
-          {contextMenu}
+        <ContextMenu>
+          <ContextMenuTrigger
+            render={<PreviewCardTrigger render={trigger} delay={600} closeDelay={100} />}
+          />
+          <ContextMenuContent aria-label={`Options for ${title}`}>{contextMenu}</ContextMenuContent>
         </ContextMenu>
       )}
       <PreviewCardContent

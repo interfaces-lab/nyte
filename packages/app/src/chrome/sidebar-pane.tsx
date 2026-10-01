@@ -13,7 +13,6 @@ import { create, props } from "@stylexjs/stylex";
 import { useMatch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
-import { button } from "@nyte-ai/ui/schema.stylex";
 import { sidebar } from "../theme/schema.stylex.ts";
 import { motion, role } from "@nyte-ai/ui/vars.stylex";
 import {
@@ -41,11 +40,8 @@ const styles = create({
   },
   rail: {
     display: "flex",
-    width: {
-      default: `calc(${sidebar.width} - 24px)`,
-      "@media (pointer: coarse)": `calc(${sidebar.width} - ${button.heightLg})`,
-    },
-    minWidth: 0,
+    width: sidebar.width,
+    minWidth: sidebar.width,
     minHeight: 0,
     flexShrink: 0,
     opacity: 1,
@@ -56,7 +52,7 @@ const styles = create({
     zIndex: 5,
     insetBlock: 0,
     insetInlineEnd: 0,
-    width: { default: 24, "@media (pointer: coarse)": button.heightLg },
+    width: sidebar.handleWidth,
     cursor: "col-resize",
     touchAction: "none",
 

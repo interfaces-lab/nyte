@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { input, shape, target } from "@nyte-ai/ui/schema.stylex";
 /**
  * Sidebar feature styles.
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
@@ -172,6 +172,10 @@ export const sidebarStyles = create({
     cursor: appearance.cursorInteractive,
     flexShrink: 0,
   },
+  /** Room for the create action, which floats over the row rather than in it. */
+  workspacePrimary: {
+    paddingInlineEnd: `calc(${sidebar.actionSize} + 2px)`,
+  },
   sessionRow: {
     "--_row-meta-color": role.contentSecondary,
     "--_row-fill": {
@@ -185,12 +189,25 @@ export const sidebarStyles = create({
     WebkitUserDrag: "none",
   },
   /**
+   * Opening the room between the title and the time, rather than at the end of
+   * the row, keeps the time where it was: the title is the only thing that
+   * gives way to the actions. The width multiplies `Row`'s own reveal flag, so
+   * the room and the lane cannot fall out of step. A chat has two actions, a
+   * draft one.
+   */
+  sessionLabel: {
+    marginInlineEnd: `calc(var(--_row-actions-opacity, 0) * (2 * ${target.min} + ${target.gap} + ${sidebar.rowGap}))`,
+  },
+  draftLabel: {
+    marginInlineEnd: `calc(var(--_row-actions-opacity, 0) * (${target.min} + ${sidebar.rowGap}))`,
+  },
+  /**
    * A row that needs you carries a second line: the question asked, or why the
    * run failed. Every other row keeps one line, so height goes only where a
    * decision is pending.
    */
   sessionRowAsk: {
-    minHeight: { default: 40, "@media (pointer: coarse)": 52 },
+    minHeight: sidebar.askRowHeight,
     alignItems: "flex-start",
     paddingBlock: 4,
   },
@@ -201,6 +218,11 @@ export const sidebarStyles = create({
     gap: sidebar.rowGap,
     minWidth: 0,
   },
+  /** The actions cover the title line's box, clear of the second line. */
+  rowActionsAsk: {
+    top: 4,
+    height: type.leadingBase,
+  },
   rowIconAsk: { alignSelf: "flex-start", paddingBlockStart: 2 },
   sessionAsk: { color: role.contentSecondary },
   /** Replaces the row's title while renaming; same footprint, so the list does not jump. */
@@ -210,7 +232,7 @@ export const sidebarStyles = create({
   sessionRenameInput: {
     // The label is a plain box, not a flex line, so the field fills it by width.
     width: "100%",
-    height: 22,
+    height: input.heightMd,
     borderRadius: shape.indicator,
     borderColor: role.borderSecondaryTranslucent,
     outlineStyle: { default: "none", ":focus-visible": "solid" },
@@ -293,13 +315,30 @@ export const sidebarStyles = create({
   },
   workspaceChevronOpen: { transform: "rotate(0deg)" },
   workspaceUnavailable: { color: role.contentSecondary },
+  /**
+   * The time holds a column at rest. Once the actions show it shrinks to its
+   * text, so the lane can sit against the digits rather than the column edge.
+   */
   rowMeta: {
-    minWidth: sidebar.metaWidth,
+    anchorName: "--nyte-row-time",
+    minWidth: `calc(${sidebar.metaWidth} * (1 - var(--_row-actions-opacity, 0)))`,
     justifyContent: "flex-end",
     color: "var(--_row-meta-color)",
     fontSize: type.fontXs,
     lineHeight: type.leadingXs,
     letterSpacing: 0.07,
+  },
+  /** On a timed row the lane stops a row gap short of the time. */
+  rowActionsBesideMeta: {
+    positionAnchor: "--nyte-row-time",
+    insetInlineEnd: `calc(anchor(start) + ${sidebar.rowGap})`,
+  },
+  /** Archive's box+lid is heavy below the grid; lift the glyph, not the hit target. */
+  actionGlyphArchive: {
+    display: "grid",
+    placeItems: "center",
+    lineHeight: 0,
+    transform: "translateY(-1px)",
   },
   rowDragging: {
     cursor: "grabbing",
