@@ -114,6 +114,14 @@ export type ThinkingTokenBudgetField =
 
 export type SessionAffinityFormat = "openai" | "openai-nosession" | "openrouter";
 
+export type CacheRetention = "none" | "short" | "long";
+
+/**
+ * Best-effort prompt cache lifetime in seconds for each retention tier a request can ask for.
+ * A missing tier means the lifetime is unknown; such caches are not warmed.
+ */
+export type ModelPromptCache = Partial<Record<Exclude<CacheRetention, "none">, number>>;
+
 export interface AnthropicAllowedFallbackModel {
   provider: ProviderId;
   model: string;
@@ -197,6 +205,10 @@ export interface OpenAICompletionsCompat {
   supportsThinkingTokenBudget?: boolean;
   /** Whether the provider supports OpenAI custom tools with Lark/regex grammar formats. When false, grammar-constrained tools fall back to normal function tools. Default: false; the generated model catalog enables it for capable models. */
   supportsOpenAIGrammarTools?: boolean;
+  /** Whether the exact model accepts system or developer messages after the conversation has started. When false, later system messages are folded into the leading system message. Default: false; the generated model catalog enables it for verified models. */
+  supportsMidConvoSystemMessages?: boolean;
+  /** Whether system messages can introduce additional tools mid-conversation. Requires `supportsMidConvoSystemMessages`. Default: false; the generated model catalog enables it for capable models. */
+  supportsMidConvoToolAdditions?: boolean;
   /** Whether the provider supports the `strict` field in tool definitions. Default: true. */
   supportsStrictMode?: boolean;
   /** Cache control convention for prompt caching. "anthropic" applies Anthropic-style `cache_control` markers to the system prompt, last tool definition, and last user, assistant, or tool-result text content. */
@@ -215,6 +227,8 @@ export interface OpenAICompletionsCompat {
 export interface OpenAIResponsesCompat {
   /** Whether the provider supports the `developer` role (vs `system`). Default: true. */
   supportsDeveloperRole?: boolean;
+  /** Whether the exact model accepts developer or system messages after the conversation has started. When false, later system messages are folded into the leading system message. Default: false; the generated model catalog enables it for verified models. */
+  supportsMidConvoSystemMessages?: boolean;
   /** Session-affinity header format: `openai` sends `session_id` and `x-client-request-id`; `openai-nosession` sends `x-client-request-id`; `openrouter` sends `x-session-id`. Does not affect the `prompt_cache_key` body param, which is governed by cache retention. Default: auto-detected. */
   sessionAffinityFormat?: SessionAffinityFormat;
   /** Whether the provider supports `prompt_cache_retention: "24h"`. Default: true. */
@@ -279,6 +293,10 @@ export interface AnthropicMessagesCompat {
   allowEmptySignature?: boolean;
   /** Whether the provider supports Anthropic strict tool schemas. Default: false; generated Anthropic models enable it explicitly. */
   supportsStrictTools?: boolean;
+  /** Whether the exact model accepts system-role messages inside the conversation. When false, later system messages are folded into the top-level system prompt. Default: false. */
+  supportsMidConvoSystemMessages?: boolean;
+  /** Whether the exact model accepts mid-conversation `tool_addition` and `tool_removal` blocks. Requires `supportsMidConvoSystemMessages`. Default: false. */
+  supportsMidConvoToolChanges?: boolean;
   /**
    * Models Anthropic accepts in `fallbacks` for server-side refusal fallback,
    * with local pricing metadata for returned fallback responses. When absent or
@@ -402,6 +420,8 @@ export interface Model<TApi extends Api> {
    * Missing keys use provider defaults. null marks a level as unsupported.
    */
   thinkingLevelMap?: ThinkingLevelMap;
+  /** Prompt cache lifetimes per retention tier. Unset when the provider's cache behavior is unknown. */
+  promptCache?: ModelPromptCache;
   input: ("text" | "image")[];
   cost: ModelCost;
   contextWindow: number;
@@ -448,6 +468,11 @@ const ThinkingLevelMapSchema = object({
   high: Type.Optional(nullableString),
   xhigh: Type.Optional(nullableString),
   max: Type.Optional(nullableString),
+});
+
+const ModelPromptCacheSchema = object({
+  short: Type.Optional(Type.Number()),
+  long: Type.Optional(Type.Number()),
 });
 
 const ChatTemplateKwargValueSchema = Type.Union([
@@ -561,6 +586,8 @@ const OpenAICompletionsCompatSchema = object({
   ),
   supportsThinkingTokenBudget: Type.Optional(Type.Boolean()),
   supportsOpenAIGrammarTools: Type.Optional(Type.Boolean()),
+  supportsMidConvoSystemMessages: Type.Optional(Type.Boolean()),
+  supportsMidConvoToolAdditions: Type.Optional(Type.Boolean()),
   supportsStrictMode: Type.Optional(Type.Boolean()),
   cacheControlFormat: Type.Optional(Type.Literal("anthropic")),
   sendSessionAffinityHeaders: Type.Optional(Type.Boolean()),
@@ -577,6 +604,7 @@ const OpenAICompletionsCompatSchema = object({
 
 const OpenAIResponsesCompatSchema = object({
   supportsDeveloperRole: Type.Optional(Type.Boolean()),
+  supportsMidConvoSystemMessages: Type.Optional(Type.Boolean()),
   sessionAffinityFormat: Type.Optional(
     Type.Union([
       Type.Literal("openai"),
@@ -607,6 +635,8 @@ const AnthropicMessagesCompatSchema = object({
   forceAdaptiveThinking: Type.Optional(Type.Boolean()),
   allowEmptySignature: Type.Optional(Type.Boolean()),
   supportsStrictTools: Type.Optional(Type.Boolean()),
+  supportsMidConvoSystemMessages: Type.Optional(Type.Boolean()),
+  supportsMidConvoToolChanges: Type.Optional(Type.Boolean()),
   allowedFallbackModels: Type.Optional(Type.Array(AnthropicAllowedFallbackModelSchema)),
   supportsToolReferences: Type.Optional(Type.Boolean()),
 });
@@ -625,6 +655,7 @@ export const ModelSchema = typed<Model<Api>>()(
     reasoning: Type.Boolean(),
     modes: Type.Optional(Type.Array(Type.Enum(MODEL_MODES))),
     thinkingLevelMap: Type.Optional(ThinkingLevelMapSchema),
+    promptCache: Type.Optional(ModelPromptCacheSchema),
     input: Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")])),
     cost: ModelCostSchema,
     contextWindow: Type.Number(),
