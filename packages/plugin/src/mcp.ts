@@ -6,51 +6,39 @@
  *
  * A server therefore outlives any one session, and a plugin reload that leaves
  * its config alone never reconnects: the plugin's version is the config's hash.
- *
- * Modeled on opencode v2 `packages/core/src/mcp` and `tool/mcp.ts`, without
- * OAuth, resources, or prompts: connect, list tools, call tools.
  */
-import { createHash } from "node:crypto";
-import { resolve } from "node:path";
-import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
-import { definePlugin, pluginFactKey } from "@nyte-ai/core/plugins";
+import { createHash, randomBytes } from "node:crypto";
+import { writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import {
+  McpClient,
+  StdioTransport,
+  StreamableHttpTransport,
+  toLlmContent,
+} from "@earendil-works/pi-mcp";
+import type { ContentBlock, LlmContent } from "@earendil-works/pi-mcp";
+import { ToolError, definePlugin, pluginFactKey } from "@nyte-ai/core/plugins";
 import type { AgentTool, Disposer } from "@nyte-ai/core/plugins";
-import type { ImageContent, JsonValue, TextContent } from "@nyte-ai/schema";
+import type { JsonValue } from "@nyte-ai/schema";
 import { Type, Unsafe } from "typebox";
 import type { Static, TUnsafe } from "typebox";
+import { Value } from "typebox/value";
 
 export const MCP_PLUGIN_ID = "mcp";
 
-// The SDK brings zod, ajv, and its transports: a third of the desktop's main
-// bundle. It loads on the first connection, the way provider SDKs do.
-async function importSdk() {
-  const [client, stdio, http, types] = await Promise.all([
-    import("@modelcontextprotocol/sdk/client/index.js"),
-    import("@modelcontextprotocol/sdk/client/stdio.js"),
-    import("@modelcontextprotocol/sdk/client/streamableHttp.js"),
-    import("@modelcontextprotocol/sdk/types.js"),
-  ]);
+const McpExposure = Type.Union([
+  Type.Literal("direct"),
+  Type.Literal("codemode"),
+  Type.Literal("deferred"),
+  Type.Literal("hidden"),
+]);
 
-  return {
-    Client: client.Client,
-    StdioClientTransport: stdio.StdioClientTransport,
-    getDefaultEnvironment: stdio.getDefaultEnvironment,
-    StreamableHTTPClientTransport: http.StreamableHTTPClientTransport,
-    CallToolResultSchema: types.CallToolResultSchema,
-    ToolListChangedNotificationSchema: types.ToolListChangedNotificationSchema,
-  };
-}
-
-type Sdk = Awaited<ReturnType<typeof importSdk>>;
-
-let sdk: Promise<Sdk> | undefined;
-
-function loadSdk(): Promise<Sdk> {
-  sdk ??= importSdk();
-
-  return sdk;
-}
+const exposureProperties = {
+  exposure: Type.Optional(McpExposure),
+  toolExposure: Type.Optional(Type.Record(Type.String(), McpExposure)),
+  description: Type.Optional(Type.String()),
+};
 
 /** A server the host starts over stdio, or one it reaches over streamable HTTP. */
 export const McpServerConfig = Type.Union([
@@ -62,6 +50,7 @@ export const McpServerConfig = Type.Union([
       /** Relative paths resolve from the session's working directory. */
       cwd: Type.Optional(Type.String()),
       disabled: Type.Optional(Type.Boolean()),
+      ...exposureProperties,
     },
     { additionalProperties: false },
   ),
@@ -70,6 +59,7 @@ export const McpServerConfig = Type.Union([
       url: Type.String({ minLength: 1 }),
       headers: Type.Optional(Type.Record(Type.String(), Type.String())),
       disabled: Type.Optional(Type.Boolean()),
+      ...exposureProperties,
     },
     { additionalProperties: false },
   ),
@@ -99,7 +89,14 @@ const LINGER_MS = 1_000;
 const STDERR_TAIL_BYTES = 2_048;
 
 /** The registry validates arguments against the server's `inputSchema`, an object schema. */
-type BridgedTool = AgentTool<TUnsafe<Record<string, JsonValue>>>;
+type BridgedTool = AgentTool<
+  TUnsafe<Record<string, JsonValue>>,
+  {
+    server: string;
+    tool: string;
+    fullOutputPath?: string;
+  }
+>;
 
 export type McpServerStatus =
   | { readonly kind: "connecting" }
@@ -123,7 +120,7 @@ export interface McpServerHandle {
 interface Connection {
   status: McpServerStatus;
   /** Undefined while connecting, the client once open, `"ended"` once closed for good. */
-  client: Client | "ended" | undefined;
+  client: McpClient | "ended" | undefined;
   readonly ready: Promise<void>;
   settle: () => void;
 }
@@ -133,15 +130,17 @@ class Slot {
   readonly name: string;
   readonly config: McpServerConfig;
   readonly cwd: string;
+  readonly toolOwners: Map<string, string>;
   refs = 0;
   linger: ReturnType<typeof setTimeout> | undefined;
   readonly listeners = new Set<() => void>();
   connection: Connection;
 
-  constructor(name: string, config: McpServerConfig, cwd: string) {
+  constructor(name: string, config: McpServerConfig, cwd: string, toolOwners: Map<string, string>) {
     this.name = name;
     this.config = config;
     this.cwd = cwd;
+    this.toolOwners = toolOwners;
     this.connection = openConnection(this);
   }
 }
@@ -155,14 +154,18 @@ export function connectionKey(name: string, config: McpServerConfig, cwd: string
 
 export class McpServers {
   private readonly slots = new Map<string, Slot>();
+  private readonly toolOwners = new Map<string, string>();
 
   acquire(name: string, config: McpServerConfig, cwd: string): McpServerHandle {
     const key = connectionKey(name, config, cwd);
-    const held = this.slots.get(key) ?? new Slot(name, config, cwd);
+    const held = this.slots.get(key) ?? new Slot(name, config, cwd, this.toolOwners);
     this.slots.set(key, held);
 
     // A config change re-acquires; give a failed server another try then.
-    if (held.connection.status.kind === "failed") held.connection = openConnection(held);
+    if (held.connection.status.kind === "failed") {
+      held.connection = openConnection(held);
+      notify(held);
+    }
     held.refs += 1;
     clearTimeout(held.linger);
     held.linger = undefined;
@@ -203,7 +206,10 @@ export class McpServers {
   /** Reopen every failed connection in place; sessions keep their handles. */
   reconnectFailed(): void {
     for (const slot of this.slots.values()) {
-      if (slot.connection.status.kind === "failed") slot.connection = openConnection(slot);
+      if (slot.connection.status.kind === "failed") {
+        slot.connection = openConnection(slot);
+        notify(slot);
+      }
     }
   }
 
@@ -226,7 +232,6 @@ function openConnection(slot: Slot): Connection {
     settle,
   };
 
-  notify(slot);
   void connectServer(slot, connection)
     .catch((cause: unknown) => {
       fail(slot, connection, errorMessage(cause));
@@ -261,165 +266,544 @@ function fail(slot: Slot, connection: Connection, error: string): void {
 
 async function connectServer(slot: Slot, connection: Connection): Promise<void> {
   const { config, cwd } = slot;
-  // `closeConnection` reassigns the property while this function awaits; reading it through a
-  // closure keeps the declared type, which the compiler's flow analysis would otherwise narrow away.
-  const ended = (): boolean => connection.client === "ended";
+  await Promise.resolve();
+  if (connection.client === "ended") return;
 
-  const { Client, StdioClientTransport, getDefaultEnvironment, StreamableHTTPClientTransport } =
-    await loadSdk();
-
-  // Loading the SDK is the only window where a close finds no client to shut down. Past it,
-  // `connection.client` is set before `connect` spawns the server, so a close reaches it.
-  if (ended()) return;
-  const client = new Client({ name: "nyte", version: "0" });
-  let stderrTail = "";
-
+  const client = new McpClient({
+    name: "nyte",
+    version: "0",
+    requestTimeoutMs: STARTUP_TIMEOUT_MS,
+  });
   const transport =
     "command" in config
-      ? new StdioClientTransport({
+      ? new StdioTransport({
           command: config.command,
           args: config.args ?? [],
-          env: { ...getDefaultEnvironment(), ...config.env },
+          env: { ...stdioEnvironment(), ...config.env },
+          inheritEnv: false,
           cwd: resolve(cwd, config.cwd ?? "."),
-          // The terminal owns stderr; the server's goes into its failure message instead.
           stderr: "pipe",
+          maxStderrBytes: STDERR_TAIL_BYTES,
         })
-      : new StreamableHTTPClientTransport(new URL(config.url), {
-          requestInit: config.headers === undefined ? undefined : { headers: config.headers },
-        });
+      : new StreamableHttpTransport({ url: config.url, headers: config.headers });
 
-  if (transport instanceof StdioClientTransport) {
-    transport.stderr?.on("data", (chunk: Buffer | string) => {
-      stderrTail = (stderrTail + String(chunk)).slice(-STDERR_TAIL_BYTES);
-    });
-  }
-
-  const describe = (message: string): string =>
-    stderrTail.trim() === "" ? message : `${message}\n${stderrTail.trim()}`;
-
-  connection.client = client;
-  // The MCP client exposes callback properties, not an EventTarget.
-  // oxlint-disable-next-line unicorn/prefer-add-event-listener
-  client.onclose = () => {
-    if (connection.client !== client) return;
-    fail(slot, connection, describe("connection closed"));
+  const describe = (message: string): string => {
+    const stderr = transport instanceof StdioTransport ? transport.stderr.trim() : "";
+    return stderr === "" ? message : `${message}\n${stderr}`;
   };
 
-  // oxlint-disable-next-line unicorn/prefer-add-event-listener
-  client.onerror = () => undefined;
+  connection.client = client;
+  let initializing = true;
+  client.onClose(() => {
+    if (connection.client !== client || initializing) return;
+    fail(slot, connection, describe("connection closed"));
+  });
 
   try {
-    await client.connect(transport, { timeout: STARTUP_TIMEOUT_MS });
+    await client.connect(transport);
+    if (!Value.Check(McpServerCapabilities, client.serverCapabilities)) {
+      throw new Error("Invalid MCP server capabilities");
+    }
   } catch (cause) {
     throw new Error(describe(errorMessage(cause)), { cause });
   }
+  initializing = false;
+  if (connection.client !== client) return;
 
   const refresh = async (): Promise<void> => {
-    const tools = await listTools(client, slot.name);
+    if (connection.client !== client) return;
+    const tools = await listTools(client, slot);
 
     if (connection.client !== client) return;
     connection.status = {
       kind: "connected",
       tools,
-      instructions: client.getInstructions()?.trim() || undefined,
+      instructions: client.instructions?.trim() || undefined,
     };
 
     if (slot.connection === connection) notify(slot);
   };
 
-  const { ToolListChangedNotificationSchema } = await loadSdk();
-  client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
-    void refresh().catch((cause: unknown) => {
+  let refreshing = refresh();
+  client.onNotification("notifications/tools/list_changed", () => {
+    refreshing = refreshing.then(refresh).catch((cause: unknown) => {
       if (connection.client === client) fail(slot, connection, describe(errorMessage(cause)));
     });
   });
-  await refresh();
+  await refreshing;
 }
 
-async function listTools(client: Client, server: string): Promise<BridgedTool[]> {
-  if (client.getServerCapabilities()?.tools === undefined) return [];
-  const tools: Tool[] = [];
-  let cursor: string | undefined;
+function stdioEnvironment(): Record<string, string> {
+  const names =
+    process.platform === "win32"
+      ? [
+          "APPDATA",
+          "HOMEDRIVE",
+          "HOMEPATH",
+          "LOCALAPPDATA",
+          "PATH",
+          "PROCESSOR_ARCHITECTURE",
+          "SYSTEMDRIVE",
+          "SYSTEMROOT",
+          "TEMP",
+          "USERNAME",
+          "USERPROFILE",
+          "PROGRAMFILES",
+        ]
+      : ["HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER"];
+  const env: Record<string, string> = {};
+  for (const name of names) {
+    const value = process.env[name];
+    if (value !== undefined && !value.startsWith("()")) env[name] = value;
+  }
+  return env;
+}
 
-  do {
-    const page = await client.listTools(cursor === undefined ? undefined : { cursor }, {
-      timeout: CATALOG_TIMEOUT_MS,
+const McpServerCapabilities = Type.Object(
+  {
+    tools: Type.Optional(
+      Type.Object({ listChanged: Type.Optional(Type.Boolean()) }, { additionalProperties: true }),
+    ),
+  },
+  { additionalProperties: true },
+);
+
+const McpIcons = Type.Optional(
+  Type.Array(
+    Type.Object(
+      {
+        src: Type.String(),
+        mimeType: Type.Optional(Type.String()),
+        sizes: Type.Optional(Type.Array(Type.String())),
+        theme: Type.Optional(Type.Union([Type.Literal("light"), Type.Literal("dark")])),
+      },
+      { additionalProperties: true },
+    ),
+  ),
+);
+
+const SchemaObject = Type.Object(
+  {
+    type: Type.Optional(Type.Literal("object")),
+    properties: Type.Optional(
+      Type.Record(Type.String(), Type.Record(Type.String(), Type.Unknown())),
+    ),
+    required: Type.Optional(Type.Array(Type.String())),
+  },
+  { additionalProperties: true },
+);
+
+const McpTool = Type.Object(
+  {
+    name: Type.String(),
+    title: Type.Optional(Type.String()),
+    icons: McpIcons,
+    description: Type.Optional(Type.String()),
+    inputSchema: SchemaObject,
+    outputSchema: Type.Optional(SchemaObject),
+    annotations: Type.Optional(
+      Type.Object(
+        {
+          title: Type.Optional(Type.String()),
+          readOnlyHint: Type.Optional(Type.Boolean()),
+          destructiveHint: Type.Optional(Type.Boolean()),
+          idempotentHint: Type.Optional(Type.Boolean()),
+          openWorldHint: Type.Optional(Type.Boolean()),
+        },
+        { additionalProperties: true },
+      ),
+    ),
+    execution: Type.Optional(
+      Type.Object(
+        {
+          taskSupport: Type.Optional(
+            Type.Union([
+              Type.Literal("forbidden"),
+              Type.Literal("optional"),
+              Type.Literal("required"),
+            ]),
+          ),
+        },
+        { additionalProperties: true },
+      ),
+    ),
+    _meta: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  },
+  { additionalProperties: true },
+);
+
+const contentMetadata = {
+  annotations: Type.Optional(
+    Type.Object(
+      {
+        audience: Type.Optional(
+          Type.Array(Type.Union([Type.Literal("user"), Type.Literal("assistant")])),
+        ),
+        priority: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
+        lastModified: Type.Optional(Type.String({ format: "date-time" })),
+      },
+      { additionalProperties: true },
+    ),
+  ),
+  _meta: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+};
+
+const resourceProperties = {
+  uri: Type.String(),
+  mimeType: Type.Optional(Type.String()),
+  _meta: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+};
+
+const McpContent = Type.Union([
+  Type.Object(
+    { type: Type.Literal("text"), text: Type.String(), ...contentMetadata },
+    { additionalProperties: true },
+  ),
+  Type.Object(
+    {
+      type: Type.Literal("image"),
+      data: Type.String(),
+      mimeType: Type.String(),
+      ...contentMetadata,
+    },
+    { additionalProperties: true },
+  ),
+  Type.Object(
+    {
+      type: Type.Literal("audio"),
+      data: Type.String(),
+      mimeType: Type.String(),
+      ...contentMetadata,
+    },
+    { additionalProperties: true },
+  ),
+  Type.Object(
+    {
+      type: Type.Literal("resource"),
+      resource: Type.Union([
+        Type.Object({ ...resourceProperties, text: Type.String() }, { additionalProperties: true }),
+        Type.Object({ ...resourceProperties, blob: Type.String() }, { additionalProperties: true }),
+      ]),
+      ...contentMetadata,
+    },
+    { additionalProperties: true },
+  ),
+  Type.Object(
+    {
+      type: Type.Literal("resource_link"),
+      uri: Type.String(),
+      name: Type.String(),
+      title: Type.Optional(Type.String()),
+      description: Type.Optional(Type.String()),
+      mimeType: Type.Optional(Type.String()),
+      size: Type.Optional(Type.Number()),
+      icons: McpIcons,
+      ...contentMetadata,
+    },
+    { additionalProperties: true },
+  ),
+]);
+
+const McpCallResult = Type.Object(
+  {
+    content: Type.Array(McpContent),
+    structuredContent: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+    isError: Type.Optional(Type.Boolean()),
+    _meta: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  },
+  { additionalProperties: true },
+);
+
+function parseMcpResult(result: unknown) {
+  if (!isJsonObject(result) || !Value.Check(McpCallResult, result)) {
+    throw new Error("Invalid MCP tools/call result");
+  }
+  for (const block of result.content) {
+    const data =
+      block.type === "image" || block.type === "audio"
+        ? block.data
+        : block.type === "resource" && "blob" in block.resource
+          ? block.resource.blob
+          : undefined;
+    if (data === undefined) continue;
+    try {
+      atob(data);
+    } catch (cause) {
+      throw new Error("Invalid MCP tools/call base64 content", { cause });
+    }
+  }
+  return result;
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  return isJsonObject(value);
+}
+
+function isJsonObject(value: unknown): value is Record<string, JsonValue> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.values(value).every(isJsonValue)
+  );
+}
+
+async function listTools(client: McpClient, slot: Slot): Promise<BridgedTool[]> {
+  if (client.serverCapabilities?.tools === undefined) return [];
+  const tools = await client.listTools({ timeoutMs: CATALOG_TIMEOUT_MS });
+  const names = new Set<string>();
+  for (const tool of tools) {
+    if (!isJsonValue(tool) || !Value.Check(McpTool, tool))
+      throw new Error("Invalid MCP tools/list entry");
+    if (names.has(tool.name)) throw new Error(`Duplicate MCP tool ${tool.name}`);
+    names.add(tool.name);
+  }
+  const plain = tools.map((tool) => bridgedToolName(slot.name, tool.name));
+  const current = new Set<string>();
+  return tools.map((tool) => {
+    const owner = `${slot.name}\0${tool.name}`;
+    const name = bridgedToolName(slot.name, tool.name, (candidate) => {
+      const existing = slot.toolOwners.get(candidate);
+      return (
+        (existing !== undefined && existing !== owner) ||
+        current.has(candidate) ||
+        plain.indexOf(candidate) !== plain.lastIndexOf(candidate)
+      );
     });
-
-    tools.push(...page.tools);
-    cursor = page.nextCursor;
-  } while (cursor !== undefined);
-
-  return tools.map((tool) => bridgeTool(client, server, tool));
+    slot.toolOwners.set(name, owner);
+    current.add(name);
+    return bridgeTool(client, slot, tool, name);
+  });
 }
 
-/** `server_tool`, in the character set every provider accepts for a tool name. */
-export function bridgedToolName(server: string, tool: string): string {
-  return `${server}_${tool}`.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
+export function bridgedToolName(
+  server: string,
+  tool: string,
+  isTaken: (name: string) => boolean = () => false,
+): string {
+  const name = `mcp__${server}__${tool}`.replace(/[^A-Za-z0-9_]/g, "_");
+  if (name.length <= 64 && !isTaken(name)) return name;
+  const hash = createHash("sha256").update(`${server}\0${tool}`).digest("hex").slice(0, 8);
+  return `${name.slice(0, 64 - hash.length - 1)}_${hash}`;
 }
 
-function bridgeTool(client: Client, server: string, tool: Tool): BridgedTool {
-  const name = bridgedToolName(server, tool.name);
+function toolExposure(config: McpServerConfig, name: string): Static<typeof McpExposure> {
+  const overrides = config.toolExposure ?? {};
+  const exact = Object.hasOwn(overrides, name) ? overrides[name] : undefined;
+  if (exact !== undefined) return exact;
+  for (const [pattern, exposure] of Object.entries(overrides)) {
+    if (!pattern.includes("*")) continue;
+    const source = pattern
+      .split("*")
+      .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+      .join(".*");
+    if (new RegExp(`^${source}$`).test(name)) return exposure;
+  }
+  return config.exposure ?? "codemode";
+}
 
+function bridgeTool(
+  client: McpClient,
+  slot: Slot,
+  tool: Awaited<ReturnType<McpClient["listTools"]>>[number],
+  name: string,
+): BridgedTool {
+  const server = slot.name;
+  const description = slot.config.description?.trim();
+  const instructions = client.instructions?.trim();
   return {
     name,
     label: `${server}: ${tool.name}`,
-    description: tool.description ?? "",
-    parameters: Unsafe<Record<string, JsonValue>>({ ...tool.inputSchema }),
+    description:
+      tool.description?.trim() ||
+      tool.title ||
+      tool.annotations?.title ||
+      `MCP tool ${tool.name} from server ${server}`,
+    parameters: Unsafe<Record<string, JsonValue>>({
+      ...tool.inputSchema,
+      type: tool.inputSchema.type ?? "object",
+      properties: tool.inputSchema.properties ?? {},
+    }),
+    outputSchema: Unsafe<JsonValue>({
+      type: "object",
+      properties: {
+        content: { type: "array", items: { type: "object" } },
+        ...(tool.outputSchema === undefined ? {} : { structuredContent: tool.outputSchema }),
+        isError: { type: "boolean" },
+        _meta: { type: "object" },
+      },
+      required: ["content"],
+    }),
+    exposure: toolExposure(slot.config, tool.name),
+    namespace: {
+      name: `mcp__${server.replace(/[^A-Za-z0-9_]/g, "_")}`,
+      ...(description ? { description } : {}),
+      ...(instructions ? { instructions } : {}),
+    },
     replay: "never",
-    async execute(_toolCallId, params, signal) {
-      // The client's return type is a union with the legacy shape; parse the modern one.
-      const { CallToolResultSchema } = await loadSdk();
-
-      const result = CallToolResultSchema.parse(
-        await client.callTool({ name: tool.name, arguments: params }, CallToolResultSchema, {
+    async execute(_toolCallId, params, signal, onUpdate) {
+      const result = parseMcpResult(
+        await client.callTool(tool.name, params, {
           signal,
-          timeout: CALL_TIMEOUT_MS,
+          timeoutMs: CALL_TIMEOUT_MS,
+          onProgress: (progress) => {
+            if (
+              typeof progress.progress !== "number" ||
+              !Number.isFinite(progress.progress) ||
+              (progress.total !== undefined &&
+                (typeof progress.total !== "number" || !Number.isFinite(progress.total))) ||
+              (progress.message !== undefined && typeof progress.message !== "string")
+            )
+              return;
+            const total = progress.total === undefined ? "" : `/${String(progress.total)}`;
+            onUpdate?.({
+              content: [
+                {
+                  type: "text",
+                  text: progress.message ?? `Progress ${String(progress.progress)}${total}`,
+                },
+              ],
+              details: { server, tool: tool.name },
+            });
+          },
         }),
       );
-
-      const content = toolContent(result.content);
-
-      if (result.isError === true) {
-        throw new Error(
-          content
-            .flatMap((item) => (item.type === "text" ? [item.text] : []))
-            .join("\n")
-            .trim() || `${tool.name} failed`,
-        );
+      const convertedContent =
+        result.content.length > 0
+          ? (await Promise.all(result.content.map(blockToContent))).flat()
+          : toLlmContent(result);
+      if (result.isError === true && textOf(convertedContent) === "") {
+        convertedContent.push({
+          type: "text",
+          text: `MCP tool ${server}/${tool.name} returned an error`,
+        });
       }
-
-      return { content, details: { server, tool: tool.name }, title: tool.name };
+      const { content, fullOutputPath } = await limitMcpContent(convertedContent);
+      const { _meta: _ignored, ...structuredContent } = result;
+      const converted = {
+        content,
+        structuredContent,
+        details: { server, tool: tool.name, ...(fullOutputPath ? { fullOutputPath } : {}) },
+        title: tool.name,
+      };
+      if (result.isError === true) throw new ToolError(converted);
+      return converted;
     },
   };
 }
 
-function toolContent(content: CallToolResult["content"]): (TextContent | ImageContent)[] {
-  return content.flatMap((block): (TextContent | ImageContent)[] => {
-    switch (block.type) {
-      case "text":
-        return [{ type: "text", text: block.text }];
-      case "image":
-        return [{ type: "image", data: block.data, mimeType: block.mimeType }];
-      case "audio":
-        return [{ type: "text", text: `[audio ${block.mimeType}]` }];
-      case "resource":
-        return [
-          {
-            type: "text",
-            text:
-              "text" in block.resource ? block.resource.text : `[resource ${block.resource.uri}]`,
-          },
-        ];
-      case "resource_link":
-        return [{ type: "text", text: `[resource ${block.uri}]` }];
-      default: {
-        const _exhaustive: never = block;
+const MCP_OUTPUT_MAX_BYTES = 20 * 1024;
 
-        return _exhaustive;
-      }
+function textOf(content: readonly LlmContent[]): string {
+  return content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
+}
+
+async function saveOutput(data: string | Uint8Array, extension: string): Promise<string> {
+  const path = join(tmpdir(), `nyte-mcp-${randomBytes(8).toString("hex")}${extension}`);
+  await writeFile(path, data, { mode: 0o600 });
+  return path;
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${String(bytes)}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+async function blockToContent(block: ContentBlock): Promise<LlmContent[]> {
+  if (block.type === "resource_link") {
+    const details = [
+      block.mimeType,
+      block.size === undefined ? undefined : formatSize(block.size),
+    ].filter(Boolean);
+    const description = block.description ? `: ${block.description}` : "";
+    return [
+      {
+        type: "text",
+        text: `[Resource ${block.uri} "${block.title ?? block.name}"${details.length > 0 ? ` (${details.join(", ")})` : ""}${description}]`,
+      },
+    ];
+  }
+  if (
+    block.type === "resource" &&
+    "blob" in block.resource &&
+    !block.resource.mimeType?.startsWith("image/")
+  ) {
+    const { uri, mimeType, blob } = block.resource;
+    const data = Buffer.from(blob, "base64");
+    const type = mimeType?.split(";", 1)[0]?.trim().toLowerCase();
+    if (
+      type &&
+      (type.startsWith("text/") ||
+        type === "application/json" ||
+        type.endsWith("+json") ||
+        type.endsWith("+xml"))
+    ) {
+      return [{ type: "text", text: data.toString("utf8") }];
     }
-  });
+    const kind = `${mimeType ?? "unknown type"}, ${formatSize(data.length)}`;
+    try {
+      const uriPath = URL.canParse(uri) ? new URL(uri).pathname : uri;
+      const path = await saveOutput(data, /\.[A-Za-z0-9]{1,8}$/.exec(uriPath)?.[0] ?? ".bin");
+      return [{ type: "text", text: `[Binary resource ${uri} (${kind}) saved to ${path}]` }];
+    } catch (cause) {
+      return [
+        {
+          type: "text",
+          text: `[Binary resource ${uri} (${kind}) could not be saved: ${errorMessage(cause)}]`,
+        },
+      ];
+    }
+  }
+  return toLlmContent({ content: [block] });
+}
+
+function truncateMiddle(content: string, maxBytes: number) {
+  const buf = Buffer.from(content, "utf-8");
+  const totalLines =
+    content === "" ? 0 : content.split("\n").length - (content.endsWith("\n") ? 1 : 0);
+  if (buf.length <= maxBytes) {
+    return { content, truncated: false, totalBytes: buf.length, totalLines };
+  }
+  const isBoundary = (index: number) => index >= buf.length || (buf[index] & 0xc0) !== 0x80;
+  let headEnd = Math.floor(maxBytes / 2);
+  while (headEnd > 0 && !isBoundary(headEnd)) headEnd--;
+  let tailStart = buf.length - (maxBytes - Math.floor(maxBytes / 2));
+  while (tailStart < buf.length && !isBoundary(tailStart)) tailStart++;
+  const head = buf.subarray(0, headEnd).toString("utf-8");
+  const tail = buf.subarray(tailStart).toString("utf-8");
+  const removedChars = Array.from(buf.subarray(headEnd, tailStart).toString("utf-8")).length;
+  return {
+    content: `${head}…${String(removedChars)} chars truncated…${tail}`,
+    truncated: true,
+    totalBytes: buf.length,
+    totalLines,
+  };
+}
+
+async function limitMcpContent(
+  content: LlmContent[],
+): Promise<{ content: LlmContent[]; fullOutputPath?: string }> {
+  const combined = textOf(content);
+  const truncation = truncateMiddle(combined, MCP_OUTPUT_MAX_BYTES);
+  if (!truncation.truncated) return { content };
+  let fullOutputPath: string | undefined;
+  let where: string;
+  try {
+    fullOutputPath = await saveOutput(combined, ".txt");
+    where = `[Full output: ${fullOutputPath} (read it with offset/limit)]`;
+  } catch (cause) {
+    where = `[Could not save the full output: ${errorMessage(cause)}]`;
+  }
+  const tokens = Math.ceil(truncation.totalBytes / 4);
+  const text = `Warning: truncated output (original token count: ${String(tokens)})\nTotal output lines: ${String(truncation.totalLines)}\n\n${truncation.content}\n\n${where}`;
+  return {
+    content: [{ type: "text", text }, ...content.filter((block) => block.type === "image")],
+    ...(fullOutputPath ? { fullOutputPath } : {}),
+  };
 }
 
 function firstLine(text: string): string {
@@ -521,8 +905,10 @@ export function mcpPlugin(input: { readonly servers: McpServers; readonly config
 
           if (entry === undefined) return;
           const [name, config] = entry;
-          apply(name, config, isEnabled(event.value, config));
-          refresh();
+          api.defer(() => {
+            apply(name, config, isEnabled(event.value, config));
+            refresh();
+          });
         }),
       );
       api.signal.addEventListener("abort", () => {
@@ -543,7 +929,12 @@ export function mcpPlugin(input: { readonly servers: McpServers; readonly config
         for (const handle of active.values()) {
           const status = handle.status();
 
-          if (status.kind !== "connected" || status.instructions === undefined) continue;
+          if (
+            status.kind !== "connected" ||
+            status.instructions === undefined ||
+            status.tools.every((tool) => tool.exposure === "hidden")
+          )
+            continue;
           draft.set(`mcp:${handle.name}`, {
             text: `## ${handle.name} (MCP)\n\n${status.instructions}`,
             order: 200,

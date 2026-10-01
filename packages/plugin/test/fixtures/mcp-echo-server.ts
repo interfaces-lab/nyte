@@ -17,12 +17,19 @@ server.registerTool(
   {
     description: "Repeat the text",
     inputSchema: { text: z.string() },
+    outputSchema: { text: z.string() },
   },
-  async ({ text }) => ({ content: [{ type: "text", text: `echo: ${text}` }] }),
+  async ({ text }) => ({
+    content: [{ type: "text", text: `echo: ${text}`, _meta: { block: true } }],
+    structuredContent: { text: `echo: ${text}` },
+    _meta: { private: true },
+  }),
 );
 server.registerTool("fail", { description: "Always fails", inputSchema: {} }, async () => ({
   isError: true,
   content: [{ type: "text", text: "no" }],
+  structuredContent: { reason: "no" },
+  _meta: { private: true },
 }));
 // Stray logging must not corrupt the host's terminal; the client pipes it.
 process.stderr.write("echo server starting\n");
