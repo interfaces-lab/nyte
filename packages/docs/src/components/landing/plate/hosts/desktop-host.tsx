@@ -20,7 +20,7 @@ import {
   IconSidebarHiddenRightWide,
   IconUser,
 } from "central-icons-desktop";
-import { Spinner } from "@nyte-ai/ui";
+import { Spinner } from "@nyte-ai/ui/spinner";
 import type { ReactNode } from "react";
 import { Bezel } from "./bezel";
 import { EDIT_STATS, editDiffHTML } from "./edit-diff";

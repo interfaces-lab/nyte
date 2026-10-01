@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu, MenuRadioGroup, MenuRadioItem } from "@nyte-ai/ui";
+import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { IconArrowDown, IconChevronDownSmall } from "central-icons";
 import { useState, useSyncExternalStore } from "react";
 
@@ -54,39 +54,39 @@ export function DownloadButton({ href }: { href: string }) {
         </span>
       )}
 
-      <Menu
-        label="Platform"
-        align="end"
-        sideOffset={6}
-        trigger={
-          <button
-            type="button"
-            aria-label="Choose a platform"
-            className={`${segmentClass} cursor-pointer rounded-r-full pr-3.5 pl-2.5 hover:bg-foreground/85`}
-          >
-            <IconChevronDownSmall size={16} />
-          </button>
-        }
-      >
-        <MenuRadioGroup
-          value={platform.value}
-          onValueChange={(value) => {
-            const next = PLATFORMS.find((option) => option.value === value);
-            if (next) setChosen(next.value);
-          }}
-        >
-          {PLATFORMS.map((option) => (
-            <MenuRadioItem
-              key={option.value}
-              value={option.value}
-              layout="plain"
-              meta={option.detail}
-              disabled={option.value !== "mac"}
+      <Menu>
+        <MenuTrigger
+          render={
+            <button
+              type="button"
+              aria-label="Choose a platform"
+              className={`${segmentClass} cursor-pointer rounded-r-full pr-3.5 pl-2.5 hover:bg-foreground/85`}
             >
-              {option.label}
-            </MenuRadioItem>
-          ))}
-        </MenuRadioGroup>
+              <IconChevronDownSmall size={16} />
+            </button>
+          }
+        />
+        <MenuContent align="end" sideOffset={6}>
+          <MenuRadioGroup
+            value={platform.value}
+            onValueChange={(value) => {
+              const next = PLATFORMS.find((option) => option.value === value);
+              if (next) setChosen(next.value);
+            }}
+          >
+            {PLATFORMS.map((option) => (
+              <MenuRadioItem
+                key={option.value}
+                value={option.value}
+                layout="plain"
+                meta={option.detail}
+                disabled={option.value !== "mac"}
+              >
+                {option.label}
+              </MenuRadioItem>
+            ))}
+          </MenuRadioGroup>
+        </MenuContent>
       </Menu>
     </div>
   );

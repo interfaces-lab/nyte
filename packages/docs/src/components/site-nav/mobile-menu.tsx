@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { create } from "@stylexjs/stylex";
-import { Dialog } from "@nyte-ai/ui";
+import { Dialog } from "@nyte-ai/ui/dialog";
 import { motion } from "@nyte-ai/ui/vars.stylex";
 import {
   IconBarsTwo,

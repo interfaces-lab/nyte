@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState } from "react";
 import { create } from "@stylexjs/stylex";
-import { Dialog, Input } from "@nyte-ai/ui";
+import { Dialog } from "@nyte-ai/ui/dialog";
+import { Input } from "@nyte-ai/ui/input";
 import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 
 const styles = create({
