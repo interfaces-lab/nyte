@@ -502,7 +502,6 @@ work appears, updates while the session set changes, and ends when nothing is
 working; the system Settings toggle is the off switch. Live Activities render
 Voltra JSX, not React Native views.
 
-A Cursor iOS study informs the interaction order and visual hierarchy; its iPad
-layouts were adapted to iPhone rather than copied. Durable drafts across
-navigation to the conversation list, offline history, and real-phone pairing
-remain future work.
+Durable drafts across navigation to the conversation list, offline history,
+and real-phone pairing remain future work. Design attribution is recorded in
+[Third-party notices](../../THIRD-PARTY-NOTICES.md#design-references).

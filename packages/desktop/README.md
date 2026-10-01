@@ -185,7 +185,7 @@ File and skill chips use the same inline styling in the composer, queue, and tra
 
 The composer, sent user text, and queued text share the Lexical setup and chip rendering in `composer-surface.tsx`. Sent messages convert persisted skill instructions back to the same reference nodes used while editing. Read-only messages omit editing history, completion handling, remove buttons, and the custom caret. Editing uses the same composer without a status banner; Escape or a click outside the composer cancels the edit. Composer controls and their menus or dialogs keep the edit open, and saving or attachment loading prevents dismissal. They render immediately without moving the active selection.
 
-The behavior follows the installed Cursor reference where Nyte has the corresponding data:
+The composer and read-only messages handle these cases:
 
 | Case | Nyte behavior |
 | --- | --- |
@@ -201,7 +201,7 @@ The behavior follows the installed Cursor reference where Nyte has the correspon
 | Long sent messages | Text preview collapses after 3.5 lines; attachments remain outside the text collapse |
 | More than 100,000 source characters | Shows `Message is too long to display` |
 
-Reference modules are `ComposerLexicalRenderer.js`, `ComposerRichTextInline.js`, `promptInputRichText.js`, and `draftAgentRepositoryService.js` in Cursor's workbench bundle. Cursor also contains format-specific TipTap and legacy routes, cloud worker labels, video/terminal-selection fallbacks, and tile-draft visibility rules. Nyte does not store those Cursor-specific document formats or draft kinds. They are not added to its message model. Nyte keeps its existing workspace and draft visibility rules.
+Source attribution is recorded in [Third-party notices](../../THIRD-PARTY-NOTICES.md#design-references).
 
 Settings and menu switches take the md switch tokens: a 28×16px track and a 12px thumb, or 48×28px and 22px under a coarse pointer. Keyboard focus retains its visible outline.
 

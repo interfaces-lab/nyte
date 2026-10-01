@@ -1,9 +1,8 @@
 # Third-party notices
 
-Parts of this repository are ported from or derived from other projects. Every
-ported file carries a `Based on <link>` header naming its exact source; those
-headers are the authoritative per-file provenance. This file lists the upstream
-projects and their licenses. The dependencies below include MIT, Apache-2.0,
+Parts of this repository are ported from or derived from other projects. This
+file lists the upstream projects and their licenses. The dependencies below
+include MIT, Apache-2.0,
 the MCP client's licensing-transition notice, the SIL Open Font License for
 the bundled typefaces, and the proprietary Iconists license used by Central
 Icons.
@@ -11,6 +10,40 @@ Icons.
 MIT notices are reproduced in full under each entry. The Apache License 2.0
 covers several entries, so its full text appears once in the appendix at the
 end of this file and those entries reference it there.
+
+## shadcn/ui
+
+- Repository: https://github.com/shadcn-ui/ui
+- What: the Message, Bubble, Marker, Attachment, MessageScroller and Questionnaire
+  component contracts and composition in `packages/ui` are adapted from commit
+  `d75a96ab781f3d659be1ad287347d5887ce9f2fc`.
+- Package: `@shadcn/react` 0.3.1 supplies the headless scrolling and questionnaire behavior.
+
+License: MIT, with the following notice:
+
+```text
+MIT License
+
+Copyright (c) 2023 shadcn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ## pi (`earendil-works/pi`)
 
@@ -20,6 +53,13 @@ end of this file and those entries reference it there.
   `packages/schema`, `packages/telemetry`, `packages/tui`, and
   `packages/plugin` are ported from pi and tracked against it. This is the
   large majority of the `Based on` headers in this repository.
+- Packages: `@earendil-works/pi-mcp` 1.0.0 and
+  `@earendil-works/pi-codemode` 1.0.0 supply the MCP client and QuickJS
+  executor. Tool discovery and code-mode integration are adapted from commit
+  `86dfceec402ad77e563bf4feab5f26c42d5f5db6`.
+- Transcript reconciliation, checkpoint instruction snapshots, provider system
+  updates, and cache warming are ported from the 1.0.0 release commit
+  `a13d35a742c6ef8462812a28fbe1d8c8b7431c32`.
 
 License: MIT, with the following notice:
 
@@ -45,6 +85,36 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+## quickjs-wasi
+
+- Repository: https://github.com/vercel-labs/quickjs-wasi
+- Package: `quickjs-wasi` 3.6.2
+- What: Pi code mode runs JavaScript in the packaged QuickJS WebAssembly engine.
+
+```text
+MIT License
+
+Copyright (c) 2026 Vercel, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 ```
 
 ## Pierre
@@ -147,16 +217,42 @@ SOFTWARE.
 ## Model Context Protocol TypeScript SDK
 
 - Repository: https://github.com/modelcontextprotocol/typescript-sdk
-- Package: `@modelcontextprotocol/client` 2.0.0
-- What: Nyte's retired core MCP integration used this client. Current search
-  requests use `packages/plugin/examples/web-search/mcp.ts` without the SDK.
-  No SDK source was ported into Nyte.
+- Package: `@modelcontextprotocol/sdk` 1.30.0
+- What: local MCP server test fixtures use the SDK. Production MCP connections
+  use `@earendil-works/pi-mcp`, whose SDK-derived code retains the additional
+  notice below.
 
 License: the package declares MIT in `package.json`. Its distributed `LICENSE`
 records the MCP project's transition to Apache License 2.0, with contributions
 whose relicensing consent has not been obtained remaining under MIT. The
 complete applicable license text is distributed with the installed package and
 published in the package repository.
+
+Pi MCP distributes the following notice for its SDK-derived code:
+
+```text
+MIT License
+
+Copyright (c) 2024 Anthropic, PBC
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ## OpenAI Codex (`openai/codex`)
 
@@ -408,6 +504,29 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Design references
+
+These credits record design sources. They do not grant a license to the
+referenced products or imply endorsement.
+
+### Cursor
+
+- Product: https://cursor.com
+- Desktop design references include mention-preview folder rows, native
+  context menus and file-manager labels, transcript overscroll and edge
+  fades, collapsed-message previews, shell command and output presentation,
+  and Changes-panel shortcuts and default commit behavior in `packages/app`.
+- The mention-preview reference is the file and folder path presentation in
+  `/Applications/Cursor.app/Contents/Resources/app/out/vs/workbench/workbench.glass.main.js`.
+  Scroll and fade references include `--composer-messages-bottom-overscroll`,
+  `--cursor-spacing-8`, `.composer-fade-overlay`, and `UMs`.
+- Composer and read-only message behavior was studied in the workbench
+  modules `ComposerLexicalRenderer.js`, `ComposerRichTextInline.js`,
+  `promptInputRichText.js`, and `draftAgentRepositoryService.js`. Nyte uses
+  its own message model and workspace and draft visibility rules.
+- A Cursor iOS study informed the mobile interaction order and visual
+  hierarchy. Its iPad layouts were adapted to iPhone rather than copied.
 
 ## Appendix: Apache License 2.0
 
