@@ -252,7 +252,7 @@ export type JobOrigin =
   | { readonly kind: "user" };
 
 export type JobPhase =
-  | { readonly kind: "running"; readonly mode: "foreground" | "background" }
+  | { readonly kind: "running" }
   | { readonly kind: "completed" }
   | { readonly kind: "failed"; readonly reason: string }
   | { readonly kind: "cancelled" }
@@ -268,6 +268,7 @@ export interface JobInfo {
   readonly command: string;
   /** The last 50k characters, growing while running, final after. */
   readonly output: string;
+  readonly isBackgrounded: boolean;
   readonly phase: JobPhase;
   readonly startedAt: number;
   readonly updatedAt: number;

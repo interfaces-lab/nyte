@@ -27,8 +27,10 @@ import type {
   ProviderCheckpointMaterial as ProviderCheckpointMaterialType,
   Skill as SkillType,
   StopReason as StopReasonType,
+  SystemMessage as SystemMessageType,
   TextContent as TextContentType,
   ThinkingContent as ThinkingContentType,
+  Tool as ToolType,
   ToolCall as ToolCallType,
   ToolResultMessage as ToolResultMessageType,
   Usage as UsageType,
@@ -342,6 +344,52 @@ export const UserMessage = typed<UserMessageType>()(
   open({ role: Type.Literal("user"), content: UserContent, timestamp: Type.Number() }),
 );
 
+const ToolKind = literals([
+  "read",
+  "edit",
+  "delete",
+  "move",
+  "search",
+  "execute",
+  "fetch",
+  "think",
+  "other",
+]);
+
+const GrammarVariants = open({
+  openai_lark: Type.Optional(Type.String()),
+  openai_regex: Type.Optional(Type.String()),
+});
+
+const ConstrainedSamplingConfig = Type.Union([
+  open({ type: Type.Literal("json_schema"), strict: literals(["prefer", "require"]) }),
+  open({ type: Type.Literal("grammar"), variants: GrammarVariants }),
+]);
+
+/** A tool as the model sees it. `parameters` is any JSON Schema object. */
+export const Tool = typed<ToolType>()(
+  open({
+    name: Type.String(),
+    description: Type.String(),
+    parameters: open({}),
+    kind: Type.Optional(ToolKind),
+    constrainedSampling: Type.Optional(
+      Type.Union([Type.Literal(false), ConstrainedSamplingConfig]),
+    ),
+  }),
+);
+
+export const SystemMessage = typed<SystemMessageType>()(
+  open({
+    role: Type.Literal("system"),
+    content: Type.Union([Type.String(), Type.Array(TextContent)]),
+    sections: Type.Optional(Type.Record(Type.String(), nullable(Type.String()))),
+    toolsAdded: Type.Optional(Type.Array(Tool)),
+    toolsRemoved: Type.Optional(Type.Array(open({ name: Type.String() }))),
+    timestamp: Type.Number(),
+  }),
+);
+
 export const AssistantMessage = typed<AssistantMessageType>()(
   open({
     role: Type.Literal("assistant"),
@@ -369,6 +417,7 @@ export const ToolResultMessage = typed<ToolResultMessageType>()(
     toolName: Type.String(),
     content: Type.Array(Type.Union([TextContent, ImageContent])),
     details: Type.Optional(Type.Unknown()),
+    structuredContent: Type.Optional(JsonValue),
     title: Type.Optional(Type.String()),
     usage: Type.Optional(Usage),
     addedToolNames: Type.Optional(Type.Array(Type.String())),
@@ -378,7 +427,7 @@ export const ToolResultMessage = typed<ToolResultMessageType>()(
 );
 
 export const Message = typed<MessageType>()(
-  Type.Union([UserMessage, AssistantMessage, ToolResultMessage]),
+  Type.Union([SystemMessage, UserMessage, AssistantMessage, ToolResultMessage]),
 );
 
 export const ProviderCheckpointMaterial = typed<ProviderCheckpointMaterialType>()(
@@ -425,6 +474,7 @@ const CheckpointBody = open({
   kind: Type.Literal("checkpoint"),
   summary: Type.String(),
   retainedTail: Type.Array(Message),
+  systemMessage: Type.Optional(SystemMessage),
   material: Type.Optional(ProviderCheckpointMaterial),
   tokensBefore: Type.Number(),
   usage: Type.Optional(Usage),
@@ -434,6 +484,15 @@ const SummaryBody = open({
   kind: Type.Literal("summary"),
   text: Type.String(),
   usage: Type.Optional(Usage),
+});
+
+const UsageBody = open({
+  kind: Type.Literal("usage"),
+  operation: Type.String(),
+  provider: Type.String(),
+  model: Type.String(),
+  usage: Usage,
+  note: Type.Optional(Type.String()),
 });
 
 const ConfigBody = open({
@@ -460,10 +519,8 @@ export const JobInfo = typed<JobInfoType>()(
     ]),
     command: Type.String(),
     output: Type.String(),
-    phase: Type.Union([
-      open({ kind: Type.Literal("running"), mode: literals(["foreground", "background"]) }),
-      ...JobEnd.anyOf,
-    ]),
+    isBackgrounded: Type.Boolean(),
+    phase: Type.Union([open({ kind: Type.Literal("running") }), ...JobEnd.anyOf]),
     startedAt: Type.Number(),
     updatedAt: Type.Number(),
   }),
@@ -521,14 +578,21 @@ const ToolResultCommitMessageBody = open({
   message: ToolResultMessage,
 });
 
+const SystemCommitMessageBody = open({
+  kind: Type.Literal("message"),
+  message: SystemMessage,
+});
+
 export const CommitBody = typed<CommitBodyType>()(
   Type.Union([
     UserCommitMessageBody,
     AssistantCommitMessageBody,
     ToolResultCommitMessageBody,
+    SystemCommitMessageBody,
     open({ kind: Type.Literal("completion"), job: JobReport }),
     CheckpointBody,
     SummaryBody,
+    UsageBody,
     ConfigBody,
   ]),
 );
@@ -649,6 +713,16 @@ export const Commit = typed<CommitType>()(
         imports: Type.Optional(Type.Never()),
       }),
       open({
+        body: SystemCommitMessageBody,
+        start: Type.Optional(Type.Never()),
+        calls: Type.Optional(Type.Never()),
+        outcome: Type.Optional(Type.Never()),
+        call: Type.Optional(Type.Never()),
+        tree: Type.Optional(Type.Never()),
+        failure: Type.Optional(Type.Never()),
+        imports: Type.Optional(Type.Never()),
+      }),
+      open({
         body: open({ kind: Type.Literal("completion"), job: JobReport }),
         start: CommitStart,
         calls: Type.Optional(Type.Never()),
@@ -677,6 +751,16 @@ export const Commit = typed<CommitType>()(
         call: Type.Optional(Type.Never()),
         tree: Type.Optional(Type.Never()),
         failure: Type.Optional(Type.Never()),
+      }),
+      open({
+        body: UsageBody,
+        start: Type.Optional(Type.Never()),
+        calls: Type.Optional(Type.Never()),
+        outcome: Type.Optional(Type.Never()),
+        call: Type.Optional(Type.Never()),
+        tree: Type.Optional(Type.Never()),
+        failure: Type.Optional(Type.Never()),
+        imports: Type.Optional(Type.Never()),
       }),
       open({
         body: ConfigBody,

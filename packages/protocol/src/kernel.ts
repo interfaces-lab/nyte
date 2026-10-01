@@ -10,6 +10,7 @@ import type {
   JsonValue,
   Message,
   ProviderCheckpointMaterial,
+  SystemMessage,
   ToolResultMessage,
   Usage,
   UserMessage,
@@ -150,6 +151,9 @@ export type Commit = CommitBase &
         readonly tree: TreeId | null;
       }
     | {
+        readonly body: { readonly kind: "message"; readonly message: SystemMessage };
+      }
+    | {
         readonly body: { readonly kind: "completion"; readonly job: JobReport };
         readonly start: CommitStart;
       }
@@ -158,6 +162,7 @@ export type Commit = CommitBase &
           readonly kind: "checkpoint";
           readonly summary: string;
           readonly retainedTail: readonly Message[];
+          readonly systemMessage?: SystemMessage;
           readonly material?: ProviderCheckpointMaterial;
           readonly tokensBefore: number;
           readonly usage?: Usage;
@@ -171,6 +176,16 @@ export type Commit = CommitBase &
         };
         /** Commits summarized into this one. Provenance only, never context. */
         readonly imports: readonly Oid[];
+      }
+    | {
+        readonly body: {
+          readonly kind: "usage";
+          readonly operation: string;
+          readonly provider: string;
+          readonly model: string;
+          readonly usage: Usage;
+          readonly note?: string;
+        };
       }
     | {
         readonly body: {
@@ -192,6 +207,8 @@ export type CommitBody =
     }
   | { readonly kind: "message"; readonly message: AssistantMessage }
   | { readonly kind: "message"; readonly message: ToolResultMessage }
+  /** A system-state change mid-conversation: added instructions, section edits, tool changes. */
+  | { readonly kind: "message"; readonly message: SystemMessage }
   /** Background work's report, consumed by the model without impersonating user input. */
   | { readonly kind: "completion"; readonly job: JobReport }
   /** A context checkpoint. Projection starts at the newest one. */
@@ -199,6 +216,8 @@ export type CommitBody =
       readonly kind: "checkpoint";
       readonly summary: string;
       readonly retainedTail: readonly Message[];
+      /** The replayed system state the checkpoint was taken against; projection resumes from it. */
+      readonly systemMessage?: SystemMessage;
       readonly material?: ProviderCheckpointMaterial;
       readonly tokensBefore: number;
       /** What the summarizing call cost, when a model wrote the summary. */
@@ -206,6 +225,18 @@ export type CommitBody =
     }
   /** What a path that was left was about, placed where the head landed. */
   | { readonly kind: "summary"; readonly text: string; readonly usage?: Usage }
+  /**
+   * Billing for a model call that produced no message, such as a prompt-cache
+   * warm. Never context; `operation` names what was paid for.
+   */
+  | {
+      readonly kind: "usage";
+      readonly operation: string;
+      readonly provider: string;
+      readonly model: string;
+      readonly usage: Usage;
+      readonly note?: string;
+    }
   /** Run inputs declared on the branch; the latest value of each field wins. */
   | {
       readonly kind: "config";
