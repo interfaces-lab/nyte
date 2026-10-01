@@ -14,6 +14,8 @@ import { clearNotice, closePanel, holdSlot, notice, openPanel, releaseSlot } fro
 import { mountShell } from "./app/App.tsx";
 import type { EphemeralPanel, Shell } from "./app/ui.ts";
 import { deliveryChoices } from "./lanes.ts";
+import { InlineMenu } from "./picker.ts";
+import { setSlotRows } from "./app/ui.ts";
 import { DARK_THEME } from "./theme.ts";
 
 type TranscriptTurn = Extract<
@@ -181,8 +183,9 @@ function state(
 async function mount(
   width = 80,
   height = 36,
+  kittyKeyboard = false,
 ): Promise<{ readonly setup: TestRendererSetup; readonly shell: Shell }> {
-  const setup = await createTestRenderer({ width, height });
+  const setup = await createTestRenderer({ width, height, kittyKeyboard });
   mounted.push(setup);
   const shell = await mountShell({
     renderer: setup.renderer,
@@ -597,7 +600,9 @@ describe("Timeline follow ownership", () => {
       ephemeral === undefined
     )
       throw new Error("The footer regions are not mounted");
-    expect(shell.scroll.viewport.y + shell.scroll.viewport.height).toBeLessThanOrEqual(latest.y);
+    expect(shell.scroll.viewport.y + shell.scroll.viewport.height).toBeLessThanOrEqual(live.y);
+    expect(latest.y).toBeGreaterThanOrEqual(shell.scroll.viewport.y);
+    expect(rowOf(setup, "latest ↓")).toBeLessThan(live.y);
     expect(latest.y + latest.height).toBeLessThanOrEqual(live.y);
     expect(composer.y + composer.height).toBeLessThanOrEqual(ephemeral.y);
     clearNotice(shell);
@@ -679,4 +684,178 @@ describe("Timeline follow ownership", () => {
     expect(shell.view.mountedItemCount).toBeLessThan(50);
     expect(shell.view.cachedHeightCount).toBeLessThanOrEqual(1_024);
   });
+});
+
+describe("App footer allocation", () => {
+  test.each([
+    [60, 12],
+    [40, 8],
+  ])(
+    "draft growth and notices never paint through the status or hints at %sx%s",
+    async (width, height) => {
+      const { setup, shell } = await mount(width, height);
+      await settle(setup);
+      const frames = await framesOf(setup, () => {
+        shell.input.setText(
+          Array.from({ length: 8 }, (_, index) => `draft-${String(index)}`).join("\n"),
+        );
+        shell.setUi(
+          "hints",
+          "enter send · ctrl+c clear · ctrl+k help · ctrl+enter steer · shift+tab thinking · ctrl+p model",
+        );
+        notice(shell, ["notice1", "notice2", "notice3", "notice4"]);
+      });
+      expect(frames.length).toBeGreaterThan(0);
+      for (const frame of frames) {
+        const powerline = frame.find((line) => line.trimStart().startsWith("╰"));
+        expect(powerline).toBeDefined();
+        expect(powerline).not.toContain("draft-");
+        const hint = frame.find((line) => line.includes("enter send"));
+        expect(hint).toBeDefined();
+        expect(hint).not.toContain("draft-");
+        expect(hint).not.toContain("notice");
+        const notices = frame.filter((line) => line.includes("notice"));
+        expect(notices.length).toBeGreaterThan(0);
+        for (const line of notices) expect(line.trim()).toMatch(/^notice[1-4][ ▀▄█]*$/u);
+      }
+      shell.input.gotoBufferEnd();
+      await setup.mockInput.typeText("-typed");
+      await settle(setup);
+      expect(setup.captureCharFrame()).toContain("draft-7-typed");
+      expect(shell.input.plainText.endsWith("draft-7-typed")).toBe(true);
+      clearNotice(shell);
+      await settle(setup);
+      expect(setup.captureCharFrame()).toContain("draft-7-typed");
+      expect(shell.input.focused).toBe(true);
+    },
+  );
+
+  test("wrapped draft stays inside its native viewport through short-screen resize", async () => {
+    const { setup, shell } = await mount(60, 12);
+    shell.input.setText(
+      "A wrapped draft repeats enough words to cross the composer width several times and finishes here",
+    );
+    shell.setUi("hints", "enter send · ctrl+c clear · ctrl+k help");
+    notice(shell, ["notice1", "notice2", "notice3", "notice4"]);
+    await settle(setup);
+    setup.resize(40, 8);
+    await settle(setup);
+    shell.input.gotoBufferEnd();
+    await setup.mockInput.typeText(" END");
+    await settle(setup);
+    const frame = lines(setup);
+    const end = frame.findIndex((line) => line.includes("END"));
+    const rule = frame.findIndex((line) => line.trimStart().startsWith("╰"));
+    const message = frame.findIndex((line) => line.includes("notice1"));
+    expect(end).toBeGreaterThanOrEqual(0);
+    expect(end).toBeLessThan(rule);
+    expect(rule).toBeLessThan(message);
+    expect(frame.at(-2)).toContain("enter send");
+    expect(shell.input.focused).toBe(true);
+  });
+
+  test.each([1, 2, 3])(
+    "tiny screen keeps the editor focused and editable in %s rows",
+    async (height) => {
+      const { setup, shell } = await mount(20, height);
+      shell.input.setText(
+        Array.from({ length: 8 }, (_, index) => `draft-${String(index)}`).join("\n"),
+      );
+      shell.setUi("hints", "enter send · ctrl+c clear");
+      notice(shell, ["notice1", "notice2"]);
+      await settle(setup);
+      shell.input.gotoBufferEnd();
+      await setup.mockInput.typeText("-typed");
+      await settle(setup);
+      expect(setup.captureCharFrame()).toContain("draft-7-typed");
+      expect(setup.captureCharFrame()).not.toContain("notice1");
+      expect(setup.captureCharFrame()).not.toContain("enter send");
+      expect(setup.captureCharFrame()).not.toContain("╰");
+      expect(shell.input.focused).toBe(true);
+      setup.resize(60, 12);
+      await settle(setup);
+      expect(setup.captureCharFrame()).toContain("draft-7-typed");
+      expect(setup.captureCharFrame()).toContain("notice1");
+      expect(setup.captureCharFrame()).toContain("enter send");
+    },
+  );
+
+  test("optional content cannot take the editor or notice viewport", async () => {
+    const { setup, shell } = await mount(60, 12);
+    const plugin = new BoxRenderable(shell.renderer, { flexShrink: 0, flexDirection: "column" });
+    shell.pluginSlot.add(plugin);
+    await settle(setup);
+    const before = rowOf(setup, "│ ❯");
+    const preview = new TextRenderable(shell.renderer, {
+      content: "attachment-preview",
+      height: 1,
+    });
+    shell.previewSlot.add(preview);
+    plugin.add(
+      new TextRenderable(shell.renderer, {
+        content: Array.from({ length: 20 }, (_, index) => `plugin-${String(index)}`).join("\n"),
+        flexShrink: 0,
+      }),
+    );
+    shell.taskStatus.content = "Tasks running";
+    shell.taskStatus.visible = true;
+    notice(shell, ["notice1", "notice2"]);
+    await settle(setup);
+    expect(setup.captureCharFrame()).toContain("│ ❯");
+    expect(setup.captureCharFrame()).toContain("notice1");
+    expect(setup.captureCharFrame()).toContain("plugin-0");
+    expect(rowOf(setup, "plugin-0")).toBeLessThan(rowOf(setup, "│ ❯"));
+    plugin.destroyRecursively();
+    preview.destroyRecursively();
+    shell.taskStatus.visible = false;
+    clearNotice(shell);
+    await settle(setup);
+    expect(rowOf(setup, "│ ❯")).toBe(before);
+    expect(shell.input.focused).toBe(true);
+  });
+
+  test.each([8, 20])(
+    "selected panels keep a bounded body and restore the composer at height %s",
+    async (height) => {
+      const { setup, shell } = await mount(60, height, true);
+      const menu = openPanel(
+        shell,
+        new InlineMenu(
+          {
+            renderer: shell.renderer,
+            keymap: shell.keymap,
+            theme: shell.theme,
+            nextId: shell.nextId,
+            onRows: (rows) => setSlotRows(shell, rows),
+            onError: (cause) => {
+              throw cause;
+            },
+          },
+          {
+            title: "Resume chat",
+            choices: Array.from({ length: 30 }, (_, index) => ({
+              id: String(index),
+              label: `Saved chat ${String(index)}`,
+            })),
+            onSelect: () => {},
+            onCancel: () => closePanel(shell, menu),
+          },
+        ),
+      );
+      await settle(setup);
+      expect(setup.captureCharFrame()).toContain("Resume chat");
+      expect(setup.captureCharFrame()).toContain("type to filter");
+      if (height === 8) expect(setup.captureCharFrame()).not.toContain("│ ❯");
+      else expect(setup.captureCharFrame()).toContain("│ ❯");
+      setup.mockInput.pressArrow("up");
+      await settle(setup);
+      expect(setup.captureCharFrame()).toContain("Saved chat 29");
+      expect(setup.captureCharFrame()).toContain("enter select");
+      setup.mockInput.pressEscape();
+      await settle(setup);
+      expect(setup.captureCharFrame()).not.toContain("Resume chat");
+      expect(setup.captureCharFrame()).toContain("│ ❯");
+      expect(shell.input.focused).toBe(true);
+    },
+  );
 });

@@ -6,5 +6,6 @@ export const TUI_RENDERER_CONFIG = {
   // budgets; zero falls back to 30/60. In-frame retries still yield for 1 ms.
   targetFps: Infinity,
   maxFps: Infinity,
+  debounceDelay: 1,
   // Keep OpenTUI's platform thread default in production and both QA modes.
 } satisfies CliRendererConfig;

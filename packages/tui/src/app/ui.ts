@@ -172,14 +172,20 @@ export interface Chunk {
 }
 
 /** Keycaps carry the weight, what they do stays quiet, and the dots between groups recede. */
-export function hintChunks(text: string, theme: CliTheme): Chunk[] {
-  const chunks: Chunk[] = [{ fg: theme.dim, text: "  " }];
+export function hintChunks(text: string, theme: CliTheme, width: number): Chunk[] {
+  const chunks: Chunk[] = [];
+  let used = 0;
 
-  for (const [index, group] of hintGroups(text).entries()) {
-    if (index > 0) chunks.push({ fg: theme.muted, text: " · " });
-    chunks.push({ fg: theme.user, text: group.key });
+  for (const group of hintGroups(text)) {
+    const separator = chunks.length === 0 ? "  " : " · ";
+    const label = group.label === "" ? "" : ` ${group.label}`;
+    const size = displayWidth(`${separator}${group.key}${label}`);
 
-    if (group.label !== "") chunks.push({ fg: theme.dim, text: ` ${group.label}` });
+    if (used + size > width) break;
+    chunks.push({ fg: theme.muted, text: separator }, { fg: theme.user, text: group.key });
+
+    if (label !== "") chunks.push({ fg: theme.dim, text: label });
+    used += size;
   }
 
   return chunks;
@@ -400,6 +406,7 @@ export function openInlineMenu(
 }
 
 export interface SelectChoiceOptions {
+  readonly emptyLabel?: string;
   readonly selectedId?: string;
   readonly maxVisible?: number;
   readonly signal?: AbortSignal;

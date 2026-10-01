@@ -6,7 +6,8 @@
  */
 import {
   RenderableEvents,
-  type BoxRenderable,
+  BoxRenderable,
+  type Renderable,
   type CliRenderer,
   type ScrollBoxRenderable,
   type TextareaRenderable,
@@ -39,15 +40,11 @@ import {
   mergeCombiningMark,
   type Chunk,
   type Shell,
-  type Slot,
 } from "./ui.ts";
 import { MOON_FRAMES, MOON_RAMP } from "./moon.ts";
+import { displayWidth } from "../width.ts";
 
 const MAX_COMPOSER_ROWS = 8;
-
-const COMPOSER_CHROME_ROWS = 4;
-
-const MAX_NOTICE_SHARE = 0.4;
 
 const MOON_FRAME_MS = 250;
 
@@ -55,27 +52,6 @@ const MOON_FRAME_MS = 250;
 const MOON_MIN_WIDTH = 80;
 
 const MOON_MIN_HEIGHT = 30;
-
-function composerRowsForHeight(height: number): number {
-  return Math.max(1, Math.min(MAX_COMPOSER_ROWS, height - COMPOSER_CHROME_ROWS));
-}
-
-/** The rows a slot occupant needs; a notice never takes more than its share of the screen. */
-function slotRows(slot: Slot, height: number): number {
-  switch (slot.kind) {
-    case "empty":
-      return 0;
-    case "notice":
-      return Math.min(slot.notice.lines.length, Math.max(1, Math.floor(height * MAX_NOTICE_SHARE)));
-    case "panel":
-      return Math.max(0, Math.floor(slot.rows));
-    default: {
-      const _exhaustive: never = slot;
-
-      return _exhaustive;
-    }
-  }
-}
 
 /** A row drawn as colored spans. */
 function Spans(props: { readonly chunks: readonly Chunk[] }) {
@@ -194,6 +170,10 @@ function adopt(host: BoxRenderable, child: () => BoxRenderable | undefined): voi
   }, undefined);
 }
 
+function hasContent(node: Renderable): boolean {
+  return node.visible && (!(node instanceof BoxRenderable) || node.getChildren().some(hasContent));
+}
+
 interface AppProps {
   readonly renderer: CliRenderer;
   readonly initialTheme: CliTheme;
@@ -215,6 +195,8 @@ function App(props: AppProps): BoxRenderable {
   const [followingLatest, setFollowingLatest] = createSignal(true);
   const [latestHovered, setLatestHovered] = createSignal(false);
   const [transcriptEmpty, setTranscriptEmpty] = createSignal(true);
+  const [inputRows, setInputRows] = createSignal(1);
+  const [optionalRows, setOptionalRows] = createSignal(0);
   const inputWidthMethod = renderer.widthMethod;
   const pendingGutter = new PendingGutter(renderer, theme, roles, nextId);
 
@@ -231,17 +213,55 @@ function App(props: AppProps): BoxRenderable {
   let acceleratedScrolling = false;
   const newScrollAcceleration = () => createScrollAcceleration(acceleratedScrolling);
 
-  const rows = createMemo(() => slotRows(ui.slot, dimensions().height));
+  const tiny = createMemo(() => dimensions().height <= 3);
+  const selecting = createMemo(
+    () => ui.selecting && ui.slot.kind === "panel" && ui.overlay === undefined,
+  );
+  const layout = createMemo(() => {
+    const height = dimensions().height;
+    const loading = ui.loading !== undefined && height >= 5 ? 1 : 0;
+    const hints = tiny() ? 0 : 1;
+    const available = Math.max(0, height - loading - hints);
+    const composer = ui.composerVisible && !(selecting() && height <= 8);
+    const chrome = tiny() ? 0 : 2;
+    const minimumComposer = composer ? chrome + 1 : 0;
+    const cap =
+      tiny() || (selecting() && height <= 8)
+        ? available
+        : Math.min(available, Math.max(minimumComposer, Math.floor((height * 2) / 3)));
+    const requested =
+      ui.slot.kind === "empty"
+        ? 0
+        : ui.slot.kind === "notice"
+          ? ui.slot.notice.lines.length
+          : ui.slot.rows;
+    const slot =
+      tiny() && !selecting() ? 0 : Math.max(0, Math.min(requested, cap - minimumComposer));
+    const editor = composer ? Math.max(1, Math.min(inputRows(), cap - slot - chrome)) : 0;
+    const optional =
+      tiny() || selecting()
+        ? 0
+        : Math.max(0, Math.min(optionalRows(), cap - slot - editor - (composer ? chrome : 0)));
+    return {
+      loading,
+      hints,
+      composer,
+      editor,
+      optional,
+      slot,
+      live: optional + slot + editor + (composer ? chrome : 0),
+    };
+  });
 
   const noticeLines = createMemo(() =>
-    ui.slot.kind === "notice" ? ui.slot.notice.lines.slice(0, rows()).join("\n") : undefined,
+    ui.slot.kind === "notice" ? ui.slot.notice.lines.join("\n") : undefined,
   );
 
   const noticeColor = createMemo(() =>
     ui.slot.kind === "notice" ? (ui.slot.notice.color ?? theme.dim) : theme.dim,
   );
 
-  const hints = createMemo(() => hintChunks(ui.hints, theme));
+  const hints = createMemo(() => hintChunks(ui.hints, theme, dimensions().width - 2));
 
   // The rule stretches to the composer column: the screen minus its own margins.
   const powerline = createMemo(() =>
@@ -268,7 +288,7 @@ function App(props: AppProps): BoxRenderable {
         height={1}
         flexShrink={0}
         marginLeft={3}
-        visible={ui.loading !== undefined}
+        visible={layout().loading > 0}
       >
         {ui.loading ?? ""}
       </text>
@@ -280,7 +300,12 @@ function App(props: AppProps): BoxRenderable {
         flexDirection="column"
         visible={ui.screen !== undefined}
       />
-      <box id="conversation" flexGrow={1} minHeight={0} visible={ui.screen === undefined}>
+      <box
+        id="conversation"
+        flexGrow={1}
+        minHeight={0}
+        visible={ui.screen === undefined && !tiny()}
+      >
         <scrollbox
           ref={(box) => (scroll = box)}
           id="transcript"
@@ -303,79 +328,102 @@ function App(props: AppProps): BoxRenderable {
           }}
         />
         <Welcome theme={theme} visible={transcriptEmpty()} />
-      </box>
-      <box
-        id="latest"
-        width="100%"
-        height={1}
-        flexShrink={0}
-        flexDirection="row"
-        justifyContent="flex-end"
-        visible={ui.screen === undefined}
-        paddingRight={2}
-      >
         <box
-          id="latest-control"
-          paddingLeft={1}
-          visible={!followingLatest()}
-          onMouseOver={() => setLatestHovered(true)}
-          onMouseOut={() => setLatestHovered(false)}
-          onMouseUp={(event) => {
-            if (event.button !== 0) return;
-            event.preventDefault();
-            view.scrollToEnd();
-          }}
+          id="latest"
+          position="absolute"
+          bottom={0}
+          right={0}
+          width="100%"
+          height={1}
+          flexShrink={0}
+          flexDirection="row"
+          justifyContent="flex-end"
+          visible={ui.screen === undefined && !followingLatest() && !tiny() && !selecting()}
+          paddingRight={2}
         >
-          <text
-            id="latest-action"
-            fg={latestHovered() ? theme.accent : theme.dim}
-            selectable={false}
+          <box
+            id="latest-control"
+            paddingLeft={1}
+            visible={!followingLatest()}
+            onMouseOver={() => setLatestHovered(true)}
+            onMouseOut={() => setLatestHovered(false)}
+            onMouseUp={(event) => {
+              if (event.button !== 0) return;
+              event.preventDefault();
+              view.scrollToEnd();
+            }}
           >
-            {`${keycap("chat.scroll.latest")} latest ↓`}
-          </text>
+            <text
+              id="latest-action"
+              fg={latestHovered() ? theme.accent : theme.dim}
+              selectable={false}
+            >
+              {`${keycap("chat.scroll.latest")} latest ↓`}
+            </text>
+          </box>
         </box>
       </box>
       <box
         id="live"
         width="100%"
+        height={layout().live}
         flexShrink={0}
         flexDirection="column"
         visible={ui.screen === undefined}
         backgroundColor={theme.background}
       >
-        <box
-          ref={(box) => (pluginSlot = box)}
-          id="tui-plugins"
-          width="100%"
+        <scrollbox
+          id="optional"
+          height={layout().optional}
           flexShrink={0}
-          flexDirection="column"
-        />
-        {pendingGutter.container}
-        <text
-          ref={(text) => (taskStatus = text)}
-          id="task-status"
-          height={1}
-          flexShrink={0}
-          marginLeft={3}
-          marginRight={2}
-          wrapMode="none"
-          truncate
-          visible={false}
-        />
+          scrollX={false}
+          scrollY
+          visible={layout().optional > 0}
+          verticalScrollbarOptions={{ visible: false }}
+        >
+          <box
+            ref={(box) => (pluginSlot = box)}
+            id="tui-plugins"
+            width="100%"
+            flexShrink={0}
+            flexDirection="column"
+          />
+          {pendingGutter.container}
+          <text
+            ref={(text) => (taskStatus = text)}
+            id="task-status"
+            height={1}
+            flexShrink={0}
+            marginLeft={3}
+            marginRight={2}
+            wrapMode="none"
+            truncate
+            visible={false}
+          />
+          <box
+            ref={(box) => (previewSlot = box)}
+            id="preview-slot"
+            width="100%"
+            flexShrink={0}
+            flexDirection="column"
+          />
+        </scrollbox>
         <box
           id="composer"
           width="100%"
+          height={layout().editor + (tiny() ? 0 : 2)}
           flexShrink={0}
           flexDirection="column"
-          visible={ui.composerVisible}
+          visible={layout().composer}
         >
           <box
             id="input-box"
             // OpenTUI only highlights descendant focus on focusable boxes.
             focusable
             flexDirection="row"
+            height={layout().editor + (tiny() ? 0 : 1)}
             flexShrink={0}
-            border={["top", "right", "left"]}
+            border={tiny() ? [] : ["top", "right", "left"]}
             borderStyle="rounded"
             borderColor={theme.promptBorder}
             focusedBorderColor={theme.promptBorderFocused}
@@ -393,7 +441,7 @@ function App(props: AppProps): BoxRenderable {
               if (input.focusable) focusController.reset();
             }}
           >
-            <text id="input-prompt" fg={theme.user}>
+            <text id="input-prompt" fg={theme.user} flexShrink={0} wrapMode="none">
               {ui.prompt}
             </text>
             <textarea
@@ -401,7 +449,10 @@ function App(props: AppProps): BoxRenderable {
               id="input"
               onKeyDown={(key) => mergeCombiningMark(input, key)}
               flexGrow={1}
-              maxHeight={composerRowsForHeight(dimensions().height)}
+              flexBasis={0}
+              minWidth={1}
+              height={Math.max(1, layout().editor)}
+              flexShrink={0}
               wrapMode="word"
               placeholder={COMPOSER_PLACEHOLDER}
               placeholderColor={theme.dim}
@@ -423,6 +474,7 @@ function App(props: AppProps): BoxRenderable {
           </box>
           <text
             id="powerline"
+            visible={!tiny()}
             height={1}
             flexShrink={0}
             wrapMode="none"
@@ -434,40 +486,53 @@ function App(props: AppProps): BoxRenderable {
           </text>
         </box>
         <box
-          ref={(box) => (previewSlot = box)}
-          id="preview-slot"
-          width="100%"
-          flexShrink={0}
-          flexDirection="column"
-        />
-        <box
           id="ephemeral"
           width="100%"
+          height={layout().slot}
           flexShrink={0}
           flexDirection="column"
-          height={rows()}
-          visible={rows() > 0}
+          visible={layout().slot > 0}
         >
-          <text
-            id="notice"
-            fg={noticeColor()}
+          <scrollbox
+            flexGrow={1}
+            minHeight={0}
+            scrollX={false}
+            scrollY
             visible={noticeLines() !== undefined}
-            height={rows()}
-            wrapMode="none"
-            marginLeft={3}
-            marginRight={2}
           >
-            {noticeLines() ?? ""}
-          </text>
+            <text
+              id="notice"
+              fg={noticeColor()}
+              flexShrink={0}
+              wrapMode="none"
+              marginLeft={3}
+              marginRight={2}
+            >
+              {noticeLines() ?? ""}
+            </text>
+          </scrollbox>
           <box
             ref={(box) => (panelHost = box)}
             id="panel-host"
             width="100%"
+            height="100%"
+            minHeight={0}
+            flexShrink={1}
             flexDirection="column"
+            visible={ui.slot.kind === "panel"}
           />
         </box>
       </box>
-      <text id="hints" wrapMode="word" flexShrink={0} marginLeft={1} marginRight={1}>
+      <text
+        id="hints"
+        height={1}
+        wrapMode="none"
+        truncate
+        flexShrink={0}
+        marginLeft={1}
+        marginRight={1}
+        visible={layout().hints > 0}
+      >
         <Spans chunks={hints()} />
       </text>
       <box
@@ -490,6 +555,29 @@ function App(props: AppProps): BoxRenderable {
 
     for (const block of userBlocks) block.width = userBlockWidth();
     pendingGutter.resize();
+  });
+
+  const measureInput = (): void => {
+    const width = Math.max(1, dimensions().width - (tiny() ? 4 : 6) - displayWidth(ui.prompt));
+    const measured = input.editorView.measureForDimensions(width, MAX_COMPOSER_ROWS);
+    setInputRows(
+      Math.max(1, Math.min(MAX_COMPOSER_ROWS, measured?.lineCount ?? input.virtualLineCount)),
+    );
+  };
+  input.on("line-info-change", measureInput);
+  createEffect(measureInput);
+  const measureOptional = async (): Promise<void> => {
+    setOptionalRows(
+      (hasContent(pluginSlot) ? Math.max(1, pluginSlot.height) : 0) +
+        (pendingGutter.container.visible ? Math.max(1, pendingGutter.container.height) : 0) +
+        (taskStatus.visible ? Math.max(1, taskStatus.height) : 0) +
+        (hasContent(previewSlot) ? Math.max(1, previewSlot.height) : 0),
+    );
+  };
+  renderer.setFrameCallback(measureOptional);
+  onCleanup(() => {
+    input.off("line-info-change", measureInput);
+    renderer.removeFrameCallback(measureOptional);
   });
 
   const focusController = new FocusController(input);

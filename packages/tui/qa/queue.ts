@@ -138,13 +138,12 @@ export const queueFollowUps: Scenario = {
           await press(terminal, "chat.queue.open", (screen) =>
             screen.text.includes("Queued messages"),
           );
-          await press(
-            terminal,
-            "chat.queue.down",
-            (screen) =>
-              gutterRow(screen, "follow-up two") !== -1 &&
-              gutterRow(screen, "follow-up two") < gutterRow(screen, "follow-up one edited"),
-          );
+          await press(terminal, "chat.queue.down", (screen) => {
+            const earlier = screen.lines.findIndex((line) => line.includes("follow-up two"));
+            const later = screen.lines.findIndex((line) => line.includes("follow-up one edited"));
+
+            return earlier !== -1 && later > earlier;
+          });
           await press(
             terminal,
             "picker.close",
