@@ -1,20 +1,8 @@
-/**
- * The plugin host owns one map: plugin id to live scope. `activate(list)` is
- * the only mutation; reload, add, remove, and option changes are all
- * `activate` with a different list. Plugins whose (id, version) did not change
- * are left alone. A changed plugin is loaded beside its previous version and
- * only then replaces it, so its hooks never lapse; a plugin whose factory
- * throws or outlives its budget is recorded as failed and the previous
- * version, if any, stays.
- *
- * Modeled on opencode v2 `Plugin.activate` (packages/core/src/plugin.ts).
- */
 import type { Skill } from "@nyte-ai/schema";
-import { Result } from "../kernel/result.ts";
 import type { AgentTool } from "../kernel/loop/types.ts";
 import { bindSessionApi, type PluginSessionStorage } from "./api.ts";
 import type { Hooks } from "./hooks.ts";
-import { ContributionRegistry, MapDraft, ToolMapDraft } from "./registry.ts";
+import { ContributionRegistry, MapDraft, ToolMapDraft, type RegistryDiff } from "./registry.ts";
 import { PluginScope, withBudget } from "./scope.ts";
 import { ModelContextDraft } from "./model-context.ts";
 import type {
@@ -30,6 +18,7 @@ import type {
   PluginSetting,
   PromptSection,
   StatusItem,
+  PluginReplacement,
 } from "./types.ts";
 
 export interface PluginRegistries {
@@ -81,10 +70,19 @@ export interface PluginHostTarget {
   subscribe(listener: (event: PluginNotice) => void | Promise<void>): Disposer;
   /** Replay every registry; a contribution that throws is reported as a diagnostic. */
   rebuildAll(): void;
+  publish(commit: () => void): boolean;
+  defer(action: () => void): void;
   emit(event: PluginNotice): Promise<void>;
 }
 
-export type PluginHostApiTarget = Omit<PluginHostTarget, "subscribe">;
+export type PluginHostApiTarget = Omit<PluginHostTarget, "subscribe"> & {
+  readonly staging: boolean;
+  report(cause: unknown): void;
+};
+
+export type PreparedPluginReplacement =
+  | { readonly kind: "ready"; publish(): PluginReplacement; cancel(): void }
+  | Extract<PluginReplacement, { kind: "rejected" }>;
 
 interface ActivePlugin {
   plugin: LoadedPlugin;
@@ -108,84 +106,213 @@ export class PluginHost {
     return this.inventory;
   }
 
-  activate(next: readonly LoadedPlugin[]): Promise<readonly PluginInfo[]> {
-    const run = this.tail.then(() => this.activateNow(next));
-    this.tail = run.catch(() => undefined);
+  async activate(next: readonly LoadedPlugin[], applied?: () => void): Promise<PluginReplacement> {
+    const prepared = await this.prepare(next, applied);
+    return prepared.kind === "rejected" ? prepared : prepared.publish();
+  }
 
+  prepare(next: readonly LoadedPlugin[], applied?: () => void): Promise<PreparedPluginReplacement> {
+    const run = this.tail.then(() => this.prepareNow(next, applied));
+    this.tail = run.catch(() => undefined);
     return run;
   }
 
+  private pending: (() => void) | undefined;
+  private readonly retiring = new Map<PluginScope, Promise<void>>();
+
   async close(): Promise<void> {
-    await this.activate([]);
     this.closed = true;
+    for (const entry of this.active.values()) entry.scope.controller.abort();
+    for (const scope of this.retiring.keys()) scope.controller.abort();
+    await this.tail;
+    this.pending?.();
+    this.pending = undefined;
+    for (const entry of this.active.values()) this.retire(entry.scope);
+    this.active.clear();
+    this.inventory = [];
+    await Promise.all(this.retiring.values());
   }
 
-  private async activateNow(next: readonly LoadedPlugin[]): Promise<readonly PluginInfo[]> {
+  private retire(scope: PluginScope): void {
+    if (this.retiring.has(scope)) return;
+    const done = scope.dispose();
+    this.retiring.set(scope, done);
+    void done.finally(() => this.retiring.delete(scope));
+  }
+
+  private async prepareNow(
+    next: readonly LoadedPlugin[],
+    applied?: () => void,
+  ): Promise<PreparedPluginReplacement> {
     if (this.closed) throw new Error("plugin host is closed");
-    assertUniqueIds(next);
-    const nextIds = new Set(next.map((plugin) => plugin.id));
-    const info: PluginInfo[] = [];
-    let changed = false;
-
-    for (const [index, plugin] of next.entries()) {
-      const previous = this.active.get(plugin.id);
-
-      if (previous !== undefined && previous.plugin.version === plugin.version) {
-        info.push(activeInfo(plugin));
-        continue;
-      }
-
-      changed = true;
-      const loaded = await this.load(plugin, index);
-
-      if (!loaded.ok) {
-        info.push({ ...activeInfo(plugin), status: "failed", error: loaded.error });
-        continue;
-      }
-
-      this.active.set(plugin.id, loaded.value);
-      info.push(activeInfo(plugin));
-      await previous?.scope.dispose();
+    const duplicate = duplicateId(next);
+    if (duplicate !== undefined)
+      return { kind: "rejected", error: `duplicate plugin id: ${duplicate}` };
+    this.pending?.();
+    this.pending = undefined;
+    if (
+      this.active.size === next.length &&
+      next.length === this.inventory.length &&
+      next.every(
+        (plugin, index) =>
+          this.inventory[index]?.id === plugin.id &&
+          this.inventory[index]?.version === plugin.version,
+      )
+    ) {
+      return {
+        kind: "ready",
+        cancel: () => undefined,
+        publish: () => {
+          applied?.();
+          return { kind: "applied" };
+        },
+      };
     }
-
-    for (const [id, entry] of [...this.active].reverse()) {
-      if (nextIds.has(id)) continue;
-      changed = true;
-      this.active.delete(id);
-      await entry.scope.dispose();
-    }
-
-    if (changed) this.target.rebuildAll();
-    this.inventory = info;
-
-    if (changed) await this.target.emit({ kind: "plugins_changed", plugins: info });
-
-    return info;
-  }
-
-  private async load(plugin: LoadedPlugin, order: number): Promise<Result<ActivePlugin, string>> {
-    const scope = new PluginScope(plugin.id, (error) => {
+    const excluded = new Set(
+      [...this.active]
+        .filter(
+          ([id, previous]) =>
+            !next.some((plugin) => plugin.id === id && plugin.version === previous.plugin.version),
+        )
+        .map(([id]) => id),
+    );
+    const orderByOwner = new Map(next.map((plugin, index) => [plugin.id, index]));
+    const stages = {
+      agents: this.target.registries.agents.stage(excluded, orderByOwner),
+      tools: this.target.registries.tools.stage(excluded, orderByOwner),
+      commands: this.target.registries.commands.stage(excluded, orderByOwner),
+      prompt: this.target.registries.prompt.stage(excluded, orderByOwner),
+      resources: this.target.registries.resources.stage(excluded, orderByOwner),
+      settings: this.target.registries.settings.stage(excluded, orderByOwner),
+      status: this.target.registries.status.stage(excluded, orderByOwner),
+      modelContext: this.target.registries.modelContext.stage(excluded, orderByOwner),
+    };
+    const registries: PluginRegistries = {
+      agents: stages.agents.registry,
+      tools: stages.tools.registry,
+      commands: stages.commands.registry,
+      prompt: stages.prompt.registry,
+      resources: stages.resources.registry,
+      settings: stages.settings.registry,
+      status: stages.status.registry,
+      modelContext: stages.modelContext.registry,
+    };
+    const candidates = new Map<string, ActivePlugin>();
+    let staging = true;
+    const report = (cause: unknown): void => {
       void this.target.emit({
         kind: "diagnostic",
-        owner: `plugin ${plugin.id}`,
+        owner: "plugins",
         level: "error",
-        message: error.message,
+        message: cause instanceof Error ? cause.message : String(cause),
       });
-    });
-
-    const api = bindSessionApi(this.target, plugin, scope, order);
-
+    };
+    const materialize = (): RegistryDiff["errors"] => {
+      const failures: RegistryDiff["errors"][number][] = [];
+      for (const stage of Object.values(stages)) {
+        stage.refresh();
+        stage.preview();
+      }
+      try {
+        for (const registry of Object.values(registries))
+          failures.push(...registry.rebuild().errors);
+      } finally {
+        for (const stage of Object.values(stages)) stage.stopPreview();
+      }
+      return failures;
+    };
+    const validate = (): void => {
+      const errors = materialize();
+      if (errors.length)
+        throw new Error(errors.map((failure) => `${failure.owner}: ${failure.message}`).join("; "));
+    };
+    const liveTarget = this.target;
+    const apiTarget: PluginHostApiTarget = {
+      ...this.target,
+      get registries() {
+        return staging ? registries : liveTarget.registries;
+      },
+      get staging() {
+        return staging;
+      },
+      rebuildAll: () => {
+        if (staging) materialize();
+        else this.target.rebuildAll();
+      },
+      report,
+    };
     try {
-      await withBudget({ what: `plugin ${plugin.id} session()`, ms: this.budgetMs }, () =>
-        plugin.module.session(api),
-      );
-
-      return Result.ok({ plugin, scope });
-    } catch (error) {
-      await scope.dispose();
-
-      return Result.err(error instanceof Error ? error.message : String(error));
+      for (const [order, plugin] of next.entries()) {
+        const previous = this.active.get(plugin.id);
+        if (previous?.plugin.version === plugin.version) continue;
+        const scope = new PluginScope(plugin.id, (cause) => {
+          void this.target.emit({
+            kind: "diagnostic",
+            owner: plugin.id,
+            level: "error",
+            message: cause.message,
+          });
+        });
+        candidates.set(plugin.id, { plugin, scope });
+        const api = bindSessionApi(apiTarget, plugin, scope, order);
+        await withBudget({ what: `plugin ${plugin.id} session()`, ms: this.budgetMs }, () =>
+          plugin.module.session(api),
+        );
+      }
+      validate();
+    } catch (cause) {
+      for (const candidate of candidates.values()) this.retire(candidate.scope);
+      const error = cause instanceof Error ? cause.message : String(cause);
+      report(cause);
+      if (this.active.size === 0 && this.inventory.length === 0)
+        this.inventory = next.map((plugin) => ({ ...activeInfo(plugin), status: "failed", error }));
+      return { kind: "rejected", error };
     }
+    if (this.closed) {
+      for (const candidate of candidates.values()) this.retire(candidate.scope);
+      return { kind: "rejected", error: "plugin host is closed" };
+    }
+    let cancelled = false;
+    const cancel = (): void => {
+      cancelled = true;
+      for (const candidate of candidates.values()) this.retire(candidate.scope);
+    };
+    const commit = (): void => {
+      if (cancelled) return;
+      this.pending = undefined;
+      try {
+        validate();
+      } catch (cause) {
+        cancel();
+        report(cause);
+        void this.target.emit({ kind: "plugins_changed", plugins: this.inventory });
+        return;
+      }
+      const old = [...this.active].filter(([id]) => excluded.has(id));
+      for (const [id] of old) this.active.delete(id);
+      for (const stage of Object.values(stages)) stage.commit();
+      staging = false;
+      for (const [, entry] of old) this.retire(entry.scope);
+      for (const [id, candidate] of candidates) {
+        this.active.set(id, candidate);
+        candidate.scope.publish();
+      }
+      this.inventory = next.map(activeInfo);
+      applied?.();
+      void this.target.emit({ kind: "plugins_changed", plugins: this.inventory });
+    };
+    this.pending = cancel;
+    return {
+      kind: "ready",
+      cancel,
+      publish: () => {
+        if (cancelled || this.closed)
+          return { kind: "rejected", error: "plugin replacement was cancelled" };
+        const published = this.target.publish(commit);
+        if (cancelled) return { kind: "rejected", error: "plugin materialization failed" };
+        return { kind: published ? "applied" : "queued" };
+      },
+    };
   }
 }
 
@@ -197,11 +324,12 @@ function activeInfo(plugin: LoadedPlugin): Extract<PluginInfo, { status: "active
     : { id, version, source, path, status: "active" };
 }
 
-function assertUniqueIds(plugins: readonly LoadedPlugin[]): void {
+function duplicateId(plugins: readonly LoadedPlugin[]): string | undefined {
   const seen = new Set<string>();
 
   for (const plugin of plugins) {
-    if (seen.has(plugin.id)) throw new Error(`duplicate plugin id: ${plugin.id}`);
+    if (seen.has(plugin.id)) return plugin.id;
     seen.add(plugin.id);
   }
+  return undefined;
 }

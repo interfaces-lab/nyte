@@ -18,6 +18,11 @@ import type { HookHandler, HookName } from "./hooks.ts";
 
 export type Disposer = () => void;
 
+export type PluginReplacement =
+  | { readonly kind: "applied" }
+  | { readonly kind: "queued" }
+  | { readonly kind: "rejected"; readonly error: string };
+
 /**
  * `PluginSource`, `PluginInfo`, `SettingChoice`, and `SettingInfo` are what
  * clients read, so they are declared in `@nyte-ai/protocol` and re-exported.
@@ -104,9 +109,14 @@ export interface ModelContextPolicy {
   readonly compactAt: number;
 }
 
+/**
+ * One named section of the system prompt. The branch declares each section
+ * under `<order>-<id>` and the model is told when one changes, so keep each
+ * section self-delimiting (a heading, a tag).
+ */
 export interface PromptSection {
   readonly text: string;
-  /** Lower renders first. Default 100. */
+  /** Lower renders first; equal orders render by id. Integer 0 to 9999, default 100. */
   readonly order?: number;
 }
 
@@ -152,18 +162,11 @@ export type ApplySettingOutcome =
   | { kind: "not_found" }
   | { kind: "invalid_choice" };
 
-export interface RegistryDiff {
-  readonly added: readonly string[];
-  readonly removed: readonly string[];
-  readonly changed: readonly string[];
-  readonly errors: readonly { owner: string; message: string }[];
-}
-
 export interface Registry<D> {
   /** Register a synchronous contribution. It runs on every rebuild, in plugin order. No I/O inside. */
   add(contribution: (draft: D) => void): Disposer;
   /** Replay every contribution over a fresh draft and swap the result in. */
-  rebuild(): RegistryDiff;
+  rebuild(): void;
 }
 
 export interface PluginStorage {
@@ -228,6 +231,8 @@ export interface SessionApi {
   readonly diagnostics: Diagnostics;
   /** Aborts when the plugin is deactivated: a reload, a removal, or the session closing. */
   readonly signal: AbortSignal;
+  /** Queue a synchronous resource change until this session's active tool cycles and callbacks finish. */
+  defer(action: () => void): void;
 }
 
 /** Reads and writes on the session itself, as opposed to the plugin's own storage. */

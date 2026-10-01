@@ -16,6 +16,10 @@ export class PluginScope {
   readonly controller = new AbortController();
   private disposers: AsyncDisposer[] = [];
   private disposed = false;
+  private published = false;
+  private publications: (() => void)[] = [];
+  private registrations: Disposer[] = [];
+  private readonly calls = new Set<Promise<unknown>>();
   private readonly budgetMs: number;
   private readonly report: ScopeReporter;
 
@@ -27,6 +31,45 @@ export class PluginScope {
 
   get signal(): AbortSignal {
     return this.controller.signal;
+  }
+
+  get closed(): boolean {
+    return this.disposed || this.signal.aborted;
+  }
+
+  assertOpen(): void {
+    if (this.closed) throw new Error(`plugin ${this.id} is disposed`);
+  }
+
+  onPublish(action: () => void): void {
+    this.assertOpen();
+    if (this.published) action();
+    else this.publications.push(action);
+  }
+
+  publish(): void {
+    this.assertOpen();
+    this.published = true;
+    for (const action of this.publications) action();
+    this.publications = [];
+  }
+
+  registration(disposer: Disposer): Disposer {
+    this.assertOpen();
+    this.registrations.push(disposer);
+    return disposer;
+  }
+
+  async call<T>(action: () => T | Promise<T>): Promise<T> {
+    this.assertOpen();
+    const { promise, resolve } = Promise.withResolvers<void>();
+    this.calls.add(promise);
+    try {
+      return await action();
+    } finally {
+      this.calls.delete(promise);
+      resolve();
+    }
   }
 
   track<T extends Disposer | AsyncDisposer>(disposer: T): T {
@@ -54,6 +97,10 @@ export class PluginScope {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.publications = [];
+    for (const remove of this.registrations.reverse()) remove();
+    this.registrations = [];
+    await Promise.allSettled(this.calls);
     this.controller.abort();
     const disposers = this.disposers.reverse();
     this.disposers = [];

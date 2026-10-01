@@ -6,13 +6,21 @@
 import type { TSchema } from "typebox";
 import { bindTool } from "../tools/bind-tool.ts";
 import type { AgentTool } from "../kernel/loop/types.ts";
-import type { Disposer, Draft, RegistryDiff, ToolDraft } from "./types.ts";
+import type { Disposer, Draft, ToolDraft } from "./types.ts";
+
+export interface RegistryDiff {
+  readonly added: readonly string[];
+  readonly removed: readonly string[];
+  readonly changed: readonly string[];
+  readonly errors: readonly { owner: string; message: string }[];
+}
 
 interface Contribution<D> {
   owner: string;
   /** Plugin position in the activation order. Contributions replay sorted by it, then by registration. */
   order: number;
   fn: (draft: D) => void;
+  removed: boolean;
 }
 
 export class MapDraft<T> implements Draft<T> {
@@ -87,18 +95,20 @@ export class ContributionRegistry<T, D extends Draft<T>> {
   private state = new Map<string, T>();
   private ownerById = new Map<string, string>();
   private rebuilding = false;
+  private preview: ContributionRegistry<T, D> | undefined;
   private readonly makeDraft: () => D & OwnedDraft<T>;
+  private orderByOwner = new Map<string, number>();
 
   constructor(makeDraft: () => D & OwnedDraft<T>) {
     this.makeDraft = makeDraft;
   }
 
   add(owner: string, order: number, fn: (draft: D) => void): Disposer {
-    const contribution: Contribution<D> = { owner, order, fn };
+    const contribution: Contribution<D> = { owner, order, fn, removed: false };
     this.contributions.push(contribution);
 
     return () => {
-      this.contributions = this.contributions.filter((candidate) => candidate !== contribution);
+      contribution.removed = true;
     };
   }
 
@@ -107,7 +117,12 @@ export class ContributionRegistry<T, D extends Draft<T>> {
     this.rebuilding = true;
     const draft = this.makeDraft();
     const errors: { owner: string; message: string }[] = [];
-    const ordered = [...this.contributions].sort((a, b) => a.order - b.order);
+    const ordered = this.contributions
+      .filter((contribution) => !contribution.removed)
+      .sort(
+        (a, b) =>
+          (this.orderByOwner.get(a.owner) ?? a.order) - (this.orderByOwner.get(b.owner) ?? b.order),
+      );
 
     try {
       for (const contribution of ordered) {
@@ -138,8 +153,48 @@ export class ContributionRegistry<T, D extends Draft<T>> {
     return { ...diff, errors };
   }
 
+  stage(excluded: ReadonlySet<string>, orderByOwner: Map<string, number>) {
+    const staged = new ContributionRegistry(this.makeDraft);
+    const inherited = new Set(this.contributions);
+    const refresh = (): void => {
+      const own = staged.contributions.filter((contribution) => !inherited.has(contribution));
+      for (const contribution of this.contributions) inherited.add(contribution);
+      staged.contributions = [
+        ...this.contributions.filter((contribution) => !excluded.has(contribution.owner)),
+        ...own,
+      ].filter((contribution) => !contribution.removed);
+    };
+    staged.contributions = this.contributions.filter(
+      (contribution) => !contribution.removed && !excluded.has(contribution.owner),
+    );
+    staged.orderByOwner = orderByOwner;
+    staged.state = this.state;
+    staged.ownerById = this.ownerById;
+
+    return {
+      registry: staged,
+      refresh,
+      preview: () => {
+        this.preview = staged;
+      },
+      stopPreview: () => {
+        this.preview = undefined;
+      },
+      commit: () => {
+        this.contributions = staged.contributions;
+        this.state = staged.state;
+        this.ownerById = staged.ownerById;
+        this.orderByOwner = staged.orderByOwner;
+      },
+    };
+  }
+
   current(): ReadonlyMap<string, T> {
     return this.state;
+  }
+
+  contributionValues(): T[] {
+    return this.preview?.values() ?? this.values();
   }
 
   /** Plugin that last wrote this entry, for provenance a client renders. */
@@ -148,11 +203,11 @@ export class ContributionRegistry<T, D extends Draft<T>> {
   }
 
   get(id: string): T | undefined {
-    return this.state.get(id);
+    return this.current().get(id);
   }
 
   values(): T[] {
-    return [...this.state.values()];
+    return [...this.current().values()];
   }
 }
 
