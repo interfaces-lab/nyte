@@ -60,6 +60,18 @@ describe("scroll settings", () => {
   });
 });
 
+test("updating another setting preserves the saved cache-warming choice", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nyte-tui-cache-settings-"));
+  temporaryDirectories.push(root);
+  const path = join(root, "settings.json");
+  await new FileSettingsStore(path).updateGlobal({ cacheWarming: "off" });
+  await new FileSettingsStore(path).updateGlobal({ scrollAcceleration: true });
+  const saved = toJsonValue(JSON.parse(await readFile(path, "utf8")));
+  expect(
+    saved !== null && typeof saved === "object" && "cacheWarming" in saved && saved.cacheWarming,
+  ).toBe("off");
+});
+
 test("copy-on-select uses the platform default and respects saved overrides", async () => {
   const root = await mkdtemp(join(tmpdir(), "nyte-tui-copy-settings-"));
   temporaryDirectories.push(root);

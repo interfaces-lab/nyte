@@ -12,7 +12,8 @@ import { basename, dirname, join } from "node:path";
 import process from "node:process";
 import type { Transport } from "@nyte-ai/ai";
 import { DEFAULT_COMPACTION_SETTINGS, isThinkingLevel } from "@nyte-ai/core";
-import type { CompactionSettings, ThinkingLevel } from "@nyte-ai/core";
+import type { CacheWarmingMode, CompactionSettings, ThinkingLevel } from "@nyte-ai/core";
+import { cacheWarmingMode } from "@nyte-ai/host";
 import { toJsonValue } from "@nyte-ai/core/store";
 import type { JsonValue } from "@nyte-ai/schema";
 import { isJsonObject, type JsonObject } from "./json.ts";
@@ -40,6 +41,7 @@ interface SettingsFile {
   readonly defaultModel?: string;
   readonly defaultThinkingLevel?: ThinkingLevel;
   readonly transport?: Transport;
+  readonly cacheWarming?: CacheWarmingMode;
   readonly externalEditor?: string;
   readonly compaction?: CompactionSettingsFile;
   /** Install a newer release when the TUI starts, instead of only saying one exists. */
@@ -73,6 +75,7 @@ const SETTINGS_KEYS = new Set([
   "defaultModel",
   "defaultThinkingLevel",
   "transport",
+  "cacheWarming",
   "externalEditor",
   "compaction",
   "autoUpdate",
@@ -201,6 +204,9 @@ export function parseSettingsFile(value: JsonValue, path = "settings"): Settings
     settings = { ...settings, transport };
   }
 
+  if (value.cacheWarming !== undefined)
+    settings = { ...settings, cacheWarming: cacheWarmingMode(value.cacheWarming) };
+
   const externalEditor = optionalString(value, "externalEditor", path);
 
   if (externalEditor !== undefined) settings = { ...settings, externalEditor };
@@ -322,6 +328,14 @@ export class FileSettingsStore {
 
   constructor(globalPath: string = defaultSettingsPath()) {
     this.globalPath = globalPath;
+  }
+
+  watchTargets(cwd: string) {
+    return [this.globalPath, projectSettingsPath(cwd)].map((path) => ({
+      path: dirname(path),
+      recursive: false,
+      names: [basename(path)],
+    }));
   }
 
   async read(cwd: string): Promise<ResolvedSettings> {
