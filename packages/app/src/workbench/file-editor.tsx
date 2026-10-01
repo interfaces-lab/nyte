@@ -1,3 +1,4 @@
+import { DEFAULT_CODE_VIEW_LAYOUT } from "@pierre/diffs";
 import { Editor } from "@pierre/diffs/edit";
 import type { EditorOptions, EditorType } from "@pierre/diffs/edit";
 import { CodeView, EditProvider } from "@pierre/diffs/react";
@@ -57,6 +58,13 @@ ${PIERRE_TOKEN_CSS}
   color-scheme: inherit;
   --diffs-bg: ${role.bgBase};
 }
+[data-column-number] {
+  padding-left: 1ch;
+}
+[data-column-number][data-editor-active-line] {
+  --diffs-computed-editor-active-line-bg: var(--diffs-computed-selected-line-bg);
+  color: var(--diffs-fg-number);
+}
 `;
 
 /**
@@ -85,6 +93,7 @@ const styles = create({
   // Keep each tab's viewport measurable so virtualized editors retain their scroll position.
   hidden: { visibility: "hidden", pointerEvents: "none" },
   code: {
+    "--diffs-min-number-column-width": "initial",
     overflow: "auto",
     flex: 1,
     height: "100%",
@@ -496,6 +505,7 @@ function TextFileEditor({
               themeType: appearance.theme,
               unsafeCSS: EDITOR_CSS,
               disableFileHeader: true,
+              layout: { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 },
               disableLineNumbers: !preferences.lineNumbers,
               overflow: preferences.wordWrap ? "wrap" : "scroll",
               onLineClick: (event) =>

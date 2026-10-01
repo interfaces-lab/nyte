@@ -489,7 +489,6 @@ export function FilesPanel({
       )}
       <div {...props(styles.body)}>
         <div {...props(styles.editors)}>
-          {activeFile === undefined && <div {...props(styles.empty)}>Select a file to edit.</div>}
           {tabs.tabs.map((file) => (
             <WorkspaceFileEditor
               key={file.path}
