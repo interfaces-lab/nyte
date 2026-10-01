@@ -1,3 +1,4 @@
+import { normalizeContext } from "@nyte-ai/schema";
 import { describe, expect, it } from "vitest";
 import { Type } from "typebox";
 import { stream } from "../src/api/openai-responses.ts";
@@ -45,7 +46,7 @@ const completed = {
 
 async function exchange(input: { events: readonly JsonValue[]; context: Context }) {
   let body: unknown;
-  const output = await stream(model, input.context, {
+  const output = await stream(model, normalizeContext(input.context), {
     apiKey: "test",
     maxRetries: 0,
     fetch: async (url, init) => {
@@ -174,7 +175,7 @@ describe("OpenAI Responses tool-call namespaces", () => {
     for (const targetModel of targetModels) {
       const replayed = convertResponsesMessages(
         targetModel,
-        { messages: [output] },
+        normalizeContext({ messages: [output] }),
         new Set(["openai"]),
         {
           grammarToolInputProperties: new Map([["query", "input"]]),
@@ -200,7 +201,7 @@ describe("OpenAI Responses tool-call namespaces", () => {
 
     const replayed = convertResponsesMessages(
       model,
-      { messages: [output] },
+      normalizeContext({ messages: [output] }),
       new Set(["openai"]),
     ).find((item) => item.type === "function_call");
     expect(replayed).toBeDefined();

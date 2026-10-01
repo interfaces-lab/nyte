@@ -1,3 +1,4 @@
+import { normalizeContext } from "@nyte-ai/schema";
 import type { ResponseUsage } from "openai/resources/responses/responses.js";
 import { expect, it } from "vitest";
 import { stream } from "../src/api/openai-responses.ts";
@@ -26,34 +27,30 @@ const usage = {
 it.each(["response.completed", "response.incomplete", "response.failed"])(
   "preserves SDK stream usage and service-tier cost on %s",
   async (type) => {
-    const source = stream(
-      model,
-      { messages: [] },
-      {
-        apiKey: "fixture",
-        fetch: async () =>
-          new Response(
-            `data: ${JSON.stringify({
-              type,
-              sequence_number: 0,
-              response: {
-                id: "resp_usage",
-                status: type.slice("response.".length),
-                output: [],
-                service_tier: "priority",
-                usage,
-                incomplete_details:
-                  type === "response.incomplete" ? { reason: "max_output_tokens" } : null,
-                error:
-                  type === "response.failed"
-                    ? { code: "server_error", message: "Generation failed" }
-                    : null,
-              },
-            })}\n\ndata: [DONE]\n\n`,
-            { headers: { "content-type": "text/event-stream" } },
-          ),
-      },
-    );
+    const source = stream(model, normalizeContext({ messages: [] }), {
+      apiKey: "fixture",
+      fetch: async () =>
+        new Response(
+          `data: ${JSON.stringify({
+            type,
+            sequence_number: 0,
+            response: {
+              id: "resp_usage",
+              status: type.slice("response.".length),
+              output: [],
+              service_tier: "priority",
+              usage,
+              incomplete_details:
+                type === "response.incomplete" ? { reason: "max_output_tokens" } : null,
+              error:
+                type === "response.failed"
+                  ? { code: "server_error", message: "Generation failed" }
+                  : null,
+            },
+          })}\n\ndata: [DONE]\n\n`,
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+    });
     const eventTypes = [];
     for await (const event of source) eventTypes.push(event.type);
     const message = await source.result();

@@ -1,3 +1,4 @@
+import { normalizeContext } from "@nyte-ai/schema";
 import type { ResponseUsage } from "openai/resources/responses/responses.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stream } from "../src/api/openai-codex-responses.ts";
@@ -95,32 +96,26 @@ async function runFixture(transport: "sse" | "websocket", terminal: string, term
     }
     vi.stubGlobal("WebSocket", FixtureWebSocket);
   }
-  const source = stream(
-    model,
-    { messages: [] },
-    {
-      apiKey,
-      transport,
-      serviceTier: "priority",
-      fetch: async () => {
-        if (transport !== "sse") throw new Error("Unexpected SSE fallback");
-        const bytes = new TextEncoder().encode(
-          frames.map((frame) => `data: ${frame}\n\n`).join(""),
-        );
-        return new Response(
-          new ReadableStream<Uint8Array>({
-            start(controller) {
-              for (let offset = 0; offset < bytes.length; offset += 37) {
-                controller.enqueue(bytes.slice(offset, offset + 37));
-              }
-              controller.close();
-            },
-          }),
-          { headers: { "content-type": "text/event-stream" } },
-        );
-      },
+  const source = stream(model, normalizeContext({ messages: [] }), {
+    apiKey,
+    transport,
+    serviceTier: "priority",
+    fetch: async () => {
+      if (transport !== "sse") throw new Error("Unexpected SSE fallback");
+      const bytes = new TextEncoder().encode(frames.map((frame) => `data: ${frame}\n\n`).join(""));
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (let offset = 0; offset < bytes.length; offset += 37) {
+              controller.enqueue(bytes.slice(offset, offset + 37));
+            }
+            controller.close();
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      );
     },
-  );
+  });
   const eventTypes = [];
   for await (const event of source) eventTypes.push(event.type);
   return { message: await source.result(), eventTypes };

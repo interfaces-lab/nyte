@@ -1,3 +1,4 @@
+import { normalizeContext } from "@nyte-ai/schema";
 import { expect, it } from "vitest";
 import { stream } from "../src/api/openai-responses.ts";
 import type { Model, ToolCall } from "../src/types.ts";
@@ -45,24 +46,20 @@ it("emits and retains completed tool arguments without parser state", async () =
     { type: "response.output_item.done", output_index: 0, item: call },
     { type: "response.completed", response: { id: "resp_test", status: "completed" } },
   ];
-  const source = stream(
-    model,
-    { messages: [] },
-    {
-      apiKey: "test",
-      maxRetries: 0,
-      fetch: async () =>
-        new Response(
-          frames
-            .map(
-              (frame, sequence_number) =>
-                `data: ${JSON.stringify({ ...frame, sequence_number })}\n\n`,
-            )
-            .join(""),
-          { headers: { "content-type": "text/event-stream" } },
-        ),
-    },
-  );
+  const source = stream(model, normalizeContext({ messages: [] }), {
+    apiKey: "test",
+    maxRetries: 0,
+    fetch: async () =>
+      new Response(
+        frames
+          .map(
+            (frame, sequence_number) =>
+              `data: ${JSON.stringify({ ...frame, sequence_number })}\n\n`,
+          )
+          .join(""),
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+  });
   const completedCalls: ToolCall[] = [];
   for await (const event of source) {
     // Snapshot the emitted value so later mutation cannot make a bad event appear correct.

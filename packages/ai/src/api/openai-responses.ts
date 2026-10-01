@@ -12,10 +12,19 @@ import type {
   SimpleStreamOptions,
   StreamFunction,
   StreamOptions,
+  TranscriptContext,
   Usage,
 } from "../types.ts";
 import { resolveCacheRetention } from "../prompt-cache.ts";
 import { splitDeferredTools } from "../utils/deferred-tools.ts";
+import { getSystemMessageText } from "../utils/text.ts";
+import {
+  getDeclaredTools,
+  getInitialSystemMessage,
+  normalizeContext,
+  resolveTranscript,
+  resolveTranscriptTools,
+} from "../utils/transcript.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
@@ -72,6 +81,7 @@ function detectSessionAffinityFormat(
 function getCompat(model: Model<"openai-responses">): Required<OpenAIResponsesCompat> {
   return {
     supportsDeveloperRole: model.compat?.supportsDeveloperRole ?? true,
+    supportsMidConvoSystemMessages: model.compat?.supportsMidConvoSystemMessages ?? false,
     sessionAffinityFormat:
       model.compat?.sessionAffinityFormat ?? detectSessionAffinityFormat(model),
     supportsLongCacheRetention: model.compat?.supportsLongCacheRetention ?? true,
@@ -110,10 +120,14 @@ export async function compactOpenAIResponsesContext(
   const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
   const compat = getCompat(model);
   const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
+  const transcript = resolveTranscript(
+    normalizeContext(context),
+    compat.supportsMidConvoSystemMessages,
+  );
 
   const client = createClient({
     model,
-    context,
+    context: transcript,
     apiKey,
     options: { headers: options?.headers, fetch: options?.fetch },
     compat,
@@ -121,12 +135,19 @@ export async function compactOpenAIResponsesContext(
   });
 
   // Instructions travel separately so the request does not duplicate the system message.
+  const initialSystemMessage = getInitialSystemMessage(transcript.messages);
+  const instructions = initialSystemMessage
+    ? getSystemMessageText(initialSystemMessage)
+    : undefined;
+
   const input = buildParams(
     model,
-    { ...context, systemPrompt: undefined },
+    transcript,
     options,
     compat,
     cacheRetention,
+    undefined,
+    false,
   ).input;
 
   const requestOptions: NonNullable<Parameters<typeof client.responses.compact>[1]> = {
@@ -140,7 +161,7 @@ export async function compactOpenAIResponsesContext(
   const response = await retryProviderRequest(
     () =>
       client.responses
-        .compact({ model: model.id, input, instructions: context.systemPrompt }, requestOptions)
+        .compact({ model: model.id, input, instructions }, requestOptions)
         .asResponse(),
     {
       maxRetries: options?.maxRetries,
@@ -162,10 +183,15 @@ export async function compactOpenAIResponsesContext(
  */
 export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> = (
   model: Model<"openai-responses">,
-  context: Context,
+  context: TranscriptContext,
   options?: OpenAIResponsesOptions,
 ): AssistantMessageEventStream => {
   const stream = new AssistantMessageEventStream();
+
+  const normalizedContext = resolveTranscript(
+    context,
+    getCompat(model).supportsMidConvoSystemMessages,
+  );
 
   // Start async processing
   (async () => {
@@ -194,15 +220,22 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
       const compat = getCompat(model);
 
       const grammarToolInputProperties = createGrammarToolInputProperties(
-        context.tools,
+        getDeclaredTools(normalizedContext.messages),
         compat.supportsOpenAIGrammarTools,
       );
 
-      const client = createClient({ model, context, apiKey, options, cacheRetention, compat });
+      const client = createClient({
+        model,
+        context: normalizedContext,
+        apiKey,
+        options,
+        cacheRetention,
+        compat,
+      });
 
       let params = buildParams(
         model,
-        context,
+        normalizedContext,
         options,
         compat,
         cacheRetention,
@@ -273,7 +306,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 
 export const streamSimple: StreamFunction<"openai-responses", SimpleStreamOptions> = (
   model: Model<"openai-responses">,
-  context: Context,
+  context: TranscriptContext,
   options?: SimpleStreamOptions,
 ): AssistantMessageEventStream => {
   getClientApiKey(model.provider, options?.apiKey, options?.headers);
@@ -298,7 +331,7 @@ export const streamSimple: StreamFunction<"openai-responses", SimpleStreamOption
 
 function createClient(input: {
   model: Model<"openai-responses">;
-  context: Context;
+  context: TranscriptContext;
   apiKey: string;
   options: Pick<OpenAIResponsesOptions, "fetch" | "headers" | "sessionId"> | undefined;
   cacheRetention: CacheRetention;
@@ -345,14 +378,15 @@ function createClient(input: {
 
 function buildParams(
   model: Model<"openai-responses">,
-  context: Context,
+  context: TranscriptContext,
   options: OpenAIResponsesOptions | undefined,
   compat: Required<OpenAIResponsesCompat> = getCompat(model),
   cacheRetention: CacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env),
   grammarToolInputProperties: ReadonlyMap<string, string> = createGrammarToolInputProperties(
-    context.tools,
+    getDeclaredTools(context.messages),
     compat.supportsOpenAIGrammarTools,
   ),
+  includeSystemPrompt = true,
 ) {
   const deferredToolsMode = compat.supportsAdditionalTools
     ? "additional-tools"
@@ -360,10 +394,19 @@ function buildParams(
       ? "tool-search"
       : undefined;
 
-  const toolPlacement = splitDeferredTools(context, deferredToolsMode !== undefined);
+  // Later system messages anchor their own additions; `addedToolNames` on a tool result
+  // only loads request-list tools the transcript did not anchor, so nothing is declared twice.
+  const transcriptTools = resolveTranscriptTools(context.messages, deferredToolsMode !== undefined);
+
+  const toolPlacement = splitDeferredTools(
+    { messages: context.messages, tools: transcriptTools.requestTools },
+    deferredToolsMode !== undefined,
+  );
 
   const messages = convertResponsesMessages(model, context, OPENAI_TOOL_CALL_PROVIDERS, {
+    includeSystemPrompt,
     grammarToolInputProperties,
+    supportsMidConvoSystemMessages: compat.supportsMidConvoSystemMessages,
     deferredTools: toolPlacement.deferred,
     deferredToolsMode,
     toolOptions: {

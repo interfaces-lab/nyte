@@ -1,3 +1,4 @@
+import { normalizeContext } from "@nyte-ai/schema";
 import { arch, platform, release } from "node:os";
 import { zstdDecompressSync } from "node:zlib";
 import { Type } from "typebox";
@@ -138,7 +139,10 @@ describe("openai-codex streaming", () => {
       id: "gpt-daybreak-blue-latest",
       name: "Daybreak Blue",
     } satisfies Model<"openai-codex-responses">;
-    const resultStream = stream(model, TEXT_CONTEXT, { apiKey: token, transport: "sse" });
+    const resultStream = stream(model, normalizeContext(TEXT_CONTEXT), {
+      apiKey: token,
+      transport: "sse",
+    });
     const eventTypes: string[] = [];
     for await (const event of resultStream) {
       eventTypes.push(event.type);
@@ -178,7 +182,7 @@ describe("openai-codex streaming", () => {
     const context = TEXT_CONTEXT;
 
     const result = await Promise.race([
-      stream(model, context, { apiKey: token, transport: "sse" }).result(),
+      stream(model, normalizeContext(context), { apiKey: token, transport: "sse" }).result(),
       new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error("Timed out waiting for completed SSE stream")), 1000);
       }),
@@ -217,7 +221,7 @@ describe("openai-codex streaming", () => {
     const context = TEXT_CONTEXT;
 
     const result = await Promise.race([
-      stream(model, context, { apiKey: token, transport: "sse" }).result(),
+      stream(model, normalizeContext(context), { apiKey: token, transport: "sse" }).result(),
       new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error("Timed out waiting for incomplete SSE stream")), 1000);
       }),
@@ -258,7 +262,7 @@ describe("openai-codex streaming", () => {
     const model = CODEX_MODEL;
     const context = TEXT_CONTEXT;
 
-    const result = await stream(model, context, {
+    const result = await stream(model, normalizeContext(context), {
       apiKey: token,
       transport: "sse",
       timeoutMs: 10,
@@ -357,7 +361,7 @@ describe("openai-codex streaming", () => {
     const controller = new AbortController();
     const events: string[] = [];
 
-    const resultStream = stream(model, context, {
+    const resultStream = stream(model, normalizeContext(context), {
       apiKey: token,
       transport: "sse",
       signal: controller.signal,
@@ -389,7 +393,7 @@ describe("openai-codex streaming", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await stream(CODEX_MODEL, TEXT_CONTEXT, {
+    await stream(CODEX_MODEL, normalizeContext(TEXT_CONTEXT), {
       apiKey: mockToken(),
       sessionId,
       transport: "sse",
@@ -409,7 +413,7 @@ describe("openai-codex streaming", () => {
       }),
     );
 
-    await stream(CODEX_MODEL, TEXT_CONTEXT, {
+    await stream(CODEX_MODEL, normalizeContext(TEXT_CONTEXT), {
       apiKey: mockToken(),
       cacheRetention: "none",
       sessionId: "one-off-summary",
@@ -434,7 +438,7 @@ describe("openai-codex streaming", () => {
       }),
     );
 
-    await stream(CODEX_MODEL, TEXT_CONTEXT, {
+    await stream(CODEX_MODEL, normalizeContext(TEXT_CONTEXT), {
       apiKey: mockToken(),
       transport: "sse",
       sessionId,
@@ -462,7 +466,7 @@ describe("openai-codex streaming", () => {
       thinkingLevelMap: { xhigh: "xhigh" },
     } satisfies Model<"openai-codex-responses">;
 
-    await streamSimple(model, TEXT_CONTEXT, {
+    await streamSimple(model, normalizeContext(TEXT_CONTEXT), {
       apiKey: mockToken(),
       reasoning: "xhigh",
       transport: "sse",
@@ -483,7 +487,7 @@ describe("openai-codex streaming", () => {
 
     await stream(
       CODEX_MODEL,
-      {
+      normalizeContext({
         messages: [{ role: "user", content: "Respond with text instead.", timestamp: 1 }],
         tools: [
           {
@@ -492,7 +496,7 @@ describe("openai-codex streaming", () => {
             parameters: Type.Object({ value: Type.String() }),
           },
         ],
-      },
+      }),
       { apiKey: mockToken(), transport: "sse", toolChoice: "required" },
     ).result();
 
@@ -508,7 +512,7 @@ describe("openai-codex streaming", () => {
 
     await stream(
       CODEX_MODEL,
-      {
+      normalizeContext({
         messages: [{ role: "user", content: "Use a tool", timestamp: 1 }],
         tools: [
           {
@@ -524,7 +528,7 @@ describe("openai-codex streaming", () => {
             constrainedSampling: { type: "json_schema", strict: "prefer" },
           },
         ],
-      },
+      }),
       {
         apiKey: mockToken(),
         transport: "sse",
@@ -557,7 +561,7 @@ describe("openai-codex streaming", () => {
       thinkingLevelMap: { minimal: "low" },
     } satisfies Model<"openai-codex-responses">;
 
-    await stream(model, TEXT_CONTEXT, {
+    await stream(model, normalizeContext(TEXT_CONTEXT), {
       apiKey: mockToken(),
       reasoningEffort: "minimal",
       transport: "sse",
@@ -598,7 +602,7 @@ describe("openai-codex streaming", () => {
         cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
       } satisfies Model<"openai-codex-responses">;
 
-      const result = await stream(model, TEXT_CONTEXT, {
+      const result = await stream(model, normalizeContext(TEXT_CONTEXT), {
         apiKey: mockToken(),
         serviceTier,
         transport: "sse",
@@ -620,7 +624,7 @@ describe("openai-codex streaming", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await stream(CODEX_MODEL, TEXT_CONTEXT, {
+    await stream(CODEX_MODEL, normalizeContext(TEXT_CONTEXT), {
       apiKey: mockToken(),
       transport: "sse",
     }).result();
@@ -721,7 +725,7 @@ describe("openai-codex streaming", () => {
     const model = CODEX_MODEL;
     const context = TEXT_CONTEXT;
 
-    const result = await streamSimple(model, context, {
+    const result = await streamSimple(model, normalizeContext(context), {
       apiKey: token,
       sessionId: "session-auto",
       transport: "auto",
@@ -810,15 +814,11 @@ describe("openai-codex streaming", () => {
 
     const model = CODEX_MODEL;
 
-    const result = await stream(
-      model,
-      { systemPrompt: "", messages: [] },
-      {
-        apiKey: token,
-        sessionId: "terminal-close-race",
-        transport: "auto",
-      },
-    ).result();
+    const result = await stream(model, normalizeContext({ systemPrompt: "", messages: [] }), {
+      apiKey: token,
+      sessionId: "terminal-close-race",
+      transport: "auto",
+    }).result();
 
     expect(result.stopReason).toBe("stop");
     expect(result.responseId).toBe("resp_1");
@@ -897,17 +897,17 @@ describe("openai-codex streaming", () => {
 
     const context: Context = { systemPrompt: "", messages: [] };
 
-    await stream(CODEX_MODEL, context, {
+    await stream(CODEX_MODEL, normalizeContext(context), {
       apiKey: mockToken("account-a"),
       sessionId: "shared-session",
       transport: "websocket-cached",
     }).result();
-    await stream(CODEX_MODEL, context, {
+    await stream(CODEX_MODEL, normalizeContext(context), {
       apiKey: mockToken("account-b"),
       sessionId: "shared-session",
       transport: "websocket-cached",
     }).result();
-    await stream(CODEX_MODEL, context, {
+    await stream(CODEX_MODEL, normalizeContext(context), {
       apiKey: mockToken("account-a"),
       sessionId: "shared-session",
       transport: "websocket-cached",
@@ -995,8 +995,8 @@ describe("openai-codex streaming", () => {
       transport: "auto",
     } satisfies Parameters<typeof stream>[2];
 
-    await stream(CODEX_MODEL, TEXT_CONTEXT, options).result();
-    await stream(CODEX_MODEL, TEXT_CONTEXT, options).result();
+    await stream(CODEX_MODEL, normalizeContext(TEXT_CONTEXT), options).result();
+    await stream(CODEX_MODEL, normalizeContext(TEXT_CONTEXT), options).result();
 
     expect(connections).toBe(2);
     expect(closedConnections).toBe(2);
@@ -1059,7 +1059,7 @@ describe("openai-codex streaming", () => {
     const model = CODEX_MODEL;
     const context = TEXT_CONTEXT;
 
-    const resultPromise = stream(model, context, {
+    const resultPromise = stream(model, normalizeContext(context), {
       apiKey: token,
       sessionId: "ws-connect-timeout",
       transport: "auto",
@@ -1118,13 +1118,9 @@ describe("openai-codex streaming", () => {
 
     const model = CODEX_MODEL;
 
-    const result = await stream(
-      model,
-      { systemPrompt: "", messages: [] },
-      {
-        apiKey: token,
-      },
-    ).result();
+    const result = await stream(model, normalizeContext({ systemPrompt: "", messages: [] }), {
+      apiKey: token,
+    }).result();
 
     expect(result.stopReason).toBe("stop");
     expect(connections).toBe(2);
@@ -1201,7 +1197,7 @@ describe("openai-codex streaming", () => {
     const model = CODEX_MODEL;
     const context = TEXT_CONTEXT;
 
-    const resultPromise = stream(model, context, {
+    const resultPromise = stream(model, normalizeContext(context), {
       apiKey: token,
       sessionId: "ws-idle-before-start",
       transport: "auto",
@@ -1287,7 +1283,7 @@ describe("openai-codex streaming", () => {
     const model = CODEX_MODEL;
     const context = TEXT_CONTEXT;
 
-    const resultPromise = stream(model, context, {
+    const resultPromise = stream(model, normalizeContext(context), {
       apiKey: token,
       transport: "auto",
       timeoutMs: 50,
@@ -1374,7 +1370,7 @@ describe("openai-codex streaming", () => {
       messages: [{ role: "user", content: "Say hello", timestamp: 1 }],
     };
 
-    const first = await stream(model, firstContext, {
+    const first = await stream(model, normalizeContext(firstContext), {
       apiKey: token,
       sessionId,
       transport: "websocket-cached",
@@ -1389,7 +1385,7 @@ describe("openai-codex streaming", () => {
       ],
     };
 
-    await stream(model, secondContext, {
+    await stream(model, normalizeContext(secondContext), {
       apiKey: token,
       sessionId,
       transport: "websocket-cached",
@@ -1525,7 +1521,7 @@ describe("openai-codex streaming", () => {
       ],
     };
 
-    const first = await stream(model, firstContext, {
+    const first = await stream(model, normalizeContext(firstContext), {
       apiKey: token,
       sessionId: "session-1",
       transport: "websocket-cached",
@@ -1547,7 +1543,7 @@ describe("openai-codex streaming", () => {
         { role: "user", content: "Now finish", timestamp: 3 },
       ],
     };
-    await stream(model, secondContext, {
+    await stream(model, normalizeContext(secondContext), {
       apiKey: token,
       sessionId: "session-1",
       transport: "websocket-cached",
@@ -1724,7 +1720,7 @@ describe("openai-codex streaming", () => {
         messages: [{ role: "user", content: "Say hello", timestamp: 1 }],
       };
 
-      const first = await stream(model, firstContext, {
+      const first = await stream(model, normalizeContext(firstContext), {
         apiKey: token,
         sessionId,
         transport: "websocket-cached",
@@ -1738,7 +1734,7 @@ describe("openai-codex streaming", () => {
         ],
       };
       const eventTypes: string[] = [];
-      const secondStream = stream(model, secondContext, {
+      const secondStream = stream(model, normalizeContext(secondContext), {
         apiKey: token,
         sessionId,
         transport: "websocket-cached",
@@ -1818,7 +1814,7 @@ describe("openai-codex streaming", () => {
         }),
       );
 
-      const resultPromise = stream(CODEX_MODEL, TEXT_CONTEXT, {
+      const resultPromise = stream(CODEX_MODEL, normalizeContext(TEXT_CONTEXT), {
         apiKey: mockToken(),
         transport: "sse",
         maxRetries: 1,
@@ -1855,7 +1851,7 @@ describe("openai-codex streaming", () => {
       const model = CODEX_MODEL;
       const context = TEXT_CONTEXT;
 
-      const result = await stream(model, context, {
+      const result = await stream(model, normalizeContext(context), {
         apiKey: token,
         transport: "sse",
         maxRetries: 3,
@@ -1890,10 +1886,10 @@ describe("openai-codex streaming", () => {
     const largeText = "compress me ".repeat(400);
     await stream(
       model,
-      {
+      normalizeContext({
         systemPrompt: "You are a helpful assistant.",
         messages: [{ role: "user", content: largeText, timestamp: 1 }],
-      },
+      }),
       { apiKey: token, transport: "sse" },
     ).result();
 
@@ -1910,10 +1906,10 @@ describe("openai-codex streaming", () => {
     capturedBody = undefined;
     await stream(
       model,
-      {
+      normalizeContext({
         systemPrompt: "You are a helpful assistant.",
         messages: [{ role: "user", content: "hi", timestamp: 1 }],
-      },
+      }),
       { apiKey: token, transport: "sse" },
     ).result();
 
@@ -1938,7 +1934,7 @@ describe("openai-codex streaming", () => {
       }),
     );
 
-    const resultPromise = stream(CODEX_MODEL, TEXT_CONTEXT, {
+    const resultPromise = stream(CODEX_MODEL, normalizeContext(TEXT_CONTEXT), {
       apiKey: mockToken(),
       transport: "sse",
       maxRetries: 3,

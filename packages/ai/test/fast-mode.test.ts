@@ -1,3 +1,4 @@
+import { normalizeContext } from "@nyte-ai/schema";
 /** `fast` is the user-facing name; OpenAI receives its existing priority tier. */
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
@@ -62,7 +63,7 @@ function capture(): { seen: { body?: unknown }; options: SimpleStreamOptions } {
 describe("OpenAI fast mode", () => {
   test("maps fast to the priority tier for OpenAI and Codex", async () => {
     const codex = capture();
-    await streamCodex(codexModel, context, {
+    await streamCodex(codexModel, normalizeContext(context), {
       ...codex.options,
       apiKey: codexToken,
       fast: true,
@@ -72,7 +73,7 @@ describe("OpenAI fast mode", () => {
     assert.equal(codex.seen.body.service_tier, "priority");
 
     const openai = capture();
-    await streamOpenAI(openaiModel, context, {
+    await streamOpenAI(openaiModel, normalizeContext(context), {
       ...openai.options,
       apiKey: "sk-test",
       fast: true,

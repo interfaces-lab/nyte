@@ -20,6 +20,7 @@ import type {
   Api,
   AssistantMessage,
   Context,
+  TranscriptContext,
   JsonValue,
   Model,
   ProviderEnv,
@@ -31,6 +32,14 @@ import type {
 } from "../types.ts";
 import { combineAbortSignals } from "../utils/abort-signals.ts";
 import { splitDeferredTools } from "../utils/deferred-tools.ts";
+import { getSystemMessageText } from "../utils/text.ts";
+import {
+  getDeclaredTools,
+  getInitialSystemMessage,
+  normalizeContext,
+  resolveTranscript,
+  resolveTranscriptTools,
+} from "../utils/transcript.ts";
 import {
   appendAssistantMessageDiagnostic,
   createAssistantMessageDiagnostic,
@@ -346,10 +355,14 @@ function compressRequestBodyZstd(bodyJson: string): Uint8Array | null {
 
 export const stream: StreamFunction<"openai-codex-responses", OpenAICodexResponsesOptions> = (
   model: Model<"openai-codex-responses">,
-  context: Context,
+  context: TranscriptContext,
   options?: OpenAICodexResponsesOptions,
 ): AssistantMessageEventStream => {
   const stream = new AssistantMessageEventStream();
+  const normalizedContext = resolveTranscript(
+    context,
+    model.compat?.supportsMidConvoSystemMessages,
+  );
 
   (async () => {
     const output: AssistantMessage = {
@@ -380,7 +393,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
       const accountId = extractAccountId(apiKey);
 
       const grammarToolInputProperties = createGrammarToolInputProperties(
-        context.tools,
+        getDeclaredTools(normalizedContext.messages),
         model.compat?.supportsOpenAIGrammarTools ?? false,
       );
 
@@ -389,7 +402,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 
       let body = buildRequestBody(
         model,
-        context,
+        normalizedContext,
         options,
         codexSessionId,
         grammarToolInputProperties,
@@ -662,7 +675,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
 
 export const streamSimple: StreamFunction<"openai-codex-responses", SimpleStreamOptions> = (
   model: Model<"openai-codex-responses">,
-  context: Context,
+  context: TranscriptContext,
   options?: SimpleStreamOptions,
 ): AssistantMessageEventStream => {
   const apiKey = options?.apiKey;
@@ -695,11 +708,11 @@ export const streamSimple: StreamFunction<"openai-codex-responses", SimpleStream
 
 function buildRequestBody(
   model: Model<"openai-codex-responses">,
-  context: Context,
+  context: TranscriptContext,
   options: OpenAICodexResponsesOptions | undefined,
   cacheSessionId: string | undefined,
   grammarToolInputProperties: ReadonlyMap<string, string> = createGrammarToolInputProperties(
-    context.tools,
+    getDeclaredTools(context.messages),
     model.compat?.supportsOpenAIGrammarTools ?? false,
   ),
 ): RequestBody {
@@ -712,11 +725,19 @@ function buildRequestBody(
       ? "tool-search"
       : undefined;
 
-  const toolPlacement = splitDeferredTools(context, deferredToolsMode !== undefined);
+  // Later system messages anchor their own additions; `addedToolNames` on a tool result
+  // only loads request-list tools the transcript did not anchor, so nothing is declared twice.
+  const transcriptTools = resolveTranscriptTools(context.messages, deferredToolsMode !== undefined);
+
+  const toolPlacement = splitDeferredTools(
+    { messages: context.messages, tools: transcriptTools.requestTools },
+    deferredToolsMode !== undefined,
+  );
 
   const messages = convertResponsesMessages(model, context, CODEX_TOOL_CALL_PROVIDERS, {
     includeSystemPrompt: false,
     grammarToolInputProperties,
+    supportsMidConvoSystemMessages: model.compat?.supportsMidConvoSystemMessages ?? false,
     deferredTools: toolPlacement.deferred,
     deferredToolsMode,
     toolOptions: {
@@ -726,11 +747,14 @@ function buildRequestBody(
     },
   });
 
+  const initialSystemMessage = getInitialSystemMessage(context.messages);
+  const instructions = initialSystemMessage ? getSystemMessageText(initialSystemMessage) : "";
+
   const body: RequestBody = {
     model: model.id,
     store: false,
     stream: true,
-    instructions: context.systemPrompt || "You are a helpful assistant.",
+    instructions: instructions || "You are a helpful assistant.",
     input: messages,
     text: { verbosity: options?.textVerbosity || "low" },
     include: ["reasoning.encrypted_content"],
@@ -874,7 +898,12 @@ export async function compactOpenAICodexContext(
   const cacheSessionId =
     options?.cacheRetention === "none" ? undefined : clampOpenAIPromptCacheKey(options?.sessionId);
 
-  const request = buildRequestBody(model, context, options, cacheSessionId);
+  const request = buildRequestBody(
+    model,
+    resolveTranscript(normalizeContext(context), model.compat?.supportsMidConvoSystemMessages),
+    options,
+    cacheSessionId,
+  );
   request.input = [
     ...(request.input ?? []),
     { type: "compaction_trigger" } satisfies ResponseInputItem.CompactionTrigger,
@@ -2438,7 +2467,7 @@ async function processWebSocketStream(
     } else if (useCachedContext && entry && output.responseId) {
       const responseItems = convertResponsesMessages(
         model,
-        { messages: [output] },
+        normalizeContext({ messages: [output] }),
         CODEX_TOOL_CALL_PROVIDERS,
         {
           includeSystemPrompt: false,

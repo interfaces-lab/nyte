@@ -23,21 +23,24 @@ import { calculateCost } from "../models.ts";
 import type {
   Api,
   AssistantMessage,
-  Context,
   ImageContent,
   Model,
   StopReason,
+  SystemMessage,
   TextContent,
   TextSignatureV1,
   ThinkingContent,
   Tool,
   ToolCall,
+  TranscriptContext,
   Usage,
 } from "../types.ts";
 import type { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { shortHash } from "../utils/hash.ts";
 import { parseStreamingJson } from "../utils/json-parse.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
+import { getSystemMessageText, renderSystemMessageUpdate } from "../utils/text.ts";
+import { resolveTranscript, resolveTranscriptTools } from "../utils/transcript.ts";
 import {
   appendGrammarToolInputJsonDelta,
   type GrammarToolInputJsonBuffer,
@@ -129,7 +132,11 @@ export interface OpenAIResponsesStreamOptions {
 export interface ConvertResponsesMessagesOptions {
   includeSystemPrompt?: boolean;
   grammarToolInputProperties?: ReadonlyMap<string, string>;
+  /** Whether later system messages are sent in place; otherwise they are folded into the leading prompt. */
+  supportsMidConvoSystemMessages?: boolean;
+  /** Request-list tools that tool results load via `addedToolNames`. */
   deferredTools?: ReadonlyMap<string, Tool>;
+  /** How late tools reach the model: system-message anchors and `addedToolNames` loads share it. */
   deferredToolsMode?: "additional-tools" | "tool-search";
   toolOptions?: ConvertResponsesToolsOptions;
 }
@@ -149,12 +156,14 @@ const CheckpointItemsSchema = Type.Array(Type.Object({ type: Type.String() }));
 
 export function convertResponsesMessages(
   model: Model<"openai-responses" | "azure-openai-responses" | "openai-codex-responses">,
-  context: Context,
+  context: TranscriptContext,
   allowedToolCallProviders: ReadonlySet<string>,
   options?: ConvertResponsesMessagesOptions,
 ): ResponseInput {
   const messages: ResponseInput = [];
-  const checkpoint = context.checkpoint;
+
+  const normalizedContext = resolveTranscript(context, options?.supportsMidConvoSystemMessages);
+  const checkpoint = normalizedContext.checkpoint;
 
   if (checkpoint !== undefined) {
     if (
@@ -211,24 +220,80 @@ export function convertResponsesMessages(
     return `${normalizedCallId}|${normalizedItemId}`;
   };
 
-  const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
+  const transformedMessages = transformMessages(
+    normalizedContext.messages,
+    model,
+    normalizeToolCallId,
+  );
 
-  const includeSystemPrompt = options?.includeSystemPrompt ?? true;
+  const transcriptTools = resolveTranscriptTools(
+    normalizedContext.messages,
+    options?.deferredToolsMode !== undefined,
+  );
 
-  if (includeSystemPrompt && context.systemPrompt) {
-    const role =
-      model.reasoning && model.compat?.supportsDeveloperRole !== false ? "developer" : "system";
+  const pushToolLoad = (tools: Tool[], seed: string): void => {
+    if (tools.length === 0 || options?.deferredToolsMode === undefined) return;
+
+    if (options.deferredToolsMode === "additional-tools") {
+      messages.push({
+        type: "additional_tools",
+        role: "developer",
+        tools: convertResponsesTools(tools, options.toolOptions),
+      } satisfies ResponseInputItem);
+
+      return;
+    }
+
+    const names = tools.map((tool) => tool.name);
+    const callId = `pi_tool_load_${shortHash(`${seed}:${names.join(",")}`)}`;
 
     messages.push({
-      role,
-      content: sanitizeSurrogates(context.systemPrompt),
-    });
-  }
+      type: "tool_search_call",
+      call_id: callId,
+      execution: "client",
+      status: "completed",
+      arguments: { query: names.join(" "), limit: names.length },
+    } satisfies ResponseInputItem);
+    messages.push({
+      type: "tool_search_output",
+      call_id: callId,
+      execution: "client",
+      status: "completed",
+      tools: convertResponsesTools(tools, { ...options.toolOptions, deferLoading: true }),
+    } satisfies ResponseToolSearchOutputItemParam);
+  };
+
+  const appendSystemToolAdditions = (message: SystemMessage, seed: string): void => {
+    const tools = transcriptTools.anchorsAdditions ? (message.toolsAdded ?? []) : [];
+
+    for (const tool of tools) loadedToolNames.add(tool.name);
+    pushToolLoad(tools, seed);
+  };
+
+  const includeInitialSystemMessage = options?.includeSystemPrompt ?? true;
+
+  const instructionRole =
+    model.reasoning && model.compat?.supportsDeveloperRole !== false ? "developer" : "system";
 
   let msgIndex = 0;
+  let sourceIndex = 0;
 
   for (const msg of transformedMessages) {
-    if (msg.role === "user") {
+    const isLeadingSystemMessage = sourceIndex++ === 0 && msg.role === "system";
+
+    if (msg.role === "system") {
+      if (!isLeadingSystemMessage) appendSystemToolAdditions(msg, `system:${msgIndex}`);
+
+      if (!isLeadingSystemMessage || includeInitialSystemMessage) {
+        const text = isLeadingSystemMessage
+          ? getSystemMessageText(msg)
+          : renderSystemMessageUpdate(msg);
+
+        if (text.length > 0) {
+          messages.push({ role: instructionRole, content: sanitizeSurrogates(text) });
+        }
+      }
+    } else if (msg.role === "user") {
       if (!Array.isArray(msg.content)) {
         messages.push({
           role: "user",
@@ -374,36 +439,10 @@ export function convertResponsesMessages(
         deferredTools.push(tool);
       }
 
-      if (deferredTools.length > 0 && options?.deferredToolsMode === "additional-tools") {
-        messages.push({
-          type: "additional_tools",
-          role: "developer",
-          tools: convertResponsesTools(deferredTools, options.toolOptions),
-        } satisfies ResponseInputItem);
-      } else if (deferredTools.length > 0 && options?.deferredToolsMode === "tool-search") {
-        const names = deferredTools.map((tool) => tool.name);
-        const searchCallId = `pi_tool_load_${shortHash(`${msg.toolCallId}:${names.join(",")}`)}`;
-        messages.push({
-          type: "tool_search_call",
-          call_id: searchCallId,
-          execution: "client",
-          status: "completed",
-          arguments: { query: names.join(" "), limit: names.length },
-        } satisfies ResponseInputItem);
-        messages.push({
-          type: "tool_search_output",
-          call_id: searchCallId,
-          execution: "client",
-          status: "completed",
-          tools: convertResponsesTools(deferredTools, {
-            ...options.toolOptions,
-            deferLoading: true,
-          }),
-        } satisfies ResponseToolSearchOutputItemParam);
-      }
+      pushToolLoad(deferredTools, msg.toolCallId);
     }
 
-    msgIndex++;
+    if (!isLeadingSystemMessage) msgIndex++;
   }
 
   return messages;

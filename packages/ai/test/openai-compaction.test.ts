@@ -1,3 +1,4 @@
+import { normalizeContext } from "@nyte-ai/schema";
 import assert from "node:assert/strict";
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -113,7 +114,7 @@ test("Responses compaction uses API auth and preserves the complete opaque windo
   assert.deepEqual(
     convertResponsesMessages(
       model,
-      {
+      normalizeContext({
         checkpoint: {
           type: "provider",
           provider: model.provider,
@@ -122,7 +123,7 @@ test("Responses compaction uses API auth and preserves the complete opaque windo
           data: compacted.data,
         },
         messages: [],
-      },
+      }),
       new Set(),
     ),
     output,

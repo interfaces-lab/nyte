@@ -1,3 +1,4 @@
+import { normalizeContext } from "@nyte-ai/schema";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -222,10 +223,10 @@ describe("Codex V2 compaction", () => {
     const saved = await persist(result);
     const next = await stream(
       server.model,
-      {
+      normalizeContext({
         checkpoint: saved,
         messages: [{ role: "user", content: "continue", timestamp: 2 }],
-      },
+      }),
       { apiKey, transport: "sse" },
     ).result();
     assert.equal(next.stopReason, "stop");

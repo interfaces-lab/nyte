@@ -1,3 +1,4 @@
+import { normalizeContext } from "@nyte-ai/schema";
 import { describe, expect, it } from "vitest";
 import { stream } from "../src/api/openai-responses.ts";
 import type { AssistantMessage, JsonValue, Model } from "../src/types.ts";
@@ -19,9 +20,9 @@ const model = {
 async function run(events: readonly JsonValue[]) {
   const source = stream(
     model,
-    {
+    normalizeContext({
       messages: [{ role: "user", content: "hi", timestamp: 0 }],
-    },
+    }),
     {
       apiKey: "test",
       maxRetries: 0,
