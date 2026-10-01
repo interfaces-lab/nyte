@@ -17,6 +17,7 @@ const rules = [
   "named-stylex-imports",
   "accessible-pressable",
   "specific-confirm-label",
+  "no-disabled-caption",
   "title-case-control-label",
 ];
 const Report = Type.Object({ diagnostics: Type.Array(Type.Object({ code: Type.String() })) });
@@ -39,13 +40,13 @@ test("interaction guards reject regressions and accept semantic controls", async
       rejected,
       `import * as stylex from "@stylexjs/stylex";
 const layout = { touchAction: "none" };
-const controls = <><div onClick={() => {}} /><Menu openOnHover /><Dialog finalFocus={false} /><Pressable onPress={() => {}} /><Button>Confirm</Button><Button>save file</Button></>;`,
+const controls = <><div onClick={() => {}} /><Menu openOnHover /><Dialog finalFocus={false} /><Pressable onPress={() => {}} /><Button>Confirm</Button><Button>save file</Button><MenuItem meta={disabled ? "No file open" : "⌘S"}>Save</MenuItem></>;`,
     );
     await writeFile(
       accepted,
       `import { create } from "@stylexjs/stylex";
 const layout = { touchAction: "manipulation" };
-const controls = <><button onClick={() => {}} /><div role="option" onClick={() => {}} /><Dialog /><Pressable accessibilityRole="link" /><Button>Delete File</Button><p>No {count} matches</p></>;`,
+const controls = <><button onClick={() => {}} /><div role="option" onClick={() => {}} /><Dialog /><Pressable accessibilityRole="link" /><Button>Delete File</Button><p>No {count} matches</p><MenuItem disabled={disabled} meta="⌘S">Save</MenuItem></>;`,
     );
     const output = await execute("node", [
       fileURLToPath(new URL("../../../node_modules/oxlint/bin/oxlint", import.meta.url)),

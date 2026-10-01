@@ -12,9 +12,25 @@ const literal = (node) =>
       ? node.value
       : undefined;
 const rule = (description, create) => ({ meta: { docs: { description } }, create });
+const disabledFlag = (node) =>
+  node.type === "UnaryExpression"
+    ? disabledFlag(node.argument)
+    : /(?:^d|D)isabled$/.test(
+        String(nameOf(node.type === "MemberExpression" ? node.property : node)),
+      );
+const visibleText = (node) =>
+  (node.type === "Literal" && typeof node.value === "string" && node.value.trim() !== "") ||
+  node.type === "TemplateLiteral" ||
+  ((node.type === "JSXElement" || node.type === "JSXFragment") &&
+    !node.openingElement?.attributes.some(
+      (item) =>
+        item.type === "JSXSpreadAttribute" &&
+        item.argument.arguments?.some((argument) => nameOf(argument) === "srOnly"),
+    ) &&
+    node.children.some((child) => child.type === "JSXText" && child.value.trim()));
 const nonControls = new Set(["div", "span", "li", "img", "section", "p"]);
 const dragHandles = new Map([
-  ["packages/ui/src/components/ui/slider.tsx", new Set(["control"])],
+  ["packages/ui/src/slider.tsx", new Set(["control"])],
   ["packages/app/src/chrome/sidebar-pane.tsx", new Set(["handle"])],
   ["packages/app/src/screens/thread.stylex.ts", new Set(["sash"])],
   ["packages/app/src/workbench/workbench.stylex.ts", new Set(["sash"])],
@@ -28,6 +44,7 @@ const smallWords = new Set([
   "but",
   "by",
   "for",
+  "from",
   "in",
   "of",
   "on",
@@ -78,16 +95,16 @@ export default {
       JSXAttribute(node) {
         if (nameOf(node.name) !== "openOnHover") return;
         if (
-          context.filename
-            .replaceAll("\\", "/")
-            .endsWith("packages/ui/src/components/ui/menu.tsx") &&
+          /packages\/ui\/src\/(?:context-)?menu\.tsx$/.test(
+            context.filename.replaceAll("\\", "/"),
+          ) &&
           literal(node.value) === false
         )
           return;
         context.report({
           node,
           message:
-            "Submenus open on click. The shared menu alone disables the library's hover default.",
+            "Submenus open on click. The shared menus alone disable the library's hover default.",
         });
       },
     })),
@@ -144,6 +161,31 @@ export default {
         });
       },
     })),
+    "no-disabled-caption": rule(
+      "Keep disabled controls to their label and shortcut.",
+      (context) => ({
+        JSXExpressionContainer(node) {
+          const { expression, parent } = node;
+          if (
+            parent?.type === "JSXAttribute" &&
+            !["meta", "description"].includes(nameOf(parent.name))
+          )
+            return;
+          const [test, branches] =
+            expression.type === "ConditionalExpression"
+              ? [expression.test, [expression.consequent, expression.alternate]]
+              : expression.type === "LogicalExpression" && expression.operator === "&&"
+                ? [expression.left, [expression.right]]
+                : [undefined, []];
+          if (!branches.some(visibleText) || !disabledFlag(test)) return;
+          context.report({
+            node,
+            message:
+              "A disabled control shows its label and shortcut only. Drop the caption; give a Button a title only when the reason is not obvious.",
+          });
+        },
+      }),
+    ),
     "title-case-control-label": rule("Use Title Case for visible control labels.", (context) => ({
       JSXElement(node) {
         if (!labels.has(nameOf(node.openingElement.name))) return;
