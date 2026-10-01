@@ -277,12 +277,27 @@ const parseOperand = (operand, trail) => {
   return { color: match[1], weight: numeric(match[2].replace(/%$/, ""), trail) };
 };
 
+/** `oklch(L% C H)` or `oklch(L% C H / A)`, with H in degrees, as the anchored ramps write it. */
+const parseOklch = (value) => {
+  const match = value.match(/^oklch\(([\d.]+)% ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)$/);
+
+  if (!match) return undefined;
+
+  return fromOklch({
+    l: Number.parseFloat(match[1]) / 100,
+    c: Number.parseFloat(match[2]),
+    h: (Number.parseFloat(match[3]) * Math.PI) / 180,
+    alpha: match[4] === undefined ? 1 : Number.parseFloat(match[4]),
+  });
+};
+
 const resolve = (expression, mode, trail) => {
   const value = expression.trim();
 
   if (value === "transparent") return { red: 0, green: 0, blue: 0, alpha: 0 };
 
-  const color = parseHex(value) ?? parseLab(value) ?? relativeOklch(value, mode, trail);
+  const color =
+    parseHex(value) ?? parseLab(value) ?? parseOklch(value) ?? relativeOklch(value, mode, trail);
 
   if (color !== undefined) return color;
 
