@@ -18,9 +18,7 @@ export function MoonHero() {
           <MoonStage initialFrame={initialFrame} />
         </div>
 
-        <h1
-          className="font-display text-center text-[clamp(2.5rem,6vw,5.25rem)] leading-[0.98] font-medium tracking-[-0.05em]"
-        >
+        <h1 className="font-display text-center text-[clamp(2.5rem,6vw,5.25rem)] leading-[0.98] font-medium tracking-[-0.05em]">
           Agent, deploy <FrostedWord>anywhere.</FrostedWord>
         </h1>
 
