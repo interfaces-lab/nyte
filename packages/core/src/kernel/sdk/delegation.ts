@@ -10,8 +10,9 @@ import { isTerminalPhase, type JobEnd, type RunPhase } from "@nyte-ai/protocol";
 import type { JsonValue } from "@nyte-ai/schema";
 import { definePlugin, inlinePlugin, type LoadedPlugin } from "../../plugins/types.ts";
 import {
+  DEFAULT_TASK_MODELS,
+  FAST_MODEL_SUFFIX,
   awaitedAgents,
-  resolveTaskModel,
   satisfied,
   subagentsPlugin,
   type AgentPhase,
@@ -51,6 +52,7 @@ import {
 } from "./types.ts";
 
 const SYSTEM_FACT = "system";
+const FAST_FACT = "fast";
 
 type Request = StoredDelegation;
 
@@ -128,8 +130,14 @@ export function createDelegation(input: {
                 async session(api) {
                   const text = await pool.readFact(pooled.session, SYSTEM_FACT);
 
-                  if (typeof text !== "string") return;
-                  api.prompt.add((draft) => draft.set("delegate-system", { text, order: 1 }));
+                  if (typeof text === "string") {
+                    api.prompt.add((draft) => draft.set("delegate-system", { text, order: 1 }));
+                  }
+
+                  if ((await pool.readFact(pooled.session, FAST_FACT)) !== true) return;
+                  api.hook("before_request", (event) =>
+                    event.step === "assistant" ? { streamOptions: { fast: true } } : undefined,
+                  );
                 },
               }),
             ),
@@ -568,8 +576,33 @@ export function createDelegation(input: {
       });
 
       input.signal?.throwIfAborted();
+      const named = (name: string) =>
+        available.find((candidate) => `${candidate.provider}/${candidate.id}` === name);
+      const exact = input.model === undefined ? undefined : named(input.model);
+      const fastModel =
+        exact === undefined && input.model?.endsWith(FAST_MODEL_SUFFIX) === true
+          ? named(input.model.slice(0, -FAST_MODEL_SUFFIX.length))
+          : undefined;
+      const fast = fastModel?.modes?.includes("fast") === true;
+      const choice =
+        input.model === undefined
+          ? DEFAULT_TASK_MODELS.map((entry) => ({ ...entry, model: named(entry.model) })).find(
+              (entry) => entry.model !== undefined,
+            )
+          : {
+              model: exact ?? (fast ? fastModel : undefined),
+              thinkingLevel: DEFAULT_TASK_MODELS[0].thinkingLevel,
+            };
 
-      const { model, thinkingLevel } = resolveTaskModel({ ...input, models: available });
+      if (choice?.model === undefined) {
+        throw new Error(
+          input.model === undefined
+            ? `Default subagent models are unavailable: ${DEFAULT_TASK_MODELS.map((entry) => entry.model).join(", ")}. Enable a model or choose an available model explicitly.`
+            : `Subagent model is unavailable: ${input.model}. Choose an enabled model or connect its provider.`,
+        );
+      }
+      const { model } = choice;
+      const thinkingLevel = input.thinkingLevel ?? choice.thinkingLevel;
 
       const parent: SessionParent = {
         sessionId: id,
@@ -586,6 +619,8 @@ export function createDelegation(input: {
         await pool.writeFact(session, NAME_FACT, input.title);
 
         if (input.system !== undefined) await pool.writeFact(session, SYSTEM_FACT, input.system);
+
+        if (fast) await pool.writeFact(session, FAST_FACT, true);
         const location = await pool.storedCwd(pooled.session);
 
         if (location === undefined) throw new Error("Parent session has no directory");

@@ -59,6 +59,7 @@ const model: Model<Api> = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   contextWindow: 100_000,
   maxTokens: 1_000,
+  modes: ["fast"],
 };
 const MODEL = `${model.provider}/${model.id}`;
 const poll = { timeout: 5_000, interval: 10 };
@@ -107,7 +108,12 @@ async function fixture(hook: RefUpdateHook = ({ proceed }) => proceed()) {
   const path = storePath();
   const cwd = dirname(path);
   const gates = new Map<string, PromiseWithResolvers<void>>();
-  const requests: { text: string; tools: readonly string[]; completions: string[] }[] = [];
+  const requests: {
+    text: string;
+    tools: readonly string[];
+    completions: string[];
+    fast: boolean | undefined;
+  }[] = [];
   const streamFn: StreamFn = (_model, context, options) => {
     const messages = context.messages;
     const isCompletion = (message: (typeof messages)[number]) =>
@@ -123,6 +129,7 @@ async function fixture(hook: RefUpdateHook = ({ proceed }) => proceed()) {
       text,
       tools: (context.tools ?? []).map((tool) => tool.name),
       completions: messages.filter(isCompletion).map((message) => contentText(message.content)),
+      fast: options?.fast,
     });
     const result = tail.findLast((message) => message.role === "toolResult");
     const command = /^do (\S+) (.*)$/su.exec(text);
@@ -573,6 +580,22 @@ test("a failed child publication abandons its prepared delegation request", asyn
 
     await f.command("stop", { agent: child.sessionId });
     expect(await f.completions()).toEqual([]);
+  } finally {
+    await f.close();
+  }
+});
+
+test("an agent created with a -fast model asks for fast mode on every request", async () => {
+  const f = await fixture();
+  try {
+    await f.command("create", { title: "quick", model: `${MODEL}-fast` });
+    const quick = await f.child();
+    await f.command("send", { agent: quick.sessionId, message: "fast work" });
+    await f.idle(quick.sessionId);
+    expect(f.requests.find((item) => item.text === "fast work")?.fast).toBe(true);
+    expect(
+      f.requests.filter((item) => item.text.startsWith("do ")).map((item) => item.fast),
+    ).not.toContain(true);
   } finally {
     await f.close();
   }
