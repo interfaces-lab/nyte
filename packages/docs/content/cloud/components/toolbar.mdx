@@ -4,27 +4,14 @@ description: "A row of controls under one tab stop"
 ---
 
 ```ts title="Import"
-import { Toolbar } from "@nyte-ai/ui";
-```
-
-The same `Toolbar` is exported from its own subpath. Pick one path per file.
-
-```ts title="Subpath"
 import { Toolbar } from "@nyte-ai/ui/toolbar";
 ```
 
-Lays out a row of [Button](/cloud/components/button) and [Toggle](/cloud/components/toggle) controls
-and moves focus between them with the arrow keys, so the whole toolbar is one stop in the tab
-order.
-
 ## Usage
 
-- `Toolbar.Button` renders a `Button`. Pass a `Button`, a `Toggle`, or a popup trigger to `render`
-  to set its variant, size, and label.
-- Toolbar items stay focusable while disabled by default, which keeps the arrow key order stable.
-  Pass `focusableWhenDisabled={false}` to drop an item out of it.
-- `Toolbar.Separator` draws a hairline across the toolbar's axis.
-- `Toolbar.Root` lays its items out in a row with a 2px gap. Size and edge it with `xstyle`.
+- `Toolbar.Button` renders a `Button`. Pass a `Button`, `Toggle`, or popup trigger to `render`.
+- A disabled item stays focusable when it has `disabledReason`, or with `render` unless you pass
+  `focusableWhenDisabled={false}`.
 
 ## Anatomy
 
@@ -63,20 +50,21 @@ order.
 
 ### With a tooltip
 
-A tooltip goes the other way around. The toolbar item is the `trigger` of a
-[Hint](/cloud/components/tooltip).
-
 ```tsx
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
+
 <Toolbar.Root aria-label="Changes">
-  <Hint
-    content="Refresh"
-    trigger={
-      <Toolbar.Button
-        render={<Button iconOnly icon="refresh" aria-label="Refresh" title={undefined} />}
-      />
-    }
-  />
-</Toolbar.Root>
+  <Tooltip>
+    <TooltipTrigger
+      render={
+        <Toolbar.Button
+          render={<Button iconOnly icon="refresh" aria-label="Refresh" title={undefined} />}
+        />
+      }
+    />
+    <TooltipContent>Refresh</TooltipContent>
+  </Tooltip>
+</Toolbar.Root>;
 ```
 
 ## Props
@@ -106,6 +94,5 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 - `Toolbar.Root` renders `role="toolbar"`. Label it with `aria-label` or `aria-labelledby`.
 - Arrow keys move focus between items. Focus wraps at the end unless you pass `loopFocus={false}`.
-- Orientation follows the `orientation` prop and lands on `data-orientation` for every part.
-- A disabled item gets `data-disabled`, and `data-focusable` while it remains reachable by arrow
-  key.
+- Orientation follows `orientation` and lands on `data-orientation` for every part.
+- A disabled item gets `data-disabled`, plus `data-focusable` while arrow keys still reach it.
