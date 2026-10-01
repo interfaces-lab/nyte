@@ -15,6 +15,8 @@ import "./theme.stylex.ts";
 
 const step = (light: number, dark: number) =>
   `light-dark(var(--nyte-theme-${light}), var(--nyte-theme-${dark}))`;
+const control = (light: number, dark: number) =>
+  `light-dark(var(--nyte-neutral-${light}), var(--nyte-neutral-${dark}))`;
 const glass = (light: number, dark: number) =>
   `light-dark(var(--nyte-theme-translucent-${light}), var(--nyte-theme-translucent-${dark}))`;
 const shade = (role: string, light: number, dark: number) =>
@@ -33,17 +35,18 @@ export const roles = defineVars({
   "--nyte-content-interactive-secondary": step(100, 50),
   "--nyte-content-interactive-tertiary": step(80, 90),
   "--nyte-content-on-interactive-strong": "var(--nyte-theme-0)",
-  "--nyte-content-on-control": "var(--nyte-theme-0)",
+  "--nyte-content-on-control": "var(--nyte-neutral-0)",
 
   "--nyte-border-primary": step(30, 120),
   "--nyte-border-secondary": step(20, 135),
   "--nyte-border-strong": step(40, 100),
-  "--nyte-border-control": step(40, 100),
+  "--nyte-border-control": control(40, 100),
   "--nyte-border-interactive-primary": "var(--nyte-theme-80)",
   "--nyte-border-primary-translucent": glass(30, 120),
   "--nyte-border-secondary-translucent": glass(20, 135),
   "--nyte-border-strong-translucent": glass(40, 100),
-  "--nyte-border-control-translucent": glass(40, 100),
+  "--nyte-border-control-translucent":
+    "light-dark(var(--nyte-neutral-translucent-40), var(--nyte-neutral-translucent-100))",
   "--nyte-border-interactive-primary-translucent": "var(--nyte-theme-translucent-80)",
 
   "--nyte-bg-base": step(0, 145),
@@ -87,7 +90,7 @@ export const roles = defineVars({
   "--nyte-bg-hover": glass(15, 135),
   "--nyte-bg-pressed": lift("bg-hover", 0.045),
 
-  "--nyte-bg-control": step(40, 100),
+  "--nyte-bg-control": control(40, 100),
   "--nyte-bg-control-hover": shade("bg-control", 0.95, 1.05),
   "--nyte-bg-control-pressed": shade("bg-control", 0.88, 1.12),
   "--nyte-bg-control-selected": step(130, 100),

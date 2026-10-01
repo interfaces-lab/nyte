@@ -588,7 +588,21 @@ const ramp = (hue: keyof typeof opaque) => ({
   ),
 });
 
-export const theme = defineVars(ramp("gray"));
+/**
+ * Notion keeps controls gray in every scope: an unchecked switch or checkbox
+ * inside a blue panel is still gray. These gray steps never swap with a hue.
+ */
+const neutral = (step: number) => ({
+  [`--nyte-neutral-${step}`]: opaque.gray[steps.indexOf(step)],
+  [`--nyte-neutral-translucent-${step}`]: `light-dark(${translucent.gray[steps.indexOf(step)][0]}, ${translucent.gray[steps.indexOf(step)][1]})`,
+});
+
+export const theme = defineVars({
+  ...ramp("gray"),
+  ...neutral(0),
+  ...neutral(40),
+  ...neutral(100),
+});
 
 /** The workspace tint's inputs, written on <html> by the desktop's boot. */
 export const tint = defineVars({

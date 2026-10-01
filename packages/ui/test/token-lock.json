@@ -421,6 +421,12 @@
       "--nyte-theme-translucent-90"
     ],
     "ui/src/theme.stylex.ts theme": [
+      "--nyte-neutral-0",
+      "--nyte-neutral-100",
+      "--nyte-neutral-40",
+      "--nyte-neutral-translucent-0",
+      "--nyte-neutral-translucent-100",
+      "--nyte-neutral-translucent-40",
       "--nyte-theme-0",
       "--nyte-theme-10",
       "--nyte-theme-100",

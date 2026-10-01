@@ -251,11 +251,11 @@ export const components = defineVars({
     "@media (pointer: coarse)": "16px",
   },
   "--nyte-switch-width-md": {
-    default: "28px",
+    default: "30px",
     "@media (pointer: coarse)": "48px",
   },
   "--nyte-switch-height-md": {
-    default: "16px",
+    default: "18px",
     "@media (pointer: coarse)": "28px",
   },
   "--nyte-switch-padding-md": {
@@ -263,7 +263,7 @@ export const components = defineVars({
     "@media (pointer: coarse)": "3px",
   },
   "--nyte-switch-knob-md": {
-    default: "12px",
+    default: "14px",
     "@media (pointer: coarse)": "22px",
   },
   "--nyte-switch-width-sm": {
