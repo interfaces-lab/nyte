@@ -4,30 +4,16 @@ description: "A panel that a trigger opens and closes"
 ---
 
 ```ts title="Import"
-import { Collapsible } from "@nyte-ai/ui";
-```
-
-The same `Collapsible` is exported from its own subpath. Pick one path per file.
-
-```ts title="Subpath"
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 ```
-
-One trigger, one panel. Reach for it when a section of a surface is worth hiding until the reader
-asks for it.
 
 ## Usage
 
 - `defaultOpen` leaves the panel uncontrolled. `open` with `onOpenChange` controls it.
-- The trigger's default `disclosure` look is a quiet inline toggle, tertiary text that brightens on
-  hover. `variant="plain"` resets the button and adds nothing else, for a trigger rendered as another
-  styled part such as `Row.Primary`.
-- Put `Collapsible.Chevron` inside the trigger. It turns a quarter while the panel is open.
+- Use `variant="plain"` when another styled part, such as `Row.Primary`, renders the trigger.
 - `Collapsible.Root` and `Collapsible.Panel` bring no look of their own. Lay them out with `xstyle`.
-- The closed panel unmounts unless you pass `keepMounted` or `hiddenUntilFound`.
-- Animate the panel from `--collapsible-panel-height` and `--collapsible-panel-width`, which the
-  panel publishes while it transitions.
-- `disabled` on the root stops the trigger from opening the panel.
+- `Collapsible.Panel` defaults `hiddenUntilFound` to `true`, so the closed panel stays in the DOM.
+  Pass `hiddenUntilFound={false}` to unmount it.
 
 ## Anatomy
 
@@ -76,9 +62,6 @@ const [open, setOpen] = useState(false);
 
 ### A row that opens a panel
 
-`render` on `Row.Primary` makes the row the trigger. `variant="plain"` keeps the trigger from
-restyling the row.
-
 ```tsx
 <Collapsible.Root open={expanded} onOpenChange={setExpanded}>
   <Row>
@@ -95,18 +78,10 @@ restyling the row.
 
 ### Hidden until found
 
-`hiddenUntilFound` hides the closed panel with
+With
 [`hidden="until-found"`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/hidden),
-so find-in-page can match its contents and open it. The panel stays in the DOM, which also makes it
-indexable. Browsers without support for `hidden="until-found"` keep the panel hidden until the
+find-in-page can match a closed panel and open it. Unsupported browsers keep it hidden until the
 trigger opens it, and find-in-page skips it.
-
-```tsx
-<Collapsible.Root>
-  <Collapsible.Trigger>Environment variables</Collapsible.Trigger>
-  <Collapsible.Panel hiddenUntilFound>NYTE_BIN_DIR, NYTE_INSTALL_DIR</Collapsible.Panel>
-</Collapsible.Root>
-```
 
 ## Props
 
@@ -115,9 +90,9 @@ See [Theming](/cloud/foundations/theming).
 
 ### Trigger
 
-| Prop      | Type                      | Default        | Description                                      |
-| --------- | ------------------------- | -------------- | ------------------------------------------------ |
-| `variant` | `"disclosure" \| "plain"` | `"disclosure"` | The quiet inline toggle, or a bare button reset. |
+| Prop      | Type                      | Default        | Description                           |
+| --------- | ------------------------- | -------------- | ------------------------------------- |
+| `variant` | `"disclosure" \| "plain"` | `"disclosure"` | Inline toggle look, or a bare button. |
 
 `CollapsibleTriggerVariant` is the exported type for `variant`.
 
@@ -126,9 +101,9 @@ See [Theming](/cloud/foundations/theming).
 Renders a `<span>` with `aria-hidden`, holding a `chevron-right` [icon](/cloud/components/icon).
 It takes every `<span>` prop, plus:
 
-| Prop   | Type     | Default | Description                 |
-| ------ | -------- | ------- | --------------------------- |
-| `size` | `number` | `11`    | The icon's size, in pixels. |
+| Prop   | Type     | Default | Description          |
+| ------ | -------- | ------- | -------------------- |
+| `size` | `number` | `11`    | Icon size in pixels. |
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
@@ -149,7 +124,4 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 - The trigger renders a native `<button>` with `aria-expanded`, and `aria-controls` pointing at the
   panel while it is open. Enter and Space toggle it.
 - Rendering the trigger as something other than a `<button>` needs `nativeButton={false}`.
-- Open state lands on `data-panel-open` on the trigger, and `data-open` or `data-closed` on the root
-  and the panel.
-- The `disclosure` trigger draws the focus ring on keyboard focus. A `plain` trigger draws none, so
-  the part it renders as owns it. See [Focus](/cloud/foundations/focus).
+- `disclosure` draws a focus ring. With `plain`, the rendered part owns focus styling.

@@ -2,10 +2,10 @@ import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible"
 import { create, props } from "@stylexjs/stylex";
 import type { ComponentProps, ReactElement } from "react";
 
-import { focus } from "../../a11y.stylex.ts";
-import { button } from "../../schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { appearance, motion, role } from "../../vars.stylex.ts";
+import { focus } from "./a11y.stylex.ts";
+import { target } from "./schema.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { appearance, motion, role } from "./vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 
 const styles = create({
@@ -27,7 +27,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     width: "100%",
-    minHeight: { default: button.heightSm, "@media (pointer: coarse)": 44 },
+    minHeight: target.min,
     gap: 4,
     maxWidth: "100%",
     minWidth: 0,
