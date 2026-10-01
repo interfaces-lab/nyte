@@ -27,9 +27,8 @@ read them as the reference for what the package does, so a wrong example becomes
 
 1. Read `packages/ui/package.json` exports. Every import path is one page, named for the
    component. Asset paths get no page.
-2. Read the component source before writing a sentence about it. Root exports live in
-   `packages/ui/src/index.ts`, subpaths in `packages/ui/src/<name>.ts`, styled components in
-   `packages/ui/src/components/ui/`.
+2. Read the component source before writing a sentence about it. Component subpaths resolve
+   directly to `packages/ui/src/<name>.tsx`; check the manifest for shared implementations.
 3. Write the page against [references/page-contract.md](references/page-contract.md).
 4. Verify against [references/sourcing.md](references/sourcing.md) before reporting done.
 
