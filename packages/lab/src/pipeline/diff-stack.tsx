@@ -14,7 +14,7 @@ import { ChangesSidebar } from "@nyte-ai/app/workbench/changes-sidebar.tsx";
 import { workbenchStyles } from "@nyte-ai/app/workbench/workbench.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
-import { Menu, MenuRadioGroup, MenuRadioItem } from "@nyte-ai/ui/menu";
+import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
@@ -109,25 +109,27 @@ export function DiffStack(componentProps: DiffStackProps): ReactElement {
     <div {...props(styles.panel)}>
       <FileTypeIconSprite />
       <div {...props(workbenchStyles.toolbar)}>
-        <Menu
-          label="Commits"
-          trigger={<Button icon="git">{picked === undefined ? "All commits" : picked.oid}</Button>}
-        >
-          <MenuRadioGroup
-            value={componentProps.commit ?? "all"}
-            onValueChange={(value) =>
-              componentProps.onCommit(value === "all" ? undefined : String(value))
-            }
-          >
-            <MenuRadioItem value="all" icon="git-branch">
-              All commits
-            </MenuRadioItem>
-            {componentProps.commits.map((entry) => (
-              <MenuRadioItem key={entry.oid} value={entry.oid} icon="git" meta={entry.oid}>
-                {entry.subject}
+        <Menu>
+          <MenuTrigger
+            render={<Button icon="git">{picked === undefined ? "All commits" : picked.oid}</Button>}
+          />
+          <MenuContent>
+            <MenuRadioGroup
+              value={componentProps.commit ?? "all"}
+              onValueChange={(value) =>
+                componentProps.onCommit(value === "all" ? undefined : String(value))
+              }
+            >
+              <MenuRadioItem value="all" icon="git-branch">
+                All commits
               </MenuRadioItem>
-            ))}
-          </MenuRadioGroup>
+              {componentProps.commits.map((entry) => (
+                <MenuRadioItem key={entry.oid} value={entry.oid} icon="git" meta={entry.oid}>
+                  {entry.subject}
+                </MenuRadioItem>
+              ))}
+            </MenuRadioGroup>
+          </MenuContent>
         </Menu>
         <Tooltip>
           <TooltipTrigger

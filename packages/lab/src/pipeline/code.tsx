@@ -14,7 +14,7 @@ import { PIERRE_THEME, PIERRE_TOKEN_CSS } from "@nyte-ai/app/pierre-worker-provi
 import { Button } from "@nyte-ai/ui/button";
 import { Checkbox } from "@nyte-ai/ui/checkbox";
 import { Icon } from "@nyte-ai/ui/icon";
-import { Menu, MenuItem } from "@nyte-ai/ui/menu";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 import { fileAt } from "./scenario";
@@ -178,18 +178,20 @@ export function CodeFileHeader({
         />
         Reviewed
       </label>
-      <Menu
-        label={`${name} actions`}
-        trigger={<Button iconOnly icon="more-horizontal" aria-label={`${name} actions`} />}
-      >
-        {onOpenInDiff !== undefined && (
-          <MenuItem icon="split-right" onSelect={onOpenInDiff}>
-            Open in Diff
+      <Menu>
+        <MenuTrigger
+          render={<Button iconOnly icon="more-horizontal" aria-label={`${name} actions`} />}
+        />
+        <MenuContent>
+          {onOpenInDiff !== undefined && (
+            <MenuItem icon="split-right" onClick={onOpenInDiff}>
+              Open in Diff
+            </MenuItem>
+          )}
+          <MenuItem icon="copy" onClick={() => void navigator.clipboard.writeText(file.path)}>
+            Copy path
           </MenuItem>
-        )}
-        <MenuItem icon="copy" onSelect={() => void navigator.clipboard.writeText(file.path)}>
-          Copy path
-        </MenuItem>
+        </MenuContent>
       </Menu>
     </div>
   );

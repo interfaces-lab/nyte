@@ -5,7 +5,7 @@ import { customizeStyles } from "@nyte-ai/app/chrome/customize.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
-import { Menu, MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Row } from "@nyte-ai/ui/row";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { role } from "@nyte-ai/ui/vars.stylex";
@@ -96,38 +96,39 @@ function EntryRow({ entry }: { readonly entry: Entry }): ReactElement {
         {entry.badge}
       </span>
       {entry.actions !== "none" && (
-        <Menu
-          label={`Actions for ${entry.title}`}
-          align="end"
-          trigger={<Button size="sm" iconOnly icon="more-horizontal" aria-label="More" />}
-        >
-          {entry.actions === "connection" ? (
-            <>
-              <MenuItem icon="new-chat" onSelect={() => undefined}>
-                New chat here
-              </MenuItem>
-              <MenuItem icon="pencil" onSelect={() => undefined}>
-                Edit address and token
-              </MenuItem>
-              <MenuSeparator />
-              <MenuItem icon="trash" danger onSelect={() => undefined}>
-                Remove
-              </MenuItem>
-            </>
-          ) : (
-            <>
-              <MenuItem icon="copy" onSelect={() => undefined}>
-                Copy pairing link
-              </MenuItem>
-              <MenuItem icon="phone" onSelect={() => undefined}>
-                Show QR code
-              </MenuItem>
-              <MenuSeparator />
-              <MenuItem icon={entry.on ? "square" : "arrow-right"} onSelect={() => undefined}>
-                {entry.on ? "Stop" : "Start"}
-              </MenuItem>
-            </>
-          )}
+        <Menu>
+          <MenuTrigger
+            render={<Button size="sm" iconOnly icon="more-horizontal" aria-label="More" />}
+          />
+          <MenuContent align="end">
+            {entry.actions === "connection" ? (
+              <>
+                <MenuItem icon="new-chat" onClick={() => undefined}>
+                  New chat here
+                </MenuItem>
+                <MenuItem icon="pencil" onClick={() => undefined}>
+                  Edit address and token
+                </MenuItem>
+                <MenuSeparator />
+                <MenuItem icon="trash" variant="danger" onClick={() => undefined}>
+                  Remove
+                </MenuItem>
+              </>
+            ) : (
+              <>
+                <MenuItem icon="copy" onClick={() => undefined}>
+                  Copy pairing link
+                </MenuItem>
+                <MenuItem icon="phone" onClick={() => undefined}>
+                  Show QR code
+                </MenuItem>
+                <MenuSeparator />
+                <MenuItem icon={entry.on ? "square" : "arrow-right"} onClick={() => undefined}>
+                  {entry.on ? "Stop" : "Start"}
+                </MenuItem>
+              </>
+            )}
+          </MenuContent>
         </Menu>
       )}
     </Row>

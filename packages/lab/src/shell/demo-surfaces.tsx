@@ -4,16 +4,27 @@ import { useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import {
   Menu,
+  MenuContent,
   MenuItem,
   MenuGroup,
+  MenuGroupLabel,
   MenuSeparator,
-  MenuSubmenu,
+  MenuSub,
+  MenuSubContent,
+  MenuSubTrigger,
   MenuCheckboxItem,
   MenuSwitchItem,
   MenuRadioGroup,
   MenuRadioItem,
+  MenuTrigger,
 } from "@nyte-ai/ui/menu";
-import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "@nyte-ai/ui/context-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@nyte-ai/ui/context-menu";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { ModelPicker } from "@nyte-ai/app/conversation/model-picker.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -47,65 +58,74 @@ export function PaneMenu({ surface, onSurface, trigger }: SurfaceProps) {
 
   return (
     <Menu
-      label="Pane actions"
-      trigger={trigger}
       open={surface === "menu" || surface === "submenu"}
       modal={false}
-      align="end"
       onOpenChange={(open) => {
         if (open) onSurface("menu");
         else dismiss(surface === "submenu" ? "submenu" : "menu", onSurface);
       }}
     >
-      <MenuGroup label="Pane">
-        <MenuItem icon="split-down" meta="⌘D" onSelect={() => onSurface("none")}>
-          Split down
+      <MenuTrigger render={trigger} />
+      <MenuContent align="end">
+        <MenuGroup>
+          <MenuGroupLabel>Pane</MenuGroupLabel>
+          <MenuItem icon="split-down" meta="⌘D" onClick={() => onSurface("none")}>
+            Split down
+          </MenuItem>
+          <MenuItem icon="split-right" meta="⇧⌘D" onClick={() => onSurface("none")}>
+            Split right
+          </MenuItem>
+          <MenuItem icon="expand" meta="⌃⌘F" disabled>
+            Enter full screen
+          </MenuItem>
+        </MenuGroup>
+        <MenuSeparator />
+        <MenuGroup>
+          <MenuGroupLabel>View</MenuGroupLabel>
+          <MenuCheckboxItem icon="list" checked={wrap} onCheckedChange={setWrap}>
+            Wrap long lines
+          </MenuCheckboxItem>
+          <MenuSwitchItem icon="eye" checked={whitespace} onCheckedChange={setWhitespace}>
+            Show whitespace
+          </MenuSwitchItem>
+        </MenuGroup>
+        <MenuSeparator />
+        <MenuSub
+          open={surface === "submenu" ? true : undefined}
+          onOpenChange={(open) => {
+            if (!open && surface === "submenu" && document.hasFocus()) onSurface("menu");
+          }}
+        >
+          <MenuSubTrigger icon="folder" value={workspace}>
+            Move to
+          </MenuSubTrigger>
+          <MenuSubContent>
+            <MenuRadioGroup value={workspace} onValueChange={setWorkspace}>
+              <MenuRadioItem value="nyte" closeOnClick={false}>
+                nyte
+              </MenuRadioItem>
+              <MenuRadioItem value="website" closeOnClick={false}>
+                website
+              </MenuRadioItem>
+              <MenuRadioItem value="protocol" closeOnClick={false}>
+                protocol
+              </MenuRadioItem>
+            </MenuRadioGroup>
+          </MenuSubContent>
+        </MenuSub>
+        <MenuItem icon="copy" meta="⇧⌘C" onClick={() => onSurface("none")}>
+          Copy transcript
         </MenuItem>
-        <MenuItem icon="split-right" meta="⇧⌘D" onSelect={() => onSurface("none")}>
-          Split right
+        <MenuSeparator />
+        <MenuItem
+          icon="trash"
+          variant="danger"
+          closeOnClick={false}
+          onClick={() => onSurface("dialog")}
+        >
+          Delete chat
         </MenuItem>
-        <MenuItem icon="expand" meta="⌃⌘F" disabled onSelect={() => {}}>
-          Enter full screen
-        </MenuItem>
-      </MenuGroup>
-      <MenuSeparator />
-      <MenuGroup label="View">
-        <MenuCheckboxItem icon="list" checked={wrap} onCheckedChange={setWrap}>
-          Wrap long lines
-        </MenuCheckboxItem>
-        <MenuSwitchItem icon="eye" checked={whitespace} onCheckedChange={setWhitespace}>
-          Show whitespace
-        </MenuSwitchItem>
-      </MenuGroup>
-      <MenuSeparator />
-      <MenuSubmenu
-        label="Move to"
-        icon="folder"
-        value={workspace}
-        open={surface === "submenu" ? true : undefined}
-        onOpenChange={(open) => {
-          if (!open && surface === "submenu" && document.hasFocus()) onSurface("menu");
-        }}
-      >
-        <MenuRadioGroup value={workspace} onValueChange={setWorkspace}>
-          <MenuRadioItem value="nyte" closeOnClick={false}>
-            nyte
-          </MenuRadioItem>
-          <MenuRadioItem value="website" closeOnClick={false}>
-            website
-          </MenuRadioItem>
-          <MenuRadioItem value="protocol" closeOnClick={false}>
-            protocol
-          </MenuRadioItem>
-        </MenuRadioGroup>
-      </MenuSubmenu>
-      <MenuItem icon="copy" meta="⇧⌘C" onSelect={() => onSurface("none")}>
-        Copy transcript
-      </MenuItem>
-      <MenuSeparator />
-      <MenuItem icon="trash" danger closeOnClick={false} onSelect={() => onSurface("dialog")}>
-        Delete chat
-      </MenuItem>
+      </MenuContent>
     </Menu>
   );
 }
@@ -120,27 +140,28 @@ export function SessionContext({
 }: SurfaceProps & { pinned: boolean; onPin: () => void; onArchive: () => void }) {
   return (
     <ContextMenu
-      label="Chat actions"
-      trigger={trigger}
       open={surface === "context"}
       onOpenChange={(open) => {
         if (open) onSurface("context");
         else dismiss("context", onSurface);
       }}
     >
-      <ContextMenuItem icon={pinned ? "unpin" : "pin"} onSelect={onPin}>
-        {pinned ? "Unpin" : "Pin"}
-      </ContextMenuItem>
-      <ContextMenuItem icon="pencil" disabled onSelect={() => {}}>
-        Rename
-      </ContextMenuItem>
-      <ContextMenuItem icon="archive" onSelect={onArchive}>
-        Archive
-      </ContextMenuItem>
-      <ContextMenuSeparator />
-      <ContextMenuItem icon="trash" danger onSelect={() => onSurface("dialog")}>
-        Delete chat
-      </ContextMenuItem>
+      <ContextMenuTrigger render={trigger} />
+      <ContextMenuContent aria-label="Chat actions">
+        <ContextMenuItem icon={pinned ? "unpin" : "pin"} onClick={onPin}>
+          {pinned ? "Unpin" : "Pin"}
+        </ContextMenuItem>
+        <ContextMenuItem icon="pencil" disabled>
+          Rename
+        </ContextMenuItem>
+        <ContextMenuItem icon="archive" onClick={onArchive}>
+          Archive
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem icon="trash" variant="danger" onClick={() => onSurface("dialog")}>
+          Delete chat
+        </ContextMenuItem>
+      </ContextMenuContent>
     </ContextMenu>
   );
 }

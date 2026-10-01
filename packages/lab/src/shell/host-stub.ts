@@ -74,7 +74,7 @@ const diffs = [
       "+++ /dev/null",
       "@@ -1,3 +0,0 @@",
       '-import { create, props } from "@stylexjs/stylex";',
-      '-import { Button } from "@nyte-ai/ui";',
+      '-import { Button } from "@nyte-ai/ui/button";',
       '-import { useState } from "react";',
       "",
     ].join("\n"),
