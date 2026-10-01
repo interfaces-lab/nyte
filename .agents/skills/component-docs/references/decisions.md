@@ -3,6 +3,12 @@
 What changed, why, and the evidence behind it. A new rule belongs here before it belongs in the
 other files. Remove one when it stops helping.
 
+## 2026-10-01, one implementation per component
+
+Components live directly in `packages/ui/src/<name>.tsx`, and their subpaths resolve to those
+files. The root barrel and forwarding component modules were removed. Documentation uses
+individual component imports. `components.json` targets Base Nova and the same flat directory.
+
 ## 2026-09-18, the reader is someone who installed the package
 
 The Cloud section documented the desktop app's component tier and its application surfaces, 22

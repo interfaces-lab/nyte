@@ -3,8 +3,7 @@
 Every page holds the same order, so a reader learns the shape once.
 
 1. Frontmatter `title` and `description`. One short line, no colon mid-sentence.
-2. Import block. One fence per import path. Where the root and a subpath both export the name,
-   show two fences and say to pick one per file.
+2. Import block. Show the component's individual subpath in one fence.
 3. One or two sentences on what it is and when to reach for it.
 4. `## Usage`, only rules that change what a reader types.
 5. `## Anatomy`, the parts in nesting order. Skip it for a single element.

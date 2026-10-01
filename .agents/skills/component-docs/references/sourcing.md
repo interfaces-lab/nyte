@@ -5,9 +5,8 @@ A claim you cannot trace to a file does not go on the page. Soften nothing, cut 
 | Claim                     | Read it from                                            |
 | ------------------------- | ------------------------------------------------------- |
 | An import path            | `exports` in `packages/ui/package.json`                 |
-| A name from the root      | `packages/ui/src/index.ts`                              |
-| A name from a subpath     | `packages/ui/src/<name>.ts`                             |
-| Our props and defaults    | `packages/ui/src/components/ui/<name>.tsx`              |
+| A name from a subpath     | The implementation named by `exports` in the manifest |
+| Our props and defaults    | `packages/ui/src/<name>.tsx`                            |
 | A union's members         | The exported type, every member of it                   |
 | A Base UI part            | A file in `content/base-ui-reference/<component>/`      |
 | A Base UI prop or default | The same directory, never memory                        |
@@ -20,9 +19,8 @@ Each one is a defect that shipped.
 - **Never write an export that does not exist.** A page showed
   `import { Button as ButtonPrimitive }`. There is no `ButtonPrimitive`. The alias was invented to
   make a sentence read well, and readers would have imported a name that is not there.
-- **Rename only to resolve a collision in the same file.** The root and every subpath export the
-  same names, so no page needs an alias today. Dialog once earned one, when the subpath exported a
-  different `Dialog` than the root.
+- **Rename only to resolve a collision in the same file.** Component subpaths export their own
+  names. Use those names directly unless another import in the same file collides.
 - **Enumerate a union from the type, not from a neighbouring page.** Button shipped five variants
   while the page documented four, because the demo rendered four and the page copied the demo.
 - **Teach the common path first.** Alert dialog led with `createHandle()`, an API the repo calls
