@@ -1,23 +1,43 @@
-import stylex from "@stylexjs/unplugin";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "electron-vite";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/codemode-runtime";
 import { defaultClientConditions, type Plugin } from "vite";
-import { dropInlinedGhosttyWasm } from "@nyte-ai/app/vite";
+import { dropInlinedGhosttyWasm, stylex } from "@nyte-ai/app/vite";
 
 export default defineConfig(({ command }) => ({
   main: {
+    plugins: [
+      {
+        name: "nyte:codemode-wasm",
+        async generateBundle() {
+          this.emitFile({
+            type: "asset",
+            fileName: "quickjs.wasm",
+            source: await readFile(resolveQuickJSWasmPath()),
+          });
+        },
+      } satisfies Plugin,
+    ],
     build: {
       minify: true,
       target: "node24",
       rolldownOptions: {
         input: {
           index: resolve("src/main/index.ts"),
-          // Worker threads started by the main entry: the usage scan and the SQLite store.
           "usage-worker": resolve("src/main/usage-worker.ts"),
           "store-worker": resolve("src/main/store-worker.ts"),
+          "codemode-worker": resolve("src/main/codemode-worker.ts"),
+          "codemode-runtime": resolve("src/main/codemode-runtime.ts"),
         },
-        output: { entryFileNames: "[name].js", chunkFileNames: "chunks/[name]-[hash].js" },
+        output: {
+          entryFileNames: "[name].js",
+          chunkFileNames: (chunk) =>
+            chunk.moduleIds.includes(resolve("src/main/codemode-runtime.ts"))
+              ? "[name]-[hash].js"
+              : "chunks/[name]-[hash].js",
+        },
       },
     },
   },

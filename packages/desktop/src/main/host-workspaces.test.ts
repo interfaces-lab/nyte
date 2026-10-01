@@ -14,6 +14,7 @@ import type { MutableModels, Provider } from "@nyte-ai/ai";
 import { sessionMark } from "@nyte-ai/client";
 import { createHost } from "@nyte-ai/host";
 import { definePlugin, ToolWait } from "@nyte-ai/plugin";
+import { getCurrentTools } from "@nyte-ai/schema";
 import type { Api, AssistantMessage, Model } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { localSessions } from "@nyte-ai/app/bridge.ts";
@@ -98,14 +99,12 @@ function echoModels(): MutableModels {
     const lastUser = context.messages.findLast((item) => item.role === "user");
     const text = contentText(lastUser?.content ?? "");
     const result = context.messages.findLast((item) => item.role === "toolResult");
+    const tools = getCurrentTools(context.messages);
     const delegate =
       (text === "delegate" || text === "delegate explore") &&
       result === undefined &&
-      context.tools?.some((tool) => tool.name === "task") === true;
-    const ask =
-      text === "ask" &&
-      result === undefined &&
-      context.tools?.some((tool) => tool.name === "ask") === true;
+      tools.some((tool) => tool.name === "task");
+    const ask = text === "ask" && result === undefined && tools.some((tool) => tool.name === "ask");
     const message: AssistantMessage = {
       role: "assistant",
       content: delegate
@@ -1284,18 +1283,21 @@ test("thread choices survive workspace switches and restart before and after the
   assert.deepEqual(snapshot?.session.config, selected);
 });
 
-test("plugin load status retains the available failure record only in main", async () => {
+test("failed plugin preparation rejects activation and retains the available failure record only in main", async () => {
   const { root, createHost, events } = await fixture();
   const path = join(root, "plugin-project");
-  const directory = join(path, ".nyte", "plugins");
+  const directory = join(path, ".nyte", "plugins", "broken");
   await mkdir(directory, { recursive: true });
-  const plugin = join(directory, "broken.mjs");
+  const plugin = join(directory, "index.js");
   await writeFile(plugin, 'throw new Error("synthetic-secret-plugin-body");\n');
   const host = createHost();
   await host.call(1, "host.openWorkspace", { path });
   await host.call(1, "host.trustWorkspace", { path });
   const before = new Set(ipcDiagnostics.keys());
-  await host.call(1, "sessions.create", { name: "Plugin failure" });
+  await assert.rejects(
+    host.call(1, "sessions.create", { name: "Plugin failure" }),
+    /synthetic-secret-plugin-body/,
+  );
   const status = events.filter((event) => event.kind === "status");
   assert.equal(status.length, 1);
   const diagnostics = [...ipcDiagnostics.entries()].filter(([id]) => !before.has(id));
@@ -1304,5 +1306,5 @@ test("plugin load status retains the available failure record only in main", asy
   assert.ok(diagnostic);
   assert.deepEqual(diagnostic[1], { path: plugin, error: "synthetic-secret-plugin-body" });
   assert.equal(status[0]?.message, `The host operation failed. Diagnostic ID: ${diagnostic[0]}`);
-  assert.doesNotMatch(JSON.stringify(status), /synthetic-secret-plugin-body|broken.mjs/);
+  assert.doesNotMatch(JSON.stringify(status), /synthetic-secret-plugin-body|broken\/index.js/);
 });

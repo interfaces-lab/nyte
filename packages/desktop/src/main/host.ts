@@ -13,12 +13,13 @@ import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { MutableModels } from "@nyte-ai/ai";
-import { createNyte, dispatch, watchPluginDirectories } from "@nyte-ai/core";
+import { createNyte, dispatch } from "@nyte-ai/core";
+import { watchPluginDirectories } from "@nyte-ai/host/plugins";
+import type { ResolvedPlugins } from "@nyte-ai/host/plugins";
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { Environment, OperationInput } from "@nyte-ai/protocol";
 import type {
   Disposer,
-  ResolvedPlugins,
   SessionActivation,
   SessionId,
   SessionInfo,
@@ -66,6 +67,7 @@ import type {
   UsageScanReader,
 } from "@nyte-ai/host/store-usage";
 import { SDK_OPERATION_PATHS } from "../shared/ipc.ts";
+import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
 import type {
   CallInput,
   CallOutput,
@@ -1491,6 +1493,7 @@ export class DesktopHost {
     try {
       await store.ready();
 
+      const codemode = codemodeRuntimeOptions();
       const extraPlugins = [
         browserToolsPlugin({
           agent: this.dependencies.browser.agent,
@@ -1513,20 +1516,19 @@ export class DesktopHost {
         if (host === undefined || stopPluginWatch !== undefined) return;
         stopPluginWatch = watchPluginDirectories({
           directories: pluginWatchTargets(resolved),
-          // Runners wait on the hold, so a plugin the model just wrote is in its next request.
-          hold: () => host.holdPlugins(),
           onChange: async () => {
             const reloaded = await resolveHostPlugins(resolved, {
               models,
               model: fallback,
               extra: extraPlugins,
+              codemode,
             });
 
-            for (const failure of reloaded.failures) reportPluginFailure(failure);
-            await host.setPlugins(reloaded.plugins);
+            const replacement = await host.setPlugins(reloaded.plugins);
+            if (replacement.kind === "rejected") throw new Error(replacement.error);
           },
           onError: (error) =>
-            this.dependencies.emitHostEvent({ kind: "status", message: error.message }),
+            this.dependencies.emitHostEvent({ kind: "status", message: ipcFailure(error).message }),
         });
       };
 
@@ -1556,6 +1558,7 @@ export class DesktopHost {
           },
           onFailure: reportPluginFailure,
           extra: extraPlugins,
+          codemode,
         },
       });
 
@@ -2527,6 +2530,13 @@ export class DesktopHost {
           list: (input) => sdk(input.sessionId).plugins.status.list(input),
         },
       },
+      cacheWarming: {
+        status: (input) => sdk(input.sessionId).cacheWarming.status(input),
+        modeChanged: () => {
+          for (const open of new Set([cursor.open, ...cursor.sessionOwners.values()]))
+            open.sdk.cacheWarming.modeChanged();
+        },
+      },
       watch: (input) => sdk(input.sessionId).watch(input),
       attach: (input) => cursor.open.sdk.attach(input),
       advance: (input) => sdk(input.sessionId).advance(input),
@@ -2534,7 +2544,6 @@ export class DesktopHost {
       sessionCwd: (input) => sdk(input.sessionId).sessionCwd(input),
       relocate: (input) => sdk(input.sessionId).relocate(input),
       setPlugins: (plugins, input) => sdk(input?.sessionId).setPlugins(plugins, input),
-      holdPlugins: () => cursor.open.sdk.holdPlugins(),
       close: () => cursor.open.sdk.close(),
     };
   }
