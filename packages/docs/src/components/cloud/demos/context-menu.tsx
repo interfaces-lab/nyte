@@ -1,7 +1,13 @@
 "use client";
 import { shape } from "@nyte-ai/ui/schema.stylex";
 
-import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "@nyte-ai/ui/context-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@nyte-ai/ui/context-menu";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 
@@ -24,17 +30,20 @@ const styles = create({
 
 export function ContextMenuDemo() {
   return (
-    <ContextMenu label="Session" trigger={<div {...props(styles.area)}>Right click this area</div>}>
-      <ContextMenuItem icon="pencil" onSelect={() => {}}>
-        Rename
-      </ContextMenuItem>
-      <ContextMenuItem icon="archive" onSelect={() => {}}>
-        Archive
-      </ContextMenuItem>
-      <ContextMenuSeparator />
-      <ContextMenuItem icon="trash" danger onSelect={() => {}}>
-        Delete
-      </ContextMenuItem>
+    <ContextMenu>
+      <ContextMenuTrigger render={<div {...props(styles.area)}>Right click this area</div>} />
+      <ContextMenuContent aria-label="Session">
+        <ContextMenuItem icon="pencil" onClick={() => {}}>
+          Rename
+        </ContextMenuItem>
+        <ContextMenuItem icon="archive" onClick={() => {}}>
+          Archive
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem icon="trash" variant="danger" onClick={() => {}}>
+          Delete
+        </ContextMenuItem>
+      </ContextMenuContent>
     </ContextMenu>
   );
 }

@@ -1,40 +1,47 @@
 ---
 title: Context menu
-description: "A menu that appears at the pointer on right click or long press"
+description: "A menu that opens at the pointer on right click or long press"
 ---
 
 ```ts title="Import"
-import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "@nyte-ai/ui";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@nyte-ai/ui/context-menu";
 ```
 
-The same names are exported from their own subpath. Pick one path per file.
-
-```ts title="Subpath"
-import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from "@nyte-ai/ui/context-menu";
-```
-
-A menu that opens where the user right clicks or long presses inside an area. It shares the
-surface and rows of [Menu](/cloud/components/menu).
+Many people never right-click, so give every action another way in.
 
 ## Usage
 
-- Treat a context menu as a shortcut. Users may not discover it, especially on touch devices or
-  with assistive technology, so expose the same actions from a visible control such as a
-  [Menu](/cloud/components/menu) button.
-- `trigger` is the area that responds to right click and long press. It receives the handlers, so
-  pass an element that renders its own node.
-- `label` names the popup for assistive technology.
-- Items run `onSelect` and close the menu.
-- `xstyle`, `className`, and `style` go to the popup on `ContextMenu` and to the row on
-  `ContextMenuItem`.
-- The popup attaches the ref from [Overlays](/cloud/foundations/overlays).
+- Name `ContextMenuContent` with `aria-label`.
 
 ## Anatomy
 
 ```tsx
 <ContextMenu>
-  <ContextMenuItem />
-  <ContextMenuSeparator />
+  <ContextMenuTrigger />
+  <ContextMenuContent>
+    <ContextMenuGroup>
+      <ContextMenuGroupLabel />
+      <ContextMenuItem />
+      <ContextMenuLinkItem />
+      <ContextMenuCheckboxItem />
+    </ContextMenuGroup>
+    <ContextMenuSeparator />
+    <ContextMenuRadioGroup>
+      <ContextMenuRadioItem value="choice" />
+    </ContextMenuRadioGroup>
+    <ContextMenuSub>
+      <ContextMenuSubTrigger />
+      <ContextMenuSubContent>
+        <ContextMenuItem />
+      </ContextMenuSubContent>
+    </ContextMenuSub>
+  </ContextMenuContent>
 </ContextMenu>
 ```
 
@@ -45,50 +52,145 @@ surface and rows of [Menu](/cloud/components/menu).
 </Preview>
 
 ```tsx
-<ContextMenu label="Session" trigger={<div>Right click this area</div>}>
-  <ContextMenuItem icon="pencil" onSelect={rename}>
-    Rename
-  </ContextMenuItem>
-  <ContextMenuItem icon="archive" onSelect={archive}>
-    Archive
-  </ContextMenuItem>
-  <ContextMenuSeparator />
-  <ContextMenuItem icon="trash" danger onSelect={remove}>
-    Delete
-  </ContextMenuItem>
+<ContextMenu>
+  <ContextMenuTrigger render={<div>Right click this area</div>} />
+  <ContextMenuContent aria-label="Session">
+    <ContextMenuItem icon="pencil" onClick={() => {}}>
+      Rename
+    </ContextMenuItem>
+    <ContextMenuItem icon="archive" onClick={() => {}}>
+      Archive
+    </ContextMenuItem>
+    <ContextMenuSeparator />
+    <ContextMenuItem icon="trash" variant="danger" onClick={() => {}}>
+      Delete
+    </ContextMenuItem>
+  </ContextMenuContent>
 </ContextMenu>
+```
+
+```tsx
+<PreviewCard>
+  <ContextMenu>
+    <ContextMenuTrigger render={<PreviewCardTrigger render={row} delay={600} />} />
+    <ContextMenuContent aria-label={`Options for ${title}`}>{items}</ContextMenuContent>
+  </ContextMenu>
+  <PreviewCardContent side="right" align="start">
+    {details}
+  </PreviewCardContent>
+</PreviewCard>
 ```
 
 ## Props
 
-Every component below also takes `className` and `style`, merged onto the same element as
-`xstyle`. See [Theming](/cloud/foundations/theming).
+Every styled part takes `xstyle`, `className`, and `style`. See
+[Theming](/cloud/foundations/theming). `ContextMenu`, `ContextMenuTrigger`, `ContextMenuGroup`,
+`ContextMenuRadioGroup`, and `ContextMenuSub` are Base UI's.
+
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### ContextMenu
 
-| Prop           | Type                                    | Default | Description                           |
-| -------------- | --------------------------------------- | ------- | ------------------------------------- |
-| `label`        | `string`                                |         | Accessible name of the popup.         |
-| `trigger`      | `React.ReactElement`                    |         | The area that opens the menu.         |
-| `open`         | `boolean`                               |         | Controlled open state.                |
-| `onOpenChange` | `(open: boolean, eventDetails) => void` |         | Called when the menu opens or closes. |
-| `xstyle`       | `XStyle`                                |         | Merged last onto the popup.           |
+<include>../../base-ui-reference/context-menu/Root.md</include>
 
-The popup opens at the pointer, keeps 8px from the viewport edge, and flips when there is no room.
+### ContextMenuTrigger
+
+<include>../../base-ui-reference/context-menu/Trigger.md</include>
+
+### ContextMenuContent
+
+Renders the portal, positioner, and popup. Positioning props go to the positioner and the rest,
+including `ref`, to the popup. The popup opens at the pointer unless `anchor` is set.
+
+| Prop                 | Type                 | Default                                                      |
+| -------------------- | -------------------- | ------------------------------------------------------------ |
+| `collisionAvoidance` | `CollisionAvoidance` | `{ side: "flip", align: "shift", fallbackAxisSide: "none" }` |
+| `collisionPadding`   | `number \| Padding`  | `8`                                                          |
+| `tint`               | `Tint`               |                                                              |
+
+#### Positioner
+
+<include>../../base-ui-reference/context-menu/Positioner.md</include>
+
+#### Popup
+
+<include>../../base-ui-reference/context-menu/Popup.md</include>
+
+### ContextMenuSubContent
+
+Takes the same props as `ContextMenuContent`.
+
+| Prop          | Default                           |
+| ------------- | --------------------------------- |
+| `side`        | `"right"`                         |
+| `align`       | `"start"`                         |
+| `sideOffset`  | `6`                               |
+| `alignOffset` | `0` when centered, otherwise `-4` |
+
+### Rows
+
+Each row takes the props of its [Menu](/cloud/components/menu#menuitem) counterpart.
+`ContextMenuItem` has no `selected`. There is no switch item.
+
+| Part                      | As                 |
+| ------------------------- | ------------------ |
+| `ContextMenuItem`         | `MenuItem`         |
+| `ContextMenuLinkItem`     | `MenuLinkItem`     |
+| `ContextMenuRadioItem`    | `MenuRadioItem`    |
+| `ContextMenuCheckboxItem` | `MenuCheckboxItem` |
+| `ContextMenuSubTrigger`   | `MenuSubTrigger`   |
+| `ContextMenuSeparator`    | `MenuSeparator`    |
+| `ContextMenuGroupLabel`   | `MenuGroupLabel`   |
 
 ### ContextMenuItem
 
-Takes `onSelect`, `icon`, `leading`, `meta`, `danger`, `disabled`, `textValue`, `size`, `layout`,
-`background`, and `xstyle`, as [MenuItem](/cloud/components/menu#menuitem) does.
+<include>../../base-ui-reference/context-menu/Item.md</include>
+
+### ContextMenuLinkItem
+
+<include>../../base-ui-reference/context-menu/LinkItem.md</include>
+
+### ContextMenuCheckboxItem
+
+<include>../../base-ui-reference/context-menu/CheckboxItem.md</include>
+
+### ContextMenuRadioGroup
+
+<include>../../base-ui-reference/context-menu/RadioGroup.md</include>
+
+### ContextMenuRadioItem
+
+`closeOnClick` defaults to `true`, not Base UI's `false`.
+
+<include>../../base-ui-reference/context-menu/RadioItem.md</include>
+
+### ContextMenuGroup
+
+<include>../../base-ui-reference/context-menu/Group.md</include>
+
+### ContextMenuGroupLabel
+
+<include>../../base-ui-reference/context-menu/GroupLabel.md</include>
 
 ### ContextMenuSeparator
 
-Takes `xstyle`, `className`, and `style`.
+<include>../../base-ui-reference/context-menu/Separator.md</include>
+
+### ContextMenuSub
+
+<include>../../base-ui-reference/context-menu/SubmenuRoot.md</include>
+
+### ContextMenuSubTrigger
+
+`openOnHover` is fixed to `false`.
+
+<include>../../base-ui-reference/context-menu/SubmenuTrigger.md</include>
 
 ## Accessibility
 
-- Right click or long press inside the trigger opens the menu. Escape closes it.
-- The popup has `role="menu"` and the `label` as its name. Items are `menuitem`.
-- Arrow Down and Up move the highlight and wrap. Typing matches item text, overridden by
-  `textValue`. Enter and Space activate.
+- The popup has `role="menu"`. Items are `menuitem`, radio items `menuitemradio`, and checkbox
+  items `menuitemcheckbox` with `aria-checked`.
+- Arrow Down and Up move focus and wrap. Typing matches item text, or `label` when set. Enter and
+  Space activate. Escape closes.
+- Arrow Right opens a submenu. Arrow Left closes it.
 - Disabled items stay reachable with the arrow keys and do not activate.
