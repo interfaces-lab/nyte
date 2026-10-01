@@ -2,14 +2,34 @@
  * Async event queue with a promise for the terminal result. AssistantMessageEventStream is the stream every adapter returns: events are pushed as they arrive, and `result()` resolves with the final AssistantMessage once `done` or `error` is pushed.
  *
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/event-stream.ts
- * Synced with pi 7ebf9087e.
+ * Synced with pi 7fbbd5f4a.
  */
 import type { AssistantMessage, AssistantMessageEvent } from "@nyte-ai/schema";
 
+class FifoQueue<T> {
+  private incoming: T[] = [];
+  private outgoing: T[] = [];
+
+  enqueue(value: T): void {
+    this.incoming.push(value);
+  }
+
+  dequeue(): T | undefined {
+    if (this.outgoing.length === 0) {
+      const drained = this.incoming;
+      drained.reverse();
+      this.incoming = this.outgoing;
+      this.outgoing = drained;
+    }
+
+    return this.outgoing.pop();
+  }
+}
+
 // Generic event stream class for async iteration
 export class EventStream<T, R = T> implements AsyncIterable<T> {
-  private queue: T[] = [];
-  private waiting: ((value: IteratorResult<T>) => void)[] = [];
+  private queue = new FifoQueue<IteratorYieldResult<T>>();
+  private waiting = new FifoQueue<(value: IteratorResult<T>) => void>();
   private done = false;
   private finalResult = Promise.withResolvers<R>();
   private isComplete: (event: T) => boolean;
@@ -29,12 +49,13 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
     }
 
     // Deliver to waiting consumer or queue it
-    const waiter = this.waiting.shift();
+    const next: IteratorYieldResult<T> = { value: event, done: false };
+    const waiter = this.waiting.dequeue();
 
     if (waiter) {
-      waiter({ value: event, done: false });
+      waiter(next);
     } else {
-      this.queue.push(event);
+      this.queue.enqueue(next);
     }
   }
 
@@ -46,20 +67,22 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
     }
 
     // Notify all waiting consumers that we're done
-    for (const waiter of this.waiting.splice(0)) {
+    for (let waiter = this.waiting.dequeue(); waiter; waiter = this.waiting.dequeue()) {
       waiter({ value: undefined, done: true });
     }
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<T> {
     while (true) {
-      if (this.queue.length > 0) {
-        yield* this.queue.splice(0, 1);
+      const queued = this.queue.dequeue();
+
+      if (queued) {
+        yield queued.value;
       } else if (this.done) {
         return;
       } else {
         const result = await new Promise<IteratorResult<T>>((resolve) =>
-          this.waiting.push(resolve),
+          this.waiting.enqueue(resolve),
         );
 
         if (result.done) return;
