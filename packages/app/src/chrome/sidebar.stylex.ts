@@ -316,12 +316,13 @@ export const sidebarStyles = create({
   workspaceChevronOpen: { transform: "rotate(0deg)" },
   workspaceUnavailable: { color: role.contentSecondary },
   /**
-   * The time holds a column at rest. Once the actions show it shrinks to its
-   * text, so the lane can sit against the digits rather than the column edge.
+   * The time holds a column at rest. Once the actions show it shrinks to two
+   * digits, so the lane sits against the time and stays put between `2h` and `20h`.
    */
   rowMeta: {
     anchorName: "--nyte-row-time",
-    minWidth: `calc(${sidebar.metaWidth} * (1 - var(--_row-actions-opacity, 0)))`,
+    minWidth: `max(3ch, calc(${sidebar.metaWidth} * (1 - var(--_row-actions-opacity, 0))))`,
+    fontVariantNumeric: "tabular-nums",
     justifyContent: "flex-end",
     color: "var(--_row-meta-color)",
     fontSize: type.fontXs,
