@@ -4,12 +4,6 @@ description: "A multi-line field with vertical resize"
 ---
 
 ```ts title="Import"
-import { Textarea } from "@nyte-ai/ui";
-```
-
-The same `Textarea` is exported from its own subpath. Pick one path per file.
-
-```ts title="Subpath"
 import { Textarea } from "@nyte-ai/ui/textarea";
 ```
 
@@ -17,10 +11,7 @@ A native `<textarea>` in the frame of [Input](/cloud/components/input).
 
 ## Usage
 
-- Same naming rule as Input. Use a label, `aria-label`, or `aria-labelledby`.
-- `variant` and `size` match Input's framed variants. There is no `bare` textarea.
-- It starts 64px tall and resizes vertically. To stop it growing, set `resize: "none"` through
-  `xstyle`.
+- It resizes vertically. `resize: "none"` in `xstyle` turns that off.
 
 ## Examples
 
@@ -34,15 +25,14 @@ A native `<textarea>` in the frame of [Input](/cloud/components/input).
 
 ## Props
 
-`TextareaProps` takes every `<textarea>` prop, with `className` and `style` replaced by the styled
-versions, plus:
+`TextareaProps` takes every `<textarea>` prop plus:
 
-| Prop                           | Type                                      | Default     | Description |
-| ------------------------------ | ----------------------------------------- | ----------- | ----------- |
-| `variant`                      | `"raised" \| "quiet"`                     | `"raised"`  | The frame.  |
-| `size`                         | `"sm" \| "default" \| "lg"`               | `"default"` | Type size.  |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |             |             |
+| Prop                           | Type                                      | Default    | Description |
+| ------------------------------ | ----------------------------------------- | ---------- | ----------- |
+| `variant`                      | `"raised" \| "quiet"`                     | `"raised"` |             |
+| `size`                         | `"md" \| "lg" \| "xl"`                    | `"md"`     |             |
+| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |            |             |
 
 ## Accessibility
 
-Native. `aria-invalid` turns the border red. The border changes color on focus.
+Focus recolors the border. `aria-invalid` turns it red.

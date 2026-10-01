@@ -1,6 +1,7 @@
 "use client";
 
-import { Icon, Input, InputGroup, Textarea } from "@nyte-ai/ui";
+import { Icon } from "@nyte-ai/ui/icon";
+import { Input, InputGroup, Textarea } from "@nyte-ai/ui/input";
 
 export function InputDemo() {
   return (

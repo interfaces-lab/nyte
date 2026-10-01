@@ -7,10 +7,10 @@ import { Input as InputPrimitive } from "@base-ui/react/input";
 import { create, props } from "@stylexjs/stylex";
 import { createContext, use, type JSX, type ReactElement } from "react";
 
-import { input } from "../../schema.stylex.ts";
-import { mergeStyleProps, type StyledProps } from "../../style.ts";
-import { intent } from "../../surface-theme.ts";
-import { appearance, role, type } from "../../vars.stylex.ts";
+import { input, target } from "./schema.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
+import { intent } from "./surface-theme.ts";
+import { appearance, role, type } from "./vars.stylex.ts";
 
 const field = create({
   base: {
@@ -32,7 +32,7 @@ const field = create({
   },
   bare: {
     padding: 0,
-    minHeight: { default: 24, "@media (pointer: coarse)": 44 },
+    minHeight: target.min,
     appearance: "none",
     borderStyle: "none",
     outlineStyle: "none",
@@ -94,7 +94,7 @@ const group = create({
   },
 });
 
-/** Notion Calendar's input sizes, which grow under a coarse pointer. */
+/** Input sizes grow under a coarse pointer. */
 const sizes = create({
   md: {
     "--_input-radius": input.radiusMd,
@@ -102,7 +102,7 @@ const sizes = create({
     "--_input-padding-end": input.paddingEndMd,
     "--_input-textarea-min-height": input.textareaMinHeightMd,
     "--_input-textarea-padding-block": input.textareaPaddingBlockMd,
-    minHeight: { default: 24, "@media (pointer: coarse)": 44 },
+    minHeight: target.min,
     height: input.heightMd,
   },
   lg: {
@@ -111,7 +111,7 @@ const sizes = create({
     "--_input-padding-end": input.paddingEndLg,
     "--_input-textarea-min-height": input.textareaMinHeightLg,
     "--_input-textarea-padding-block": input.textareaPaddingBlockLg,
-    minHeight: { default: 24, "@media (pointer: coarse)": 44 },
+    minHeight: target.min,
     height: input.heightLg,
   },
   xl: {
@@ -120,7 +120,7 @@ const sizes = create({
     "--_input-padding-end": input.paddingEndXl,
     "--_input-textarea-min-height": input.textareaMinHeightXl,
     "--_input-textarea-padding-block": input.textareaPaddingBlockXl,
-    minHeight: { default: 24, "@media (pointer: coarse)": 44 },
+    minHeight: target.min,
     height: input.heightXl,
   },
 });

@@ -4,32 +4,16 @@ description: "A single-line text field, framed alone or inside a group"
 ---
 
 ```ts title="Import"
-import { Input, InputGroup } from "@nyte-ai/ui";
-```
-
-The same names are exported from their own subpath. Pick one path per file.
-
-```ts title="Subpath"
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 ```
 
-A single-line text field. `InputGroup` draws the frame around an `Input` and the glyphs or controls
-beside it, such as a search icon or match toggles. For multi-line text use
+`InputGroup` frames an `Input` with the icons or controls beside it. For multi-line text, use
 [Textarea](/cloud/components/textarea).
 
 ## Usage
 
-- Every input needs an accessible name from a `<label for>`, `aria-label`, or `aria-labelledby`.
-  A placeholder is not a name.
-- `raised` is the default frame, for panels and the workbench. `quiet` sits on a filled settings
-  surface. `bare` drops the frame, for a field whose container already draws one.
-- Inside an `InputGroup`, `Input` defaults to `bare`, takes the group's `size`, and grows to fill
-  the row.
-- `size` sets the type and, for a framed input or a group, the height. `sm` is 24px, `default` is
-  28px, and `lg` is 36px.
-- `value` with `onValueChange` controls the field. `onValueChange` receives the string.
-- Set `aria-invalid` when validation fails. The border turns red.
-- The input has no width of its own. Size it with the parent or with `xstyle`.
+- Inside an `InputGroup`, set `size` and `variant` on the group. The `Input` drops its frame and
+  fills the row.
 
 ## Anatomy
 
@@ -53,8 +37,6 @@ beside it, such as a search icon or match toggles. For multi-line text use
 ```
 
 ### In a group
-
-The group is a `<label>`, so a click on the icon focuses the input.
 
 <Preview>
   <InputGroupDemo />
@@ -83,13 +65,13 @@ const [query, setQuery] = useState("");
 
 ### Input
 
-Every Base UI `Input` prop passes through, except the native `size` attribute.
+Takes every Base UI `Input` prop except the native `size` attribute.
 
-| Prop                           | Type                                      | Default                             | Description                                                    |
-| ------------------------------ | ----------------------------------------- | ----------------------------------- | -------------------------------------------------------------- |
-| `variant`                      | `"raised" \| "quiet" \| "bare"`           | `"raised"`, `"bare"` inside a group | The frame.                                                     |
-| `size`                         | `"md" \| "lg" \| "xl"`                    | `"md"`, or the group's size         | Framed height: 28, 32, or 36px, larger under a coarse pointer. |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |                                     |                                                                |
+| Prop                           | Type                                      | Default                             | Description |
+| ------------------------------ | ----------------------------------------- | ----------------------------------- | ----------- |
+| `variant`                      | `"raised" \| "quiet" \| "bare"`           | `"raised"`, `"bare"` inside a group |             |
+| `size`                         | `"md" \| "lg" \| "xl"`                    | `"md"`, or the group's size         |             |
+| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |                                     |             |
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
@@ -97,16 +79,15 @@ The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
 ### InputGroup
 
-Every native `<label>` attribute passes through.
+Takes every native `<label>` attribute.
 
 | Prop                           | Type                                      | Default    | Description                          |
 | ------------------------------ | ----------------------------------------- | ---------- | ------------------------------------ |
-| `variant`                      | `"raised" \| "quiet"`                     | `"raised"` | The frame.                           |
+| `variant`                      | `"raised" \| "quiet"`                     | `"raised"` |                                      |
 | `size`                         | `"md" \| "lg" \| "xl"`                    | `"md"`     | Height, and the size of its `Input`. |
 | `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |            |                                      |
 
 ## Accessibility
 
-- A native `<input>`, so all native keyboard behavior applies.
 - `InputGroup` renders a `<label>`. An `aria-label` on the input still wins as its name.
-- A framed input changes its border color on focus. A group does the same on `:focus-within`.
+- Focus recolors the border of the input, or of its group.
