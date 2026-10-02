@@ -13,7 +13,7 @@ import {
 } from "@nyte-ai/ai";
 import type { Api, Model, Models } from "@nyte-ai/ai";
 import type { ModelCatalog } from "@nyte-ai/core";
-import { fastModeSettingId } from "@nyte-ai/plugin/examples/fast-mode";
+import { fastModeSettingId, supportsFastMode } from "@nyte-ai/plugin/examples/fast-mode";
 import { schemas } from "@nyte-ai/protocol";
 import type {
   CatalogModel,
@@ -259,7 +259,7 @@ export async function readCatalog(
           cacheRead: model.cost.cacheRead,
           cacheWrite: model.cost.cacheWrite,
         },
-        fastMode: model.modes?.includes("fast")
+        fastMode: supportsFastMode(model)
           ? { kind: "available", settingId: fastModeSettingId(model.provider) }
           : { kind: "unavailable" },
         thinkingLevels: getSupportedThinkingLevels(model),

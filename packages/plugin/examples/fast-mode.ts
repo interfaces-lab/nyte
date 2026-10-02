@@ -1,10 +1,10 @@
 /**
  * Fast inference as session policy. A host supplies its selected model, then
  * the plugin contributes provider-scoped fast-mode settings and patches only
- * requests whose resolved model advertises the mode. `/fast` remains the
- * default model's shortcut. Values live in plugin storage, so a fresh host
- * sees the same provider selections the last one wrote; a client reads them
- * back through `plugins.settings.list`.
+ * requests whose resolved model advertises the mode on an API that honours
+ * it. `/fast` remains the default model's shortcut. Values live in plugin
+ * storage, so a fresh host sees the same provider selections the last one
+ * wrote; a client reads them back through `plugins.settings.list`.
  */
 import { definePlugin } from "@nyte-ai/plugin";
 import type { Api, Model } from "@nyte-ai/schema";
@@ -29,8 +29,19 @@ function enabledKey(provider: string): string {
   return `enabled:${provider}`;
 }
 
-function supportsFastMode(model: Model<Api>): boolean {
-  return model.modes?.includes("fast") ?? false;
+/** Anthropic's `speed` exists only on its first-party API; other APIs drop `fast`. */
+export function supportsFastMode(model: Model<Api>): boolean {
+  if (model.modes?.includes("fast") !== true) return false;
+
+  switch (model.api) {
+    case "openai-responses":
+    case "openai-codex-responses":
+      return true;
+    case "anthropic-messages":
+      return model.provider === "anthropic";
+    default:
+      return false;
+  }
 }
 
 export function fastModeSettingId(provider: string): string {
