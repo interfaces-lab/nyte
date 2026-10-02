@@ -356,7 +356,6 @@ export function FilesPanel({
           />
           <MenuContent align="end" xstyle={styles.menu}>
             <MenuItem
-              background="highlightOnly"
               layout="plain"
               meta={macPlatform(undefined) ? "⌘S" : "Ctrl+S"}
               disabled={!unsaved}
@@ -367,7 +366,6 @@ export function FilesPanel({
               Save File
             </MenuItem>
             <MenuItem
-              background="highlightOnly"
               layout="plain"
               disabled={activeFile === undefined}
               onClick={() => {
@@ -378,7 +376,6 @@ export function FilesPanel({
             </MenuItem>
             <MenuSeparator inset />
             <MenuItem
-              background="highlightOnly"
               layout="plain"
               disabled={activeFile === undefined}
               onClick={() => {
@@ -388,7 +385,6 @@ export function FilesPanel({
               Copy Path
             </MenuItem>
             <MenuItem
-              background="highlightOnly"
               layout="plain"
               disabled={activeFile === undefined}
               onClick={() => {
@@ -399,7 +395,6 @@ export function FilesPanel({
             </MenuItem>
             {revealPath !== undefined && (
               <MenuItem
-                background="highlightOnly"
                 layout="plain"
                 disabled={activeFile === undefined}
                 onClick={() => {
@@ -411,7 +406,6 @@ export function FilesPanel({
             )}
             <MenuSeparator inset />
             <MenuSwitchItem
-              background="highlightOnly"
               layout="plain"
               checked={preferences.lineNumbers}
               onCheckedChange={(checked) => setFilePreference("lineNumbers", checked)}
@@ -419,7 +413,6 @@ export function FilesPanel({
               Line Numbers
             </MenuSwitchItem>
             <MenuSwitchItem
-              background="highlightOnly"
               layout="plain"
               checked={preferences.wordWrap}
               onCheckedChange={(checked) => setFilePreference("wordWrap", checked)}
@@ -427,7 +420,6 @@ export function FilesPanel({
               Word Wrap
             </MenuSwitchItem>
             <MenuSwitchItem
-              background="highlightOnly"
               layout="plain"
               checked={preferences.gitBlame}
               onCheckedChange={(checked) => setFilePreference("gitBlame", checked)}
@@ -435,7 +427,6 @@ export function FilesPanel({
               Git Blame
             </MenuSwitchItem>
             <MenuSwitchItem
-              background="highlightOnly"
               layout="plain"
               checked={preferences.autoSave}
               onCheckedChange={(checked) => setFilePreference("autoSave", checked)}
@@ -443,7 +434,6 @@ export function FilesPanel({
               Auto Save
             </MenuSwitchItem>
             <MenuSwitchItem
-              background="highlightOnly"
               layout="plain"
               checked={preferences.formatOnSave}
               onCheckedChange={(checked) => setFilePreference("formatOnSave", checked)}
@@ -452,7 +442,6 @@ export function FilesPanel({
             </MenuSwitchItem>
             <MenuSeparator inset />
             <MenuItem
-              background="highlightOnly"
               layout="plain"
               variant={unsaved ? "danger" : "default"}
               disabled={!unsaved}

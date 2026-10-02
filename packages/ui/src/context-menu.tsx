@@ -12,7 +12,7 @@ import {
   menuItemStyle,
   menuStyles,
   useMenuPopupRef,
-  type MenuItemRowProps,
+  type MenuItemBodyProps,
   type MenuItemVariant,
 } from "./menu.tsx";
 
@@ -145,13 +145,12 @@ export function ContextMenuSubContent({
 }
 
 export type ContextMenuItemProps = StyledProps<ContextMenuPrimitive.Item.Props> &
-  MenuItemRowProps & {
+  MenuItemBodyProps & {
     readonly variant?: MenuItemVariant;
   };
 
 export function ContextMenuItem({
   variant = "default",
-  background,
   layout,
   icon,
   leading,
@@ -165,7 +164,7 @@ export function ContextMenuItem({
   return (
     <ContextMenuPrimitive.Item
       data-slot="context-menu-item"
-      {...menuItemStyle({ background, layout }, variant, { xstyle, className, style })}
+      {...menuItemStyle({ layout }, variant, { xstyle, className, style })}
       {...rest}
     >
       <MenuItemBody icon={icon} leading={leading} meta={meta} layout={layout}>
@@ -176,10 +175,9 @@ export function ContextMenuItem({
 }
 
 export type ContextMenuLinkItemProps = StyledProps<ContextMenuPrimitive.LinkItem.Props> &
-  MenuItemRowProps;
+  MenuItemBodyProps;
 
 export function ContextMenuLinkItem({
-  background,
   layout,
   icon,
   leading,
@@ -193,7 +191,7 @@ export function ContextMenuLinkItem({
   return (
     <ContextMenuPrimitive.LinkItem
       data-slot="context-menu-link-item"
-      {...menuItemStyle({ background, layout }, "default", {
+      {...menuItemStyle({ layout }, "default", {
         xstyle: [menuStyles.link, xstyle],
         className,
         style,
@@ -208,11 +206,10 @@ export function ContextMenuLinkItem({
 }
 
 export type ContextMenuRadioItemProps = StyledProps<ContextMenuPrimitive.RadioItem.Props> &
-  MenuItemRowProps;
+  MenuItemBodyProps;
 
 export function ContextMenuRadioItem({
   closeOnClick = true,
-  background,
   layout,
   icon,
   leading,
@@ -227,7 +224,7 @@ export function ContextMenuRadioItem({
     <ContextMenuPrimitive.RadioItem
       data-slot="context-menu-radio-item"
       closeOnClick={closeOnClick}
-      {...menuItemStyle({ background, layout }, "default", { xstyle, className, style })}
+      {...menuItemStyle({ layout }, "default", { xstyle, className, style })}
       {...rest}
     >
       <MenuItemBody
@@ -250,10 +247,9 @@ export function ContextMenuRadioItem({
 }
 
 export type ContextMenuCheckboxItemProps = StyledProps<ContextMenuPrimitive.CheckboxItem.Props> &
-  MenuItemRowProps;
+  MenuItemBodyProps;
 
 export function ContextMenuCheckboxItem({
-  background,
   layout,
   icon,
   leading,
@@ -267,7 +263,7 @@ export function ContextMenuCheckboxItem({
   return (
     <ContextMenuPrimitive.CheckboxItem
       data-slot="context-menu-checkbox-item"
-      {...menuItemStyle({ background, layout }, "default", { xstyle, className, style })}
+      {...menuItemStyle({ layout }, "default", { xstyle, className, style })}
       {...rest}
     >
       <MenuItemBody
@@ -292,7 +288,7 @@ export function ContextMenuCheckboxItem({
 export type ContextMenuSubTriggerProps = StyledProps<
   Omit<ContextMenuPrimitive.SubmenuTrigger.Props, "openOnHover">
 > &
-  Omit<MenuItemRowProps, "meta" | "background"> & {
+  Omit<MenuItemBodyProps, "meta"> & {
     /** The current choice, shown before the chevron. */
     readonly value?: ReactNode;
   };

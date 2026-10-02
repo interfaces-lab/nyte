@@ -95,13 +95,11 @@ export const menuStyles = create({
     backgroundColor: {
       default: "transparent",
       "[data-highlighted]": role.bgHover,
-      "[data-checked]": role.bgInteractiveSecondaryTranslucent,
       "[data-nyte-selected='true']": role.bgInteractiveSecondaryTranslucent,
     },
     // A selected row carries a hairline, so it reads apart from the hovered one.
     boxShadow: {
       default: "none",
-      "[data-checked]": `inset 0 0 0 1px ${role.borderPrimary}`,
       "[data-nyte-selected='true']": `inset 0 0 0 1px ${role.borderPrimary}`,
     },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
@@ -223,25 +221,6 @@ const itemVariants = create({
 /** `danger` paints the row in the danger hue. */
 export type MenuItemVariant = keyof typeof itemVariants;
 
-/**
- * `highlightOnly` suppresses the checked fill, leaving the pointer highlight as
- * the row's only paint, for rows whose own control already shows their state.
- */
-const itemBackgrounds = create({
-  default: {},
-  highlightOnly: {
-    backgroundColor: {
-      default: "transparent",
-      "[data-checked]": "transparent",
-      "[data-highlighted]": role.bgHover,
-      "[data-checked][data-highlighted]": role.bgHover,
-    },
-    boxShadow: "none",
-  },
-});
-
-export type MenuItemBackground = keyof typeof itemBackgrounds;
-
 /** `plain` drops the leading icon column. */
 const itemLayouts = create({
   menu: {},
@@ -314,12 +293,8 @@ export function MenuItemBody({
   );
 }
 
-export interface MenuItemRowProps extends MenuItemBodyProps {
-  readonly background?: MenuItemBackground;
-}
-
 export function menuItemStyle(
-  { background = "default", layout = "menu" }: Pick<MenuItemRowProps, "background" | "layout">,
+  { layout = "menu" }: Pick<MenuItemBodyProps, "layout">,
   variant: MenuItemVariant,
   { xstyle, className, style }: StyledProps<object>,
 ): ReturnType<typeof mergeStyleProps> {
@@ -328,7 +303,6 @@ export function menuItemStyle(
       variant === "danger" && intent.danger,
       menuStyles.item,
       itemVariants[variant],
-      itemBackgrounds[background],
       itemLayouts[layout],
       xstyle,
     ),
@@ -521,14 +495,13 @@ export function CommandMenuContent({
 }
 
 export type MenuItemProps = StyledProps<MenuPrimitive.Item.Props> &
-  MenuItemRowProps & {
+  MenuItemBodyProps & {
     readonly variant?: MenuItemVariant;
     readonly selected?: boolean;
   };
 
 export function MenuItem({
   variant = "default",
-  background,
   layout,
   icon,
   leading,
@@ -544,7 +517,7 @@ export function MenuItem({
     <MenuPrimitive.Item
       data-slot="menu-item"
       data-nyte-selected={selected}
-      {...menuItemStyle({ background, layout }, variant, { xstyle, className, style })}
+      {...menuItemStyle({ layout }, variant, { xstyle, className, style })}
       {...rest}
     >
       <MenuItemBody icon={icon} leading={leading} meta={meta} layout={layout}>
@@ -554,10 +527,9 @@ export function MenuItem({
   );
 }
 
-export type MenuLinkItemProps = StyledProps<MenuPrimitive.LinkItem.Props> & MenuItemRowProps;
+export type MenuLinkItemProps = StyledProps<MenuPrimitive.LinkItem.Props> & MenuItemBodyProps;
 
 export function MenuLinkItem({
-  background,
   layout,
   icon,
   leading,
@@ -571,7 +543,7 @@ export function MenuLinkItem({
   return (
     <MenuPrimitive.LinkItem
       data-slot="menu-link-item"
-      {...menuItemStyle({ background, layout }, "default", {
+      {...menuItemStyle({ layout }, "default", {
         xstyle: [menuStyles.link, xstyle],
         className,
         style,
@@ -585,11 +557,10 @@ export function MenuLinkItem({
   );
 }
 
-export type MenuRadioItemProps = StyledProps<MenuPrimitive.RadioItem.Props> & MenuItemRowProps;
+export type MenuRadioItemProps = StyledProps<MenuPrimitive.RadioItem.Props> & MenuItemBodyProps;
 
 export function MenuRadioItem({
   closeOnClick = true,
-  background,
   layout,
   icon,
   leading,
@@ -604,7 +575,7 @@ export function MenuRadioItem({
     <MenuPrimitive.RadioItem
       data-slot="menu-radio-item"
       closeOnClick={closeOnClick}
-      {...menuItemStyle({ background, layout }, "default", { xstyle, className, style })}
+      {...menuItemStyle({ layout }, "default", { xstyle, className, style })}
       {...rest}
     >
       <MenuItemBody
@@ -627,10 +598,9 @@ export function MenuRadioItem({
 }
 
 export type MenuCheckboxItemProps = StyledProps<MenuPrimitive.CheckboxItem.Props> &
-  MenuItemRowProps;
+  MenuItemBodyProps;
 
 export function MenuCheckboxItem({
-  background,
   layout,
   icon,
   leading,
@@ -644,7 +614,7 @@ export function MenuCheckboxItem({
   return (
     <MenuPrimitive.CheckboxItem
       data-slot="menu-checkbox-item"
-      {...menuItemStyle({ background, layout }, "default", { xstyle, className, style })}
+      {...menuItemStyle({ layout }, "default", { xstyle, className, style })}
       {...rest}
     >
       <MenuItemBody
@@ -667,12 +637,11 @@ export function MenuCheckboxItem({
 }
 
 export type MenuSwitchItemProps = StyledProps<MenuPrimitive.CheckboxItem.Props> &
-  Omit<MenuItemRowProps, "meta"> & { readonly checked: boolean };
+  Omit<MenuItemBodyProps, "meta"> & { readonly checked: boolean };
 
 /** A checkbox item drawn as a switch; it stays open so the change is visible. */
 export function MenuSwitchItem({
   checked,
-  background,
   layout,
   icon,
   leading,
@@ -686,7 +655,7 @@ export function MenuSwitchItem({
     <MenuPrimitive.CheckboxItem
       data-slot="menu-switch-item"
       checked={checked}
-      {...menuItemStyle({ background, layout }, "default", { xstyle, className, style })}
+      {...menuItemStyle({ layout }, "default", { xstyle, className, style })}
       {...rest}
     >
       <MenuItemBody
@@ -711,7 +680,7 @@ export function MenuSwitchItem({
 export type MenuSubTriggerProps = StyledProps<
   Omit<MenuPrimitive.SubmenuTrigger.Props, "openOnHover">
 > &
-  Omit<MenuItemRowProps, "meta" | "background"> & {
+  Omit<MenuItemBodyProps, "meta"> & {
     /** The current choice, shown before the chevron. */
     readonly value?: ReactNode;
   };
