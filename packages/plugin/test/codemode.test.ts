@@ -2,12 +2,20 @@ import { getCurrentTools } from "@nyte-ai/schema";
 import assert from "node:assert/strict";
 import { readFile, rm, stat } from "node:fs/promises";
 import { afterEach, test } from "vitest";
-import { definePlugin, inlinePlugin, ToolError } from "@nyte-ai/core/plugins";
+import { definePlugin, ToolError } from "@nyte-ai/core/plugins";
 import type { StreamFn } from "@nyte-ai/core";
 import { Type } from "typebox";
 import { codemodePlugin } from "../src/codemode.ts";
 import { executeCodemode } from "../src/codemode-execute.ts";
-import { TestWorkspace, prompt, respond, testModel, toolCall, toolResultOf } from "./host.ts";
+import {
+  TestWorkspace,
+  directCall,
+  prompt,
+  respond,
+  testModel,
+  toolCall,
+  toolResultOf,
+} from "./host.ts";
 
 const workspaces: TestWorkspace[] = [];
 afterEach(async () => {
@@ -54,7 +62,7 @@ const fixturePlugin = definePlugin({
           structuredContent: Type.Optional(Type.Object({ message: Type.String() })),
         }),
         exposure: "codemode",
-        execute: async (_id, { message }) => {
+        execute: async ({ message }) => {
           throw new ToolError({
             content: [{ type: "text", text: "not the structured result" }],
             details: {},
@@ -102,7 +110,7 @@ async function open(streamFn: StreamFn) {
   workspaces.push(world);
   const sdk = await world.open({
     streamFn,
-    plugins: [inlinePlugin(fixturePlugin), inlinePlugin(codemodePlugin())],
+    plugins: [fixturePlugin, codemodePlugin()],
     model: testModel,
   });
   return { world, sdk };
@@ -217,26 +225,24 @@ test.each(["codemode", "deferred"] as const)(
     const sdk = await world.open({
       model: testModel,
       plugins: [
-        inlinePlugin(codemodePlugin()),
-        inlinePlugin(
-          definePlugin({
-            id: "late-tools",
-            session(api) {
-              api.tools.add((draft) =>
-                draft.set("late_lookup", {
-                  name: "late_lookup",
-                  description: "Look up a late fixture",
-                  exposure,
-                  parameters: Type.Object({}),
-                  execute: async () => ({
-                    content: [{ type: "text", text: "found" }],
-                    details: {},
-                  }),
+        codemodePlugin(),
+        definePlugin({
+          id: "late-tools",
+          session(api) {
+            api.tools.add((draft) =>
+              draft.set("late_lookup", {
+                name: "late_lookup",
+                description: "Look up a late fixture",
+                exposure,
+                parameters: Type.Object({}),
+                execute: async () => ({
+                  content: [{ type: "text", text: "found" }],
+                  details: {},
                 }),
-              );
-            },
-          }),
-        ),
+              }),
+            );
+          },
+        }),
       ],
       streamFn: (model, context) => {
         const names = getCurrentTools(context.messages).map((tool) => tool.name);
@@ -265,7 +271,7 @@ test.each(["codemode", "deferred"] as const)(
 
 test("options truncate output to a private full-output file and timeouts keep partial output", async () => {
   const result = await executeCodemode({
-    toolCallId: "truncate",
+    call: directCall("truncate"),
     code: '// @options: {"max_output_tokens": 2}\ntext("prefix" + "x".repeat(200) + "suffix");',
   });
   const path = result.details.fullOutputPath;
@@ -283,7 +289,7 @@ test("options truncate output to a private full-output file and timeouts keep pa
   }
   await assert.rejects(
     executeCodemode({
-      toolCallId: "timeout",
+      call: directCall("timeout"),
       code: '// @options: {"timeout_ms": 1000}\ntext("before timeout"); while (true) {}',
     }),
     (error: unknown) => {

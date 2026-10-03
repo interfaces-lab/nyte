@@ -75,10 +75,12 @@ export type ActivationRequirement = {
   readonly cwd: string;
 };
 
+/** Success, error, and requirement: what a session can do, what stopped it, or what it needs first. */
 export type SessionActivationState =
   | { readonly kind: "active" }
   | { readonly kind: "inactive" }
-  | { readonly kind: "requires"; readonly requirement: ActivationRequirement };
+  | { readonly kind: "requires"; readonly requirement: ActivationRequirement }
+  | { readonly kind: "failed"; readonly error: string };
 
 export interface HeadInfo {
   readonly head: HeadName;

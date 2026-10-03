@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
 import { createAssistantMessageEventStream } from "@nyte-ai/ai";
 import type { Nyte, SessionId, StreamFn } from "@nyte-ai/core";
-import { definePlugin, inlinePlugin } from "@nyte-ai/plugin";
+import { definePlugin } from "@nyte-ai/plugin";
 import type { Api, Context, Model } from "@nyte-ai/schema";
 import { openaiAstraContextPlugin } from "../src/openai-astra-context.ts";
 import {
@@ -34,24 +34,22 @@ function modelFor(provider: string, id = "gpt-6-astra"): Model<Api> {
   };
 }
 
-const astra = inlinePlugin(openaiAstraContextPlugin());
-const nativeCompaction = inlinePlugin(
-  definePlugin({
-    id: "native-checkpoint-fixture",
-    session(api) {
-      api.hook("before_compaction", (event) => ({
-        material: {
-          type: "provider",
-          provider: event.model.provider,
-          api:
-            event.model.provider === "openai-codex" ? "openai-codex-responses" : "openai-responses",
-          model: event.model.modelId,
-          data: [{ type: "compaction", encrypted_content: "fixture-checkpoint" }],
-        },
-      }));
-    },
-  }),
-);
+const astra = openaiAstraContextPlugin();
+const nativeCompaction = definePlugin({
+  id: "native-checkpoint-fixture",
+  session(api) {
+    api.hook("before_compaction", (event) => ({
+      material: {
+        type: "provider",
+        provider: event.model.provider,
+        api:
+          event.model.provider === "openai-codex" ? "openai-codex-responses" : "openai-responses",
+        model: event.model.modelId,
+        data: [{ type: "compaction", encrypted_content: "fixture-checkpoint" }],
+      },
+    }));
+  },
+});
 
 // Provider usage makes the boundary exact without allocating a million-token conversation.
 function scriptedProvider(...tokens: number[]) {
@@ -277,19 +275,17 @@ test.each([
   async ({ provider, contextWindow }) => {
     const world = workspace();
     const remote = scriptedProvider(420_000, 450_000, 420_000, 20);
-    const override = inlinePlugin(
-      definePlugin({
-        id: "workspace-context-policy",
-        session(api) {
-          api.modelContext.add((draft) => {
-            draft.set(`${provider}/gpt-6-astra`, {
-              contextWindow,
-              compactAt: 450_000,
-            });
+    const override = definePlugin({
+      id: "workspace-context-policy",
+      session(api) {
+        api.modelContext.add((draft) => {
+          draft.set(`${provider}/gpt-6-astra`, {
+            contextWindow,
+            compactAt: 450_000,
           });
-        },
-      }),
-    );
+        });
+      },
+    });
     const sdk = await world.open({
       model: modelFor(provider),
       plugins: [astra, nativeCompaction],

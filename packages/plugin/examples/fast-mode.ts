@@ -21,14 +21,6 @@ export interface FastModePluginOptions {
   readonly defaultModel: Model<Api>;
 }
 
-/**
- * Fast inference bills at a premium and every provider prices it differently,
- * so a selection belongs to the provider it was made for, not to the session.
- */
-function enabledKey(provider: string): string {
-  return `enabled:${provider}`;
-}
-
 /** Anthropic's `speed` exists only on its first-party API; other APIs drop `fast`. */
 export function supportsFastMode(model: Model<Api>): boolean {
   if (model.modes?.includes("fast") !== true) return false;
@@ -44,6 +36,10 @@ export function supportsFastMode(model: Model<Api>): boolean {
   }
 }
 
+/**
+ * Fast inference bills at a premium and every provider prices it differently,
+ * so a selection belongs to the provider it was made for, not to the session.
+ */
 export function fastModeSettingId(provider: string): string {
   return `fast:${provider}`;
 }
@@ -63,12 +59,12 @@ export function fastModePlugin({ models, defaultModel }: FastModePluginOptions) 
 
       if (providers.length === 0) return;
 
-      api.settings.add((settings) => {
-        for (const provider of providers) {
-          settings.set(fastModeSettingId(provider), {
+      const settings = new Map(
+        providers.map((provider) => [
+          provider,
+          api.settings.add(fastModeSettingId(provider), {
             label: providers.length === 1 ? "Fast mode" : `Fast mode · ${provider}`,
-            key: enabledKey(provider),
-            fallback: "off",
+            default: "off",
             choices: [
               {
                 id: "on",
@@ -78,29 +74,24 @@ export function fastModePlugin({ models, defaultModel }: FastModePluginOptions) 
               },
               { id: "off", label: "off", description: "Standard processing" },
             ],
-          });
-        }
-      });
-
-      if (supportsFastMode(defaultModel)) {
-        const key = enabledKey(defaultModel.provider);
-        const read = async (): Promise<boolean> => (await api.storage.get(key)) === "on";
-
-        const write = (enabled: boolean): Promise<void> =>
-          api.storage.set(key, enabled ? "on" : "off");
-
-        api.commands.add((commands) =>
-          commands.set("fast", {
-            description: "Toggle fast inference",
-            run: async (argument) => {
-              if (argument !== "") throw new Error("/fast takes no argument");
-              const enabled = !(await read());
-              await write(enabled);
-
-              return `Fast mode: ${enabled ? "on" : "off"}`;
-            },
           }),
-        );
+        ]),
+      );
+
+      const shortcut = settings.get(defaultModel.provider);
+
+      if (shortcut !== undefined && supportsFastMode(defaultModel)) {
+        api.commands.add("fast", {
+          description: "Toggle fast inference",
+          selection: "run",
+          run: async (argument) => {
+            if (argument !== "") throw new Error("/fast takes no argument");
+            const enabled = (await shortcut.get()) === "off";
+            await shortcut.set(enabled ? "on" : "off");
+
+            return `Fast mode: ${enabled ? "on" : "off"}`;
+          },
+        });
       }
 
       api.hook("before_request", async (event) => {
@@ -108,9 +99,11 @@ export function fastModePlugin({ models, defaultModel }: FastModePluginOptions) 
         const model = models.getModel(event.model.provider, event.model.modelId);
 
         if (model === undefined || !supportsFastMode(model)) return undefined;
-        const enabled = (await api.storage.get(enabledKey(model.provider))) === "on";
+        const setting = settings.get(model.provider);
 
-        return enabled ? { streamOptions: { fast: true } } : undefined;
+        if (setting === undefined) return undefined;
+
+        return (await setting.get()) === "on" ? { streamOptions: { fast: true } } : undefined;
       });
     },
   });

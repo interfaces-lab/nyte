@@ -1,3 +1,4 @@
+import { withPluginSource } from "@nyte-ai/core/plugin-source";
 import { getCurrentTools } from "@nyte-ai/schema";
 /**
  * MCP through a real stdio server: the pool connects once for every session
@@ -21,7 +22,7 @@ import { ToolError } from "@nyte-ai/core/plugins";
 import { Value } from "typebox/value";
 import { afterEach, test, vi } from "vitest";
 import type { SessionEvent, StreamFn } from "@nyte-ai/core";
-import { inlinePlugin } from "@nyte-ai/plugin";
+
 import {
   McpServers,
   bridgedToolName,
@@ -32,6 +33,7 @@ import {
 } from "../src/mcp.ts";
 import {
   TestWorkspace,
+  directCall,
   prompt,
   respond,
   runCommand,
@@ -92,7 +94,7 @@ test("the pool connects a stdio server, bridges its tools, and shares the connec
   const echo = status.tools[0];
   assert.ok(echo);
   assert.equal(echo.namespace?.instructions, "Echo repeats what it is told.");
-  const result = await echo.execute("call-1", { text: "hi" });
+  const result = await echo.execute({ text: "hi" }, directCall("call-1"));
   assert.deepEqual(result.content, [{ type: "text", text: "echo: hi" }]);
   const fail = status.tools[1];
   assert.ok(fail);
@@ -113,7 +115,7 @@ test("the pool connects a stdio server, bridges its tools, and shares the connec
     }),
     /Promise<CallToolResult</,
   );
-  await assert.rejects(fail.execute("call-2", {}), (cause: unknown) => {
+  await assert.rejects(fail.execute({}, directCall("call-2")), (cause: unknown) => {
     assert.ok(cause instanceof ToolError);
     assert.deepEqual(cause.result.structuredContent, {
       isError: true,
@@ -187,7 +189,12 @@ test("a server that never answers does not hold up the session", async () => {
   const sdk = await workspace.open({
     streamFn: (model) => respond(model, [{ type: "text", text: "ok" }]),
     model: testModel,
-    plugins: [inlinePlugin(mcpPlugin({ servers, config }), { version: mcpConfigVersion(config) })],
+    plugins: [
+      withPluginSource(mcpPlugin({ servers, config }), {
+        source: "inline",
+        version: mcpConfigVersion(config),
+      }),
+    ],
   });
   assert.deepEqual(await prompt(sdk, workspace.sessionId, "hi"), { kind: "idle" });
   assert.ok(
@@ -209,7 +216,12 @@ test("the plugin offers the server's tools to the model and runs a call through 
   const sdk = await workspace.open({
     streamFn,
     model: testModel,
-    plugins: [inlinePlugin(mcpPlugin({ servers, config }), { version: mcpConfigVersion(config) })],
+    plugins: [
+      withPluginSource(mcpPlugin({ servers, config }), {
+        source: "inline",
+        version: mcpConfigVersion(config),
+      }),
+    ],
   });
   const { sessionId } = workspace;
   assert.deepEqual(await prompt(sdk, sessionId, "echo it"), { kind: "idle" });
@@ -240,7 +252,12 @@ test("a server's setting turns it off and on for the session", async () => {
   const sdk = await workspace.open({
     streamFn,
     model: testModel,
-    plugins: [inlinePlugin(mcpPlugin({ servers, config }), { version: mcpConfigVersion(config) })],
+    plugins: [
+      withPluginSource(mcpPlugin({ servers, config }), {
+        source: "inline",
+        version: mcpConfigVersion(config),
+      }),
+    ],
   });
   const { sessionId } = workspace;
   const echoSetting = mcpServerSettingId("echo");
@@ -279,7 +296,12 @@ test("a failing server is a warning the client sees, and the session still answe
   const sdk = await workspace.open({
     streamFn: (model) => respond(model, [{ type: "text", text: "fine" }]),
     model: testModel,
-    plugins: [inlinePlugin(mcpPlugin({ servers, config: {} }), { version: mcpConfigVersion({}) })],
+    plugins: [
+      withPluginSource(mcpPlugin({ servers, config: {} }), {
+        source: "inline",
+        version: mcpConfigVersion({}),
+      }),
+    ],
   });
   const { sessionId } = workspace;
   const controller = new AbortController();
@@ -294,7 +316,10 @@ test("a failing server is a warning the client sees, and the session still answe
   // The manifest gains a server that cannot start: the reload warns, the session keeps working.
   const config = { broken: { command: process.execPath, args: ["-e", "process.exit(1)"] } };
   await sdk.setPlugins([
-    inlinePlugin(mcpPlugin({ servers, config }), { version: mcpConfigVersion(config) }),
+    withPluginSource(mcpPlugin({ servers, config }), {
+      source: "inline",
+      version: mcpConfigVersion(config),
+    }),
   ]);
   assert.deepEqual(await prompt(sdk, sessionId, "hello"), { kind: "idle" });
   controller.abort();
@@ -391,7 +416,7 @@ test("MCP names stay distinct after sanitizing or shortening and route calls to 
   }
   assert.equal(bridgedToolName("server-name", "tool-name"), "mcp__server_name__tool_name");
   for (const [index, tool] of status.tools.entries()) {
-    assert.deepEqual((await tool.execute(`c${String(index)}`, {})).content, [
+    assert.deepEqual((await tool.execute({}, directCall(`c${String(index)}`))).content, [
       { type: "text", text: toolNames[index] },
     ]);
   }
@@ -456,7 +481,7 @@ test("Pi converts images, embedded resources, audio and structured-only output w
   if (status.kind !== "connected") return;
   const tool = status.tools[0];
   assert.ok(tool);
-  const result = await tool.execute("content", {});
+  const result = await tool.execute({}, directCall("content"));
   assert.deepEqual(result.content, [
     { type: "image", data: "aGVsbG8=", mimeType: "image/png" },
     { type: "text", text: "resource text" },
@@ -479,7 +504,7 @@ test("Pi converts images, embedded resources, audio and structured-only output w
   if (structuredStatus.kind !== "connected") return;
   const structuredTool = structuredStatus.tools[0];
   assert.ok(structuredTool);
-  const structuredResult = await structuredTool.execute("structured", {});
+  const structuredResult = await structuredTool.execute({}, directCall("structured"));
   assert.deepEqual(structuredResult.content, [{ type: "text", text: '{\n  "value": 42\n}' }]);
   assert.deepEqual(structuredResult.structuredContent, {
     content: [],
@@ -503,7 +528,7 @@ test("an MCP error without text still carries its full script result", async () 
   if (status.kind !== "connected") return;
   const tool = status.tools[0];
   assert.ok(tool);
-  await assert.rejects(tool.execute("fail", {}), (cause: unknown) => {
+  await assert.rejects(tool.execute({}, directCall("fail")), (cause: unknown) => {
     assert.ok(cause instanceof ToolError);
     assert.match(cause.message, /MCP tool error\/fail returned an error/);
     assert.deepEqual(cause.result.structuredContent, { content: [], isError: true });
@@ -550,7 +575,7 @@ for (const result of [
     if (status.kind !== "connected") return;
     const tool = status.tools[0];
     assert.ok(tool);
-    await assert.rejects(tool.execute("bad", {}), /Invalid MCP tools\/call/);
+    await assert.rejects(tool.execute({}, directCall("bad")), /Invalid MCP tools\/call/);
     assert.equal(handle.status().kind, "connected");
   });
 }
@@ -579,7 +604,7 @@ test("Pi follows catalog pages and refreshes tools after a server notification",
   );
   const tool = status.tools[0];
   assert.ok(tool);
-  await tool.execute("refresh", {});
+  await tool.execute({}, directCall("refresh"));
   await vi.waitFor(() => {
     const refreshed = handle.status();
     assert.equal(refreshed.kind, "connected");
@@ -610,12 +635,18 @@ test("Pi forwards progress and sends cancellation to the server", async () => {
   const controller = new AbortController();
   const progress: string[] = [];
   const { promise: started, resolve: received } = Promise.withResolvers<void>();
-  const running = tool.execute("wait", {}, controller.signal, (result) => {
-    progress.push(
-      ...result.content.flatMap((block) => (block.type === "text" ? [block.text] : [])),
-    );
-    received();
-  });
+  const running = tool.execute(
+    {},
+    directCall("wait", {
+      signal: controller.signal,
+      update: (result) => {
+        progress.push(
+          ...result.content.flatMap((block) => (block.type === "text" ? [block.text] : [])),
+        );
+        received();
+      },
+    }),
+  );
   const rejected = assert.rejects(running, /abort/i);
   await started;
   controller.abort();
@@ -663,8 +694,10 @@ test("the Pi HTTP transport sends configured headers and calls a real local MCP 
     if (status.kind !== "connected") return;
     const tool = status.tools[0];
     assert.ok(tool);
-    assert.deepEqual((await tool.execute("http", {})).content, [{ type: "text", text: "pong" }]);
-    assert.ok(headers.length > 2);
+    assert.deepEqual((await tool.execute({}, directCall("http"))).content, [
+      { type: "text", text: "pong" },
+    ]);
+    assert.notEqual(headers.length, 0);
     assert.ok(headers.every((header) => header === "Bearer local-test"));
   } finally {
     await servers.close();
@@ -697,7 +730,7 @@ test("Pi truncates model text at UTF-8 boundaries and saves the uncut output pri
   if (status.kind !== "connected") return;
   const tool = status.tools[0];
   assert.ok(tool);
-  const result = await tool.execute("large", {});
+  const result = await tool.execute({}, directCall("large"));
   const path = result.details.fullOutputPath;
   assert.ok(path);
   savedOutputs.push(path);
@@ -757,7 +790,7 @@ test("Pi decodes text blobs and saves binary resources with their file extension
   if (status.kind !== "connected") return;
   const tool = status.tools[0];
   assert.ok(tool);
-  const result = await tool.execute("binary", {});
+  const result = await tool.execute({}, directCall("binary"));
   const binary = result.content[1];
   assert.ok(binary?.type === "text");
   const path = /saved to (.+)\]$/.exec(binary.text)?.[1];

@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
 import type { Nyte, SessionId, StreamFn } from "@nyte-ai/core";
-import { definePlugin, inlinePlugin, ToolWait } from "@nyte-ai/plugin";
+import { definePlugin, ToolWait } from "@nyte-ai/plugin";
 import type { ToolResultMessage } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { answerFor, questionPlugin, type QuestionInput } from "../examples/question.ts";
@@ -53,7 +53,7 @@ async function openParked(): Promise<{
   workspaces.push(world);
   const sdk = await world.open({
     streamFn: askingModel,
-    plugins: [inlinePlugin(questionPlugin)],
+    plugins: [questionPlugin],
     model: testModel,
   });
   const { sessionId } = world;
@@ -220,7 +220,7 @@ test.each(Object.entries(MALFORMED))(
         context.messages.findLast(isToolResult) === undefined
           ? respond(model, [toolCall("b-1", "broken", {})])
           : respond(model, [{ type: "text", text: "moving on" }]),
-      plugins: [inlinePlugin(broken)],
+      plugins: [broken],
       model: testModel,
     });
     const { sessionId } = world;
@@ -260,7 +260,7 @@ test("only the selection's own fields reach the ref", async () => {
   });
   const sdk = await world.open({
     streamFn: (model) => respond(model, [toolCall("c-1", "chatty", {})]),
-    plugins: [inlinePlugin(chatty)],
+    plugins: [chatty],
     model: testModel,
   });
   const { sessionId } = world;
@@ -282,7 +282,7 @@ test("several answers, and typed text that looks like an id, arrive as one struc
       const answer = answered.content.find((part) => part.type === "text")?.text ?? "";
       return respond(model, [{ type: "text", text: `Proceeding with ${answer}` }]);
     },
-    plugins: [inlinePlugin(questionPlugin)],
+    plugins: [questionPlugin],
     model: testModel,
   });
   const { sessionId } = world;
@@ -312,7 +312,7 @@ test("the timeout setting gives a question a deadline the runner honours without
   workspaces.push(world);
   const sdk = await world.open({
     streamFn: askingModel,
-    plugins: [inlinePlugin(questionPlugin)],
+    plugins: [questionPlugin],
     model: testModel,
   });
   const { sessionId } = world;
@@ -362,7 +362,7 @@ test("a wait past its deadline is woken by the runner, with no reply and no clie
       context.messages.findLast(isToolResult) === undefined
         ? respond(model, [toolCall("b-1", "brief", {})])
         : respond(model, [{ type: "text", text: "carried on" }]),
-    plugins: [inlinePlugin(brief)],
+    plugins: [brief],
     model: testModel,
   });
   const { sessionId } = world;

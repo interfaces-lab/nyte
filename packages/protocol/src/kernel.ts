@@ -85,7 +85,7 @@ export type ToolClass =
     }
   | { readonly kind: "file_read"; readonly path: string }
   | { readonly kind: "list"; readonly path: string }
-  | { readonly kind: "shell"; readonly command: string }
+  | { readonly kind: "shell"; readonly command: string; readonly description?: string }
   /** A create names the child it owns; the card draws from this title before the child is listed. */
   | {
       readonly kind: "delegate";
@@ -93,17 +93,21 @@ export type ToolClass =
       readonly title: string;
       readonly target: { readonly kind: "one"; readonly session: SessionId };
     }
-  /** A call on one child session, or an await over several children. */
+  /** A call on one child session. */
   | {
       readonly kind: "delegate";
-      readonly role: "send" | "await" | "read" | "stop";
-      readonly target:
-        | { readonly kind: "one"; readonly session: SessionId }
-        | {
-            readonly kind: "many";
-            readonly sessions: readonly [SessionId, ...SessionId[]];
-            readonly mode: "any" | "all";
-          };
+      readonly role: "send" | "read" | "stop";
+      readonly target: { readonly kind: "one"; readonly session: SessionId };
+    }
+  /** An await over children: the run's own control flow, which no transcript draws. */
+  | {
+      readonly kind: "delegate";
+      readonly role: "await";
+      readonly target: {
+        readonly kind: "many";
+        readonly sessions: readonly [SessionId, ...SessionId[]];
+        readonly mode: "any" | "all";
+      };
     }
   | { readonly kind: "custom"; readonly label: string };
 

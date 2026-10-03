@@ -13,8 +13,9 @@
  *
  * The scan reads stores and the Claude Code and Codex histories in seconds of
  * CPU cold, so a host that must stay responsive runs `UsageScanner` on a
- * worker thread. Names are the one thing the scan does not return: the host
- * reads them through the SDK, which owns how a session's facts are stored.
+ * worker thread. Session names come off the store's name fact, not an SDK
+ * row: a row describes a session by loading its whole main branch, which is
+ * seconds across every workspace a desktop has registered.
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -23,7 +24,7 @@ import { commitUsage, usageTokens } from "@nyte-ai/client";
 import type { UsageSubject } from "@nyte-ai/client";
 import { sessionId } from "@nyte-ai/core";
 import type { SessionId } from "@nyte-ai/core";
-import { SqliteStore } from "@nyte-ai/core/store";
+import { SqliteStore, sessionName } from "@nyte-ai/core/store";
 import type {
   Commit,
   UsageEntry,
@@ -34,6 +35,9 @@ import type {
   UsageWindow,
 } from "@nyte-ai/protocol";
 import type { Api, Model, Usage } from "@nyte-ai/schema";
+import { Type } from "typebox";
+import type { Static } from "typebox";
+import { Value } from "typebox/value";
 import {
   createUsageScanCaches,
   decodeUsageScanCaches,
@@ -268,10 +272,7 @@ export interface StoreLocation {
 /** One store's spend per session, or why it could not be read. */
 interface StoreScan {
   readonly workspacePath: string | null;
-  readonly sessions: readonly {
-    readonly sessionId: SessionId;
-    readonly commits: readonly UsageCommit[];
-  }[];
+  readonly sessions: readonly SessionCommits[];
   readonly failure: string | null;
 }
 
@@ -296,12 +297,13 @@ export interface UsageScanReader {
   close(): Promise<void>;
 }
 
-type SessionScan = StoreScan["sessions"][number];
+type SessionScan = Pick<SessionCommits, "sessionId" | "commits">;
 
 /**
  * A session's spend, keyed by a fingerprint of its object rows. Objects are
  * immutable and content-addressed, so a session whose rows have not changed
- * cannot have different spend; only a session that grew is read again.
+ * cannot have different spend; only a session that grew is read again. The
+ * name is outside the cache: a rename back to an earlier name adds no object.
  */
 type SessionScanCache = Map<string, { readonly fingerprint: string; readonly scan: SessionScan }>;
 
@@ -310,7 +312,7 @@ async function scanStore(location: StoreLocation, cache: SessionScanCache): Prom
 
   try {
     store = new SqliteStore(location.path);
-    const sessions: SessionScan[] = [];
+    const sessions: SessionCommits[] = [];
     const seen = new Set<string>();
 
     for (const info of await store.list()) {
@@ -318,12 +320,13 @@ async function scanStore(location: StoreLocation, cache: SessionScanCache): Prom
       const session = await store.open(info.id);
 
       try {
+        const name = await sessionName(session);
         const listed = await session.objects.list();
         const fingerprint = `${String(listed.length)}:${String(listed.reduce((latest, row) => Math.max(latest, row.at), 0))}`;
         const hit = cache.get(info.id);
 
         if (hit !== undefined && hit.fingerprint === fingerprint) {
-          sessions.push(hit.scan);
+          sessions.push({ ...hit.scan, name });
           continue;
         }
 
@@ -335,7 +338,7 @@ async function scanStore(location: StoreLocation, cache: SessionScanCache): Prom
         };
 
         cache.set(info.id, { fingerprint, scan });
-        sessions.push(scan);
+        sessions.push({ ...scan, name });
       } finally {
         await session.close();
       }
@@ -355,21 +358,22 @@ async function scanStore(location: StoreLocation, cache: SessionScanCache): Prom
 
 /**
  * The read itself. Stores are read independently, so one that fails is a
- * row on the page rather than an error over the folders that answered. The
- * transcript readers keep a per-file cache for the life of the process,
- * persisted under the Nyte home so a restart pays stat calls rather than a
- * cold parse; a cache that cannot be loaded or saved costs time, never numbers.
+ * row on the page rather than an error over the folders that answered. Both
+ * the transcript readers and the store walk keep caches for the life of the
+ * process, persisted under the Nyte home so a restart pays stat calls and
+ * fingerprints rather than a cold parse; a cache that cannot be loaded or
+ * saved costs time, never numbers.
  */
 export class UsageScanner implements UsageScanReader {
-  private readonly cachePath: string;
+  private readonly transcripts: CacheFile;
+  private readonly stores: CacheFile;
   private loaded: Promise<UsageScanCaches> | undefined;
   /** Per store path; a store read in this process keeps its sessions' spend. */
   private readonly sessions = new Map<string, SessionScanCache>();
-  /** The text last written, so an unchanged cache is not rewritten. */
-  private persisted: string | undefined;
 
   constructor(home: string) {
-    this.cachePath = join(home, "usage-scan-cache.json");
+    this.transcripts = new CacheFile(join(home, "usage-scan-cache.json"));
+    this.stores = new CacheFile(join(home, "usage-sessions-cache.json"));
   }
 
   async scan(request: UsageScanRequest): Promise<UsageScan> {
@@ -388,7 +392,10 @@ export class UsageScanner implements UsageScanReader {
       readLocalUsage({ models, caches }),
     ]);
 
-    await this.save(caches);
+    await Promise.all([
+      this.transcripts.write(encodeUsageScanCaches(caches)),
+      this.stores.write(encodeSessionCaches(this.sessions)),
+    ]);
 
     return { stores, ...local };
   }
@@ -400,32 +407,206 @@ export class UsageScanner implements UsageScanReader {
   private load(): Promise<UsageScanCaches> {
     // One load per process, shared by concurrent first readers, so neither
     // parses cold against an empty cache while the other is still decoding.
-    this.loaded ??= readFile(this.cachePath, "utf8").then(
-      (text) => {
-        this.persisted = text;
+    this.loaded ??= Promise.all([this.transcripts.read(), this.stores.read()]).then(
+      ([transcripts, stores]) => {
+        if (stores !== undefined) {
+          for (const [path, cache] of decodeSessionCaches(stores)) this.sessions.set(path, cache);
+        }
 
-        return decodeUsageScanCaches(text);
+        return transcripts === undefined
+          ? createUsageScanCaches()
+          : decodeUsageScanCaches(transcripts);
       },
-      () => createUsageScanCaches(),
     );
 
     return this.loaded;
   }
+}
 
-  private async save(caches: UsageScanCaches): Promise<void> {
-    const text = encodeUsageScanCaches(caches);
+/** A cache written whole and published by rename, so a crash mid-write leaves the previous one. */
+class CacheFile {
+  private readonly path: string;
+  /** The text last read or written, so an unchanged cache is not rewritten. */
+  private persisted: string | undefined;
 
+  constructor(path: string) {
+    this.path = path;
+  }
+
+  async read(): Promise<string | undefined> {
+    try {
+      this.persisted = await readFile(this.path, "utf8");
+    } catch {
+      return undefined;
+    }
+
+    return this.persisted;
+  }
+
+  async write(text: string): Promise<void> {
     if (text === this.persisted) return;
 
     try {
-      await mkdir(dirname(this.cachePath), { recursive: true });
-      // A crash mid-write leaves the previous cache, not half of this one.
-      const staging = `${this.cachePath}.tmp`;
+      await mkdir(dirname(this.path), { recursive: true });
+      const staging = `${this.path}.tmp`;
       await writeFile(staging, text, "utf8");
-      await rename(staging, this.cachePath);
+      await rename(staging, this.path);
       this.persisted = text;
     } catch {
       // Left unset: the next read tries to persist again.
     }
   }
+}
+
+// v1: first persisted shape.
+const SESSION_CACHE_VERSION = 1;
+
+const nullableNumber = Type.Union([Type.Number(), Type.Null()]);
+
+/**
+ * at, subject kind, provider, model, input, output, cacheRead, cacheWrite,
+ * cacheWrite1h, reasoning, totalTokens, cost input, output, cacheRead,
+ * cacheWrite, total. Positional: a keyed row would be five times the file.
+ */
+const commitRow = Type.Tuple([
+  Type.Number(),
+  Type.Union([Type.Literal("model"), Type.Literal("tool"), Type.Literal("compaction")]),
+  Type.String(),
+  Type.String(),
+  Type.Number(),
+  Type.Number(),
+  Type.Number(),
+  Type.Number(),
+  nullableNumber,
+  nullableNumber,
+  Type.Number(),
+  Type.Number(),
+  Type.Number(),
+  Type.Number(),
+  Type.Number(),
+  Type.Number(),
+]);
+
+const sessionCacheFile = Type.Object({
+  version: Type.Literal(SESSION_CACHE_VERSION),
+  stores: Type.Record(
+    Type.String(),
+    Type.Record(
+      Type.String(),
+      Type.Object({ fingerprint: Type.String(), commits: Type.Array(commitRow) }),
+    ),
+  ),
+});
+
+function encodeCommit({ at, subject, usage }: UsageCommit): Static<typeof commitRow> {
+  return [
+    at,
+    subject.kind,
+    subject.kind === "model" ? subject.provider : "",
+    subject.kind === "model" ? subject.model : "",
+    usage.input,
+    usage.output,
+    usage.cacheRead,
+    usage.cacheWrite,
+    usage.cacheWrite1h ?? null,
+    usage.reasoning ?? null,
+    usage.totalTokens,
+    usage.cost.input,
+    usage.cost.output,
+    usage.cost.cacheRead,
+    usage.cost.cacheWrite,
+    usage.cost.total,
+  ];
+}
+
+function decodeCommit(row: Static<typeof commitRow>): UsageCommit {
+  const [
+    at,
+    kind,
+    provider,
+    model,
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    cacheWrite1h,
+    reasoning,
+    totalTokens,
+    costInput,
+    costOutput,
+    costCacheRead,
+    costCacheWrite,
+    costTotal,
+  ] = row;
+
+  const usage: Usage = {
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    totalTokens,
+    cost: {
+      input: costInput,
+      output: costOutput,
+      cacheRead: costCacheRead,
+      cacheWrite: costCacheWrite,
+      total: costTotal,
+    },
+  };
+
+  if (cacheWrite1h !== null) usage.cacheWrite1h = cacheWrite1h;
+
+  if (reasoning !== null) usage.reasoning = reasoning;
+
+  return { at, subject: kind === "model" ? { kind, provider, model } : { kind }, usage };
+}
+
+function encodeSessionCaches(caches: ReadonlyMap<string, SessionScanCache>): string {
+  const stores: Static<typeof sessionCacheFile>["stores"] = {};
+
+  for (const [path, cache] of caches) {
+    const sessions: Static<typeof sessionCacheFile>["stores"][string] = {};
+
+    for (const [id, entry] of cache) {
+      sessions[id] = {
+        fingerprint: entry.fingerprint,
+        commits: entry.scan.commits.map(encodeCommit),
+      };
+    }
+
+    stores[path] = sessions;
+  }
+
+  return JSON.stringify({ version: SESSION_CACHE_VERSION, stores } satisfies Static<
+    typeof sessionCacheFile
+  >);
+}
+
+/** Anything but a whole, current cache decodes to empty: a cold read, never a wrong one. */
+function decodeSessionCaches(text: string): Map<string, SessionScanCache> {
+  const caches = new Map<string, SessionScanCache>();
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return caches;
+  }
+
+  if (!Value.Check(sessionCacheFile, parsed)) return caches;
+
+  for (const [path, sessions] of Object.entries(parsed.stores)) {
+    const cache: SessionScanCache = new Map();
+
+    for (const [id, entry] of Object.entries(sessions)) {
+      cache.set(id, {
+        fingerprint: entry.fingerprint,
+        scan: { sessionId: sessionId(id), commits: entry.commits.map(decodeCommit) },
+      });
+    }
+
+    caches.set(path, cache);
+  }
+
+  return caches;
 }

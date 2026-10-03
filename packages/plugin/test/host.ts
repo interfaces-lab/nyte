@@ -20,7 +20,7 @@ import { createAssistantMessageEventStream, type AssistantMessageEventStream } f
 import { createNyte } from "@nyte-ai/core";
 import type {
   CompactionSettings,
-  LoadedPlugin,
+  Plugin,
   ModelCatalog,
   Nyte,
   SessionEvent,
@@ -32,6 +32,7 @@ import type {
 import type { ToolTurnPart } from "@nyte-ai/protocol";
 import { branch, SqliteStore, type Store } from "@nyte-ai/core/store";
 import type { Api, AssistantMessage, Model, ToolCall, ToolResultMessage } from "@nyte-ai/schema";
+import type { ToolCall as ToolCallContext } from "@nyte-ai/core/plugins";
 
 /** A model that advertises nothing special; tests spread over it for what they need. */
 export const testModel: Model<Api> = {
@@ -87,13 +88,21 @@ export function respond(
   return stream;
 }
 
+/** A direct call into `execute`, outside any run. */
+export function directCall(
+  id: string,
+  options: Partial<Omit<ToolCallContext, "id">> = {},
+): ToolCallContext {
+  return { signal: new AbortController().signal, update: () => undefined, ...options, id };
+}
+
 export function toolCall(id: string, name: string, args: ToolCall["arguments"]): ToolCall {
   return { type: "toolCall", id, name, arguments: args };
 }
 
 export interface OpenOptions {
   readonly streamFn: StreamFn;
-  readonly plugins: readonly LoadedPlugin[];
+  readonly plugins: readonly Plugin[];
   readonly model: Model<Api>;
   readonly models?: readonly Model<Api>[];
   readonly compaction?: CompactionSettings;

@@ -15,7 +15,9 @@ import {
   systemPromptPlugin,
   toolsFsPlugin,
 } from "@nyte-ai/core/plugins";
-import type { LoadedPlugin, Plugin } from "@nyte-ai/core/plugins";
+import type { Plugin } from "@nyte-ai/core/plugins";
+import { pluginSource, withPluginSource } from "@nyte-ai/core/plugin-source";
+import { bashDescriptionPlugin } from "@nyte-ai/plugin/examples/bash-description";
 import { fastModePlugin } from "@nyte-ai/plugin/examples/fast-mode";
 import { openaiCompactionPlugin } from "@nyte-ai/plugin/openai-compaction";
 import { openaiAstraContextPlugin } from "@nyte-ai/plugin/openai-astra-context";
@@ -89,6 +91,7 @@ export async function resolveHostPlugins(
         },
       }),
       toolsFsPlugin(),
+      bashDescriptionPlugin,
       openaiCompactionPlugin({ models: context.models }),
       openaiAstraContextPlugin(),
       fastModePlugin({ models: context.models, defaultModel: context.model }),
@@ -206,23 +209,23 @@ export type { SourceWatcher, WatchOptions, WatchTarget } from "./plugins/watch.t
 export { discoverPluginUnits, unitDataFiles } from "./plugins/units.ts";
 export type { PluginRoot, PluginUnit, PluginEntries, UnitSource } from "./plugins/units.ts";
 export interface ResolvedPlugins {
-  readonly plugins: LoadedPlugin[];
+  readonly plugins: Plugin[];
   readonly failures: { readonly path: string; readonly error: string }[];
 }
 
-export function samePluginSources(
-  left: readonly LoadedPlugin[],
-  right: readonly LoadedPlugin[],
-): boolean {
+export function samePluginSources(left: readonly Plugin[], right: readonly Plugin[]): boolean {
   return (
     left.length === right.length &&
     left.every((plugin, index) => {
       const other = right[index];
+      if (other === undefined || other.id !== plugin.id) return false;
+      const source = pluginSource(plugin);
+      const otherSource = pluginSource(other);
+      if (source === undefined || otherSource === undefined) return plugin === other;
       return (
-        other?.id === plugin.id &&
-        other.version === plugin.version &&
-        other.source === plugin.source &&
-        other.path === plugin.path
+        otherSource.version === source.version &&
+        otherSource.source === source.source &&
+        otherSource.path === source.path
       );
     })
   );
@@ -263,17 +266,18 @@ const PluginModule = Type.Object({
 const pluginModule = Compile(PluginModule);
 
 export async function resolvePlugins(options: ResolveOptions): Promise<PluginPreparation> {
-  const byId = new Map<string, LoadedPlugin>();
+  const byId = new Map<string, Plugin>();
   const failures: ResolvedPlugins["failures"] = [];
   try {
     const units = await discoverPluginUnits(options.directories ?? []);
     for (const builtin of options.builtins) {
-      byId.set(builtin.id, {
-        id: builtin.id,
-        source: "builtin",
-        module: builtin,
-        version: options.builtinVersions?.[builtin.id] ?? options.builtinVersion ?? "builtin",
-      });
+      byId.set(
+        builtin.id,
+        withPluginSource(builtin, {
+          source: "builtin",
+          version: options.builtinVersions?.[builtin.id] ?? options.builtinVersion ?? "builtin",
+        }),
+      );
     }
     const disabled = new Set(
       options.manifest?.plugins?.flatMap((item) => (item.startsWith("-") ? [item.slice(1)] : [])) ??
@@ -296,13 +300,14 @@ export async function resolvePlugins(options: ResolveOptions): Promise<PluginPre
         const module = loaded.value.default;
         if (module.id !== unit.id)
           throw new Error(`plugin id "${module.id}" must match directory name "${unit.id}"`);
-        byId.set(unit.id, {
-          id: unit.id,
-          source: unit.source,
-          path: entry,
-          version: loaded.version,
-          module,
-        });
+        byId.set(
+          unit.id,
+          withPluginSource(module, {
+            source: unit.source,
+            path: entry,
+            version: loaded.version,
+          }),
+        );
       } catch (cause) {
         failures.push({
           path: entry,

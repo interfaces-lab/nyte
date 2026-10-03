@@ -143,20 +143,10 @@ export async function openServedHost(options: ServedHostOptions): Promise<Served
   const usage = async (window: UsageWindow): Promise<UsageSnapshot> => {
     const workspacePath = workspace.cwd;
 
-    const [named, scan] = await Promise.all([
-      sdk.sessions.list({ includeArchived: true }).then(
-        ({ items }) => new Map(items.map((info) => [info.sessionId, info.name])),
-        (cause: unknown) => {
-          options.onDiagnostic(`usage: listing chats failed: ${String(cause)}`);
-
-          return undefined;
-        },
-      ),
-      scanner.scan({
-        stores: [{ workspacePath, path: storePath }],
-        catalog: catalogForUsage(models),
-      }),
-    ]);
+    const scan = await scanner.scan({
+      stores: [{ workspacePath, path: storePath }],
+      catalog: catalogForUsage(models),
+    });
 
     const [scanned] = scan.stores;
 
@@ -165,16 +155,9 @@ export async function openServedHost(options: ServedHostOptions): Promise<Served
     }
 
     const read: StoreRead =
-      named === undefined || scanned === undefined || scanned.failure !== null
+      scanned === undefined || scanned.failure !== null
         ? { workspacePath, sessions: [], failure: { message: STORE_FAILURE } }
-        : {
-            workspacePath,
-            sessions: scanned.sessions.map((session) => ({
-              ...session,
-              name: named.get(session.sessionId),
-            })),
-            failure: null,
-          };
+        : { workspacePath, sessions: scanned.sessions, failure: null };
 
     return {
       ...projectUsageReport([read], window, Date.now()),

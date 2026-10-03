@@ -13,15 +13,15 @@ import { createNyte } from "@nyte-ai/core";
 import type {
   ActivationRequirement,
   ActiveSessionActivation,
-  LoadedPlugin,
+  Plugin,
   Nyte,
   NyteOptions,
   SessionActivation,
   SessionId,
   TrustedWorkspace,
 } from "@nyte-ai/core";
-import { inlinePlugin, systemPromptPlugin } from "@nyte-ai/core/plugins";
-import type { Plugin, PluginEnv } from "@nyte-ai/core/plugins";
+import { systemPromptPlugin } from "@nyte-ai/core/plugins";
+import type { PluginEnv } from "@nyte-ai/core/plugins";
 import { openaiCompactionPlugin } from "@nyte-ai/plugin/openai-compaction";
 import { openaiAstraContextPlugin } from "@nyte-ai/plugin/openai-astra-context";
 import type { CodemodeSandboxOptions } from "@nyte-ai/plugin/codemode-runtime";
@@ -116,7 +116,7 @@ export type HostPlugins =
       readonly onFailure?: (failure: ResolvedPlugins["failures"][number]) => void;
     }
   /** Plugins the caller loaded itself (an embedded product, a test), passed through unchanged. */
-  | { readonly kind: "custom"; readonly plugins: readonly LoadedPlugin[]; readonly env: PluginEnv };
+  | { readonly kind: "custom"; readonly plugins: readonly Plugin[]; readonly env: PluginEnv };
 
 export type HostOptions = Omit<
   NyteOptions,
@@ -216,9 +216,9 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
       return create({
         ...shared,
         plugins: [
-          inlinePlugin(systemPromptPlugin(plugins.system)),
-          inlinePlugin(openaiCompactionPlugin({ models })),
-          inlinePlugin(openaiAstraContextPlugin()),
+          systemPromptPlugin(plugins.system),
+          openaiCompactionPlugin({ models }),
+          openaiAstraContextPlugin(),
         ],
         env: { cwd: process.cwd() },
       });
@@ -227,8 +227,8 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
     case "workspace": {
       const workspaces = createWorkspaceStore();
       let activeTarget: PluginTarget | undefined;
-      let snapshot: readonly LoadedPlugin[] | undefined;
-      const prepare = async (target: PluginTarget): Promise<readonly LoadedPlugin[]> => {
+      let snapshot: readonly Plugin[] | undefined;
+      const prepare = async (target: PluginTarget): Promise<readonly Plugin[]> => {
         const resolved = await resolveHostPlugins(target, {
           models,
           model: options.model,

@@ -32,10 +32,14 @@ export interface SettingInfo {
   readonly current: string;
 }
 
+/** `run` invokes the command when picked; `insert`, the default, completes `/name ` for an argument. */
+export type CommandSelection = "run" | "insert";
+
 export interface CommandInfo {
   readonly name: string;
   readonly owner: string;
   readonly description: string;
+  readonly selection?: CommandSelection;
 }
 
 export interface PluginCatalog {

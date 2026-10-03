@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, test } from "vitest";
 import type { Nyte, StreamFn } from "@nyte-ai/core";
-import { definePlugin, inlinePlugin, systemPromptPlugin } from "@nyte-ai/plugin";
+import { definePlugin, systemPromptPlugin } from "@nyte-ai/plugin";
 import type { Api, Model } from "@nyte-ai/schema";
 import { FAST_MODE_PLUGIN_ID, fastModePlugin, fastModeSettingId } from "../examples/fast-mode.ts";
 import type { FastModeModelCatalog } from "../examples/fast-mode.ts";
@@ -75,7 +75,7 @@ describe("fast mode plugin", () => {
   test("a toggle reaches the provider, survives a restart, and leaves compaction on the normal tier", async () => {
     const world = workspace("nyte-fast-mode-");
     const { streamFn, requests } = provider();
-    const plugins = [inlinePlugin(systemPromptPlugin("sys")), inlinePlugin(fastPlugin(fastModel))];
+    const plugins = [systemPromptPlugin("sys"), fastPlugin(fastModel)];
     const open = (): Promise<Nyte> =>
       world.open({
         streamFn,
@@ -115,14 +115,12 @@ describe("fast mode plugin", () => {
     // Later plugins patch over earlier ones.
     await sdk.setPlugins([
       ...plugins,
-      inlinePlugin(
-        definePlugin({
-          id: "normal-tier",
-          session(api) {
-            api.hook("before_request", () => ({ streamOptions: { fast: false } }));
-          },
-        }),
-      ),
+      definePlugin({
+        id: "normal-tier",
+        session(api) {
+          api.hook("before_request", () => ({ streamOptions: { fast: false } }));
+        },
+      }),
     ]);
     await prompt(sdk, sessionId, "four");
     assert.equal(requests.at(-1)?.fast, false);
@@ -137,7 +135,7 @@ describe("fast mode plugin", () => {
     const open = (model: Model<Api>): Promise<Nyte> =>
       world.open({
         streamFn,
-        plugins: [inlinePlugin(fastPlugin(model, catalog))],
+        plugins: [fastPlugin(model, catalog)],
         model,
         models: catalog,
       });
@@ -167,7 +165,7 @@ describe("fast mode plugin", () => {
     const catalog = [normalModel, fastModel];
     const sdk = await world.open({
       streamFn,
-      plugins: [inlinePlugin(fastPlugin(normalModel, catalog))],
+      plugins: [fastPlugin(normalModel, catalog)],
       model: normalModel,
       models: catalog,
     });
@@ -198,7 +196,7 @@ describe("fast mode plugin", () => {
     const { streamFn, requests } = provider();
     const sdk = await world.open({
       streamFn,
-      plugins: [inlinePlugin(fastPlugin(fastModel))],
+      plugins: [fastPlugin(fastModel)],
       model: fastModel,
     });
     const { sessionId } = world;
@@ -239,7 +237,7 @@ describe("fast mode plugin", () => {
     const { streamFn, requests } = provider();
     const sdk = await world.open({
       streamFn,
-      plugins: [inlinePlugin(fastPlugin(normalModel))],
+      plugins: [fastPlugin(normalModel)],
       model: normalModel,
     });
     const { sessionId } = world;

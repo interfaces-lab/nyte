@@ -9,6 +9,9 @@ import type { RunId } from "./sdk.ts";
 
 type UserMessage = Extract<Message, { role: "user" }>;
 
+/** The classes a transcript draws. An await on children is the run's own control flow, not a part. */
+export type TurnToolClass = Exclude<ToolClass, { readonly role: "await" }>;
+
 export interface UserTurnPart {
   kind: "user";
   commit: Oid;
@@ -25,7 +28,7 @@ export type ToolTurnPart = {
   readonly callId: string;
   readonly at: number;
   /** The settled class once the result commit landed, else the call's. */
-  readonly class: ToolClass;
+  readonly class: TurnToolClass;
   /** Absent while the call has not settled on this branch. */
   readonly result?: { readonly commit: Oid; readonly output: string; readonly isError: boolean };
 };

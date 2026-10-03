@@ -13,6 +13,7 @@ import { APP_ORIGINS } from "@nyte-ai/app/web/origins.ts";
 import type { Nyte, SessionId } from "@nyte-ai/core";
 import type { Environment, ServerDescription } from "@nyte-ai/protocol";
 import { createNyteServer } from "@nyte-ai/server";
+import type { ServerAuth } from "@nyte-ai/server";
 import { createStaticHandler } from "./static.ts";
 
 export { findTailnetAddress } from "./tailnet.ts";
@@ -32,18 +33,33 @@ export interface ServeOptions {
   readonly host?: string;
   /** Default 0: an ephemeral port. */
   readonly port?: number;
-  /** At least 16 characters. */
-  readonly token: string;
+  /** A token must be at least 16 characters. */
+  readonly auth: ServerAuth;
+  /**
+   * Exact origins a browser page may call from, beside the web app's own. A
+   * proxy that terminates TLS in front of this listener needs its public origin
+   * here, since the request URL the listener sees is plain HTTP.
+   */
+  readonly browserOrigins?: readonly string[];
   /** Directory of the built web app; omit to serve the API alone. */
   readonly appRoot?: string;
+  /**
+   * Answers a request before the web app and the Nyte server, which never see
+   * it, so its own authorization is the only one applied. Resolve undefined for
+   * every request it does not own.
+   */
+  readonly handle?: (request: Request) => Promise<Response | undefined>;
 }
 
 export interface Serving {
   /** `http://<host>:<port>`, the base URL a client enters. */
   readonly address: string;
-  readonly token: string;
-  /** The served app's pairing link, or the hosted app's when no app is served. */
-  readonly pairingUrl: string;
+  /**
+   * Drop every open connection, streams included, and keep listening on the
+   * same port. Clients that come back authenticate again, so a credential
+   * refused from now on loses the streams it opened before.
+   */
+  disconnectClients(): void;
   /** Close the listener, drop its connections, and end open watches. Accepted SDK work continues. */
   close(): Promise<void>;
 }
@@ -56,8 +72,17 @@ export function appDistRoot(): string {
   return dirname(fileURLToPath(import.meta.resolve("@nyte-ai/app/dist/index.html")));
 }
 
+/**
+ * The web app's pairing link. Host and token ride in the fragment, which a
+ * browser never sends, so the token stays out of request lines and proxy logs.
+ */
 export function pairingUrl(appOrigin: string, address: string, token: string): string {
-  return `${appOrigin}/pair?host=${encodeURIComponent(address)}&token=${encodeURIComponent(token)}`;
+  return `${appOrigin}/pair#host=${encodeURIComponent(address)}&token=${encodeURIComponent(token)}`;
+}
+
+/** Where a pairing link opens: the served app, or the hosted one when this listener serves the API alone. */
+export function pairingOrigin(address: string, appRoot: string | undefined): string {
+  return appRoot === undefined ? APP_ORIGINS[0] : address;
 }
 
 function attaching(sdk: Nyte, attach: (sessionId: SessionId) => void): Nyte {
@@ -101,27 +126,31 @@ function attaching(sdk: Nyte, attach: (sessionId: SessionId) => void): Nyte {
 }
 
 export async function startServe(options: ServeOptions): Promise<Serving> {
-  const { token } = options;
   const host = options.host ?? "127.0.0.1";
 
-  if (token.length < 16) throw new Error("The token must be at least 16 characters.");
+  if (options.auth.kind === "token" && options.auth.token.length < 16)
+    throw new Error("The token must be at least 16 characters.");
 
   const server = createNyteServer({
     sdk: options.attach === undefined ? options.sdk : attaching(options.sdk, options.attach),
     environment: options.environment,
     version: options.version,
     describe: options.describe,
-    auth: { kind: "token", token },
-    browserOrigins: [...APP_ORIGINS],
+    auth: options.auth,
+    browserOrigins: [...APP_ORIGINS, ...(options.browserOrigins ?? [])],
   });
 
   const serveApp = options.appRoot === undefined ? undefined : createStaticHandler(options.appRoot);
 
   const listener = createServer(
-    getRequestListener(async (request) => (await serveApp?.(request)) ?? server.fetch(request), {
-      hostname: host,
-      overrideGlobalObjects: false,
-    }),
+    getRequestListener(
+      async (request) =>
+        (await options.handle?.(request)) ?? (await serveApp?.(request)) ?? server.fetch(request),
+      {
+        hostname: host,
+        overrideGlobalObjects: false,
+      },
+    ),
   );
 
   await new Promise<void>((resolve, reject) => {
@@ -147,12 +176,9 @@ export async function startServe(options: ServeOptions): Promise<Serving> {
 
   return {
     address,
-    token,
-    pairingUrl: pairingUrl(
-      options.appRoot === undefined ? APP_ORIGINS[0] : address,
-      address,
-      token,
-    ),
+    disconnectClients() {
+      listener.closeAllConnections();
+    },
     async close() {
       // Watches end with a `closed` frame first, so a reading client hears why.
       server.close();

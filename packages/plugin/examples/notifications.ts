@@ -2,28 +2,19 @@
  * Attention from the event stream: a run that stops, a question that parks.
  * The plugin decides what deserves the user's attention and says so through
  * `diagnostics.notify`; the client decides how that looks. Chats a parent
- * spawned stay quiet, so a delegation does not ring once per child.
+ * spawned stay quiet, so a delegation does not ring once per child. A
+ * listener's rejection is reported by the host, so none is caught here.
  *
  * Based on https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/feature-plugins/system/notifications.ts
  */
 import { definePlugin } from "@nyte-ai/plugin";
-import type { RunPhase } from "@nyte-ai/core";
+import type { EndedRun } from "@nyte-ai/plugin";
 import type { JsonValue } from "@nyte-ai/schema";
 
 export const NOTIFICATIONS_SETTING_ID = "run-alerts";
 
-const MODE_KEY = "mode";
-
-const MODES = ["alert", "sound", "off"] as const;
-
-type Mode = (typeof MODES)[number];
-
 /** Desktop notifications truncate without warning, so bound the provider text here. */
 const MAX_DETAIL_CHARS = 120;
-
-function isMode(value: JsonValue | undefined): value is Mode {
-  return MODES.some((mode) => mode === value);
-}
 
 function summarize(message: string): string {
   const collapsed = message.replaceAll(/\s+/gu, " ").trim();
@@ -34,7 +25,7 @@ function summarize(message: string): string {
 }
 
 /** What stopped the run, not just that it stopped: an error must not read as a clean finish. */
-export function runEndMessage(phase: RunPhase): string | undefined {
+export function runEndMessage(phase: EndedRun["phase"]): string {
   switch (phase.kind) {
     case "done":
       return "Turn finished";
@@ -45,12 +36,6 @@ export function runEndMessage(phase: RunPhase): string | undefined {
 
       return detail === "" ? "Turn failed" : `Turn failed: ${detail}`;
     }
-
-    case "respond":
-    case "tools":
-    case "waiting":
-    case "retry":
-      return undefined;
     default: {
       const _exhaustive: never = phase;
 
@@ -77,28 +62,24 @@ function questionTitle(args: JsonValue): string | undefined {
 export const notificationsPlugin = definePlugin({
   id: "notifications",
   session(api) {
-    api.settings.add((draft) => {
-      draft.set(NOTIFICATIONS_SETTING_ID, {
-        label: "Run alerts",
-        key: MODE_KEY,
-        fallback: "alert",
-        choices: [
-          { id: "alert", label: "alert", description: "Show an alert when each run stops" },
-          {
-            id: "sound",
-            label: "alert + sound",
-            description: "Show the alert and ring the terminal bell",
-          },
-          { id: "off", label: "off", description: "Don't alert when runs stop" },
-        ],
-      });
+    const alerts = api.settings.add(NOTIFICATIONS_SETTING_ID, {
+      label: "Run alerts",
+      default: "alert",
+      choices: [
+        { id: "alert", label: "alert", description: "Show an alert when each run stops" },
+        {
+          id: "sound",
+          label: "alert + sound",
+          description: "Show the alert and ring the terminal bell",
+        },
+        { id: "off", label: "off", description: "Don't alert when runs stop" },
+      ],
     });
 
     let child: boolean | undefined;
 
     const notify = async (message: string, title?: string): Promise<void> => {
-      const stored = await api.storage.get(MODE_KEY);
-      const mode = isMode(stored) ? stored : "alert";
+      const mode = await alerts.get();
 
       if (mode === "off") return;
       child ??= (await api.session.info()).child;
@@ -108,36 +89,9 @@ export const notificationsPlugin = definePlugin({
       api.diagnostics.notify(title === undefined ? notification : { ...notification, title });
     };
 
-    const report = (cause: unknown): void => {
-      api.diagnostics.warn(`notify: ${cause instanceof Error ? cause.message : String(cause)}`);
-    };
-
-    const ended = new Set<string>();
-    const asked = new Set<string>();
-    api.events.subscribe((event) => {
-      switch (event.kind) {
-        case "run": {
-          const message = runEndMessage(event.run.phase);
-
-          if (message === undefined || ended.has(event.run.runId)) return;
-          ended.add(event.run.runId);
-          void notify(message).catch(report);
-
-          return;
-        }
-
-        case "effect": {
-          if (event.state !== "waiting" || event.selection === undefined || asked.has(event.callId))
-            return;
-          asked.add(event.callId);
-          void notify("Input needs response", questionTitle(event.args)).catch(report);
-
-          return;
-        }
-
-        default:
-          return;
-      }
-    });
+    api.events.subscribe("run_ended", (event) => notify(runEndMessage(event.run.phase)));
+    api.events.subscribe("awaiting_reply", (event) =>
+      notify("Input needs response", questionTitle(event.args)),
+    );
   },
 });

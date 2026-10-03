@@ -197,50 +197,45 @@ export function renamePlugin(deps: { readonly models: TitleModels; readonly mode
 
       // Named `rename_chat`, not `rename`, because the model sees it beside the
       // file tools, where a bare `rename` reads as renaming a path.
-      api.tools.add((draft) =>
-        draft.set("rename_chat", {
-          name: "rename_chat",
-          description:
-            "Rename this chat so the user can find it later. Call it once the work has a " +
-            "subject, or when the chat turns to something its current name no longer describes. " +
-            "This names the conversation; it does not rename files.",
-          parameters: renameParameters,
-          availability: "foreground",
-          // Renaming is idempotent, so a call whose outcome was lost can run again.
-          replay: "safe",
-          execute: async (_callId, params) => {
-            // Trimmed and capped like a generated title: both names come from a model.
-            const name = params.name.trim().slice(0, MAX_TITLE_CHARS);
+      api.tools.add("rename_chat", {
+        description:
+          "Rename this chat so the user can find it later. Call it once the work has a " +
+          "subject, or when the chat turns to something its current name no longer describes. " +
+          "This names the conversation; it does not rename files.",
+        parameters: renameParameters,
+        availability: "foreground",
+        // Renaming is idempotent, so a call whose outcome was lost can run again.
+        replay: "safe",
+        execute: async (input) => {
+          // Trimmed and capped like a generated title: both names come from a model.
+          const name = input.name.trim().slice(0, MAX_TITLE_CHARS);
 
-            if (name === "") throw new Error("A chat name cannot be blank");
+          if (name === "") throw new Error("A chat name cannot be blank");
+          await api.session.rename(name);
+
+          // `title` is the heading a client shows on the row; without it the row reads "rename_chat".
+          return {
+            content: [{ type: "text", text: `Chat named ${name}` }],
+            details: { name },
+            title: name,
+          };
+        },
+      });
+      api.commands.add("rename", {
+        description: "Name the chat; with no name, the model picks one",
+        run: async (argument) => {
+          const name = argument.trim();
+
+          if (name !== "") {
             await api.session.rename(name);
 
-            // `title` is the heading a client shows on the row; without it the row reads "rename_chat".
-            return {
-              content: [{ type: "text", text: `Chat named ${name}` }],
-              details: { name },
-              title: name,
-            };
-          },
-        }),
-      );
-      api.commands.add((draft) => {
-        draft.set("rename", {
-          description: "Name the chat; with no name, the model picks one",
-          run: async (argument) => {
-            const name = argument.trim();
+            return `Chat named ${name}`;
+          }
 
-            if (name !== "") {
-              await api.session.rename(name);
+          await generate((await api.session.context()).messages);
 
-              return `Chat named ${name}`;
-            }
-
-            await generate((await api.session.context()).messages);
-
-            return undefined;
-          },
-        });
+          return undefined;
+        },
       });
       // The first response of a root chat that has no name titles it in the
       // background, the way opencode's runner forks a title on the first prompt.

@@ -7,6 +7,7 @@ import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyt
 import type { MutableModels } from "@nyte-ai/ai";
 import type { Api, Model } from "@nyte-ai/schema";
 import { SKILLS_PLUGIN_ID } from "@nyte-ai/core/plugins";
+import { pluginSource } from "@nyte-ai/core/plugin-source";
 import {
   createWorkspaceStore,
   nyteHome,
@@ -182,7 +183,9 @@ test("a discovered plugin can replace a host builtin", async () => {
   const f = await fixture();
   const context = { models: offlineModels(), model };
   const builtins = await resolveHostPlugins({ kind: "home" }, context);
-  assert.equal(builtins.plugins.find((plugin) => plugin.id === "rename")?.source, "builtin");
+  const builtin = builtins.plugins.find((plugin) => plugin.id === "rename");
+  assert.ok(builtin);
+  assert.equal(pluginSource(builtin)?.source, "builtin");
 
   const plugins = join(f.home, "plugins");
   await mkdir(plugins, { recursive: true });
@@ -192,14 +195,17 @@ test("a discovered plugin can replace a host builtin", async () => {
   const overridden = await resolveHostPlugins({ kind: "home" }, context);
   assert.deepEqual(overridden.failures, []);
   const renamed = overridden.plugins.find((plugin) => plugin.id === "rename");
-  assert.equal(renamed?.source, "user");
-  assert.equal(renamed?.path, path);
+  assert.ok(renamed);
+  assert.equal(pluginSource(renamed)?.source, "user");
+  assert.equal(pluginSource(renamed)?.path, path);
 });
 
 function skillsVersion(resolved: Awaited<ReturnType<typeof resolveHostPlugins>>): string {
   const plugin = resolved.plugins.find((entry) => entry.id === SKILLS_PLUGIN_ID);
   assert.ok(plugin, "the skills builtin is always resolved");
-  return plugin.version;
+  const source = pluginSource(plugin);
+  assert.ok(source);
+  return source.version;
 }
 
 test("the skills plugin is versioned by what a scan finds, not by how often it runs", async () => {

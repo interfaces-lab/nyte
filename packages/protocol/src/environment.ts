@@ -74,6 +74,8 @@ export interface ProviderCatalog {
   readonly defaults?: {
     readonly model: { readonly provider: string; readonly id: string };
     readonly thinkingLevel: ModelThinkingLevel;
+    /** Applies when the chosen model offers fast mode. */
+    readonly fast: boolean;
   };
 }
 
@@ -89,6 +91,7 @@ export type PreferenceChange =
       readonly kind: "defaults";
       readonly model?: { readonly provider: string; readonly id: string };
       readonly thinkingLevel?: ModelThinkingLevel;
+      readonly fast?: boolean;
     };
 
 // ---------------------------------------------------------------------------
@@ -391,6 +394,7 @@ const ProviderCatalogSchema = typed<ProviderCatalog>()(
       Type.Object({
         model: Type.Object({ provider: Type.String(), id: Type.String() }),
         thinkingLevel: ThinkingLevel,
+        fast: Type.Boolean(),
       }),
     ),
   }),
@@ -409,6 +413,7 @@ const PreferenceChangeSchema = typed<PreferenceChange>()(
       kind: Type.Literal("defaults"),
       model: Type.Optional(strict({ provider: NonEmptyString, id: NonEmptyString })),
       thinkingLevel: Type.Optional(ThinkingLevel),
+      fast: Type.Optional(Type.Boolean()),
     }),
   ]),
 );

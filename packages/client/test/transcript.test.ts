@@ -4,6 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
+import { sessionId } from "@nyte-ai/protocol";
 import type { Commit, CommitOutcome, Failure, Oid, ToolClass } from "@nyte-ai/protocol";
 import type { AssistantMessage, ToolResultMessage } from "@nyte-ai/schema";
 import {
@@ -210,4 +211,29 @@ test("file_patch results fold into changes by their stamped counts, without read
   assert.deepEqual(changesFromTurns(transcriptFromCommits(items)), [
     { path: "a.ts", added: 3, removed: 1 },
   ]);
+});
+
+test("an await on children is the run's own control flow: neither the call nor its result is a part", () => {
+  const awaiting: ToolClass = {
+    kind: "delegate",
+    role: "await",
+    target: { kind: "many", sessions: [sessionId("child")], mode: "all" },
+  };
+  const items = branch([
+    {
+      body: assistant([{ id: "w", name: "await" }]),
+      calls: { w: awaiting },
+      outcome: { kind: "ok" },
+    },
+    { body: result("w"), call: awaiting, tree: null },
+    {
+      body: assistant([{ id: "e", name: "edit" }]),
+      calls: { e: { kind: "file_edit", path: "a.ts" } },
+      outcome: { kind: "ok" },
+    },
+  ]);
+  assert.deepEqual(
+    transcriptFromCommits(items).flatMap((turn) => conversation(turn).parts),
+    [{ kind: "tool", callId: "e", class: { kind: "file_edit", path: "a.ts" }, at: 2 }],
+  );
 });

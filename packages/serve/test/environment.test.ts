@@ -121,15 +121,16 @@ async function serve(calls: GitHubCommandRequest[] = []) {
     runGitHubCommand: github(calls),
   });
   cleanups.push(() => served.close());
+  const token = randomToken();
   const serving = await startServe({
     sdk: served.sdk,
     environment: served.environment,
     attach: served.attach,
     version: "test",
-    token: randomToken(),
+    auth: { kind: "token", token },
   });
   cleanups.push(() => serving.close());
-  return { cwd, client: createNyteClient({ baseUrl: serving.address, token: serving.token }) };
+  return { cwd, client: createNyteClient({ baseUrl: serving.address, token }) };
 }
 
 test("the catalog is the served machine's, and preferences change what its picker lists", async () => {

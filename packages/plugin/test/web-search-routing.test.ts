@@ -2,7 +2,7 @@ import { getCurrentTools } from "@nyte-ai/schema";
 import assert from "node:assert/strict";
 import { afterEach, describe, expect, test } from "vitest";
 import type { Nyte, SessionId, StreamFn } from "@nyte-ai/core";
-import { inlinePlugin } from "@nyte-ai/plugin";
+
 import type { JsonValue } from "@nyte-ai/schema";
 import {
   WEB_SEARCH_SETTING_ID,
@@ -120,15 +120,13 @@ function searchFixture() {
       model: testModel,
       streamFn,
       plugins: [
-        inlinePlugin(
-          webSearchPlugin({
-            credentials,
-            environment: (name) => state.environment.get(name),
-            random: () => state.randomValues.shift() ?? state.random,
-            fetch,
-          }),
-        ),
-        ...providers.map((provider) => inlinePlugin(webSearchProviderPlugin(provider))),
+        webSearchPlugin({
+          credentials,
+          environment: (name) => state.environment.get(name),
+          random: () => state.randomValues.shift() ?? state.random,
+          fetch,
+        }),
+        ...providers.map((provider) => webSearchProviderPlugin(provider)),
       ],
     });
   return { world, state, open };

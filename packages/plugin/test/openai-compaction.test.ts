@@ -9,7 +9,7 @@ import { Value } from "typebox/value";
 import { projectUsage } from "@nyte-ai/client";
 import type { Nyte, SessionEvent, SessionId, StreamFn } from "@nyte-ai/core";
 import { openaiCodexProvider, openaiProvider, type AuthResult, type Models } from "@nyte-ai/ai";
-import { inlinePlugin, systemPromptPlugin } from "@nyte-ai/plugin";
+import { systemPromptPlugin } from "@nyte-ai/plugin";
 import { normalizeContext } from "@nyte-ai/schema";
 import type { Api, JsonValue, Model } from "@nyte-ai/schema";
 import { activate } from "../../core/src/kernel/sdk/activation.ts";
@@ -271,7 +271,7 @@ async function open(
     getModel: (requested, id) => (requested === provider && id === model.id ? model : undefined),
     getAuth: async () => auth,
   };
-  const plugin = inlinePlugin(openaiCompactionPlugin({ models }));
+  const plugin = openaiCompactionPlugin({ models });
   const codex = openaiCodexProvider();
   const publicApi = openaiProvider();
   const streamFn: StreamFn = (used, context, options) =>
@@ -291,14 +291,12 @@ async function open(
     model,
     compaction: { enabled: true, reserveTokens: 100, keepRecentTokens: 1 },
     plugins: [
-      inlinePlugin(systemPromptPlugin("Project instructions")),
+      systemPromptPlugin("Project instructions"),
       plugin,
-      ...Array.from({ length: nativeHandlers - 1 }, (_, index) =>
-        inlinePlugin({
-          ...openaiCompactionPlugin({ models }),
-          id: `native-recovery-${index}`,
-        }),
-      ),
+      ...Array.from({ length: nativeHandlers - 1 }, (_, index) => ({
+        ...openaiCompactionPlugin({ models }),
+        id: `native-recovery-${index}`,
+      })),
     ],
     streamFn,
   });
@@ -532,11 +530,13 @@ test.each(["openai", "openai-codex"] as const)(
     const seq = snapshot.seq;
     const diagnostics = await diagnosticsDuring(sdk, world, async () => {
       const controller = new AbortController();
-      const active = await activate({
+      const outcome = await activate({
         target: { kind: "session", session },
         plugins: [plugin],
         env: { cwd: world.directory },
       });
+      if (outcome.kind === "failed") throw new Error(outcome.error);
+      const active = outcome.activation;
       try {
         const result = await writeCheckpoint(session, {
           head: "main",
@@ -821,7 +821,7 @@ test("a completed native checkpoint survives host restart and is replayed on the
   await sdk.close();
   const resumed = await world.open({
     model,
-    plugins: [inlinePlugin(systemPromptPlugin("Project instructions")), plugin],
+    plugins: [systemPromptPlugin("Project instructions"), plugin],
     streamFn,
   });
   await prompt(resumed, world.sessionId, "continue after restart");

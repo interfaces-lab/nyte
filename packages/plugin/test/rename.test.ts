@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
 import { contentText } from "@nyte-ai/ai";
-import { inlinePlugin } from "@nyte-ai/plugin";
+
 import type { Nyte, SessionId } from "@nyte-ai/core";
 import type { Api, Model } from "@nyte-ai/schema";
 import {
@@ -75,7 +75,7 @@ test("/rename with an argument uses the literal trimmed name without asking a mo
   const titles = titleProvider();
   const sdk = await world.open({
     streamFn: (model) => respond(model, [{ type: "text", text: "done" }]),
-    plugins: [inlinePlugin(renamePlugin({ models: titles.models, model: primary }))],
+    plugins: [renamePlugin({ models: titles.models, model: primary })],
     model: primary,
   });
 
@@ -92,7 +92,7 @@ test("/rename alone builds transcript context and falls back from Luna to the ch
   const titles = titleProvider();
   const sdk = await world.open({
     streamFn: (model) => respond(model, [{ type: "text", text: "done" }]),
-    plugins: [inlinePlugin(renamePlugin({ models: titles.models, model: primary }))],
+    plugins: [renamePlugin({ models: titles.models, model: primary })],
     model: primary,
   });
 
@@ -144,7 +144,7 @@ test("a root chat with no name is titled in the background on its first prompt, 
   const titles = titleProvider();
   const sdk = await world.open({
     streamFn: (model) => respond(model, [{ type: "text", text: "done" }]),
-    plugins: [inlinePlugin(renamePlugin({ models: titles.models, model: primary }))],
+    plugins: [renamePlugin({ models: titles.models, model: primary })],
     model: primary,
   });
 
@@ -190,7 +190,7 @@ test("the rename_chat tool names the chat, trimming and capping; a blank name is
         ? respond(model, [{ type: "text", text: "done" }])
         : respond(model, [toolCall(`r-${String(names.length)}`, "rename_chat", { name })]);
     },
-    plugins: [inlinePlugin(renamePlugin({ models: titles.models, model: primary }))],
+    plugins: [renamePlugin({ models: titles.models, model: primary })],
     model: primary,
   });
 

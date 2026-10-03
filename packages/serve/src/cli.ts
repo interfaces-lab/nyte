@@ -6,7 +6,14 @@ import { parseArgs } from "node:util";
 import { createWorkspaceStore } from "@nyte-ai/host";
 import packageMetadata from "../package.json" with { type: "json" };
 import { openServedHost } from "./host.ts";
-import { appDistRoot, findTailnetAddress, loadOrCreateToken, startServe } from "./index.ts";
+import {
+  appDistRoot,
+  findTailnetAddress,
+  loadOrCreateToken,
+  pairingOrigin,
+  pairingUrl,
+  startServe,
+} from "./index.ts";
 
 const HELP = `nyte-serve · serve one folder and the Nyte web app
 
@@ -88,6 +95,7 @@ export async function main(argv: readonly string[]): Promise<void> {
   const appRoot = values["no-app"] === true ? undefined : appDistRoot();
   const built = appRoot !== undefined && existsSync(join(appRoot, "index.html"));
 
+  const token = values.token ?? (await loadOrCreateToken());
   const served = await openServedHost({
     cwd,
     onDiagnostic: (message) => process.stderr.write(`${message}\n`),
@@ -101,7 +109,7 @@ export async function main(argv: readonly string[]): Promise<void> {
     describe: () => ({ capabilities: { workspace: true }, persistence: "durable" }),
     host,
     port,
-    token: values.token ?? (await loadOrCreateToken()),
+    auth: { kind: "token", token },
     appRoot: built ? appRoot : undefined,
   }).catch(async (cause: unknown) => {
     await served.close();
@@ -126,7 +134,12 @@ export async function main(argv: readonly string[]): Promise<void> {
     );
   }
 
-  process.stdout.write(`Open this link to connect a browser:\n${serving.pairingUrl}\n`);
+  const link = pairingUrl(
+    pairingOrigin(serving.address, built ? appRoot : undefined),
+    serving.address,
+    token,
+  );
+  process.stdout.write(`Open this link to connect a browser:\n${link}\n`);
 
-  if (values.open === true) openInBrowser(serving.pairingUrl);
+  if (values.open === true) openInBrowser(link);
 }

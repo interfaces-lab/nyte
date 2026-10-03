@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { createNyte, type SessionEvent } from "@nyte-ai/core";
-import { definePlugin, inlinePlugin } from "@nyte-ai/core/plugins";
+import { definePlugin } from "@nyte-ai/core/plugins";
 import { SqliteStore } from "@nyte-ai/core/store";
 import { createNyteClient } from "@nyte-ai/client";
 import type { Api, AssistantMessage, Message, Model } from "@nyte-ai/schema";
@@ -51,26 +51,24 @@ test("compaction activity survives HTTP snapshots and SSE replay through publica
       getAvailable: async () => [model],
     },
     plugins: [
-      inlinePlugin(
-        definePlugin({
-          id: "test-compaction",
-          session(api) {
-            api.hook("before_compaction", async () => {
-              entered.resolve();
-              await release.promise;
-              return {
-                material: {
-                  type: "provider",
-                  provider: model.provider,
-                  api: model.api,
-                  model: model.id,
-                  data: [{ type: "compaction", encrypted_content: "test-provider-context" }],
-                },
-              };
-            });
-          },
-        }),
-      ),
+      definePlugin({
+        id: "test-compaction",
+        session(api) {
+          api.hook("before_compaction", async () => {
+            entered.resolve();
+            await release.promise;
+            return {
+              material: {
+                type: "provider",
+                provider: model.provider,
+                api: model.api,
+                model: model.id,
+                data: [{ type: "compaction", encrypted_content: "test-provider-context" }],
+              },
+            };
+          });
+        },
+      }),
     ],
     env: { cwd: "/tmp/nowhere" },
     compaction: { enabled: true, reserveTokens: 100, keepRecentTokens: 1 },

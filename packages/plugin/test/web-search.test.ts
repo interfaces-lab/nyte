@@ -11,7 +11,7 @@ import { getCurrentTools } from "@nyte-ai/schema";
 import assert from "node:assert/strict";
 import { afterEach, describe, test } from "vitest";
 import type { Nyte, SessionId, StreamFn } from "@nyte-ai/core";
-import { inlinePlugin, toJsonValue } from "@nyte-ai/plugin";
+import { toJsonValue } from "@nyte-ai/plugin";
 import type { JsonValue, ToolResultMessage } from "@nyte-ai/schema";
 import {
   exaPlugin,
@@ -96,7 +96,7 @@ function toolNamesModel(seen: string[][]): StreamFn {
 /** The tool plugin and every provider plugin, the way a host composes them. */
 function plugins(options: WebSearchPluginOptions) {
   return [webSearchPlugin(options), exaPlugin, firecrawlPlugin, parallelPlugin, tavilyPlugin].map(
-    (plugin) => inlinePlugin(plugin),
+    (plugin) => plugin,
   );
 }
 
@@ -326,19 +326,17 @@ describe("web search plugin", () => {
     const sdk = await world.open({
       streamFn: searchingModel("keyless"),
       plugins: [
-        inlinePlugin(
-          webSearchPlugin({
-            environment: environment({}),
-            fetch: fetchMock(calls, () =>
-              Response.json({
-                results: [
-                  { title: "Tavily result", url: "https://example.com/tavily", content: "A page" },
-                ],
-              }),
-            ),
-          }),
-        ),
-        inlinePlugin(tavilyPlugin),
+        webSearchPlugin({
+          environment: environment({}),
+          fetch: fetchMock(calls, () =>
+            Response.json({
+              results: [
+                { title: "Tavily result", url: "https://example.com/tavily", content: "A page" },
+              ],
+            }),
+          ),
+        }),
+        tavilyPlugin,
       ],
       model: testModel,
     });
@@ -375,13 +373,10 @@ describe("web search plugin", () => {
     });
   });
 
-  test("automatic routing prefers the provider holding a key", async () => {
-    const calls: Request[] = [];
+  test("renders an empty provider result set as the no-results message", async () => {
     const { result, message } = await search("keyed", {
-      // Firecrawl is the only keyed route, so it answers however the shuffle falls.
-      environment: environment({ FIRECRAWL_API_KEY: "fire-secret" }),
-      random: () => 0.99,
-      fetch: fetchMock(calls, () =>
+      ...onlyKeyed("FIRECRAWL_API_KEY", "fire-secret"),
+      fetch: fetchMock([], () =>
         mcp({
           content: [
             {
@@ -392,10 +387,6 @@ describe("web search plugin", () => {
         }),
       ),
     });
-    assert.deepEqual(
-      calls.map((request) => new URL(request.url).hostname),
-      ["mcp.firecrawl.dev"],
-    );
     assert.deepEqual(message.details, {
       provider: "firecrawl",
       mode: "auto",
@@ -405,32 +396,6 @@ describe("web search plugin", () => {
     });
     assert.equal(result.output, "No search results found. Please try a different query.");
     assert.equal(result.isError, false);
-  });
-
-  test("with no key held, automatic routing picks one keyless provider at random", async () => {
-    const calls: Request[] = [];
-    const { message } = await search("random", {
-      environment: environment({}),
-      // Four providers join in registration order; 0.5 lands on the third.
-      random: () => 0.5,
-      fetch: fetchMock(calls, () =>
-        mcp({
-          content: [{ type: "text", text: "ok" }],
-          structuredContent: { search_id: "s", session_id: "s", results: [] },
-        }),
-      ),
-    });
-    assert.deepEqual(
-      calls.map((request) => new URL(request.url).hostname),
-      ["search.parallel.ai"],
-    );
-    assert.deepEqual(message.details, {
-      provider: "parallel",
-      mode: "auto",
-      credential: "anonymous",
-      rateLimited: [],
-      results: [],
-    });
   });
 
   test("names the failures a user can act on and never retries a chosen provider", async () => {

@@ -38,9 +38,14 @@ import { appendTranscriptCommit } from "../views/transcript.ts";
 import type { TranscriptState } from "../views/transcript.ts";
 
 /** A parked call only a participant can answer: the one whose wait carries a selection. */
-export type WaitingCall = Pick<ParkedCall, "runId" | "callId" | "waitId" | "until"> & {
+export type Ask = ParkedCall & { readonly selection: Selection };
+
+function isAsk(call: ParkedCall): call is Ask {
+  return call.selection !== undefined;
+}
+
+export type WaitingCall = Pick<Ask, "runId" | "callId" | "waitId" | "selection" | "until"> & {
   readonly sessionId: SessionId;
-  readonly selection: Selection;
 };
 
 export interface SessionState {
@@ -59,8 +64,8 @@ export interface SessionState {
   readonly overlay: LiveParts;
   /** Calls settled in the current run, retained so a late progress frame cannot restore them. */
   readonly settledToolCalls: ReadonlySet<string>;
-  /** The parked calls of `run` as the snapshot lists them, in call order: asks and background waits alike. */
-  readonly parked: readonly ParkedCall[];
+  /** The asks of `run` as the snapshot orders them. A wait on background work is the run's own. */
+  readonly parked: readonly Ask[];
   readonly context: ContextStatus;
   /**
    * Where a `head_moved` said the head now is, while the commits that would
@@ -102,7 +107,7 @@ export function stateFromSnapshot(snapshot: SessionSnapshot): SessionState {
     compaction: snapshot.compaction,
     overlay: EMPTY_LIVE_PARTS,
     settledToolCalls: EMPTY_SETTLED_TOOL_CALLS,
-    parked: snapshot.parked ?? [],
+    parked: (snapshot.parked ?? []).filter(isAsk),
     context: snapshot.context,
     expectedTip: undefined,
   };
@@ -124,13 +129,13 @@ export function snapshotOf(state: SessionState): SessionSnapshot {
   };
 }
 
-/** The call a composer answers: the newest ask. Background waits never take the composer over. */
+/** The call a composer answers: the newest ask. */
 export function waitingCall(
   state: Pick<SessionState, "sessionId" | "parked">,
 ): WaitingCall | undefined {
-  const call = state.parked.findLast((candidate) => candidate.selection !== undefined);
+  const call = state.parked.at(-1);
 
-  if (call?.selection === undefined) return undefined;
+  if (call === undefined) return undefined;
 
   return {
     sessionId: state.sessionId,
@@ -308,45 +313,18 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
       if (state.run?.runId !== event.runId) return { kind: "state", state: base };
 
       switch (event.state) {
-        case "waiting": {
+        case "waiting":
           // The snapshot orders concurrent asks and rejects a waiting event older than itself.
-          if (event.selection !== undefined) return { kind: "resnapshot" };
-
-          // A background wait carries its whole record, so it parks without a read.
-          const call: ParkedCall = {
-            runId: event.runId,
-            callId: event.callId,
-            waitId: event.waitId,
-            tool: event.tool,
-            args: event.args,
-            until: event.until,
-          };
-
-          return {
-            kind: "state",
-            state: {
-              ...base,
-              parked: [...state.parked.filter((parked) => parked.callId !== call.callId), call],
-            },
-          };
-        }
-
+          return event.selection === undefined
+            ? { kind: "state", state: base }
+            : { kind: "resnapshot" };
         case "expired":
         case "signal":
-        case "result": {
-          const parked = state.parked.find((call) => call.callId === event.callId);
-
-          if (parked === undefined) return { kind: "state", state: base };
-
+        case "result":
           // These carry no wait generation; only the snapshot tells a settled ask from a replay.
-          if (parked.selection !== undefined) return { kind: "resnapshot" };
-
-          return {
-            kind: "state",
-            state: { ...base, parked: state.parked.filter((call) => call !== parked) },
-          };
-        }
-
+          return state.parked.some((call) => call.callId === event.callId)
+            ? { kind: "resnapshot" }
+            : { kind: "state", state: base };
         case "intent":
           return { kind: "state", state: base };
         default: {

@@ -1,4 +1,4 @@
-import type { ToolTurnPart, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
+import type { ToolTurnPart, Turn, TurnPart, TurnToolClass, UserTurnPart } from "@nyte-ai/protocol";
 import type { Commit, CommitBody, MessageSource, Oid, ToolClass } from "@nyte-ai/protocol";
 
 type MessageBody = Extract<CommitBody, { kind: "message" }>;
@@ -52,6 +52,11 @@ export interface TranscriptState {
 
 export const EMPTY_TRANSCRIPT: TranscriptState = { items: [], tip: null };
 
+/** An await on children is the run's own control flow; the children's cards show how each is doing. */
+function drawnToolClass(toolClass: ToolClass): TurnToolClass | undefined {
+  return toolClass.kind === "delegate" && toolClass.role === "await" ? undefined : toolClass;
+}
+
 function toolResultText(message: ToolResultMessage): string {
   return message.content
     .map((part) => {
@@ -74,22 +79,61 @@ function toolResultText(message: ToolResultMessage): string {
  * Whitespace is not content: providers pad text and thinking blocks around
  * tool calls, and a part that draws nothing should not reach a client as one.
  */
-function hasVisibleAssistantContent(message: AssistantMessage): boolean {
-  return message.content.some((part) => {
+function assistantParts(
+  item: CommitItem & { readonly commit: AssistantCommit },
+  message: AssistantMessage,
+): TurnPart[] {
+  const parts: TurnPart[] = [];
+
+  for (const [contentIndex, part] of message.content.entries()) {
     switch (part.type) {
-      case "toolCall":
-        return true;
       case "text":
-        return part.text.trim() !== "";
+        if (part.text.trim() !== "") {
+          parts.push({
+            kind: "assistant",
+            commit: item.oid,
+            contentIndex,
+            text: part.text,
+            at: item.commit.at,
+          });
+        }
+
+        break;
       case "thinking":
-        return part.thinking.trim() !== "";
+        if (part.thinking.trim() !== "") {
+          parts.push({
+            kind: "thinking",
+            commit: item.oid,
+            contentIndex,
+            text: part.thinking,
+            at: item.commit.at,
+          });
+        }
+
+        break;
+      case "toolCall": {
+        const toolClass = item.commit.calls[part.id];
+
+        if (toolClass === undefined)
+          throw new Error(`Assistant commit has no class for ${part.id}`);
+        const drawn = drawnToolClass(toolClass);
+
+        if (drawn !== undefined) {
+          parts.push({ kind: "tool", callId: part.id, class: drawn, at: item.commit.at });
+        }
+
+        break;
+      }
+
       default: {
         const _exhaustive: never = part;
 
         return _exhaustive;
       }
     }
-  });
+  }
+
+  return parts;
 }
 
 /**
@@ -161,61 +205,20 @@ function appendAssistant(
   message: AssistantMessage,
 ): void {
   const failure = item.commit.outcome.kind === "failed" ? item.commit.outcome.failure : undefined;
+  const parts = assistantParts(item, message);
 
-  if (!hasVisibleAssistantContent(message) && failure === undefined) return;
+  if (parts.length === 0 && failure === undefined) return;
   const turn = landingTurn(builder, item);
 
   if (failure === undefined) delete turn.failure;
   else turn.failure = failure;
 
-  for (const [contentIndex, part] of message.content.entries()) {
-    switch (part.type) {
-      case "text":
-        if (part.text.trim() !== "") {
-          turn.parts.push({
-            kind: "assistant",
-            commit: item.oid,
-            contentIndex,
-            text: part.text,
-            at: item.commit.at,
-          });
-        }
-
-        break;
-      case "thinking":
-        if (part.thinking.trim() !== "") {
-          turn.parts.push({
-            kind: "thinking",
-            commit: item.oid,
-            contentIndex,
-            text: part.thinking,
-            at: item.commit.at,
-          });
-        }
-
-        break;
-      case "toolCall": {
-        const toolClass = item.commit.calls[part.id];
-
-        if (toolClass === undefined)
-          throw new Error(`Assistant commit has no class for ${part.id}`);
-
-        if (!builder.toolCalls?.has(part.id)) builder.toolCalls?.set(part.id, turn.parts.length);
-        turn.parts.push({
-          kind: "tool",
-          callId: part.id,
-          class: toolClass,
-          at: item.commit.at,
-        });
-        break;
-      }
-
-      default: {
-        const _exhaustive: never = part;
-
-        return _exhaustive;
-      }
+  for (const part of parts) {
+    if (part.kind === "tool" && !builder.toolCalls?.has(part.callId)) {
+      builder.toolCalls?.set(part.callId, turn.parts.length);
     }
+
+    turn.parts.push(part);
   }
 }
 
@@ -225,6 +228,9 @@ function appendToolResult(
   item: CommitItem & { readonly commit: ToolResultCommit },
   message: ToolResultMessage,
 ): void {
+  const settled = drawnToolClass(item.commit.call);
+
+  if (settled === undefined) return;
   const turn = landingTurn(builder, item);
 
   const result: ToolTurnPart["result"] = {
@@ -232,8 +238,6 @@ function appendToolResult(
     output: toolResultText(message),
     isError: message.isError,
   };
-
-  const settled = item.commit.call;
 
   const index =
     builder.toolCalls === undefined

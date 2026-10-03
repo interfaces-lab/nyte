@@ -100,6 +100,7 @@ import type {
   ToolTurnPart as ToolTurnPartType,
   Turn as TurnType,
   TurnPart as TurnPartType,
+  TurnToolClass as TurnToolClassType,
   UserTurnPart as UserTurnPartType,
 } from "./views.ts";
 import type {
@@ -619,7 +620,9 @@ export const Failure = typed<FailureType>()(
   }),
 );
 
-export const ToolClass = typed<ToolClassType>()(
+const OneChild = open({ kind: Type.Literal("one"), session: SessionId });
+
+export const TurnToolClass = typed<TurnToolClassType>()(
   Type.Union([
     open({ kind: Type.Literal("file_edit"), path: Type.String() }),
     open({ kind: Type.Literal("file_write"), path: Type.String() }),
@@ -633,28 +636,40 @@ export const ToolClass = typed<ToolClassType>()(
     }),
     open({ kind: Type.Literal("file_read"), path: Type.String() }),
     open({ kind: Type.Literal("list"), path: Type.String() }),
-    open({ kind: Type.Literal("shell"), command: Type.String() }),
+    open({
+      kind: Type.Literal("shell"),
+      command: Type.String(),
+      description: Type.Optional(Type.String()),
+    }),
     open({
       kind: Type.Literal("delegate"),
       role: Type.Literal("create"),
       title: Type.String(),
-      target: open({ kind: Type.Literal("one"), session: SessionId }),
+      target: OneChild,
     }),
     open({
       kind: Type.Literal("delegate"),
-      role: literals(["send", "await", "read", "stop"]),
-      target: Type.Union([
-        open({ kind: Type.Literal("one"), session: SessionId }),
-        open({
-          kind: Type.Literal("many"),
-          sessions: Unsafe<readonly [SessionIdType, ...SessionIdType[]]>(
-            Type.Array(SessionId, { minItems: 1 }),
-          ),
-          mode: literals(["any", "all"]),
-        }),
-      ]),
+      role: literals(["send", "read", "stop"]),
+      target: OneChild,
     }),
     open({ kind: Type.Literal("custom"), label: Type.String() }),
+  ]),
+);
+
+export const ToolClass = typed<ToolClassType>()(
+  Type.Union([
+    TurnToolClass,
+    open({
+      kind: Type.Literal("delegate"),
+      role: Type.Literal("await"),
+      target: open({
+        kind: Type.Literal("many"),
+        sessions: Unsafe<readonly [SessionIdType, ...SessionIdType[]]>(
+          Type.Array(SessionId, { minItems: 1 }),
+        ),
+        mode: literals(["any", "all"]),
+      }),
+    }),
   ]),
 );
 
@@ -820,6 +835,7 @@ export const SessionActivationState = typed<SessionActivationStateType>()(
       kind: Type.Literal("requires"),
       requirement: ActivationRequirement,
     }),
+    open({ kind: Type.Literal("failed"), error: Type.String() }),
   ]),
 );
 
@@ -942,7 +958,7 @@ export const ToolTurnPart = typed<ToolTurnPartType>()(
     kind: Type.Literal("tool"),
     callId: Type.String(),
     at: Type.Number(),
-    class: ToolClass,
+    class: TurnToolClass,
     result: Type.Optional(open({ commit: Oid, output: Type.String(), isError: Type.Boolean() })),
   }),
 );
@@ -1207,7 +1223,12 @@ export const SettingInfo = typed<SettingInfoType>()(
 );
 
 export const CommandInfo = typed<CommandInfoType>()(
-  open({ name: Type.String(), owner: Type.String(), description: Type.String() }),
+  open({
+    name: Type.String(),
+    owner: Type.String(),
+    description: Type.String(),
+    selection: Type.Optional(Type.Union([Type.Literal("run"), Type.Literal("insert")])),
+  }),
 );
 
 export const PluginCatalog = typed<PluginCatalogType>()(

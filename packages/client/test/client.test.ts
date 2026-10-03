@@ -148,6 +148,57 @@ test("a value that does not match the operation's output schema is a transport f
   assert.equal(error.failure.kind, "bad_body");
 });
 
+test("an environment call posts to its wire name and checks the reply against that operation", async () => {
+  const { seen, fetchFn } = scripted(() =>
+    json(200, { ok: true, defined: true, value: { kind: "unknown" } }),
+  );
+  const client = createNyteClient({ baseUrl: "http://h.test", fetch: fetchFn });
+  assert.deepEqual(await client.environment("environment.loginAttempt", { attempt: "a1" }), {
+    kind: "unknown",
+  });
+  const error = await caught(client.environment("environment.github.state", undefined));
+  assert.ok(error instanceof NyteTransportError);
+  assert.equal(error.failure.kind, "bad_body");
+  assert.deepEqual(
+    seen.map((call) => [call.url, call.body]),
+    [
+      ["http://h.test/v1/call/environment.loginAttempt", '{"input":{"attempt":"a1"}}'],
+      ["http://h.test/v1/call/environment.github.state", "{}"],
+    ],
+  );
+});
+
+test("a GitHub reply whose links leave github.com is refused before the client can open them", async () => {
+  const answers = [
+    { kind: "created", url: "https://github.com/owner/repo/pull/13" },
+    { kind: "created", url: "https://evil.test/owner/repo/pull/13" },
+    { kind: "created", url: "javascript:alert(1)" },
+    {
+      kind: "ready",
+      repository: { owner: "o", name: "r", remoteName: "origin", url: "http://github.com/o/r" },
+      account: { login: "octocat" },
+      pullRequest: { kind: "none" },
+    },
+  ];
+  const client = createNyteClient({
+    baseUrl: "http://h.test",
+    fetch: scripted(() => json(200, { ok: true, defined: true, value: answers.shift() })).fetchFn,
+  });
+  assert.deepEqual(
+    await client.environment("environment.github.createPullRequest", { title: "feat: ship" }),
+    { kind: "created", url: "https://github.com/owner/repo/pull/13" },
+  );
+  for (const call of [
+    () => client.environment("environment.github.createPullRequest", { title: "feat: ship" }),
+    () => client.environment("environment.github.createPullRequest", { title: "feat: ship" }),
+    () => client.environment("environment.github.state", undefined),
+  ]) {
+    const error = await caught(call());
+    assert.ok(error instanceof NyteTransportError);
+    assert.equal(error.failure.kind, "bad_body");
+  }
+});
+
 test("job calls reject malformed lists and action outcomes", async () => {
   const client = createNyteClient({
     baseUrl: "http://h.test",

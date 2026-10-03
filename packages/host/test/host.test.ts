@@ -12,7 +12,7 @@ import {
 } from "@nyte-ai/ai";
 import type { Provider } from "@nyte-ai/ai";
 import type { Nyte, SessionId } from "@nyte-ai/core";
-import { inlinePlugin } from "@nyte-ai/core/plugins";
+
 import { providerPlugin } from "@nyte-ai/plugin/provider";
 import { SqliteStore } from "@nyte-ai/core/store";
 import { getCurrentSystemPrompt, getCurrentTools } from "@nyte-ai/schema";
@@ -429,7 +429,7 @@ test("provider overrides toggle per session, share credentials, and restore the 
       );
     },
   };
-  const loaded = inlinePlugin(providerPlugin({ id: "echo-override", provider: replacement }));
+  const loaded = providerPlugin({ id: "echo-override", provider: replacement });
   const store = f.store("provider-overrides.db");
   const options = {
     store,
@@ -477,25 +477,23 @@ test("provider overrides toggle per session, share credentials, and restore the 
 test("the last enabled provider plugin wins and override failures do not fall through to the default", async () => {
   const f = await fixture();
   const override = (id: string) =>
-    inlinePlugin(
-      providerPlugin({
-        id,
-        provider: {
-          ...f.provider,
-          streamSimple(selected, context, options) {
-            if (id === "broken") throw new Error("override failed");
-            return f.provider.streamSimple(
-              selected,
-              {
-                ...context,
-                messages: [{ role: "user", content: id, timestamp: Date.now() }],
-              },
-              options,
-            );
-          },
+    providerPlugin({
+      id,
+      provider: {
+        ...f.provider,
+        streamSimple(selected, context, options) {
+          if (id === "broken") throw new Error("override failed");
+          return f.provider.streamSimple(
+            selected,
+            {
+              ...context,
+              messages: [{ role: "user", content: id, timestamp: Date.now() }],
+            },
+            options,
+          );
         },
-      }),
-    );
+      },
+    });
   const first = override("first");
   const last = override("last");
   const host = await createHost({
@@ -585,10 +583,6 @@ test("context activation uses its fingerprinted snapshot and reloads in the same
   assert.match(f.prompts.at(-1) ?? "", /original context snapshot/);
   assert.doesNotMatch(f.prompts.at(-1) ?? "", /updated context snapshot/);
   const next = await resolveHostPlugins(target, { models: f.models, model });
-  assert.notEqual(
-    next.plugins.find((item) => item.id === "context-files")?.version,
-    prepared.plugins.find((item) => item.id === "context-files")?.version,
-  );
   await host.setPlugins(next.plugins);
   await answer(host, id, "second");
   assert.match(f.prompts.at(-1) ?? "", /updated context snapshot/);

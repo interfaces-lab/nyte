@@ -14,44 +14,44 @@ export function providerPlugin(options: {
   readonly provider: Provider;
   readonly enabled?: boolean;
 }): ProviderPlugin {
+  // Setting ids are session-wide, so the plugin id keeps two overrides apart.
+  const setting = `${options.id}:enabled`;
+  const fallback = options.enabled === false ? "off" : "on";
+  // `provider` is asked before `session` runs, so it reads the choice as the handle would.
   const enabled = async (api: SessionApi) => {
-    const value = await api.storage.get("enabled");
+    const stored = await api.storage.get(setting);
 
-    return value === "on" || (value !== "off" && (options.enabled ?? true));
+    return (stored === "on" || stored === "off" ? stored : fallback) === "on";
   };
 
   return {
     id: options.id,
     provider: async (api) => ((await enabled(api)) ? options.provider : undefined),
     session(api) {
-      api.settings.add((settings) =>
-        settings.set(`${options.id}:enabled`, {
-          label: `${options.provider.name} override`,
-          key: "enabled",
-          fallback: options.enabled === false ? "off" : "on",
-          choices: [
-            { id: "on", label: "on" },
-            { id: "off", label: "off" },
-          ],
-        }),
-      );
-      api.commands.add((commands) =>
-        commands.set(options.id, {
-          description: `Toggle ${options.provider.name} override`,
-          async run(argument) {
-            const value = argument.trim();
+      const override = api.settings.add(setting, {
+        label: `${options.provider.name} override`,
+        default: fallback,
+        choices: [
+          { id: "on", label: "on" },
+          { id: "off", label: "off" },
+        ],
+      });
+      api.commands.add(options.id, {
+        description: `Toggle ${options.provider.name} override`,
+        selection: "run",
+        async run(argument) {
+          const value = argument.trim();
 
-            if (value !== "" && value !== "on" && value !== "off") {
-              throw new Error(`Usage: /${options.id} [on|off]`);
-            }
+          if (value !== "" && value !== "on" && value !== "off") {
+            throw new Error(`Usage: /${options.id} [on|off]`);
+          }
 
-            const next = value === "" ? !(await enabled(api)) : value === "on";
-            await api.storage.set("enabled", next ? "on" : "off");
+          const next = value === "" ? !(await enabled(api)) : value === "on";
+          await override.set(next ? "on" : "off");
 
-            return `${options.provider.name} override: ${next ? "on" : "off"}`;
-          },
-        }),
-      );
+          return `${options.provider.name} override: ${next ? "on" : "off"}`;
+        },
+      });
     },
   };
 }

@@ -1,7 +1,8 @@
 import { lazyStream } from "@nyte-ai/ai";
 import type { Models, MutableModels, Provider } from "@nyte-ai/ai";
-import type { LoadedPlugin, StreamFn } from "@nyte-ai/core";
+import type { Plugin, StreamFn } from "@nyte-ai/core";
 import type { SessionApi } from "@nyte-ai/core/plugins";
+import { pluginSource, withPluginSource } from "@nyte-ai/core/plugin-source";
 import { isProviderPlugin } from "@nyte-ai/plugin/provider";
 import type { ProviderPlugin } from "@nyte-ai/plugin/provider";
 
@@ -14,39 +15,47 @@ type Override = {
 export function providerOverrides(defaults: MutableModels) {
   const sessions = new Map<string, Set<Override>>();
   const catalogs = new WeakMap<Provider, Models>();
+  const wrappers = new WeakMap<
+    ProviderPlugin,
+    { readonly order: number; readonly plugin: Plugin }
+  >();
 
-  const wrap = (plugins: readonly LoadedPlugin[]): LoadedPlugin[] =>
-    plugins.map((loaded, order) => {
-      const plugin = loaded.module;
+  const wrap = (plugins: readonly Plugin[]): Plugin[] =>
+    plugins.map((plugin, order) => {
+      if (!isProviderPlugin(plugin)) return plugin;
+      const cached = wrappers.get(plugin);
+      const source = pluginSource(plugin);
+      if (cached?.order === order) {
+        if (source !== undefined) withPluginSource(cached.plugin, source);
+        return cached.plugin;
+      }
 
-      if (!isProviderPlugin(plugin)) return loaded;
+      const wrapped: Plugin = {
+        id: plugin.id,
+        async session(api) {
+          await plugin.session(api);
+          const session = await api.session.info();
 
-      return {
-        ...loaded,
-        module: {
-          id: plugin.id,
-          async session(api) {
-            await plugin.session(api);
-            const session = await api.session.info();
+          if (session.id === undefined || api.signal.aborted) return;
+          const id = session.id;
+          const entries = sessions.get(id) ?? new Set<Override>();
+          const entry = { order, api, plugin };
+          entries.add(entry);
+          sessions.set(id, entries);
+          api.signal.addEventListener(
+            "abort",
+            () => {
+              entries.delete(entry);
 
-            if (session.id === undefined || api.signal.aborted) return;
-            const id = session.id;
-            const entries = sessions.get(id) ?? new Set<Override>();
-            const entry = { order, api, plugin };
-            entries.add(entry);
-            sessions.set(id, entries);
-            api.signal.addEventListener(
-              "abort",
-              () => {
-                entries.delete(entry);
-
-                if (entries.size === 0) sessions.delete(id);
-              },
-              { once: true },
-            );
-          },
+              if (entries.size === 0) sessions.delete(id);
+            },
+            { once: true },
+          );
         },
       };
+      if (source !== undefined) withPluginSource(wrapped, source);
+      wrappers.set(plugin, { order, plugin: wrapped });
+      return wrapped;
     });
 
   const stream: StreamFn = (model, context, options) => {

@@ -958,6 +958,19 @@ export type AccountUsage = {
   | { readonly kind: "failed"; readonly message: string }
 );
 
+/**
+ * What the provider reported on the last turn, for a page that paints before
+ * the usage endpoint answers or when it does not answer at all.
+ */
+export function observedAccountUsage(
+  models: Pick<Models, "getAccountLimits">,
+  provider: AccountUsage["provider"],
+): AccountUsage | undefined {
+  const limits = models.getAccountLimits(provider);
+
+  return limits === undefined ? undefined : { provider, kind: "ready", limits };
+}
+
 /** Read the account signed into Nyte using the existing provider authentication. */
 export async function readAccountUsage(options: {
   readonly models: Models;
@@ -1003,6 +1016,12 @@ export async function readAccountUsage(options: {
       signal.throwIfAborted();
     }
 
-    return { provider, kind: "failed", message: "Could not read account limits. Try again." };
+    return (
+      observedAccountUsage(models, provider) ?? {
+        provider,
+        kind: "failed",
+        message: "Could not read account limits. Try again.",
+      }
+    );
   }
 }

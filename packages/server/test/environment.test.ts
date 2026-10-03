@@ -102,7 +102,11 @@ const catalog: ProviderCatalog = {
       listed: true,
     },
   ],
-  defaults: { model: { provider: "anthropic", id: "claude" }, thinkingLevel: "medium" },
+  defaults: {
+    model: { provider: "anthropic", id: "claude" },
+    thinkingLevel: "medium",
+    fast: false,
+  },
 };
 
 const usage: UsageSnapshot = {

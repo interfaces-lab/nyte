@@ -43,6 +43,7 @@ const preferencesType = Type.Object({
     Type.Object({
       model: Type.Optional(Type.Object({ provider: Type.String(), id: Type.String() })),
       thinkingLevel: Type.Optional(schemas.ThinkingLevel),
+      fast: Type.Optional(Type.Boolean()),
     }),
   ),
 });
@@ -96,14 +97,18 @@ export function applyPreferenceChange(
       };
     }
 
-    case "defaults":
+    case "defaults": {
+      const fast = change.fast ?? preferences.defaults.fast;
+
       return {
         ...preferences,
         defaults: {
           model: change.model ?? preferences.defaults.model,
           thinkingLevel: change.thinkingLevel ?? preferences.defaults.thinkingLevel,
+          ...(fast !== undefined && { fast }),
         },
       };
+    }
     default: {
       const _exhaustive: never = change;
 
@@ -296,6 +301,7 @@ export async function readCatalog(
                 fallback.model,
                 preferences.defaults.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
               ),
+              fast: preferences.defaults.fast ?? false,
             },
     },
   };

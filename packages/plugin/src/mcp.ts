@@ -18,8 +18,9 @@ import {
   toLlmContent,
 } from "@earendil-works/pi-mcp";
 import type { ContentBlock, LlmContent } from "@earendil-works/pi-mcp";
-import { ToolError, definePlugin, pluginFactKey } from "@nyte-ai/core/plugins";
+import { ToolError, definePlugin, formatSize } from "@nyte-ai/core/plugins";
 import type { AgentTool, Disposer } from "@nyte-ai/core/plugins";
+import { contentText } from "@nyte-ai/schema";
 import type { JsonValue } from "@nyte-ai/schema";
 import { Type, Unsafe } from "typebox";
 import type { Static, TUnsafe } from "typebox";
@@ -644,10 +645,10 @@ function bridgeTool(
       ...(instructions ? { instructions } : {}),
     },
     replay: "never",
-    async execute(_toolCallId, params, signal, onUpdate) {
+    async execute(input, call) {
       const result = parseMcpResult(
-        await client.callTool(tool.name, params, {
-          signal,
+        await client.callTool(tool.name, input, {
+          signal: call.signal,
           timeoutMs: CALL_TIMEOUT_MS,
           onProgress: (progress) => {
             if (
@@ -659,7 +660,7 @@ function bridgeTool(
             )
               return;
             const total = progress.total === undefined ? "" : `/${String(progress.total)}`;
-            onUpdate?.({
+            call.update({
               content: [
                 {
                   type: "text",
@@ -675,7 +676,7 @@ function bridgeTool(
         result.content.length > 0
           ? (await Promise.all(result.content.map(blockToContent))).flat()
           : toLlmContent(result);
-      if (result.isError === true && textOf(convertedContent) === "") {
+      if (result.isError === true && contentText(convertedContent) === "") {
         convertedContent.push({
           type: "text",
           text: `MCP tool ${server}/${tool.name} returned an error`,
@@ -697,20 +698,10 @@ function bridgeTool(
 
 const MCP_OUTPUT_MAX_BYTES = 20 * 1024;
 
-function textOf(content: readonly LlmContent[]): string {
-  return content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
-}
-
 async function saveOutput(data: string | Uint8Array, extension: string): Promise<string> {
   const path = join(tmpdir(), `nyte-mcp-${randomBytes(8).toString("hex")}${extension}`);
   await writeFile(path, data, { mode: 0o600 });
   return path;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${String(bytes)}B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
 async function blockToContent(block: ContentBlock): Promise<LlmContent[]> {
@@ -787,7 +778,7 @@ function truncateMiddle(content: string, maxBytes: number) {
 async function limitMcpContent(
   content: LlmContent[],
 ): Promise<{ content: LlmContent[]; fullOutputPath?: string }> {
-  const combined = textOf(content);
+  const combined = contentText(content);
   const truncation = truncateMiddle(combined, MCP_OUTPUT_MAX_BYTES);
   if (!truncation.truncated) return { content };
   let fullOutputPath: string | undefined;
@@ -827,17 +818,9 @@ export function mcpServerSettingId(name: string): string {
   return `mcp:${name}`;
 }
 
-function enabledKey(name: string): string {
-  return `enabled:${name}`;
-}
-
 /** The manifest's `disabled` is only the choice a session starts from. */
 function defaultChoice(config: McpServerConfig): "on" | "off" {
   return config.disabled === true ? "off" : "on";
-}
-
-function isEnabled(stored: JsonValue | undefined, config: McpServerConfig): boolean {
-  return (stored === "on" || stored === "off" ? stored : defaultChoice(config)) === "on";
 }
 
 export function mcpPlugin(input: { readonly servers: McpServers; readonly config: McpConfig }) {
@@ -847,19 +830,18 @@ export function mcpPlugin(input: { readonly servers: McpServers; readonly config
       const configured = Object.entries(input.config);
 
       // 1. Each server is a setting; the manifest's `disabled` is its default.
-      api.settings.add((draft) => {
-        for (const [name, config] of configured) {
-          draft.set(mcpServerSettingId(name), {
-            label: `MCP · ${name}`,
-            key: enabledKey(name),
-            fallback: defaultChoice(config),
-            choices: [
-              { id: "on", label: "on", description: "Connected; its tools are offered" },
-              { id: "off", label: "off", description: "Disconnected; its tools are hidden" },
-            ],
-          });
-        }
-      });
+      const settings = configured.map(([name, config]) => ({
+        name,
+        config,
+        setting: api.settings.add(mcpServerSettingId(name), {
+          label: `MCP · ${name}`,
+          default: defaultChoice(config),
+          choices: [
+            { id: "on", label: "on", description: "Connected; its tools are offered" },
+            { id: "off", label: "off", description: "Disconnected; its tools are hidden" },
+          ],
+        }),
+      }));
 
       // 2. One pool handle per server that is on; a failure is warned once.
       const active = new Map<string, McpServerHandle>();
@@ -874,8 +856,7 @@ export function mcpPlugin(input: { readonly servers: McpServers; readonly config
           api.diagnostics.warn(`MCP server ${handle.name}: ${status.error}`);
         }
 
-        api.tools.rebuild();
-        api.prompt.rebuild();
+        api.refresh();
       };
 
       const apply = (name: string, config: McpServerConfig, enabled: boolean): void => {
@@ -892,25 +873,15 @@ export function mcpPlugin(input: { readonly servers: McpServers; readonly config
         }
       };
 
-      // 3. A choice is a session fact, so its event carries the new value.
-      const byFact = new Map(
-        configured.map((entry) => [pluginFactKey(MCP_PLUGIN_ID, enabledKey(entry[0])), entry]),
-      );
-
-      api.signal.addEventListener(
-        "abort",
-        api.events.subscribe((event) => {
-          if (event.kind !== "fact") return;
-          const entry = byFact.get(event.key);
-
-          if (entry === undefined) return;
-          const [name, config] = entry;
+      // 3. A choice changed on any host takes effect once this session is between tool cycles.
+      for (const { name, config, setting } of settings) {
+        setting.subscribe((choice) => {
           api.defer(() => {
-            apply(name, config, isEnabled(event.value, config));
+            apply(name, config, choice === "on");
             refresh();
           });
-        }),
-      );
+        });
+      }
       api.signal.addEventListener("abort", () => {
         for (const handle of active.values()) handle.release();
       });
@@ -951,6 +922,7 @@ export function mcpPlugin(input: { readonly servers: McpServers; readonly config
       api.commands.add((draft) => {
         draft.set("mcp", {
           description: "MCP servers and their status; `reconnect` retries failed ones",
+          selection: "run",
           run: (argument) => {
             if (argument.trim() === "reconnect") {
               input.servers.reconnectFailed();
@@ -974,8 +946,8 @@ export function mcpPlugin(input: { readonly servers: McpServers; readonly config
       // 5. Start from the stored choices, waiting briefly so a healthy server's tools are
       //    in the first request. A slower one joins the session when it connects.
       await Promise.all(
-        configured.map(async ([name, config]) => {
-          apply(name, config, isEnabled(await api.storage.get(enabledKey(name)), config));
+        settings.map(async ({ name, config, setting }) => {
+          apply(name, config, (await setting.get()) === "on");
         }),
       );
       await Promise.race([

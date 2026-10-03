@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
 import type { Nyte, SessionEvent, SessionId, StreamFn } from "@nyte-ai/core";
-import { inlinePlugin } from "@nyte-ai/plugin";
+
 import type { ToolResultMessage } from "@nyte-ai/schema";
 import { NOTIFICATIONS_SETTING_ID, notificationsPlugin } from "../examples/notifications.ts";
 import { questionPlugin } from "../examples/question.ts";
@@ -58,7 +58,7 @@ test("a finished turn and a parked question notify; the sound follows the settin
   const world = workspace();
   const sdk = await world.open({
     streamFn: askingModel,
-    plugins: [inlinePlugin(notificationsPlugin), inlinePlugin(questionPlugin)],
+    plugins: [notificationsPlugin, questionPlugin],
     model: testModel,
   });
   const { sessionId } = world;
@@ -89,7 +89,7 @@ test("off silences a chat, and a child chat never notifies", async () => {
   const world = workspace();
   const sdk = await world.open({
     streamFn: (model) => respond(model, [{ type: "text", text: "done" }]),
-    plugins: [inlinePlugin(notificationsPlugin)],
+    plugins: [notificationsPlugin],
     model: testModel,
   });
   const { sessionId } = world;
