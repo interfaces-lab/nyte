@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import type { ConnectBridge, ConnectView } from "../bridge.ts";
 import { keys } from "../queries.ts";
 import { nyte } from "../nyte.ts";
-import { RemoteAccessGlyph } from "./link-tray.tsx";
+import { RemoteAccessGlyph } from "./remote-access-glyph.tsx";
 import { RemoteAccess } from "./server-settings.tsx";
 
 declare global {

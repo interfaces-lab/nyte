@@ -122,7 +122,7 @@ export function SearchPalette({
 
     if (action.id === "model-settings" && !settingsSections.includes("providers")) return [];
 
-    if (action.id === "account-settings" && !settingsSections.includes("accounts")) return [];
+    if (action.id === "profile-settings" && !settingsSections.includes("profile")) return [];
 
     if (action.id === "open-folder" && onOpenFolder === undefined) return [];
 
@@ -142,8 +142,8 @@ export function SearchPalette({
           return onOpenSettings("appearance");
         case "model-settings":
           return onOpenSettings("providers");
-        case "account-settings":
-          return onOpenSettings("accounts");
+        case "profile-settings":
+          return onOpenSettings("profile");
         case "customize-settings":
           return onOpenCustomize();
         default: {

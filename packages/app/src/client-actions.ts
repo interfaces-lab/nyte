@@ -102,11 +102,15 @@ export const clientActions = {
       group: "settings",
     },
   },
-  accountSettings: {
-    id: "account-settings",
-    label: "Accounts",
+  profileSettings: {
+    id: "profile-settings",
+    label: "Profile",
     scope: "window",
-    palette: { keywords: "github login authentication", icon: "user", group: "settings" },
+    palette: {
+      keywords: "account github nyte email login sign in remote access",
+      icon: "user",
+      group: "settings",
+    },
   },
   customize: {
     id: "customize-settings",

@@ -10,3 +10,10 @@ export function rememberWorkspaceHref(href: string): void {
 export function closeSettings(router: AnyRouter): void {
   void router.navigate({ href: workspaceHref, replace: true });
 }
+
+/** Leaves settings for Environments, over the workspace location settings was opened from. */
+export function openEnvironmentsFromSettings(router: AnyRouter): void {
+  const url = new URL(workspaceHref, "https://nyte.invalid");
+  url.searchParams.set("environment", "connections");
+  void router.navigate({ href: `${url.pathname}${url.search}${url.hash}`, replace: true });
+}

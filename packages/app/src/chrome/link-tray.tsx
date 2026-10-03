@@ -5,9 +5,7 @@
  * linked; managing a linked Mac lives in Environments, never here.
  */
 import { Button } from "@nyte-ai/ui/button";
-import { Icon } from "@nyte-ai/ui/icon";
 import { Popover } from "@nyte-ai/ui/popover";
-import { radius } from "@nyte-ai/ui/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { SwitchField } from "@nyte-ai/ui/switch";
@@ -21,14 +19,11 @@ import { errorMessage } from "../errors.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import {
   linkFailure,
-  linkedStanding,
   noticeNote,
   unavailableDetail,
   useConnectAction,
   useConnectView,
 } from "./connect-view.ts";
-import type { ConnectionStanding } from "./connection-list.tsx";
-import { shellActions } from "./shell-state.ts";
 
 const styles = create({
   popup: { width: 300, padding: 0 },
@@ -52,16 +47,6 @@ const styles = create({
   progress: { display: "flex", alignItems: "center", gap: 8, color: role.contentPrimary },
   actions: { display: "flex", justifyContent: "flex-end", gap: 8 },
   switch: { paddingInline: 12, paddingBlock: 10 },
-  badged: { position: "relative", display: "inline-flex" },
-  badge: {
-    position: "absolute",
-    insetBlockStart: 0,
-    insetInlineEnd: 0,
-    width: 6,
-    height: 6,
-    borderRadius: radius.pill,
-    backgroundColor: role.contentSecondary,
-  },
 });
 
 const EASE = [0.32, 0.72, 0, 1] as const;
@@ -255,72 +240,5 @@ export function LinkTray({
         </Popover.Positioner>
       </Popover.Portal>
     </Popover.Root>
-  );
-}
-
-function PhoneGlyph({ tone }: { readonly tone: ConnectionStanding["tone"] | undefined }) {
-  return (
-    <span {...props(styles.badged)}>
-      <Icon name="phone" size={16} />
-      {tone !== undefined && (
-        <span
-          aria-hidden="true"
-          {...props(
-            tone === "on" && intent.success,
-            tone === "warn" && intent.warning,
-            tone === "err" && intent.danger,
-            styles.badge,
-          )}
-        />
-      )}
-    </span>
-  );
-}
-
-/**
- * The phone in the sidebar footer. Unlinked, it opens the link tray; linked, it
- * carries the access status as a dot and opens Environments. A build without
- * account remote access shows nothing and leaves the reason to Environments.
- */
-export function RemoteAccessGlyph({
-  connect,
-}: {
-  readonly connect: ConnectBridge;
-}): ReactElement | null {
-  const [open, setOpen] = useState(false);
-  const view = useConnectView(connect, true).data;
-
-  if (view === undefined || view.kind === "unavailable") return null;
-
-  if (view.kind === "linked" && !open) {
-    const { tone, status } = linkedStanding(view);
-
-    return (
-      <Button
-        iconOnly
-        aria-label={`Remote access: ${status}`}
-        onClick={() => shellActions.openEnvironments()}
-      >
-        <PhoneGlyph tone={tone} />
-      </Button>
-    );
-  }
-
-  const linking =
-    view.kind === "unlinked" &&
-    (view.linking.kind === "waiting_for_account" || view.linking.kind === "linking");
-
-  return (
-    <LinkTray
-      connect={connect}
-      open={open}
-      onOpenChange={setOpen}
-      side="top"
-      trigger={
-        <Button iconOnly aria-label={linking ? "Linking This Mac…" : "Link This Mac…"}>
-          <PhoneGlyph tone={undefined} />
-        </Button>
-      }
-    />
   );
 }

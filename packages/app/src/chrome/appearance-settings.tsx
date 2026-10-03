@@ -1,7 +1,7 @@
 /** The route-owned desktop Settings content. */
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { props } from "@stylexjs/stylex";
-import { useParams } from "@tanstack/react-router";
+import { useParams, useRouter } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import {
   setStartupDestination,
@@ -22,12 +22,13 @@ import { clientCapabilities } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { appearanceSettingsStyles as styles } from "./appearance-settings.stylex.ts";
-import { AccountsSettings } from "./accounts-settings.tsx";
 import { AppearanceSettings } from "./appearance-panel.tsx";
 import { ProvidersSettings } from "./models-settings.tsx";
+import { ProfileSettings } from "./profile-settings.tsx";
 import { UsageSettings } from "./usage-settings.tsx";
 import { SettingsRow } from "./settings-controls.tsx";
 import { settingsTitle, type SettingsSection } from "./settings-navigation.tsx";
+import { openEnvironmentsFromSettings } from "./settings-return.ts";
 
 const STARTUP_OPTIONS = [
   { value: "new-chat", label: "New chat" },
@@ -142,6 +143,8 @@ function GeneralSettings(): ReactElement {
 }
 
 function SettingsPanel({ section }: { section: SettingsSection }): ReactElement {
+  const router = useRouter();
+
   switch (section) {
     case "general":
       return <GeneralSettings />;
@@ -151,8 +154,8 @@ function SettingsPanel({ section }: { section: SettingsSection }): ReactElement 
       return <ProvidersSettings />;
     case "usage":
       return <UsageSettings />;
-    case "accounts":
-      return <AccountsSettings />;
+    case "profile":
+      return <ProfileSettings onOpenEnvironments={() => openEnvironmentsFromSettings(router)} />;
     default: {
       const _exhaustive: never = section;
 

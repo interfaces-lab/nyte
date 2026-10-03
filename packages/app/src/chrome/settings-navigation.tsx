@@ -78,29 +78,38 @@ const SECTIONS = {
     title: "Usage",
     keywords: ["tokens", "cost", "spend", "billing", "cache", "activity", "charts", "history"],
   },
-  accounts: { icon: "user-key", title: "Accounts", keywords: ["github", "sign out"] },
+  profile: {
+    icon: "user",
+    title: "Profile",
+    keywords: [
+      "account",
+      "nyte",
+      "email",
+      "sign in",
+      "sign out",
+      "github",
+      "repository",
+      "pull request",
+      "iphone",
+      "remote access",
+    ],
+  },
 } as const satisfies Record<string, SectionInfo>;
 
 export type SettingsSection = keyof typeof SECTIONS;
 
-/** The app itself, then the agent's providers and spend. */
+/** You, the app itself, then the agent's providers and spend. */
 const SECTION_GROUPS: readonly (readonly SettingsSection[])[] = [
+  ["profile"],
   ["general", "appearance"],
-  ["providers", "usage", "accounts"],
+  ["providers", "usage"],
 ];
 
 const WEB_SECTION_GROUPS: readonly (readonly SettingsSection[])[] = [["general", "appearance"]];
 
-const WEB_ENVIRONMENT_SECTION_GROUPS: readonly (readonly SettingsSection[])[] = [
-  ["general", "appearance"],
-  ["providers", "usage", "accounts"],
-];
-
-/** What this host can show. The web app reaches Providers, Usage, and Accounts only through a server environment. */
+/** What this host can show. The web app reaches Profile, Providers, and Usage only through a server environment. */
 export function settingsSectionGroups(): readonly (readonly SettingsSection[])[] {
-  if (nyte.clientSurface === "desktop") return SECTION_GROUPS;
-
-  return nyte.environment ? WEB_ENVIRONMENT_SECTION_GROUPS : WEB_SECTION_GROUPS;
+  return nyte.clientSurface === "desktop" || nyte.environment ? SECTION_GROUPS : WEB_SECTION_GROUPS;
 }
 
 export function isSettingsSection(value: string): value is SettingsSection {

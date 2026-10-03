@@ -136,7 +136,7 @@ test("palette-only settings stay discoverable while the native settings action i
     "General settings",
     "Appearance",
     "Providers",
-    "Accounts",
+    "Profile",
     "Customize",
   ]);
   expect(clientActionAvailable(clientActions.settings, "settings", capabilities)).toBe(false);
