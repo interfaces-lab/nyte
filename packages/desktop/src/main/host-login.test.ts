@@ -63,6 +63,7 @@ const neverStreams = () => {
  */
 function deviceCodeProvider(options: DeviceProviderOptions = {}) {
   const approved = new AbortController();
+
   const state: DeviceProviderState = {
     polling: false,
     aborted: false,
@@ -70,7 +71,9 @@ function deviceCodeProvider(options: DeviceProviderOptions = {}) {
     discoveryFails: false,
     models: [],
   };
+
   const model = fixtureModel("device", "copilot-fixture", "Copilot Fixture");
+
   const login = (interaction: ProviderAuthInteraction): Promise<OAuthCredential> => {
     const deviceSecret = "device-secret-never-shown";
     interaction.notify({
@@ -83,17 +86,20 @@ function deviceCodeProvider(options: DeviceProviderOptions = {}) {
     });
     interaction.notify({ type: "progress", message: "Waiting for GitHub" });
     state.polling = true;
+
     return new Promise<OAuthCredential>((resolve, reject) => {
       const finish = () => {
         state.polling = false;
         interaction.signal.removeEventListener("abort", onAbort);
         approved.signal.removeEventListener("abort", onApproved);
       };
+
       const onAbort = () => {
         state.aborted = true;
         finish();
         reject(interaction.signal.reason);
       };
+
       const onApproved = () => {
         finish();
         resolve({
@@ -103,16 +109,19 @@ function deviceCodeProvider(options: DeviceProviderOptions = {}) {
           expires: Date.now() + 3_600_000,
         });
       };
+
       if (options.ignoresAbort !== true)
         interaction.signal.addEventListener("abort", onAbort, { once: true });
       approved.signal.addEventListener("abort", onApproved, { once: true });
     });
   };
+
   const create = (): MutableModels => {
     const models = createModels({
       credentials: options.credentials ?? new InMemoryCredentialStore(),
       modelsStore: new InMemoryModelsStore(),
     });
+
     // The real catalog always has static models beside a dynamic provider;
     // readCatalog needs at least one to name a default.
     models.setProvider({
@@ -137,15 +146,19 @@ function deviceCodeProvider(options: DeviceProviderOptions = {}) {
       getModels: () => state.models,
       refreshModels: async (context) => {
         state.refreshes.push({ allowNetwork: context.allowNetwork, force: context.force });
+
         if (!context.allowNetwork) return;
+
         if (state.discoveryFails) throw new Error("Model discovery is down");
         await context.publish({ update: () => (state.models = [model]) });
       },
       stream: neverStreams,
       streamSimple: neverStreams,
     });
+
     return models;
   };
+
   return { create, state, approve: () => approved.abort() };
 }
 
@@ -158,6 +171,7 @@ function lateCommittingCredentialStore() {
   const credentials = new Map<string, Credential>();
   const gate = new AbortController();
   const state = { writesStarted: 0, writesLanded: 0 };
+
   const store: CredentialStore = {
     read: async (providerId) => credentials.get(providerId),
     list: async () =>
@@ -165,18 +179,22 @@ function lateCommittingCredentialStore() {
     modify: async (providerId, fn) => {
       state.writesStarted += 1;
       const next = await fn(credentials.get(providerId));
+
       if (!gate.signal.aborted)
         await new Promise<void>((resolve) =>
           gate.signal.addEventListener("abort", () => resolve(), { once: true }),
         );
+
       if (next !== undefined) credentials.set(providerId, next);
       state.writesLanded += 1;
+
       return next ?? credentials.get(providerId);
     },
     delete: async (providerId) => {
       credentials.delete(providerId);
     },
   };
+
   return { store, state, land: () => gate.abort() };
 }
 
@@ -193,11 +211,13 @@ function browserProvider(options: BrowserProviderOptions) {
   const prompts: string[] = [];
   const state = { prompts, manualCodeReleased: false, manualCodeReason: "" };
   const model = fixtureModel("browser", "browser-fixture", "Browser Fixture");
+
   const create = (): MutableModels => {
     const models = createModels({
       credentials: new InMemoryCredentialStore(),
       modelsStore: new InMemoryModelsStore(),
     });
+
     models.setProvider({
       id: "browser",
       name: "Browser",
@@ -215,11 +235,13 @@ function browserProvider(options: BrowserProviderOptions) {
                   ]
                 : [{ id: "device", label: "Device code" }],
             });
+
             prompts.push(method);
             interaction.notify({
               type: "auth_url",
               url: options.authUrl ?? "https://example.com/authorize",
             });
+
             if (options.holdsManualCode === true) {
               // No prompt signal: the flow relies on the desktop to let go.
               try {
@@ -230,7 +252,9 @@ function browserProvider(options: BrowserProviderOptions) {
                 throw error;
               }
             }
+
             const manualAbort = new AbortController();
+
             const manual = interaction
               .prompt({
                 type: "manual_code",
@@ -238,9 +262,11 @@ function browserProvider(options: BrowserProviderOptions) {
                 signal: manualAbort.signal,
               })
               .catch(() => undefined);
+
             // The callback server "lands" and the manual prompt is released.
             manualAbort.abort();
             await manual;
+
             return { type: "oauth", refresh: "r", access: "a", expires: Date.now() + 3_600_000 };
           },
           refresh: async (credential) => credential,
@@ -251,12 +277,15 @@ function browserProvider(options: BrowserProviderOptions) {
       stream: neverStreams,
       streamSimple: neverStreams,
     });
+
     return models;
   };
+
   return { create, state };
 }
 
 const cleanups: (() => Promise<void> | void)[] = [];
+
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   vi.unstubAllEnvs();
@@ -267,6 +296,7 @@ async function desktop(createModels: () => MutableModels) {
   vi.stubEnv("NYTE_HOME", join(root, "state"));
   const events: HostEvent[] = [];
   const opened: string[] = [];
+
   const host = new DesktopHost({
     storeWorker: new URL("../../../core/src/kernel/store-worker.ts", import.meta.url),
     createModels,
@@ -295,10 +325,12 @@ async function desktop(createModels: () => MutableModels) {
       agent: unusedBrowserAgent(),
     },
   });
+
   cleanups.push(
     () => host.close(),
     () => rm(root, { recursive: true, force: true }),
   );
+
   return { host, events, opened };
 }
 
@@ -329,7 +361,9 @@ function deviceLogin(host: DesktopHost, attempt: string) {
 async function remoteClient(host: DesktopHost) {
   const state = await host.call(1, "host.remote.start", { reach: "local" });
   assert.equal(state.kind, "serving");
-  if (state.kind !== "serving") throw new Error("unreachable");
+
+  if (state.kind !== "serving" || state.reach === "cloudflare") throw new Error("unreachable");
+
   return createNyteClient({ baseUrl: state.address, token: state.token });
 }
 
@@ -505,11 +539,13 @@ test("stopping remote access cancels the sign-ins its clients started and keeps 
   const provider = deviceCodeProvider();
   const { host, events } = await desktop(provider.create);
   const client = await remoteClient(host);
+
   const input = {
     provider: "device",
     method: { kind: "browser" },
     attempt: "attempt-remote",
   } as const;
+
   assert.deepEqual(await client.environment("environment.login", input), { kind: "running" });
   await settled(() => provider.state.polling);
   // The code is the client's to show, so it polls for it; nothing reaches the Mac's window.
@@ -560,9 +596,11 @@ test("signing out during approval waits for the credential the flow was already 
     () => (loginSettled = true),
   );
   let logoutSettled = false;
+
   const logout = host.call(1, "host.logout", { provider: "device" }).then(() => {
     logoutSettled = true;
   });
+
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(logoutSettled, false, "logout must wait for the commit in flight");
   assert.equal(loginSettled, false);
@@ -609,11 +647,13 @@ test("a saved credential is reported apart from a failed model discovery", async
 test("browser sign-in still answers the method choice and opens the URL", async () => {
   const provider = browserProvider({ offersBrowser: true });
   const { host, opened, events } = await desktop(provider.create);
+
   const outcome = await host.call(1, "host.login", {
     provider: "browser",
     method: { kind: "browser" },
     attempt: "attempt-7",
   });
+
   assert.deepEqual(outcome, { kind: "connected", catalogRefreshed: true } satisfies LoginOutcome);
   assert.deepEqual(provider.state.prompts, ["browser"]);
   assert.deepEqual(opened, ["https://example.com/authorize"]);
@@ -642,11 +682,13 @@ test("a sign-in link that is not a web address is never opened", async () => {
 test("cancelling releases a manual-code prompt the provider gave no signal for", async () => {
   const provider = browserProvider({ offersBrowser: true, holdsManualCode: true });
   const { host, opened } = await desktop(provider.create);
+
   const pending = host.call(1, "host.login", {
     provider: "browser",
     method: { kind: "browser" },
     attempt: "attempt-held",
   });
+
   await settled(() => opened.length === 1);
   assert.equal(provider.state.manualCodeReleased, false);
   await host.call(1, "host.cancelLogin", { attempt: "attempt-held" });
@@ -662,11 +704,13 @@ test("cancelling releases a manual-code prompt the provider gave no signal for",
 test("closing the host releases a held manual-code prompt", async () => {
   const provider = browserProvider({ offersBrowser: true, holdsManualCode: true });
   const { host, opened } = await desktop(provider.create);
+
   const pending = host.call(1, "host.login", {
     provider: "browser",
     method: { kind: "browser" },
     attempt: "attempt-held-close",
   });
+
   await settled(() => opened.length === 1);
   await host.close();
   assert.deepEqual(await pending, { kind: "cancelled" } satisfies LoginOutcome);

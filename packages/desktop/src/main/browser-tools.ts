@@ -152,6 +152,7 @@ export function browserToolsPlugin(options: {
       // Setup cannot write session storage, so the remembered answer is not
       // seeded into the fact; the settings row falls back to it instead.
       const stored = await api.storage.get(BROWSER_GATE_KEY);
+
       let accessLevel: BrowserAccessLevel | undefined = isBrowserAccessLevel(stored)
         ? stored
         : await access.read(folder);
@@ -291,23 +292,16 @@ export function browserToolsPlugin(options: {
         action?: (params: Static<T>, signal: AbortSignal) => Promise<BrowserActionResult>;
         execute?: (params: Static<T>, signal: AbortSignal) => Promise<AgentToolResult<unknown>>;
       }): AgentTool {
-        /** An erased schema cannot prove the argument type; re-check to narrow it. */
-        const execute = (input: unknown, signal: AbortSignal) => {
-          requireAccess(spec.writes === true);
-
-          if (!Value.Check(spec.parameters, input)) {
-            throw new Error("Invalid browser tool arguments");
-          }
-
+        const run = (params: Static<T>, signal: AbortSignal) => {
           const { action, title } = spec;
 
-          if (spec.execute !== undefined) return spec.execute(input, signal);
+          if (spec.execute !== undefined) return spec.execute(params, signal);
 
           if (action === undefined || title === undefined) {
             throw new Error(`${spec.name} has neither an action nor an execute`);
           }
 
-          return runPageAction(title(input), signal, () => action(input, signal));
+          return runPageAction(title(params), signal, () => action(params, signal));
         };
 
         return bindTool({
@@ -316,7 +310,15 @@ export function browserToolsPlugin(options: {
           parameters: spec.parameters,
           availability: "foreground",
           replay: spec.replay ?? "never",
-          execute: (input, call) => execute(input, call.signal),
+          execute: (input, call) => {
+            requireAccess(spec.writes === true);
+
+            if (!Value.Check(spec.parameters, input)) {
+              throw new Error("Invalid browser tool arguments");
+            }
+
+            return run(input, call.signal);
+          },
           async wake(waiting, context) {
             if (context.aborted || context.signal.aborted) throw refuse(CANCELLED);
 
@@ -339,10 +341,14 @@ export function browserToolsPlugin(options: {
 
             // `execute` applies the answer: `off`, and a write tool under
             // `read`, are refused there by the rule every other call meets.
-            return {
-              kind: "success",
-              result: await execute(waiting.args, context.signal),
-            };
+            const args = waiting.args;
+            requireAccess(spec.writes === true);
+
+            if (!Value.Check(spec.parameters, args)) {
+              throw new Error("Invalid browser tool arguments");
+            }
+
+            return { kind: "success", result: await run(args, context.signal) };
           },
         });
       }

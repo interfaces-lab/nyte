@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
 import electronMetadata from "electron/package.json" with { type: "json" };
+import { ACCOUNT_SCHEMES } from "../src/account/scheme.ts";
 
 export function prepareDevElectron() {
   if (process.platform !== "darwin") return electronPath;
@@ -15,6 +16,7 @@ export function prepareDevElectron() {
 
   const fingerprint = createHash("sha256")
     .update(readFileSync(import.meta.filename))
+    .update(ACCOUNT_SCHEMES.development)
     .update(icon)
     .digest("hex");
 
@@ -56,9 +58,26 @@ export function prepareDevElectron() {
       "icon.icns",
       plist,
     ]);
+    execFileSync("/usr/bin/plutil", [
+      "-replace",
+      "CFBundleURLTypes",
+      "-json",
+      JSON.stringify([
+        {
+          CFBundleURLName: "Nyte Account",
+          CFBundleURLSchemes: [ACCOUNT_SCHEMES.development],
+        },
+      ]),
+      plist,
+    ]);
     execFileSync("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", bundle]);
     writeFileSync(ready, "");
   }
+
+  execFileSync(
+    "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+    ["-f", bundle],
+  );
 
   return join(bundle, "Contents/MacOS/Electron");
 }

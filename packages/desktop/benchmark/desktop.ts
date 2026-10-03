@@ -5,6 +5,8 @@ import { access, mkdir, symlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { createDesktopBenchmarkFixture } from "./fixtures.ts";
 import type { DesktopBenchmarkFixture, DesktopBenchmarkFixtureOptions } from "./fixtures.ts";
 import packageMetadata from "../package.json" with { type: "json" };
@@ -76,9 +78,7 @@ async function rendererStartupTiming(page: Page) {
 }
 
 export async function launchDesktop(options: DesktopLaunchOptions = {}): Promise<LaunchedDesktop> {
-  if (typeof electronExecutable !== "string") {
-    throw new Error("Expected Electron to resolve to its executable path");
-  }
+  const executablePath = Value.Parse(Type.String(), electronExecutable);
 
   const buildRoot = resolve(
     process.env.NYTE_DESKTOP_BENCHMARK_BUILD_ROOT ?? resolve(DESKTOP_ROOT, "out"),
@@ -133,8 +133,8 @@ export async function launchDesktop(options: DesktopLaunchOptions = {}): Promise
     );
 
     const launchOptions = {
-      executablePath: electronExecutable,
-      args: [fixture.paths.root],
+      executablePath,
+      args: [fixture.paths.root, "--use-mock-keychain", "--password-store=basic"],
       cwd: DESKTOP_ROOT,
       env: environment,
       timeout: 30_000,

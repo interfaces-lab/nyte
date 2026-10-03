@@ -6,7 +6,9 @@ import { DesktopHost } from "./host.ts";
 import { unusedBrowserAgent } from "./browser-stub.ts";
 
 const authenticated = JSON.stringify([{ active: true, state: "success" }]);
+
 const account = { login: "octocat", name: null, avatar_url: null };
+
 const completed = (stdout = "", code = 0, stderr = ""): GitHubCommandResult => ({
   kind: "completed",
   code,
@@ -16,12 +18,15 @@ const completed = (stdout = "", code = 0, stderr = ""): GitHubCommandResult => (
 
 it("serves GitHub from Home and never sends command output or exceptions to telemetry", async () => {
   const recorded: unknown[] = [];
+
   const operations: Parameters<ReturnType<typeof createOtelExport>["telemetry"]["startSpan"]>[0][] =
     [];
+
   const telemetry: ReturnType<typeof createOtelExport>["telemetry"] = {
     async startSpan(options, fn) {
       recorded.push(options);
       operations.push(options);
+
       return fn({
         ...telemetry,
         setAttributes: (attributes) => {
@@ -34,8 +39,10 @@ it("serves GitHub from Home and never sends command output or exceptions to tele
       });
     },
   };
+
   const events: unknown[] = [];
   let phase: "failing" | "throwing" | "healthy" = "failing";
+
   const host = new DesktopHost({
     storeWorker: new URL("../../../core/src/kernel/store-worker.ts", import.meta.url),
     createOtelExport: () => ({ telemetry, shutdown: async () => {} }),
@@ -70,14 +77,19 @@ it("serves GitHub from Home and never sends command output or exceptions to tele
     },
     runGitHubCommand: async (request) => {
       expect(request.cwd).toBe(homedir());
+
       if (phase === "failing") return completed("SECRET stdout", 1, "SECRET stderr");
+
       if (request.args[0] === "api") {
         if (phase === "throwing") throw new Error("SECRET /private/path https://secret.test");
+
         return completed(JSON.stringify(account));
       }
+
       return completed(authenticated);
     },
   });
+
   try {
     expect(await host.call(1, "host.github.state", undefined)).toMatchObject({ kind: "error" });
     expect(recorded).toContainEqual({
@@ -101,6 +113,7 @@ it("serves GitHub from Home and never sends command output or exceptions to tele
     expect(await host.call(1, "host.github.signIn", undefined)).toMatchObject({ kind: "ready" });
     expect(events).toContainEqual({ kind: "github_changed" });
     expect(await host.call(2, "host.github.signOut", undefined)).toMatchObject({ kind: "ready" });
+
     for (const entry of operations) {
       expect(entry).toMatchObject({
         name: "desktop.github.command",
@@ -109,6 +122,7 @@ it("serves GitHub from Home and never sends command output or exceptions to tele
         },
       });
     }
+
     expect(operations).toContainEqual({
       name: "desktop.github.command",
       attributes: { operation: "gh.api" },

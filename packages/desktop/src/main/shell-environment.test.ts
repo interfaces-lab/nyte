@@ -19,6 +19,7 @@ async function fixture(body: string) {
   directories.push(directory);
   const shell = join(directory, "login shell");
   await writeFile(shell, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+
   return { directory, shell };
 }
 
@@ -34,12 +35,14 @@ export GH_TOKEN='shell-only-token'
 /bin/sh -c "$2"
 printf 'goodbye\\n'
 `);
+
     const env = {
       SHELL: local.shell,
       HOME: local.directory,
       PATH: "/inherited tools",
       GH_TOKEN: "inherited-token",
     };
+
     const repair = createShellEnvironmentRepair({ env });
     await Promise.all([repair(), repair(), repair()]);
     expect(env).toEqual({
@@ -87,12 +90,14 @@ printf 'goodbye\\n'
         join(local.directory, ".zshrc"),
         "printf 'interactive chatter\\n'\nexport PATH=\"/interactive-tools:$PATH\"\n",
       );
+
       const env = {
         SHELL: "/bin/zsh",
         ZDOTDIR: local.directory,
         HOME: local.directory,
         PATH: "/inherited",
       };
+
       await createShellEnvironmentRepair({ env })();
       expect(env.PATH).toBe("/interactive-tools:/login-tools:/inherited");
     },

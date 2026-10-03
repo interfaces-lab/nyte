@@ -10,6 +10,8 @@ import { SqliteStore } from "@nyte-ai/core/store";
 import type { Session } from "@nyte-ai/core/store";
 import { createWorkspaceStore, workspaceStorePath } from "@nyte-ai/host";
 import type { Commit, CommitBody } from "@nyte-ai/protocol";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { rememberWorkspace } from "../src/main/workspaces.ts";
 
 export const DESKTOP_BENCHMARK_SEED = "nyte-desktop-benchmark-v1";
@@ -378,7 +380,7 @@ export async function createDesktopBenchmarkFixture(
       });
       const address = server.address();
 
-      if (address === null || typeof address === "string") {
+      if (!Value.Check(Type.Object({ port: Type.Number() }), address)) {
         throw new Error("Delayed benchmark server did not bind a TCP port");
       }
 

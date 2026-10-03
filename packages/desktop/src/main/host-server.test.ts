@@ -10,6 +10,8 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { afterEach, test, vi } from "vitest";
 import {
   createAssistantMessageEventStream,
@@ -50,6 +52,7 @@ const description: ServerDescription = {
   capabilities: { workspace: false },
   persistence: "ephemeral",
 };
+
 const alternate = {
   ...model,
   id: "remote-choice",
@@ -58,18 +61,22 @@ const alternate = {
   thinkingLevelMap: { off: null, minimal: null, low: null, xhigh: null, max: null },
   cost: { input: 3, output: 9, cacheRead: 0.3, cacheWrite: 1 },
 } satisfies Model<Api>;
+
 const unavailable = { ...model, id: "unavailable", name: "Unavailable" };
 
 /** The desktop's own catalog: one offline model, never streamed, so Home can compose. */
 function localModels(): MutableModels {
   const localModel = { ...model, provider: "desktop", id: "local-only", name: "Desktop only" };
+
   const models = createModels({
     credentials: new InMemoryCredentialStore(),
     modelsStore: new InMemoryModelsStore(),
   });
+
   const stream = () => {
     throw new Error("Local models are not streamed by server tests");
   };
+
   models.setProvider({
     id: localModel.provider,
     name: "Echo",
@@ -78,10 +85,12 @@ function localModels(): MutableModels {
     stream,
     streamSimple: stream,
   });
+
   return models;
 }
 
 const cleanups: (() => Promise<void> | void)[] = [];
+
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   vi.unstubAllEnvs();
@@ -90,7 +99,9 @@ afterEach(async () => {
 async function toRequest(req: IncomingMessage): Promise<Request> {
   const url = `http://${req.headers.host ?? "127.0.0.1"}${req.url ?? "/"}`;
   const chunks: Buffer[] = [];
+
   for await (const chunk of req) chunks.push(Buffer.from(chunk));
+
   return new Request(url, {
     method: req.method,
     headers: Object.entries(req.headers).flatMap(([name, value]) =>
@@ -112,6 +123,7 @@ async function capture(
 ): Promise<() => void> {
   const response = await server.fetch(await toRequest(req));
   const body = await response.text();
+
   return () => {
     res.writeHead(response.status, Object.fromEntries(response.headers));
     res.end(body);
@@ -122,18 +134,24 @@ async function capture(
 async function serve(server: NyteServer, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const response = await server.fetch(await toRequest(req));
   res.writeHead(response.status, Object.fromEntries(response.headers));
+
   if (response.body === null) {
     res.end();
+
     return;
   }
+
   const reader = response.body.getReader();
   // The request's own `close` fires once its body is read; only the response's means the client left.
   res.on("close", () => void reader.cancel().catch(() => undefined));
+
   for (;;) {
     const { done, value } = await reader.read();
+
     if (done) break;
     res.write(value);
   }
+
   res.end();
 }
 
@@ -144,10 +162,12 @@ async function remoteHost(phase: "done" | "failed" = "done"): Promise<{
   server: NyteServer;
 }> {
   const store = new SqliteStore(":memory:", { watchPollIntervalMs: 5 });
+
   const sdk = await createNyte({
     store,
     streamFn: () => {
       if (phase === "failed") throw new Error("No provider on this server");
+
       const answer: AssistantMessage = {
         role: "assistant",
         api: model.api,
@@ -165,6 +185,7 @@ async function remoteHost(phase: "done" | "failed" = "done"): Promise<{
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
         },
       };
+
       const stream = createAssistantMessageEventStream();
       stream.push({ type: "start", partial: { ...answer, content: [] } });
       stream.push({
@@ -174,6 +195,7 @@ async function remoteHost(phase: "done" | "failed" = "done"): Promise<{
         partial: answer,
       });
       stream.push({ type: "done", reason: "stop", message: answer });
+
       return stream;
     },
     models: {
@@ -188,23 +210,28 @@ async function remoteHost(phase: "done" | "failed" = "done"): Promise<{
     plugins: [],
     env: { cwd: "/" },
   });
+
   sdk.attach();
+
   const server = createNyteServer({
     sdk,
     version: "test",
     auth: { kind: "token", token: TOKEN },
     describe: () => description,
   });
+
   const listener = createServer((req, res) => void serve(server, req, res));
   await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve));
   const address = listener.address();
-  if (address === null || typeof address === "string") throw new Error("No address");
+
+  if (!Value.Check(Type.Object({ port: Type.Number() }), address)) throw new Error("No address");
   cleanups.push(
     () => new Promise<void>((resolve) => listener.close(() => resolve())),
     () => server.close(),
     () => sdk.close(),
     () => store.close(),
   );
+
   return { baseUrl: `http://127.0.0.1:${String(address.port)}`, sdk, server };
 }
 
@@ -217,6 +244,7 @@ async function desktop(): Promise<{
   vi.stubEnv("NYTE_HOME", join(root, "state"));
   const events: HostEvent[] = [];
   const watchEvents: WatchEnvelope[] = [];
+
   const host = new DesktopHost({
     storeWorker: new URL("../../../core/src/kernel/store-worker.ts", import.meta.url),
     createModels: localModels,
@@ -245,10 +273,12 @@ async function desktop(): Promise<{
       agent: unusedBrowserAgent(),
     },
   });
+
   cleanups.push(
     () => host.close(),
     () => rm(root, { recursive: true, force: true }),
   );
+
   return { host, events, watchEvents };
 }
 
@@ -261,6 +291,7 @@ test("connecting proves the token before saving it", async () => {
     baseUrl,
     token: "wrong-token-000000",
   });
+
   assert.equal(refused.kind, "failed");
   assert.deepEqual(await host.call(1, "host.server.state", undefined), { kind: "none" });
   assert.equal(events.length, 0);
@@ -269,6 +300,7 @@ test("connecting proves the token before saving it", async () => {
   assert.deepEqual(outcome, { kind: "connected", baseUrl, version: "test" });
   const saved = await host.call(1, "host.server.state", undefined);
   assert.equal(saved.kind, "connected");
+
   if (saved.kind === "connected") assert.equal(saved.baseUrl, baseUrl);
   assert.deepEqual(events, [{ kind: "server_changed" }]);
 });
@@ -278,23 +310,28 @@ test("a stored server becomes unavailable without erasing its last loaded Cloud 
   const { host } = await desktop();
   await host.call(1, "host.server.connect", { baseUrl, token: TOKEN });
   const session = await host.call(1, "host.server.createSession", undefined);
+
   const first = (await host.call(1, "host.sessionDirectory", undefined)).directories.find(
     (entry) => entry.environment === "cloud",
   );
+
   assert.equal(first?.availability.kind, "ready");
   server.close();
 
   const state = await host.call(1, "host.server.state", undefined);
   assert.equal(state.kind, "unavailable");
+
   // The snapshot answers from the model; the sweep it starts reports the failure when it lands.
   const directory = await vi.waitFor(async () => {
     const cloud = (await host.call(1, "host.sessionDirectory", undefined)).directories.find(
       (entry) => entry.environment === "cloud",
     );
+
     assert.equal(cloud?.availability.kind, "unavailable");
 
     return cloud;
   });
+
   assert.deepEqual(
     directory?.sessions.map((item) => item.sessionId),
     [session.sessionId],
@@ -371,10 +408,12 @@ test.each(["done", "failed"] as const)(
         ),
       );
     });
+
     const receipt = await host.call(1, "messages.send", {
       sessionId: created.sessionId,
       content: "hello",
     });
+
     assert.equal(receipt.kind, "queued");
     await vi.waitFor(() => {
       const settled = watchEvents.some(
@@ -383,6 +422,7 @@ test.each(["done", "failed"] as const)(
           envelope.event.kind === "run" &&
           envelope.event.run.phase.kind === phase,
       );
+
       assert.ok(settled, `the server's runner reached ${phase}`);
     });
     host.watchStop("cloud");
@@ -448,16 +488,21 @@ test("a stalled server list neither holds the snapshot nor undoes a row a watch 
   // A proxy in front of the real server: session lists are answered at once but delivered on release.
   const held: Promise<() => void>[] = [];
   let stalled = false;
+
   const proxy = createServer((req, res) => {
     if (stalled && req.url?.endsWith("/sessions.list") === true) {
       held.push(capture(server, req, res));
+
       return;
     }
+
     void serve(server, req, res);
   });
+
   await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
   const address = proxy.address();
-  if (address === null || typeof address === "string") throw new Error("No address");
+
+  if (!Value.Check(Type.Object({ port: Type.Number() }), address)) throw new Error("No address");
   cleanups.push(async () => {
     for (const release of await Promise.all(held)) release();
     await new Promise<void>((resolve) => proxy.close(() => resolve()));
@@ -502,9 +547,11 @@ test("a stalled server list neither holds the snapshot nor undoes a row a watch 
           )
         : [],
     );
+
     assert.ok(pushed.some(finished), "the finished run was pushed");
   });
   stalled = false;
+
   for (const release of await Promise.all(held.splice(0))) release();
   await new Promise((resolve) => setTimeout(resolve, 100));
   const fresh = cloudSessions((await host.call(1, "host.sessionDirectory", undefined)).directories);
@@ -539,6 +586,7 @@ test("reconnecting removes a Cloud chat deleted while disconnected", async () =>
     const cloud = cloudSessions(
       (await host.call(1, "host.sessionDirectory", undefined)).directories,
     );
+
     assert.deepEqual(
       cloud?.map((item) => item.sessionId),
       [kept.sessionId],

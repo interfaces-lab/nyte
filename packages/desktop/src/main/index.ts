@@ -1,4 +1,15 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, screen, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  powerMonitor,
+  safeStorage,
+  screen,
+  shell,
+} from "electron";
 import { createNyteModels } from "@nyte-ai/ai";
 import { nyteHome } from "@nyte-ai/host";
 import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
@@ -24,6 +35,16 @@ import { ipcResult } from "./errors.ts";
 import { callIpc } from "./ipc-call.ts";
 import { localFonts } from "./fonts.ts";
 import { UsageScanWorker } from "./usage-scan.ts";
+import { CloudflareTunnelPlugin } from "./cloudflare-tunnel.ts";
+import { registerAccount } from "./account.ts";
+import type { AccountSession } from "./account-session.ts";
+import { accountScheme } from "../account/scheme.ts";
+import { registerRenderer } from "./renderer.ts";
+import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
+import { readConnectConfig } from "./connect-config.ts";
+import type { ConnectConfig } from "./connect-config.ts";
+import { ConnectRuntime } from "./connect-runtime.ts";
+import type { SecretCipher } from "./connect-store.ts";
 import { DesktopHost, type DesktopHostDependencies, type HostWindow } from "./host.ts";
 import { registerUpdates } from "./updates.ts";
 import { ensureShellEnvironment } from "./shell-environment.ts";
@@ -50,6 +71,11 @@ interface NyteWindow {
 const windows = new Map<HostWindow, NyteWindow>();
 
 let desktopHost: DesktopHost | undefined;
+
+/** Account remote access; created in the primary instance only. */
+let connect: ConnectRuntime | undefined;
+
+let rendererUrl: string;
 
 registerBunOAuthFlows();
 
@@ -159,6 +185,8 @@ const hostDependencies = {
   // A sibling entry of this bundle; see the main build's rollup inputs.
   usageScan: new UsageScanWorker(nyteHome(), new URL("./usage-worker.js", import.meta.url)),
   storeWorker: new URL("./store-worker.js", import.meta.url),
+  // Built-in plugins, registered here; nothing is loaded or discovered at run time.
+  remoteAccessPlugins: { cloudflare: new CloudflareTunnelPlugin({ home: nyteHome() }) },
   emitHostEvent: (event, window) =>
     window === undefined ? broadcast(event) : send(window, HOST_EVENT_CHANNEL, event),
   emitWatchEvent: (envelope, window) => send(window, WATCH_EVENT_CHANNEL, envelope),
@@ -207,9 +235,55 @@ const hostDependencies = {
 } satisfies DesktopHostDependencies;
 
 function getHost(): DesktopHost {
-  desktopHost ??= new DesktopHost(hostDependencies);
+  desktopHost ??= new DesktopHost({ ...hostDependencies, connect });
 
   return desktopHost;
+}
+
+/** Sealed by the OS keychain; refused where Electron would fall back to plain text. */
+const keychain: SecretCipher = {
+  available: () =>
+    safeStorage.isEncryptionAvailable() &&
+    (process.platform !== "linux" ||
+      !["basic_text", "unknown"].includes(safeStorage.getSelectedStorageBackend())),
+  seal: (plain) => safeStorage.encryptString(plain).toString("base64"),
+  open: (sealed) => safeStorage.decryptString(Buffer.from(sealed, "base64")),
+};
+
+function createConnect(config: ConnectConfig | undefined): ConnectRuntime {
+  let account: AccountSession | undefined;
+
+  if (config !== undefined) {
+    try {
+      account = registerAccount({
+        publishableKey: config.clerk.publishableKey,
+        scheme: accountScheme({ packaged: app.isPackaged, updateTest }),
+        window: (id) => (id === undefined ? currentWindow() : windows.get(id))?.window,
+        onChange: () => connect?.accountChanged(),
+      });
+    } catch {
+      account = undefined;
+      process.emitWarning("Account sign-in could not be registered; linking is unavailable.", {
+        code: "NYTE_ACCOUNT_UNAVAILABLE",
+      });
+    }
+  }
+
+  if (account === undefined) {
+    ipcMain.handle(ACCOUNT_CHANNELS.config, (event) => {
+      senderWindow(event);
+
+      return undefined;
+    });
+  }
+
+  return new ConnectRuntime({
+    config,
+    home: nyteHome(),
+    cipher: keychain,
+    account,
+    onChange: () => broadcast({ kind: "remote_access_changed" }),
+  });
 }
 
 function senderWindow(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): NyteWindow {
@@ -377,11 +451,7 @@ function createWindow(): NyteWindow {
     if (url !== created.webContents.getURL()) event.preventDefault();
   });
 
-  const developmentUrl = process.env["ELECTRON_RENDERER_URL"];
-
-  if (developmentUrl === undefined)
-    void created.loadFile(join(import.meta.dirname, "../renderer/index.html"));
-  else void created.loadURL(developmentUrl);
+  void created.loadURL(rendererUrl);
 
   created.on("closed", () => {
     entry.menuCommands.reset();
@@ -403,7 +473,15 @@ if (!hasSingleInstanceLock) {
   // The login shell can take seconds; the window never waits on it.
   void ensureShellEnvironment();
 
-  app.on("second-instance", () => {
+  const config = readConnectConfig(import.meta.env);
+  const scheme = accountScheme({ packaged: app.isPackaged, updateTest });
+
+  rendererUrl = registerRenderer({ scheme, frontendApiHost: config?.clerk.frontendApiHost });
+  connect = createConnect(config);
+
+  app.on("second-instance", (_event, argv) => {
+    // Clerk focuses the window that requested the OAuth callback.
+    if (argv.some((arg) => arg.startsWith(`${scheme}:`))) return;
     reveal((currentWindow() ?? createWindow()).window);
   });
 
@@ -416,9 +494,13 @@ if (!hasSingleInstanceLock) {
     }
 
     const first = createWindow();
+    const firstId = first.window.webContents.id;
     void getHost()
-      .prepare(first.window.webContents.id)
+      .prepare(firstId)
+      .then(() => getHost().autostartConnect(firstId))
       .catch(() => undefined);
+    // A lease held before sleep says nothing about now.
+    powerMonitor.on("resume", () => connect?.resume());
 
     const menu = Menu.buildFromTemplate(
       applicationMenuTemplate({

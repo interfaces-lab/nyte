@@ -13,8 +13,10 @@ const execute = promisify(execFile);
 
 test("production preload preserves rejected error data and watch callbacks through Electron", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nyte-ipc-transport-"));
+
   try {
     await Promise.all(["profile", "session", "home"].map((name) => mkdir(join(directory, name))));
+
     for (const entry of [
       { source: "./fixtures/ipc-transport-main.ts", output: "main.cjs", format: "cjs" },
       { source: "../preload/index.ts", output: "preload.cjs", format: "cjs" },
@@ -41,17 +43,20 @@ test("production preload preserves rejected error data and watch callbacks throu
         },
       });
     }
+
     await writeFile(
       join(directory, "index.html"),
       '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\'"><script src="renderer.js"></script>',
     );
     const require = createRequire(import.meta.url);
     const electronDirectory = dirname(require.resolve("electron/package.json"));
+
     const executable = join(
       electronDirectory,
       "dist",
       (await readFile(join(electronDirectory, "path.txt"), "utf8")).trim(),
     );
+
     const env = {
       HOME: join(directory, "home"),
       NYTE_HOME: join(directory, "home", "nyte"),
@@ -59,11 +64,12 @@ test("production preload preserves rejected error data and watch callbacks throu
       TMP: directory,
       TEMP: directory,
     };
-    await execute(executable, [join(directory, "main.cjs"), directory], {
-      cwd: directory,
-      env,
-      timeout: 30_000,
-    });
+
+    await execute(
+      executable,
+      [join(directory, "main.cjs"), directory, "--use-mock-keychain", "--password-store=basic"],
+      { cwd: directory, env, timeout: 30_000 },
+    );
     assert.equal(await readFile(join(directory, "result.txt"), "utf8"), "passed");
   } finally {
     await rm(directory, { recursive: true, force: true });

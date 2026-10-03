@@ -9,6 +9,9 @@
  */
 import type { SessionEvent } from "@nyte-ai/core";
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
+import { exposeClerkBridge } from "@clerk/electron/preload";
+import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
+import type { AccountBridge, AccountCommand } from "../account/protocol.ts";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
 import type { AppMenuCommand } from "@nyte-ai/app/bridge.ts";
 import {
@@ -33,6 +36,24 @@ import type {
 import type { BrowserBoundsMessage, HostEvent, WatchInput } from "@nyte-ai/app/bridge.ts";
 import { bridgeError } from "@nyte-ai/app/errors.ts";
 import type { IpcResult } from "@nyte-ai/app/errors.ts";
+
+exposeClerkBridge();
+
+contextBridge.exposeInMainWorld("nyteAccount", {
+  config: () => ipcRenderer.invoke(ACCOUNT_CHANNELS.config),
+  onCommand(listener) {
+    const wrapped = (_event: Electron.IpcRendererEvent, command: AccountCommand | null): void => {
+      listener(command ?? undefined);
+    };
+
+    ipcRenderer.on(ACCOUNT_CHANNELS.command, wrapped);
+    ipcRenderer.send(ACCOUNT_CHANNELS.ready);
+
+    return () => ipcRenderer.removeListener(ACCOUNT_CHANNELS.command, wrapped);
+  },
+  answer: (answer) => ipcRenderer.send(ACCOUNT_CHANNELS.answer, answer),
+  report: (report) => ipcRenderer.send(ACCOUNT_CHANNELS.report, report),
+} satisfies AccountBridge);
 
 async function call<P extends CallPath>(path: P, input: CallInput<P>): Promise<CallOutput<P>> {
   // SAFETY: only Nyte's main process handles CALL_CHANNEL; it decodes the path-specific
@@ -233,6 +254,20 @@ const bridge = {
       state: none("host.remote.state"),
       start: object("host.remote.start"),
       stop: none("host.remote.stop"),
+      configure: object("host.remote.configure"),
+      clear: object("host.remote.clear"),
+      pair: object("host.remote.pair"),
+      revoke: object("host.remote.revoke"),
+    },
+    connect: {
+      state: none("host.connect.state"),
+      link: none("host.connect.link"),
+      cancel: none("host.connect.cancel"),
+      setEnabled: object("host.connect.setEnabled"),
+      unlink: none("host.connect.unlink"),
+      revokeDevice: object("host.connect.revokeDevice"),
+      openAccount: none("host.connect.openAccount"),
+      signOut: none("host.connect.signOut"),
     },
     openExternal: object("host.openExternal"),
     confirmExternal: object("host.confirmExternal"),

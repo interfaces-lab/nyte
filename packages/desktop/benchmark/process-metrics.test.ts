@@ -9,6 +9,7 @@ test("parses and walks a process tree", () => {
 102 101 30 /app/Nyte Renderer
 200 1 40 /other
 `);
+
   assert.deepEqual(processTree(processes, 100), [
     { pid: 100, parentPid: 1, rssBytes: 10 * 1024, command: "/app/Nyte" },
     { pid: 101, parentPid: 100, rssBytes: 20 * 1024, command: "/app/Nyte Helper" },
@@ -30,6 +31,7 @@ PID %CPU POWER
 101 6.0 4.5
 200 99.0 99.0
 `;
+
   assert.deepEqual(parseDarwinActivity(output, new Set([100, 101])), {
     cpuPercent: 11,
     power: 8,

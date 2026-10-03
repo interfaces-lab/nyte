@@ -1,5 +1,6 @@
 import type { Configuration, MacConfiguration } from "electron-builder";
 import { electronSparkle } from "electron-sparkle/electron-builder";
+import { ACCOUNT_SCHEMES } from "./src/account/scheme.ts";
 
 const updateTest = process.env["NYTE_UPDATE_TEST"] === "1";
 
@@ -52,6 +53,12 @@ export default {
   },
   afterPack: electronSparkle,
   artifactName: "Nyte-${version}-${os}-${arch}.${ext}",
+  // Clerk's OAuth callback returns here. macOS reads it from Info.plist and Linux from
+  // the .desktop entry; Windows registers it at run time.
+  protocols: {
+    name: productName,
+    schemes: [updateTest ? ACCOUNT_SCHEMES.updateTest : ACCOUNT_SCHEMES.production],
+  },
   publish: { provider: "github", owner: "interfaces-lab", repo: "nyte", releaseType: "release" },
   directories: { output: "dist", buildResources: "build" },
   files: [
@@ -82,6 +89,10 @@ export default {
         },
       }
     : mac,
-  linux: { target: ["AppImage"], category: "Development", executableName: productName },
+  linux: {
+    target: ["AppImage"],
+    category: "Development",
+    executableName: productName,
+  },
   win: { target: ["nsis"], executableName: productName },
 } satisfies Configuration;

@@ -15,6 +15,7 @@ const info = {
 test("a menu action that reopens a window waits for its IPC subscriber", () => {
   const received: AppMenuCommand[] = [];
   let opened = false;
+
   const delivery = createMenuCommandDelivery({
     openWindow: () => {
       opened = true;
@@ -23,10 +24,12 @@ test("a menu action that reopens a window waits for its IPC subscriber", () => {
       received.push(command);
     },
   });
+
   const settings = {
     kind: "action",
     action: clientActions.settings.id,
   } satisfies AppMenuCommand;
+
   delivery.dispatch(settings);
   expect(opened).toBe(true);
   expect(received).toEqual([]);
@@ -37,17 +40,21 @@ test("a menu action that reopens a window waits for its IPC subscriber", () => {
 
 test("live commands arrive immediately, but reloaded windows wait again", () => {
   const received: AppMenuCommand[] = [];
+
   const delivery = createMenuCommandDelivery({
     openWindow: () => {},
     send: (command) => {
       received.push(command);
     },
   });
+
   const about = { kind: "about", info } satisfies AppMenuCommand;
+
   const settings = {
     kind: "action",
     action: clientActions.settings.id,
   } satisfies AppMenuCommand;
+
   delivery.ready();
   delivery.dispatch(about);
   expect(received).toEqual([about]);

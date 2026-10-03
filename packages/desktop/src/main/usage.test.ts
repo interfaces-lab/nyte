@@ -16,6 +16,7 @@ import type { StoreRead } from "@nyte-ai/host/store-usage";
 import type { UsageWindow } from "@nyte-ai/app/bridge.ts";
 
 const AT = new Date(2026, 8, 2, 13, 30).getTime();
+
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
 function usage(input: number, output: number, cost: number, cacheRead = 0): Usage {
@@ -78,9 +79,11 @@ const WINDOW: UsageWindow = {
 /** The chat totals the page ranks, summed from the cells the way the page does. */
 function chatCost(report: { entries: readonly { sessionId: string; totals: { cost: number } }[] }) {
   const perChat = new Map<string, number>();
+
   for (const entry of report.entries) {
     perChat.set(entry.sessionId, (perChat.get(entry.sessionId) ?? 0) + entry.totals.cost);
   }
+
   return perChat;
 }
 
@@ -128,6 +131,7 @@ describe("usage fold", () => {
       WINDOW,
       AT,
     );
+
     assert.equal(report.entries.length, 2);
     assert.deepEqual(
       report.entries.map((entry) => entry.totals.tokens),
@@ -177,6 +181,7 @@ describe("usage fold", () => {
 
   test("keeps only the requested window, and reports what came before it", () => {
     const today = localDay(AT);
+
     const report = projectUsageReport(
       [
         store([
@@ -214,6 +219,7 @@ describe("usage fold", () => {
       { sinceDay: shiftDay(today, -1), untilDay: today },
       AT,
     );
+
     assert.equal(wider.previous?.cost, 4);
   });
 
@@ -239,6 +245,7 @@ describe("usage fold", () => {
   test("a store that failed is a source row, not a lost report", () => {
     const cause = new Error("synthetic-secret-store-body");
     const failure = ipcFailure(cause);
+
     const report = projectUsageReport(
       [
         store([session([assistant(AT, "claude-opus-5", usage(10, 0, 1))])]),
@@ -273,6 +280,7 @@ describe("usage fold", () => {
         usage: usage(4_000, 300, 2),
       },
     };
+
     const toolResult: Commit = {
       kind: "commit",
       parent: null,
@@ -304,6 +312,7 @@ describe("usage fold", () => {
 
   test("skips commits and chats that reported nothing", () => {
     const free = assistant(AT, "local-model", usage(0, 0, 0));
+
     const user: Commit = {
       kind: "commit",
       parent: null,

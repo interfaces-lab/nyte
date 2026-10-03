@@ -116,22 +116,124 @@ connected client's `workspace.select` does, and the row names what is being
 served. A project must be trusted first. The Cloud server is never a
 candidate; only local targets are served.
 
-Remote access has one of two reaches, picked when it starts. **This Mac only**
+Remote access has one of three reaches, picked when it starts. **This Mac only**
 binds `127.0.0.1` on an ephemeral port, so a browser or the iOS Simulator on
 this machine can reach it and nothing else can. **Over Tailscale** binds this
 machine's tailnet address, so a device signed into the same tailnet can reach
 it from any network and nothing off the tailnet can route to it; it needs the
-Tailscale CLI installed and the backend running. Neither reach binds the local
-network broadly, opens a tunnel, or terminates TLS.
+Tailscale CLI installed and the backend running. Neither of those binds the
+local network broadly, opens a tunnel, or terminates TLS. **Over Cloudflare
+Tunnel** comes from a remote-access plugin, described below.
 
-The row shows a pairing link, `<address>/pair?host=…&token=…`, with **Copy
-link** and **Open**; opening it signs the web app in without a form. The QR code
+The row shows a pairing link, `<address>/pair#host=…&token=…`, with **Copy
+link** and **Open**; opening it signs the web app in without a form. Host and
+token ride in the fragment, which a browser never sends to a server. The QR code
 carries the same address and token as `nyte://connect?url=…&token=…` for the
 iOS app, and the address and token are also shown on their own, the token
 masked behind **Reveal**. Each start generates a new random 256-bit bearer
 token; it is never written to disk or logged. **Stop** closes the listener,
 drops its connections, and ends open watches with a `closed` frame; starting
 again generates a new token and address.
+
+### Remote-access plugins
+
+A remote-access plugin carries a reach beyond this Mac's loopback. The
+contract is `src/main/remote-access-plugin.ts`: the host keeps the share
+(what is served, workspace trust, the listener), and a plugin brings its
+settings, the credentials the listener accepts, and the connector that
+carries outside traffic to it. Plugins are built in and registered
+statically in `src/main/index.ts`. There is no loader; nothing is
+discovered or installed at run time.
+
+The one plugin is **Cloudflare Tunnel** (`src/main/cloudflare-tunnel.ts`).
+It is off until the user sets it up and presses Start. The user brings a
+Cloudflare account, a domain on it, a remotely-managed named tunnel whose
+one public hostname routes to `http://127.0.0.1:<port>`, and `cloudflared`
+installed from Homebrew or a package (`/opt/homebrew/bin`, `/usr/local/bin`,
+or `/usr/bin`; not on Windows). Settings takes the hostname, the port, and
+the tunnel token, and keeps them in `~/.nyte/cloudflare-tunnel.json` (0600,
+written through an fsynced temporary file and rename). Start binds
+`127.0.0.1:<port>`, then runs `cloudflared` under a small `sh` supervisor
+that ends it when Nyte stops or dies, with a fixed environment, a private
+`HOME`, its own `--config`, and the token in `TUNNEL_TOKEN`. The row reads
+**Over Cloudflare** only once the dashboard's routes arrive and send that
+hostname, and nothing else, to the listener; any other route stops the connector.
+Stop ends `cloudflared` before releasing the port. After a restart the
+reach is off until Start; paired devices keep working without pairing again.
+
+Each device gets its own bearer token from **Add Device**, shown once as a
+QR code and a link while the tunnel is connected. Only its SHA-256 digest is
+stored. An unused code expires after ten minutes; anyone holding a code can
+connect as that device until it is removed. **Remove** refuses the token at
+once and drops every open connection, so the device's streams end while
+other devices reconnect. Once the settings file cannot be written, no token
+is accepted from then on, though streams already open stay until Stop; a
+Remove that cannot be written also stops remote access.
+
+This is a personal setup, not a hosted relay: there is no Nyte account,
+reserved hostname, or broker. Cloudflare terminates TLS, so it can read
+every request, device tokens included, and so can anyone who can open the
+tunnel's live logs in that Cloudflare account; cloudflared streams those at
+whatever level the log session asks for, whatever its local log level.
+Private network routes attached to the tunnel never reach `cloudflared`'s
+configuration, so Nyte cannot see or refuse them; a tunnel used here should
+have none. If the `sh` supervisor dies on its own, Nyte kills the rest of its
+process group before treating the connector as stopped; only when Nyte and
+the supervisor are both killed can `cloudflared` outlive them.
+
+### Account remote access
+
+A build carrying `MAIN_VITE_NYTE_CONNECT_ORIGIN`, `MAIN_VITE_NYTE_CLERK_PUBLISHABLE_KEY`,
+and `MAIN_VITE_NYTE_CLERK_FRONTEND_API_HOST` (canonical HTTPS and a bare host,
+checked at start) can link this Mac to the user's Nyte account instead. The
+runtime is `src/main/connect-runtime.ts`; it serves on its own `127.0.0.1`
+listener, on an ephemeral port, beside the reaches above, through the host's
+share and folder trust. Nothing listens beyond loopback and no DNS or tunnel
+is set up: this Mac opens one WebSocket to the broker's relay at
+`<origin>/v1/environments/<id>/relay`, and phones reach it at
+`<origin>/r/<id>`.
+
+**Link** opens a sign-in dialog in the current window, sends one fresh Clerk session JWT with a
+proof from a new Ed25519 machine key, and keeps nothing of the JWT. The key is
+sealed with Electron `safeStorage` (refused where it would fall back to plain
+text) in `~/.nyte/connect.json`, 0600 and fsynced. A file from another version
+or one that does not parse is refused, not replaced; Settings says to fix or
+remove it. Everything after linking, the 20-second lease heartbeat and the
+relay's first-frame proof included, signs with the machine key, so signing out
+of the account leaves remote access running. The toggle is off by default;
+once on, it starts with the first window under the trust that folder already
+has, without a prompt.
+
+The relay (`src/main/connect-relay.ts`) carries each phone request as a channel
+of JSON frames. Only the shared contract's paths (`/v1/...` and the two desktop
+routes), `GET`/`POST`/`DELETE`, and the `authorization`, `content-type`, and
+`accept` headers reach the listener, always at its own port and host; only
+success and failure statuses with `content-type` and `cache-control` go back.
+Bodies move under per-channel credit, at most 8 MiB in, and a local server
+that is not read is paused rather than buffered. A frame that breaks the
+contract closes the socket; any close ends every relayed request, and the
+relay redials with a fresh proof after a jittered 1–60 s backoff, at once on
+wake, and after a missed pong. A relay closed as `replaced` (another instance
+took the link) stays stopped until remote access is turned off and on. A
+relay closed as `revoked` only prompts a lease request; the broker's answer
+decides whether the link is forgotten. Cloudflare terminates TLS and the relay
+reads every frame, device tokens included; nothing is end-to-end encrypted.
+
+A phone gets in only when its token's digest is recorded here and its device
+id is in the current broker-signed lease, which lives in memory only. No lease
+since start or wake, an expired one, or a disabled owner refuses every device
+and drops every stream while the listener and relay stay up. A lease bound to
+another request, older by policy, or signed for another environment or owner
+is ignored. **Remove** refuses a device at once and queues the broker revoke;
+a phone dropping its own token through `DELETE /_nyte/connect/device` is
+queued as the weaker release. **Unlink** refuses everyone, closes the relay
+before the listener, forgets the link, and keeps the key only to retry
+removing the environment at the broker on later runs. Quitting unlinks
+nothing. A broker answer that the environment is gone forgets the link.
+
+The main-process side is covered by `src/main/host-connect.test.ts` against an
+in-process broker that signs real proofs and leases and a `ws` relay, and the
+transport by `src/main/connect-relay.test.ts`.
 
 In development the web app is `packages/app/dist`, so run
 `pnpm --dir packages/app build` first; without it only the API is served and
@@ -211,8 +313,8 @@ Right-click menus are native. `host.contextMenu` takes a small template from the
 renderer and pops an Electron menu; each entry carries the work it performs, so
 `packages/app/src/components/context-menu.ts` runs the chosen one and no call site
 matches choices back up. Native menus float above the `WebContentsView`s that
-browser panels composite over the renderer, so they need no overlay-occlusion
-registration, and clipboard items use Electron roles so a paste keeps formats a
+browser panels composite over the renderer, so they need no occlusion
+`data-slot`, and clipboard items use Electron roles so a paste keeps formats a
 renderer-side clipboard read cannot reach.
 
 The file editor menu carries cut, copy, paste, and select all, then Format

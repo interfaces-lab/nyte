@@ -6,11 +6,13 @@
 // assertions run inside an Electron main process; this file bundles the runtime,
 // writes the harness and its pages to a temp directory, and reads back one JSON line.
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import electronBinary from "electron";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { build } from "vite";
 import { expect, test } from "vitest";
 
@@ -45,6 +47,10 @@ const fs = require("node:fs");
 const rt = require("./runtime.cjs");
 
 const dir = __dirname;
+const profile = dir + "/profile";
+fs.mkdirSync(profile);
+app.setPath("userData", profile);
+app.setPath("sessionData", profile);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 app.whenReady().then(async () => {
@@ -125,60 +131,73 @@ test.runIf(process.env["NYTE_DESKTOP_BROWSER_E2E"] === "1")(
   "the browser runtime snapshots, clicks, types, and invalidates refs across a navigation",
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "nyte-browser-e2e-"));
-    await build({
-      logLevel: "silent",
-      configFile: false,
-      // Bundle typebox in; an SSR build would leave it external and unresolvable.
-      ssr: { noExternal: true },
-      build: {
-        ssr: fileURLToPath(new URL("../src/main/browser-runtime.ts", import.meta.url)),
-        outDir: dir,
-        emptyOutDir: false,
-        minify: false,
-        rollupOptions: {
-          external: ["electron"],
-          output: { format: "cjs", entryFileNames: "runtime.cjs" },
+
+    try {
+      await build({
+        logLevel: "silent",
+        configFile: false,
+        // Bundle typebox in; an SSR build would leave it external and unresolvable.
+        ssr: { noExternal: true },
+        build: {
+          ssr: fileURLToPath(new URL("../src/main/browser-runtime.ts", import.meta.url)),
+          outDir: dir,
+          emptyOutDir: false,
+          minify: false,
+          rollupOptions: {
+            external: ["electron"],
+            output: { format: "cjs", entryFileNames: "runtime.cjs" },
+          },
         },
-      },
-    });
-    await writeFile(join(dir, "page1.html"), PAGE_ONE);
-    await writeFile(join(dir, "page2.html"), PAGE_TWO);
-    await writeFile(join(dir, "harness.js"), HARNESS);
-
-    const electronPath = typeof electronBinary === "string" ? electronBinary : "";
-    const output = await new Promise<string>((resolve, reject) => {
-      // Electron is chatty on stderr; an unread pipe would deadlock the child.
-      const child = spawn(electronPath, [join(dir, "harness.js")], {
-        stdio: ["ignore", "pipe", "ignore"],
       });
-      let stdout = "";
-      child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
-      child.on("error", reject);
-      child.on("close", () => resolve(stdout));
-    });
+      await writeFile(join(dir, "page1.html"), PAGE_ONE);
+      await writeFile(join(dir, "page2.html"), PAGE_TWO);
+      await writeFile(join(dir, "harness.js"), HARNESS);
 
-    const line = output.split("\n").find((l) => l.startsWith("BROWSER_E2E "));
-    expect(line, output).toBeDefined();
-    const report: unknown = JSON.parse((line ?? "").slice("BROWSER_E2E ".length));
+      const electronPath = Value.Parse(Type.String(), electronBinary);
 
-    expect(report).toMatchObject({
-      clickKind: "ok",
-      clickTarget: "alpha",
-      typeKind: "ok",
-      fieldValue: "hello world",
-      submitted: "hello world",
-      staleTarget: "",
-      freshKind: "ok",
-      freshTarget: "gamma",
-    });
-    expect(report).toHaveProperty(
-      "staleFailure",
-      expect.stringMatching(/unknown_ref|stale_document|detached/),
-    );
-    const bytes = report as { readonly refs: number; readonly captureBytes: number };
-    expect(bytes.refs).toBeGreaterThan(0);
-    expect(bytes.captureBytes).toBeGreaterThan(1000);
-    await readFile(join(dir, "runtime.cjs"));
+      const output = await new Promise<string>((resolve, reject) => {
+        // Electron is chatty on stderr; an unread pipe would deadlock the child.
+        const child = spawn(
+          electronPath,
+          [join(dir, "harness.js"), "--use-mock-keychain", "--password-store=basic"],
+          { stdio: ["ignore", "pipe", "ignore"] },
+        );
+
+        let stdout = "";
+        child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
+        child.on("error", reject);
+        child.on("close", () => resolve(stdout));
+      });
+
+      const line = output.split("\n").find((l) => l.startsWith("BROWSER_E2E "));
+      expect(line, output).toBeDefined();
+      const report: unknown = JSON.parse((line ?? "").slice("BROWSER_E2E ".length));
+
+      expect(report).toMatchObject({
+        clickKind: "ok",
+        clickTarget: "alpha",
+        typeKind: "ok",
+        fieldValue: "hello world",
+        submitted: "hello world",
+        staleTarget: "",
+        freshKind: "ok",
+        freshTarget: "gamma",
+      });
+      expect(report).toHaveProperty(
+        "staleFailure",
+        expect.stringMatching(/unknown_ref|stale_document|detached/),
+      );
+
+      const bytes = Value.Parse(
+        Type.Object({ refs: Type.Number(), captureBytes: Type.Number() }),
+        report,
+      );
+
+      expect(bytes.refs).toBeGreaterThan(0);
+      expect(bytes.captureBytes).toBeGreaterThan(1000);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   },
   120_000,
 );

@@ -1,9 +1,9 @@
 import { test as base } from "@playwright/test";
 
 interface BenchmarkFixtures {
-  readonly report: (
-    metrics: Readonly<Record<string, unknown>>,
-    context?: Readonly<Record<string, unknown>>,
+  readonly report: <Metrics extends object, Context extends object>(
+    metrics: Metrics,
+    context?: Context,
   ) => void;
 }
 
@@ -11,14 +11,14 @@ export const benchmark = base.extend<BenchmarkFixtures>({
   report: async ({ browserName: _browserName }, use, testInfo) => {
     let payload:
       | {
-          readonly metrics: Readonly<Record<string, unknown>>;
-          readonly context: Readonly<Record<string, unknown>>;
+          readonly metrics: object;
+          readonly context: object;
         }
       | undefined;
 
-    await use((metrics, context = {}) => {
+    await use((metrics, context) => {
       if (payload !== undefined) throw new Error("Benchmark reported metrics more than once");
-      payload = { metrics, context };
+      payload = { metrics, context: context ?? {} };
     });
 
     if (payload === undefined) {

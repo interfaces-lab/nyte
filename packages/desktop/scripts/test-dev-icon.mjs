@@ -17,6 +17,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
+import { ACCOUNT_SCHEMES } from "../src/account/scheme.ts";
 
 // Only import the preparer in a plain Node subprocess. Never start Electron or Vite.
 await test(
@@ -29,6 +30,12 @@ await test(
     for (const directory of ["scripts", "build", "node_modules"]) {
       mkdirSync(join(root, directory));
     }
+
+    mkdirSync(join(root, "src/account"), { recursive: true });
+    copyFileSync(
+      new URL("../src/account/scheme.ts", import.meta.url),
+      join(root, "src/account/scheme.ts"),
+    );
 
     const script = join(root, "scripts/dev.mjs");
     const icon = join(root, "build/icon.icns");
@@ -77,6 +84,9 @@ await test(
       assert.equal(plist.CFBundleDisplayName, "Nyte (Dev)");
       assert.equal(plist.CFBundleIdentifier, "ai.nyte.desktop.dev");
       assert.equal(plist.CFBundleIconFile, "icon.icns");
+      assert.deepEqual(plist.CFBundleURLTypes, [
+        { CFBundleURLName: "Nyte Account", CFBundleURLSchemes: [ACCOUNT_SCHEMES.development] },
+      ]);
       assert.deepEqual(
         readFileSync(join(bundle, "Contents/Resources", plist.CFBundleIconFile)),
         readFileSync(icon),

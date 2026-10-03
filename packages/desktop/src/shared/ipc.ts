@@ -11,6 +11,7 @@
 import type { Operation, Seq, SessionEvent, SessionId } from "@nyte-ai/protocol";
 import type { HostBridge, NyteBridge } from "@nyte-ai/app/bridge.ts";
 import type { IpcFailure } from "@nyte-ai/app/errors.ts";
+
 export const CALL_CHANNEL = "nyte:call";
 
 export const WATCH_START_CHANNEL = "nyte:watch-start";
@@ -107,6 +108,18 @@ export const HOST_OPERATION_PATHS = [
   "host.remote.state",
   "host.remote.start",
   "host.remote.stop",
+  "host.remote.configure",
+  "host.remote.clear",
+  "host.remote.pair",
+  "host.remote.revoke",
+  "host.connect.state",
+  "host.connect.link",
+  "host.connect.cancel",
+  "host.connect.setEnabled",
+  "host.connect.unlink",
+  "host.connect.revokeDevice",
+  "host.connect.openAccount",
+  "host.connect.signOut",
   "host.openExternal",
   "host.confirmExternal",
   "host.revealPath",

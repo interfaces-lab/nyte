@@ -8,16 +8,16 @@ import { BROWSER_ACTIONS, CONTEXT_MENU_ROLES } from "@nyte-ai/app/bridge.ts";
 import { Type } from "typebox";
 import type { Static, TProperties, TSchema } from "typebox";
 import { Compile } from "typebox/compile";
+import type { Validator } from "typebox/compile";
 import { ParseError } from "typebox/value";
 import { ExpectedHostError } from "./errors.ts";
 import { ENVIRONMENT_OPERATIONS, OPERATIONS } from "@nyte-ai/protocol";
+import { Uuid } from "@nyte-ai/connect";
 import { sessionId } from "@nyte-ai/app/schemas.ts";
 import type { CallInput, CallPath, CallRequest, WatchStartInput } from "../shared/ipc.ts";
 import type { BrowserBoundsMessage } from "@nyte-ai/app/bridge.ts";
 
-interface Parser<T> {
-  Parse(value: unknown): T;
-}
+type Parser<T> = Pick<Validator<TProperties, TSchema, T>, "Parse">;
 
 const strict = <P extends TProperties>(properties: P) =>
   Type.Object(properties, { additionalProperties: false });
@@ -55,6 +55,8 @@ function compile<T extends TSchema>(schema: T) {
 const nonEmpty = Type.String({ minLength: 1 });
 
 const noInput = Type.Optional(Type.Undefined());
+
+const remotePlugin = Type.Literal("cloudflare");
 
 export const CALL_INPUT_SCHEMAS = {
   // The SDK operations validate with the wire protocol's own input schemas, compiled here.
@@ -131,9 +133,38 @@ export const CALL_INPUT_SCHEMAS = {
   "host.server.createSession": compile(noInput),
   "host.remote.state": compile(noInput),
   "host.remote.start": compile(
-    strict({ reach: Type.Union([Type.Literal("local"), Type.Literal("tailnet")]) }),
+    strict({
+      reach: Type.Union([
+        Type.Literal("local"),
+        Type.Literal("tailnet"),
+        Type.Literal("cloudflare"),
+      ]),
+    }),
   ),
   "host.remote.stop": compile(noInput),
+  "host.remote.configure": compile(
+    strict({
+      plugin: remotePlugin,
+      hostname: Type.String({ minLength: 1, maxLength: 253 }),
+      port: Type.Integer({ minimum: 1024, maximum: 65_535 }),
+      tunnelToken: Type.String({ minLength: 1, maxLength: 4096 }),
+    }),
+  ),
+  "host.remote.clear": compile(strict({ plugin: remotePlugin })),
+  "host.remote.pair": compile(
+    strict({ plugin: remotePlugin, name: Type.String({ minLength: 1, maxLength: 64 }) }),
+  ),
+  "host.remote.revoke": compile(
+    strict({ plugin: remotePlugin, deviceId: Type.String({ minLength: 1, maxLength: 64 }) }),
+  ),
+  "host.connect.state": compile(noInput),
+  "host.connect.link": compile(noInput),
+  "host.connect.cancel": compile(noInput),
+  "host.connect.setEnabled": compile(strict({ enabled: Type.Boolean() })),
+  "host.connect.unlink": compile(noInput),
+  "host.connect.revokeDevice": compile(strict({ deviceId: Uuid })),
+  "host.connect.openAccount": compile(noInput),
+  "host.connect.signOut": compile(noInput),
   "host.openExternal": compile(strict({ url: Type.String() })),
   "host.confirmExternal": compile(strict({ url: Type.String() })),
   "host.revealPath": compile(strict({ path: nonEmpty })),

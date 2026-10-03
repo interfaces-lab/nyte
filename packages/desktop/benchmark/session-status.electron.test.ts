@@ -14,9 +14,11 @@ function transcriptCommit(
   at: number,
 ): Commit {
   const message = body.message;
+
   if (message.role === "system") {
     return { kind: "commit", parent, body: { kind: "message", message }, at };
   }
+
   if (message.role === "user") {
     return {
       kind: "commit",
@@ -26,6 +28,7 @@ function transcriptCommit(
       at,
     };
   }
+
   if (message.role === "assistant") {
     return {
       kind: "commit",
@@ -36,6 +39,7 @@ function transcriptCommit(
       at,
     };
   }
+
   return {
     kind: "commit",
     parent,
@@ -54,13 +58,17 @@ test.runIf(process.env["NYTE_DESKTOP_E2E"] === "1")(
       turnsPerSession: 1,
       catalogModelCount: 5,
     });
+
     const seeded = desktop.fixture.sessions[0];
+
     if (seeded === undefined) throw new Error("Expected a session fixture");
     const store = new SqliteStore(desktop.fixture.paths.workspaceStore);
     const session = await store.open(seeded.id);
+
     const row = desktop.page
       .getByRole("navigation", { name: "Sessions and workspaces" })
       .getByRole("button", { name: seeded.name });
+
     const unread = row.getByRole("img", { name: "Completed, unread" });
 
     async function writeRun(
@@ -68,6 +76,7 @@ test.runIf(process.env["NYTE_DESKTOP_E2E"] === "1")(
       startedAt: number,
     ): Promise<void> {
       const from = await session.refs.read("refs/runs/main");
+
       const [to] = await session.objects.put([
         {
           kind: "run",
@@ -81,15 +90,19 @@ test.runIf(process.env["NYTE_DESKTOP_E2E"] === "1")(
           config: {},
         },
       ]);
+
       if (to === undefined) throw new Error("Expected a run object");
+
       const outcome = await session.refs.update([{ name: "refs/runs/main", from, to }], {
         reason: "status-test",
       });
+
       if (!outcome.ok) throw new Error("Could not update the fixture run");
     }
 
     async function appendEditedTurn(path: string, completed = true): Promise<void> {
       const timestamp = Date.now();
+
       const usage = {
         input: 0,
         output: 0,
@@ -98,6 +111,7 @@ test.runIf(process.env["NYTE_DESKTOP_E2E"] === "1")(
         totalTokens: 0,
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
       };
+
       const assistant = {
         role: "assistant",
         provider: "opencode",
@@ -106,8 +120,10 @@ test.runIf(process.env["NYTE_DESKTOP_E2E"] === "1")(
         usage,
         timestamp,
       } as const;
+
       const editId = `edit:${path}`;
       const commandId = `test:${path}`;
+
       const bodies: Extract<CommitBody, { kind: "message" }>[] = [
         { kind: "message", message: { role: "user", content: `Update ${path}`, timestamp } },
         {
@@ -158,21 +174,27 @@ test.runIf(process.env["NYTE_DESKTOP_E2E"] === "1")(
           },
         },
       ];
+
       const from = await session.refs.read("refs/heads/main");
       let tip = from;
+
       // An interrupted command has neither a result nor a final assistant response.
       for (const body of completed ? bodies : bodies.slice(0, -2)) {
         const [oid] = await session.objects.put([transcriptCommit(tip, body, timestamp)]);
+
         if (oid === undefined) throw new Error("Expected a transcript commit");
         tip = oid;
       }
+
       const moved = await session.refs.update([{ name: "refs/heads/main", from, to: tip }], {
         reason: "status-test",
       });
+
       if (!moved.ok) throw new Error("Could not append the fixture turn");
     }
 
     const ownership = await session.leases.acquire("refs/heads/main", 120_000);
+
     try {
       if (!ownership.ok) throw new Error("Could not hold the fixture run's execution lease");
       await openBenchmarkSession(desktop, 1);
@@ -191,11 +213,14 @@ test.runIf(process.env["NYTE_DESKTOP_E2E"] === "1")(
       await desktop.page.reload();
       await expect(row).toBeVisible({ timeout: 15_000 });
       await expect(unread).toHaveCount(0, { timeout: 15_000 });
+
       const latestName = await desktop.page.evaluate(async () => {
         localStorage.setItem("nyte:startup-destination:v1", "last-session");
         const sessions = await window.nyte.sessions.list({ parent: null, limit: 1 });
+
         return sessions.items[0]?.name;
       });
+
       if (latestName === undefined) throw new Error("Expected a latest session");
       await desktop.page.reload();
       await expect(

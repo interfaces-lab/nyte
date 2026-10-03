@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 
 const desktop = fileURLToPath(new URL("../", import.meta.url));
+
 const publicKey = Buffer.alloc(32, 1).toString("base64");
 
 function packaging({

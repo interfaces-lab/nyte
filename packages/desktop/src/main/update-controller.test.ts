@@ -10,6 +10,7 @@ function setup(responses: number[] = [0, 1]) {
   let checks = 0;
   let downloads = 0;
   let installs = 0;
+
   const info = {
     version: "0.0.3",
     files: [],
@@ -17,14 +18,17 @@ function setup(responses: number[] = [0, 1]) {
     sha512: "test",
     releaseDate: "2026-09-04",
   };
+
   const dependencies: UpdateDependencies = {
     updater: {
       checkForUpdates: async () => {
         checks++;
+
         return { isUpdateAvailable: true, updateInfo: info, versionInfo: info };
       },
       downloadUpdate: async () => {
         downloads++;
+
         return ["verified.zip"];
       },
       quitAndInstall: () => {
@@ -34,6 +38,7 @@ function setup(responses: number[] = [0, 1]) {
     activity: async () => activity,
     message: async (options) => {
       messages.push(options.message);
+
       return { response: responses.shift() ?? 1, checkboxChecked: false };
     },
     status: (label) => {
@@ -45,6 +50,7 @@ function setup(responses: number[] = [0, 1]) {
     version: "0.0.2",
     unavailable: undefined,
   };
+
   return {
     setActivity: (next: DesktopUpdateActivity) => {
       activity = next;
@@ -101,6 +107,7 @@ describe("desktop updates", () => {
     harness.dependencies.updater.downloadUpdate = async () => {
       throw new Error("checksum mismatch");
     };
+
     const controller = createUpdateController(harness.dependencies);
     await controller.check(false);
     expect(harness.counts().installs).toBe(0);
@@ -114,6 +121,7 @@ describe("desktop updates", () => {
     harness.dependencies.updater.checkForUpdates = async () => {
       throw new Error("No published releases");
     };
+
     const controller = createUpdateController(harness.dependencies);
     await controller.check(false);
     expect(harness.messages).toEqual([]);
@@ -133,6 +141,7 @@ describe("desktop updates", () => {
 
   test("only manual checks show that the current release is up to date", async () => {
     const harness = setup();
+
     const info = {
       version: "0.0.2",
       files: [],
@@ -140,6 +149,7 @@ describe("desktop updates", () => {
       sha512: "test",
       releaseDate: "2026-09-04",
     };
+
     harness.dependencies.updater.checkForUpdates = async () => ({
       isUpdateAvailable: false,
       updateInfo: info,

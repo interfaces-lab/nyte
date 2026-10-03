@@ -7,6 +7,7 @@ import { SqliteStore } from "@nyte-ai/core/store";
 import { WorkspaceStore, workspaceStorePath } from "@nyte-ai/host";
 
 const directories: string[] = [];
+
 afterEach(async () => {
   vi.unstubAllEnvs();
   await Promise.all(
@@ -18,6 +19,7 @@ async function fixture(): Promise<string> {
   const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-workspaces-")));
   directories.push(root);
   vi.stubEnv("NYTE_HOME", join(root, "state"));
+
   return root;
 }
 
@@ -25,10 +27,12 @@ test("desktop imports committed WAL history once and retains it after the projec
   const root = await fixture();
   const cwd = join(root, "project");
   const legacy = new SqliteStore(join(cwd, ".nyte", "sessions.db"));
+
   try {
     await (await legacy.create({ id: "existing-chat" })).close();
     const path = await workspaceStorePath(cwd);
     const local = new SqliteStore(path);
+
     try {
       assert.deepEqual(
         (await local.list()).map((session) => session.id),
@@ -38,6 +42,7 @@ test("desktop imports committed WAL history once and retains it after the projec
     } finally {
       await local.close();
     }
+
     assert.deepEqual(
       (await legacy.list()).map((session) => session.id),
       ["existing-chat"],
@@ -46,8 +51,10 @@ test("desktop imports committed WAL history once and retains it after the projec
   } finally {
     await legacy.close();
   }
+
   await rm(cwd, { recursive: true });
   const reopened = new SqliteStore(await workspaceStorePath(cwd));
+
   try {
     assert.deepEqual(
       (await reopened.list()).map((session) => session.id),

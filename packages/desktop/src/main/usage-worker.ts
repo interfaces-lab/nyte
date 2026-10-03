@@ -6,31 +6,15 @@ import { parentPort } from "node:worker_threads";
 import { UsageScanner } from "@nyte-ai/host/store-usage";
 import type { UsageWorkerReply, UsageWorkerRequest } from "./usage-scan.ts";
 
-function isRequest(value: unknown): value is UsageWorkerRequest {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "id" in value &&
-    typeof value.id === "number" &&
-    "home" in value &&
-    typeof value.home === "string" &&
-    "stores" in value &&
-    Array.isArray(value.stores) &&
-    "catalog" in value &&
-    Array.isArray(value.catalog)
-  );
-}
-
 const port = parentPort;
 
 if (port === null) throw new Error("The usage worker must run on a worker thread.");
 
 let scanner: UsageScanner | undefined;
 
-port.on("message", (value: unknown) => {
-  if (!isRequest(value)) return;
-  scanner ??= new UsageScanner(value.home);
-  void scanner.scan(value).then((scan) => {
-    port.postMessage({ id: value.id, scan } satisfies UsageWorkerReply);
+port.on("message", (request: UsageWorkerRequest) => {
+  scanner ??= new UsageScanner(request.home);
+  void scanner.scan(request).then((scan) => {
+    port.postMessage({ id: request.id, scan } satisfies UsageWorkerReply);
   });
 });

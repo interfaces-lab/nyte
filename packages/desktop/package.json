@@ -28,10 +28,12 @@
   },
   "dependencies": {
     "@cf-wasm/photon": "0.4.0",
+    "@clerk/electron": "0.0.50",
     "@ghostery/adblocker": "2.18.2",
     "@lydell/node-pty": "1.2.0-beta.15",
     "diff": "9.0.0",
     "electron-sparkle": "0.2.0",
+    "electron-store": "8.2.0",
     "electron-updater": "^6.8.9",
     "hono": "4.13.1",
     "typebox": "1.3.7"
@@ -42,6 +44,7 @@
     "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/app": "workspace:*",
     "@nyte-ai/client": "workspace:*",
+    "@nyte-ai/connect": "workspace:*",
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/host": "workspace:*",
     "@nyte-ai/plugin": "workspace:*",
@@ -49,7 +52,9 @@
     "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/serve": "workspace:*",
     "@nyte-ai/server": "workspace:*",
+    "@nyte-ai/ui": "workspace:*",
     "@playwright/test": "1.63.0",
+    "@stylexjs/stylex": "0.19.0",
     "@stylexjs/unplugin": "0.19.0",
     "@tanstack/react-devtools": "0.10.12",
     "@tanstack/react-query": "5.102.5",
@@ -59,6 +64,7 @@
     "@types/node": "^26.6.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "@types/ws": "8.18.2",
     "@vitejs/plugin-react": "6.1.1",
     "dialkit": "2.0.2",
     "electron": "44.4.5",
@@ -70,6 +76,7 @@
     "react-grab": "^0.2.0",
     "typescript": "^7.0.2",
     "vite": "8.3.1",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.2",
+    "ws": "8.21.3"
   }
 }

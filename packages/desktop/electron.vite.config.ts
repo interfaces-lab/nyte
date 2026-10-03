@@ -37,7 +37,7 @@ export default defineConfig(({ command }) => ({
           chunkFileNames: (chunk) =>
             chunk.moduleIds.includes(resolve("src/main/codemode-runtime.ts"))
               ? "[name]-[hash].js"
-              : "chunks/[name]-[hash].js",
+              : "chunks/[name].js",
         },
       },
     },
@@ -48,7 +48,7 @@ export default defineConfig(({ command }) => ({
       minify: true,
       target: "node24",
       rolldownOptions: {
-        input: resolve("src/preload/index.ts"),
+        input: { index: resolve("src/preload/index.ts") },
         treeshake: { moduleSideEffects: false },
         output: { format: "cjs", entryFileNames: "[name].js" },
       },
@@ -93,6 +93,9 @@ export default defineConfig(({ command }) => ({
       chunkSizeWarningLimit: 6_000,
       minify: true,
       target: "chrome152",
+      rolldownOptions: {
+        input: { index: resolve("src/renderer/index.html") },
+      },
     },
     server: { host: "127.0.0.1", port: 5174, strictPort: true, forwardConsole: true },
   },

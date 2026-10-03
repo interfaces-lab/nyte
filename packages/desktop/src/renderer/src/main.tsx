@@ -19,6 +19,7 @@ import {
 } from "@nyte-ai/app";
 import { applyStartupTheme } from "@nyte-ai/app/theme/startup.ts";
 import appIcon from "../../../build/icon-macos.svg";
+import { AccountProvider } from "../../account/provider.tsx";
 
 const container = document.getElementById("root");
 
@@ -51,6 +52,12 @@ const startupMessage = document.getElementById("startup-message");
 
 const startupRetry = document.getElementById("startup-retry");
 
+let publishableKey: string | undefined;
+
+const accountConfig = window.nyteAccount.config().then((config) => {
+  publishableKey = config?.publishableKey;
+});
+
 applyStartupTheme({ shell: startupShell, retry: startupRetry });
 
 performance.mark("nyte:startup");
@@ -59,13 +66,16 @@ startRendererStartup({
   mountShell: () => {
     createRoot(container).render(
       <StrictMode>
-        <App appIcon={appIcon} />
+        <AccountProvider publishableKey={publishableKey}>
+          <App appIcon={appIcon} />
+        </AccountProvider>
       </StrictMode>,
     );
   },
   loadResources: () =>
     Promise.all([
       loadLocalResources(),
+      accountConfig,
       document.fonts.load('13px "Inter Variable"'),
       document.fonts.load('12px "JetBrains Mono Variable"'),
     ]).then(() => undefined),

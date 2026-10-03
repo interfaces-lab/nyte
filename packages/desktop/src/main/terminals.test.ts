@@ -5,12 +5,14 @@ import { TerminalSessions } from "./terminals.ts";
 import { CALL_INPUT_SCHEMAS } from "./ipc-inputs.ts";
 
 const events: HostEvent[] = [];
+
 let terminals: TerminalSessions;
 
 beforeEach(() => {
   events.length = 0;
   terminals = new TerminalSessions((event) => events.push(event), "/bin/bash");
 });
+
 afterEach(() => {
   terminals.dispose();
 });

@@ -84,7 +84,9 @@ import type {
   HostBridge,
   LocalFontCatalog,
   OpenWorkspaceOutcome,
+  RemoteAccessPluginId,
   RemoteAccessState,
+  RemotePairing,
   RemoteReach,
   ServerConnectOutcome,
   ServerState,
@@ -104,8 +106,17 @@ import type { IpcFailure } from "@nyte-ai/app/errors.ts";
 import { ensureShellEnvironment } from "./shell-environment.ts";
 import { readAccountUsage } from "@nyte-ai/host/usage";
 import type { AccountUsage } from "@nyte-ai/host/usage";
-import { findTailnetAddress, randomToken, startServe } from "@nyte-ai/serve";
+import {
+  findTailnetAddress,
+  pairingOrigin,
+  pairingUrl,
+  randomToken,
+  startServe,
+} from "@nyte-ai/serve";
 import type { Serving } from "@nyte-ai/serve";
+import type { ServerAuth } from "@nyte-ai/server";
+import type { RemoteAccessPlugins, RemoteExposure } from "./remote-access-plugin.ts";
+import type { ConnectRuntime, ConnectShare } from "./connect-runtime.ts";
 import { ServerSettingsStore } from "./server-settings.ts";
 import type { ServerSettings } from "./server-settings.ts";
 import { serverCatalog, serverConnectionProblem } from "@nyte-ai/app/server-connection.ts";
@@ -129,6 +140,16 @@ export interface DesktopHostDependencies {
   readonly appRoot?: string;
   /** Where usage history is scanned. The app uses a worker thread. */
   readonly usageScan?: UsageScanReader;
+  /**
+   * The built-in remote-access plugins `index.ts` registers. Without them, as
+   * in tests that never serve through one, their reaches are refused.
+   */
+  readonly remoteAccessPlugins?: RemoteAccessPlugins;
+  /**
+   * Account remote access, served beside the remote access above on its own
+   * loopback listener. Absent, as in tests that never link, it reads as unavailable.
+   */
+  readonly connect?: ConnectRuntime;
   readonly createHost?: typeof createHost;
   /** The store's worker thread module, so SQLite work never runs on the main thread. */
   readonly storeWorker: URL;
@@ -284,18 +305,22 @@ interface ShareCursor {
   readonly sessionOwners: Map<SessionId, OpenLocalTarget>;
 }
 
+/** Who reaches the listener: one token for this session, or a plugin's devices through its connector. */
+type RemoteListener =
+  | { readonly reach: "local" | "tailnet"; readonly token: string; readonly pairingUrl: string }
+  | { readonly reach: RemoteAccessPluginId; readonly exposure: RemoteExposure };
+
 /** The remote access listener and the local target it currently serves. */
 interface ActiveRemoteAccess extends ShareCursor {
   readonly serving: Serving;
-  readonly reach: RemoteReach;
+  readonly listener: RemoteListener;
   /** Ends the sign-ins remote clients started; runs once the listener is closed. */
   readonly closeEnvironment: () => void;
 }
 
-/** A store the page will read, with what only the SDK can say about it. */
-interface NamedStore {
+/** A store the page will read, or why its location could not be resolved. */
+interface LocatedStore {
   readonly location: StoreLocation;
-  readonly names: ReadonlyMap<SessionId, string | undefined>;
   readonly failure: IpcFailure | null;
 }
 
@@ -330,6 +355,14 @@ export class DesktopHost {
   private server: OpenServerTarget | undefined;
   /** In flight from start until stopped, so two Start presses share one listener. */
   private remoteAccess: Promise<ActiveRemoteAccess> | undefined;
+  /**
+   * Runs remote access starts, stops, and plugin changes one at a time. Nothing
+   * holding it waits on the lifecycle lock once `close` has begun, so teardown
+   * may wait on it.
+   */
+  private remoteLock: Promise<void> = Promise.resolve();
+  /** Listeners account remote access holds open; their targets stay open with them. */
+  private connectShares = 0;
   private readonly sessionOwners = new Map<SessionId, OpenTarget | WorkspaceTarget>();
   /** When each closed store was last listed; the rows themselves live in the directory. */
   private readonly closedDirectories = new Map<string | null, number>();
@@ -521,13 +554,79 @@ export class DesktopHost {
       case "host.remote.start": {
         const { reach } = CALL_INPUT_SCHEMAS[path].Parse(input);
 
-        return this.startRemoteAccess(window, reach);
+        return this.remoteSerial(() => this.startRemoteAccess(window, reach));
       }
 
       case "host.remote.stop":
         CALL_INPUT_SCHEMAS[path].Parse(input);
 
-        return this.stopRemoteAccess();
+        return this.remoteSerial(() => this.stopRemoteAccess());
+      case "host.remote.configure": {
+        const { plugin, ...settings } = CALL_INPUT_SCHEMAS[path].Parse(input);
+
+        return this.remoteSerial(() => this.remotePlugin(plugin).configure(settings)).then(
+          this.remoteAccessChanged,
+        );
+      }
+
+      case "host.remote.clear": {
+        const { plugin } = CALL_INPUT_SCHEMAS[path].Parse(input);
+
+        return this.remoteSerial(() => this.remotePlugin(plugin).clear()).then(
+          this.remoteAccessChanged,
+        );
+      }
+
+      case "host.remote.pair": {
+        const { plugin, name } = CALL_INPUT_SCHEMAS[path].Parse(input);
+
+        return this.remoteSerial(() => this.remotePlugin(plugin).pair({ name })).then(
+          (pairing: RemotePairing) => {
+            this.remoteAccessChanged();
+
+            return pairing;
+          },
+        );
+      }
+
+      case "host.remote.revoke":
+        return this.remoteSerial(() =>
+          this.revokeRemoteDevice(CALL_INPUT_SCHEMAS[path].Parse(input)),
+        );
+      case "host.connect.state":
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+
+        return (
+          this.dependencies.connect?.view() ?? { kind: "unavailable", reason: "not_configured" }
+        );
+      case "host.connect.link":
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+
+        return this.connect().link();
+      case "host.connect.cancel":
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+
+        return this.connect().cancel();
+      case "host.connect.setEnabled": {
+        const { enabled } = CALL_INPUT_SCHEMAS[path].Parse(input);
+
+        return this.connect().setEnabled({ enabled, share: this.connectShare(window, true) });
+      }
+
+      case "host.connect.unlink":
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+
+        return this.connect().unlink();
+      case "host.connect.revokeDevice":
+        return this.connect().revokeDevice(CALL_INPUT_SCHEMAS[path].Parse(input));
+      case "host.connect.openAccount":
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+
+        return this.connect().openAccount();
+      case "host.connect.signOut":
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+
+        return this.connect().signOut();
       case "host.openExternal": {
         const { url } = CALL_INPUT_SCHEMAS[path].Parse(input);
         this.dependencies.openExternal(safeExternalUrl(url));
@@ -709,6 +808,7 @@ export class DesktopHost {
       case "workspace.files": {
         const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
         const project = this.requireProject(window);
+
         const cwd =
           decoded.target.kind === "workspace"
             ? project.workspace.path
@@ -972,6 +1072,8 @@ export class DesktopHost {
     this.tracked.clear();
 
     try {
+      // Account devices lose access and the connector stops before anything they read from closes.
+      await this.dependencies.connect?.close().catch(() => undefined);
       this.github.close();
       await this.environment.close();
       // The server list may sit behind a stalled connection; the local sweep is the one worth waiting for.
@@ -1459,6 +1561,7 @@ export class DesktopHost {
 
     const workspaceBackend = this.workspaceBackend;
     const shellEnvironment = ensureShellEnvironment();
+
     const configuredWorkspaceBackend = {
       ...workspaceBackend,
       save: async (input: Parameters<typeof workspaceBackend.save>[0]) => {
@@ -1494,6 +1597,7 @@ export class DesktopHost {
       await store.ready();
 
       const codemode = codemodeRuntimeOptions();
+
       const extraPlugins = [
         browserToolsPlugin({
           agent: this.dependencies.browser.agent,
@@ -1525,6 +1629,7 @@ export class DesktopHost {
             });
 
             const replacement = await host.setPlugins(reloaded.plugins);
+
             if (replacement.kind === "rejected") throw new Error(replacement.error);
           },
           onError: (error) =>
@@ -1622,6 +1727,7 @@ export class DesktopHost {
         open.sessionAttachments.size > 0 ||
         this.watches.size > 0 ||
         this.remoteAccess !== undefined ||
+        this.connectShares > 0 ||
         (await this.updateTaskCount(open)) > 0)
     ) {
       return;
@@ -2155,19 +2261,67 @@ export class DesktopHost {
   private async remoteAccessState(): Promise<RemoteAccessState> {
     const active = await this.activeRemoteAccess();
 
-    if (active === undefined) return { kind: "off", tailnet: await this.tailnetAvailability() };
+    const cloudflare = (await this.dependencies.remoteAccessPlugins?.cloudflare.view()) ?? {
+      kind: "unregistered",
+    };
+
+    if (active === undefined) {
+      return { kind: "off", tailnet: await this.tailnetAvailability(), cloudflare };
+    }
+
+    const target =
+      active.open.kind === "home"
+        ? { kind: "home" as const }
+        : { kind: "project" as const, workspace: active.open.workspace };
+
+    const { listener } = active;
+
+    if ("exposure" in listener) {
+      return {
+        kind: "serving",
+        reach: listener.reach,
+        address: listener.exposure.address,
+        target,
+        cloudflare,
+      };
+    }
 
     return {
       kind: "serving",
       address: active.serving.address,
-      token: active.serving.token,
-      pairingUrl: active.serving.pairingUrl,
-      reach: active.reach,
-      target:
-        active.open.kind === "home"
-          ? { kind: "home" }
-          : { kind: "project", workspace: active.open.workspace },
+      token: listener.token,
+      pairingUrl: listener.pairingUrl,
+      reach: listener.reach,
+      target,
+      cloudflare,
     };
+  }
+
+  private readonly remoteAccessChanged = (): void => {
+    this.dependencies.emitHostEvent({ kind: "remote_access_changed" });
+  };
+
+  private remoteSerial<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.remoteLock.then(operation, operation);
+    this.remoteLock = result.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    return result;
+  }
+
+  private remotePlugin(id: RemoteAccessPluginId): RemoteAccessPlugins[RemoteAccessPluginId] {
+    const plugin = this.dependencies.remoteAccessPlugins?.[id];
+
+    if (plugin === undefined) {
+      throw new ExpectedHostError({
+        code: "not_found",
+        message: "This remote access plugin isn't available here.",
+      });
+    }
+
+    return plugin;
   }
 
   /** Read fresh each time: the daemon can start or stop while Settings is open. */
@@ -2554,39 +2708,35 @@ export class DesktopHost {
    * share currently serves. A client's sign-in shows its link or code to that
    * client; nothing opens on the Mac.
    */
-  private shareEnvironment(cursor: ShareCursor): {
-    readonly operations: Environment;
-    readonly close: () => void;
-  } {
+  private shareEnvironment(cursor: ShareCursor) {
     const owner = new AbortController();
     const github = this.github.owned(owner.signal);
 
     const workspace = (): string | undefined =>
       cursor.open.kind === "project" ? cursor.open.workspace.path : undefined;
 
-    return {
-      operations: {
-        ...this.environment.owned(owner.signal),
-        "environment.github.state": () => github.state(workspace()),
-        "environment.github.signIn": () => github.signIn(workspace()).then(this.githubChanged),
-        "environment.github.signOut": () => github.signOut(workspace()).then(this.githubChanged),
-        "environment.github.createPullRequest": async (input) => {
-          const path = workspace();
+    const operations: Environment = {
+      ...this.environment.owned(owner.signal),
+      "environment.github.state": () => github.state(workspace()),
+      "environment.github.signIn": () => github.signIn(workspace()).then(this.githubChanged),
+      "environment.github.signOut": () => github.signOut(workspace()).then(this.githubChanged),
+      "environment.github.createPullRequest": async (input) => {
+        const path = workspace();
 
-          if (path !== undefined) await this.requireTrust(path);
+        if (path !== undefined) await this.requireTrust(path);
 
-          return github.createPullRequest(input, path);
-        },
+        return github.createPullRequest(input, path);
       },
-      close: () => owner.abort(),
     };
+
+    return { operations, close: () => owner.abort() };
   }
 
   /**
    * Serve the selected local target as it stands now. Mac selection may move
    * later; the cursor stays until a client calls `workspace.select`.
    * A folder is served only once trusted; the server target is never a
-   * candidate because selection is always local.
+   * candidate because selection is always local. Runs under the remote lock.
    */
   private async startRemoteAccess(
     window: HostWindow,
@@ -2598,6 +2748,11 @@ export class DesktopHost {
     if (this.remoteAccess === undefined) {
       const pending = (async (): Promise<ActiveRemoteAccess> => {
         const host = reach === "tailnet" ? await this.requireTailnetHost() : undefined;
+
+        const via =
+          reach === "local" || reach === "tailnet"
+            ? { kind: "token" as const, reach }
+            : { kind: "plugin" as const, reach, plugin: this.remotePlugin(reach) };
 
         // Bail before prepare, not after it: teardown waits on this pending,
         // so a prepare queued behind teardown would deadlock the close.
@@ -2617,26 +2772,44 @@ export class DesktopHost {
           });
         const cursor: ShareCursor = { open, sessionOwners: new Map() };
         const environment = this.shareEnvironment(cursor);
-        const { appRoot } = this.dependencies;
 
-        const serving = await startServe({
-          host,
-          sdk: this.shareCursor(cursor),
-          environment: environment.operations,
-          version: this.dependencies.appVersion ?? "dev",
-          describe: () => ({ capabilities: { workspace: true }, persistence: "durable" }),
-          token: randomToken(),
-          appRoot:
-            appRoot !== undefined && existsSync(join(appRoot, "index.html")) ? appRoot : undefined,
-          attach: (sessionId) => {
-            this.attachSession(cursor.sessionOwners.get(sessionId) ?? cursor.open, sessionId);
-          },
-        }).catch((cause: unknown) => {
+        try {
+          if (via.kind === "token") {
+            const token = randomToken();
+
+            const serving = await this.serveShare(cursor, environment.operations, {
+              host,
+              auth: { kind: "token", token },
+            });
+
+            const link = pairingUrl(
+              pairingOrigin(serving.address, this.servedAppRoot()),
+              serving.address,
+              token,
+            );
+
+            return Object.assign(cursor, {
+              serving,
+              listener: { reach: via.reach, token, pairingUrl: link },
+              closeEnvironment: environment.close,
+            });
+          }
+
+          const { serving, exposure } = await this.exposeShare(
+            cursor,
+            environment.operations,
+            via.plugin,
+          );
+
+          return Object.assign(cursor, {
+            serving,
+            listener: { reach: via.reach, exposure },
+            closeEnvironment: environment.close,
+          });
+        } catch (cause) {
           environment.close();
           throw cause;
-        });
-
-        return Object.assign(cursor, { serving, reach, closeEnvironment: environment.close });
+        }
       })();
 
       this.remoteAccess = pending;
@@ -2650,19 +2823,209 @@ export class DesktopHost {
     }
 
     const state = await this.remoteAccessState();
-    this.dependencies.emitHostEvent({ kind: "remote_access_changed" });
+    this.remoteAccessChanged();
 
     return state;
   }
 
+  private connect(): ConnectRuntime {
+    const { connect } = this.dependencies;
+
+    if (connect === undefined) {
+      throw new ExpectedHostError({
+        code: "not_found",
+        message: "Account remote access isn't available here.",
+      });
+    }
+
+    return connect;
+  }
+
+  /**
+   * Serve account remote access if it was left on, once this window has
+   * prepared its target. A folder that is not trusted yet stays unserved
+   * without a prompt; turning it on again asks.
+   */
+  async autostartConnect(window: HostWindow): Promise<void> {
+    await this.dependencies.connect?.autostart(this.connectShare(window, false));
+  }
+
+  /**
+   * How account remote access binds: the window's target as it stands now,
+   * trusted, on an ephemeral `127.0.0.1` port. The listener and its target
+   * outlive the window.
+   */
+  private connectShare(window: HostWindow, prompt: boolean): ConnectShare {
+    return async (listen) => {
+      // Bail before prepare: close waits on account remote access first.
+      if (this.closed)
+        throw new ExpectedHostError({
+          code: "closed",
+          message: "The window closed before serving",
+        });
+      const target = await this.prepare(window);
+
+      if (target.kind === "project") {
+        if (prompt) await this.requireTrust(target.workspace.path, window);
+        else await this.workspaces.require(target.workspace.path);
+      }
+
+      if (this.closed)
+        throw new ExpectedHostError({
+          code: "closed",
+          message: "The window closed before serving",
+        });
+      const cursor: ShareCursor = { open: target, sessionOwners: new Map() };
+      const environment = this.shareEnvironment(cursor);
+      let serving: Serving;
+
+      try {
+        serving = await this.serveShare(cursor, environment.operations, {
+          ...listen,
+          host: "127.0.0.1",
+        });
+      } catch (cause) {
+        environment.close();
+        throw cause;
+      }
+
+      this.connectShares += 1;
+      let listening = true;
+
+      return {
+        port: Number(new URL(serving.address).port),
+        disconnectClients: () => serving.disconnectClients(),
+        close: async () => {
+          if (!listening) return;
+          listening = false;
+          await serving.close();
+          environment.close();
+          this.connectShares -= 1;
+        },
+      };
+    };
+  }
+
+  /** The built web app, when it is there to serve beside the API. */
+  private servedAppRoot(): string | undefined {
+    const { appRoot } = this.dependencies;
+
+    return appRoot !== undefined && existsSync(join(appRoot, "index.html")) ? appRoot : undefined;
+  }
+
+  private serveShare(
+    cursor: ShareCursor,
+    environment: Environment,
+    listen: {
+      readonly host?: string;
+      readonly port?: number;
+      readonly auth: ServerAuth;
+      readonly browserOrigins?: readonly string[];
+      readonly handle?: (request: Request) => Promise<Response | undefined>;
+    },
+  ): Promise<Serving> {
+    return startServe({
+      ...listen,
+      sdk: this.shareCursor(cursor),
+      environment,
+      version: this.dependencies.appVersion ?? "dev",
+      describe: () => ({ capabilities: { workspace: true }, persistence: "durable" }),
+      appRoot: this.servedAppRoot(),
+      attach: (sessionId) => {
+        this.attachSession(cursor.sessionOwners.get(sessionId) ?? cursor.open, sessionId);
+      },
+    });
+  }
+
+  /**
+   * Bind the plugin's loopback port, then start its connector. If anything
+   * after `expose` fails, the exposure ends, so a connector never runs without
+   * this listener on its port.
+   */
+  private async exposeShare(
+    cursor: ShareCursor,
+    environment: Environment,
+    plugin: RemoteAccessPlugins[RemoteAccessPluginId],
+  ): Promise<{ readonly serving: Serving; readonly exposure: RemoteExposure }> {
+    const exposure = await plugin.expose(this.remoteAccessChanged);
+
+    try {
+      const serving = await this.serveShare(cursor, environment, {
+        host: "127.0.0.1",
+        ...exposure.listen,
+      }).catch((cause: unknown) => {
+        if (cause instanceof Error && "code" in cause && cause.code === "EADDRINUSE") {
+          throw new ExpectedHostError({
+            code: "forbidden",
+            message: `Port ${String(exposure.listen.port)} is in use on this Mac. Free it, or set the tunnel up with another port.`,
+          });
+        }
+
+        throw cause;
+      });
+
+      if (this.closed) {
+        await serving.close();
+        throw new ExpectedHostError({
+          code: "closed",
+          message: "The window closed before serving",
+        });
+      }
+
+      exposure.connect();
+
+      return { serving, exposure };
+    } catch (cause) {
+      await exposure.disconnect();
+      throw cause;
+    }
+  }
+
+  /**
+   * A plugin's connector stops before its port is released, so no other
+   * process can bind that port while outside traffic still arrives on it.
+   * Runs under the remote lock.
+   */
   private async stopRemoteAccess(): Promise<void> {
     const active = await this.activeRemoteAccess();
 
     if (active === undefined) return;
     this.remoteAccess = undefined;
+    const { listener } = active;
+
+    if ("exposure" in listener) await listener.exposure.disconnect();
     await active.serving.close();
     active.closeEnvironment();
-    this.dependencies.emitHostEvent({ kind: "remote_access_changed" });
+    this.remoteAccessChanged();
+  }
+
+  /**
+   * Forget a device, then drop every open connection on the listener: a
+   * stream outlives the credential check that opened it. The port stays bound
+   * and the connector keeps running; other devices reconnect and authenticate
+   * again. If the plugin cannot record the revoke it refuses every token, and
+   * remote access stops. Runs under the remote lock.
+   */
+  private async revokeRemoteDevice(input: {
+    readonly plugin: RemoteAccessPluginId;
+    readonly deviceId: string;
+  }): Promise<void> {
+    const plugin = this.remotePlugin(input.plugin);
+
+    try {
+      await plugin.revoke({ deviceId: input.deviceId });
+    } catch (cause) {
+      await this.stopRemoteAccess();
+      throw cause;
+    }
+
+    const active = await this.activeRemoteAccess();
+
+    if (active !== undefined && active.listener.reach === input.plugin) {
+      active.serving.disconnectClients();
+    }
+
+    this.remoteAccessChanged();
   }
 
   /** Watches on the old server end; the renderer resumes them against the new one or not at all. */
@@ -2687,19 +3050,19 @@ export class DesktopHost {
    * becomes a failed source on the page rather than an error screen over the
    * folders that answered.
    *
-   * The lifecycle lock covers only what needs the SDK: session names and where
-   * each store lives. The read of the stores and of the external transcripts
-   * runs on the scanner, off this thread, so nothing waits on it.
+   * Nothing here needs the SDK or the lifecycle lock: the stores are located,
+   * then read along with the external transcripts on the scanner, off this
+   * thread, so an open chat never waits on a usage read.
    */
   private async usage(window: UsageWindow): Promise<UsageSnapshot> {
     const models = await this.models();
 
-    const named = await this.serialize(() => this.usageStores()).then(
+    const located = await this.usageStores().then(
       (stores) => ({ stores, nyteError: null }),
       (error) => ({ stores: [], nyteError: ipcFailure(error).message }),
     );
 
-    const readable = named.stores.filter((store) => store.failure === null);
+    const readable = located.stores.filter((store) => store.failure === null);
 
     const scan = await this.usageScan
       .scan({ stores: readable.map((store) => store.location), catalog: catalogForUsage(models) })
@@ -2715,7 +3078,7 @@ export class DesktopHost {
 
     const scanned = new Map(scan.stores.map((store) => [store.workspacePath, store]));
 
-    const reads = named.stores.map((store): StoreRead => {
+    const reads = located.stores.map((store): StoreRead => {
       const read = scanned.get(store.location.workspacePath);
 
       if (store.failure !== null || read === undefined) {
@@ -2728,17 +3091,14 @@ export class DesktopHost {
 
       return {
         workspacePath: store.location.workspacePath,
-        sessions: read.sessions.map((session) => ({
-          ...session,
-          name: store.names.get(session.sessionId),
-        })),
+        sessions: read.sessions,
         failure: read.failure === null ? null : ipcFailure(new Error(read.failure)),
       };
     });
 
     return {
       ...projectUsageReport(reads, window, Date.now()),
-      nyteError: named.nyteError,
+      nyteError: located.nyteError,
       claudeCode: scan.claudeCode,
       codex: scan.codex,
     };
@@ -2760,8 +3120,8 @@ export class DesktopHost {
     );
   }
 
-  /** Every store the page reads, with the names the SDK holds for its sessions. */
-  private async usageStores(): Promise<readonly NamedStore[]> {
+  /** Every store the page reads. Subagents spend on their parent's behalf, so the scan counts their chats too. */
+  private async usageStores(): Promise<readonly LocatedStore[]> {
     const workspaces = await this.workspaces.list();
 
     const targets: WorkspaceTarget[] = [
@@ -2770,21 +3130,13 @@ export class DesktopHost {
     ];
 
     return Promise.all(
-      targets.map(async (target): Promise<NamedStore> => {
+      targets.map(async (target): Promise<LocatedStore> => {
         const workspacePath = target.kind === "home" ? null : target.workspace.path;
-        const names = new Map<SessionId, string | undefined>();
 
         try {
-          const location = { workspacePath, path: await storePath(target) };
-          const open = await this.compose(target);
-          // Subagents spend on their parent's behalf, so their chats count too.
-          const { items } = await open.sdk.sessions.list({ includeArchived: true });
-
-          for (const info of items) names.set(info.sessionId, info.name);
-
-          return { location, names, failure: null };
+          return { location: { workspacePath, path: await storePath(target) }, failure: null };
         } catch (error) {
-          return { location: { workspacePath, path: "" }, names, failure: ipcFailure(error) };
+          return { location: { workspacePath, path: "" }, failure: ipcFailure(error) };
         }
       }),
     );
@@ -2793,7 +3145,7 @@ export class DesktopHost {
   private async teardownOpen(): Promise<void> {
     this.selections.clear();
     // Remote clients' streams end before the SDK they read from closes.
-    await this.stopRemoteAccess();
+    await this.remoteSerial(() => this.stopRemoteAccess());
 
     for (const watch of this.watches.values()) watch.controller.abort();
     this.watches.clear();

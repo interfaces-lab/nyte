@@ -7,7 +7,7 @@ import { createAssistantMessageEventStream } from "@nyte-ai/ai";
 import { createNyte } from "@nyte-ai/core";
 import type { SessionId, StreamFn } from "@nyte-ai/core";
 import { SqliteStore } from "@nyte-ai/core/store";
-import { inlinePlugin } from "@nyte-ai/plugin";
+
 import type { Api, AssistantMessage, Model } from "@nyte-ai/schema";
 import { browserToolsPlugin } from "./browser-tools.ts";
 import { BrowserAccessStore } from "./browser-access.ts";
@@ -63,10 +63,13 @@ interface FakeAgent extends BrowserAgent {
 
 function fakeAgent(state: BrowserPageState = pageState()): FakeAgent {
   const calls: string[] = [];
+
   const ok = (name: string): Promise<BrowserActionResult> => {
     calls.push(name);
+
     return Promise.resolve({ kind: "ok", state });
   };
+
   return {
     calls,
     open: () => ok("open"),
@@ -78,10 +81,12 @@ function fakeAgent(state: BrowserPageState = pageState()): FakeAgent {
     wait: () => ok("wait"),
     console: (): readonly BrowserConsoleEntry[] => {
       calls.push("console");
+
       return [{ level: "error", message: "boom", source: "page", at: 0 }];
     },
     evaluate: (): Promise<BrowserEvaluateResult> => {
       calls.push("evaluate");
+
       return Promise.resolve({ kind: "value", json: "1" });
     },
     capture: () => Promise.resolve(undefined),
@@ -99,18 +104,22 @@ const USAGE = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-interface Step {
-  readonly tool: string;
-  readonly args: Record<string, unknown>;
-}
+type Step =
+  | { readonly tool: "browser_open"; readonly args: { readonly url: string } }
+  | {
+      readonly tool: "browser_click";
+      readonly args: { readonly ref: string; readonly element: string };
+    };
 
 /** Calls one tool per user turn, following `steps` in order, then answers in plain text. */
 function calls(...steps: readonly Step[]): StreamFn {
   return (_model, context) => {
     const turn = context.messages.filter((message) => message.role === "user").length;
     const step = steps[turn - 1] ?? steps.at(-1);
-    const pending = context.messages.at(-1)?.role === "user" && step !== undefined;
+    const latest = context.messages.findLast((message) => message.role !== "system");
+    const pending = latest?.role === "user" && step !== undefined;
     const reason = pending ? "toolUse" : "stop";
+
     const message: AssistantMessage = {
       role: "assistant",
       content: pending
@@ -123,8 +132,10 @@ function calls(...steps: readonly Step[]): StreamFn {
       timestamp: Date.now(),
       usage: USAGE,
     };
+
     const stream = createAssistantMessageEventStream();
     queueMicrotask(() => stream.push({ type: "done", reason, message }));
+
     return stream;
   };
 }
@@ -134,6 +145,7 @@ async function browserSession(agent: BrowserAgent, streamFn: StreamFn, folder?: 
   // Reopening a folder keeps its remembered answer; its first session removes it.
   const directory = folder ?? (await mkdtemp(join(tmpdir(), "nyte-browser-tools-")));
   const store = new SqliteStore(join(directory, "sessions.db"));
+
   const sdk = await createNyte({
     store,
     model,
@@ -141,26 +153,28 @@ async function browserSession(agent: BrowserAgent, streamFn: StreamFn, folder?: 
     env: { cwd: directory },
     models: { getModels: () => [model], getAvailable: async () => [model], getModel: () => model },
     plugins: [
-      inlinePlugin(
-        browserToolsPlugin({
-          agent,
-          access: new BrowserAccessStore(join(directory, "browser-access.json")),
-        }),
-      ),
+      browserToolsPlugin({
+        agent,
+        access: new BrowserAccessStore(join(directory, "browser-access.json")),
+      }),
     ],
   });
+
   sdk.attach();
   onTestFinished(async () => {
     await sdk.close();
     await store.close();
+
     if (folder === undefined) await rm(directory, { recursive: true, force: true });
   });
   const session = (await sdk.sessions.create()).sessionId;
 
   const transcript = async () =>
     JSON.stringify(await sdk.sessions.snapshot({ sessionId: session }));
+
   const parked = async () => {
     const snapshot = await sdk.sessions.snapshot({ sessionId: session });
+
     return snapshot?.parked?.find((call) => call.selection !== undefined);
   };
 
@@ -176,6 +190,7 @@ async function browserSession(agent: BrowserAgent, streamFn: StreamFn, folder?: 
       await expect.poll(async () => (await parked()) !== undefined).toBe(true);
       const call = await parked();
       assert.ok(call);
+
       return call;
     },
     /** Answer the access prompt, releasing the parked call. */
@@ -198,6 +213,7 @@ async function browserSession(agent: BrowserAgent, streamFn: StreamFn, folder?: 
 
 test("the first browser call asks for access before anything reaches the page", async () => {
   const agent = fakeAgent();
+
   const page = await browserSession(
     agent,
     calls({ tool: "browser_open", args: { url: "https://example.test/" } }),
@@ -220,6 +236,7 @@ test("the first browser call asks for access before anything reaches the page", 
 
 test("a write tool under read-only access is refused without asking again", async () => {
   const agent = fakeAgent();
+
   const page = await browserSession(
     agent,
     calls({ tool: "browser_click", args: { ref: "s1e1", element: "Sign in" } }),
@@ -234,6 +251,7 @@ test("a write tool under read-only access is refused without asking again", asyn
 
 test("turning access off refuses the call", async () => {
   const agent = fakeAgent();
+
   const page = await browserSession(
     agent,
     calls({ tool: "browser_open", args: { url: "https://example.test/" } }),
@@ -251,11 +269,13 @@ test("a later session in the same folder opens on the remembered answer", async 
     fakeAgent(),
     calls({ tool: "browser_open", args: { url: "https://example.test/" } }),
   );
+
   await first.say("Open the page");
   await first.answer("read");
   await first.reports(/Hello from the page/);
 
   const agent = fakeAgent();
+
   const later = await browserSession(
     agent,
     calls({ tool: "browser_open", args: { url: "https://example.test/" } }),
@@ -273,11 +293,13 @@ test("a folder that answered read-only still refuses write tools in a later sess
     fakeAgent(),
     calls({ tool: "browser_open", args: { url: "https://example.test/" } }),
   );
+
   await first.say("Open the page");
   await first.answer("read");
   await first.reports(/Hello from the page/);
 
   const agent = fakeAgent();
+
   const later = await browserSession(
     agent,
     calls({ tool: "browser_click", args: { ref: "s1e1", element: "Sign in" } }),
@@ -292,6 +314,7 @@ test("a folder that answered read-only still refuses write tools in a later sess
 
 test("a ref whose name is not what the model described is refused", async () => {
   const agent = fakeAgent();
+
   const page = await browserSession(
     agent,
     calls(
@@ -312,6 +335,7 @@ test("a ref whose name is not what the model described is refused", async () => 
 
 test("a description that adds a role word still matches the element", async () => {
   const agent = fakeAgent();
+
   const page = await browserSession(
     agent,
     calls(
@@ -331,6 +355,7 @@ test("a description that adds a role word still matches the element", async () =
 
 test("a ref the model never saw in a snapshot is refused", async () => {
   const agent = fakeAgent();
+
   const page = await browserSession(
     agent,
     calls({ tool: "browser_click", args: { ref: "s9e9", element: "Sign in" } }),
@@ -355,7 +380,9 @@ test("an element with no accessible name is not silently accepted", async () => 
       },
     ],
   });
+
   const agent = fakeAgent(unnamedButton);
+
   const page = await browserSession(
     agent,
     calls(

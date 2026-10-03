@@ -174,9 +174,11 @@ export class SessionDirectory {
     return {
       revision: this.#revision,
       directories: [...this.#sources.values()].map((held): WorkspaceSessionDirectory => {
-        const sessions = [...held.rows.values()]
+        const sessions = held.rows
+          .values()
           .map((row) => row.session)
-          .filter((session) => session.parent === undefined);
+          .filter((session) => session.parent === undefined)
+          .toArray();
 
         return held.source.environment === "cloud"
           ? { environment: "cloud", sessions, availability: held.availability }

@@ -18,16 +18,6 @@ export interface UsageWorkerReply {
   readonly scan: UsageScan;
 }
 
-function isReply(value: unknown): value is UsageWorkerReply {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "id" in value &&
-    typeof value.id === "number" &&
-    "scan" in value
-  );
-}
-
 /**
  * The scanner on a worker thread. The worker starts on the first read and is
  * kept, so its caches stay in memory between visits; it does not hold the
@@ -70,11 +60,10 @@ export class UsageScanWorker implements UsageScanReader {
     if (this.worker !== undefined) return this.worker;
     const worker = new Worker(this.entry);
     worker.unref();
-    worker.on("message", (value: unknown) => {
-      if (!isReply(value)) return;
-      const request = this.pending.get(value.id);
-      this.pending.delete(value.id);
-      request?.resolve(value.scan);
+    worker.on("message", (reply: UsageWorkerReply) => {
+      const request = this.pending.get(reply.id);
+      this.pending.delete(reply.id);
+      request?.resolve(reply.scan);
     });
 
     const fail = (cause: unknown) => {

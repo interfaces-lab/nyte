@@ -71,6 +71,7 @@ const replying: Provider["stream"] = (selected) => {
       },
     },
   });
+
   return events;
 };
 
@@ -80,6 +81,7 @@ function localModels(stream: Provider["stream"]): MutableModels {
     credentials: new InMemoryCredentialStore(),
     modelsStore: new InMemoryModelsStore(),
   });
+
   models.setProvider({
     id: model.provider,
     name: "Echo",
@@ -88,10 +90,12 @@ function localModels(stream: Provider["stream"]): MutableModels {
     stream,
     streamSimple: stream,
   });
+
   return models;
 }
 
 const cleanups: (() => Promise<void> | void)[] = [];
+
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
   vi.unstubAllEnvs();
@@ -108,6 +112,7 @@ async function desktop(
   await mkdir(appRoot);
   await writeFile(join(appRoot, "index.html"), "<!doctype html>");
   const events: HostEvent[] = [];
+
   const host = new DesktopHost({
     storeWorker: new URL("../../../core/src/kernel/store-worker.ts", import.meta.url),
     createModels: () => localModels(options.stream ?? failing),
@@ -139,16 +144,22 @@ async function desktop(
       agent: unusedBrowserAgent(),
     },
   });
+
   cleanups.push(
     () => rm(root, { recursive: true, force: true }),
     () => host.close(),
   );
+
   return { host, events, root };
 }
 
-function serving(state: RemoteAccessState): Extract<RemoteAccessState, { kind: "serving" }> {
+function serving(
+  state: RemoteAccessState,
+): Extract<RemoteAccessState, { kind: "serving"; reach: "local" | "tailnet" }> {
   assert.equal(state.kind, "serving");
-  if (state.kind !== "serving") throw new Error("unreachable");
+
+  if (state.kind !== "serving" || state.reach === "cloudflare") throw new Error("unreachable");
+
   return state;
 }
 
@@ -160,6 +171,7 @@ test("a client on the remote address reads and drives the desktop's own Home sto
     host.call(1, "host.remote.start", { reach: "local" }),
     host.call(1, "host.remote.start", { reach: "local" }),
   ]);
+
   const state = serving(first);
   assert.equal(serving(concurrent).address, state.address);
   assert.match(state.address, /^http:\/\/127\.0\.0\.1:\d+$/);
@@ -212,9 +224,11 @@ test("a missing or wrong token is refused before anything is read", async () => 
 
   const anonymous = await fetch(`${state.address}/v1/info`);
   assert.equal(anonymous.status, 401);
+
   const wrong = await fetch(`${state.address}/v1/info`, {
     headers: { authorization: `Bearer ${state.token.slice(1)}x` },
   });
+
   assert.equal(wrong.status, 403);
   await assert.rejects(
     createNyteClient({ baseUrl: state.address, token: "not-the-share-token" }).sessions.list({}),
@@ -253,26 +267,28 @@ test("client model choices follow desktop provider and model preferences", async
 test("unfinished uploads are refused without waiting for the remaining body", async () => {
   const { host } = await desktop();
   const state = serving(await host.call(1, "host.remote.start", { reach: "local" }));
+
   for (const input of [
-    { token: undefined, body: "{", status: 401 },
-    { token: state.token, body: "x".repeat(8_388_608 + 1), status: 413 },
+    { headers: { "content-type": "application/json" }, body: "{", status: 401 },
+    {
+      headers: { "content-type": "application/json", authorization: `Bearer ${state.token}` },
+      body: "x".repeat(8_388_608 + 1),
+      status: 413,
+    },
   ]) {
     const response = Promise.withResolvers<number | undefined>();
+
     const upload = request(
       `${state.address}/v1/call/sessions.create`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(input.token === undefined ? {} : { authorization: `Bearer ${input.token}` }),
-        },
-      },
+      { method: "POST", headers: input.headers },
       (incoming) => {
         incoming.resume();
         response.resolve(incoming.statusCode);
       },
     );
+
     upload.on("error", response.reject);
+
     try {
       // No end(): the listener must answer without waiting for the rest of this upload.
       upload.write(input.body);
@@ -281,6 +297,7 @@ test("unfinished uploads are refused without waiting for the remaining body", as
       upload.destroy();
     }
   }
+
   assert.deepEqual((await host.call(1, "sessions.list", {})).items, []);
 });
 
@@ -290,8 +307,10 @@ test("disconnecting before a watch's first event aborts its pending SDK read", a
   const session = await sdk.sessions.create({});
   const started = Promise.withResolvers<AbortSignal | undefined>();
   const release = Promise.withResolvers<void>();
+  const token = randomToken();
+
   const share = await startServe({
-    token: randomToken(),
+    auth: { kind: "token", token },
     sdk: {
       ...sdk,
       async *watch(input) {
@@ -304,12 +323,15 @@ test("disconnecting before a watch's first event aborts its pending SDK read", a
     version: "test",
     attach: () => undefined,
   });
+
   cleanups.push(() => share.close());
   const controller = new AbortController();
+
   const response = fetch(`${share.address}/v1/watch?sessionId=${session.sessionId}&live=1`, {
-    headers: { authorization: `Bearer ${share.token}` },
+    headers: { authorization: `Bearer ${token}` },
     signal: controller.signal,
   }).catch(() => undefined);
+
   try {
     const signal = await started.promise;
     assert.ok(signal);
@@ -329,6 +351,7 @@ test("stopping ends the client's streams and connections while the desktop keeps
   const client = createNyteClient({ baseUrl: first.address, token: first.token });
 
   const received: string[] = [];
+
   // Settles with the reason the stream ended; the stop below is what ends it.
   const watchEnd = (async () => {
     for await (const event of client.watch({ sessionId: session.sessionId, live: true })) {
@@ -338,6 +361,7 @@ test("stopping ends the client's streams and connections while the desktop keeps
     () => "ended without an error",
     (cause: unknown) => (cause instanceof Error ? cause.message : String(cause)),
   );
+
   await vi.waitFor(() => assert.ok(received.includes("synced")));
 
   await host.call(1, "host.remote.stop", undefined);
@@ -390,9 +414,12 @@ async function listedRepo(
   await writeFile(join(project, "share-target-marker.txt"), "marker");
   const opened = await host.call(1, "host.openWorkspace", { path: project });
   assert.equal(opened.kind, "opened");
+
   if (opened.kind !== "opened") throw new Error("openWorkspace did not open");
+
   if (trusted) await host.call(1, "host.trustWorkspace", { path: project });
   await host.call(1, "host.closeWorkspace", undefined);
+
   return { project, workspace: opened.workspace };
 }
 
@@ -405,14 +432,17 @@ test("client workspace.select retargets the share and leaves Mac selection alone
   const mac = await host.call(1, "host.state", undefined);
   assert.equal(mac.workspace, undefined);
   assert.deepEqual(await client.workspace.current(), { kind: "home" });
+
   const shareChanges = () =>
     events.filter((event) => event.kind === "remote_access_changed").length;
 
   const first = await client.workspace.select({ kind: "project", path: workspace.path });
   const second = await client.workspace.select({ kind: "project", path: workspace.path });
   assert.equal(first.kind, "opened");
+
   if (first.kind !== "opened") throw new Error("select did not open");
   assert.equal(first.selection.kind, "project");
+
   if (first.selection.kind !== "project") throw new Error("selection was not a project");
   assert.equal(first.selection.workspace.path, workspace.path);
   assert.deepEqual(first, second);
@@ -435,10 +465,12 @@ test("client workspace.select retargets the share and leaves Mac selection alone
     listed.items.some((session) => session.sessionId === projectChat.sessionId),
     true,
   );
+
   const files = await client.workspace.files({
     target: { kind: "workspace" },
     query: "share-target-marker",
   });
+
   assert.equal(
     files.some((file) => file.label === "share-target-marker.txt"),
     true,
@@ -484,6 +516,7 @@ test("share sessions.list and create follow the parent session's workspace", asy
     name: "child",
     parent: { sessionId: early.sessionId, runId: "run", callId: "call", depth: 1 },
   });
+
   const children = await client.sessions.list({ parent: early.sessionId });
   assert.ok(children.items.some((session) => session.sessionId === child.sessionId));
   assert.equal((await client.sessions.get({ sessionId: child.sessionId }))?.name, "child");
@@ -585,7 +618,7 @@ test("a share call queued behind close fails instead of composing after teardown
 
 test("a remote client reads the Mac's catalog and usage and changes its preferences", async () => {
   // What the desktop answers, as it reads after crossing the wire.
-  const wire = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
+  const wire = <T>(value: T): T => JSON.parse(JSON.stringify(value));
   const { host, events } = await desktop({ stream: replying });
   const state = serving(await host.call(1, "host.remote.start", { reach: "local" }));
   const client = createNyteClient({ baseUrl: state.address, token: state.token });
@@ -601,11 +634,14 @@ test("a remote client reads the Mac's catalog and usage and changes its preferen
   const session = await client.sessions.create({ name: "remote work" });
   await client.messages.send({ sessionId: session.sessionId, content: "hello" });
   const allTime = { sinceDay: null, untilDay: localDay(Date.now()) };
+
   const usage = await vi.waitFor(async () => {
     const report = await client.environment("environment.usage", allTime);
     assert.equal(report.entries[0]?.totals.tokens, 2);
+
     return report;
   });
+
   assert.deepEqual(
     usage.sessions.map((entry) => [entry.sessionId, entry.name]),
     [[session.sessionId, "remote work"]],
@@ -622,6 +658,7 @@ test("a remote client reads the Mac's catalog and usage and changes its preferen
     ids: [model.id],
     hidden: true,
   });
+
   assert.equal(changed.models.find((entry) => entry.key === "echo/echo")?.listed, false);
   assert.deepEqual(wire(await host.call(1, "host.catalog", undefined)), changed);
   assert.ok(events.some((event) => event.kind === "catalog_changed"));
@@ -629,21 +666,29 @@ test("a remote client reads the Mac's catalog and usage and changes its preferen
 
 test("remote GitHub state follows the folder the share serves", async () => {
   const calls: { readonly command: string; readonly cwd: string }[] = [];
+
   const completed = (stdout: string, code = 0, stderr = "") =>
     ({ kind: "completed", code, stdout, stderr }) as const;
+
   const github: GitHubCommandRunner = async (request) => {
     calls.push({ command: request.command, cwd: request.cwd });
     const [first, second] = request.args;
+
     if (request.command === "git") {
       if (first === "symbolic-ref") return completed("feature\n");
+
       return completed(second === undefined ? "origin\n" : "git@github.com:owner/repo.git\n");
     }
+
     if (first === "auth") return completed(JSON.stringify([{ active: true, state: "success" }]));
+
     if (first === "api") {
       return completed(JSON.stringify({ login: "octo", name: null, avatar_url: null }));
     }
+
     return completed("", 1, "no pull requests found for branch");
   };
+
   const { host, root } = await desktop({ github });
   const state = serving(await host.call(1, "host.remote.start", { reach: "local" }));
   const client = createNyteClient({ baseUrl: state.address, token: state.token });
@@ -675,7 +720,7 @@ test("remote GitHub state follows the folder the share serves", async () => {
     pullRequest: { kind: "none" },
   });
   assert.deepEqual(
-    [...new Set(calls.filter((call) => call.command === "git").map((call) => call.cwd))],
+    [...new Set(calls.flatMap((call) => (call.command === "git" ? [call.cwd] : [])))],
     [project],
   );
 });
@@ -699,10 +744,12 @@ setInterval(() => {}, 1000);
       { mode: 0o755 },
     );
     vi.stubEnv("PATH", fake);
+
     const signedOut: GitHubCommandRunner = async (request) =>
       request.command === "git"
         ? { kind: "completed", code: 128, stdout: "", stderr: "" }
         : { kind: "completed", code: 1, stdout: "", stderr: "" };
+
     const { host, events } = await desktop({ github: signedOut });
     const kind = async () => (await host.call(1, "host.github.state", undefined)).kind;
 

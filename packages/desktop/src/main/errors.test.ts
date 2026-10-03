@@ -14,6 +14,7 @@ afterEach(() => ipcDiagnostics.clear());
 
 test("request envelope rejection is redacted before a host is constructed", async () => {
   const request = { path: "host.fonts", input: undefined, credential: "secret-key" } as const;
+
   const result = await callIpc(
     () => {
       throw new Error("The invalid envelope must never construct a host");
@@ -21,6 +22,7 @@ test("request envelope rejection is redacted before a host is constructed", asyn
     1,
     request,
   );
+
   assert.equal(result.ok, false);
   assert.equal(result.error.code, "invalid_input");
   assert.equal(ipcDiagnostics.size, 0);
@@ -34,6 +36,7 @@ test("operation validation retains bounded issues without input values or proper
       method: { kind: "api_key", key: "", "secret-property": "secret-value" },
     }),
   );
+
   assert.equal(result.ok, false);
   assert.equal(result.error.code, "invalid_input");
   assert.ok(result.error.issues.length > 0);
@@ -52,11 +55,14 @@ test("expected failures preserve category and cursor but redact local identifier
     const result = await ipcResult(() => {
       throw cause;
     });
+
     assert.equal(result.ok, false);
     assert.equal(result.error.code, code);
+
     if (result.error.code === "cursor_expired") assert.equal(result.error.floor, 17);
     assert.doesNotMatch(JSON.stringify(result), /secret-session|secret-project/);
   }
+
   assert.equal(ipcDiagnostics.size, 0);
 });
 
@@ -64,6 +70,7 @@ test("a file identity race keeps its retry guidance instead of becoming an opaqu
   const result = await ipcResult(() => {
     throw new WorkspaceFileError("changed");
   });
+
   assert.equal(result.ok, false);
   assert.equal(result.error.code, "invalid_input");
   assert.match(result.error.message, /retry the operation/);
@@ -83,6 +90,7 @@ test("an internal parser failure is not mislabeled as renderer input", async () 
 
 test("unexpected TypeError is captured once with its original cause and opaque random ID", async () => {
   const cause = new TypeError("secret-provider-output", { cause: new Error("secret-key") });
+
   const result = await callIpc(
     () => {
       throw cause;
@@ -90,6 +98,7 @@ test("unexpected TypeError is captured once with its original cause and opaque r
     1,
     { path: "host.fonts", input: undefined },
   );
+
   assert.equal(result.ok, false);
   assert.equal(result.error.code, "internal");
   const id = result.error.correlationId;
@@ -98,9 +107,11 @@ test("unexpected TypeError is captured once with its original cause and opaque r
   assert.equal(ipcDiagnostics.size, 1);
   assert.equal(ipcDiagnostics.get(id), cause);
   assert.doesNotMatch(JSON.stringify(result), /secret-provider-output|secret-key|TypeError/);
+
   const next = await ipcResult(() => {
     throw cause;
   });
+
   assert.equal(next.ok, false);
   assert.notEqual(next.error.correlationId, id);
 });
@@ -109,6 +120,7 @@ test("safe bridge failure is plain cloneable data with a wire cause, not a local
   const result = await ipcResult(() => {
     throw new CursorExpired(23);
   });
+
   assert.equal(result.ok, false);
   const copied = structuredClone(bridgeError(result.error));
   assert.equal(copied instanceof Error, false);
