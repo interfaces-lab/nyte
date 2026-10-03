@@ -1,7 +1,7 @@
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { create, props } from "@stylexjs/stylex";
 import { useRef } from "react";
-import type { ReactElement, ReactNode, RefObject } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { intent, type Tint } from "./surface-theme.ts";
@@ -18,16 +18,12 @@ const styles = create({
   },
 });
 
-export type AlertDialogRootProps = AlertDialog.Root.Props;
-
-export type AlertDialogTriggerProps = StyledProps<AlertDialog.Trigger.Props>;
-
 function AlertDialogTrigger({
   xstyle,
   className,
   style,
   ...rest
-}: AlertDialogTriggerProps): ReactElement {
+}: StyledProps<AlertDialog.Trigger.Props>): ReactElement {
   return <AlertDialog.Trigger {...rest} {...mergeStyleProps(props(xstyle), className, style)} />;
 }
 
@@ -43,21 +39,6 @@ const alertDialogParts = {
   Close: Dialog.Close,
 };
 
-export interface ConfirmDialogProps {
-  readonly open: boolean;
-  readonly title: string;
-  readonly description: ReactNode;
-  readonly confirmLabel: string;
-  readonly pendingLabel?: string;
-  readonly pending?: boolean;
-  readonly error?: string;
-  /** Where focus lands on close when the dialog has no trigger. */
-  readonly returnFocusRef?: RefObject<HTMLElement | null>;
-  readonly tint?: Tint;
-  readonly onOpenChange: (open: boolean) => void;
-  readonly onConfirm: () => void;
-}
-
 /** A destructive yes-or-no question. Focus starts on Cancel. */
 export function ConfirmDialog({
   open,
@@ -67,24 +48,34 @@ export function ConfirmDialog({
   pendingLabel,
   pending = false,
   error,
-  returnFocusRef,
+  finalFocus,
   tint,
   onOpenChange,
   onConfirm,
-}: ConfirmDialogProps): ReactElement {
+}: Required<Pick<AlertDialog.Root.Props, "open" | "onOpenChange">> &
+  Pick<AlertDialog.Popup.Props, "finalFocus"> & {
+    readonly title: string;
+    readonly description: ReactNode;
+    readonly confirmLabel: string;
+    readonly pendingLabel?: string;
+    readonly pending?: boolean;
+    readonly error?: string;
+    readonly tint?: Tint;
+    readonly onConfirm: () => void;
+  }): ReactElement {
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   return (
     <alertDialogParts.Root
       open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen && !pending) onOpenChange(false);
+      onOpenChange={(nextOpen, eventDetails) => {
+        if (!nextOpen && !pending) onOpenChange(false, eventDetails);
       }}
     >
       <alertDialogParts.Popup
         tint={tint}
         initialFocus={cancelRef}
-        finalFocus={returnFocusRef}
+        finalFocus={finalFocus}
         aria-busy={pending}
       >
         <alertDialogParts.Header>
@@ -109,9 +100,7 @@ export function ConfirmDialog({
                 Cancel
               </Button>
             }
-          >
-            Cancel
-          </alertDialogParts.Close>
+          />
           <Button variant="solid" tone="danger" loading={pending} onClick={onConfirm}>
             {confirmLabel}
           </Button>

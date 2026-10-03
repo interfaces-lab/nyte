@@ -5,11 +5,11 @@ description: Roles, scoped colours, and component measurements
 
 ```ts
 import { role, type, motion, shadow, appearance } from "@nyte-ai/ui/vars.stylex";
-import { button, shape } from "@nyte-ai/ui/schema.stylex";
+import { button, radius } from "@nyte-ai/ui/schema.stylex";
 import { surfaceTheme, intent } from "@nyte-ai/ui/surface-theme";
 ```
 
-Use colour roles inside scopes, component handles for controls, and shape names for rounded
+Use colour roles inside scopes, component handles for controls, and radius names for rounded
 containers. Ramps, theme mappings, and size values are private.
 
 ## Usage
@@ -17,14 +17,14 @@ containers. Ramps, theme mappings, and size values are private.
 ```tsx
 import { create, props } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 
 const styles = create({
   status: {
     color: role.contentSecondary,
     backgroundColor: role.bgInteractiveSecondaryTranslucent,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     fontSize: type.fontBase,
   },
 });
@@ -54,16 +54,16 @@ hue.
 
 ## Layers
 
-| Kind       | Order                                            | Consumer API                                                                                                           |
-| ---------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| Colour     | Ramps → theme → neutral or tinted roles          | `role`                                                                                                                 |
-| Size       | Values → components → app layout                 | `button`, `input`, `switchControl`, `checkbox`, `row`, `menu`, `dialog`, `toast`, `glyph`, `clipboardPreview`, `shape` |
-| Type       | Font inputs and derived type scale               | `type`                                                                                                                 |
-| Motion     | Durations and easing                             | `motion`                                                                                                               |
-| Shadow     | Size values and shadow inks → elevation          | `shadow`                                                                                                               |
-| Appearance | Display, pointer, transparency, and focus inputs | `appearance`                                                                                                           |
+| Kind       | Order                                            | Consumer API                                                                                                            |
+| ---------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| Colour     | Ramps → theme → neutral or tinted roles          | `role`                                                                                                                  |
+| Size       | Values → components → app layout                 | `button`, `input`, `switchControl`, `checkbox`, `row`, `menu`, `dialog`, `toast`, `glyph`, `clipboardPreview`, `radius` |
+| Type       | Font inputs and derived type scale               | `type`                                                                                                                  |
+| Motion     | Durations and easing                             | `motion`                                                                                                                |
+| Shadow     | Size values and shadow inks → elevation          | `shadow`                                                                                                                |
+| Appearance | Display, pointer, transparency, and focus inputs | `appearance`                                                                                                            |
 
-`shape` has six names: `square`, `indicator`, `control`, `card`, `surface`, and `pill`.
+`radius` has six names: `square`, `indicator`, `control`, `card`, `surface`, and `pill`.
 Component radii stay on their component handles. Component sizes grow under `(pointer: coarse)`.
 
 Roles resolve through `light-dark()`, so `color-scheme` on an ancestor picks the appearance. The

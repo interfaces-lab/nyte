@@ -31,12 +31,14 @@ function nyteStylexOrder({ types }) {
     name: "nyte-stylex-order",
     post(file) {
       const rules = file.metadata.stylex;
+
       if (!Array.isArray(rules)) return;
 
       const atomic = rules.filter(
         ([name, rule, priority]) =>
           name.startsWith("x") && rule.constKey == null && priority >= ATOMIC_PRIORITY,
       );
+
       if (atomic.length === 0) return;
 
       if (COMPONENT_SOURCE.test(file.opts.filename ?? "")) {
@@ -56,12 +58,14 @@ function renameComponentClasses(file, atomic, types) {
   for (const rule of atomic) {
     rule[0] = rename(rule[0]);
     rule[1].ltr = rename(rule[1].ltr);
+
     if (rule[1].rtl != null) rule[1].rtl = rename(rule[1].rtl);
   }
 
   file.path.traverse({
     StringLiteral(path) {
       const next = rename(path.node.value);
+
       if (next !== path.node.value) path.replaceWith(types.stringLiteral(next));
     },
   });
@@ -75,6 +79,7 @@ function raiseAppPriorities(file, atomic, types) {
     ObjectExpression(path) {
       if (!path.parentPath.isCallExpression()) return;
       const properties = path.node.properties;
+
       if (!properties.some((property) => property.key?.name === "ltr")) return;
 
       for (const property of properties) {

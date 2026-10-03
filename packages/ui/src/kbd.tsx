@@ -1,8 +1,8 @@
-import { shape } from "./schema.stylex.ts";
+import { radius } from "./schema.stylex.ts";
 import { create, props } from "@stylexjs/stylex";
-import type { CSSProperties, ReactElement } from "react";
+import type { ComponentProps, ReactElement } from "react";
 
-import { mergeStyleProps, type XStyle } from "./style.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { role, type } from "./vars.stylex.ts";
 
 const styles = create({
@@ -14,7 +14,7 @@ const styles = create({
     flexShrink: 0,
     paddingBlock: 1,
     paddingInline: 4,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentSecondary,
     fontSize: type.fontSm,
@@ -28,18 +28,25 @@ const styles = create({
   plain: { padding: 0, backgroundColor: "transparent" },
 });
 
-export interface KbdProps {
+export type KbdProps = Omit<StyledProps<ComponentProps<"kbd">>, "children"> & {
   readonly keys: readonly string[];
   /** Drops the fill and padding, for a shortcut beside other row metadata. */
   readonly plain?: boolean;
-  readonly className?: string;
-  readonly style?: CSSProperties;
-  readonly xstyle?: XStyle;
-}
+};
 
-export function Kbd({ keys, plain = false, className, style, xstyle }: KbdProps): ReactElement {
+export function Kbd({
+  keys,
+  plain = false,
+  className,
+  style,
+  xstyle,
+  ...rest
+}: KbdProps): ReactElement {
   return (
-    <kbd {...mergeStyleProps(props(styles.kbd, plain && styles.plain, xstyle), className, style)}>
+    <kbd
+      {...rest}
+      {...mergeStyleProps(props(styles.kbd, plain && styles.plain, xstyle), className, style)}
+    >
       {keys.map((key) => (
         <span key={key}>{key}</span>
       ))}

@@ -1,4 +1,4 @@
-import { shape, slider, target } from "./schema.stylex.ts";
+import { radius, slider, target } from "./schema.stylex.ts";
 import { Slider as SliderPrimitive } from "@base-ui/react/slider";
 import { create, props } from "@stylexjs/stylex";
 import { createContext, use, type ReactElement } from "react";
@@ -26,7 +26,8 @@ const styles = create({
     height: { default: target.min, '[data-orientation="vertical"]': "100%" },
     minWidth: target.min,
     minHeight: target.min,
-    cursor: appearance.cursorInteractive,
+    cursor: { default: appearance.cursorInteractive, "[data-disabled]": "default" },
+    opacity: { default: 1, "[data-disabled]": 0.5 },
     touchAction: "none",
     userSelect: "none",
   },
@@ -34,13 +35,12 @@ const styles = create({
     position: "relative",
     width: { default: "100%", '[data-orientation="vertical"]': 6 },
     height: { default: 6, '[data-orientation="vertical"]': "100%" },
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     backgroundColor: role.bgControl,
     userSelect: "none",
   },
   // The filled part paints inside the primary intent.
   indicator: {
-    height: "100%",
     borderRadius: "inherit",
     backgroundColor: role.bgControlSelected,
   },
@@ -51,7 +51,7 @@ const styles = create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderControl,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: role.contentOnControl,
     boxShadow: shadow.shadowSm,
     "::before": {
@@ -62,7 +62,7 @@ const styles = create({
       translate: "-50% -50%",
       width: target.min,
       height: target.min,
-      borderRadius: shape.pill,
+      borderRadius: radius.pill,
     },
     outlineStyle: { default: "none", ":focus-within": "solid" },
     outlineWidth: 1,
@@ -74,17 +74,12 @@ const styles = create({
 
 // Range thumbs use the control's nearest-thumb hit test instead of overlapping hit boxes.
 const range = create({ thumb: { pointerEvents: "none" } });
+
 const SliderRangeContext = createContext(false);
 
 export type SliderRootProps<Value extends number | readonly number[]> = StyledProps<
   SliderPrimitive.Root.Props<Value>
 >;
-export type SliderLabelProps = StyledProps<SliderPrimitive.Label.Props>;
-export type SliderValueProps = StyledProps<SliderPrimitive.Value.Props>;
-export type SliderControlProps = StyledProps<SliderPrimitive.Control.Props>;
-export type SliderTrackProps = StyledProps<SliderPrimitive.Track.Props>;
-export type SliderIndicatorProps = StyledProps<SliderPrimitive.Indicator.Props>;
-export type SliderThumbProps = StyledProps<SliderPrimitive.Thumb.Props>;
 
 function SliderRoot<Value extends number | readonly number[]>({
   xstyle,
@@ -93,7 +88,7 @@ function SliderRoot<Value extends number | readonly number[]>({
   ...rest
 }: SliderRootProps<Value>): ReactElement {
   const value = rest.value ?? rest.defaultValue;
-  const isRange = typeof value !== "number" && value !== undefined && value.length > 1;
+  const isRange = Array.isArray(value) && value.length > 1;
 
   return (
     <SliderRangeContext value={isRange}>
@@ -106,7 +101,12 @@ function SliderRoot<Value extends number | readonly number[]>({
   );
 }
 
-function SliderLabel({ xstyle, className, style, ...rest }: SliderLabelProps): ReactElement {
+function SliderLabel({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<SliderPrimitive.Label.Props>): ReactElement {
   return (
     <SliderPrimitive.Label
       {...rest}
@@ -115,7 +115,12 @@ function SliderLabel({ xstyle, className, style, ...rest }: SliderLabelProps): R
   );
 }
 
-function SliderValue({ xstyle, className, style, ...rest }: SliderValueProps): ReactElement {
+function SliderValue({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<SliderPrimitive.Value.Props>): ReactElement {
   return (
     <SliderPrimitive.Value
       {...rest}
@@ -124,7 +129,12 @@ function SliderValue({ xstyle, className, style, ...rest }: SliderValueProps): R
   );
 }
 
-function SliderControl({ xstyle, className, style, ...rest }: SliderControlProps): ReactElement {
+function SliderControl({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<SliderPrimitive.Control.Props>): ReactElement {
   return (
     <SliderPrimitive.Control
       {...rest}
@@ -133,7 +143,12 @@ function SliderControl({ xstyle, className, style, ...rest }: SliderControlProps
   );
 }
 
-function SliderTrack({ xstyle, className, style, ...rest }: SliderTrackProps): ReactElement {
+function SliderTrack({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<SliderPrimitive.Track.Props>): ReactElement {
   return (
     <SliderPrimitive.Track
       {...rest}
@@ -147,7 +162,7 @@ function SliderIndicator({
   className,
   style,
   ...rest
-}: SliderIndicatorProps): ReactElement {
+}: StyledProps<SliderPrimitive.Indicator.Props>): ReactElement {
   return (
     <SliderPrimitive.Indicator
       {...rest}
@@ -156,7 +171,12 @@ function SliderIndicator({
   );
 }
 
-function SliderThumb({ xstyle, className, style, ...rest }: SliderThumbProps): ReactElement {
+function SliderThumb({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<SliderPrimitive.Thumb.Props>): ReactElement {
   const isRange = use(SliderRangeContext);
 
   return (

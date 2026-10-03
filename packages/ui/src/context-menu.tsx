@@ -1,6 +1,6 @@
 import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu";
 import { props } from "@stylexjs/stylex";
-import type { ReactElement, ReactNode } from "react";
+import type { ComponentProps, ReactElement, ReactNode } from "react";
 
 import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
@@ -11,7 +11,6 @@ import {
   MenuItemBody,
   menuItemStyle,
   menuStyles,
-  useMenuPopupRef,
   type MenuItemBodyProps,
   type MenuItemVariant,
 } from "./menu.tsx";
@@ -26,7 +25,21 @@ export const ContextMenuRadioGroup = ContextMenuPrimitive.RadioGroup;
 
 export const ContextMenuSub = ContextMenuPrimitive.SubmenuRoot;
 
-export type ContextMenuContentProps = StyledProps<ContextMenuPrimitive.Popup.Props> &
+/** Opens at the pointer, or at `anchor`. */
+export function ContextMenuContent({
+  side,
+  align,
+  sideOffset,
+  alignOffset,
+  anchor,
+  collisionAvoidance = MENU_COLLISION,
+  collisionPadding = 8,
+  tint,
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<ContextMenuPrimitive.Popup.Props> &
   Pick<
     ContextMenuPrimitive.Positioner.Props,
     | "side"
@@ -39,26 +52,7 @@ export type ContextMenuContentProps = StyledProps<ContextMenuPrimitive.Popup.Pro
   > & {
     /** Scopes the popup to a hue. */
     readonly tint?: Tint;
-  };
-
-/** Opens at the pointer, or at `anchor`. */
-export function ContextMenuContent({
-  side,
-  align,
-  sideOffset,
-  alignOffset,
-  anchor,
-  collisionAvoidance = MENU_COLLISION,
-  collisionPadding = 8,
-  tint,
-  ref,
-  xstyle,
-  className,
-  style,
-  ...rest
-}: ContextMenuContentProps): ReactElement {
-  const popupRef = useMenuPopupRef(ref);
-
+  }): ReactElement {
   return (
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Positioner
@@ -72,7 +66,6 @@ export function ContextMenuContent({
         {...props(menuStyles.positioner)}
       >
         <ContextMenuPrimitive.Popup
-          ref={popupRef}
           data-slot="context-menu-content"
           {...mergeStyleProps(
             props(
@@ -92,8 +85,6 @@ export function ContextMenuContent({
   );
 }
 
-export type ContextMenuSubContentProps = ContextMenuContentProps;
-
 export function ContextMenuSubContent({
   side = "right",
   align = "start",
@@ -103,14 +94,11 @@ export function ContextMenuSubContent({
   collisionAvoidance = MENU_COLLISION,
   collisionPadding = 8,
   tint,
-  ref,
   xstyle,
   className,
   style,
   ...rest
-}: ContextMenuSubContentProps): ReactElement {
-  const popupRef = useMenuPopupRef(ref);
-
+}: ComponentProps<typeof ContextMenuContent>): ReactElement {
   return (
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Positioner
@@ -124,7 +112,6 @@ export function ContextMenuSubContent({
         {...props(menuStyles.submenuPositioner)}
       >
         <ContextMenuPrimitive.Popup
-          ref={popupRef}
           data-slot="context-menu-sub-content"
           {...mergeStyleProps(
             props(
@@ -144,11 +131,6 @@ export function ContextMenuSubContent({
   );
 }
 
-export type ContextMenuItemProps = StyledProps<ContextMenuPrimitive.Item.Props> &
-  MenuItemBodyProps & {
-    readonly variant?: MenuItemVariant;
-  };
-
 export function ContextMenuItem({
   variant = "default",
   layout,
@@ -160,7 +142,10 @@ export function ContextMenuItem({
   style,
   children,
   ...rest
-}: ContextMenuItemProps): ReactElement {
+}: StyledProps<ContextMenuPrimitive.Item.Props> &
+  MenuItemBodyProps & {
+    readonly variant?: MenuItemVariant;
+  }): ReactElement {
   return (
     <ContextMenuPrimitive.Item
       data-slot="context-menu-item"
@@ -174,9 +159,6 @@ export function ContextMenuItem({
   );
 }
 
-export type ContextMenuLinkItemProps = StyledProps<ContextMenuPrimitive.LinkItem.Props> &
-  MenuItemBodyProps;
-
 export function ContextMenuLinkItem({
   layout,
   icon,
@@ -187,7 +169,7 @@ export function ContextMenuLinkItem({
   style,
   children,
   ...rest
-}: ContextMenuLinkItemProps): ReactElement {
+}: StyledProps<ContextMenuPrimitive.LinkItem.Props> & MenuItemBodyProps): ReactElement {
   return (
     <ContextMenuPrimitive.LinkItem
       data-slot="context-menu-link-item"
@@ -205,9 +187,6 @@ export function ContextMenuLinkItem({
   );
 }
 
-export type ContextMenuRadioItemProps = StyledProps<ContextMenuPrimitive.RadioItem.Props> &
-  MenuItemBodyProps;
-
 export function ContextMenuRadioItem({
   closeOnClick = true,
   layout,
@@ -219,7 +198,7 @@ export function ContextMenuRadioItem({
   style,
   children,
   ...rest
-}: ContextMenuRadioItemProps): ReactElement {
+}: StyledProps<ContextMenuPrimitive.RadioItem.Props> & MenuItemBodyProps): ReactElement {
   return (
     <ContextMenuPrimitive.RadioItem
       data-slot="context-menu-radio-item"
@@ -246,9 +225,6 @@ export function ContextMenuRadioItem({
   );
 }
 
-export type ContextMenuCheckboxItemProps = StyledProps<ContextMenuPrimitive.CheckboxItem.Props> &
-  MenuItemBodyProps;
-
 export function ContextMenuCheckboxItem({
   layout,
   icon,
@@ -259,7 +235,7 @@ export function ContextMenuCheckboxItem({
   style,
   children,
   ...rest
-}: ContextMenuCheckboxItemProps): ReactElement {
+}: StyledProps<ContextMenuPrimitive.CheckboxItem.Props> & MenuItemBodyProps): ReactElement {
   return (
     <ContextMenuPrimitive.CheckboxItem
       data-slot="context-menu-checkbox-item"
@@ -285,15 +261,7 @@ export function ContextMenuCheckboxItem({
   );
 }
 
-export type ContextMenuSubTriggerProps = StyledProps<
-  Omit<ContextMenuPrimitive.SubmenuTrigger.Props, "openOnHover">
-> &
-  Omit<MenuItemBodyProps, "meta"> & {
-    /** The current choice, shown before the chevron. */
-    readonly value?: ReactNode;
-  };
-
-/** A row that opens its submenu on click and Arrow Right. */
+/** A row that opens its submenu on hover, click, and Arrow Right. */
 export function ContextMenuSubTrigger({
   value,
   layout,
@@ -304,11 +272,14 @@ export function ContextMenuSubTrigger({
   style,
   children,
   ...rest
-}: ContextMenuSubTriggerProps): ReactElement {
+}: StyledProps<ContextMenuPrimitive.SubmenuTrigger.Props> &
+  Omit<MenuItemBodyProps, "meta"> & {
+    /** The current choice, shown before the chevron. */
+    readonly value?: ReactNode;
+  }): ReactElement {
   return (
     <ContextMenuPrimitive.SubmenuTrigger
       data-slot="context-menu-sub-trigger"
-      openOnHover={false}
       {...menuItemStyle({ layout }, "default", {
         xstyle: [menuStyles.submenuTriggerOpen, xstyle],
         className,
@@ -333,18 +304,16 @@ export function ContextMenuSubTrigger({
   );
 }
 
-export type ContextMenuSeparatorProps = StyledProps<ContextMenuPrimitive.Separator.Props> & {
-  /** Stops short of the popup's edges instead of running through its padding. */
-  readonly inset?: boolean;
-};
-
 export function ContextMenuSeparator({
   inset = false,
   xstyle,
   className,
   style,
   ...rest
-}: ContextMenuSeparatorProps): ReactElement {
+}: StyledProps<ContextMenuPrimitive.Separator.Props> & {
+  /** Stops short of the popup's edges instead of running through its padding. */
+  readonly inset?: boolean;
+}): ReactElement {
   return (
     <ContextMenuPrimitive.Separator
       data-slot="context-menu-separator"
@@ -358,14 +327,12 @@ export function ContextMenuSeparator({
   );
 }
 
-export type ContextMenuGroupLabelProps = StyledProps<ContextMenuPrimitive.GroupLabel.Props>;
-
 export function ContextMenuGroupLabel({
   xstyle,
   className,
   style,
   ...rest
-}: ContextMenuGroupLabelProps): ReactElement {
+}: StyledProps<ContextMenuPrimitive.GroupLabel.Props>): ReactElement {
   return (
     <ContextMenuPrimitive.GroupLabel
       data-slot="context-menu-group-label"

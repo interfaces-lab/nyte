@@ -177,21 +177,11 @@ const styles = create({
   },
 });
 
-type RowElementProps = StyledProps<useRender.ComponentProps<"div">>;
-
-type RowButtonProps = StyledProps<useRender.ComponentProps<"button">>;
-
-/** Row sizes. `lg` is taller, with room for a description under the label. */
-export type RowSize = "md" | "lg";
-
-/**
- * `list` holds a `Row.Primary` and its actions. `nav` is itself the control:
- * a `<button type="button">` that fills on hover and brightens its label.
- */
-export type RowVariant = "list" | "nav";
+type RowPartProps = StyledProps<useRender.ComponentProps<"span">>;
 
 interface RowOwnProps {
-  readonly size?: RowSize;
+  /** `lg` is taller, with room for a description under the label. */
+  readonly size?: "md" | "lg";
   /**
    * Paints the row's own fill on hover, on focus within, and while selected. A
    * surface that sets `--_row-fill` itself owns every state of it and leaves this off.
@@ -203,31 +193,41 @@ interface RowOwnProps {
   readonly revealActions?: boolean;
 }
 
-export type RowProps =
-  | (RowElementProps & RowOwnProps & { readonly variant?: "list" })
-  | (RowButtonProps & RowOwnProps & { readonly variant: "nav" });
+type RowProps =
+  | (StyledProps<useRender.ComponentProps<"div">> & RowOwnProps & { readonly variant?: "list" })
+  | (StyledProps<useRender.ComponentProps<"button">> &
+      RowOwnProps & {
+        /** Makes the row itself the control, a `<button type="button">`, with no `Row.Primary`. */
+        readonly variant: "nav";
+      });
 
 type RowClickEvent = BaseUIEvent<ReactMouseEvent<HTMLElement>>;
 
 function rowClickTarget(event: RowClickEvent) {
   const target = event.target;
   const root = event.currentTarget;
+
   if (!(target instanceof Element) || target.closest('[data-slot="row"]') !== root) return;
+
   if (target.closest('[data-slot="row-actions"]')) return;
 
   const primary =
     root.dataset.variant === "nav" ? root : root.querySelector('[data-slot="row-primary"]');
+
   if (!(primary instanceof HTMLElement)) return;
 
   const control = target.closest(
     'button, a[href], input, select, textarea, summary, [tabindex], [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="slider"], [role="combobox"], [role="spinbutton"], [role="textbox"], [contenteditable]:not([contenteditable="false"])',
   );
-  if (control && control !== primary) return;
+
+  if (control && control !== primary && root.contains(control)) return;
+
   return primary;
 }
 
 function preserveRowSelection(event: RowClickEvent) {
   if (!rowClickTarget(event)) return;
+
   if (!event.shiftKey && !event.currentTarget.ownerDocument.getSelection()?.toString()) return;
   event.preventDefault();
   event.stopPropagation();
@@ -237,13 +237,17 @@ function preserveRowSelection(event: RowClickEvent) {
 function activateRow(event: RowClickEvent) {
   if (event.defaultPrevented) return;
   const primary = rowClickTarget(event);
+
   if (!primary || primary === event.currentTarget) return;
+
   if (event.target instanceof Node && primary.contains(event.target)) return;
+
   if (primary.matches(':disabled, [aria-disabled="true"]')) return;
 
   event.stopPropagation();
   event.preventBaseUIHandler();
   primary.focus({ preventScroll: true });
+
   if (!primary.dispatchEvent(new MouseEvent("click", event.nativeEvent))) event.preventDefault();
 }
 
@@ -266,6 +270,7 @@ export function Row({
     defaultTagName: nav ? "button" : "div",
     render,
     props: {
+      type: nav && render === undefined ? "button" : undefined,
       ...mergeProps<"button" | "div">(rest, {
         onClickCapture: preserveRowSelection,
         onClick: activateRow,
@@ -273,7 +278,6 @@ export function Row({
       "data-slot": "row",
       "data-variant": variant,
       "data-selected": selected ? "" : undefined,
-      type: nav && render === undefined ? "button" : undefined,
       ...mergeStyleProps(
         props(
           styles.root,
@@ -300,7 +304,7 @@ type RowSlot =
   | "row-meta";
 
 function rowPart(slot: RowSlot, part: StyleXStyles, decorative = false) {
-  return function RowPart({ className, render, style, xstyle, ...rest }: RowElementProps) {
+  return function RowPart({ className, render, style, xstyle, ...rest }: RowPartProps) {
     return useRender({
       defaultTagName: "span",
       render,
@@ -353,8 +357,6 @@ const RowDescription = rowPart("row-description", styles.description);
 /** Trailing text such as a time or a count. */
 const RowMeta = rowPart("row-meta", styles.meta);
 
-export type RowActionsPlacement = "inline" | "overlay";
-
 /**
  * Actions, a switch, or a chevron. A sibling of the primary, never a child.
  * `overlay` floats the lane without taking layout space. The entire lane,
@@ -367,7 +369,7 @@ function RowActions({
   style,
   xstyle,
   ...rest
-}: RowElementProps & { readonly placement?: RowActionsPlacement }) {
+}: RowPartProps & { readonly placement?: "inline" | "overlay" }) {
   return useRender({
     defaultTagName: "span",
     render,

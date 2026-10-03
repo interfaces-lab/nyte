@@ -8,14 +8,14 @@ import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-a
 ```
 
 A list of actions that opens from a button. Every row reserves a leading icon column and a trailing
-meta column, even when empty.
+meta column, even when empty. The list opens below its trigger. For a control whose label shows the
+current choice, use [Select](/cloud/components/select), which opens over its trigger.
 
 ## Usage
 
 - `MenuItem` and `MenuRadioItem` close on click. `MenuCheckboxItem` and `MenuSwitchItem` stay open.
   `closeOnClick` changes either.
-- Use `CommandMenuContent` for a palette under a scrim, anchored near the top of the window. It has
-  no trigger to name it, so pass `aria-label`.
+- For a searchable palette under a scrim, use [Command](/cloud/components/command).
 
 ## Anatomy
 
@@ -28,7 +28,7 @@ meta column, even when empty.
       <MenuItem />
       <MenuLinkItem />
       <MenuCheckboxItem />
-      <MenuSwitchItem checked={false} />
+      <MenuSwitchItem />
     </MenuGroup>
     <MenuSeparator />
     <MenuRadioGroup>
@@ -85,7 +85,7 @@ function SessionMenu() {
           <MenuItem icon="copy" onClick={() => {}}>
             Duplicate
           </MenuItem>
-          <MenuItem icon="archive" disabled disabledReason="Already archived">
+          <MenuItem icon="archive" disabled>
             Archive
           </MenuItem>
           <MenuSwitchItem icon="pin" checked={pinned} onCheckedChange={setPinned}>
@@ -115,16 +115,6 @@ function SessionMenu() {
 }
 ```
 
-```tsx
-<Menu open={open} onOpenChange={setOpen}>
-  <CommandMenuContent aria-label="Search">
-    <MenuItem layout="plain" onClick={openSettings}>
-      Settings
-    </MenuItem>
-  </CommandMenuContent>
-</Menu>
-```
-
 ## Props
 
 Every styled part takes `xstyle`, `className`, and `style`. See
@@ -146,17 +136,17 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 Renders the portal, positioner, and popup. Positioning props go to the positioner and the rest,
 including `ref`, to the popup.
 
-| Prop                 | Type                                                                       | Default                                                      |
-| -------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `side`               | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"`                                                   |
-| `align`              | `"start" \| "center" \| "end"`                                             | `"start"`                                                    |
-| `sideOffset`         | `number \| OffsetFunction`                                                 | `4`                                                          |
-| `alignOffset`        | `number \| OffsetFunction`                                                 |                                                              |
-| `anchor`             | `MenuContentProps["anchor"]`                                               | the trigger                                                  |
-| `collisionAvoidance` | `CollisionAvoidance`                                                       | `{ side: "flip", align: "shift", fallbackAxisSide: "none" }` |
-| `collisionPadding`   | `number \| Padding`                                                        | `8`                                                          |
-| `tint`               | `Tint`                                                                     |                                                              |
-| `matchAnchorWidth`   | `boolean`                                                                  | `false`                                                      |
+| Prop                 | Type                                                                                                           | Default                                                      |
+| -------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `side`               | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"`                                     | `"bottom"`                                                   |
+| `align`              | `"start" \| "center" \| "end"`                                                                                 | `"start"`                                                    |
+| `sideOffset`         | `number \| OffsetFunction`                                                                                     | `4`                                                          |
+| `alignOffset`        | `number \| OffsetFunction`                                                                                     |                                                              |
+| `anchor`             | `Element \| VirtualElement \| RefObject<Element \| null> \| (() => Element \| VirtualElement \| null) \| null` | the trigger                                                  |
+| `collisionAvoidance` | `CollisionAvoidance`                                                                                           | `{ side: "flip", align: "shift", fallbackAxisSide: "none" }` |
+| `collisionPadding`   | `number \| Padding`                                                                                            | `8`                                                          |
+| `tint`               | `Tint`                                                                                                         |                                                              |
+| `matchAnchorWidth`   | `boolean`                                                                                                      | `false`                                                      |
 
 The popup scrolls when it runs out of room.
 
@@ -179,30 +169,23 @@ Takes the same props as `MenuContent` except `matchAnchorWidth`.
 | `sideOffset`  | `6`                               |
 | `alignOffset` | `0` when centered, otherwise `-4` |
 
-### CommandMenuContent
-
-Renders the portal, scrim, positioner, and popup. It takes popup props, `ref`, and `tint`, and no
-positioning props.
-
 ### MenuItem
 
-| Prop             | Type                    | Default     | Description                                  |
-| ---------------- | ----------------------- | ----------- | -------------------------------------------- |
-| `icon`           | `IconName`              |             |                                              |
-| `leading`        | `ReactNode`             |             | Overrides `icon`.                            |
-| `meta`           | `ReactNode`             |             | Display only. It binds no key.               |
-| `disabledReason` | `string`                |             | Replaces `meta` while `disabled`.            |
-| `variant`        | `"default" \| "danger"` | `"default"` |                                              |
-| `selected`       | `boolean`               | `false`     | Sets `data-nyte-selected`.                   |
-| `layout`         | `"menu" \| "plain"`     | `"menu"`    | `plain` removes the leading column.          |
-| `children`       | `ReactNode`             |             | Optional when `render` supplies the content. |
+| Prop       | Type                    | Default     | Description                                  |
+| ---------- | ----------------------- | ----------- | -------------------------------------------- |
+| `icon`     | `IconName`              |             |                                              |
+| `leading`  | `ReactNode`             |             | Overrides `icon`.                            |
+| `meta`     | `ReactNode`             |             | Display only. It binds no key.               |
+| `variant`  | `"default" \| "danger"` | `"default"` |                                              |
+| `selected` | `boolean`               | `false`     | Sets `data-nyte-selected`.                   |
+| `layout`   | `"menu" \| "plain"`     | `"menu"`    | `plain` removes the leading column.          |
+| `children` | `ReactNode`             |             | Optional when `render` supplies the content. |
 
 <include>../../base-ui-reference/menu/Item.md</include>
 
 ### MenuLinkItem
 
-Renders a link. Takes the props in the `MenuItem` table except `variant`, `selected`, and
-`disabledReason`.
+Renders a link. Takes the props in the `MenuItem` table except `variant` and `selected`.
 
 <include>../../base-ui-reference/menu/LinkItem.md</include>
 
@@ -215,8 +198,7 @@ while checked.
 
 ### MenuSwitchItem
 
-A `MenuCheckboxItem` that draws a switch in place of `meta` and the checkmark. `checked` is
-required.
+A `MenuCheckboxItem` that draws a switch in place of `meta` and the checkmark. It takes no `meta`.
 
 ### MenuRadioGroup
 
@@ -255,8 +237,7 @@ on the chosen row.
 
 ### MenuSubTrigger
 
-Takes `icon`, `leading`, `disabledReason`, and `layout` as `MenuItem` does. `openOnHover` is fixed
-to `false`.
+Takes `icon`, `leading`, and `layout` as `MenuItem` does.
 
 | Prop    | Type        | Description                        |
 | ------- | ----------- | ---------------------------------- |

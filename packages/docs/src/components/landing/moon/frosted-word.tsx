@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 import type { ReactNode } from "react";
 /*
  * A word behind frosted glass: a sharp copy fading out downward, a blurred
@@ -101,7 +101,7 @@ export function FrostedWord({ children }: { children: ReactNode }) {
                 "linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 38%, rgba(255,255,255,0.04) 62%, rgba(255,255,255,0.12) 100%)",
               border: "1px solid rgba(0,0,0,0.06)",
               borderTopColor: "rgba(255,255,255,0.75)",
-              borderRadius: shape.card,
+              borderRadius: radius.card,
               boxShadow:
                 "inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -1px 1px rgba(0,0,0,0.05), inset 0 0 0 3px rgba(255,255,255,0.14), inset 0 0 0 4px rgba(0,0,0,0.045), inset 0 8px 16px rgba(255,255,255,0.10), 0 1px 3px rgba(0,0,0,0.07), 0 6px 16px rgba(0,0,0,0.07)",
             }}
@@ -112,7 +112,7 @@ export function FrostedWord({ children }: { children: ReactNode }) {
             className="pointer-events-none absolute"
             style={{
               inset: "-6px -14px",
-              borderRadius: shape.card,
+              borderRadius: radius.card,
               background: "linear-gradient(180deg, rgba(255,255,255,0.7), transparent 12%)",
               mixBlendMode: "overlay",
             }}

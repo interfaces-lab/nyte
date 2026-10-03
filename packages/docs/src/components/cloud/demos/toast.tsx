@@ -6,14 +6,23 @@ import { Toaster, toast } from "@nyte-ai/ui/toast";
 export function ToastDemo() {
   return (
     <>
-      <Button variant="outline" onClick={() => toast("Workspace saved")}>
+      <Button variant="outline" onClick={() => toast.add({ title: "Workspace saved" })}>
         Default
       </Button>
       <Button
         variant="outline"
         onClick={() =>
-          toast.success("3 chats archived", {
-            action: { label: "Undo", onClick: () => toast("Chats restored") },
+          toast.add({
+            type: "success",
+            title: "3 chats archived",
+            id: "archive-demo",
+            actionProps: {
+              children: "Undo",
+              onClick: () => {
+                toast.close("archive-demo");
+                toast.add({ title: "Chats restored" });
+              },
+            },
           })
         }
       >
@@ -22,7 +31,9 @@ export function ToastDemo() {
       <Button
         variant="outline"
         onClick={() =>
-          toast.error("Could not reach the server", {
+          toast.add({
+            type: "error",
+            title: "Could not reach the server",
             description: "The request timed out after 30 seconds.",
           })
         }

@@ -179,7 +179,7 @@ export const layer = defineConsts({
   dragPreview: 1000,
 });
 
-export const shape = defineConsts({
+export const radius = defineConsts({
   square: "var(--nyte-shape-square)",
   indicator: "var(--nyte-shape-indicator)",
   control: "var(--nyte-shape-control)",

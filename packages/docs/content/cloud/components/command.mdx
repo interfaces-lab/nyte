@@ -1,0 +1,178 @@
+---
+title: Command
+description: "A searchable palette under a scrim"
+---
+
+```ts title="Import"
+import { Command } from "@nyte-ai/ui/command";
+```
+
+A dialog near the top of the window holding an inline
+[Autocomplete](/cloud/components/autocomplete). The dialog owns open state, the scrim, and focus;
+the autocomplete owns the input, the highlight, and arrow-key and Enter handling. Focus lands in
+the input when the palette opens, and Enter runs the highlighted row's `onClick`.
+
+## Usage
+
+- The palette does not filter. Render the rows that match the query from `onValueChange`, and
+  pass their values to `items` in render order, so the highlight tracks the rows that exist.
+- `Command.Empty` shows its children while `items` is empty and announces the change. Keep it
+  mounted and change its text for loading, failure, and no match.
+- `Command.Popup` names the dialog with its `title`, read by screen readers only. Name the
+  palette after what it searches.
+- Rows keep the menu's three columns, `leading`, label, and `meta`, so labels align in every group.
+- Coming from shadcn's `Command`: `CommandDialog` is `Command.Root` plus `Command.Popup`,
+  `heading` and `onSelect` keep their names, `CommandShortcut` is `meta`, and `value` on the
+  popup is the query, as in Base UI, not the highlighted row; use `onItemHighlighted` for that.
+
+## Anatomy
+
+```tsx
+<Command.Root>
+  <Command.Trigger />
+  <Command.Popup>
+    <Command.Input />
+    <Command.List>
+      <Command.Empty />
+      <Command.Group>
+        <Command.Item />
+      </Command.Group>
+      <Command.Separator />
+    </Command.List>
+  </Command.Popup>
+</Command.Root>
+```
+
+## Examples
+
+```tsx
+const [open, setOpen] = useState(false);
+const [query, setQuery] = useState("");
+const matches = commands.filter((command) =>
+  command.label.toLowerCase().includes(query.toLowerCase()),
+);
+
+<Command.Root open={open} onOpenChange={setOpen}>
+  <Command.Trigger render={<Button variant="outline">Search</Button>} />
+  <Command.Popup
+    title="Search commands"
+    items={matches.map((command) => command.id)}
+    value={query}
+    onValueChange={setQuery}
+  >
+    <Command.Input aria-label="Search" placeholder="Search…" trailing={<Kbd keys={["⌘", "K"]} />} />
+    <Command.List>
+      <Command.Empty>No commands match "{query}"</Command.Empty>
+      <Command.Group heading="Commands">
+        {matches.map((command) => (
+          <Command.Item
+            key={command.id}
+            value={command.id}
+            leading={<Icon name={command.icon} size={16} />}
+            meta={<Kbd keys={command.keys} plain />}
+            onSelect={() => {
+              setOpen(false);
+              command.run();
+            }}
+          >
+            {command.label}
+          </Command.Item>
+        ))}
+      </Command.Group>
+    </Command.List>
+  </Command.Popup>
+</Command.Root>;
+```
+
+## Props
+
+| Part                | Renders                                                   | Styling                             |
+| ------------------- | --------------------------------------------------------- | ----------------------------------- |
+| `Command.Root`      | Nothing                                                   | None                                |
+| `Command.Trigger`   | `<button>`                                                | None                                |
+| `Command.Popup`     | A portal, the scrim, a viewport, a `<div>`, the list root | Translucent panel near the top      |
+| `Command.Input`     | A `<div>` holding the search glyph and an `<input>`       | Full-width row under a hairline     |
+| `Command.List`      | `<div role="listbox">`                                    | Scrolls when rows overflow          |
+| `Command.Group`     | `<div role="group">` with an optional heading             | Small, secondary heading            |
+| `Command.Separator` | `<div role="separator">`                                  | Hairline                            |
+| `Command.Item`      | `<div role="option">`                                     | Three columns, highlighted on hover |
+| `Command.Empty`     | `<div role="status">`                                     | Centered secondary text             |
+| `Command.Close`     | `<button>`                                                | None                                |
+
+Except `Command.Root`, each part takes `xstyle`, `className`, and `style`. `className` and `style`
+take plain values, not functions of state. See [Theming](/cloud/foundations/theming).
+
+The part tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/dialog/Root.md</include>
+
+### Trigger
+
+<include>../../base-ui-reference/dialog/Trigger.md</include>
+
+### Popup
+
+Renders the portal, scrim, viewport, popup, and a visually hidden title, then an always-open
+inline autocomplete root with `autoHighlight="always"` and `keepHighlight`. It takes the Base UI
+dialog popup props, including `ref`, and these.
+
+| Prop                | Type                            | Default             | Description                                             |
+| ------------------- | ------------------------------- | ------------------- | ------------------------------------------------------- |
+| `title`             | `string`                        | `"Command palette"` | The dialog's accessible name.                           |
+| `description`       | `string`                        |                     | The dialog's accessible description.                    |
+| `tint`              | `Tint`                          |                     | Scopes the panel to a hue. The scrim stays neutral.     |
+| `items`             | `readonly ItemValue[]`          |                     | Every row's `value`, in render order.                   |
+| `loop`              | `boolean`                       | `false`             | Whether arrow keys wrap from the last row to the first. |
+| `value`             | `string`                        |                     | The controlled query.                                   |
+| `defaultValue`      | `string`                        |                     | The initial query when uncontrolled.                    |
+| `onValueChange`     | `(value, eventDetails) => void` |                     | Fires as the query changes.                             |
+| `onItemHighlighted` | `(value, eventDetails) => void` |                     | Fires as the highlight moves.                           |
+| `itemToStringValue` | `(value) => string`             |                     | Names a non-string `value` for assistive tech.          |
+
+<include>../../base-ui-reference/dialog/Popup.md</include>
+
+### Input
+
+| Prop       | Type        | Default | Description                                     |
+| ---------- | ----------- | ------- | ----------------------------------------------- |
+| `trailing` | `ReactNode` |         | Right of the field: a shortcut, a clear button. |
+
+<include>../../base-ui-reference/autocomplete/Input.md</include>
+
+### List
+
+<include>../../base-ui-reference/autocomplete/List.md</include>
+
+### Group
+
+| Prop      | Type        | Default | Description                        |
+| --------- | ----------- | ------- | ---------------------------------- |
+| `heading` | `ReactNode` |         | Labels the group; the rows follow. |
+
+<include>../../base-ui-reference/autocomplete/Group.md</include>
+
+### Separator
+
+<include>../../base-ui-reference/autocomplete/Separator.md</include>
+
+### Item
+
+| Prop       | Type                         | Default | Description                                        |
+| ---------- | ---------------------------- | ------- | -------------------------------------------------- |
+| `value`    | `ItemValue`                  |         | Identifies the row; it must appear in `items`.     |
+| `onSelect` | `(value: ItemValue) => void` |         | Runs when the row is clicked or chosen with Enter. |
+| `leading`  | `ReactNode`                  |         | The glyph column.                                  |
+| `meta`     | `ReactNode`                  |         | Display only. It binds no key.                     |
+| `children` | `ReactNode`                  |         | The label.                                         |
+
+<include>../../base-ui-reference/autocomplete/Item.md</include>
+
+### Empty
+
+<include>../../base-ui-reference/autocomplete/Empty.md</include>
+
+### Close
+
+<include>../../base-ui-reference/dialog/Close.md</include>

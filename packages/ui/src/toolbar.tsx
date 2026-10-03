@@ -25,19 +25,12 @@ const styles = create({
   },
 });
 
-export type ToolbarRootProps = StyledProps<ToolbarPrimitive.Root.Props>;
-
-export type ToolbarGroupProps = StyledProps<ToolbarPrimitive.Group.Props>;
-
-export type ToolbarSeparatorProps = StyledProps<ToolbarPrimitive.Separator.Props>;
-
-export type ToolbarButtonProps =
-  | (ButtonProps & { readonly render?: never })
-  | (ToolbarPrimitive.Button.Props & {
-      readonly render: NonNullable<ToolbarPrimitive.Button.Props["render"]>;
-    });
-
-function ToolbarRoot({ xstyle, className, style, ...rest }: ToolbarRootProps): ReactElement {
+function ToolbarRoot({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<ToolbarPrimitive.Root.Props>): ReactElement {
   return (
     <ToolbarPrimitive.Root
       {...rest}
@@ -46,7 +39,12 @@ function ToolbarRoot({ xstyle, className, style, ...rest }: ToolbarRootProps): R
   );
 }
 
-function ToolbarGroup({ xstyle, className, style, ...rest }: ToolbarGroupProps): ReactElement {
+function ToolbarGroup({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<ToolbarPrimitive.Group.Props>): ReactElement {
   return (
     <ToolbarPrimitive.Group
       {...rest}
@@ -60,7 +58,7 @@ function ToolbarSeparator({
   className,
   style,
   ...rest
-}: ToolbarSeparatorProps): ReactElement {
+}: StyledProps<ToolbarPrimitive.Separator.Props>): ReactElement {
   return (
     <ToolbarPrimitive.Separator
       {...rest}
@@ -70,7 +68,13 @@ function ToolbarSeparator({
 }
 
 /** Renders a `Button` unless `render` passes a `Toggle` or a popup trigger. */
-function ToolbarButton(buttonProps: ToolbarButtonProps): ReactElement {
+function ToolbarButton(
+  buttonProps:
+    | (ButtonProps & { readonly render?: never })
+    | (ToolbarPrimitive.Button.Props & {
+        readonly render: NonNullable<ToolbarPrimitive.Button.Props["render"]>;
+      }),
+): ReactElement {
   if (buttonProps.render !== undefined) {
     return (
       <ControlGlyphs>
@@ -78,6 +82,7 @@ function ToolbarButton(buttonProps: ToolbarButtonProps): ReactElement {
       </ControlGlyphs>
     );
   }
+
   return (
     <ToolbarPrimitive.Button
       disabled={buttonProps.disabled && !buttonProps.loading}

@@ -19,20 +19,16 @@ const bubbleVariants = cva("cn-bubble", {
   defaultVariants: { variant: "default" },
 });
 
-export type BubbleGroupProps = ComponentProps<"div">;
-export type BubbleProps = ComponentProps<"div"> &
-  VariantProps<typeof bubbleVariants> & { align?: "start" | "end" };
-export type BubbleContentProps = useRender.ComponentProps<"div">;
-export type BubbleReactionsProps = ComponentProps<"div"> & {
-  align?: "start" | "end";
-  side?: "top" | "bottom";
-};
-
-export function BubbleGroup({ className, ...props }: BubbleGroupProps) {
+export function BubbleGroup({ className, ...props }: ComponentProps<"div">) {
   return <div data-slot="bubble-group" className={cn("cn-bubble-group", className)} {...props} />;
 }
 
-export function Bubble({ variant = "default", align = "start", className, ...props }: BubbleProps) {
+export function Bubble({
+  variant = "default",
+  align = "start",
+  className,
+  ...props
+}: ComponentProps<"div"> & VariantProps<typeof bubbleVariants> & { align?: "start" | "end" }) {
   return (
     <div
       data-slot="bubble"
@@ -44,7 +40,7 @@ export function Bubble({ variant = "default", align = "start", className, ...pro
   );
 }
 
-export function BubbleContent({ className, render, ...props }: BubbleContentProps) {
+export function BubbleContent({ className, render, ...props }: useRender.ComponentProps<"div">) {
   return useRender({
     defaultTagName: "div",
     props: mergeProps<"div">({ className: cn("cn-bubble-content", className) }, props),
@@ -58,7 +54,7 @@ export function BubbleReactions({
   align = "end",
   className,
   ...props
-}: BubbleReactionsProps) {
+}: ComponentProps<"div"> & { align?: "start" | "end"; side?: "top" | "bottom" }) {
   return (
     <div
       data-slot="bubble-reactions"

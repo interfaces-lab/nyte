@@ -38,7 +38,7 @@ Apps that compile StyleX themselves resolve `src/` instead through the `nyte-sou
 
 ## What it exports
 
-Every component has its own subpath, such as `@nyte-ai/ui/popover`. Import components from these individual paths. Each implementation lives directly in `src/<name>.tsx`, and its source export points to that file. Apps never import `@base-ui/react` or `sonner` directly; the lint config enforces it.
+Every component has its own subpath, such as `@nyte-ai/ui/popover`. Import components from these individual paths. Each implementation lives directly in `src/<name>.tsx`, and its source export points to that file. Apps never import `@base-ui/react` directly; the lint config enforces it.
 
 Style controls through `xstyle` with styles from `create()`, `className` with any class, or `style` with inline values. Each beats the component's own styles; set a property through `xstyle` or `className`, not both. Domain adapters stay in the app.
 
@@ -46,21 +46,19 @@ Chat layout parts in `message`, `bubble`, `marker`, `attachment`, `message-scrol
 
 The `*.stylex` subpaths (`tokens`, `vars`, `schema`, `floating-surface`, `a11y`) always resolve to source, for apps that author StyleX against the same tokens.
 
-An app that paints something above the DOM, such as an Electron browser view, wraps its tree in `OverlayRefProvider` from `@nyte-ai/ui/overlay`. Every popup, scrim, and toast list attaches the ref callback it passes, so the app knows what is open and where.
-
 ## Theme it
 
 Colour follows ramps → theme → roles. Both the default neutral mapping and the tinted mapping read the theme. Ramps and theme values are private. Use `role` for paint, `type` for text measurements, `motion` for timing, `shadow` for elevation, and `appearance` for cursor, material filter, and focus inputs.
 
 ```ts
 import { role, type, motion, shadow, appearance } from "@nyte-ai/ui/vars.stylex";
-import { button, input, row, menu, shape } from "@nyte-ai/ui/schema.stylex";
+import { button, input, row, menu, radius } from "@nyte-ai/ui/schema.stylex";
 import { surfaceTheme, intent } from "@nyte-ai/ui/surface-theme";
 ```
 
 Apply a hue and its roles together with `props(surfaceTheme.blue, styles.item)`. `surfaceTheme.gray` applies the tinted mapping over gray. The default uses the neutral mapping. `custom` follows `--nyte-custom-hue` and `--nyte-custom-chroma-scale`. Status text, syntax, dots, diff lines, and avatars use a hue or intent scope with an ordinary role. There are no fixed-hue handles. The focus ring alone stays blue.
 
-Size values build component measurements, which build app layout. Consumers use component handles, not size values. `shape` names six rounding decisions: `square`, `indicator`, `control`, `card`, `surface`, and `pill`. Component-specific radii stay on their component handles.
+Size values build component measurements, which build app layout. Consumers use component handles, not size values. `radius` names six rounding decisions: `square`, `indicator`, `control`, `card`, `surface`, and `pill`. Component-specific radii stay on their component handles.
 
 Native apps read `platformColors.light` or `.dark` for neutral roles and `platformScopes.light.green` or `.dark.green` for scoped roles. These palettes contain concrete hex values and have no runtime dependencies. Native typography and touch geometry remain local.
 

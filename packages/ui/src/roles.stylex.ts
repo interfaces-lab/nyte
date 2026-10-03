@@ -15,12 +15,16 @@ import "./theme.stylex.ts";
 
 const step = (light: number, dark: number) =>
   `light-dark(var(--nyte-theme-${light}), var(--nyte-theme-${dark}))`;
+
 const control = (light: number, dark: number) =>
   `light-dark(var(--nyte-neutral-${light}), var(--nyte-neutral-${dark}))`;
+
 const glass = (light: number, dark: number) =>
   `light-dark(var(--nyte-theme-translucent-${light}), var(--nyte-theme-translucent-${dark}))`;
+
 const shade = (role: string, light: number, dark: number) =>
   `light-dark(oklch(from var(--nyte-${role}) calc(l * ${light}) c h), oklch(from var(--nyte-${role}) calc(l * ${dark}) c h))`;
+
 const lift = (role: string, alpha: number) =>
   `oklch(from var(--nyte-${role}) l c h / calc(alpha + ${alpha}))`;
 

@@ -670,8 +670,18 @@ the branch. `before_tool` handles policy. Its handlers run in registration order
 decisions, and stop on the first `reject` or `error`. A throw becomes `error`, so policy fails
 closed.
 
-`api.events.subscribe` receives the same post-hoc `SessionEvent` stream a client folds. Listener
-returns and throws never reach the run.
+`api.events.subscribe(listener)` receives the same post-hoc `SessionEvent` stream a client folds.
+`api.events.subscribe("run_ended", listener)` and `"awaiting_reply"` receive transitions the host
+derives from it, each once per occurrence the activation has seen; a restarted host starts over.
+Listener returns and throws never reach the run.
+
+A registry takes one entry under a name, `tools.add("question", definition)`, or a callback that
+derives entries at rebuild time, `tools.add((tools) => …)`. Both are plugin-owned contributions
+replayed in plugin order on every rebuild; `api.refresh()` requests one. A tool's `execute`
+receives its parsed input and the call: its id, signal, `update` for partial results, and `run`,
+the executing run with its history and callable tools, absent only in the bare loop. `settings.add(name, { label,
+choices, default })` returns a handle that reads, writes, and subscribes to that choice; the host
+owns its storage key.
 
 A command runs immediately with its typed argument and returns user text, a `prompt` for the
 client's next user message, or nothing. `api.session` gives a plugin `info` with name and child
@@ -701,16 +711,16 @@ host-owned service, never in a runner closure. Plugin failure **must not** weake
 decision into permission.
 
 Facts are blobs behind `refs/facts/<key>`. The SDK stores `name`, `parent`, `pinned`, `archived`,
-and `cwd` there. Plugin storage uses per-plugin prefixes. A plugin sees its own setting change as
-a `fact` event with its key and new value.
+and `cwd` there. Plugin storage uses per-plugin prefixes. A setting is stored under its name in the
+owning plugin's prefix, and a change on any host reaches the plugin through its handle.
 
 The process owns MCP connections; each session selects which to use. A pool shares one connection
 per server configuration across sessions. The plugin maps per-session on/off
 settings to pool acquisition and release, then offers connected tools. The host-owned pool survives
 plugin reloads that leave its configuration unchanged. Settings are per-plugin facts defaulting to
-the manifest's `disabled`, and the plugin reacts to its own `fact` events. MCP tools use `never`
-replay. Runtime tool discovery makes the pool notify on each status change and the plugin rebuild
-its registries. After trust, the plugin reads server commands from the project manifest.
+the manifest's `disabled`, and the plugin reacts through each setting's handle. MCP tools use
+`never` replay. Runtime tool discovery makes the pool notify on each status change and the plugin
+refresh its registries. After trust, the plugin reads server commands from the project manifest.
 
 ## Agents
 

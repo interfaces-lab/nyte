@@ -5,7 +5,7 @@
  */
 import { Input as InputPrimitive } from "@base-ui/react/input";
 import { create, props } from "@stylexjs/stylex";
-import { createContext, use, type JSX, type ReactElement } from "react";
+import { createContext, use, type ComponentProps, type ReactElement } from "react";
 
 import { input, target } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
@@ -144,20 +144,7 @@ const textarea = create({
   },
 });
 
-export type InputVariant = keyof typeof variants | "bare";
-
-export type InputGroupVariant = keyof typeof groupVariants;
-
-export type InputSize = keyof typeof sizes;
-
-const InputGroupContext = createContext<InputSize | undefined>(undefined);
-
-export type InputProps = StyledProps<Omit<InputPrimitive.Props, "size">> & {
-  /** Defaults to `raised`, or to `bare` inside an `InputGroup`. */
-  readonly variant?: InputVariant;
-  /** Defaults to `md`, or to the size of the enclosing `InputGroup`. */
-  readonly size?: InputSize;
-};
+const InputGroupContext = createContext<keyof typeof sizes | undefined>(undefined);
 
 export function Input({
   variant,
@@ -166,7 +153,12 @@ export function Input({
   className,
   style,
   ...rest
-}: InputProps): ReactElement {
+}: StyledProps<Omit<InputPrimitive.Props, "size">> & {
+  /** Defaults to `raised`, or to `bare` inside an `InputGroup`. */
+  readonly variant?: keyof typeof variants | "bare";
+  /** Defaults to `md`, or to the size of the enclosing `InputGroup`. */
+  readonly size?: keyof typeof sizes;
+}): ReactElement {
   const groupSize = use(InputGroupContext);
   const resolvedVariant = variant ?? (groupSize === undefined ? "raised" : "bare");
   const resolvedSize = size ?? groupSize ?? "md";
@@ -192,11 +184,6 @@ export function Input({
   );
 }
 
-export type InputGroupProps = StyledProps<JSX.IntrinsicElements["label"]> & {
-  readonly variant?: InputGroupVariant;
-  readonly size?: InputSize;
-};
-
 /** A framed `<label>` that makes the `Input` inside it bare, beside its glyphs and controls. */
 export function InputGroup({
   variant = "raised",
@@ -206,7 +193,10 @@ export function InputGroup({
   style,
   children,
   ...rest
-}: InputGroupProps): ReactElement {
+}: StyledProps<ComponentProps<"label">> & {
+  readonly variant?: keyof typeof groupVariants;
+  readonly size?: keyof typeof sizes;
+}): ReactElement {
   return (
     <label
       data-slot="input-group"
@@ -228,11 +218,6 @@ export function InputGroup({
   );
 }
 
-export type TextareaProps = StyledProps<JSX.IntrinsicElements["textarea"]> & {
-  readonly variant?: InputGroupVariant;
-  readonly size?: InputSize;
-};
-
 export function Textarea({
   variant = "raised",
   size = "md",
@@ -240,7 +225,10 @@ export function Textarea({
   className,
   style,
   ...rest
-}: TextareaProps): ReactElement {
+}: StyledProps<ComponentProps<"textarea">> & {
+  readonly variant?: keyof typeof groupVariants;
+  readonly size?: keyof typeof sizes;
+}): ReactElement {
   return (
     <textarea
       data-slot="textarea"

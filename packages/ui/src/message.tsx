@@ -2,10 +2,15 @@ import { cn } from "cn";
 import type { ComponentProps } from "react";
 
 export type MessageGroupProps = ComponentProps<"div">;
+
 export type MessageProps = ComponentProps<"div"> & { align?: "start" | "end" };
+
 export type MessageAvatarProps = ComponentProps<"div">;
+
 export type MessageContentProps = ComponentProps<"div">;
+
 export type MessageHeaderProps = ComponentProps<"div">;
+
 export type MessageFooterProps = ComponentProps<"div">;
 
 export function MessageGroup({ className, ...props }: MessageGroupProps) {

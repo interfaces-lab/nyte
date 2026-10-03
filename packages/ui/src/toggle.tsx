@@ -6,27 +6,12 @@ import {
   buttonStyle,
   tooltipTitle,
   type ButtonAppearance,
-  type ButtonElementProps,
   type ButtonSizing,
 } from "./button.tsx";
 import { ControlGlyphs, Icon } from "./icon.tsx";
+import type { StyledProps } from "./style.ts";
 
-export type ToggleProps = Omit<
-  ButtonElementProps,
-  "aria-pressed" | "onClick" | "value" | "defaultValue"
-> &
-  ButtonSizing &
-  ButtonAppearance &
-  Pick<TogglePrimitive.Props, "pressed" | "defaultPressed" | "onPressedChange" | "value"> & {
-    /** `glyph` drops the pressed fill, for a glyph that already draws its state. */
-    readonly indicator?: "fill" | "glyph";
-  };
-
-export function Toggle({
-  pressed,
-  defaultPressed,
-  onPressedChange,
-  value,
+export function Toggle<Value extends string>({
   indicator = "fill",
   size = "md",
   iconOnly = false,
@@ -37,22 +22,21 @@ export function Toggle({
   className,
   style,
   children,
-  type = "button",
-  disabled,
   ...rest
-}: ToggleProps): ReactElement {
+}: Omit<StyledProps<TogglePrimitive.Props<Value>>, "xstyle" | "children" | "aria-label"> &
+  ButtonSizing &
+  ButtonAppearance & {
+    /** `glyph` drops the pressed fill, for a glyph that already draws its state. */
+    readonly indicator?: "fill" | "glyph";
+  }): ReactElement {
   return (
     <TogglePrimitive
-      pressed={pressed}
-      defaultPressed={defaultPressed}
-      value={value}
-      disabled={disabled}
-      onPressedChange={onPressedChange}
-      render={<button type={type} title={tooltipTitle(iconOnly, rest["aria-label"])} {...rest} />}
+      title={tooltipTitle(iconOnly, rest["aria-label"])}
+      {...rest}
       {...buttonStyle(
         "ghost",
         size,
-        { iconOnly, round, disabled, tone, xstyle, className, style },
+        { iconOnly, round, tone, xstyle, className, style },
         indicator === "glyph",
       )}
     >

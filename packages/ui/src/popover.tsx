@@ -3,18 +3,17 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
 import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
-import { layer, shape } from "./schema.stylex.ts";
+import { layer, radius } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
 import { motion, role, type } from "./vars.stylex.ts";
-import { useOverlayRef } from "./overlay.tsx";
 
 const styles = create({
   positioner: { zIndex: layer.menu, outline: "none" },
   popup: {
     padding: 8,
     borderStyle: "none",
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     outline: "none",
     color: role.contentPrimary,
     fontSize: type.fontBase,
@@ -49,26 +48,20 @@ const styles = create({
   },
 });
 
-export type PopoverBackdropProps = StyledProps<Omit<Popover.Backdrop.Props, "ref">>;
-
 function PopoverBackdrop({
   xstyle,
   className,
   style,
   ...rest
-}: PopoverBackdropProps): ReactElement {
-  const overlayRef = useOverlayRef();
-
+}: StyledProps<Popover.Backdrop.Props>): ReactElement {
   return (
     <Popover.Backdrop
+      data-slot="popover-backdrop"
       {...rest}
-      ref={overlayRef}
       {...mergeStyleProps(props(xstyle), className, style)}
     />
   );
 }
-
-export type PopoverPositionerProps = StyledProps<Popover.Positioner.Props>;
 
 function PopoverPositioner({
   positionMethod = "fixed",
@@ -77,7 +70,7 @@ function PopoverPositioner({
   style,
   xstyle,
   ...rest
-}: PopoverPositionerProps): ReactElement {
+}: StyledProps<Popover.Positioner.Props>): ReactElement {
   return (
     <Popover.Positioner
       positionMethod={positionMethod}
@@ -88,23 +81,19 @@ function PopoverPositioner({
   );
 }
 
-export type PopoverPopupProps = StyledProps<Omit<Popover.Popup.Props, "ref">> & {
-  /** Scopes the popup to a hue. */
-  readonly tint?: Tint;
-};
-
 function PopoverPopup({
   tint,
   className,
   style,
   xstyle,
   ...rest
-}: PopoverPopupProps): ReactElement {
-  const overlayRef = useOverlayRef();
-
+}: StyledProps<Popover.Popup.Props> & {
+  /** Scopes the popup to a hue. */
+  readonly tint?: Tint;
+}): ReactElement {
   return (
     <Popover.Popup
-      ref={overlayRef}
+      data-slot="popover-popup"
       {...mergeStyleProps(
         props(
           tint !== undefined && surfaceTheme[tint],
@@ -120,22 +109,23 @@ function PopoverPopup({
   );
 }
 
-export type PopoverTitleProps = StyledProps<Popover.Title.Props>;
-
-function PopoverTitle({ className, style, xstyle, ...rest }: PopoverTitleProps): ReactElement {
+function PopoverTitle({
+  className,
+  style,
+  xstyle,
+  ...rest
+}: StyledProps<Popover.Title.Props>): ReactElement {
   return (
     <Popover.Title {...mergeStyleProps(props(styles.title, xstyle), className, style)} {...rest} />
   );
 }
-
-export type PopoverDescriptionProps = StyledProps<Popover.Description.Props>;
 
 function PopoverDescription({
   className,
   style,
   xstyle,
   ...rest
-}: PopoverDescriptionProps): ReactElement {
+}: StyledProps<Popover.Description.Props>): ReactElement {
   return (
     <Popover.Description
       {...mergeStyleProps(props(styles.description, xstyle), className, style)}

@@ -1,9 +1,9 @@
 import { Switch as SwitchPrimitive } from "@base-ui/react/switch";
 import { create, props } from "@stylexjs/stylex";
-import { useId, type ReactElement } from "react";
+import { useId, type ComponentProps, type ReactElement } from "react";
 
 import { focus } from "./a11y.stylex.ts";
-import { row, shape, switchControl, target } from "./schema.stylex.ts";
+import { row, radius, switchControl, target } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { intent } from "./surface-theme.ts";
 import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
@@ -52,7 +52,7 @@ const styles = create({
     height: switchControl.heightMd,
     padding: switchControl.paddingMd,
     borderStyle: "none",
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: {
       default: role.bgControl,
       ":hover:not([data-disabled])": role.bgControlHover,
@@ -71,7 +71,7 @@ const styles = create({
     display: "block",
     width: switchControl.knobMd,
     height: switchControl.knobMd,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: role.contentOnControl,
     boxShadow: shadow.shadowSm,
     transform: {
@@ -87,13 +87,12 @@ const styles = create({
   },
 });
 
-type SwitchControlProps = StyledProps<Omit<SwitchPrimitive.Root.Props, "children" | "render">>;
-
-export type SwitchProps = SwitchControlProps & {
-  readonly label: string;
-};
-
-function SwitchControl({ xstyle, className, style, ...rest }: SwitchControlProps): ReactElement {
+function SwitchControl({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<Omit<SwitchPrimitive.Root.Props, "children">>): ReactElement {
   return (
     <span {...props(styles.target)}>
       <SwitchPrimitive.Root
@@ -110,12 +109,15 @@ function SwitchControl({ xstyle, className, style, ...rest }: SwitchControlProps
   );
 }
 
-export function Switch({ label, ...rest }: SwitchProps): ReactElement {
+export function Switch({
+  label,
+  ...rest
+}: ComponentProps<typeof SwitchControl> & { readonly label: string }): ReactElement {
   return <SwitchControl aria-label={label} {...rest} />;
 }
 
 export type SwitchFieldProps = Omit<
-  SwitchControlProps,
+  ComponentProps<typeof SwitchControl>,
   "aria-label" | "aria-labelledby" | "nativeButton"
 > & {
   readonly label: string;

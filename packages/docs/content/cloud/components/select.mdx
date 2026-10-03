@@ -7,7 +7,8 @@ description: "A compact trigger that picks one value from a list"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 ```
 
-For a searchable list, use [Autocomplete](/cloud/components/autocomplete).
+For a searchable list, use [Autocomplete](/cloud/components/autocomplete). For a list of
+actions, use [Menu](/cloud/components/menu).
 
 ## Usage
 
@@ -107,15 +108,15 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 Renders the portal, positioner, popup, and list. The positioning props below go to the positioner.
 Everything else goes to the popup.
 
-| Prop                   | Type                                                                       | Default                                                      | Description                                      |
-| ---------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------ |
-| `side`                 | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"`                                                   |                                                  |
-| `align`                | `"start" \| "center" \| "end"`                                             | `"end"`                                                      |                                                  |
-| `sideOffset`           | `number \| OffsetFunction`                                                 | `4`                                                          | Pixels.                                          |
-| `alignOffset`          | `number \| OffsetFunction`                                                 |                                                              |                                                  |
-| `alignItemWithTrigger` | `boolean`                                                                  | `false`                                                      | Overlaps the trigger to line up the chosen item. |
-| `collisionAvoidance`   | `CollisionAvoidance`                                                       | `{ side: "flip", align: "shift", fallbackAxisSide: "none" }` |                                                  |
-| `tint`                 | `Tint`                                                                     |                                                              | Scopes the popup to a hue.                       |
+| Prop                   | Type                                                                       | Default                                                      | Description                                                                                                 |
+| ---------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `side`                 | `"top" \| "bottom" \| "left" \| "right" \| "inline-start" \| "inline-end"` | `"bottom"`                                                   |                                                                                                             |
+| `align`                | `"start" \| "center" \| "end"`                                             | `"end"`                                                      |                                                                                                             |
+| `sideOffset`           | `number \| OffsetFunction`                                                 | `-anchor.height`                                             | Pixels. The default lays the list over the trigger. On a left, right, or inline side it is `-anchor.width`. |
+| `alignOffset`          | `number \| OffsetFunction`                                                 |                                                              |                                                                                                             |
+| `alignItemWithTrigger` | `boolean`                                                                  | `false`                                                      | Lines the chosen item up with the trigger's value. Mouse input only.                                        |
+| `collisionAvoidance`   | `CollisionAvoidance`                                                       | `{ side: "flip", align: "shift", fallbackAxisSide: "none" }` |                                                                                                             |
+| `tint`                 | `Tint`                                                                     |                                                              | Scopes the popup to a hue.                                                                                  |
 
 #### Positioner
 

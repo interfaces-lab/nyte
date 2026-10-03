@@ -11,7 +11,8 @@ An interactive panel anchored to its trigger.
 
 ## Usage
 
-- With `modal` set, focus stays trapped only while a `Popover.Close` is inside `Popover.Popup`.
+- With `modal` set to `true`, focus stays trapped only while a `Popover.Close` is inside
+  `Popover.Popup`.
 
 ## Anatomy
 
@@ -92,8 +93,8 @@ const anchor = useRef<HTMLDivElement>(null);
 ```tsx
 const details = Popover.createHandle<{ name: string }>();
 
-<Popover.Trigger handle={details} payload={{ name: "Ada" }} render={<Button  variant="outline">Ada</Button>} />
-<Popover.Trigger handle={details} payload={{ name: "Linus" }} render={<Button  variant="outline">Linus</Button>} />
+<Popover.Trigger handle={details} payload={{ name: "Ada" }} render={<Button variant="outline">Ada</Button>} />
+<Popover.Trigger handle={details} payload={{ name: "Linus" }} render={<Button variant="outline">Linus</Button>} />
 
 <Popover.Root handle={details}>
   {({ payload }) => (
@@ -142,6 +143,10 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 <include>../../base-ui-reference/popover/Positioner.md</include>
 
 ### Popup
+
+| Prop   | Type   | Default |
+| ------ | ------ | ------- |
+| `tint` | `Tint` |         |
 
 <include>../../base-ui-reference/popover/Popup.md</include>
 

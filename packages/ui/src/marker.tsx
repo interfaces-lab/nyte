@@ -15,11 +15,12 @@ export const markerVariants = cva("cn-marker", {
   defaultVariants: { variant: "default" },
 });
 
-export type MarkerProps = useRender.ComponentProps<"div"> & VariantProps<typeof markerVariants>;
-export type MarkerIconProps = ComponentProps<"span">;
-export type MarkerContentProps = ComponentProps<"span">;
-
-export function Marker({ className, variant = "default", render, ...props }: MarkerProps) {
+export function Marker({
+  className,
+  variant = "default",
+  render,
+  ...props
+}: useRender.ComponentProps<"div"> & VariantProps<typeof markerVariants>) {
   return useRender({
     defaultTagName: "div",
     props: mergeProps<"div">({ className: cn(markerVariants({ variant }), className) }, props),
@@ -28,7 +29,7 @@ export function Marker({ className, variant = "default", render, ...props }: Mar
   });
 }
 
-export function MarkerIcon({ className, ...props }: MarkerIconProps) {
+export function MarkerIcon({ className, ...props }: ComponentProps<"span">) {
   return (
     <span
       data-slot="marker-icon"
@@ -39,7 +40,7 @@ export function MarkerIcon({ className, ...props }: MarkerIconProps) {
   );
 }
 
-export function MarkerContent({ className, ...props }: MarkerContentProps) {
+export function MarkerContent({ className, ...props }: ComponentProps<"span">) {
   return (
     <span data-slot="marker-content" className={cn("cn-marker-content", className)} {...props} />
   );

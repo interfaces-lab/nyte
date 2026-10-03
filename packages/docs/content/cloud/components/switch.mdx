@@ -4,14 +4,16 @@ description: "A control that turns a setting on or off"
 ---
 
 ```ts title="Import"
-import { Switch } from "@nyte-ai/ui/switch";
+import { Switch, SwitchField } from "@nyte-ai/ui/switch";
 ```
 
-Use it for a setting that applies on change.
+Use it for a setting that applies on change. `SwitchField` is a switch at the end of a labelled
+row, with an optional description.
 
 ## Usage
 
-- Pass `label` even when the same text sits beside the switch. It becomes the `aria-label`.
+- `Switch` shows no text. Its `label` becomes the `aria-label`. For visible text, use
+  `SwitchField`.
 
 ## Examples
 
@@ -26,9 +28,25 @@ const [wrap, setWrap] = useState(true);
 <Switch label="Reduce transparency" disabled />
 ```
 
+### Field
+
+```tsx
+const [wrap, setWrap] = useState(true);
+
+<SwitchField
+  label="Code block word wrap"
+  description="Long lines wrap instead of scrolling"
+  checked={wrap}
+  onCheckedChange={setWrap}
+/>;
+```
+
 ## Props
 
-Takes every Base UI `Switch.Root` prop except `render` and `children`. The thumb is built in.
+### Switch
+
+Takes every Base UI `Switch.Root` prop except `children`. `className` and `style` take plain
+values, not functions of state. The thumb is built in.
 
 | Prop                           | Type                                      | Default | Description |
 | ------------------------------ | ----------------------------------------- | ------- | ----------- |
@@ -39,8 +57,20 @@ The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
 <include>../../base-ui-reference/switch/Root.md</include>
 
+### SwitchField
+
+Takes every `Switch` prop except `aria-label`, `aria-labelledby`, and `nativeButton`.
+
+| Prop                           | Type                                      | Default | Description                      |
+| ------------------------------ | ----------------------------------------- | ------- | -------------------------------- |
+| `label`                        | `string`                                  |         | Required. Names the switch.      |
+| `description`                  | `string`                                  |         | Secondary line under the label.  |
+| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |         | Apply to the row, not the track. |
+
 ## Accessibility
 
 - The root carries `role="switch"` and `aria-checked`. Space and Enter toggle it.
 - `readOnly` keeps the switch focusable but blocks changes.
+- `SwitchField` renders a `<label>`. Its `label` text names the switch through `aria-labelledby`,
+  and `description` is added to `aria-describedby`.
 - Keyboard focus shows the [focus ring](/cloud/foundations/focus).

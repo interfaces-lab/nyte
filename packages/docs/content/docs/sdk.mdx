@@ -23,7 +23,7 @@ for local TUI plugins. Nyte's clients share one database per workspace at
 import process from "node:process";
 import { createModels, FileCredentialStore, openaiCodexProvider } from "@nyte-ai/ai";
 import { createNyte, MAIN } from "@nyte-ai/core";
-import { inlinePlugin, systemPromptPlugin, toolsFsPlugin } from "@nyte-ai/core/plugins";
+import { systemPromptPlugin, toolsFsPlugin } from "@nyte-ai/core/plugins";
 import { SqliteStore } from "@nyte-ai/core/store";
 import { workspaceStorePath } from "@nyte-ai/host";
 
@@ -40,7 +40,7 @@ const nyte = await createNyte({
   models,
   model,
   drain: "one",
-  plugins: [inlinePlugin(systemPromptPlugin()), inlinePlugin(toolsFsPlugin())],
+  plugins: [systemPromptPlugin(), toolsFsPlugin()],
   env: { cwd },
 });
 
@@ -308,6 +308,10 @@ A compaction checkpoint arrives as a `commit`; `compaction` reports progress onl
 
 Trust is not a sandbox or per-call approval. It loads project plugins and unrestricted filesystem
 tools.
+
+Pass plugin objects directly: `plugins: [systemPromptPlugin(), toolsFsPlugin()]`. Reusing the same
+object keeps its setup; a new object with the same ID replaces it. File-loaded plugins use the
+loader's content revision, so unchanged scans keep the active setup and `/reload` forces a fresh load.
 
 Agents are plugin contributions. See [Agents](/docs/design#agents).
 

@@ -4,12 +4,11 @@ import type { ReactElement } from "react";
 
 import { focus } from "./a11y.stylex.ts";
 import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
-import { button, glyph, input, layer, menu, shape, target } from "./schema.stylex.ts";
+import { button, glyph, input, layer, menu, radius, target } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
 import { appearance, motion, role, type } from "./vars.stylex.ts";
 import { Icon } from "./icon.tsx";
-import { useOverlayRef } from "./overlay.tsx";
 
 const styles = create({
   trigger: {
@@ -76,7 +75,7 @@ const styles = create({
     padding: 0,
     overflowY: "hidden",
     borderStyle: "none",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     outline: "none",
     color: role.contentPrimary,
     transformOrigin: "var(--transform-origin)",
@@ -137,7 +136,7 @@ const styles = create({
     minHeight: menu.itemHeight,
     paddingBlock: 0,
     paddingInline: 12,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     outline: "none",
     backgroundColor: { default: "transparent", "[data-highlighted]": role.bgHover },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
@@ -210,14 +209,6 @@ const itemVariants = create({
   },
 });
 
-const selectedItemVariants = create({
-  popup: {},
-  inline: {
-    backgroundColor: role.bgInteractiveSecondaryTranslucent,
-    boxShadow: `inset 0 0 0 1px ${role.borderPrimary}`,
-  },
-});
-
 const itemIndicatorVariants = create({
   popup: {},
   inline: { width: glyph.sm },
@@ -237,7 +228,7 @@ const groupLabelVariants = create({
   },
 });
 
-export type AutocompleteVariant = keyof typeof inputVariants;
+type AutocompleteVariant = keyof typeof inputVariants;
 
 export const Autocomplete = AutocompletePrimitive.Root;
 
@@ -249,15 +240,13 @@ export const AutocompleteGroup = AutocompletePrimitive.Group;
 
 export const AutocompleteCollection = AutocompletePrimitive.Collection;
 
-export type AutocompleteTriggerProps = StyledProps<AutocompletePrimitive.Trigger.Props>;
-
 export function AutocompleteTrigger({
   children,
   className,
   style,
   xstyle,
   ...rest
-}: AutocompleteTriggerProps): ReactElement {
+}: StyledProps<AutocompletePrimitive.Trigger.Props>): ReactElement {
   return (
     <AutocompletePrimitive.Trigger
       data-slot="autocomplete-trigger"
@@ -265,21 +254,19 @@ export function AutocompleteTrigger({
       {...rest}
     >
       <span {...props(styles.triggerValue)}>{children}</span>
-      <span aria-hidden="true" {...props(styles.triggerIcon)}>
+      <AutocompletePrimitive.Icon {...props(styles.triggerIcon)}>
         <Icon name="chevron-down" size={11} />
-      </span>
+      </AutocompletePrimitive.Icon>
     </AutocompletePrimitive.Trigger>
   );
 }
-
-export type AutocompleteClearProps = StyledProps<AutocompletePrimitive.Clear.Props>;
 
 export function AutocompleteClear({
   className,
   style,
   xstyle,
   ...rest
-}: AutocompleteClearProps): ReactElement {
+}: StyledProps<AutocompletePrimitive.Clear.Props>): ReactElement {
   return (
     <AutocompletePrimitive.Clear
       data-slot="autocomplete-clear"
@@ -289,7 +276,7 @@ export function AutocompleteClear({
   );
 }
 
-export type AutocompleteContentProps = StyledProps<Omit<AutocompletePrimitive.Popup.Props, "ref">> &
+export type AutocompleteContentProps = StyledProps<AutocompletePrimitive.Popup.Props> &
   Pick<
     AutocompletePrimitive.Positioner.Props,
     "side" | "align" | "sideOffset" | "alignOffset" | "anchor" | "collisionAvoidance"
@@ -311,8 +298,6 @@ export function AutocompleteContent({
   xstyle,
   ...rest
 }: AutocompleteContentProps): ReactElement {
-  const overlayRef = useOverlayRef();
-
   return (
     <AutocompletePrimitive.Portal>
       <AutocompletePrimitive.Positioner
@@ -327,7 +312,6 @@ export function AutocompleteContent({
         {...props(styles.positioner)}
       >
         <AutocompletePrimitive.Popup
-          ref={overlayRef}
           data-slot="autocomplete-content"
           {...mergeStyleProps(
             props(
@@ -346,17 +330,15 @@ export function AutocompleteContent({
   );
 }
 
-export type AutocompleteInputProps = StyledProps<AutocompletePrimitive.Input.Props> & {
-  readonly variant?: AutocompleteVariant;
-};
-
 export function AutocompleteInput({
   variant = "popup",
   className,
   style,
   xstyle,
   ...rest
-}: AutocompleteInputProps): ReactElement {
+}: StyledProps<AutocompletePrimitive.Input.Props> & {
+  readonly variant?: AutocompleteVariant;
+}): ReactElement {
   return (
     <AutocompletePrimitive.Input
       data-slot="autocomplete-input"
@@ -366,17 +348,15 @@ export function AutocompleteInput({
   );
 }
 
-export type AutocompleteListProps = StyledProps<AutocompletePrimitive.List.Props> & {
-  readonly variant?: AutocompleteVariant;
-};
-
 export function AutocompleteList({
   variant = "popup",
   className,
   style,
   xstyle,
   ...rest
-}: AutocompleteListProps): ReactElement {
+}: StyledProps<AutocompletePrimitive.List.Props> & {
+  readonly variant?: AutocompleteVariant;
+}): ReactElement {
   return (
     <AutocompletePrimitive.List
       data-slot="autocomplete-list"
@@ -386,12 +366,6 @@ export function AutocompleteList({
   );
 }
 
-export type AutocompleteItemProps = StyledProps<AutocompletePrimitive.Item.Props> & {
-  readonly variant?: AutocompleteVariant;
-  /** Marks the current value with a trailing checkmark. */
-  readonly selected?: boolean;
-};
-
 export function AutocompleteItem({
   variant = "popup",
   selected = false,
@@ -400,20 +374,15 @@ export function AutocompleteItem({
   style,
   xstyle,
   ...rest
-}: AutocompleteItemProps): ReactElement {
+}: StyledProps<AutocompletePrimitive.Item.Props> & {
+  readonly variant?: AutocompleteVariant;
+  /** Marks the current value with a trailing checkmark. */
+  readonly selected?: boolean;
+}): ReactElement {
   return (
     <AutocompletePrimitive.Item
       data-slot="autocomplete-item"
-      {...mergeStyleProps(
-        props(
-          styles.item,
-          itemVariants[variant],
-          selected && selectedItemVariants[variant],
-          xstyle,
-        ),
-        className,
-        style,
-      )}
+      {...mergeStyleProps(props(styles.item, itemVariants[variant], xstyle), className, style)}
       {...rest}
     >
       <span {...props(styles.itemText)}>{children}</span>
@@ -424,17 +393,15 @@ export function AutocompleteItem({
   );
 }
 
-export type AutocompleteGroupLabelProps = StyledProps<AutocompletePrimitive.GroupLabel.Props> & {
-  readonly variant?: AutocompleteVariant;
-};
-
 export function AutocompleteGroupLabel({
   variant = "popup",
   className,
   style,
   xstyle,
   ...rest
-}: AutocompleteGroupLabelProps): ReactElement {
+}: StyledProps<AutocompletePrimitive.GroupLabel.Props> & {
+  readonly variant?: AutocompleteVariant;
+}): ReactElement {
   return (
     <AutocompletePrimitive.GroupLabel
       data-slot="autocomplete-group-label"
@@ -448,14 +415,12 @@ export function AutocompleteGroupLabel({
   );
 }
 
-export type AutocompleteSeparatorProps = StyledProps<AutocompletePrimitive.Separator.Props>;
-
 export function AutocompleteSeparator({
   className,
   style,
   xstyle,
   ...rest
-}: AutocompleteSeparatorProps): ReactElement {
+}: StyledProps<AutocompletePrimitive.Separator.Props>): ReactElement {
   return (
     <AutocompletePrimitive.Separator
       data-slot="autocomplete-separator"
@@ -465,14 +430,12 @@ export function AutocompleteSeparator({
   );
 }
 
-export type AutocompleteEmptyProps = StyledProps<AutocompletePrimitive.Empty.Props>;
-
 export function AutocompleteEmpty({
   className,
   style,
   xstyle,
   ...rest
-}: AutocompleteEmptyProps): ReactElement {
+}: StyledProps<AutocompletePrimitive.Empty.Props>): ReactElement {
   return (
     <AutocompletePrimitive.Empty
       data-slot="autocomplete-empty"
@@ -482,14 +445,12 @@ export function AutocompleteEmpty({
   );
 }
 
-export type AutocompleteStatusProps = StyledProps<AutocompletePrimitive.Status.Props>;
-
 export function AutocompleteStatus({
   className,
   style,
   xstyle,
   ...rest
-}: AutocompleteStatusProps): ReactElement {
+}: StyledProps<AutocompletePrimitive.Status.Props>): ReactElement {
   return (
     <AutocompletePrimitive.Status
       data-slot="autocomplete-status"

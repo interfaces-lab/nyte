@@ -57,11 +57,10 @@ export function ChatButton({
   render,
   ...props
 }: ChatButtonProps) {
-  const appearance = (disabled: boolean) =>
+  const appearance =
     render === undefined
       ? buttonStyle(variants[variant ?? "ghost"], sizes[size ?? "default"], {
           iconOnly: size?.startsWith("icon") ?? false,
-          disabled,
           tone: variant === "destructive" ? "danger" : "neutral",
         })
       : undefined;
@@ -73,14 +72,14 @@ export function ChatButton({
       render={render}
       className={(state) =>
         cn(
-          appearance(state.disabled)?.className,
+          appearance?.className,
           chatButtonVariants({ variant, size }),
-          typeof className === "function" ? className(state) : className,
+          className instanceof Function ? className(state) : className,
         )
       }
       style={(state) => ({
-        ...appearance(state.disabled)?.style,
-        ...(typeof style === "function" ? style(state) : style),
+        ...appearance?.style,
+        ...(style instanceof Function ? style(state) : style),
       })}
     />
   );

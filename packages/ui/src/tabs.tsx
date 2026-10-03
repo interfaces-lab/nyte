@@ -3,7 +3,7 @@ import { create, props } from "@stylexjs/stylex";
 import { createContext, use, type ReactElement } from "react";
 
 import { focus } from "./a11y.stylex.ts";
-import { button, shape, target } from "./schema.stylex.ts";
+import { button, radius, target } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
 
@@ -13,7 +13,7 @@ const lists = create({
     alignItems: "center",
     gap: 0,
     padding: 2,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
   },
@@ -26,11 +26,13 @@ const lists = create({
   plain: { display: "flex", alignItems: "center", gap: 4 },
 });
 
-const hitArea = create({
+const tab = create({
   base: {
     boxSizing: "border-box",
     minWidth: target.min,
     minHeight: target.min,
+    cursor: { default: appearance.cursorInteractive, "[data-disabled]": "default" },
+    opacity: { default: 1, "[data-disabled]": 0.5 },
   },
 });
 
@@ -57,7 +59,6 @@ const tabs = create({
     fontSize: type.fontSm,
     fontWeight: 500,
     lineHeight: type.leadingSm,
-    cursor: appearance.cursorInteractive,
     userSelect: "none",
     whiteSpace: "nowrap",
     scale: {
@@ -83,7 +84,6 @@ const tabs = create({
     fontSize: type.fontSm,
     fontWeight: 500,
     lineHeight: type.leadingSm,
-    cursor: appearance.cursorInteractive,
     userSelect: "none",
     transitionProperty: "color",
     transitionDuration: motion.durationFast,
@@ -102,7 +102,7 @@ const tabs = create({
     alignItems: "center",
     height: button.heightMd,
     paddingInline: button.pillPaddingInlineMd,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: {
@@ -119,7 +119,6 @@ const tabs = create({
     fontSize: type.fontSm,
     fontWeight: 500,
     lineHeight: type.leadingSm,
-    cursor: appearance.cursorInteractive,
   },
   plain: {
     display: "inline-flex",
@@ -130,7 +129,7 @@ const tabs = create({
     paddingBlock: 2,
     paddingInline: 10,
     borderStyle: "none",
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     backgroundColor: {
       default: "transparent",
       ":hover:not([data-active])": role.bgHover,
@@ -141,7 +140,6 @@ const tabs = create({
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
     letterSpacing: type.letterBase,
-    cursor: appearance.cursorInteractive,
   },
 });
 
@@ -162,25 +160,7 @@ const indicator = create({
   },
 });
 
-/**
- * `segmented` fills its track, `underline` nests inside another strip, `pill`
- * filters a list, and `plain` switches a surface's content.
- */
-export type TabsVariant = keyof typeof tabs;
-
-const TabsVariantContext = createContext<TabsVariant>("plain");
-
-export type TabsRootProps = StyledProps<TabsPrimitive.Root.Props> & {
-  readonly variant?: TabsVariant;
-};
-
-export type TabsListProps = StyledProps<TabsPrimitive.List.Props>;
-
-export type TabsTabProps = StyledProps<TabsPrimitive.Tab.Props>;
-
-export type TabsPanelProps = StyledProps<TabsPrimitive.Panel.Props>;
-
-export type TabsIndicatorProps = StyledProps<TabsPrimitive.Indicator.Props>;
+const TabsVariantContext = createContext<keyof typeof tabs>("plain");
 
 function TabsRoot({
   variant = "plain",
@@ -188,7 +168,13 @@ function TabsRoot({
   className,
   style,
   ...rest
-}: TabsRootProps): ReactElement {
+}: StyledProps<TabsPrimitive.Root.Props> & {
+  /**
+   * `segmented` fills its track, `underline` nests inside another strip, `pill`
+   * filters a list, and `plain` switches a surface's content.
+   */
+  readonly variant?: keyof typeof tabs;
+}): ReactElement {
   return (
     <TabsVariantContext value={variant}>
       <TabsPrimitive.Root {...rest} {...mergeStyleProps(props(xstyle), className, style)} />
@@ -196,7 +182,12 @@ function TabsRoot({
   );
 }
 
-function TabsList({ xstyle, className, style, ...rest }: TabsListProps): ReactElement {
+function TabsList({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<TabsPrimitive.List.Props>): ReactElement {
   const variant = use(TabsVariantContext);
 
   return (
@@ -208,19 +199,19 @@ function TabsList({ xstyle, className, style, ...rest }: TabsListProps): ReactEl
   );
 }
 
-function TabsTab({ xstyle, className, style, ...rest }: TabsTabProps): ReactElement {
+function TabsTab({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<TabsPrimitive.Tab.Props>): ReactElement {
   const variant = use(TabsVariantContext);
 
   return (
     <TabsPrimitive.Tab
       {...rest}
       {...mergeStyleProps(
-        props(
-          tabs[variant],
-          hitArea.base,
-          variant === "plain" ? focus.ringInset : focus.ring,
-          xstyle,
-        ),
+        props(tabs[variant], tab.base, variant === "plain" ? focus.ringInset : focus.ring, xstyle),
         className,
         style,
       )}
@@ -228,12 +219,22 @@ function TabsTab({ xstyle, className, style, ...rest }: TabsTabProps): ReactElem
   );
 }
 
-function TabsPanel({ xstyle, className, style, ...rest }: TabsPanelProps): ReactElement {
+function TabsPanel({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<TabsPrimitive.Panel.Props>): ReactElement {
   return <TabsPrimitive.Panel {...rest} {...mergeStyleProps(props(xstyle), className, style)} />;
 }
 
 /** A layer that follows the active tab. The caller paints it. */
-function TabsIndicator({ xstyle, className, style, ...rest }: TabsIndicatorProps): ReactElement {
+function TabsIndicator({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<TabsPrimitive.Indicator.Props>): ReactElement {
   return (
     <TabsPrimitive.Indicator
       {...rest}

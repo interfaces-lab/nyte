@@ -16,6 +16,7 @@ import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button
 - The icon-only label doubles as the native `title`. Inside a
   [Tooltip](/cloud/components/tooltip), pass `title={undefined}` to keep one tooltip on screen.
 - Reserve `disabled` for an impossible action. Give the reason with `disabledReason` or nearby text.
+- `Button` defaults to `type="button"`. Pass `type="submit"` to submit a form.
 - In a popup trigger's `render`, put the text inside the `Button`, as in
   `<Popover.Trigger render={<Button>Open</Button>} />`.
 - Give every `ButtonGroup` part the same size. `SplitButton.MenuTrigger` needs a label that names
@@ -101,7 +102,8 @@ import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button
 
 ### Button and ButtonLink
 
-Native attributes pass through.
+`Button` takes every Base UI `Button` prop. `className` and `style` take plain values, not functions
+of state. `ButtonLink` takes native `<a>` attributes.
 
 | Prop                 | Type                                                           | Default                                       | Description                                            |
 | -------------------- | -------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------ |
@@ -114,10 +116,13 @@ Native attributes pass through.
 | `round`              | `boolean`                                                      | `false`                                       | Fully rounded corners.                                 |
 | `xstyle`             | `ButtonLayout`                                                 |                                               | Position, inset, margin, flex, grid, order, and width. |
 | `className`, `style` | See [Theming](/cloud/foundations/theming)                      |                                               | Applied to the control.                                |
-| `loading`            | `boolean`                                                      | `false`                                       | Button only. Blocks activation but stays focusable.    |
-| `disabledReason`     | `string`                                                       |                                               | Button only. Shows and associates a disabled reason.   |
-| `type`               | `"button" \| "submit" \| "reset"`                              | `"button"`                                    | Button only.                                           |
+| `loading`            | `boolean`                                                      | `false`                                       | Button only. Disables activation but stays focusable.  |
+| `disabledReason`     | `string`                                                       |                                               | Button only. Shown as the `title` while `disabled`.    |
 | `href`               | `string`                                                       | Required for ButtonLink                       |                                                        |
+
+The reference table below comes from Base UI, MIT, © Material-UI SAS.
+
+<include>../../base-ui-reference/button/Button.md</include>
 
 ### ButtonGroup and SplitButton
 
@@ -126,12 +131,12 @@ plus `xstyle`, `className`, and `style`. `SplitButton.Main` is a `Button`.
 `SplitButton.MenuTrigger` is an icon-only `Button` that requires `aria-label`, takes no `children`,
 and defaults `icon` to `chevron-down`.
 
-The exported types include `ButtonProps`, `ButtonLinkProps`, `ButtonGroupProps`, `ButtonVariant`,
-`ButtonTone`, `ButtonSize`, `ButtonLayout`, and `SplitButtonMenuTriggerProps`.
+The exported types include `ButtonProps`, `ButtonVariant`, `ButtonSize`, and `ButtonLayout`.
 
 ## Accessibility
 
 - Enter and Space activate `Button`. Enter follows `ButtonLink`.
-- `loading` sets `aria-busy` and keeps focus and the accessible name.
-- `disabledReason` keeps a disabled button focusable and links the reason with `aria-describedby`.
+- A disabled `Button` sets the native `disabled` attribute and leaves the tab order.
+- `loading` and `disabledReason` set `aria-disabled` instead, so the button keeps focus.
+- `loading` sets `aria-busy` and keeps the accessible name.
 - Name a group with `aria-label` when its parts do not name it. Every part keeps its own tab stop.

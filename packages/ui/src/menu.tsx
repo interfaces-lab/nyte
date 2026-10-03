@@ -9,25 +9,17 @@
  */
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { create, props } from "@stylexjs/stylex";
-import { useMemo } from "react";
-import type { ReactElement, ReactNode, Ref } from "react";
+import type { ComponentProps, ReactElement, ReactNode } from "react";
 
 import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
-import { glyph, layer, menu, shape, switchControl } from "./schema.stylex.ts";
+import { glyph, layer, menu, radius, switchControl } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { intent, surfaceTheme, type Tint } from "./surface-theme.ts";
 import { motion, role, shadow, type } from "./vars.stylex.ts";
 import { Icon, type IconName } from "./icon.tsx";
-import { useOverlayRef } from "./overlay.tsx";
 
 export const MENU_COLLISION: NonNullable<MenuPrimitive.Positioner.Props["collisionAvoidance"]> = {
   side: "flip",
-  align: "shift",
-  fallbackAxisSide: "none",
-};
-
-const COMMAND_COLLISION: NonNullable<MenuPrimitive.Positioner.Props["collisionAvoidance"]> = {
-  side: "shift",
   align: "shift",
   fallbackAxisSide: "none",
 };
@@ -95,12 +87,6 @@ export const menuStyles = create({
     backgroundColor: {
       default: "transparent",
       "[data-highlighted]": role.bgHover,
-      "[data-nyte-selected='true']": role.bgInteractiveSecondaryTranslucent,
-    },
-    // A selected row carries a hairline, so it reads apart from the hovered one.
-    boxShadow: {
-      default: "none",
-      "[data-nyte-selected='true']": `inset 0 0 0 1px ${role.borderPrimary}`,
     },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
     fontSize: type.fontBase,
@@ -176,38 +162,20 @@ export const menuStyles = create({
     width: switchControl.widthMd,
     height: switchControl.heightMd,
     padding: switchControl.paddingMd,
-    borderRadius: shape.pill,
-    backgroundColor: role.bgControl,
-  },
-  switchTrackOn: { backgroundColor: role.bgControlSelected },
-  switchThumb: {
-    width: switchControl.knobMd,
-    height: switchControl.knobMd,
-    borderRadius: shape.pill,
-    backgroundColor: role.contentOnControl,
-    boxShadow: shadow.shadowSm,
-    transform: "translateX(0)",
-  },
-  switchThumbOn: {
-    transform: `translateX(calc(${switchControl.widthMd} - ${switchControl.knobMd} - ${switchControl.paddingMd} * 2))`,
-  },
-  commandBackdrop: {
-    position: "fixed",
-    inset: 0,
-    zIndex: layer.commandBackdrop,
-    backgroundColor: role.bgScrim,
-  },
-  commandPositioner: { zIndex: layer.command, outline: "none" },
-  commandPopup: {
-    display: "flex",
-    flexDirection: "column",
-    width: "min(560px, calc(100vw - 32px))",
-    maxHeight: "min(430px, calc(100vh - 96px))",
-    borderStyle: "none",
-    borderRadius: shape.surface,
-    outline: "none",
-    overflow: "hidden",
-    color: role.contentPrimary,
+    borderRadius: radius.pill,
+    backgroundColor: { default: role.bgControl, "[data-checked]": role.bgControlSelected },
+    "::after": {
+      content: '""',
+      width: switchControl.knobMd,
+      height: switchControl.knobMd,
+      borderRadius: radius.pill,
+      backgroundColor: role.contentOnControl,
+      boxShadow: shadow.shadowSm,
+      transform: {
+        default: "translateX(0)",
+        "[data-checked]": `translateX(calc(${switchControl.widthMd} - ${switchControl.knobMd} - ${switchControl.paddingMd} * 2))`,
+      },
+    },
   },
 });
 
@@ -227,50 +195,12 @@ const itemLayouts = create({
   plain: { gridTemplateColumns: `minmax(0, 1fr) minmax(${menu.metaMinWidth}, auto)` },
 });
 
-export type MenuItemLayout = keyof typeof itemLayouts;
-
-function mergeRefs(...refs: readonly (Ref<HTMLDivElement> | undefined)[]): Ref<HTMLDivElement> {
-  return (element) => {
-    const cleanups = refs.map((ref) => {
-      if (typeof ref === "function") {
-        const cleanup = ref(element);
-        return typeof cleanup === "function" ? cleanup : () => ref(null);
-      }
-      if (ref == null) return;
-      ref.current = element;
-      return () => {
-        ref.current = null;
-      };
-    });
-    return () => {
-      for (const cleanup of cleanups) cleanup?.();
-    };
-  };
-}
-
-/** The popup ref the host needs for occlusion, merged with the caller's. */
-export function useMenuPopupRef(
-  ref: Ref<HTMLDivElement> | undefined,
-): Ref<HTMLDivElement> | undefined {
-  const overlayRef = useOverlayRef();
-  return useMemo(() => (ref == null ? overlayRef : mergeRefs(overlayRef, ref)), [overlayRef, ref]);
-}
-
-const commandAnchor = {
-  getBoundingClientRect(): DOMRect {
-    const x = window.innerWidth / 2;
-    const y = Math.min(144, Math.max(72, window.innerHeight * 0.12));
-
-    return new DOMRect(x, y, 0, 0);
-  },
-};
-
 export interface MenuItemBodyProps {
   readonly icon?: IconName;
   readonly leading?: ReactNode;
   /** Right column: a shortcut, a count, a provider name. */
   readonly meta?: ReactNode;
-  readonly layout?: MenuItemLayout;
+  readonly layout?: keyof typeof itemLayouts;
 }
 
 export function MenuItemBody({
@@ -321,7 +251,21 @@ export const MenuRadioGroup = MenuPrimitive.RadioGroup;
 
 export const MenuSub = MenuPrimitive.SubmenuRoot;
 
-export type MenuContentProps = StyledProps<MenuPrimitive.Popup.Props> &
+export function MenuContent({
+  side = "bottom",
+  align = "start",
+  sideOffset = 4,
+  alignOffset,
+  anchor,
+  collisionAvoidance = MENU_COLLISION,
+  collisionPadding = 8,
+  tint,
+  matchAnchorWidth = false,
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<MenuPrimitive.Popup.Props> &
   Pick<
     MenuPrimitive.Positioner.Props,
     | "side"
@@ -336,26 +280,7 @@ export type MenuContentProps = StyledProps<MenuPrimitive.Popup.Props> &
     readonly tint?: Tint;
     /** Sizes the popup to its anchor, the trigger unless `anchor` names another element. */
     readonly matchAnchorWidth?: boolean;
-  };
-
-export function MenuContent({
-  side = "bottom",
-  align = "start",
-  sideOffset = 4,
-  alignOffset,
-  anchor,
-  collisionAvoidance = MENU_COLLISION,
-  collisionPadding = 8,
-  tint,
-  matchAnchorWidth = false,
-  ref,
-  xstyle,
-  className,
-  style,
-  ...rest
-}: MenuContentProps): ReactElement {
-  const popupRef = useMenuPopupRef(ref);
-
+  }): ReactElement {
   return (
     <MenuPrimitive.Portal>
       <MenuPrimitive.Positioner
@@ -370,7 +295,6 @@ export function MenuContent({
         {...props(menuStyles.positioner)}
       >
         <MenuPrimitive.Popup
-          ref={popupRef}
           data-slot="menu-content"
           {...mergeStyleProps(
             props(
@@ -391,8 +315,6 @@ export function MenuContent({
   );
 }
 
-export type MenuSubContentProps = Omit<MenuContentProps, "matchAnchorWidth">;
-
 export function MenuSubContent({
   side = "right",
   align = "start",
@@ -402,14 +324,11 @@ export function MenuSubContent({
   collisionAvoidance = MENU_COLLISION,
   collisionPadding = 8,
   tint,
-  ref,
   xstyle,
   className,
   style,
   ...rest
-}: MenuSubContentProps): ReactElement {
-  const popupRef = useMenuPopupRef(ref);
-
+}: Omit<ComponentProps<typeof MenuContent>, "matchAnchorWidth">): ReactElement {
   return (
     <MenuPrimitive.Portal>
       <MenuPrimitive.Positioner
@@ -424,7 +343,6 @@ export function MenuSubContent({
         {...props(menuStyles.submenuPositioner)}
       >
         <MenuPrimitive.Popup
-          ref={popupRef}
           data-slot="menu-sub-content"
           {...mergeStyleProps(
             props(
@@ -444,62 +362,6 @@ export function MenuSubContent({
   );
 }
 
-export type CommandMenuContentProps = StyledProps<MenuPrimitive.Popup.Props> & {
-  /** Scopes the popup to a hue. */
-  readonly tint?: Tint;
-};
-
-/** A palette over a scrim, anchored near the top of the viewport rather than its trigger. */
-export function CommandMenuContent({
-  tint,
-  ref,
-  xstyle,
-  className,
-  style,
-  ...rest
-}: CommandMenuContentProps): ReactElement {
-  const overlayRef = useOverlayRef();
-  const popupRef = useMenuPopupRef(ref);
-
-  return (
-    <MenuPrimitive.Portal>
-      <MenuPrimitive.Backdrop ref={overlayRef} {...props(menuStyles.commandBackdrop)} />
-      <MenuPrimitive.Positioner
-        anchor={commandAnchor}
-        positionMethod="fixed"
-        side="bottom"
-        align="center"
-        collisionAvoidance={COMMAND_COLLISION}
-        collisionPadding={16}
-        {...props(menuStyles.commandPositioner)}
-      >
-        <MenuPrimitive.Popup
-          ref={popupRef}
-          data-slot="command-menu-content"
-          {...mergeStyleProps(
-            props(
-              tint !== undefined && surfaceTheme[tint],
-              floatingSurfaceStyles.popup,
-              floatingSurfaceStyles.modalPopup,
-              menuStyles.commandPopup,
-              xstyle,
-            ),
-            className,
-            style,
-          )}
-          {...rest}
-        />
-      </MenuPrimitive.Positioner>
-    </MenuPrimitive.Portal>
-  );
-}
-
-export type MenuItemProps = StyledProps<MenuPrimitive.Item.Props> &
-  MenuItemBodyProps & {
-    readonly variant?: MenuItemVariant;
-    readonly selected?: boolean;
-  };
-
 export function MenuItem({
   variant = "default",
   layout,
@@ -512,22 +374,39 @@ export function MenuItem({
   style,
   children,
   ...rest
-}: MenuItemProps): ReactElement {
+}: StyledProps<MenuPrimitive.Item.Props> &
+  MenuItemBodyProps & {
+    readonly variant?: MenuItemVariant;
+    readonly selected?: boolean;
+  }): ReactElement {
   return (
     <MenuPrimitive.Item
       data-slot="menu-item"
-      data-nyte-selected={selected}
       {...menuItemStyle({ layout }, variant, { xstyle, className, style })}
       {...rest}
     >
-      <MenuItemBody icon={icon} leading={leading} meta={meta} layout={layout}>
+      <MenuItemBody
+        icon={icon}
+        leading={leading}
+        layout={layout}
+        meta={
+          selected ? (
+            <>
+              {meta}
+              <span {...props(menuStyles.indicator)}>
+                <Icon name="checkmark" size={11} />
+              </span>
+            </>
+          ) : (
+            meta
+          )
+        }
+      >
         {children}
       </MenuItemBody>
     </MenuPrimitive.Item>
   );
 }
-
-export type MenuLinkItemProps = StyledProps<MenuPrimitive.LinkItem.Props> & MenuItemBodyProps;
 
 export function MenuLinkItem({
   layout,
@@ -539,7 +418,7 @@ export function MenuLinkItem({
   style,
   children,
   ...rest
-}: MenuLinkItemProps): ReactElement {
+}: StyledProps<MenuPrimitive.LinkItem.Props> & MenuItemBodyProps): ReactElement {
   return (
     <MenuPrimitive.LinkItem
       data-slot="menu-link-item"
@@ -557,8 +436,6 @@ export function MenuLinkItem({
   );
 }
 
-export type MenuRadioItemProps = StyledProps<MenuPrimitive.RadioItem.Props> & MenuItemBodyProps;
-
 export function MenuRadioItem({
   closeOnClick = true,
   layout,
@@ -570,7 +447,7 @@ export function MenuRadioItem({
   style,
   children,
   ...rest
-}: MenuRadioItemProps): ReactElement {
+}: StyledProps<MenuPrimitive.RadioItem.Props> & MenuItemBodyProps): ReactElement {
   return (
     <MenuPrimitive.RadioItem
       data-slot="menu-radio-item"
@@ -597,9 +474,6 @@ export function MenuRadioItem({
   );
 }
 
-export type MenuCheckboxItemProps = StyledProps<MenuPrimitive.CheckboxItem.Props> &
-  MenuItemBodyProps;
-
 export function MenuCheckboxItem({
   layout,
   icon,
@@ -610,7 +484,7 @@ export function MenuCheckboxItem({
   style,
   children,
   ...rest
-}: MenuCheckboxItemProps): ReactElement {
+}: StyledProps<MenuPrimitive.CheckboxItem.Props> & MenuItemBodyProps): ReactElement {
   return (
     <MenuPrimitive.CheckboxItem
       data-slot="menu-checkbox-item"
@@ -636,12 +510,8 @@ export function MenuCheckboxItem({
   );
 }
 
-export type MenuSwitchItemProps = StyledProps<MenuPrimitive.CheckboxItem.Props> &
-  Omit<MenuItemBodyProps, "meta"> & { readonly checked: boolean };
-
 /** A checkbox item drawn as a switch; it stays open so the change is visible. */
 export function MenuSwitchItem({
-  checked,
   layout,
   icon,
   leading,
@@ -650,11 +520,10 @@ export function MenuSwitchItem({
   style,
   children,
   ...rest
-}: MenuSwitchItemProps): ReactElement {
+}: StyledProps<MenuPrimitive.CheckboxItem.Props> & Omit<MenuItemBodyProps, "meta">): ReactElement {
   return (
     <MenuPrimitive.CheckboxItem
       data-slot="menu-switch-item"
-      checked={checked}
       {...menuItemStyle({ layout }, "default", { xstyle, className, style })}
       {...rest}
     >
@@ -663,12 +532,10 @@ export function MenuSwitchItem({
         leading={leading}
         layout={layout}
         meta={
-          <span
-            aria-hidden="true"
-            {...props(intent.primary, menuStyles.switchTrack, checked && menuStyles.switchTrackOn)}
-          >
-            <span {...props(menuStyles.switchThumb, checked && menuStyles.switchThumbOn)} />
-          </span>
+          <MenuPrimitive.CheckboxItemIndicator
+            keepMounted
+            {...props(intent.primary, menuStyles.switchTrack)}
+          />
         }
       >
         {children}
@@ -677,15 +544,7 @@ export function MenuSwitchItem({
   );
 }
 
-export type MenuSubTriggerProps = StyledProps<
-  Omit<MenuPrimitive.SubmenuTrigger.Props, "openOnHover">
-> &
-  Omit<MenuItemBodyProps, "meta"> & {
-    /** The current choice, shown before the chevron. */
-    readonly value?: ReactNode;
-  };
-
-/** A row that opens its submenu on click and Arrow Right. */
+/** A row that opens its submenu on hover, click, and Arrow Right. */
 export function MenuSubTrigger({
   value,
   layout,
@@ -696,11 +555,14 @@ export function MenuSubTrigger({
   style,
   children,
   ...rest
-}: MenuSubTriggerProps): ReactElement {
+}: StyledProps<MenuPrimitive.SubmenuTrigger.Props> &
+  Omit<MenuItemBodyProps, "meta"> & {
+    /** The current choice, shown before the chevron. */
+    readonly value?: ReactNode;
+  }): ReactElement {
   return (
     <MenuPrimitive.SubmenuTrigger
       data-slot="menu-sub-trigger"
-      openOnHover={false}
       {...menuItemStyle({ layout }, "default", {
         xstyle: [menuStyles.submenuTriggerOpen, xstyle],
         className,
@@ -725,18 +587,16 @@ export function MenuSubTrigger({
   );
 }
 
-export type MenuSeparatorProps = StyledProps<MenuPrimitive.Separator.Props> & {
-  /** Stops short of the popup's edges instead of running through its padding. */
-  readonly inset?: boolean;
-};
-
 export function MenuSeparator({
   inset = false,
   xstyle,
   className,
   style,
   ...rest
-}: MenuSeparatorProps): ReactElement {
+}: StyledProps<MenuPrimitive.Separator.Props> & {
+  /** Stops short of the popup's edges instead of running through its padding. */
+  readonly inset?: boolean;
+}): ReactElement {
   return (
     <MenuPrimitive.Separator
       data-slot="menu-separator"
@@ -750,14 +610,12 @@ export function MenuSeparator({
   );
 }
 
-export type MenuGroupLabelProps = StyledProps<MenuPrimitive.GroupLabel.Props>;
-
 export function MenuGroupLabel({
   xstyle,
   className,
   style,
   ...rest
-}: MenuGroupLabelProps): ReactElement {
+}: StyledProps<MenuPrimitive.GroupLabel.Props>): ReactElement {
   return (
     <MenuPrimitive.GroupLabel
       data-slot="menu-group-label"

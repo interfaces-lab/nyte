@@ -1,4 +1,4 @@
-import { shape } from "./schema.stylex.ts";
+import { radius } from "./schema.stylex.ts";
 /**
  * One painted frame for raised surfaces. The popup owns its fill,
  * shadow, and hairline so all three follow the same enter/exit lifecycle.
@@ -19,7 +19,7 @@ export const floatingSurfaceStyles = create({
   popup: {
     boxSizing: "border-box",
     position: "relative",
-    borderRadius: shape.surface,
+    borderRadius: radius.surface,
     backgroundColor: role.popupMaterial,
     backdropFilter: appearance.popupMaterialFilter,
     boxShadow: shadow.shadowLg,

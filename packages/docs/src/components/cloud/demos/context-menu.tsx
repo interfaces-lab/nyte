@@ -1,5 +1,5 @@
 "use client";
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 
 import {
   ContextMenu,
@@ -20,7 +20,7 @@ const styles = create({
     borderWidth: 1,
     borderStyle: "dashed",
     borderColor: role.borderPrimaryTranslucent,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     color: role.contentSecondary,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,

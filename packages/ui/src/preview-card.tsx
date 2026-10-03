@@ -3,11 +3,10 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
 import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
-import { layer, shape } from "./schema.stylex.ts";
+import { layer, radius } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
 import { motion, role, type } from "./vars.stylex.ts";
-import { useOverlayRef } from "./overlay.tsx";
 
 const styles = create({
   positioner: { zIndex: layer.menu, outline: "none" },
@@ -18,7 +17,7 @@ const styles = create({
     maxWidth: "min(260px, var(--available-width))",
     padding: 8,
     borderStyle: "none",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     outline: "none",
     color: role.contentPrimary,
     fontSize: type.fontBase,
@@ -44,18 +43,8 @@ export const PreviewCard = PreviewCardPrimitive.Root;
 
 export const PreviewCardTrigger = PreviewCardPrimitive.Trigger;
 
-export const createPreviewCardHandle = PreviewCardPrimitive.createHandle;
-
-export type PreviewCardContentProps = StyledProps<Omit<PreviewCardPrimitive.Popup.Props, "ref">> &
-  Pick<
-    PreviewCardPrimitive.Positioner.Props,
-    "side" | "align" | "sideOffset" | "alignOffset" | "collisionAvoidance"
-  > & {
-    /** Scopes the popup to a hue. */
-    readonly tint?: Tint;
-  };
-
 export function PreviewCardContent({
+  anchor,
   side = "bottom",
   align = "center",
   sideOffset = 4,
@@ -66,13 +55,19 @@ export function PreviewCardContent({
   className,
   style,
   ...rest
-}: PreviewCardContentProps): ReactElement {
-  const overlayRef = useOverlayRef();
-
+}: StyledProps<PreviewCardPrimitive.Popup.Props> &
+  Pick<
+    PreviewCardPrimitive.Positioner.Props,
+    "anchor" | "side" | "align" | "sideOffset" | "alignOffset" | "collisionAvoidance"
+  > & {
+    /** Scopes the popup to a hue. */
+    readonly tint?: Tint;
+  }): ReactElement {
   return (
     <PreviewCardPrimitive.Portal>
       <PreviewCardPrimitive.Positioner
         positionMethod="fixed"
+        anchor={anchor}
         side={side}
         align={align}
         sideOffset={sideOffset}
@@ -82,7 +77,6 @@ export function PreviewCardContent({
         {...props(styles.positioner)}
       >
         <PreviewCardPrimitive.Popup
-          ref={overlayRef}
           data-slot="preview-card-content"
           {...mergeStyleProps(
             props(

@@ -8,24 +8,28 @@ const outputPath = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "p
 const check = process.argv.includes("--check");
 
 const tokenDirectory = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
+
 const themeGroups = await readGroups(join(tokenDirectory, "theme.stylex.ts"));
+
 const theme = themeGroups.get("theme").values;
+
 const roleGroups = await readGroups(join(tokenDirectory, "roles.stylex.ts"));
+
 const roles = roleGroups.get("roles").values;
+
 const tinted = roleGroups.get("tinted").values;
+
 const transparency = (await readGroups(join(tokenDirectory, "tokens.stylex.ts"))).get(
   "transparency",
 ).values;
 
 const defaults = (group) =>
-  Object.entries(group).map(([name, value]) => [
-    name,
-    typeof value === "string" ? value : value.default,
-  ]);
+  Object.entries(group).map(([name, value]) => [name, value.default ?? value]);
 
 // Every declaration a colour can reach, outside any scope and with the
 // appearance inputs at their defaults.
 const neutralDeclarations = Object.fromEntries([theme, roles, transparency].flatMap(defaults));
+
 let declared = neutralDeclarations;
 
 // Role-group and unscoped entries that are not a colour: the hover and press
@@ -173,7 +177,9 @@ const evaluate = (expression, trail) => {
     })
     .replace(/%/g, "")
     .match(/[\d.]+|[-+*/()]/g);
+
   let at = 0;
+
   const primary = () => {
     const token = tokens[at++];
 
@@ -186,6 +192,7 @@ const evaluate = (expression, trail) => {
 
     return Number.parseFloat(token);
   };
+
   const product = () => {
     let value = primary();
 
@@ -195,6 +202,7 @@ const evaluate = (expression, trail) => {
 
     return value;
   };
+
   const sum = () => {
     let value = product();
 
@@ -221,8 +229,10 @@ const relativeOklch = (value, mode, trail) => {
   let depth = 0;
   let start = 0;
   const body = value.slice(6, -1);
+
   for (let index = 0; index < body.length; index += 1) {
     const character = body[index];
+
     if (character === "(") depth += 1;
     else if (character === ")") depth -= 1;
     else if (character === " " && depth === 0) {
@@ -230,16 +240,20 @@ const relativeOklch = (value, mode, trail) => {
       start = index + 1;
     }
   }
+
   words.push(body.slice(start));
+
   if (words[0] !== "from" || words[3] !== "c" || words[4] !== "h") return undefined;
   const origin = toOklch(resolve(words[1], mode, trail));
   const cap = words[2].match(/^min\(l, ([\d.]+)\)$/);
+
   const lightness =
     words[2] === "l"
       ? origin.l
       : cap
         ? Math.min(origin.l, Number.parseFloat(cap[1]))
         : origin.l * Number.parseFloat(words[2].match(/\* ([\d.]+)/)[1]);
+
   const alpha =
     words[5] === undefined
       ? origin.alpha
@@ -254,12 +268,15 @@ const mixColors = (first, firstWeight, second, secondWeight) => {
   const total = firstWeight + secondWeight;
   const [share, rest] = [firstWeight / total, secondWeight / total];
   const alpha = first.alpha * share + second.alpha * rest;
+
   const encode = (color) => ({
     red: fromLinear(color.red),
     green: fromLinear(color.green),
     blue: fromLinear(color.blue),
   });
+
   const [from, to] = [encode(first), encode(second)];
+
   const channel = (key) =>
     alpha === 0
       ? 0
@@ -355,6 +372,7 @@ const formatHex = (color) => {
     Math.round(Math.min(1, Math.max(0, value)) * 255)
       .toString(16)
       .padStart(2, "0");
+
   const encoded = [color.red, color.green, color.blue].map(fromLinear);
   const opaque = `#${encoded.map(byte).join("")}`;
 
@@ -376,6 +394,7 @@ const notice =
   "Generated from the @nyte-ai/ui colour tokens. Run pnpm --filter @nyte-ai/ui sync:tokens.";
 
 const neutralOutput = `export const platformColors = {\n  light: {\n${scheme("light")}\n  },\n  dark: {\n${scheme("dark")}\n  },\n} as const;\n`;
+
 const hues = [
   "gray",
   "brown",
@@ -388,6 +407,7 @@ const hues = [
   "red",
   "teal",
 ];
+
 const scopedScheme = (mode) =>
   hues
     .map((hue) => {
@@ -396,13 +416,16 @@ const scopedScheme = (mode) =>
         ...Object.fromEntries(defaults(themeGroups.get(hue).values)),
         ...Object.fromEntries(defaults(tinted)),
       };
+
       return `    ${hue}: {\n${scheme(mode)
         .split("\n")
         .map((line) => "  " + line)
         .join("\n")}\n    },`;
     })
     .join("\n");
+
 const scopesOutput = `export const platformScopes = {\n  light: {\n${scopedScheme("light")}\n  },\n  dark: {\n${scopedScheme("dark")}\n  },\n} as const;\n`;
+
 const generated = `// ${notice}\n${neutralOutput}\n${scopesOutput}`;
 
 if (check) {

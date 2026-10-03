@@ -7,6 +7,8 @@ description: "One row of a list with a leading lane, a body, and an action lane"
 import { Row } from "@nyte-ai/ui/row";
 ```
 
+A list or navigation row where the painted row is one target and actions sit beside it.
+
 ## Usage
 
 - The row inherits its typography.
@@ -174,8 +176,6 @@ Renders a `<div>`, or a `<button>` with `variant="nav"`, and takes that element'
 | `render`                       | `ReactElement \| ((props: HTMLProps) => ReactElement)` |          |                                                        |
 | `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming)              |          |                                                        |
 
-`RowSize` and `RowVariant` are the exported types for `size` and `variant`.
-
 ### Row.Primary
 
 `type="button"` applies unless `render` replaces the element.
@@ -185,8 +185,6 @@ Renders a `<div>`, or a `<button>` with `variant="nav"`, and takes that element'
 | Prop        | Type                    | Default    | Description                                               |
 | ----------- | ----------------------- | ---------- | --------------------------------------------------------- |
 | `placement` | `"inline" \| "overlay"` | `"inline"` | Takes space in the row, or floats over its trailing edge. |
-
-`RowActionsPlacement` is the exported type for `placement`.
 
 ### Parts
 
@@ -210,7 +208,6 @@ Every part takes `render`, `className`, `style`, `xstyle`, and the props of the 
 | `--_row-padding-inline` | `row.paddingInlineMd` or `row.paddingInlineLg` | Inline padding and overlay action inset.                    |
 | `--_row-fill`           | `transparent`                                  | Background. Leave `interactive` off when owning its states. |
 | `--_row-meta-color`     | `role.contentSecondary`                        | Metadata color.                                             |
-| `--_row-leading-color`  | `role.contentSecondary`                        | Leading lane color.                                         |
 
 `revealActions` sets `--_row-actions-display` to `none` when hidden and `inline-flex` when
 visible, and `--_row-actions-opacity` to `0` or `1`. Both are visible without hover support.

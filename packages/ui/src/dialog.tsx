@@ -1,7 +1,7 @@
 /**
  * A centered modal over a scrim. `Popup` renders the portal, backdrop, and
- * panel as one unit, so every dialog paints the same surface and attaches the
- * overlay ref. The alert dialog reuses these parts under its own root.
+ * panel as one unit, so every dialog paints the same surface. The alert dialog
+ * reuses these parts under its own root.
  */
 import { Dialog } from "@base-ui/react/dialog";
 import { create, props } from "@stylexjs/stylex";
@@ -12,7 +12,6 @@ import { dialog, layer } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
 import { role, shadow, type } from "./vars.stylex.ts";
-import { useOverlayRef } from "./overlay.tsx";
 
 const styles = create({
   backdrop: {
@@ -59,33 +58,39 @@ const styles = create({
   footer: { display: "flex", justifyContent: "flex-end", gap: 8 },
 });
 
-export type DialogRootProps = Dialog.Root.Props;
-
-export type DialogTriggerProps = StyledProps<Dialog.Trigger.Props>;
-
-function DialogTrigger({ xstyle, className, style, ...rest }: DialogTriggerProps): ReactElement {
+function DialogTrigger({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<Dialog.Trigger.Props>): ReactElement {
   return <Dialog.Trigger {...rest} {...mergeStyleProps(props(xstyle), className, style)} />;
 }
 
-export type DialogCloseProps = StyledProps<Dialog.Close.Props>;
-
-function DialogClose({ xstyle, className, style, ...rest }: DialogCloseProps): ReactElement {
+function DialogClose({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<Dialog.Close.Props>): ReactElement {
   return <Dialog.Close {...rest} {...mergeStyleProps(props(xstyle), className, style)} />;
 }
 
-export type DialogPopupProps = StyledProps<Omit<Dialog.Popup.Props, "ref">> & {
+function DialogPopup({
+  tint,
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<Dialog.Popup.Props> & {
   /** Scopes the panel to a hue; the scrim stays neutral. */
   readonly tint?: Tint;
-};
-
-function DialogPopup({ tint, xstyle, className, style, ...rest }: DialogPopupProps): ReactElement {
-  const overlayRef = useOverlayRef();
-
+}): ReactElement {
   return (
     <Dialog.Portal>
-      <Dialog.Backdrop ref={overlayRef} {...props(styles.backdrop)} />
+      <Dialog.Backdrop data-slot="dialog-backdrop" {...props(styles.backdrop)} />
       <Dialog.Popup
-        ref={overlayRef}
+        data-slot="dialog-popup"
         {...rest}
         {...mergeStyleProps(
           props(
@@ -102,28 +107,32 @@ function DialogPopup({ tint, xstyle, className, style, ...rest }: DialogPopupPro
   );
 }
 
-export type DialogHeaderProps = StyledProps<ComponentProps<"div">>;
-
-function DialogHeader({ xstyle, className, style, ...rest }: DialogHeaderProps): ReactElement {
+function DialogHeader({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<ComponentProps<"div">>): ReactElement {
   return <div {...rest} {...mergeStyleProps(props(styles.header, xstyle), className, style)} />;
 }
 
-export type DialogTitleProps = StyledProps<Dialog.Title.Props>;
-
-function DialogTitle({ xstyle, className, style, ...rest }: DialogTitleProps): ReactElement {
+function DialogTitle({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<Dialog.Title.Props>): ReactElement {
   return (
     <Dialog.Title {...rest} {...mergeStyleProps(props(styles.title, xstyle), className, style)} />
   );
 }
-
-export type DialogDescriptionProps = StyledProps<Dialog.Description.Props>;
 
 function DialogDescription({
   xstyle,
   className,
   style,
   ...rest
-}: DialogDescriptionProps): ReactElement {
+}: StyledProps<Dialog.Description.Props>): ReactElement {
   return (
     <Dialog.Description
       {...rest}
@@ -132,9 +141,12 @@ function DialogDescription({
   );
 }
 
-export type DialogFooterProps = StyledProps<ComponentProps<"div">>;
-
-function DialogFooter({ xstyle, className, style, ...rest }: DialogFooterProps): ReactElement {
+function DialogFooter({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<ComponentProps<"div">>): ReactElement {
   return <div {...rest} {...mergeStyleProps(props(styles.footer, xstyle), className, style)} />;
 }
 

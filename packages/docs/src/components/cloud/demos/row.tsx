@@ -1,5 +1,5 @@
 "use client";
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -15,7 +15,7 @@ const styles = create({
     gap: 1,
     width: 300,
     padding: 4,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.sidebarMaterial,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
     color: role.contentSecondary,
@@ -25,7 +25,7 @@ const styles = create({
   },
   settings: {
     width: 360,
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     backgroundColor: role.bgElevated,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
     fontFamily: type.fontSans,

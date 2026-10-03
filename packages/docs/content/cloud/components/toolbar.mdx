@@ -7,11 +7,13 @@ description: "A row of controls under one tab stop"
 import { Toolbar } from "@nyte-ai/ui/toolbar";
 ```
 
+Groups related buttons, toggles, and popup triggers, such as the panel toggles above a view.
+
 ## Usage
 
 - `Toolbar.Button` renders a `Button`. Pass a `Button`, `Toggle`, or popup trigger to `render`.
-- A disabled item stays focusable when it has `disabledReason`, or with `render` unless you pass
-  `focusableWhenDisabled={false}`.
+- Arrow keys skip a disabled item. A `Button` with `disabledReason` stays reachable and shows the
+  reason as its title.
 
 ## Anatomy
 
@@ -51,6 +53,7 @@ import { Toolbar } from "@nyte-ai/ui/toolbar";
 ### With a tooltip
 
 ```tsx
+import { Button } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 
 <Toolbar.Root aria-label="Changes">
@@ -95,4 +98,5 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 - `Toolbar.Root` renders `role="toolbar"`. Label it with `aria-label` or `aria-labelledby`.
 - Arrow keys move focus between items. Focus wraps at the end unless you pass `loopFocus={false}`.
 - Orientation follows `orientation` and lands on `data-orientation` for every part.
-- A disabled item gets `data-disabled`, plus `data-focusable` while arrow keys still reach it.
+- A disabled item gets `data-disabled`. A disabled `Button` with `disabledReason` gets
+  `aria-disabled` in place of the native `disabled` attribute.

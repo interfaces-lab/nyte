@@ -1,4 +1,4 @@
-import { shape } from "./schema.stylex.ts";
+import { radius } from "./schema.stylex.ts";
 import { ToggleGroup as ToggleGroupPrimitive } from "@base-ui/react/toggle-group";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
@@ -13,15 +13,11 @@ const styles = create({
     alignItems: "center",
     gap: 1,
     padding: 2,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
   },
 });
-
-export type ToggleGroupProps<Value extends string = string> = StyledProps<
-  ToggleGroupPrimitive.Props<Value>
->;
 
 /** A track of `Toggle`s that share one pressed state. */
 export function ToggleGroup<Value extends string>({
@@ -29,7 +25,7 @@ export function ToggleGroup<Value extends string>({
   className,
   style,
   ...rest
-}: ToggleGroupProps<Value>): ReactElement {
+}: StyledProps<ToggleGroupPrimitive.Props<Value>>): ReactElement {
   return (
     <ToggleGroupPrimitive
       {...rest}

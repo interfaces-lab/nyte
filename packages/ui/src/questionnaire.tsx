@@ -6,22 +6,36 @@ import { srOnly } from "./a11y.stylex.ts";
 import { ChatButton } from "./chat-button.tsx";
 
 export type QuestionnaireProps = ComponentProps<typeof Questionnaire.Root>;
+
 export type QuestionnaireProgressProps = ComponentProps<typeof Questionnaire.Progress>;
+
 export type QuestionnaireItemProps = ComponentProps<typeof Questionnaire.Item>;
+
 export type QuestionnaireTitleProps = ComponentProps<typeof Questionnaire.Title>;
+
 export type QuestionnaireDescriptionProps = ComponentProps<typeof Questionnaire.Description>;
+
 export type QuestionnaireChoicesProps = ComponentProps<typeof Questionnaire.Choices>;
+
 export type QuestionnaireChoiceProps = ComponentProps<typeof Questionnaire.Choice>;
+
 export type QuestionnaireChoiceDescriptionProps = ComponentProps<"span">;
+
 export type QuestionnaireInputProps = ComponentProps<typeof Questionnaire.Input>;
+
 export type QuestionnaireErrorProps = ComponentProps<typeof Questionnaire.Error>;
+
 export type QuestionnaireActionsProps = ComponentProps<"div">;
+
 export type QuestionnairePreviousProps = ComponentProps<typeof Questionnaire.Previous> &
   Pick<ComponentProps<typeof ChatButton>, "size" | "variant">;
+
 export type QuestionnaireSkipProps = ComponentProps<typeof Questionnaire.Skip> &
   Pick<ComponentProps<typeof ChatButton>, "size" | "variant">;
+
 export type QuestionnaireNextProps = ComponentProps<typeof Questionnaire.Next> &
   Pick<ComponentProps<typeof ChatButton>, "size" | "variant">;
+
 export type QuestionnaireSubmitProps = ComponentProps<typeof Questionnaire.Submit> &
   Pick<ComponentProps<typeof ChatButton>, "size" | "variant">;
 

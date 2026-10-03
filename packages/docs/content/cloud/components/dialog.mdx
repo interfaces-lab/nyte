@@ -108,9 +108,8 @@ const styles = create({
 | `Dialog.Footer`      | `<div>`                        | Right-aligns its buttons     |
 | `Dialog.Close`       | `<button>`                     | None                         |
 
-Except `Dialog.Root`, each part takes `xstyle`, `className`, and `style`. See
-[Theming](/cloud/foundations/theming). `Dialog.Popup` takes the Base UI popup props except `ref` and
-scrolls when its content is taller than the window.
+Except `Dialog.Root`, each part takes `xstyle`, `className`, and `style`. `className` and `style`
+take plain values, not functions of state. See [Theming](/cloud/foundations/theming).
 
 The part tables below come from Base UI, MIT, © Material-UI SAS.
 
@@ -123,6 +122,13 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
 <include>../../base-ui-reference/dialog/Trigger.md</include>
 
 ### Popup
+
+Renders the portal, scrim, and popup. It takes the Base UI popup props, including `ref`, and scrolls
+when its content is taller than the window.
+
+| Prop   | Type   | Default | Description                                         |
+| ------ | ------ | ------- | --------------------------------------------------- |
+| `tint` | `Tint` |         | Scopes the panel to a hue. The scrim stays neutral. |
 
 <include>../../base-ui-reference/dialog/Popup.md</include>
 

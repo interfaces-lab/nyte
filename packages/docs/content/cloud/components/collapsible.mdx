@@ -7,13 +7,16 @@ description: "A panel that a trigger opens and closes"
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 ```
 
+A trigger that shows and hides one panel. Use it for detail a reader opens on demand, such as tool
+output or earlier messages.
+
 ## Usage
 
 - `defaultOpen` leaves the panel uncontrolled. `open` with `onOpenChange` controls it.
 - Use `variant="plain"` when another styled part, such as `Row.Primary`, renders the trigger.
 - `Collapsible.Root` and `Collapsible.Panel` bring no look of their own. Lay them out with `xstyle`.
-- `Collapsible.Panel` defaults `hiddenUntilFound` to `true`, so the closed panel stays in the DOM.
-  Pass `hiddenUntilFound={false}` to unmount it.
+- `Collapsible.Panel` defaults `hiddenUntilFound` to `true`. The closed panel stays in the DOM, and
+  find-in-page can match its text and open it. Pass `hiddenUntilFound={false}` to unmount it.
 
 ## Anatomy
 
@@ -76,13 +79,6 @@ const [open, setOpen] = useState(false);
 </Collapsible.Root>
 ```
 
-### Hidden until found
-
-With
-[`hidden="until-found"`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/hidden),
-find-in-page can match a closed panel and open it. Unsupported browsers keep it hidden until the
-trigger opens it, and find-in-page skips it.
-
 ## Props
 
 Every part takes `xstyle`, and `className` and `style` as plain values, not functions of state.
@@ -93,8 +89,6 @@ See [Theming](/cloud/foundations/theming).
 | Prop      | Type                      | Default        | Description                           |
 | --------- | ------------------------- | -------------- | ------------------------------------- |
 | `variant` | `"disclosure" \| "plain"` | `"disclosure"` | Inline toggle look, or a bare button. |
-
-`CollapsibleTriggerVariant` is the exported type for `variant`.
 
 ### Chevron
 

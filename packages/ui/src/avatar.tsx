@@ -1,9 +1,7 @@
-import { avatar, shape } from "./schema.stylex.ts";
+import { avatar, radius } from "./schema.stylex.ts";
 import { Avatar as AvatarPrimitive } from "@base-ui/react/avatar";
 import { create, props } from "@stylexjs/stylex";
-import type { CSSProperties } from "react";
-
-import { mergeStyleProps, type XStyle } from "./style.ts";
+import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { surfaceTheme } from "./surface-theme.ts";
 import { role, type } from "./vars.stylex.ts";
 
@@ -50,8 +48,8 @@ const sizeStyles = create({
   lg: { width: avatar.lg, height: avatar.lg, fontSize: 14 },
 });
 
-const shapeStyles = create({
-  circle: { borderRadius: shape.pill },
+const cornerStyles = create({
+  circle: { borderRadius: radius.pill },
   rounded: { borderRadius: "42%" },
 });
 
@@ -71,30 +69,19 @@ const toneScopes = {
   green: surfaceTheme.green,
 } as const;
 
-export type AvatarSize = keyof typeof sizeStyles;
-
-export type AvatarShape = keyof typeof shapeStyles;
-
-export type AvatarTone = keyof typeof toneScopes;
-
-export interface AvatarProps extends Omit<AvatarPrimitive.Root.Props, "className" | "style"> {
-  className?: string;
-  shape?: AvatarShape;
-  size?: AvatarSize;
-  tone?: AvatarTone;
-  style?: CSSProperties;
-  xstyle?: XStyle;
-}
-
 export function Avatar({
   className,
-  shape = "circle",
+  corners = "circle",
   size = "md",
   tone = "neutral",
   style,
   xstyle,
-  ...componentProps
-}: AvatarProps) {
+  ...rest
+}: StyledProps<AvatarPrimitive.Root.Props> & {
+  readonly corners?: keyof typeof cornerStyles;
+  readonly size?: keyof typeof sizeStyles;
+  readonly tone?: keyof typeof toneScopes;
+}) {
   return (
     <AvatarPrimitive.Root
       data-slot="avatar"
@@ -105,54 +92,44 @@ export function Avatar({
           toneScopes[tone],
           styles.root,
           sizeStyles[size],
-          shapeStyles[shape],
+          cornerStyles[corners],
           toneFill.base,
           xstyle,
         ),
         className,
         style,
       )}
-      {...componentProps}
+      {...rest}
     />
   );
 }
 
-export interface AvatarImageProps extends Omit<AvatarPrimitive.Image.Props, "className" | "style"> {
-  className?: string;
-  style?: CSSProperties;
-  xstyle?: XStyle;
-}
-
-export function AvatarImage({ className, style, xstyle, ...componentProps2 }: AvatarImageProps) {
+export function AvatarImage({
+  className,
+  style,
+  xstyle,
+  ...rest
+}: StyledProps<AvatarPrimitive.Image.Props>) {
   return (
     <AvatarPrimitive.Image
       data-slot="avatar-image"
       {...mergeStyleProps(props(styles.image, xstyle), className, style)}
-      {...componentProps2}
+      {...rest}
     />
   );
-}
-
-export interface AvatarFallbackProps extends Omit<
-  AvatarPrimitive.Fallback.Props,
-  "className" | "style"
-> {
-  className?: string;
-  style?: CSSProperties;
-  xstyle?: XStyle;
 }
 
 export function AvatarFallback({
   className,
   style,
   xstyle,
-  ...componentProps3
-}: AvatarFallbackProps) {
+  ...rest
+}: StyledProps<AvatarPrimitive.Fallback.Props>) {
   return (
     <AvatarPrimitive.Fallback
       data-slot="avatar-fallback"
       {...mergeStyleProps(props(styles.fallback, xstyle), className, style)}
-      {...componentProps3}
+      {...rest}
     />
   );
 }

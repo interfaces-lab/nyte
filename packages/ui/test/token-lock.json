@@ -758,10 +758,11 @@
       "--nyte-settings-inventory-row-height",
       "--nyte-settings-page-title-line-height",
       "--nyte-settings-page-title-size",
-      "--nyte-settings-row-min-height",
       "--nyte-settings-row-padding",
+      "--nyte-settings-row-padding-inline",
       "--nyte-settings-section-gap",
-      "--nyte-settings-slider-row-min-height",
+      "--nyte-settings-section-title-line-height",
+      "--nyte-settings-section-title-size",
       "--nyte-sidebar-action-size",
       "--nyte-sidebar-ask-row-height",
       "--nyte-sidebar-gutter",
@@ -790,6 +791,7 @@
       "--nyte-workbench-header-padding-block",
       "--nyte-workbench-heading-height",
       "--nyte-workbench-icon-rail-width",
+      "--nyte-workbench-launcher-card-size",
       "--nyte-workbench-panel-width",
       "--nyte-workbench-rail-gap",
       "--nyte-workbench-rail-width",
@@ -994,6 +996,7 @@
       "radius",
       "width"
     ],
+    "ui/src/schema.stylex.ts radius": ["card", "control", "indicator", "pill", "square", "surface"],
     "ui/src/schema.stylex.ts row": [
       "gap",
       "heightLg",
@@ -1002,7 +1005,6 @@
       "paddingInlineMd",
       "radius"
     ],
-    "ui/src/schema.stylex.ts shape": ["card", "control", "indicator", "pill", "square", "surface"],
     "ui/src/schema.stylex.ts slider": ["thumb"],
     "ui/src/schema.stylex.ts switchControl": ["heightMd", "knobMd", "paddingMd", "widthMd"],
     "ui/src/schema.stylex.ts target": ["gap", "min"],
@@ -1032,10 +1034,11 @@
       "inventoryRowHeight",
       "pageTitleLineHeight",
       "pageTitleSize",
-      "rowMinHeight",
       "rowPadding",
+      "rowPaddingInline",
       "sectionGap",
-      "sliderRowMinHeight"
+      "sectionTitleLineHeight",
+      "sectionTitleSize"
     ],
     "app/src/theme/schema.stylex.ts shell": ["titlebarHeight", "trafficLightInset"],
     "app/src/theme/schema.stylex.ts sidebar": [
@@ -1068,6 +1071,7 @@
       "headerPaddingBlock",
       "headingHeight",
       "iconRailWidth",
+      "launcherCardSize",
       "panelWidth",
       "railGap",
       "railWidth",

@@ -9,9 +9,9 @@ export default defineConfig({
       {
         patterns: [
           {
-            group: ["@base-ui/**", "sonner"],
+            group: ["@base-ui/**"],
             message:
-              "Import the styled component from @nyte-ai/ui. Base UI and sonner stay inside packages/ui.",
+              "Import the styled component from @nyte-ai/ui. Base UI stays inside packages/ui.",
           },
         ],
       },

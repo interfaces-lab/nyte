@@ -4,16 +4,19 @@ description: "A notification stack for outcomes the user did not just watch happ
 ---
 
 ```ts title="Import"
-import { Toaster, toast, toastTint } from "@nyte-ai/ui/toast";
+import { Toaster, toast } from "@nyte-ai/ui/toast";
 ```
 
-`Toaster` renders the stack and `toast` opens a notification in it. Keep form errors in the form.
+`Toaster` renders the stack and `toast.add` opens a notification in it. Keep form errors in the form.
 
 ## Usage
 
 - Mount one `Toaster` near the app root.
-- Call `toast` anywhere, including outside React.
-- `toastTint("green")` returns options that tint one toast. Spread it to add other options.
+- Call `toast.add` anywhere, including outside React.
+- Set `type` to `"success"`, `"error"`, or `"warning"` for a status icon.
+- Adding with an existing `id` updates that toast and refreshes its timer.
+- String titles get a Copy button. A string description joins the copied text on a new line.
+- Action buttons use `actionProps`. Call `toast.close(id)` in the handler to close the notification.
 
 ## Examples
 
@@ -22,14 +25,23 @@ import { Toaster, toast, toastTint } from "@nyte-ai/ui/toast";
 </Preview>
 
 ```tsx
-<Button variant="outline" onClick={() => toast("Workspace saved")}>
+<Button variant="outline" onClick={() => toast.add({ title: "Workspace saved" })}>
   Default
 </Button>
 <Button
   variant="outline"
   onClick={() =>
-    toast.success("3 chats archived", {
-      action: { label: "Undo", onClick: () => toast("Chats restored") },
+    toast.add({
+      type: "success",
+      title: "3 chats archived",
+      id: "archive-demo",
+      actionProps: {
+        children: "Undo",
+        onClick: () => {
+          toast.close("archive-demo");
+          toast.add({ title: "Chats restored" });
+        },
+      },
     })
   }
 >
@@ -38,7 +50,9 @@ import { Toaster, toast, toastTint } from "@nyte-ai/ui/toast";
 <Button
   variant="outline"
   onClick={() =>
-    toast.error("Could not reach the server", {
+    toast.add({
+      type: "error",
+      title: "Could not reach the server",
       description: "The request timed out after 30 seconds.",
     })
   }
@@ -51,113 +65,96 @@ import { Toaster, toast, toastTint } from "@nyte-ai/ui/toast";
 ### A toast that stays
 
 ```ts
-toast.error("Couldn't open folder", {
+const id = toast.add({
+  type: "error",
+  title: "Couldn't open folder",
   id: "workspace-open",
-  duration: Infinity,
+  timeout: 0,
   description: reason,
 });
+
+toast.close(id);
 ```
 
-### An action, and undo
+### An action and undo
+
+`onClose` runs for every close, including the timer and `toast.close`. Mark the action as undone before closing it.
 
 ```ts
-toast.success("3 chats archived", {
+let undone = false;
+
+toast.add({
+  type: "success",
+  title: "3 chats archived",
   id: "archive",
-  action: { label: "Undo", onClick: () => restore() },
-  onAutoClose: () => commit(),
+  actionProps: {
+    children: "Undo",
+    onClick: () => {
+      undone = true;
+      restore();
+      toast.close("archive");
+    },
+  },
+  onClose: () => {
+    if (!undone) commit();
+  },
 });
 ```
 
 ### A pending operation
 
 ```ts
-toast.promise(save(), {
+await toast.promise(save(), {
   loading: "Saving",
   success: "Saved",
-  error: (err) => err.message,
+  error: (cause: unknown) => (cause instanceof Error ? cause.message : "Couldn't save"),
 });
 ```
+
+Each state accepts a string or an options object. `success` and `error` also accept a function returning either. The returned promise resolves with the operation's result or rejects with its error.
 
 ## Props
 
 ### Toaster
 
-| Prop                 | Type                                         | Default              | Description                                             |
-| -------------------- | -------------------------------------------- | -------------------- | ------------------------------------------------------- |
-| `position`           | `Position`                                   | `"bottom-right"`     | Stack corner.                                           |
-| `offset`             | `Offset`                                     | `16`                 | Viewport inset.                                         |
-| `mobileOffset`       | `Offset`                                     | `16`                 | Small-viewport inset.                                   |
-| `gap`                | `number`                                     | `8`                  |                                                         |
-| `expand`             | `boolean`                                    | `true`               | Keeps the stack expanded.                               |
-| `tint`               | `Tint`                                       |                      | Stack hue.                                              |
-| `containerAriaLabel` | `string`                                     | `"Notifications"`    |                                                         |
-| `theme`              | `"light" \| "dark" \| "system"`              | `"light"`            | List color scheme.                                      |
-| `visibleToasts`      | `number`                                     | `3`                  | Rendered toast limit.                                   |
-| `duration`           | `number`                                     | `4000`               | Default milliseconds.                                   |
-| `hotkey`             | `string[]`                                   | `["altKey", "KeyT"]` | Expands and focuses the stack.                          |
-| `swipeDirections`    | `("top" \| "right" \| "bottom" \| "left")[]` |                      | Allowed dismiss directions.                             |
-| `dir`                | `"rtl" \| "ltr" \| "auto"`                   | document direction   |                                                         |
-| `customAriaLabel`    | `string`                                     |                      |                                                         |
-| `id`                 | `string`                                     |                      | Matches a toast's `toasterId`.                          |
-| `xstyle`             | `XStyle`                                     |                      | List styles. See [Theming](/cloud/foundations/theming). |
-| `className`          | `string`                                     |                      | See [Theming](/cloud/foundations/theming).              |
-| `style`              | `React.CSSProperties`                        |                      | See [Theming](/cloud/foundations/theming).              |
+`Toaster` accepts Base UI's `Toast.Provider` props except `children`. The stack sits at the bottom-right and uses the current color tokens.
+
+| Prop           | Type           | Default | Description                                                        |
+| -------------- | -------------- | ------- | ------------------------------------------------------------------ |
+| `timeout`      | `number`       | `5000`  | Default auto-close milliseconds. `0` disables automatic dismissal. |
+| `limit`        | `number`       | `3`     | Visible toast limit. Older toasts are hidden rather than removed.  |
+| `toastManager` | `ToastManager` | `toast` | Manager whose notifications this stack renders.                    |
 
 ### toast
 
-| Call                            | Returns                        | Description                                              |
-| ------------------------------- | ------------------------------ | -------------------------------------------------------- |
-| `toast(message, data?)`         | `string \| number`             |                                                          |
-| `toast.message(message, data?)` | `string \| number`             | Same as `toast`.                                         |
-| `toast.success(message, data?)` | `string \| number`             |                                                          |
-| `toast.info(message, data?)`    | `string \| number`             |                                                          |
-| `toast.warning(message, data?)` | `string \| number`             |                                                          |
-| `toast.error(message, data?)`   | `string \| number`             |                                                          |
-| `toast.loading(message, data?)` | `string \| number`             |                                                          |
-| `toast.custom(jsx, data?)`      | `string \| number`             | `jsx` takes the id and returns your element.             |
-| `toast.promise(promise, data)`  | id with `unwrap()`             | Swaps through loading, success, and error.               |
-| `toast.dismiss(id?)`            | `string \| number`             | Closes one toast, or all of them with no argument.       |
-| `toast.getToasts()`             | `(ToastT \| ToastToDismiss)[]` | Open toasts.                                             |
-| `toast.getHistory()`            | `(ToastT \| ToastToDismiss)[]` | Open and dismissed toasts. Dismissed ones drop past 100. |
+| Call                                                  | Returns          | Description                                                       |
+| ----------------------------------------------------- | ---------------- | ----------------------------------------------------------------- |
+| `toast.add(options)`                                  | `string`         | Opens a toast, or updates an existing id and refreshes its timer. |
+| `toast.close(id?)`                                    | `void`           | Closes one toast, or all of them with no argument.                |
+| `toast.update(id, options)`                           | `void`           | Updates a toast. Also accepts a function of the current toast.    |
+| `toast.promise(promise, { loading, success, error })` | `Promise<Value>` | Updates one toast through loading, success, and error.            |
 
-`message` is a React node or a function returning one. `data` is `ExternalToast`.
+### Toast options
 
-### ExternalToast
+`ToastOptions<Data>` is exported for typing options passed to `toast.add`. `toast.update` accepts partial options without `id`.
 
-| Prop          | Type                                                        | Description                           |
-| ------------- | ----------------------------------------------------------- | ------------------------------------- |
-| `id`          | `number \| string`                                          | A repeated id updates the open toast. |
-| `description` | `React.ReactNode \| (() => React.ReactNode)`                | Second line.                          |
-| `duration`    | `number`                                                    | Auto-close milliseconds.              |
-| `icon`        | `React.ReactNode`                                           | Overrides the variant icon.           |
-| `action`      | `{ label, onClick, actionButtonStyle? } \| React.ReactNode` | Trailing button.                      |
-| `cancel`      | `{ label, onClick, actionButtonStyle? } \| React.ReactNode` | Dismiss button beside the action.     |
-| `dismissible` | `boolean`                                                   | Swipe dismissal. Defaults to `true`.  |
-| `closeButton` | `boolean`                                                   |                                       |
-| `onDismiss`   | `(toast: ToastT) => void`                                   | User-close callback.                  |
-| `onAutoClose` | `(toast: ToastT) => void`                                   | Timer callback.                       |
-| `position`    | `Position`                                                  |                                       |
-| `toasterId`   | `string`                                                    | Target `Toaster` id.                  |
-| `testId`      | `string`                                                    | Sets `data-testid`.                   |
-
-### Shapes
-
-Only `ToasterProps` and `ExternalToast` are exported.
-
-| Name             | Shape                                                                                             |
-| ---------------- | ------------------------------------------------------------------------------------------------- |
-| `Position`       | `"top-left" \| "top-right" \| "bottom-left" \| "bottom-right" \| "top-center" \| "bottom-center"` |
-| `Offset`         | `number \| string \| { top?, right?, bottom?, left? }`                                            |
-| `ToastT`         | The open toast, with its `id`, `title`, `type`, and the options it was given                      |
-| `ToastToDismiss` | `{ id, dismiss }`                                                                                 |
+| Option        | Type                                 | Description                                                                  |
+| ------------- | ------------------------------------ | ---------------------------------------------------------------------------- |
+| `title`       | `ReactNode`                          | Notification title.                                                          |
+| `type`        | `string`                             | `"success"`, `"error"`, and `"warning"` render status icons.                 |
+| `description` | `ReactNode`                          | Text below the title.                                                        |
+| `id`          | `string`                             | Generated when omitted. Reuse it to update the toast and refresh its timer.  |
+| `timeout`     | `number`                             | Auto-close milliseconds. Defaults to the provider's timeout. `0` stays open. |
+| `actionProps` | `ComponentPropsWithoutRef<"button">` | Action button props, including `children` and `onClick`.                     |
+| `onClose`     | `() => void`                         | Runs when the toast closes, whether by user, action handler, timer, or code. |
+| `onRemove`    | `() => void`                         | Runs after the closed toast's exit animation finishes.                       |
+| `priority`    | `"low" \| "high"`                    | Polite or urgent announcement. Defaults to `"low"`.                          |
+| `data`        | `Data`                               | Custom data associated with the toast.                                       |
 
 ## Accessibility
 
-- The toaster renders a region with `aria-live="polite"`. A new toast is announced without moving
-  focus.
-- The region's name is `containerAriaLabel` plus the hotkey. `customAriaLabel` replaces the whole
-  name.
-- Escape collapses the stack while focus is inside it.
-- Every close button is named "Dismiss notification".
-- A loading toast has no close button and no timer. Replace it or dismiss it by id.
-- A toast closes on a timer, so its action needs another path in the app.
+- The viewport is a region named "Notifications" with `aria-live="polite"`.
+- `priority: "high"` announces a toast urgently without moving focus.
+- F6 focuses the notification stack. Hovering or focusing it pauses automatic dismissal.
+- Every close button is named "Dismiss notification". Every Copy button is named "Copy notification".
+- Loading toasts have no timer but can still be closed.

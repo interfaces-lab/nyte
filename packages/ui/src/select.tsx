@@ -3,18 +3,22 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
 import { focus } from "./a11y.stylex.ts";
-import { button, layer, menu, shape, target } from "./schema.stylex.ts";
+import { button, layer, menu, radius, target } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
 import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
 import { Icon } from "./icon.tsx";
-import { useOverlayRef } from "./overlay.tsx";
 
 const COLLISION: NonNullable<SelectPrimitive.Positioner.Props["collisionAvoidance"]> = {
   side: "flip",
   align: "shift",
   fallbackAxisSide: "none",
 };
+
+const OVER_TRIGGER: NonNullable<SelectPrimitive.Positioner.Props["sideOffset"]> = ({
+  side,
+  anchor,
+}) => -(side === "top" || side === "bottom" ? anchor.height : anchor.width);
 
 const styles = create({
   trigger: {
@@ -79,7 +83,7 @@ const styles = create({
     overflowY: "auto",
     overscrollBehavior: "contain",
     borderStyle: "none",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     outline: "none",
     backgroundColor: role.popupMaterial,
     backdropFilter: appearance.popupMaterialFilter,
@@ -132,11 +136,7 @@ const styles = create({
     backgroundColor: {
       default: "transparent",
       "[data-highlighted]": role.bgHover,
-      "[data-selected]": role.bgInteractiveSecondaryTranslucent,
-      "[data-selected][data-highlighted]": role.bgInteractiveSecondaryTranslucent,
     },
-    // A selected row carries a hairline, so it reads apart from the hovered one.
-    boxShadow: { default: "none", "[data-selected]": `inset 0 0 0 1px ${role.borderPrimary}` },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
@@ -166,11 +166,6 @@ const triggerWidths = create({
 
 export const Select = SelectPrimitive.Root;
 
-export type SelectTriggerProps = StyledProps<SelectPrimitive.Trigger.Props> & {
-  /** `wide` lets the trigger fill its container instead of stopping at 180px. */
-  readonly width?: keyof typeof triggerWidths;
-};
-
 export function SelectTrigger({
   width = "standard",
   children,
@@ -178,7 +173,10 @@ export function SelectTrigger({
   className,
   style,
   ...rest
-}: SelectTriggerProps): ReactElement {
+}: StyledProps<SelectPrimitive.Trigger.Props> & {
+  /** `wide` lets the trigger fill its container instead of stopping at 180px. */
+  readonly width?: keyof typeof triggerWidths;
+}): ReactElement {
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
@@ -191,15 +189,18 @@ export function SelectTrigger({
     >
       {children}
       <SelectPrimitive.Icon {...props(styles.icon)}>
-        <Icon name="chevron-down" size={11} />
+        <Icon name="chevron-up-down" size={11} />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   );
 }
 
-export type SelectValueProps = StyledProps<SelectPrimitive.Value.Props>;
-
-export function SelectValue({ xstyle, className, style, ...rest }: SelectValueProps): ReactElement {
+export function SelectValue({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<SelectPrimitive.Value.Props>): ReactElement {
   return (
     <SelectPrimitive.Value
       data-slot="select-value"
@@ -209,19 +210,10 @@ export function SelectValue({ xstyle, className, style, ...rest }: SelectValuePr
   );
 }
 
-export type SelectContentProps = StyledProps<Omit<SelectPrimitive.Popup.Props, "ref">> &
-  Pick<
-    SelectPrimitive.Positioner.Props,
-    "side" | "align" | "sideOffset" | "alignOffset" | "alignItemWithTrigger" | "collisionAvoidance"
-  > & {
-    /** Scopes the popup to a hue. */
-    readonly tint?: Tint;
-  };
-
 export function SelectContent({
   side = "bottom",
   align = "end",
-  sideOffset = 4,
+  sideOffset = OVER_TRIGGER,
   alignOffset,
   alignItemWithTrigger = false,
   collisionAvoidance = COLLISION,
@@ -231,9 +223,14 @@ export function SelectContent({
   className,
   style,
   ...rest
-}: SelectContentProps): ReactElement {
-  const overlayRef = useOverlayRef();
-
+}: StyledProps<SelectPrimitive.Popup.Props> &
+  Pick<
+    SelectPrimitive.Positioner.Props,
+    "side" | "align" | "sideOffset" | "alignOffset" | "alignItemWithTrigger" | "collisionAvoidance"
+  > & {
+    /** Scopes the popup to a hue. */
+    readonly tint?: Tint;
+  }): ReactElement {
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Positioner
@@ -248,7 +245,6 @@ export function SelectContent({
         {...props(styles.positioner)}
       >
         <SelectPrimitive.Popup
-          ref={overlayRef}
           data-slot="select-content"
           {...mergeStyleProps(
             props(tint !== undefined && surfaceTheme[tint], styles.popup, xstyle),
@@ -264,15 +260,13 @@ export function SelectContent({
   );
 }
 
-export type SelectItemProps = StyledProps<SelectPrimitive.Item.Props>;
-
 export function SelectItem({
   children,
   xstyle,
   className,
   style,
   ...rest
-}: SelectItemProps): ReactElement {
+}: StyledProps<SelectPrimitive.Item.Props>): ReactElement {
   return (
     <SelectPrimitive.Item
       data-slot="select-item"

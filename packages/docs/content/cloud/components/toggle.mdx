@@ -12,6 +12,7 @@ Use it to switch one thing on and off without a form value.
 ## Usage
 
 - `iconOnly` requires `aria-label`, which also becomes the native `title`.
+- Without `iconOnly`, pass `children` as the label.
 
 ## Examples
 
@@ -30,21 +31,23 @@ const [pinned, setPinned] = useState(true);
 
 ## Props
 
-Takes every native `<button>` attribute except `onClick`, `aria-pressed`, and `defaultValue`.
+Takes every Base UI `Toggle` prop. `className` and `style` take plain values, not functions of
+state.
 
-| Prop                 | Type                                            | Default  | Description                                  |
-| -------------------- | ----------------------------------------------- | -------- | -------------------------------------------- |
-| `pressed`            | `boolean`                                       |          |                                              |
-| `defaultPressed`     | `boolean`                                       | `false`  |                                              |
-| `onPressedChange`    | `(pressed: boolean, eventDetails) => void`      |          |                                              |
-| `value`              | `string`                                        |          | Identifies the toggle inside a toggle group. |
-| `indicator`          | `"fill" \| "glyph"`                             | `"fill"` | `"glyph"` drops the pressed fill.            |
-| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"` | `"md"`   | See [Button](/cloud/components/button).      |
-| `iconOnly`           | `boolean`                                       | `false`  |                                              |
-| `icon`               | `IconName`                                      |          |                                              |
-| `round`              | `boolean`                                       | `false`  | Pill corners.                                |
-| `xstyle`             | `ButtonLayout`                                  |          | Placement and width only.                    |
-| `className`, `style` | see [Theming](/cloud/foundations/theming)       |          |                                              |
+| Prop                 | Type                                                           | Default     | Description                             |
+| -------------------- | -------------------------------------------------------------- | ----------- | --------------------------------------- |
+| `indicator`          | `"fill" \| "glyph"`                                            | `"fill"`    | `"glyph"` drops the pressed fill.       |
+| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                | `"md"`      | See [Button](/cloud/components/button). |
+| `iconOnly`           | `boolean`                                                      | `false`     |                                         |
+| `icon`               | `IconName`                                                     |             |                                         |
+| `round`              | `boolean`                                                      | `false`     | Pill corners.                           |
+| `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"` | `"neutral"` |                                         |
+| `xstyle`             | `ButtonLayout`                                                 |             | Placement and width only.               |
+| `className`, `style` | see [Theming](/cloud/foundations/theming)                      |             |                                         |
+
+The reference table below comes from Base UI, MIT, © Material-UI SAS.
+
+<include>../../base-ui-reference/toggle/Toggle.md</include>
 
 ## Accessibility
 

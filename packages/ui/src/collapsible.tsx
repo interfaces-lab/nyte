@@ -71,30 +71,12 @@ const styles = create({
   },
 });
 
-/**
- * `disclosure` is a quiet inline toggle. `plain` only resets the button, for a
- * trigger rendered as another styled part such as `Row.Primary`.
- */
-export type CollapsibleTriggerVariant = "disclosure" | "plain";
-
-export type CollapsibleRootProps = StyledProps<CollapsiblePrimitive.Root.Props>;
-
-export type CollapsibleTriggerProps = StyledProps<CollapsiblePrimitive.Trigger.Props> & {
-  readonly variant?: CollapsibleTriggerVariant;
-};
-
-export type CollapsiblePanelProps = StyledProps<CollapsiblePrimitive.Panel.Props>;
-
-export type CollapsibleChevronProps = StyledProps<ComponentProps<"span">> & {
-  readonly size?: number;
-};
-
 function CollapsibleRoot({
   xstyle,
   className,
   style,
   ...rest
-}: CollapsibleRootProps): ReactElement {
+}: StyledProps<CollapsiblePrimitive.Root.Props>): ReactElement {
   return (
     <CollapsiblePrimitive.Root {...rest} {...mergeStyleProps(props(xstyle), className, style)} />
   );
@@ -107,7 +89,9 @@ function CollapsibleTrigger({
   className,
   style,
   ...rest
-}: CollapsibleTriggerProps): ReactElement {
+}: StyledProps<CollapsiblePrimitive.Trigger.Props> & {
+  readonly variant?: "disclosure" | "plain";
+}): ReactElement {
   return (
     <CollapsiblePrimitive.Trigger
       {...rest}
@@ -126,8 +110,10 @@ function CollapsibleTrigger({
         ) {
           event.preventDefault();
           event.preventBaseUIHandler();
+
           return;
         }
+
         onClick?.(event);
       }}
       {...mergeStyleProps(
@@ -144,7 +130,7 @@ function CollapsiblePanel({
   className,
   style,
   ...rest
-}: CollapsiblePanelProps): ReactElement {
+}: StyledProps<CollapsiblePrimitive.Panel.Props>): ReactElement {
   return (
     <CollapsiblePrimitive.Panel
       hiddenUntilFound
@@ -161,7 +147,9 @@ function CollapsibleChevron({
   className,
   style,
   ...rest
-}: CollapsibleChevronProps): ReactElement {
+}: StyledProps<ComponentProps<"span">> & {
+  readonly size?: number;
+}): ReactElement {
   return (
     <span
       aria-hidden="true"

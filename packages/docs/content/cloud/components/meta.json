@@ -10,6 +10,7 @@
     "button",
     "checkbox",
     "collapsible",
+    "command",
     "context-menu",
     "dialog",
     "icon",

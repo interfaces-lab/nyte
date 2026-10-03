@@ -63,7 +63,7 @@ const [open, setOpen] = useState(false);
   open={open}
   pending={signOut.isPending}
   error={signOut.isError ? "Sign-out failed. Try again." : undefined}
-  returnFocusRef={signOutRef}
+  finalFocus={signOutRef}
   title="Sign Out"
   description="Other apps using this login are signed out too."
   confirmLabel="Sign Out"
@@ -113,19 +113,19 @@ const [open, setOpen] = useState(false);
 
 ### ConfirmDialog
 
-| Prop             | Type                                   | Default | Description                                                |
-| ---------------- | -------------------------------------- | ------- | ---------------------------------------------------------- |
-| `open`           | `boolean`                              |         |                                                            |
-| `title`          | `string`                               |         |                                                            |
-| `description`    | `React.ReactNode`                      |         | The consequence.                                           |
-| `confirmLabel`   | `string`                               |         |                                                            |
-| `pendingLabel`   | `string`                               |         | Status line shown while `pending`.                         |
-| `pending`        | `boolean`                              | `false` | Makes both actions busy and ignores requests to close.     |
-| `error`          | `string`                               |         | Shown under the description as an alert.                   |
-| `returnFocusRef` | `React.RefObject<HTMLElement \| null>` |         | Where focus lands on close.                                |
-| `onOpenChange`   | `(open: boolean) => void`              |         | Called with `false` on Cancel or Escape, unless `pending`. |
-| `onConfirm`      | `() => void`                           |         | Called by the danger button. Close the dialog yourself.    |
-| `tint`           | `Tint`                                 |         |                                                            |
+| Prop           | Type                                    | Default | Description                                                                      |
+| -------------- | --------------------------------------- | ------- | -------------------------------------------------------------------------------- |
+| `open`         | `boolean`                               |         |                                                                                  |
+| `title`        | `string`                                |         |                                                                                  |
+| `description`  | `React.ReactNode`                       |         | The consequence.                                                                 |
+| `confirmLabel` | `string`                                |         |                                                                                  |
+| `pendingLabel` | `string`                                |         | Status line shown while `pending`.                                               |
+| `pending`      | `boolean`                               | `false` | Makes both actions busy and ignores requests to close.                           |
+| `error`        | `string`                                |         | Shown under the description as an alert.                                         |
+| `finalFocus`   | As `AlertDialog.Popup`                  |         | Where focus lands on close, for a dialog with no trigger.                        |
+| `onOpenChange` | `(open: boolean, eventDetails) => void` |         | Called with `false` and the event details on Cancel or Escape, unless `pending`. |
+| `onConfirm`    | `() => void`                            |         | Called by the danger button. Close the dialog yourself.                          |
+| `tint`         | `Tint`                                  |         |                                                                                  |
 
 ### Parts
 
@@ -140,8 +140,8 @@ const [open, setOpen] = useState(false);
 | `AlertDialog.Footer`      | `<div>`                        | As `Dialog.Footer`      |
 | `AlertDialog.Close`       | `<button>`                     | None                    |
 
-Except `AlertDialog.Root`, each part takes `xstyle`, `className`, and `style`. See
-[Theming](/cloud/foundations/theming).
+Except `AlertDialog.Root`, each part takes `xstyle`, `className`, and `style`. `className` and `style`
+take plain values, not functions of state. See [Theming](/cloud/foundations/theming).
 
 The part tables below come from Base UI, MIT, © Material-UI SAS.
 

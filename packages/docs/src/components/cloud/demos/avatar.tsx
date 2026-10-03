@@ -12,10 +12,10 @@ export function AvatarDemo() {
       <Avatar size="md">
         <AvatarFallback>NY</AvatarFallback>
       </Avatar>
-      <Avatar size="sm" shape="rounded">
+      <Avatar size="sm" corners="rounded">
         <AvatarFallback>SM</AvatarFallback>
       </Avatar>
-      <Avatar size="xs" shape="rounded">
+      <Avatar size="xs" corners="rounded">
         <AvatarFallback>XS</AvatarFallback>
       </Avatar>
     </>

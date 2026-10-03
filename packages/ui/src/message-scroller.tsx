@@ -12,10 +12,15 @@ export {
 } from "@shadcn/react/message-scroller";
 
 export type MessageScrollerProviderProps = ComponentProps<typeof MessageScroller.Provider>;
+
 export type MessageScrollerProps = ComponentProps<typeof MessageScroller.Root>;
+
 export type MessageScrollerViewportProps = ComponentProps<typeof MessageScroller.Viewport>;
+
 export type MessageScrollerContentProps = ComponentProps<typeof MessageScroller.Content>;
+
 export type MessageScrollerItemProps = ComponentProps<typeof MessageScroller.Item>;
+
 export type MessageScrollerButtonProps = ComponentProps<typeof MessageScroller.Button> &
   Pick<ComponentProps<typeof ChatButton>, "variant" | "size">;
 

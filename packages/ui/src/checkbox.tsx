@@ -1,9 +1,9 @@
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
 import { create, props } from "@stylexjs/stylex";
-import { useId, type ReactElement } from "react";
+import { useId, type ComponentProps, type ReactElement } from "react";
 
 import { focus } from "./a11y.stylex.ts";
-import { checkbox, row, shape, target } from "./schema.stylex.ts";
+import { checkbox, row, radius, target } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { intent } from "./surface-theme.ts";
 import { appearance, role, type } from "./vars.stylex.ts";
@@ -77,19 +77,10 @@ const styles = create({
   dash: {
     width: 8,
     height: 2,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: "currentColor",
   },
 });
-
-/** Checkbox sizes: `md` is 16px beside 16px glyphs, `lg` 20px. */
-export type CheckboxSize = "md" | "lg";
-
-export type CheckboxProps = StyledProps<
-  Omit<CheckboxPrimitive.Root.Props, "children" | "render">
-> & {
-  readonly size?: CheckboxSize;
-};
 
 /**
  * A box that is ticked, empty, or mixed. `indeterminate` draws the dash, for a
@@ -102,7 +93,9 @@ export function Checkbox({
   className,
   style,
   ...rest
-}: CheckboxProps): ReactElement {
+}: StyledProps<Omit<CheckboxPrimitive.Root.Props, "children">> & {
+  readonly size?: "md" | "lg";
+}): ReactElement {
   return (
     <span {...props(styles.target, styles[size])}>
       <CheckboxPrimitive.Root
@@ -130,14 +123,6 @@ export function Checkbox({
   );
 }
 
-export type CheckboxFieldProps = Omit<
-  CheckboxProps,
-  "aria-label" | "aria-labelledby" | "nativeButton"
-> & {
-  readonly label: string;
-  readonly description?: string;
-};
-
 export function CheckboxField({
   label,
   description,
@@ -146,7 +131,10 @@ export function CheckboxField({
   className,
   style,
   ...rest
-}: CheckboxFieldProps): ReactElement {
+}: Omit<ComponentProps<typeof Checkbox>, "aria-label" | "aria-labelledby" | "nativeButton"> & {
+  readonly label: string;
+  readonly description?: string;
+}): ReactElement {
   const generatedId = useId();
   const controlId = id ?? generatedId;
   const labelId = `${controlId}-label`;

@@ -7,6 +7,9 @@ description: "Switches between related panels on the same page"
 import { Tabs } from "@nyte-ai/ui/tabs";
 ```
 
+A row of tabs with one panel visible at a time. Without panels, the list is a switcher whose
+`onValueChange` drives your own view.
+
 ## Usage
 
 - `variant` styles the list and its tabs. Nested roots set their own.
@@ -104,9 +107,9 @@ See [Theming](/cloud/foundations/theming).
 
 ### Root
 
-| Prop      | Type                                              | Default   | Description |
-| --------- | ------------------------------------------------- | --------- | ----------- |
-| `variant` | `"plain" \| "segmented" \| "underline" \| "pill"` | `"plain"` |             |
+| Prop      | Type                                              | Default   | Description                                                                                                                       |
+| --------- | ------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `variant` | `"plain" \| "segmented" \| "underline" \| "pill"` | `"plain"` | `segmented` fills its track, `underline` nests in another strip, `pill` filters a list, and `plain` switches a surface's content. |
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 

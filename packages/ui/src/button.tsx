@@ -1,15 +1,9 @@
+import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { create, props, type StyleXStyles } from "@stylexjs/stylex";
-import {
-  createContext,
-  use,
-  type CSSProperties,
-  type JSX,
-  type ReactElement,
-  type ReactNode,
-} from "react";
+import { createContext, use, type ComponentProps, type ReactElement, type ReactNode } from "react";
 
 import { focus } from "./a11y.stylex.ts";
-import { button, shape, target } from "./schema.stylex.ts";
+import { button, radius, target } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { intent } from "./surface-theme.ts";
 import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
@@ -72,7 +66,7 @@ const control = create({
     paddingInline: button.iconPaddingInline,
     "::before": { insetInline: "calc(-1 * var(--_btn-hit-inset))" },
   },
-  round: { borderRadius: shape.pill },
+  round: { borderRadius: radius.pill },
   joined: {
     "--_btn-hit-inset": "0px",
     height: `max(var(--_btn-height), ${target.min})`,
@@ -96,8 +90,7 @@ const control = create({
    * dim together in every variant. A joined button leaves the dimming to its
    * group, which fades as one surface.
    */
-  inactive: { backgroundImage: "none", cursor: "default" },
-  dimmed: { opacity: 0.5 },
+  dimmed: { opacity: { default: null, "[data-disabled]:not([aria-busy='true'])": 0.5 } },
 });
 
 const group = create({
@@ -107,10 +100,12 @@ const group = create({
     gap: 0,
     minWidth: 0,
     flexWrap: "wrap",
-    opacity: { default: 1, ":has([data-disabled])": 0.5 },
+    opacity: { default: 1, ":has([data-disabled]:not([aria-busy='true']))": 0.5 },
   },
 });
+
 const ButtonGroupContext = createContext(false);
+
 const buttonSizes = create({
   "2xs": {
     "--_btn-radius": button.radius2xs,
@@ -211,6 +206,35 @@ const buttonVariants = create({
       ":hover:not([aria-disabled='true']):not(:disabled)": "underline",
     },
   },
+  inline: {
+    "--_btn-hit-inset": "0px",
+    "--_btn-inline-hover": {
+      default: "transparent",
+      ":hover:not([aria-disabled='true']):not(:disabled)": role.bgInteractiveSecondaryTranslucent,
+    },
+    zIndex: 0,
+    alignItems: "baseline",
+    height: "auto",
+    minWidth: 0,
+    paddingInline: 0,
+    verticalAlign: "baseline",
+    backgroundImage: "none",
+    color: "inherit",
+    fontSize: "inherit",
+    fontWeight: "inherit",
+    lineHeight: "inherit",
+    letterSpacing: "inherit",
+    transitionDuration: motion.durationNormal,
+    "::before": {
+      zIndex: -1,
+      insetBlock: -1,
+      insetInline: -3,
+      borderRadius: radius.indicator,
+      backgroundColor: "var(--_btn-inline-hover)",
+      transitionProperty: "background-color",
+      transitionDuration: motion.durationNormal,
+    },
+  },
 });
 
 const contentStyles = create({
@@ -233,7 +257,9 @@ const contentStyles = create({
 });
 
 export type ButtonVariant = keyof typeof buttonVariants;
-export type ButtonTone = "neutral" | keyof typeof intent;
+
+type ButtonTone = "neutral" | keyof typeof intent;
+
 export type ButtonSize = keyof typeof buttonSizes;
 
 export type ButtonSizing = { readonly size?: ButtonSize } & (
@@ -272,34 +298,23 @@ export type ButtonLayout = StyleXStyles<{
   maxWidth?: number | string;
 }>;
 
-export type ButtonElementProps = Omit<
-  JSX.IntrinsicElements["button"],
-  "className" | "style" | "children" | "aria-label"
->;
-
 export interface ButtonAppearance {
   readonly round?: boolean;
   readonly icon?: IconName;
   readonly tone?: ButtonTone;
   readonly xstyle?: ButtonLayout;
-  readonly className?: string;
-  readonly style?: CSSProperties;
 }
 
-export type ButtonProps = ButtonElementProps &
+export type ButtonProps = Omit<
+  StyledProps<ButtonPrimitive.Props>,
+  "xstyle" | "children" | "aria-label"
+> &
   ButtonSizing &
   ButtonAppearance & {
     readonly variant?: ButtonVariant;
     readonly loading?: boolean;
     readonly disabledReason?: string;
   };
-
-export type ButtonLinkProps = Omit<
-  JSX.IntrinsicElements["a"],
-  "className" | "style" | "children" | "aria-label" | "href"
-> &
-  ButtonSizing &
-  ButtonAppearance & { readonly href: string; readonly variant?: ButtonVariant };
 
 const glyphSizes = {
   text: { "2xs": 12, xs: 12, sm: 14, md: 14, lg: 14, xl: 16 },
@@ -317,16 +332,15 @@ export function buttonStyle(
     iconOnly = false,
     round = false,
     joined = false,
-    disabled = false,
     tone = variant === "text" ? "primary" : "neutral",
     xstyle,
     className,
     style,
-  }: ButtonAppearance & {
-    readonly iconOnly?: boolean;
-    readonly joined?: boolean;
-    readonly disabled?: boolean;
-  },
+  }: ButtonAppearance &
+    Pick<StyledProps<ButtonPrimitive.Props>, "className" | "style"> & {
+      readonly iconOnly?: boolean;
+      readonly joined?: boolean;
+    },
   glyphPressed = false,
 ) {
   return mergeStyleProps(
@@ -343,8 +357,7 @@ export function buttonStyle(
       size === "2xs" ? focus.ringInset : focus.ring,
       xstyle,
       glyphPressed && contentStyles.glyphPressed,
-      disabled && control.inactive,
-      disabled && !joined && control.dimmed,
+      !joined && control.dimmed,
     ),
     className,
     style,
@@ -393,58 +406,27 @@ export function Button({
   className,
   style,
   children,
-  type = "button",
-  disabled,
+  disabled = false,
   disabledReason,
   loading = false,
-  onClick,
-  onKeyDown,
   ...rest
 }: ButtonProps): ReactElement {
   const joined = use(ButtonGroupContext);
   const showReason = disabled && disabledReason !== undefined;
-  const unavailable = loading || disabled;
 
   return (
-    <button
+    <ButtonPrimitive
       title={showReason ? disabledReason : tooltipTitle(iconOnly, rest["aria-label"])}
-      {...rest}
-      type={type}
-      disabled={disabled && !showReason && !loading}
-      aria-disabled={unavailable || undefined}
       aria-busy={loading || undefined}
-      data-disabled={disabled ? "" : undefined}
-      onClick={(event) => {
-        if (unavailable) {
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-        onClick?.(event);
-      }}
-      onKeyDown={(event) => {
-        if (unavailable && (event.key === "Enter" || event.key === " ")) {
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-        onKeyDown?.(event);
-      }}
-      {...buttonStyle(variant, size, {
-        iconOnly,
-        round,
-        joined,
-        disabled,
-        tone,
-        xstyle,
-        className,
-        style,
-      })}
+      focusableWhenDisabled={showReason || loading}
+      {...rest}
+      disabled={disabled || loading}
+      {...buttonStyle(variant, size, { iconOnly, round, joined, tone, xstyle, className, style })}
     >
       <ButtonContent icon={icon} size={size} iconOnly={iconOnly} loading={loading}>
         {children}
       </ButtonContent>
-    </button>
+    </ButtonPrimitive>
   );
 }
 
@@ -460,8 +442,14 @@ export function ButtonLink({
   style,
   children,
   ...rest
-}: ButtonLinkProps): ReactElement {
+}: Omit<StyledProps<ComponentProps<"a">>, "xstyle" | "children" | "aria-label" | "href"> &
+  ButtonSizing &
+  ButtonAppearance & {
+    readonly href: string;
+    readonly variant?: ButtonVariant;
+  }): ReactElement {
   const joined = use(ButtonGroupContext);
+
   return (
     <a
       title={tooltipTitle(iconOnly, rest["aria-label"])}
@@ -475,15 +463,13 @@ export function ButtonLink({
   );
 }
 
-export type ButtonGroupProps = StyledProps<JSX.IntrinsicElements["div"]>;
-
 export function ButtonGroup({
   xstyle,
   className,
   style,
   children,
   ...rest
-}: ButtonGroupProps): ReactElement {
+}: StyledProps<ComponentProps<"div">>): ReactElement {
   return (
     <div
       role="group"
@@ -496,17 +482,12 @@ export function ButtonGroup({
   );
 }
 
-export type SplitButtonMenuTriggerProps = Omit<
-  ButtonProps,
-  "iconOnly" | "children" | "aria-label"
-> & {
-  readonly "aria-label": string;
-};
-
 function SplitButtonMenuTrigger({
   icon = "chevron-down",
   ...rest
-}: SplitButtonMenuTriggerProps): ReactElement {
+}: Omit<ButtonProps, "iconOnly" | "children" | "aria-label"> & {
+  readonly "aria-label": string;
+}): ReactElement {
   return <Button {...rest} icon={icon} iconOnly />;
 }
 

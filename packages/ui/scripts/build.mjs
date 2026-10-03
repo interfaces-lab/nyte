@@ -27,6 +27,7 @@ const layerStylesheet = {
       const css = await readFile(collected, "utf8");
       await writeFile(join(outdir, "ui.css"), `@layer nyte-ui {\n${css}\n}\n`);
       await rm(collected);
+
       for (const entry of entryPoints) {
         if (
           entry.endsWith(".stylex.ts") ||

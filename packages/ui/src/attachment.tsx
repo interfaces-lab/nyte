@@ -29,27 +29,16 @@ const attachmentMediaVariants = cva("cn-attachment-media", {
   defaultVariants: { variant: "icon" },
 });
 
-export type AttachmentProps = ComponentProps<"div"> &
-  VariantProps<typeof attachmentVariants> & {
-    state?: "idle" | "uploading" | "processing" | "error" | "done";
-  };
-export type AttachmentMediaProps = ComponentProps<"div"> &
-  VariantProps<typeof attachmentMediaVariants>;
-export type AttachmentContentProps = ComponentProps<"div">;
-export type AttachmentTitleProps = ComponentProps<"span">;
-export type AttachmentDescriptionProps = ComponentProps<"span">;
-export type AttachmentActionsProps = ComponentProps<"div">;
-export type AttachmentActionProps = ChatButtonProps;
-export type AttachmentTriggerProps = useRender.ComponentProps<"button">;
-export type AttachmentGroupProps = ComponentProps<"div">;
-
 export function Attachment({
   className,
   state = "done",
   size = "default",
   orientation = "horizontal",
   ...props
-}: AttachmentProps) {
+}: ComponentProps<"div"> &
+  VariantProps<typeof attachmentVariants> & {
+    state?: "idle" | "uploading" | "processing" | "error" | "done";
+  }) {
   return (
     <div
       data-slot="attachment"
@@ -62,7 +51,11 @@ export function Attachment({
   );
 }
 
-export function AttachmentMedia({ className, variant = "icon", ...props }: AttachmentMediaProps) {
+export function AttachmentMedia({
+  className,
+  variant = "icon",
+  ...props
+}: ComponentProps<"div"> & VariantProps<typeof attachmentMediaVariants>) {
   return (
     <div
       data-slot="attachment-media"
@@ -73,7 +66,7 @@ export function AttachmentMedia({ className, variant = "icon", ...props }: Attac
   );
 }
 
-export function AttachmentContent({ className, ...props }: AttachmentContentProps) {
+export function AttachmentContent({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       data-slot="attachment-content"
@@ -83,7 +76,7 @@ export function AttachmentContent({ className, ...props }: AttachmentContentProp
   );
 }
 
-export function AttachmentTitle({ className, ...props }: AttachmentTitleProps) {
+export function AttachmentTitle({ className, ...props }: ComponentProps<"span">) {
   return (
     <span
       data-slot="attachment-title"
@@ -93,7 +86,7 @@ export function AttachmentTitle({ className, ...props }: AttachmentTitleProps) {
   );
 }
 
-export function AttachmentDescription({ className, ...props }: AttachmentDescriptionProps) {
+export function AttachmentDescription({ className, ...props }: ComponentProps<"span">) {
   return (
     <span
       data-slot="attachment-description"
@@ -103,7 +96,7 @@ export function AttachmentDescription({ className, ...props }: AttachmentDescrip
   );
 }
 
-export function AttachmentActions({ className, ...props }: AttachmentActionsProps) {
+export function AttachmentActions({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       data-slot="attachment-actions"
@@ -118,21 +111,26 @@ export function AttachmentAction({
   variant,
   size = "icon-xs",
   ...props
-}: AttachmentActionProps) {
+}: ChatButtonProps) {
   return (
     <ChatButton
       data-slot="attachment-action"
       variant={variant ?? "ghost"}
       size={size}
       className={(state) =>
-        cn("cn-attachment-action", typeof className === "function" ? className(state) : className)
+        cn("cn-attachment-action", className instanceof Function ? className(state) : className)
       }
       {...props}
     />
   );
 }
 
-export function AttachmentTrigger({ className, render, type, ...props }: AttachmentTriggerProps) {
+export function AttachmentTrigger({
+  className,
+  render,
+  type,
+  ...props
+}: useRender.ComponentProps<"button">) {
   return useRender({
     defaultTagName: "button",
     props: mergeProps<"button">(
@@ -147,7 +145,7 @@ export function AttachmentTrigger({ className, render, type, ...props }: Attachm
   });
 }
 
-export function AttachmentGroup({ className, ...props }: AttachmentGroupProps) {
+export function AttachmentGroup({ className, ...props }: ComponentProps<"div">) {
   return (
     <div data-slot="attachment-group" className={cn("cn-attachment-group", className)} {...props} />
   );

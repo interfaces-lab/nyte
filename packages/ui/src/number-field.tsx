@@ -1,4 +1,4 @@
-import { shape, target } from "./schema.stylex.ts";
+import { radius, target } from "./schema.stylex.ts";
 import { NumberField as NumberFieldPrimitive } from "@base-ui/react/number-field";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
@@ -14,7 +14,7 @@ const styles = create({
     width: "max-content",
     minHeight: `calc(${target.min} + 2px)`,
     overflow: "hidden",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderPrimaryTranslucent,
@@ -33,11 +33,11 @@ const styles = create({
     padding: 0,
     borderStyle: "none",
     outlineStyle: "none",
-    backgroundColor: { default: "transparent", ":hover:not(:disabled)": role.bgHover },
-    color: { default: role.contentInteractiveSecondary, ":disabled": role.contentDisabled },
+    backgroundColor: { default: "transparent", ":hover:not([data-disabled])": role.bgHover },
+    color: { default: role.contentInteractiveSecondary, "[data-disabled]": role.contentDisabled },
     fontSize: type.fontLg,
     lineHeight: type.leadingBase,
-    cursor: { default: appearance.cursorInteractive, ":disabled": "default" },
+    cursor: { default: appearance.cursorInteractive, "[data-disabled]": "default" },
   },
   value: {
     width: "100%",
@@ -62,15 +62,13 @@ const styles = create({
 
 export const NumberField = NumberFieldPrimitive.Root;
 
-export type NumberFieldGroupProps = StyledProps<NumberFieldPrimitive.Group.Props>;
-
 /** A compact stepper: the decrement button, the value, and the increment button. */
 export function NumberFieldGroup({
   xstyle,
   className,
   style,
   ...rest
-}: NumberFieldGroupProps): ReactElement {
+}: StyledProps<NumberFieldPrimitive.Group.Props>): ReactElement {
   return (
     <NumberFieldPrimitive.Group
       data-slot="number-field-group"
@@ -80,15 +78,13 @@ export function NumberFieldGroup({
   );
 }
 
-export type NumberFieldDecrementProps = StyledProps<NumberFieldPrimitive.Decrement.Props>;
-
 export function NumberFieldDecrement({
   children = "−",
   xstyle,
   className,
   style,
   ...rest
-}: NumberFieldDecrementProps): ReactElement {
+}: StyledProps<NumberFieldPrimitive.Decrement.Props>): ReactElement {
   return (
     <NumberFieldPrimitive.Decrement
       data-slot="number-field-decrement"
@@ -100,14 +96,12 @@ export function NumberFieldDecrement({
   );
 }
 
-export type NumberFieldInputProps = StyledProps<NumberFieldPrimitive.Input.Props>;
-
 export function NumberFieldInput({
   xstyle,
   className,
   style,
   ...rest
-}: NumberFieldInputProps): ReactElement {
+}: StyledProps<NumberFieldPrimitive.Input.Props>): ReactElement {
   return (
     <NumberFieldPrimitive.Input
       data-slot="number-field-input"
@@ -117,15 +111,13 @@ export function NumberFieldInput({
   );
 }
 
-export type NumberFieldIncrementProps = StyledProps<NumberFieldPrimitive.Increment.Props>;
-
 export function NumberFieldIncrement({
   children = "+",
   xstyle,
   className,
   style,
   ...rest
-}: NumberFieldIncrementProps): ReactElement {
+}: StyledProps<NumberFieldPrimitive.Increment.Props>): ReactElement {
   return (
     <NumberFieldPrimitive.Increment
       data-slot="number-field-increment"

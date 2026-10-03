@@ -92,6 +92,7 @@ export function Spinner({ className, style, xstyle }: SpinnerProps = {}): ReactE
       aria-hidden="true"
       viewBox={`0 0 ${CELLS * PITCH} ${CELLS * PITCH}`}
       fill="currentColor"
+      // oxlint-disable-next-line anti-slop/no-shape-in-symbol-names -- React's name for the SVG shape-rendering attribute
       shapeRendering="crispEdges"
       {...mergeStyleProps(props(styles.root, xstyle), className, style)}
     >

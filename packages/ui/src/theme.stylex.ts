@@ -610,14 +610,23 @@ export const tint = defineVars({
 });
 
 export const gray = createTheme(theme, ramp("gray"));
+
 export const brown = createTheme(theme, ramp("brown"));
+
 export const orange = createTheme(theme, ramp("orange"));
+
 export const yellow = createTheme(theme, ramp("yellow"));
+
 export const green = createTheme(theme, ramp("green"));
+
 export const blue = createTheme(theme, ramp("blue"));
+
 export const purple = createTheme(theme, ramp("purple"));
+
 export const pink = createTheme(theme, ramp("pink"));
+
 export const red = createTheme(theme, ramp("red"));
+
 export const teal = createTheme(theme, ramp("teal"));
 
 /**
