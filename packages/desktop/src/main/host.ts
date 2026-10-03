@@ -120,6 +120,7 @@ import type { ConnectRuntime, ConnectShare } from "./connect-runtime.ts";
 import { ServerSettingsStore } from "./server-settings.ts";
 import type { ServerSettings } from "./server-settings.ts";
 import { serverCatalog, serverConnectionProblem } from "@nyte-ai/app/server-connection.ts";
+import { machineName } from "./machine-name.ts";
 import { SessionDirectory } from "./session-directory.ts";
 import { createBrowserAccessStore, readLastWorkspace, rememberWorkspace } from "./workspaces.ts";
 
@@ -1146,6 +1147,7 @@ export class DesktopHost {
     return {
       workspace: open?.kind === "project" ? open.workspace : undefined,
       platform: process.platform,
+      machineName: machineName(),
     };
   }
 

@@ -27,13 +27,10 @@ const styles = create({
   close: { position: "absolute", insetBlockStart: 8, insetInlineEnd: 8 },
 });
 
+/** The account's sign-in address and nothing more: no name, username, or photo. */
 function labelOf(user: User): string {
   return (
-    user.primaryEmailAddress?.emailAddress ??
-    user.primaryPhoneNumber?.phoneNumber ??
-    user.username ??
-    user.fullName ??
-    user.id
+    user.primaryEmailAddress?.emailAddress ?? user.primaryPhoneNumber?.phoneNumber ?? "Nyte account"
   );
 }
 

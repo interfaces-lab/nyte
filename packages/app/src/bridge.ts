@@ -402,6 +402,8 @@ export interface HostState {
   /** Absent selects the id-only Home target, not the operating-system home folder. */
   readonly workspace: WorkspaceInfo | undefined;
   readonly platform: NodeJS.Platform;
+  /** This computer's name. The web app's host has none to give. */
+  readonly machineName?: string;
 }
 
 /** CSS family names discovered by the native host; font-file paths never cross IPC. */

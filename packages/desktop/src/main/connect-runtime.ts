@@ -23,7 +23,6 @@
  * heartbeat and the relay's proof included, signs with the machine key.
  */
 import { timingSafeEqual } from "node:crypto";
-import { hostname } from "node:os";
 import { join } from "node:path";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -37,11 +36,11 @@ import {
   HEARTBEAT_INTERVAL_SECONDS,
   LEASE_LIFETIME_SECONDS,
   LeaseClaims,
-  NAME_LIMIT,
   PROOF_LIFETIME_SECONDS,
   TOKEN_TYPES,
 } from "@nyte-ai/connect";
 import type { BrokerKeys, PublicJwk, ReceiptClaims } from "@nyte-ai/connect";
+import { machineName } from "./machine-name.ts";
 import {
   PrivateJwk,
   brokerKey,
@@ -217,15 +216,6 @@ function refusedCode(cause: unknown): string | undefined {
   return cause instanceof BrokerError && cause.failure.kind === "refused"
     ? cause.failure.code
     : undefined;
-}
-
-function machineName(): string {
-  const name = hostname()
-    .replace(/\.local$/u, "")
-    .trim()
-    .slice(0, NAME_LIMIT);
-
-  return name === "" ? "Nyte desktop" : name;
 }
 
 /** Resolve when `promise` does or `ms` passes, whichever is first. */
