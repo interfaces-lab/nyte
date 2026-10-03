@@ -5,6 +5,19 @@ calls `assemble-release.sh`. The assembly step only copies an existing executabl
 copies `packages/cli/docs`, writes `VERSION`, and creates the tarball and SHA-256
 file. CLI and TUI package versions must match. It never downloads or publishes.
 
+## Release versions
+
+The release workflow requires CLI, TUI, and desktop versions to match the release tag and
+installs dependencies from the frozen lockfile. TUI and desktop bundle their core and built-in
+plugins from that checkout; they do not load a separately upgraded core at runtime.
+
+Pin the app release, not individual internal workspace packages. A plugin loaded from a user
+or project directory uses the running host's API. Update that plugin's source with the host
+when the plugin API changes; the unreleased API has no compatibility layer. An older app
+retains its bundled API, but cannot be assumed to run plugins written for a newer release.
+
+## Archive contents
+
 To inspect assembly with a harmless fixture, without compiling:
 
 ```sh

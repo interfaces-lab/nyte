@@ -20,6 +20,8 @@ allowBuilds:
   "@central-icons-react/round-outlined-radius-2-stroke-1.5": true
   "@google/genai": false
   "@swc/core": true
+  browser-tabs-lock: false
+  core-js: false
   electron-winstaller: true
   esbuild: true
   protobufjs: false
@@ -66,3 +68,5 @@ minimumReleaseAgeExclude:
   - miniflare@5.20260910.0-alpha
   - workerd@1.20260910.1
   - wrangler@4.131.0
+patchedDependencies:
+  "@use-voltra/ios-client@2.3.2": patches/@use-voltra__ios-client@2.3.2.patch

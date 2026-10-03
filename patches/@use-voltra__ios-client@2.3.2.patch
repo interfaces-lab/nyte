@@ -1,0 +1,183 @@
+diff --git a/expo-plugin/build/cjs/ios-widget/dynamic-live-activity/swift.js b/expo-plugin/build/cjs/ios-widget/dynamic-live-activity/swift.js
+index 693de9329a78760750b8b111a6eb5133b6ccedc6..ece96d780de9f6e537feaa67b9187cb4e3645f18 100644
+--- a/expo-plugin/build/cjs/ios-widget/dynamic-live-activity/swift.js
++++ b/expo-plugin/build/cjs/ios-widget/dynamic-live-activity/swift.js
+@@ -28,7 +28,11 @@ function generateDynamicLiveActivityTypesSwift(liveActivities) {
+     import ActivityKit
+     import Foundation
+ 
++    #if canImport(VoltraWidgetRuntime)
++    import VoltraWidgetRuntime
++    #else
+     import VoltraRuntime
++    #endif
+ 
+     @objc(VoltraGeneratedDynamicLiveActivityRegistration)
+     public final class VoltraGeneratedDynamicLiveActivityRegistration: NSObject {
+@@ -92,7 +96,7 @@ function generateDynamicLiveActivitiesSwift(liveActivities) {
+     import ActivityKit
+     import SwiftUI
+     import WidgetKit
+-    import VoltraRuntime
++    import VoltraWidgetRuntime
+ 
+   `;
+     return [header.trim(), configurations.trim()].filter(Boolean).join('\n\n');
+diff --git a/expo-plugin/build/cjs/ios-widget/files/swift.js b/expo-plugin/build/cjs/ios-widget/files/swift.js
+index 4113eb5721679376c8a70ce63ae828187f447391..fae23144624101d872305c79d99a397ec0a8023a 100644
+--- a/expo-plugin/build/cjs/ios-widget/files/swift.js
++++ b/expo-plugin/build/cjs/ios-widget/files/swift.js
+@@ -463,7 +463,7 @@ function generateWidgetBundleSwift(widgets, liveActivities = []) {
+ 
+     ${foundationImport}${appIntentsImport}import SwiftUI
+     import WidgetKit
+-    import VoltraRuntime
++    import VoltraWidgetRuntime
+ 
+     @main
+     struct VoltraWidgetBundle: WidgetBundle {
+@@ -496,7 +496,7 @@ function generateDefaultWidgetBundleSwift() {
+ 
+     import SwiftUI
+     import WidgetKit
+-    import VoltraRuntime  // Import Voltra widgets
++    import VoltraWidgetRuntime  // Import Voltra widgets
+ 
+     @main
+     struct VoltraWidgetBundle: WidgetBundle {
+diff --git a/expo-plugin/build/esm/ios-widget/dynamic-live-activity/swift.js b/expo-plugin/build/esm/ios-widget/dynamic-live-activity/swift.js
+index 2ad858dda07bf3dcc2af6cfe623bef1e8b43540b..22b62adb55198132ce5c16beaee13bc7b829ddd3 100644
+--- a/expo-plugin/build/esm/ios-widget/dynamic-live-activity/swift.js
++++ b/expo-plugin/build/esm/ios-widget/dynamic-live-activity/swift.js
+@@ -20,7 +20,11 @@ export function generateDynamicLiveActivityTypesSwift(liveActivities) {
+     import ActivityKit
+     import Foundation
+ 
++    #if canImport(VoltraWidgetRuntime)
++    import VoltraWidgetRuntime
++    #else
+     import VoltraRuntime
++    #endif
+ 
+     @objc(VoltraGeneratedDynamicLiveActivityRegistration)
+     public final class VoltraGeneratedDynamicLiveActivityRegistration: NSObject {
+@@ -84,7 +88,7 @@ export function generateDynamicLiveActivitiesSwift(liveActivities) {
+     import ActivityKit
+     import SwiftUI
+     import WidgetKit
+-    import VoltraRuntime
++    import VoltraWidgetRuntime
+ 
+   `;
+     return [header.trim(), configurations.trim()].filter(Boolean).join('\n\n');
+diff --git a/expo-plugin/build/esm/ios-widget/files/swift.js b/expo-plugin/build/esm/ios-widget/files/swift.js
+index 7c2d1e225be2be6c4b1fb87253b6af95f9a3f563..4b13d1c8d9f28adc200dfc65f49c106cbe12905a 100644
+--- a/expo-plugin/build/esm/ios-widget/files/swift.js
++++ b/expo-plugin/build/esm/ios-widget/files/swift.js
+@@ -423,7 +423,7 @@ function generateWidgetBundleSwift(widgets, liveActivities = []) {
+ 
+     ${foundationImport}${appIntentsImport}import SwiftUI
+     import WidgetKit
+-    import VoltraRuntime
++    import VoltraWidgetRuntime
+ 
+     @main
+     struct VoltraWidgetBundle: WidgetBundle {
+@@ -456,7 +456,7 @@ function generateDefaultWidgetBundleSwift() {
+ 
+     import SwiftUI
+     import WidgetKit
+-    import VoltraRuntime  // Import Voltra widgets
++    import VoltraWidgetRuntime  // Import Voltra widgets
+ 
+     @main
+     struct VoltraWidgetBundle: WidgetBundle {
+diff --git a/expo-plugin/src/ios-widget/dynamic-live-activity/swift.ts b/expo-plugin/src/ios-widget/dynamic-live-activity/swift.ts
+index 3beeffea912fb8ea3ea42679c3883aade7848c07..57ef2e73e77ce9be9d68a9786fc612853a946bc6 100644
+--- a/expo-plugin/src/ios-widget/dynamic-live-activity/swift.ts
++++ b/expo-plugin/src/ios-widget/dynamic-live-activity/swift.ts
+@@ -26,7 +26,11 @@ export function generateDynamicLiveActivityTypesSwift(liveActivities: IOSDynamic
+     import ActivityKit
+     import Foundation
+ 
++    #if canImport(VoltraWidgetRuntime)
++    import VoltraWidgetRuntime
++    #else
+     import VoltraRuntime
++    #endif
+ 
+     @objc(VoltraGeneratedDynamicLiveActivityRegistration)
+     public final class VoltraGeneratedDynamicLiveActivityRegistration: NSObject {
+@@ -97,7 +101,7 @@ export function generateDynamicLiveActivitiesSwift(liveActivities: IOSDynamicLiv
+     import ActivityKit
+     import SwiftUI
+     import WidgetKit
+-    import VoltraRuntime
++    import VoltraWidgetRuntime
+ 
+   `
+   return [header.trim(), configurations.trim()].filter(Boolean).join('\n\n')
+diff --git a/expo-plugin/src/ios-widget/files/swift.ts b/expo-plugin/src/ios-widget/files/swift.ts
+index 3ebf4ba92270fa593700eca88911566742011a9f..c176db46ea530ea20b4f9dbe88d7a1634c99a4d4 100644
+--- a/expo-plugin/src/ios-widget/files/swift.ts
++++ b/expo-plugin/src/ios-widget/files/swift.ts
+@@ -518,7 +518,7 @@ function generateWidgetBundleSwift(
+ 
+     ${foundationImport}${appIntentsImport}import SwiftUI
+     import WidgetKit
+-    import VoltraRuntime
++    import VoltraWidgetRuntime
+ 
+     @main
+     struct VoltraWidgetBundle: WidgetBundle {
+@@ -552,7 +552,7 @@ function generateDefaultWidgetBundleSwift(): string {
+ 
+     import SwiftUI
+     import WidgetKit
+-    import VoltraRuntime  // Import Voltra widgets
++    import VoltraWidgetRuntime  // Import Voltra widgets
+ 
+     @main
+     struct VoltraWidgetBundle: WidgetBundle {
+diff --git a/ios/VoltraWidget.podspec b/ios/VoltraWidget.podspec
+index fd95f689cf4cc14271fde89e537949d2912c6e3a..f51ba7db2b2b6b3c8afd88a85145bbe94dd16db9 100644
+--- a/ios/VoltraWidget.podspec
++++ b/ios/VoltraWidget.podspec
+@@ -14,7 +14,7 @@ Pod::Spec.new do |s|
+     :ios => '16.4',
+   }
+   s.swift_version  = '5.9'
+-  s.module_name    = 'VoltraRuntime'
++  s.module_name    = 'VoltraWidgetRuntime'
+   s.source         = { git: 'https://github.com/callstackincubator/voltra' }
+   s.static_framework = true
+ 
+diff --git a/ios/app/NativeVoltra.mm b/ios/app/NativeVoltra.mm
+index 8a548d4fa4bf963608f395f3e32a8fb9c8425b7a..d1a73bab94e4e0e99f955efa10e99c3bd261f7dc 100644
+--- a/ios/app/NativeVoltra.mm
++++ b/ios/app/NativeVoltra.mm
+@@ -1,8 +1,8 @@
+ #import "NativeVoltra.h"
+ #import <UIKit/UIKit.h>
+ 
+-#if __has_include("Voltra/VoltraRuntime-Swift.h")
+-#import "Voltra/VoltraRuntime-Swift.h"
++#if __has_include("VoltraRuntime/VoltraRuntime-Swift.h")
++#import "VoltraRuntime/VoltraRuntime-Swift.h"
+ #else
+ #import "VoltraRuntime-Swift.h"
+ #endif
+diff --git a/ios/app/VoltraViewComponentView.mm b/ios/app/VoltraViewComponentView.mm
+index 1204305cb6dbea3d8d27eb178ef6537955785643..50d60ea9ed99847cbe4079aa283b1fbf59120034 100644
+--- a/ios/app/VoltraViewComponentView.mm
++++ b/ios/app/VoltraViewComponentView.mm
+@@ -1,7 +1,7 @@
+ #import "VoltraViewComponentView.h"
+ 
+-#if __has_include("Voltra/VoltraRuntime-Swift.h")
+-#import "Voltra/VoltraRuntime-Swift.h"
++#if __has_include("VoltraRuntime/VoltraRuntime-Swift.h")
++#import "VoltraRuntime/VoltraRuntime-Swift.h"
+ #else
+ #import "VoltraRuntime-Swift.h"
+ #endif

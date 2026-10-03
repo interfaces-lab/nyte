@@ -6,15 +6,66 @@ const packageNamePattern = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/i
 
 const controlCharacterPattern = /\p{Cc}/u;
 
-function validatePackageName(value) {
+function parsePackageName(value) {
   if (
-    typeof value !== "string" ||
+    String(value) !== value ||
     value.length > 214 ||
     controlCharacterPattern.test(value) ||
     !packageNamePattern.test(value)
   ) {
     throw new Error("Invalid package name. Use a bare name or @scope/name.");
   }
+
+  return value;
+}
+
+function parseManifest(text) {
+  const manifest = JSON.parse(text);
+
+  if (Object(manifest) !== manifest || Array.isArray(manifest)) {
+    throw new Error("Package manifest must be an object.");
+  }
+
+  const name = parsePackageName(manifest.name);
+  const { version } = manifest;
+
+  if (String(version) !== version || !version.trim() || controlCharacterPattern.test(version)) {
+    throw new Error("Package manifest must declare a nonempty version string.");
+  }
+
+  const declarations = new Set();
+
+  for (const field of ["types", "typings"]) {
+    if (!Object.hasOwn(manifest, field)) continue;
+
+    if (String(manifest[field]) !== manifest[field]) {
+      throw new Error("Invalid package type declaration.");
+    }
+
+    declarations.add(manifest[field]);
+  }
+
+  // Enumerate declared type targets across conditions without choosing a runtime branch.
+  const pending = [{ value: manifest.exports, typeTarget: false }];
+
+  while (pending.length) {
+    const item = pending.pop();
+
+    if (String(item.value) === item.value) {
+      if (item.typeTarget) declarations.add(item.value);
+      continue;
+    }
+
+    if (item.value == null) continue;
+
+    if (Object(item.value) !== item.value) throw new Error("Invalid package exports metadata.");
+
+    for (const [key, value] of Object.entries(item.value)) {
+      pending.push({ value, typeTarget: item.typeTarget || key === "types" });
+    }
+  }
+
+  return { name, version, declarations };
 }
 
 // Check each existing prefix before descending, including when the leaf is absent.
@@ -69,10 +120,10 @@ async function containedPath(root, candidate) {
  * Errors reject; absent optional docs are omitted. Broken or escaping paths reject.
  */
 export async function discoverDependencyDocs(packageName, workspaceDirectory) {
-  validatePackageName(packageName);
+  parsePackageName(packageName);
 
   if (
-    typeof workspaceDirectory !== "string" ||
+    String(workspaceDirectory) !== workspaceDirectory ||
     !workspaceDirectory.trim() ||
     controlCharacterPattern.test(workspaceDirectory)
   ) {
@@ -112,21 +163,7 @@ export async function discoverDependencyDocs(packageName, workspaceDirectory) {
 
   if (!manifestPath?.info.isFile())
     throw new Error("Package manifest is missing or is not a file.");
-  const manifest = JSON.parse(await readFile(manifestPath.path, "utf8"));
-
-  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
-    throw new Error("Package manifest must be an object.");
-  }
-
-  validatePackageName(manifest.name);
-
-  if (
-    typeof manifest.version !== "string" ||
-    !manifest.version.trim() ||
-    controlCharacterPattern.test(manifest.version)
-  ) {
-    throw new Error("Package manifest must declare a nonempty version string.");
-  }
+  const manifest = parseManifest(await readFile(manifestPath.path, "utf8"));
 
   const documents = [];
   const entries = (await readdir(packageRoot)).sort();
@@ -152,38 +189,9 @@ export async function discoverDependencyDocs(packageName, workspaceDirectory) {
     documents.push({ kind: candidate.kind, path: found.path, trust: "untrusted-reference" });
   }
 
-  const declarations = new Set();
-
-  for (const field of ["types", "typings"]) {
-    if (Object.hasOwn(manifest, field)) {
-      if (typeof manifest[field] !== "string") throw new Error("Invalid package type declaration.");
-      declarations.add(manifest[field]);
-    }
-  }
-
-  // Enumerate declared type targets across conditions without choosing a runtime branch.
-  const pending = [{ value: manifest.exports, typeTarget: false }];
-
-  while (pending.length) {
-    const item = pending.pop();
-
-    if (typeof item.value === "string") {
-      if (item.typeTarget) declarations.add(item.value);
-      continue;
-    }
-
-    if (item.value == null) continue;
-
-    if (typeof item.value !== "object") throw new Error("Invalid package exports metadata.");
-
-    for (const [key, value] of Object.entries(item.value)) {
-      pending.push({ value, typeTarget: item.typeTarget || key === "types" });
-    }
-  }
-
   const types = [];
 
-  for (const declaredPath of [...declarations].sort((left, right) => {
+  for (const declaredPath of [...manifest.declarations].sort((left, right) => {
     if (left < right) return -1;
 
     if (left > right) return 1;

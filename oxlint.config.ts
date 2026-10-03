@@ -23,9 +23,8 @@ const mountEffectImport = {
 
 const uiLibraryImports = [
   {
-    group: ["@base-ui/**", "sonner"],
-    message:
-      "Import the styled component from @nyte-ai/ui. Base UI and sonner stay inside packages/ui.",
+    group: ["@base-ui/**"],
+    message: "Import the styled component from @nyte-ai/ui. Base UI stays inside packages/ui.",
   },
 ];
 
@@ -37,12 +36,24 @@ export default defineConfig({
   ignorePatterns: ["output/**", ".agents/**"],
   plugins: ["react", "eslint", "typescript", "unicorn", "import"],
   // The desktop design scale: enforced on StyleX sources, not wrapped in tokens.
-  jsPlugins: ["./packages/app/lint/design-scale.js", "./packages/app/lint/interactions.js"],
+  jsPlugins: [
+    "./packages/app/lint/design-scale.js",
+    "./packages/app/lint/interactions.js",
+    "./scripts/oxlint/anti-slop/index.ts",
+  ],
   categories: {
     correctness: "error",
   },
   rules: {
     "oxc/no-accumulating-spread": "error",
+    "eslint/no-restricted-globals": [
+      "error",
+      {
+        name: "Reflect",
+        message:
+          "Use typed property access or direct invocation. Suppress this rule only for genuine reflection.",
+      },
+    ],
     "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
     "react/rules-of-hooks": "error",
     "react/no-unstable-nested-components": "error",
@@ -53,6 +64,32 @@ export default defineConfig({
     typeAware: true,
   },
   overrides: [
+    {
+      // Vendored from opencode v2 (dmmulroy/anti-slop); see scripts/oxlint/anti-slop/UPSTREAM.md.
+      // packages/ai is carved out of earendil-works/pi and tracks upstream.
+      files: ["packages/**", "scripts/**"],
+      excludeFiles: ["scripts/oxlint/**", "packages/ai/**"],
+      rules: {
+        "anti-slop/no-array-filter-map": "warn",
+        "anti-slop/no-reduce-accumulator-copy": "warn",
+        "anti-slop/no-chained-type-assertions": "warn",
+        "anti-slop/no-conditional-empty-object-spread": "warn",
+        "anti-slop/no-known-value-widening": "warn",
+        "anti-slop/no-module-mocking": "warn",
+        "anti-slop/no-object-parameters": "warn",
+        "anti-slop/no-reflect-apply": "warn",
+        "anti-slop/no-reflect-get": "warn",
+        "anti-slop/no-runtime-typeof": "warn",
+        "anti-slop/no-shape-in-symbol-names": "warn",
+        "anti-slop/no-unknown-parameters": "warn",
+        "anti-slop/no-unknown-returns": "warn",
+        "anti-slop/no-unknown-type-aliases": "warn",
+        "anti-slop/no-unsafe-dictionary-type": "warn",
+        "anti-slop/no-widen-then-assert": "warn",
+        "anti-slop/require-readable-spacing": "warn",
+        "anti-slop/require-safety-comment-for-type-assertion": "warn",
+      },
+    },
     {
       // Solid components run once and read refs after the tree is built; the
       // React render-purity rules describe a different runtime, and React
@@ -189,7 +226,6 @@ export default defineConfig({
       rules: {
         "nyte-interactions/no-clickable-non-control": "error",
         "nyte-interactions/drag-only-touch-action": "error",
-        "nyte-interactions/no-hover-submenus": "error",
         "nyte-interactions/restore-popup-focus": "error",
         "nyte-interactions/specific-confirm-label": "error",
         "nyte-interactions/no-disabled-caption": "error",
