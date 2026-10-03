@@ -12,10 +12,12 @@ import {
 } from "./drive.ts";
 import { queueFollowUps } from "./queue.ts";
 import { steerHandoff } from "./steer-handoff.ts";
+import { pluginReload } from "./plugin-reload.ts";
 import type { Scenario } from "./types.ts";
 
 /** Boundaries a journey cannot host: the CLI itself and OS signals. */
 export const cases: Scenario[] = [
+  pluginReload,
   steerHandoff,
   queueFollowUps,
   {

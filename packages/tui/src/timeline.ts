@@ -18,7 +18,7 @@ import type {
 import { Edge } from "@opentui/core/yoga";
 import { waitingCall } from "@nyte-ai/client";
 import type { SessionState } from "@nyte-ai/client";
-import type { RunInfo, Turn } from "@nyte-ai/core";
+import type { Turn } from "@nyte-ai/core";
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import { diffChars } from "diff";
 import type { ShellExecution } from "./local-shell.ts";
@@ -84,49 +84,58 @@ function markerProps(item: Exclude<Turn, { kind: "turn" }>): MarkerProps {
   }
 }
 
-/** A turn that has drawn no answer: only its request, or nothing at all (a completion's turn). */
-function isRequestOnly(turn: Extract<Turn, { kind: "turn" }>): boolean {
-  return turn.parts.length === 0 || (turn.parts.length === 1 && turn.parts[0]?.kind === "user");
-}
-
-/**
- * The status of a turn no run is streaming into: the record's outcome, or the
- * run's when it is the run that answered it. A bare request that no run has
- * answered stays unanswered; a run that ended on it (with nothing to say, or
- * by stopping) settles it.
- */
-function settledStatus(
+function turnStatus(
   turn: Extract<Turn, { kind: "turn" }>,
-  run: RunInfo | undefined,
-): Extract<TurnStatus, { kind: "unanswered" | "settled" }> {
-  const answered = run !== undefined && run.startedAt >= turn.startedAt;
+  state: SessionState,
+): TurnStatus | undefined {
+  const run = turn === state.transcript.items.at(-1) ? state.run : undefined;
 
-  if (!answered) {
-    return isRequestOnly(turn) && turn.failure === undefined
-      ? { kind: "unanswered" }
-      : { kind: "settled", failure: turn.failure };
-  }
+  const answered =
+    run !== undefined &&
+    ((turn.run.kind === "run" && turn.run.id === run.runId) || run.startedAt >= turn.startedAt);
 
-  switch (run.phase.kind) {
-    case "aborted":
-      return {
-        kind: "settled",
-        failure: turn.failure ?? { class: "aborted", message: "Run stopped." },
-      };
-    case "failed":
-      return { kind: "settled", failure: turn.failure ?? run.phase.failure };
-    case "done":
-    case "respond":
-    case "tools":
-    case "waiting":
-    case "retry":
-      return { kind: "settled", failure: turn.failure };
-    default: {
-      const _exhaustive: never = run.phase;
+  if (run !== undefined) {
+    switch (run.phase.kind) {
+      case "respond":
+      case "tools":
+      case "waiting":
+      case "retry":
+        return state.compaction !== undefined
+          ? { kind: "compacting" }
+          : {
+              kind: "open",
+              phase: run.phase,
+              live: state.overlay,
+              waitingForUser: waitingCall(state) !== undefined,
+            };
+      case "aborted":
+        if (answered)
+          return {
+            kind: "settled",
+            failure: turn.failure ?? { class: "aborted", message: "Run stopped." },
+          };
+        break;
+      case "failed":
+        if (answered) return { kind: "settled", failure: turn.failure ?? run.phase.failure };
+        break;
+      case "done":
+        break;
+      default: {
+        const _exhaustive: never = run.phase;
 
-      return _exhaustive;
+        return _exhaustive;
+      }
     }
   }
+
+  if (turn.parts.length === 0 && turn.failure === undefined) return undefined;
+
+  return !answered &&
+    turn.parts.length === 1 &&
+    turn.parts[0]?.kind === "user" &&
+    turn.failure === undefined
+    ? { kind: "unanswered" }
+    : { kind: "settled", failure: turn.failure };
 }
 
 /** Measured rows are hints, never a limit on how much history can be reached. */
@@ -430,8 +439,12 @@ export class Timeline {
   }
 
   /** The turns and shell jobs in start order; a job goes before the first item that started after it. */
-  private entries(source: readonly Turn[]): readonly (Turn | ShellEntry)[] {
-    if (this.shellEntries.size === 0) return source;
+  private entries(state: SessionState): readonly (Turn | ShellEntry)[] {
+    const visible = state.transcript.items.filter(
+      (item) => item.kind !== "turn" || turnStatus(item, state) !== undefined,
+    );
+
+    if (this.shellEntries.size === 0) return visible;
 
     const jobs = [...this.shellEntries.values()].toSorted(
       (left, right) =>
@@ -442,7 +455,7 @@ export class Timeline {
     const merged: (Turn | ShellEntry)[] = [];
     let next = 0;
 
-    for (const item of source) {
+    for (const item of visible) {
       while (next < jobs.length && entryTime(jobs[next] ?? item) < entryTime(item)) {
         merged.push(jobs[next] ?? item);
         next += 1;
@@ -457,7 +470,13 @@ export class Timeline {
   sync(state: SessionState, options: { readonly reset?: boolean } = {}): void {
     const previous = this.state;
     const source = state.transcript.items;
-    const changed = previous?.transcript.items !== source || this.shellChanged;
+    const tail = source.at(-1);
+
+    const changed =
+      previous?.transcript.items !== source ||
+      this.shellChanged ||
+      (tail?.kind === "turn" && tail.parts.length === 0 && previous?.run !== state.run);
+
     this.shellChanged = false;
 
     const reset =
@@ -484,7 +503,7 @@ export class Timeline {
 
       const next: TranscriptItem[] = [];
 
-      for (const item of this.entries(source)) {
+      for (const item of this.entries(state)) {
         const preceding = next.at(-1);
 
         // A config run is one display item, not one mounted node per commit.
@@ -531,8 +550,7 @@ export class Timeline {
 
       for (const [index, item] of next.entries()) {
         if (item.item.kind === "shell") this.shellPositions.set(item.item.execution.id, index);
-        else if (item.item.kind === "turn" && item.source === source.at(-1))
-          this.lastTurnIndex = index;
+        else if (item.item.kind === "turn" && item.source === tail) this.lastTurnIndex = index;
       }
 
       this.reindex();
@@ -549,9 +567,7 @@ export class Timeline {
       if (last !== undefined) this.syncMounted(this.lastTurnIndex, last);
     }
 
-    const last = source.at(-1);
-
-    if (state.compaction !== undefined && (!this.running() || last?.kind !== "turn")) {
+    if (state.compaction !== undefined && (!this.running() || tail?.kind !== "turn")) {
       const key = `compaction:${state.compaction.id}`;
 
       if (this.liveTurn?.key !== key) {
@@ -560,7 +576,7 @@ export class Timeline {
       }
 
       this.liveTurn.block.sync(undefined, { kind: "compacting" });
-    } else if (this.running() && last?.kind !== "turn" && state.run !== undefined) {
+    } else if (this.running() && tail?.kind !== "turn" && state.run !== undefined) {
       const key = `live:${state.run.runId}`;
 
       if (this.liveTurn?.key !== key) {
@@ -761,20 +777,9 @@ export class Timeline {
     }
 
     if (mounted.kind !== "turn" || item?.kind !== "turn" || state === undefined) return;
-    const last = index === this.lastTurnIndex;
-    mounted.block.sync(
-      item,
-      last && this.running() && state.run !== undefined
-        ? state.compaction !== undefined
-          ? { kind: "compacting" }
-          : {
-              kind: "open",
-              phase: state.run.phase,
-              live: state.overlay,
-              waitingForUser: waitingCall(state) !== undefined,
-            }
-        : settledStatus(item, last ? state.run : undefined),
-    );
+    const status = turnStatus(item, state);
+
+    if (status !== undefined) mounted.block.sync(item, status);
   }
 
   private offset(index: number): number {

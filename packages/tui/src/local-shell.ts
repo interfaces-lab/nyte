@@ -25,6 +25,44 @@ export interface ShellProcess {
   cancel(): void;
 }
 
+/**
+ * Every live descendant of `root`, from a single process listing. Package
+ * managers and dev servers start their children in new process groups, so a
+ * group signal alone leaves them running with the output pipe open.
+ */
+function listDescendants(root: number): Promise<number[]> {
+  return new Promise((resolve) => {
+    const listing = spawn("ps", ["-A", "-o", "pid=,ppid="], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let text = "";
+    listing.stdout.setEncoding("utf8").on("data", (chunk: string) => (text += chunk));
+    listing.once("error", () => resolve([]));
+    listing.once("close", () => {
+      const children = new Map<number, number[]>();
+
+      for (const line of text.split("\n")) {
+        const [pid, ppid] = line.trim().split(/\s+/u).map(Number);
+
+        if (!pid || !ppid) continue;
+        children.set(ppid, [...(children.get(ppid) ?? []), pid]);
+      }
+
+      const found: number[] = [];
+      const pending = [root];
+
+      for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
+        for (const child of children.get(parent) ?? []) {
+          found.push(child);
+          pending.push(child);
+        }
+      }
+
+      resolve(found);
+    });
+  });
+}
+
 export function startLocalShell(options: {
   readonly command: string;
   readonly cwd: string;
@@ -111,18 +149,46 @@ export function startLocalShell(options: {
       return;
     }
 
-    try {
-      process.kill(-pid, "SIGKILL");
-    } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) {
-        failure ??= error instanceof Error ? error.message : String(error);
-        child?.kill("SIGKILL");
+    const kill = (target: number): void => {
+      try {
+        process.kill(target, "SIGKILL");
+      } catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) {
+          failure ??= error instanceof Error ? error.message : String(error);
+          child?.kill("SIGKILL");
+        }
       }
+    };
+
+    // After exit the tree has already been reparented, so only the group remains.
+    // Before, descendants are listed first: a parent's death orphans its children.
+    if (exited) {
+      kill(-pid);
+
+      return;
     }
+
+    cleanup = listDescendants(pid).then((descendants) => {
+      for (const target of [-pid, ...descendants]) kill(target);
+    });
+  }
+
+  /** Output stays open while any descendant, even one out of reach, holds the pipe. */
+  function releaseOutput() {
+    child?.stdout?.destroy();
+    child?.stderr?.destroy();
   }
 
   function cancel() {
-    if (exited || snapshot.state !== "running" || cancelled) return;
+    if (snapshot.state !== "running") return;
+
+    if (exited) {
+      releaseOutput();
+
+      return;
+    }
+
+    if (cancelled) return;
     cancelled = true;
     killOwnedProcesses();
   }
@@ -252,6 +318,8 @@ export function startLocalShell(options: {
         // Do not wait for close: descendants can still hold these pipes open.
         killOwnedProcesses();
         launched.stdio[3]?.destroy();
+
+        if (cancelled) setTimeout(releaseOutput, 100);
       });
       launched.once("close", (exitCode, signal) => {
         void finish(exitCode, signal);

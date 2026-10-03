@@ -275,7 +275,7 @@ const long: Scenario = {
     "Unicode",
     "Unicode input",
     "provider payload fidelity",
-    "Local shell: first-character prefix, one foreground command, Esc and quit terminate processes",
+    "Local shell: first-character prefix, one foreground command, Esc, Ctrl+C and quit terminate processes",
     "User shell: !! excludes context; ! enters the next prompt once",
     "Local shell: submitted output resumes as chat context; private executions stay local",
     "Backgrounding foreground bash does not cancel it",
@@ -322,6 +322,7 @@ const long: Scenario = {
         const sibling = await tool("sibling");
         const tail = await tool("tail");
         const shellEscape = await tool("shell-escape");
+        const shellInterrupt = await tool("shell-interrupt");
         const shell = await tool("shell");
         const unicode = "cafe\u0301 👩‍💻";
         const thinking = Array.from({ length: 18 }, (_, i) => `QA thought line ${String(i + 1)}`);
@@ -1350,7 +1351,7 @@ const long: Scenario = {
           assert.ok(!terminal.screen().text.includes("✓ ! echo chat text"));
         });
         await beat(
-          "one local command runs in the foreground; Esc stops it and keeps the draft",
+          "one local command runs in the foreground; Esc and Ctrl+C stop it and keep the draft",
           async () => {
             const requests = provider.requests.length;
             await type(terminal, `!${shellEscape.command}`);
@@ -1364,7 +1365,9 @@ const long: Scenario = {
               (screen) =>
                 screen.lines.some(
                   (line) => line.includes("● !") && line.includes("cd shell-escape &&"),
-                ) && screen.text.includes("QA tool heartbeat"),
+                ) &&
+                screen.text.includes("QA tool heartbeat") &&
+                screen.text.includes("esc stop command"),
             );
             await shellEscape.alive();
             assert.ok(idle(terminal.screen()), "No model turn started");
@@ -1377,7 +1380,43 @@ const long: Scenario = {
                 composer(screen, "!echo second"),
             );
             assert.equal(provider.requests.length, requests);
+            await press(
+              terminal,
+              "chat.quit",
+              (screen) =>
+                screen.lines.some(
+                  (line) => line.includes("✗ !") && line.includes("cd shell-escape &&"),
+                ) && composer(screen, "!echo second"),
+            );
+            await shellEscape.stopped(true);
             await press(terminal, "chat.quit", emptyComposer);
+            await type(terminal, `!${shellInterrupt.command}`);
+            await press(
+              terminal,
+              "chat.submit",
+              (screen) =>
+                screen.lines.some(
+                  (line) => line.includes("● !") && line.includes("cd shell-interrupt &&"),
+                ) && screen.text.includes("QA tool heartbeat"),
+            );
+            await shellInterrupt.alive();
+            await type(terminal, "/");
+            await terminal.waitForScreen(
+              (screen) =>
+                screen.text.includes("esc close") && screen.text.includes("Browse commands"),
+              deadline(),
+            );
+            await press(
+              terminal,
+              "chat.interrupt",
+              (screen) =>
+                !screen.text.includes("Browse commands") &&
+                screen.text.includes("esc stop command") &&
+                composer(screen, "/"),
+            );
+            await shellInterrupt.alive();
+            const erased = terminal.raw("\x7f", "backspace");
+            await terminal.waitForScreen(emptyComposer, deadline(), erased);
             await type(terminal, "analyze the result");
             await press(
               terminal,
@@ -1395,10 +1434,10 @@ const long: Scenario = {
               "chat.interrupt",
               (screen) =>
                 screen.lines.some(
-                  (line) => line.includes("✗ !") && line.includes("cd shell-escape &&"),
+                  (line) => line.includes("✗ !") && line.includes("cd shell-interrupt &&"),
                 ) && composer(screen, "analyze the result"),
             );
-            await shellEscape.stopped(true);
+            await shellInterrupt.stopped(true);
             await press(terminal, "chat.quit", emptyComposer);
             assert.equal(
               provider.requests.length,

@@ -215,13 +215,15 @@ function localUsageCard(result: LocalHistoryUsage, name: string): LocalUsageCard
 /** Keep external tool consumption separate from Nyte workspace totals. */
 export function usageCard(
   report: WorkspaceUsage,
-  options: LocalUsage,
+  local: LocalUsage | undefined,
   accounts: readonly AccountUsage[],
 ): UsageCard {
+  const reading = { kind: "message", message: "Reading local history…" } as const;
+
   return {
     accounts,
     workspace: workspaceCard(report),
-    claudeCode: localUsageCard(options.claudeCode, "Claude Code"),
-    codex: localUsageCard(options.codex, "Codex"),
+    claudeCode: local === undefined ? reading : localUsageCard(local.claudeCode, "Claude Code"),
+    codex: local === undefined ? reading : localUsageCard(local.codex, "Codex"),
   };
 }

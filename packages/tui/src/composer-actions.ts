@@ -17,7 +17,7 @@ export type ComposerOperation =
 
 interface ComposerActionState {
   readonly busy: boolean;
-  /** One of the user's `!` commands is running; Esc stops it, nothing else changes. */
+  /** One of the user's `!` commands is running; Esc and Ctrl+C stop it, nothing else changes. */
   readonly shell: boolean;
   readonly shellInput: "include" | "exclude" | undefined;
   readonly waiting: boolean;
@@ -109,7 +109,7 @@ function projectComposerActions(
         }
       : state.busy || state.shell
         ? {
-            label: "stop",
+            label: state.shell ? "stop command" : "stop",
             reason: completionReason(state, "chat.interrupt"),
             operation: { kind: "stop" },
           }
@@ -148,11 +148,17 @@ function projectComposerActions(
         operation: { kind: submission, delivery: alternate },
       },
       "chat.interrupt": interrupt,
-      "chat.quit": {
-        label: state.draft !== "empty" ? "clear draft" : "quit",
-        reason: completionReason(state, "chat.quit"),
-        operation: { kind: state.draft !== "empty" ? "clear" : "quit" },
-      },
+      "chat.quit": state.shell
+        ? {
+            label: "stop command",
+            reason: completionReason(state, "chat.quit"),
+            operation: { kind: "stop" },
+          }
+        : {
+            label: state.draft !== "empty" ? "clear draft" : "quit",
+            reason: completionReason(state, "chat.quit"),
+            operation: { kind: state.draft !== "empty" ? "clear" : "quit" },
+          },
     },
   };
 }
@@ -198,10 +204,12 @@ export class ComposerActions {
 
           if (name === "chat.interrupt") return "cancel";
 
-          if (name === "chat.quit" && action("chat.interrupt").reason !== undefined)
-            return "cancel";
+          if (name !== "chat.quit") return "secondary";
 
-          return "secondary";
+          if (action("chat.interrupt").reason !== undefined) return "cancel";
+
+          // Esc already shows the stop; a second keycap for it is noise.
+          return action(name).operation.kind === "stop" ? undefined : "secondary";
         },
         enabled: () => action(name).reason === undefined,
         run: () => {

@@ -1320,24 +1320,18 @@ export class ToolCard {
   private renderDelegation(delegation: DelegationClass): void {
     const { theme } = this.transcript;
 
-    const sessions =
-      delegation.target.kind === "one" ? [delegation.target.session] : delegation.target.sessions;
-
     const task = this.transcript
       .tasks()
-      .find((candidate) => candidate.kind === "agent" && candidate.id === sessions[0]);
+      .find(
+        (candidate) => candidate.kind === "agent" && candidate.id === delegation.target.session,
+      );
 
     const phase = this.phase();
     // A listed child speaks for itself; until then its call does.
     const mark = statusMark(task === undefined ? phaseStatus(phase) : taskStatus(task));
 
     if (delegation.role !== "create") {
-      const others = sessions.length - 1;
-
-      const name =
-        task === undefined
-          ? delegateSubject(delegation)
-          : `${taskLabel(task)}${others > 0 ? ` +${String(others)}` : ""}`;
+      const name = task === undefined ? delegateSubject(delegation) : taskLabel(task);
 
       this.heading.content = new StyledText([
         fg(theme[mark.tone])(`${mark.glyph} `),

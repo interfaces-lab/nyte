@@ -200,7 +200,8 @@ export class SlashAutocomplete {
       enabled: () => options.enabled() && this.visible,
       commands: actions.map((action) => {
         const unavailable = () =>
-          action.name === "completion.close" || this.hasMatches
+          action.name === "completion.close" ||
+          (action.name === "completion.accept" ? this.accepting : this.hasMatches)
             ? undefined
             : "No completion matches";
 
@@ -234,9 +235,17 @@ export class SlashAutocomplete {
     return this.container.visible;
   }
 
-  /** Whether the dropdown would take Enter or Tab. An open menu with nothing in it claims nothing. */
+  /**
+   * Whether the dropdown would take Enter. An open menu with nothing in it claims
+   * nothing, and neither does a directory listing: like a shell, Enter runs the
+   * path as typed and Tab completes it.
+   */
   get accepting(): boolean {
-    return this.visible && this.hasMatches;
+    return (
+      this.visible &&
+      this.hasMatches &&
+      this.suggestions[this.list.selectedIndex]?.kind !== "directory"
+    );
   }
 
   /** Based on OpenCode #46414: complete a prompt before admitting it to the queue. */
@@ -441,8 +450,7 @@ export class SlashAutocomplete {
 
     if (suggestion.kind === "directory") {
       this.splice(span, suggestion.path);
-
-      if (via === COMPLETION_METHODS.fill) this.browseDirectories();
+      this.browseDirectories();
 
       return;
     }

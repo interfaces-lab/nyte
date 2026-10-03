@@ -20,11 +20,14 @@ import { formatSkillInvocation } from "@nyte-ai/core/plugins";
 import {
   createWorkspaceStore,
   discoverMentionFiles,
+  nyteHome,
   pluginWatchTargets,
   resolveHostPlugins,
 } from "@nyte-ai/host";
 import { createOtelExport } from "@nyte-ai/host/otel";
-import { createUsageScanCaches, readAccountUsage, readLocalUsage } from "@nyte-ai/host/usage";
+import { catalogForUsage, UsageScanner } from "@nyte-ai/host/store-usage";
+import { observedAccountUsage, readAccountUsage } from "@nyte-ai/host/usage";
+import type { AccountUsage, LocalUsage } from "@nyte-ai/host/usage";
 import { clampThinkingLevel, getSupportedThinkingLevels } from "@nyte-ai/ai";
 import type { Api, AuthInteraction, Model } from "@nyte-ai/ai";
 import { collectAbandoned, projectTree } from "@nyte-ai/client";
@@ -638,7 +641,7 @@ interface InteractiveOptions {
 }
 
 class Interactive {
-  private readonly usageCaches = createUsageScanCaches();
+  private readonly usageScanner = new UsageScanner(nyteHome());
   private readonly tasks: TaskBrowser;
   private tuiPlugins: PluginProvider;
   private readonly renderer: CliRenderer;
@@ -848,7 +851,6 @@ class Interactive {
       .toReversed()
       .map(async (dispose) => dispose());
 
-    this.autocomplete?.destroy();
     this.renderer.setTerminalTitle(TERMINAL_TITLE_BASE);
     this.closing = Promise.allSettled([
       plugins,
@@ -1683,7 +1685,13 @@ class Interactive {
 
     // Temporary readLine prompts use native submit; chat submits only through its keymap binding.
     this.shell.input.onSubmit = undefined;
-    this.disposers.push(() => autocomplete.destroy());
+    // The composer outlives this instance while cleanup waits on its processes.
+    // Its content notifications must stop reaching the destroyed dropdown.
+    this.disposers.push(() => {
+      this.shell.input.onContentChange = previousChange;
+      this.autocomplete = undefined;
+      autocomplete.destroy();
+    });
   }
 
   private refreshAutocomplete(): void {
@@ -4271,35 +4279,50 @@ class Interactive {
       !controller.signal.aborted &&
       this.shell.dismissInfoPanel === close;
 
-    panel.layout.load(
-      async () => {
-        const accountSignal = AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]);
-        const [report, local, accounts] = await Promise.all([
-          this.host.workspaceUsage(session.sessionId),
-          readLocalUsage({
-            models: this.runtime.models,
-            signal: controller.signal,
-            caches: this.usageCaches,
-          }),
-          Promise.all([
-            readAccountUsage({
-              models: this.runtime.models,
-              provider: "anthropic",
-              signal: accountSignal,
-            }),
-            readAccountUsage({
-              models: this.runtime.models,
-              provider: "openai-codex",
-              signal: accountSignal,
-            }),
-          ]),
-        ]);
+    // Each part paints as it lands. The provider stated its limits on the last
+    // turn, so those paint at once; the usage endpoints and the transcript scan
+    // replace them. The scan is never aborted: finishing it warms the persisted
+    // cache that the next read pays stat calls against.
+    const models = this.runtime.models;
+    const providers = ["anthropic", "openai-codex"] as const;
+    const accountSignal = AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]);
+    let accounts: readonly AccountUsage[] = providers.flatMap(
+      (provider) => observedAccountUsage(models, provider) ?? [],
+    );
+    let local: LocalUsage | undefined;
 
-        return usageCard(report, local, accounts);
-      },
-      (card) => {
-        if (active()) panel.update({ kind: "ready", card });
-        controller.abort();
+    const probed = Promise.all(
+      providers.map((provider) => readAccountUsage({ models, provider, signal: accountSignal })),
+    );
+
+    const scanned = this.usageScanner.scan({ stores: [], catalog: catalogForUsage(models) });
+
+    panel.layout.load(
+      () => this.host.workspaceUsage(session.sessionId),
+      (report) => {
+        const paint = (): void => {
+          if (active()) panel.update({ kind: "ready", card: usageCard(report, local, accounts) });
+        };
+
+        paint();
+        void probed.then(
+          (next) => {
+            accounts = next;
+            paint();
+          },
+          () => undefined,
+        );
+        void scanned.then(
+          (scan) => {
+            local = scan;
+            paint();
+          },
+          (cause: unknown) => {
+            const failed = { kind: "failed", message: errorMessage(cause) } as const;
+            local = { claudeCode: failed, codex: failed };
+            paint();
+          },
+        );
       },
       (cause) => {
         if (active()) panel.update({ kind: "failed", message: errorMessage(cause) });

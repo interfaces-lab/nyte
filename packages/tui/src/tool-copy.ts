@@ -1,8 +1,10 @@
 /** Wording for tool cards and turn notices: lowercase, terse, the glyph carries the state. */
-import type { Failure, ToolClass } from "@nyte-ai/protocol";
+import type { Failure, TurnToolClass } from "@nyte-ai/protocol";
 import { ACTIVITY_FAILED_LABEL, ACTIVITY_STOPPED_LABEL, GLYPHS } from "./constants.ts";
 
 export type ToolPhase = "running" | "done" | "failed" | "interrupted";
+
+type DelegateClass = Extract<TurnToolClass, { readonly kind: "delegate" }>;
 
 /** A call with no result is still running only while its run is; otherwise the run left it behind. */
 export function toolPhase(
@@ -35,7 +37,7 @@ function phased(
   }
 }
 
-export function toolLabel(toolClass: ToolClass, phase: ToolPhase): string {
+export function toolLabel(toolClass: TurnToolClass, phase: ToolPhase): string {
   switch (toolClass.kind) {
     case "file_read":
       return phased(phase, { running: "reading", done: "read", noun: "read" });
@@ -67,14 +69,12 @@ export function toolLabel(toolClass: ToolClass, phase: ToolPhase): string {
   }
 }
 
-function delegateWords(role: "create" | "send" | "await" | "read" | "stop") {
+function delegateWords(role: DelegateClass["role"]) {
   switch (role) {
     case "create":
       return { running: "agent", done: "agent", noun: "agent" };
     case "send":
       return { running: "sending to", done: "sent to", noun: "send" };
-    case "await":
-      return { running: "waiting for", done: "waited for", noun: "wait" };
     case "read":
       return { running: "reading", done: "read", noun: "read" };
     case "stop":
@@ -88,7 +88,7 @@ function delegateWords(role: "create" | "send" | "await" | "read" | "stop") {
 }
 
 /** What the call is about: the path, the command, the task. A custom call has only its label. */
-export function toolSubject(toolClass: ToolClass): string | undefined {
+export function toolSubject(toolClass: TurnToolClass): string | undefined {
   switch (toolClass.kind) {
     case "file_read":
     case "list":
@@ -110,24 +110,31 @@ export function toolSubject(toolClass: ToolClass): string | undefined {
   }
 }
 
-/** A child is named by its card; a call on it only says which kind of target it has. */
-export function delegateSubject(
-  toolClass: Extract<ToolClass, { readonly kind: "delegate" }>,
-): string {
-  if (toolClass.role === "create") return toolClass.title;
-
-  return toolClass.target.kind === "many" && toolClass.target.sessions.length > 1
-    ? "subagents"
-    : "subagent";
+/** A child is named by its card; a call on it only says what kind of target it has. */
+export function delegateSubject(toolClass: DelegateClass): string {
+  return toolClass.role === "create" ? toolClass.title : "subagent";
 }
 
-/** The status row for the tools still running: subagent waits win, otherwise the newest call. */
-export function runningActivityLabel(running: readonly ToolClass[]): string | undefined {
-  const delegates = running.filter((toolClass) => toolClass.kind === "delegate").length;
+function delegateActivity(toolClass: DelegateClass): string {
+  switch (toolClass.role) {
+    case "create":
+      return "Creating subagent";
+    case "send":
+      return "Messaging subagent";
+    case "read":
+      return "Reading subagent";
+    case "stop":
+      return "Stopping subagent";
+    default: {
+      const _exhaustive: never = toolClass;
 
-  if (delegates > 1) return "Waiting for subagents";
+      return _exhaustive;
+    }
+  }
+}
 
-  if (delegates === 1) return "Waiting for subagent";
+/** The status row for the tools still running: the newest call. */
+export function runningActivityLabel(running: readonly TurnToolClass[]): string | undefined {
   const newest = running.at(-1);
 
   if (newest === undefined) return undefined;
@@ -143,7 +150,7 @@ export function runningActivityLabel(running: readonly ToolClass[]): string | un
     case "file_patch":
       return "Editing files";
     case "delegate":
-      return "Waiting for subagent";
+      return delegateActivity(newest);
     case "custom":
       return undefined;
     default: {

@@ -200,6 +200,91 @@ describe("local shell", () => {
   });
 
   test.skipIf(process.platform === "win32")(
+    "cancellation reaches a descendant that left the process group",
+    async () => {
+      const peer = await connection();
+      await writeFile(
+        join(cwd, "child.mjs"),
+        `
+      import { connect } from "node:net";
+      const socket = connect(${peer.port}, "127.0.0.1");
+      socket.once("connect", () => process.stdout.write("child ready\\n"));
+      setInterval(() => {}, 60_000);
+    `,
+      );
+      const command = await script(`
+      import { spawn } from "node:child_process";
+      spawn(process.execPath, ["child.mjs"], { stdio: "inherit", detached: true });
+      setInterval(() => {}, 60_000);
+    `);
+      const ready = Promise.withResolvers<void>();
+      const execution = start(command, {
+        onUpdate: (snapshot) => {
+          if (snapshot.output.includes("child ready")) ready.resolve();
+        },
+      });
+      const socket = await peer.socket;
+      const closed = once(socket, "close");
+      await ready.promise;
+      execution.cancel();
+      const result = await execution.done;
+      await closed;
+      expect(result.state).toBe("cancelled");
+      expect(socket.destroyed).toBe(true);
+    },
+  );
+
+  test.skipIf(process.platform === "win32")(
+    "cancellation settles when an orphan beyond the tree still holds the output",
+    async () => {
+      const peer = await connection();
+      await writeFile(
+        join(cwd, "child.mjs"),
+        `
+      import { connect } from "node:net";
+      const socket = connect(${peer.port}, "127.0.0.1");
+      socket.once("connect", () => {
+        const tick = setInterval(() => {
+          if (process.ppid !== 1) return;
+          clearInterval(tick);
+          process.stdout.write("orphan " + process.pid + "\\n");
+        }, 20);
+      });
+      setInterval(() => {}, 60_000);
+    `,
+      );
+      await writeFile(
+        join(cwd, "middle.mjs"),
+        `
+      import { spawn } from "node:child_process";
+      spawn(process.execPath, ["child.mjs"], { stdio: "inherit", detached: true }).unref();
+    `,
+      );
+      const command = await script(`
+      import { spawn } from "node:child_process";
+      spawn(process.execPath, ["middle.mjs"], { stdio: "inherit" });
+      setInterval(() => {}, 60_000);
+    `);
+      const orphan = Promise.withResolvers<number>();
+      const execution = start(command, {
+        onUpdate: (snapshot) => {
+          const pid = /orphan (\d+)\n/u.exec(snapshot.output)?.[1];
+          if (pid !== undefined) orphan.resolve(Number(pid));
+        },
+      });
+      const pid = await orphan.promise;
+      try {
+        execution.cancel();
+        const result = await execution.done;
+        expect(result.state).toBe("cancelled");
+        expect(process.kill(pid, 0)).toBe(true);
+      } finally {
+        process.kill(pid, "SIGKILL");
+      }
+    },
+  );
+
+  test.skipIf(process.platform === "win32")(
     "cleans up descendants even when the shell exits first",
     async () => {
       const peer = await connection();

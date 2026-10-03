@@ -11,7 +11,7 @@
 import { emptyUsageSummary, mergeUsageSummaries, projectUsage } from "@nyte-ai/client";
 import type { UsageSummary } from "@nyte-ai/client";
 import { sessionId } from "@nyte-ai/core";
-import type { Disposer, LoadedPlugin, Nyte, SessionId, TrustedWorkspace } from "@nyte-ai/core";
+import type { Disposer, Plugin, Nyte, SessionId, TrustedWorkspace } from "@nyte-ai/core";
 import { WorkerStore } from "@nyte-ai/core/store";
 import type { Store } from "@nyte-ai/core/store";
 import type { Session } from "@nyte-ai/core/store";
@@ -115,7 +115,7 @@ export class Host {
   }
 
   /** The caller validates destination trust and resolves its plugins before changing location. */
-  relocate(id: SessionId, workspace: TrustedWorkspace, plugins: readonly LoadedPlugin[]) {
+  relocate(id: SessionId, workspace: TrustedWorkspace, plugins: readonly Plugin[]) {
     return this.nyte.relocate({ sessionId: id, workspace, plugins });
   }
 

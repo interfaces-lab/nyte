@@ -75,7 +75,7 @@ export class DirectoryListing {
   }
 }
 
-/** Keep the typed path spelling; only expand ~ for filesystem access. */
+/** Keep the typed path spelling; only expand ~ for filesystem access. `..` and `../..` list their own entries. */
 export async function directorySuggestions(
   options: {
     readonly path: string;
@@ -85,7 +85,7 @@ export async function directorySuggestions(
   listing = new DirectoryListing(),
 ): Promise<string[]> {
   if (CONTROL_CHARACTERS.test(options.path)) return [];
-  const path = options.path === "~" ? "~/" : options.path;
+  const path = /^(?:~|(?:\.\.\/)*\.\.)$/.test(options.path) ? `${options.path}/` : options.path;
   const split = path.lastIndexOf("/") + 1;
   const parent = path.slice(0, split);
   const prefix = path.slice(split).toLowerCase();
