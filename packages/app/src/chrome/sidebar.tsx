@@ -45,6 +45,7 @@ import { StatusGlyph } from "./status-glyph.tsx";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Kbd } from "@nyte-ai/ui/kbd";
+import { Toggle } from "@nyte-ai/ui/toggle";
 import {
   paneControllerForWorkspace,
   usePaneActions,
@@ -74,7 +75,7 @@ import { useOptimisticSessionIds } from "../use-outbox.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { AccountFooterMenu } from "./account-footer.tsx";
-import { RemoteAccessGlyph } from "./remote-access-glyph.tsx";
+import { closeSettings } from "./settings-return.ts";
 import { useGitHubState } from "./github-account.ts";
 import { folderPicker } from "./open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
@@ -306,6 +307,7 @@ export function Sidebar(): ReactElement {
   const [collectionExpanded, setCollectionExpanded] = useState(true);
   const { stage, homeVisible, sidebarVisible } = useShellState();
   const router = useRouter();
+  const settingsOpen = useMatch({ from: "/settings/$section", shouldThrow: false }) !== undefined;
 
   const openSettings = (section: SettingsSection): void => {
     const replace = router.state.matches.some((match) => match.routeId === "/settings/$section");
@@ -989,7 +991,16 @@ export function Sidebar(): ReactElement {
               anchor={footerRowRef}
               onOpenProfile={() => openSettings("profile")}
             />
-            <RemoteAccessGlyph connect={nyte.host.connect} />
+            <Toggle
+              iconOnly
+              icon="settings"
+              aria-label="Settings"
+              aria-keyshortcuts={clientActionAriaShortcut(clientActions.settings, mac)}
+              pressed={settingsOpen}
+              onPressedChange={(pressed) =>
+                pressed ? openSettings("general") : closeSettings(router)
+              }
+            />
           </div>
         </div>
       )}

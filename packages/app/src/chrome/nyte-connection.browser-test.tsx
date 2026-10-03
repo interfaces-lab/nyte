@@ -5,8 +5,6 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { ConnectBridge, ConnectView } from "../bridge.ts";
 import { keys } from "../queries.ts";
-import { nyte } from "../nyte.ts";
-import { RemoteAccessGlyph } from "./remote-access-glyph.tsx";
 import { RemoteAccess } from "./server-settings.tsx";
 
 declare global {
@@ -53,13 +51,6 @@ async function press(label: string, scope: () => ParentNode | undefined): Promis
   }, `${label} to be pressable`);
   button(label, scope())?.click();
 }
-
-const glyph = () =>
-  document.querySelector<HTMLButtonElement>(
-    'button[aria-label^="Remote access:"], button[aria-label$="This Mac…"]',
-  ) ?? undefined;
-
-const glyphLabel = () => glyph()?.getAttribute("aria-label");
 
 const statusMenu = () =>
   [...document.querySelectorAll("button")].find((candidate) =>
@@ -158,17 +149,15 @@ export async function run() {
         <QueryClientProvider client={client}>
           <TooltipProvider>
             <RemoteAccess active />
-            <RemoteAccessGlyph connect={nyte.host.connect} />
           </TooltipProvider>
         </QueryClientProvider>,
       ),
     );
 
-    // A build without the account service shows neither the row nor the phone.
+    // A build without the account service shows no row.
     await until(() => container.textContent?.includes("Manual setup") === true, "the page");
     await wait(100);
     check(!container.textContent.includes("Nyte account"), "An unconfigured build showed the row");
-    check(glyph() === undefined, "The phone showed for a build without accounts");
 
     // Signed out: the tray signs in and links in one press.
     await changed({
@@ -177,7 +166,7 @@ export async function run() {
       linking: { kind: "idle" },
       notice: { kind: "none" },
     });
-    await until(() => glyphLabel() === "Link This Mac…", "the phone's link entry");
+    await until(() => button("Link This Mac…", container) !== undefined, "the link entry");
     await press("Link This Mac…", () => container);
     await until(() => trayText().includes("Reach this Mac from your iPhone"), "the tray");
     await press("Sign In and Link…", tray);
@@ -190,7 +179,6 @@ export async function run() {
       notice: { kind: "none" },
     });
     await until(() => trayText().includes("Finish signing in."), "the sign-in step");
-    check(glyphLabel() === "Linking This Mac…", "The phone hid the link in progress");
     await press("Cancel", tray);
     await until(() => calls.includes("cancel"), "cancel() to be called");
 
@@ -244,7 +232,6 @@ export async function run() {
     );
     await until(() => statusMenu()?.textContent?.includes("Verifying…") === true, "pending");
     check(!container.textContent.includes("Reachable"), "A pending lease read as reachable");
-    check(glyphLabel() === "Remote access: Verifying…", "The phone overstated access");
 
     await changed(
       linked({
@@ -281,7 +268,7 @@ export async function run() {
         devices: [{ ...phone, authorized: true }],
       }),
     );
-    await until(() => glyphLabel() === "Remote access: Reachable", "a current lease");
+    await until(() => statusMenu()?.textContent?.includes("Reachable") === true, "a current lease");
     check(!container.textContent.includes("someone-else@example.test"), "The session leaked");
 
     await press("Revoke iPhone", () => container);
