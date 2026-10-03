@@ -1,0 +1,19 @@
+{
+  // The whole Worker in local workerd: the broker, the relay Durable Object,
+  // and a fresh in-memory D1. Vars and secrets come from the test harness
+  // (`workerd.ts`), never from a developer's environment.
+  "name": "nyte-connect-test",
+  "main": "../src/index.ts",
+  "compatibility_date": "2026-09-25",
+  "compatibility_flags": ["enable_request_signal"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nyte-connect-test",
+      "database_id": "00000000-0000-4000-8000-000000000002",
+      "migrations_dir": "../migrations",
+    },
+  ],
+  "durable_objects": { "bindings": [{ "name": "RELAY", "class_name": "EnvironmentRelay" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["EnvironmentRelay"] }],
+}

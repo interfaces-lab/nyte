@@ -1,0 +1,14 @@
+# Copy to .dev.vars for `wrangler dev`. Never commit .dev.vars, and never put
+# a production value in it. Tests do not read this file.
+
+# Clerk PEM public key (API keys → Show JWT public key), one line with \n escapes.
+CLERK_JWT_KEY="-----BEGIN PUBLIC KEY-----\n<base64>\n-----END PUBLIC KEY-----"
+
+# Clerk Secret Key, for owner lookups and session revocation.
+CLERK_SECRET_KEY="sk_test_<placeholder>"
+
+# Signing secret of the Clerk webhook endpoint.
+CLERK_WEBHOOK_SIGNING_SECRET="whsec_<placeholder>"
+
+# JSON array of Ed25519 private JWKs, each with a kid. The first one signs.
+BROKER_SIGNING_KEYS='[{"kty":"OKP","crv":"Ed25519","x":"<43 chars>","d":"<43 chars>","kid":"<kid>"}]'

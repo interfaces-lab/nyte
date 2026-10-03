@@ -1,0 +1,13 @@
+{
+  // Test-only configuration: the D1 binding and nothing else, so no secret
+  // or variable from the developer's environment reaches a test.
+  "name": "nyte-connect-test",
+  "compatibility_date": "2026-09-25",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nyte-connect-test",
+      "database_id": "00000000-0000-4000-8000-000000000001",
+    },
+  ],
+}

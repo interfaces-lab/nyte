@@ -1,0 +1,41 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nyte-connect",
+  "account_id": "fd0b03d38b5d9c68eeb5449d5c58171c",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-25",
+  // Phone disconnects reach the relay as `request.signal` aborts.
+  "compatibility_flags": ["enable_request_signal"],
+  // Served at https://nyte-connect.daniel-fu90.workers.dev, which must equal CONNECT_ORIGIN.
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "nyte-connect",
+      "database_id": "acb55224-7116-46b2-a149-3cf6d11d859d",
+      "migrations_dir": "migrations",
+    },
+  ],
+  // One relay per environment, named by its id. SQLite-backed, as the Free plan requires.
+  "durable_objects": { "bindings": [{ "name": "RELAY", "class_name": "EnvironmentRelay" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["EnvironmentRelay"] }],
+  "vars": {
+    "CONNECT_ORIGIN": "https://nyte-connect.daniel-fu90.workers.dev",
+    "CLERK_ISSUER": "https://wise-ocelot-6839.clerk.accounts.dev",
+    // Comma-separated `azp` values a session token may carry. A token without
+    // `azp` (native iOS) is accepted; a token with one must match exactly.
+    "CLERK_AUTHORIZED_PARTIES": "http://127.0.0.1:5174,nyte-desktop://account,nyte-desktop-test://account",
+  },
+  // Set each with `wrangler secret put <NAME>`. Never commit their values.
+  "secrets": {
+    "required": [
+      "CLERK_JWT_KEY",
+      "CLERK_SECRET_KEY",
+      "CLERK_WEBHOOK_SIGNING_SECRET",
+      "BROKER_SIGNING_KEYS",
+    ],
+  },
+}
