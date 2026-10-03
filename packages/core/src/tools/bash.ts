@@ -1,6 +1,6 @@
 import { access } from "node:fs/promises";
 import { constants } from "node:os";
-import type { AgentTool } from "../kernel/loop/types.ts";
+import type { ToolDefinition } from "../kernel/loop/types.ts";
 import { ToolError } from "../kernel/loop/tool-result.ts";
 import { spawn } from "node:child_process";
 import { type Static, Type } from "typebox";
@@ -209,22 +209,21 @@ export interface BashToolOptions {
 
 const BASH_UPDATE_THROTTLE_MS = 100;
 
-export function createBashTool(
+export function createBashToolDefinition(
   cwd: string,
   options?: BashToolOptions,
-): AgentTool<typeof bashSchema, BashToolDetails | undefined> {
+): ToolDefinition<typeof bashSchema, BashToolDetails | undefined> {
   const ops = options?.operations ?? createLocalBashOperations({ shellPath: options?.shellPath });
   const commandPrefix = options?.commandPrefix;
   const spawnHook = options?.spawnHook;
   return {
-    name: "bash",
     label: "bash",
     description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
     parameters: bashSchema,
     present: ({ command }) => ({ kind: "shell", command }),
     outputSchema: bashOutputSchema,
     constrainedSampling: { type: "json_schema", strict: "prefer" },
-    async execute(_toolCallId, { command, timeout }, signal, onUpdate) {
+    async execute({ command, timeout }, { signal, update }) {
       const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
       const spawnContext = resolveSpawnContext(resolvedCommand, cwd, spawnHook);
       const output = new OutputAccumulator({ tempFilePrefix: "nyte-bash" });
@@ -234,11 +233,11 @@ export function createBashTool(
       let lastUpdateAt = 0;
 
       const emitOutputUpdate = () => {
-        if (!onUpdate || !updateDirty) return;
+        if (!updateDirty) return;
         updateDirty = false;
         lastUpdateAt = Date.now();
         const snapshot = output.snapshot({ persistIfTruncated: true });
-        onUpdate({
+        update({
           content: [{ type: "text", text: snapshot.content || "" }],
           details: {
             truncation: snapshot.truncation.truncated ? snapshot.truncation : undefined,
@@ -255,7 +254,6 @@ export function createBashTool(
       };
 
       const scheduleOutputUpdate = () => {
-        if (!onUpdate) return;
         updateDirty = true;
         const delay = BASH_UPDATE_THROTTLE_MS - (Date.now() - lastUpdateAt);
         if (delay <= 0) {
@@ -269,7 +267,7 @@ export function createBashTool(
         }, delay);
       };
 
-      if (onUpdate) onUpdate({ content: [], details: undefined });
+      update({ content: [], details: undefined });
 
       const handleData = (data: Buffer) => {
         if (!acceptingOutput) return;

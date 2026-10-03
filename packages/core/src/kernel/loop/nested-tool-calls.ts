@@ -1,9 +1,8 @@
-import { isJsonObject, toJsonValue } from "@nyte-ai/client";
 import type { Message } from "@nyte-ai/schema";
 import { runToolCall, type RunToolCallOptions } from "./agent-loop.ts";
 import { callableTools } from "./tool-catalog.ts";
-import { toolErrorResult } from "./tool-result.ts";
-import { isToolWait, type AgentTool, type ToolExecutionContext } from "./types.ts";
+import { toolCallArguments, toolFailure } from "./tool-result.ts";
+import { isToolWait, type AgentTool, type ToolRun } from "./types.ts";
 
 export function liveTools(options: {
   tools: readonly AgentTool[];
@@ -19,19 +18,20 @@ export function liveTools(options: {
     activation?: Set<string>,
   ): AgentTool => ({
     ...tool,
-    execute: async (callId, args, signal, onUpdate) => {
+    execute: async (input, call) => {
       let nextId = 1;
       let open = true;
       const activated = activation ?? new Set<string>();
-      const context: ToolExecutionContext = {
-        runId: options.runId,
+      const { signal } = call;
+      const run: ToolRun = {
+        id: options.runId,
         head: options.head,
         parentToolCallId,
         history: options.history,
         tools: {
           list: () => callable,
           activate: (names) => {
-            if (!open || signal?.aborted) return;
+            if (!open || signal.aborted) return;
             for (const name of names) {
               const target = callable.find((candidate) => candidate.name === name);
               if (target?.exposure === "codemode" || target?.exposure === "deferred") {
@@ -42,31 +42,28 @@ export function liveTools(options: {
           execute: async (name, params, execution = {}) => {
             try {
               if (!open) throw new Error("Tool invocation has already completed");
-              const prepared = toJsonValue(params ?? {});
-              if (!isJsonObject(prepared)) throw new Error("Tool arguments must be an object");
+              const prepared = toolCallArguments(params ?? {});
               const executionSignal =
-                signal === undefined
-                  ? execution.signal
-                  : execution.signal === undefined
-                    ? signal
-                    : AbortSignal.any([signal, execution.signal]);
+                execution.signal === undefined
+                  ? signal
+                  : AbortSignal.any([signal, execution.signal]);
               return await runToolCall(
-                { type: "toolCall", id: `${callId}/${nextId++}`, name, arguments: prepared },
+                { type: "toolCall", id: `${call.id}/${nextId++}`, name, arguments: prepared },
                 {
                   ...options.call,
-                  tools: callable.map((target) => nestedTool(target, callId, activated)),
+                  tools: callable.map((target) => nestedTool(target, call.id, activated)),
                   signal: executionSignal,
                   onUpdate: execution.onUpdate,
                 },
               );
             } catch (error) {
-              return { result: toolErrorResult(error), isError: true };
+              return toolFailure(error);
             }
           },
         },
       };
       try {
-        const result = await tool.execute(callId, args, signal, onUpdate, context);
+        const result = await tool.execute(input, { ...call, run });
         if (activated.size === 0) return result;
         return {
           ...result,
@@ -85,9 +82,9 @@ export function liveTools(options: {
     const wrapped = wrap(tool, parentToolCallId, activation);
     return {
       ...wrapped,
-      execute: async (...args: Parameters<AgentTool["execute"]>) => {
+      execute: async (input, call) => {
         try {
-          return await wrapped.execute(...args);
+          return await wrapped.execute(input, call);
         } catch (error) {
           if (!isToolWait(error)) throw error;
           throw new Error(`Tool "${tool.name}" cannot wait during a nested invocation`);

@@ -1,26 +1,25 @@
 /**
  * The coding tool set as a plugin. `src/tools` is a library of tool
  * implementations; this is the only place that puts them in front of the model.
+ * `safe` replay marks tools that can re-run after a crash; the rest settle as
+ * an error on resume.
  */
-import { createAllTools } from "../../tools/index.ts";
-import type { AgentTool } from "../../kernel/loop/types.ts";
+import { createBashToolDefinition } from "../../tools/bash.ts";
+import { createEditToolDefinition } from "../../tools/edit.ts";
+import { createReadToolDefinition } from "../../tools/read.ts";
+import { createWriteToolDefinition } from "../../tools/write.ts";
 import { definePlugin } from "../types.ts";
-
-/** Tools that can re-run safely after a crash. Everything else settles as an error on resume. */
-const SAFE_REPLAY = new Set(["read", "ls"]);
 
 export function toolsFsPlugin() {
   return definePlugin({
     id: "tools-fs",
     session(api) {
-      const tools = createAllTools(api.env.cwd).map<AgentTool>((tool) => ({
-        ...tool,
-        replay: SAFE_REPLAY.has(tool.name) ? "safe" : "never",
-      }));
+      const { cwd } = api.env;
 
-      api.tools.add((draft) => {
-        for (const tool of tools) draft.set(tool.name, tool);
-      });
+      api.tools.add("read", { ...createReadToolDefinition(cwd), replay: "safe" });
+      api.tools.add("bash", { ...createBashToolDefinition(cwd), replay: "never" });
+      api.tools.add("edit", { ...createEditToolDefinition(cwd), replay: "never" });
+      api.tools.add("write", { ...createWriteToolDefinition(cwd), replay: "never" });
       api.prompt.add((draft) =>
         draft.set("cwd", { text: `Current working directory: ${api.env.cwd}` }),
       );

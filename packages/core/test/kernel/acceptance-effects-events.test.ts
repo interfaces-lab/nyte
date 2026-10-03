@@ -141,7 +141,7 @@ test("A waiting effect survives its host and accepts only the first signal", asy
               throw new ToolWait(backgroundWait);
             },
             wake: async (_call, context) => ({
-              kind: "settle",
+              kind: "success",
               result: {
                 content: [{ type: "text", text: `winner ${JSON.stringify(context.reply)}` }],
                 details: {},

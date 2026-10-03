@@ -37,7 +37,13 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { isJsonObject, toJsonValue, type JsonObject } from "@nyte-ai/client";
 import { addUsage } from "@nyte-ai/client";
-import type { AgentToolResult, StreamOptions, StreamOptionsPatch } from "../kernel/loop/types.ts";
+import type { AgentToolResult, ToolCallOutcome } from "../kernel/loop/types.ts";
+import {
+  applyStreamOptionsPatch,
+  createStreamOptionsPatch,
+  type StreamOptions,
+  type StreamOptionsPatch,
+} from "../kernel/stream-options.ts";
 import type { CacheWarmingAction, CacheWarmingDecisionEvent } from "../kernel/cache-warmer.ts";
 import { withBudget } from "./scope.ts";
 
@@ -103,27 +109,16 @@ export interface HookMap {
     result: { action?: CacheWarmingAction } | undefined;
   };
   after_tool: {
-    event: {
-      toolCallId: string;
-      toolName: string;
-      args: JsonObject;
-      content: AgentToolResult<unknown>["content"];
-      details?: JsonValue;
-      structuredContent?: JsonValue;
-      isError: boolean;
-      usage?: Usage;
-    };
-    result:
-      | {
-          content?: AgentToolResult<unknown>["content"];
-          details?: JsonValue;
-          structuredContent?: JsonValue;
-          isError?: boolean;
-          usage?: Usage;
-        }
-      | undefined;
+    event: { toolCallId: string; toolName: string; args: JsonObject } & ToolOutcomeView;
+    result: Partial<ToolOutcomeView> | undefined;
   };
 }
+
+/** A settled call as hooks see it: the loop's outcome with JSON details. */
+type ToolOutcomeView = Pick<AgentToolResult<unknown>, "content" | "structuredContent" | "usage"> & {
+  details?: JsonValue;
+  kind: ToolCallOutcome["kind"];
+};
 
 export type HookName = keyof HookMap;
 
@@ -524,46 +519,24 @@ export class HookRegistry implements Hooks {
     event: HookInvocation<"after_tool">,
     signal: AbortSignal | undefined,
   ): Promise<HookMap["after_tool"]["result"]> {
-    let content = event.content;
-    let details = event.details;
-    let structuredContent = event.structuredContent;
-    let isError = event.isError;
-    let usage = event.usage;
-    const aggregate: NonNullable<HookMap["after_tool"]["result"]> = {};
+    let aggregate: HookMap["after_tool"]["result"];
 
     for (const registration of this.registrationsFor("after_tool")) {
       try {
         const result = await this.call(
           "after_tool",
           registration,
-          afterToolInvocation(event, content, details, structuredContent, isError, usage),
+          { ...event, ...aggregate },
           signal,
         );
 
-        if (result === undefined) continue;
-
-        if (result.content !== undefined) aggregate.content = result.content;
-
-        if (result.details !== undefined) aggregate.details = result.details;
-
-        if (result.structuredContent !== undefined)
-          aggregate.structuredContent = result.structuredContent;
-
-        if (result.isError !== undefined) aggregate.isError = result.isError;
-
-        if (result.usage !== undefined) aggregate.usage = result.usage;
-        content = result.content ?? content;
-        details = result.details ?? details;
-        structuredContent =
-          result.structuredContent === undefined ? structuredContent : result.structuredContent;
-        isError = result.isError ?? isError;
-        usage = result.usage ?? usage;
+        if (result !== undefined) aggregate = { ...aggregate, ...result };
       } catch (error) {
         await this.reportError(normalizeError(error), "after_tool", event.head);
       }
     }
 
-    return Object.keys(aggregate).length === 0 ? undefined : aggregate;
+    return aggregate;
   }
 
   private async cacheWarmingDecision(
@@ -601,131 +574,4 @@ export class HookRegistry implements Hooks {
       registration.handler(event, budgeted),
     );
   }
-}
-
-function afterToolInvocation(
-  event: HookInvocation<"after_tool">,
-  content: AgentToolResult<unknown>["content"],
-  details: JsonValue | undefined,
-  structuredContent: JsonValue | undefined,
-  isError: boolean,
-  usage: Usage | undefined,
-): HookInvocation<"after_tool"> {
-  const base = {
-    head: event.head,
-    runId: event.runId,
-    toolCallId: event.toolCallId,
-    toolName: event.toolName,
-    args: event.args,
-    content,
-    structuredContent,
-    isError,
-  };
-
-  const withDetails = details === undefined ? base : { ...base, details };
-
-  return usage === undefined ? withDetails : { ...withDetails, usage };
-}
-
-const SCALAR_STREAM_OPTION_KEYS = [
-  "maxRetries",
-  "maxRetryDelayMs",
-  "transport",
-  "cacheRetention",
-  "fast",
-  "temperature",
-  "maxTokens",
-] as const;
-
-export function applyStreamOptionsPatch(
-  base: StreamOptions,
-  patch: StreamOptionsPatch,
-): StreamOptions {
-  const next: StreamOptions = { ...base };
-
-  for (const key of SCALAR_STREAM_OPTION_KEYS) {
-    if (!(key in patch)) continue;
-    const value = patch[key];
-
-    if (value === undefined) delete next[key];
-    else Object.assign(next, { [key]: value });
-  }
-
-  if ("headers" in patch) {
-    if (patch.headers === undefined) delete next.headers;
-    else {
-      const headers = { ...next.headers };
-
-      for (const [key, value] of Object.entries(patch.headers)) {
-        if (value === undefined) delete headers[key];
-        else headers[key] = value;
-      }
-
-      next.headers = headers;
-    }
-  }
-
-  if ("samplingParams" in patch) {
-    if (patch.samplingParams === undefined) delete next.samplingParams;
-    else {
-      const samplingParams = { ...next.samplingParams };
-
-      for (const [key, value] of Object.entries(patch.samplingParams)) {
-        if (value === undefined) delete samplingParams[key];
-        else samplingParams[key] = value;
-      }
-
-      next.samplingParams = samplingParams;
-    }
-  }
-
-  return next;
-}
-
-function createStreamOptionsPatch(base: StreamOptions, value: StreamOptions): StreamOptionsPatch {
-  const patch: StreamOptionsPatch = {};
-
-  for (const key of SCALAR_STREAM_OPTION_KEYS) {
-    if (base[key] !== value[key]) Object.assign(patch, { [key]: value[key] });
-  }
-
-  if (base.headers !== value.headers) {
-    if (value.headers === undefined) patch.headers = undefined;
-    else {
-      const headers: Record<string, string | undefined> = {};
-
-      for (const key of Object.keys(base.headers ?? {})) {
-        if (!(key in value.headers)) headers[key] = undefined;
-      }
-
-      for (const [key, header] of Object.entries(value.headers)) {
-        if (base.headers?.[key] !== header) headers[key] = header;
-      }
-
-      if (base.headers === undefined && Object.keys(headers).length === 0) patch.headers = {};
-      else if (Object.keys(headers).length !== 0) patch.headers = headers;
-    }
-  }
-
-  if (base.samplingParams !== value.samplingParams) {
-    if (value.samplingParams === undefined) patch.samplingParams = undefined;
-    else {
-      const samplingParams: NonNullable<StreamOptions["samplingParams"]> = {};
-
-      for (const key of Object.keys(base.samplingParams ?? {})) {
-        if (!(key in value.samplingParams)) samplingParams[key] = undefined;
-      }
-
-      for (const [key, samplingParamsValue] of Object.entries(value.samplingParams)) {
-        if (base.samplingParams?.[key] !== samplingParamsValue)
-          samplingParams[key] = samplingParamsValue;
-      }
-
-      if (base.samplingParams === undefined && Object.keys(samplingParams).length === 0)
-        patch.samplingParams = {};
-      else if (Object.keys(samplingParams).length !== 0) patch.samplingParams = samplingParams;
-    }
-  }
-
-  return patch;
 }

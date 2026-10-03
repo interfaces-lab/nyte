@@ -7,50 +7,16 @@ import {
   type SimpleStreamOptions,
 } from "@nyte-ai/ai";
 import { NOOP_TELEMETRY_CONTEXT, type TelemetryContext } from "@nyte-ai/telemetry";
+import type { HookRegistry, HookInvocation } from "../../plugins/hooks.ts";
+import type { StreamFn } from "../loop/types.ts";
 import {
   applyStreamOptionsPatch,
-  type HookRegistry,
-  type HookInvocation,
-} from "../../plugins/hooks.ts";
-import type { StreamFn, StreamOptions } from "../loop/types.ts";
+  pickStreamOptions,
+  withStreamOptions,
+  type StreamOptions,
+} from "../stream-options.ts";
 import type { ProviderCompaction } from "../compaction.ts";
 import { startSpan } from "../telemetry.ts";
-
-const STREAM_OPTION_KEYS = [
-  "maxRetries",
-  "maxRetryDelayMs",
-  "transport",
-  "cacheRetention",
-  "fast",
-  "temperature",
-  "maxTokens",
-  "headers",
-  "samplingParams",
-] satisfies readonly (keyof StreamOptions)[];
-
-function pickStreamOptions(options: SimpleStreamOptions): StreamOptions {
-  const picked: StreamOptions = {};
-
-  for (const key of STREAM_OPTION_KEYS) {
-    if (options[key] !== undefined) Object.assign(picked, { [key]: options[key] });
-  }
-
-  return picked;
-}
-
-function withStreamOptions(
-  options: SimpleStreamOptions,
-  patched: StreamOptions,
-): SimpleStreamOptions {
-  const next: SimpleStreamOptions = { ...options };
-
-  for (const key of STREAM_OPTION_KEYS) {
-    if (patched[key] === undefined) delete next[key];
-    else Object.assign(next, { [key]: patched[key] });
-  }
-
-  return next;
-}
 
 export function failedAssistant(
   model: Pick<Model<Api>, "api" | "provider" | "id">,

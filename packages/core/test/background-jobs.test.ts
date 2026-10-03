@@ -13,7 +13,7 @@ import {
   type SessionId,
 } from "../src/kernel/sdk/types.ts";
 import { definePlugin, inlinePlugin } from "../src/plugins/index.ts";
-import { createBashTool } from "../src/tools/bash.ts";
+import { createBashToolDefinition } from "../src/tools/bash.ts";
 import type { StreamFn } from "../src/kernel/loop/types.ts";
 import {
   assistant,
@@ -168,9 +168,10 @@ async function fixture(background: boolean, continuingParent = false) {
         session(api) {
           api.agents.add((draft) => draft.set("worker", { id: "worker", mode: "subagent" }));
           api.tools.add((draft) => {
-            const bash = createBashTool(cwd);
+            const bash = createBashToolDefinition(cwd);
             draft.set("bash", {
               ...bash,
+              name: "bash",
               parameters: Type.Object({
                 ...bash.parameters.properties,
                 background: Type.Optional(Type.Boolean()),

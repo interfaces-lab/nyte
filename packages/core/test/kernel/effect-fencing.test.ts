@@ -131,7 +131,7 @@ for (const state of ["missing", "intent", "waiting", "expired", "signal", "resul
       },
       wake: async () => {
         wakes++;
-        return { kind: "settle", result };
+        return { kind: "success", result };
       },
     });
     if (state !== "missing") {
@@ -247,7 +247,7 @@ for (const boundary of ["park", "settle", "repark", "wake-settle"] as const) {
               await lose();
               return { kind: "wait", ...backgroundWait };
             }
-            return { kind: "settle", result };
+            return { kind: "success", result };
           },
         },
         {
@@ -278,8 +278,8 @@ test("allowing a pending policy after an earlier fence starts no later intent or
   process.on("unhandledRejection", onUnhandled);
   const turn = f.makeTurn(
     {
-      execute: async (id) => {
-        executed.push(id);
+      execute: async (_input, call) => {
+        executed.push(call.id);
         return result;
       },
     },

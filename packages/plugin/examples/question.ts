@@ -19,12 +19,10 @@
  * The own-answer rule follows https://github.com/anomalyco/opencode/blob/e70d667a9fe3e84cc071a5596aa522c142c525b7/packages/core/src/tool/plugin/question.ts
  */
 import { acceptsSelectionReply, definePlugin, selectionReply, ToolWait } from "@nyte-ai/plugin";
-import type { AgentTool, Choice, Selection } from "@nyte-ai/plugin";
+import type { Choice, Selection, ToolDefinition } from "@nyte-ai/plugin";
 import type { JsonValue } from "@nyte-ai/schema";
 import { Type, Unsafe, type Static } from "typebox";
 import { Value } from "typebox/value";
-
-const TIMEOUT_KEY = "timeout";
 
 /** How long a question waits before the runner settles it unanswered. Ids are what storage holds. */
 const TIMEOUTS: readonly { readonly id: string; readonly ms: number }[] = [
@@ -117,9 +115,8 @@ export function answerFor(input: QuestionInput, reply: JsonValue): string {
 
 function questionTool(
   timeoutMs: () => Promise<number | undefined>,
-): AgentTool<typeof questionParameters> {
+): ToolDefinition<typeof questionParameters> {
   return {
-    name: "question",
     description:
       "Ask the user a question and wait for their answer. Use it when you need a decision " +
       "you can't make yourself. Offer short, distinct options. The user can always answer " +
@@ -128,9 +125,9 @@ function questionTool(
     availability: "foreground",
     replay: "never",
     present: (params) => ({ kind: "custom", label: params.question }),
-    execute: async (_callId, params) => {
+    execute: async (input) => {
       const ms = await timeoutMs();
-      const selection = selectionFor(params);
+      const selection = selectionFor(input);
       throw new ToolWait(ms === undefined ? { selection } : { selection, until: Date.now() + ms });
     },
     wake: async (waiting, context) => {
@@ -144,7 +141,7 @@ function questionTool(
       const answer = context.reply === undefined ? "" : answerFor(input, context.reply);
 
       return {
-        kind: "settle",
+        kind: "success",
         result:
           answer === ""
             ? {
@@ -168,25 +165,20 @@ function questionTool(
 export const questionPlugin = definePlugin({
   id: "question",
   session(api) {
-    api.tools.add((draft) =>
-      draft.set(
-        "question",
-        questionTool(async () => {
-          const stored = await api.storage.get(TIMEOUT_KEY);
+    const timeout = api.settings.add("question-timeout", {
+      label: "Question timeout",
+      default: "never",
+      choices: [
+        { id: "never", label: "Wait for an answer" },
+        ...TIMEOUTS.map(({ id }) => ({ id, label: id, description: "Then continue unanswered" })),
+      ],
+    });
+    api.tools.add(
+      "question",
+      questionTool(async () => {
+        const chosen = await timeout.get();
 
-          return TIMEOUTS.find((timeout) => timeout.id === stored)?.ms;
-        }),
-      ),
-    );
-    api.settings.add((settings) =>
-      settings.set("question-timeout", {
-        label: "Question timeout",
-        key: TIMEOUT_KEY,
-        fallback: "never",
-        choices: [
-          { id: "never", label: "Wait for an answer" },
-          ...TIMEOUTS.map(({ id }) => ({ id, label: id, description: "Then continue unanswered" })),
-        ],
+        return TIMEOUTS.find((candidate) => candidate.id === chosen)?.ms;
       }),
     );
   },

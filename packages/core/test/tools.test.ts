@@ -1,17 +1,42 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { PhotonImage } from "@cf-wasm/photon/node";
 import { describe, expect, test } from "vitest";
-import { createBashTool, createLocalBashOperations } from "../src/tools/bash.ts";
+import { createToolArgumentParser } from "@nyte-ai/ai/utils/validation";
+import { executeToolCalls } from "../src/kernel/loop/agent-loop.ts";
+import { bindTool } from "../src/plugins/index.ts";
+import { createRegistries } from "../src/plugins/host.ts";
+import { createBashToolDefinition, createLocalBashOperations } from "../src/tools/bash.ts";
 import { applyEditsToNormalizedContent } from "../src/tools/edit-diff.ts";
-import { createEditTool } from "../src/tools/edit.ts";
-import { createAllTools } from "../src/tools/index.ts";
-import { createLsTool } from "../src/tools/ls.ts";
-import { createReadTool } from "../src/tools/read.ts";
-import { createWriteTool } from "../src/tools/write.ts";
+import { createEditToolDefinition } from "../src/tools/edit.ts";
+import { builtinTools } from "./builtin-tools.ts";
+import { createLsToolDefinition } from "../src/tools/ls.ts";
+import { createReadToolDefinition } from "../src/tools/read.ts";
+import { createWriteToolDefinition } from "../src/tools/write.ts";
 import { ToolError, toolResultText } from "../src/kernel/loop/tool-result.ts";
+import type { AgentLoopConfig } from "../src/kernel/loop/types.ts";
+import { assistant, call, storePath } from "./kernel/helpers.ts";
+
+function callContext(id: string, signal = new AbortController().signal) {
+  return { id, signal, update: () => {} };
+}
+
+const config: AgentLoopConfig = {
+  model: {
+    id: "test",
+    name: "test",
+    api: "openai-responses",
+    provider: "openai",
+    baseUrl: "https://example.invalid",
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 1000,
+    maxTokens: 100,
+  },
+};
 
 test("read preserves small images and bounds converted, oversized, and oriented images", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nyte-read-image-"));
@@ -50,10 +75,10 @@ test("read preserves small images and bounds converted, oversized, and oriented 
         height: 1,
       },
     ];
-    const tool = createReadTool(directory);
+    const tool = createReadToolDefinition(directory);
     for (const fixture of fixtures) {
       await writeFile(join(directory, fixture.name), fixture.bytes);
-      const result = await tool.execute("read", { path: fixture.name });
+      const result = await tool.execute({ path: fixture.name }, callContext("read"));
       const image = result.content.find((part) => part.type === "image");
       assert.ok(image, `${fixture.name} returns an attachment`);
       assert.ok(image.data.length <= 4.5 * 1024 * 1024);
@@ -80,7 +105,7 @@ describe("ls tool", () => {
     const entries = new Promise<string[]>((resolve) => {
       finishRead = resolve;
     });
-    const tool = createLsTool("/workspace", {
+    const tool = createLsToolDefinition("/workspace", {
       operations: {
         exists: () => true,
         stat: () => ({ isDirectory: () => true }),
@@ -89,12 +114,79 @@ describe("ls tool", () => {
     });
     const controller = new AbortController();
 
-    const execution = tool.execute("call_1", {}, controller.signal);
+    const execution = tool.execute({}, callContext("call_1", controller.signal));
     controller.abort();
     finishRead?.([]);
 
     await assert.rejects(execution, /Operation aborted/);
   });
+
+  test("retains preparer rejection while schema parsing coerces and omits optional nulls", async () => {
+    const directory = dirname(storePath());
+    await writeFile(join(directory, "a.txt"), "a");
+    await writeFile(join(directory, "b.txt"), "b");
+    const ls = { ...createLsToolDefinition(directory), name: "ls" };
+    const parse = createToolArgumentParser(ls);
+    assert.deepEqual(parse({ path: null, limit: "1" }), { limit: 1 });
+    assert.deepEqual(parse({ limit: null }), {});
+    assert.deepEqual(ls.prepareArguments?.({ ignored: true }), {});
+    assert.throws(() => ls.prepareArguments?.({ limit: Number.NaN }), /limit must be number/);
+    for (const args of [{ limit: "1" }, { limit: null }, { path: null }, { path: 1 }]) {
+      const result = await executeToolCalls(
+        { messages: [], tools: [bindTool(ls)] },
+        assistant("", { calls: [call("ls", "ls", args)] }),
+        config,
+        undefined,
+        () => {},
+      );
+      assert.equal(result[0]?.isError, true);
+    }
+    const result = await executeToolCalls(
+      { messages: [], tools: [bindTool(ls)] },
+      assistant("", { calls: [call("ls", "ls", { limit: 2 })] }),
+      { ...config, beforeToolCall: async () => ({ args: { path: null, limit: "1" } }) },
+      undefined,
+      () => {},
+    );
+    assert.equal(result[0]?.isError, false);
+    assert.deepEqual(result[0]?.details, { entryLimitReached: 1 });
+    assert.match(toolResultText(result[0]?.content ?? []), /^a.txt\n/u);
+  });
+
+  test("skips entries that disappear after readdir and still marks surviving directories", async () => {
+    const directory = dirname(storePath());
+    await writeFile(join(directory, "gone"), "gone");
+    await writeFile(join(directory, "z.txt"), "z");
+    await mkdir(join(directory, "folder"));
+    const ls = bindTool({
+      name: "ls",
+      ...createLsToolDefinition(directory, {
+        operations: {
+          exists: async () => true,
+          stat,
+          readdir: async (path) => {
+            const entries = await readdir(path);
+            await rm(join(path, "gone"));
+            return entries;
+          },
+        },
+      }),
+    });
+    assert.equal(
+      toolResultText((await ls.execute({}, callContext("ls"))).content),
+      "folder/\nz.txt",
+    );
+  });
+});
+
+test("builtin registry contributions retain identity through rebuilds", () => {
+  const registries = createRegistries();
+  const tools = builtinTools("/tmp");
+  registries.tools.add("builtin", 0, (draft) => {
+    for (const tool of tools) draft.set(tool.name, tool);
+  });
+  assert.equal(registries.tools.rebuild().added.length, tools.length);
+  assert.deepEqual(registries.tools.rebuild(), { added: [], removed: [], changed: [], errors: [] });
 });
 
 describe("file mutation tools", () => {
@@ -102,15 +194,18 @@ describe("file mutation tools", () => {
     const directory = await mkdtemp(join(tmpdir(), "nyte-write-tool-"));
     const path = "nested/example.ts";
     const absolutePath = join(directory, path);
-    const tool = createWriteTool(directory);
+    const tool = createWriteToolDefinition(directory);
 
     try {
-      const created = await tool.execute("call_1", { path, content: "first\nkept\n" });
+      const created = await tool.execute({ path, content: "first\nkept\n" }, callContext("call_1"));
       assert.equal(toolResultText(created.content), `Successfully wrote to ${path}`);
       assert.equal(created.details, undefined);
       assert.equal(await readFile(absolutePath, "utf8"), "first\nkept\n");
 
-      const updated = await tool.execute("call_2", { path, content: "changed\nkept\n" });
+      const updated = await tool.execute(
+        { path, content: "changed\nkept\n" },
+        callContext("call_2"),
+      );
       assert.equal(toolResultText(updated.content), `Successfully wrote to ${path}`);
       assert.equal(updated.details, undefined);
       assert.equal(await readFile(absolutePath, "utf8"), "changed\nkept\n");
@@ -125,10 +220,13 @@ describe("file mutation tools", () => {
 
     try {
       await writeFile(join(directory, path), "before\nkept\n");
-      const result = await createEditTool(directory).execute("call_1", {
-        path,
-        edits: [{ oldText: "before", newText: "after" }],
-      });
+      const result = await createEditToolDefinition(directory).execute(
+        {
+          path,
+          edits: [{ oldText: "before", newText: "after" }],
+        },
+        callContext("call_1"),
+      );
       assert.equal(toolResultText(result.content), `Successfully replaced 1 block(s) in ${path}.`);
       assert.ok(result.details);
       assert.match(result.details.patch, /-before\n\+after/u);
@@ -230,16 +328,16 @@ describe("local bash lifecycle", () => {
 
   test("coding defaults expose four tools and structured shell results", async () => {
     assert.deepEqual(
-      createAllTools(process.cwd()).map((tool) => tool.name),
+      builtinTools(process.cwd()).map((tool) => tool.name),
       ["read", "bash", "edit", "write"],
     );
-    const tool = createBashTool(process.cwd());
+    const tool = createBashToolDefinition(process.cwd());
     assert.deepEqual(Object.keys(tool.parameters.properties), ["command", "timeout"]);
-    const result = await tool.execute("bash", { command: "printf done" });
+    const result = await tool.execute({ command: "printf done" }, callContext("bash"));
     expect(result.content).toEqual([{ type: "text", text: "done" }]);
     expect(result.structuredContent).toMatchObject({ output: "done", exit_code: 0 });
     await assert.rejects(
-      tool.execute("bash-error", { command: "printf failed; exit 7" }),
+      tool.execute({ command: "printf failed; exit 7" }, callContext("bash-error")),
       (error) => {
         assert.ok(error instanceof ToolError);
         assert.match(toolResultText(error.result.content), /failed\n\nCommand exited with code 7/u);

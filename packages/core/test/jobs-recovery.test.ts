@@ -9,8 +9,22 @@ import type { Run } from "../src/kernel/model.ts";
 import { runRef } from "../src/kernel/names.ts";
 import { pending, submit } from "../src/kernel/queue.ts";
 import { createJobs, JOB_PREFIX, parseJobRecord } from "../src/kernel/sdk/jobs.ts";
-import { ToolWait, type AgentTool, type AgentToolResult } from "../src/kernel/loop/types.ts";
-import { granted, lease, only, openStore, storePath, within } from "./kernel/helpers.ts";
+import {
+  ToolWait,
+  type AgentTool,
+  type AgentToolResult,
+  type ToolCall,
+} from "../src/kernel/loop/types.ts";
+import {
+  bareRun,
+  granted,
+  lease,
+  only,
+  openStore,
+  storePath,
+  toolCall,
+  within,
+} from "./kernel/helpers.ts";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -99,7 +113,7 @@ async function fixture() {
     session,
     peer,
     run,
-    context: { runId: run.id, head: run.head },
+    call: toolCall("call", { run: bareRun(run.id, run.head) }),
     manager,
     seed,
     stored,
@@ -115,17 +129,16 @@ async function fixture() {
 function controlledTool(name = "bash") {
   const started = Promise.withResolvers<AbortSignal>();
   const finished = Promise.withResolvers<AgentToolResult<unknown>>();
-  let publish: Parameters<AgentTool["execute"]>[3];
+  let publish: ToolCall["update"] | undefined;
   let executions = 0;
   const tool: AgentTool = {
     name,
     description: "Gated work",
     parameters: Type.Object({}),
-    execute: (_id, _args, signal, onUpdate) => {
-      assert.ok(signal);
+    execute: (_input, call) => {
       executions++;
-      publish = onUpdate;
-      started.resolve(signal);
+      publish = call.update;
+      started.resolve(call.signal);
       return finished.promise;
     },
   };
@@ -197,9 +210,7 @@ test("remote job refs cancel the owner without replacing the notified terminal o
   const work = controlledTool();
   try {
     const wrapped = owner.wrap(work.tool);
-    await expect(
-      wrapped.execute("call", { command: "work" }, undefined, undefined, f.context),
-    ).rejects.toBeInstanceOf(ToolWait);
+    await expect(wrapped.execute({ command: "work" }, f.call)).rejects.toBeInstanceOf(ToolWait);
     const signal = await within(work.started.promise);
     work.publish({ ...result, content: [{ type: "text", text: "partial output" }] });
     await expect.poll(async () => only(await owner.list()).output).toBe("partial output");
@@ -223,9 +234,9 @@ test("remote job refs cancel the owner without replacing the notified terminal o
       },
     ]);
     expect(await pending(f.session, "main")).toHaveLength(1);
-    await expect(
-      remote.wrap(work.tool).execute("call", { command: "work" }, undefined, undefined, f.context),
-    ).rejects.toThrow("Job already exists");
+    await expect(remote.wrap(work.tool).execute({ command: "work" }, f.call)).rejects.toThrow(
+      "Job already exists",
+    );
     expect(work.executions()).toBe(1);
   } finally {
     await f.close();
@@ -251,9 +262,9 @@ test("cancellation drains only the in-flight and latest pending progress", async
     return append(events, options);
   });
   try {
-    await expect(
-      owner.wrap(work.tool).execute("call", { command: "work" }, undefined, undefined, f.context),
-    ).rejects.toBeInstanceOf(ToolWait);
+    await expect(owner.wrap(work.tool).execute({ command: "work" }, f.call)).rejects.toBeInstanceOf(
+      ToolWait,
+    );
     await within(work.started.promise);
     work.publish({ ...result, content: [{ type: "text", text: "first" }] });
     await within(entered.promise);
@@ -349,7 +360,7 @@ test("close settles uncooperative work and ignores late rejection and updates", 
   const work = controlledTool();
   const executing = jobs
     .wrap(work.tool)
-    .execute("call", { command: "work", background: true }, undefined, undefined, f.context)
+    .execute({ command: "work", background: true }, f.call)
     .catch((cause: unknown) => cause);
   try {
     const signal = await within(work.started.promise);
@@ -385,7 +396,7 @@ test("close waits for admission already in flight and never starts its side effe
   const work = controlledTool();
   const executing = jobs
     .wrap(work.tool)
-    .execute("call", { command: "work" }, undefined, undefined, f.context)
+    .execute({ command: "work" }, f.call)
     .catch((cause: unknown) => cause);
   try {
     await within(entered.promise);
@@ -482,9 +493,9 @@ test("a failed detached lease release and failed diagnostic do not reject shutdo
   });
   const work = controlledTool();
   try {
-    await expect(
-      jobs.wrap(work.tool).execute("call", { command: "work" }, undefined, undefined, f.context),
-    ).rejects.toBeInstanceOf(ToolWait);
+    await expect(jobs.wrap(work.tool).execute({ command: "work" }, f.call)).rejects.toBeInstanceOf(
+      ToolWait,
+    );
     await within(work.started.promise);
     vi.spyOn(f.session.leases, "release").mockRejectedValue(new Error("release failed"));
     work.finished.resolve(result);
@@ -505,7 +516,7 @@ test("cancellation losing to completion reports the completed job", async () => 
   const resume = Promise.withResolvers<void>();
   const executing = owner
     .wrap(work.tool)
-    .execute("call", { command: "work", background: true }, undefined, undefined, f.context)
+    .execute({ command: "work", background: true }, f.call)
     .catch((cause: unknown) => cause);
   try {
     await within(work.started.promise);
@@ -541,9 +552,9 @@ test("a lost lease stops the old owner's work and neither renewal nor close can 
     },
   });
   try {
-    await expect(
-      owner.wrap(work.tool).execute("call", { command: "work" }, undefined, undefined, f.context),
-    ).rejects.toBeInstanceOf(ToolWait);
+    await expect(owner.wrap(work.tool).execute({ command: "work" }, f.call)).rejects.toBeInstanceOf(
+      ToolWait,
+    );
     const signal = await within(work.started.promise);
     const job = only(await owner.list());
     vi.spyOn(Date, "now").mockReturnValue(Date.now() + 30_000);
@@ -570,9 +581,9 @@ test("an abort wake racing promotion still cancels the promoted work", async () 
   const entered = Promise.withResolvers<void>();
   const resume = Promise.withResolvers<void>();
   try {
-    await expect(
-      owner.wrap(work.tool).execute("call", { command: "work" }, undefined, undefined, f.context),
-    ).rejects.toBeInstanceOf(ToolWait);
+    await expect(owner.wrap(work.tool).execute({ command: "work" }, f.call)).rejects.toBeInstanceOf(
+      ToolWait,
+    );
     const signal = await within(work.started.promise);
     const job = only(await owner.list());
     const update = f.peer.refs.update.bind(f.peer.refs);
@@ -597,7 +608,7 @@ test("an abort wake racing promotion still cancels the promoted work", async () 
     expect(await owner.background(job.id)).toEqual({ kind: "applied" });
     resume.resolve();
     expect(await within(waking)).toMatchObject({
-      kind: "settle",
+      kind: "success",
       result: { details: { jobId: job.id } },
     });
     expect(only(await owner.list())).toMatchObject({ phase: { kind: "cancelled" } });
@@ -616,7 +627,7 @@ test("recheck signals a job that finished before its call was parked, and skips 
   try {
     const executing = jobs
       .wrap(work.tool)
-      .execute("call", { command: "work" }, undefined, undefined, f.context)
+      .execute({ command: "work" }, f.call)
       .catch((cause: unknown) => cause);
     await within(work.started.promise);
     work.finished.resolve(result);

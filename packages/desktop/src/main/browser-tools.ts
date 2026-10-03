@@ -149,18 +149,12 @@ export function browserToolsPlugin(options: {
       const folder = api.env.cwd;
       const owner: BrowserOwner = { kind: "project", path: folder };
 
+      // Setup cannot write session storage, so the remembered answer is not
+      // seeded into the fact; the settings row falls back to it instead.
       const stored = await api.storage.get(BROWSER_GATE_KEY);
-      let accessLevel: BrowserAccessLevel | undefined;
-
-      if (isBrowserAccessLevel(stored)) {
-        accessLevel = stored;
-      } else {
-        accessLevel = await access.read(folder);
-
-        // Seed the session fact from the remembered answer so the settings row
-        // and this session's tools agree from the first turn.
-        if (accessLevel !== undefined) await api.storage.set(BROWSER_GATE_KEY, accessLevel);
-      }
+      let accessLevel: BrowserAccessLevel | undefined = isBrowserAccessLevel(stored)
+        ? stored
+        : await access.read(folder);
 
       const factName = `${BROWSER_TOOLS_PLUGIN_ID}:${BROWSER_GATE_KEY}`;
       api.events.subscribe((event) => {
@@ -189,8 +183,7 @@ export function browserToolsPlugin(options: {
       async function applyLevel(next: BrowserAccessLevel): Promise<void> {
         if (next === accessLevel) return;
         accessLevel = next;
-        api.tools.rebuild();
-        api.settings.rebuild();
+        api.refresh();
         await access.remember(folder, next);
       }
 
@@ -220,16 +213,16 @@ export function browserToolsPlugin(options: {
 
       async function runPageAction(
         title: string,
-        signal: AbortSignal | undefined,
+        signal: AbortSignal,
         action: () => Promise<BrowserActionResult>,
       ): Promise<AgentToolResult<unknown>> {
-        if (signal?.aborted) throw signal.reason;
+        if (signal.aborted) throw signal.reason;
         let result: BrowserActionResult | undefined;
 
         try {
           result = await action();
         } catch (error) {
-          if (!signal?.aborted) throw error;
+          if (!signal.aborted) throw error;
         }
 
         if (result?.kind === "ok") {
@@ -239,7 +232,7 @@ export function browserToolsPlugin(options: {
         }
 
         // A cancelled call still reports whatever page state it reached.
-        if (signal?.aborted || result === undefined) {
+        if (signal.aborted || result === undefined) {
           const parts: (TextContent | ImageContent)[] = [{ type: "text", text: CANCELLED }];
 
           if (result?.kind === "ok")
@@ -295,30 +288,26 @@ export function browserToolsPlugin(options: {
         writes?: true;
         replay?: "safe";
         title?: (params: Static<T>) => string;
-        action?: (params: Static<T>, signal?: AbortSignal) => Promise<BrowserActionResult>;
-        execute?: (
-          callId: string,
-          params: Static<T>,
-          signal?: AbortSignal,
-        ) => Promise<AgentToolResult<unknown>>;
+        action?: (params: Static<T>, signal: AbortSignal) => Promise<BrowserActionResult>;
+        execute?: (params: Static<T>, signal: AbortSignal) => Promise<AgentToolResult<unknown>>;
       }): AgentTool {
         /** An erased schema cannot prove the argument type; re-check to narrow it. */
-        const execute = (callId: string, args: unknown, signal?: AbortSignal) => {
+        const execute = (input: unknown, signal: AbortSignal) => {
           requireAccess(spec.writes === true);
 
-          if (!Value.Check(spec.parameters, args)) {
+          if (!Value.Check(spec.parameters, input)) {
             throw new Error("Invalid browser tool arguments");
           }
 
           const { action, title } = spec;
 
-          if (spec.execute !== undefined) return spec.execute(callId, args, signal);
+          if (spec.execute !== undefined) return spec.execute(input, signal);
 
           if (action === undefined || title === undefined) {
             throw new Error(`${spec.name} has neither an action nor an execute`);
           }
 
-          return runPageAction(title(args), signal, () => action(args, signal));
+          return runPageAction(title(input), signal, () => action(input, signal));
         };
 
         return bindTool({
@@ -327,7 +316,7 @@ export function browserToolsPlugin(options: {
           parameters: spec.parameters,
           availability: "foreground",
           replay: spec.replay ?? "never",
-          execute,
+          execute: (input, call) => execute(input, call.signal),
           async wake(waiting, context) {
             if (context.aborted || context.signal.aborted) throw refuse(CANCELLED);
 
@@ -351,8 +340,8 @@ export function browserToolsPlugin(options: {
             // `execute` applies the answer: `off`, and a write tool under
             // `read`, are refused there by the rule every other call meets.
             return {
-              kind: "settle",
-              result: await execute(waiting.toolCallId, waiting.args, context.signal),
+              kind: "success",
+              result: await execute(waiting.args, context.signal),
             };
           },
         });
@@ -424,7 +413,7 @@ export function browserToolsPlugin(options: {
             "Re-read the page and get a fresh snapshot. Optionally capture a screenshot.",
           parameters: SnapshotParams,
           replay: "safe",
-          async execute(_callId, params, signal) {
+          async execute(params, signal) {
             const title = params.ref ? `browser_snapshot · ${params.ref}` : "browser_snapshot";
 
             const report = await runPageAction(title, signal, () =>
@@ -451,7 +440,7 @@ export function browserToolsPlugin(options: {
           description: "Read the browser console log entries (newest first).",
           parameters: ConsoleParams,
           replay: "safe",
-          execute(_callId, params) {
+          execute(params) {
             const entries = agent.console({ session: sid, ...params, limit: params.limit ?? 50 });
             const content = renderConsoleReport(entries).content;
 
@@ -463,11 +452,11 @@ export function browserToolsPlugin(options: {
           description: "Evaluate a JavaScript expression in the page context.",
           parameters: EvaluateParams,
           writes: true,
-          async execute(_callId, params, signal) {
-            if (signal?.aborted) throw signal.reason;
+          async execute(params, signal) {
+            if (signal.aborted) throw signal.reason;
             const evaluated = await agent.evaluate({ session: sid, ...params, signal });
 
-            if (signal?.aborted) throw refuse(CANCELLED);
+            if (signal.aborted) throw refuse(CANCELLED);
             const content = renderEvaluateReport(evaluated).content;
 
             return { content, details: {}, title: "browser_evaluate" };
@@ -486,7 +475,7 @@ export function browserToolsPlugin(options: {
         settings.set("browser-access", {
           label: "Browser access",
           key: BROWSER_GATE_KEY,
-          fallback: "full",
+          default: accessLevel ?? "full",
           choices: ACCESS_SELECTION.choices,
         });
       });

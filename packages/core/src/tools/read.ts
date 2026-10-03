@@ -1,5 +1,5 @@
 import type { ImageResizeOptions } from "./support/image-resize.ts";
-import type { AgentTool, AgentToolResult } from "../kernel/loop/types.ts";
+import type { AgentToolResult, ToolDefinition } from "../kernel/loop/types.ts";
 import type { ImageContent, TextContent } from "@nyte-ai/schema";
 import { constants } from "node:fs";
 import { access, readFile } from "node:fs/promises";
@@ -57,23 +57,22 @@ export interface ReadToolOptions {
   operations?: ReadOperations;
 }
 
-export function createReadTool(
+export function createReadToolDefinition(
   cwd: string,
   options?: ReadToolOptions,
-): AgentTool<typeof readSchema, ReadToolDetails | undefined> {
+): ToolDefinition<typeof readSchema, ReadToolDetails | undefined> {
   const autoResizeImages = options?.autoResizeImages ?? true;
   const fallbackResizeOptions = options?.resizeOptions;
   const ops = options?.operations ?? defaultReadOperations;
   return {
-    name: "read",
     label: "read",
     description: `Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
     parameters: readSchema,
     present: ({ path }) => ({ kind: "file_read", path }),
     constrainedSampling: { type: "json_schema", strict: "prefer" },
-    async execute(_toolCallId, { path, offset, limit }, signal) {
+    async execute({ path, offset, limit }, { signal }) {
       return new Promise<AgentToolResult<ReadToolDetails | undefined>>((resolve, reject) => {
-        if (signal?.aborted) {
+        if (signal.aborted) {
           reject(new Error("Operation aborted"));
           return;
         }
@@ -82,7 +81,7 @@ export function createReadTool(
           aborted = true;
           reject(new Error("Operation aborted"));
         };
-        signal?.addEventListener("abort", onAbort, { once: true });
+        signal.addEventListener("abort", onAbort, { once: true });
 
         void (async () => {
           try {
@@ -174,10 +173,10 @@ export function createReadTool(
             }
 
             if (aborted) return;
-            signal?.removeEventListener("abort", onAbort);
+            signal.removeEventListener("abort", onAbort);
             resolve({ content, details });
           } catch (error: unknown) {
-            signal?.removeEventListener("abort", onAbort);
+            signal.removeEventListener("abort", onAbort);
             if (!aborted) reject(error);
           }
         })();

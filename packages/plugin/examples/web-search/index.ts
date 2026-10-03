@@ -260,11 +260,11 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
         parameters: webSearchParameters,
         replay: "safe",
         providers: [],
-        async execute(_toolCallId, params, signal, onUpdate) {
-          const query = params.query.trim();
+        async execute(input, { signal, update }) {
+          const query = input.query.trim();
 
           if (query === "") throw new Error("Web search needs a non-empty query");
-          signal?.throwIfAborted();
+          signal.throwIfAborted();
           const { mode, first, remaining } = await planSearch(query);
           // Snapshot the eligible pool once: never downgrade a keyed request to
           // anonymous access during failover, and try each provider at most once.
@@ -272,12 +272,12 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
           let route = first;
 
           for (;;) {
-            signal?.throwIfAborted();
+            signal.throwIfAborted();
 
             if ((await selection()) === WEB_SEARCH_OFF) throw new Error("Web search is off");
             const summary = `${mode === "auto" ? "Auto" : "Selected"} · ${route.provider.name} · ${route.credential.source}`;
             lastRoute = summary;
-            api.settings.rebuild();
+            api.refresh();
             // Lead with the query like other tools lead with their subject; routing
             // detail stays in the progress text and settings summary.
             const title = `${query} · ${route.provider.name}`;
@@ -293,14 +293,14 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
             const failover =
               rateLimited.length === 0 ? "" : `Rate limited: ${rateLimited.join(", ")}. `;
 
-            onUpdate?.({
+            update({
               content: [{ type: "text", text: `${failover}Searching with ${summary}…` }],
               details,
               title,
             });
 
             try {
-              signal?.throwIfAborted();
+              signal.throwIfAborted();
 
               const results = await route.provider.execute({
                 query,
@@ -315,7 +315,7 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
                 title,
               };
             } catch (error) {
-              if (signal?.aborted === true) {
+              if (signal.aborted) {
                 throw new ToolError({
                   content: [{ type: "text", text: "Web search cancelled" }],
                   details,
@@ -403,8 +403,12 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
           }
 
           return {
-            kind: "settle",
-            result: await tool.execute(waiting.toolCallId, waiting.args, context.signal),
+            kind: "success",
+            result: await tool.execute(waiting.args, {
+              id: waiting.toolCallId,
+              signal: context.signal,
+              update: () => undefined,
+            }),
           };
         },
       };
@@ -419,7 +423,7 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
 
         if (next === disabled) return;
         disabled = next;
-        api.tools.rebuild();
+        api.refresh();
       });
 
       api.tools.add((tools) => {
@@ -435,7 +439,7 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
         settings.set(WEB_SEARCH_SETTING_ID, {
           label: "Web search",
           key: PROVIDER_KEY,
-          fallback: WEB_SEARCH_AUTO,
+          default: WEB_SEARCH_AUTO,
           choices: [
             {
               id: WEB_SEARCH_AUTO,
@@ -476,7 +480,7 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
             const key = rest.join(" ").trim();
             await credentials.write(provider.id, key === "" ? undefined : key);
             lastRoute = undefined;
-            api.settings.rebuild();
+            api.refresh();
 
             return key === ""
               ? `Removed the ${provider.name} API key.`

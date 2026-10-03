@@ -9,7 +9,6 @@ import type {
   AssistantMessage,
   AssistantMessageEvent,
   AssistantMessageEventStream,
-  CacheRetention,
   Context,
   ImageContent,
   ProviderCheckpointMaterial,
@@ -20,7 +19,6 @@ import type {
   TextContent,
   Tool,
   ToolResultMessage,
-  Transport,
   Usage,
 } from "@nyte-ai/ai";
 import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
@@ -50,45 +48,6 @@ export type StreamFn = (
 ) => AssistantMessageEventStream | Promise<AssistantMessageEventStream>;
 
 /**
- * Provider request options snapshotted per turn and available to
- * `before_request` hooks.
- *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/agent/src/harness/types.ts
- * Synced with pi 7ebf9087e.
- */
-type SamplingParams = NonNullable<SimpleStreamOptions["samplingParams"]>;
-
-export interface StreamOptions {
-  /** Maximum provider retry attempts. */
-  maxRetries?: number;
-  /** Optional cap for provider-requested retry delays. */
-  maxRetryDelayMs?: number;
-  /** Preferred transport for providers that support more than one. */
-  transport?: Transport;
-  /** Prompt cache retention preference. */
-  cacheRetention?: CacheRetention;
-  /** Request the selected model's advertised fast inference mode. */
-  fast?: boolean;
-  temperature?: number;
-  maxTokens?: number;
-  /** Additional request headers merged with auth and lifecycle headers. */
-  headers?: Record<string, string>;
-  /** Sampling parameters merged into OpenAI-compatible request bodies. */
-  samplingParams?: SamplingParams;
-}
-
-/** Per-request stream option patch returned by provider hooks. */
-export interface StreamOptionsPatch extends Omit<
-  Partial<StreamOptions>,
-  "headers" | "samplingParams"
-> {
-  /** Header patch. `undefined` values delete keys; an undefined field clears all headers. */
-  headers?: Record<string, string | undefined> | undefined;
-  /** Sampling patch. `undefined` values delete keys; an undefined field clears all parameters. */
-  samplingParams?: SamplingParams | undefined;
-}
-
-/**
  * Controls how many queued user messages are injected when the agent loop reaches a queue drain point.
  *
  * - "all": drain and inject every queued message at that point.
@@ -115,25 +74,13 @@ export interface BeforeToolCallResult {
 }
 
 /**
- * Partial override returned from `afterToolCall`.
- *
- * Merge semantics are field-by-field:
- * - `content`: if provided, replaces the tool result content array in full
- * - `details`: if provided, replaces the tool result details value in full
- * - `isError`: if provided, replaces the tool result error flag
- * - `usage`: if provided, replaces the tool result usage
- *
- * Omitted fields keep the original executed tool result values.
- * There is no deep merge for `content`, `details`, or `usage`.
+ * Partial override returned from `afterToolCall`. A field present replaces the
+ * executed result's in full; `kind` replaces the outcome. Omitted fields keep
+ * their values. Nothing is deep-merged.
  */
-export interface AfterToolCallResult {
-  content?: (TextContent | ImageContent)[];
-  details?: unknown;
-  structuredContent?: JsonValue;
-  isError?: boolean;
-  /** Usage from the final tool execution itself, if available. Not used for main LLM context accounting. */
-  usage?: Usage;
-}
+export type AfterToolCallResult = Partial<
+  Pick<AgentToolResult<unknown>, "content" | "details" | "structuredContent" | "usage">
+> & { readonly kind?: ToolCallOutcome["kind"] };
 
 /** Context passed to `beforeToolCall`. */
 export interface BeforeToolCallContext {
@@ -147,21 +94,8 @@ export interface BeforeToolCallContext {
   context: AgentContext;
 }
 
-/** Context passed to `afterToolCall`. */
-export interface AfterToolCallContext {
-  /** The assistant message that requested the tool call. */
-  assistantMessage: AssistantMessage;
-  /** The raw tool call block from `assistantMessage.content`. */
-  toolCall: AgentToolCall;
-  /** Validated tool arguments for the target tool schema. */
-  args: unknown;
-  /** The executed tool result before any `afterToolCall` overrides are applied. */
-  result: AgentToolResult<unknown>;
-  /** Whether the executed tool result is currently treated as an error. */
-  isError: boolean;
-  /** Current agent context at the time the tool call is finalized. */
-  context: AgentContext;
-}
+/** Context passed to `afterToolCall`: the executed outcome before any overrides. */
+export type AfterToolCallContext = BeforeToolCallContext & ToolCallOutcome;
 
 export interface AgentLoopConfig extends SimpleStreamOptions {
   model: Model<Api>;
@@ -205,8 +139,9 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
    * Return an `AfterToolCallResult` to override parts of the executed tool result:
    * - `content` replaces the full content array
    * - `details` replaces the full details payload
-   * - `isError` replaces the error flag
+   * - `structuredContent` replaces the structured content
    * - `usage` replaces the tool result usage
+   * - `kind` replaces the outcome kind
    *
    * Any omitted fields keep their original values. No deep merge is performed.
    * The hook receives the agent abort signal and is responsible for honoring it.
@@ -253,6 +188,11 @@ export interface AgentToolResult<T> {
  * the tool promise settles are ignored.
  */
 export type AgentToolUpdateCallback<T = unknown> = (partialResult: AgentToolResult<T>) => void;
+
+/** How a tool call settled: its result, and whether that result is a failure. */
+export type ToolCallOutcome<TDetails = unknown> =
+  | { readonly kind: "success"; readonly result: AgentToolResult<TDetails> }
+  | { readonly kind: "error"; readonly result: AgentToolResult<TDetails> };
 
 // ---------------------------------------------------------------------------
 // Durable tool wait (design record: "Wait and wake")
@@ -360,10 +300,11 @@ export interface ToolWakeContext {
   readonly reply?: JsonValue;
 }
 
-export type ToolWakeOutcome =
-  | { kind: "settle"; result: AgentToolResult<unknown>; isError?: boolean }
-  /** Park again, with what the new wait asks and when it expires, as `ToolWait` takes them. */
-  | ({ kind: "wait" } & WaitOptions);
+/**
+ * Settle the call as `success` or `error`, or park again with `wait`, carrying
+ * what the new wait asks and when it expires, as `ToolWait` takes them.
+ */
+export type ToolWakeOutcome = ToolCallOutcome | ({ readonly kind: "wait" } & WaitOptions);
 
 /**
  * Settle a waiting call on wake, or keep waiting. Runs on whichever host
@@ -374,21 +315,36 @@ export type ToolWakeOutcome =
  */
 export type ToolWake = (wait: WaitingCall, context: ToolWakeContext) => Promise<ToolWakeOutcome>;
 
-/** The durable run and head executing a tool call. */
-export interface ToolExecutionContext {
-  readonly runId: string;
+/** The durable run executing a call: its identity, its transcript so far, and the tools it may call. */
+export interface ToolRun {
+  readonly id: string;
   readonly head: string;
+  /** The call that invoked this one through `tools.execute`. */
   readonly parentToolCallId?: string;
-  history?(this: void): Promise<readonly Message[]>;
-  readonly tools?: {
+  history(this: void): Promise<readonly Message[]>;
+  readonly tools: {
     list(): readonly AgentTool[];
     execute(
       name: string,
       args: unknown,
       options?: { signal?: AbortSignal; onUpdate?: AgentToolUpdateCallback },
-    ): Promise<{ result: AgentToolResult<unknown>; isError: boolean }>;
+    ): Promise<ToolCallOutcome>;
+    /** Bring deferred or codemode tools into the model's declared set from the next request on. */
     activate(names: readonly string[]): void;
   };
+}
+
+/**
+ * One call of a tool, as the runtime hands it to `execute` beside the parsed
+ * input. `run` is absent only in the bare loop, which executes tools outside
+ * any run; a session always supplies it.
+ */
+export interface ToolCall<TDetails = unknown> {
+  readonly id: string;
+  readonly signal: AbortSignal;
+  /** Stream a partial result. A call made after `execute` settles is ignored. */
+  update(this: void, partial: AgentToolResult<TDetails>): void;
+  readonly run?: ToolRun;
 }
 
 /** The call `present` classifies: the run and head that committed it, and its call id. */
@@ -413,12 +369,9 @@ export interface AgentTool<
   prepareArguments?: (args: AgentToolCall["arguments"]) => unknown;
   /** Execute the tool call. Throw on failure instead of encoding errors in `content`. */
   execute: (
-    toolCallId: string,
     // An erased schema cannot prove an input type. Bind typed definitions before storage.
-    params: TSchema extends TParameters ? unknown : Static<TParameters>,
-    signal?: AbortSignal,
-    onUpdate?: AgentToolUpdateCallback<TDetails>,
-    context?: ToolExecutionContext,
+    input: TSchema extends TParameters ? unknown : Static<TParameters>,
+    call: ToolCall<TDetails>,
   ) => Promise<AgentToolResult<TDetails>>;
   /** Available only while the session is foreground work with a participant present. */
   availability?: "foreground";
@@ -442,6 +395,12 @@ export interface AgentTool<
   /** Settles this tool's waiting calls on wake (design record: "Wait and wake"). */
   wake?: ToolWake;
 }
+
+/** A tool as its author writes it. The registry stamps `name` from the key it is added under. */
+export type ToolDefinition<TParameters extends TSchema = TSchema, TDetails = unknown> = Omit<
+  AgentTool<TParameters, TDetails>,
+  "name"
+>;
 
 /**
  * Context snapshot passed into the low-level agent loop. The prompt and the
@@ -479,10 +438,4 @@ export type AgentEvent =
       args: unknown;
       partialResult: unknown;
     }
-  | {
-      type: "tool_execution_end";
-      toolCallId: string;
-      toolName: string;
-      result: AgentToolResult<unknown>;
-      isError: boolean;
-    };
+  | ({ type: "tool_execution_end"; toolCallId: string; toolName: string } & ToolCallOutcome);

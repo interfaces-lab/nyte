@@ -49,7 +49,6 @@ import {
   executeToolCalls,
   failToolCallsFromTruncatedMessage,
   generateAssistant,
-  toolResultMessage,
 } from "./loop/agent-loop.ts";
 import type {
   AgentContext,
@@ -60,10 +59,16 @@ import type {
   AgentToolResult,
   StreamFn,
   ThinkingLevel,
+  ToolCallOutcome,
   WaitingCall,
 } from "./loop/types.ts";
 import { isToolWait, waitTerms } from "./loop/types.ts";
-import { ToolError, toolResultContent } from "./loop/tool-result.ts";
+import {
+  ToolError,
+  toolCallArguments,
+  toolResultContent,
+  toolResultMessage,
+} from "./loop/tool-result.ts";
 import { liveTools } from "./loop/nested-tool-calls.ts";
 import { modelTools } from "./loop/tool-catalog.ts";
 import { branch } from "./graph.ts";
@@ -688,18 +693,11 @@ async function runTools(
       config,
       input.signal.aborted ? undefined : input.signal,
       (event) => emitToolProgress(input, event),
-      async ({ toolCall, result, isError }) => {
+      async (toolCall, outcome) => {
         const view = settling.get(toolCall.id);
 
         if (state.stopped !== undefined || view === undefined) return;
-        await settleCall({
-          session: input.session,
-          lease: input.lease,
-          view,
-          result,
-          isError,
-          state,
-        });
+        await settleCall({ session: input.session, lease: input.lease, view, outcome, state });
       },
     );
 
@@ -742,13 +740,9 @@ function callArguments(tool: AgentTool | undefined, call: AgentToolCall): CallAr
     const prepared =
       tool.prepareArguments === undefined ? call.arguments : tool.prepareArguments(call.arguments);
 
-    if (typeof prepared !== "object" || prepared === null || Array.isArray(prepared)) {
-      return { kind: "invalid" };
-    }
-
     return {
       kind: "validated",
-      value: validateToolArguments(tool, { ...call, arguments: prepared }),
+      value: validateToolArguments(tool, { ...call, arguments: toolCallArguments(prepared) }),
     };
   } catch {
     return { kind: "invalid" };
@@ -900,9 +894,10 @@ function durableTools(options: {
   readonly tools: readonly AgentTool[];
 }): AgentTool[] {
   return options.tools.map((tool) => {
-    const execute: AgentTool["execute"] = async (callId, params, signal, onUpdate) => {
+    const execute: AgentTool["execute"] = async (input, call) => {
+      const callId = call.id;
       if (options.state.stopped !== undefined) return waitingResult();
-      const args = toJsonValue(params);
+      const args = toJsonValue(input);
       let opened;
 
       try {
@@ -936,7 +931,7 @@ function durableTools(options: {
       if (options.state.stopped !== undefined) return waitingResult();
       let view = opened.view;
       let recovery = opened.kind === "opened" ? "execute" : decideRecovery(view);
-      const executionSignal = signal ?? options.input.signal;
+      const executionSignal = options.input.signal;
 
       if (
         recovery === "blocked" &&
@@ -973,10 +968,7 @@ function durableTools(options: {
       switch (recovery) {
         case "execute": {
           try {
-            return await tool.execute(callId, params, executionSignal, onUpdate, {
-              runId: options.input.run.id,
-              head: options.input.run.head,
-            });
+            return await tool.execute(input, { ...call, signal: executionSignal });
           } catch (error) {
             if (!isToolWait(error)) throw error;
             await parkCall({
@@ -1005,11 +997,9 @@ function durableTools(options: {
               expired: false,
             });
 
-            if (outcome.kind === "settle") {
-              if (outcome.isError === true) throw new ToolError(outcome.result);
+            if (outcome.kind === "error") throw new ToolError(outcome.result);
 
-              return outcome.result;
-            }
+            if (outcome.kind === "success") return outcome.result;
           }
 
           throw new Error(`Tool call "${tool.name}" was aborted while waiting.`);
@@ -1048,11 +1038,9 @@ function durableTools(options: {
                 },
           );
 
-          if (outcome.kind === "settle") {
-            if (outcome.isError === true) throw new ToolError(outcome.result);
+          if (outcome.kind === "error") throw new ToolError(outcome.result);
 
-            return outcome.result;
-          }
+          if (outcome.kind === "success") return outcome.result;
 
           await parkCall({
             session: options.input.session,
@@ -1093,21 +1081,21 @@ function durableTools(options: {
 
     return {
       ...tool,
-      execute: (callId, params, signal, onUpdate) =>
+      execute: (input, call) =>
         startSpan(
           options.input.telemetry,
           "nyte.tool",
           {
             "nyte.run.id": options.input.run.id,
             "nyte.tool.name": tool.name,
-            "nyte.call.id": callId,
+            "nyte.call.id": call.id,
           },
           async (span) => {
             try {
-              const result = await execute(callId, params, signal, onUpdate);
+              const result = await execute(input, call);
               span.setAttributes({
                 "nyte.tool.is_error": false,
-                "nyte.tool.parked": options.parked.has(callId),
+                "nyte.tool.parked": options.parked.has(call.id),
               });
 
               return result;
@@ -1125,8 +1113,7 @@ async function settleCall(options: {
   readonly session: Session;
   readonly lease: Lease;
   readonly view: EffectView;
-  readonly result: AgentToolResult<unknown>;
-  readonly isError: boolean;
+  readonly outcome: ToolCallOutcome;
   readonly state: ToolBatchState;
 }): Promise<void> {
   try {
@@ -1135,8 +1122,7 @@ async function settleCall(options: {
       view: options.view,
       result: toolResultMessage(
         { toolCallId: options.view.intent.callId, toolName: options.view.intent.tool },
-        options.result,
-        options.isError,
+        options.outcome,
       ),
     });
 

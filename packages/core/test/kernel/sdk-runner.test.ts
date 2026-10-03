@@ -408,7 +408,7 @@ test("a faulted runner drops its parked deadline before SDK close", async () => 
               throw new ToolWait({ until });
             },
             wake: async () => ({
-              kind: "settle",
+              kind: "success",
               result: { content: [{ type: "text", text: "done" }], details: {} },
             }),
           }),

@@ -18,7 +18,9 @@ import {
   type AgentTool,
   type AgentToolResult,
   type ToolPresentContext,
-  type ToolExecutionContext,
+  type ToolCall,
+  type ToolCallOutcome,
+  type ToolRun,
   type ToolWakeContext,
 } from "../../kernel/loop/types.ts";
 import { ToolError, toolResultContent } from "../../kernel/loop/tool-result.ts";
@@ -352,12 +354,17 @@ const WAIT_END_TEXT: Record<Exclude<WaitEnd, "settled">, string> = {
   cancelled: "This wait was cancelled because the run was stopped. The agents keep working.",
 };
 
-interface WaitOutcome<Details> {
-  readonly result: AgentToolResult<Details>;
-  readonly isError: boolean;
+/** Every agent tool acts on behalf of a run; the bare loop cannot call them. */
+function runOf(call: ToolCall): ToolRun {
+  if (call.run === undefined) throw new Error("Agent tools require a run");
+
+  return call.run;
 }
 
-function awaitResult(statuses: readonly AgentStatus[], end: WaitEnd): WaitOutcome<AwaitDetails> {
+function awaitResult(
+  statuses: readonly AgentStatus[],
+  end: WaitEnd,
+): ToolCallOutcome<AwaitDetails> {
   const first = statuses[0];
 
   const result: AgentToolResult<AwaitDetails> = {
@@ -378,7 +385,7 @@ function awaitResult(statuses: readonly AgentStatus[], end: WaitEnd): WaitOutcom
         (status) => status.kind === "report" && status.report.end.kind !== "completed",
       ));
 
-  return { result, isError: failed };
+  return { kind: failed ? "error" : "success", result };
 }
 
 /** Installed only in root sessions. */
@@ -398,17 +405,19 @@ export function subagentsPlugin(host: SubagentHost) {
     agents: readonly SessionId[],
     mode: "any" | "all",
     timeoutMs: number,
-    context: ToolExecutionContext,
+    call: ToolCall,
   ) => {
     const statuses = await host.status(agents);
 
     if (satisfied(statuses, mode) || statuses.some((status) => status.kind === "not_found"))
       return awaitResult(statuses, "settled");
 
-    if (timeoutMs === 0 || context.parentToolCallId !== undefined)
+    const run = runOf(call);
+
+    if (timeoutMs === 0 || run.parentToolCallId !== undefined)
       return awaitResult(statuses, "timeout");
 
-    if (await host.inputPending(context.head)) return awaitResult(statuses, "yield");
+    if (await host.inputPending(run.head)) return awaitResult(statuses, "yield");
     throw new ToolWait({ until: Date.now() + timeoutMs });
   };
 
@@ -424,17 +433,17 @@ export function subagentsPlugin(host: SubagentHost) {
             : "settled",
     );
 
-  const settle = <Details>(outcome: WaitOutcome<Details>): AgentToolResult<Details> => {
-    if (outcome.isError) throw new ToolError(outcome.result);
+  const settle = <Details>(outcome: ToolCallOutcome<Details>): AgentToolResult<Details> => {
+    if (outcome.kind === "error") throw new ToolError(outcome.result);
 
     return outcome.result;
   };
 
   const forAgent = (
-    outcome: WaitOutcome<AwaitDetails>,
+    outcome: ToolCallOutcome<AwaitDetails>,
     agent: SessionId,
-  ): WaitOutcome<AgentDetails & AwaitDetails> => ({
-    isError: outcome.isError,
+  ): ToolCallOutcome<AgentDetails & AwaitDetails> => ({
+    kind: outcome.kind,
     result: { ...outcome.result, details: { agent, ...outcome.result.details } },
   });
 
@@ -455,33 +464,33 @@ If the user sends something while you wait, this returns early so you can answer
 
       return value;
     },
-    async execute(callId, input, signal, _onUpdate, context) {
-      if (context === undefined) throw new Error("Task execution requires a run context");
+    async execute(input, call) {
+      const run = runOf(call);
       const title = taskTitle(input);
 
       const agent = await host.create({
         title,
         model: input.model,
         thinkingLevel: input.thinkingLevel,
-        runId: context.runId,
-        callId,
-        head: context.head,
-        signal,
+        runId: run.id,
+        callId: call.id,
+        head: run.head,
+        signal: call.signal,
       });
 
       const sent = await host.send({
         agent,
         message: input.prompt,
-        runId: context.runId,
-        callId,
-        head: context.head,
+        runId: run.id,
+        callId: call.id,
+        head: run.head,
       });
 
       if (sent.kind === "not_found") throw new Error(`Agent ${agent} was not created`);
 
       return settle(
         forAgent(
-          await awaitAgents([agent], "all", input.waitMs ?? DEFAULT_TASK_WAIT_MS, context),
+          await awaitAgents([agent], "all", input.waitMs ?? DEFAULT_TASK_WAIT_MS, call),
           agent,
         ),
       );
@@ -489,7 +498,7 @@ If the user sends something while you wait, this returns early so you can answer
     wake: async (call, context) => {
       const agent = host.childOf(call.head, call.runId, call.toolCallId);
 
-      return { kind: "settle", ...forAgent(await wakeAgents([agent], context), agent) };
+      return forAgent(await wakeAgents([agent], context), agent);
     },
   };
 
@@ -508,18 +517,18 @@ If the user sends something while you wait, this returns early so you can answer
 
       return value;
     },
-    async execute(callId, input, signal, _onUpdate, context) {
-      if (context === undefined) throw new Error("Create execution requires a run context");
+    async execute(input, call) {
+      const run = runOf(call);
 
       const agent = await host.create({
         title: input.title,
         model: input.model,
         thinkingLevel: input.thinkingLevel,
         system: input.system,
-        runId: context.runId,
-        callId,
-        head: context.head,
-        signal,
+        runId: run.id,
+        callId: call.id,
+        head: run.head,
+        signal: call.signal,
       });
 
       return {
@@ -551,15 +560,15 @@ If the user sends something while you wait, this returns early so you can answer
 
       return value;
     },
-    async execute(callId, input, _signal, _onUpdate, context) {
-      if (context === undefined) throw new Error("Send execution requires a run context");
+    async execute(input, call) {
+      const run = runOf(call);
 
       const sent = await host.send({
         agent: input.agent,
         message: input.message,
-        runId: context.runId,
-        callId,
-        head: context.head,
+        runId: run.id,
+        callId: call.id,
+        head: run.head,
       });
 
       if (sent.kind === "not_found") {
@@ -589,14 +598,14 @@ If the user sends something while you wait, this returns early so you can answer
       }
 
       return settle(
-        forAgent(await awaitAgents([input.agent], "all", input.waitMs, context), input.agent),
+        forAgent(await awaitAgents([input.agent], "all", input.waitMs, call), input.agent),
       );
     },
     wake: async (call, context) => {
       if (!Value.Check(sendParameters, call.args)) throw new Error("Send arguments are invalid");
       const { agent } = call.args;
 
-      return { kind: "settle", ...forAgent(await wakeAgents([agent], context), agent) };
+      return forAgent(await wakeAgents([agent], context), agent);
     },
   };
 
@@ -625,16 +634,12 @@ If the user sends something while you wait, this returns early so you can answer
 
       return value;
     },
-    async execute(_callId, input, _signal, _onUpdate, context) {
-      if (context === undefined) throw new Error("Await execution requires a run context");
-
-      return settle(await awaitAgents(input.agents, input.mode, input.timeoutMs, context));
+    async execute(input, call) {
+      return settle(await awaitAgents(input.agents, input.mode, input.timeoutMs, call));
     },
     wake: async (call, context) => {
       if (!Value.Check(awaitParameters, call.args)) throw new Error("Await arguments are invalid");
-      const outcome = await wakeAgents(call.args.agents, context);
-
-      return { kind: "settle", result: outcome.result, isError: outcome.isError };
+      return wakeAgents(call.args.agents, context);
     },
   };
 
@@ -655,7 +660,7 @@ If the user sends something while you wait, this returns early so you can answer
 
       return value;
     },
-    async execute(_callId, input) {
+    async execute(input) {
       const outcome = await host.read({
         agent: input.agent,
         turns: input.turns ?? DEFAULT_READ_TURNS,
@@ -696,8 +701,8 @@ If the user sends something while you wait, this returns early so you can answer
 
       return value;
     },
-    async execute(_callId, input, signal) {
-      signal?.throwIfAborted();
+    async execute(input, { signal }) {
+      signal.throwIfAborted();
       const outcome = await host.stop(input.agent);
 
       if (outcome.kind === "not_found") {

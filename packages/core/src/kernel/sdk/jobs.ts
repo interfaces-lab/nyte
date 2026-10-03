@@ -12,11 +12,17 @@ import type {
   AgentTool,
   AgentToolResult,
   AgentToolUpdateCallback,
+  ToolCallOutcome,
   ToolWakeOutcome,
 } from "../loop/types.ts";
 import { backgroundWait, ToolWait } from "../loop/types.ts";
-import { toolResultMessage } from "../loop/agent-loop.ts";
-import { toolErrorResult, toolResultContent, toolResultText } from "../loop/tool-result.ts";
+import {
+  toolFailure,
+  toolResultContent,
+  toolResultMessage,
+  toolResultText,
+  toolSuccess,
+} from "../loop/tool-result.ts";
 import { toJsonValue } from "@nyte-ai/client";
 import { factRef, runRef } from "../names.ts";
 import { listEffects, signalEffect } from "../effects.ts";
@@ -460,8 +466,7 @@ export function createJobs(input: {
 
     if (stored === undefined)
       return {
-        kind: "settle",
-        isError: true,
+        kind: "error",
         result: {
           content: toolResultContent("Work was interrupted before it could start."),
           details: {},
@@ -477,12 +482,12 @@ export function createJobs(input: {
 
     if (info.phase.kind === "running") {
       return info.isBackgrounded
-        ? { kind: "settle", result: receipt(info) }
+        ? { kind: "success", result: receipt(info) }
         : { kind: "wait", ...backgroundWait };
     }
 
     // Background work already answered its call with the receipt; its end is a completion.
-    if (completion.kind !== "none") return { kind: "settle", result: receipt(info) };
+    if (completion.kind !== "none") return { kind: "success", result: receipt(info) };
 
     if (result !== undefined) {
       const settled = { content: result.content, details: result.details };
@@ -490,18 +495,16 @@ export function createJobs(input: {
       const measured = result.usage === undefined ? titled : { ...titled, usage: result.usage };
 
       return {
-        kind: "settle",
+        kind: info.phase.kind === "completed" ? "success" : "error",
         result:
           result.addedToolNames === undefined
             ? measured
             : { ...measured, addedToolNames: result.addedToolNames },
-        isError: info.phase.kind !== "completed",
       };
     }
 
     return {
-      kind: "settle",
-      isError: true,
+      kind: "error",
       result: {
         content: toolResultContent(
           `Command ${info.phase.kind}.${info.output ? `\n${info.output}` : ""}`,
@@ -646,8 +649,6 @@ export function createJobs(input: {
       await diagnostic(cause);
     });
 
-    const context = owner.kind === "run" ? { runId: owner.runId, head: owner.head } : undefined;
-
     const startWrites = (): void => {
       if (runtime.draining) return;
       runtime.draining = true;
@@ -707,11 +708,11 @@ export function createJobs(input: {
 
     runtime.done = track(
       (async () => {
-        let result: AgentToolResult<unknown>;
+        let outcome: ToolCallOutcome;
         let failure: string | undefined;
 
         try {
-          result = await withLeaseRenewal(
+          const result = await withLeaseRenewal(
             {
               session: input.session,
               lease: acquired.lease,
@@ -733,11 +734,11 @@ export function createJobs(input: {
                   Promise.resolve().then(() => {
                     jobSignal.throwIfAborted();
 
-                    return tool.execute(
-                      callId,
-                      args,
-                      jobSignal,
-                      (partial: AgentToolResult<unknown>) => {
+                    // The job outlives the call that started it, so the tool runs outside the run's scope.
+                    return tool.execute(args, {
+                      id: callId,
+                      signal: jobSignal,
+                      update: (partial: AgentToolResult<unknown>) => {
                         if (!acceptingUpdates || jobSignal.aborted) return;
 
                         if (toolResultText(partial.content) !== "") produced.resolve();
@@ -758,8 +759,7 @@ export function createJobs(input: {
                         };
                         startWrites();
                       },
-                      context,
-                    );
+                    });
                   }),
                 ]);
               } finally {
@@ -768,9 +768,10 @@ export function createJobs(input: {
               }
             },
           );
+          outcome = toolSuccess(result);
         } catch (cause) {
           failure = cause instanceof Error ? cause.message : String(cause);
-          result = toolErrorResult(cause);
+          outcome = toolFailure(cause);
         }
 
         await settleWrites(runtime);
@@ -782,11 +783,7 @@ export function createJobs(input: {
               ? current
               : {
                   ...current,
-                  result: toolResultMessage(
-                    { toolCallId: callId, toolName: tool.name },
-                    result,
-                    reason !== undefined,
-                  ),
+                  result: toolResultMessage({ toolCallId: callId, toolName: tool.name }, outcome),
                   info: {
                     ...current.info,
                     phase: shutdown.signal.aborted
@@ -794,7 +791,7 @@ export function createJobs(input: {
                       : reason !== undefined
                         ? { kind: "failed", reason }
                         : { kind: "completed" },
-                    output: toolResultText(result.content).slice(-OUTPUT_LIMIT),
+                    output: toolResultText(outcome.result.content).slice(-OUTPUT_LIMIT),
                     updatedAt: Date.now(),
                   },
                 },
@@ -824,24 +821,22 @@ export function createJobs(input: {
     const wrapper: AgentTool = {
       ...tool,
       replay: "never",
-      execute(callId, args, signal, onUpdate, context) {
-        if (context?.parentToolCallId !== undefined) {
-          return tool.execute(callId, args, signal, onUpdate, context);
-        }
+      execute(input, call) {
+        if (call.run?.parentToolCallId !== undefined) return tool.execute(input, call);
         return track(
           (async () => {
             let executing = true;
 
             try {
-              if (context === undefined) throw new Error("Job execution requires a run context");
+              if (call.run === undefined) throw new Error("Job execution requires a run context");
 
               const admitted = await admit(
-                { kind: "run", runId: context.runId, callId, head: context.head },
+                { kind: "run", runId: call.run.id, callId: call.id, head: call.run.head },
                 tool,
-                args,
-                signal,
+                input,
+                call.signal,
                 (partial) => {
-                  if (executing) onUpdate?.(partial);
+                  if (executing) call.update(partial);
                 },
               );
 

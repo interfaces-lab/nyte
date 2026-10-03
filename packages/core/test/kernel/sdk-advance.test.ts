@@ -7,7 +7,7 @@ import { getCurrentSystemPrompt, getCurrentTools } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import type { Nyte, NyteOptions } from "../../src/kernel/sdk/types.ts";
-import { definePlugin, inlinePlugin, pluginFactKey } from "../../src/plugins/index.ts";
+import { definePlugin, inlinePlugin, type AgentTool } from "../../src/plugins/index.ts";
 import { headRef } from "../../src/kernel/names.ts";
 import { ToolWait, backgroundWait, type StreamFn } from "../../src/kernel/loop/types.ts";
 import { assistant, call, openStore, storePath, within } from "./helpers.ts";
@@ -155,7 +155,7 @@ test("advance returns the durable tool deadline immediately and leaves the wait 
               throw new ToolWait({ until });
             },
             wake: async () => ({
-              kind: "settle",
+              kind: "success",
               result: { content: [{ type: "text", text: "done" }], details: {} },
             }),
           }),
@@ -325,18 +325,15 @@ test("replacement preserves the offered tool and parked wake handler while anoth
       id: "catalog",
       session(api) {
         oldSignal ??= api.signal;
-        api.settings.add((draft) =>
-          draft.set("enabled", {
-            label: "Enabled",
-            key: "enabled",
-            choices: [
-              { id: "on", label: "On" },
-              { id: "off", label: "Off" },
-            ],
-          }),
-        );
-        api.events.subscribe((event) => {
-          if (event.kind !== "fact" || event.key !== pluginFactKey("catalog", "enabled")) return;
+        const enabled = api.settings.add("enabled", {
+          label: "Enabled",
+          default: "on",
+          choices: [
+            { id: "on", label: "On" },
+            { id: "off", label: "Off" },
+          ],
+        });
+        enabled.subscribe(() => {
           api.defer(() => {
             resourceOpen = false;
           });
@@ -357,7 +354,7 @@ test("replacement preserves the offered tool and parked wake handler while anoth
               assert.equal(resourceOpen, true);
               woken += 1;
               return {
-                kind: "settle",
+                kind: "success",
                 result: { content: [{ type: "text", text: "old answer" }], details: {} },
               };
             },
@@ -493,6 +490,56 @@ test("a global setup failure leaves every session's old plugins and the default 
     assert.equal((await sdk.plugins.list({ sessionId }))[0]?.version, "old");
   }
   assert.equal((await sdk.plugins.catalog()).plugins[0]?.version, "old");
+});
+
+test("replacement from a tool executing in the attached runner returns without waiting for itself and reaches the next response", async () => {
+  const offered: string[][] = [];
+  let sdk: Nyte | undefined;
+  const tool = (name: string, execute: () => Promise<void>): AgentTool => ({
+    name,
+    description: name,
+    parameters: Type.Object({}),
+    execute: async () => {
+      await execute();
+      return { content: [{ type: "text", text: "ok" }], details: {} };
+    },
+  });
+  const toolsPlugin = (tools: readonly AgentTool[]) =>
+    inlinePlugin(
+      definePlugin({
+        id: "tools",
+        session(api) {
+          api.tools.add((draft) => {
+            for (const item of tools) draft.set(item.name, item);
+          });
+        },
+      }),
+      { version: tools.map((item) => item.name).join(",") },
+    );
+  const make = tool("make", async () => {
+    if (sdk === undefined) throw new Error("no host");
+    assert.deepEqual(
+      await sdk.setPlugins([toolsPlugin([make, tool("made", async () => undefined)])]),
+      { kind: "queued" },
+    );
+  });
+  sdk = await open(
+    scripted((_model, context) => {
+      offered.push(getCurrentTools(context.messages).map((item) => item.name));
+      return offered.length === 1
+        ? assistant("", { calls: [call("make-1", "make", {})] })
+        : assistant("done");
+    }),
+    { plugins: [toolsPlugin([make])] },
+  );
+  const { sessionId } = await sdk.sessions.create();
+  sdk.attach();
+  await sdk.messages.send({ sessionId, content: "go" });
+  assert.deepEqual(await within(sdk.runs.wait({ sessionId }), 1000), { kind: "idle" });
+  assert.deepEqual(
+    offered.map((names) => names.filter((name) => name === "make" || name === "made")),
+    [["make"], ["make", "made"]],
+  );
 });
 
 test("response preparation reconciles source changes before resolving the next request, never during tools", async () => {

@@ -1,4 +1,4 @@
-import type { AgentTool } from "../kernel/loop/types.ts";
+import type { ToolDefinition } from "../kernel/loop/types.ts";
 import { parsePatchFacts } from "@nyte-ai/client";
 import { constants } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
@@ -114,13 +114,12 @@ function validateEditInput(input: EditToolInput): { path: string; edits: Edit[] 
   return { path: input.path, edits: input.edits };
 }
 
-export function createEditTool(
+export function createEditToolDefinition(
   cwd: string,
   options?: EditToolOptions,
-): AgentTool<typeof editSchema, EditToolDetails | undefined> {
+): ToolDefinition<typeof editSchema, EditToolDetails | undefined> {
   const ops = options?.operations ?? defaultEditOperations;
   return {
-    name: "edit",
     label: "edit",
     description:
       "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
@@ -140,7 +139,7 @@ export function createEditTool(
     },
     constrainedSampling: { type: "json_schema", strict: "prefer" },
     prepareArguments: prepareEditArguments,
-    async execute(_toolCallId, input, signal) {
+    async execute(input, { signal }) {
       const { path, edits } = validateEditInput(input);
       const absolutePath = resolveToCwd(path, cwd);
 
@@ -150,7 +149,7 @@ export function createEditTool(
         // Checking signal.aborted after each await observes the same aborts while
         // keeping the queue locked until the current operation has settled.
         const throwIfAborted = (): void => {
-          if (signal?.aborted) throw new Error("Operation aborted");
+          if (signal.aborted) throw new Error("Operation aborted");
         };
 
         throwIfAborted();

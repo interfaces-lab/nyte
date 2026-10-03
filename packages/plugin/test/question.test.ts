@@ -346,7 +346,7 @@ test("a wait past its deadline is woken by the runner, with no reply and no clie
           wake: async (_waiting, context) => {
             wakes.push({ expired: context.expired, reply: context.reply });
             return {
-              kind: "settle",
+              kind: "success",
               result: {
                 content: [{ type: "text", text: context.expired ? "expired" : "?" }],
                 details: {},

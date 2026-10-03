@@ -12,12 +12,8 @@ import type {
 import { renderToolSample } from "@earendil-works/pi-codemode/declarations";
 import { parseCodemodeSource } from "@earendil-works/pi-codemode/source";
 import { ToolError } from "@nyte-ai/core/plugins";
-import type {
-  AgentTool,
-  AgentToolResult,
-  AgentToolUpdateCallback,
-  ToolExecutionContext,
-} from "@nyte-ai/core/plugins";
+import type { AgentTool, AgentToolResult, ToolCall, ToolRun } from "@nyte-ai/core/plugins";
+import { contentText } from "@nyte-ai/schema";
 import type { ImageContent, Message, TextContent } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -74,13 +70,6 @@ function previewArgs(args: unknown): string {
   } catch {
     return "";
   }
-}
-
-function textOf(result: AgentToolResult<unknown>): string {
-  return (result.content ?? [])
-    .filter((block): block is TextContent => block.type === "text")
-    .map((block) => block.text)
-    .join("\n");
 }
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 10_000;
@@ -151,30 +140,28 @@ async function truncateOutput(
 
 function toScriptValue(
   tool: AgentTool,
-  outcome: Awaited<ReturnType<NonNullable<ToolExecutionContext["tools"]>["execute"]>>,
+  outcome: Awaited<ReturnType<ToolRun["tools"]["execute"]>>,
 ): unknown {
   const { result } = outcome;
   if (tool.outputSchema && result.structuredContent !== undefined) return result.structuredContent;
-  const text = textOf(result);
-  if (outcome.isError) throw new Error(text || `Tool "${tool.name}" failed`);
+  const text = contentText(result.content ?? []);
+  if (outcome.kind === "error") throw new Error(text || `Tool "${tool.name}" failed`);
   return text;
 }
 
+/** Run a script. Outside a run it has no tools and an empty store; inside one it has the run's. */
 export async function executeCodemode(input: {
-  toolCallId: string;
   code: string;
-  signal?: AbortSignal;
-  onUpdate?: AgentToolUpdateCallback<CodemodeToolDetails>;
-  context?: ToolExecutionContext;
+  call: ToolCall<CodemodeToolDetails>;
   runtime?: Pick<CodemodeSandboxOptions, "workerUrl" | "wasm">;
 }): Promise<AgentToolResult<CodemodeToolDetails>> {
   const startedAt = performance.now();
   const { code, options: sourceOptions } = parseCodemodeSource(input.code);
   const calls: CodemodeNestedCall[] = [];
   const snapshot = (): CodemodeToolDetails => ({ calls: calls.map((call) => ({ ...call })) });
-  const publish = () => input.onUpdate?.({ content: [], details: snapshot() });
-  const tools = input.context?.tools;
-  const callable = tools?.list() ?? [];
+  const publish = () => input.call.update({ content: [], details: snapshot() });
+  const { run } = input.call;
+  const callable = run === undefined ? [] : run.tools.list();
   const samples = new Map(
     callable.map((tool) => [tool.name, renderToolSample(toCodemodeDeclaration(tool))]),
   );
@@ -183,7 +170,7 @@ export async function executeCodemode(input: {
     description: samples.get(tool.name),
     execute: async (args, { signal: callSignal }) => {
       const record: CodemodeNestedCall = {
-        id: `${input.toolCallId}/${calls.length + 1}`,
+        id: `${input.call.id}/${calls.length + 1}`,
         name: tool.name,
         args: previewArgs(args),
         status: "running",
@@ -192,13 +179,13 @@ export async function executeCodemode(input: {
       publish();
       const callStartedAt = performance.now();
       try {
-        if (!tools) throw new Error("Tool calls need a session");
-        const outcome = await tools.execute(tool.name, args, { signal: callSignal });
+        if (run === undefined) throw new Error("Tool calls need a run");
+        const outcome = await run.tools.execute(tool.name, args, { signal: callSignal });
         record.durationMs = performance.now() - callStartedAt;
-        if (outcome.isError) {
+        if (outcome.kind === "error") {
           record.status = callSignal.aborted ? "cancelled" : "error";
           record.error = truncateText(
-            textOf(outcome.result) || `Tool "${tool.name}" failed`,
+            contentText(outcome.result.content ?? []) || `Tool "${tool.name}" failed`,
             ERROR_PREVIEW_CHARS,
           );
         } else {
@@ -227,10 +214,9 @@ export async function executeCodemode(input: {
   });
   let result: CodemodeResult;
   try {
-    const history = (await input.context?.history?.()) ?? [];
     result = await sandbox.execute(code, {
-      signal: input.signal,
-      store: readCodemodeStore(history),
+      signal: input.call.signal,
+      store: readCodemodeStore(run === undefined ? [] : await run.history()),
     });
   } finally {
     await sandbox.close();

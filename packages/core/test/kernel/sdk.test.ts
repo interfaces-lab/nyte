@@ -95,7 +95,7 @@ const askTool: AgentTool<typeof askParameters> = {
     throw new ToolWait(backgroundWait);
   },
   wake: async (_call, context) => ({
-    kind: "settle",
+    kind: "success",
     result: {
       content: [{ type: "text", text: `they said ${JSON.stringify(context.reply)}` }],
       details: {},
@@ -781,7 +781,7 @@ test("the prospective plugin catalog is sessionless, cached, and invalidated by 
                 { id: "low", label: "Low" },
                 { id: "high", label: "High" },
               ],
-              fallback: "high",
+              default: "high",
             }),
           );
           api.commands.add((draft) =>
@@ -892,7 +892,7 @@ test("the prospective inventory includes failed plugins without creating a chat"
         version: "inline",
         source: "inline",
         status: "failed",
-        error: "Cannot connect",
+        error: "broken: Cannot connect",
       },
     ]);
     assert.deepEqual(inventory.settings, []);

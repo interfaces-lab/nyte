@@ -10,7 +10,12 @@ import type { AssistantMessage } from "@nyte-ai/schema";
 import { getCurrentSystemPrompt } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { headRef } from "../../src/kernel/names.ts";
-import { activate, turnFor, type Notice } from "../../src/kernel/sdk/activation.ts";
+import {
+  activate,
+  turnFor,
+  type Activation,
+  type Notice,
+} from "../../src/kernel/sdk/activation.ts";
 import type { Run } from "../../src/kernel/model.ts";
 import type { Session } from "../../src/kernel/store.ts";
 import type { TurnInput } from "../../src/kernel/turn.ts";
@@ -58,11 +63,18 @@ function echoTool(seen: unknown[]): AgentTool<typeof parameters> {
     name: "echo",
     description: "echoes",
     parameters,
-    execute: async (_id, params) => {
-      seen.push(params);
-      return { content: [{ type: "text", text: `echo ${params.path}` }], details: {} };
+    execute: async (input) => {
+      seen.push(input);
+      return { content: [{ type: "text", text: `echo ${input.path}` }], details: {} };
     },
   };
+}
+
+/** The activation a healthy plugin set yields; a failed set fails the test. */
+async function activated(input: Parameters<typeof activate>[0]): Promise<Activation> {
+  const outcome = await activate(input);
+  if (outcome.kind === "failed") throw new Error(outcome.error);
+  return outcome.activation;
 }
 
 function plugin(id: string, session: Plugin["session"]): Plugin {
@@ -112,7 +124,7 @@ const runWith = (config: Run["config"] = {}, id = "run_1"): Run => ({
 test("plugins contribute tools, prompt sections, and settings that live in the session's facts", async () => {
   const session = await openSession();
   const seen: unknown[] = [];
-  const activation = await activate({
+  const activation = await activated({
     target: { kind: "session", session },
     env,
     plugins: [
@@ -124,6 +136,7 @@ test("plugins contribute tools, prompt sections, and settings that live in the s
             draft.set("verbosity", {
               label: "Verbosity",
               key: "verbosity",
+              default: "low",
               choices: [
                 { id: "low", label: "Low" },
                 { id: "high", label: "High" },
@@ -153,7 +166,7 @@ test("plugins contribute tools, prompt sections, and settings that live in the s
   assert.deepEqual(await activation.applySetting("verbosity", "high"), { kind: "applied" });
   assert.equal((await activation.listSettings())[0]?.current, "high");
   assert.ok((await session.refs.list("refs/facts/")).length >= 1, "the choice is a session fact");
-  const reopened = await activate({
+  const reopened = await activated({
     target: { kind: "session", session },
     env,
     plugins: [],
@@ -195,7 +208,7 @@ test("plugin session messages start at the newest checkpoint", async () => {
     message(user("new request")),
   ]);
   let exposed: PluginSession | undefined;
-  const activation = await activate({
+  const activation = await activated({
     target: { kind: "session", session },
     env,
     plugins: [
@@ -225,7 +238,7 @@ test("plugin session messages start at the newest checkpoint", async () => {
 test("hooks bend the turn: a policy can rewrite a tool's arguments and the context can be transformed", async () => {
   const session = await openSession();
   const seen: unknown[] = [];
-  const activation = await activate({
+  const activation = await activated({
     target: { kind: "session", session },
     env,
     plugins: [
@@ -264,7 +277,7 @@ test("hooks bend the turn: a policy can rewrite a tool's arguments and the conte
 
 test("a run's declared agent brings its own model, persona, and step ceiling; an unknown agent falls back", async () => {
   const session = await openSession();
-  const activation = await activate({
+  const activation = await activated({
     target: { kind: "session", session },
     env,
     plugins: [
@@ -319,7 +332,7 @@ test("a replacement waits for an active command without disposing the command's 
   const running = Promise.withResolvers<void>();
   const finish = Promise.withResolvers<void>();
   const disposed = Promise.withResolvers<void>();
-  const activation = await activate({
+  const activation = await activated({
     target: { kind: "session", session },
     env,
     plugins: [
@@ -374,7 +387,7 @@ test("nested calls share the agent catalog and SDK policy with a sandbox signal"
   const session = await openSession();
   const seen: unknown[] = [];
   const hooks: string[] = [];
-  const activation = await activate({
+  const activation = await activated({
     target: { kind: "session", session },
     env,
     plugins: [
@@ -388,12 +401,12 @@ test("nested calls share the agent catalog and SDK policy with a sandbox signal"
               outputSchema: parameters,
               prepareArguments: (args) =>
                 args.path === "/invalid" || args.path === "/blocked" ? args : { path: "/secret" },
-              execute: async (id, args, signal, onUpdate, context) => {
-                assert.equal(context?.parentToolCallId, "outer");
-                assert.equal(context?.runId, "run_1");
-                assert.equal(context?.head, "main");
-                const result = await echoTool(seen).execute(id, args, signal, onUpdate, context);
-                return { ...result, structuredContent: { path: args.path } };
+              execute: async (input, call) => {
+                assert.equal(call.run?.parentToolCallId, "outer");
+                assert.equal(call.run.id, "run_1");
+                assert.equal(call.run.head, "main");
+                const result = await echoTool(seen).execute(input, call);
+                return { ...result, structuredContent: { path: input.path } };
               },
             });
             for (const name of ["hidden", "model", "disallowed"]) {
@@ -408,15 +421,16 @@ test("nested calls share the agent catalog and SDK policy with a sandbox signal"
               name: "codemode",
               description: "runs code",
               parameters: Type.Object({}),
-              execute: async (_id, _args, _signal, _update, context) => {
-                assert.ok(context?.tools);
+              execute: async (_input, call) => {
+                assert.ok(call.run);
+                const context = call.run;
                 assert.deepEqual(
                   context.tools.list().map((tool) => tool.name),
                   ["echo"],
                 );
                 const sandbox = new AbortController();
                 const outcome = await context.tools.execute("echo", {}, { signal: sandbox.signal });
-                assert.equal(outcome.isError, false);
+                assert.equal(outcome.kind, "success");
                 assert.deepEqual(outcome.result.structuredContent, { path: "/redacted" });
                 assert.deepEqual(outcome.result.details, { reviewed: true });
                 assert.equal(
@@ -426,8 +440,8 @@ test("nested calls share the agent catalog and SDK policy with a sandbox signal"
                       { path: "/invalid" },
                       { signal: sandbox.signal },
                     )
-                  ).isError,
-                  true,
+                  ).kind,
+                  "error",
                 );
                 assert.equal(
                   (
@@ -436,11 +450,11 @@ test("nested calls share the agent catalog and SDK policy with a sandbox signal"
                       { path: "/blocked" },
                       { signal: sandbox.signal },
                     )
-                  ).isError,
-                  true,
+                  ).kind,
+                  "error",
                 );
                 for (const name of ["hidden", "model", "disallowed", "codemode", "tool_search"]) {
-                  assert.equal((await context.tools.execute(name, { path: "bad" })).isError, true);
+                  assert.equal((await context.tools.execute(name, { path: "bad" })).kind, "error");
                 }
                 return outcome.result;
               },
@@ -503,7 +517,7 @@ test("final close aborts every plugin before draining commands waiting on plugin
   const session = await openSession();
   const running = Promise.withResolvers<void>();
   const finish = Promise.withResolvers<void>();
-  const activation = await activate({
+  const activation = await activated({
     target: { kind: "session", session },
     env,
     plugins: [
@@ -546,7 +560,7 @@ test("final close cancels and drains an event listener waiting on api.signal", a
   const running = Promise.withResolvers<void>();
   const finish = Promise.withResolvers<void>();
   const completed = Promise.withResolvers<void>();
-  const activation = await activate({
+  const activation = await activated({
     target: { kind: "session", session },
     env,
     plugins: [
@@ -557,6 +571,7 @@ test("final close cancels and drains an event listener waiting on api.signal", a
             draft.set("start", {
               label: "Start",
               key: "start",
+              default: "off",
               choices: [
                 { id: "off", label: "Off" },
                 { id: "on", label: "On" },
@@ -590,7 +605,7 @@ test("final close drains a direct tool invocation after cancelling plugin resour
   const running = Promise.withResolvers<void>();
   const aborted = Promise.withResolvers<void>();
   const cleanup = Promise.withResolvers<void>();
-  const activation = await activate({
+  const activation = await activated({
     target: { kind: "session", session },
     env,
     plugins: [

@@ -52,7 +52,7 @@ async function fixture() {
                   throw new ToolWait({ selection });
                 },
                 wake: async () => ({
-                  kind: "settle",
+                  kind: "success",
                   result: { content: [{ type: "text", text: "answered" }], details: {} },
                 }),
               });
@@ -64,7 +64,7 @@ async function fixture() {
                   throw new ToolWait(backgroundWait);
                 },
                 wake: async () => ({
-                  kind: "settle",
+                  kind: "success",
                   result: { content: [{ type: "text", text: "woke" }], details: {} },
                 }),
               });

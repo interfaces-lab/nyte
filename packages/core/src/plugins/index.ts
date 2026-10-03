@@ -39,8 +39,6 @@ export {
 
 export { acceptsSelectionReply } from "@nyte-ai/protocol";
 
-export { pluginFactKey } from "./storage.ts";
-
 export type { Choice, Selection, SelectionReply } from "@nyte-ai/protocol";
 
 export { ToolError, toolResultContent } from "../kernel/loop/tool-result.ts";
@@ -67,7 +65,10 @@ export type {
   AgentToolCall,
   AgentToolResult,
   AgentToolUpdateCallback,
-  ToolExecutionContext,
+  ToolCall,
+  ToolCallOutcome,
+  ToolDefinition,
+  ToolRun,
 } from "../kernel/loop/types.ts";
 
 export { toJsonValue } from "@nyte-ai/client";

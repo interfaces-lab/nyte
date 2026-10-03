@@ -17,7 +17,7 @@ import {
 import { getCurrentSystemPrompt, getCurrentTools } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { bindTool } from "../../src/tools/bind-tool.ts";
-import { createAllTools } from "../../src/tools/index.ts";
+import { builtinTools } from "../builtin-tools.ts";
 import { createJobs } from "../../src/kernel/sdk/jobs.ts";
 import { openEffect, readEffect, signalEffect } from "../../src/kernel/effects.ts";
 import type { Commit, EventBody, Lease, Run } from "../../src/kernel/model.ts";
@@ -29,7 +29,7 @@ import {
   ToolWait,
   type AgentTool,
   type StreamFn,
-  type ToolExecutionContext,
+  type ToolCall,
 } from "../../src/kernel/loop/types.ts";
 import { ToolError } from "../../src/kernel/loop/tool-result.ts";
 import { contextCommits } from "../../src/kernel/graph.ts";
@@ -289,10 +289,10 @@ test("a tool runs once inside its effect, reports progress, and settles with its
   const b = await bench();
   let executions = 0;
   const turn = turnWith(scripted([]).streamFn, [
-    tool(async (_id, params, _signal, onUpdate) => {
+    tool(async (input, call) => {
       executions += 1;
-      onUpdate?.({ content: [{ type: "text", text: "half" }], details: {} });
-      return { content: [{ type: "text", text: `got ${params.value}` }], details: { ok: true } };
+      call.update({ content: [{ type: "text", text: "half" }], details: {} });
+      return { content: [{ type: "text", text: `got ${input.value}` }], details: { ok: true } };
     }),
   ]);
   const outcome = await turn.tools({ ...b.input(), assistant: askTool() });
@@ -323,7 +323,7 @@ test("settled presentation uses arguments replaced by before-tool", async () => 
     description: "reads a path",
     parameters: pathParameters,
     present: ({ path }) => ({ kind: "file_read", path }),
-    execute: async (_id, { path }) => ({
+    execute: async ({ path }) => ({
       content: [{ type: "text", text: path }],
       details: {},
     }),
@@ -362,15 +362,15 @@ test("after-tool patches survive a waiting sibling and recovery without running 
   const patchedUsage = assistant("").usage;
   const tools = [
     tool(
-      async (id, params) => {
-        if (id === "waiting") throw new ToolWait(backgroundWait);
+      async (input, call) => {
+        if (call.id === "waiting") throw new ToolWait(backgroundWait);
         executions += 1;
-        assert.equal(params.value, "approved");
+        assert.equal(input.value, "approved");
         return { content: [{ type: "text", text: "private output" }], details: { private: true } };
       },
       {
         wake: async () => ({
-          kind: "settle",
+          kind: "success",
           result: { content: [{ type: "text", text: "private reply" }], details: {} },
         }),
       },
@@ -385,7 +385,7 @@ test("after-tool patches survive a waiting sibling and recovery without running 
         return {
           content: [{ type: "text", text: `public ${toolCall.id}` }],
           details: { public: true },
-          isError: true,
+          kind: "error",
           usage: patchedUsage,
         };
       },
@@ -591,7 +591,7 @@ test("a tool that waits parks its call, wakes with the reply, and settles exactl
         wake: async (_call, context) => {
           wakes += 1;
           return {
-            kind: "settle",
+            kind: "success",
             result: {
               content: [{ type: "text", text: `answer: ${JSON.stringify(context.reply)}` }],
               details: {},
@@ -630,7 +630,7 @@ test("a deadline uses the step's clock and wakes without a reply", async () => {
         wake: async (_waiting, context) => {
           wakes.push({ expired: context.expired, reply: context.reply });
           return {
-            kind: "settle",
+            kind: "success",
             result: { content: [{ type: "text", text: "done" }], details: {} },
           };
         },
@@ -685,21 +685,21 @@ test("builtin factories execute approved arguments after durable intent and jobs
       diagnostics.push(cause);
     },
   });
-  const tools = createAllTools(directory).map((builtin) =>
+  const tools = builtinTools(directory).map((builtin) =>
     builtin.name !== "bash"
       ? builtin
       : jobs.wrap({
           ...builtin,
-          execute: async (id, args, signal, update, context) => {
+          execute: async (input, call) => {
             executions += 1;
-            const effect = await readEffect(b.session, { runId: b.run.id, callId: id });
+            const effect = await readEffect(b.session, { runId: b.run.id, callId: call.id });
             assert.ok(effect, "durable intent must precede the real command's side effect");
             assert.deepEqual(effect.intent.args, { command: "printf approved > command.txt" });
-            assert.deepEqual(args, effect.intent.args);
+            assert.deepEqual(input, effect.intent.args);
             await assert.rejects(access(join(directory, "command.txt")));
             started.resolve();
             await release.promise;
-            return builtin.execute(id, args, signal, update, context);
+            return builtin.execute(input, call);
           },
         }),
   );
@@ -752,19 +752,19 @@ test("builtin factories execute approved arguments after durable intent and jobs
 
 test("nested failures retain structured output, reject waits and cancellation, and never open effects", async () => {
   const b = await bench();
-  let saved: ToolExecutionContext | undefined;
+  let saved: ToolCall | undefined;
   let cancellations = 0;
   const target: AgentTool = {
     name: "target",
     description: "target",
     parameters,
-    execute: async (_id, args, signal, update) => {
-      assert.ok(typeof args === "object" && args !== null && "value" in args);
-      if (args.value === "wait") throw new ToolWait({ until: 10 });
-      if (args.value === "cancel") {
+    execute: async (input, call) => {
+      assert.ok(typeof input === "object" && input !== null && "value" in input);
+      if (input.value === "wait") throw new ToolWait({ until: 10 });
+      if (input.value === "cancel") {
         cancellations += 1;
-        update?.({ content: [], details: {}, structuredContent: { partial: true } });
-        signal?.throwIfAborted();
+        call.update({ content: [], details: {}, structuredContent: { partial: true } });
+        call.signal.throwIfAborted();
         return { content: [], details: {} };
       }
       throw new ToolError({
@@ -774,15 +774,16 @@ test("nested failures retain structured output, reject waits and cancellation, a
       });
     },
   };
-  const outer = tool(async (_id, _args, _signal, _update, context) => {
-    saved = context;
-    assert.ok(context?.tools);
+  const outer = tool(async (_input, call) => {
+    saved = call;
+    assert.ok(call.run);
+    const context = call.run;
     const failure = await context.tools.execute("target", { value: "error" });
-    assert.equal(failure.isError, true);
+    assert.equal(failure.kind, "error");
     assert.deepEqual(failure.result.structuredContent, { error: "kept" });
     assert.deepEqual(failure.result.details, { reviewed: true });
     const waiting = await context.tools.execute("target", { value: "wait" });
-    assert.equal(waiting.isError, true);
+    assert.equal(waiting.kind, "error");
     assert.match(JSON.stringify(waiting.result.content), /cannot wait during a nested invocation/u);
     const child = new AbortController();
     const cancelled = await context.tools.execute(
@@ -793,18 +794,17 @@ test("nested failures retain structured output, reject waits and cancellation, a
         onUpdate: () => child.abort(new Error("sandbox cancelled")),
       },
     );
-    assert.equal(cancelled.isError, true);
+    assert.equal(cancelled.kind, "error");
     assert.deepEqual(cancelled.result.structuredContent, { partial: true });
     assert.match(JSON.stringify(cancelled.result.content), /sandbox cancelled/u);
     const aborted = new AbortController();
     aborted.abort();
     assert.equal(
-      (await context.tools.execute("target", { value: "cancel" }, { signal: aborted.signal }))
-        .isError,
-      true,
+      (await context.tools.execute("target", { value: "cancel" }, { signal: aborted.signal })).kind,
+      "error",
     );
-    assert.equal((await context.tools.execute("target", { value: 123 })).isError, true);
-    assert.equal((await context.tools.execute("target", [])).isError, true);
+    assert.equal((await context.tools.execute("target", { value: 123 })).kind, "error");
+    assert.equal((await context.tools.execute("target", [])).kind, "error");
     return { content: [], details: {}, structuredContent: { done: true } };
   });
   const turn = turnWith(scripted([]).streamFn, [outer, target], {
@@ -813,8 +813,8 @@ test("nested failures retain structured output, reject waits and cancellation, a
   const outcome = await turn.tools({ ...b.input(), assistant: askTool() });
   assert.equal(outcome.kind, "complete");
   assert.equal(cancellations, 1);
-  assert.ok(saved?.tools);
-  assert.equal((await saved.tools.execute("target", { value: "cancel" })).isError, true);
+  assert.ok(saved?.run);
+  assert.equal((await saved.run.tools.execute("target", { value: "cancel" })).kind, "error");
   assert.equal(cancellations, 1);
   assert.deepEqual((await b.session.refs.list(effectPrefix("run_1"))).length, 1);
   assert.equal(await effectState(b.session), "result");
@@ -834,9 +834,9 @@ test("tool activation and full tool history follow durable branch ancestry acros
     name: "tool_search",
     description: "activate",
     parameters: Type.Object({}),
-    execute: async (_id, _args, _signal, _update, context) => {
-      assert.ok(context?.tools);
-      context.tools.activate(["later", "hidden", "visible", "missing"]);
+    execute: async (_input, call) => {
+      assert.ok(call.run);
+      call.run.tools.activate(["later", "hidden", "visible", "missing"]);
       return { content: [], details: {}, structuredContent: { loaded: true } };
     },
   };
@@ -846,9 +846,9 @@ test("tool activation and full tool history follow durable branch ancestry acros
   const activatedTurn = turnWith(scripted([]).streamFn, [
     {
       ...search,
-      execute: async (...args) => {
+      execute: async (input, call) => {
         executions += 1;
-        return search.execute(...args);
+        return search.execute(input, call);
       },
     },
     ...definitions.slice(1),
@@ -881,9 +881,9 @@ test("tool activation and full tool history follow durable branch ancestry acros
   }, definitions);
   await restarted.respond(await declared(restarted, { ...b.input(), commits }));
   assert.deepEqual(declarations[0], ["tool_search", "later", "visible"]);
-  const observer = tool(async (_id, _args, _signal, _update, context) => {
-    assert.ok(context?.history);
-    const history = await context.history();
+  const observer = tool(async (_input, call) => {
+    assert.ok(call.run);
+    const history = await call.run.history();
     assert.deepEqual(
       history.map((message) => message.role),
       ["user", "assistant", "toolResult", "user"],
@@ -920,15 +920,15 @@ test("nested bash finishes inside the caller without parking a durable job", asy
     notify: async () => "unused",
     diagnostic: async () => undefined,
   });
-  const bash = createAllTools(directory).find((tool) => tool.name === "bash");
+  const bash = builtinTools(directory).find((tool) => tool.name === "bash");
   assert.ok(bash);
-  const caller = tool(async (_id, _args, _signal, _update, context) => {
-    assert.ok(context?.tools);
-    const nested = await context.tools.execute("bash", {
+  const caller = tool(async (_input, call) => {
+    assert.ok(call.run);
+    const nested = await call.run.tools.execute("bash", {
       command: "printf wrong > nested.txt",
       background: true,
     });
-    assert.equal(nested.isError, false);
+    assert.equal(nested.kind, "success");
     return nested.result;
   });
   try {

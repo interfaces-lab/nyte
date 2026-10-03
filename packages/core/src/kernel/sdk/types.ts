@@ -86,7 +86,8 @@ import type {
   PluginInfo,
   SettingInfo,
 } from "../../plugins/types.ts";
-import type { StreamFn, StreamOptions, ThinkingLevel } from "../loop/types.ts";
+import type { StreamFn, ThinkingLevel } from "../loop/types.ts";
+import type { StreamOptions } from "../stream-options.ts";
 import type { CacheWarmingMode, CacheWarmingStatus } from "../cache-warmer.ts";
 import type { CompactionSettings } from "../compaction.ts";
 import type { Actor, Run } from "../model.ts";
@@ -570,9 +571,17 @@ export interface ActiveSessionActivation {
   readonly env: PluginEnv;
 }
 
+/** A plugin set the host could not bring up; the inventory names the plugin that stopped it. */
+export interface FailedSessionActivation {
+  readonly kind: "failed";
+  readonly error: string;
+  readonly plugins: readonly PluginInfo[];
+}
+
 export type SessionActivation =
   | ActiveSessionActivation
-  | Exclude<SessionActivationState, { readonly kind: "active" }>;
+  | FailedSessionActivation
+  | Exclude<SessionActivationState, { readonly kind: "active" | "failed" }>;
 
 export type ActivationTarget =
   | { readonly kind: "new-session" }

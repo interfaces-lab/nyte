@@ -6,13 +6,14 @@ import { HookRegistry } from "../../plugins/hooks.ts";
 import {
   createRegistries,
   PluginHost,
+  type PluginEventSource,
   type PluginRegistries,
   type PluginHostTarget,
   type PluginNotice,
   type PreparedPluginReplacement,
 } from "../../plugins/host.ts";
 import { withBudget } from "../../plugins/scope.ts";
-import { pluginFactKey } from "../../plugins/storage.ts";
+import { pluginFactKey, storedChoice } from "../../plugins/storage.ts";
 import type {
   Agent,
   ApplySettingOutcome,
@@ -21,17 +22,18 @@ import type {
   Disposer,
   LoadedPlugin,
   PluginEnv,
-  PluginEvents,
+  PluginInfo,
   PluginReplacement,
+  SessionTransition,
   SettingInfo,
 } from "../../plugins/types.ts";
 import {
   isThinkingLevel,
   type AgentContext,
   type AgentTool,
-  type StreamOptions,
   type ThinkingLevel,
 } from "../loop/types.ts";
+import type { StreamOptions } from "../stream-options.ts";
 import type { CompactionSettings } from "../compaction.ts";
 import { isJsonObject, toJsonValue } from "@nyte-ai/client";
 import { isTerminalPhase } from "@nyte-ai/protocol";
@@ -208,11 +210,16 @@ function transientFacts(): FactsShim {
 }
 
 /** Activate a plugin list for a real session or a transient prospective session. */
+/** What activating a plugin set yields: a session that can run, or the plugin that stopped it. */
+export type ActivationOutcome =
+  | { readonly kind: "active"; readonly activation: Activation }
+  | { readonly kind: "failed"; readonly error: string; readonly plugins: readonly PluginInfo[] };
+
 export async function activate(input: {
   target: ActivationTarget;
   plugins: readonly LoadedPlugin[];
   env: PluginEnv;
-}): Promise<Activation> {
+}): Promise<ActivationOutcome> {
   const registries = createRegistries();
   let initializing = true;
   const session = input.target.kind === "session" ? input.target.session : undefined;
@@ -242,7 +249,7 @@ export async function activate(input: {
       while (deferred.length && !calls.size && !offered.size && !blockedHeads.size) {
         for (const action of deferred.splice(0)) action();
       }
-      if (eventListeners.size === 0) {
+      if (eventListeners.size === 0 && transitionListeners.size === 0) {
         eventLoop?.abort();
         eventLoop = undefined;
       }
@@ -330,6 +337,44 @@ export async function activate(input: {
   // fanned out to every plugin listener. A listener that throws is reported
   // and the stream goes on: an observer cannot stop what it observes.
   const eventListeners = new Set<(event: SessionEvent) => void | Promise<void>>();
+  const transitionListeners = new Set<(transition: SessionTransition) => void | Promise<void>>();
+  // A run ref is rewritten after its phase is final and a parked effect after
+  // it waits, so each transition is remembered and delivered once.
+  const endedRuns = new Set<string>();
+  const openWaits = new Set<string>();
+  const transitionsOf = (event: SessionEvent): SessionTransition[] => {
+    if (event.kind === "run") {
+      const { phase } = event.run;
+
+      if (phase.kind !== "done" && phase.kind !== "aborted" && phase.kind !== "failed") return [];
+      if (endedRuns.has(event.run.runId)) return [];
+      endedRuns.add(event.run.runId);
+
+      return [{ kind: "run_ended", head: event.head, run: { ...event.run, phase } }];
+    }
+
+    if (event.kind !== "effect" || event.state !== "waiting" || event.selection === undefined)
+      return [];
+    if (openWaits.has(event.waitId)) return [];
+    openWaits.add(event.waitId);
+    const { seq: _seq, state: _state, selection, ...wait } = event;
+
+    return [{ ...wait, kind: "awaiting_reply", selection }];
+  };
+  const deliver = <T>(listeners: ReadonlySet<(item: T) => void | Promise<void>>, item: T): void => {
+    for (const listener of listeners) {
+      void withBudget({ what: "event listener", ms: PLUGIN_CALL_BUDGET_MS }, () =>
+        duringCall(() => listener(item)),
+      ).catch((error: unknown) =>
+        emit({
+          kind: "diagnostic",
+          level: "error",
+          owner: "events",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+  };
   let eventLoop: AbortController | undefined;
   let eventTask: Promise<void> | undefined;
   const recordRun = (name: string, run: Run | undefined): void => {
@@ -376,18 +421,9 @@ export async function activate(input: {
         if (event.kind === "ref" && event.name.startsWith("refs/runs/"))
           await observeRunRef(event.name);
         for (const projected of await projectEvent(event, session.objects)) {
-          for (const listener of eventListeners) {
-            void withBudget({ what: "event listener", ms: PLUGIN_CALL_BUDGET_MS }, () =>
-              duringCall(() => listener(projected)),
-            ).catch((error: unknown) =>
-              emit({
-                kind: "diagnostic",
-                level: "error",
-                owner: "events",
-                message: error instanceof Error ? error.message : String(error),
-              }),
-            );
-          }
+          deliver(eventListeners, projected);
+          for (const transition of transitionsOf(projected))
+            deliver(transitionListeners, transition);
         }
       }
     })().catch((cause: Error) => {
@@ -396,13 +432,22 @@ export async function activate(input: {
     });
   };
 
-  const events: PluginEvents = {
+  const events: PluginEventSource = {
     subscribe: (listener): Disposer => {
       eventListeners.add(listener);
       startEventLoop();
 
       return () => {
         eventListeners.delete(listener);
+        flush();
+      };
+    },
+    transitions: (listener): Disposer => {
+      transitionListeners.add(listener);
+      startEventLoop();
+
+      return () => {
+        transitionListeners.delete(listener);
         flush();
       };
     },
@@ -491,12 +536,10 @@ export async function activate(input: {
           const owner = registries.settings.owner(id);
 
           if (owner === undefined) return [];
-          const stored = await facts.getFact(pluginFactKey(owner, setting.key));
-
-          const current =
-            isStringFact(stored) && setting.choices.some((choice) => choice.id === stored)
-              ? stored
-              : (setting.fallback ?? setting.choices[0].id);
+          const current = storedChoice(
+            setting,
+            await facts.getFact(pluginFactKey(owner, setting.key)),
+          );
 
           return [{ id, owner, label: setting.label, choices: setting.choices, current }];
         }),
@@ -563,6 +606,7 @@ export async function activate(input: {
         eventLoop?.abort();
         await eventTask;
         eventListeners.clear();
+        transitionListeners.clear();
 
         if (errors.length > 0) throw new AggregateError(errors, "Failed to close activation");
       })();
@@ -572,13 +616,21 @@ export async function activate(input: {
   };
 
   try {
-    await plugins.activate(input.plugins);
+    const replacement = await plugins.activate(input.plugins);
+
+    if (replacement.kind === "rejected") {
+      const failed = { kind: "failed", error: replacement.error, plugins: plugins.list() } as const;
+      await activation.close();
+
+      return failed;
+    }
+
     if (session !== undefined) {
       for (const ref of await session.refs.list("refs/runs/")) await observeRunRef(ref.name);
       if (blockedHeads.size) startEventLoop();
     }
     initializing = false;
-    return activation;
+    return { kind: "active", activation };
   } catch (error) {
     await activation.close().catch(() => undefined);
     throw error;
@@ -921,7 +973,7 @@ export function turnFor(
           }
         }
       },
-      afterToolCall: async ({ toolCall, args, result, isError, context }, signal) => {
+      afterToolCall: async ({ toolCall, args, result, kind, context }, signal) => {
         const invocation = toolInvocation(context, signal);
 
         if (!activation.hooks.has("after_tool")) return undefined;
@@ -935,29 +987,14 @@ export function turnFor(
           content: result.content,
           details: toJsonValue(result.details),
           structuredContent: result.structuredContent,
-          isError,
+          kind,
         };
 
-        const patch = await activation.hooks.run(
+        return activation.hooks.run(
           "after_tool",
           result.usage === undefined ? hookInput : { ...hookInput, usage: result.usage },
           signal ?? invocation.input.signal,
         );
-
-        if (patch === undefined) return undefined;
-        const content = patch.content === undefined ? {} : { content: patch.content };
-
-        const details =
-          patch.details === undefined ? content : { ...content, details: patch.details };
-
-        const error =
-          patch.isError === undefined ? details : { ...details, isError: patch.isError };
-        const structured =
-          patch.structuredContent === undefined
-            ? error
-            : { ...error, structuredContent: patch.structuredContent };
-
-        return patch.usage === undefined ? structured : { ...structured, usage: patch.usage };
       },
     };
 

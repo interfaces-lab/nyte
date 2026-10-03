@@ -59,7 +59,7 @@ async function fixture(store: Store = openStore(), existingId?: string) {
                   throw new ToolWait(backgroundWait);
                 },
                 wake: async () => ({
-                  kind: "settle",
+                  kind: "success",
                   result: {
                     content: [{ type: "text", text: "answered" }],
                     details: {},

@@ -1,5 +1,6 @@
-import type { ImageContent, TextContent } from "@nyte-ai/schema";
-import type { AgentToolResult } from "./types.ts";
+import { isJsonObject, toJsonValue, type JsonObject } from "@nyte-ai/client";
+import type { ImageContent, TextContent, ToolResultMessage } from "@nyte-ai/schema";
+import type { AgentToolResult, ToolCallOutcome } from "./types.ts";
 
 /** Wraps plain text as tool-result content. */
 export function toolResultContent(text: string): TextContent[] {
@@ -54,4 +55,62 @@ export function toolErrorResult(
   }
 
   return result;
+}
+
+export function toolSuccess<TDetails>(
+  result: AgentToolResult<TDetails>,
+): ToolCallOutcome<TDetails> {
+  return { kind: "success", result };
+}
+
+/** A failed outcome for `cause`, a thrown value or a message; see `toolErrorResult`. */
+export function toolFailure(
+  cause: unknown,
+  lastPartial?: AgentToolResult<unknown>,
+): ToolCallOutcome {
+  return { kind: "error", result: toolErrorResult(cause, lastPartial) };
+}
+
+/** Tool-call arguments as the durable log will replay them. */
+export function toolCallArguments(value: unknown): JsonObject {
+  const json = toJsonValue(value);
+
+  if (!isJsonObject(json)) throw new Error("Tool arguments must be an object");
+
+  return json;
+}
+
+/**
+ * The settlement message for one tool call: what the model reads back and
+ * what the session log stores. Every settlement, live or recovered, is built
+ * here so the two never drift.
+ */
+export function toolResultMessage(
+  call: { readonly toolCallId: string; readonly toolName: string },
+  outcome: ToolCallOutcome,
+): ToolResultMessage {
+  const { result } = outcome;
+  const message: ToolResultMessage = {
+    role: "toolResult",
+    toolCallId: call.toolCallId,
+    toolName: call.toolName,
+    // Untyped tools (JS extensions) can return results without content; normalize
+    // so the null never enters session history or provider payloads.
+    content: result.content ?? [],
+    details: result.details,
+    isError: outcome.kind === "error",
+    timestamp: Date.now(),
+  };
+
+  if (result.structuredContent !== undefined) message.structuredContent = result.structuredContent;
+
+  if (result.title !== undefined) message.title = result.title;
+
+  if (result.usage !== undefined) message.usage = result.usage;
+
+  if (result.addedToolNames !== undefined && result.addedToolNames.length > 0) {
+    message.addedToolNames = result.addedToolNames;
+  }
+
+  return message;
 }

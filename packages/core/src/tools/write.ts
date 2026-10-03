@@ -1,4 +1,4 @@
-import type { AgentTool } from "../kernel/loop/types.ts";
+import type { ToolDefinition } from "../kernel/loop/types.ts";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { type Static, Type } from "typebox";
@@ -33,20 +33,19 @@ export interface WriteToolOptions {
   operations?: WriteOperations;
 }
 
-export function createWriteTool(
+export function createWriteToolDefinition(
   cwd: string,
   options?: WriteToolOptions,
-): AgentTool<typeof writeSchema, undefined> {
+): ToolDefinition<typeof writeSchema, undefined> {
   const ops = options?.operations ?? defaultWriteOperations;
   return {
-    name: "write",
     label: "write",
     description:
       "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
     parameters: writeSchema,
     present: ({ path }) => ({ kind: "file_write", path }),
     constrainedSampling: { type: "json_schema", strict: "prefer" },
-    async execute(_toolCallId, { path, content }, signal) {
+    async execute({ path, content }, { signal }) {
       const absolutePath = resolveToCwd(path, cwd);
       const dir = dirname(absolutePath);
       return withFileMutationQueue(absolutePath, async () => {
@@ -55,7 +54,7 @@ export function createWriteTool(
         // Checking signal.aborted after each await observes the same aborts while
         // keeping the queue locked until the current operation has settled.
         const throwIfAborted = (): void => {
-          if (signal?.aborted) throw new Error("Operation aborted");
+          if (signal.aborted) throw new Error("Operation aborted");
         };
 
         throwIfAborted();

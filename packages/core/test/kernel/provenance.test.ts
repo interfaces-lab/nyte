@@ -18,7 +18,7 @@ import { step } from "../../src/kernel/step.ts";
 import type { Session } from "../../src/kernel/store.ts";
 import { bindTurn } from "../../src/kernel/turn.ts";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
-import { createAllTools } from "../../src/tools/index.ts";
+import { builtinTools } from "../builtin-tools.ts";
 import { assistant, call, drain, message, openSession, user } from "./helpers.ts";
 
 const model: Model<Api> = {
@@ -58,7 +58,7 @@ async function drive(session: Session, streamFn: StreamFn, cwd: string, steps: n
     streamFn,
     model,
     sections: { prompt: "system" },
-    tools: createAllTools(cwd),
+    tools: builtinTools(cwd),
     retry: { enabled: true, maxRetries: 2, baseDelayMs: 1 },
   });
   await submit(session, {
