@@ -73,7 +73,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // The Voltra entry in app.json is replaced so its app group follows the
       // variant's bundle identifier; a shared group would let two variants
       // read each other's Live Activity state.
-      ...basePlugins.filter((plugin) => !isVoltraPlugin(plugin)),
+      ...basePlugins.filter((plugin) => !isVariantPlugin(plugin)),
+      ["expo-dev-client", { addGeneratedScheme: variantName === "development" }],
       [
         "@use-voltra/ios-client",
         {
@@ -109,8 +110,8 @@ function withoutGeneratedExtensions(extra: ExpoConfig["extra"]): ExpoConfig["ext
   return { ...extra, eas: keptEas };
 }
 
-function isVoltraPlugin(plugin: NonNullable<ExpoConfig["plugins"]>[number]): boolean {
+function isVariantPlugin(plugin: NonNullable<ExpoConfig["plugins"]>[number]): boolean {
   const name = Array.isArray(plugin) ? plugin[0] : plugin;
 
-  return name === "@use-voltra/ios-client";
+  return name === "@use-voltra/ios-client" || name === "expo-dev-client";
 }

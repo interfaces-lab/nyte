@@ -7,10 +7,9 @@ import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-
 import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
 import { Stack } from "expo-router/stack";
 import { css, html } from "react-strict-dom";
-import type { NyteClient } from "@nyte-ai/client";
+import { AccountProvider } from "../account/account-provider.tsx";
 import { ConnectScreen } from "../connection/connect-screen.tsx";
-import type { Connection } from "../connection/connection.ts";
-import { HostProvider, useHostConnection } from "../connection/host-context.tsx";
+import { HostProvider, useHostConnection, type HostSession } from "../connection/host-context.tsx";
 import { useAppliedAppearance } from "../settings/preferences.ts";
 import { useTheme, spacing, tokens, typography } from "../theme.ts";
 import { Toaster } from "../ui/toast.tsx";
@@ -34,7 +33,9 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Gate />
+      <AccountProvider>
+        <Gate />
+      </AccountProvider>
     </QueryClientProvider>
   );
 }
@@ -77,17 +78,18 @@ function Gate() {
                   edit={
                     host.editing === undefined
                       ? undefined
-                      : { connection: host.editing.connection, onCancel: cancelEdit }
+                      : { saved: host.editing.saved, onCancel: cancelEdit }
                   }
                   notice={host.notice}
                 />
               </html.div>
             ) : (
               <Connected
-                key={host.connection.url}
+                key={host.key}
                 session={{
                   client: host.client,
                   connection: host.connection,
+                  saved: host.saved,
                   edit,
                   disconnect,
                 }}
@@ -106,16 +108,7 @@ function Gate() {
  * never see the previous one's cached sessions, models, or workspaces — the
  * `key` on the call site remounts this when the connection target changes.
  */
-function Connected({
-  session,
-}: {
-  session: {
-    client: NyteClient;
-    connection: Connection;
-    edit: () => void;
-    disconnect: () => Promise<void>;
-  };
-}) {
+function Connected({ session }: { session: HostSession }) {
   const theme = useTheme();
   const [queryClient] = useState(() => new QueryClient());
 

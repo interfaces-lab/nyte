@@ -47,32 +47,38 @@ discovery are not implemented.
 
 ## Connecting
 
-Nyte desktop exposes the connection under Environments › Remote access. It offers
-two reaches. **Simulator on this Mac** binds `127.0.0.1`; **Over Tailscale** binds
-this machine's tailnet address, read from `tailscale status --json`, and is offered
-only while that daemon reports `Running`. Either way the listener takes an ephemeral
-port and a random token, and offers Copy address and Copy token. The app's connect
+Nyte desktop exposes the connection under Environments › Remote Access. Two of its
+reaches use one token per start. **Simulator on this Mac** binds `127.0.0.1`; **Over
+Tailscale** binds this machine's tailnet address, read from `tailscale status --json`,
+and is offered only while that daemon reports `Running`. Either way the listener takes
+an ephemeral port and a random token, and offers Copy address and Copy token. The
+third, **Over Cloudflare Tunnel**, publishes the Mac at an HTTPS hostname on the
+user's own Cloudflare domain and gives each phone its own token through **Add Device**;
+that token keeps working across desktop restarts until the device is removed there. The app's connect
 screen takes a name, that address, and that token, then verifies `/v1/info`
 before saving. Verification gives up after ten seconds and can be cancelled, so
 a wrong address does not hold the form.
 
-Because each start issues a new address and token, Settings › Edit address and
-token reopens the same form on the saved details, with Cancel returning to the
-list. Disconnect stays separate and still deletes the saved token. When the list
+Saved details can stop working: a local or Tailscale share issues a new address
+and token each time it starts, and the Mac refuses a Cloudflare device's token
+once that device is removed there. Settings › Edit address and token reopens the
+same form on the saved details, with Cancel returning to the list. Disconnect stays separate and still deletes the saved token. When the list
 cannot reach the host it offers Try again and a way into those settings.
 
 The connect screen can also read a pairing code: `nyte://connect?name=…&url=…&token=…`,
 scanned with the back camera through VisionCamera's `useObjectOutput`, which
 reads QR codes through AVFoundation without an ML dependency. A scanned address
 goes through the same `parseConnection` policy as a typed one, so a public HTTP
-host is refused either way. Desktop Environments › Remote access shows that
+host is refused either way. Desktop Environments › Remote Access shows that
 pairing QR. A simulator has no camera, so the scan button only appears on a
 device with one.
 
 A loopback share reaches only the iOS Simulator on the same Mac. A Tailscale share
 reaches a physical iPhone signed in to the same tailnet, on any network, and
-nothing on the local wifi: the listener binds the tailnet address alone. A public
-relay and remote access without Tailscale are not supported yet.
+nothing on the local wifi: the listener binds the tailnet address alone. A
+Cloudflare Tunnel share reaches any network through the user's own named tunnel;
+its address is ordinary HTTPS, so the app needs nothing special for it. A Nyte
+account reaches any network too, through the Nyte Connect relay below.
 
 Plain HTTP is accepted for loopback, private IPv4 addresses, the Tailscale
 `100.64.0.0/10` range, and `.ts.net` names, checked numerically; anything else
@@ -96,13 +102,157 @@ which stage a failure is: a server that refuses the token, one that never
 answers, and one that answers as something other than Nyte need different
 instructions. Retry is offered only where the same details could still work.
 
+## Nyte Connect
+
+A build with account configuration adds Nyte Connect: sign in with the Nyte
+account the Mac uses, pick one of its Macs, and the phone enrolls itself. A
+build without it, or with a malformed value, shows the address-and-token screen
+exactly as before and never loads Clerk.
+
+| Variable | Value |
+| --- | --- |
+| `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key; must encode a bare Frontend API host |
+| `EXPO_PUBLIC_NYTE_CONNECT_ORIGIN` | Broker and relay origin, a canonical `https://host[:port]` |
+
+Both are public and inlined at build time. `src/account/account-config.ts`
+turns the account off unless both pass.
+
+Local Expo commands read these from `packages/mobile/.env.local`. EAS builds
+read them from the project's environment variables on expo.dev, since the
+local file is gitignored. Set both as plain text project variables for
+`development`, `preview`, and `production`; `eas.json` selects the matching
+environment for each build profile. Use the same Clerk instance as the Worker
+and desktop. The current Worker uses `wise-ocelot-6839.clerk.accounts.dev`, a
+Clerk test instance, at `https://nyte-connect.daniel-fu90.workers.dev`.
+
+For EAS Update, select the same environment with `--environment development`,
+`--environment preview`, or `--environment production`.
+
+Every Mac is reached through the broker's relay at
+`<origin>/r/<environment id>`. The Mac holds an outbound connection to it, so
+it needs no inbound port, DNS name, or tunnel of its own. The phone builds that
+address itself from the origin and the picked Mac's id; no broker answer names
+an address. Broker and relay share one origin, so the phone sends no cookies on
+any account request.
+
+The flow is one panel, `src/account/connect-panel.tsx`, in two places. The
+connect screen shows it inline above the address-and-token form, which folds
+under Advanced › Connect with Address and Token. While connected, the first row
+of Settings › Connection is the entry: the Mac, its account or address, and its
+status. Tapping it opens the same panel in a native page sheet with the
+connected Mac, the account (Switch Account, Sign Out), Your Macs, and Advanced.
+It is a sheet rather than a route, so the stack stays where it was.
+
+Sign-in is Clerk's hosted page in an ephemeral `ASWebAuthenticationSession`,
+started with `useHostedAuth().startHostedAuth({ mode: "sign-in" })`. Ephemeral
+means Safari keeps no portal session that could sign the previous account back
+in. That page is the only part of the flow outside the app; Your Macs, progress,
+and errors are native. Clerk's client token lives in the Keychain through
+`@clerk/expo/token-cache`. The broker gets a fresh standard session JWT for each
+call, `getToken({ skipCache: true })` with no template. The Clerk instance must
+add an `aud` claim equal to the broker origin to its session token, which the
+broker checks.
+
+Picking a Mac:
+
+1. The phone draws 32 bytes from `getRandomBytesAsync` (never the synchronous
+   call, which can fall back to `Math.random`), encodes them as the device
+   bearer, and hashes that text with SHA-256.
+2. `POST /v1/environments/:id/devices` carries only `clientId`, `clientName`,
+   and the digest. The broker has the Mac record the device before it answers.
+3. The answer must name the picked Mac's id; anything else is refused before
+   the bearer goes anywhere. The Mac's address is the relay for that id.
+4. The phone calls `/v1/info` through the relay with the new bearer. A
+   just-enrolled device can be refused while the Mac's lease catches up, so a
+   refusal is retried with the same bearer for `ENROLLMENT_READINESS_SECONDS`.
+   Nothing enrolls again.
+5. The connection, with the broker origin, environment, device, and owner, is
+   written to the Keychain under a signal that any account change aborts.
+
+`clientId` is per install and per account, so reconnecting replaces this
+phone's earlier device instead of adding one, and two accounts on one phone get
+different ids.
+
+The saved connection holds the bearer and nothing else does: no query or
+mutation cache, no URL, no log. `src/connection/connection-store.ts` keeps it in
+one queue, so a save that started before a sign-out cannot land after it. An
+abort during the write puts the previous connection back. If that undo fails
+too, the store serves nothing and the save reports failure rather than a
+rollback; the connect screen then asks for the Mac again.
+
+Restoring an account connection holds it to the same policy as enrolling: the
+broker must be this build's broker and the address exactly its relay for the
+saved Mac's id, with no other path, query, or fragment. HTTPS alone does not
+say which host it is. A build without account configuration, or one pointed at
+another broker, refuses the saved connection and asks for the Mac again. That
+is deliberate: there is no migration between brokers, so changing it means
+picking each Mac again.
+
+The device bearer outlives the Clerk session. A Mac keeps working after the
+session expires or the phone goes offline; only Your Macs needs a sign-in. A Mac
+that refuses the bearer shows Not accepted in Settings with Reconnect…, which
+opens the panel to pick that Mac again. The app never enrolls again by itself,
+because a revoked device must stay revoked.
+
+Each signed-in owner change, whether from a sign-in, Switch Account, or a
+session Clerk restores at launch, aborts the previous owner's work (enrollment,
+Keychain write, Mac list) and drops its cached Macs. The connection gate never
+serves another owner's Mac once Clerk names a different owner, even before the
+Keychain removal finishes, and that Mac is then removed and released. Signing
+out, or a session expiring, keeps the saved Mac. Enrolling checks the owner the
+Mac list was drawn for against the one signed in, so a stale list cannot enroll
+under another account.
+
+Ending a device comes in the two strengths the contract defines. A release
+is `DELETE <relay address>/_nyte/connect/device` with the device's own bearer.
+The Mac refuses the bearer at once and queues the broker's weak release itself,
+which frees the device's place under the limit and leaves every Clerk session
+alone. 204 means released; 401 or 403 means the relay or the Mac already
+refuses the bearer, which counts the same. No other answer counts, including
+the relay's 503 for a Mac that is not connected. The phone releases:
+
+- a bearer it does not keep: a cancelled connect, an account change during one,
+  an expired readiness window, or a failed save;
+- the Mac a save replaced, when switching to another Mac or to an address;
+- the saved Mac on Disconnect Mac, which keeps the Nyte sign-in;
+- another account's Mac when a different owner signs in.
+
+Sign Out revokes instead: the broker's `revokeDevice` first, under the owner's
+session, which also ends the Clerk session that enrolled the device, then the
+release on the Mac as a best effort, each within five seconds. It then deletes
+the connection and the client id and signs Clerk out.
+
+The toast afterwards says only what answered. If the Mac answered, it removed
+the iPhone. If only the broker did, the Mac stops accepting the iPhone within a
+minute, when its lease runs out. If neither did, the toast asks the user to
+remove the iPhone on the Mac.
+
+The Mac has to be awake with Nyte open for enrollment and for the Mac to confirm
+a release, and the panel says so. With no Macs on the account, it points to
+Environments › Remote Access › Link This Mac… on the Mac.
+
+### Native setup
+
+The `@clerk/expo` config plugin runs with `appleSignIn: false`, so no Sign in
+with Apple entitlement is added. It raises the iOS deployment target to 17.0
+and links Clerk's native module, so a phone needs a new binary: run `prebuild`
+and `pod install` again, or build a new EAS binary. An over-the-air update
+cannot add it, and the fingerprint runtime policy keeps one from reaching an
+older binary.
+
+Hosted auth returns to `<bundle identifier>://callback`, which
+`ASWebAuthenticationSession` catches without an Info.plist URL type. Each
+variant needs its callback allowed under Native applications in the Clerk
+dashboard: `dev.nyte.ios://callback`, `dev.nyte.ios.preview://callback`, and
+`dev.nyte.ios.dev://callback`.
+
 ## Development
 
-Verified with Expo SDK 57 and Xcode 27 beta's iOS 27 SDK. Select the beta
-for the current terminal without changing the system Xcode setting:
+Local builds use Expo SDK 57 and Xcode 27's iOS 27 SDK. Select Xcode for
+the current terminal without changing the system Xcode setting:
 
 ```sh
-export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 ```
 
 The home-screen icon is `../desktop/build/icon-ios.png`: the same artwork on a
@@ -112,7 +262,7 @@ From the repository root:
 
 ```sh
 pnpm install
-pnpm --dir packages/mobile prebuild
+pnpm --dir packages/mobile prebuild:dev --clean
 cd packages/mobile/ios
 pod install
 ```
@@ -124,6 +274,21 @@ another terminal with the same `DEVELOPER_DIR`:
 pnpm --dir packages/mobile dev
 pnpm --dir packages/mobile ios
 ```
+
+`dev`, `ios`, and `prebuild:dev` select the development variant: Nyte Dev,
+`dev.nyte.ios.dev`, and `nyte-dev`. The Debug native build includes
+`expo-dev-client`, so local testing needs Xcode and Metro without an EAS build.
+`ios` leaves Metro running in the first terminal. To install on a connected
+iPhone, use `pnpm --dir packages/mobile ios --device`; enable Developer Mode
+on the phone and select your Apple team when Xcode requests signing.
+
+Only the development variant registers Expo's generated `exp+nyte-ios` scheme,
+so a Metro QR code opens Nyte Dev when other variants are also installed.
+
+Run `prebuild:dev --clean` and install Pods again after changing native
+dependencies or config plugins. To switch to a local production build, run
+`APP_VARIANT=production pnpm --dir packages/mobile prebuild --clean` and
+install Pods again before using `ios:release` or `ios:build`.
 
 The local scene lifecycle config plugin supplies the single-window scene delegate required by the iOS 27 SDK. Expo 57 still generates the older app lifecycle, as tracked in [Expo issue 46664](https://github.com/expo/expo/issues/46664). Remove the plugin and its Swift adapter once a stable Expo prebuild template includes `ExpoAppSceneDelegate`. The adapter keeps window creation in the scene and forwards lifecycle and link events through Expo.
 
@@ -142,6 +307,13 @@ descriptions. The native Xcode project is generated from `app.json` and `app.con
 and ignored by
 Git. Change app config rather than editing generated native files. Real-device
 signing requires your own Apple team.
+
+The pnpm patch for `@use-voltra/ios-client@2.3.2` backports
+[Voltra's distinct pod module fix](https://github.com/callstackincubator/voltra/pull/330).
+The app uses `VoltraRuntime` and the extension uses `VoltraWidgetRuntime`, with
+matching generated Swift imports. This prevents both pods from producing the
+same `Metadata.appintents` path during an archive. Remove the patch when the
+installed Voltra release includes the fix.
 
 `ios:release` builds and launches a Release app without Metro. `ios:build`
 does the same without installing Pods and copies the built `.app` into
@@ -239,7 +411,8 @@ and render the owning feature's screen body.
 | Location | Owns |
 | --- | --- |
 | `src/app/` | Expo Router route tree: root layout and thin route files |
-| `src/connection/` | Connection form, pairing-code scanner, address validation, Keychain, host client creation, and the host context behind the gate |
+| `src/account/` | Nyte Connect: account configuration, the Clerk provider, the connect panel and sheet, enrollment, release, and their wording |
+| `src/connection/` | Connection form, pairing-code scanner, address validation, the saved-connection store and Keychain, host client creation, and the host context behind the gate |
 | `src/chat/` | Conversation screens, list rows and grouping, composer, dictation, new-chat workspace menu, message rendering, selections, models, session list, transcript-derived changes, and remote session state |
 | `src/inbox/` | The root Agents list: sections, filtering, and the floating composer |
 | `src/activity/` | The Voltra Live Activity, synchronized from working and waiting sessions |
@@ -291,8 +464,10 @@ pnpm --dir packages/mobile test
 pnpm --dir packages/mobile bundle
 ```
 
-`test` covers address validation and host error wording without native
-modules. `bundle` builds a production Hermes bundle for iOS without starting a
+`test` covers address validation, host error wording, account configuration,
+enrollment, release, and revocation against a local broker and Mac, the
+saved-connection store's ordering and rollback, and the restore policy, all
+without native modules. `bundle` builds a production Hermes bundle for iOS without starting a
 dev server. TypeScript follows the repository version; Expo's dependency check
 excludes only that compiler while enforcing its React and native library
 versions.
@@ -390,6 +565,8 @@ app's existing Reanimated/Gesture Handler stack.
 | `react-strict-dom` | StyleX-compatible native content layout |
 | `@nyte-ai/ui/platform-colors` | Generated shared Nyte colors |
 | `@nyte-ai/client`, `@nyte-ai/protocol` | Typed HTTP/SSE transport, boundary parsing, selection validation, session observer, transcript projection, shared execution status |
+| `@nyte-ai/connect` | Nyte Connect contract: broker client, schemas, and the managed-address policy. The mobile app never imports its signing entry |
+| `@clerk/expo`, `expo-auth-session`, `expo-web-browser` | Nyte account sign-in through Clerk's hosted page |
 | `@legendapp/list` | Virtualized chat and sent-message anchoring |
 | `react-native-keyboard-controller` | Native keyboard coordination |
 | `react-native-enriched-markdown` | Native Markdown, code, lists, and tables |
@@ -401,7 +578,7 @@ app's existing Reanimated/Gesture Handler stack.
 | `react-native-vision-camera` 5.2 | Native still-photo capture |
 | `react-native-nitro-modules`, `react-native-nitro-image` | VisionCamera's required native runtime and image peers |
 | `expo-media-library`, `expo-image-manipulator` | System photo selection and local JPEG resizing |
-| `expo-secure-store`, `expo-crypto` | Saved host token and message retry IDs |
+| `expo-secure-store`, `expo-crypto` | Saved host token, Clerk token cache, device bearer and digest, and message retry IDs |
 | `expo-constants`, `expo-linking`, `expo-status-bar` | Router runtime peers, deep links, and status bar |
 | `react-native-safe-area-context` | Device and modal insets |
 | `react-native-reanimated`, `react-native-worklets` | Keyboard peers and the composer/thinking morph |

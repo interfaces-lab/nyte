@@ -45,8 +45,8 @@ export interface ConnectCopy {
   readonly retry: string | undefined;
 }
 
-/** Where the Mac shows the current address and token. */
-export const SHARE_LOCATION = "Environments › Remote access";
+/** Where the Mac shares itself, by address and token or through a Nyte account. Spelled as the desktop labels it. */
+export const SHARE_LOCATION = "Environments › Remote Access";
 
 export function connectCopy(stage: ConnectStage): ConnectCopy {
   switch (stage.kind) {
@@ -67,13 +67,13 @@ export function connectCopy(stage: ConnectStage): ConnectCopy {
     case "refused":
       return {
         title: "Token refused",
-        body: `Your Mac gives out a new token every time sharing starts. Copy the current one from ${SHARE_LOCATION}.`,
+        body: `Your Mac didn't accept this token. Scan a new code from ${SHARE_LOCATION} on your Mac.`,
         retry: "Try again",
       };
     case "silent":
       return {
         title: "No answer",
-        body: `Nothing replied at ${stage.address}. Check that sharing is still on, and that this phone is on the same network or signed in to the same Tailscale account.`,
+        body: `Nothing replied at ${stage.address}. Check that your Mac is awake with sharing on and that this phone is online. A Tailscale address also needs Tailscale running on this phone.`,
         retry: "Try again",
       };
     case "wrongServer":
@@ -110,17 +110,35 @@ export function connectCopy(stage: ConnectStage): ConnectCopy {
 
 /**
  * The lead paragraph before an attempt. Editing an existing connection needs a
- * different instruction: the details are already filled in and the reason to be
- * here is that the Mac has since issued new ones.
+ * different instruction: the details are already filled in, and the user is
+ * here to replace them. With a Nyte account, the account comes first, and an
+ * account connection is replaced by picking its Mac again.
  */
-export function introCopy(editing: boolean): ConnectCopy {
-  if (!editing) return connectCopy({ kind: "idle" });
+export function introCopy(input: {
+  editing: "manual" | "managed" | undefined;
+  account: boolean;
+}): ConnectCopy {
+  if (input.editing === "managed" && input.account)
+    return {
+      title: "Update your Mac",
+      body: "Pick your Mac from your Nyte account again.",
+      retry: undefined,
+    };
 
-  return {
-    title: "Update your Mac",
-    body: `Your Mac gives out a new address and token each time sharing starts. Copy the current pair from ${SHARE_LOCATION}.`,
-    retry: undefined,
-  };
+  if (input.editing !== undefined)
+    return {
+      title: "Update your Mac",
+      body: `Enter the address and token your Mac shows now, or scan a new code from ${SHARE_LOCATION}.`,
+      retry: undefined,
+    };
+
+  return input.account
+    ? {
+        title: "Connect your Mac",
+        body: "Sign in with the Nyte account your Mac uses.",
+        retry: undefined,
+      }
+    : connectCopy({ kind: "idle" });
 }
 
 /**

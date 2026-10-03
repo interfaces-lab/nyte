@@ -6,9 +6,16 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useCameraDevice, useCameraPermission } from "react-native-vision-camera";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
+import { useAccount } from "../account/account-provider.tsx";
+import { ConnectPanel } from "../account/connect-panel.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { ScanSheet } from "./scan-sheet.tsx";
-import { displayAddress, parseConnection, type Connection } from "./connection.ts";
+import {
+  displayAddress,
+  parseConnection,
+  type Connection,
+  type SavedConnection,
+} from "./connection.ts";
 import {
   connectCopy,
   introCopy,
@@ -37,13 +44,19 @@ export function ConnectScreen({
 }: {
   onConnect: (connection: Connection, signal: AbortSignal) => Promise<ConnectFailure | undefined>;
   /** Present when the form replaces a live connection rather than creating one. */
-  edit: { connection: Connection; onCancel: () => void } | undefined;
+  edit: { saved: SavedConnection; onCancel: () => void } | undefined;
   notice: string | undefined;
 }) {
   const theme = useTheme();
-  const [name, setName] = useState(edit?.connection.name ?? "My Mac");
-  const [url, setUrl] = useState(edit?.connection.url ?? "");
-  const [token, setToken] = useState(edit?.connection.token ?? "");
+  const account = useAccount();
+  // An account connection's bearer never goes into the form; picking the Mac again replaces it.
+  const manual = edit?.saved.kind === "manual" ? edit.saved.connection : undefined;
+  const [name, setName] = useState(manual?.name ?? "My Mac");
+  const [url, setUrl] = useState(manual?.url ?? "");
+  const [token, setToken] = useState(manual?.token ?? "");
+  // With an account, address and token is the advanced way in, folded until asked for.
+  const [manualOpen, setManualOpen] = useState(manual !== undefined);
+  const showManual = account === undefined || manualOpen;
   const [scanning, setScanning] = useState(false);
   const device = useCameraDevice("back");
   const { hasPermission, canRequestPermission, requestPermission } = useCameraPermission();
@@ -133,7 +146,7 @@ export function ConnectScreen({
     setScanning(true);
   }
 
-  const intro = introCopy(edit !== undefined);
+  const intro = introCopy({ editing: edit?.saved.kind, account: account !== undefined });
   const failure = stage.kind === "idle" || stage.kind === "verifying" ? undefined : stage;
   const alert = failure === undefined ? undefined : connectCopy(failure);
 
@@ -156,7 +169,7 @@ export function ConnectScreen({
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
-        <html.div style={styles.page}>
+        <html.div style={styles.head}>
           {edit === undefined ? null : (
             <html.div style={styles.navBar}>
               <GlassButton
@@ -172,153 +185,170 @@ export function ConnectScreen({
             <html.h1 style={[textStyles.heading, styles.text]}>{intro.title}</html.h1>
             <html.p style={[textStyles.body, styles.lead]}>{intro.body}</html.p>
           </html.div>
-          {canScan && !busy ? (
-            <html.div style={styles.actions}>
-              <GlassButton
-                label="Scan QR code"
-                systemImage="qrcode.viewfinder"
-                fill
-                onPress={() => void openScanner()}
-              />
-              <html.p style={[textStyles.caption, styles.footnote]}>
-                The code is in Nyte › {SHARE_LOCATION} on your Mac.
-              </html.p>
+        </html.div>
+        {account === undefined ? null : (
+          <ConnectPanel
+            account={account}
+            current={edit === undefined ? undefined : { saved: edit.saved, reconnect: true }}
+            manual={{ onPress: () => setManualOpen(!manualOpen), expanded: manualOpen }}
+          />
+        )}
+        {showManual ? (
+          <html.div style={[styles.page, account !== undefined && styles.afterPanel]}>
+            {canScan && !busy ? (
+              <html.div style={styles.actions}>
+                <GlassButton
+                  label="Scan QR code"
+                  systemImage="qrcode.viewfinder"
+                  fill
+                  onPress={() => void openScanner()}
+                />
+                <html.p style={[textStyles.caption, styles.footnote]}>
+                  The code is in Nyte › {SHARE_LOCATION} on your Mac.
+                </html.p>
+              </html.div>
+            ) : null}
+            <html.div style={styles.form}>
+              <Field label="Name">
+                <TextInput
+                  ref={nameInput}
+                  accessibilityLabel="Name"
+                  value={name}
+                  onChangeText={setName}
+                  editable={!busy}
+                  style={inputStyle(theme)}
+                  placeholder="My Mac"
+                  placeholderTextColor={theme.muted}
+                  autoComplete="off"
+                  textContentType="none"
+                  onSubmitEditing={() => addressInput.current?.focus()}
+                  submitBehavior="submit"
+                  returnKeyType="next"
+                />
+              </Field>
+              <html.div style={styles.separator} />
+              <Field label="Address">
+                <TextInput
+                  ref={addressInput}
+                  accessibilityLabel="Address"
+                  value={url}
+                  onChangeText={setUrl}
+                  editable={!busy}
+                  style={inputStyle(theme)}
+                  placeholder="http://100.x.y.z:port"
+                  placeholderTextColor={theme.muted}
+                  keyboardType="url"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="off"
+                  textContentType="URL"
+                  onSubmitEditing={() => tokenInput.current?.focus()}
+                  submitBehavior="submit"
+                  returnKeyType="next"
+                />
+              </Field>
+              <html.div style={styles.separator} />
+              <Field
+                label="Token"
+                trailing={
+                  <html.button
+                    aria-label={revealToken ? "Hide token" : "Show token"}
+                    onClick={() => setRevealToken(!revealToken)}
+                    style={styles.revealButton}
+                  >
+                    <SymbolView
+                      name={revealToken ? "eye.slash" : "eye"}
+                      size={controls.icon}
+                      tintColor={theme.muted}
+                    />
+                  </html.button>
+                }
+              >
+                <TextInput
+                  ref={tokenInput}
+                  accessibilityLabel="Token"
+                  value={token}
+                  onChangeText={setToken}
+                  editable={!busy}
+                  style={inputStyle(theme)}
+                  placeholder="Paste from your Mac"
+                  placeholderTextColor={theme.muted}
+                  secureTextEntry={!revealToken}
+                  keyboardType="ascii-capable"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="off"
+                  textContentType="none"
+                  // Go stays enabled with a token, so send the user to whichever field is still empty.
+                  onSubmitEditing={() => {
+                    if (complete) void connect();
+                    else
+                      (name.trim() === ""
+                        ? nameInput
+                        : url.trim() === ""
+                          ? addressInput
+                          : tokenInput
+                      ).current?.focus();
+                  }}
+                  enablesReturnKeyAutomatically
+                  returnKeyType="go"
+                />
+              </Field>
             </html.div>
-          ) : null}
-          <html.div style={styles.form}>
-            <Field label="Name">
-              <TextInput
-                ref={nameInput}
-                accessibilityLabel="Name"
-                value={name}
-                onChangeText={setName}
-                editable={!busy}
-                style={inputStyle(theme)}
-                placeholder="My Mac"
-                placeholderTextColor={theme.muted}
-                autoComplete="off"
-                textContentType="none"
-                onSubmitEditing={() => addressInput.current?.focus()}
-                submitBehavior="submit"
-                returnKeyType="next"
-              />
-            </Field>
-            <html.div style={styles.separator} />
-            <Field label="Address">
-              <TextInput
-                ref={addressInput}
-                accessibilityLabel="Address"
-                value={url}
-                onChangeText={setUrl}
-                editable={!busy}
-                style={inputStyle(theme)}
-                placeholder="http://100.x.y.z:port"
-                placeholderTextColor={theme.muted}
-                keyboardType="url"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="off"
-                textContentType="URL"
-                onSubmitEditing={() => tokenInput.current?.focus()}
-                submitBehavior="submit"
-                returnKeyType="next"
-              />
-            </Field>
-            <html.div style={styles.separator} />
-            <Field
-              label="Token"
-              trailing={
-                <html.button
-                  aria-label={revealToken ? "Hide token" : "Show token"}
-                  onClick={() => setRevealToken(!revealToken)}
-                  style={styles.revealButton}
-                >
+            {alert === undefined ? (
+              notice === undefined ? null : (
+                <html.div role="status" style={styles.alert}>
                   <SymbolView
-                    name={revealToken ? "eye.slash" : "eye"}
+                    name="info.circle.fill"
                     size={controls.icon}
                     tintColor={theme.muted}
                   />
-                </html.button>
-              }
-            >
-              <TextInput
-                ref={tokenInput}
-                accessibilityLabel="Token"
-                value={token}
-                onChangeText={setToken}
-                editable={!busy}
-                style={inputStyle(theme)}
-                placeholder="Paste from your Mac"
-                placeholderTextColor={theme.muted}
-                secureTextEntry={!revealToken}
-                keyboardType="ascii-capable"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="off"
-                textContentType="none"
-                // Go stays enabled with a token, so send the user to whichever field is still empty.
-                onSubmitEditing={() => {
-                  if (complete) void connect();
-                  else
-                    (name.trim() === ""
-                      ? nameInput
-                      : url.trim() === ""
-                        ? addressInput
-                        : tokenInput
-                    ).current?.focus();
-                }}
-                enablesReturnKeyAutomatically
-                returnKeyType="go"
-              />
-            </Field>
-          </html.div>
-          {alert === undefined ? (
-            notice === undefined ? null : (
-              <html.div role="status" style={styles.alert}>
-                <SymbolView name="info.circle.fill" size={controls.icon} tintColor={theme.muted} />
-                <html.p style={[textStyles.body, styles.alertText]}>{notice}</html.p>
+                  <html.p style={[textStyles.body, styles.alertText]}>{notice}</html.p>
+                </html.div>
+              )
+            ) : (
+              <html.div role="alert" style={styles.alert}>
+                <SymbolView
+                  name="exclamationmark.circle.fill"
+                  size={controls.icon}
+                  tintColor={theme.danger}
+                />
+                {/* Title names the cause; body is the instruction that follows from it. */}
+                <html.div style={styles.alertText}>
+                  <html.p style={textStyles.error}>{alert.title}</html.p>
+                  <html.p style={[textStyles.caption, styles.alertBody]}>{alert.body}</html.p>
+                </html.div>
               </html.div>
-            )
-          ) : (
-            <html.div role="alert" style={styles.alert}>
-              <SymbolView
-                name="exclamationmark.circle.fill"
-                size={controls.icon}
-                tintColor={theme.danger}
-              />
-              {/* Title names the cause; body is the instruction that follows from it. */}
-              <html.div style={styles.alertText}>
-                <html.p style={textStyles.error}>{alert.title}</html.p>
-                <html.p style={[textStyles.caption, styles.alertBody]}>{alert.body}</html.p>
-              </html.div>
-            </html.div>
-          )}
-          <html.div style={styles.actions}>
-            {busy ? (
-              <html.div style={styles.progress} aria-live="polite">
-                <ActivityIndicator color={theme.foreground} />
-                <html.span style={textStyles.title}>{connectCopy(stage).title}</html.span>
-              </html.div>
-            ) : null}
-            <GlassButton
-              label={edit === undefined ? "Connect Mac" : "Save Connection"}
-              busy={busy}
-              prominent
-              fill
-              onPress={() => void connect()}
-            />
-            {busy ? (
+            )}
+            <html.div style={styles.actions}>
+              {busy ? (
+                <html.div style={styles.progress} aria-live="polite">
+                  <ActivityIndicator color={theme.foreground} />
+                  <html.span style={textStyles.title}>{connectCopy(stage).title}</html.span>
+                </html.div>
+              ) : null}
               <GlassButton
-                label="Cancel Connection"
+                label={edit === undefined ? "Connect Mac" : "Save Connection"}
+                busy={busy}
+                prominent
                 fill
-                onPress={() => attempt.current?.abort()}
+                onPress={() => void connect()}
               />
-            ) : null}
+              {busy ? (
+                <GlassButton
+                  label="Cancel Connection"
+                  fill
+                  onPress={() => attempt.current?.abort()}
+                />
+              ) : null}
+            </html.div>
+            <html.p style={[textStyles.caption, styles.footnote]}>
+              A loopback address reaches only a simulator on your Mac. The token stays in Keychain.
+            </html.p>
           </html.div>
-          <html.p style={[textStyles.caption, styles.footnote]}>
-            A loopback address reaches only a simulator on your Mac. The token stays in Keychain.
-          </html.p>
-        </html.div>
+        ) : (
+          <html.div style={styles.end} />
+        )}
       </KeyboardAwareScrollView>
     </>
   );
@@ -359,14 +389,23 @@ function inputStyle(theme: Theme) {
 }
 
 const styles = css.create({
-  page: {
+  head: {
     display: "flex",
     flexDirection: "column",
     paddingInline: spacing.lg,
     paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    gap: spacing.lg,
+  },
+  page: {
+    display: "flex",
+    flexDirection: "column",
+    paddingInline: spacing.lg,
     paddingBottom: spacing.xxl,
     gap: spacing.lg,
   },
+  afterPanel: { paddingTop: spacing.xl },
+  end: { height: spacing.xxl },
   text: { margin: 0 },
   footnote: { margin: 0, textAlign: "center", paddingInline: spacing.sm },
   // Editing replaces a live connection, so the form needs a way back. First run

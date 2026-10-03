@@ -6,13 +6,38 @@ import {
 } from "@nyte-ai/client";
 import { fetch } from "expo/fetch";
 import { deleteItemAsync, getItemAsync, setItemAsync } from "expo-secure-store";
-import { displayAddress, parseStoredConnection, type Connection } from "./connection.ts";
+import { displayAddress, type Connection, type SavedConnection } from "./connection.ts";
 import { classifyConnectFailure, type ConnectFailure } from "./connect-copy.ts";
+import { createConnectionStore } from "./connection-store.ts";
+import { readAccountConfig } from "../account/account-config.ts";
+import { releaseReplaced } from "../account/revocation.ts";
 
 const STORAGE_KEY = "nyte.host";
 
-export function createHostClient(connection: Connection): NyteClient {
-  return createNyteClient({ baseUrl: connection.url, token: connection.token, fetch });
+export const connectionStore = createConnectionStore(
+  {
+    read: () => getItemAsync(STORAGE_KEY),
+    write: (text) => setItemAsync(STORAGE_KEY, text),
+    remove: () => deleteItemAsync(STORAGE_KEY),
+  },
+  readAccountConfig(),
+);
+
+/**
+ * An account connection shares its origin with the broker, so it sends no
+ * cookies. An address-and-token connection keeps the platform default.
+ */
+export function createHostClient(saved: SavedConnection): NyteClient {
+  const { url, token } = saved.connection;
+
+  return createNyteClient({
+    baseUrl: url,
+    token,
+    fetch:
+      saved.kind === "managed"
+        ? (input, init) => fetch(input, { ...init, credentials: "omit" })
+        : fetch,
+  });
 }
 
 /** How one attempt ended. Only `connected` may open a session. */
@@ -47,29 +72,13 @@ export async function connectHost(
     return { kind: "unexpected", detail: cause instanceof Error ? cause.message : String(cause) };
   }
 
-  if (signal.aborted) return { kind: "cancelled" };
+  const next: SavedConnection = { kind: "manual", connection };
+  const saved = await connectionStore.save(next, signal);
 
-  try {
-    await setItemAsync(STORAGE_KEY, JSON.stringify(connection));
-  } catch {
-    return { kind: "notSaved" };
-  }
+  if (saved.kind === "failed") return { kind: "notSaved" };
 
-  if (signal.aborted) {
-    await forgetConnection();
-
-    return { kind: "cancelled" };
-  }
+  if (saved.kind === "cancelled") return { kind: "cancelled" };
+  releaseReplaced({ replaced: saved.replaced, next, fetch });
 
   return { kind: "connected" };
 }
-
-export async function readConnection(): Promise<Connection | undefined> {
-  const saved = await getItemAsync(STORAGE_KEY);
-
-  if (saved === null) return undefined;
-
-  return parseStoredConnection(saved);
-}
-
-export const forgetConnection = () => deleteItemAsync(STORAGE_KEY);

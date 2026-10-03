@@ -1,17 +1,47 @@
 import { NyteTransportError, NyteWireError } from "@nyte-ai/client";
+import { relayAddress, Uuid } from "@nyte-ai/connect";
+import { SHARE_LOCATION } from "./connect-copy.ts";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
-const ConnectionSchema = Type.Object(
+const connectionProperties = {
+  name: Type.String({ minLength: 1 }),
+  url: Type.String({ minLength: 1 }),
+  token: Type.String({ minLength: 1 }),
+};
+
+const ConnectionSchema = Type.Object(connectionProperties, { additionalProperties: false });
+
+export type Connection = Static<typeof ConnectionSchema>;
+
+/**
+ * A connection the phone enrolled through a Nyte account. It keeps the broker
+ * that enrolled it and the account that owns it, so signing out or switching
+ * accounts can find and remove exactly this credential.
+ */
+const ManagedConnectionSchema = Type.Object(
   {
-    name: Type.String({ minLength: 1 }),
-    url: Type.String({ minLength: 1 }),
-    token: Type.String({ minLength: 1 }),
+    ...connectionProperties,
+    origin: Type.String({ minLength: 1 }),
+    environmentId: Uuid,
+    deviceId: Uuid,
+    ownerId: Type.String({ minLength: 1, maxLength: 128 }),
   },
   { additionalProperties: false },
 );
 
-export type Connection = Static<typeof ConnectionSchema>;
+export type AccountBinding = Omit<Static<typeof ManagedConnectionSchema>, keyof Connection>;
+
+export type SavedConnection =
+  | { readonly kind: "manual"; readonly connection: Connection }
+  | { readonly kind: "managed"; readonly connection: Connection; readonly binding: AccountBinding };
+
+export type ManagedConnection = Extract<SavedConnection, { kind: "managed" }>;
+
+/** The broker this build trusts, which a restored account connection must match. */
+export interface ManagedPolicy {
+  readonly origin: string;
+}
 
 /**
  * Plain HTTP is allowed only toward loopback, private IPv4 ranges, and the
@@ -38,14 +68,49 @@ function isPrivateHost(hostname: string): boolean {
   return a === 10 || a === 127 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31);
 }
 
-/** Decode a connection saved as JSON, then apply the same checks as a typed one. */
-export function parseStoredConnection(text: string): Connection {
+/**
+ * Decode a connection saved as JSON, then apply the same checks as a typed
+ * one. A manual connection keeps the shape it has always been saved in.
+ *
+ * An account connection is held to `policy` again: its broker must be this
+ * build's broker and its address exactly that broker's relay for its own Mac.
+ * HTTPS alone proves nothing about which host it is. A build without account
+ * configuration, or one pointed at another broker, cannot vouch for it and
+ * refuses it, so the user picks the Mac again.
+ */
+export function parseStoredConnection(
+  text: string,
+  policy: ManagedPolicy | undefined,
+): SavedConnection {
   const value: unknown = JSON.parse(text);
+
+  if (Value.Check(ManagedConnectionSchema, value)) {
+    const { origin, environmentId, deviceId, ownerId, ...fields } = value;
+
+    if (
+      policy === undefined ||
+      origin !== policy.origin ||
+      fields.url !== relayAddress(policy.origin, environmentId)
+    )
+      throw new Error("The saved account connection is outside this build's Nyte Connect.");
+
+    return {
+      kind: "managed",
+      connection: parseConnection(fields),
+      binding: { origin, environmentId, deviceId, ownerId },
+    };
+  }
 
   if (!Value.Check(ConnectionSchema, value))
     throw new Error("Enter a name, the address and the token.");
 
-  return parseConnection(value);
+  return { kind: "manual", connection: parseConnection(value) };
+}
+
+export function serializeConnection(saved: SavedConnection): string {
+  return JSON.stringify(
+    saved.kind === "manual" ? saved.connection : { ...saved.connection, ...saved.binding },
+  );
 }
 
 export function parseConnection(value: Connection): Connection {
@@ -111,7 +176,7 @@ export function parseConnectionPayload(text: string): Connection {
 export function describeHostError(cause: unknown): string {
   if (cause instanceof NyteWireError) {
     if (cause.code === "unauthorized" || cause.code === "forbidden")
-      return "Your Mac refused the token. Copy it again from Environments › Remote access.";
+      return `Your Mac refused the token. Scan a new code from ${SHARE_LOCATION}.`;
 
     if (cause.code === "unknown_session") return "This conversation is no longer available.";
 

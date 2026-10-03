@@ -13,7 +13,7 @@ import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import remend from "remend";
 import { EnrichedMarkdownText } from "react-native-enriched-markdown";
-import type { Failure, SessionId, ToolClass, TurnPart } from "@nyte-ai/protocol";
+import type { Failure, SessionId, TurnPart, TurnToolClass } from "@nyte-ai/protocol";
 import type { SessionState } from "@nyte-ai/client";
 import {
   controls,
@@ -236,7 +236,7 @@ function EditRow({
   patch,
   onOpenFile,
 }: {
-  patch: Extract<ToolClass, { kind: "file_patch" }>;
+  patch: Extract<TurnToolClass, { kind: "file_patch" }>;
   onOpenFile?: (path: string) => void;
 }) {
   const theme = useTheme();
@@ -257,7 +257,7 @@ function EditRow({
 }
 
 function toolTitle(
-  toolClass: ToolClass,
+  toolClass: TurnToolClass,
   settled: boolean,
   delegateNames: ReadonlyMap<SessionId, string>,
 ): string {
@@ -267,7 +267,7 @@ function toolTitle(
     case "list":
       return `${settled ? "Listed" : "Listing"} ${toolClass.path}`;
     case "shell":
-      return `${settled ? "Ran" : "Running"} ${toolClass.command}`;
+      return `${settled ? "Ran" : "Running"} ${toolClass.description ?? toolClass.command}`;
     case "file_edit":
       return `${settled ? "Edited" : "Editing"} ${toolClass.path}`;
     case "file_write":

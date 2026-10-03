@@ -138,7 +138,7 @@ describe("describeHostError", () => {
   it("names the fix for refused tokens and unreachable hosts", () => {
     expect(
       describeHostError(new NyteWireError({ code: "unauthorized", message: "no" }, 401)),
-    ).toMatch(/Environments › Remote access/);
+    ).toMatch(/Environments › Remote Access/);
     expect(describeHostError(new NyteTransportError({ kind: "network", cause: null }))).toMatch(
       /sharing/,
     );

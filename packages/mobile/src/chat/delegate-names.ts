@@ -1,8 +1,8 @@
-import type { SessionId, SessionInfo, ToolClass } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo, TurnToolClass } from "@nyte-ai/protocol";
 
 type ChildSessionName = Pick<SessionInfo, "sessionId" | "name" | "preview">;
 
-type DelegateClass = Extract<ToolClass, { readonly kind: "delegate" }>;
+type DelegateClass = Extract<TurnToolClass, { readonly kind: "delegate" }>;
 
 export function indexDelegateNames(
   children: readonly ChildSessionName[],
@@ -18,8 +18,6 @@ function delegateVerb(role: DelegateClass["role"], settled: boolean): string {
       return "Agent";
     case "send":
       return settled ? "Sent to" : "Sending to";
-    case "await":
-      return settled ? "Waited for" : "Waiting for";
     case "read":
       return settled ? "Read" : "Reading";
     case "stop":
@@ -37,21 +35,7 @@ export function delegateTitle(
   settled: boolean,
   names: ReadonlyMap<SessionId, string>,
 ): string {
-  const delegateTarget = toolClass.target;
+  const { session } = toolClass.target;
 
-  const target = (() => {
-    switch (delegateTarget.kind) {
-      case "one":
-        return names.get(delegateTarget.session) ?? delegateTarget.session;
-      case "many":
-        return delegateTarget.sessions.map((session) => names.get(session) ?? session).join(", ");
-      default: {
-        const _exhaustive: never = delegateTarget;
-
-        return _exhaustive;
-      }
-    }
-  })();
-
-  return `${delegateVerb(toolClass.role, settled)} ${target}`;
+  return `${delegateVerb(toolClass.role, settled)} ${names.get(session) ?? session}`;
 }

@@ -15,6 +15,7 @@ import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { media, overCamera, radii, spacing, textStyles } from "../theme.ts";
 import { parseConnectionPayload, type Connection } from "./connection.ts";
+import { SHARE_LOCATION } from "./connect-copy.ts";
 
 // Hoisted: `useObjectOutput` memoizes on this array, so an inline literal would
 // rebuild the camera output on every render.
@@ -139,7 +140,7 @@ function ScanSession({ onClose, onScan }: Omit<ScanSheetProps, "visible">) {
         {error === undefined ? (
           scanning ? (
             <html.p style={[textStyles.body, styles.hint]}>
-              Point at the code in Nyte › Environments › Remote access on your Mac.
+              Point at the code in Nyte › {SHARE_LOCATION} on your Mac.
             </html.p>
           ) : null
         ) : (

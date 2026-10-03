@@ -2,8 +2,12 @@ import Constants from "expo-constants";
 import { useState } from "react";
 import { Alert, ScrollView } from "react-native";
 import { useQuery } from "@tanstack/react-query";
+import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { NyteWireError } from "@nyte-ai/client";
+import { useAccount } from "../account/account-provider.tsx";
+import { ConnectSheet } from "../account/connect-panel.tsx";
 import { useHost } from "../connection/host-context.tsx";
 import { displayAddress } from "../connection/connection.ts";
 import { Group, GroupRow } from "../ui/group.tsx";
@@ -17,13 +21,15 @@ import {
   useTranscriptFont,
   useTwoLinePreview,
 } from "./preferences.ts";
-import { list, spacing, textStyles, tokens, useTheme } from "../theme.ts";
+import { controls, list, spacing, textStyles, tokens, useTheme } from "../theme.ts";
 
-type HostStatus = "checking" | "connected" | "unreachable";
+type HostStatus = "checking" | "connected" | "unreachable" | "refused";
 
 export function SettingsScreen() {
   const theme = useTheme();
-  const { client, connection, edit, disconnect } = useHost();
+  const { client, connection, saved, edit, disconnect } = useHost();
+  const account = useAccount();
+  const [connectOpen, setConnectOpen] = useState(false);
   const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -51,18 +57,29 @@ export function SettingsScreen() {
 
   const version = Constants.expoConfig?.version ?? "0.0.0";
 
+  // An account Mac that refuses this iPhone is not retried or re-enrolled on
+  // its own: a revocation must stay revoked until the user reconnects.
+  const refused =
+    saved.kind === "managed" &&
+    check.error instanceof NyteWireError &&
+    (check.error.code === "unauthorized" || check.error.code === "forbidden");
+
   const status: HostStatus = check.isFetching
     ? "checking"
-    : check.isError
-      ? "unreachable"
-      : "connected";
+    : refused
+      ? "refused"
+      : check.isError
+        ? "unreachable"
+        : "connected";
 
   // Disconnecting deletes the saved token, so reconnecting means copying it from the Mac again.
   function confirmDisconnect() {
     if (busy) return;
     Alert.alert(
       "Disconnect Mac",
-      "To connect again, you'll need the address and token from your Mac.",
+      saved.kind === "managed"
+        ? "To connect again, pick this Mac from your Nyte account."
+        : "To connect again, you'll need the address and token from your Mac.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -81,7 +98,13 @@ export function SettingsScreen() {
   }
 
   const statusLabel =
-    status === "checking" ? "Checking…" : status === "connected" ? "Connected" : "Unreachable";
+    status === "checking"
+      ? "Checking…"
+      : status === "connected"
+        ? "Connected"
+        : status === "refused"
+          ? "Not accepted"
+          : "Unreachable";
 
   const statusColor =
     status === "checking" ? theme.muted : status === "connected" ? theme.success : theme.danger;
@@ -100,39 +123,69 @@ export function SettingsScreen() {
       }}
       contentInsetAdjustmentBehavior="automatic"
     >
+      {account === undefined ? null : (
+        <ConnectSheet
+          open={connectOpen}
+          onClose={() => setConnectOpen(false)}
+          account={account}
+          current={{ saved, reconnect: refused }}
+          onManual={() => {
+            setConnectOpen(false);
+            edit();
+          }}
+        />
+      )}
       <SectionHeader label="Connection" first />
       <Group variant="flat">
-        <GroupRow>
+        {/* The Nyte Connect entry: the Mac, how it is reached, and the account behind it. */}
+        <GroupRow onClick={account === undefined ? undefined : () => setConnectOpen(true)}>
           <IconRing name="laptopcomputer" color={theme.foreground} />
           <html.div style={styles.rowText}>
             <html.span style={textStyles.body}>{connection.name}</html.span>
-            <html.span style={textStyles.caption}>{displayAddress(connection)}</html.span>
+            <html.span style={textStyles.caption}>
+              {saved.kind === "managed"
+                ? account?.status.kind === "signedIn" &&
+                  account.status.ownerId === saved.binding.ownerId
+                  ? account.status.label
+                  : "Nyte account"
+                : displayAddress(connection)}
+            </html.span>
           </html.div>
           <html.div style={styles.status} aria-live="polite">
             <html.div style={styles.statusDot(statusColor)} />
             <html.span style={textStyles.caption}>{statusLabel}</html.span>
           </html.div>
+          {account === undefined ? null : (
+            <SymbolView
+              name="chevron.right"
+              size={controls.iconXs}
+              weight="semibold"
+              tintColor={theme.interactiveTertiary}
+            />
+          )}
         </GroupRow>
-        <GroupRow
-          busy={status === "checking"}
-          onClick={() => {
-            void check.refetch();
-            void workspacesQuery.refetch();
-          }}
-        >
-          <IconRing name="arrow.clockwise" />
-          <html.span style={textStyles.body}>
-            {status === "unreachable" ? "Retry Connection" : "Check Connection"}
-          </html.span>
-        </GroupRow>
+        {status === "refused" ? (
+          <GroupRow onClick={account === undefined ? edit : () => setConnectOpen(true)}>
+            <IconRing name="arrow.triangle.2.circlepath" />
+            <html.span style={textStyles.body}>Reconnect…</html.span>
+          </GroupRow>
+        ) : (
+          <GroupRow
+            busy={status === "checking"}
+            onClick={() => {
+              void check.refetch();
+              void workspacesQuery.refetch();
+            }}
+          >
+            <IconRing name="arrow.clockwise" />
+            <html.span style={textStyles.body}>
+              {status === "unreachable" ? "Retry Connection" : "Check Connection"}
+            </html.span>
+          </GroupRow>
+        )}
         <GroupRow onClick={edit}>
           <IconRing name="pencil" />
-          <html.div style={styles.rowText}>
-            <html.span style={textStyles.body}>Edit Connection…</html.span>
-            <html.span style={textStyles.caption}>
-              Your Mac issues a new pair each time sharing starts.
-            </html.span>
-          </html.div>
+          <html.span style={textStyles.body}>Edit Connection…</html.span>
         </GroupRow>
       </Group>
       {error !== undefined && (

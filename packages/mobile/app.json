@@ -19,11 +19,6 @@
         "NSCameraUsageDescription": "Take a photo to attach to a Nyte message.",
         "NSMicrophoneUsageDescription": "Use the microphone to dictate a Nyte task.",
         "NSSpeechRecognitionUsageDescription": "Use speech recognition to transcribe a Nyte task.",
-        "CFBundleURLTypes": [
-          {
-            "CFBundleURLSchemes": ["nyte"]
-          }
-        ],
         "ITSAppUsesNonExemptEncryption": false
       },
       "userInterfaceStyle": "automatic"
@@ -31,6 +26,7 @@
     "plugins": [
       "expo-dev-client",
       "expo-secure-store",
+      ["@clerk/expo", { "appleSignIn": false }],
       "./plugins/with-scene-lifecycle.cjs",
       [
         "expo-media-library",
