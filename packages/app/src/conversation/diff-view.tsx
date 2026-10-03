@@ -1,5 +1,5 @@
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { button, shape } from "@nyte-ai/ui/schema.stylex";
+import { button, glyph } from "@nyte-ai/ui/schema.stylex";
 /**
  * One diff surface shared by transcript receipts and the Changes workbench.
  * Pierre renders the patch inside a shadow root; Nyte's tokens reach it as
@@ -19,14 +19,107 @@ import {
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
 } from "../pierre-worker-provider.tsx";
-import { diffView } from "../theme/schema.stylex.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 import { patchDigest } from "../workbench/changes-viewed.ts";
 import { diffStyles } from "./styles.stylex.ts";
 import type { DiffFilesLoader } from "./diff-expansion.ts";
 
-type DiffViewVariant = "inline" | "workbench" | "stack";
+type DiffViewVariant = "inline" | "card" | "workbench" | "stack";
+
+/**
+ * Collapsed context, shared by every diff surface: one band across the diff,
+ * the expand controls at its leading edge and the count filling the rest. The
+ * band is the gutter copy of the row, which Pierre pins while the code
+ * scrolls. Pierre's rules sit in a lower layer, so these win outright.
+ */
+export const DIFF_SEPARATOR_CSS = `
+[data-separator="line-info"] {
+  height: calc(${button.heightMd} + 16px);
+  background-color: transparent;
+}
+
+[data-separator-wrapper] {
+  width: 100cqi;
+  gap: 1px 2px;
+  padding: 8px 8px 8px 12px;
+  clip-path: inset(0 round ${button.radiusSm}) content-box;
+  color: ${role.contentSecondary};
+  font-size: ${type.fontSm};
+}
+
+[data-content] [data-separator-wrapper] {
+  display: none;
+}
+
+/* Split wrapping lays both sides out in one grid, with no box per side. */
+[data-diff-type="split"][data-overflow="wrap"] {
+  container-type: inline-size;
+}
+
+[data-diff-type="split"][data-overflow="wrap"] [data-separator-wrapper] {
+  width: 50cqi;
+}
+
+[data-expand-index] [data-separator-wrapper] {
+  grid-template-columns: ${button.heightMd} minmax(0, 1fr);
+}
+
+[data-separator-multi-button] {
+  grid-template-rows: 1fr 1fr;
+}
+
+[data-expand-index] [data-separator-wrapper]:hover {
+  color: ${role.contentPrimary};
+}
+
+[data-expand-index] [data-separator-wrapper]:hover > * {
+  --diffs-bg-separator: ${role.bgHover};
+}
+
+[data-expand-button],
+[data-separator-content],
+[data-unmodified-lines] {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+[data-expand-button],
+[data-expand-index] [data-separator-content] {
+  cursor: ${appearance.cursorInteractive};
+}
+
+[data-unmodified-lines] {
+  flex: 1;
+  align-self: stretch;
+  padding-inline: 8px;
+  background-color: transparent;
+  text-align: start;
+}
+
+[data-expand-button] [data-icon] {
+  width: ${glyph.sm};
+  height: ${glyph.sm};
+}
+
+[data-expand-button]:focus-visible,
+[data-unmodified-lines]:focus-visible {
+  outline: 1px solid ${appearance.focusRing};
+  outline-offset: -1px;
+}
+
+@media (pointer: coarse) {
+  [data-expand-index] [data-separator-wrapper][data-separator-multi-button] {
+    grid-template-rows: none;
+    grid-template-columns: ${button.heightMd} ${button.heightMd} minmax(0, 1fr);
+  }
+}
+`;
 
 const SHADOW_CSS = `
 ${PIERRE_TOKEN_CSS}
@@ -76,84 +169,7 @@ ${PIERRE_TOKEN_CSS}
 *:hover {
   scrollbar-color: ${role.scrollbarThumb} transparent;
 }
-
-[data-separator] {
-  background-color: transparent;
-  height: auto;
-  min-height: max(calc(${diffView.lineHeight} * 2), calc(${button.heightSm} + 8px));
-}
-
-[data-gutter] [data-separator-wrapper] {
-  display: flex;
-  gap: 8px;
-  width: max-content;
-  padding-inline: 8px;
-  background-color: transparent;
-}
-
-[data-content] [data-separator-wrapper] {
-  display: none;
-}
-
-[data-gutter] [data-expand-button] {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: ${button.heightSm};
-  min-width: 24px;
-  height: ${button.heightSm};
-  min-height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: ${shape.indicator};
-  background-color: transparent;
-  color: ${role.contentInteractiveSecondary};
-  cursor: ${appearance.cursorInteractive};
-}
-
-[data-gutter] [data-expand-button]:hover {
-  background-color: ${role.bgHover};
-  color: ${role.contentInteractivePrimary};
-}
-
-[data-gutter] [data-expand-button]:focus-visible {
-  outline: 2px solid ${role.borderInteractivePrimary};
-  outline-offset: 2px;
-}
-
-[data-gutter] [data-expand-button][data-unmodified-lines] {
-  width: auto;
-  padding-inline: 8px;
-  background-color: ${role.bgMutedTranslucent};
-  color: ${role.contentSecondary};
-  font-size: 12px;
-}
-
-[data-gutter] [data-expand-all-button]:not([data-unmodified-lines]):not([data-expand-both]) {
-  display: none;
-}
-
-[data-gutter] [data-separator-content] {
-  min-width: 0;
-  padding: 0;
-  background-color: transparent;
-  overflow: visible;
-}
-
-@media (pointer: coarse) {
-  [data-separator] {
-    min-height: 52px;
-  }
-
-  [data-gutter] [data-expand-button] {
-    min-width: 44px;
-    min-height: 44px;
-  }
-}
-
-`;
+${DIFF_SEPARATOR_CSS}`;
 
 /**
  * Pierre leaves the old `<pre>` in a React-managed shadow root on clean-up.
@@ -201,7 +217,7 @@ function applyDiffScopes(node: HTMLElement): void {
   sample.remove();
 }
 
-function adaptDiffExpanders(node: HTMLElement): void {
+export function adaptDiffExpanders(node: HTMLElement): void {
   const root = node.shadowRoot;
 
   if (root === null) return;
@@ -222,8 +238,7 @@ function adaptDiffExpanders(node: HTMLElement): void {
       control.hasAttribute("data-expand-both") ||
       control.hasAttribute("data-expand-all-button");
 
-    if (entireRegion) {
-      button.setAttribute("data-expand-button", "");
+    if (control.hasAttribute("data-unmodified-lines")) {
       button.setAttribute("data-expand-all-button", "");
     }
 
@@ -241,6 +256,7 @@ function adaptDiffExpanders(node: HTMLElement): void {
 function onPostRender(...[node, , phase]: [HTMLElement, unknown, PostRenderPhase]): void {
   if (phase === "unmount") {
     node.shadowRoot?.querySelector("pre")?.remove();
+
     return;
   }
 
@@ -253,7 +269,6 @@ const PATCH_OPTIONS = {
   theme: PIERRE_THEME,
   diffIndicators: "classic",
   disableFileHeader: true,
-  hunkSeparators: "line-info-basic",
   lineDiffType: "word",
   unsafeCSS: SHADOW_CSS,
 } satisfies FileDiffOptions<undefined, undefined>;
@@ -264,7 +279,7 @@ const PATCH_OPTIONS = {
  * or smaller closes in one click and gets a single stacked chevron, a longer
  * one gets an up and a down chevron.
  */
-const EXPANSION_LINE_COUNT = 20;
+export const EXPANSION_LINE_COUNT = 20;
 
 const rawStyles = create({
   raw: {
@@ -352,7 +367,13 @@ export const DiffView = memo(function DiffView({
     <div
       {...props(
         stacked ? diffStyles.stack : diffStyles.surface,
-        stacked ? undefined : headed ? diffStyles.workbench : diffStyles.inline,
+        stacked
+          ? undefined
+          : headed
+            ? diffStyles.workbench
+            : variant === "card"
+              ? diffStyles.card
+              : diffStyles.inline,
       )}
     >
       {headed && (

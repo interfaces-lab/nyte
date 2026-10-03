@@ -23,22 +23,26 @@ export async function run(): Promise<string> {
   document.body.append(host);
   const root = createRoot(host);
   const ref = createRef<ComposerEditorHandle>();
+
   const file = {
     path: "/project/source.ts",
     url: "file:///project/source.ts",
     displayPath: "source.ts",
     label: "Source",
   };
+
   let files = [file];
   let references: readonly MessageReference[] = [];
   let reports = 0;
   const prefix = `long 👋 text @${file.url}\n`.repeat(40);
   const text = `${prefix}ending`;
+
   let draft: ComposerDocumentState = {
     text,
     selectionStart: text.length,
     selectionEnd: text.length,
   };
+
   const render = (): void => {
     flushSync(() =>
       root.render(
@@ -61,10 +65,12 @@ export async function run(): Promise<string> {
       ),
     );
   };
+
   try {
     render();
     await paint();
     const handle = ref.current;
+
     if (handle === null || handle.element === null) throw new Error("editor did not mount");
     const area = handle.element;
     area.style.cssText =
@@ -86,10 +92,13 @@ export async function run(): Promise<string> {
     flushSync(() => handle.focus());
     await paint();
     const selection = document.getSelection();
+
     if (selection === null) throw new Error("native selection unavailable");
     const walker = document.createTreeWalker(area, NodeFilter.SHOW_TEXT);
     let last = walker.nextNode();
+
     while (last !== null && last.textContent !== "ending") last = walker.nextNode();
+
     if (!(last instanceof Text)) throw new Error("trailing text unavailable");
     selection.setBaseAndExtent(last, 6, last, 2);
     document.dispatchEvent(new Event("selectionchange"));
@@ -152,12 +161,15 @@ export async function run(): Promise<string> {
     const bounds = area.getBoundingClientRect.bind(area);
     area.getBoundingClientRect = () => {
       boundsReads += 1;
+
       return bounds();
     };
+
     for (let index = 0; index < 3; index += 1) {
       document.dispatchEvent(new Event("selectionchange"));
       await paint();
     }
+
     check(boundsReads === 0, "inactive selection changes do not measure editor bounds");
     area.getBoundingClientRect = bounds;
     outside.remove();
@@ -187,6 +199,7 @@ export async function run(): Promise<string> {
         link.contains(urlSelection.anchorNode),
       "caret sits in the AutoLink path",
     );
+
     return "passed";
   } finally {
     flushSync(() => root.unmount());

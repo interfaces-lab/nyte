@@ -13,7 +13,6 @@ import type { MessageReference } from "./message-references.ts";
 export interface ComposerImageAttachment {
   readonly id: string;
   readonly name: string;
-  readonly previewUrl: string;
   readonly content: ImageContent;
 }
 
@@ -101,7 +100,6 @@ function readImageAttachment(args: {
         resolve({
           id: crypto.randomUUID(),
           name: file.name,
-          previewUrl: `data:${mimeType};base64,${data}`,
           content: { type: "image", data, mimeType },
         });
       },

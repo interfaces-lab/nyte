@@ -12,12 +12,127 @@ function basename(path: string): string {
   return path.split(/[\\/]/u).at(-1) ?? path;
 }
 
+export function placeName(path: string, cwd: string | undefined): string {
+  const tidy = tidyPath(path, cwd);
+
+  if (tidy === "." || tidy === "./" || tidy === cwd) return basename(cwd ?? tidy) || tidy;
+
+  return basename(tidy.replace(/[\\/]+$/u, "")) || tidy;
+}
+
+export interface ToolVerbs {
+  readonly running: string;
+  readonly done: string;
+  readonly error: string;
+}
+
+export interface CustomTool {
+  readonly verbs: ToolVerbs;
+  readonly name?: string;
+  readonly server?: string;
+  readonly detail?: string;
+}
+
+const RAN: ToolVerbs = { running: "Running", done: "Ran", error: "Run" };
+
+const NAMED_TOOLS = new Map<string, CustomTool>([
+  ["codemode", { verbs: { running: "Running script", done: "Ran script", error: "Run script" } }],
+  [
+    "tool_search",
+    {
+      verbs: { running: "Exploring", done: "Explored", error: "Explore" },
+      detail: "available tools",
+    },
+  ],
+  ["websearch", { verbs: { running: "Searching web", done: "Searched web", error: "Search web" } }],
+  [
+    "web_search",
+    { verbs: { running: "Searching web", done: "Searched web", error: "Search web" } },
+  ],
+  ["webfetch", { verbs: { running: "Fetching page", done: "Fetched page", error: "Fetch page" } }],
+  ["web_fetch", { verbs: { running: "Fetching page", done: "Fetched page", error: "Fetch page" } }],
+  [
+    "rename_chat",
+    { verbs: { running: "Renaming chat", done: "Renamed chat", error: "Rename chat" } },
+  ],
+  ["browser_open", { verbs: { running: "Opening page", done: "Opened page", error: "Open page" } }],
+  ["browser_click", { verbs: { running: "Clicking", done: "Clicked", error: "Click" } }],
+  ["browser_type", { verbs: { running: "Typing", done: "Typed", error: "Type" } }],
+  [
+    "browser_press",
+    { verbs: { running: "Pressing key", done: "Pressed key", error: "Press key" } },
+  ],
+  ["browser_scroll", { verbs: { running: "Scrolling", done: "Scrolled", error: "Scroll" } }],
+  ["browser_wait", { verbs: { running: "Waiting", done: "Waited", error: "Wait" } }],
+  [
+    "browser_snapshot",
+    {
+      verbs: { running: "Taking snapshot", done: "Took snapshot", error: "Take snapshot" },
+    },
+  ],
+  [
+    "browser_console",
+    {
+      verbs: {
+        running: "Checking console logs",
+        done: "Checked console logs",
+        error: "Check console logs",
+      },
+    },
+  ],
+  [
+    "browser_evaluate",
+    { verbs: { running: "Executing JS", done: "Executed JS", error: "Execute JS" } },
+  ],
+]);
+
+const MCP_LABEL = /^(?<server>[^:\s]+): (?<name>\S+)$/u;
+
+const MCP_NAME = /^mcp__(?<server>.+?)__(?<name>.+)$/u;
+
+export function customTool(label: string): CustomTool {
+  const named = NAMED_TOOLS.get(label);
+
+  if (named !== undefined) return named;
+
+  const mcp = (MCP_LABEL.exec(label) ?? MCP_NAME.exec(label))?.groups;
+
+  if (mcp?.server !== undefined && mcp.name !== undefined) {
+    return { verbs: RAN, name: mcp.name, server: mcp.server };
+  }
+
+  if (/\s/u.test(label)) return { verbs: { running: label, done: label, error: label } };
+
+  return { verbs: RAN, name: label };
+}
+
+export function customDetail(tool: CustomTool): string | undefined {
+  if (tool.name === undefined) return tool.detail;
+
+  return tool.server === undefined ? tool.name : `${tool.name} in ${tool.server}`;
+}
+
+export function condensedCommand(command: string, cwd: string | undefined): string {
+  const compact = command.replaceAll(/\s+/gu, " ").trim();
+
+  if (cwd === undefined) return compact;
+
+  const prefix = [cwd, `"${cwd}"`, `'${cwd}'`]
+    .flatMap((dir) => [`cd ${dir} && `, `cd ${dir}; `])
+    .find((candidate) => compact.startsWith(candidate));
+
+  return prefix === undefined ? compact : compact.slice(prefix.length);
+}
+
 interface ToolDetail {
   readonly text: string;
   readonly title?: string;
 }
 
-export function toolDetail(toolClass: ToolClass, cwd: string | undefined): ToolDetail | undefined {
+export function toolDetail(
+  toolClass: Exclude<ToolClass, { readonly kind: "delegate" }>,
+  cwd: string | undefined,
+): ToolDetail | undefined {
   switch (toolClass.kind) {
     case "file_edit":
     case "file_write":
@@ -29,12 +144,15 @@ export function toolDetail(toolClass: ToolClass, cwd: string | undefined): ToolD
 
     case "file_read":
     case "list":
-      return { text: tidyPath(toolClass.path, cwd) };
+      return { text: placeName(toolClass.path, cwd), title: tidyPath(toolClass.path, cwd) };
     case "shell":
-      return { text: toolClass.command };
-    case "delegate":
-    case "custom":
-      return undefined;
+      return { text: condensedCommand(toolClass.command, cwd) };
+    case "custom": {
+      const text = customDetail(customTool(toolClass.label));
+
+      return text === undefined ? undefined : { text };
+    }
+
     default: {
       const _exhaustive: never = toolClass;
 
@@ -69,35 +187,10 @@ function phased(
   }
 }
 
-function delegateVerb(
-  role: Extract<ToolClass, { readonly kind: "delegate" }>["role"],
+export function toolVerb(
+  toolClass: Exclude<ToolClass, { readonly kind: "delegate" }>,
   phase: ToolPhase,
 ): string {
-  switch (role) {
-    case "create":
-      return phased(phase, { running: "Creating", done: "Created", noun: "Delegation" });
-    case "send":
-      return phased(phase, { running: "Sending to", done: "Sent to", noun: "Send" });
-    case "await":
-      return phased(phase, { running: "Waiting on", done: "Waited on", noun: "Wait" });
-    case "read":
-      return phased(phase, { running: "Reading", done: "Read", noun: "Read" });
-    case "stop":
-      return phased(phase, {
-        running: "Stopping",
-        done: "Stopped",
-        noun: "Stop",
-        interrupted: "Stop interrupted",
-      });
-    default: {
-      const _exhaustive: never = role;
-
-      return _exhaustive;
-    }
-  }
-}
-
-export function toolVerb(toolClass: ToolClass, phase: ToolPhase): string {
   switch (toolClass.kind) {
     case "file_read":
       return phased(phase, { running: "Reading", done: "Read", noun: "Read" });
@@ -113,14 +206,12 @@ export function toolVerb(toolClass: ToolClass, phase: ToolPhase): string {
       return toolClass.op === "edit"
         ? phased(phase, { running: "Editing", done: "Edited", noun: "Edit" })
         : phased(phase, { running: "Writing", done: "Wrote", noun: "Write" });
-    case "delegate":
-      return delegateVerb(toolClass.role, phase);
-    case "custom":
-      return phased(phase, {
-        running: toolClass.label,
-        done: toolClass.label,
-        noun: toolClass.label,
-      });
+    case "custom": {
+      const { verbs } = customTool(toolClass.label);
+
+      return phased(phase, { running: verbs.running, done: verbs.done, noun: verbs.error });
+    }
+
     default: {
       const _exhaustive: never = toolClass;
 

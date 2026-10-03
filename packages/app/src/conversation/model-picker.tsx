@@ -131,6 +131,7 @@ function ModelPickerView({
 
   const connected =
     catalog?.providers.some((provider) => provider.connection.kind !== "disconnected") ?? false;
+
   // A server's models are the server's to change; the desktop manages that connection in Environments.
   const manage =
     catalog?.source === "server"

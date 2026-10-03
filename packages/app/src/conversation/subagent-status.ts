@@ -1,7 +1,7 @@
-import type { SessionInfo, ToolClass } from "@nyte-ai/protocol";
+import type { SessionInfo, TurnToolClass } from "@nyte-ai/protocol";
 import type { SessionFrame } from "../live.ts";
 import { toolDetail, toolVerb } from "./tool-copy.ts";
-import type { ToolPhase } from "./tool-copy.ts";
+import type { ToolPhase, ToolVerbs } from "./tool-copy.ts";
 
 export interface SubagentStatus {
   readonly indicator: "running" | "attention" | "failed" | "unread" | "done";
@@ -61,12 +61,23 @@ export function sessionStatus(session: SessionInfo, unread: boolean): SubagentSt
   }
 }
 
-function delegateDetail(toolClass: Extract<ToolClass, { readonly kind: "delegate" }>): string {
-  if (toolClass.role === "create") return toolClass.title;
+type DelegateRole = Extract<TurnToolClass, { readonly kind: "delegate" }>["role"];
 
-  return toolClass.target.kind === "many" && toolClass.target.sessions.length > 1
-    ? "subagents"
-    : "subagent";
+export const DELEGATE_VERBS: Readonly<Record<DelegateRole, ToolVerbs>> = {
+  create: { running: "Creating", done: "Created", error: "Create" },
+  send: { running: "Messaging", done: "Messaged", error: "Message" },
+  read: { running: "Reading transcript", done: "Read transcript", error: "Read transcript" },
+  stop: { running: "Stopping", done: "Stopped", error: "Stop" },
+};
+
+export function phaseVerb(verbs: ToolVerbs, phase: ToolPhase): string {
+  if (phase === "running") return verbs.running;
+
+  return phase === "done" ? verbs.done : verbs.error;
+}
+
+function delegateDetail(toolClass: Extract<TurnToolClass, { readonly kind: "delegate" }>): string {
+  return toolClass.role === "create" ? toolClass.title : "subagent";
 }
 
 /** What a running child is doing now: its unsettled call, else what it streams. */
@@ -82,7 +93,10 @@ export function subagentActivity(
       : undefined;
 
   if (call?.kind === "tool") {
-    const verb = toolVerb(call.class, "running");
+    const verb =
+      call.class.kind === "delegate"
+        ? DELEGATE_VERBS[call.class.role].running
+        : toolVerb(call.class, "running");
 
     const detail =
       call.class.kind === "delegate"

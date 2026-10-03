@@ -1,4 +1,5 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
+import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 /**
  * One transcript item. User prompts are the only ordinary contained message
  * region. Assistant prose stays flat, while reasoning, tools, and system
@@ -18,10 +19,10 @@ import { changesFromTurns, turnPartId } from "@nyte-ai/client";
 import type { FileChange, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
 import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import type { RenderedTurn } from "./transcript-rows.ts";
-import { filesChangedLabel } from "../workbench/change-tree.ts";
-import { AnimatedNumber } from "../components/animated-number.tsx";
+import { CHANGES_VISIBLE_FILES, filesChangedLabel } from "../workbench/change-tree.ts";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { Button } from "@nyte-ai/ui/button";
+import { Icon } from "@nyte-ai/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
 import type { ToolCallDensity } from "../theme/boot.ts";
@@ -49,13 +50,19 @@ import {
 import { StatusMarker } from "./row-surfaces.tsx";
 import { ToolCallView } from "./tool-call.tsx";
 import { WorkGroupView } from "./tool-group.tsx";
+import { ThinkingLine } from "./thinking-line.tsx";
 import { failureNotice } from "./tool-copy.ts";
 import { displayTranscriptParts, userDisplayText } from "./transcript-presentation.ts";
-import type { LiveWaits } from "./transcript-presentation.ts";
 import { errorMessage } from "../errors.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../nyte.ts";
 
-function UserMessagePreview({ children }: { children: ReactNode }): ReactElement {
+function UserMessagePreview({
+  expandable,
+  children,
+}: {
+  expandable: boolean;
+  children: ReactNode;
+}): ReactElement {
   const id = useId();
   const contentRef = useRef<HTMLDivElement>(null);
   const [overflowing, setOverflowing] = useState(false);
@@ -90,8 +97,12 @@ function UserMessagePreview({ children }: { children: ReactNode }): ReactElement
       >
         <div ref={contentRef}>{children}</div>
       </div>
-      {overflowing && (
+      {expandable && overflowing && (
         <Button
+          variant="text"
+          tone="neutral"
+          size="xs"
+          data-slot={expanded ? undefined : "row-primary"}
           aria-controls={id}
           aria-expanded={expanded}
           xstyle={turnStyles.userPreviewToggle}
@@ -153,7 +164,6 @@ function attachmentsOf(content: UserTurnPart["content"]): readonly ComposerImage
   return messageImages(content).map((image, index) => ({
     id: crypto.randomUUID(),
     name: `Image ${String(index + 1)}`,
-    previewUrl: `data:${image.mimeType};base64,${image.data}`,
     content: image,
   }));
 }
@@ -206,10 +216,6 @@ export function UserMessageView({
   const workspaceFiles = useMentionFiles(edit !== undefined);
 
   const begin = (): void => {
-    if (onEdit === undefined || edit !== undefined) return;
-    const selection = window.getSelection();
-
-    if (selection !== null && !selection.isCollapsed) return;
     const text = messageDraftText(original);
     setEdit({
       document: { text, selectionStart: text.length, selectionEnd: text.length },
@@ -314,39 +320,27 @@ export function UserMessageView({
     <div ref={rowRef} data-sticky-user-message {...props(turnStyles.userRow)}>
       <Message align="end" {...props(messageStyles.end)}>
         {edit === undefined ? (
-          <BubbleContent
-            render={
-              <Row xstyle={[bubbleStyles.default, onEdit !== undefined && bubbleStyles.editable]} />
-            }
-          >
+          <BubbleContent render={<Row xstyle={bubbleStyles.default} />}>
             <UserMessageImages content={content} />
             {original !== "" && (
-              <UserMessagePreview>
+              <UserMessagePreview expandable={onEdit === undefined}>
                 <UserMessageText text={original} />
               </UserMessagePreview>
             )}
             {onEdit !== undefined && (
               <Row.Primary
-                render={
-                  <Button
-                    size="xs"
-                    variant="plain"
-                    aria-keyshortcuts="F2"
-                    aria-description={original === "" ? undefined : userDisplayText(original)}
-                    xstyle={turnStyles.userEditTrigger}
-                    onClick={(event) => {
-                      if (!event.shiftKey) begin();
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key !== "F2" || event.shiftKey) return;
-                      event.preventDefault();
-                      begin();
-                    }}
-                  >
-                    Edit Message
-                  </Button>
-                }
-              />
+                aria-keyshortcuts="F2"
+                aria-description={original === "" ? undefined : userDisplayText(original)}
+                xstyle={srOnly}
+                onClick={begin}
+                onKeyDown={(event) => {
+                  if (event.key !== "F2") return;
+                  event.preventDefault();
+                  begin();
+                }}
+              >
+                Edit Message
+              </Row.Primary>
             )}
           </BubbleContent>
         ) : (
@@ -400,30 +394,6 @@ export function UserMessageView({
   );
 }
 
-function ReasoningBlock({ text, streaming }: { text: string; streaming: boolean }): ReactElement {
-  const [open, setOpen] = useState<boolean | undefined>();
-  const expanded = open ?? streaming;
-
-  return (
-    <Collapsible.Root
-      open={expanded}
-      onOpenChange={setOpen}
-      aria-busy={streaming || undefined}
-      xstyle={turnStyles.reasoning}
-    >
-      <Collapsible.Trigger xstyle={turnStyles.disclosureToggle}>
-        <Collapsible.Chevron />
-        {streaming ? "Thinking" : "Thought"}
-      </Collapsible.Trigger>
-      {text !== "" && (
-        <Collapsible.Panel xstyle={turnStyles.reasoningBody}>
-          <Prose markdown={text} streaming={streaming} />
-        </Collapsible.Panel>
-      )}
-    </Collapsible.Root>
-  );
-}
-
 function HistoryDisclosure({
   label,
   children,
@@ -451,25 +421,21 @@ function TurnChangesCard({
   readonly onReview: () => void;
   readonly onOpenFile: (path: string) => void;
 }): ReactElement {
+  const [expanded, setExpanded] = useState(false);
   const title = filesChangedLabel(files.length);
+  const collapsed = !expanded && files.length > CHANGES_VISIBLE_FILES;
+  const shown = collapsed ? files.slice(0, CHANGES_VISIBLE_FILES - 1) : files;
 
   return (
     <section aria-label={title} {...props(turnStyles.changesCard)}>
       <div {...props(turnStyles.changesHeader)}>
         <span {...props(turnStyles.changesTitle)}>{title}</span>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button onClick={onReview} xstyle={turnStyles.changesReview}>
-                Review Changes
-              </Button>
-            }
-          />
-          <TooltipContent>Open the Changes panel</TooltipContent>
-        </Tooltip>
+        <Button variant="plain" size="sm" onClick={onReview} xstyle={turnStyles.changesReview}>
+          Review
+        </Button>
       </div>
       <ul {...props(turnStyles.changesList)}>
-        {files.map((file) => (
+        {shown.map((file) => (
           <Row key={file.path} render={<li />} interactive xstyle={turnStyles.changesFile}>
             <Tooltip>
               <TooltipTrigger
@@ -488,22 +454,32 @@ function TurnChangesCard({
                     >
                       {file.added > 0 && (
                         <span {...props(intent.success, turnStyles.changesAdded)}>
-                          +<AnimatedNumber value={file.added} />
+                          +{file.added}
                         </span>
                       )}
                       {file.removed > 0 && (
                         <span {...props(intent.danger, turnStyles.changesRemoved)}>
-                          -<AnimatedNumber value={file.removed} />
+                          &minus;{file.removed}
                         </span>
                       )}
                     </span>
                   </Row.Primary>
                 }
               />
-              <TooltipContent>{`Open ${file.path} in Changes`}</TooltipContent>
+              <TooltipContent side="top">{file.path}</TooltipContent>
             </Tooltip>
           </Row>
         ))}
+        {collapsed && (
+          <Row render={<li />} interactive xstyle={turnStyles.changesFile}>
+            <Row.Primary aria-expanded={false} onClick={() => setExpanded(true)}>
+              <Row.Leading xstyle={turnStyles.changesFileIcon}>
+                <Icon name="more-horizontal" size={14} />
+              </Row.Leading>
+              <Row.Label>{`Show ${String(files.length - shown.length)} more`}</Row.Label>
+            </Row.Primary>
+          </Row>
+        )}
       </ul>
     </section>
   );
@@ -515,7 +491,6 @@ function TurnPartView({
   cwd,
   toolCalls,
   running,
-  waits,
   onEditUser,
   branchModel,
 }: {
@@ -524,7 +499,6 @@ function TurnPartView({
   cwd: string | undefined;
   toolCalls: ToolCallDensity;
   running: boolean;
-  waits: LiveWaits;
   onEditUser?: (
     part: UserTurnPart,
     content: UserTurnPart["content"],
@@ -548,7 +522,7 @@ function TurnPartView({
     case "assistant":
       return part.text.trim() === "" ? null : <Prose markdown={part.text} />;
     case "thinking":
-      return part.text.trim() === "" ? null : <ReasoningBlock text={part.text} streaming={false} />;
+      return <ThinkingLine text={part.text} streaming={false} />;
     case "tool":
       return (
         <ToolCallView
@@ -557,7 +531,6 @@ function TurnPartView({
           cwd={cwd}
           active={running}
           density={toolCalls}
-          waits={waits}
         />
       );
     default: {
@@ -587,7 +560,6 @@ export const TurnView = memo(function TurnView({
   branchModel,
   onOpenChanges,
   running,
-  waits,
 }: {
   turn: RenderedTurn;
   liveTools: ReadonlyMap<string, LiveToolProgress>;
@@ -601,7 +573,6 @@ export const TurnView = memo(function TurnView({
   branchModel?: BranchModelPicker;
   onOpenChanges: (target: TurnChangesTarget) => void;
   running: boolean;
-  waits: LiveWaits;
 }): ReactElement | null {
   const appearance = useAppearanceSettings();
   const changes = useMemo(() => changesFromTurns([turn]), [turn]);
@@ -620,8 +591,8 @@ export const TurnView = memo(function TurnView({
 
   // Progress updates must reuse the settled grouping so summaries can update only live tools.
   const display = useMemo(
-    () => (turn.kind === "turn" ? displayTranscriptParts(turn.parts, waits.hidden) : []),
-    [turn, waits],
+    () => (turn.kind === "turn" ? displayTranscriptParts(turn.parts) : []),
+    [turn],
   );
 
   switch (turn.kind) {
@@ -653,7 +624,6 @@ export const TurnView = memo(function TurnView({
                     cwd={cwd}
                     toolCalls={appearance.toolCalls}
                     running={false}
-                    waits={waits}
                   />
                 );
               }
@@ -670,7 +640,6 @@ export const TurnView = memo(function TurnView({
                   removed={trailing ? changeTotals.removed : 0}
                   running={active}
                   density={appearance.toolCalls}
-                  waits={trailing ? waits : undefined}
                 />
               );
             }
@@ -694,26 +663,11 @@ export const TurnView = memo(function TurnView({
                 cwd={cwd}
                 toolCalls={appearance.toolCalls}
                 running={running}
-                waits={waits}
                 onEditUser={onEditUser}
                 branchModel={branchModel}
               />
             );
           })}
-          {waits.hidden.size > 0 && display.at(-1)?.kind !== "work" && (
-            <WorkGroupView
-              parts={[]}
-              run={turn.run}
-              live={live}
-              liveTools={liveTools}
-              cwd={cwd}
-              added={changeTotals.added}
-              removed={changeTotals.removed}
-              running={running}
-              density={appearance.toolCalls}
-              waits={waits}
-            />
-          )}
           {failure !== undefined && (
             <StatusMarker
               role={failure.tone === "danger" ? "alert" : "status"}

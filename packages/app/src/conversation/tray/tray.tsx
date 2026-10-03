@@ -6,7 +6,6 @@ import type { ReactElement, ReactNode, Ref } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
-import { useOverlayRef } from "@nyte-ai/ui/overlay";
 import { glyph } from "@nyte-ai/ui/schema.stylex";
 import { tray } from "../../theme/schema.stylex.ts";
 import { trayStyles } from "../../theme/tray.stylex.ts";
@@ -14,9 +13,14 @@ import { role, type } from "@nyte-ai/ui/vars.stylex";
 
 /** Parts every composer tray draws: its pill, rows, header actions, and notices. */
 export const trayParts = create({
-  root: { position: "relative", minWidth: 0 },
+  root: {
+    position: "relative",
+    minWidth: 0,
+    display: { default: "block", ":empty": "none" },
+  },
   presence: { display: "contents" },
   pills: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 },
+  pillCount: { fontVariantNumeric: "tabular-nums" },
   pillIndicator: {
     display: "grid",
     placeItems: "center",
@@ -88,6 +92,7 @@ export function TrayPill({
       <Button
         ref={ref}
         variant="outline"
+        size="sm"
         round
         aria-description={label}
         aria-controls={controls}
@@ -163,14 +168,13 @@ export function Tray({
   readonly children: ReactNode;
 }): ReactElement {
   const reducedMotion = useReducedMotion();
-  const overlayRef = useOverlayRef();
 
   return (
     <AnimatePresence initial={false}>
       {open && (
         <motion.section
-          ref={overlayRef}
           key="surface"
+          data-slot="tray"
           id={id}
           tabIndex={-1}
           aria-description={label}

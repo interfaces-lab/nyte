@@ -4,9 +4,10 @@
  * those elements carried so React state (edits, folds) survives the move.
  */
 import type { Delivery, SessionSnapshot, Turn, UserTurnPart } from "@nyte-ai/protocol";
-import { isTerminalPhase } from "@nyte-ai/client";
+import { changesFromTurns, isTerminalPhase } from "@nyte-ai/client";
 import type { OutboxRow } from "@nyte-ai/client";
 import type { ToolCallDensity } from "../theme/boot.ts";
+import { CHANGES_VISIBLE_FILES } from "../workbench/change-tree.ts";
 
 interface LandingMessage {
   readonly key: string;
@@ -213,6 +214,10 @@ const PROSE_LINE_HEIGHT = 22;
 
 const PROSE_CHARS_PER_LINE = 90;
 
+const CHANGES_CARD_BASE_ESTIMATE = 50;
+
+const CHANGES_CARD_ROW_ESTIMATE = 30;
+
 const RECORD_ROW_ESTIMATE = 40;
 
 const LIVE_ROW_ESTIMATE = 60;
@@ -276,6 +281,13 @@ function estimateTurnSize(turn: Turn, density: ToolCallDensity): number {
   }
 
   if (work) size += WORK_GROUP_ESTIMATE[density];
+  const files = changesFromTurns([turn]).length;
+
+  if (files > 0) {
+    size +=
+      CHANGES_CARD_BASE_ESTIMATE +
+      CHANGES_CARD_ROW_ESTIMATE * Math.min(files, CHANGES_VISIBLE_FILES);
+  }
 
   if (prose > 0) {
     size += PROSE_BASE_ESTIMATE + PROSE_LINE_HEIGHT * Math.ceil(prose / PROSE_CHARS_PER_LINE);

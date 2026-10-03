@@ -39,19 +39,24 @@ const file: MentionFile = {
   displayPath: "a file.ts",
   label: "a file.ts",
 };
+
 const folder: MentionFile = {
   path: "/project/src/",
   url: "file:///project/src/",
   displayPath: "src/",
   label: "src/",
 };
+
 const fileReference: MessageReference = { kind: "file", file };
+
 const skillReference: MessageReference = {
   kind: "skill",
   name: "review",
   path: "/home/me/.agents/skills/review/SKILL.md",
 };
+
 const cleanups: (() => void)[] = [];
+
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
@@ -64,19 +69,23 @@ function composer(files: readonly MentionFile[] = [file, folder]) {
       throw error;
     },
   });
+
   cleanups.push(
     registerPlainText(editor),
     registerHistory(editor, createEmptyHistoryState(), 300),
     registerComposerReferences(editor, { files }),
   );
   const text = () => editor.getEditorState().read(() => $getRoot().getTextContent());
+
   const labels = () =>
     editor.getEditorState().read(() => $composerReferences().map(referenceLabel));
+
   const restore = (draft: string, caret = draft.length) =>
     editor.update(
       () => $restoreComposerDocument({ text: draft, selectionStart: caret, selectionEnd: caret }),
       { discrete: true, tag: HISTORY_MERGE_TAG },
     );
+
   return { editor, text, labels, restore };
 }
 
@@ -128,6 +137,7 @@ describe("composer document", () => {
     const { editor, restore } = composer();
     const draft = `👋 @${file.url}\n\n`;
     restore(draft);
+
     for (const offset of [0, "👋 ".length, "👋 @".length + file.url.length, draft.length]) {
       editor.update(() => $selectComposerRange(offset), { discrete: true });
       editor.getEditorState().read(() => {
@@ -138,6 +148,7 @@ describe("composer document", () => {
         });
       });
     }
+
     restore("");
     editor.getEditorState().read(() => {
       expect($composerSelection()).toEqual({ start: 0, end: 0 });
@@ -293,14 +304,17 @@ describe("composer document", () => {
       { discrete: true },
     );
     const previousState = editor.getEditorState();
+
     const previous = previousState.read(() => {
       const selection = $getSelection();
       assert.ok($isNodeSelection(selection));
       const node = selection.getNodes()[0];
       assert.ok(node instanceof ComposerReferenceNode);
       expect(selection.getTextContent()).toBe(`@${file.url}`);
+
       return { node, reference: node.decorate(), json: node.exportJSON() };
     });
+
     const discovered = { ...file, label: "Project source", displayPath: "workspace/a file.ts" };
     const reference: MessageReference = { kind: "file", file: discovered };
     expect(previous.reference).not.toEqual(reference);

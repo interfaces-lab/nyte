@@ -1,16 +1,16 @@
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { nyte } from "../nyte.ts";
 
 const STORAGE_KEY = "nyte:trusted-link-hosts:v1";
+
+const trustedHosts = Type.Array(Type.String());
 
 function readTrustedHosts(): ReadonlySet<string> {
   try {
     const parsed: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "[]");
 
-    return new Set(
-      Array.isArray(parsed)
-        ? parsed.filter((host): host is string => typeof host === "string")
-        : [],
-    );
+    return new Set(Value.Check(trustedHosts, parsed) ? parsed : []);
   } catch {
     return new Set();
   }

@@ -20,7 +20,7 @@ import {
   QuestionnaireTitle,
 } from "@nyte-ai/ui/questionnaire";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
-import { checkbox, shape } from "@nyte-ai/ui/schema.stylex";
+import { checkbox, radius } from "@nyte-ai/ui/schema.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { nyte } from "../../nyte.ts";
 import { loadThread } from "../../live.ts";
@@ -85,7 +85,7 @@ const styles = create({
     minHeight: tray.rowHeight,
     paddingBlock: 4,
     paddingInline: 6,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     lineHeight: type.leadingBase,
     color: { default: role.contentPrimary, ":disabled": role.contentDisabled },
   },
@@ -272,6 +272,7 @@ function SelectionCard({
       ]}
       onSubmit={(event) => {
         event.preventDefault();
+
         if (selection.multiple === true) send({ choices: selected });
       }}
       {...props(styles.card)}
@@ -326,6 +327,7 @@ function SelectionCard({
                   onClick={(event) => {
                     const input =
                       event.currentTarget.previousElementSibling?.querySelector("input");
+
                     if (input instanceof HTMLInputElement) input.click();
                   }}
                 >

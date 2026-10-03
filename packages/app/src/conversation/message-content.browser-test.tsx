@@ -7,14 +7,22 @@ import { ReferenceOpenerProvider } from "./reference-opener.tsx";
 import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 
+declare global {
+  interface Window {
+    readonly openedLinks: readonly string[];
+  }
+}
+
 function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
+
 async function paint(): Promise<void> {
   await new Promise<void>((resolve) =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
   );
 }
+
 export async function run(): Promise<string> {
   const host = document.createElement("div");
   document.body.append(host);
@@ -26,6 +34,7 @@ export async function run(): Promise<string> {
   const root = createRoot(host);
   let opened = 0;
   let edited = 0;
+
   const render = (text: string, editable = false): void =>
     flushSync(() =>
       root.render(
@@ -63,6 +72,7 @@ export async function run(): Promise<string> {
         </ReferenceOpenerProvider>,
       ),
     );
+
   try {
     render(
       '<skill name="review" location="/skills/review/SKILL.md">\nHidden instructions\n</skill>\n\nFix the regression. https://example.com/test',
@@ -83,10 +93,12 @@ export async function run(): Promise<string> {
       "render does not steal focus or selection",
     );
     const chip = host.querySelector('[data-composer-chip="skill"] button');
+
     if (!(chip instanceof HTMLElement)) throw new Error("missing chip");
     chip.click();
     check(opened === 1 && edited === 0, "chip opens without editing message");
     const link = host.querySelector("a");
+
     if (!(link instanceof HTMLAnchorElement)) throw new Error("missing URL link");
     check(link.href === "https://example.com/test", "link destination survives rendering");
     const linkStyle = getComputedStyle(link);
@@ -95,11 +107,7 @@ export async function run(): Promise<string> {
     check(linkStyle.backgroundColor !== "rgba(0, 0, 0, 0)", "URL has a highlighted background");
     link.click();
     check(edited === 1, "link click still reaches the message");
-    const links: unknown = Reflect.get(window, "openedLinks");
-    check(
-      Array.isArray(links) && links[0] === "https://example.com/test",
-      "URL opens through host",
-    );
+    check(window.openedLinks[0] === "https://example.com/test", "URL opens through host");
     render("/unfinished\n\n\n  plain text  ");
     await paint();
     check(host.querySelector("[data-composer-chip]") === null, "unselected slash text stays text");
@@ -114,10 +122,12 @@ export async function run(): Promise<string> {
       host.textContent === "Message is too long to display",
       "oversized messages avoid mounting Lexical",
     );
+
     for (const editable of [false, true]) {
       render("https://example.com/shared", editable);
       await paint();
       const sharedLink = host.querySelector("a");
+
       if (!(sharedLink instanceof HTMLAnchorElement)) throw new Error("missing shared URL");
       check(getComputedStyle(sharedLink).color === linkColor, "same URL color in both modes");
       const before = edited;
@@ -125,12 +135,13 @@ export async function run(): Promise<string> {
       check(edited === before, "Enter on a URL does not edit or submit in either mode");
       sharedLink.click();
     }
-    const sharedLinks: unknown = Reflect.get(window, "openedLinks");
+
     check(
-      Array.isArray(sharedLinks) &&
-        sharedLinks.slice(1).join(",") === "https://example.com/shared,https://example.com/shared",
+      window.openedLinks.slice(1).join(",") ===
+        "https://example.com/shared,https://example.com/shared",
       "both modes open URLs through the host",
     );
+
     return "passed";
   } finally {
     flushSync(() => root.unmount());

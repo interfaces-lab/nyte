@@ -317,25 +317,30 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
 
   return (
     <figure ref={figure} {...props(codeBlockStyles.figure)}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              iconOnly
-              icon={copied ? "checkmark" : "copy"}
-              aria-label={language === "" ? "Copy code block" : `Copy ${language} code block`}
-              onClick={() => {
-                navigator.clipboard
-                  .writeText(code)
-                  .then(() => setCopiedCode(code))
-                  .catch(() => undefined);
-              }}
-              xstyle={codeBlockStyles.copy}
-            />
-          }
-        />
-        <TooltipContent>{copied ? "Copied" : "Copy code"}</TooltipContent>
-      </Tooltip>
+      <span {...props(codeBlockStyles.copy)}>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="sm"
+                variant="outline"
+                tone={copied ? "success" : "neutral"}
+                iconOnly
+                icon={copied ? "checkmark" : "copy"}
+                data-copied={copied || undefined}
+                aria-label={language === "" ? "Copy code block" : `Copy ${language} code block`}
+                onClick={() => {
+                  navigator.clipboard
+                    .writeText(code)
+                    .then(() => setCopiedCode(code))
+                    .catch(() => undefined);
+                }}
+              />
+            }
+          />
+          <TooltipContent>{copied ? "Copied" : "Copy code"}</TooltipContent>
+        </Tooltip>
+      </span>
       <div data-nyte-scrollport {...props(codeBlockStyles.scroll)}>
         {html === undefined ? (
           <pre {...props(codeBlockStyles.pre)}>

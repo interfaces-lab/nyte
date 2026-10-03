@@ -12,7 +12,7 @@ export type SubagentSession = SessionInfo | ProvisionalSubagentSession;
 
 interface SubagentSessions {
   readonly children: ReadonlyMap<SessionId, SubagentSession>;
-  readonly open: (sessionId?: SessionId) => void;
+  readonly open: (sessionId: SessionId) => void;
 }
 
 const SubagentSessionsContext = createContext<SubagentSessions | undefined>(undefined);
@@ -25,6 +25,6 @@ export function useChildSession(session: SessionId | undefined): SubagentSession
   return session === undefined ? undefined : children?.get(session);
 }
 
-export function useOpenSubagentTray(): ((sessionId?: SessionId) => void) | undefined {
+export function useOpenSubagentTray(): ((sessionId: SessionId) => void) | undefined {
   return useContext(SubagentSessionsContext)?.open;
 }

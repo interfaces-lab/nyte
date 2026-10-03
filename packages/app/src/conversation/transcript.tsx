@@ -3,6 +3,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import type { SessionId } from "@nyte-ai/protocol";
 import { Button } from "@nyte-ai/ui/button";
+import { Icon } from "@nyte-ai/ui/icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import {
   MessageScrollerProvider,
   MessageScrollerViewport,
@@ -33,14 +35,15 @@ import {
   activeStickyCandidate,
   initialTranscriptOffset,
   isBottomPinned,
+  TRANSCRIPT_PADDING_END,
   TRANSCRIPT_PADDING_START,
-  transcriptPaddingEnd,
 } from "./transcript-scroll.ts";
 import type { StickyCandidate } from "./transcript-scroll.ts";
 
 const OVERSCAN = 4;
 
 type TranscriptVirtualizer = Virtualizer<HTMLDivElement, HTMLDivElement>;
+
 type ScrollToRow = (messageId: string, options?: MessageScrollerScrollOptions) => boolean;
 
 interface TranscriptOptions {
@@ -52,12 +55,14 @@ interface TranscriptOptions {
 }
 
 interface TranscriptState extends TranscriptOptions {
+  readonly viewStore: ReturnType<typeof usePaneViewStateStore>;
   readonly initialView: ReturnType<ReturnType<typeof usePaneViewStateStore>["readSession"]>;
   readonly viewport: HTMLDivElement | null;
   readonly setViewport: (viewport: HTMLDivElement | null) => void;
   readonly dock: HTMLDivElement | null;
   readonly setDock: (dock: HTMLDivElement | null) => void;
   readonly navigation: RefObject<ScrollToRow | null>;
+  readonly hold: (holding: boolean) => void;
 }
 
 const TranscriptContext = createContext<TranscriptState | null>(null);
@@ -89,6 +94,78 @@ export function useTranscriptNavigation() {
   );
 }
 
+const REMEMBERED_WORK_GROUPS = 64;
+
+function rememberWorkGroup(
+  current: ReadonlyMap<string, boolean>,
+  key: string,
+  open: boolean,
+  liveKey: string | undefined,
+): ReadonlyMap<string, boolean> {
+  const groups = new Map(current);
+
+  if (liveKey !== undefined) groups.delete(liveKey);
+  groups.delete(key);
+  groups.set(key, open);
+
+  for (const oldest of groups.keys()) {
+    if (groups.size <= REMEMBERED_WORK_GROUPS) break;
+    groups.delete(oldest);
+  }
+
+  return groups;
+}
+
+export function useWorkGroupOpen(
+  groupKey: string | undefined,
+  liveKey: string | undefined,
+): readonly [boolean | undefined, (open: boolean) => void] {
+  const transcript = useContext(TranscriptContext);
+  const key = groupKey === "" ? undefined : groupKey;
+
+  const [open, setOpen] = useState(() => {
+    if (transcript === null || key === undefined) return undefined;
+
+    const groups = transcript.viewStore.readSession(
+      transcript.sessionId,
+      transcript.paneId,
+    ).workGroups;
+
+    return groups.get(key) ?? (liveKey === undefined ? undefined : groups.get(liveKey));
+  });
+
+  const change = (next: boolean): void => {
+    setOpen(next);
+
+    if (transcript === null || key === undefined) return;
+    transcript.viewStore.updateSession(transcript.sessionId, transcript.paneId, (current) => ({
+      ...current,
+      workGroups: rememberWorkGroup(current.workGroups, key, next, liveKey),
+    }));
+  };
+
+  useLayoutEffect(() => {
+    if (transcript === null || key === undefined || liveKey === undefined) return;
+    transcript.viewStore.updateSession(transcript.sessionId, transcript.paneId, (current) => {
+      const adopted = current.workGroups.get(liveKey);
+
+      return adopted === undefined
+        ? current
+        : {
+            ...current,
+            workGroups: rememberWorkGroup(
+              current.workGroups,
+              key,
+              current.workGroups.get(key) ?? adopted,
+              liveKey,
+            ),
+          };
+    });
+  }, [key, liveKey, transcript]);
+
+  return [open, change];
+}
+
 export function TranscriptProvider({
   paneId,
   sessionId,
@@ -102,6 +179,8 @@ export function TranscriptProvider({
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const [dock, setDock] = useState<HTMLDivElement | null>(null);
   const navigation = useRef<ScrollToRow | null>(null);
+  const [holding, hold] = useState(false);
+
   const transcript = useMemo(
     () => ({
       paneId,
@@ -109,12 +188,14 @@ export function TranscriptProvider({
       ready,
       autoScroll: autoScroll && ready,
       scrollEdgeThreshold,
+      viewStore,
       initialView,
       viewport,
       setViewport,
       dock,
       setDock,
       navigation,
+      hold,
     }),
     [
       autoScroll,
@@ -126,12 +207,13 @@ export function TranscriptProvider({
       scrollEdgeThreshold,
       sessionId,
       viewport,
+      viewStore,
     ],
   );
 
   return (
     <MessageScrollerProvider
-      autoScroll={autoScroll && ready}
+      autoScroll={autoScroll && ready && !holding}
       defaultScrollPosition={initialView.scroll.bottomPinned ? "end" : "start"}
       scrollEdgeThreshold={scrollEdgeThreshold}
     >
@@ -149,6 +231,7 @@ export function TranscriptViewport({
 }): ReactElement {
   const viewStore = usePaneViewStateStore();
   const { paneId, sessionId, scrollEdgeThreshold, setViewport } = useTranscript();
+
   const attach = useCallback(
     (viewport: HTMLDivElement | null): void => {
       setViewport(viewport);
@@ -160,6 +243,7 @@ export function TranscriptViewport({
   return (
     <MessageScrollerViewport
       ref={attach}
+      tabIndex={-1}
       preserveScrollOnPrepend={false}
       data-nyte-scrollport="balanced"
       {...props(messageScrollerStyles.viewport)}
@@ -175,6 +259,29 @@ export function TranscriptViewport({
       {children}
     </MessageScrollerViewport>
   );
+}
+
+const ANCHOR_SETTLE_MS = 150;
+
+const ANCHOR_LIMIT_MS = 1000;
+
+interface ContentFloor {
+  held: number;
+  paused: boolean;
+  transient: number;
+  total: number;
+  top: number;
+  anchoring: boolean;
+  frame: number;
+}
+
+function viewportEdge(scroll: HTMLDivElement, content: HTMLElement): number {
+  return content.offsetHeight - (scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight);
+}
+
+function applyFloor(content: HTMLElement, floor: ContentFloor): void {
+  const height = Math.max(floor.held, floor.transient);
+  content.style.minHeight = height > 0 ? `${height}px` : "";
 }
 
 function setDataState(element: HTMLElement, name: string, active: boolean): void {
@@ -197,10 +304,12 @@ function syncStickyAnchor(
   for (const row of rows) {
     const anchor = row.closest<HTMLDivElement>("[data-nyte-scroll-anchor='true']");
     const content = anchor?.firstElementChild;
+
     const item =
       anchor === null
         ? undefined
         : virtualizer.measurementsCache[virtualizer.indexFromElement(anchor)];
+
     const eligible =
       content instanceof HTMLElement &&
       item !== undefined &&
@@ -218,6 +327,7 @@ function syncStickyAnchor(
     scroll.scrollTop,
     isBottomPinned(scroll, scrollEdgeThreshold),
   );
+
   const activeRow = active === undefined ? undefined : candidateRows[active];
 
   for (const row of rows) setDataState(row, "stickyActive", row === activeRow);
@@ -238,6 +348,7 @@ export const TranscriptContent = memo(function TranscriptContent({
   readonly renderItem: (index: number) => ReactNode;
 }): ReactElement {
   const viewStore = usePaneViewStateStore();
+
   const {
     paneId,
     sessionId,
@@ -247,7 +358,9 @@ export const TranscriptContent = memo(function TranscriptContent({
     viewport,
     dock,
     navigation,
+    hold,
   } = useTranscript();
+
   const { scrollToEnd, scrollToMessage } = useMessageScroller();
   const scrollable = useMessageScrollerScrollable();
   const scrollableRef = useRef(scrollable);
@@ -255,10 +368,22 @@ export const TranscriptContent = memo(function TranscriptContent({
   const container = useRef<HTMLDivElement>(null);
   const extent = useRef<HTMLDivElement>(null);
   const dockHeight = useRef(0);
+
+  const floor = useRef<ContentFloor>({
+    held: 0,
+    paused: false,
+    transient: 0,
+    total: 0,
+    top: 0,
+    anchoring: false,
+    frame: 0,
+  });
+
   const pendingNavigation = useRef<{
     readonly messageId: string;
     readonly options: MessageScrollerScrollOptions | undefined;
   } | null>(null);
+
   const [restore] = useState(() => {
     const { transcript, scroll } = initialView;
     const measurements = transcript.density === density ? transcript.measurements : [];
@@ -274,7 +399,7 @@ export const TranscriptContent = memo(function TranscriptContent({
       }),
     };
   });
-  const [viewportHeight, setViewportHeight] = useState(restore.rect.height);
+
   const getItemKey = useCallback((index: number) => items[index]?.messageId ?? index, [items]);
 
   // oxlint-disable-next-line react/incompatible-library -- the bailout is the intended behaviour
@@ -290,11 +415,36 @@ export const TranscriptContent = memo(function TranscriptContent({
     initialOffset: restore.offset,
     overscan: OVERSCAN,
     paddingStart: TRANSCRIPT_PADDING_START,
-    paddingEnd: transcriptPaddingEnd(viewportHeight),
+    paddingEnd: TRANSCRIPT_PADDING_END,
     onChange: (instance) => {
-      if (extent.current !== null) {
-        extent.current.style.top = `${instance.getTotalSize() + dockHeight.current}px`;
+      const total = instance.getTotalSize();
+      const bounds = floor.current;
+
+      const content = container.current;
+
+      if (content !== null && total < bounds.total) {
+        if (bounds.anchoring || scrollableRef.current.end) {
+          bounds.held = Math.max(bounds.held, bounds.total);
+        }
+
+        bounds.transient = Math.max(bounds.transient, bounds.total);
+        applyFloor(content, bounds);
+        window.cancelAnimationFrame(bounds.frame);
+        bounds.frame = window.requestAnimationFrame(() => {
+          bounds.transient = 0;
+          applyFloor(content, bounds);
+        });
+      } else if (content !== null && bounds.held > 0 && total >= bounds.held) {
+        bounds.held = 0;
+        applyFloor(content, bounds);
       }
+
+      bounds.total = total;
+
+      if (extent.current !== null) {
+        extent.current.style.top = `${total + dockHeight.current}px`;
+      }
+
       if (viewport !== null && container.current !== null) {
         syncStickyAnchor(viewport, container.current, instance, scrollEdgeThreshold);
       }
@@ -316,12 +466,14 @@ export const TranscriptContent = memo(function TranscriptContent({
       if (index < 0) return false;
       const mounting = pendingNavigation.current !== null;
       pendingNavigation.current = null;
+
       if (!mounting && scrollToMessage(messageId, options)) return true;
       pendingNavigation.current = { messageId, options };
       virtualizer.scrollToIndex(index, {
         align: options?.align === "nearest" ? "auto" : (options?.align ?? "start"),
         behavior: "auto",
       });
+
       return true;
     };
   }, [items, navigation, scrollToMessage, virtualizer]);
@@ -338,10 +490,13 @@ export const TranscriptContent = memo(function TranscriptContent({
     const pending = pendingNavigation.current;
 
     if (pending === null) return;
+
     if (!items.some((item) => item.messageId === pending.messageId)) {
       pendingNavigation.current = null;
+
       return;
     }
+
     if (!virtualizer.isScrolling && scrollToMessage(pending.messageId, pending.options)) {
       pendingNavigation.current = null;
     }
@@ -382,17 +537,18 @@ export const TranscriptContent = memo(function TranscriptContent({
 
     if (viewport === null || content === null) return undefined;
     dockHeight.current = dock?.offsetHeight ?? 0;
+
     const sync = (): void => {
       if (extent.current !== null) {
         extent.current.style.top = `${virtualizer.getTotalSize() + dockHeight.current}px`;
       }
+
       syncStickyAnchor(viewport, content, virtualizer, scrollEdgeThreshold);
     };
+
     sync();
 
     const observer = new ResizeObserver((entries) => {
-      setViewportHeight(viewport.clientHeight);
-
       if (dock !== null && entries.some((entry) => entry.target === dock)) {
         const delta = dock.offsetHeight - dockHeight.current;
         dockHeight.current = dock.offsetHeight;
@@ -410,6 +566,7 @@ export const TranscriptContent = memo(function TranscriptContent({
 
     observer.observe(viewport);
     observer.observe(content);
+
     if (dock !== null) observer.observe(dock);
     viewport.addEventListener("scroll", sync, { passive: true });
 
@@ -418,6 +575,111 @@ export const TranscriptContent = memo(function TranscriptContent({
       viewport.removeEventListener("scroll", sync);
     };
   }, [autoScroll, dock, scrollEdgeThreshold, scrollToEnd, viewport, virtualizer]);
+
+  useLayoutEffect(() => {
+    const content = container.current;
+
+    if (viewport === null || content === null) return undefined;
+    const state = floor.current;
+    let release = (): void => {};
+
+    let gesture: Event | undefined;
+
+    const settle = (keepVisible: boolean): void => {
+      const edge = viewportEdge(viewport, content);
+      state.held = keepVisible && edge > virtualizer.getTotalSize() ? edge : 0;
+      applyFloor(content, state);
+    };
+
+    const keep = (): void => {
+      const up = viewport.scrollTop < state.top;
+      state.top = viewport.scrollTop;
+
+      if (!state.anchoring && state.held > 0) settle(up);
+
+      if (!state.anchoring && state.paused) {
+        state.paused = false;
+        hold(false);
+      }
+    };
+
+    const anchor = (event: MouseEvent): void => {
+      const control =
+        event.target instanceof Element
+          ? event.target.closest("[aria-expanded], [data-work-preview] *")
+          : null;
+
+      if (control === null || (gesture !== undefined && gesture.eventPhase !== Event.NONE)) return;
+      gesture = event;
+      release();
+      viewport.dispatchEvent(new WheelEvent("wheel", { bubbles: true }));
+      hold(true);
+      state.paused = false;
+      state.held = viewportEdge(viewport, content);
+      state.anchoring = true;
+      applyFloor(content, state);
+
+      const anchors = [control, control.closest("[data-index]")].flatMap((element) =>
+        element === null ? [] : [{ element, top: element.getBoundingClientRect().top }],
+      );
+
+      const started = performance.now();
+      let timer = 0;
+
+      const correct = (): void => {
+        const pinned = anchors.find(({ element }) => element.isConnected);
+
+        const drift =
+          pinned === undefined ? 0 : pinned.element.getBoundingClientRect().top - pinned.top;
+
+        if (Math.abs(drift) > 0.5) viewport.scrollTop += drift;
+        window.clearTimeout(timer);
+        timer = window.setTimeout(
+          release,
+          performance.now() - started < ANCHOR_LIMIT_MS ? ANCHOR_SETTLE_MS : 0,
+        );
+      };
+
+      const observer = new ResizeObserver(correct);
+      content.addEventListener("scroll", correct, { capture: true, passive: true });
+
+      release = () => {
+        observer.disconnect();
+        content.removeEventListener("scroll", correct, { capture: true });
+        window.clearTimeout(timer);
+        release = () => {};
+
+        state.anchoring = false;
+        settle(true);
+        const distance = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+        state.paused = distance >= 1 && distance <= scrollEdgeThreshold;
+
+        if (!state.paused) hold(false);
+      };
+
+      for (
+        let node = control.parentElement;
+        node !== null && node !== viewport;
+        node = node.parentElement
+      ) {
+        observer.observe(node);
+      }
+
+      timer = window.setTimeout(release, ANCHOR_SETTLE_MS);
+    };
+
+    content.addEventListener("click", anchor, { capture: true });
+    viewport.addEventListener("scroll", keep, { passive: true });
+
+    return () => {
+      release();
+      state.paused = false;
+      hold(false);
+      window.cancelAnimationFrame(state.frame);
+      content.removeEventListener("click", anchor, { capture: true });
+      viewport.removeEventListener("scroll", keep);
+    };
+  }, [hold, scrollEdgeThreshold, viewport, virtualizer]);
 
   useLayoutEffect(() => {
     if (viewport !== null && container.current !== null) {
@@ -458,27 +720,42 @@ export const TranscriptContent = memo(function TranscriptContent({
   );
 });
 
-function TranscriptScrollButton(): ReactElement | null {
+function TranscriptScrollButton(): ReactElement {
   const scrollable = useMessageScrollerScrollable();
-
-  if (!scrollable.end) return null;
+  const scrollButton = props(messageScrollerStyles.buttonControl);
 
   return (
-    <MessageScrollerButton
-      behavior="auto"
-      render={
-        <Button
-          iconOnly
-          icon="chevron-down"
-          aria-label="Scroll to latest message"
-          variant="outline"
-          round
-          xstyle={messageScrollerStyles.button}
-        >
-          {""}
-        </Button>
-      }
-    />
+    <div
+      aria-hidden={!scrollable.end}
+      data-slot="scroll-to-bottom"
+      data-scroll-shown={scrollable.end}
+      {...props(
+        messageScrollerStyles.button,
+        scrollable.end ? messageScrollerStyles.buttonShown : messageScrollerStyles.buttonHidden,
+      )}
+    >
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <MessageScrollerButton
+              behavior="auto"
+              render={
+                <Button
+                  iconOnly
+                  round
+                  aria-label="Scroll to bottom"
+                  className={scrollButton.className}
+                  style={scrollButton.style}
+                />
+              }
+            >
+              <Icon name="arrow-down" size={14} />
+            </MessageScrollerButton>
+          }
+        />
+        <TooltipContent side="top">Scroll to bottom</TooltipContent>
+      </Tooltip>
+    </div>
   );
 }
 

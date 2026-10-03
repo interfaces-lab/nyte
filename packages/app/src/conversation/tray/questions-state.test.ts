@@ -14,6 +14,7 @@ const selection: Selection = {
   ],
   other: "Or type your own answer",
 };
+
 const call = {
   runId: "run-1",
   callId: "call-1",
@@ -24,11 +25,14 @@ const call = {
 
 function observeReply(reply: NyteBridge["runs"]["reply"], refresh = async () => {}) {
   const client = new QueryClient();
+
   const observer = new MutationObserver(
     client,
     selectionReplyOptions({ sessionId: sessionId("chat-1"), call, reply, refresh }),
   );
+
   const unsubscribe = observer.subscribe(() => {});
+
   return {
     observer,
     close: () => {
@@ -65,6 +69,7 @@ test("restores every parked selection from the snapshot; background waits are no
       selection,
     },
   ];
+
   assert.deepEqual(
     parkedSelections(parked).map((item) => [
       item.runId,
@@ -109,14 +114,19 @@ const replies: readonly SelectionReply[] = [
 
 test.each(replies)("sends a structured reply to its session, run, and call", async (reply) => {
   const received: Parameters<NyteBridge["runs"]["reply"]>[0][] = [];
+
   const f = observeReply(async (input) => {
     received.push(input);
+
     return { kind: "signalled" };
   });
+
   try {
     assert.deepEqual(await f.observer.mutate(reply), { kind: "signalled" });
+
     const normalized =
       reply.other === undefined ? reply : { choices: reply.choices, other: reply.other.trim() };
+
     assert.deepEqual(received, [
       {
         sessionId: sessionId("chat-1"),
@@ -134,10 +144,13 @@ test.each(replies)("sends a structured reply to its session, run, and call", asy
 
 test("a blank reply never leaves the client", async () => {
   const received: string[] = [];
+
   const f = observeReply(async () => {
     received.push("reply");
+
     return { kind: "signalled" };
   });
+
   try {
     await assert.rejects(f.observer.mutate({ choices: [], other: " " }), /offered answers/);
     assert.deepEqual(received, []);
@@ -150,10 +163,12 @@ test("a blank reply never leaves the client", async () => {
 test("stays pending until the accepted reply and its refresh finish", async () => {
   const response = Promise.withResolvers<Awaited<ReturnType<NyteBridge["runs"]["reply"]>>>();
   const refreshed = Promise.withResolvers<void>();
+
   const f = observeReply(
     () => response.promise,
     () => refreshed.promise,
   );
+
   try {
     const result = f.observer.mutate({ choices: ["1"] });
     assert.equal(f.observer.getCurrentResult().isPending, true);
@@ -172,12 +187,14 @@ test.each(["not_waiting", "not_found"] as const)(
   "refreshes stale %s replies without claiming the answer was sent",
   async (kind) => {
     let refreshed = false;
+
     const f = observeReply(
       async () => ({ kind }),
       async () => {
         refreshed = true;
       },
     );
+
     try {
       assert.deepEqual(await f.observer.mutate({ choices: ["2"] }), { kind });
       assert.equal(refreshed, true);
@@ -194,6 +211,7 @@ test("a refresh failure does not turn an accepted reply into a failed reply", as
       throw new Error("Snapshot unavailable");
     },
   );
+
   try {
     assert.deepEqual(await f.observer.mutate({ choices: ["1"] }), { kind: "signalled" });
     assert.equal(f.observer.getCurrentResult().isSuccess, true);
@@ -205,15 +223,18 @@ test("a refresh failure does not turn an accepted reply into a failed reply", as
 test("transport failures refresh the snapshot and allow an explicit retry", async () => {
   let online = false;
   let refreshed = false;
+
   const f = observeReply(
     async () => {
       if (!online) throw new Error("Host disconnected");
+
       return { kind: "signalled" };
     },
     async () => {
       refreshed = true;
     },
   );
+
   try {
     await assert.rejects(f.observer.mutate({ choices: ["2"] }), /Host disconnected/);
     assert.equal(f.observer.getCurrentResult().isError, true);

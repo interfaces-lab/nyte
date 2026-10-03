@@ -12,8 +12,6 @@ import { TranscriptContent } from "./transcript.tsx";
 import { StatusMarker } from "./row-surfaces.tsx";
 import { TurnView, UserMessageView } from "./turn-view.tsx";
 import type { BranchModelChoice, BranchModelPicker, TurnChangesTarget } from "./turn-view.tsx";
-import { NO_WAITS } from "./transcript-presentation.ts";
-import type { LiveWaits } from "./transcript-presentation.ts";
 import { estimateRowSize } from "./transcript-rows.ts";
 import type { RenderedTurn, TranscriptRow } from "./transcript-rows.ts";
 
@@ -47,7 +45,6 @@ const SettledTurnView = memo(function SettledTurnView({
       branchModel={branchModel}
       onOpenChanges={onOpenChanges}
       running={false}
-      waits={NO_WAITS}
     />
   );
 });
@@ -59,7 +56,6 @@ const TrailingTurnView = memo(function TrailingTurnView({
   onEditUser,
   branchModel,
   onOpenChanges,
-  waits,
 }: {
   sessionId: SessionId;
   turn: RenderedTurn;
@@ -67,7 +63,6 @@ const TrailingTurnView = memo(function TrailingTurnView({
   onEditUser: EditUserMessage;
   branchModel: BranchModelPicker;
   onOpenChanges: (target: TurnChangesTarget) => void;
-  waits: LiveWaits;
 }): ReactElement | null {
   const live = useSessionLive(sessionId);
 
@@ -81,7 +76,6 @@ const TrailingTurnView = memo(function TrailingTurnView({
       branchModel={branchModel}
       onOpenChanges={onOpenChanges}
       running={true}
-      waits={waits}
     />
   );
 });
@@ -109,7 +103,6 @@ export function Timeline({
   rows,
   working,
   settledWork,
-  waits,
   cwd,
   branchModel,
   onEditUser,
@@ -121,7 +114,6 @@ export function Timeline({
   readonly rows: readonly TranscriptRow[];
   readonly working: boolean;
   readonly settledWork: boolean;
-  readonly waits: LiveWaits;
   readonly cwd: string | undefined;
   readonly branchModel: BranchModelPicker;
   readonly onEditUser: EditUserMessage;
@@ -163,7 +155,6 @@ export function Timeline({
                 onEditUser={onEditUser}
                 branchModel={branchModel}
                 onOpenChanges={onOpenChanges}
-                waits={waits}
               />
             );
           }
@@ -219,7 +210,6 @@ export function Timeline({
       rows,
       sessionId,
       settledWork,
-      waits,
       working,
     ],
   );

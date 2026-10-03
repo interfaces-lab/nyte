@@ -1,5 +1,5 @@
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { shape, target } from "@nyte-ai/ui/schema.stylex";
+import { radius, target } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { AttachmentTrigger } from "@nyte-ai/ui/attachment";
@@ -16,7 +16,7 @@ const styles = create({
     flexShrink: 0,
     padding: 0,
     borderStyle: "none",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgBase,
     boxShadow: "none",
     cursor: "zoom-in",
@@ -27,7 +27,7 @@ const styles = create({
     width: 80,
     height: 80,
     objectFit: "cover",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     outlineWidth: 1,
     outlineStyle: "solid",
     outlineColor: role.borderPrimaryTranslucent,
@@ -75,7 +75,7 @@ const styles = create({
     minHeight: target.min,
     padding: 0,
     borderStyle: "none",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: { default: "transparent", ":hover": role.bgHover },
     color: {
       default: role.contentSecondary,
@@ -92,7 +92,7 @@ const styles = create({
     maxHeight: "calc(100dvh - 104px)",
     marginInline: "auto",
     objectFit: "contain",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
   },
 });
 

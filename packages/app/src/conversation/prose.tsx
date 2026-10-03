@@ -7,7 +7,15 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { props } from "@stylexjs/stylex";
-import { Children, isValidElement, memo, useSyncExternalStore } from "react";
+import {
+  Children,
+  createContext,
+  Fragment,
+  isValidElement,
+  memo,
+  use,
+  useSyncExternalStore,
+} from "react";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 import { CachedMarkdown, Streamdown } from "@lobehub/streamdown";
 import type { Components, ExtraProps } from "react-markdown";
@@ -17,9 +25,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { openConversationLink } from "./link-preference.ts";
 import { useMentionFiles } from "../queries.ts";
 import { CodeBlock } from "./code-block.tsx";
-import { ComposerChipView } from "./composer-chip.tsx";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
-import { inlineCodeReference } from "./message-references.ts";
+import { Icon } from "@nyte-ai/ui/icon";
+import { FileTypeIcon } from "../components/file-type-icon.tsx";
+import {
+  fileFromUrl,
+  inlineCodeReference,
+  isFolder,
+  referenceTitle,
+} from "./message-references.ts";
+import type { MessageReference } from "./message-references.ts";
+import type { MentionFile } from "@nyte-ai/client";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import { proseStyles } from "./styles.stylex.ts";
 
@@ -35,27 +51,127 @@ function nodeText(node: ReactNode): string {
   return "";
 }
 
+const InsideLink = createContext(false);
+
 /**
- * Inline code the workspace can resolve draws as the chip a mention would,
- * so a path the model names opens where a path the reader typed opens. The
- * file list is the composer's own query; a surface with no opener never asks
- * for it and every span stays literal.
+ * A file the prose names draws the way Cursor cites one: an inline link led
+ * by the file's icon. The icon holds on to the label's first segment, later
+ * segments may wrap after a slash, and punctuation after the link stays on its
+ * line.
+ */
+function FileCitation({
+  reference,
+  open,
+  label,
+  code,
+  ...elementProps
+}: Omit<ComponentProps<"a">, "href" | "onClick" | "children"> & {
+  readonly reference: Extract<MessageReference, { kind: "file" }>;
+  readonly open: () => void;
+  readonly label: string;
+  readonly code: boolean;
+}): ReactElement {
+  const [lead = "", ...segments] = label.split(/(?<=\/)(?=.)/u);
+
+  const text = (content: ReactNode): ReactNode =>
+    code ? <code {...props(proseStyles.inlineCode)}>{content}</code> : content;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <a
+            {...elementProps}
+            href={reference.file.url}
+            data-citation={isFolder(reference.file) ? "folder" : "file"}
+            {...props(intent.primary, proseStyles.link)}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              open();
+            }}
+          >
+            <span {...props(proseStyles.linkLead)}>
+              <span aria-hidden="true" {...props(proseStyles.linkIcon)}>
+                {isFolder(reference.file) ? (
+                  <Icon name="folder" size={12} />
+                ) : (
+                  <FileTypeIcon path={reference.file.path} />
+                )}
+              </span>
+              {text(lead)}
+            </span>
+            {segments.length > 0 &&
+              text(
+                segments.map((segment, index) => (
+                  <Fragment key={index}>
+                    <wbr />
+                    {segment}
+                  </Fragment>
+                )),
+              )}
+          </a>
+        }
+      />
+      <TooltipContent side="top">{referenceTitle(reference)}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * Inline code the workspace can resolve becomes a file citation, so a path the
+ * model names opens where a path the reader typed opens. The file list is the
+ * composer's own query; a surface with no opener never asks for it and every
+ * span stays literal.
  */
 function MarkdownCode({
   node: _node,
   className: _className,
   ...elementProps
 }: ComponentProps<"code"> & ExtraProps): ReactElement {
-  const openable = useReferenceOpener() !== undefined;
-  const files = useMentionFiles(openable);
+  const insideLink = use(InsideLink);
+  const referenceOpener = useReferenceOpener();
+  const opener = insideLink ? undefined : referenceOpener;
+  const files = useMentionFiles(opener !== undefined);
 
-  const reference = openable
-    ? inlineCodeReference(nodeText(elementProps.children), files.data ?? [])
-    : undefined;
+  const text = nodeText(elementProps.children);
+  const reference = opener === undefined ? undefined : inlineCodeReference(text, files.data ?? []);
 
-  if (reference === undefined) return <code {...elementProps} {...props(proseStyles.inlineCode)} />;
+  const open = reference === undefined ? undefined : opener?.(reference);
 
-  return <ComposerChipView reference={reference} />;
+  if (reference?.kind !== "file" || open === undefined) {
+    return <code {...elementProps} {...props(proseStyles.inlineCode)} />;
+  }
+
+  return <FileCitation reference={reference} open={open} label={text} code />;
+}
+
+function linkReference(href: string, files: readonly MentionFile[]): MessageReference | undefined {
+  if (/^[a-z][a-z\d+.-]*:/iu.test(href) && !href.startsWith("file:")) return undefined;
+
+  if (href.startsWith("file:")) {
+    const file = fileFromUrl(href);
+
+    return file === undefined ? undefined : { kind: "file", file };
+  }
+
+  if (href.startsWith("/")) {
+    const url = new URL("file:///");
+    url.pathname = href.replace(/[#:].*$/u, "");
+    const file = fileFromUrl(url.href);
+
+    return file === undefined ? undefined : { kind: "file", file };
+  }
+
+  return inlineCodeReference(safeDecode(href), files);
+}
+
+function safeDecode(text: string): string {
+  try {
+    return decodeURI(text);
+  } catch {
+    return text;
+  }
 }
 
 function MarkdownLink({
@@ -64,9 +180,30 @@ function MarkdownLink({
   onClick: _onClick,
   title: _title,
   href,
+  children,
   ...elementProps
 }: ComponentProps<"a"> & ExtraProps): ReactElement {
   const opener = useReferenceOpener();
+  const files = useMentionFiles(opener !== undefined && href !== undefined);
+
+  const reference =
+    opener === undefined || href === undefined ? undefined : linkReference(href, files.data ?? []);
+
+  const open = reference === undefined ? undefined : opener?.(reference);
+
+  if (reference?.kind === "file" && open !== undefined) {
+    return (
+      <FileCitation
+        {...elementProps}
+        reference={reference}
+        open={open}
+        label={nodeText(children)}
+        code={Children.toArray(children).every(
+          (child) => isValidElement(child) && child.type === MarkdownCode,
+        )}
+      />
+    );
+  }
 
   return (
     <Tooltip>
@@ -81,7 +218,9 @@ function MarkdownLink({
               event.preventDefault();
               openConversationLink(href, opener);
             }}
-          />
+          >
+            <InsideLink value>{children}</InsideLink>
+          </a>
         }
       />
       <TooltipContent>{href}</TooltipContent>
@@ -100,6 +239,7 @@ function MarkdownPre({
   if (Children.count(children) === 1 && isValidElement<ComponentProps<"code">>(child)) {
     const raw = nodeText(child.props.children);
     const code = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
+
     const language =
       child.props.className
         ?.split(/\s+/u)

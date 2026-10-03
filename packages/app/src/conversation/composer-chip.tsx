@@ -9,6 +9,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { isFolder, referenceLabel, referenceTitle } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
+import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { composerStyles } from "./styles.stylex.ts";
 
 function referenceIcon(reference: MessageReference): IconName {
@@ -40,13 +41,18 @@ export function ComposerChipView({
 }): ReactElement {
   const label = referenceLabel(reference);
   const open = useReferenceOpener()?.(reference);
+
   const content = (
-    <>
+    <span {...props(composerStyles.mentionChipLabel)}>
       <span aria-hidden="true" {...props(composerStyles.mentionChipLeading)}>
-        <Icon name={referenceIcon(reference)} size={12} />
+        {reference.kind === "file" && !isFolder(reference.file) ? (
+          <FileTypeIcon path={reference.file.path} />
+        ) : (
+          <Icon name={referenceIcon(reference)} size={12} />
+        )}
       </span>
       {label}
-    </>
+    </span>
   );
 
   const chip = (
@@ -58,11 +64,10 @@ export function ComposerChipView({
       )}
     >
       {open === undefined ? (
-        <span {...props(composerStyles.mentionChipLabel)}>{content}</span>
+        content
       ) : (
         <Button
-          size="sm"
-          variant="plain"
+          variant="inline"
           onMouseDown={onRemove === undefined ? undefined : (event) => event.preventDefault()}
           onClick={(event) => {
             event.stopPropagation();

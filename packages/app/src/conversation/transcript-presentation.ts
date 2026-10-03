@@ -1,7 +1,4 @@
-import { sessionId } from "@nyte-ai/protocol";
-import type { ParkedCall, SessionId, ToolTurnPart, TurnPart } from "@nyte-ai/protocol";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
+import type { ToolTurnPart, TurnPart } from "@nyte-ai/protocol";
 import { messageParts } from "./message-references.ts";
 import type { ToolPhase } from "./tool-copy.ts";
 
@@ -22,84 +19,6 @@ function isWorkPart(part: TurnPart): part is WorkTurnPart {
   return part.kind === "thinking";
 }
 
-/**
- * A live wait is run status, not a transcript row. An unsettled await, or an
- * unsettled call on a child whose card is in the same turn, draws nothing; the
- * trailing work header says what the run waits on and counts down to the
- * parked call's wake.
- */
-export interface LiveWaits {
-  /** Unsettled awaits and unsettled calls on children created in this turn; drawn nowhere. */
-  readonly hidden: ReadonlySet<string>;
-  /** Children the hidden calls are blocked on. */
-  readonly awaited: ReadonlySet<SessionId>;
-  /** Each unsettled call's wake time, when its parked call has one. */
-  readonly deadlines: ReadonlyMap<string, number>;
-  /** The earliest wake among the hidden calls. */
-  readonly until: number | undefined;
-}
-
-export const NO_WAITS: LiveWaits = {
-  hidden: new Set(),
-  awaited: new Set(),
-  deadlines: new Map(),
-  until: undefined,
-};
-
-const awaitArguments = Type.Object({ agents: Type.Array(Type.Unknown()) });
-
-const agentId = Type.String({ minLength: 1 });
-
-/** An await's class names its first agent; the parked arguments name them all. */
-function parkedAgents(args: ParkedCall["args"]): SessionId[] {
-  if (!Value.Check(awaitArguments, args)) return [];
-
-  return args.agents.flatMap((agent) => (Value.Check(agentId, agent) ? [sessionId(agent)] : []));
-}
-
-export function liveWaits(
-  parts: readonly TurnPart[],
-  parked: readonly ParkedCall[] | undefined,
-  running: boolean,
-): LiveWaits {
-  if (!running) return NO_WAITS;
-  const created = new Set<SessionId>();
-  const hidden = new Set<string>();
-  const awaited = new Set<SessionId>();
-  const deadlines = new Map<string, number>();
-  let until: number | undefined;
-
-  for (const part of parts) {
-    if (part.kind !== "tool" || part.class.kind !== "delegate") continue;
-
-    if (part.class.role === "create") {
-      created.add(part.class.target.session);
-      continue;
-    }
-
-    if (part.result !== undefined) continue;
-    const call = parked?.find((candidate) => candidate.callId === part.callId);
-
-    if (call?.until !== undefined) deadlines.set(part.callId, call.until);
-
-    const sessions =
-      part.class.target.kind === "one" ? [part.class.target.session] : part.class.target.sessions;
-
-    if (part.class.role !== "await" && !sessions.some((session) => created.has(session))) continue;
-    hidden.add(part.callId);
-
-    for (const session of sessions) awaited.add(session);
-
-    if (call === undefined) continue;
-
-    for (const agent of parkedAgents(call.args)) awaited.add(agent);
-
-    if (call.until !== undefined && (until === undefined || call.until < until)) until = call.until;
-  }
-
-  return { hidden, awaited, deadlines, until };
-}
-
 /** A call with no result is still running only while its run is; otherwise the run left it behind. */
 export function toolPhase(part: ToolTurnPart, running: boolean): ToolPhase {
   if (part.result !== undefined) return part.result.isError ? "failed" : "done";
@@ -117,15 +36,9 @@ export function toolPhase(part: ToolTurnPart, running: boolean): ToolPhase {
  * markdown, position, or run state would move it under the reader when the next
  * part arrived. Placement follows `kind` alone, which never changes, so a part
  * drawn as prose stays prose. Text closes the open episode; work that follows
- * opens the next one. A hidden wait is skipped outright, so it neither opens
- * nor splits an episode, and so is an await on children carded earlier in the
- * turn: the cards already show how each child is doing, so the layout holds
- * whether the wait is live, settled, or cut short.
+ * opens the next one.
  */
-export function displayTranscriptParts(
-  parts: readonly TurnPart[],
-  hidden: ReadonlySet<string> = NO_WAITS.hidden,
-): TranscriptDisplayPart[] {
+export function displayTranscriptParts(parts: readonly TurnPart[]): TranscriptDisplayPart[] {
   const display: TranscriptDisplayPart[] = [];
   let work: WorkTurnPart[] = [];
   let response: AssistantTurnPart[] = [];
@@ -140,24 +53,9 @@ export function displayTranscriptParts(
     response = [];
   };
 
-  const carded = new Set<SessionId>();
-
   for (const part of parts) {
-    if (part.kind === "tool" && hidden.has(part.callId)) continue;
-
-    if (part.kind === "tool" && part.class.kind === "delegate") {
-      if (part.class.role === "create") carded.add(part.class.target.session);
-      else if (
-        part.class.role === "await" &&
-        (part.class.target.kind === "one"
-          ? [part.class.target.session]
-          : part.class.target.sessions
-        ).every((session) => carded.has(session))
-      )
-        continue;
-    }
-
     if (part.kind === "assistant") {
+      if (part.text.trim() === "") continue;
       flushWork();
       response.push(part);
       continue;

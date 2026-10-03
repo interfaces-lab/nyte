@@ -1,6 +1,8 @@
-import type { SessionId, ToolClass } from "@nyte-ai/protocol";
+import type { TurnToolClass } from "@nyte-ai/protocol";
 import type { LiveSnapshot } from "../live.ts";
 import { formatRunDuration, toolPhase } from "./transcript-presentation.ts";
+import { DELEGATE_VERBS, phaseVerb } from "./subagent-status.ts";
+import { reasoningHeading } from "./reasoning-heading.ts";
 import type { WorkTurnPart } from "./transcript-presentation.ts";
 
 export interface WorkGroupPresentationInput {
@@ -10,8 +12,6 @@ export interface WorkGroupPresentationInput {
   readonly removed: number;
   readonly running: boolean;
   readonly live?: Pick<LiveSnapshot, "order" | "tools">;
-  /** Children the run's live waits are blocked on. */
-  readonly awaited: ReadonlySet<SessionId>;
 }
 
 export type DurableWorkGroupPresentation =
@@ -26,34 +26,12 @@ export type DurableWorkGroupPresentation =
     }
   | {
       readonly active: true;
-      readonly runningClasses: readonly ToolClass[];
+      readonly runningClasses: readonly TurnToolClass[];
       readonly added: number;
       readonly removed: number;
     };
 
-/** Every child the group is blocked on, counted once however many calls name it. */
-function waitingSessions(
-  running: readonly ToolClass[],
-  awaited: ReadonlySet<SessionId>,
-): SessionId[] {
-  const sessions = new Set(awaited);
-
-  for (const toolClass of running) {
-    if (toolClass.kind !== "delegate") continue;
-
-    if (toolClass.target.kind === "one") {
-      sessions.add(toolClass.target.session);
-      continue;
-    }
-
-    for (const session of toolClass.target.sessions) sessions.add(session);
-  }
-
-  return [...sessions];
-}
-
-function activityLabel(running: readonly ToolClass[], waiting: number): string | undefined {
-  if (waiting > 0) return "Waiting on";
+function activityLabel(running: readonly TurnToolClass[]): string | undefined {
   const newest = running.at(-1);
 
   if (newest === undefined) return undefined;
@@ -61,15 +39,15 @@ function activityLabel(running: readonly ToolClass[], waiting: number): string |
   switch (newest.kind) {
     case "file_read":
     case "list":
-      return "Reading files";
+      return "Exploring";
     case "shell":
-      return "Running shell command";
+      return "Running";
     case "file_edit":
     case "file_write":
     case "file_patch":
-      return "Editing files";
+      return "Editing";
     case "delegate":
-      return "Waiting on";
+      return phaseVerb(DELEGATE_VERBS[newest.role], "running");
     case "custom":
       return `Running ${newest.label}`;
     default: {
@@ -89,10 +67,7 @@ function count(n: number, noun: string, plural = `${noun}s`): string {
 }
 
 /** One changed or read file is named; more are counted. */
-function settledSummary(
-  parts: readonly WorkTurnPart[],
-  durationMs: number,
-): { readonly verb: string; readonly detail: string | undefined } {
+function settledSummary(parts: readonly WorkTurnPart[], durationMs: number) {
   const changed = new Set<string>();
   const read = new Set<string>();
   const listed = new Set<string>();
@@ -131,9 +106,11 @@ function settledSummary(
   }
 
   if (changed.size + read.size + listed.size + commands + tools === 0) {
-    const duration = formatRunDuration(durationMs);
+    const { title } = reasoningHeading(
+      parts.map((part) => (part.kind === "thinking" ? part.text : "")).join("\n\n"),
+    );
 
-    return { verb: "Thought", detail: duration === undefined ? undefined : `for ${duration}` };
+    return { verb: title ?? "Thought", detail: formatRunDuration(durationMs) };
   }
 
   const explored = read.size + listed.size > 0;
@@ -160,6 +137,7 @@ function settledSummary(
 
     const directories =
       listed.size > 0 ? count(listed.size, "directory", "directories") : undefined;
+
     const first = [directories, files].filter((text) => text !== undefined).join(", ");
 
     details.push(verb === "Edited" ? `explored ${first}` : first);
@@ -187,7 +165,7 @@ export function durableWorkGroupPresentation({
   WorkGroupPresentationInput,
   "parts" | "durationMs" | "added" | "removed" | "running"
 >): DurableWorkGroupPresentation {
-  const runningClasses: ToolClass[] = [];
+  const runningClasses: TurnToolClass[] = [];
 
   for (const part of parts) {
     if (part.kind !== "tool") continue;
@@ -208,38 +186,26 @@ export function durableWorkGroupPresentation({
 export function liveWorkGroupPresentation({
   durable,
   live,
-  awaited,
 }: {
   readonly durable: DurableWorkGroupPresentation;
   readonly live?: Pick<LiveSnapshot, "order" | "tools">;
-  readonly awaited: ReadonlySet<SessionId>;
 }) {
   if (!durable.active) return durable;
-  const waiting = waitingSessions(durable.runningClasses, awaited);
   const newest = live?.order.at(-1);
 
   const verb =
-    activityLabel(durable.runningClasses, waiting.length) ??
+    activityLabel(durable.runningClasses) ??
     (live !== undefined && live.tools.size === 0 && newest?.kind === "thinking"
       ? "Thinking"
       : "Working");
 
   return {
     active: true,
-    waiting,
     summary: {
       verb,
-      detail: waiting.length === 0 ? undefined : count(waiting.length, "agent"),
+      detail: undefined,
       added: durable.added,
       removed: durable.removed,
     },
   };
-}
-
-export function presentWorkGroup(input: WorkGroupPresentationInput) {
-  return liveWorkGroupPresentation({
-    durable: durableWorkGroupPresentation(input),
-    live: input.live,
-    awaited: input.awaited,
-  });
 }

@@ -13,7 +13,7 @@ import {
   layer,
   menu,
   row,
-  shape,
+  radius,
   target,
 } from "@nyte-ai/ui/schema.stylex";
 import { conversation, diffView, pane, tray } from "../theme/schema.stylex.ts";
@@ -93,21 +93,20 @@ export const proseStyles = create({
     paddingInlineStart: "2em",
   },
   listItem: { whiteSpace: "normal" },
-  strong: { color: role.contentPrimary, fontWeight: 590 },
+  strong: { color: `var(--_prose-strong-color, ${role.contentPrimary})`, fontWeight: 590 },
   inlineCode: {
-    paddingInline: { default: "0.3em", ":is(a code)": 0 },
-    paddingBlock: { default: "0.08em", ":is(a code)": 0 },
-    borderRadius: { default: shape.indicator, ":is(a code)": 0 },
-    borderWidth: { default: 1, ":is(a code)": 0 },
-    borderStyle: { default: "solid", ":is(a code)": "none" },
-    borderColor: { default: role.borderSecondaryTranslucent, ":is(a code)": "transparent" },
+    paddingInline: { default: 2, ":is(a code)": 0 },
+    paddingBlock: { default: 1, ":is(a code)": 0 },
+    borderRadius: { default: radius.indicator, ":is(a code)": 0 },
     backgroundColor: { default: role.bgMutedTranslucent, ":is(a code)": "transparent" },
     color: "inherit",
     fontFamily: type.fontMono,
-    fontSize: type.fontSm,
+    fontSize: "0.9em",
     letterSpacing: "normal",
     lineHeight: "inherit",
     whiteSpace: "break-spaces",
+    overflowWrap: "break-word",
+    wordBreak: "normal",
     boxDecorationBreak: "clone",
   },
   link: {
@@ -118,19 +117,34 @@ export const proseStyles = create({
         "@media (hover: hover) and (pointer: fine)": role.bgInteractiveSecondaryTranslucent,
       },
     },
-    display: "inline-block",
+    display: "inline",
     marginInline: -2,
     paddingInline: 2,
-    paddingBlock: `max(2px, (${target.min} - ${type.leadingLg}) / 2)`,
-    minHeight: target.min,
-    boxSizing: "border-box",
-    borderRadius: 4,
+    paddingBlock: 2,
+    borderRadius: radius.indicator,
     fontWeight: 500,
-    textDecorationLine: { default: "none", ":hover": "underline" },
-    textDecorationThickness: "from-font",
-    textUnderlineOffset: 2,
+    textDecorationLine: "none",
     boxDecorationBreak: "clone",
     cursor: appearance.cursorInteractive,
+    transitionProperty: "background-color, color",
+    transitionDuration: {
+      default: motion.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: motion.easeOut,
+  },
+  linkLead: { whiteSpace: "nowrap" },
+  linkIcon: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "1em",
+    height: "1em",
+    marginInlineEnd: "0.3em",
+    overflow: "visible",
+    verticalAlign: "middle",
+    transform: "translateY(-0.085em)",
+    userSelect: "none",
   },
   blockquote: {
     marginInline: 0,
@@ -160,7 +174,7 @@ export const proseStyles = create({
     // alone computes `overflow-y` to `auto`, which latches the wheel and stops
     // the conversation under the reader. The transcript owns vertical scroll.
     overflowY: "hidden",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     boxShadow: CODE_RING,
   },
   table: {
@@ -181,17 +195,22 @@ export const proseStyles = create({
   headerCell: { backgroundColor: role.bgMutedTranslucent, fontWeight: 600 },
   fallbackPre: {
     width: "100%",
-    margin: 0,
-    padding: 12,
+    marginBlockStart: { default: 8, ":first-child": 0 },
+    marginBlockEnd: { default: 8, ":last-child": 0 },
+    marginInline: 0,
+    paddingBlock: 6,
+    paddingInline: 10,
     overflowX: "auto",
     overflowY: "hidden",
-    borderRadius: shape.control,
-    backgroundColor: role.bgMutedTranslucent,
-    boxShadow: CODE_RING,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: role.borderSecondaryTranslucent,
+    borderRadius: radius.card,
+    backgroundColor: role.bgBase,
     color: role.contentPrimary,
     fontFamily: type.fontMono,
     fontSize: type.fontCode,
-    lineHeight: 1.55,
+    lineHeight: type.leadingBase,
     whiteSpace: "pre",
   },
   imageLabel: { color: role.contentSecondary },
@@ -200,54 +219,79 @@ export const proseStyles = create({
 export const codeBlockStyles = create({
   figure: {
     position: "relative",
-    marginBlock: 10,
+    marginBlockStart: { default: 8, ":first-child": 0 },
+    marginBlockEnd: { default: 8, ":last-child": 0 },
     marginInline: 0,
     overflow: "hidden",
-    borderRadius: shape.control,
-    backgroundColor: role.bgMutedTranslucent,
-    boxShadow: CODE_RING,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: role.borderSecondaryTranslucent,
+    borderRadius: radius.card,
+    backgroundColor: role.bgBase,
+    "--_code-copy-opacity": {
+      default: 0,
+      ":hover": 1,
+      ":focus-within": 1,
+      ":has([data-copied])": 1,
+    },
   },
   scroll: { maxWidth: "100%", overflowX: "auto", overflowY: "hidden" },
   pre: {
     margin: 0,
-    padding: 12,
+    paddingBlock: 6,
+    paddingInline: 10,
     color: role.contentPrimary,
     fontFamily: type.fontMono,
     fontSize: type.fontCode,
-    lineHeight: 1.55,
+    fontWeight: 400,
+    lineHeight: type.leadingBase,
+    whiteSpace: "pre",
     userSelect: "text",
   },
-  copy: { position: "absolute", insetBlockStart: 6, insetInlineEnd: 6, zIndex: 1 },
+  copy: {
+    position: "absolute",
+    insetBlockStart: 4,
+    insetInlineEnd: 4,
+    zIndex: 1,
+    display: "flex",
+    opacity: "var(--_code-copy-opacity)",
+    transitionProperty: "opacity",
+    transitionDuration: {
+      default: motion.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: motion.easeOut,
+  },
 });
+
+const COMPOSER_PILL_HALF_HEIGHT = 20;
+
+const PILLS_ROW_OFFSET = 8;
 
 /** The prompt's own padding; a message edit keeps its text and images where the bubble had them. */
 const USER_PROMPT_PADDING_BLOCK = 8;
+
 const USER_PROMPT_PADDING_INLINE = 10;
+
 const USER_IMAGES_GAP = 8;
 
 export const composerStyles = create({
-  // The dock is an opaque base layer. Transcript content never shows through
-  // the composer or its queue controls.
-  //
-  // Rows dissolve into the sticky dock through a solid block of its own
-  // colour, masked away upward. A painted gradient would interpolate toward
-  // transparent black and cast grey over the rows it is meant to fade.
   dock: {
     position: "sticky",
     bottom: 0,
     zIndex: layer.stickyContent,
     flexShrink: 0,
     width: "100%",
-    paddingTop: 12,
-    backgroundColor: role.bgBase,
+    pointerEvents: "none",
     "::before": {
       content: "''",
       position: "absolute",
       insetInline: 0,
-      bottom: "100%",
-      height: conversation.edgeFade,
+      insetBlockStart: `calc(-1 * ${conversation.edgeFade})`,
+      bottom: 0,
+      zIndex: -1,
       backgroundColor: role.bgBase,
-      maskImage: "linear-gradient(to top, black, transparent)",
+      maskImage: `linear-gradient(to bottom, transparent, black calc(${conversation.edgeFade} + ${COMPOSER_PILL_HALF_HEIGHT}px))`,
       pointerEvents: "none",
     },
   },
@@ -258,18 +302,47 @@ export const composerStyles = create({
     width: `min(${conversation.measure}, 100%)`,
     marginInline: "auto",
     paddingInline: conversation.gutter,
-    paddingTop: 8,
     paddingBottom: conversation.composerInset,
   },
-  inputStack: { position: "relative", minWidth: 0 },
+  inputStack: { position: "relative", minWidth: 0, pointerEvents: "auto" },
   preComposerOverlay: {
     position: "absolute",
     insetInline: 0,
-    bottom: `calc(100% + ${tray.gap})`,
+    bottom: `calc(100% + ${PILLS_ROW_OFFSET}px)`,
     zIndex: 1,
     display: "flex",
     flexDirection: "column",
+    pointerEvents: "none",
+  },
+  preComposerStack: {
+    display: "flex",
+    flexDirection: "column",
     gap: tray.gap,
+    pointerEvents: "auto",
+  },
+  preComposerPills: {
+    display: "flex",
+    flexDirection: { default: "row", ":has([data-slot='tray'])": "column" },
+    flexWrap: "wrap",
+    alignItems: { default: "center", ":has([data-slot='tray'])": "stretch" },
+    columnGap: 4,
+    rowGap: tray.gap,
+    width: { default: "fit-content", ":has([data-slot='tray'])": "100%" },
+    maxWidth: "100%",
+    minHeight: {
+      default: 0,
+      ":has([data-scroll-shown='true'])": button.heightSm,
+    },
+    marginTop: {
+      default: 0,
+      ":has(> :not(:empty):not([data-slot='scroll-to-bottom']), [data-scroll-shown='true'])":
+        tray.gap,
+    },
+    paddingBottom: {
+      default: 0,
+      ":has([data-slot='tray']):has([data-scroll-shown='true'])": `calc(${button.heightSm} + ${tray.gap})`,
+    },
+    pointerEvents: "auto",
   },
   queueList: { maxHeight: 200 },
   queueRow: {
@@ -289,7 +362,7 @@ export const composerStyles = create({
     paddingBlock: 0,
     paddingInlineStart: tray.rowInset,
     paddingInlineEnd: 4,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: {
       default: "transparent",
       ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
@@ -333,8 +406,8 @@ export const composerStyles = create({
     gap: 8,
     minHeight: button.heightMd,
     paddingInline: 10,
-    borderRadius: shape.control,
-    backgroundColor: role.bgMutedTranslucent,
+    borderRadius: radius.control,
+    backgroundColor: role.bgElevated,
     boxShadow: CODE_RING,
     color: role.contentSecondary,
     fontSize: type.fontSm,
@@ -389,10 +462,10 @@ export const composerStyles = create({
     gap: 6,
     minHeight: 40,
     padding: "4px 8px 4px 10px",
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
   },
   frameFollowUpExpanded: { borderRadius: conversation.composerExpandedRadius },
-  frameMessageEdit: { borderRadius: shape.card },
+  frameMessageEdit: { borderRadius: radius.card },
   frameDragging: {
     borderColor: role.borderPrimaryTranslucent,
     boxShadow: COMPOSER_RING_DROP,
@@ -413,6 +486,7 @@ export const composerStyles = create({
     listStyle: "none",
     paddingBlockStart: 6,
     overflowX: "auto",
+    paddingInlineEnd: 4,
     scrollPaddingInline: 8,
   },
   attachmentsInset: { width: "auto", marginInline: 12 },
@@ -423,12 +497,31 @@ export const composerStyles = create({
     paddingBlockStart: USER_PROMPT_PADDING_BLOCK,
   },
   attachment: {
+    position: "relative",
     display: "flex",
-    alignItems: "flex-start",
-    gap: 8,
     flexShrink: 0,
+    "--_attachment-remove-opacity": {
+      default: 0,
+      ":hover": 1,
+      ":focus-within": 1,
+      "@media (hover: none)": 1,
+    },
   },
-  attachmentRemove: { alignSelf: "flex-start" },
+  attachmentRemove: {
+    position: "absolute",
+    insetBlockStart: 0,
+    insetInlineEnd: 0,
+    zIndex: 1,
+    display: "flex",
+    opacity: "var(--_attachment-remove-opacity)",
+    transform: "translate(25%, -25%)",
+    transitionProperty: "opacity",
+    transitionDuration: {
+      default: motion.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: motion.easeOut,
+  },
   attachmentError: {
     color: role.contentSecondary,
     fontSize: type.fontSm,
@@ -471,7 +564,7 @@ export const composerStyles = create({
   composerUrlPill: {
     color: role.contentSecondary,
     backgroundColor: role.bgMutedTranslucent,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     paddingInline: 4,
     paddingBlock: 0,
     textDecorationLine: "none",
@@ -544,9 +637,9 @@ export const composerStyles = create({
     position: "relative",
     display: "inline-flex",
     flexShrink: 0,
-    alignItems: "center",
+    alignItems: "baseline",
     verticalAlign: "baseline",
-    gap: 8,
+    gap: 2,
     color: role.contentSecondary,
     fontSize: "inherit",
     fontWeight: 400,
@@ -559,8 +652,9 @@ export const composerStyles = create({
     alignItems: "center",
     justifyContent: "center",
     alignSelf: "center",
-    width: 12,
-    height: glyph.sm,
+    flexShrink: 0,
+    width: "1em",
+    height: "1em",
     marginInlineEnd: 4,
   },
   mentionChipRemove: { flexShrink: 0 },
@@ -620,7 +714,7 @@ export const composerStyles = create({
   spacer: { flex: 1 },
   spacerCompact: { display: "none" },
   suggestionPositioner: {
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     boxShadow: "none",
   },
   suggestionMenu: {
@@ -660,12 +754,7 @@ export const composerStyles = create({
     outline: "none",
     backgroundColor: {
       default: "transparent",
-      "[aria-selected='true']": role.bgInteractiveSecondaryTranslucent,
-    },
-    // A selected row carries a hairline, so it reads apart from the hovered one.
-    boxShadow: {
-      default: "none",
-      "[aria-selected='true']": `inset 0 0 0 1px ${role.borderPrimary}`,
+      "[aria-selected='true']": role.bgHover,
     },
     color: {
       default: role.contentSecondary,
@@ -748,7 +837,7 @@ export const composerStyles = create({
     maxWidth: "min(280px, var(--available-width))",
     maxHeight: "min(300px, var(--available-height))",
     padding: 10,
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     overflowY: "auto",
     opacity: 1,
     scale: 1,
@@ -830,7 +919,7 @@ export const diffStyles = create({
     boxSizing: "border-box",
     minWidth: 0,
     overflow: "hidden",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
   },
   inline: {
@@ -839,13 +928,15 @@ export const diffStyles = create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
+    backgroundColor: role.bgBase,
   },
+  card: { borderRadius: 0, backgroundColor: role.bgBase },
   workbench: {
     display: "flex",
     flexDirection: "column",
     minHeight: "100%",
     margin: 0,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     boxShadow: CODE_RING,
   },
   stack: {
@@ -968,6 +1059,7 @@ export const diffStyles = create({
     "--diffs-bg-buffer-override": role.bgBase,
     "--diffs-bg-context-override": role.bgBase,
     "--diffs-bg-context-gutter-override": role.bgBase,
+    "--diffs-bg-separator-override": role.bgMutedTranslucent,
     "--diffs-fg-number-override": role.contentTertiary,
     "--diffs-bg-selection-override": role.bgInteractiveSecondaryTranslucent,
     "--diffs-gap-style": "none",
@@ -1047,7 +1139,7 @@ export const toolCallStyles = create({
     width: "100%",
     minHeight: button.heightLg,
     paddingInline: 8,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     boxShadow: CODE_RING,
   },
@@ -1062,12 +1154,6 @@ export const toolCallStyles = create({
     },
     transitionTimingFunction: motion.easeOut,
   },
-  /**
-   * A custom label can be a whole sentence, such as a question. It keeps one
-   * line while the call runs and wraps once settled, rather than clipping.
-   */
-  verbLong: { flexShrink: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
-  verbWrap: { whiteSpace: "normal", textWrap: "pretty" },
   detail: {
     minWidth: 0,
     overflow: "hidden",
@@ -1112,7 +1198,7 @@ export const toolCallStyles = create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgBase,
   },
   outputActions: {
@@ -1156,24 +1242,6 @@ export const toolCallStyles = create({
     paddingInlineEnd: `calc(${button.heightSm} + 8px)`,
   },
   outputContent: { display: "block", minWidth: 0 },
-  // Clears the copy button; `code` would otherwise take the UA monospace.
-  command: {
-    display: "block",
-    paddingBlockEnd: 6,
-    fontFamily: "inherit",
-    fontSize: "inherit",
-  },
-  prompt: { userSelect: "none" },
-});
-
-/** The program stays ink; the rest take the syntax roles. */
-export const shellTokenStyles = create({
-  program: { color: role.contentPrimary },
-  flag: { color: role.contentSecondary },
-  string: { color: role.contentSecondary },
-  variable: { color: role.contentSecondary },
-  operator: { color: role.contentSecondary },
-  argument: { color: role.contentSecondary },
 });
 
 export const subagentCallStyles = create({
@@ -1190,7 +1258,6 @@ export const subagentCallStyles = create({
     textAlign: "left",
   },
   header: { paddingBlock: 6 },
-  headerDetailed: { paddingBlock: 8 },
   nested: { display: "flex", flexDirection: "column", marginTop: 10 },
   nestedRow: { paddingBlock: 2, paddingInlineStart: 12 },
   // One text line tall, so a moon and a 6px dot both centre on the title.
@@ -1203,7 +1270,7 @@ export const subagentCallStyles = create({
     height: type.leadingLg,
     paddingLeft: 2,
   },
-  dot: { width: 6, height: 6, borderRadius: shape.pill },
+  dot: { width: 6, height: 6, borderRadius: radius.pill },
   attention: { backgroundColor: role.contentInteractiveTertiary },
   failed: { backgroundColor: role.bgInteractiveStrong },
   done: { backgroundColor: role.contentTertiary },
@@ -1236,17 +1303,20 @@ export const subagentCallStyles = create({
   statusAttention: { color: role.contentSecondary },
 });
 
-/** The compact streaming window: about six conversation rows. */
-export const WORK_PREVIEW_HEIGHT = 144;
-
 export const toolGroupStyles = create({
-  root: { display: "flex", flexDirection: "column", minWidth: 0, contain: "layout" },
+  root: {
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+    contain: "layout",
+    "--_group-chevron-opacity": { default: 0, ":hover": 1, ":focus-within": 1 },
+  },
   status: {
     display: "inline-flex",
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    width: "100%",
+    gap: 4,
+    width: "fit-content",
     maxWidth: "100%",
     minHeight: conversation.rowMinHeight,
     color: role.contentSecondary,
@@ -1262,18 +1332,26 @@ export const toolGroupStyles = create({
     minHeight: button.heightSm,
     minWidth: 0,
     textAlign: "start",
-    color: {
-      default: role.contentSecondary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.contentPrimary },
-    },
+    color: role.contentSecondary,
     fontSize: type.fontLg,
     lineHeight: type.leadingLg,
     userSelect: "none",
+    "--_group-chevron-color": {
+      default: role.contentTertiary,
+      ":hover": role.contentSecondary,
+      "[data-panel-open]": role.contentSecondary,
+    },
+    "--_group-chevron-opacity": { default: null, "[data-panel-open]": 1 },
   },
-  disclosure: {
-    width: button.heightSm,
-    flexShrink: 0,
-    justifyContent: "center",
+  chevron: {
+    marginInlineStart: 2,
+    color: "var(--_group-chevron-color, currentcolor)",
+    opacity: "var(--_group-chevron-opacity, 1)",
+    transitionProperty: "transform, color, opacity",
+    transitionDuration: {
+      default: `${motion.durationNormal}, ${motion.durationFast}, ${motion.durationFast}`,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
   },
   verb: { flexShrink: 0 },
   summary: {
@@ -1298,40 +1376,34 @@ export const toolGroupStyles = create({
     display: "flex",
     flexDirection: "column",
     gap: 6,
-    marginBlockStart: 4,
-    paddingBlock: 2,
-    paddingInlineStart: 16,
+    paddingBlockStart: 6,
+  },
+  earlier: { alignSelf: "flex-start" },
+  panel: {
+    display: "block",
+    minHeight: 0,
+    paddingInline: 0,
+    borderRadius: 0,
+    color: "inherit",
   },
   preview: {
     boxSizing: "border-box",
-    maxHeight: WORK_PREVIEW_HEIGHT,
-    paddingBlockStart: 6,
+    maxHeight: 144,
     overflowX: "hidden",
     overflowY: "auto",
+    cursor: appearance.cursorInteractive,
     overscrollBehavior: "auto",
     maskImage: {
       default: null,
       "[data-overflow]": "linear-gradient(to bottom, rgba(0, 0, 0, 0.15) 0px, black 32px)",
     },
   },
-  // Virtual rows sit on a plane sized to the whole episode; each row carries
-  // the list gap so measured heights include it.
-  previewPlane: {
-    position: "relative",
-    width: "100%",
+  thinking: {
     minWidth: 0,
-    contain: "layout paint",
+    color: role.contentSecondary,
+    opacity: 0.5,
+    "--_prose-strong-color": "currentcolor",
   },
-  previewRow: {
-    boxSizing: "border-box",
-    position: "absolute",
-    top: 0,
-    insetInlineStart: 0,
-    width: "100%",
-    minWidth: 0,
-    paddingBlockEnd: 6,
-  },
-  thinking: { minWidth: 0, color: role.contentSecondary },
 });
 
 export const USER_MESSAGE_PREVIEW_LINES = 3.5;
@@ -1349,7 +1421,7 @@ const USER_PREVIEW_FADE = `calc(${type.leadingLg} * ${(USER_MESSAGE_PREVIEW_LINE
 
 /**
  * The transcript's scroll frame. The viewport's rows dissolve at the top edge
- * the way they do at the composer, over the same distance. A stuck prompt
+ * and run on under the composer. A stuck prompt
  * covers that edge with its own opaque inset and turns the mask off: masking
  * the viewport would make the strip translucent again and let rows surface
  * above the prompt. Rows resize under the virtualizer's own corrections, so
@@ -1363,6 +1435,7 @@ export const messageScrollerStyles = create({
     minHeight: 0,
     overflowY: "auto",
     overflowAnchor: "none",
+    outlineStyle: "none",
     maskImage: {
       default: null,
       "[data-top-fade='true']": `linear-gradient(to bottom, transparent, black ${conversation.edgeFade})`,
@@ -1392,9 +1465,51 @@ export const messageScrollerStyles = create({
   itemFirst: { paddingTop: 0 },
   button: {
     position: "absolute",
-    zIndex: 1,
-    insetBlockStart: -22,
-    insetInlineStart: "calc(50% - 14px)",
+    insetBlockEnd: 0,
+    insetInlineStart: "50%",
+    translate: "-50% 0",
+    transitionProperty: "opacity, visibility",
+  },
+  buttonShown: {
+    opacity: 1,
+    visibility: "visible",
+    pointerEvents: "auto",
+    transitionDuration: {
+      default: motion.durationNormal,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: motion.easeOut,
+  },
+  buttonHidden: {
+    opacity: 0,
+    visibility: "hidden",
+    pointerEvents: "none",
+    transitionDuration: {
+      default: "120ms",
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: "ease-in",
+  },
+  buttonControl: {
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: {
+      default: role.borderSecondaryTranslucent,
+      ":hover": role.borderPrimaryTranslucent,
+    },
+    backgroundColor: role.bgElevated,
+    backgroundImage: {
+      default: "none",
+      ":hover": "none",
+      ":active": "none",
+    },
+    boxShadow: "none",
+    transitionProperty: "border-color",
+    transitionDuration: {
+      default: motion.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: motion.easeOut,
   },
 });
 
@@ -1404,7 +1519,7 @@ export const messageStyles = create({
     position: "relative",
     width: "100%",
     minWidth: 0,
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     backgroundColor: role.conversationUserShellBg,
   },
 });
@@ -1419,8 +1534,14 @@ export const bubbleStyles = create({
     paddingInline: USER_PROMPT_PADDING_INLINE,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
-    borderRadius: shape.card,
+    borderColor: {
+      default: role.borderSecondaryTranslucent,
+      ":has(:focus-visible)": role.borderPrimaryTranslucent,
+      ':hover:has([data-slot="row-primary"])': {
+        "@media (hover: hover) and (pointer: fine)": role.borderPrimaryTranslucent,
+      },
+    },
+    borderRadius: radius.card,
     backgroundColor: role.bgElevated,
     boxShadow: "var(--_user-prompt-shadow, none)",
     color: role.contentPrimary,
@@ -1432,26 +1553,14 @@ export const bubbleStyles = create({
     whiteSpace: "pre-wrap",
     overflowWrap: "anywhere",
     userSelect: "text",
-    transitionProperty: "background-color, border-color, box-shadow",
+    cursor: { default: null, ':has([data-slot="row-primary"])': appearance.cursorInteractive },
+    outlineStyle: "none",
+    transitionProperty: "border-color, box-shadow",
     transitionDuration: {
       default: motion.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: motion.easeOut,
-  },
-  editable: {
-    backgroundColor: role.bgElevated,
-    backgroundImage: {
-      default: "none",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.layerHover },
-    },
-    borderColor: {
-      default: role.borderSecondaryTranslucent,
-      ":has(:focus-visible)": role.borderPrimaryTranslucent,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.borderPrimaryTranslucent },
-    },
-    cursor: "text",
-    outlineStyle: "none",
   },
 });
 
@@ -1554,14 +1663,13 @@ export const turnStyles = create({
     marginBottom: -USER_PROMPT_PADDING_BLOCK,
     maskImage: `linear-gradient(to bottom, #000 calc(100% - ${USER_PREVIEW_FADE}), transparent 100%)`,
   },
-  userPreviewToggle: { marginBlockStart: 4, marginInlineEnd: 8 },
+  userPreviewToggle: { marginBlockStart: 4 },
   userImages: {
     display: "flex",
     flexWrap: "wrap",
     gap: USER_IMAGES_GAP,
     paddingBlockEnd: USER_IMAGES_GAP,
   },
-  userEditTrigger: { marginBlockStart: 4 },
   changesCard: {
     boxSizing: "border-box",
     display: "flex",
@@ -1573,7 +1681,7 @@ export const turnStyles = create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     backgroundColor: role.bgElevated,
     color: role.contentPrimary,
   },
@@ -1593,16 +1701,15 @@ export const turnStyles = create({
     display: "flex",
     flexDirection: "column",
     gap: 2,
-    maxHeight: 132,
     margin: 0,
     padding: 0,
-    overflowY: "auto",
     listStyle: "none",
   },
   changesFile: {
     minHeight: row.heightMd,
     paddingInline: row.paddingInlineMd,
     backgroundImage: { default: "none", ":active": role.layerPressed },
+    color: role.contentSecondary,
     fontSize: type.fontLg,
     lineHeight: type.leadingLg,
   },
@@ -1610,8 +1717,9 @@ export const turnStyles = create({
   changesStats: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
     flexShrink: 0,
+    fontVariantNumeric: "tabular-nums",
   },
   changesAdded: { color: role.contentSecondary },
   changesRemoved: { color: role.contentSecondary },
@@ -1632,21 +1740,11 @@ export const turnStyles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  reasoning: { display: "flex", flexDirection: "column", width: "100%", minWidth: 0 },
   disclosureToggle: {
     width: "fit-content",
     minHeight: conversation.rowMinHeight,
     fontSize: type.fontLg,
     lineHeight: type.leadingLg,
-  },
-  reasoningBody: {
-    boxSizing: "border-box",
-    width: "100%",
-    maxWidth: conversation.proseMeasure,
-    marginTop: 4,
-    paddingBlock: 2,
-    paddingInlineStart: 16,
-    color: role.contentSecondary,
   },
   history: { display: "flex", flexDirection: "column", minWidth: 0 },
   historyBody: {

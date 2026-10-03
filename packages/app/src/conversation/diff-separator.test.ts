@@ -65,6 +65,7 @@ test("a renamed edit reads its original path without losing either side", async 
         ? { ...BOTH_SIDES, path, new: { kind: "absent" } }
         : { ...BOTH_SIDES, old: { kind: "absent" } },
   });
+
   const files = await loader({ ...fileDiff(), type: "rename-changed", prevName: "before.ts" });
   expect(files.oldFile?.contents).toBe("one\ntwo\n");
   expect(files.newFile.contents).toBe("one\nTWO\n");

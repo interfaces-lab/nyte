@@ -16,13 +16,19 @@ import { trayStyles } from "../theme/tray.stylex.ts";
 import { props } from "@stylexjs/stylex";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement, ReactNode } from "react";
-import type { Delivery, PendingItem, RunId, RunInfo, SessionId } from "@nyte-ai/protocol";
+import type {
+  CommandInfo,
+  Delivery,
+  PendingItem,
+  RunId,
+  RunInfo,
+  SessionId,
+} from "@nyte-ai/protocol";
 import { isTerminalPhase } from "@nyte-ai/client";
 import { errorMessage } from "../errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
-import { AttachmentAction } from "@nyte-ai/ui/attachment";
 import { refreshThread, requestStop } from "../live.ts";
 import {
   keys,
@@ -34,8 +40,11 @@ import {
   useMentionFiles,
   usePluginCatalog,
   usePluginSettings,
+  useSessionCommands,
   useSessionSnapshot,
+  useSetPreference,
 } from "../queries.ts";
+import { pickerDefaults } from "../preference-projection.ts";
 import { nyte } from "../nyte.ts";
 import type { OutboxRow } from "@nyte-ai/client";
 import { outbox } from "../use-outbox.ts";
@@ -63,6 +72,7 @@ import type { SubmitAction } from "./composer-keys.ts";
 import { composerMessageContent, composerSendInput, composerSendPlan } from "./composer-send.ts";
 import { UserMessageText, messageImages, userMessageText } from "./message-content.tsx";
 import { messageDraftText } from "./message-references.ts";
+import { parsePluginCommand } from "./plugin-command.ts";
 import type { MessageReference } from "./message-references.ts";
 import {
   useRunningMessagePreference,
@@ -78,6 +88,8 @@ const DROP_PLACEHOLDER = "Drop here to attach…";
 
 /** Measured on the composer frame, which sits inside the conversation gutters, not the pane. */
 const COMPACT_FRAME_WIDTH = 320;
+
+const NO_COMMANDS: readonly CommandInfo[] = [];
 
 type ComposerSurface = "new-chat" | "follow-up";
 
@@ -112,6 +124,10 @@ const SessionModelChip = memo(function SessionModelChip({
   );
 
   const applyPluginSetting = useApplyPluginSetting(sessionId);
+  const setPreference = useSetPreference();
+
+  const thinkingLevel =
+    snapshot.data?.session.config.thinkingLevel ?? snapshot.data?.config.thinkingLevel;
 
   const fastEnabled = useMemo(
     () =>
@@ -125,6 +141,11 @@ const SessionModelChip = memo(function SessionModelChip({
 
   const handleChange = useCallback(
     (change: ModelPickerChange) => {
+      // A cloud session's catalog lists that server's models, not this Mac's.
+      if (catalog.data?.source === "local") {
+        setPreference.mutate(pickerDefaults({ model: current, thinkingLevel }, change));
+      }
+
       switch (change.kind) {
         case "model":
           configure.mutate({
@@ -151,7 +172,7 @@ const SessionModelChip = memo(function SessionModelChip({
         }
       }
     },
-    [applyPluginSetting, configure],
+    [applyPluginSetting, catalog.data?.source, configure, current, setPreference, thinkingLevel],
   );
 
   return (
@@ -159,9 +180,7 @@ const SessionModelChip = memo(function SessionModelChip({
       <ModelPicker
         catalog={catalog.data}
         current={current}
-        thinkingLevel={
-          snapshot.data?.session.config.thinkingLevel ?? snapshot.data?.config.thinkingLevel
-        }
+        thinkingLevel={thinkingLevel}
         fastEnabled={fastEnabled}
         loading={catalog.isPending}
         disabled={catalog.isError}
@@ -285,6 +304,9 @@ export function ComposerFrame({
   const [references, setReferences] = useState<readonly MessageReference[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
+  const commandsEnabled =
+    surface === "follow-up" && editing === undefined && attachments.length === 0;
+
   const suggestionMenu = useComposerSuggestions({
     editorRef: areaRef,
     anchorRef: frameRef,
@@ -293,6 +315,7 @@ export function ComposerFrame({
     mentionFiles,
     hasConversationContext,
     references,
+    onCommand: commandsEnabled ? () => void submit("submit") : undefined,
   });
 
   const roles = useMemo(() => deliveryChoices, []);
@@ -432,26 +455,23 @@ export function ComposerFrame({
         {attachments.map((attachment) => (
           <li key={attachment.id} {...props(surfaceTheme.gray, composerStyles.attachment)}>
             <ImagePreview
-              src={attachment.previewUrl}
+              src={`data:${attachment.content.mimeType};base64,${attachment.content.data}`}
               name={attachment.name}
               compact={!messageEdit}
             />
             {onAttachmentRemove !== undefined && (
-              <AttachmentAction
-                size="icon-sm"
-                aria-label={`Remove ${attachment.name}`}
-                disabled={disabled}
-                onClick={() => onAttachmentRemove(attachment.id)}
-                render={
-                  <Button
-                    size="sm"
-                    iconOnly
-                    icon="x"
-                    aria-label={`Remove ${attachment.name}`}
-                    xstyle={composerStyles.attachmentRemove}
-                  />
-                }
-              />
+              <span {...props(composerStyles.attachmentRemove)}>
+                <Button
+                  size="2xs"
+                  variant="solid"
+                  round
+                  iconOnly
+                  icon="x"
+                  aria-label={`Remove ${attachment.name}`}
+                  disabled={disabled}
+                  onClick={() => onAttachmentRemove(attachment.id)}
+                />
+              </span>
             )}
           </li>
         ))}
@@ -670,8 +690,12 @@ export function ComposerFrame({
                 xstyle={composerStyles.addMenu}
                 finalFocus={() => areaRef.current?.element}
               >
-                <MenuItem icon="skills" meta="/" onClick={() => suggestionMenu.insertTrigger("/")}>
-                  Commands, Skills, and Prompts
+                <MenuItem
+                  icon={commandsEnabled ? "command" : "skills"}
+                  meta="/"
+                  onClick={() => suggestionMenu.insertTrigger("/")}
+                >
+                  {commandsEnabled ? "Commands and skills" : "Skills"}
                 </MenuItem>
                 <MenuItem icon="more" meta="@" onClick={() => suggestionMenu.insertTrigger("@")}>
                   Mention Context
@@ -772,7 +796,7 @@ async function messageKeyState(sessionId: SessionId, key: string): Promise<Messa
 }
 
 interface ComposerFeedback {
-  readonly kind: "status" | "error";
+  readonly kind: "status" | "command" | "error";
   readonly message: string;
   /** Puts a draft the send refused back in front of whatever was typed since. */
   readonly restore?: () => void;
@@ -931,7 +955,7 @@ export function Composer({
   const runningMessagePreference = useRunningMessagePreference();
   const attachTranscriptDock = useTranscriptDock();
   const [currentViewState, setCurrentViewState] = useState(initialViewState);
-  const [attachments, setAttachments] = useState<readonly ComposerImageAttachment[]>([]);
+  const attachments = currentViewState.attachments;
   const [attachmentReads, setAttachmentReads] = useState(0);
   const [attachmentError, setAttachmentError] = useState<string>();
   const [feedback, setFeedback] = useState<ComposerFeedback>();
@@ -946,7 +970,18 @@ export function Composer({
   const queueRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<ComposerEditorHandle | null>(null);
   const pluginCatalog = usePluginCatalog();
-  const suggestionCatalog = composerSource(pluginCatalog.data, pluginCatalog.isError);
+  const sessionCommands = useSessionCommands(sessionId);
+
+  const activeCommands =
+    sessionCommands.data ?? (sessionCommands.isError ? NO_COMMANDS : undefined);
+
+  const suggestionCatalog = composerSource(
+    pluginCatalog.data === undefined || activeCommands === undefined
+      ? undefined
+      : { ...pluginCatalog.data, commands: activeCommands },
+    pluginCatalog.isError,
+  );
+
   // A thread always has an open project behind it.
   const workspaceFiles = useMentionFiles(true);
   const mentionFiles = composerSource(workspaceFiles.data, workspaceFiles.isError);
@@ -954,21 +989,15 @@ export function Composer({
   // Sends settle later than the render that started them; they read the draft as it is then.
   const latestViewState = useRef(currentViewState);
 
-  const updateViewState = (update: (current: ComposerViewState) => ComposerViewState): void => {
-    const next = update(latestViewState.current);
-    latestViewState.current = next;
-    setCurrentViewState(next);
-    onViewStateChange?.(next);
-  };
-
-  const setDocument = (document: ComposerDocumentState): void => {
-    updateViewState((current) => ({
-      ...current,
-      draft: document.text,
-      selectionStart: document.selectionStart,
-      selectionEnd: document.selectionEnd,
-    }));
-  };
+  const updateViewState = useCallback(
+    (update: (current: ComposerViewState) => ComposerViewState): void => {
+      const next = update(latestViewState.current);
+      latestViewState.current = next;
+      setCurrentViewState(next);
+      onViewStateChange?.(next);
+    },
+    [onViewStateChange],
+  );
 
   const attachInput = useCallback(
     (handle: ComposerEditorHandle | null) => {
@@ -978,19 +1007,25 @@ export function Composer({
     [inputRef],
   );
 
-  const addFiles = useCallback(async (files: readonly File[]): Promise<void> => {
-    setAttachmentReads((count) => count + 1);
+  const addFiles = useCallback(
+    async (files: readonly File[]): Promise<void> => {
+      setAttachmentReads((count) => count + 1);
 
-    return attachComposerFiles({ files, editor: editorRef.current })
-      .then((result) => {
-        if (result.attachments.length > 0) {
-          setAttachments((current) => [...current, ...result.attachments]);
-        }
+      return attachComposerFiles({ files, editor: editorRef.current })
+        .then((result) => {
+          if (result.attachments.length > 0) {
+            updateViewState((current) => ({
+              ...current,
+              attachments: [...current.attachments, ...result.attachments],
+            }));
+          }
 
-        setAttachmentError(result.error);
-      })
-      .finally(() => setAttachmentReads((count) => count - 1));
-  }, []);
+          setAttachmentError(result.error);
+        })
+        .finally(() => setAttachmentReads((count) => count - 1));
+    },
+    [updateViewState],
+  );
 
   useLayoutEffect(() => {
     if (fileDropRoot === undefined || fileDropRoot === null) return undefined;
@@ -1038,11 +1073,11 @@ export function Composer({
         return {
           ...current,
           draft: document.text,
+          attachments: [...sent.attachments, ...current.attachments],
           selectionStart: document.selectionStart,
           selectionEnd: document.selectionEnd,
         };
       });
-      setAttachments((current) => [...sent.attachments, ...current]);
       setFeedback({ kind: "error", message });
     };
 
@@ -1063,21 +1098,73 @@ export function Composer({
   ): Promise<boolean> => {
     if (disabled || attachmentReads !== 0) return false;
     const sentAttachments = attachments;
+    const catalogFailed = pluginCatalog.data === undefined && pluginCatalog.isError;
+    const commandsFailed = sessionCommands.data === undefined && sessionCommands.isError;
+
+    // Until both lists answer, a slash line may be a command whose argument is a secret.
+    if (
+      /^\/\S/.test(submission.text.trim()) &&
+      (pluginCatalog.data === undefined || sessionCommands.data === undefined)
+    ) {
+      if (catalogFailed) void pluginCatalog.refetch();
+
+      if (commandsFailed) void sessionCommands.refetch();
+      setFeedback({
+        kind: "error",
+        message:
+          catalogFailed || commandsFailed
+            ? "Couldn't load commands. Try again."
+            : "Commands are still loading. Try again.",
+      });
+
+      return false;
+    }
 
     const plan = composerSendPlan({
       submission,
       attachments: sentAttachments,
-      commands: pluginCatalog.data?.commands ?? [],
+      commands: edit === undefined ? (sessionCommands.data ?? NO_COMMANDS) : NO_COMMANDS,
       delivery,
     });
 
     if (plan.kind === "empty") return false;
+
+    // A known command's line never reaches the model just because it cannot run here.
+    const unavailable =
+      plan.kind === "message"
+        ? parsePluginCommand(submission.text, [
+            ...(pluginCatalog.data?.commands ?? NO_COMMANDS),
+            ...(sessionCommands.data ?? NO_COMMANDS),
+          ])
+        : undefined;
+
+    if (unavailable !== undefined) {
+      const active = sessionCommands.data?.some((command) => command.name === unavailable.name);
+
+      setFeedback({
+        kind: "error",
+        message:
+          active !== true
+            ? `/${unavailable.name} isn't available in this chat.`
+            : edit === undefined
+              ? `Send /${unavailable.name} by itself.`
+              : "Commands can't run from a queued message.",
+      });
+
+      return false;
+    }
+
     const sent = { document, attachments: sentAttachments };
     // Clear at once: the outbox row already shows the message, and the next thought never waits.
-    setDocument({ text: "", selectionStart: 0, selectionEnd: 0 });
-    setAttachments((current) =>
-      current.filter((attachment) => !sentAttachments.includes(attachment)),
-    );
+    updateViewState((current) => ({
+      ...current,
+      draft: "",
+      attachments: current.attachments.filter(
+        (attachment) => !sentAttachments.includes(attachment),
+      ),
+      selectionStart: 0,
+      selectionEnd: 0,
+    }));
     setAttachmentError(undefined);
     setFeedback(undefined);
 
@@ -1133,7 +1220,7 @@ export function Composer({
             setFeedback(
               outcome.output === undefined
                 ? undefined
-                : { kind: "status", message: outcome.output },
+                : { kind: "command", message: outcome.output },
             );
             refreshThread(sessionId);
             void queryClient.invalidateQueries({
@@ -1147,7 +1234,13 @@ export function Composer({
 
             return true;
           case "not_found":
-            break;
+            void queryClient.invalidateQueries({
+              queryKey: keys.sessionCommands(sessionId),
+              exact: true,
+            });
+            refuse(`/${plan.command.name} isn't available in this chat.`, sent);
+
+            return false;
           case "failed":
             refuse(outcome.message, sent);
 
@@ -1182,14 +1275,8 @@ export function Composer({
       }
     }
 
-    // A command line the plugin no longer knows is sent as the message it reads as.
-    const content =
-      plan.kind === "message"
-        ? plan.content
-        : composerMessageContent(submission.text.trim(), sentAttachments);
-
     try {
-      await outbox.submit(composerSendInput(sessionId, { kind: "message", content, delivery }));
+      await outbox.submit(composerSendInput(sessionId, plan));
 
       return true;
     } catch (cause: unknown) {
@@ -1299,24 +1386,31 @@ export function Composer({
 
     const text = messageDraftText(userMessageText(edit.content));
     setPendingEdit(edit);
-    setAttachments(
-      messageImages(edit.content).map((content, index) => ({
+    setFeedback(undefined);
+    updateViewState((current) => ({
+      ...current,
+      draft: text,
+      attachments: messageImages(edit.content).map((content, index) => ({
         id: crypto.randomUUID(),
         name: `Image ${String(index + 1)}`,
         content,
-        previewUrl: `data:${content.mimeType};base64,${content.data}`,
       })),
-    );
-    setFeedback(undefined);
-    setDocument({ text, selectionStart: text.length, selectionEnd: text.length });
+      selectionStart: text.length,
+      selectionEnd: text.length,
+    }));
     editorRef.current?.focus();
   };
 
   const clearEdit = (): void => {
     setPendingEdit(undefined);
-    setAttachments([]);
     setAttachmentError(undefined);
-    setDocument({ text: "", selectionStart: 0, selectionEnd: 0 });
+    updateViewState((current) => ({
+      ...current,
+      draft: "",
+      attachments: [],
+      selectionStart: 0,
+      selectionEnd: 0,
+    }));
   };
 
   const cancelEdit = clearEdit;
@@ -1328,6 +1422,7 @@ export function Composer({
 
   const removeOutboxRow = (row: OutboxRow): void => {
     const withdrawal = outbox.withdraw(row.key);
+
     if (withdrawal === undefined) return;
     void withdrawal
       .then(async (outcome) => {
@@ -1346,8 +1441,10 @@ export function Composer({
   const sendOutboxRowNow = (row: OutboxRow): void => {
     if (row.state.kind !== "durable") {
       setFeedback({ kind: "status", message: "Wait for the message to finish sending." });
+
       return;
     }
+
     void nyte.messages
       .redeliver({ sessionId, change: row.state.change, delivery: roles.steer })
       .catch((cause: unknown) => {
@@ -1356,8 +1453,10 @@ export function Composer({
   };
 
   const queueKeys = [...pending.map((item) => item.change), ...unsent.map((row) => row.key)];
+
   const focusedQueueKey =
     activeQueued !== undefined && queueKeys.includes(activeQueued) ? activeQueued : queueKeys[0];
+
   const queueDeleteKey = macPlatform(host.data?.platform) ? "Meta+Backspace" : "Control+Delete";
 
   const queueKeyDown = (
@@ -1365,51 +1464,73 @@ export function Composer({
     item: PendingItem | OutboxRow,
   ): void => {
     if (event.defaultPrevented || event.target !== event.currentTarget) return;
+
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       event.preventDefault();
       const rows = [...(queueRef.current?.querySelectorAll("[data-queue-row]") ?? [])];
       const index = rows.indexOf(event.currentTarget);
+
       const next =
         rows[Math.max(0, Math.min(rows.length - 1, index + (event.key === "ArrowUp" ? -1 : 1)))];
+
       if (next instanceof HTMLElement) next.focus({ preventScroll: true });
+
       return;
     }
+
     if (event.key === "Escape") {
       event.preventDefault();
       editorRef.current?.focus({ preventScroll: true });
+
       return;
     }
+
     if (disabled || event.repeat) return;
+
     const editingThis =
       "input" in item
         ? pendingEdit?.kind === "outbox" && pendingEdit.key === item.key
         : pendingEdit?.kind === "durable" && pendingEdit.change === item.change;
+
     const action = "input" in item ? undefined : rowActions.get(item.change);
+
     if (editingThis || action?.kind === "sending" || action?.kind === "cancelling") return;
+
     const remove = macPlatform(host.data?.platform)
       ? event.metaKey && event.key === "Backspace"
       : event.ctrlKey && event.key === "Delete";
+
     if (remove) {
       event.preventDefault();
       editorRef.current?.focus({ preventScroll: true });
+
       if ("input" in item) removeOutboxRow(item);
       else void cancelPending(item);
+
       return;
     }
+
     if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+
     if (event.key === "Enter") {
       event.preventDefault();
       editorRef.current?.focus({ preventScroll: true });
+
       if ("input" in item) sendOutboxRowNow(item);
       else if (item.delivery !== roles.steer) void sendPendingNow(item);
+
       return;
     }
+
     if (event.key === " " || event.key === "ArrowRight") {
       event.preventDefault();
+
       if (queuedEditReason !== undefined) {
         setFeedback({ kind: "status", message: queuedEditReason });
+
         return;
       }
+
       beginEdit(item);
     }
   };
@@ -1570,33 +1691,45 @@ export function Composer({
 
   return (
     <div ref={attachTranscriptDock} {...props(composerStyles.dock)}>
-      <TranscriptButton />
       <div role="region" aria-label="Conversation input" {...props(composerStyles.region)}>
         <div {...props(composerStyles.inputStack)}>
           <div {...props(composerStyles.preComposerOverlay)}>
-            {feedback !== undefined && (
-              <div
-                role={feedback.kind === "error" ? "alert" : "status"}
-                {...props(composerStyles.queued)}
-              >
-                <Icon name={feedback.kind === "error" ? "bubble-question" : "sparkle"} />
-                <span {...props(composerStyles.queuedText)}>{feedback.message}</span>
-                {feedback.restore !== undefined && (
-                  <Button variant="text" onClick={feedback.restore}>
-                    Restore Draft
-                  </Button>
-                )}
-                <Button
-                  iconOnly
-                  icon="x"
-                  aria-label="Dismiss notification"
-                  onClick={() => setFeedback(undefined)}
-                />
-              </div>
-            )}
+            <div {...props(composerStyles.preComposerStack)}>
+              {feedback !== undefined && (
+                <div
+                  role={feedback.kind === "error" ? "alert" : "status"}
+                  {...props(composerStyles.queued)}
+                >
+                  <Icon
+                    name={
+                      feedback.kind === "error"
+                        ? "bubble-question"
+                        : feedback.kind === "command"
+                          ? "command"
+                          : "sparkle"
+                    }
+                  />
+                  <span {...props(composerStyles.queuedText)}>{feedback.message}</span>
+                  {feedback.restore !== undefined && (
+                    <Button variant="text" onClick={feedback.restore}>
+                      Restore Draft
+                    </Button>
+                  )}
+                  <Button
+                    iconOnly
+                    icon="x"
+                    aria-label="Dismiss notification"
+                    onClick={() => setFeedback(undefined)}
+                  />
+                </div>
+              )}
 
-            {queuedMessages}
-            {backgroundWork?.content}
+              {queuedMessages}
+            </div>
+            <div {...props(composerStyles.preComposerPills)}>
+              {backgroundWork?.content}
+              <TranscriptButton />
+            </div>
           </div>
           <ComposerFrame
             surface="follow-up"
@@ -1606,8 +1739,16 @@ export function Composer({
               selectionEnd: currentViewState.selectionEnd,
             }}
             onDocumentChange={(document) => {
-              setFeedback((current) => (current?.kind === "status" ? undefined : current));
-              setDocument(document);
+              if (document.text !== latestViewState.current.draft) {
+                setFeedback((current) => (current?.kind === "error" ? current : undefined));
+              }
+
+              updateViewState((current) => ({
+                ...current,
+                draft: document.text,
+                selectionStart: document.selectionStart,
+                selectionEnd: document.selectionEnd,
+              }));
             }}
             onSubmit={send}
             placeholder={answer?.placeholder ?? FOLLOW_UP_PLACEHOLDER}
@@ -1628,7 +1769,10 @@ export function Composer({
             attachmentError={attachmentError}
             onFilesSelected={(files) => void addFiles(files)}
             onAttachmentRemove={(id) => {
-              setAttachments((current) => current.filter((attachment) => attachment.id !== id));
+              updateViewState((current) => ({
+                ...current,
+                attachments: current.attachments.filter((attachment) => attachment.id !== id),
+              }));
               setAttachmentError(undefined);
             }}
             model={disabled ? undefined : <SessionModelChip sessionId={sessionId} />}

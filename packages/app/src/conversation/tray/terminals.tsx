@@ -137,7 +137,9 @@ function AvailableBackgroundWork({
           <span {...props(trayParts.pillIndicator)}>
             <Spinner />
           </span>
-          <span aria-hidden="true">{liveTerminals.length}</span>
+          <span aria-hidden="true" {...props(trayParts.pillCount)}>
+            {liveTerminals.length}
+          </span>
           <span>{noun}</span>
         </TrayPill>
       )}

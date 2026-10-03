@@ -1,5 +1,5 @@
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { Row } from "@nyte-ai/ui/row";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -38,10 +38,9 @@ const styles = create({
     display: "block",
     width: 6,
     height: 6,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: role.contentInteractiveTertiary,
   },
-  count: { color: role.contentSecondary },
   detail: (height: number) => ({
     minHeight: 0,
     height: `min(70dvh, max(220px, ${String(height)}px))`,
@@ -178,7 +177,7 @@ export function SubagentTray({
             )}
           </span>
           <span>Agents</span>
-          <span aria-hidden="true" {...props(styles.count)}>
+          <span aria-hidden="true" {...props(trayParts.pillCount)}>
             {String(active.length)}
           </span>
         </TrayPill>

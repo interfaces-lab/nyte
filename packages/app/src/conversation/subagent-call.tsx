@@ -1,30 +1,98 @@
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { props } from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import type { StyleXStyles } from "@stylexjs/stylex";
 import { useCallback } from "react";
 import type { ReactElement } from "react";
-import type { SessionId, SessionInfo, ToolClass } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo, TurnToolClass } from "@nyte-ai/protocol";
 import { TextRoll } from "../components/text-roll.tsx";
 import { UnreadMark } from "../components/ui.tsx";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
+import { Collapsible } from "@nyte-ai/ui/collapsible";
+import { Icon } from "@nyte-ai/ui/icon";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { Row } from "@nyte-ai/ui/row";
+import { radius } from "@nyte-ai/ui/schema.stylex";
+import { motion, role, type } from "@nyte-ai/ui/vars.stylex";
 import { useSessionFrameSelector } from "../live.ts";
 import type { SessionFrame } from "../live.ts";
 import { useCatalog, useChildSessions, useSession } from "../queries.ts";
 import { sessionHasUnreadCompletion, useReadSessions } from "../session-read-state.ts";
-import type { ToolCallDensity } from "../theme/boot.ts";
-import { Countdown } from "./countdown.tsx";
 import { modelDisplayName } from "./model-picker-state.ts";
-import { activityStyles, subagentCallStyles, toolCallStyles } from "./styles.stylex.ts";
+import { activityStyles, subagentCallStyles } from "./styles.stylex.ts";
 import { useChildSession, useOpenSubagentTray } from "./subagent-sessions.ts";
-import { callStatus, sessionStatus, subagentActivity } from "./subagent-status.ts";
+import {
+  callStatus,
+  DELEGATE_VERBS,
+  phaseVerb,
+  sessionStatus,
+  subagentActivity,
+} from "./subagent-status.ts";
 import type { SubagentStatus } from "./subagent-status.ts";
-import { toolVerb } from "./tool-copy.ts";
 import type { ToolPhase } from "./tool-copy.ts";
+import { toolLineStyles } from "./tool-line.tsx";
 
-export type DelegateToolClass = Extract<ToolClass, { readonly kind: "delegate" }>;
+export type DelegateToolClass = Extract<TurnToolClass, { readonly kind: "delegate" }>;
+
+const lineStyles = create({
+  detailsRow: { display: "flex", alignItems: "center", gap: 4 },
+  agent: {
+    minWidth: 0,
+    maxWidth: "100%",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  agentButton: {
+    display: "inline-block",
+    flex: "0 1 auto",
+    alignSelf: "auto",
+    borderRadius: radius.indicator,
+    textDecorationLine: "underline",
+    textDecorationColor: {
+      default: "transparent",
+      ":hover": "currentColor",
+      ":focus-visible": "currentColor",
+    },
+    transitionProperty: "text-decoration-color",
+    transitionDuration: {
+      default: motion.durationFast,
+      ":hover": "0s",
+      ":focus-visible": "0s",
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: "ease-in-out",
+  },
+  agentIcon: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "1em",
+    height: "1em",
+    verticalAlign: "-0.0714em",
+    marginInlineEnd: "0.2857em",
+    userSelect: "none",
+  },
+  chevronTrigger: {
+    display: "inline-flex",
+    alignItems: "center",
+    flexShrink: 0,
+    alignSelf: "stretch",
+    color: role.contentTertiary,
+    "--_chevron": { default: null, ":focus-visible": "1", "[data-panel-open]": "1" },
+  },
+  output: {
+    boxSizing: "border-box",
+    maxHeight: 280,
+    paddingBlock: 2,
+    overflowY: "auto",
+    color: role.contentSecondary,
+    fontSize: type.fontLg,
+    lineHeight: type.leadingLg,
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+    userSelect: "text",
+  },
+});
 
 /** A listed child speaks for itself; until then its create call does. */
 type SubagentSubject =
@@ -177,13 +245,11 @@ export function SubagentCallView({
   session,
   title,
   phase,
-  density,
   cwd,
 }: {
   readonly session: SessionId;
   readonly title: string;
   readonly phase: ToolPhase;
-  readonly density: ToolCallDensity;
   readonly cwd: string | undefined;
 }): ReactElement {
   // The parent's list lags the child, and a parent that stopped or was left
@@ -208,31 +274,24 @@ export function SubagentCallView({
         subject={subject}
         cwd={cwd}
         open={openTray === undefined ? undefined : () => openTray(session)}
-        xstyle={
-          density === "detailed" ? subagentCallStyles.headerDetailed : subagentCallStyles.header
-        }
+        xstyle={subagentCallStyles.header}
       />
       {subject.kind === "session" && <SubagentNestedRows session={session} cwd={cwd} />}
     </div>
   );
 }
 
-/** A call on a child: the verb, then the child's name once the child is listed. */
+/** A call on a child, drawn as a tool line: the verb, then the agent it names, which opens the child. */
 export function SubagentLineView({
   toolClass,
   phase,
-  density,
-  until,
+  output,
 }: {
-  toolClass: DelegateToolClass;
-  phase: ToolPhase;
-  density: ToolCallDensity;
-  /** When the parked call wakes unanswered; counts down beside the name. */
-  until: number | undefined;
+  readonly toolClass: DelegateToolClass;
+  readonly phase: ToolPhase;
+  readonly output: string;
 }): ReactElement {
-  const session =
-    toolClass.target.kind === "one" ? toolClass.target.session : toolClass.target.sessions[0];
-
+  const session = toolClass.target.session;
   const childSession = useChildSession(session);
 
   const child =
@@ -243,52 +302,80 @@ export function SubagentLineView({
         : childSession.name;
 
   const openTray = useOpenSubagentTray();
-  const others = toolClass.target.kind === "many" ? toolClass.target.sessions.length - 1 : 0;
+  const label = child ?? "agent";
+  const verbs = DELEGATE_VERBS[toolClass.role];
+  const expandable = output.trim() !== "";
 
-  const label =
-    child === undefined ? undefined : others > 0 ? `${child} +${String(others)}` : child;
-
-  const content = (
+  const agent = (
     <>
-      <span {...props(toolCallStyles.verb, phase === "running" && activityStyles.shimmer)}>
-        {toolVerb(toolClass, phase)}
+      <span aria-hidden="true" {...props(lineStyles.agentIcon)}>
+        <Icon name="agent" size={14} />
       </span>
-      {label !== undefined && (
-        <Tooltip>
-          <TooltipTrigger render={<span {...props(toolCallStyles.detail)}>{label}</span>} />
-          <TooltipContent>{label}</TooltipContent>
-        </Tooltip>
-      )}
-      {phase === "running" && until !== undefined && (
-        <span {...props(toolCallStyles.detail)}>
-          <Countdown until={until} />
-        </span>
-      )}
+      {label}
     </>
   );
 
-  const failed = phase === "failed" && [intent.danger, toolCallStyles.failed];
-  const lineStyles = [toolCallStyles.line, density === "detailed" && toolCallStyles.lineDetailed];
+  const line = (
+    <div
+      data-tool-status={phase}
+      {...props(
+        toolLineStyles.line,
+        (expandable || openTray !== undefined) && toolLineStyles.clickable,
+        phase === "interrupted" && toolLineStyles.dimmed,
+      )}
+    >
+      {expandable ? (
+        <Collapsible.Trigger
+          variant="plain"
+          tabIndex={-1}
+          aria-hidden="true"
+          xstyle={[toolLineStyles.action, phase === "running" && activityStyles.shimmer]}
+        >
+          {phaseVerb(verbs, phase)}
+        </Collapsible.Trigger>
+      ) : (
+        <span {...props(toolLineStyles.action, phase === "running" && activityStyles.shimmer)}>
+          {phaseVerb(verbs, phase)}
+        </span>
+      )}
+      <span {...props(toolLineStyles.details, lineStyles.detailsRow)}>
+        {openTray === undefined ? (
+          <span {...props(lineStyles.agent)}>{agent}</span>
+        ) : (
+          <Row.Primary
+            onClick={() => openTray(session)}
+            xstyle={[lineStyles.agent, lineStyles.agentButton, focus.ring]}
+          >
+            {agent}
+          </Row.Primary>
+        )}
+      </span>
+      {phase === "failed" && (
+        <span {...props(intent.danger, toolLineStyles.outcome, toolLineStyles.failed)}>failed</span>
+      )}
+      {phase === "interrupted" && <span {...props(toolLineStyles.outcome)}>stopped</span>}
+      {expandable && (
+        <Collapsible.Trigger
+          variant="plain"
+          aria-label="Show result"
+          xstyle={[lineStyles.chevronTrigger, focus.ringInset]}
+        >
+          <Collapsible.Chevron size={12} xstyle={toolLineStyles.chevron} />
+        </Collapsible.Trigger>
+      )}
+    </div>
+  );
 
-  if (openTray === undefined) {
-    return (
-      <div data-tool-status={phase} {...props(...lineStyles, toolCallStyles.lineStatic, failed)}>
-        {content}
-      </div>
-    );
-  }
+  if (!expandable) return line;
 
   return (
-    <Row.Primary
-      data-tool-status={phase}
-      xstyle={[lineStyles, failed, focus.ring]}
-      onClick={() =>
-        toolClass.target.kind === "many" && toolClass.target.sessions.length > 1
-          ? openTray()
-          : openTray(session)
-      }
-    >
-      {content}
-    </Row.Primary>
+    <Collapsible.Root xstyle={toolLineStyles.root}>
+      {line}
+      <Collapsible.Panel data-tool-body role="region" aria-label="Result">
+        <div data-nyte-scrollport {...props(lineStyles.output)}>
+          {output.trimEnd()}
+        </div>
+      </Collapsible.Panel>
+    </Collapsible.Root>
   );
 }

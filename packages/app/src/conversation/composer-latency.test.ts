@@ -12,6 +12,7 @@ import { build, defaultClientConditions } from "vite";
 import { afterAll, beforeAll, expect, test } from "vitest";
 
 const execute = promisify(execFile);
+
 let directory = "";
 
 const Report = Type.Object({
@@ -100,15 +101,16 @@ test.each(["idle", "streaming"])(
   // fails every attempt, contention fails one.
   { timeout: 60_000, retry: 2 },
   async (mode) => {
-    if (typeof electron !== "string") throw new Error("Expected the Electron executable path");
+    const electronPath = Value.Parse(Type.String(), electron);
     const resultPath = join(directory, `${mode}.json`);
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
-    await execute(electron, [join(directory, "main.cjs"), mode, resultPath], {
+    await execute(electronPath, [join(directory, "main.cjs"), mode, resultPath], {
       env,
       timeout: 30_000,
     });
     const raw = await readFile(resultPath, "utf8");
+
     if (!raw.startsWith("{")) throw new Error(raw);
     const report = Value.Parse(Report, JSON.parse(raw));
     const detail = JSON.stringify(report);

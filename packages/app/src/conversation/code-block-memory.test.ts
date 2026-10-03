@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import { requestHighlight } from "./code-block.tsx";
+import type { HighlightCancel, HighlightRequest } from "./syntax-highlighter.worker.ts";
 
 const workers: FakeWorker[] = [];
 
@@ -8,14 +9,14 @@ class FakeWorker {
   onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
   onerror: (() => void) | null = null;
   onmessageerror: (() => void) | null = null;
-  readonly messages: unknown[] = [];
+  readonly messages: (HighlightRequest | HighlightCancel)[] = [];
   terminated = false;
 
   constructor() {
     workers.push(this);
   }
 
-  postMessage(message: unknown): void {
+  postMessage(message: HighlightRequest | HighlightCancel): void {
     this.messages.push(message);
   }
 
@@ -26,8 +27,8 @@ class FakeWorker {
 
 function requestId(worker: FakeWorker, index: number): number {
   const message = worker.messages[index];
-  assert.ok(message !== null && typeof message === "object" && "id" in message);
-  if (typeof message.id !== "number") throw new Error("Worker request has no numeric id");
+  assert.ok(message);
+
   return message.id;
 }
 
@@ -67,6 +68,7 @@ test("a null highlight reply completes with the plain-code fallback", async () =
     "typescript",
     new AbortController().signal,
   );
+
   const worker = workers[0];
   assert.ok(worker);
   worker.onmessage?.(
@@ -96,6 +98,7 @@ test("a worker error completes every pending highlight and permits a replacement
   );
   const result = await replacement;
   assert.equal(result.kind, "highlighted");
+
   if (result.kind !== "highlighted") throw new Error("Replacement worker did not highlight");
   assert.equal(result.value.html, "<pre>three</pre>");
 });

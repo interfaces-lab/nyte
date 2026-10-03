@@ -4,17 +4,10 @@
  * but one file, and nothing above this renders an error boundary, so a throw
  * here takes the workbench down rather than degrading one row.
  */
+import "../../test/web-bridge.ts";
 import { afterAll, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { ReactNode } from "react";
 import { DiffView } from "./diff-view.tsx";
-
-vi.mock("../nyte.ts", () => ({ nyte: { host: { setThemePreference: () => {} } } }));
-vi.mock("../pierre-worker-provider.tsx", () => ({
-  PIERRE_THEME: { light: "github-light", dark: "github-dark" },
-  PIERRE_TOKEN_CSS: "",
-  PierreWorkerProvider: ({ children }: { readonly children: ReactNode }) => children,
-}));
 
 vi.hoisted(() => {
   const query = { matches: false, addEventListener: () => {}, removeEventListener: () => {} };
@@ -22,7 +15,19 @@ vi.hoisted(() => {
     matchMedia: () => query,
     addEventListener: () => {},
     removeEventListener: () => {},
+    setTimeout: () => 0,
+    clearTimeout: () => {},
   });
+  vi.stubGlobal("requestAnimationFrame", () => 0);
+  vi.stubGlobal("cancelAnimationFrame", () => {});
+  vi.stubGlobal(
+    "Worker",
+    class {
+      postMessage(): void {}
+      addEventListener(): void {}
+      terminate(): void {}
+    },
+  );
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {}, removeItem: () => {} });
   const styleHost = { insertBefore: () => {}, appendChild: () => {}, firstChild: null };
   vi.stubGlobal("document", {
@@ -37,12 +42,14 @@ vi.hoisted(() => {
     head: styleHost,
   });
 });
+
 afterAll(() => vi.unstubAllGlobals());
 
 // Bare paths on both sides, the shape `createTwoFilesPatch(path, path, …)` emits.
 // An a/ and b/ prefix without a `diff --git` line makes Pierre read the name as
 // `b/src/a.ts` and call the file a rename.
 const firstEdit = ["--- src/a.ts", "+++ src/a.ts", "@@ -1 +1,2 @@", " keep", "+one", ""].join("\n");
+
 const secondEdit = ["--- src/a.ts", "+++ src/a.ts", "@@ -2 +2,2 @@", " one", "+two", ""].join("\n");
 
 /** What change-scopes.ts produces when one turn edits the same file twice. */
@@ -56,6 +63,7 @@ test("a file edited twice in one turn renders both edits instead of throwing", (
       variant="stack"
     />,
   );
+
   expect(markup.match(/<diffs-container/g) ?? []).toHaveLength(2);
 });
 
@@ -67,5 +75,6 @@ test("an unparseable patch degrades to its raw text rather than taking the panel
       variant="stack"
     />,
   );
+
   expect(markup).toContain("this is not a patch");
 });

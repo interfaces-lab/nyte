@@ -13,7 +13,11 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 
 export type MessageReference =
-  | { readonly kind: "file"; readonly file: MentionFile }
+  | {
+      readonly kind: "file";
+      readonly file: MentionFile;
+      readonly lines?: { readonly start: number; readonly end: number };
+    }
   | { readonly kind: "skill"; readonly name: string; readonly path: string }
   | { readonly kind: "mention"; readonly id: "current-conversation" }
   | { readonly kind: "clipboard"; readonly body: string };
@@ -146,10 +150,18 @@ export function referenceText(reference: MessageReference): string {
   }
 }
 
+function linesSuffix(lines: { readonly start: number; readonly end: number } | undefined): string {
+  if (lines === undefined) return "";
+
+  return lines.end === lines.start
+    ? `:${String(lines.start)}`
+    : `:${String(lines.start)}-${String(lines.end)}`;
+}
+
 export function referenceLabel(reference: MessageReference): string {
   switch (reference.kind) {
     case "file":
-      return reference.file.label;
+      return `${reference.file.label}${linesSuffix(reference.lines)}`;
     case "skill":
       return `/${reference.name}`;
     case "mention":
@@ -172,7 +184,7 @@ export function referenceLabel(reference: MessageReference): string {
 export function referenceTitle(reference: MessageReference): string | undefined {
   switch (reference.kind) {
     case "file":
-      return reference.file.path;
+      return `${reference.file.path}${linesSuffix(reference.lines)}`;
     case "skill":
       return reference.path === "" ? skillInstruction(reference.name) : reference.path;
     case "mention":
@@ -477,23 +489,38 @@ function workspaceFileIndex(files: readonly MentionFile[]): WorkspaceFileIndex {
 }
 
 /**
- * Inline code that names a real workspace file becomes a link; everything else
- * stays literal. A glob, a shell line, or a path that does not exist is not a
- * file, so the reader never gets a link that goes nowhere. Matching the
- * basename lets prose say `thread.tsx` when only one file answers to it.
+ * Inline code that names a real workspace file or folder becomes a link;
+ * everything else stays literal. A glob, a shell line, or a path that does not
+ * exist is not a file, so the reader never gets a link that goes nowhere.
+ * Matching the basename lets prose say `thread.tsx` when only one file answers
+ * to it, and a `:12`, `:12-30`, or `#L12-L30` suffix names lines in it.
  */
 export function inlineCodeReference(
   text: string,
   files: readonly MentionFile[],
 ): MessageReference | undefined {
-  const candidate = text.trim().replace(/^\.\//u, "");
+  const trimmed = text.trim().replace(/^\.\//u, "");
+
+  const located =
+    /^(?<path>.+?)(?::(?<start>\d+)(?:-(?<end>\d+))?|#L(?<anchorStart>\d+)(?:-L(?<anchorEnd>\d+))?)$/u.exec(
+      trimmed,
+    )?.groups;
+
+  const candidate = located?.path ?? trimmed;
 
   if (candidate === "" || /[\s*?{}[\]]/u.test(candidate)) return undefined;
   const index = workspaceFileIndex(files);
 
   const file =
     index.byPath.get(candidate) ??
+    index.byPath.get(`${candidate}/`) ??
     (candidate.includes("/") ? undefined : index.byLabel.get(candidate));
 
-  return file === undefined ? undefined : { kind: "file", file };
+  if (file === undefined) return undefined;
+  const start = Number(located?.start ?? located?.anchorStart);
+
+  if (isFolder(file) || !Number.isSafeInteger(start) || start < 1) return { kind: "file", file };
+  const end = Number(located?.end ?? located?.anchorEnd ?? start);
+
+  return { kind: "file", file, lines: { start, end: Math.max(start, end) } };
 }

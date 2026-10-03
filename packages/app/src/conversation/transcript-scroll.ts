@@ -7,8 +7,12 @@
 /** Mirrors the transcript's former `paddingTop`. */
 export const TRANSCRIPT_PADDING_START = 16;
 
-/** The transcript's former `paddingBottom`, before the standing slack below. */
-const TRANSCRIPT_PADDING_END = 8;
+/**
+ * Room below the last row, above the docked composer: Cursor's composer
+ * clearance (100px) plus its input gap (14px). It is part of the scroll
+ * extent, so a reply that ends at the bottom never sits against the composer.
+ */
+export const TRANSCRIPT_PADDING_END = 114;
 
 /** A row's own top may sit a hair below the scroll offset after subpixel layout. */
 const STICKY_MESSAGE_ACTIVATION_EPSILON = 2;
@@ -55,22 +59,6 @@ export function activeStickyCandidate(
 }
 
 /**
- * Room below the last row: its padding plus standing slack, so a reply that
- * ends near the bottom edge still clears the composer and the prompt above it
- * can be read with its answer. Reserving a viewport-sized hole when a message
- * is sent instead would leave dead space whenever the reply came back short,
- * and taking that hole back later would move the content under the reader.
- *
- * The slack is a fifth of the scrollport, bounded to 80 to 240px. A scrollport
- * that has not reported its height yet gets the padding alone.
- */
-export function transcriptPaddingEnd(viewportHeight: number): number {
-  if (viewportHeight <= 0) return TRANSCRIPT_PADDING_END;
-
-  return TRANSCRIPT_PADDING_END + Math.min(240, Math.max(80, Math.round(viewportHeight * 0.2)));
-}
-
-/**
  * Where a returning transcript should start before its rows have measured.
  * A reader pinned to the bottom starts at the end of the content, which is
  * as good as the sizes fed in: measured heights land on the right rows,
@@ -86,7 +74,7 @@ export function initialTranscriptOffset({
   readonly scroll: { readonly top: number; readonly bottomPinned: boolean };
 }): number {
   if (!scroll.bottomPinned) return scroll.top;
-  const padding = TRANSCRIPT_PADDING_START + transcriptPaddingEnd(viewportHeight);
+  const padding = TRANSCRIPT_PADDING_START + TRANSCRIPT_PADDING_END;
   const total = sizes.reduce((sum, size) => sum + size, padding);
 
   return Math.max(0, total - viewportHeight);

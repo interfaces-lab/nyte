@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import { renderMermaid } from "./mermaid-diagram.tsx";
+import type { DiagramResult } from "./mermaid-render.ts";
 
 const workers: FakeWorker[] = [];
 
 class FakeWorker extends EventTarget {
-  readonly messages: unknown[] = [];
   terminated = false;
 
   constructor() {
@@ -13,15 +13,13 @@ class FakeWorker extends EventTarget {
     workers.push(this);
   }
 
-  postMessage(message: unknown): void {
-    this.messages.push(message);
-  }
+  postMessage(): void {}
 
   terminate(): void {
     this.terminated = true;
   }
 
-  reply(result: unknown): void {
+  reply(result: DiagramResult): void {
     this.dispatchEvent(new MessageEvent("message", { data: { id: "render", result } }));
   }
 }

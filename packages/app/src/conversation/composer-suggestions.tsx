@@ -7,20 +7,16 @@ import { intent } from "@nyte-ai/ui/surface-theme";
  */
 import { props } from "@stylexjs/stylex";
 import { Popover } from "@nyte-ai/ui/popover";
-import {
-  createPreviewCardHandle,
-  PreviewCard,
-  PreviewCardContent,
-  PreviewCardTrigger,
-} from "@nyte-ai/ui/preview-card";
-import { useDeferredValue, useId, useMemo, useRef, useState } from "react";
+import { PreviewCard, PreviewCardContent } from "@nyte-ai/ui/preview-card";
+import { useDeferredValue, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
+import { completionTrigger } from "@nyte-ai/client";
 import type { MentionFile } from "@nyte-ai/client";
 import type { CommandInfo, PluginCatalog } from "@nyte-ai/protocol";
 import type { Skill } from "@nyte-ai/schema";
 import { Icon } from "@nyte-ai/ui/icon";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
-import type { ComposerCompletion } from "./composer-document.ts";
+import type { ComposerCompletion, ComposerDocumentState } from "./composer-document.ts";
 import type { ComposerComboboxState, ComposerEditorHandle } from "./composer-editor.tsx";
 import { createMentionSuggestionRanking } from "./composer-suggestion-ranking.ts";
 import type { FileSuggestion, MentionSuggestion } from "./composer-suggestion-ranking.ts";
@@ -46,7 +42,7 @@ interface PluginCommandSuggestion {
   readonly id: string;
   readonly label: string;
   readonly description: string;
-  readonly icon: "sparkle";
+  readonly icon: "command";
   readonly command: CommandInfo;
 }
 
@@ -72,6 +68,31 @@ type SuggestionMenuState =
       readonly end: number;
       readonly query: string;
     };
+
+/**
+ * The menu's token as the editor holds it now. The menu state commits after
+ * the editor does, so a key or click can land before it catches up; undefined
+ * when the token no longer starts where the menu opened.
+ */
+function liveToken(
+  document: ComposerDocumentState,
+  menu: SuggestionMenuState,
+): SuggestionMenuState | undefined {
+  const token = completionTrigger(
+    document.text.slice(menu.start),
+    document.selectionStart - menu.start,
+  );
+
+  if (
+    token?.start !== 0 ||
+    document.selectionStart !== document.selectionEnd ||
+    token.kind !== (menu.kind === "mention" ? "@" : "/") ||
+    (token.kind === "@" && token.query.startsWith("file://"))
+  )
+    return undefined;
+
+  return { kind: menu.kind, start: menu.start, end: menu.start + token.end, query: token.query };
+}
 
 /** A fetched input the popup renders truthfully: loading and failure are states, not empty lists. */
 type ComposerSource<T> =
@@ -158,7 +179,7 @@ function suggestionsFor(
         id: `plugin-command:${command.name}`,
         label: command.name,
         description: command.description,
-        icon: "sparkle",
+        icon: "command",
         command,
       })),
       ...skills.map((skill): ComposerSuggestion => ({
@@ -227,14 +248,13 @@ function suggestionAttribution(suggestion: ComposerSuggestion): string | undefin
 function suggestionEmptyText(
   kind: SuggestionMenuState["kind"],
   source: ComposerSource<unknown>,
+  slashSubject: "commands and skills" | "skills",
 ): string {
   switch (source.status) {
     case "loading":
-      return kind === "mention" ? "Loading files…" : "Loading commands and skills…";
+      return kind === "mention" ? "Loading files…" : `Loading ${slashSubject}…`;
     case "error":
-      return kind === "mention"
-        ? "Couldn’t load workspace files"
-        : "Couldn’t load commands and skills";
+      return kind === "mention" ? "Couldn’t load workspace files" : `Couldn’t load ${slashSubject}`;
     case "ready":
       return kind === "mention" ? "No Context Found" : "No Matches Found";
     default: {
@@ -373,6 +393,8 @@ interface ComposerSuggestionsOptions {
   readonly hasConversationContext: boolean;
   /** Chips already in the draft; a repeated skill or context chip is dropped instead of doubled. */
   readonly references: readonly MessageReference[];
+  /** Sends a draft that is only a picked `run` command; absent where commands cannot run, which hides them. */
+  readonly onCommand?: () => void;
 }
 
 interface ComposerSuggestions {
@@ -396,14 +418,20 @@ export function useComposerSuggestions({
   mentionFiles,
   hasConversationContext,
   references,
+  onCommand,
 }: ComposerSuggestionsOptions): ComposerSuggestions {
   const listRef = useRef<HTMLDivElement>(null);
+  const [activeOption, setActiveOption] = useState<HTMLDivElement | null>(null);
   const [menu, setMenu] = useState<SuggestionMenuState>();
   const [index, setIndex] = useState(0);
   const popupId = useId();
-  const [previewHandle] = useState(() => createPreviewCardHandle<ComposerSuggestion>());
   const deferredQuery = useDeferredValue(menu?.query ?? "");
-  const commands = suggestionCatalog.status === "ready" ? suggestionCatalog.data.commands : NONE;
+
+  const commands =
+    suggestionCatalog.status === "ready" && onCommand !== undefined
+      ? suggestionCatalog.data.commands
+      : NONE;
+
   const skills = suggestionCatalog.status === "ready" ? suggestionCatalog.data.skills : NONE;
   const files = mentionFiles.status === "ready" ? mentionFiles.data : NONE;
   const rankMentions = useMemo(() => createMentionSuggestionRanking(files), [files]);
@@ -427,17 +455,11 @@ export function useComposerSuggestions({
   );
 
   const activeIndex = Math.min(index, Math.max(0, suggestions.length - 1));
+  const activeSuggestion = menu === undefined ? undefined : suggestions[activeIndex];
 
-  const openPreview = (nextIndex: number): void => {
-    requestAnimationFrame(() => {
-      const optionId = `${popupId}-${String(nextIndex)}`;
-      const option = window.document.getElementById(optionId);
-
-      if (option === null) return;
-      revealSuggestion(listRef.current, option);
-      previewHandle.open(optionId);
-    });
-  };
+  useLayoutEffect(() => {
+    if (activeOption !== null) revealSuggestion(listRef.current, activeOption);
+  }, [activeOption]);
 
   const show = (next: SuggestionMenuState | undefined): void => {
     const continuesCurrentToken =
@@ -446,24 +468,13 @@ export function useComposerSuggestions({
       menu.kind === next.kind &&
       menu.start === next.start;
 
-    if (!continuesCurrentToken) {
-      previewHandle.close();
-      setIndex(0);
-
-      if (next !== undefined) openPreview(0);
-    }
-
+    if (!continuesCurrentToken) setIndex(0);
     setMenu(next);
-  };
-
-  const activate = (nextIndex: number): void => {
-    setIndex(nextIndex);
-    openPreview(nextIndex);
   };
 
   const clampedActivate = (nextIndex: number): void => {
     if (suggestions.length === 0) return;
-    activate(Math.max(0, Math.min(suggestions.length - 1, nextIndex)));
+    setIndex(Math.max(0, Math.min(suggestions.length - 1, nextIndex)));
   };
 
   const addReference = (reference: MessageReference, start: number, end: number): void => {
@@ -479,16 +490,48 @@ export function useComposerSuggestions({
     editorRef.current?.insertReference(reference, start, end);
   };
 
-  const select = (suggestion: ComposerSuggestion): void => {
-    if (menu === undefined) return;
-
+  const select = (
+    suggestion: ComposerSuggestion,
+    token: SuggestionMenuState,
+    text: string,
+  ): void => {
     if (suggestion.kind === "plugin-command") {
-      editorRef.current?.replaceText(menu.start, menu.end, `/${suggestion.command.name} `);
+      const runs =
+        suggestion.command.selection === "run" &&
+        onCommand !== undefined &&
+        references.length === 0 &&
+        `${text.slice(0, token.start)}${text.slice(token.end)}`.trim() === "";
+
+      editorRef.current?.replaceText(token.start, token.end, `/${suggestion.command.name} `);
+
+      // Inside Enter's key command the replacement is a queued nested update;
+      // it commits before the microtask, so the submit reads the command line.
+      if (runs) queueMicrotask(onCommand);
     } else {
-      addReference(suggestionReference(suggestion), menu.start, menu.end);
+      addReference(suggestionReference(suggestion), token.start, token.end);
     }
 
     show(undefined);
+  };
+
+  const rankLive = (token: SuggestionMenuState): readonly ComposerSuggestion[] =>
+    suggestionsFor(token.kind, token.query, commands, skills, rankMentions, hasConversationContext);
+
+  /** A pressed row acts as itself or not at all, even when the list has not caught up. */
+  const click = (suggestion: ComposerSuggestion): void => {
+    const document = editorRef.current?.readDocument();
+
+    const token =
+      menu === undefined || document === undefined ? undefined : liveToken(document, menu);
+
+    if (token === undefined || document === undefined) return;
+
+    if (
+      token.query !== deferredQuery &&
+      !rankLive(token).some((candidate) => candidate.id === suggestion.id)
+    )
+      return;
+    select(suggestion, token, document.text);
   };
 
   const insertTrigger = (trigger: "@" | "/"): void => {
@@ -543,7 +586,19 @@ export function useComposerSuggestions({
       composerEnterAction(event) === "submit" || (event.key === "Tab" && !event.shiftKey);
 
     if (!picks) return false;
-    const active = suggestions[activeIndex];
+    const document = editorRef.current?.readDocument();
+    const token = document === undefined ? undefined : liveToken(document, menu);
+
+    // The token moved or went away under a stale menu: neither pick nor send.
+    if (token === undefined || document === undefined) {
+      event.preventDefault();
+      show(undefined);
+
+      return true;
+    }
+
+    // The highlight belongs to the list on screen; a query it has not caught up with ranks afresh.
+    const active = token.query === deferredQuery ? suggestions[activeIndex] : rankLive(token)[0];
 
     if (active === undefined) {
       show(undefined);
@@ -552,7 +607,7 @@ export function useComposerSuggestions({
     }
 
     event.preventDefault();
-    select(active);
+    select(active, token, document.text);
 
     return true;
   };
@@ -603,7 +658,9 @@ export function useComposerSuggestions({
               aria-label={
                 menu?.kind === "mention"
                   ? "Mention files and context"
-                  : "Commands, skills, and prompts"
+                  : onCommand === undefined
+                    ? "Skills"
+                    : "Commands and skills"
               }
               onMouseDown={(event) => event.preventDefault()}
               xstyle={composerStyles.suggestionMenu}
@@ -616,6 +673,7 @@ export function useComposerSuggestions({
                       : suggestionEmptyText(
                           menu.kind,
                           menu.kind === "mention" ? mentionFiles : suggestionCatalog,
+                          onCommand === undefined ? "skills" : "commands and skills",
                         )}
                   </div>
                 ) : (
@@ -631,48 +689,38 @@ export function useComposerSuggestions({
                     const description = descriptionExcerpt(suggestion.description, deferredQuery);
 
                     return (
-                      <PreviewCardTrigger
+                      <div
                         key={suggestion.id}
                         id={optionId}
-                        handle={previewHandle}
-                        payload={suggestion}
-                        delay={0}
-                        closeDelay={100}
-                        render={
-                          <div
-                            role="option"
-                            tabIndex={-1}
-                            aria-selected={selected}
-                            {...props(
-                              composerStyles.suggestionItem,
-                              startsGroup && composerStyles.suggestionGroupStart,
-                            )}
-                            onPointerMove={() => {
-                              if (!selected) setIndex(optionIndex);
-                            }}
-                            onPointerDown={(event) => event.preventDefault()}
-                            onClick={() => select(suggestion)}
-                          >
-                            <span aria-hidden="true" {...props(composerStyles.suggestionIcon)}>
-                              <Icon name={suggestion.icon} size={12} />
-                            </span>
-                            <span {...props(composerStyles.suggestionText)}>
-                              <span {...props(composerStyles.suggestionLabel)}>
-                                <HighlightedSuggestionText
-                                  text={suggestion.label}
-                                  query={deferredQuery}
-                                />
-                              </span>
-                              <span {...props(composerStyles.suggestionDescription)}>
-                                <HighlightedSuggestionText
-                                  text={description}
-                                  query={deferredQuery}
-                                />
-                              </span>
-                            </span>
-                          </div>
-                        }
-                      />
+                        ref={selected ? setActiveOption : undefined}
+                        role="option"
+                        tabIndex={-1}
+                        aria-selected={selected}
+                        {...props(
+                          composerStyles.suggestionItem,
+                          startsGroup && composerStyles.suggestionGroupStart,
+                        )}
+                        onPointerMove={() => {
+                          if (!selected) setIndex(optionIndex);
+                        }}
+                        onPointerDown={(event) => event.preventDefault()}
+                        onClick={() => click(suggestion)}
+                      >
+                        <span aria-hidden="true" {...props(composerStyles.suggestionIcon)}>
+                          <Icon name={suggestion.icon} size={12} />
+                        </span>
+                        <span {...props(composerStyles.suggestionText)}>
+                          <span {...props(composerStyles.suggestionLabel)}>
+                            <HighlightedSuggestionText
+                              text={suggestion.label}
+                              query={deferredQuery}
+                            />
+                          </span>
+                          <span {...props(composerStyles.suggestionDescription)}>
+                            <HighlightedSuggestionText text={description} query={deferredQuery} />
+                          </span>
+                        </span>
+                      </div>
                     );
                   })
                 )}
@@ -681,21 +729,20 @@ export function useComposerSuggestions({
           </Popover.Positioner>
         </Popover.Portal>
       </Popover.Root>
-      <PreviewCard handle={previewHandle}>
-        {({ payload }) =>
-          payload === undefined ? null : (
-            <PreviewCardContent
-              side="right"
-              align="end"
-              sideOffset={6}
-              collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
-              aria-label={`Details for ${payload.label}`}
-              xstyle={composerStyles.suggestionPreview}
-            >
-              <SuggestionPreview suggestion={payload} />
-            </PreviewCardContent>
-          )
-        }
+      <PreviewCard open={activeSuggestion !== undefined && activeOption !== null}>
+        {activeSuggestion === undefined || activeOption === null ? null : (
+          <PreviewCardContent
+            anchor={activeOption}
+            side="right"
+            align="end"
+            sideOffset={6}
+            collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
+            aria-label={`Details for ${activeSuggestion.label}`}
+            xstyle={composerStyles.suggestionPreview}
+          >
+            <SuggestionPreview suggestion={activeSuggestion} />
+          </PreviewCardContent>
+        )}
       </PreviewCard>
     </>
   );

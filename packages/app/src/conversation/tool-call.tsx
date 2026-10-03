@@ -1,4 +1,4 @@
-import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * One tool call: a quiet verb line that expands into its evidence. Ported from
  * the Honk design system's `tool-call.tsx` and recolored onto this palette.
@@ -16,62 +16,25 @@ import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { parsePatchFacts } from "@nyte-ai/client";
 import type { ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
-import { focus, srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { DiffView } from "./diff-view.tsx";
 import type { DiffFacts } from "./diff-view.tsx";
-import { activityStyles, shellTokenStyles, toolCallStyles } from "./styles.stylex.ts";
+import { EditCallView } from "./edit-call.tsx";
+import { activityStyles, toolCallStyles } from "./styles.stylex.ts";
+import { ShellCallView } from "./shell-call.tsx";
 import { SubagentCallView, SubagentLineView } from "./subagent-call.tsx";
+import { terminalText } from "./terminal-text.ts";
 import { tidyPath, toolDetail, toolVerb } from "./tool-copy.ts";
+import { ToolLineView } from "./tool-line.tsx";
 import { toolPhase } from "./transcript-presentation.ts";
-import type { LiveWaits } from "./transcript-presentation.ts";
 
 type ToolBody =
   | { readonly kind: "none" }
-  /** A shell call's output carries its command, drawn as the prompt line. */
-  | { readonly kind: "output"; readonly text: string; readonly command: string | undefined }
+  | { readonly kind: "output"; readonly text: string }
   | { readonly kind: "diff"; readonly path: string; readonly diff: DiffFacts };
-
-type ShellTokenKind =
-  | "program"
-  | "flag"
-  | "string"
-  | "variable"
-  | "operator"
-  | "argument"
-  | "space";
-
-// Every character lands in one alternative, so the tokens rejoin into the command.
-const SHELL_TOKEN = /\s+|"(?:[^"\\]|\\.)*"?|'[^']*'?|&&|\|\||[|;<>]|[^\s|;<>"']+/gu;
-
-const SEPARATOR = /^(?:&&|\|\||[|;])$/u;
-
-/** The first word after a separator is the program. */
-function shellTokens(
-  command: string,
-): readonly { readonly kind: ShellTokenKind; readonly text: string }[] {
-  let expectProgram = true;
-
-  return Array.from(command.matchAll(SHELL_TOKEN), ([text]) => {
-    const kind = shellTokenKind(text, expectProgram);
-
-    if (kind !== "space") expectProgram = SEPARATOR.test(text);
-
-    return { kind, text };
-  });
-}
-
-function shellTokenKind(text: string, expectProgram: boolean): ShellTokenKind {
-  if (/^\s/u.test(text)) return "space";
-  if (text.startsWith('"') || text.startsWith("'")) return "string";
-  if (text.startsWith("$")) return "variable";
-  if (SEPARATOR.test(text) || text === "<" || text === ">") return "operator";
-  if (/^-+\w/u.test(text)) return "flag";
-
-  return expectProgram ? "program" : "argument";
-}
 
 // Closed, the tail is a second trigger, so pressing it always opens.
 function OutputTail({ children }: { children: ReactNode }): ReactElement {
@@ -110,45 +73,9 @@ function OutputTail({ children }: { children: ReactNode }): ReactElement {
   );
 }
 
-function ToolOutput({
-  command,
-  text,
-  open,
-}: {
-  command: string | undefined;
-  text: string;
-  open: boolean;
-}): ReactElement {
-  const [copiedTranscript, setCopiedTranscript] = useState<string>();
-  const transcript = command === undefined ? text : `$ ${command}\n${text}`;
-  const copied = copiedTranscript === transcript;
-  const lines = (
-    <>
-      {command !== undefined && (
-        <code {...props(toolCallStyles.command)}>
-          <span {...props(toolCallStyles.prompt)}>$ </span>
-          {shellTokens(command).map((token, index) =>
-            token.kind === "space" ? (
-              token.text
-            ) : (
-              <span
-                key={index}
-                {...props(
-                  token.kind === "flag" && surfaceTheme.teal,
-                  token.kind === "string" && surfaceTheme.green,
-                  token.kind === "variable" && surfaceTheme.orange,
-                  shellTokenStyles[token.kind],
-                )}
-              >
-                {token.text}
-              </span>
-            ),
-          )}
-        </code>
-      )}
-      {text}
-    </>
-  );
+function ToolOutput({ text, open }: { text: string; open: boolean }): ReactElement {
+  const [copiedText, setCopiedText] = useState<string>();
+  const copied = copiedText === text;
 
   return (
     <div {...props(toolCallStyles.output)}>
@@ -161,13 +88,11 @@ function ToolOutput({
                   size="sm"
                   iconOnly
                   icon={copied ? "checkmark" : "copy"}
-                  aria-label={
-                    command === undefined ? "Copy tool output" : `Copy output for ${command}`
-                  }
+                  aria-label="Copy tool output"
                   onClick={() => {
                     navigator.clipboard
-                      .writeText(transcript)
-                      .then(() => setCopiedTranscript(transcript))
+                      .writeText(text)
+                      .then(() => setCopiedText(text))
                       .catch(() => undefined);
                   }}
                 />
@@ -177,7 +102,7 @@ function ToolOutput({
           </Tooltip>
         </span>
       ) : (
-        <OutputTail>{lines}</OutputTail>
+        <OutputTail>{text}</OutputTail>
       )}
       <Collapsible.Panel
         role="region"
@@ -186,7 +111,7 @@ function ToolOutput({
         data-tool-body
         xstyle={[toolCallStyles.outputBody, toolCallStyles.outputScroll]}
       >
-        <span {...props(toolCallStyles.outputContent)}>{lines}</span>
+        <span {...props(toolCallStyles.outputContent)}>{text}</span>
       </Collapsible.Panel>
     </div>
   );
@@ -203,15 +128,12 @@ export const ToolCallView = memo(function ToolCallView({
   cwd,
   active,
   density,
-  waits,
 }: {
   part: ToolTurnPart;
   progress: ToolProgress | undefined;
   cwd: string | undefined;
   active: boolean;
   density: ToolCallDensity;
-  /** The run's live waits on its children; only the trailing turn has any. */
-  waits?: LiveWaits;
 }): ReactElement {
   const phase = toolPhase(part, active);
 
@@ -222,7 +144,8 @@ export const ToolCallView = memo(function ToolCallView({
   );
 
   const { class: toolClass, result } = part;
-  const text = result === undefined ? (progress?.text ?? "") : result.output;
+  const raw = result === undefined ? (progress?.text ?? "") : result.output;
+  const text = useMemo(() => terminalText(raw), [raw]);
 
   const body: ToolBody =
     toolClass.kind === "file_patch" && facts !== undefined
@@ -233,11 +156,7 @@ export const ToolCallView = memo(function ToolCallView({
         }
       : text.trim() === ""
         ? { kind: "none" }
-        : {
-            kind: "output",
-            text,
-            command: toolClass.kind === "shell" ? toolClass.command : undefined,
-          };
+        : { kind: "output", text };
 
   // One card per child: its create. Every other call on it is a line.
   if (toolClass.kind === "delegate") {
@@ -246,16 +165,44 @@ export const ToolCallView = memo(function ToolCallView({
         session={toolClass.target.session}
         title={toolClass.title}
         phase={phase}
-        density={density}
         cwd={cwd}
       />
     ) : (
-      <SubagentLineView
+      <SubagentLineView toolClass={toolClass} phase={phase} output={text} />
+    );
+  }
+
+  if (toolClass.kind === "shell") {
+    return (
+      <ShellCallView
+        part={part}
         toolClass={toolClass}
-        phase={phase}
+        progress={progress}
+        cwd={cwd}
+        active={active}
         density={density}
-        until={waits?.deadlines.get(part.callId)}
       />
+    );
+  }
+
+  if (toolClass.kind === "file_read" || toolClass.kind === "list" || toolClass.kind === "custom") {
+    return (
+      <ToolLineView
+        part={part}
+        toolClass={toolClass}
+        progress={progress}
+        cwd={cwd}
+        active={active}
+      />
+    );
+  }
+
+  if (
+    toolClass.kind === "file_patch" ||
+    ((toolClass.kind === "file_edit" || toolClass.kind === "file_write") && phase === "running")
+  ) {
+    return (
+      <EditCallView part={part} toolClass={toolClass} cwd={cwd} active={active} density={density} />
     );
   }
 
@@ -266,35 +213,14 @@ export const ToolCallView = memo(function ToolCallView({
 
   const lineContent = (
     <>
-      <span
-        {...props(
-          toolCallStyles.verb,
-          toolClass.kind === "custom" && toolCallStyles.verbLong,
-          toolClass.kind === "custom" && phase !== "running" && toolCallStyles.verbWrap,
-          phase === "running" && activityStyles.shimmer,
-        )}
-      >
+      <span {...props(toolCallStyles.verb, phase === "running" && activityStyles.shimmer)}>
         {verb}
       </span>
-      {/* A custom label is a name, not a verb; the phase words already say failed or stopped. */}
-      {phase === "running" && toolClass.kind === "custom" && (
-        <span {...props(srOnly)}>Running</span>
-      )}
       {detail !== undefined && (
         <Tooltip>
           <TooltipTrigger render={<span {...props(toolCallStyles.detail)}>{detail.text}</span>} />
           <TooltipContent>{detail.title ?? detail.text}</TooltipContent>
         </Tooltip>
-      )}
-      {toolClass.kind === "file_patch" && (toolClass.added > 0 || toolClass.removed > 0) && (
-        <span {...props(toolCallStyles.stats, editDiff && toolCallStyles.editStats)}>
-          {toolClass.added > 0 && (
-            <span {...props(intent.success, toolCallStyles.added)}>+{toolClass.added}</span>
-          )}
-          {toolClass.removed > 0 && (
-            <span {...props(intent.danger, toolCallStyles.removed)}>-{toolClass.removed}</span>
-          )}
-        </span>
       )}
     </>
   );
@@ -335,9 +261,7 @@ export const ToolCallView = memo(function ToolCallView({
       render={(componentProps, state) => (
         <div {...componentProps}>
           {line}
-          {body.kind === "output" && (
-            <ToolOutput command={body.command} text={body.text} open={state.open} />
-          )}
+          {body.kind === "output" && <ToolOutput text={body.text} open={state.open} />}
           {body.kind === "diff" && (
             <Collapsible.Panel keepMounted data-tool-body>
               <DiffView path={body.path} diff={body.diff} variant="inline" />
