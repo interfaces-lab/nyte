@@ -3,6 +3,8 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { CursorExpired } from "@nyte-ai/protocol";
+import { Type } from "typebox";
+import { Compile } from "typebox/compile";
 import { isRefName, newOwnerId } from "./names.ts";
 import { sql, sqlList, type SqliteConnection, type SqlRow } from "./sql.ts";
 import {
@@ -204,10 +206,16 @@ function openNodeSqlite(path: string): SqliteConnection {
   };
 }
 
+const checkString = Compile(Type.String());
+
+const checkSafeInteger = Compile(
+  Type.Integer({ minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER }),
+);
+
 function stringColumn(row: SqlRow, name: string): string {
   const value = row[name];
 
-  if (typeof value !== "string") {
+  if (!checkString.Check(value)) {
     throw new TypeError(`SQLite column ${name} is not a string`);
   }
 
@@ -217,7 +225,7 @@ function stringColumn(row: SqlRow, name: string): string {
 function numberColumn(row: SqlRow, name: string): number {
   const value = row[name];
 
-  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+  if (!checkSafeInteger.Check(value)) {
     throw new TypeError(`SQLite column ${name} is not a safe integer`);
   }
 

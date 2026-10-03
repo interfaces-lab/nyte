@@ -9,7 +9,7 @@ import { NyteClosed, sessionId } from "../../src/kernel/sdk/types.ts";
 import { step } from "../../src/kernel/step.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
 import type { Turn } from "../../src/kernel/turn.ts";
-import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
+import { definePlugin } from "../../src/plugins/index.ts";
 import { assistant, call, drain, message, openStore, seedHead, setHead, user } from "./helpers.ts";
 
 const model: Model<Api> = {
@@ -74,14 +74,12 @@ async function fixture() {
       throw new Error("Snapshot must not invoke a provider");
     },
     plugins: [
-      inlinePlugin(
-        definePlugin({
-          id: "observer",
-          session() {
-            assert.fail("Snapshot must not instantiate observer plugins");
-          },
-        }),
-      ),
+      definePlugin({
+        id: "observer",
+        session() {
+          assert.fail("Snapshot must not instantiate observer plugins");
+        },
+      }),
     ],
     env: { cwd: "/tmp/snapshot-fixture" },
   });

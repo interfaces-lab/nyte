@@ -10,7 +10,7 @@ import { hashObject } from "../src/kernel/hash.ts";
 import { CursorExpired } from "@nyte-ai/protocol";
 import { type Commit, type Event, type EventBody } from "../src/kernel/model.ts";
 import { UnknownSession } from "../src/kernel/store.ts";
-import { PostgresStore, type PostgresDatabase } from "../src/postgres.ts";
+import { PostgresStore, type PostgresDatabase, type PostgresRow } from "../src/postgres.ts";
 
 const notice = (message: string): EventBody => ({
   kind: "notice",
@@ -30,13 +30,12 @@ afterAll(async () => {
 
 function connection(pg: PGlite): PostgresDatabase {
   return {
-    query: async (text, values = []) =>
-      (await pg.query<Record<string, unknown>>(text, [...values])).rows,
+    query: async (text, values = []) => (await pg.query<PostgresRow>(text, [...values])).rows,
     transaction: (run) =>
       pg.transaction(async (transaction) =>
         run({
           query: async (text, values = []) =>
-            (await transaction.query<Record<string, unknown>>(text, [...values])).rows,
+            (await transaction.query<PostgresRow>(text, [...values])).rows,
         }),
       ),
     // These handles share an engine; the fixture owns its lifetime.

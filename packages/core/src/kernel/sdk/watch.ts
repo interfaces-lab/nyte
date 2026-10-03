@@ -1,3 +1,4 @@
+import { FifoQueue } from "@nyte-ai/ai/utils/fifo-queue";
 import type { Event } from "../model.ts";
 import type { Session } from "../store.ts";
 import type { Notice } from "./activation.ts";
@@ -65,7 +66,7 @@ export async function* watchSession(options: {
   input.signal?.addEventListener("abort", abort, { once: true });
 
   if (input.signal?.aborted) abort();
-  const notices: Promise<SessionEvent>[] = [];
+  const notices = new FifoQueue<Promise<SessionEvent>>();
   let wake: (() => void) | undefined;
   let iterator: AsyncIterator<Event> | undefined;
   let activationObserved = false;
@@ -81,7 +82,7 @@ export async function* watchSession(options: {
     // Reserve arrival order before reading the cursor. Concurrent notices may
     // finish that read in a different order, or while the consumer is at yield.
     const event = Promise.withResolvers<SessionEvent>();
-    notices.push(event.promise);
+    notices.enqueue(event.promise);
     void session.events.last().then((seq) => event.resolve(noticeEvent(notice, seq)), event.reject);
     // A queued rejection must be observed even if the consumer leaves before
     // reaching it. The original rejection still propagates when it is drained.
@@ -176,10 +177,8 @@ export async function* watchSession(options: {
     readNext();
 
     for (;;) {
-      while (notices.length > 0) {
-        const notice = notices.shift();
-
-        if (notice !== undefined) yield await notice;
+      for (let notice = notices.dequeue(); notice !== undefined; notice = notices.dequeue()) {
+        yield await notice;
       }
 
       if (pending.outcome === undefined) {
@@ -229,7 +228,7 @@ export async function* watchSession(options: {
   } finally {
     departed = true;
     unsubscribe?.();
-    notices.length = 0;
+    notices.clear();
     input.signal?.removeEventListener("abort", abort);
     wake = undefined;
     source.abort();

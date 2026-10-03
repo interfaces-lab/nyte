@@ -72,7 +72,7 @@ export function toolFailure(
 }
 
 /** Tool-call arguments as the durable log will replay them. */
-export function toolCallArguments(value: unknown): JsonObject {
+export function toolCallArguments<Value>(value: Value): JsonObject {
   const json = toJsonValue(value);
 
   if (!isJsonObject(json)) throw new Error("Tool arguments must be an object");

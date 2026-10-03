@@ -103,13 +103,15 @@ export function createCacheWarming(input: {
 
     for (;;) {
       const from = await session.refs.read(name);
-      const commit: Commit = {
+      const baseCommit: Commit = {
         kind: "commit",
         parent: from,
         at: Date.now(),
         body: { kind: "usage", ...usage },
-        ...(options.actor === undefined ? {} : { author: options.actor }),
       };
+
+      const commit: Commit =
+        options.actor === undefined ? baseCommit : { ...baseCommit, author: options.actor };
       const [to] = await session.objects.put([commit]);
 
       if (to === undefined) throw new Error(`Writing usage for ${name} returned no oid`);

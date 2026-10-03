@@ -1,3 +1,4 @@
+import { withPluginSource } from "../../src/plugins/source.ts";
 /**
  * The branch declares the prompt and tools the model has. Every test reads the
  * branch back from the store and the request the provider was given; how the
@@ -5,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
+import { contentText, createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import {
   getCurrentSystemMessage,
   getCurrentSystemPrompt,
@@ -24,7 +25,7 @@ import { type Nyte, type SessionId } from "../../src/kernel/sdk/types.ts";
 import type { Commit } from "../../src/kernel/model.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
 import type { AgentTool, StreamFn } from "../../src/kernel/loop/types.ts";
-import { definePlugin, inlinePlugin, type LoadedPlugin } from "../../src/plugins/index.ts";
+import { definePlugin, type Plugin } from "../../src/plugins/index.ts";
 import { drive, step } from "../../src/kernel/step.ts";
 import { submit } from "../../src/kernel/queue.ts";
 import { bindTurn, type Turn } from "../../src/kernel/turn.ts";
@@ -77,8 +78,8 @@ function catalog(
     readonly version?: string;
     readonly session?: Parameters<typeof definePlugin>[0]["session"];
   } = {},
-): LoadedPlugin {
-  return inlinePlugin(
+): Plugin {
+  return withPluginSource(
     definePlugin({
       id: "catalog",
       session(api) {
@@ -93,7 +94,7 @@ function catalog(
         return options.session?.(api);
       },
     }),
-    { version: options.version ?? "v1" },
+    { source: "inline", version: options.version ?? "v1" },
   );
 }
 
@@ -109,7 +110,7 @@ function script(onRequest?: (context: Context, session: Session) => Promise<void
   const streamFn: StreamFn = async (_model, context) => {
     requests.push(context);
     const tail = context.messages.findLast((item) => item.role !== "system");
-    const text = tail?.role === "user" && typeof tail.content === "string" ? tail.content : "";
+    const text = tail?.role === "user" ? contentText(tail.content) : "";
     const wanted = /^call (\S+)$/u.exec(text)?.[1];
     const answer =
       wanted === undefined || tail?.role !== "user"
@@ -138,11 +139,7 @@ function script(onRequest?: (context: Context, session: Session) => Promise<void
 
 const sessions = new Map<number, Session>();
 
-async function host(
-  store: Store,
-  streamFn: StreamFn,
-  plugins: readonly LoadedPlugin[],
-): Promise<Nyte> {
+async function host(store: Store, streamFn: StreamFn, plugins: readonly Plugin[]): Promise<Nyte> {
   return createNyte({ store, model, models, streamFn, plugins, env: { cwd: "/tmp/nowhere" } });
 }
 

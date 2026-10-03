@@ -20,11 +20,11 @@ export {
 } from "./plugins/builtin/context-files.ts";
 
 /**
- * `LoadedPlugin` is a `NyteOptions` field; `PluginInfo` and `SettingInfo` are
+ * `Plugin` is a `NyteOptions` field; `PluginInfo` and `SettingInfo` are
  * what the `plugins` namespace returns. Authoring the things behind them is
  * `/plugins`.
  */
-export type { LoadedPlugin, PluginInfo, SettingInfo } from "./plugins/types.ts";
+export type { Plugin, PluginInfo, SettingInfo } from "./plugins/types.ts";
 
 /** The remaining `NyteOptions` fields a host names when it composes a `Nyte`. */
 export { isThinkingLevel, type StreamFn, type ThinkingLevel } from "./kernel/loop/types.ts";

@@ -8,7 +8,9 @@ import { createHash } from "node:crypto";
 import { contentText } from "@nyte-ai/ai";
 import { isTerminalPhase, type JobEnd, type RunPhase } from "@nyte-ai/protocol";
 import type { JsonValue } from "@nyte-ai/schema";
-import { definePlugin, inlinePlugin, type LoadedPlugin } from "../../plugins/types.ts";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
+import { definePlugin, type Plugin } from "../../plugins/types.ts";
 import {
   DEFAULT_TASK_MODELS,
   FAST_MODEL_SUFFIX,
@@ -111,53 +113,53 @@ export function createDelegation(input: {
   readonly runners: Runners;
 }) {
   const { options, pool, runners } = input;
+  const builtins = new WeakMap<Pooled, readonly Plugin[]>();
 
   const pluginsFor = (target: {
     readonly id: SessionId;
     readonly pooled: Pooled;
-    readonly plugins: readonly LoadedPlugin[];
-  }): readonly LoadedPlugin[] => {
+    readonly plugins: readonly Plugin[];
+  }): readonly Plugin[] => {
     const { id, pooled, plugins } = target;
+    const cached = builtins.get(pooled);
+    if (cached !== undefined) return [...plugins, ...cached];
 
     const roleAware =
       pooled.parent === undefined
-        ? [...plugins, inlinePlugin(subagentsPlugin(subagentHost(id, pooled)))]
+        ? [subagentsPlugin(subagentHost(id, pooled))]
         : [
-            ...plugins,
-            inlinePlugin(
-              definePlugin({
-                id: "delegate-system",
-                async session(api) {
-                  const text = await pool.readFact(pooled.session, SYSTEM_FACT);
+            definePlugin({
+              id: "delegate-system",
+              async session(api) {
+                const text = await pool.readFact(pooled.session, SYSTEM_FACT);
 
-                  if (typeof text === "string") {
-                    api.prompt.add((draft) => draft.set("delegate-system", { text, order: 1 }));
-                  }
+                if (Value.Check(Type.String(), text)) {
+                  api.prompt.add((draft) => draft.set("delegate-system", { text, order: 1 }));
+                }
 
-                  if ((await pool.readFact(pooled.session, FAST_FACT)) !== true) return;
-                  api.hook("before_request", (event) =>
-                    event.step === "assistant" ? { streamOptions: { fast: true } } : undefined,
-                  );
-                },
-              }),
-            ),
+                if ((await pool.readFact(pooled.session, FAST_FACT)) !== true) return;
+                api.hook("before_request", (event) =>
+                  event.step === "assistant" ? { streamOptions: { fast: true } } : undefined,
+                );
+              },
+            }),
           ];
 
-    return [
+    const intrinsic = [
       ...roleAware,
-      inlinePlugin(
-        definePlugin({
-          id: "jobs",
-          session(api) {
-            api.tools.add((draft) => {
-              const bash = draft.get("bash");
+      definePlugin({
+        id: "jobs",
+        session(api) {
+          api.tools.add((draft) => {
+            const bash = draft.get("bash");
 
-              if (bash !== undefined) draft.set("bash", jobsFor(id, pooled).wrap(bash));
-            });
-          },
-        }),
-      ),
+            if (bash !== undefined) draft.set("bash", jobsFor(id, pooled).wrap(bash));
+          });
+        },
+      }),
     ];
+    builtins.set(pooled, intrinsic);
+    return [...plugins, ...intrinsic];
   };
 
   const jobsFor = (id: SessionId, pooled: Pooled) => {
@@ -206,7 +208,7 @@ export function createDelegation(input: {
   const titleOf = async (child: Pooled): Promise<string> => {
     const name = await pool.readFact(child.session, NAME_FACT);
 
-    return typeof name === "string" ? name : "";
+    return Value.Check(Type.String(), name) ? name : "";
   };
 
   const stopped = async (child: Pooled): Promise<boolean> =>

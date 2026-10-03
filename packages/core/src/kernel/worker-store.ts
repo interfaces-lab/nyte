@@ -7,6 +7,7 @@
 import { Worker } from "node:worker_threads";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
+import { FifoQueue } from "@nyte-ai/ai/utils/fifo-queue";
 import { CursorExpired } from "@nyte-ai/protocol";
 import type {
   Commit,
@@ -46,6 +47,7 @@ import {
   SessionHandleSchema,
   type StoreMethod,
   type StoreRequest,
+  type StoreResponse,
   type WireError,
 } from "./store-rpc.ts";
 
@@ -83,8 +85,10 @@ interface Validator<T> {
   Check(value: unknown): value is T;
 }
 
+type OkResponse = Extract<StoreResponse, { kind: "ok" }>;
+
 interface Pending {
-  readonly resolve: (value: unknown) => void;
+  readonly resolve: (response: OkResponse) => void;
   readonly reject: (cause: Error) => void;
 }
 
@@ -140,18 +144,26 @@ class Bridge {
       },
     });
     this.ready = new Promise<void>((resolve, reject) => {
-      const onReady = (message: unknown): void => {
-        if (
-          checkResponses.Check(message) &&
-          message.some((response) => response.kind === "ready")
-        ) {
-          this.worker.off("message", onReady);
-          this.worker.on("message", (next: unknown) => this.receive(next));
-          resolve();
-        }
-      };
+      let started = false;
 
-      this.worker.on("message", onReady);
+      this.worker.on("message", (message) => {
+        if (!checkResponses.Check(message)) {
+          if (started) this.fail(new TypeError("Store worker sent a malformed response"));
+
+          return;
+        }
+
+        if (started) {
+          this.receive(message);
+
+          return;
+        }
+
+        if (!message.some((response) => response.kind === "ready")) return;
+        started = true;
+        resolve();
+      });
+
       this.worker.once("error", (cause: unknown) => {
         const failure = cause instanceof Error ? cause : new Error(String(cause));
         this.fail(failure);
@@ -181,21 +193,15 @@ class Bridge {
     this.watches.clear();
   }
 
-  private receive(message: unknown): void {
-    if (!checkResponses.Check(message)) {
-      this.fail(new TypeError("Store worker sent a malformed response"));
-
-      return;
-    }
-
-    for (const response of message) {
+  private receive(responses: readonly StoreResponse[]): void {
+    for (const response of responses) {
       switch (response.kind) {
         case "ready":
           break;
         case "ok": {
           const call = this.pending.get(response.id);
           this.pending.delete(response.id);
-          call?.resolve(response.value);
+          call?.resolve(response);
           break;
         }
 
@@ -264,16 +270,16 @@ class Bridge {
     if (this.failure !== undefined) throw this.failure;
     const id = this.nextId++;
 
-    const value = await new Promise<unknown>((resolve, reject) => {
+    const response = await new Promise<OkResponse>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
       this.send({ kind: "call", id, session, method, args: [...args] });
     });
 
-    if (!validate.Check(value)) {
+    if (!validate.Check(response.value)) {
       throw new TypeError(`Store worker returned a malformed ${method} result`);
     }
 
-    return value;
+    return response.value;
   }
 
   async *watch(
@@ -287,7 +293,7 @@ class Bridge {
 
     if (signal?.aborted || this.closing) return;
     const id = this.nextId++;
-    const queue: Event[] = [];
+    const queue = new FifoQueue<Event>();
     let finished: { cause?: Error } | undefined;
     let wake: (() => void) | undefined;
 
@@ -299,13 +305,13 @@ class Bridge {
     this.watches.set(id, {
       session,
       push: (events) => {
-        queue.push(...events);
+        for (const event of events) queue.enqueue(event);
         notify();
       },
       // A watch ends only by abort, close, or expiry; what it buffered is dropped with it.
       end: (cause) => {
         finished ??= cause === undefined ? {} : { cause };
-        queue.length = 0;
+        queue.clear();
         notify();
       },
     });
@@ -313,7 +319,7 @@ class Bridge {
     const abort = (): void => {
       if (this.watches.delete(id)) this.send({ kind: "unwatch", id });
       finished ??= {};
-      queue.length = 0;
+      queue.clear();
       notify();
     };
 
@@ -330,7 +336,7 @@ class Bridge {
           return;
         }
 
-        const event = queue.shift();
+        const event = queue.dequeue();
 
         if (event !== undefined) {
           consumed += 1;

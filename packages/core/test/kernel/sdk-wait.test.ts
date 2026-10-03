@@ -9,7 +9,7 @@ import { waitForHead } from "../../src/kernel/sdk/wait.ts";
 import { headRef, runRef } from "../../src/kernel/names.ts";
 import type { Run } from "../../src/kernel/model.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
-import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
+import { definePlugin } from "../../src/plugins/index.ts";
 import { backgroundWait, ToolWait } from "../../src/kernel/loop/types.ts";
 import {
   assistant,
@@ -46,30 +46,28 @@ async function fixture(store: Store = openStore(), existingId?: string) {
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     env: { cwd: "/tmp/nowhere" },
     plugins: [
-      inlinePlugin(
-        definePlugin({
-          id: "question",
-          session(api) {
-            api.tools.add((draft) =>
-              draft.set("ask", {
-                name: "ask",
-                description: "Ask a question",
-                parameters: Type.Object({}),
-                execute: async () => {
-                  throw new ToolWait(backgroundWait);
+      definePlugin({
+        id: "question",
+        session(api) {
+          api.tools.add((draft) =>
+            draft.set("ask", {
+              name: "ask",
+              description: "Ask a question",
+              parameters: Type.Object({}),
+              execute: async () => {
+                throw new ToolWait(backgroundWait);
+              },
+              wake: async () => ({
+                kind: "success",
+                result: {
+                  content: [{ type: "text", text: "answered" }],
+                  details: {},
                 },
-                wake: async () => ({
-                  kind: "success",
-                  result: {
-                    content: [{ type: "text", text: "answered" }],
-                    details: {},
-                  },
-                }),
               }),
-            );
-          },
-        }),
-      ),
+            }),
+          );
+        },
+      }),
     ],
     streamFn: (_model, context, options) => {
       if (options?.signal !== undefined) providerSignals.push(options.signal);

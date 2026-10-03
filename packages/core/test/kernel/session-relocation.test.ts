@@ -5,7 +5,7 @@ import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-a
 import { getCurrentSystemPrompt } from "@nyte-ai/schema";
 import { expect, test } from "vitest";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
-import { definePlugin, inlinePlugin, toolsFsPlugin } from "../../src/plugins/index.ts";
+import { definePlugin, toolsFsPlugin } from "../../src/plugins/index.ts";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import { assistant, call, openStore, storePath, trustWorkspace, within } from "./helpers.ts";
 
@@ -23,19 +23,17 @@ const model: Model<Api> = {
 };
 
 function locationPlugin(id: string) {
-  return inlinePlugin(
-    definePlugin({
-      id,
-      session(api) {
-        api.commands.add((draft) =>
-          draft.set("where", {
-            description: "Current directory",
-            run: () => api.env.cwd,
-          }),
-        );
-      },
-    }),
-  );
+  return definePlugin({
+    id,
+    session(api) {
+      api.commands.add((draft) =>
+        draft.set("where", {
+          description: "Current directory",
+          run: () => api.env.cwd,
+        }),
+      );
+    },
+  });
 }
 
 test("relocation keeps history in its store, rebinds filesystem tools, and requires trust again on resume", async () => {
@@ -44,8 +42,8 @@ test("relocation keeps history in its store, rebinds filesystem tools, and requi
   const destination = join(cwd, "destination");
   mkdirSync(destination);
   const workspace = await trustWorkspace(destination);
-  const originalPlugins = [locationPlugin("original"), inlinePlugin(toolsFsPlugin())];
-  const destinationPlugins = [locationPlugin("destination"), inlinePlugin(toolsFsPlugin())];
+  const originalPlugins = [locationPlugin("original"), toolsFsPlugin()];
+  const destinationPlugins = [locationPlugin("destination"), toolsFsPlugin()];
   const requests: number[] = [];
   const streamFn: StreamFn = (_model, context) => {
     requests.push(context.messages.filter((message) => message.role === "user").length);
@@ -276,16 +274,14 @@ test("messages admitted during relocation run only after destination activation 
       ...input,
       workspace,
       plugins: [
-        inlinePlugin(
-          definePlugin({
-            id: "slow-destination",
-            async session(api) {
-              started.resolve();
-              await finish.promise;
-              api.prompt.add((draft) => draft.set("cwd", { text: api.env.cwd }));
-            },
-          }),
-        ),
+        definePlugin({
+          id: "slow-destination",
+          async session(api) {
+            started.resolve();
+            await finish.promise;
+            api.prompt.add((draft) => draft.set("cwd", { text: api.env.cwd }));
+          },
+        }),
       ],
     });
     await within(started.promise);

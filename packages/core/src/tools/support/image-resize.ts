@@ -4,43 +4,14 @@ import {
   type ResizedImage,
   resizeImageInProcess,
 } from "./image-resize-core.ts";
+import { checkResizeResponse, type ResizeRequest } from "./image-resize-messages.ts";
 
 export type { ImageResizeOptions, ResizedImage } from "./image-resize-core.ts";
-
-interface ResizeImageWorkerResponse {
-  result?: ResizedImage | null;
-  error?: string;
-}
 
 function toTransferableBytes(input: Uint8Array): Uint8Array<ArrayBuffer> {
   // Transfer detaches the buffer, so transfer a worker-owned copy and leave the
   // caller's bytes intact.
   return new Uint8Array(input);
-}
-
-function isResizeImageWorkerResponse(value: unknown): value is ResizeImageWorkerResponse {
-  if (value === null || typeof value !== "object") return false;
-  if ("error" in value && value.error !== undefined && typeof value.error !== "string")
-    return false;
-  if (!("result" in value) || value.result === undefined || value.result === null) return true;
-  const result = value.result;
-  return (
-    typeof result === "object" &&
-    "data" in result &&
-    typeof result.data === "string" &&
-    "mimeType" in result &&
-    typeof result.mimeType === "string" &&
-    "originalWidth" in result &&
-    typeof result.originalWidth === "number" &&
-    "originalHeight" in result &&
-    typeof result.originalHeight === "number" &&
-    "width" in result &&
-    typeof result.width === "number" &&
-    "height" in result &&
-    typeof result.height === "number" &&
-    "wasResized" in result &&
-    typeof result.wasResized === "boolean"
-  );
 }
 
 function createResizeWorker(workerSpecifier: string | URL): Worker {
@@ -69,16 +40,16 @@ async function resizeImageInWorker(
         reject(error);
       };
 
-      worker.once("message", (message: unknown) => {
-        if (!isResizeImageWorkerResponse(message)) {
+      worker.once("message", (message) => {
+        if (!checkResizeResponse.Check(message)) {
           fail(new Error("Invalid image resize worker response"));
           return;
         }
-        if (message.error) {
+        if ("error" in message) {
           fail(new Error(message.error));
           return;
         }
-        settle(message.result ?? null);
+        settle(message.result);
       });
       worker.once("error", fail);
       worker.once("exit", (code) => {
@@ -86,14 +57,8 @@ async function resizeImageInWorker(
           fail(new Error(`Image resize worker exited with code ${code}`));
         }
       });
-      worker.postMessage(
-        {
-          inputBytes: inputBytesForWorker,
-          mimeType,
-          options,
-        },
-        [inputBytesForWorker.buffer],
-      );
+      const request: ResizeRequest = { inputBytes: inputBytesForWorker, mimeType, options };
+      worker.postMessage(request, [inputBytesForWorker.buffer]);
     });
   } finally {
     void worker.terminate().catch(() => undefined);
@@ -121,7 +86,7 @@ export async function resizeImage(
   // Bun compiled executables resolve worker entrypoints by string path, not via
   // new URL(..., import.meta.url). Try the string path first under Bun so the
   // release binary uses the embedded worker instead of falling back in-process.
-  if (typeof process.versions.bun === "string") {
+  if (process.versions.bun !== undefined) {
     try {
       return await resizeImageInWorker(
         "/$bunfs/root/core/src/tools/support/image-resize-worker.js",

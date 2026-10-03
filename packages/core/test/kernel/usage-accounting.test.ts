@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { contentText, createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import type { AssistantMessage, Usage } from "@nyte-ai/schema";
-import { writeCheckpoint } from "../../src/kernel/compaction.ts";
-import { contextMessages } from "@nyte-ai/client";
+import { prepareCheckpoint, writeCheckpoint } from "../../src/kernel/compaction.ts";
+import { contextMessages, estimateContextTokens, projectContextStatus } from "@nyte-ai/client";
 import { contextCommits } from "../../src/kernel/graph.ts";
 import type { Commit } from "../../src/kernel/model.ts";
 import { headRef } from "../../src/kernel/names.ts";
@@ -17,12 +17,15 @@ import { projectUsage } from "@nyte-ai/client";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import {
   assistant,
+  commit,
   drain,
   message,
+  openSession,
   openStore,
   seedHead,
   setHead,
   storePath,
+  usage,
   user,
 } from "./helpers.ts";
 
@@ -41,7 +44,7 @@ const model: Model<Api> = {
 const settings = { enabled: true, reserveTokens: 100, keepRecentTokens: 1 };
 const retry = { enabled: true, maxRetries: 1, baseDelayMs: 0 };
 
-function usage(tokens: number): Usage {
+function usageOf(tokens: number): Usage {
   return {
     input: tokens * 0.4,
     output: tokens * 0.3,
@@ -71,12 +74,7 @@ function stream(answer: AssistantMessage) {
 }
 
 async function storedCommits(session: Session): Promise<Commit[]> {
-  const commits: Commit[] = [];
-  for (const entry of await session.objects.list()) {
-    const object = await session.objects.get(entry.oid);
-    if (object?.kind === "commit") commits.push(object);
-  }
-  return commits;
+  return (await session.objects.commits()).map((entry) => entry.commit);
 }
 
 test("a successful checkpoint records every retry's reported tokens and costs once", async () => {
@@ -93,8 +91,8 @@ test("a successful checkpoint records every retry's reported tokens and costs on
       requests += 1;
       return stream(
         requests === 1
-          ? assistant("partial", { stop: "error", error: "503", usage: usage(100) })
-          : assistant("summary", { usage: usage(200) }),
+          ? assistant("partial", { stop: "error", error: "503", usage: usageOf(100) })
+          : assistant("summary", { usage: usageOf(200) }),
       );
     },
   });
@@ -137,11 +135,11 @@ test.each(["exhausted", "thrown", "cancelled", "provider-aborted", "backoff"] as
         requests += 1;
         if (mode === "backoff") {
           controller.abort();
-          return stream(assistant("partial", { stop: "error", error: "503", usage: usage(100) }));
+          return stream(assistant("partial", { stop: "error", error: "503", usage: usageOf(100) }));
         }
         if (requests === 1) {
           return stream(
-            assistant("history summary", { stop: "error", error: "503", usage: usage(100) }),
+            assistant("history summary", { stop: "error", error: "503", usage: usageOf(100) }),
           );
         }
         if (mode === "thrown") throw new Error("transport broke");
@@ -150,7 +148,7 @@ test.each(["exhausted", "thrown", "cancelled", "provider-aborted", "backoff"] as
           assistant("partial", {
             stop: mode === "provider-aborted" ? "aborted" : "error",
             error: "billing",
-            usage: usage(200),
+            usage: usageOf(200),
           }),
         );
       },
@@ -185,16 +183,16 @@ test.each([false, true])(
     const session = await openStore().create();
     await seedHead(session, "main", [
       message(user("old work")),
-      message(assistant("answer", { usage: usage(2_000) })),
+      message(assistant("answer", { usage: usageOf(2_000) })),
     ]);
     const controller = new AbortController();
-    const streamFn: StreamFn = () => stream(assistant("normal answer", { usage: usage(200) }));
+    const streamFn: StreamFn = () => stream(assistant("normal answer", { usage: usageOf(200) }));
     const turn = bindTurn({
       streamFn,
       compactionStreamFn: () => {
         if (cancelled) controller.abort();
         return stream(
-          assistant("partial summary", { stop: "error", error: "billing", usage: usage(100) }),
+          assistant("partial summary", { stop: "error", error: "billing", usage: usageOf(100) }),
         );
       },
       model,
@@ -236,7 +234,7 @@ test("a conflicting checkpoint publish records its usage once and leaves the com
     reason: "manual",
     streamFn: async () => {
       await setHead(session, "main", target);
-      return stream(assistant("summary", { usage: usage(100) }));
+      return stream(assistant("summary", { usage: usageOf(100) }));
     },
   });
   assert.equal(outcome.kind, "failed");
@@ -258,7 +256,7 @@ test("failed branch summarization retains its usage without navigating", async (
     plugins: [],
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     streamFn: () =>
-      stream(assistant("partial", { stop: "error", error: "billing", usage: usage(100) })),
+      stream(assistant("partial", { stop: "error", error: "billing", usage: usageOf(100) })),
   });
   try {
     const result = await nyte.heads.move({
@@ -296,9 +294,9 @@ test("overflow retries count rejected chunks as well as successful chunks", asyn
           ? assistant("", {
               stop: "error",
               error: "Your input exceeds the context window of this model",
-              usage: usage(100),
+              usage: usageOf(100),
             })
-          : assistant("summary", { usage: usage(100) }),
+          : assistant("summary", { usage: usageOf(100) }),
       );
     },
   });
@@ -317,7 +315,7 @@ test.each([false, true])(
     const failed = assistant("partial answer", {
       stop: "error",
       error: "Your input exceeds the context window of this model",
-      usage: usage(100),
+      usage: usageOf(100),
     });
     let requests = 0;
     const turn = bindTurn({
@@ -327,10 +325,10 @@ test.each([false, true])(
       compaction: settings,
       retry,
       streamFn: () =>
-        stream(++requests === 1 ? failed : assistant("recovered answer", { usage: usage(300) })),
+        stream(++requests === 1 ? failed : assistant("recovered answer", { usage: usageOf(300) })),
       compactionStreamFn: async () => {
         if (conflict) await setHead(session, "main", target);
-        return stream(assistant("summary", { usage: usage(200) }));
+        return stream(assistant("summary", { usage: usageOf(200) }));
       },
     });
     await submit(session, {
@@ -376,3 +374,100 @@ test.each([false, true])(
     );
   },
 );
+
+test("recorded usage survives rewind and reopen, including loose compaction usage", async () => {
+  const path = storePath();
+  const store = openStore(path);
+  const session = await store.create();
+  const [first] = await session.objects.put([commit(null, message(assistant("first")), { at: 1 })]);
+  assert.ok(first);
+  const [second] = await session.objects.put([
+    commit(first, message(assistant("second")), { at: 2 }),
+  ]);
+  assert.ok(second);
+  await session.refs.update([{ name: headRef("main"), from: null, to: second }], {
+    reason: "respond",
+  });
+  await session.refs.update([{ name: headRef("other"), from: null, to: second }], {
+    reason: "branch",
+  });
+  const failedSummary = commit(second, { kind: "summary", text: "", usage }, { at: 3 });
+  await session.objects.put([failedSummary, failedSummary, { kind: "blob", value: "metadata" }]);
+  await session.refs.update(
+    [
+      { name: headRef("main"), from: second, to: first },
+      { name: headRef("other"), from: second, to: null },
+    ],
+    { reason: "rewind" },
+  );
+  const id = session.id;
+  await session.close();
+  await store.close();
+
+  const reopened = await openStore(path).open(id);
+  try {
+    const commits = await storedCommits(reopened);
+    const summary = projectUsage(commits);
+    assert.equal(commits.length, 3);
+    assert.equal(summary.total.totalTokens, 45);
+    assert.equal(summary.models[0]?.turns, 2);
+    assert.equal(summary.compaction.totalTokens, 15);
+    assert.equal(await reopened.refs.read(headRef("main")), first);
+  } finally {
+    await reopened.close();
+  }
+});
+
+test("portable checkpoints invalidate retained usage until a response sees the replacement prefix", async () => {
+  const selected = { provider: "openai", api: "openai-responses", model: "test-model" } as const;
+  const session = await openSession();
+  await seedHead(session, "main", [
+    message(user("old request", 100)),
+    message(assistant("old answer", { at: 150 })),
+    {
+      kind: "checkpoint",
+      summary: "gist",
+      retainedTail: [
+        assistant("kept", { at: 200, usage: { ...usage, input: 9_495, totalTokens: 9_500 } }),
+      ],
+      tokensBefore: 9_500,
+    },
+    message(user("tail", 2_000)),
+  ]);
+  const entries = await contextCommits(session.objects, await session.refs.read(headRef("main")));
+  const commits = entries.map((entry) => entry.commit);
+  for (const target of [undefined, selected]) {
+    const status = projectContextStatus(commits, 10_000, target);
+    assert.equal(status.usageTokens, 0);
+    assert.equal(status.estimatedTokens, status.trailingTokens);
+    assert.equal(status.percent, 0);
+  }
+  const prepared = prepareCheckpoint(entries, settings);
+  assert.ok(prepared.ok && prepared.value);
+  assert.equal(prepared.value.tokensBefore, projectContextStatus(commits, 10_000).estimatedTokens);
+
+  await seedHead(session, "main", [
+    message(
+      assistant("new reply", { at: 3_000, usage: { ...usage, input: 195, totalTokens: 200 } }),
+    ),
+    message(user("tail", 4_000)),
+  ]);
+  const resumed = (
+    await contextCommits(session.objects, await session.refs.read(headRef("main")))
+  ).map((entry) => entry.commit);
+  assert.equal(projectContextStatus(resumed, 10_000, selected).estimatedTokens, 201);
+  assert.equal(projectContextStatus(resumed, 10_000, selected).usageTokens, 200);
+});
+
+test("usage applicability checks the whole prefix, not only the adjacent message", () => {
+  const messages = [
+    user("inserted", 500),
+    user("older", 100),
+    assistant("stale", { at: 200, usage: { ...usage, totalTokens: 9_500 } }),
+  ];
+  assert.equal(estimateContextTokens(messages).usageTokens, 0);
+  assert.equal(
+    estimateContextTokens([...messages, assistant("fresh", { at: 500 })]).usageTokens,
+    usage.totalTokens,
+  );
+});

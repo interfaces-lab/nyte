@@ -1,3 +1,4 @@
+import { withPluginSource } from "../../src/plugins/source.ts";
 /**
  * Activation: a plugin list becomes tools, a prompt, settings, and hooks, and
  * `turnFor` resolves each run's inputs before the turn runs.
@@ -21,7 +22,6 @@ import type { Session } from "../../src/kernel/store.ts";
 import type { TurnInput } from "../../src/kernel/turn.ts";
 import {
   definePlugin,
-  inlinePlugin,
   type AgentTool,
   type Plugin,
   type PluginSession,
@@ -128,28 +128,24 @@ test("plugins contribute tools, prompt sections, and settings that live in the s
     target: { kind: "session", session },
     env,
     plugins: [
-      inlinePlugin(
-        plugin("base", (api) => {
-          api.tools.add((draft) => draft.set("echo", echoTool(seen)));
-          api.prompt.add((draft) => draft.set("intro", { text: "You are terse.", order: 1 }));
-          api.settings.add((draft) =>
-            draft.set("verbosity", {
-              label: "Verbosity",
-              key: "verbosity",
-              default: "low",
-              choices: [
-                { id: "low", label: "Low" },
-                { id: "high", label: "High" },
-              ],
-            }),
-          );
-        }),
-      ),
-      inlinePlugin(
-        plugin("extra", (api) => {
-          api.prompt.add((draft) => draft.set("more", { text: "Cite sources.", order: 2 }));
-        }),
-      ),
+      plugin("base", (api) => {
+        api.tools.add((draft) => draft.set("echo", echoTool(seen)));
+        api.prompt.add((draft) => draft.set("intro", { text: "You are terse.", order: 1 }));
+        api.settings.add((draft) =>
+          draft.set("verbosity", {
+            label: "Verbosity",
+            key: "verbosity",
+            default: "low",
+            choices: [
+              { id: "low", label: "Low" },
+              { id: "high", label: "High" },
+            ],
+          }),
+        );
+      }),
+      plugin("extra", (api) => {
+        api.prompt.add((draft) => draft.set("more", { text: "Cite sources.", order: 2 }));
+      }),
     ],
   });
 
@@ -178,11 +174,9 @@ test("plugins contribute tools, prompt sections, and settings that live in the s
   const notices: Notice[] = [];
   activation.subscribe((notice) => notices.push(notice));
   await activation.setPlugins([
-    inlinePlugin(
-      plugin("only", (api) => {
-        api.prompt.add((draft) => draft.set("p", { text: "Replaced." }));
-      }),
-    ),
+    plugin("only", (api) => {
+      api.prompt.add((draft) => draft.set("p", { text: "Replaced." }));
+    }),
   ]);
   assert.equal(activation.systemPrompt(), "Replaced.");
   assert.deepEqual(activation.tools(), []);
@@ -212,11 +206,9 @@ test("plugin session messages start at the newest checkpoint", async () => {
     target: { kind: "session", session },
     env,
     plugins: [
-      inlinePlugin(
-        plugin("session-reader", (api) => {
-          exposed = api.session;
-        }),
-      ),
+      plugin("session-reader", (api) => {
+        exposed = api.session;
+      }),
     ],
   });
 
@@ -242,20 +234,18 @@ test("hooks bend the turn: a policy can rewrite a tool's arguments and the conte
     target: { kind: "session", session },
     env,
     plugins: [
-      inlinePlugin(
-        plugin("policy", (api) => {
-          api.tools.add((draft) => draft.set("echo", echoTool(seen)));
-          api.prompt.add((draft) => draft.set("p", { text: "base prompt" }));
-          api.hook("before_tool", (event) =>
-            event.toolName === "echo" && event.args.path === "/secret"
-              ? { action: "modify", args: { path: "/redacted" } }
-              : { action: "continue" },
-          );
-          api.hook("transform_context", (event) => ({
-            systemPrompt: `${event.systemPrompt} + transformed for ${event.runId}`,
-          }));
-        }),
-      ),
+      plugin("policy", (api) => {
+        api.tools.add((draft) => draft.set("echo", echoTool(seen)));
+        api.prompt.add((draft) => draft.set("p", { text: "base prompt" }));
+        api.hook("before_tool", (event) =>
+          event.toolName === "echo" && event.args.path === "/secret"
+            ? { action: "modify", args: { path: "/redacted" } }
+            : { action: "continue" },
+        );
+        api.hook("transform_context", (event) => ({
+          systemPrompt: `${event.systemPrompt} + transformed for ${event.runId}`,
+        }));
+      }),
     ],
   });
   const script = scripted("ok");
@@ -281,19 +271,17 @@ test("a run's declared agent brings its own model, persona, and step ceiling; an
     target: { kind: "session", session },
     env,
     plugins: [
-      inlinePlugin(
-        plugin("agents", (api) => {
-          api.prompt.add((draft) => draft.set("p", { text: "base" }));
-          api.agents.add((draft) =>
-            draft.set("reviewer", {
-              id: "reviewer",
-              model: { provider: "openai", id: "other-model" },
-              system: "You review.",
-              steps: 3,
-            }),
-          );
-        }),
-      ),
+      plugin("agents", (api) => {
+        api.prompt.add((draft) => draft.set("p", { text: "base" }));
+        api.agents.add((draft) =>
+          draft.set("reviewer", {
+            id: "reviewer",
+            model: { provider: "openai", id: "other-model" },
+            system: "You review.",
+            steps: 3,
+          }),
+        );
+      }),
     ],
   });
   const script = scripted("ok");
@@ -336,7 +324,7 @@ test("a replacement waits for an active command without disposing the command's 
     target: { kind: "session", session },
     env,
     plugins: [
-      inlinePlugin(
+      withPluginSource(
         plugin("command", (api) => {
           api.signal.addEventListener("abort", () => disposed.resolve());
           api.commands.add((draft) =>
@@ -351,7 +339,7 @@ test("a replacement waits for an active command without disposing the command's 
             }),
           );
         }),
-        { version: "old" },
+        { source: "inline", version: "old" },
       ),
     ],
   });
@@ -360,13 +348,13 @@ test("a replacement waits for an active command without disposing the command's 
     await running.promise;
     assert.deepEqual(
       await activation.setPlugins([
-        inlinePlugin(
+        withPluginSource(
           plugin("command", (api) => {
             api.commands.add((draft) =>
               draft.set("work", { description: "New command", run: () => "new result" }),
             );
           }),
-          { version: "new" },
+          { source: "inline", version: "new" },
         ),
       ]),
       { kind: "queued" },
@@ -391,100 +379,98 @@ test("nested calls share the agent catalog and SDK policy with a sandbox signal"
     target: { kind: "session", session },
     env,
     plugins: [
-      inlinePlugin(
-        plugin("nested", (api) => {
-          api.tools.add((draft) => {
-            draft.set("echo", {
+      plugin("nested", (api) => {
+        api.tools.add((draft) => {
+          draft.set("echo", {
+            ...echoTool(seen),
+            exposure: "codemode",
+            namespace: { name: "files" },
+            outputSchema: parameters,
+            prepareArguments: (args) =>
+              args.path === "/invalid" || args.path === "/blocked" ? args : { path: "/secret" },
+            execute: async (input, call) => {
+              assert.equal(call.run?.parentToolCallId, "outer");
+              assert.equal(call.run.id, "run_1");
+              assert.equal(call.run.head, "main");
+              const result = await echoTool(seen).execute(input, call);
+              return { ...result, structuredContent: { path: input.path } };
+            },
+          });
+          for (const name of ["hidden", "model", "disallowed"]) {
+            draft.set(name, {
               ...echoTool(seen),
-              exposure: "codemode",
-              namespace: { name: "files" },
-              outputSchema: parameters,
-              prepareArguments: (args) =>
-                args.path === "/invalid" || args.path === "/blocked" ? args : { path: "/secret" },
-              execute: async (input, call) => {
-                assert.equal(call.run?.parentToolCallId, "outer");
-                assert.equal(call.run.id, "run_1");
-                assert.equal(call.run.head, "main");
-                const result = await echoTool(seen).execute(input, call);
-                return { ...result, structuredContent: { path: input.path } };
-              },
+              name,
+              exposure: name === "hidden" ? "hidden" : name === "model" ? "model-only" : "direct",
             });
-            for (const name of ["hidden", "model", "disallowed"]) {
-              draft.set(name, {
-                ...echoTool(seen),
-                name,
-                exposure: name === "hidden" ? "hidden" : name === "model" ? "model-only" : "direct",
-              });
-            }
-            draft.set("tool_search", { ...echoTool(seen), name: "tool_search" });
-            draft.set("codemode", {
-              name: "codemode",
-              description: "runs code",
-              parameters: Type.Object({}),
-              execute: async (_input, call) => {
-                assert.ok(call.run);
-                const context = call.run;
-                assert.deepEqual(
-                  context.tools.list().map((tool) => tool.name),
-                  ["echo"],
-                );
-                const sandbox = new AbortController();
-                const outcome = await context.tools.execute("echo", {}, { signal: sandbox.signal });
-                assert.equal(outcome.kind, "success");
-                assert.deepEqual(outcome.result.structuredContent, { path: "/redacted" });
-                assert.deepEqual(outcome.result.details, { reviewed: true });
-                assert.equal(
-                  (
-                    await context.tools.execute(
-                      "echo",
-                      { path: "/invalid" },
-                      { signal: sandbox.signal },
-                    )
-                  ).kind,
-                  "error",
-                );
-                assert.equal(
-                  (
-                    await context.tools.execute(
-                      "echo",
-                      { path: "/blocked" },
-                      { signal: sandbox.signal },
-                    )
-                  ).kind,
-                  "error",
-                );
-                for (const name of ["hidden", "model", "disallowed", "codemode", "tool_search"]) {
-                  assert.equal((await context.tools.execute(name, { path: "bad" })).kind, "error");
-                }
-                return outcome.result;
-              },
-            });
+          }
+          draft.set("tool_search", { ...echoTool(seen), name: "tool_search" });
+          draft.set("codemode", {
+            name: "codemode",
+            description: "runs code",
+            parameters: Type.Object({}),
+            execute: async (_input, call) => {
+              assert.ok(call.run);
+              const context = call.run;
+              assert.deepEqual(
+                context.tools.list().map((tool) => tool.name),
+                ["echo"],
+              );
+              const sandbox = new AbortController();
+              const outcome = await context.tools.execute("echo", {}, { signal: sandbox.signal });
+              assert.equal(outcome.kind, "success");
+              assert.deepEqual(outcome.result.structuredContent, { path: "/redacted" });
+              assert.deepEqual(outcome.result.details, { reviewed: true });
+              assert.equal(
+                (
+                  await context.tools.execute(
+                    "echo",
+                    { path: "/invalid" },
+                    { signal: sandbox.signal },
+                  )
+                ).kind,
+                "error",
+              );
+              assert.equal(
+                (
+                  await context.tools.execute(
+                    "echo",
+                    { path: "/blocked" },
+                    { signal: sandbox.signal },
+                  )
+                ).kind,
+                "error",
+              );
+              for (const name of ["hidden", "model", "disallowed", "codemode", "tool_search"]) {
+                assert.equal((await context.tools.execute(name, { path: "bad" })).kind, "error");
+              }
+              return outcome.result;
+            },
           });
-          api.agents.add((draft) =>
-            draft.set("limited", {
-              id: "limited",
-              tools: ["echo", "hidden", "model", "codemode", "tool_search"],
-            }),
-          );
-          api.hook("before_tool", (event) => {
-            hooks.push(`before:${event.toolCallId}`);
-            if (event.toolName === "echo" && event.args.path === "/blocked")
-              return { action: "reject", message: "blocked" };
-            return event.toolName === "echo"
-              ? {
-                  action: "modify",
-                  args: { path: event.args.path === "/invalid" ? {} : "/redacted" },
-                }
-              : { action: "continue" };
-          });
-          api.hook("after_tool", (event) => {
-            hooks.push(`after:${event.toolCallId}`);
-            if (event.toolName !== "echo") return undefined;
-            assert.deepEqual(event.structuredContent, { path: "/redacted" });
-            return { details: { reviewed: true } };
-          });
-        }),
-      ),
+        });
+        api.agents.add((draft) =>
+          draft.set("limited", {
+            id: "limited",
+            tools: ["echo", "hidden", "model", "codemode", "tool_search"],
+          }),
+        );
+        api.hook("before_tool", (event) => {
+          hooks.push(`before:${event.toolCallId}`);
+          if (event.toolName === "echo" && event.args.path === "/blocked")
+            return { action: "reject", message: "blocked" };
+          return event.toolName === "echo"
+            ? {
+                action: "modify",
+                args: { path: event.args.path === "/invalid" ? {} : "/redacted" },
+              }
+            : { action: "continue" };
+        });
+        api.hook("after_tool", (event) => {
+          hooks.push(`after:${event.toolCallId}`);
+          if (event.toolName !== "echo") return undefined;
+          assert.deepEqual(event.structuredContent, { path: "/redacted" });
+          return { details: { reviewed: true } };
+        });
+      }),
     ],
   });
   try {
@@ -521,26 +507,22 @@ test("final close aborts every plugin before draining commands waiting on plugin
     target: { kind: "session", session },
     env,
     plugins: [
-      inlinePlugin(
-        plugin("command", (api) => {
-          api.commands.add((draft) =>
-            draft.set("wait", {
-              description: "Wait until close",
-              run: async () => {
-                running.resolve();
-                await finish.promise;
-                assert.equal(api.signal.aborted, true);
-                return "stopped";
-              },
-            }),
-          );
-        }),
-      ),
-      inlinePlugin(
-        plugin("cancellation", (api) => {
-          api.signal.addEventListener("abort", () => finish.resolve(), { once: true });
-        }),
-      ),
+      plugin("command", (api) => {
+        api.commands.add((draft) =>
+          draft.set("wait", {
+            description: "Wait until close",
+            run: async () => {
+              running.resolve();
+              await finish.promise;
+              assert.equal(api.signal.aborted, true);
+              return "stopped";
+            },
+          }),
+        );
+      }),
+      plugin("cancellation", (api) => {
+        api.signal.addEventListener("abort", () => finish.resolve(), { once: true });
+      }),
     ],
   });
   const command = activation.runCommand("wait");
@@ -564,28 +546,26 @@ test("final close cancels and drains an event listener waiting on api.signal", a
     target: { kind: "session", session },
     env,
     plugins: [
-      inlinePlugin(
-        plugin("listener", (api) => {
-          api.signal.addEventListener("abort", () => finish.resolve(), { once: true });
-          api.settings.add((draft) =>
-            draft.set("start", {
-              label: "Start",
-              key: "start",
-              default: "off",
-              choices: [
-                { id: "off", label: "Off" },
-                { id: "on", label: "On" },
-              ],
-            }),
-          );
-          api.events.subscribe(async () => {
-            running.resolve();
-            await finish.promise;
-            assert.equal(api.signal.aborted, true);
-            completed.resolve();
-          });
-        }),
-      ),
+      plugin("listener", (api) => {
+        api.signal.addEventListener("abort", () => finish.resolve(), { once: true });
+        api.settings.add((draft) =>
+          draft.set("start", {
+            label: "Start",
+            key: "start",
+            default: "off",
+            choices: [
+              { id: "off", label: "Off" },
+              { id: "on", label: "On" },
+            ],
+          }),
+        );
+        api.events.subscribe(async () => {
+          running.resolve();
+          await finish.promise;
+          assert.equal(api.signal.aborted, true);
+          completed.resolve();
+        });
+      }),
     ],
   });
   try {
@@ -609,24 +589,22 @@ test("final close drains a direct tool invocation after cancelling plugin resour
     target: { kind: "session", session },
     env,
     plugins: [
-      inlinePlugin(
-        plugin("tool", (api) => {
-          api.signal.addEventListener("abort", () => aborted.resolve(), { once: true });
-          api.tools.add((draft) =>
-            draft.set("close", {
-              name: "close",
-              description: "Wait until close",
-              parameters: Type.Object({}),
-              execute: async () => {
-                running.resolve();
-                await aborted.promise;
-                await cleanup.promise;
-                return { content: [{ type: "text", text: "stopped" }], details: {} };
-              },
-            }),
-          );
-        }),
-      ),
+      plugin("tool", (api) => {
+        api.signal.addEventListener("abort", () => aborted.resolve(), { once: true });
+        api.tools.add((draft) =>
+          draft.set("close", {
+            name: "close",
+            description: "Wait until close",
+            parameters: Type.Object({}),
+            execute: async () => {
+              running.resolve();
+              await aborted.promise;
+              await cleanup.promise;
+              return { content: [{ type: "text", text: "stopped" }], details: {} };
+            },
+          }),
+        );
+      }),
     ],
   });
   const bound = turnFor(activation, { streamFn: scripted("unused").streamFn, model });

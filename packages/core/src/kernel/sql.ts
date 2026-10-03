@@ -10,7 +10,9 @@
 
 export type SqliteValue = string | number | null;
 
-export type SqlRow = Readonly<Record<string, unknown>>;
+type SqliteColumn = SqliteValue | bigint | Uint8Array | ArrayBuffer;
+
+export type SqlRow = Readonly<Record<string, SqliteColumn>>;
 
 export interface SqliteConnection {
   /** Runs a statement and discards its rows. */

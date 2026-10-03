@@ -6,6 +6,7 @@ import {
   sessionId,
   type Nyte,
   type SessionEvent,
+  type SessionInfo,
   type SessionMetadata,
   type SessionSnapshot,
 } from "../src/kernel/sdk/types.ts";
@@ -34,18 +35,18 @@ function metadataAt(input: {
   readonly tip?: string | null;
   readonly name?: string;
 }): SessionMetadata {
+  const session: SessionInfo = {
+    sessionId: SESSION,
+    activation: { kind: "active" },
+    createdAt: 0,
+    lastActivityAt: 0,
+    pinned: false,
+    archived: false,
+    heads: [{ head: MAIN, tip: input.tip ?? null }],
+    config: { model: { id: input.model } },
+  };
   return {
-    session: {
-      sessionId: SESSION,
-      activation: { kind: "active" },
-      createdAt: 0,
-      lastActivityAt: 0,
-      pinned: false,
-      archived: false,
-      heads: [{ head: MAIN, tip: input.tip ?? null }],
-      config: { model: { id: input.model } },
-      ...(input.name === undefined ? {} : { name: input.name }),
-    },
+    session: input.name === undefined ? session : { ...session, name: input.name },
     head: MAIN,
     config: { model: { id: input.model } },
     context: {

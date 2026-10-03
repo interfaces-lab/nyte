@@ -4,13 +4,8 @@ import { Type } from "typebox";
 import { executeToolCalls } from "../src/kernel/loop/agent-loop.ts";
 import { bindTool } from "../src/tools/bind-tool.ts";
 import { ContributionRegistry, ToolMapDraft } from "../src/plugins/registry.ts";
-import type {
-  AgentEvent,
-  AgentLoopConfig,
-  AgentTool,
-  AgentToolUpdateCallback,
-} from "../src/kernel/loop/types.ts";
-import { assistant, call, within } from "./kernel/helpers.ts";
+import type { AgentEvent, AgentLoopConfig, AgentTool, ToolCall } from "../src/kernel/loop/types.ts";
+import { assistant, call, toolCall, within } from "./kernel/helpers.ts";
 
 const config: AgentLoopConfig = {
   model: {
@@ -33,17 +28,17 @@ test("the bound executor rejects invalid runtime input before work starts", asyn
     name: "count",
     description: "Count",
     parameters: Type.Object({ count: Type.Number() }),
-    execute: async (_id, args) => {
+    execute: async (input) => {
       executions += 1;
-      return { content: [], details: args.count };
+      return { content: [], details: input.count };
     },
   });
   await assert.rejects(
-    async () => tool.execute("invalid", { text: "wrong schema" }),
+    async () => tool.execute({ text: "wrong schema" }, toolCall("invalid")),
     /Validation failed/,
   );
   assert.equal(executions, 0);
-  assert.equal((await tool.execute("valid", { count: "3" })).details, 3);
+  assert.equal((await tool.execute({ count: "3" }, toolCall("valid"))).details, 3);
   assert.equal(executions, 1);
 });
 
@@ -54,7 +49,7 @@ test("heterogeneous registry tools keep their schema after wrapping and rebuildi
       name: "count",
       description: "Double a count",
       parameters: Type.Object({ count: Type.Number(), optional: Type.Optional(Type.String()) }),
-      execute: async (_id, args) => ({ content: [], details: args.count * 2 }),
+      execute: async (input) => ({ content: [], details: input.count * 2 }),
     });
     draft.set("text", {
       name: "text",
@@ -64,7 +59,7 @@ test("heterogeneous registry tools keep their schema after wrapping and rebuildi
         properties: { text: { type: "string" } },
         required: ["text"],
       } as const,
-      execute: async (_id, args) => ({ content: [], details: args.text.toUpperCase() }),
+      execute: async (input) => ({ content: [], details: input.text.toUpperCase() }),
     });
   });
   registry.add("wrapper", 1, (draft) => {
@@ -104,9 +99,9 @@ test("compatibility runs before validation and hook replacements are revalidated
     description: "Count",
     parameters: Type.Object({ count: Type.Number() }),
     prepareArguments: (args) => ({ count: args.legacy }),
-    execute: async (_id, args) => {
-      seen.push(args.count);
-      return { content: [], details: args.count };
+    execute: async (input) => {
+      seen.push(input.count);
+      return { content: [], details: input.count };
     },
   });
   for (const scenario of [
@@ -135,18 +130,18 @@ test("concurrent results retain source order and identity; failed tools retain p
   const release = Promise.withResolvers<void>();
   const secondStarted = Promise.withResolvers<void>();
   const original = { content: [], details: false };
-  let update: AgentToolUpdateCallback | undefined;
+  let update: ToolCall<boolean>["update"] | undefined;
   const tool = bindTool({
     name: "work",
     description: "Concurrent work",
     parameters: Type.Object({ fail: Type.Boolean() }),
-    execute: async (_id, args, _signal, onUpdate) => {
-      if (!args.fail) {
+    execute: async (input, call) => {
+      if (!input.fail) {
         await release.promise;
         return original;
       }
-      update = onUpdate;
-      onUpdate?.({ content: [{ type: "text", text: "partial" }], details: 0 });
+      update = call.update;
+      call.update({ content: [{ type: "text", text: "partial" }], details: 0 });
       secondStarted.resolve();
       throw new Error("stopped");
     },
@@ -184,7 +179,7 @@ test("concurrent results retain source order and identity; failed tools retain p
   assert.ok(end?.type === "tool_execution_end");
   assert.equal(end.result, original);
   const settledCount = events.length;
-  update?.({ content: [], details: "late" });
+  update?.({ content: [], details: true });
   assert.equal(events.length, settledCount);
 });
 

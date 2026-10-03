@@ -8,7 +8,7 @@ import { sessionId } from "../../src/kernel/sdk/types.ts";
 import { headRef } from "../../src/kernel/names.ts";
 import { SqliteStore } from "../../src/kernel/sqlite.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
-import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
+import { definePlugin } from "../../src/plugins/index.ts";
 import { assistant, call, openStore, storePath, within } from "./helpers.ts";
 
 const model: Model<Api> = {
@@ -39,36 +39,34 @@ async function open(
     model,
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     plugins: [
-      inlinePlugin(
-        definePlugin({
-          id: "personas",
-          session(api) {
-            api.agents.add((draft) => {
-              draft.set("agent-a", { id: "agent-a", system: "Agent A" });
-              draft.set("agent-b", { id: "agent-b", system: "Agent B" });
-            });
-            api.prompt.add((draft) => draft.set("base", { text: "Host" }));
-            api.hook("before_request", (input) => {
-              runIds.push(input.runId);
-              return undefined;
-            });
-            if (toolGate !== undefined) {
-              api.tools.add((draft) =>
-                draft.set("hold", {
-                  name: "hold",
-                  description: "waits for the test to release it",
-                  parameters: Type.Object({}),
-                  execute: async () => {
-                    toolGate.started();
-                    await toolGate.release;
-                    return { content: [{ type: "text", text: "finished" }], details: {} };
-                  },
-                }),
-              );
-            }
-          },
-        }),
-      ),
+      definePlugin({
+        id: "personas",
+        session(api) {
+          api.agents.add((draft) => {
+            draft.set("agent-a", { id: "agent-a", system: "Agent A" });
+            draft.set("agent-b", { id: "agent-b", system: "Agent B" });
+          });
+          api.prompt.add((draft) => draft.set("base", { text: "Host" }));
+          api.hook("before_request", (input) => {
+            runIds.push(input.runId);
+            return undefined;
+          });
+          if (toolGate !== undefined) {
+            api.tools.add((draft) =>
+              draft.set("hold", {
+                name: "hold",
+                description: "waits for the test to release it",
+                parameters: Type.Object({}),
+                execute: async () => {
+                  toolGate.started();
+                  await toolGate.release;
+                  return { content: [{ type: "text", text: "finished" }], details: {} };
+                },
+              }),
+            );
+          }
+        },
+      }),
     ],
     env: { cwd: "/tmp/nowhere" },
     streamFn: (_model, context) => {

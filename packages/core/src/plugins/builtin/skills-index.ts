@@ -27,19 +27,18 @@ interface IgnoreModuleNamespace {
 
 type IgnorePackageExport = IgnoreFactory | IgnoreModuleNamespace | null | undefined;
 
+const FactorySchema = Type.Function([], Type.Unknown());
+
+const DefaultFactorySchema = Type.Object({ default: FactorySchema });
+
 function isIgnoreFactory(value: IgnorePackageExport): value is IgnoreFactory {
-  return typeof value === "function";
+  return Value.Check(FactorySchema, value);
 }
 
 function hasDefaultIgnoreFactory(
   value: IgnorePackageExport,
 ): value is { readonly default: IgnoreFactory } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "default" in value &&
-    isIgnoreFactory(value.default)
-  );
+  return Value.Check(DefaultFactorySchema, value);
 }
 
 /** `ignore` is CommonJS; NodeNext and bundler consumers expose its default differently. */
@@ -73,6 +72,8 @@ interface SkillFrontmatter {
   readonly disableModelInvocation?: boolean;
 }
 
+const Text = Type.String();
+
 const RawSkillFrontmatter = Type.Object({
   name: Type.Optional(Type.Unknown()),
   description: Type.Optional(Type.Unknown()),
@@ -86,10 +87,6 @@ interface ParsedFrontmatter {
 
 function isDirectoryList(value: string | readonly string[]): value is readonly string[] {
   return Array.isArray(value);
-}
-
-function isString(value: unknown): value is string {
-  return typeof value === "string";
 }
 
 /** The skills a set of directories offers, and what was wrong with the ones it skipped. */
@@ -299,9 +296,9 @@ function parseFrontmatter(content: string): ParsedFrontmatter {
   const raw = value ?? {};
   let frontmatter: SkillFrontmatter = {};
 
-  if (isString(raw.name)) frontmatter = { ...frontmatter, name: raw.name };
+  if (Value.Check(Text, raw.name)) frontmatter = { ...frontmatter, name: raw.name };
 
-  if (isString(raw.description)) {
+  if (Value.Check(Text, raw.description)) {
     frontmatter = { ...frontmatter, description: raw.description };
   }
 

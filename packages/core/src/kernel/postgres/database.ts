@@ -1,8 +1,35 @@
-import { Pool, type PoolConfig } from "pg";
+import { Pool, type PoolConfig, type QueryResult } from "pg";
+import { Type, type Static } from "typebox";
+import { Compile } from "typebox/compile";
 
 export type PostgresValue = string | number | null | readonly string[];
 
-export type PostgresRow = Readonly<Record<string, unknown>>;
+const PostgresRowSchema = Type.Record(
+  Type.String(),
+  Type.Union([Type.String(), Type.Number(), Type.BigInt(), Type.Null()]),
+);
+
+export type PostgresRow = Readonly<Static<typeof PostgresRowSchema>>;
+
+const checkRows = Compile(Type.Array(PostgresRowSchema));
+
+const checkString = Compile(Type.String());
+
+const checkSafeInteger = Compile(
+  Type.Integer({ minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER }),
+);
+
+function parseRows(result: QueryResult): readonly PostgresRow[] {
+  const rows: unknown = result.rows;
+
+  if (!checkRows.Check(rows)) {
+    throw new TypeError(
+      "PostgreSQL returned a column that is not a string, number, bigint, or null",
+    );
+  }
+
+  return rows;
+}
 
 export interface PostgresQuery {
   query(text: string, values?: readonly PostgresValue[]): Promise<readonly PostgresRow[]>;
@@ -16,11 +43,7 @@ export interface PostgresDatabase extends PostgresQuery {
 
 export function postgresDatabase(pool: Pool): PostgresDatabase {
   return {
-    query: async (text, values = []) => {
-      const result = await pool.query<Record<string, unknown>>(text, [...values]);
-
-      return result.rows;
-    },
+    query: async (text, values = []) => parseRows(await pool.query(text, [...values])),
     transaction: async (run) => {
       const client = await pool.connect();
       let discard = false;
@@ -29,11 +52,7 @@ export function postgresDatabase(pool: Pool): PostgresDatabase {
         await client.query("BEGIN");
 
         const result = await run({
-          query: async (text, values = []) => {
-            const response = await client.query<Record<string, unknown>>(text, [...values]);
-
-            return response.rows;
-          },
+          query: async (text, values = []) => parseRows(await client.query(text, [...values])),
         });
 
         await client.query("COMMIT");
@@ -70,7 +89,7 @@ export function createPostgresDatabase(
 export function stringColumn(row: PostgresRow, name: string): string {
   const value = row[name];
 
-  if (typeof value !== "string") throw new TypeError(`PostgreSQL column ${name} is not a string`);
+  if (!checkString.Check(value)) throw new TypeError(`PostgreSQL column ${name} is not a string`);
 
   return value;
 }
@@ -78,9 +97,9 @@ export function stringColumn(row: PostgresRow, name: string): string {
 /** pg returns int8 as text; neither driver values nor numeric overflow are trusted. */
 export function integerColumn(row: PostgresRow, name: string): number {
   const value = row[name];
-  const number = typeof value === "string" && /^-?\d+$/.test(value) ? Number(value) : value;
+  const number = checkString.Check(value) && /^-?\d+$/.test(value) ? Number(value) : value;
 
-  if (typeof number !== "number" || !Number.isSafeInteger(number)) {
+  if (!checkSafeInteger.Check(number)) {
     throw new TypeError(`PostgreSQL column ${name} is not a safe integer`);
   }
 

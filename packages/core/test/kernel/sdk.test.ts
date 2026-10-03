@@ -17,12 +17,7 @@ import {
   type SessionEvent,
   type SessionId,
 } from "../../src/kernel/sdk/types.ts";
-import {
-  definePlugin,
-  inlinePlugin,
-  type AgentTool,
-  type LoadedPlugin,
-} from "../../src/plugins/index.ts";
+import { definePlugin, type AgentTool, type Plugin } from "../../src/plugins/index.ts";
 import { headRef } from "../../src/kernel/names.ts";
 import type { Store } from "../../src/kernel/store.ts";
 import { backgroundWait, ToolWait, type StreamFn } from "../../src/kernel/loop/types.ts";
@@ -103,17 +98,15 @@ const askTool: AgentTool<typeof askParameters> = {
   }),
 };
 
-function plugins(): LoadedPlugin[] {
+function plugins(): Plugin[] {
   return [
-    inlinePlugin(
-      definePlugin({
-        id: "tools",
-        session(api) {
-          api.tools.add((draft) => draft.set("ask", askTool));
-          api.prompt.add((draft) => draft.set("p", { text: "You are a test." }));
-        },
-      }),
-    ),
+    definePlugin({
+      id: "tools",
+      session(api) {
+        api.tools.add((draft) => draft.set("ask", askTool));
+        api.prompt.add((draft) => draft.set("p", { text: "You are a test." }));
+      },
+    }),
   ];
 }
 
@@ -767,43 +760,41 @@ test("the prospective plugin catalog is sessionless, cached, and invalidated by 
   const store = openStore();
   let activations = 0;
   let commandRuns = 0;
-  const catalogPlugin = (id: string, commandName: string): LoadedPlugin =>
-    inlinePlugin(
-      definePlugin({
-        id,
-        async session(api) {
-          activations += 1;
-          api.settings.add((draft) =>
-            draft.set("verbosity", {
-              key: "verbosity",
-              label: "Verbosity",
-              choices: [
-                { id: "low", label: "Low" },
-                { id: "high", label: "High" },
-              ],
-              default: "high",
-            }),
-          );
-          api.commands.add((draft) =>
-            draft.set(commandName, {
-              description: `Run ${commandName}`,
-              run: () => {
-                commandRuns += 1;
-                return "ran";
-              },
-            }),
-          );
-          api.resources.add((draft) =>
-            draft.set(commandName, {
-              name: commandName,
-              description: `Use ${commandName}`,
-              content: `${commandName} instructions`,
-              filePath: `/skills/${commandName}/SKILL.md`,
-            }),
-          );
-        },
-      }),
-    );
+  const catalogPlugin = (id: string, commandName: string): Plugin =>
+    definePlugin({
+      id,
+      async session(api) {
+        activations += 1;
+        api.settings.add((draft) =>
+          draft.set("verbosity", {
+            key: "verbosity",
+            label: "Verbosity",
+            choices: [
+              { id: "low", label: "Low" },
+              { id: "high", label: "High" },
+            ],
+            default: "high",
+          }),
+        );
+        api.commands.add((draft) =>
+          draft.set(commandName, {
+            description: `Run ${commandName}`,
+            run: () => {
+              commandRuns += 1;
+              return "ran";
+            },
+          }),
+        );
+        api.resources.add((draft) =>
+          draft.set(commandName, {
+            name: commandName,
+            description: `Use ${commandName}`,
+            content: `${commandName} instructions`,
+            filePath: `/skills/${commandName}/SKILL.md`,
+          }),
+        );
+      },
+    });
   const nyte = await createNyte({
     store,
     streamFn: echo(),
@@ -873,14 +864,12 @@ test("the prospective inventory includes failed plugins without creating a chat"
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     model,
     plugins: [
-      inlinePlugin(
-        definePlugin({
-          id: "broken",
-          session() {
-            throw new Error("Cannot connect");
-          },
-        }),
-      ),
+      definePlugin({
+        id: "broken",
+        session() {
+          throw new Error("Cannot connect");
+        },
+      }),
     ],
     env: { cwd: "/tmp/nowhere" },
   });
@@ -904,16 +893,14 @@ test("the prospective inventory includes failed plugins without creating a chat"
 
 test("lazy activation resolves new-session and session targets explicitly", async () => {
   const targets: string[] = [];
-  const plugin = inlinePlugin(
-    definePlugin({
-      id: "catalog",
-      session(api) {
-        api.commands.add((draft) =>
-          draft.set("catalog", { description: "Catalog", run: () => undefined }),
-        );
-      },
-    }),
-  );
+  const plugin = definePlugin({
+    id: "catalog",
+    session(api) {
+      api.commands.add((draft) =>
+        draft.set("catalog", { description: "Catalog", run: () => undefined }),
+      );
+    },
+  });
   const nyte = await createNyte({
     store: openStore(),
     streamFn: echo(),
@@ -944,29 +931,27 @@ test("a plugin command may read messages, name its session, or answer with a cli
     model,
     plugins: [
       ...plugins(),
-      inlinePlugin(
-        definePlugin({
-          id: "commands",
-          session(api) {
-            api.commands.add((draft) => {
-              draft.set("rename", {
-                description: "Name the chat",
-                run: async (argument) => {
-                  const users = (await api.session.context()).messages.filter(
-                    (message) => message.role === "user",
-                  ).length;
-                  await api.session.rename(`${argument} after ${String(users)}`);
-                  return "named";
-                },
-              });
-              draft.set("review", {
-                description: "Review",
-                run: (argument) => ({ prompt: `Review ${argument}` }),
-              });
+      definePlugin({
+        id: "commands",
+        session(api) {
+          api.commands.add((draft) => {
+            draft.set("rename", {
+              description: "Name the chat",
+              run: async (argument) => {
+                const users = (await api.session.context()).messages.filter(
+                  (message) => message.role === "user",
+                ).length;
+                await api.session.rename(`${argument} after ${String(users)}`);
+                return "named";
+              },
             });
-          },
-        }),
-      ),
+            draft.set("review", {
+              description: "Review",
+              run: (argument) => ({ prompt: `Review ${argument}` }),
+            });
+          });
+        },
+      }),
     ],
     env: { cwd: "/tmp/nowhere" },
   });

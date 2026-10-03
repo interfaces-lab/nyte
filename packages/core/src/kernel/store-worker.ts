@@ -20,6 +20,8 @@ import {
   type WireError,
 } from "./store-rpc.ts";
 
+type CallRequest = Extract<StoreRequest, { kind: "call" }>;
+
 const port = parentPort;
 
 if (port === null) throw new Error("store-worker must run as a worker thread");
@@ -95,7 +97,13 @@ const check = {
   ),
 };
 
-function argument<T>(value: unknown, validate: { Check(value: unknown): value is T }): T {
+function argument<T>(
+  request: CallRequest,
+  index: number,
+  validate: { Check(value: unknown): value is T },
+): T {
+  const value = request.args[index];
+
   if (!validate.Check(value)) throw new TypeError("store-worker received a malformed argument");
 
   return value;
@@ -117,18 +125,16 @@ function adopt(open: Session) {
   return { handle, id: open.id };
 }
 
-async function call(request: Extract<StoreRequest, { kind: "call" }>) {
-  const [first, second] = request.args;
-
+async function call(request: CallRequest) {
   switch (request.method) {
     case "store.create":
-      return adopt(await store.create(argument(first, check.optionalId)));
+      return adopt(await store.create(argument(request, 0, check.optionalId)));
     case "store.open":
-      return adopt(await store.open(argument(first, check.string)));
+      return adopt(await store.open(argument(request, 0, check.string)));
     case "store.list":
       return store.list();
     case "store.delete":
-      await store.delete(argument(first, check.string));
+      await store.delete(argument(request, 0, check.string));
 
       return null;
     case "store.close": {
@@ -156,56 +162,60 @@ async function call(request: Extract<StoreRequest, { kind: "call" }>) {
     }
 
     case "objects.put":
-      return session(request.session).objects.put(argument(first, check.objects));
+      return session(request.session).objects.put(argument(request, 0, check.objects));
     case "objects.get":
-      return (await session(request.session).objects.get(argument(first, check.string))) ?? null;
+      return (
+        (await session(request.session).objects.get(argument(request, 0, check.string))) ?? null
+      );
     case "objects.chain":
       return session(request.session).objects.chain(
-        argument(first, check.string),
-        argument(second, check.chainOptions),
+        argument(request, 0, check.string),
+        argument(request, 1, check.chainOptions),
       );
     case "objects.list":
       return session(request.session).objects.list();
     case "objects.commits":
       return session(request.session).objects.commits();
     case "objects.delete":
-      return session(request.session).objects.delete(argument(first, check.strings));
+      return session(request.session).objects.delete(argument(request, 0, check.strings));
     case "refs.read":
-      return session(request.session).refs.read(argument(first, check.string));
+      return session(request.session).refs.read(argument(request, 0, check.string));
     case "refs.list":
-      return session(request.session).refs.list(argument(first, check.string));
+      return session(request.session).refs.list(argument(request, 0, check.string));
     case "refs.update":
       return session(request.session).refs.update(
-        argument(first, check.refUpdates),
-        argument(second, check.refUpdateOptions),
+        argument(request, 0, check.refUpdates),
+        argument(request, 1, check.refUpdateOptions),
       );
     case "leases.acquire":
       return session(request.session).leases.acquire(
-        argument(first, check.string),
-        argument(second, check.number),
+        argument(request, 0, check.string),
+        argument(request, 1, check.number),
       );
     case "leases.renew":
       return session(request.session).leases.renew(
-        argument(first, check.lease),
-        argument(second, check.number),
+        argument(request, 0, check.lease),
+        argument(request, 1, check.number),
       );
     case "leases.release":
-      return session(request.session).leases.release(argument(first, check.lease));
+      return session(request.session).leases.release(argument(request, 0, check.lease));
     case "leases.read":
-      return (await session(request.session).leases.read(argument(first, check.string))) ?? null;
+      return (
+        (await session(request.session).leases.read(argument(request, 0, check.string))) ?? null
+      );
     case "events.append":
       return session(request.session).events.append(
-        argument(first, check.eventBodies),
-        argument(second, check.appendOptions),
+        argument(request, 0, check.eventBodies),
+        argument(request, 1, check.appendOptions),
       );
     case "events.read":
-      return session(request.session).events.read(argument(first, check.readOptions));
+      return session(request.session).events.read(argument(request, 0, check.readOptions));
     case "events.last":
       return session(request.session).events.last();
     case "events.floor":
       return session(request.session).events.floor();
     case "events.trim":
-      await session(request.session).events.trim(argument(first, check.number));
+      await session(request.session).events.trim(argument(request, 0, check.number));
 
       return null;
     default: {

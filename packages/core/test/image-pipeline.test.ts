@@ -14,7 +14,7 @@ import { bindTool } from "../src/tools/bind-tool.ts";
 import type { AgentTool } from "../src/kernel/loop/types.ts";
 import { IMAGE_LIMITS, processImage } from "../src/kernel/loop/image.ts";
 import type { StreamFn } from "../src/kernel/loop/types.ts";
-import { assistant, openStore, sleep, within } from "./kernel/helpers.ts";
+import { assistant, openStore, sleep, toolCall, within } from "./kernel/helpers.ts";
 
 function oversizedPng(): Buffer {
   const image = new PhotonImage(new Uint8Array(4 * 2400 * 1200).fill(255), 2400, 1200);
@@ -25,7 +25,7 @@ function oversizedPng(): Buffer {
   }
 }
 
-function dimensions(base64: string): { readonly width: number; readonly height: number } {
+function dimensions(base64: string) {
   const decoded = PhotonImage.new_from_byteslice(Buffer.from(base64, "base64"));
   try {
     return { width: decoded.get_width(), height: decoded.get_height() };
@@ -60,7 +60,7 @@ test("a tool's own image is bounded before it reaches the model", async () => {
     }),
   };
 
-  const result = await bindTool(tool).execute("call", {}, undefined, () => undefined, undefined);
+  const result = await bindTool(tool).execute({}, toolCall("call"));
   const image = result.content.find((part) => part.type === "image");
   assert.ok(image);
   assert.deepEqual(dimensions(image.data), { width: 2000, height: 1000 });
@@ -83,7 +83,7 @@ test("an undecodable tool image is passed through rather than dropped", async ()
     }),
   };
 
-  const result = await bindTool(tool).execute("call", {}, undefined, () => undefined, undefined);
+  const result = await bindTool(tool).execute({}, toolCall("call"));
   assert.deepEqual(result.content, [{ type: "image", data, mimeType: "image/png" }]);
 });
 
@@ -145,7 +145,7 @@ test("an uploaded image is bounded before the message lands", async () => {
     const parts = turns.flatMap((turn) => (turn.kind === "turn" ? turn.parts : []));
     const user = parts.find((part) => part.kind === "user");
     assert.ok(user);
-    assert.ok(typeof user.content !== "string");
+    assert.ok(Array.isArray(user.content));
     const image = user.content.find((block) => block.type === "image");
     assert.ok(image);
     assert.deepEqual(dimensions(image.data), { width: 2000, height: 1000 });

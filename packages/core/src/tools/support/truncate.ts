@@ -265,10 +265,7 @@ function truncateStringToBytesFromEnd(str: string, maxBytes: number): string {
  * Truncate a single line to max characters, adding [truncated] suffix.
  * Used for grep match lines.
  */
-export function truncateLine(
-  line: string,
-  maxChars: number = GREP_MAX_LINE_LENGTH,
-): { text: string; wasTruncated: boolean } {
+export function truncateLine(line: string, maxChars: number = GREP_MAX_LINE_LENGTH) {
   if (line.length <= maxChars) {
     return { text: line, wasTruncated: false };
   }

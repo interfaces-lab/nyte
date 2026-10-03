@@ -1,3 +1,4 @@
+import { withPluginSource } from "../../src/plugins/source.ts";
 import assert from "node:assert/strict";
 import { setTimeout } from "node:timers/promises";
 import { afterEach, test } from "vitest";
@@ -7,7 +8,7 @@ import { getCurrentSystemPrompt, getCurrentTools } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import type { Nyte, NyteOptions } from "../../src/kernel/sdk/types.ts";
-import { definePlugin, inlinePlugin, type AgentTool } from "../../src/plugins/index.ts";
+import { definePlugin, type AgentTool } from "../../src/plugins/index.ts";
 import { headRef } from "../../src/kernel/names.ts";
 import { ToolWait, backgroundWait, type StreamFn } from "../../src/kernel/loop/types.ts";
 import { assistant, call, openStore, storePath, within } from "./helpers.ts";
@@ -50,13 +51,13 @@ function scripted(
       } else {
         stream.push({ type: "done", reason: message.stopReason, message });
       }
-    })().catch((error: unknown) => {
+    })().catch((cause: unknown) => {
       stream.push({
         type: "error",
         reason: "error",
         error: assistant("", {
           stop: "error",
-          error: error instanceof Error ? error.message : String(error),
+          error: cause instanceof Error ? cause.message : String(cause),
         }),
       });
     });
@@ -141,28 +142,26 @@ test("configuration without user input does not authorize a model call", async (
 test("advance returns the durable tool deadline immediately and leaves the wait parked", async () => {
   const until = Date.now() + 60_000;
   let tools = 0;
-  const waiting = inlinePlugin(
-    definePlugin({
-      id: "wait",
-      session(api) {
-        api.tools.add((draft) =>
-          draft.set("wait", {
-            name: "wait",
-            description: "Wait for a reply",
-            parameters: Type.Object({}),
-            execute: async () => {
-              tools += 1;
-              throw new ToolWait({ until });
-            },
-            wake: async () => ({
-              kind: "success",
-              result: { content: [{ type: "text", text: "done" }], details: {} },
-            }),
+  const waiting = definePlugin({
+    id: "wait",
+    session(api) {
+      api.tools.add((draft) =>
+        draft.set("wait", {
+          name: "wait",
+          description: "Wait for a reply",
+          parameters: Type.Object({}),
+          execute: async () => {
+            tools += 1;
+            throw new ToolWait({ until });
+          },
+          wake: async () => ({
+            kind: "success",
+            result: { content: [{ type: "text", text: "done" }], details: {} },
           }),
-        );
-      },
-    }),
-  );
+        }),
+      );
+    },
+  });
   const sdk = await open(
     scripted(() => assistant("", { calls: [call("wait-1", "wait")] })),
     { plugins: [waiting] },
@@ -320,7 +319,7 @@ test("replacement preserves the offered tool and parked wake handler while anoth
   let oldSignal: AbortSignal | undefined;
   let resourceOpen = true;
   const deferred = Promise.withResolvers<void>();
-  const original = inlinePlugin(
+  const original = withPluginSource(
     definePlugin({
       id: "catalog",
       session(api) {
@@ -362,9 +361,9 @@ test("replacement preserves the offered tool and parked wake handler while anoth
         );
       },
     }),
-    { version: "old" },
+    { source: "inline", version: "old" },
   );
-  const replacement = inlinePlugin(
+  const replacement = withPluginSource(
     definePlugin({
       id: "catalog",
       session(api) {
@@ -383,7 +382,7 @@ test("replacement preserves the offered tool and parked wake handler while anoth
         );
       },
     }),
-    { version: "new" },
+    { source: "inline", version: "new" },
   );
   const sdk = await open(
     scripted(async (_model, context) => {
@@ -449,7 +448,7 @@ test("replacement preserves the offered tool and parked wake handler while anoth
 });
 
 test("a global setup failure leaves every session's old plugins and the default catalog intact", async () => {
-  const original = inlinePlugin(
+  const original = withPluginSource(
     definePlugin({
       id: "catalog",
       session(api) {
@@ -458,7 +457,7 @@ test("a global setup failure leaves every session's old plugins and the default 
         );
       },
     }),
-    { version: "old" },
+    { source: "inline", version: "old" },
   );
   const sdk = await open(
     scripted(() => assistant("unused")),
@@ -467,7 +466,7 @@ test("a global setup failure leaves every session's old plugins and the default 
   const first = (await sdk.sessions.create()).sessionId;
   const second = (await sdk.sessions.create()).sessionId;
   for (const sessionId of [first, second]) await sdk.plugins.list({ sessionId });
-  const replacement = inlinePlugin(
+  const replacement = withPluginSource(
     definePlugin({
       id: "catalog",
       async session(api) {
@@ -478,7 +477,7 @@ test("a global setup failure leaves every session's old plugins and the default 
         );
       },
     }),
-    { version: "new" },
+    { source: "inline", version: "new" },
   );
   const outcome = await sdk.setPlugins([replacement]);
   assert.equal(outcome.kind, "rejected");
@@ -505,7 +504,7 @@ test("replacement from a tool executing in the attached runner returns without w
     },
   });
   const toolsPlugin = (tools: readonly AgentTool[]) =>
-    inlinePlugin(
+    withPluginSource(
       definePlugin({
         id: "tools",
         session(api) {
@@ -514,7 +513,7 @@ test("replacement from a tool executing in the attached runner returns without w
           });
         },
       }),
-      { version: tools.map((item) => item.name).join(",") },
+      { source: "inline", version: tools.map((item) => item.name).join(",") },
     );
   const make = tool("make", async () => {
     if (sdk === undefined) throw new Error("no host");
@@ -546,7 +545,7 @@ test("response preparation reconciles source changes before resolving the next r
   let written = false;
   const inputs: Parameters<NonNullable<NyteOptions["prepareResponsePlugins"]>>[0][] = [];
   const catalog = (version: string) =>
-    inlinePlugin(
+    withPluginSource(
       definePlugin({
         id: "source",
         session(api) {
@@ -571,7 +570,7 @@ test("response preparation reconciles source changes before resolving the next r
           });
         },
       }),
-      { version },
+      { source: "inline", version },
     );
   const old = catalog("old");
   const next = catalog("new");
@@ -613,14 +612,12 @@ test("response preparation reconciles source changes before resolving the next r
 });
 
 test("a response source-preparation failure emits a diagnostic and uses the last good catalog", async () => {
-  const initial = inlinePlugin(
-    definePlugin({
-      id: "source",
-      session(api) {
-        api.prompt.add((draft) => draft.set("prompt", { text: "last good" }));
-      },
-    }),
-  );
+  const initial = definePlugin({
+    id: "source",
+    session(api) {
+      api.prompt.add((draft) => draft.set("prompt", { text: "last good" }));
+    },
+  });
   let prompt = "";
   const sdk = await open(
     scripted((_model, context) => {
@@ -653,14 +650,14 @@ test("a response source-preparation failure emits a diagnostic and uses the last
 });
 
 test("global publication rejection keeps session boundaries independent and advances the prepared default", async () => {
-  const original = inlinePlugin(
+  const original = withPluginSource(
     definePlugin({
       id: "source",
       session(api) {
         api.prompt.add((draft) => draft.set("prompt", { text: "old" }));
       },
     }),
-    { version: "old" },
+    { source: "inline", version: "old" },
   );
   const sdk = await open(
     scripted(() => assistant("unused")),
@@ -670,7 +667,7 @@ test("global publication rejection keeps session boundaries independent and adva
   const second = (await sdk.sessions.create()).sessionId;
   for (const sessionId of [first, second]) await sdk.plugins.list({ sessionId });
   let invalid = false;
-  const replacement = inlinePlugin(
+  const replacement = withPluginSource(
     definePlugin({
       id: "source",
       async session(api) {
@@ -682,7 +679,7 @@ test("global publication rejection keeps session boundaries independent and adva
         });
       },
     }),
-    { version: "new" },
+    { source: "inline", version: "new" },
   );
   assert.equal((await sdk.setPlugins([replacement])).kind, "rejected");
   assert.equal((await sdk.plugins.list({ sessionId: first }))[0]?.version, "old");
@@ -697,27 +694,25 @@ test("SDK close aborts plugin lifetime signals before draining a direct tool ste
     scripted(() => assistant("", { calls: [call("close-1", "close")] })),
     {
       plugins: [
-        inlinePlugin(
-          definePlugin({
-            id: "close",
-            session(api) {
-              api.signal.addEventListener("abort", () => finish.resolve(), { once: true });
-              api.tools.add((draft) =>
-                draft.set("close", {
-                  name: "close",
-                  description: "Wait until close",
-                  parameters: Type.Object({}),
-                  execute: async () => {
-                    started.resolve();
-                    await finish.promise;
-                    assert.equal(api.signal.aborted, true);
-                    return { content: [{ type: "text", text: "stopped" }], details: {} };
-                  },
-                }),
-              );
-            },
-          }),
-        ),
+        definePlugin({
+          id: "close",
+          session(api) {
+            api.signal.addEventListener("abort", () => finish.resolve(), { once: true });
+            api.tools.add((draft) =>
+              draft.set("close", {
+                name: "close",
+                description: "Wait until close",
+                parameters: Type.Object({}),
+                execute: async () => {
+                  started.resolve();
+                  await finish.promise;
+                  assert.equal(api.signal.aborted, true);
+                  return { content: [{ type: "text", text: "stopped" }], details: {} };
+                },
+              }),
+            );
+          },
+        }),
       ],
     },
   );

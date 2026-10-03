@@ -13,7 +13,7 @@ import {
   type SessionActivationResolver,
   type SessionEvent,
 } from "../../src/kernel/sdk/types.ts";
-import { definePlugin, inlinePlugin, type LoadedPlugin } from "../../src/plugins/index.ts";
+import { definePlugin, type Plugin } from "../../src/plugins/index.ts";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import { assistant, message, openStore, seedHead, usage, user, within } from "./helpers.ts";
 
@@ -57,15 +57,13 @@ function openLazy(input: {
   });
 }
 
-function countingPlugin(onSession: () => void): LoadedPlugin {
-  return inlinePlugin(
-    definePlugin({
-      id: "activation-plugin",
-      session() {
-        onSession();
-      },
-    }),
-  );
+function countingPlugin(onSession: () => void): Plugin {
+  return definePlugin({
+    id: "activation-plugin",
+    session() {
+      onSession();
+    },
+  });
 }
 
 async function nextActivation(
@@ -199,14 +197,12 @@ test("send queues under requires and reactivate starts the attached runner", asy
 
 test("reactivate refreshes every blocked session and the prospective catalog", async () => {
   let active = false;
-  const plugin = inlinePlugin(
-    definePlugin({
-      id: "next",
-      session(api) {
-        api.commands.add((draft) => draft.set("hello", { description: "Hi", run: () => "hi" }));
-      },
-    }),
-  );
+  const plugin = definePlugin({
+    id: "next",
+    session(api) {
+      api.commands.add((draft) => draft.set("hello", { description: "Hi", run: () => "hi" }));
+    },
+  });
   const nyte = await openLazy({
     resolveActivation(target) {
       if (active) return { kind: "active", plugins: [plugin], env: { cwd: "/workspace" } };

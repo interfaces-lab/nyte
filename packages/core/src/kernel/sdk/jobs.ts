@@ -6,6 +6,7 @@ import {
   type JobInfo,
   type JobReport,
 } from "@nyte-ai/protocol";
+import type { JsonValue } from "@nyte-ai/schema";
 import { Type, type Static } from "typebox";
 import { Compile } from "typebox/compile";
 import type {
@@ -23,7 +24,7 @@ import {
   toolResultText,
   toolSuccess,
 } from "../loop/tool-result.ts";
-import { toJsonValue } from "@nyte-ai/client";
+import { isJsonObject, toJsonValue } from "@nyte-ai/client";
 import { factRef, runRef } from "../names.ts";
 import { listEffects, signalEffect } from "../effects.ts";
 import { toolProgress } from "../turn.ts";
@@ -81,13 +82,20 @@ const checkLegacyJobRecord = Compile(
   }),
 );
 
-const checkJobArguments = Compile(
-  Type.Object({ command: Type.String(), background: Type.Optional(Type.Unknown()) }),
-);
+const jobArguments = Type.Object({
+  command: Type.String(),
+  background: Type.Optional(Type.Unknown()),
+});
 
-export function parseJobRecord(value: unknown): JobRecord {
+type JobArguments = Static<typeof jobArguments>;
+
+const checkJobArguments = Compile(jobArguments);
+
+export function parseJobRecord(value: JsonValue): JobRecord {
   if (checkJobRecord.Check(value)) return value;
-  if (!checkLegacyJobRecord.Check(value)) throw new Error("Invalid stored job");
+  if (!isJsonObject(value) || !checkLegacyJobRecord.Check(value)) {
+    throw new Error("Invalid stored job");
+  }
 
   const { phase } = value.info;
   const migrated = {
@@ -523,14 +531,13 @@ export function createJobs(input: {
   const admit = async (
     owner: JobOwner,
     tool: AgentTool,
-    args: unknown,
+    args: JobArguments,
     signal: AbortSignal | undefined,
     onUpdate: AgentToolUpdateCallback | undefined,
   ): Promise<Admitted> => {
     if (closing) throw new Error("Host is closing");
     signal?.throwIfAborted();
 
-    if (!checkJobArguments.Check(args)) throw new Error("Job arguments must name a command");
     const { command } = args;
 
     const id =
@@ -829,6 +836,10 @@ export function createJobs(input: {
 
             try {
               if (call.run === undefined) throw new Error("Job execution requires a run context");
+
+              if (!checkJobArguments.Check(input)) {
+                throw new Error("Job arguments must name a command");
+              }
 
               const admitted = await admit(
                 { kind: "run", runId: call.run.id, callId: call.id, head: call.run.head },

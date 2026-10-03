@@ -1,24 +1,21 @@
 import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
+
+const MissingPathError = Type.Object({
+  code: Type.Union([Type.Literal("ENOENT"), Type.Literal("ENOTDIR")]),
+});
 
 const fileMutationQueues = new Map<string, Promise<void>>();
 let registrationQueue = Promise.resolve();
-
-function isMissingPathError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error.code === "ENOENT" || error.code === "ENOTDIR")
-  );
-}
 
 async function getMutationQueueKey(filePath: string): Promise<string> {
   const resolvedPath = resolve(filePath);
   try {
     return await realpath(resolvedPath);
   } catch (error) {
-    if (isMissingPathError(error)) {
+    if (Value.Check(MissingPathError, error)) {
       return resolvedPath;
     }
     throw error;

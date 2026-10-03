@@ -9,11 +9,19 @@
  */
 import type { Api, JsonValue, Message, Model, Skill } from "@nyte-ai/schema";
 import { schemas } from "@nyte-ai/protocol";
-import type { PluginSource, SelectionReply, SettingChoice } from "@nyte-ai/protocol";
+import type {
+  CommandSelection,
+  HeadName,
+  RunInfo,
+  RunPhase,
+  Selection,
+  SelectionReply,
+  SettingChoice,
+} from "@nyte-ai/protocol";
 import { Value } from "typebox/value";
 import type { SessionEvent } from "../kernel/sdk/types.ts";
-import type { TSchema } from "typebox";
-import type { AgentTool } from "../kernel/loop/types.ts";
+import { Type, type TSchema } from "typebox";
+import type { AgentTool, ToolDefinition } from "../kernel/loop/types.ts";
 import type { HookHandler, HookName } from "./hooks.ts";
 
 export type Disposer = () => void;
@@ -32,16 +40,6 @@ export type { PluginInfo, PluginSource, SettingChoice, SettingInfo } from "@nyte
 export interface Plugin {
   readonly id: string;
   session(api: SessionApi): void | Promise<void>;
-}
-
-/** A plugin the host can activate: the module plus the identity that decides reloads. */
-export interface LoadedPlugin {
-  readonly id: string;
-  /** Changed bytes give a new version; the host reloads a plugin only when its version changes. */
-  readonly version: string;
-  readonly source: PluginSource;
-  readonly module: Plugin;
-  readonly path?: string;
 }
 
 export interface Draft<T> {
@@ -65,7 +63,11 @@ export interface ToolDraft extends Draft<AgentTool> {
  * builtin reads the real catalog and names it in the prompt rather than
  * guessing at a fixed set.
  */
-export interface ToolRegistry extends Registry<ToolDraft> {
+export interface ToolRegistry {
+  /** One tool under `name`; the host stamps the name on it. */
+  add<T extends TSchema, Details>(name: string, tool: ToolDefinition<T, Details>): Disposer;
+  /** Tools derived at rebuild time: a server's catalog, or another plugin's tool to wrap. */
+  add(contribution: (tools: ToolDraft) => void): Disposer;
   list(): readonly AgentTool[];
 }
 
@@ -94,11 +96,14 @@ export interface Agent {
 }
 
 /**
- * The `agents` contribution registry. Like every registry a plugin `add`s to
- * and `rebuild`s, plus `list`: the materialized agents after the last rebuild,
- * so a plugin that projects agents into a tool reads them while contributing it.
+ * The `agents` contribution registry, plus `list`: the materialized agents
+ * after the last rebuild, so a plugin that projects agents into a tool reads
+ * them while contributing it.
  */
-export interface AgentRegistry extends Registry<Draft<Agent>> {
+export interface AgentRegistry {
+  /** One preset under `name`; the host stamps the id on it. */
+  add(name: string, agent: Omit<Agent, "id">): Disposer;
+  add(contribution: (agents: Draft<Agent>) => void): Disposer;
   list(): readonly Agent[];
 }
 
@@ -127,12 +132,15 @@ export interface CommandPrompt {
   readonly prompt: string;
 }
 
+const CommandPromptSchema = Type.Object({ prompt: Type.String() });
+
 export function isCommandPrompt(result: NonNullable<CommandResult>): result is CommandPrompt {
-  return typeof result !== "string";
+  return Value.Check(CommandPromptSchema, result);
 }
 
 export interface Command {
   readonly description: string;
+  readonly selection?: CommandSelection;
   /**
    * Runs on the host that owns the command, at once: a command never waits in
    * the composer. `signal` aborts when the host's budget for the call runs out.
@@ -140,21 +148,43 @@ export interface Command {
   run(argument: string, signal: AbortSignal): Promise<CommandResult> | CommandResult;
 }
 
+/** A `SettingChoice` whose id the compiler keeps, so a setting's handle is typed by its choices. */
+type ChoiceOf<Id extends string> = Omit<SettingChoice, "id"> & { readonly id: Id };
+
 /**
- * A session policy a plugin declares to clients: a label, the choices it can
- * take, and the storage key holding the current one. The host resolves the
- * value and performs the write, so listing settings is one storage scan and
- * applying one is a fact append any host can make. Clients render settings
- * generically; nothing about a specific plugin leaks into them.
+ * A session policy a plugin declares to clients: a label and the choices it
+ * can take. The host resolves the current choice and performs the write, so
+ * listing settings is one storage scan and applying one is a fact append any
+ * host can make. Clients render settings generically; nothing about a
+ * specific plugin leaks into them.
  */
-export interface PluginSetting {
+export interface SettingDefinition<Id extends string = string> {
   readonly label: string;
   /** Non-empty by construction: a setting always has something to select. */
-  readonly choices: readonly [SettingChoice, ...SettingChoice[]];
+  readonly choices: readonly [ChoiceOf<Id>, ...ChoiceOf<Id>[]];
+  /** Choice used when storage holds nothing or a choice that no longer exists. */
+  readonly default: NoInfer<Id>;
+}
+
+/** A setting as the registry holds it: its definition and the storage key behind it. */
+export interface PluginSetting extends SettingDefinition {
   /** Key under this plugin's storage prefix holding the current choice id. */
   readonly key: string;
-  /** Choice used when storage holds nothing or a choice that no longer exists. Defaults to the first. */
-  readonly fallback?: string;
+}
+
+/** The current choice of one setting, typed by its choice ids. */
+export interface Setting<Id extends string> {
+  get(): Promise<Id>;
+  set(choice: Id): Promise<void>;
+  /** Called with the new choice whenever any host changes it, until the plugin is deactivated. */
+  subscribe(listener: (choice: Id) => void | Promise<void>): Disposer;
+}
+
+export interface SettingRegistry {
+  /** One setting under `name`, stored under that key, read and written through the returned handle. */
+  add<const Id extends string>(name: string, setting: SettingDefinition<Id>): Setting<Id>;
+  /** Settings derived at rebuild time: one per configured server, or choices that depend on other plugins. */
+  add(contribution: (settings: Draft<PluginSetting>) => void): Disposer;
 }
 
 export type ApplySettingOutcome =
@@ -162,11 +192,11 @@ export type ApplySettingOutcome =
   | { kind: "not_found" }
   | { kind: "invalid_choice" };
 
-export interface Registry<D> {
-  /** Register a synchronous contribution. It runs on every rebuild, in plugin order. No I/O inside. */
+export interface Registry<T, D extends Draft<T> = Draft<T>> {
+  /** One entry under `name`. */
+  add(name: string, value: T): Disposer;
+  /** Entries derived at rebuild time. Runs on every rebuild, in plugin order, synchronously. No I/O inside. */
   add(contribution: (draft: D) => void): Disposer;
-  /** Replay every contribution over a fresh draft and swap the result in. */
-  rebuild(): void;
 }
 
 export interface PluginStorage {
@@ -198,12 +228,46 @@ export interface StatusItem {
   readonly order?: number;
 }
 
+/** A run whose phase is final. */
+export type EndedRun = Omit<RunInfo, "phase"> & {
+  readonly phase: Extract<RunPhase, { kind: "done" | "aborted" | "failed" }>;
+};
+
+/**
+ * What the host reads off the event stream for plugins: a run that stopped,
+ * a call that parked asking a participant for a reply. Each is delivered once
+ * per occurrence this activation has seen; a host that restarts starts over.
+ */
+export type SessionTransition =
+  | { readonly kind: "run_ended"; readonly head: HeadName; readonly run: EndedRun }
+  | {
+      readonly kind: "awaiting_reply";
+      readonly runId: string;
+      readonly callId: string;
+      readonly waitId: string;
+      readonly tool: string;
+      readonly args: JsonValue;
+      readonly selection: Selection;
+      readonly until?: number;
+    };
+
+export type TransitionName = SessionTransition["kind"];
+
+export type Transition<TName extends TransitionName> = Extract<SessionTransition, { kind: TName }>;
+
 /**
  * The session's own event stream, the same one a client folds. Observation
  * only: nothing returned is read, but a returned promise is awaited under the
- * host's budget so its rejection is reported rather than unhandled.
+ * host's budget so its rejection is reported rather than unhandled. Only what
+ * happens after subscribing arrives.
  */
 export interface PluginEvents {
+  /** One kind of transition, derived and deduplicated by the host. */
+  subscribe<TName extends TransitionName>(
+    name: TName,
+    listener: (transition: Transition<TName>) => void | Promise<void>,
+  ): Disposer;
+  /** Every projected event. */
   subscribe(listener: (event: SessionEvent) => void | Promise<void>): Disposer;
 }
 
@@ -212,13 +276,19 @@ export interface SessionApi {
 
   // 1. contribute
   readonly tools: ToolRegistry;
-  readonly commands: Registry<Draft<Command>>;
-  readonly prompt: Registry<Draft<PromptSection>>;
-  readonly resources: Registry<Draft<Skill>>;
-  readonly settings: Registry<Draft<PluginSetting>>;
+  readonly commands: Registry<Command>;
+  readonly prompt: Registry<PromptSection>;
+  readonly resources: Registry<Skill>;
+  readonly settings: SettingRegistry;
   readonly agents: AgentRegistry;
-  readonly status: Registry<Draft<StatusItem>>;
-  readonly modelContext: Registry<Draft<ModelContextPolicy>>;
+  readonly status: Registry<StatusItem>;
+  readonly modelContext: Registry<ModelContextPolicy>;
+  /**
+   * Replay every registry's contributions and swap the results in, once this
+   * session's active tool cycles and callbacks finish. What a plugin calls
+   * after something it derives contributions from has changed.
+   */
+  refresh(): void;
 
   // 2. hook: intercept a live operation and return a typed result
   hook<TName extends HookName>(name: TName, handler: HookHandler<TName>): Disposer;
@@ -256,9 +326,4 @@ export function definePlugin(plugin: Plugin): Plugin {
 /** A wake handler's `reply` as a client sends it for a `Selection`, or nothing if it is some other shape. */
 export function selectionReply(reply: JsonValue): SelectionReply | undefined {
   return Value.Check(schemas.SelectionReply, reply) ? reply : undefined;
-}
-
-/** Wrap a plugin object as a loaded plugin without a loader. */
-export function inlinePlugin(plugin: Plugin, options: { version?: string } = {}): LoadedPlugin {
-  return { id: plugin.id, version: options.version ?? "inline", source: "inline", module: plugin };
 }

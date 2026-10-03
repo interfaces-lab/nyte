@@ -6,7 +6,7 @@ import { getCurrentSystemPrompt, getCurrentTools } from "@nyte-ai/schema";
 import { expect, test } from "vitest";
 import { submit } from "../../src/kernel/queue.ts";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
-import { definePlugin, inlinePlugin, toolsFsPlugin } from "../../src/plugins/index.ts";
+import { definePlugin, toolsFsPlugin } from "../../src/plugins/index.ts";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import { assistant, call, openStore, storePath, trustWorkspace, within } from "./helpers.ts";
 
@@ -25,18 +25,16 @@ const model: Model<Api> = {
 
 function plugins(id: string) {
   return [
-    inlinePlugin(
-      definePlugin({
-        id,
-        session(api) {
-          api.commands.add((draft) =>
-            draft.set("where", { description: "Directory", run: () => api.env.cwd }),
-          );
-          api.agents.add((draft) => draft.set("worker", { id: "worker", mode: "subagent" }));
-        },
-      }),
-    ),
-    inlinePlugin(toolsFsPlugin()),
+    definePlugin({
+      id,
+      session(api) {
+        api.commands.add((draft) =>
+          draft.set("where", { description: "Directory", run: () => api.env.cwd }),
+        );
+        api.agents.add((draft) => draft.set("worker", { id: "worker", mode: "subagent" }));
+      },
+    }),
+    toolsFsPlugin(),
   ];
 }
 
@@ -104,14 +102,12 @@ test("failed destination setup preserves the original activation, cwd and runnab
         ...input,
         workspace,
         plugins: [
-          inlinePlugin(
-            definePlugin({
-              id: "broken",
-              session() {
-                throw new Error("setup failed");
-              },
-            }),
-          ),
+          definePlugin({
+            id: "broken",
+            session() {
+              throw new Error("setup failed");
+            },
+          }),
         ],
       }),
       /Destination plugin setup failed: broken/,
@@ -330,15 +326,13 @@ test("destination setup holds head reservations against another store connection
       ...input,
       workspace: await setup.workspace,
       plugins: [
-        inlinePlugin(
-          definePlugin({
-            id: "slow",
-            async session() {
-              started.resolve();
-              await finish.promise;
-            },
-          }),
-        ),
+        definePlugin({
+          id: "slow",
+          async session() {
+            started.resolve();
+            await finish.promise;
+          },
+        }),
       ],
     });
     await within(started.promise);

@@ -1,12 +1,12 @@
 import type { ToolDefinition } from "../kernel/loop/types.ts";
-import { parsePatchFacts } from "@nyte-ai/client";
+import { type JsonObject, parsePatchFacts } from "@nyte-ai/client";
 import { constants } from "node:fs";
 import { access, readFile, writeFile } from "node:fs/promises";
 import { type Static, Type } from "typebox";
+import { Value } from "typebox/value";
 import {
   applyEditsToNormalizedContent,
   detectLineEnding,
-  type Edit,
   generateDiffString,
   generateUnifiedPatch,
   normalizeToLF,
@@ -71,47 +71,22 @@ export interface EditToolOptions {
   operations?: EditOperations;
 }
 
-function prepareEditArguments(input: unknown): unknown {
-  if (!input || typeof input !== "object") return input;
-  if ("edits" in input) {
-    if (typeof input.edits === "string") {
-      try {
-        const parsed: unknown = JSON.parse(input.edits);
-        if (Array.isArray(parsed)) input.edits = parsed;
-        else if (isSingleEditInput(parsed)) input.edits = [parsed];
-      } catch {}
-    } else if (isSingleEditInput(input.edits)) input.edits = [input.edits];
-  }
-  if (
-    !("oldText" in input) ||
-    typeof input.oldText !== "string" ||
-    !("newText" in input) ||
-    typeof input.newText !== "string"
-  )
-    return input;
-  const edits: unknown[] = "edits" in input && Array.isArray(input.edits) ? [...input.edits] : [];
-  edits.push({ oldText: input.oldText, newText: input.newText });
+const serializedEditsSchema = Type.String();
+
+function prepareEditArguments(input: JsonObject): JsonObject {
+  if (Value.Check(serializedEditsSchema, input.edits)) {
+    try {
+      const parsed: unknown = JSON.parse(input.edits);
+      if (Array.isArray(parsed)) input.edits = parsed;
+      else if (Value.Check(replaceEditSchema, parsed)) input.edits = [parsed];
+    } catch {}
+  } else if (Value.Check(replaceEditSchema, input.edits)) input.edits = [input.edits];
+  const legacyEdit = { oldText: input.oldText, newText: input.newText };
+  if (!Value.Check(replaceEditSchema, legacyEdit)) return input;
   const { oldText: _oldText, newText: _newText, ...rest } = input;
+  const edits = Array.isArray(input.edits) ? [...input.edits] : [];
+  edits.push(legacyEdit);
   return { ...rest, edits };
-}
-
-function isSingleEditInput(value: unknown): value is Edit {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    "oldText" in value &&
-    typeof value.oldText === "string" &&
-    "newText" in value &&
-    typeof value.newText === "string"
-  );
-}
-
-function validateEditInput(input: EditToolInput): { path: string; edits: Edit[] } {
-  if (!Array.isArray(input.edits) || input.edits.length === 0) {
-    throw new Error("Edit tool input is invalid. edits must contain at least one replacement.");
-  }
-  return { path: input.path, edits: input.edits };
 }
 
 export function createEditToolDefinition(
@@ -139,8 +114,10 @@ export function createEditToolDefinition(
     },
     constrainedSampling: { type: "json_schema", strict: "prefer" },
     prepareArguments: prepareEditArguments,
-    async execute(input, { signal }) {
-      const { path, edits } = validateEditInput(input);
+    async execute({ path, edits }, { signal }) {
+      if (edits.length === 0) {
+        throw new Error("Edit tool input is invalid. edits must contain at least one replacement.");
+      }
       const absolutePath = resolveToCwd(path, cwd);
 
       return withFileMutationQueue(absolutePath, async () => {

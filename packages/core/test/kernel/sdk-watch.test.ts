@@ -15,7 +15,7 @@ import {
   type SessionEvent,
 } from "../../src/kernel/sdk/types.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
-import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
+import { definePlugin } from "../../src/plugins/index.ts";
 import type { Diagnostics } from "../../src/plugins/types.ts";
 import { message, openSession, openStore, seedHead, user, within } from "./helpers.ts";
 
@@ -94,15 +94,13 @@ async function fixture() {
     },
     env: { cwd: "/tmp/watch-fixture" },
     plugins: [
-      inlinePlugin(
-        definePlugin({
-          id: "watch-notices",
-          session(api) {
-            activations += 1;
-            diagnostics.resolve(api.diagnostics);
-          },
-        }),
-      ),
+      definePlugin({
+        id: "watch-notices",
+        session(api) {
+          activations += 1;
+          diagnostics.resolve(api.diagnostics);
+        },
+      }),
     ],
   });
   const id = sessionId(session.id);
@@ -306,11 +304,11 @@ test("synced follows all equal-seq queue and commit siblings at the captured cur
       ],
     );
     assert.deepEqual(
-      seen.filter((event) => event.kind === "queued").map((event) => event.item.change),
+      seen.flatMap((event) => (event.kind === "queued" ? [event.item.change] : [])),
       [first, second],
     );
     assert.deepEqual(
-      seen.filter((event) => event.kind === "commit").map((event) => event.item.oid),
+      seen.flatMap((event) => (event.kind === "commit" ? [event.item.oid] : [])),
       commits,
     );
     assert.ok(seen.slice(3).every((event) => event.seq === target));
@@ -558,7 +556,7 @@ test("default replay delivers its full durable history before a consumer breaks 
       })(),
     );
     assert.deepEqual(
-      seen.filter((event) => event.kind === "commit").map((event) => event.item.oid),
+      seen.flatMap((event) => (event.kind === "commit" ? [event.item.oid] : [])),
       commits,
     );
     assert.deepEqual(

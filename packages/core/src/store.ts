@@ -26,4 +26,6 @@ export { toJsonValue } from "@nyte-ai/client";
 
 export { branch, contextCommits, history } from "./kernel/graph.ts";
 
+export { sessionName } from "./kernel/session-name.ts";
+
 export { branchConfig, contextMessages, modelContext } from "@nyte-ai/client";

@@ -80,7 +80,7 @@ import type {
 } from "@nyte-ai/protocol";
 import type {
   Disposer,
-  LoadedPlugin,
+  Plugin,
   PluginReplacement,
   PluginEnv,
   PluginInfo,
@@ -562,12 +562,12 @@ interface NyteBaseOptions {
   readonly prepareResponsePlugins?: (input: {
     readonly sessionId: SessionId;
     readonly cwd: string;
-  }) => Promise<readonly LoadedPlugin[]>;
+  }) => Promise<readonly Plugin[]>;
 }
 
 export interface ActiveSessionActivation {
   readonly kind: "active";
-  readonly plugins: readonly LoadedPlugin[];
+  readonly plugins: readonly Plugin[];
   readonly env: PluginEnv;
 }
 
@@ -592,7 +592,7 @@ export type SessionActivationResolver = (
 ) => SessionActivation | Promise<SessionActivation>;
 
 export interface StaticNyteOptions extends NyteBaseOptions {
-  readonly plugins: readonly LoadedPlugin[];
+  readonly plugins: readonly Plugin[];
   readonly env: PluginEnv;
   readonly resolveActivation?: never;
 }
@@ -643,11 +643,11 @@ export interface Nyte {
   relocate(input: {
     readonly sessionId: SessionId;
     readonly workspace: TrustedWorkspace;
-    readonly plugins: readonly LoadedPlugin[];
+    readonly plugins: readonly Plugin[];
   }): Promise<{ readonly kind: "relocated" } | { readonly kind: "busy" }>;
   /** Global preparation failure preserves all sessions and defaults; publication is per activation and advances the default even if a session rejects revalidation. */
   setPlugins(
-    plugins: readonly LoadedPlugin[],
+    plugins: readonly Plugin[],
     input?: { readonly sessionId: SessionId },
   ): Promise<PluginReplacement>;
   close(): Promise<void>;

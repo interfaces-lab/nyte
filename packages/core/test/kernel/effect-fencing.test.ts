@@ -138,14 +138,9 @@ for (const state of ["missing", "intent", "waiting", "expired", "signal", "resul
       const opened = await f.open();
       assert.ok(opened.kind === "opened");
       if (state === "waiting" || state === "expired" || state === "signal") {
+        const park = { lease: f.held, view: opened.view };
         assert.equal(
-          (
-            await parkEffect(f.session, {
-              lease: f.held,
-              view: opened.view,
-              ...(state === "expired" ? { until: 0 } : {}),
-            })
-          ).kind,
+          (await parkEffect(f.session, state === "expired" ? { ...park, until: 0 } : park)).kind,
           "parked",
         );
       }

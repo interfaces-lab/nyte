@@ -4,7 +4,7 @@
  * plugin activation, and only then is the saved directory replaced.
  */
 import { isTerminalPhase } from "@nyte-ai/protocol";
-import type { LoadedPlugin } from "../../plugins/types.ts";
+import type { Plugin } from "../../plugins/types.ts";
 import { landsNow } from "../admission.ts";
 import { withLeaseRenewal } from "../lease.ts";
 import type { Run } from "../model.ts";
@@ -59,7 +59,7 @@ export function createRelocation(input: {
   const relocate = async (input: {
     readonly sessionId: SessionId;
     readonly workspace: TrustedWorkspace;
-    readonly plugins: readonly LoadedPlugin[];
+    readonly plugins: readonly Plugin[];
   }): Promise<RelocateOutcome> => {
     const id = input.sessionId;
     const pooled = await pool.open(id);
@@ -128,19 +128,17 @@ export function createRelocation(input: {
 
         await runners.stopRunner(pooled);
 
-        const next = await activate({
+        const outcome = await activate({
           target: { kind: "session", session: pooled.session },
           plugins: pluginsFor({ id, pooled, plugins: input.plugins }),
           env: { cwd: input.workspace.cwd },
         });
 
-        try {
-          const failed = next.plugins.list().filter((plugin) => plugin.status === "failed");
+        if (outcome.kind === "failed")
+          throw new Error(`Destination plugin setup failed: ${outcome.error}`);
+        const next = outcome.activation;
 
-          if (failed.length > 0)
-            throw new Error(
-              `Destination plugin setup failed: ${failed.map((plugin) => plugin.id).join(", ")}`,
-            );
+        try {
           signal.throwIfAborted();
           pool.alive();
           await pool.writeFact(pooled.session, CWD_FACT, input.workspace.cwd);

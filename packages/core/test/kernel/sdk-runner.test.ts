@@ -17,7 +17,7 @@ import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import type { Nyte, NyteOptions, SessionId } from "../../src/kernel/sdk/types.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
 import { ToolWait, type StreamFn } from "../../src/kernel/loop/types.ts";
-import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
+import { definePlugin } from "../../src/plugins/index.ts";
 import { assistant, call, openInProcessStore, openStore, usage, within } from "./helpers.ts";
 
 const model: Model<Api> = {
@@ -44,13 +44,7 @@ interface ProviderRequest {
  * signal says. A cancelled request is visible on its signal, and a drive
  * blocked in a request stays blocked until the test lets it go.
  */
-function heldProvider(): {
-  readonly streamFn: StreamFn;
-  readonly requests: ProviderRequest[];
-  readonly nextRequest: () => Promise<ProviderRequest>;
-  /** End whatever is still streaming, so a failed assertion cannot hang the close. */
-  readonly endAll: () => void;
-} {
+function heldProvider() {
   const requests: ProviderRequest[] = [];
   const waiters: ((request: ProviderRequest) => void)[] = [];
   const streamFn: StreamFn = (_model, context, streamOptions) => {
@@ -90,6 +84,7 @@ function heldProvider(): {
       if (arrived !== undefined) return Promise.resolve(arrived);
       return within(new Promise<ProviderRequest>((resolve) => waiters.push(resolve)));
     },
+    /** End whatever is still streaming, so a failed assertion cannot hang the close. */
     endAll: () => {
       for (const request of requests) request.end();
     },
@@ -101,18 +96,20 @@ interface Held<T> {
   readonly release: () => void;
 }
 
-/**
- * A store whose sessions can hold one object read or one watched event. The
- * hold is armed once and reports what it caught with its release, so the test
- * can act on the store in between: that is the interleaving under test.
- */
-function gatedStore(base: Store): {
+interface GatedStore {
   readonly store: Store;
   readonly holdRead: (matches: (object: Obj) => boolean) => Promise<Held<Obj>>;
   readonly holdEvent: (matches: (event: Event) => Promise<boolean>) => Promise<Held<Event>>;
   /** Let every held read and event go, so a failed assertion cannot hang the close. */
   readonly releaseAll: () => void;
-} {
+}
+
+/**
+ * A store whose sessions can hold one object read or one watched event. The
+ * hold is armed once and reports what it caught with its release, so the test
+ * can act on the store in between: that is the interleaving under test.
+ */
+function gatedStore(base: Store): GatedStore {
   let readGate:
     | { matches: (object: Obj) => boolean; caught: (held: Held<Obj>) => void }
     | undefined;
@@ -395,27 +392,25 @@ test("a stopped run's final event, delivered while the next run is asking the pr
 test("a faulted runner drops its parked deadline before SDK close", async () => {
   const base = openInProcessStore();
   const until = Date.now() + 60_000;
-  const waiting = inlinePlugin(
-    definePlugin({
-      id: "deadline",
-      session(api) {
-        api.tools.add((draft) =>
-          draft.set("wait", {
-            name: "wait",
-            description: "Wait",
-            parameters: Type.Object({}),
-            execute: async () => {
-              throw new ToolWait({ until });
-            },
-            wake: async () => ({
-              kind: "success",
-              result: { content: [{ type: "text", text: "done" }], details: {} },
-            }),
+  const waiting = definePlugin({
+    id: "deadline",
+    session(api) {
+      api.tools.add((draft) =>
+        draft.set("wait", {
+          name: "wait",
+          description: "Wait",
+          parameters: Type.Object({}),
+          execute: async () => {
+            throw new ToolWait({ until });
+          },
+          wake: async () => ({
+            kind: "success",
+            result: { content: [{ type: "text", text: "done" }], details: {} },
           }),
-        );
-      },
-    }),
-  );
+        }),
+      );
+    },
+  });
   const streamFn: StreamFn = () => {
     const stream = createAssistantMessageEventStream();
     queueMicrotask(() =>

@@ -92,7 +92,7 @@ import {
   settleEffect,
   type EffectView,
 } from "./effects.ts";
-import { toJsonValue } from "@nyte-ai/client";
+import { isJsonObject, toJsonValue } from "@nyte-ai/client";
 import type { JsonValue } from "@nyte-ai/client";
 import type {
   Choice,
@@ -354,11 +354,20 @@ function withToolChanges(
   message: SystemMessage,
   { toolsAdded, toolsRemoved }: ToolStateChanges,
 ): SystemMessage {
-  return {
-    ...message,
-    ...(toolsAdded.length > 0 ? { toolsAdded } : {}),
-    ...(toolsRemoved.length > 0 ? { toolsRemoved } : {}),
-  };
+  const next: SystemMessage = { ...message };
+  if (toolsAdded.length > 0) next.toolsAdded = toolsAdded;
+  if (toolsRemoved.length > 0) next.toolsRemoved = toolsRemoved;
+  return next;
+}
+
+function withSortedKeys(value: JsonValue): JsonValue {
+  if (Array.isArray(value)) return value.map(withSortedKeys);
+  if (!isJsonObject(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => (left < right ? -1 : 1))
+      .map(([key, member]) => [key, withSortedKeys(member)]),
+  );
 }
 
 /**
@@ -369,17 +378,9 @@ function withToolChanges(
 function storedDeclaration(tool: AgentTool): Tool {
   const declaration = toToolDeclaration(tool);
 
-  const parameters: unknown = JSON.parse(
-    JSON.stringify(declaration.parameters, (_key, value: unknown) =>
-      typeof value === "object" && value !== null && !Array.isArray(value)
-        ? Object.fromEntries(
-            Object.entries(value).sort(([left], [right]) => (left < right ? -1 : 1)),
-          )
-        : value,
-    ),
-  );
+  const parameters = withSortedKeys(toJsonValue(declaration.parameters));
 
-  if (typeof parameters !== "object" || parameters === null) {
+  if (!isJsonObject(parameters)) {
     throw new Error(`Tool ${tool.name} parameters did not survive a JSON round trip`);
   }
 

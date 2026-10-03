@@ -4,6 +4,7 @@
  * is the SHA-256 of that body. A stored body is hashed again on read.
  */
 import { createHash } from "node:crypto";
+import { isJsonObject, type JsonObject, type JsonValue } from "@nyte-ai/client";
 import type { Obj, Oid } from "./model.ts";
 
 export function hashObject(object: Obj): Oid {
@@ -15,28 +16,23 @@ export function hashBody(body: string): Oid {
 }
 
 export function objectBody(object: Obj): string {
-  return serializeMembers(object);
+  const json: JsonValue = JSON.parse(JSON.stringify(object));
+
+  return serialize(json);
 }
 
-function serialize(value: unknown): string | undefined {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => serialize(item) ?? "null").join(",")}]`;
-  }
+function serialize(value: JsonValue): string {
+  if (Array.isArray(value)) return `[${value.map(serialize).join(",")}]`;
 
-  if (typeof value !== "object" || value === null) return JSON.stringify(value);
+  if (!isJsonObject(value)) return JSON.stringify(value);
 
   return serializeMembers(value);
 }
 
-function serializeMembers(value: object): string {
-  const entries: readonly (readonly [string, unknown])[] = Object.entries(value);
-  const members: string[] = [];
-
-  for (const [key, member] of entries.toSorted(([left], [right]) => (left < right ? -1 : 1))) {
-    const text = serialize(member);
-
-    if (text !== undefined) members.push(`${JSON.stringify(key)}:${text}`);
-  }
+function serializeMembers(value: JsonObject): string {
+  const members = Object.entries(value)
+    .toSorted(([left], [right]) => (left < right ? -1 : 1))
+    .map(([key, member]) => `${JSON.stringify(key)}:${serialize(member)}`);
 
   return `{${members.join(",")}}`;
 }

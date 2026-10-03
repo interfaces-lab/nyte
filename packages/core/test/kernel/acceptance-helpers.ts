@@ -70,7 +70,7 @@ export function openAcceptanceNyte(
     },
     plugins: options.plugins ?? [],
     env: { cwd: "/tmp/nyte-acceptance" },
-    ...(options.drain === undefined ? {} : { drain: options.drain }),
+    drain: options.drain,
   });
 }
 
@@ -100,13 +100,7 @@ export async function transcriptUsers(
   );
 }
 
-export function gateRefUpdate(base: Store): {
-  readonly store: Store;
-  readonly arm: () => {
-    readonly entered: Promise<void>;
-    readonly release: () => void;
-  };
-} {
+export function gateRefUpdate(base: Store) {
   let barrier:
     | {
         readonly entered: PromiseWithResolvers<void>;
@@ -133,14 +127,15 @@ export function gateRefUpdate(base: Store): {
       },
     },
   });
+  const store: Store = {
+    create: async (options) => wrap(await base.create(options)),
+    open: async (id) => wrap(await base.open(id)),
+    list: () => base.list(),
+    delete: (id) => base.delete(id),
+    close: () => base.close(),
+  };
   return {
-    store: {
-      create: async (options) => wrap(await base.create(options)),
-      open: async (id) => wrap(await base.open(id)),
-      list: () => base.list(),
-      delete: (id) => base.delete(id),
-      close: () => base.close(),
-    },
+    store,
     arm: () => {
       if (barrier !== undefined) throw new Error("A ref-update barrier is already armed");
       const entered = Promise.withResolvers<void>();

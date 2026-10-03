@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { dirname } from "node:path";
 import { contentText, createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
-import { getCurrentTools } from "@nyte-ai/schema";
+import { getCurrentTools, type ToolCall } from "@nyte-ai/schema";
 import {
   isTerminalPhase,
   sessionId,
@@ -34,7 +34,7 @@ import { toolResultText } from "../../src/kernel/loop/tool-result.ts";
 import { step } from "../../src/kernel/step.ts";
 import type { Refs, Session, Store } from "../../src/kernel/store.ts";
 import type { RespondOutcome, ToolBatchOutcome, Turn } from "../../src/kernel/turn.ts";
-import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
+import { definePlugin } from "../../src/plugins/index.ts";
 import {
   assistant,
   call,
@@ -118,9 +118,7 @@ async function fixture(hook: RefUpdateHook = ({ proceed }) => proceed()) {
   const streamFn: StreamFn = (_model, context, options) => {
     const messages = context.messages;
     const isCompletion = (message: (typeof messages)[number]) =>
-      message.role === "user" &&
-      typeof message.content === "string" &&
-      message.content.startsWith("Background ");
+      message.role === "user" && contentText(message.content).startsWith("Background ");
     const tail = messages.slice(
       messages.findLastIndex((message) => message.role === "user" && !isCompletion(message)),
     );
@@ -177,23 +175,21 @@ async function fixture(hook: RefUpdateHook = ({ proceed }) => proceed()) {
       getAvailable: async () => [model],
     },
     plugins: [
-      inlinePlugin(
-        definePlugin({
-          id: "delegation-test-tools",
-          session(api) {
-            api.tools.add((draft) => {
-              // Foreground availability, not the tool's name, keeps a tool from a child.
-              draft.set("clarify", {
-                name: "clarify",
-                availability: "foreground",
-                description: "Ask the user",
-                parameters: Type.Object({}),
-                execute: async () => ({ content: [{ type: "text", text: "answer" }], details: {} }),
-              });
+      definePlugin({
+        id: "delegation-test-tools",
+        session(api) {
+          api.tools.add((draft) => {
+            // Foreground availability, not the tool's name, keeps a tool from a child.
+            draft.set("clarify", {
+              name: "clarify",
+              availability: "foreground",
+              description: "Ask the user",
+              parameters: Type.Object({}),
+              execute: async () => ({ content: [{ type: "text", text: "answer" }], details: {} }),
             });
-          },
-        }),
-      ),
+          });
+        },
+      }),
     ],
     env: { cwd },
   });
@@ -223,7 +219,7 @@ async function fixture(hook: RefUpdateHook = ({ proceed }) => proceed()) {
       return () => gate.resolve();
     },
     /** Send a command to the parent and wait for its run to settle. */
-    async command(tool: string, args: object) {
+    async command(tool: string, args: ToolCall["arguments"]) {
       await nyte.messages.send({
         sessionId: parent,
         content: `do ${tool} ${JSON.stringify(args)}`,

@@ -929,7 +929,9 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         const pooled = await pool.open(input.sessionId);
         const activation = await pool.activationFor(input.sessionId, pooled);
 
-        return activation === undefined ? [] : activation.plugins.list();
+        if (activation !== undefined) return activation.plugins.list();
+
+        return pooled.activationState?.kind === "failed" ? pooled.activationState.plugins : [];
       },
       commands: {
         async list(input): Promise<readonly CommandInfo[]> {
@@ -1049,6 +1051,8 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       const errors: string[] = [];
       for (const [id, pooled] of pool.entries()) {
         if (pooled.relocating) continue;
+        // A new set is a new chance for a session its old set failed.
+        if (pooled.activationState?.kind === "failed") pooled.activationState = undefined;
         await pool.resolveSessionActivation(id, pooled);
 
         if (pooled.scopedPlugins) continue;

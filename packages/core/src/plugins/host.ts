@@ -5,18 +5,20 @@ import type { Hooks } from "./hooks.ts";
 import { ContributionRegistry, MapDraft, ToolMapDraft, type RegistryDiff } from "./registry.ts";
 import { PluginScope, withBudget } from "./scope.ts";
 import { ModelContextDraft } from "./model-context.ts";
+import { pluginSource, type PluginSourceInfo } from "./source.ts";
+import type { SessionEvent } from "../kernel/sdk/types.ts";
 import type {
   Agent,
   Command,
   Disposer,
-  LoadedPlugin,
+  Plugin,
   ModelContextPolicy,
   Notification,
   PluginEnv,
-  PluginEvents,
   PluginInfo,
   PluginSetting,
   PromptSection,
+  SessionTransition,
   StatusItem,
   PluginReplacement,
 } from "./types.ts";
@@ -60,12 +62,18 @@ export type PluginNotice =
   | ({ readonly kind: "notification"; readonly owner: string } & Notification)
   | { readonly kind: "status_changed"; readonly items: readonly string[] };
 
+/** The session's event stream and the transitions the host derives from it, for plugin listeners. */
+export interface PluginEventSource {
+  subscribe(listener: (event: SessionEvent) => void | Promise<void>): Disposer;
+  transitions(listener: (transition: SessionTransition) => void | Promise<void>): Disposer;
+}
+
 /** What the host needs from one session activation. */
 export interface PluginHostTarget {
   readonly hooks: Hooks;
   readonly registries: PluginRegistries;
   readonly session: PluginSessionStorage;
-  readonly events: PluginEvents;
+  readonly events: PluginEventSource;
   readonly env: PluginEnv;
   subscribe(listener: (event: PluginNotice) => void | Promise<void>): Disposer;
   /** Replay every registry; a contribution that throws is reported as a diagnostic. */
@@ -85,8 +93,14 @@ export type PreparedPluginReplacement =
   | Extract<PluginReplacement, { kind: "rejected" }>;
 
 interface ActivePlugin {
-  plugin: LoadedPlugin;
+  plugin: RuntimePlugin;
   scope: PluginScope;
+}
+
+interface RuntimePlugin extends PluginSourceInfo {
+  readonly id: string;
+  readonly module: Plugin;
+  readonly revision: Plugin | string;
 }
 
 export class PluginHost {
@@ -106,13 +120,22 @@ export class PluginHost {
     return this.inventory;
   }
 
-  async activate(next: readonly LoadedPlugin[], applied?: () => void): Promise<PluginReplacement> {
+  async activate(next: readonly Plugin[], applied?: () => void): Promise<PluginReplacement> {
     const prepared = await this.prepare(next, applied);
     return prepared.kind === "rejected" ? prepared : prepared.publish();
   }
 
-  prepare(next: readonly LoadedPlugin[], applied?: () => void): Promise<PreparedPluginReplacement> {
-    const run = this.tail.then(() => this.prepareNow(next, applied));
+  prepare(next: readonly Plugin[], applied?: () => void): Promise<PreparedPluginReplacement> {
+    const prepared = next.map((plugin): RuntimePlugin => {
+      const source = pluginSource(plugin);
+      return {
+        ...(source ?? { source: "inline", version: "inline" }),
+        id: plugin.id,
+        module: plugin,
+        revision: source?.version ?? plugin,
+      };
+    });
+    const run = this.tail.then(() => this.prepareNow(prepared, applied));
     this.tail = run.catch(() => undefined);
     return run;
   }
@@ -141,7 +164,7 @@ export class PluginHost {
   }
 
   private async prepareNow(
-    next: readonly LoadedPlugin[],
+    next: readonly RuntimePlugin[],
     applied?: () => void,
   ): Promise<PreparedPluginReplacement> {
     if (this.closed) throw new Error("plugin host is closed");
@@ -156,7 +179,7 @@ export class PluginHost {
       next.every(
         (plugin, index) =>
           this.inventory[index]?.id === plugin.id &&
-          this.inventory[index]?.version === plugin.version,
+          this.active.get(plugin.id)?.plugin.revision === plugin.revision,
       )
     ) {
       return {
@@ -169,10 +192,13 @@ export class PluginHost {
       };
     }
     const excluded = new Set(
-      [...this.active]
+      this.active
+        .entries()
         .filter(
           ([id, previous]) =>
-            !next.some((plugin) => plugin.id === id && plugin.version === previous.plugin.version),
+            !next.some(
+              (plugin) => plugin.id === id && plugin.revision === previous.plugin.revision,
+            ),
         )
         .map(([id]) => id),
     );
@@ -244,7 +270,7 @@ export class PluginHost {
     try {
       for (const [order, plugin] of next.entries()) {
         const previous = this.active.get(plugin.id);
-        if (previous?.plugin.version === plugin.version) continue;
+        if (previous?.plugin.revision === plugin.revision) continue;
         const scope = new PluginScope(plugin.id, (cause) => {
           void this.target.emit({
             kind: "diagnostic",
@@ -254,10 +280,14 @@ export class PluginHost {
           });
         });
         candidates.set(plugin.id, { plugin, scope });
-        const api = bindSessionApi(apiTarget, plugin, scope, order);
-        await withBudget({ what: `plugin ${plugin.id} session()`, ms: this.budgetMs }, () =>
+        const api = bindSessionApi(apiTarget, plugin.module, scope, order);
+        await withBudget({ what: `session()`, ms: this.budgetMs }, () =>
           plugin.module.session(api),
-        );
+        ).catch((cause: unknown) => {
+          throw new Error(
+            `${plugin.id}: ${cause instanceof Error ? cause.message : String(cause)}`,
+          );
+        });
       }
       validate();
     } catch (cause) {
@@ -316,7 +346,7 @@ export class PluginHost {
   }
 }
 
-function activeInfo(plugin: LoadedPlugin): Extract<PluginInfo, { status: "active" }> {
+function activeInfo(plugin: RuntimePlugin): Extract<PluginInfo, { status: "active" }> {
   const { id, version, source, path } = plugin;
 
   return path === undefined
@@ -324,7 +354,7 @@ function activeInfo(plugin: LoadedPlugin): Extract<PluginInfo, { status: "active
     : { id, version, source, path, status: "active" };
 }
 
-function duplicateId(plugins: readonly LoadedPlugin[]): string | undefined {
+function duplicateId(plugins: readonly RuntimePlugin[]): string | undefined {
   const seen = new Set<string>();
 
   for (const plugin of plugins) {

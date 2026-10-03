@@ -12,7 +12,7 @@ import { headRef } from "../../src/kernel/names.ts";
 import type { Commit } from "../../src/kernel/model.ts";
 import type { Session } from "../../src/kernel/store.ts";
 import { projectUsage } from "@nyte-ai/client";
-import { definePlugin, inlinePlugin } from "../../src/plugins/types.ts";
+import { definePlugin } from "../../src/plugins/types.ts";
 import type { HookInvocation } from "../../src/plugins/hooks.ts";
 import {
   assistant,
@@ -106,22 +106,20 @@ test("native compaction serves manual and automatic checkpoints without a local 
     models,
     compaction: settings,
     plugins: [
-      inlinePlugin(
-        definePlugin({
-          id: "native-lifecycle",
-          session(api) {
-            api.prompt.add((draft) => draft.set("persona", { text: "NORMAL AGENT PERSONA" }));
-            api.hook("before_compaction", async (event) => {
-              hookCalls.push(event);
-              if (hookCalls.length === 1) {
-                started.resolve();
-                await finish.promise;
-              }
-              return { material, usage };
-            });
-          },
-        }),
-      ),
+      definePlugin({
+        id: "native-lifecycle",
+        session(api) {
+          api.prompt.add((draft) => draft.set("persona", { text: "NORMAL AGENT PERSONA" }));
+          api.hook("before_compaction", async (event) => {
+            hookCalls.push(event);
+            if (hookCalls.length === 1) {
+              started.resolve();
+              await finish.promise;
+            }
+            return { material, usage };
+          });
+        },
+      }),
     ],
     streamFn: (_model, context) => {
       requests.push(context);
@@ -235,20 +233,18 @@ test("a rejected native request falls back to a portable summary under the summa
     env: { cwd: "/tmp" },
     compaction: settings,
     plugins: [
-      inlinePlugin(
-        definePlugin({
-          id: "manual-provider",
-          session(api) {
-            api.hook("before_compaction", () => {
-              throw new Error("native endpoint rejected request");
-            });
-            api.hook("before_request", (event) => {
-              steps.push(event.step);
-              return undefined;
-            });
-          },
-        }),
-      ),
+      definePlugin({
+        id: "manual-provider",
+        session(api) {
+          api.hook("before_compaction", () => {
+            throw new Error("native endpoint rejected request");
+          });
+          api.hook("before_request", (event) => {
+            steps.push(event.step);
+            return undefined;
+          });
+        },
+      }),
     ],
     streamFn: (_model, context) => {
       requests.push(context);
@@ -293,23 +289,21 @@ test("cancelling a native compaction preserves the head, releases its lease, ski
     models,
     compaction: settings,
     plugins: [
-      inlinePlugin(
-        definePlugin({
-          id: "cancel-provider",
-          session(api) {
-            api.hook("before_compaction", async (_event, signal) => {
-              assert.ok(signal);
-              const stopped = new Promise<void>((resolve) => {
-                signal.addEventListener("abort", () => resolve(), { once: true });
-              });
-              started.resolve();
-              await stopped;
-              // Even a provider finishing after cancellation cannot publish, but its usage is kept.
-              return { material, usage };
+      definePlugin({
+        id: "cancel-provider",
+        session(api) {
+          api.hook("before_compaction", async (_event, signal) => {
+            assert.ok(signal);
+            const stopped = new Promise<void>((resolve) => {
+              signal.addEventListener("abort", () => resolve(), { once: true });
             });
-          },
-        }),
-      ),
+            started.resolve();
+            await stopped;
+            // Even a provider finishing after cancellation cannot publish, but its usage is kept.
+            return { material, usage };
+          });
+        },
+      }),
     ],
     streamFn: () => assert.fail("a cancelled native request must not fall back"),
   });

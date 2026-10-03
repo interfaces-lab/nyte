@@ -12,7 +12,7 @@ import { Type } from "typebox";
 import { sessionMark } from "@nyte-ai/client";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { sessionId } from "../../src/kernel/sdk/types.ts";
-import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
+import { definePlugin } from "../../src/plugins/index.ts";
 import { backgroundWait, ToolWait } from "../../src/kernel/loop/types.ts";
 import { assistant, call, openStore, within } from "./helpers.ts";
 
@@ -39,39 +39,37 @@ async function fixture() {
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     env: { cwd: "/tmp/nowhere" },
     plugins: [
-      inlinePlugin(
-        definePlugin({
-          id: "parking",
-          session(api) {
-            api.tools.add((draft) => {
-              draft.set("ask", {
-                name: "ask",
-                description: "Ask the user",
-                parameters: Type.Object({}),
-                execute: async () => {
-                  throw new ToolWait({ selection });
-                },
-                wake: async () => ({
-                  kind: "success",
-                  result: { content: [{ type: "text", text: "answered" }], details: {} },
-                }),
-              });
-              draft.set("sleep", {
-                name: "sleep",
-                description: "Wait on background work",
-                parameters: Type.Object({}),
-                execute: async () => {
-                  throw new ToolWait(backgroundWait);
-                },
-                wake: async () => ({
-                  kind: "success",
-                  result: { content: [{ type: "text", text: "woke" }], details: {} },
-                }),
-              });
+      definePlugin({
+        id: "parking",
+        session(api) {
+          api.tools.add((draft) => {
+            draft.set("ask", {
+              name: "ask",
+              description: "Ask the user",
+              parameters: Type.Object({}),
+              execute: async () => {
+                throw new ToolWait({ selection });
+              },
+              wake: async () => ({
+                kind: "success",
+                result: { content: [{ type: "text", text: "answered" }], details: {} },
+              }),
             });
-          },
-        }),
-      ),
+            draft.set("sleep", {
+              name: "sleep",
+              description: "Wait on background work",
+              parameters: Type.Object({}),
+              execute: async () => {
+                throw new ToolWait(backgroundWait);
+              },
+              wake: async () => ({
+                kind: "success",
+                result: { content: [{ type: "text", text: "woke" }], details: {} },
+              }),
+            });
+          });
+        },
+      }),
     ],
     streamFn: (_model, context) => {
       const stream = createAssistantMessageEventStream();

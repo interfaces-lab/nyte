@@ -14,7 +14,7 @@ import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import type { Nyte, SessionId } from "../../src/kernel/sdk/types.ts";
 import type { Store } from "../../src/kernel/store.ts";
 import type { CacheWarmingMode, CacheWarmingStatus } from "../../src/kernel/cache-warmer.ts";
-import { definePlugin, inlinePlugin, type LoadedPlugin } from "../../src/plugins/index.ts";
+import { definePlugin, type Plugin } from "../../src/plugins/index.ts";
 import { assistant, openStore, storePath, within } from "./helpers.ts";
 
 /** Five-minute pricing with a 10.2 s cache lifetime, so a refresh is due 200 ms after dispatch. */
@@ -116,7 +116,7 @@ async function open(
   store: Store,
   streamFn: StreamFn,
   cacheWarming: () => CacheWarmingMode,
-  plugins: readonly LoadedPlugin[] = [],
+  plugins: readonly Plugin[] = [],
   catalog: Model<Api>[] = [model],
 ): Promise<Nyte> {
   return createNyte({
@@ -298,18 +298,16 @@ test("a plugin's stop decision ends warming before any request is sent", async (
   const store = openStore();
   const scripted = provider();
   const seen: string[] = [];
-  const veto = inlinePlugin(
-    definePlugin({
-      id: "veto",
-      session(api) {
-        api.hook("cache_warming_decision", (event) => {
-          seen.push(`${event.phase}:${event.action}:${event.model.modelId}`);
+  const veto = definePlugin({
+    id: "veto",
+    session(api) {
+      api.hook("cache_warming_decision", (event) => {
+        seen.push(`${event.phase}:${event.action}:${event.model.modelId}`);
 
-          return { action: "stop" };
-        });
-      },
-    }),
-  );
+        return { action: "stop" };
+      });
+    },
+  });
   const nyte = await open(store, scripted.streamFn, () => "idle", [veto]);
   const { sessionId: id } = await nyte.sessions.create();
   try {

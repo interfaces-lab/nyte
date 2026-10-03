@@ -51,14 +51,6 @@ type ToolsHandler = (input: ToolsInput) => Promise<ToolBatchOutcome>;
 type RespondStep = RespondOutcome | RespondHandler;
 type ToolsStep = ToolBatchOutcome | ToolsHandler;
 
-function isRespondHandler(step: RespondStep): step is RespondHandler {
-  return typeof step === "function";
-}
-
-function isToolsHandler(step: ToolsStep): step is ToolsHandler {
-  return typeof step === "function";
-}
-
 /** Scripted outcomes drive durable state transitions. */
 class Script implements Turn {
   private readonly respondSteps: RespondStep[];
@@ -70,12 +62,12 @@ class Script implements Turn {
   async respond(input: TurnInput): Promise<RespondOutcome> {
     const next = this.respondSteps.shift();
     if (next === undefined) assert.fail("respond was called without a scripted answer");
-    return isRespondHandler(next) ? next(input) : next;
+    return "kind" in next ? next : next(input);
   }
   async tools(input: ToolsInput): Promise<ToolBatchOutcome> {
     const next = this.toolsSteps.shift();
     if (next === undefined) assert.fail("tools was called without a scripted answer");
-    return isToolsHandler(next) ? next(input) : next;
+    return "kind" in next ? next : next(input);
   }
 }
 

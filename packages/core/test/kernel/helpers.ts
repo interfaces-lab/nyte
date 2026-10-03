@@ -35,6 +35,7 @@ import { SqliteStore } from "../../src/kernel/sqlite.ts";
 import { WorkerStore } from "../../src/kernel/worker-store.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
 import type { Turn, TurnInput } from "../../src/kernel/turn.ts";
+import type { ToolCall as ToolCallContext, ToolRun } from "../../src/kernel/loop/types.ts";
 import { TRUSTED_WORKSPACE } from "../../src/kernel/sdk/types.ts";
 import type { TrustedWorkspace } from "../../src/kernel/sdk/types.ts";
 
@@ -126,6 +127,30 @@ export function assistant(
   return options.error === undefined ? message : { ...message, errorMessage: options.error };
 }
 
+/** A run scope by identity alone: no history and no callable tools, for layers that only read the ids. */
+export function bareRun(id: string, head: string): ToolRun {
+  return {
+    id,
+    head,
+    history: async () => [],
+    tools: {
+      list: () => [],
+      execute: async () => {
+        throw new Error("no tools in a bare run");
+      },
+      activate: () => undefined,
+    },
+  };
+}
+
+/** A direct call into `execute`, outside any run, the way the bare loop makes one. */
+export function toolCall(
+  id: string,
+  options: Partial<Omit<ToolCallContext, "id">> = {},
+): ToolCallContext {
+  return { signal: new AbortController().signal, update: () => undefined, ...options, id };
+}
+
 export function call(id: string, name: string, args: ToolCall["arguments"] = {}): ToolCall {
   return { type: "toolCall", id, name, arguments: args };
 }
@@ -196,13 +221,9 @@ type ToolResultCommitBody = Extract<
 >["body"];
 
 function commitFields(parent: Oid | null, options: CommitFields) {
-  return {
-    kind: "commit" as const,
-    parent,
-    at: options.at ?? 1_000,
-    ...(options.run === undefined ? {} : { run: options.run }),
-    ...(options.change === undefined ? {} : { change: options.change }),
-  };
+  const fields = { kind: "commit" as const, parent, at: options.at ?? 1_000 };
+  const withRun = options.run === undefined ? fields : { ...fields, run: options.run };
+  return options.change === undefined ? withRun : { ...withRun, change: options.change };
 }
 
 export function userCommit(
@@ -347,12 +368,7 @@ export async function chain(
   let previous = parent;
   let at = options.at ?? 1_000;
   for (const body of bodies) {
-    const [oid] = await session.objects.put([
-      commit(previous, body, {
-        at,
-        ...(options.run === undefined ? {} : { run: options.run }),
-      }),
-    ]);
+    const [oid] = await session.objects.put([commit(previous, body, { at, run: options.run })]);
     if (oid === undefined) assert.fail("put returned no oid");
     oids.push(oid);
     previous = oid;

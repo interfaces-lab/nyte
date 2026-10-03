@@ -345,12 +345,12 @@ export function createBashToolDefinition(
         const structuredContent: BashToolOutput = {
           output: fullOutput.content,
           truncated: fullOutput.truncated,
-          ...(fullOutput.truncated && snapshot.fullOutputPath
-            ? { full_output_path: snapshot.fullOutputPath }
-            : {}),
           exit_code: exitCode,
           wall_time_seconds: wallTimeSeconds,
         };
+        if (fullOutput.truncated && snapshot.fullOutputPath) {
+          structuredContent.full_output_path = snapshot.fullOutputPath;
+        }
         if (exitCode !== 0) {
           throw new ToolError({
             content: [

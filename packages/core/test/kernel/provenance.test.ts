@@ -113,7 +113,7 @@ test("an edit call is stamped as file_edit, and its result as the settled patch"
   assert.equal(patch.path, "note.txt");
   assert.deepEqual([patch.added, patch.removed], [2, 1]);
   assert.match(patch.patch, /^-two\n\+2\n\+2b$/mu);
-  assert.equal(settled.tree === null || typeof settled.tree === "string", true);
+  assert.equal(settled.tree, null);
 });
 
 test("a provider error is classified once, on the commit and on the retry phase", async () => {

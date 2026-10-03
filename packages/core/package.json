@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./plugins": "./src/plugins/index.ts",
+    "./plugin-source": "./src/plugins/source.ts",
     "./store": "./src/store.ts",
     "./postgres": "./src/postgres.ts",
     "./store-worker": "./src/kernel/store-worker.ts"

@@ -122,7 +122,7 @@ export function createStreamOptionsPatch(
 function patchRecord<V>(
   base: Readonly<Record<string, V>> | undefined,
   patch: Readonly<Record<string, V | undefined>>,
-): Record<string, V> {
+) {
   const next = { ...base };
 
   for (const [key, value] of Object.entries(patch)) {
@@ -136,7 +136,7 @@ function patchRecord<V>(
 function diffRecord<V>(
   base: Readonly<Record<string, V>> | undefined,
   value: Readonly<Record<string, V>>,
-): Record<string, V | undefined> {
+) {
   const diff: Record<string, V | undefined> = {};
 
   for (const key of Object.keys(base ?? {})) {

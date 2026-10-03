@@ -12,9 +12,10 @@ import type { AssistantMessage, Context } from "@nyte-ai/schema";
 import { getCurrentSystemPrompt, getCurrentTools } from "@nyte-ai/schema";
 import { createNyte } from "../src/kernel/sdk/nyte.ts";
 import type { HeadName, ModelCatalog, Nyte, SessionId } from "../src/kernel/sdk/types.ts";
-import { definePlugin, inlinePlugin, type LoadedPlugin } from "../src/plugins/index.ts";
+import { definePlugin, type Plugin } from "../src/plugins/index.ts";
 import type { AgentTool, StreamFn } from "../src/kernel/loop/types.ts";
 import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { assistant, call, openStore, sleep, within } from "./kernel/helpers.ts";
 
 const model: Model<Api> = {
@@ -59,7 +60,7 @@ function script(
       context.messages.findLastIndex(
         (item) =>
           item.role === "user" &&
-          !(typeof item.content === "string" && item.content.startsWith("Background ")),
+          !(!Array.isArray(item.content) && item.content.startsWith("Background ")),
       ),
     );
     const tail = messages[0];
@@ -126,19 +127,17 @@ function noopTool(name: string): AgentTool<typeof noopParameters> {
   };
 }
 
-function plugins(extra: readonly LoadedPlugin[] = []): LoadedPlugin[] {
+function plugins(extra: readonly Plugin[] = []): Plugin[] {
   return [
-    inlinePlugin(
-      definePlugin({
-        id: "tools",
-        session(api) {
-          api.tools.add((draft) => {
-            for (const name of ["read", "ls", "bash", "edit"]) draft.set(name, noopTool(name));
-          });
-          api.prompt.add((draft) => draft.set("p", { text: "You are a test." }));
-        },
-      }),
-    ),
+    definePlugin({
+      id: "tools",
+      session(api) {
+        api.tools.add((draft) => {
+          for (const name of ["read", "ls", "bash", "edit"]) draft.set(name, noopTool(name));
+        });
+        api.prompt.add((draft) => draft.set("p", { text: "You are a test." }));
+      },
+    }),
     ...extra,
   ];
 }
@@ -146,7 +145,7 @@ function plugins(extra: readonly LoadedPlugin[] = []): LoadedPlugin[] {
 async function open(
   streamFn: StreamFn,
   extra: {
-    readonly plugins?: readonly LoadedPlugin[];
+    readonly plugins?: readonly Plugin[];
     readonly catalog?: readonly Model<Api>[];
     readonly getAvailable?: ModelCatalog["getAvailable"];
   } = {},
@@ -390,6 +389,9 @@ test("an unavailable selected model fails without a provider request", async () 
   }
 });
 
+const modelSelectionSchema = Type.Object({
+  properties: Type.Object({ model: Type.Object({ enum: Type.Array(Type.String()) }) }),
+});
 test("task and create advertise the current enabled cross-provider models on every request", async () => {
   let available = [model, opus];
   const contexts: Context[] = [];
@@ -419,13 +421,9 @@ test("task and create advertise the current enabled cross-provider models on eve
         const schema = getCurrentTools(contexts[index]?.messages ?? []).find(
           (tool) => tool.name === name,
         )?.parameters;
-        assert.ok(typeof schema === "object" && schema !== null && "properties" in schema);
-        const properties = schema.properties;
-        assert.ok(typeof properties === "object" && properties !== null && "model" in properties);
-        const selection = properties.model;
-        assert.ok(typeof selection === "object" && selection !== null && "enum" in selection);
-        assert.deepEqual(selection.enum, expected);
-        assert.ok(!("agent" in properties));
+        assert.ok(Value.Check(modelSelectionSchema, schema));
+        assert.deepEqual(schema.properties.model.enum, expected);
+        assert.ok(!("agent" in schema.properties));
       }
     }
   } finally {
@@ -550,14 +548,12 @@ test("a model removed from the catalog during child setup fails instead of using
   const nyte = await open(scripted.streamFn, {
     catalog,
     plugins: [
-      inlinePlugin(
-        definePlugin({
-          id: "remove-child-model",
-          async session(api) {
-            if ((await api.session.info()).child) catalog.splice(catalog.indexOf(opus), 1);
-          },
-        }),
-      ),
+      definePlugin({
+        id: "remove-child-model",
+        async session(api) {
+          if ((await api.session.info()).child) catalog.splice(catalog.indexOf(opus), 1);
+        },
+      }),
     ],
   });
   try {

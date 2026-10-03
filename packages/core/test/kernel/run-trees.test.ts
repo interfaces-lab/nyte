@@ -14,7 +14,7 @@ import { branch } from "../../src/kernel/graph.ts";
 import { headRef } from "../../src/kernel/names.ts";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import type { VcsBackend, WorkspaceBackend } from "../../src/kernel/sdk/types.ts";
-import { definePlugin, inlinePlugin, type AgentTool } from "../../src/plugins/index.ts";
+import { definePlugin, type AgentTool } from "../../src/plugins/index.ts";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import { assistant, call, openStore, usage, within } from "./helpers.ts";
 
@@ -51,16 +51,14 @@ function writeTool(gate: { readonly release: Promise<void> }): AgentTool {
 }
 
 function toolsPlugin(tools: readonly AgentTool[]) {
-  return inlinePlugin(
-    definePlugin({
-      id: "tools",
-      session(api) {
-        api.tools.add((draft) => {
-          for (const item of tools) draft.set(item.name, item);
-        });
-      },
-    }),
-  );
+  return definePlugin({
+    id: "tools",
+    session(api) {
+      api.tools.add((draft) => {
+        for (const item of tools) draft.set(item.name, item);
+      });
+    },
+  });
 }
 
 /** One write call, then a plain answer. */
@@ -138,7 +136,7 @@ function fakeVcs(): VcsBackend & {
 }
 
 function workspaceWith(vcs: VcsBackend | undefined): WorkspaceBackend {
-  return {
+  const workspace: WorkspaceBackend = {
     list: async () => [],
     touch: async () => undefined,
     forget: async () => undefined,
@@ -158,8 +156,8 @@ function workspaceWith(vcs: VcsBackend | undefined): WorkspaceBackend {
     blame: async () => {
       throw new Error("File blame is not configured for this fixture");
     },
-    ...(vcs === undefined ? {} : { vcs }),
   };
+  return vcs === undefined ? workspace : { ...workspace, vcs };
 }
 
 async function open(vcs: VcsBackend | undefined, gate: PromiseWithResolvers<void>) {

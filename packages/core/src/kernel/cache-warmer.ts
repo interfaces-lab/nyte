@@ -376,8 +376,8 @@ export class CacheWarmer {
           provider: message.provider,
           model: message.responseModel ?? message.model,
           usage: message.usage,
-          ...(extensionOverride ? { note: "extension override" } : {}),
         };
+        if (extensionOverride) usage.note = "extension override";
         await this.deps.appendUsage(usage);
         this.onWarmed?.(usage);
       }

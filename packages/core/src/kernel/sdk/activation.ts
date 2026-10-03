@@ -20,7 +20,7 @@ import type {
   Command,
   CommandResult,
   Disposer,
-  LoadedPlugin,
+  Plugin,
   PluginEnv,
   PluginInfo,
   PluginReplacement,
@@ -37,6 +37,8 @@ import type { StreamOptions } from "../stream-options.ts";
 import type { CompactionSettings } from "../compaction.ts";
 import { isJsonObject, toJsonValue } from "@nyte-ai/client";
 import { isTerminalPhase } from "@nyte-ai/protocol";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import {
   getCurrentSystemMessage,
   getCurrentSystemPrompt,
@@ -89,10 +91,10 @@ export interface Activation {
   /** The plugin status items in display order. */
   statuses(): readonly string[];
   runCommand(name: string, argument?: string): Promise<CommandResult>;
-  setPlugins(plugins: readonly LoadedPlugin[], applied?: () => void): Promise<PluginReplacement>;
+  setPlugins(plugins: readonly Plugin[], applied?: () => void): Promise<PluginReplacement>;
   observeRun(run: Run): void;
   preparePlugins(
-    plugins: readonly LoadedPlugin[],
+    plugins: readonly Plugin[],
     applied?: () => void,
   ): Promise<PreparedPluginReplacement>;
   offeredTurn(runId: string): TurnResolution | undefined;
@@ -115,10 +117,6 @@ export type ActivationTarget =
 
 function isBlob(object: Obj | undefined): object is Blob {
   return object?.kind === "blob";
-}
-
-function isStringFact(value: JsonValue | undefined): value is string {
-  return typeof value === "string";
 }
 
 async function blobValue(session: Session, oid: string, ref: string): Promise<JsonValue> {
@@ -217,7 +215,7 @@ export type ActivationOutcome =
 
 export async function activate(input: {
   target: ActivationTarget;
-  plugins: readonly LoadedPlugin[];
+  plugins: readonly Plugin[];
   env: PluginEnv;
 }): Promise<ActivationOutcome> {
   const registries = createRegistries();
@@ -365,12 +363,12 @@ export async function activate(input: {
     for (const listener of listeners) {
       void withBudget({ what: "event listener", ms: PLUGIN_CALL_BUDGET_MS }, () =>
         duringCall(() => listener(item)),
-      ).catch((error: unknown) =>
+      ).catch((cause: unknown) =>
         emit({
           kind: "diagnostic",
           level: "error",
           owner: "events",
-          message: error instanceof Error ? error.message : String(error),
+          message: cause instanceof Error ? cause.message : String(cause),
         }),
       );
     }
@@ -467,7 +465,7 @@ export async function activate(input: {
       info: async () => {
         const name = await facts.getFact(NAME_FACT);
         const child = (await facts.getFact(PARENT_FACT)) !== undefined;
-        const base = isStringFact(name) ? { name, child } : { child };
+        const base = Value.Check(Type.String(), name) ? { name, child } : { child };
 
         return session === undefined ? base : { id: session.id, ...base };
       },
@@ -825,9 +823,10 @@ function forcePrompt(messages: readonly Message[], forced: string): Message[] {
   const head: SystemMessage = {
     role: "system",
     content: forced,
-    ...(current?.toolsAdded ? { toolsAdded: current.toolsAdded } : {}),
     timestamp: current?.timestamp ?? Date.now(),
   };
+
+  if (current?.toolsAdded) head.toolsAdded = current.toolsAdded;
 
   return [head, ...messages.filter((message) => message.role !== "system")];
 }

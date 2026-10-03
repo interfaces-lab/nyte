@@ -754,12 +754,11 @@ test("nested failures retain structured output, reject waits and cancellation, a
   const b = await bench();
   let saved: ToolCall | undefined;
   let cancellations = 0;
-  const target: AgentTool = {
+  const target = bindTool({
     name: "target",
     description: "target",
     parameters,
     execute: async (input, call) => {
-      assert.ok(typeof input === "object" && input !== null && "value" in input);
       if (input.value === "wait") throw new ToolWait({ until: 10 });
       if (input.value === "cancel") {
         cancellations += 1;
@@ -773,7 +772,7 @@ test("nested failures retain structured output, reject waits and cancellation, a
         structuredContent: { error: "kept" },
       });
     },
-  };
+  });
   const outer = tool(async (_input, call) => {
     saved = call;
     assert.ok(call.run);

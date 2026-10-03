@@ -25,7 +25,9 @@ import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
 import type { JsonValue } from "@nyte-ai/schema";
 import type { Selection, ToolClass } from "@nyte-ai/protocol";
 import type { JsonObject } from "@nyte-ai/client";
+import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
+import { Value } from "typebox/value";
 
 /**
  * Stream function used by the agent loop. `Models.streamSimple` satisfies
@@ -237,10 +239,7 @@ export const backgroundWait: BackgroundWait = { [BACKGROUND_WAIT]: true };
 type WaitOptions = ToolWaitOptions | BackgroundWait;
 
 /** The selection and deadline a wait parks with; none for a background wait. */
-export function waitTerms(options: WaitOptions): {
-  readonly selection: Selection | undefined;
-  readonly until: number | undefined;
-} {
+export function waitTerms(options: WaitOptions) {
   if (BACKGROUND_WAIT in options) return { selection: undefined, until: undefined };
 
   return { selection: options.selection, until: options.until };
@@ -261,8 +260,7 @@ export class ToolWait {
 
 export function isToolWait(error: unknown): error is ToolWait {
   return (
-    typeof error === "object" &&
-    error !== null &&
+    Value.Check(Type.Object({}), error) &&
     TOOL_WAIT_BRAND in error &&
     error[TOOL_WAIT_BRAND] === true
   );
@@ -366,7 +364,7 @@ export interface AgentTool<
    * Optional compatibility shim for raw tool-call arguments before schema validation.
    * The returned value is validated against `TParameters` before execution.
    */
-  prepareArguments?: (args: AgentToolCall["arguments"]) => unknown;
+  prepareArguments?: (args: AgentToolCall["arguments"]) => AgentToolCall["arguments"];
   /** Execute the tool call. Throw on failure instead of encoding errors in `content`. */
   execute: (
     // An erased schema cannot prove an input type. Bind typed definitions before storage.

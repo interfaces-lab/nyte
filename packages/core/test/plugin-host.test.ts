@@ -1,3 +1,4 @@
+import { withPluginSource } from "../src/plugins/source.ts";
 /**
  * The plugin host contains plugin code: a call that never settles is a
  * failure with a name, a reload never leaves a hook gap, and hooks run in
@@ -7,7 +8,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { HOOK_BUDGETS_MS, HookRegistry, type HookInvocation } from "../src/plugins/hooks.ts";
 import { createRegistries, PluginHost, type PluginNotice } from "../src/plugins/host.ts";
-import { definePlugin, inlinePlugin, type Plugin, type SessionApi } from "../src/plugins/index.ts";
+import { definePlugin, type Plugin, type SessionApi } from "../src/plugins/index.ts";
 
 const toolCall: HookInvocation<"before_tool"> = {
   head: "main",
@@ -39,7 +40,7 @@ function hostFor(
         getFact: async () => undefined,
         setFact: async () => undefined,
       },
-      events: { subscribe: () => () => undefined },
+      events: { subscribe: () => () => undefined, transitions: () => () => undefined },
       env: { cwd: "/tmp/nowhere" },
       subscribe: () => () => undefined,
       rebuildAll: () => {
@@ -84,13 +85,13 @@ test("a before_tool handler that outlives its budget fails closed and is reporte
 test("a session factory that outlives its budget is failed and the previous version stays", async () => {
   const hooks = new HookRegistry(() => undefined);
   const { host, notices } = hostFor(hooks, 20);
-  await host.activate([inlinePlugin(rejecting("guard", "v1"), { version: "1" })]);
+  await host.activate([rejecting("guard", "v1")]);
   const stuck = definePlugin({ id: "guard", session: () => new Promise(() => undefined) });
-  const outcome = await host.activate([inlinePlugin(stuck, { version: "2" })]);
+  const outcome = await host.activate([stuck]);
   assert.equal(outcome.kind, "rejected");
   assert.match(
     outcome.kind === "rejected" ? outcome.error : "",
-    /plugin guard session\(\) exceeded 20ms/,
+    /guard: session\(\) exceeded 20ms/,
   );
   assert.deepEqual(await hooks.run("before_tool", toolCall), { action: "reject", message: "v1" });
   assert.equal(
@@ -102,12 +103,22 @@ test("a session factory that outlives its budget is failed and the previous vers
 test("a reload keeps the old policy until the new factory has finished", async () => {
   const hooks = new HookRegistry(() => undefined);
   const { host } = hostFor(hooks, 5_000);
-  await host.activate([inlinePlugin(rejecting("guard", "v1"), { version: "1" })]);
+  let setups = 0;
+  const original = definePlugin({
+    id: "guard",
+    session(api) {
+      setups += 1;
+      api.hook("before_tool", () => ({ action: "reject", message: "v1" }));
+    },
+  });
+  await host.activate([original]);
+  await host.activate([original]);
+  assert.equal(setups, 1);
   let release = (): void => undefined;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const reloading = host.activate([inlinePlugin(rejecting("guard", "v2", gate), { version: "2" })]);
+  const reloading = host.activate([rejecting("guard", "v2", gate)]);
   await new Promise<void>((resolve) => setTimeout(resolve, 10));
   assert.deepEqual(await hooks.run("before_tool", toolCall), { action: "reject", message: "v1" });
   release();
@@ -135,7 +146,7 @@ test("hooks run in plugin order, not registration order", async () => {
 test("setup hooks and contributions stay private, and a materialization failure retains the whole old set", async () => {
   const hooks = new HookRegistry(() => undefined);
   const { host, registries } = hostFor(hooks, 5_000);
-  const initial = inlinePlugin(
+  const initial = withPluginSource(
     definePlugin({
       id: "guard",
       session(api) {
@@ -143,35 +154,33 @@ test("setup hooks and contributions stay private, and a materialization failure 
         api.prompt.add((draft) => draft.set("prompt", { text: "old" }));
       },
     }),
-    { version: "1" },
+    { source: "inline", version: "1" },
   );
   await host.activate([initial]);
   const registered = Promise.withResolvers<void>();
   const finish = Promise.withResolvers<void>();
   const replacing = host.activate([
-    inlinePlugin(
+    withPluginSource(
       definePlugin({
         id: "guard",
         async session(api) {
           api.hook("before_tool", () => ({ action: "reject", message: "new" }));
           api.prompt.add((draft) => draft.set("prompt", { text: "new" }));
-          api.prompt.rebuild();
+          api.refresh();
           registered.resolve();
           await finish.promise;
         },
       }),
-      { version: "2" },
+      { source: "inline", version: "2" },
     ),
-    inlinePlugin(
-      definePlugin({
-        id: "broken",
-        session(api) {
-          api.commands.add(() => {
-            throw new Error("cannot materialize");
-          });
-        },
-      }),
-    ),
+    definePlugin({
+      id: "broken",
+      session(api) {
+        api.commands.add(() => {
+          throw new Error("cannot materialize");
+        });
+      },
+    }),
   ]);
   await registered.promise;
   assert.deepEqual(await hooks.run("before_tool", toolCall), { action: "reject", message: "old" });
@@ -187,12 +196,14 @@ test("setup hooks and contributions stay private, and a materialization failure 
 test("a timed-out setup cannot register hooks or mutate storage, and late rebuild is harmless", async () => {
   const hooks = new HookRegistry(() => undefined);
   const { host, registries } = hostFor(hooks, 20);
-  await host.activate([inlinePlugin(rejecting("guard", "old"), { version: "1" })]);
+  await host.activate([
+    withPluginSource(rejecting("guard", "old"), { source: "inline", version: "1" }),
+  ]);
   const finish = Promise.withResolvers<void>();
   const resumed = Promise.withResolvers<void>();
   const refused: string[] = [];
   const outcome = await host.activate([
-    inlinePlugin(
+    withPluginSource(
       definePlugin({
         id: "guard",
         async session(api) {
@@ -210,12 +221,12 @@ test("a timed-out setup cannot register hooks or mutate storage, and late rebuil
               refused.push(cause instanceof Error ? cause.message : String(cause));
             }
           }
-          assert.doesNotThrow(() => api.prompt.rebuild());
+          assert.doesNotThrow(() => api.refresh());
           assert.equal(api.signal.aborted, true);
           resumed.resolve();
         },
       }),
-      { version: "2" },
+      { source: "inline", version: "2" },
     ),
   ]);
   assert.equal(outcome.kind, "rejected");
@@ -232,14 +243,12 @@ test("disposed diagnostics and rebuilds are harmless while registration and writ
   const { host, notices } = hostFor(hooks, 5_000);
   let oldApi: SessionApi | undefined;
   await host.activate([
-    inlinePlugin(
-      definePlugin({
-        id: "old",
-        session(api) {
-          oldApi = api;
-        },
-      }),
-    ),
+    definePlugin({
+      id: "old",
+      session(api) {
+        oldApi = api;
+      },
+    }),
   ]);
   await host.activate([]);
   const disposedApi = oldApi;
@@ -247,7 +256,7 @@ test("disposed diagnostics and rebuilds are harmless while registration and writ
   const count = notices.length;
   assert.doesNotThrow(() => disposedApi.diagnostics.warn("late connection failure"));
   assert.doesNotThrow(() => disposedApi.diagnostics.notify({ message: "late connection failure" }));
-  assert.doesNotThrow(() => disposedApi.tools.rebuild());
+  assert.doesNotThrow(() => disposedApi.refresh());
   assert.equal(notices.length, count);
   assert.throws(() => disposedApi.tools.add(() => undefined), /disposed/);
   assert.throws(() => disposedApi.hook("before_tool", () => ({ action: "continue" })), /disposed/);
@@ -259,30 +268,26 @@ test("disposed diagnostics and rebuilds are harmless while registration and writ
 test("a staged rebuild tolerates unrelated failures and final validation rejects the candidate", async () => {
   const hooks = new HookRegistry(() => undefined);
   const { host, registries } = hostFor(hooks, 5_000);
-  await host.activate([inlinePlugin(rejecting("guard", "old"))]);
+  await host.activate([rejecting("guard", "old")]);
   let refreshed = false;
   const outcome = await host.activate([
-    inlinePlugin(
-      definePlugin({
-        id: "broken",
-        session(api) {
-          api.prompt.add(() => {
-            throw new Error("broken prompt");
-          });
-        },
-      }),
-    ),
-    inlinePlugin(
-      definePlugin({
-        id: "connection",
-        async session(api) {
-          await Promise.resolve().then(() => {
-            api.tools.rebuild();
-            refreshed = true;
-          });
-        },
-      }),
-    ),
+    definePlugin({
+      id: "broken",
+      session(api) {
+        api.prompt.add(() => {
+          throw new Error("broken prompt");
+        });
+      },
+    }),
+    definePlugin({
+      id: "connection",
+      async session(api) {
+        await Promise.resolve().then(() => {
+          api.refresh();
+          refreshed = true;
+        });
+      },
+    }),
   ]);
   assert.equal(refreshed, true);
   assert.deepEqual(outcome, { kind: "rejected", error: "broken: broken prompt" });
@@ -304,12 +309,14 @@ test("failed queued revalidation republishes the old inventory with a diagnostic
     commit = action;
     return false;
   });
-  await host.activate([inlinePlugin(rejecting("guard", "old"), { version: "old" })]);
+  await host.activate([
+    withPluginSource(rejecting("guard", "old"), { source: "inline", version: "old" }),
+  ]);
   let invalid = false;
   queued = true;
   assert.deepEqual(
     await host.activate([
-      inlinePlugin(
+      withPluginSource(
         definePlugin({
           id: "guard",
           session(api) {
@@ -319,7 +326,7 @@ test("failed queued revalidation republishes the old inventory with a diagnostic
             });
           },
         }),
-        { version: "new" },
+        { source: "inline", version: "new" },
       ),
     ]),
     { kind: "queued" },

@@ -8,7 +8,7 @@ import {
 } from "@nyte-ai/ai";
 import { schemas } from "@nyte-ai/protocol";
 import { HookRegistry } from "../../src/plugins/hooks.ts";
-import { definePlugin, inlinePlugin } from "../../src/plugins/types.ts";
+import { definePlugin } from "../../src/plugins/types.ts";
 import { requestStream } from "../../src/kernel/sdk/requests.ts";
 import { InMemoryTelemetryContext } from "@nyte-ai/telemetry";
 import { Value } from "typebox/value";
@@ -58,17 +58,15 @@ test.each(["success", "fault"])(
         getAvailable: async () => [model],
       },
       plugins: [
-        inlinePlugin(
-          definePlugin({
-            id: "navigation-request-test",
-            session(api) {
-              api.hook("before_request", () => {
-                hookCalls += 1;
-                return { streamOptions: { temperature: 0.9, maxTokens: 7 } };
-              });
-            },
-          }),
-        ),
+        definePlugin({
+          id: "navigation-request-test",
+          session(api) {
+            api.hook("before_request", () => {
+              hookCalls += 1;
+              return { streamOptions: { temperature: 0.9, maxTokens: 7 } };
+            });
+          },
+        }),
       ],
       env: { cwd: "/tmp" },
       compaction: settings,

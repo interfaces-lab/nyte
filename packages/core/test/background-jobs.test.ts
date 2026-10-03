@@ -12,7 +12,7 @@ import {
   type SessionEvent,
   type SessionId,
 } from "../src/kernel/sdk/types.ts";
-import { definePlugin, inlinePlugin } from "../src/plugins/index.ts";
+import { definePlugin } from "../src/plugins/index.ts";
 import { createBashToolDefinition } from "../src/tools/bash.ts";
 import type { StreamFn } from "../src/kernel/loop/types.ts";
 import {
@@ -162,42 +162,40 @@ async function fixture(background: boolean, continuingParent = false) {
     return stream;
   };
   const plugins = [
-    inlinePlugin(
-      definePlugin({
-        id: "job-test-tools",
-        session(api) {
-          api.agents.add((draft) => draft.set("worker", { id: "worker", mode: "subagent" }));
-          api.tools.add((draft) => {
-            const bash = createBashToolDefinition(cwd);
-            draft.set("bash", {
-              ...bash,
-              name: "bash",
-              parameters: Type.Object({
-                ...bash.parameters.properties,
-                background: Type.Optional(Type.Boolean()),
-              }),
-            });
-            draft.set("checkpoint", {
-              name: "checkpoint",
-              description: "Continue the parent run",
-              parameters: Type.Object({}),
-              execute: async () => ({
-                content: [{ type: "text", text: "continued" }],
-                details: {},
-              }),
-            });
-            // Foreground availability, not the tool's name, determines background availability.
-            draft.set("clarify", {
-              name: "clarify",
-              availability: "foreground",
-              description: "Ask the user",
-              parameters: Type.Object({}),
-              execute: async () => ({ content: [{ type: "text", text: "answer" }], details: {} }),
-            });
+    definePlugin({
+      id: "job-test-tools",
+      session(api) {
+        api.agents.add((draft) => draft.set("worker", { id: "worker", mode: "subagent" }));
+        api.tools.add((draft) => {
+          const bash = createBashToolDefinition(cwd);
+          draft.set("bash", {
+            ...bash,
+            name: "bash",
+            parameters: Type.Object({
+              ...bash.parameters.properties,
+              background: Type.Optional(Type.Boolean()),
+            }),
           });
-        },
-      }),
-    ),
+          draft.set("checkpoint", {
+            name: "checkpoint",
+            description: "Continue the parent run",
+            parameters: Type.Object({}),
+            execute: async () => ({
+              content: [{ type: "text", text: "continued" }],
+              details: {},
+            }),
+          });
+          // Foreground availability, not the tool's name, determines background availability.
+          draft.set("clarify", {
+            name: "clarify",
+            availability: "foreground",
+            description: "Ask the user",
+            parameters: Type.Object({}),
+            execute: async () => ({ content: [{ type: "text", text: "answer" }], details: {} }),
+          });
+        });
+      },
+    }),
   ];
   const open = () =>
     createNyte({

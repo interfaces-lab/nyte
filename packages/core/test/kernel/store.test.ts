@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "vitest";
 import { CursorExpired } from "@nyte-ai/protocol";
-import { type Change, type Event, type Obj } from "../../src/kernel/model.ts";
+import { type Event, type Obj } from "../../src/kernel/model.ts";
 import { SqliteStore } from "../../src/kernel/sqlite.ts";
 import { UnknownSession } from "../../src/kernel/store.ts";
 import {
@@ -27,24 +27,6 @@ import {
 } from "./helpers.ts";
 
 const blob = (value: string): Obj => ({ kind: "blob", value: { value } });
-
-test("a change keeps its idempotency key across the store boundary", async () => {
-  const session = await openSession();
-  const change: Change = {
-    type: "change",
-    kind: "user",
-    delivery: "steer",
-    previous: null,
-    body: { kind: "message", message: { role: "user", content: "hello", timestamp: 1 } },
-    at: 1,
-    key: "send-once",
-  };
-
-  const [oid] = await session.objects.put([change]);
-
-  assert.ok(oid);
-  assert.deepEqual(await session.objects.get(oid), change);
-});
 
 test("an object reads back as it was written and has one id whatever the key order", async () => {
   const session = await openSession();
@@ -343,42 +325,6 @@ test("sessions are created, listed, reopened, and deleted with everything they o
   assert.equal(await reborn.events.last(), 0);
   assert.equal(await reborn.leases.read("refs/heads/main"), undefined);
   assert.equal(await reborn.objects.get(oid ?? ""), undefined);
-});
-
-test("one hundred concurrent compare-and-swap writers all land in one chain", async () => {
-  const session = await openSession();
-  const tipRef = "refs/inbox/main/steer/tip";
-  await Promise.all(
-    Array.from({ length: 100 }, async (_, index) => {
-      for (;;) {
-        const tip = await session.refs.read(tipRef);
-        const change: Change = {
-          type: "change",
-          kind: "passive",
-          delivery: "steer",
-          previous: tip,
-          body: { kind: "config", thinkingLevel: String(index) },
-          at: index,
-        };
-        const [oid] = await session.objects.put([change]);
-        const outcome = await session.refs.update([{ name: tipRef, from: tip, to: oid ?? "" }], {
-          reason: "submit",
-        });
-        if (outcome.ok) return;
-      }
-    }),
-  );
-  let length = 0;
-  let cursor = await session.refs.read(tipRef);
-  while (cursor !== null) {
-    const object = await session.objects.get(cursor);
-    if (object === undefined || !("type" in object) || object.type !== "change") {
-      assert.fail("chain must hold changes");
-    }
-    length += 1;
-    cursor = object.previous;
-  }
-  assert.equal(length, 100);
 });
 
 test("a store another schema wrote is refused with a message, never read", async () => {

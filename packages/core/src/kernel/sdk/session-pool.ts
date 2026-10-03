@@ -9,7 +9,7 @@ import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { JsonValue } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { LoadedPlugin } from "../../plugins/types.ts";
+import type { Plugin } from "../../plugins/types.ts";
 import { listEffects } from "../effects.ts";
 import { branch } from "../graph.ts";
 import type { Actor, Oid, RefName, Run } from "../model.ts";
@@ -115,8 +115,8 @@ export interface SessionPoolHooks {
   readonly pluginsFor: (input: {
     readonly id: SessionId;
     readonly pooled: Pooled;
-    readonly plugins: readonly LoadedPlugin[];
-  }) => readonly LoadedPlugin[];
+    readonly plugins: readonly Plugin[];
+  }) => readonly Plugin[];
 }
 
 type ActivationSource =
@@ -137,17 +137,23 @@ export function parentValue(parent: SessionParent): JsonValue {
 }
 
 export function commandInfos(activation: Activation): CommandInfo[] {
-  return [...activation.commands()].map(([name, command]) => ({
-    name,
-    owner: activation.commandOwner(name) ?? "",
-    description: command.description,
-  }));
+  return [...activation.commands()].map(([name, command]) => {
+    const info: CommandInfo = {
+      name,
+      owner: activation.commandOwner(name) ?? "",
+      description: command.description,
+    };
+
+    return command.selection === undefined ? info : { ...info, selection: command.selection };
+  });
 }
 
 export function clientActivation(activation: SessionActivation): SessionActivationState {
   switch (activation.kind) {
     case "active":
       return { kind: "active" };
+    case "failed":
+      return { kind: "failed", error: activation.error };
     case "inactive":
     case "requires":
       return activation;
@@ -539,11 +545,15 @@ export function createSessionPool(input: {
       if (resolved.kind !== "active")
         return { plugins: [], commands: [], skills: [], settings: [] };
 
-      const activation = await activate({
+      const outcome = await activate({
         target: { kind: "new-session" },
         plugins: resolved.plugins,
         env: resolved.env,
       });
+
+      if (outcome.kind === "failed")
+        return { plugins: outcome.plugins, commands: [], skills: [], settings: [] };
+      const { activation } = outcome;
 
       try {
         if (closed) throw new NyteClosed();
@@ -684,17 +694,29 @@ export function createSessionPool(input: {
 
       if (resolved.kind !== "active") return undefined;
 
-      const built = await activate({
+      const outcome = await activate({
         target: { kind: "session", session: pooled.session },
         plugins: hooks.pluginsFor({ id, pooled, plugins: resolved.plugins }),
         env: resolved.env,
       });
 
       if (closed || pooled.retired) {
-        await built.close();
+        if (outcome.kind === "active") await outcome.activation.close();
         throw closed ? new NyteClosed() : new UnknownSession(id);
       }
 
+      if (outcome.kind === "failed") {
+        pooled.activationState = outcome;
+        await dispatchNotice(pooled, {
+          kind: "activation_changed",
+          activation: clientActivation(outcome),
+        });
+        await dispatchNotice(pooled, { kind: "plugins_changed", plugins: outcome.plugins });
+
+        return undefined;
+      }
+
+      const built = outcome.activation;
       built.subscribe((notice) => dispatchNotice(pooled, notice));
       pooled.activation = built;
       pooled.activationCwd = resolved.env.cwd;
@@ -767,7 +789,7 @@ export function createSessionPool(input: {
       return resolved.kind === "active" ? resolved.env.cwd : undefined;
     },
     /** A global plugin swap replaces the host's answer for every unscoped session and the catalog. */
-    setPluginsOverride(plugins: readonly LoadedPlugin[]): void {
+    setPluginsOverride(plugins: readonly Plugin[]): void {
       pluginsOverride = plugins;
       catalogCache = undefined;
     },

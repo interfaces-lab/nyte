@@ -33,11 +33,9 @@ export function bindTool<T extends TSchema, Details>(
       present === undefined
         ? undefined
         : (args, context, result) => present(parse(args), context, result),
-    execute: async (callId, args, signal, onUpdate, context) => {
+    execute: async (input, call) => {
       try {
-        return await boundImages(
-          await tool.execute(callId, parse(args), signal, onUpdate, context),
-        );
+        return await boundImages(await tool.execute(parse(input), call));
       } catch (error) {
         if (!(error instanceof ToolError)) throw error;
         throw new ToolError(await boundImages(error.result));

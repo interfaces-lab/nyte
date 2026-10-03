@@ -7,7 +7,7 @@ import { Type } from "typebox";
 import { trimStream } from "../../src/kernel/gc.ts";
 import { backgroundWait, ToolWait } from "../../src/kernel/loop/types.ts";
 import { headRef } from "../../src/kernel/names.ts";
-import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
+import { definePlugin } from "../../src/plugins/index.ts";
 import { driveToIdle, openAcceptanceNyte, scripted } from "./acceptance-helpers.ts";
 import { assistant, call, openStore, sleep, storePath, within } from "./helpers.ts";
 
@@ -37,49 +37,47 @@ test("A crash between effect intent and result follows safe or never replay", as
   let safeExecutions = 0;
   let neverExecutions = 0;
   let responses = 0;
-  const plugin = inlinePlugin(
-    definePlugin({
-      id: "replay-tools",
-      session(api) {
-        api.tools.add((draft) => {
-          draft.set("safe-effect", {
-            name: "safe-effect",
-            description: "Safe replay test",
-            parameters: emptyParameters,
-            replay: "safe",
-            execute: async () => {
-              safeExecutions += 1;
-              if (safeExecutions === 1) {
-                safeStarted.resolve();
-                await crash.promise;
-              }
-              return {
-                content: [{ type: "text", text: `safe run ${String(safeExecutions)}` }],
-                details: {},
-              };
-            },
-          });
-          draft.set("never-effect", {
-            name: "never-effect",
-            description: "Never replay test",
-            parameters: emptyParameters,
-            replay: "never",
-            execute: async () => {
-              neverExecutions += 1;
-              if (neverExecutions === 1) {
-                neverStarted.resolve();
-                await crash.promise;
-              }
-              return {
-                content: [{ type: "text", text: `never run ${String(neverExecutions)}` }],
-                details: {},
-              };
-            },
-          });
+  const plugin = definePlugin({
+    id: "replay-tools",
+    session(api) {
+      api.tools.add((draft) => {
+        draft.set("safe-effect", {
+          name: "safe-effect",
+          description: "Safe replay test",
+          parameters: emptyParameters,
+          replay: "safe",
+          execute: async () => {
+            safeExecutions += 1;
+            if (safeExecutions === 1) {
+              safeStarted.resolve();
+              await crash.promise;
+            }
+            return {
+              content: [{ type: "text", text: `safe run ${String(safeExecutions)}` }],
+              details: {},
+            };
+          },
         });
-      },
-    }),
-  );
+        draft.set("never-effect", {
+          name: "never-effect",
+          description: "Never replay test",
+          parameters: emptyParameters,
+          replay: "never",
+          execute: async () => {
+            neverExecutions += 1;
+            if (neverExecutions === 1) {
+              neverStarted.resolve();
+              await crash.promise;
+            }
+            return {
+              content: [{ type: "text", text: `never run ${String(neverExecutions)}` }],
+              details: {},
+            };
+          },
+        });
+      });
+    },
+  });
   const provider = scripted(() => {
     responses += 1;
     return responses === 1
@@ -128,30 +126,28 @@ test("A crash between effect intent and result follows safe or never replay", as
 
 test("A waiting effect survives its host and accepts only the first signal", async () => {
   let responses = 0;
-  const asking = inlinePlugin(
-    definePlugin({
-      id: "asking",
-      session(api) {
-        api.tools.add((draft) =>
-          draft.set("ask", {
-            name: "ask",
-            description: "Ask once",
-            parameters: emptyParameters,
-            execute: async () => {
-              throw new ToolWait(backgroundWait);
+  const asking = definePlugin({
+    id: "asking",
+    session(api) {
+      api.tools.add((draft) =>
+        draft.set("ask", {
+          name: "ask",
+          description: "Ask once",
+          parameters: emptyParameters,
+          execute: async () => {
+            throw new ToolWait(backgroundWait);
+          },
+          wake: async (_call, context) => ({
+            kind: "success",
+            result: {
+              content: [{ type: "text", text: `winner ${JSON.stringify(context.reply)}` }],
+              details: {},
             },
-            wake: async (_call, context) => ({
-              kind: "success",
-              result: {
-                content: [{ type: "text", text: `winner ${JSON.stringify(context.reply)}` }],
-                details: {},
-              },
-            }),
           }),
-        );
-      },
-    }),
-  );
+        }),
+      );
+    },
+  });
   const path = storePath();
   const firstStore = openStore(path);
   const provider = scripted(() => {
