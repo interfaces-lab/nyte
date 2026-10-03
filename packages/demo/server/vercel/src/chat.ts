@@ -6,7 +6,7 @@ import {
   type Models,
 } from "@nyte-ai/ai";
 import { createNyte, type Nyte, type NyteOptions } from "@nyte-ai/core";
-import { inlinePlugin, systemPromptPlugin } from "@nyte-ai/core/plugins";
+import { systemPromptPlugin } from "@nyte-ai/core/plugins";
 import { openaiAstraContextPlugin } from "@nyte-ai/plugin/openai-astra-context";
 import { openaiCompactionPlugin } from "@nyte-ai/plugin/openai-compaction";
 import { createNyteServer } from "@nyte-ai/server";
@@ -55,9 +55,9 @@ export function createChatSdk(options: Pick<NyteOptions, "store" | "model"> & { 
     streamFn: (model, context, streamOptions) =>
       options.models.streamSimple(model, context, streamOptions),
     plugins: [
-      inlinePlugin(systemPromptPlugin()),
-      inlinePlugin(openaiCompactionPlugin({ models: options.models })),
-      inlinePlugin(openaiAstraContextPlugin()),
+      systemPromptPlugin(),
+      openaiCompactionPlugin({ models: options.models }),
+      openaiAstraContextPlugin(),
     ],
     env: { cwd: "/" },
   });

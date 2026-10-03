@@ -95,7 +95,7 @@ export function DesktopPreview({ className, scenario = "conversation" }: Desktop
                 data-nyte-surface={agent.active ? "selected" : undefined}
                 key={agent.name}
               >
-                <Avatar shape="rounded" size="md" tone={agent.tone}>
+                <Avatar corners="rounded" size="md" tone={agent.tone}>
                   <AvatarFallback>{agent.mark}</AvatarFallback>
                 </Avatar>
                 <span className="min-w-0 max-[780px]:hidden">
@@ -124,7 +124,7 @@ export function DesktopPreview({ className, scenario = "conversation" }: Desktop
           data-nyte-surface="conversation"
         >
           <div className="flex items-center gap-1.5 border-b-[0.5px] border-border-subtle px-3">
-            <Avatar shape="rounded" size="xs" tone="orange">
+            <Avatar corners="rounded" size="xs" tone="orange">
               <AvatarFallback>U</AvatarFallback>
             </Avatar>
             <strong className="text-[13px]/[18px] font-medium">Nyte</strong>
@@ -193,7 +193,7 @@ function SearchPreview() {
               data-nyte-surface={index === 0 ? "palette-selected" : undefined}
               key={agent.name}
             >
-              <Avatar shape="rounded" size="md" tone={agent.tone}>
+              <Avatar corners="rounded" size="md" tone={agent.tone}>
                 <AvatarFallback>{agent.mark}</AvatarFallback>
               </Avatar>
               <span className="min-w-0">
@@ -223,7 +223,7 @@ function DetailsPreview() {
       </div>
       <div className="p-5 text-center">
         <div className="flex flex-col items-center border-b border-border-subtle pb-5">
-          <Avatar shape="rounded" size="lg" tone="orange">
+          <Avatar corners="rounded" size="lg" tone="orange">
             <AvatarFallback>U</AvatarFallback>
           </Avatar>
           <strong className="mt-4 text-lg font-medium tracking-tight">Nyte</strong>

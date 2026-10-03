@@ -1,0 +1,6 @@
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.nyte-token.local
+worker-configuration.d.ts
+model.json
