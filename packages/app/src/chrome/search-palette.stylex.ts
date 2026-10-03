@@ -1,27 +1,7 @@
-import { glyph, shape } from "@nyte-ai/ui/schema.stylex";
 import { create } from "@stylexjs/stylex";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { role } from "@nyte-ai/ui/vars.stylex";
 
 export const searchPaletteStyles = create({
-  root: {
-    display: "flex",
-    flexDirection: "column",
-    minHeight: 0,
-    flex: 1,
-  },
-  searchRow: {
-    display: "grid",
-    gridTemplateColumns: "16px minmax(0, 1fr) auto",
-    alignItems: "center",
-    gap: 10,
-    minHeight: 56,
-    paddingInline: 20,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
-    color: role.contentSecondary,
-  },
-  input: { height: 40 },
   tabs: {
     flexShrink: 0,
     paddingInline: 8,
@@ -30,59 +10,5 @@ export const searchPaletteStyles = create({
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
-  },
-  results: {
-    minHeight: 0,
-    maxHeight: "min(320px, calc(100vh - 220px))",
-    flexGrow: 1,
-    flexShrink: 1,
-    padding: 8,
-    overflowY: "auto",
-    overscrollBehavior: "contain",
-  },
-  groupLabel: {
-    paddingInline: 12,
-    paddingBlockStart: 12,
-    paddingBlockEnd: 6,
-    color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-    userSelect: "none",
-  },
-  result: {
-    boxSizing: "border-box",
-    gridTemplateColumns: "16px minmax(0, 1fr) auto",
-    minHeight: 40,
-    alignItems: "center",
-    paddingBlock: 8,
-    paddingInline: 12,
-    columnGap: 10,
-    borderRadius: shape.card,
-    backgroundColor: {
-      default: "transparent",
-      ":is([data-highlighted])": role.bgHover,
-    },
-    color: role.contentPrimary,
-    fontSize: type.fontLg,
-    lineHeight: type.leadingLg,
-    letterSpacing: type.letterLg,
-  },
-  resultIcon: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: glyph.md,
-    height: glyph.md,
-    color: role.contentSecondary,
-  },
-  empty: {
-    display: "grid",
-    placeItems: "center",
-    minHeight: 152,
-    padding: 24,
-    color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
-    textAlign: "center",
   },
 });

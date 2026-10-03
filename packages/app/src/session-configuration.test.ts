@@ -11,10 +11,12 @@ import {
 } from "./session-configuration.ts";
 
 const id = sessionId("chosen-model");
+
 const selected = { model: { provider: "provider", id: "chosen" }, thinkingLevel: "high" } as const;
 
 function fixture() {
   const client = new QueryClient();
+
   const session: SessionInfo = {
     sessionId: id,
     activation: { kind: "active" },
@@ -26,6 +28,7 @@ function fixture() {
     heads: [],
     config: { model: { provider: "provider", id: "default" }, thinkingLevel: "off" },
   };
+
   const snapshot: SessionSnapshot = {
     session,
     seq: 1,
@@ -36,9 +39,11 @@ function fixture() {
     pending: [],
     context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 1000 },
   };
+
   const response = Promise.withResolvers<Awaited<ReturnType<SessionsBridge["configure"]>>>();
   const requested = Promise.withResolvers<Parameters<SessionsBridge["configure"]>[0]>();
   const versions: string[] = [];
+
   const mutation = client.getMutationCache().build(
     client,
     sessionConfigurationOptions({
@@ -47,6 +52,7 @@ function fixture() {
       sessions: {
         configure: async (input) => {
           requested.resolve(input);
+
           return response.promise;
         },
       },
@@ -56,19 +62,23 @@ function fixture() {
         },
         acknowledge: () => {
           versions.push("acknowledged");
+
           return Promise.resolve();
         },
       },
     }),
   );
+
   const read = () => {
     const cached = client.getQueryData<SessionSnapshot>(keys.snapshot(id));
     assert.ok(cached);
+
     return projectSessionConfiguration(
       cached.session,
       mutation.state.status === "pending" ? [mutation.state] : [],
     );
   };
+
   return { client, session, snapshot, response, requested, mutation, read, versions };
 }
 
@@ -116,6 +126,7 @@ test("a read started before saving cannot restore the default after acknowledgem
   const f = fixture();
   f.client.setQueryData(keys.snapshot(id), f.snapshot);
   const staleRead = Promise.withResolvers<SessionSnapshot>();
+
   const reading = f.client
     .fetchQuery({
       queryKey: keys.snapshot(id),
@@ -123,6 +134,7 @@ test("a read started before saving cannot restore the default after acknowledgem
       staleTime: 0,
     })
     .catch(() => undefined);
+
   const saving = f.mutation.execute(selected);
   await f.requested.promise;
   assert.deepEqual(f.read().config, selected);

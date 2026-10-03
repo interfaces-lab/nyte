@@ -1,8 +1,7 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 /**
  * Settings › Accounts: the shared GitHub CLI account and the selected repository.
- * The account row says whether it is connected and offers the single action
- * that changes that; the rows under it show what the connection reaches, the
+ * The account row ends in the single control that changes its connection; the rows under it show what the connection reaches, the
  * repository and the current branch's pull request. Model providers live
  * under Settings › Models with their models.
  */
@@ -19,9 +18,10 @@ import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { nyte } from "../nyte.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
+import { MenuItem } from "@nyte-ai/ui/menu";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 
-import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
+import { ConnectionList, ConnectionMenu, ConnectionRow } from "./connection-list.tsx";
 import { signOutDescription, useGitHubAccount } from "./github-account.ts";
 import { DeviceCodePanel } from "./sign-in-panels.tsx";
 
@@ -30,7 +30,7 @@ const styles = create({
     display: "block",
     width: "100%",
     height: "100%",
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     objectFit: "cover",
   },
 });
@@ -41,6 +41,8 @@ function OpenOnGitHub({ url }: { url: string }): ReactElement {
       href={url}
       target="_blank"
       rel="noreferrer"
+      variant="outline"
+
       icon="github"
       onClick={(event) => {
         event.preventDefault();
@@ -68,9 +70,8 @@ function AccountRow({
       <ConnectionRow
         glyph={glyph}
         title="GitHub"
-        detail={undefined}
-        status={<ConnectionStatus tone="warn">Signing in…</ConnectionStatus>}
-        actions={
+        detail="Signing in…"
+        control={
           <Button variant="outline" loading>
             Sign In to GitHub
           </Button>
@@ -91,10 +92,10 @@ function AccountRow({
               ? "GitHub sign-in or sign-out failed. Run gh auth status in a terminal, then refresh."
               : "Failed to read GitHub status. Refresh GitHub."
         }
-        status={<ConnectionStatus tone="err">Unavailable</ConnectionStatus>}
-        actions={
+        control={
           <Button
             variant="outline"
+
             loading={query.isFetching}
             onClick={() => {
               auth.reset();
@@ -111,14 +112,7 @@ function AccountRow({
   const account = query.data;
 
   if (account === undefined) {
-    return (
-      <ConnectionRow
-        glyph={glyph}
-        title="GitHub"
-        detail={undefined}
-        status={<ConnectionStatus tone="off">Checking GitHub…</ConnectionStatus>}
-      />
-    );
+    return <ConnectionRow glyph={glyph} title="GitHub" detail="Checking GitHub…" />;
   }
 
   switch (account.kind) {
@@ -132,13 +126,13 @@ function AccountRow({
               ? "Install the GitHub CLI on the machine running the server, then refresh."
               : "Install the GitHub CLI, then refresh."
           }
-          status={<ConnectionStatus tone="off">CLI not found</ConnectionStatus>}
-          actions={
+          control={
             <ButtonLink
               href={"https://cli.github.com"}
               target="_blank"
               rel="noreferrer"
               variant="outline"
+
               onClick={(event) => {
                 event.preventDefault();
                 void nyte.host
@@ -157,8 +151,7 @@ function AccountRow({
           glyph={glyph}
           title="GitHub"
           detail={undefined}
-          status={<ConnectionStatus tone="off">Not connected</ConnectionStatus>}
-          actions={
+          control={
             <Button variant="outline" loading={busy} onClick={() => auth.mutate("signIn")}>
               Sign In to GitHub
             </Button>
@@ -170,10 +163,9 @@ function AccountRow({
         <ConnectionRow
           glyph={glyph}
           title="GitHub"
-          detail={undefined}
-          status={<ConnectionStatus tone="warn">Waiting for approval</ConnectionStatus>}
-          actions={
-            <Button loading={busy} onClick={() => auth.mutate("signOut")}>
+          detail="Waiting for approval"
+          control={
+            <Button variant="outline" loading={busy} onClick={() => auth.mutate("signOut")}>
               Cancel
             </Button>
           }
@@ -195,18 +187,25 @@ function AccountRow({
             }
             title={name ?? login}
             detail={`@${login}`}
-            status={<ConnectionStatus tone="on">Connected</ConnectionStatus>}
-            actions={
-              <Button ref={signOutRef} loading={busy} onClick={() => setConfirmSignOut(true)}>
-                Sign Out of GitHub CLI…
-              </Button>
+            control={
+              <ConnectionMenu
+                ref={signOutRef}
+                label="GitHub"
+                tone="on"
+                status="Connected"
+                loading={busy}
+              >
+                <MenuItem variant="danger" onClick={() => setConfirmSignOut(true)}>
+                  Sign Out of GitHub CLI…
+                </MenuItem>
+              </ConnectionMenu>
             }
           />
           <ConfirmDialog
             open={confirmSignOut}
             pending={busy}
             error={undefined}
-            returnFocusRef={signOutRef}
+            finalFocus={signOutRef}
             title="Sign Out of GitHub CLI"
             description={signOutDescription(login)}
             confirmLabel="Sign Out of GitHub CLI"
@@ -232,7 +231,7 @@ function RepositoryRow({ repository }: { repository: GitHubRepository }): ReactE
       glyph={<Icon name="git" size={15} />}
       title={`${repository.owner}/${repository.name}`}
       detail={`Remote ${repository.remoteName}`}
-      actions={<OpenOnGitHub url={repository.url} />}
+      control={<OpenOnGitHub url={repository.url} />}
     />
   );
 }
@@ -253,18 +252,14 @@ function pullRequestIcon(pullRequest: GitHubPullRequest): IconName {
   }
 }
 
-function pullRequestStatus(pullRequest: GitHubPullRequest): ReactElement {
+function pullRequestState(pullRequest: GitHubPullRequest): string {
   switch (pullRequest.state) {
     case "OPEN":
-      return pullRequest.draft ? (
-        <ConnectionStatus tone="off">Draft</ConnectionStatus>
-      ) : (
-        <ConnectionStatus tone="on">Open</ConnectionStatus>
-      );
+      return pullRequest.draft ? "Draft" : "Open";
     case "MERGED":
-      return <ConnectionStatus tone="off">Merged</ConnectionStatus>;
+      return "Merged";
     case "CLOSED":
-      return <ConnectionStatus tone="off">Closed</ConnectionStatus>;
+      return "Closed";
     default: {
       const _exhaustive: never = pullRequest.state;
 
@@ -296,9 +291,8 @@ function PullRequestRow({
         <ConnectionRow
           glyph={<Icon name={pullRequestIcon(pullRequest)} size={15} />}
           title={`#${pullRequest.number} ${pullRequest.title}`}
-          detail={`${pullRequest.headRefName} → ${pullRequest.baseRefName}`}
-          status={pullRequestStatus(pullRequest)}
-          actions={<OpenOnGitHub url={pullRequest.url} />}
+          detail={`${pullRequestState(pullRequest)} · ${pullRequest.headRefName} → ${pullRequest.baseRefName}`}
+          control={<OpenOnGitHub url={pullRequest.url} />}
         />
       );
     }
@@ -309,8 +303,11 @@ function PullRequestRow({
           glyph={<Icon name="pull-request" size={15} />}
           title="Pull request"
           detail={context.message}
-          status={<ConnectionStatus tone="err">Unavailable</ConnectionStatus>}
-          actions={<Button onClick={refresh}>Refresh GitHub</Button>}
+          control={
+            <Button variant="outline" onClick={refresh}>
+              Refresh GitHub
+            </Button>
+          }
         />
       );
     default: {

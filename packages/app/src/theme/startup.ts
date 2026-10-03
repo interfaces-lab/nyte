@@ -25,5 +25,6 @@ export function applyStartupTheme({
   readonly retry: HTMLElement | null;
 }): void {
   if (shell !== null) shell.className = props(styles.shell).className ?? "";
+
   if (retry !== null) retry.className = props(intent.primary, styles.retry).className ?? "";
 }

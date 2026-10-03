@@ -6,7 +6,7 @@ import type { SessionDirectoryChange, WorkspaceSessionDirectory } from "./bridge
 import { SessionDirectoryFeed } from "./session-directory-feed.ts";
 
 function row(id: string, parent?: string): SessionInfo {
-  return {
+  const root: SessionInfo = {
     sessionId: sessionId(id),
     activation: { kind: "active" },
     createdAt: 1,
@@ -15,9 +15,13 @@ function row(id: string, parent?: string): SessionInfo {
     archived: false,
     heads: [],
     config: {},
-    ...(parent === undefined
-      ? {}
-      : { parent: { sessionId: sessionId(parent), runId: "run", callId: "call", depth: 1 } }),
+  };
+
+  if (parent === undefined) return root;
+
+  return {
+    ...root,
+    parent: { sessionId: sessionId(parent), runId: "run", callId: "call", depth: 1 },
   };
 }
 
@@ -55,6 +59,7 @@ test("an event buffered before the snapshot applies on top of it", () => {
     revision: 3,
     directories: [{ ...home, sessions: [row("a")] }],
   });
+
   assert.deepEqual(
     applied.flatMap((entry) => entry.sessions.map((item) => item.sessionId)),
     ["b", "a"],

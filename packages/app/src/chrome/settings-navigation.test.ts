@@ -1,20 +1,17 @@
 import assert from "node:assert/strict";
-import { afterEach, test, vi } from "vitest";
+import { test } from "vitest";
+import { installBridge } from "../nyte.ts";
+import { createWebBridge } from "../web/bridge.ts";
 import { isSettingsSection } from "./settings-navigation.tsx";
 
-const bridge = vi.hoisted(() => ({ clientSurface: "web", environment: undefined }));
-
-vi.mock("../nyte.ts", () => ({ nyte: bridge }));
-
-afterEach(() => {
-  bridge.clientSurface = "web";
-});
+const web = createWebBridge().bridge;
 
 test("only sections this host can show are settings sections", () => {
+  installBridge(web);
   assert.ok(isSettingsSection("general"));
   assert.equal(isSettingsSection("providers"), false);
   assert.equal(isSettingsSection("nope"), false);
 
-  bridge.clientSurface = "desktop";
+  installBridge({ ...web, clientSurface: "desktop" });
   assert.ok(isSettingsSection("providers"));
 });

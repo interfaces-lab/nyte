@@ -238,7 +238,9 @@ export class PaneController {
 
       if (paneSelection(current, paneId)?.kind !== "blank") return false;
 
-      if (this.#viewState.readBlank(paneId).composer.draft !== "") return false;
+      const { composer } = this.#viewState.readBlank(paneId);
+
+      if (composer.draft !== "" || composer.attachments.length > 0) return false;
       const active = activePane(current);
       this.selectSessionInPane(paneId, sessionId);
       this.focus(active.selection.kind === "blank" ? focused : active.id);

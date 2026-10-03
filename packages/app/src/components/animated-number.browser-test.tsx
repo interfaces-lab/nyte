@@ -16,7 +16,9 @@ function check(condition: boolean, message: string) {
 
 function element(id: string) {
   const node = document.getElementById(id);
+
   if (node === null) throw new Error(`Missing ${id}`);
+
   return node;
 }
 
@@ -29,6 +31,7 @@ export async function run(reduced: boolean) {
   container.style.font = "13px Arial";
   document.body.append(container);
   const root = createRoot(container);
+
   const render = (value: number, scope = "file-a") =>
     flushSync(() =>
       root.render(
@@ -43,12 +46,16 @@ export async function run(reduced: boolean) {
         </StrictMode>,
       ),
     );
+
   const accessibleText = () => {
     const copy = element("count").cloneNode(true);
+
     if (!(copy instanceof HTMLElement)) throw new Error("Expected count element");
     copy.querySelectorAll('[aria-hidden="true"]').forEach((node) => node.remove());
+
     return copy.textContent;
   };
+
   const checkGeometry = () => {
     const count = element("count").getBoundingClientRect();
     const reference = element("reference").getBoundingClientRect();
@@ -58,6 +65,7 @@ export async function run(reduced: boolean) {
       "Layout must use the current formatted value, not the animated size",
     );
   };
+
   try {
     render(99);
     check(document.getAnimations().length === 0, "Mount must not animate");
@@ -79,10 +87,12 @@ export async function run(reduced: boolean) {
       reduced ? animations.length === 0 : animations.length > 0,
       "Only updates with motion enabled animate",
     );
+
     if (!reduced) {
       const durationToken = getComputedStyle(element("count"))
         .getPropertyValue("--nyte-duration-normal")
         .trim();
+
       const duration = Number.parseFloat(durationToken) * (durationToken.endsWith("ms") ? 1 : 1000);
       const ease = getComputedStyle(element("count")).getPropertyValue("--nyte-easing-out").trim();
       check(
@@ -101,6 +111,7 @@ export async function run(reduced: boolean) {
         "Morphing must not move the filename",
       );
     }
+
     render(7);
     check(accessibleText() === "+7", "Interrupted morph immediately exposes the latest value");
     checkGeometry();
@@ -136,6 +147,7 @@ export async function run(reduced: boolean) {
       "Unmount cancels descendant animations",
     );
     check(container.textContent === "", "Unmount releases the rendered count");
+
     return "passed";
   } finally {
     if (container.hasChildNodes()) flushSync(() => root.unmount());

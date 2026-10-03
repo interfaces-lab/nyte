@@ -10,7 +10,6 @@ interface ActionBatch {
   readonly id: string;
   readonly label: string;
   readonly actions: Set<UndoableAction>;
-  revision: number;
 }
 
 /** Repeated clicks update one notification and Undo reverses that whole batch. */
@@ -23,7 +22,6 @@ export class ActionToasts {
       id: `session-action-${label}-${++this.#nextId}`,
       label,
       actions: new Set<UndoableAction>(),
-      revision: 0,
     };
 
     this.#batches.set(label, batch);
@@ -37,15 +35,17 @@ export class ActionToasts {
       if (batch.actions.size > 0) this.#show(batch);
       else {
         this.#batches.delete(label);
-        toast.dismiss(batch.id);
+        toast.close(batch.id);
       }
     };
   }
 
-  undo(id: ReturnType<typeof toast.success>): void {
+  undo(id: string): void {
     const batch = this.#batches.values().find((entry) => entry.id === id);
 
-    if (batch !== undefined) this.#finish(batch, true);
+    if (batch === undefined) return;
+    this.#finish(batch, true);
+    toast.close(id);
   }
 
   #finish(batch: ActionBatch, undo: boolean): void {
@@ -60,17 +60,17 @@ export class ActionToasts {
 
   #show(batch: ActionBatch): void {
     const count = batch.actions.size;
-    toast.success(`${count} ${count === 1 ? "chat" : "chats"} ${batch.label}`, {
+    toast.add({
+      type: "success",
+      title: `${count} ${count === 1 ? "chat" : "chats"} ${batch.label}`,
       id: batch.id,
-      // Sonner resets its remaining time when duration changes, not title.
-      duration: 6_000 + ++batch.revision,
+      timeout: 6_000,
       description:
         batch.label === "deleted"
           ? "Permanently deleted when this notification closes."
           : undefined,
-      action: { label: "Undo", onClick: () => this.undo(batch.id) },
-      onDismiss: () => this.#finish(batch, false),
-      onAutoClose: () => this.#finish(batch, false),
+      actionProps: { children: "Undo", onClick: () => this.undo(batch.id) },
+      onClose: () => this.#finish(batch, false),
     });
   }
 }

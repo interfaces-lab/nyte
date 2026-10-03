@@ -108,6 +108,7 @@ export function releaseSessionQueries(client: QueryClient, sessionId: SessionId)
       keys.children(sessionId),
       keys.childSessions(sessionId),
       keys.pluginSettings(sessionId),
+      keys.sessionCommands(sessionId),
       keys.sessionCatalog(sessionId),
       ["customize", sessionId] as const,
     ].flatMap((queryKey) => cache.findAll({ queryKey, exact: true })),

@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 import {
   DndContext,
   DragOverlay,
@@ -24,7 +24,6 @@ import { Value } from "typebox/value";
 import type { ReactElement, ReactNode } from "react";
 import type { SessionId } from "@nyte-ai/protocol";
 import { sessionId as sessionIdSchema } from "../schemas.ts";
-import { overlayRef } from "../components/overlay-occlusion.ts";
 import { role, shadow, type } from "@nyte-ai/ui/vars.stylex";
 import { usePaneActions, usePaneControllerSnapshot } from "./pane-context.tsx";
 import { orderedPanes } from "./pane-layout.ts";
@@ -63,7 +62,7 @@ const styles = create({
     width: "100%",
     height: "100%",
     paddingInline: 8,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgElevated,
     boxShadow: shadow.shadowMdOutline,
     color: role.contentPrimary,
@@ -178,7 +177,7 @@ function SessionDragSurface({ children }: { readonly children: ReactNode }): Rea
       </div>
       <DragOverlay dropAnimation={null} zIndex={10_000}>
         {dragged === undefined ? null : (
-          <div ref={overlayRef} {...props(styles.overlay)}>
+          <div data-slot="drag-overlay" {...props(styles.overlay)}>
             <span {...props(styles.overlayTitle)}>{dragged.title}</span>
           </div>
         )}

@@ -104,7 +104,8 @@ async function resume(connection: Connection, fromLink: boolean): Promise<void> 
     const problem = serverConnectionProblem(cause);
     const refused = problem.kind === "authentication";
 
-    // Each share makes a new token, so a refused saved token will never work again.
+    // A refused saved token never works again: a local or Tailscale token ends
+    // with its share, and a removed device's token stays revoked.
     if (refused && !fromLink) forgetConnection();
     showConnectScreen(refused ? { url: connection.url, token: "" } : connection, problem.message);
 
@@ -116,6 +117,7 @@ async function resume(connection: Connection, fromLink: boolean): Promise<void> 
 }
 
 const pairing = readPairingRequest(new URL(location.href));
+
 const known = pairing ?? loadConnection();
 
 if (known === undefined) showConnectScreen();

@@ -13,6 +13,8 @@ import { _electron } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import { stylex } from "@nyte-ai/ui/stylex";
 import electronExecutable from "electron";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { build } from "vite";
 import { afterAll, beforeAll, beforeEach, test } from "vitest";
 import type {
@@ -51,7 +53,7 @@ const disconnected: DesktopCatalog = {
   source: "local",
   providers: [copilot],
   models: [gpt],
-  defaults: { model: { provider: "github-copilot", id: "gpt" }, thinkingLevel: "off" },
+  defaults: { model: { provider: "github-copilot", id: "gpt" }, thinkingLevel: "off", fast: false },
 };
 
 /** What the host's catalog looks like once the credential is saved and discovery ran. */
@@ -81,9 +83,12 @@ const deviceCode = (attempt: string): HostEvent => ({
 const TEST_TIMEOUT = 30_000;
 
 let directory: string | undefined;
+
 let application: ElectronApplication | undefined;
+
 /** Assigned by beforeAll; every test runs after it or not at all. */
 let page: Page;
+
 const pageErrors: string[] = [];
 
 async function buildHarness(outDir: string): Promise<void> {
@@ -126,20 +131,21 @@ async function buildHarness(outDir: string): Promise<void> {
 
 beforeAll(async () => {
   // Outside Electron the package resolves to the path of its executable.
-  if (typeof electronExecutable !== "string")
-    throw new Error("Expected Electron to resolve to its executable path");
+  const executablePath = Value.Parse(Type.String(), electronExecutable);
   const root = await mkdtemp(join(tmpdir(), "nyte-login-harness-"));
   directory = root;
   await Promise.all(["profile", "session", "home"].map((name) => mkdir(join(root, name))));
   await buildHarness(root);
+
   const inherited = Object.fromEntries(
     Object.entries(process.env).filter(
       (entry): entry is [string, string] =>
         entry[1] !== undefined && entry[0] !== "ELECTRON_RUN_AS_NODE",
     ),
   );
+
   application = await _electron.launch({
-    executablePath: electronExecutable,
+    executablePath,
     args: [join(root, "main.cjs")],
     env: { ...inherited, HOME: join(root, "home"), NYTE_LOGIN_HARNESS_DIR: root, TMPDIR: root },
     timeout: 60_000,
@@ -151,6 +157,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await application?.close();
+
   if (directory !== undefined) await rm(directory, { recursive: true, force: true });
 });
 
@@ -197,6 +204,7 @@ async function startSignIn(): Promise<string> {
   assert.equal(provider, "github-copilot");
   assert.deepEqual(method, { kind: "browser" });
   assert.ok(attempt.length > 0, "host.login carries an attempt ID");
+
   return attempt;
 }
 
@@ -244,7 +252,9 @@ test(
     await page.getByText("Connected to GitHub Copilot").waitFor();
     await page.getByRole("region", { name: "Connected providers" }).waitFor();
     await code.waitFor({ state: "detached" });
-    await page.getByRole("button", { name: "Disconnect Provider", exact: true }).waitFor();
+    await page.getByRole("button", { name: "GitHub Copilot: Connected" }).click();
+    await page.getByRole("menuitem", { name: "Disconnect Provider" }).waitFor();
+    await page.keyboard.press("Escape");
     const defaultModel = page.getByRole("combobox", { name: "Default model" });
     await defaultModel.waitFor();
     assert.equal(await defaultModel.isDisabled(), false, "two listed models make it a choice");

@@ -48,10 +48,12 @@ test("inactive transcripts stay within the entry and byte budgets", async () => 
   await Promise.resolve();
   assert.ok(client.getQueryData(keys.snapshot(sessionId("one"))));
   await enforce();
+
   const retained = client
     .getQueryCache()
     .getAll()
     .filter((query) => query.queryKey[0] === "snapshot");
+
   assert.ok(retained.length <= 2);
   assert.equal(
     client.getQueryData<SessionSnapshot>(keys.snapshot(sessionId("three")))?.session.name,
@@ -74,11 +76,13 @@ test("releasing a session drops only what nobody reads", () => {
   const value = snapshot("archived");
   client.setQueryData(keys.snapshot(id), value);
   client.setQueryData(["vcs", "run-diff", id, "run"], "large diff");
+
   const observer = new QueryObserver(client, {
     queryKey: keys.snapshot(id),
     queryFn: () => Promise.resolve(value),
     staleTime: Infinity,
   });
+
   const stop = observer.subscribe(() => {});
   releaseSessionQueries(client, id);
   assert.equal(client.getQueryData(keys.snapshot(id)), value);
@@ -93,10 +97,12 @@ test("the budget never evicts a transcript that still has a reader", async () =>
   const id = sessionId("open");
   const value = snapshot("open", "large".repeat(100));
   client.setQueryData(keys.snapshot(id), value);
+
   const observer = new QueryObserver(client, {
     queryKey: keys.snapshot(id),
     queryFn: () => Promise.resolve(value),
   });
+
   const unsubscribeObserver = observer.subscribe(() => {});
   client.setQueryData(keys.snapshot(sessionId("closed")), snapshot("closed"));
   await enforce();

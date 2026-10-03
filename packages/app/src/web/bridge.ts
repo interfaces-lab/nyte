@@ -26,7 +26,9 @@ export interface WebBridge {
 const REFRESH_MS = 10_000;
 
 const NOT_CONNECTED = "The app is not connected to a server.";
+
 const SERVER = "Change servers from the connect screen.";
+
 const REMOTE_ACCESS = "Remote access is turned on from the desktop app.";
 
 const refuse = (message: string) => (): Promise<never> => Promise.reject(new Error(message));
@@ -274,9 +276,28 @@ export function createWebBridge(): WebBridge {
         createSession: refuse(SERVER),
       },
       remote: {
-        state: () => Promise.resolve({ kind: "off", tailnet: { kind: "missing" } }),
+        state: () =>
+          Promise.resolve({
+            kind: "off",
+            tailnet: { kind: "missing" },
+            cloudflare: { kind: "unregistered" },
+          }),
         start: refuse(REMOTE_ACCESS),
         stop: refuse(REMOTE_ACCESS),
+        configure: refuse(REMOTE_ACCESS),
+        clear: refuse(REMOTE_ACCESS),
+        pair: refuse(REMOTE_ACCESS),
+        revoke: refuse(REMOTE_ACCESS),
+      },
+      connect: {
+        state: () => Promise.resolve({ kind: "unavailable", reason: "not_configured" }),
+        link: refuse(REMOTE_ACCESS),
+        cancel: refuse(REMOTE_ACCESS),
+        setEnabled: refuse(REMOTE_ACCESS),
+        unlink: refuse(REMOTE_ACCESS),
+        revokeDevice: refuse(REMOTE_ACCESS),
+        openAccount: refuse(REMOTE_ACCESS),
+        signOut: refuse(REMOTE_ACCESS),
       },
       openExternal: async ({ url }) => {
         const page = webPageUrl(url);

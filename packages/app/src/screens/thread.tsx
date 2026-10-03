@@ -22,7 +22,6 @@ import type { Oid, SessionId, Turn, UserTurnPart } from "@nyte-ai/protocol";
 import type { Delivery } from "@nyte-ai/protocol";
 import { Composer, ComposerFrame } from "../conversation/composer.tsx";
 import { attachComposerFiles } from "../conversation/composer-files.ts";
-import type { ComposerImageAttachment } from "../conversation/composer-files.ts";
 import { composerSource } from "../conversation/composer-suggestions.tsx";
 import { bindComposerFileDrop } from "../conversation/composer-file-drop.ts";
 import type {
@@ -31,6 +30,7 @@ import type {
 } from "../conversation/composer-document.ts";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
 import { composerSendInput, composerSendPlan } from "../conversation/composer-send.ts";
+import { parsePluginCommand } from "../conversation/plugin-command.ts";
 import { deliveryChoices } from "../conversation/composer-keys.ts";
 import type {
   BranchModelChoice,
@@ -39,7 +39,6 @@ import type {
 } from "../conversation/turn-view.tsx";
 import { ModelPicker } from "../conversation/model-picker.tsx";
 import { WorkspaceContext } from "./workspace-context.tsx";
-import { draftConfiguration, updateDraftModel } from "../conversation/blank-draft.ts";
 import { Input } from "@nyte-ai/ui/input";
 import { FileTypeIconSprite } from "../components/file-type-icon.tsx";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
@@ -75,6 +74,7 @@ import {
   usePluginCatalog,
   usePluginSettings,
   useRenameSession,
+  useSetPreference,
   useSession,
   useSessionSnapshot,
 } from "../queries.ts";
@@ -90,11 +90,7 @@ import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
 import { Timeline } from "../conversation/timeline.tsx";
 import { TranscriptProvider, TranscriptViewport } from "../conversation/transcript.tsx";
 import { QuestionTray, useComposerAnswer } from "../conversation/tray/questions.tsx";
-import {
-  NO_WAITS,
-  displayTranscriptParts,
-  liveWaits,
-} from "../conversation/transcript-presentation.ts";
+import { displayTranscriptParts } from "../conversation/transcript-presentation.ts";
 import {
   conversationMessages,
   rendersInTranscript,
@@ -110,6 +106,7 @@ import { SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
 import type { SubagentSession } from "../conversation/subagent-sessions.ts";
 import { clientActions, clientActionShortcut } from "../client-actions.ts";
 import { errorMessage } from "../errors.ts";
+import { pickerDefaults } from "../preference-projection.ts";
 
 const EMPTY_TURNS: readonly Turn[] = [];
 
@@ -313,6 +310,7 @@ async function applyMessageEdit({
         stopped: true,
       });
     }
+
     case "moved_since":
       throw new Error("The conversation moved on; review it before editing this message.");
     case "not_found":
@@ -338,7 +336,7 @@ type SessionConversationProps =
       readonly presentation: "tray";
       readonly paneId: PaneId;
       readonly sessionId: SessionId;
-      readonly onOpenSubagentTray: (sessionId?: SessionId) => void;
+      readonly onOpenSubagentTray: (sessionId: SessionId) => void;
     };
 
 function SessionConversation(conversation: SessionConversationProps): ReactElement {
@@ -445,24 +443,16 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
   // The indicator belongs under the last turn the transcript draws, which is
   // not always the last turn in the snapshot.
   const lastTurn = useMemo(() => turns.findLast(rendersInTranscript), [turns]);
-  // A turn that ends in a work group already draws the run's indicator there,
-  // as does one whose live wait on its children is drawn as status. One that
-  // ends in prose needs it below the prose, or the model looks idle while it
+  // A turn that ends in a work group already draws the run's indicator there.
+  // One that ends in prose needs it below the prose, or the model looks idle while it
   // prepares its next step.
   const parked = snapshot.data?.parked;
   const answer = useComposerAnswer(sessionId, parked);
 
-  const lastWaits = useMemo(
-    () => (lastTurn?.kind === "turn" ? liveWaits(lastTurn.parts, parked, working) : NO_WAITS),
-    [lastTurn, parked, working],
-  );
-
   const settledWork = useMemo(
     () =>
-      lastTurn?.kind === "turn" &&
-      (lastWaits.hidden.size > 0 ||
-        displayTranscriptParts(lastTurn.parts, lastWaits.hidden).at(-1)?.kind === "work"),
-    [lastTurn, lastWaits],
+      lastTurn?.kind === "turn" && displayTranscriptParts(lastTurn.parts).at(-1)?.kind === "work",
+    [lastTurn],
   );
 
   const retrying = live.runState === "retrying" ? live.retry.message : undefined;
@@ -553,18 +543,14 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
   // A card always opens the tray, whatever the child's state; the tray's own
   // expand action is the way to a full chat.
   const openSubagentTray = useCallback(
-    (childSessionId?: SessionId): void => {
+    (childSessionId: SessionId): void => {
       if (forwardSubagentTray !== undefined) {
         forwardSubagentTray(childSessionId);
 
         return;
       }
 
-      setTrayView(
-        childSessionId === undefined
-          ? { kind: "list", retainedSessionId: undefined }
-          : { kind: "detail", sessionId: childSessionId },
-      );
+      setTrayView({ kind: "detail", sessionId: childSessionId });
     },
     [forwardSubagentTray],
   );
@@ -674,7 +660,6 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
                   rows={rows}
                   working={working}
                   settledWork={settledWork}
-                  waits={lastWaits}
                   cwd={cwd}
                   branchModel={branchModel}
                   onEditUser={editUserMessage}
@@ -771,7 +756,7 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
             title="Delete Chat"
             confirmLabel="Delete Chat"
             description="The chat disappears now. Undo from the notification before it closes."
-            returnFocusRef={paneMenuTrigger}
+            finalFocus={paneMenuTrigger}
             onOpenChange={(nextOpen) => {
               if (nextOpen) return;
               setDeletion({ kind: "closed" });
@@ -815,10 +800,15 @@ function BlankConversation({
   const actions = usePaneActions();
   const viewStore = usePaneViewStateStore();
   const [viewState, updateViewState] = useBlankViewBinding(paneId);
+
   // The raw cause is diagnostic only: it rides in `title`, never in body copy.
-  const [startFailure, setStartFailure] = useState<string | undefined>();
+  const [startFailure, setStartFailure] = useState<
+    | { readonly kind: "start"; readonly cause: string }
+    | { readonly kind: "refused"; readonly message: string }
+  >();
+
   const [sending, setSending] = useState(false);
-  const [attachments, setAttachments] = useState<readonly ComposerImageAttachment[]>([]);
+  const attachments = viewState.composer.attachments;
   const [attachmentReads, setAttachmentReads] = useState(0);
   const [attachmentError, setAttachmentError] = useState<string>();
   const editorRef = useRef<ComposerEditorHandle | null>(null);
@@ -832,12 +822,17 @@ function BlankConversation({
     [inputRef],
   );
 
-  const configuration = draftConfiguration(catalog.data, viewState.configuration);
+  const setPreference = useSetPreference();
+  const defaults = catalog.data?.defaults;
 
   const current = catalog.data?.models.find(
-    (option) =>
-      option.provider === configuration?.model.provider && option.id === configuration.model.id,
+    (option) => option.provider === defaults?.model.provider && option.id === defaults.model.id,
   );
+
+  const fastSettingId =
+    defaults?.fast === true && current?.fastMode.kind === "available"
+      ? current.fastMode.settingId
+      : undefined;
 
   const start = async (
     submission: ComposerSubmission,
@@ -845,6 +840,29 @@ function BlankConversation({
     document: ComposerDocumentState,
   ): Promise<boolean> => {
     if (sending || attachmentReads !== 0) return false;
+
+    if (/^\/\S/.test(submission.text.trim())) {
+      if (pluginCatalog.data === undefined) {
+        if (pluginCatalog.isError) void pluginCatalog.refetch();
+        setStartFailure({
+          kind: "refused",
+          message: pluginCatalog.isError
+            ? "Couldn't load commands. Try again."
+            : "Commands are still loading. Try again.",
+        });
+
+        return false;
+      }
+
+      const command = parsePluginCommand(submission.text, pluginCatalog.data.commands);
+
+      if (command !== undefined) {
+        setStartFailure({ kind: "refused", message: `/${command.name} needs an existing chat.` });
+
+        return false;
+      }
+    }
+
     // A new chat has no plugin commands active yet; its first message is always a message.
     const plan = composerSendPlan({ submission, attachments, commands: [], delivery });
 
@@ -859,31 +877,20 @@ function BlankConversation({
       selectionEnd: document.selectionEnd,
     });
 
-    const submittedConfiguration = draftConfiguration(catalog.data, submitted.configuration);
-
-    const submittedModel = catalog.data?.models.find(
-      (option) =>
-        option.provider === submittedConfiguration?.model.provider &&
-        option.id === submittedConfiguration.model.id,
-    );
-
     try {
       const session = await nyte.sessions.create();
 
-      if (submittedConfiguration !== undefined) {
-        await configureSession(session.sessionId, submittedConfiguration);
+      if (defaults !== undefined) {
+        await configureSession(session.sessionId, {
+          model: defaults.model,
+          thinkingLevel: defaults.thinkingLevel,
+        });
       }
 
-      if (
-        submittedModel?.fastMode.kind === "available" &&
-        submitted.fastSettings.has(submittedModel.fastMode.settingId)
-      ) {
-        await enableFastMode(session.sessionId, submittedModel.fastMode.settingId);
-      }
+      if (fastSettingId !== undefined) await enableFastMode(session.sessionId, fastSettingId);
 
       await outbox.submit(composerSendInput(session.sessionId, plan));
       await cacheCreatedSession({ session, workspacePath: workspace?.path ?? null });
-      setAttachments([]);
       setAttachmentError(undefined);
       actions.openSessionInPane(paneId, session.sessionId);
 
@@ -891,25 +898,34 @@ function BlankConversation({
     } catch (cause: unknown) {
       viewStore.restoreBlank(paneId, submitted);
       setSending(false);
-      setStartFailure(errorMessage(cause));
+      setStartFailure({ kind: "start", cause: errorMessage(cause) });
 
       return false;
     }
   };
 
-  const addFiles = useCallback(async (files: readonly File[]): Promise<void> => {
-    setAttachmentReads((count) => count + 1);
+  const addFiles = useCallback(
+    async (files: readonly File[]): Promise<void> => {
+      setAttachmentReads((count) => count + 1);
 
-    return attachComposerFiles({ files, editor: editorRef.current })
-      .then((result) => {
-        if (result.attachments.length > 0) {
-          setAttachments((current) => [...current, ...result.attachments]);
-        }
+      return attachComposerFiles({ files, editor: editorRef.current })
+        .then((result) => {
+          if (result.attachments.length > 0) {
+            updateViewState((state) => ({
+              ...state,
+              composer: {
+                ...state.composer,
+                attachments: [...state.composer.attachments, ...result.attachments],
+              },
+            }));
+          }
 
-        setAttachmentError(result.error);
-      })
-      .finally(() => setAttachmentReads((count) => count - 1));
-  }, []);
+          setAttachmentError(result.error);
+        })
+        .finally(() => setAttachmentReads((count) => count - 1));
+    },
+    [updateViewState],
+  );
 
   const dropDisabled = sending || host.data === undefined;
   useLayoutEffect(() => {
@@ -942,7 +958,6 @@ function BlankConversation({
             onDocumentChange={(document) =>
               updateViewState((state) => ({
                 ...state,
-                configuration: state.configuration ?? catalog.data?.defaults,
                 composer: {
                   ...state.composer,
                   draft: document.text,
@@ -965,7 +980,15 @@ function BlankConversation({
             attachmentError={attachmentError}
             onFilesSelected={(files) => void addFiles(files)}
             onAttachmentRemove={(id) => {
-              setAttachments((current) => current.filter((attachment) => attachment.id !== id));
+              updateViewState((state) => ({
+                ...state,
+                composer: {
+                  ...state.composer,
+                  attachments: state.composer.attachments.filter(
+                    (attachment) => attachment.id !== id,
+                  ),
+                },
+              }));
               setAttachmentError(undefined);
             }}
             inputRef={attachInput}
@@ -979,20 +1002,29 @@ function BlankConversation({
               <ModelPicker
                 catalog={catalog.data}
                 current={current}
-                thinkingLevel={configuration?.thinkingLevel}
-                fastEnabled={viewState.fastSettings}
+                thinkingLevel={defaults?.thinkingLevel}
+                fastEnabled={new Set(fastSettingId === undefined ? [] : [fastSettingId])}
                 disabled={sending || host.data === undefined}
                 onChange={(change) =>
-                  updateViewState((state) =>
-                    updateDraftModel({ state, defaults: catalog.data?.defaults, change }),
+                  setPreference.mutate(
+                    pickerDefaults(
+                      { model: current, thinkingLevel: defaults?.thinkingLevel },
+                      change,
+                    ),
                   )
                 }
               />
             }
           />
           {startFailure !== undefined && (
-            <div role="alert" title={startFailure} {...props(intent.danger, threadStyles.error)}>
-              Couldn&rsquo;t start the chat. Try again.
+            <div
+              role="alert"
+              title={startFailure.kind === "start" ? startFailure.cause : undefined}
+              {...props(intent.danger, threadStyles.error)}
+            >
+              {startFailure.kind === "start"
+                ? "Couldn’t start the chat. Try again."
+                : startFailure.message}
             </div>
           )}
         </div>
@@ -1164,16 +1196,19 @@ function SplitSash({
     const sash = sashRef.current;
 
     if (container === null || sash === null) return;
+
     const measure = (): void => {
       setAvailableWidth(
         container.getBoundingClientRect().width -
           (direction === "right" ? sash.getBoundingClientRect().width : 0),
       );
     };
+
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(container);
     observer.observe(sash);
+
     return () => observer.disconnect();
   }, [containerRef, direction]);
 
@@ -1190,6 +1225,7 @@ function SplitSash({
       direction === "right"
         ? clampSplitRatioForSize(ratio, availableWidth)
         : clampSplitRatio(ratio);
+
     if (clamped !== ratio) actions.resize(clamped);
   }, [actions, availableWidth, direction, ratio]);
 
@@ -1242,6 +1278,7 @@ function SplitSash({
         const nextRatio = ratioFromPointer(event);
         event.currentTarget.releasePointerCapture(event.pointerId);
         onDragRatio(undefined);
+
         if (nextRatio !== undefined) actions.resize(nextRatio);
       }}
       onLostPointerCapture={() => onDragRatio(undefined)}
@@ -1262,12 +1299,14 @@ function SplitSash({
         )
           return;
         event.preventDefault();
+
         const nextRatio =
           event.key === "Home"
             ? 0
             : event.key === "End"
               ? 1
               : ratio + (event.key === previous ? -0.02 : 0.02);
+
         actions.resize(clampRatio(nextRatio, availableWidth));
       }}
     >

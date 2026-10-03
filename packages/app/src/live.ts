@@ -33,7 +33,7 @@ import {
   SNAPSHOT_WARM_MS,
 } from "./queries.ts";
 import type { SessionSelection } from "./session-configuration.ts";
-import { requestTrust } from "./chrome/open-workspace.tsx";
+import { observeActivation } from "./chrome/open-workspace.tsx";
 import { nyte, sessionClient } from "./nyte.ts";
 import { outbox } from "./use-outbox.ts";
 
@@ -198,7 +198,10 @@ function storeFor(sessionId: SessionId): LiveStore {
 function react(sessionId: SessionId, state: SessionState, event: SessionEvent | undefined): void {
   const rebase = event === undefined;
 
-  if (event?.kind === "activation_changed") requestTrust(state.info.activation);
+  if (event?.kind === "activation_changed") {
+    observeActivation(state.info.activation);
+    void queryClient.invalidateQueries({ queryKey: keys.sessionCommands(sessionId), exact: true });
+  }
 
   if (rebase || event.kind === "job" || event.kind === "synced") {
     void queryClient.invalidateQueries({ queryKey: keys.jobs(sessionId) });
@@ -222,6 +225,7 @@ function react(sessionId: SessionId, state: SessionState, event: SessionEvent | 
     event.kind === "status_changed"
   ) {
     void queryClient.invalidateQueries({ queryKey: keys.pluginSettings(sessionId), exact: true });
+    void queryClient.invalidateQueries({ queryKey: keys.sessionCommands(sessionId), exact: true });
     void queryClient.invalidateQueries({ queryKey: ["customize", sessionId], exact: true });
     void queryClient.invalidateQueries({ queryKey: keys.pluginCatalog, exact: true });
   }
@@ -261,7 +265,7 @@ function observe(sessionId: SessionId): SharedObserver {
     store.update(sessionId, update.state);
     outbox.observe(update);
 
-    if (update.kind === "snapshot") requestTrust(update.state.info.activation);
+    if (update.kind === "snapshot") observeActivation(update.state.info.activation);
     const seen = reacted;
     reacted = update.state.seq;
 
@@ -450,6 +454,7 @@ export async function stopRunAndSettle(
         shared,
         (update) => update.state.run?.runId !== runId || isTerminalPhase(update.state.run.phase),
       );
+
       await requestStop(sessionId, runId);
       await settled;
     }

@@ -35,6 +35,7 @@ declare global {
 }
 
 const ID = sessionId("thread-render");
+
 const activeRun = {
   runId: "current-run",
   head: "main",
@@ -45,6 +46,7 @@ const activeRun = {
   attempts: 0,
   config: {},
 } satisfies RunInfo;
+
 const session = {
   sessionId: ID,
   name: "Identity test",
@@ -56,6 +58,7 @@ const session = {
   config: {},
   heads: [{ head: "main", tip: "stable-answer", run: activeRun }],
 } satisfies SessionInfo;
+
 const snapshot = {
   seq: 1,
   head: "main",
@@ -103,19 +106,23 @@ const snapshot = {
   session,
   run: activeRun,
 } satisfies SessionSnapshot;
+
 const metadata = {
   session,
   head: snapshot.head,
   config: snapshot.config,
   context: snapshot.context,
 } satisfies SessionMetadata;
+
 const catalog = {
   source: "local",
   providers: [],
   models: [],
-  defaults: { model: { provider: "test", id: "test" }, thinkingLevel: "off" },
+  defaults: { model: { provider: "test", id: "test" }, thinkingLevel: "off", fast: false },
 } satisfies DesktopCatalog;
+
 const plugins = { plugins: [], commands: [], skills: [], settings: [] } satisfies PluginCatalog;
+
 const host = { workspace: undefined, platform: "linux" } satisfies HostState;
 
 function check(condition: boolean, message: string): void {
@@ -126,8 +133,10 @@ let renderFailure: unknown;
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
   const deadline = performance.now() + 5_000;
+
   while (!predicate()) {
     if (renderFailure !== undefined) throw renderFailure;
+
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
     await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
   }
@@ -139,8 +148,16 @@ function textNode(container: HTMLElement, text: string): Element | undefined {
   );
 }
 
+function clickMessage(row: Element): void {
+  const text = row.querySelector("[data-composer-readonly]");
+
+  if (!(text instanceof HTMLElement)) throw new Error("The message has no text to click");
+  text.click();
+}
+
 function emit(event: SessionEvent): void {
   const publish = window.threadRenderEmit;
+
   if (publish === undefined) throw new Error("Thread watch is not ready");
   publish(event);
 }
@@ -165,15 +182,18 @@ export async function runTest(): Promise<string> {
     routeTree: createRootRoute(),
     history: createMemoryHistory({ initialEntries: [`/session/${ID}`] }),
   });
+
   const container = document.createElement("div");
   container.style.cssText = "display:flex;width:900px;height:700px";
   document.body.append(container);
   renderFailure = undefined;
+
   const root = createRoot(container, {
     onUncaughtError: (error) => {
       renderFailure = error;
     },
   });
+
   flushSync(() =>
     root.render(
       <QueryClientProvider client={queryClient}>
@@ -193,8 +213,10 @@ export async function runTest(): Promise<string> {
   try {
     await until(() => textNode(container, "Pending prompt") !== undefined, "the landing row");
     await until(() => window.threadRenderEmit !== undefined, "the thread watch");
+
     const pending =
       textNode(container, "Pending prompt")?.closest<HTMLDivElement>("[data-index]") ?? undefined;
+
     if (pending === undefined) throw new Error("The landing message has no transcript row");
 
     emit({
@@ -237,13 +259,16 @@ export async function runTest(): Promise<string> {
       ),
       "Action messages must remain read-only after landing",
     );
+
     const editMessage = Array.from(container.querySelectorAll("button")).find(
       (button) => button.textContent?.trim() === "Edit Message",
     );
+
     if (editMessage === undefined) throw new Error("Ordinary user messages must remain editable");
     const editableRow = editMessage.closest("[data-sticky-user-message]");
+
     if (editableRow === null) throw new Error("Missing editable message row");
-    editMessage.click();
+    clickMessage(editableRow);
     await until(
       () => editableRow.querySelector('[contenteditable="true"]') !== null,
       "the message editor to open",
@@ -264,6 +289,7 @@ export async function runTest(): Promise<string> {
       attempts: 1,
       phase: { kind: "done" },
     } satisfies RunInfo;
+
     emit({ kind: "run", head: "main", seq: 3, run: completedRun });
     await until(
       () =>
@@ -272,21 +298,13 @@ export async function runTest(): Promise<string> {
         ),
       "the run to settle",
     );
-    await until(
-      () =>
-        Array.from(container.querySelectorAll("button")).some(
-          (button) => button.textContent?.trim() === "Show More",
-        ),
-      "the settled message disclosure",
-    );
     const stable = textNode(container, "Stable answer")?.closest<HTMLDivElement>("[data-index]");
-    const disclosure = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent?.trim() === "Show More",
-    );
     check(stable !== undefined, "The settled answer has a transcript row");
-    if (disclosure === undefined) throw new Error("The settled message has no disclosure");
-    disclosure.click();
-    await until(() => disclosure.textContent?.trim() === "Show Less", "the message to expand");
+    clickMessage(editableRow);
+    await until(
+      () => editableRow.querySelector('[contenteditable="true"]') !== null,
+      "the settled message editor to open",
+    );
 
     for (let index = 0; index < 20; index += 1) {
       emit({
@@ -305,15 +323,11 @@ export async function runTest(): Promise<string> {
       textNode(container, "Stable answer")?.closest("[data-index]") === stable,
       "Live deltas replaced a settled transcript row",
     );
-    const expandedDisclosure = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent?.trim() === "Show Less",
-    );
-    if (expandedDisclosure === undefined)
-      throw new Error("Live deltas collapsed the settled message");
     check(
-      expandedDisclosure.getAttribute("aria-expanded") === "true",
-      "Live deltas reset the message fold",
+      editableRow.querySelector('[contenteditable="true"]') !== null,
+      "Live deltas closed the message edit",
     );
+
     return "passed";
   } finally {
     flushSync(() => root.unmount());

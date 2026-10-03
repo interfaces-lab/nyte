@@ -6,6 +6,8 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { stylex } from "@nyte-ai/ui/stylex";
 import electron from "electron";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { build, defaultClientConditions } from "vite";
 
 const execute = promisify(execFile);
@@ -28,6 +30,7 @@ export async function testRenderer(
   } = {},
 ): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "nyte-renderer-test-"));
+
   try {
     await mkdir(join(directory, "profile"));
     await build({
@@ -59,6 +62,7 @@ export async function testRenderer(
       },
     });
     const stylesheets: string[] = [];
+
     for await (const sheet of glob("**/*.css", { cwd: directory })) stylesheets.push(sheet);
     stylesheets.sort((first, second) => first.localeCompare(second));
     await writeFile(
@@ -111,10 +115,13 @@ app.whenReady().then(async () => {
   }
 });`,
     );
-    if (typeof electron !== "string") throw new Error("Expected the Electron executable path");
+
+    if (!Value.Check(Type.String(), electron))
+      throw new Error("Expected the Electron executable path");
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
     await execute(electron, [join(directory, "main.cjs")], { env, timeout: 40_000 });
+
     return await readFile(join(directory, "result.txt"), "utf8");
   } finally {
     await rm(directory, { recursive: true, force: true });

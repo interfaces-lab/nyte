@@ -30,7 +30,9 @@ function Dock() {
 
 function fill(id: string): string {
   const element = document.getElementById(id);
+
   if (element === null) throw new Error(`Missing #${id}`);
+
   return getComputedStyle(element).backgroundColor;
 }
 
@@ -44,13 +46,17 @@ export async function run(): Promise<string> {
     applyDisplayMode(theme === "dark" ? "dark" : "light");
     await new Promise((resolve) => requestAnimationFrame(resolve));
     const tray = fill("tray");
+
     if (theme === "dark" && tray === fill("dock")) {
       return `${theme}: the tray is the page behind it (${tray})`;
     }
+
     if (tray !== fill("composer")) {
       return `${theme}: the tray ${tray} and composer ${fill("composer")} are two surfaces`;
     }
+
     if (fill("row") === tray) return `${theme}: a resting row fills over its tray`;
   }
+
   return "passed";
 }

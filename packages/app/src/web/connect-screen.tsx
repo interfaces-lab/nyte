@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
@@ -31,7 +31,7 @@ const styles = create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     backgroundColor: role.bgElevated,
     boxShadow: shadow.shadowMd,
   },

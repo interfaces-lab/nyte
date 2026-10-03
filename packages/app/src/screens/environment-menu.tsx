@@ -24,7 +24,10 @@ export function EnvironmentMenu({ active }: { readonly active: boolean }): React
       const session = await nyte.host.server.createSession();
       panes.openSession(session.sessionId);
     } catch {
-      toast.error("Couldn't start a Cloud chat. Check the connection in Environments.");
+      toast.add({
+        type: "error",
+        title: "Couldn't start a Cloud chat. Check the connection in Environments.",
+      });
       void queryClient.invalidateQueries({ queryKey: keys.server });
     } finally {
       setStarting(false);

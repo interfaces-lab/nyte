@@ -1,4 +1,4 @@
-import { glyph, shape } from "@nyte-ai/ui/schema.stylex";
+import { glyph, radius } from "@nyte-ai/ui/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 
@@ -41,7 +41,7 @@ export const paletteLegendStyles = create({
     minWidth: glyph.lg,
     height: glyph.lg,
     paddingInline: 4,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
     color: role.contentSecondary,

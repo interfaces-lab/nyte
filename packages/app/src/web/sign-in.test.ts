@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { createNyteClient } from "@nyte-ai/client";
 import { CALL_ROUTE_PREFIX } from "@nyte-ai/protocol";
 import type { LoginAttempt } from "@nyte-ai/protocol";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import type { HostEvent, LoginProgress } from "../bridge.ts";
 import { createEnvironmentSignIn, webPageUrl } from "./sign-in.ts";
@@ -11,13 +13,15 @@ interface Call {
   readonly input: unknown;
 }
 
+const CallBody = Type.Object({ input: Type.Unknown() });
+
 /** A server whose `environment.login` answers `started` and whose polls answer `polls` in order. */
 function serve({ started, polls }: { started: LoginAttempt; polls: readonly LoginAttempt[] }) {
   const calls: Call[] = [];
   const events: HostEvent[] = [];
   const pending = [...polls];
 
-  const reply = (operation: string): unknown => {
+  const reply = (operation: string): LoginAttempt | undefined => {
     if (operation === "environment.login") return started;
 
     if (operation === "environment.loginAttempt") return pending.shift() ?? { kind: "unknown" };
@@ -33,8 +37,7 @@ function serve({ started, polls }: { started: LoginAttempt; polls: readonly Logi
       const body: unknown = await request.json();
       calls.push({
         operation,
-        input:
-          typeof body === "object" && body !== null && "input" in body ? body.input : undefined,
+        input: Value.Check(CallBody, body) ? body.input : undefined,
       });
       const value = reply(operation);
 
@@ -55,6 +58,7 @@ function serve({ started, polls }: { started: LoginAttempt; polls: readonly Logi
 const deviceCode = { userCode: "ABCD-1234", verificationUri: "https://github.com/login/device" };
 
 beforeEach(() => vi.useFakeTimers());
+
 afterEach(() => vi.useRealTimers());
 
 test("a device-code sign-in reports each new state once and refreshes the catalog when it connects", async () => {
@@ -118,6 +122,7 @@ test("a browser sign-in shows its page and forwards a pasted code to the same at
     method: { kind: "browser" },
     attempt: "b",
   });
+
   await signIn.answerLogin({ attempt: "b", code: "http://localhost:1455/callback?code=secret" });
   await vi.runAllTimersAsync();
 
@@ -169,6 +174,7 @@ test("a failed attempt rejects without refreshing the catalog", async () => {
     method: { kind: "api_key", key: "sk-test" },
     attempt: "d",
   });
+
   const rejected = assert.rejects(outcome);
   await vi.runAllTimersAsync();
   await rejected;

@@ -278,7 +278,9 @@ export class SessionActions {
             ? "restore"
             : pending.change.kind;
 
-        toast.error(`Couldn't ${verb} this chat. Try again.`, {
+        toast.add({
+          type: "error",
+          title: `Couldn't ${verb} this chat. Try again.`,
           id: `session-action-error-${verb}`,
         });
 

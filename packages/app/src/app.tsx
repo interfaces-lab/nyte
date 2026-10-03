@@ -2,7 +2,6 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterContextProvider } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/protocol";
-import { OverlayRefProvider } from "@nyte-ai/ui/overlay";
 import { Toaster, toast } from "@nyte-ai/ui/toast";
 import { keys, loadLocalResources, queryClient } from "./queries.ts";
 import { currentRouteSession, router, Shell } from "./router";
@@ -15,9 +14,6 @@ import { applyBrowserEvent, applyBrowserAgentOpened } from "./workbench/browser-
 import { applyTerminalEvent } from "./workbench/terminal-store.ts";
 import { handleOpenOutcome } from "./chrome/open-workspace.tsx";
 import { applyLoginEvent } from "./chrome/login-attempts.ts";
-import { useAppearanceSettings } from "./theme/use-appearance.ts";
-
-import { overlayRef } from "./components/overlay-occlusion.ts";
 
 /**
  * The route owns what the stage shows. A folder the host opened on its own
@@ -89,7 +85,7 @@ function useHostEvents(): void {
 
           return;
         case "status":
-          toast(event.message);
+          toast.add({ title: event.message });
 
           return;
         case "browser_changed":
@@ -118,7 +114,6 @@ function useHostEvents(): void {
 
 export function App({ appIcon }: { appIcon: string }): ReactElement {
   useHostEvents();
-  const { theme } = useAppearanceSettings();
   useMountEffect(() => {
     const frame = requestAnimationFrame(() => {
       performance.mark("nyte:shell-ready");
@@ -131,10 +126,8 @@ export function App({ appIcon }: { appIcon: string }): ReactElement {
   return (
     <QueryClientProvider client={queryClient}>
       <RouterContextProvider router={router}>
-        <OverlayRefProvider value={overlayRef}>
-          <Shell appIcon={appIcon} />
-          <Toaster theme={theme} />
-        </OverlayRefProvider>
+        <Shell appIcon={appIcon} />
+        <Toaster />
       </RouterContextProvider>
     </QueryClientProvider>
   );

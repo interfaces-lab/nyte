@@ -1,5 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
-/** Shared geometry and typography for the compact Settings surface. */
+import { radius } from "@nyte-ai/ui/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { settings } from "./schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
@@ -22,27 +21,27 @@ export const settingsPatterns = create({
     display: "flex",
     flexDirection: "column",
     alignSelf: "stretch",
-    gap: 2,
-    padding: "0 4px 0 8px",
+    gap: 4,
+    paddingInline: 4,
   },
   sectionTitle: {
     margin: 0,
-    color: role.contentSecondary,
-    fontSize: type.fontSm,
-    fontWeight: 400,
-    lineHeight: type.leadingSm,
+    color: role.contentPrimary,
+    fontSize: settings.sectionTitleSize,
+    fontWeight: 500,
+    lineHeight: settings.sectionTitleLineHeight,
   },
   sectionDescription: {
     margin: 0,
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
   group: {
     display: "flex",
     flexDirection: "column",
     overflow: "clip",
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
   },
   row: {
@@ -61,11 +60,10 @@ export const settingsPatterns = create({
       "@media (max-width: 500px)": 12,
       "@container (max-width: 500px)": 12,
     },
-    minHeight: settings.rowMinHeight,
     padding: settings.rowPadding,
     "::before": {
       position: "absolute",
-      insetInline: settings.rowPadding,
+      insetInline: settings.rowPaddingInline,
       insetBlockStart: 0,
       height: 1,
       backgroundColor: role.borderSecondaryTranslucent,
@@ -73,12 +71,11 @@ export const settingsPatterns = create({
     },
     ":first-child::before": { display: "none" },
   },
-  rowSlider: { minHeight: settings.sliderRowMinHeight },
   rowDetailed: { rowGap: 8 },
   rowCopy: {
     display: "flex",
     flexDirection: "column",
-    gap: 1,
+    gap: 2,
     width: {
       default: "auto",
       "@media (max-width: 500px)": "100%",

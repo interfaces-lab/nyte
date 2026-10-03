@@ -26,10 +26,13 @@ test("overlapping intent and navigation share one SDK read and cache its result"
   const response = Promise.withResolvers<SessionInfo | undefined>();
   let reads = 0;
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
   const read = () => {
     reads += 1;
+
     return response.promise;
   };
+
   try {
     const intent = readRouteSession({ client, sessionId: id, read });
     const navigation = readRouteSession({ client, sessionId: id, read });
@@ -48,6 +51,7 @@ test("overlapping intent and navigation share one SDK read and cache its result"
 test("a failed existence read does not prevent a later successful read", async () => {
   const id = sessionId("retry-chat");
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
   try {
     await assert.rejects(
       readRouteSession({
@@ -71,6 +75,7 @@ test("a failed existence read does not prevent a later successful read", async (
 test("a missing session remains distinct from an SDK failure", async () => {
   const id = sessionId("missing-chat");
   const client = new QueryClient();
+
   try {
     assert.equal(
       await readRouteSession({ client, sessionId: id, read: async () => undefined }),

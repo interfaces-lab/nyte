@@ -4,7 +4,9 @@ import { Icon } from "@nyte-ai/ui/icon";
 import { paletteLegendStyles as styles } from "./palette-legend.stylex.ts";
 
 const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5] as const;
+
 const DITHER_CELLS = 9;
+
 const DITHER_PIXEL = 2;
 
 function createDitherPaths() {
@@ -19,9 +21,11 @@ function createDitherPaths() {
       const depth = 1 - nx * nx - ny * ny;
 
       if (depth <= 0) continue;
+
       const square = `M${String(x * DITHER_PIXEL)} ${String(y * DITHER_PIXEL)}h${String(
         DITHER_PIXEL - 1,
       )}v${String(DITHER_PIXEL - 1)}h-${String(DITHER_PIXEL - 1)}z`;
+
       const threshold = BAYER4[(y % 4) * 4 + (x % 4)];
 
       if (threshold === undefined) continue;

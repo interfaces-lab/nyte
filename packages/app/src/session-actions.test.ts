@@ -48,11 +48,14 @@ function fixture(chats = [chat("one"), chat("two"), chat("three")]) {
   client.setQueryData(keys.sessionDirectory, [{ workspacePath: null, sessions: chats }]);
   client.setQueryData(keys.sessionPreview, { items: chats });
   client.setQueryData(keys.sessionSearch("chat"), { items: chats });
+
   for (const session of chats) {
     client.setQueryData(keys.session(session.sessionId), session);
     client.setQueryData(keys.snapshot(session.sessionId), snapshot(session));
   }
+
   const toasts = new ActionToasts();
+
   const actions = new SessionActions({
     toasts,
     client,
@@ -60,6 +63,7 @@ function fixture(chats = [chat("one"), chat("two"), chat("three")]) {
     sessions: {
       async setArchived(input) {
         await writes.promise;
+
         if (failures.has(input.sessionId)) throw new Error("Disk unavailable");
         const session = saved.get(input.sessionId);
         assert.ok(session);
@@ -73,6 +77,7 @@ function fixture(chats = [chat("one"), chat("two"), chat("three")]) {
       },
       async rename(input) {
         await writes.promise;
+
         if (failures.has(input.name)) throw new Error("Disk unavailable");
         const session = saved.get(input.sessionId);
         assert.ok(session);
@@ -80,49 +85,68 @@ function fixture(chats = [chat("one"), chat("two"), chat("three")]) {
       },
       async delete(input) {
         await writes.promise;
+
         if (failures.has(input.sessionId)) throw new Error("Disk unavailable");
         saved.delete(input.sessionId);
       },
     },
   });
+
   const directory = () =>
     actions.projectList(
       client
         .getQueryData<readonly WorkspaceSessionDirectory[]>(keys.sessionDirectory)
         ?.flatMap((entry) => entry.sessions) ?? [],
     );
+
   return { client, saved, writes, failures, releases, actions, directory, toasts };
 }
 
+const notifications = new Map<string, Parameters<typeof toast.add>[0] & { id: string }>();
+
 function notification(title: string) {
-  const notice = toast.getToasts().find((item) => "title" in item && item.title === title);
-  assert.ok(notice !== undefined && "title" in notice, `Missing notification: ${title}`);
+  const notice = notifications.values().find((item) => item.title === title);
+  assert.ok(notice !== undefined, `Missing notification: ${title}`);
+
   return notice;
 }
 
 function undo(title: string, toasts: ActionToasts): void {
   const notice = notification(title);
-  assert.ok(notice.action);
+  assert.ok(notice.actionProps);
   toasts.undo(notice.id);
-  toast.dismiss(notice.id);
 }
 
 beforeEach(() => {
-  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-    callback(performance.now());
-    return 0;
+  notifications.clear();
+  const add = toast.add.bind(toast);
+  vi.spyOn(toast, "add").mockImplementation((options) => {
+    const id = add(options);
+    notifications.set(id, { ...options, id });
+
+    return id;
   });
-  vi.stubGlobal("cancelAnimationFrame", () => {});
-  toast.dismiss();
+  vi.spyOn(toast, "close").mockImplementation((id) => {
+    const closing = [...notifications.values()].filter(
+      (notice) => id === undefined || notice.id === id,
+    );
+
+    for (const notice of closing) {
+      notifications.delete(notice.id);
+      notice.onClose?.();
+    }
+  });
 });
-afterEach(() => vi.unstubAllGlobals());
+
+afterEach(() => vi.restoreAllMocks());
 
 test("consecutive archives paint immediately and share one Undo notification", async () => {
   const f = fixture();
+
   for (const id of ["one", "two", "three"]) f.actions.archive([sessionId(id)], true);
   assert.ok(f.directory().every((session) => session.archived));
   assert.ok([...f.saved.values()].every((session) => !session.archived));
-  assert.equal(toast.getToasts().length, 1);
+  assert.equal(notifications.size, 1);
   notification("3 chats archived");
   undo("3 chats archived", f.toasts);
   assert.ok(f.directory().every((session) => !session.archived));
@@ -241,11 +265,18 @@ test.each(["selection", "draft"])("double-failure Undo preserves a newer %s", as
   panes.selectSession(id);
   f.failures.add("one");
   f.actions.archive([id], true, (sessionId) => panes.removeSessionWithUndo(sessionId));
+
   if (newer === "selection") panes.selectSession(sessionId("two"));
   else
     panes.viewState.writeBlank("primary", {
       ...panes.viewState.readBlank("primary"),
-      composer: { draft: "Keep my draft", selectionStart: 13, selectionEnd: 13, focused: true },
+      composer: {
+        draft: "Keep my draft",
+        attachments: [],
+        selectionStart: 13,
+        selectionEnd: 13,
+        focused: true,
+      },
     });
   const selection = activeSelection(panes.getSnapshot().layout);
   const draft = panes.viewState.readBlank("primary").composer;
@@ -265,9 +296,9 @@ test("a newer restore replaces the older archive's Undo action", async () => {
   f.actions.archive([sessionId("one")], true);
   const old = notification("1 chat archived");
   f.actions.archive([sessionId("one")], false);
-  assert.equal(toast.getToasts().length, 1);
+  assert.equal(notifications.size, 1);
   notification("1 chat restored");
-  old.onDismiss?.(old);
+  old.onClose?.();
   assert.equal(f.directory()[0]?.archived, false);
   f.writes.resolve();
   await vi.waitFor(() => assert.equal(f.actions.getSnapshot().length, 0));
@@ -304,6 +335,7 @@ test("delete hides immediately but Undo cancels permanent deletion", async () =>
   f.writes.resolve();
   f.actions.delete(sessionId("one"), () => {
     open = false;
+
     return () => {
       open = true;
     };
@@ -313,7 +345,7 @@ test("delete hides immediately but Undo cancels permanent deletion", async () =>
   assert.equal(f.saved.size, 3);
   const notice = notification("1 chat deleted");
   undo("1 chat deleted", f.toasts);
-  notice.onAutoClose?.(notice);
+  notice.onClose?.();
   await Promise.resolve();
   assert.equal(open, true);
   assert.equal(f.directory().length, 3);
@@ -321,27 +353,24 @@ test("delete hides immediately but Undo cancels permanent deletion", async () =>
   f.client.clear();
 });
 
-test.each(["onDismiss", "onAutoClose"] as const)(
-  "delete commits when Sonner sends %s",
-  async (event) => {
-    const f = fixture();
-    f.writes.resolve();
-    f.actions.delete(sessionId("one"), () => () => {});
-    f.actions.delete(sessionId("two"), () => () => {});
-    assert.equal(f.saved.size, 3);
-    const notice = notification("2 chats deleted");
-    notice[event]?.(notice);
-    notice[event]?.(notice);
-    await vi.waitFor(() => assert.equal(f.saved.size, 1));
-    assert.deepEqual(
-      f.directory().map((session) => session.sessionId),
-      [sessionId("three")],
-    );
-    assert.equal(f.client.getQueryData(keys.snapshot(sessionId("one"))), undefined);
-    assert.deepEqual(f.releases.toSorted(), [sessionId("one"), sessionId("two")]);
-    f.client.clear();
-  },
-);
+test("delete commits when the notification closes", async () => {
+  const f = fixture();
+  f.writes.resolve();
+  f.actions.delete(sessionId("one"), () => () => {});
+  f.actions.delete(sessionId("two"), () => () => {});
+  assert.equal(f.saved.size, 3);
+  const notice = notification("2 chats deleted");
+  toast.close(notice.id);
+  notice.onClose?.();
+  await vi.waitFor(() => assert.equal(f.saved.size, 1));
+  assert.deepEqual(
+    f.directory().map((session) => session.sessionId),
+    [sessionId("three")],
+  );
+  assert.equal(f.client.getQueryData(keys.snapshot(sessionId("one"))), undefined);
+  assert.deepEqual(f.releases.toSorted(), [sessionId("one"), sessionId("two")]);
+  f.client.clear();
+});
 
 test("failed permanent deletion restores the chat and its pane", async () => {
   const f = fixture();
@@ -349,12 +378,13 @@ test("failed permanent deletion restores the chat and its pane", async () => {
   f.failures.add("one");
   f.actions.delete(sessionId("one"), () => {
     open = false;
+
     return () => {
       open = true;
     };
   });
   const notice = notification("1 chat deleted");
-  notice.onAutoClose?.(notice);
+  notice.onClose?.();
   f.writes.resolve();
   await vi.waitFor(() => assert.equal(open, true));
   assert.equal(f.directory().length, 3);

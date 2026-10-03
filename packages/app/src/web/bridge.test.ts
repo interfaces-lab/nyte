@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
+import type { ServerInfo } from "@nyte-ai/protocol";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import { createWebBridge } from "./bridge.ts";
 
 /** A server whose `GET /v1/info` says whether an environment answers. */
 function serve(environment: boolean): void {
-  const info: Record<string, unknown> = {
+  const described = {
     version: "0.0.0",
     wireVersion: 1,
     host: { kind: "unspecified" },
-  };
-
-  if (environment) info.environment = true;
+  } satisfies ServerInfo;
+  const info = environment ? { ...described, environment: true } : described;
   vi.stubGlobal("fetch", async () => Response.json({ ok: true, defined: true, value: info }));
 }
 

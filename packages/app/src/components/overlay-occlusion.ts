@@ -1,19 +1,37 @@
 /**
  * Native `WebContentsView` pages composite above the whole renderer, so no
- * z-index can put a menu or a dialog over a browser panel. Floating surfaces
- * register their element here, and a native surface hides itself while a
- * registered rectangle covers it.
- *
- * VS Code solves the same problem by sniffing the DOM for known overlay
- * classes; registration is exact instead, because this app owns every popup it
- * renders. The cost is that a new floating surface must register, which is why
- * registration lives in the shared primitives rather than in feature code.
+ * z-index can put a menu or a dialog over a browser panel. While a native
+ * surface listens, the DOM is observed for floating surfaces by `data-slot`,
+ * and the native surface hides itself while one of their rectangles covers it.
+ * A new floating surface that can overlap a page must carry a listed slot.
  *
  * Rectangles are remeasured every frame while a native surface is listening:
  * popups move with their anchor and with their open animation, and a stale
  * rectangle would either hide a page for nothing or leave it covering a popup.
- * With no listener there is nothing to occlude, so nothing is measured.
+ * With no listener there is nothing to occlude, so nothing is observed.
  */
+
+const OVERLAY_SELECTOR = [
+  "menu-content",
+  "menu-sub-content",
+  "command-popup",
+  "command-backdrop",
+  "context-menu-content",
+  "context-menu-sub-content",
+  "select-content",
+  "autocomplete-content",
+  "tooltip-content",
+  "preview-card-content",
+  "popover-popup",
+  "popover-backdrop",
+  "dialog-popup",
+  "dialog-backdrop",
+  "tray",
+  "drag-overlay",
+  "toast-viewport",
+]
+  .map((slot) => `[data-slot="${slot}"]`)
+  .join(", ");
 
 export interface OverlayRect {
   readonly left: number;
@@ -31,6 +49,8 @@ const listeners = new Set<() => void>();
 let rects: readonly OverlayRect[] = NONE;
 
 let frame: number | undefined;
+
+let observer: MutationObserver | undefined;
 
 function sameRects(a: readonly OverlayRect[], b: readonly OverlayRect[]): boolean {
   return (
@@ -93,28 +113,12 @@ function schedule(): void {
   frame ??= requestAnimationFrame(measure);
 }
 
-/** Track an overlay element for as long as it stays mounted. */
-export function registerOverlay(element: Element): () => void {
-  elements.add(element);
-  // Publishing here rather than a frame later keeps the popup's first painted
-  // frame from landing behind a page that has not been told to step aside yet.
+function scan(): void {
+  elements.clear();
+
+  for (const element of document.body.querySelectorAll(OVERLAY_SELECTOR)) elements.add(element);
   publish();
   schedule();
-
-  return () => {
-    elements.delete(element);
-    publish();
-
-    if (elements.size > 0) return;
-
-    if (frame !== undefined) cancelAnimationFrame(frame);
-    frame = undefined;
-  };
-}
-
-/** Ref callback for a popup, backdrop, or any other element that must stay visible. */
-export function overlayRef(node: Element | null): (() => void) | undefined {
-  return node === null ? undefined : registerOverlay(node);
 }
 
 export function getOverlayRects(): readonly OverlayRect[] {
@@ -126,14 +130,19 @@ export function subscribeOverlayRects(listener: () => void): () => void {
   listeners.add(listener);
 
   if (listeners.size === 1) {
-    publish();
-    schedule();
+    observer = new MutationObserver(scan);
+    observer.observe(document.body, { childList: true, subtree: true });
+    scan();
   }
 
   return () => {
     listeners.delete(listener);
 
     if (listeners.size > 0) return;
+
+    observer?.disconnect();
+    observer = undefined;
+    elements.clear();
 
     if (frame !== undefined) cancelAnimationFrame(frame);
     frame = undefined;

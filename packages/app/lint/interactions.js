@@ -1,25 +1,37 @@
+import { Type } from "typebox";
+import { Value } from "typebox/value";
+
+const stringLiteral = Type.Object({ type: Type.Literal("Literal"), value: Type.String() });
+
 const nameOf = (node) => {
   if (node.type === "Identifier" || node.type === "JSXIdentifier") return node.name;
+
   if (node.type === "Literal") return node.value;
+
   return undefined;
 };
+
 const attribute = (node, name) =>
   node.attributes.find((item) => item.type === "JSXAttribute" && nameOf(item.name) === name);
+
 const literal = (node) =>
   node?.type === "JSXExpressionContainer"
     ? literal(node.expression)
     : node?.type === "Literal"
       ? node.value
       : undefined;
+
 const rule = (description, create) => ({ meta: { docs: { description } }, create });
+
 const disabledFlag = (node) =>
   node.type === "UnaryExpression"
     ? disabledFlag(node.argument)
     : /(?:^d|D)isabled$/.test(
         String(nameOf(node.type === "MemberExpression" ? node.property : node)),
       );
+
 const visibleText = (node) =>
-  (node.type === "Literal" && typeof node.value === "string" && node.value.trim() !== "") ||
+  (Value.Check(stringLiteral, node) && node.value.trim() !== "") ||
   node.type === "TemplateLiteral" ||
   ((node.type === "JSXElement" || node.type === "JSXFragment") &&
     !node.openingElement?.attributes.some(
@@ -28,13 +40,16 @@ const visibleText = (node) =>
         item.argument.arguments?.some((argument) => nameOf(argument) === "srOnly"),
     ) &&
     node.children.some((child) => child.type === "JSXText" && child.value.trim()));
+
 const nonControls = new Set(["div", "span", "li", "img", "section", "p"]);
+
 const dragHandles = new Map([
   ["packages/ui/src/slider.tsx", new Set(["control"])],
   ["packages/app/src/chrome/sidebar-pane.tsx", new Set(["handle"])],
   ["packages/app/src/screens/thread.stylex.ts", new Set(["sash"])],
   ["packages/app/src/workbench/workbench.stylex.ts", new Set(["sash"])],
 ]);
+
 const smallWords = new Set([
   "a",
   "an",
@@ -54,6 +69,7 @@ const smallWords = new Set([
   "via",
   "with",
 ]);
+
 const labels = new Set([
   "Button",
   "MenuItem",
@@ -69,6 +85,7 @@ export default {
     "no-clickable-non-control": rule("Use a control for a clickable target.", (context) => ({
       JSXOpeningElement(node) {
         if (!nonControls.has(nameOf(node.name)) || !attribute(node, "onClick")) return;
+
         if (["option", "treeitem"].includes(literal(attribute(node, "role")?.value))) return;
         context.report({
           node,
@@ -81,30 +98,15 @@ export default {
         if (nameOf(node.key) !== "touchAction" || literal(node.value) !== "none") return;
         const path = context.filename.replaceAll("\\", "/");
         const allowed = [...dragHandles].find(([file]) => path.endsWith(file))?.[1];
+
         for (let parent = node.parent; parent; parent = parent.parent) {
           if (parent.type === "Property" && allowed?.has(nameOf(parent.key))) return;
         }
+
         context.report({
           node,
           message:
             "touchAction none is only allowed on the registered slider and resize handles. Use manipulation for controls.",
-        });
-      },
-    })),
-    "no-hover-submenus": rule("Open submenus on click.", (context) => ({
-      JSXAttribute(node) {
-        if (nameOf(node.name) !== "openOnHover") return;
-        if (
-          /packages\/ui\/src\/(?:context-)?menu\.tsx$/.test(
-            context.filename.replaceAll("\\", "/"),
-          ) &&
-          literal(node.value) === false
-        )
-          return;
-        context.report({
-          node,
-          message:
-            "Submenus open on click. The shared menus alone disable the library's hover default.",
         });
       },
     })),
@@ -120,6 +122,7 @@ export default {
     "named-stylex-imports": rule("Use named StyleX imports.", (context) => ({
       ImportDeclaration(node) {
         if (node.source.value !== "@stylexjs/stylex") return;
+
         for (const specifier of node.specifiers) {
           if (specifier.type !== "ImportNamespaceSpecifier") continue;
           context.report({
@@ -150,10 +153,13 @@ export default {
     "specific-confirm-label": rule("Name the action in confirmation labels.", (context) => ({
       JSXText(node) {
         if (!/^(OK|Ok|Confirm|Submit|Yes|No)$/.test(node.value.trim())) return;
+
         if (node.parent?.type !== "JSXElement") return;
+
         const children = node.parent.children.filter(
           (child) => child.type !== "JSXText" || child.value.trim(),
         );
+
         if (children.length !== 1) return;
         context.report({
           node,
@@ -166,17 +172,20 @@ export default {
       (context) => ({
         JSXExpressionContainer(node) {
           const { expression, parent } = node;
+
           if (
             parent?.type === "JSXAttribute" &&
             !["meta", "description"].includes(nameOf(parent.name))
           )
             return;
+
           const [test, branches] =
             expression.type === "ConditionalExpression"
               ? [expression.test, [expression.consequent, expression.alternate]]
               : expression.type === "LogicalExpression" && expression.operator === "&&"
                 ? [expression.left, [expression.right]]
                 : [undefined, []];
+
           if (!branches.some(visibleText) || !disabledFlag(test)) return;
           context.report({
             node,
@@ -189,13 +198,18 @@ export default {
     "title-case-control-label": rule("Use Title Case for visible control labels.", (context) => ({
       JSXElement(node) {
         if (!labels.has(nameOf(node.openingElement.name))) return;
+
         const children = node.children.filter(
           (child) => child.type !== "JSXText" || child.value.trim(),
         );
+
         if (children.length !== 1 || children[0].type !== "JSXText") return;
         const text = children[0].value.trim();
+
         if (["Aa", "ab"].includes(text)) return;
+
         if (!/^[A-Za-z][A-Za-z '’-]{1,40}$/.test(text)) return;
+
         if (
           text
             .split(/\s+/)

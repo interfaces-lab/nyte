@@ -1,6 +1,6 @@
 /**
  * Native right-click menus sit above the browser panels' `WebContentsView`s.
- * A DOM menu would need to register for overlay occlusion.
+ * A DOM menu would hide any page it covered.
  */
 import type { ContextMenuTemplateItem, HostBridge, HostState } from "../bridge.ts";
 import { macPlatform } from "../platform.ts";

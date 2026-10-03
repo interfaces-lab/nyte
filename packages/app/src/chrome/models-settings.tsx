@@ -9,7 +9,7 @@ import { useState } from "react";
 import type { ReactElement } from "react";
 import { toast } from "@nyte-ai/ui/toast";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
-import { Button, SplitButton } from "@nyte-ai/ui/button";
+import { Button } from "@nyte-ai/ui/button";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
@@ -26,7 +26,7 @@ import type { DesktopCatalog, ProviderStatus } from "../nyte.ts";
 import type { LoginMethod } from "../bridge.ts";
 import { useCatalog, useSetPreference } from "../queries.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
-import { ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
+import { ConnectionMenu, ConnectionRow } from "./connection-list.tsx";
 import {
   beginLoginAttempt,
   endLoginAttempt,
@@ -114,11 +114,7 @@ function DefaultsSection({
         <SettingsRow
           title="Model"
           controlWidth="wide"
-          description={
-            listed.length === 0
-              ? "Connect a provider below to choose one"
-              : "Switch models any time from the composer"
-          }
+          description={listed.length === 0 ? "Connect a provider below to choose one" : undefined}
         >
           <Select
             items={modelOptions}
@@ -218,7 +214,7 @@ function ApiKeyForm({
         >
           Save API Key
         </Button>
-        <Button disabled={pending} onClick={onCancel}>
+        <Button variant="outline" disabled={pending} onClick={onCancel}>
           Cancel
         </Button>
       </div>
@@ -252,22 +248,27 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
     onSuccess: (outcome) => {
       if (outcome.kind === "cancelled") return;
       setKeyFormOpen(false);
+
       if (!provider.enabled)
         setPreference.mutate({ kind: "provider", provider: provider.id, enabled: true });
 
-      if (outcome.catalogRefreshed) toast.success(`Connected to ${provider.name}`);
+      if (outcome.catalogRefreshed)
+        toast.add({ type: "success", title: `Connected to ${provider.name}` });
       else
-        toast.warning(
-          `Connected to ${provider.name}, but its model list couldn't be updated. Sign out and in again to retry.`,
-        );
+        toast.add({
+          type: "warning",
+          title: `Connected to ${provider.name}, but its model list couldn't be updated. Sign out and in again to retry.`,
+        });
     },
-    onError: () => toast.error(`Couldn't sign in to ${provider.name}. Try again.`),
+    onError: () =>
+      toast.add({ type: "error", title: `Couldn't sign in to ${provider.name}. Try again.` }),
   });
 
   const logout = useMutation({
     mutationFn: () => nyte.host.logout({ provider: provider.id }),
-    onSuccess: () => toast.success(`Signed out of ${provider.name}`),
-    onError: () => toast.error(`Couldn't sign out of ${provider.name}. Try again.`),
+    onSuccess: () => toast.add({ type: "success", title: `Signed out of ${provider.name}` }),
+    onError: () =>
+      toast.add({ type: "error", title: `Couldn't sign out of ${provider.name}. Try again.` }),
   });
 
   const cancelLogin = (): void => {
@@ -277,7 +278,10 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
     void nyte.host.cancelLogin({ attempt: id }).catch(() => {
       // The attempt is still running; give the button back rather than a stuck state.
       setLoginAttemptCancelling(provider.id, id, false);
-      toast.error(`Couldn't cancel the ${provider.name} sign-in. Try again.`);
+      toast.add({
+        type: "error",
+        title: `Couldn't cancel the ${provider.name} sign-in. Try again.`,
+      });
     });
   };
 
@@ -286,16 +290,17 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
   const apiKey = provider.signIn.find((method) => method.kind === "api_key");
   const { connection } = provider;
 
-  const status =
-    attempt?.cancelling === true ? (
-      <ConnectionStatus tone="warn">Cancelling</ConnectionStatus>
-    ) : attempt?.deviceCode !== undefined ? (
-      <ConnectionStatus tone="warn">Waiting for approval</ConnectionStatus>
-    ) : attempt?.method === "browser" ? (
-      <ConnectionStatus tone="warn">Waiting for the browser</ConnectionStatus>
-    ) : undefined;
+  const waiting =
+    attempt?.cancelling === true
+      ? "Cancelling"
+      : attempt?.deviceCode !== undefined
+        ? "Waiting for approval"
+        : attempt?.method === "browser"
+          ? "Waiting for the browser"
+          : undefined;
 
   const popular = popularProviders.find((entry) => entry.id === provider.id);
+
   const badge =
     connection.kind === "api_key"
       ? "API key"
@@ -306,7 +311,8 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
           : undefined;
 
   const detail =
-    connection.kind === "oauth"
+    waiting ??
+    (connection.kind === "oauth"
       ? undefined
       : connection.kind === "api_key"
         ? connection.env === undefined
@@ -319,7 +325,7 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
               ? "Add an API key to connect"
               : browser !== undefined
                 ? "Sign in to connect"
-                : "Connects through the environment"));
+                : "Connects through the environment")));
 
   // A key from the environment is not ours to remove.
   const canSignOut =
@@ -335,49 +341,41 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
         </span>
       }
       detail={detail}
-      status={status}
-      actions={
+      control={
         attempt !== undefined && attempt.method === "browser" ? (
-          <Button loading={attempt.cancelling} onClick={cancelLogin}>
+          <Button variant="outline" loading={attempt.cancelling} onClick={cancelLogin}>
             Cancel
           </Button>
         ) : connection.kind === "disconnected" ? (
           browser === undefined && apiKey === undefined ? undefined : browser !== undefined &&
             apiKey !== undefined ? (
-            <SplitButton.Root>
-              <SplitButton.Main
-                icon="plus"
-                disabled={logout.isPending || setPreference.isPending}
-                loading={login.isPending}
-                onClick={() => login.mutate({ kind: "browser" })}
-              >
-                Connect Provider
-              </SplitButton.Main>
-              <Menu>
-                <MenuTrigger
-                  render={
-                    <SplitButton.MenuTrigger
-                      aria-label={`Connection options for ${provider.name}`}
-                      disabled={busy}
-                    />
-                  }
-                />
-                <MenuContent>
-                  <MenuItem
-                    icon="key"
-                    onClick={() => {
-                      login.reset();
-                      setKeyFormOpen(true);
-                    }}
-                  >
-                    Add API Key…
-                  </MenuItem>
-                </MenuContent>
-              </Menu>
-            </SplitButton.Root>
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button variant="outline" loading={login.isPending} disabled={busy}>
+                    Connect Provider
+                    <Icon name="chevron-down" size={12} />
+                  </Button>
+                }
+              />
+              <MenuContent align="end">
+                <MenuItem onClick={() => login.mutate({ kind: "browser" })}>
+                  {`Sign In with ${browser.subscription}`}
+                </MenuItem>
+                <MenuItem
+                  icon="key"
+                  onClick={() => {
+                    login.reset();
+                    setKeyFormOpen(true);
+                  }}
+                >
+                  Add API Key…
+                </MenuItem>
+              </MenuContent>
+            </Menu>
           ) : (
             <Button
-              icon="plus"
+              variant="outline"
               loading={login.isPending}
               disabled={logout.isPending || setPreference.isPending}
               aria-expanded={apiKey !== undefined ? keyFormOpen : undefined}
@@ -389,32 +387,32 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
                 }
               }}
             >
-              {apiKey !== undefined ? "Connect Provider…" : "Connect Provider"}
+              Connect Provider
             </Button>
           )
-        ) : (
-          <>
+        ) : provider.enabled && !canSignOut ? undefined : (
+          <ConnectionMenu
+            label={provider.name}
+            tone={provider.enabled ? "on" : "off"}
+            status={provider.enabled ? "Connected" : "Models off"}
+            loading={logout.isPending}
+            disabled={login.isPending || setPreference.isPending}
+          >
             {!provider.enabled && (
-              <Button
-                variant="ghost"
-                disabled={busy}
+              <MenuItem
                 onClick={() =>
                   setPreference.mutate({ kind: "provider", provider: provider.id, enabled: true })
                 }
               >
                 Enable Models
-              </Button>
+              </MenuItem>
             )}
             {canSignOut && (
-              <Button
-                loading={logout.isPending}
-                disabled={login.isPending || setPreference.isPending}
-                onClick={() => logout.mutate()}
-              >
+              <MenuItem variant="danger" onClick={() => logout.mutate()}>
                 Disconnect Provider
-              </Button>
+              </MenuItem>
             )}
-          </>
+          </ConnectionMenu>
         )
       }
       expansion={
@@ -547,22 +545,14 @@ function EnabledModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEl
               ) : (
                 <span {...props(styles.groupLabel)}>{heading}</span>
               )}
-              <span {...props(styles.groupActions)}>
-                <Button
-                  loading={setPreference.isPending}
-                  disabled={active === all.length}
-                  onClick={() => setAll(false)}
-                >
-                  Enable All Models
-                </Button>
-                <Button
-                  loading={setPreference.isPending}
-                  disabled={active === 0}
-                  onClick={() => setAll(true)}
-                >
-                  Disable All Models
-                </Button>
-              </span>
+              <Button
+                variant="outline"
+
+                loading={setPreference.isPending}
+                onClick={() => setAll(active === all.length)}
+              >
+                {active === all.length ? "Disable All Models" : "Enable All Models"}
+              </Button>
             </div>
             <Collapsible.Panel xstyle={styles.groupPanel}>
               {matching.map((option) => (
@@ -606,17 +596,21 @@ export function ProvidersSettings(): ReactElement | null {
   }
 
   const defaults = catalog.data.defaults;
+
   const connected = catalog.data.providers.filter(
     (provider) => provider.connection.kind !== "disconnected",
   );
+
   const disconnected = catalog.data.providers.filter(
     (provider) => provider.connection.kind === "disconnected",
   );
+
   const popular = popularProviders.flatMap((entry) => {
     const provider = disconnected.find((candidate) => candidate.id === entry.id);
 
     return provider === undefined ? [] : [provider];
   });
+
   const other = disconnected.filter(
     (provider) => !popularProviders.some((entry) => entry.id === provider.id),
   );
@@ -624,9 +618,6 @@ export function ProvidersSettings(): ReactElement | null {
   return (
     <>
       <section {...props(styles.providers)}>
-        <div {...props(settingsPatterns.sectionHeader)}>
-          <p {...props(settingsPatterns.sectionDescription)}>Connect and manage model providers</p>
-        </div>
         {[
           { title: "Connected providers", providers: connected },
           { title: "Popular providers", providers: popular },

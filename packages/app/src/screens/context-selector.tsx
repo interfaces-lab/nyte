@@ -74,6 +74,7 @@ export function ContextSelector({
     };
 
     window.addEventListener("keydown", onKeyDown);
+
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       setOpen(false);

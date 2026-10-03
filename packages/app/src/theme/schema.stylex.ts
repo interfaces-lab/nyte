@@ -61,16 +61,17 @@ export const sidebar = defineConsts({
 export const settings = defineConsts({
   contentWidth: "var(--nyte-settings-content-width)",
   contentGutter: "var(--nyte-settings-content-gutter)",
-  rowMinHeight: "var(--nyte-settings-row-min-height)",
   inventoryRowHeight: "var(--nyte-settings-inventory-row-height)",
-  sliderRowMinHeight: "var(--nyte-settings-slider-row-min-height)",
   sectionGap: "var(--nyte-settings-section-gap)",
   cardGap: "var(--nyte-settings-card-gap)",
   rowPadding: "var(--nyte-settings-row-padding)",
+  rowPaddingInline: "var(--nyte-settings-row-padding-inline)",
   controlHeight: "var(--nyte-settings-control-height)",
   controlMaxWidth: "var(--nyte-settings-control-max-width)",
   pageTitleSize: "var(--nyte-settings-page-title-size)",
   pageTitleLineHeight: "var(--nyte-settings-page-title-line-height)",
+  sectionTitleSize: "var(--nyte-settings-section-title-size)",
+  sectionTitleLineHeight: "var(--nyte-settings-section-title-line-height)",
 });
 
 export const workbench = defineConsts({

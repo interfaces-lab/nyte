@@ -37,8 +37,11 @@ import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Input } from "@nyte-ai/ui/input";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@nyte-ai/ui/context-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
+import { floatingSurfaceStyles } from "@nyte-ai/ui/floating-surface.stylex";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
-import { formatTimeAgo, StatusDot } from "../components/ui.tsx";
+import { formatTimeAgo } from "../components/ui.tsx";
+import { StatusGlyph } from "./status-glyph.tsx";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Kbd } from "@nyte-ai/ui/kbd";
@@ -64,26 +67,21 @@ import {
   useWorkspaces,
 } from "../queries.ts";
 import { nyte } from "../nyte.ts";
-import {
-  sessionHasUnreadCompletion,
-  sessionReadState,
-  useReadSessions,
-} from "../session-read-state.ts";
+import { sessionReadState, useReadSessions } from "../session-read-state.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
 import { sessionActivityMark } from "../session-activity.ts";
 import { useOptimisticSessionIds } from "../use-outbox.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
+import { ConnectButton } from "./connect-dialog.tsx";
 import { signOutDescription, useGitHubAccount, useGitHubState } from "./github-account.ts";
 import { folderPicker } from "./open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
-import { SessionPreviewCard, type SessionPreviewContext } from "./sidebar-session-preview.tsx";
 import { WorkspaceControls } from "./sidebar-filter.tsx";
 import {
   clearSessionFilters,
   DEFAULT_SESSION_VIEW,
-  needsCompleteSessionDirectory,
-  sessionIsDraft,
+  hasSessionFilters,
   sessionOrder,
   sessionsForNavigation,
   sessionsForView,
@@ -94,7 +92,7 @@ import { shellActions, useShellState } from "./shell-state.ts";
 import { activateWorkspace } from "./use-show-session.ts";
 import { clientActionAriaShortcut, clientActionKeys, clientActions } from "../client-actions.ts";
 import { cloudSessions, localSessions } from "../bridge.ts";
-import type { GitHubBridge } from "../bridge.ts";
+import type { GitHubBridge, GitHubRepository } from "../bridge.ts";
 
 /** Which list a sidebar panel shows: one local store, or the connected server's sessions. */
 type SessionPlace =
@@ -104,15 +102,6 @@ type SessionPlace =
 const COLLAPSED_SESSION_LIMIT = 5;
 
 const REPORT_ISSUE_URL = "https://github.com/interfaces-lab/nyte/issues/new";
-
-function draftsMatchView(view: SessionViewSettings): boolean {
-  return (
-    view.statuses.includes("draft") &&
-    view.pullRequests.includes("none") &&
-    view.environments.includes("local") &&
-    view.sources.includes("desktop")
-  );
-}
 
 const INSTANT: Transition = { duration: 0 };
 
@@ -207,6 +196,7 @@ function SidebarContent({ children }: { readonly children: ReactNode }): ReactEl
 
   const transition =
     settle === undefined ? transitions.list : settle === "single" ? transitions.archive : INSTANT;
+
   const shift = transitions.list === INSTANT ? 0 : LAYER_SHIFT;
 
   // The row that opened a layer is inert once it has; its counterpart on the
@@ -365,7 +355,12 @@ export function Sidebar(): ReactElement {
       : undefined;
 
   const mac = macPlatform(host.data?.platform);
-  const completeDirectoryRequired = needsCompleteSessionDirectory(view);
+  const filtersActive = hasSessionFilters(view);
+
+  const showDrafts =
+    (view.statuses.length === 0 || view.statuses.includes("draft")) &&
+    (view.pullRequests.length === 0 || view.pullRequests.includes("none")) &&
+    (view.environments.length === 0 || view.environments.includes("local"));
 
   // The next switch is most often to a neighbouring row; its snapshot is warm
   // before the pointer or the arrow key gets there.
@@ -451,7 +446,10 @@ export function Sidebar(): ReactElement {
       const session = await nyte.host.server.createSession();
       await showSession({ kind: "cloud" }, session.sessionId);
     } catch {
-      toast.error("Couldn't create a Cloud chat. Check the server connection in Settings.");
+      toast.add({
+        type: "error",
+        title: "Couldn't create a Cloud chat. Check the server connection in Settings.",
+      });
       void queryClient.invalidateQueries({ queryKey: keys.server });
     }
   };
@@ -545,60 +543,61 @@ export function Sidebar(): ReactElement {
     });
   };
 
-  const chatsPanel = (): ReactElement | null => {
-    const directories = sessionDirectory.data;
-    const drafts = draftsMatchView(view) ? activeWorkspaceDrafts : [];
+  const places: readonly SessionPlace[] = [
+    ...entries.map((entry): SessionPlace => ({
+      kind: "local",
+      path: entry.kind === "home" ? null : entry.path,
+    })),
+    ...(cloudFolderVisible ? [{ kind: "cloud" } as const] : []),
+  ];
 
-    if (directories === undefined && drafts.length === 0) return null;
+  const order = sessionOrder(view.sortByStatus, optimisticSessions);
 
-    const places: readonly SessionPlace[] = [
-      ...entries.map((entry): SessionPlace => ({
-        kind: "local",
-        path: entry.kind === "home" ? null : entry.path,
-      })),
-      ...(cloudFolderVisible ? [{ kind: "cloud" } as const] : []),
-    ];
-
-    const order = sessionOrder(view.ordering, optimisticSessions);
-
-    const rows =
-      directories === undefined
-        ? []
-        : places
-            .flatMap((place) =>
-              sessionsForView(
-                (place.kind === "local"
-                  ? localSessions(directories, place.path)
-                  : cloudSessions(directories)) ?? [],
-                view,
-                place.kind,
-                undefined,
-                readSessions,
-                optimisticSessions,
-              )
-                .flatMap((group) => group.sessions)
-                .map((session) => ({ place, session })),
+  const rows =
+    sessionDirectory.data === undefined
+      ? undefined
+      : places
+          .flatMap((place) =>
+            sessionsForView(
+              (place.kind === "local"
+                ? localSessions(sessionDirectory.data, place.path)
+                : cloudSessions(sessionDirectory.data)) ?? [],
+              view,
+              place.kind,
+              undefined,
+              readSessions,
+              optimisticSessions,
             )
-            .toSorted((left, right) => order(left.session, right.session));
+              .flatMap((group) => group.sessions)
+              .map((session) => ({ place, session })),
+          )
+          .toSorted((left, right) => order(left.session, right.session));
 
-    const live = rows.filter(
+  const chatsPanel = (): ReactElement | null => {
+    const drafts = showDrafts ? activeWorkspaceDrafts : [];
+
+    if (rows === undefined && drafts.length === 0) return null;
+
+    const listed = rows ?? [];
+
+    const live = listed.filter(
       ({ session }) =>
         sessionActivityMark(session, optimisticSessions.has(session.sessionId)) !== "idle",
     ).length;
 
     const limit = live + COLLAPSED_SESSION_LIMIT;
     const listExpanded = expandedSessionLists.has("chats");
-    const hasOverflow = rows.length > limit + 1;
-    const visible = listExpanded || !hasOverflow ? rows : rows.slice(0, limit);
+    const hasOverflow = listed.length > limit + 1;
+    const visible = listExpanded || !hasOverflow ? listed : listed.slice(0, limit);
     const layoutEnabled = sidebarVisible && collectionExpanded;
 
     const listId = `${sessionListId}-chats`;
 
     return (
       <div id={listId} {...props(styles.section)}>
-        {rows.length === 0 &&
+        {listed.length === 0 &&
           drafts.length === 0 &&
-          (completeDirectoryRequired ? (
+          (filtersActive ? (
             <>
               <div {...props(styles.quiet, styles.sessionQuiet)}>No chats match these filters</div>
               <Row
@@ -631,7 +630,7 @@ export function Sidebar(): ReactElement {
             xstyle={styles.showMore}
             onClick={() => revealSessionList("chats", listId, visible.length + drafts.length)}
           >
-            Show {rows.length - visible.length} More
+            Show {listed.length - visible.length} More
           </Row>
         )}
       </div>
@@ -643,11 +642,10 @@ export function Sidebar(): ReactElement {
     const path = place.kind === "local" ? place.path : (workspacePath ?? null);
     const collapsed = place.kind === "local" ? collapsedWorkspaces.has(place.path) : cloudCollapsed;
 
-    const workspaceDrafts =
-      place.kind === "local" && path === (workspacePath ?? null) ? activeWorkspaceDrafts : [];
-
-    const showDrafts = draftsMatchView(view);
-    const drafts = showDrafts ? workspaceDrafts : [];
+    const drafts =
+      showDrafts && place.kind === "local" && path === (workspacePath ?? null)
+        ? activeWorkspaceDrafts
+        : [];
 
     const sessions =
       sessionDirectory.data === undefined
@@ -707,7 +705,7 @@ export function Sidebar(): ReactElement {
         {sessions !== undefined &&
           !(place.kind === "cloud" && cloudFailure !== undefined) &&
           displayedSessionCount === 0 &&
-          (completeDirectoryRequired ? (
+          (filtersActive ? (
             <>
               <div {...props(styles.quiet, styles.sessionQuiet)}>No chats match these filters</div>
               <Row
@@ -747,7 +745,7 @@ export function Sidebar(): ReactElement {
   };
 
   const activeDraftIsListed =
-    draftsMatchView(view) && activeWorkspaceDrafts.some((draft) => draft.id === activeDraftId);
+    showDrafts && activeWorkspaceDrafts.some((draft) => draft.id === activeDraftId);
 
   const newChatActive =
     stage.kind === "workspace" &&
@@ -780,6 +778,7 @@ export function Sidebar(): ReactElement {
               open={paletteOpen}
               platform={host.data?.platform}
               sessionQueriesAvailable={host.data !== undefined}
+              recentSessions={rows?.map(({ session }) => session)}
               onOpenChange={setPaletteOpen}
               onOpenSession={(sessionId) => {
                 shellActions.showWorkspace();
@@ -986,6 +985,7 @@ export function Sidebar(): ReactElement {
         <div {...props(styles.footer)}>
           <div ref={footerRowRef} {...props(styles.footerRow)}>
             <AccountFooterMenu github={github} anchor={footerRowRef} />
+            <ConnectButton connect={nyte.host.connect} active compact />
           </div>
         </div>
       )}
@@ -995,7 +995,7 @@ export function Sidebar(): ReactElement {
           title="Delete Chat"
           confirmLabel="Delete Chat"
           description="The chat disappears now. Undo from the notification before it closes."
-          returnFocusRef={confirmationReturnRef}
+          finalFocus={confirmationReturnRef}
           onOpenChange={(nextOpen) => {
             if (!nextOpen) closeConfirmation();
           }}
@@ -1011,7 +1011,7 @@ export function Sidebar(): ReactElement {
           open
           pending={false}
           error={undefined}
-          returnFocusRef={confirmationReturnRef}
+          finalFocus={confirmationReturnRef}
           title={`Archive All Chats in ${confirmation.workspaceName}`}
           description="Open chats move to the archive. You can restore any of them later."
           confirmLabel={`Archive All Chats in ${confirmation.workspaceName}`}
@@ -1104,7 +1104,7 @@ function AccountFooterMenu({
               ? "Sign-out failed. Run gh auth status in a terminal, then try again."
               : undefined
           }
-          returnFocusRef={triggerRef}
+          finalFocus={triggerRef}
           title="Sign Out of GitHub CLI"
           description={signOutDescription(state.account.login)}
           confirmLabel="Sign Out of GitHub CLI"
@@ -1307,28 +1307,6 @@ interface SessionElsewhere {
   readonly name: string;
 }
 
-/**
- * One glyph per stage, by shape: the live marks while a run works, waits, or
- * failed; an eye once it finished and nobody has opened it; the draft glyph
- * for a chat nothing has been said in.
- */
-function StatusGlyph({
-  session,
-  mark,
-}: {
-  readonly session: SessionInfo;
-  readonly mark: SessionMark;
-}): ReactElement | null {
-  const read = useReadSessions();
-
-  if (mark !== "idle") return <StatusDot mark={mark} />;
-
-  if (sessionHasUnreadCompletion(session, read))
-    return <Icon name="eye" size={14} label="Unread" />;
-
-  return sessionIsDraft(session) ? <Icon name="draft" size={14} label="Draft" /> : null;
-}
-
 /** A chat running elsewhere carries that place as a corner badge; a chat here carries nothing. */
 function SessionGlyph({
   session,
@@ -1364,6 +1342,16 @@ function sessionAsk(session: SessionInfo): string | undefined {
 
   return undefined;
 }
+
+type SessionPreviewContext =
+  | { readonly kind: "home" }
+  /** Runs on the connected server; no local folder to name. */
+  | { readonly kind: "cloud" }
+  | {
+      readonly kind: "workspace";
+      readonly path: string;
+      readonly repository: Pick<GitHubRepository, "owner" | "name"> | undefined;
+    };
 
 interface SessionRowProps {
   session: SessionInfo;
@@ -1596,11 +1584,40 @@ function SessionRow({
   );
 
   return (
-    <SessionPreviewCard
-      title={title}
-      context={previewContext}
-      trigger={row}
-      contextMenu={menuItems}
-    />
+    <Tooltip disableHoverablePopup>
+      <ContextMenu>
+        <ContextMenuTrigger render={<TooltipTrigger render={row} />} />
+        <ContextMenuContent aria-label={`Options for ${title}`}>{menuItems}</ContextMenuContent>
+      </ContextMenu>
+      <TooltipContent
+        side="right"
+        align="start"
+        alignOffset={-4}
+        sideOffset={4}
+        xstyle={[floatingSurfaceStyles.popup, styles.preview]}
+      >
+        <div {...props(styles.previewTitle)}>{title}</div>
+        {previewContext.kind === "workspace" && (
+          <div {...props(styles.previewDetails)}>
+            {previewContext.repository !== undefined && (
+              <div {...props(styles.previewDetail)}>
+                <span {...props(styles.previewDetailIcon)}>
+                  <Icon name="git-branch" size={14} />
+                </span>
+                <span {...props(styles.previewDetailText)}>
+                  {previewContext.repository.owner}/{previewContext.repository.name}
+                </span>
+              </div>
+            )}
+            <div {...props(styles.previewDetail)}>
+              <span {...props(styles.previewDetailIcon)}>
+                <Icon name="folder" size={14} />
+              </span>
+              <span {...props(styles.previewDetailText)}>{previewContext.path}</span>
+            </div>
+          </div>
+        )}
+      </TooltipContent>
+    </Tooltip>
   );
 }

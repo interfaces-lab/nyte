@@ -30,16 +30,13 @@ import {
   GROUPINGS,
   hasSessionFilters,
   isOption,
-  ORDERINGS,
   PULL_REQUESTS,
   SHOW_FIELDS,
-  SOURCES,
   STATUSES,
   toggleOption,
   type SessionPullRequest,
   type SessionEnvironment,
   type SessionShowField,
-  type SessionSource,
   type SessionStatus,
   type SessionViewSettings,
 } from "./sidebar-view.ts";
@@ -80,40 +77,6 @@ const ENVIRONMENT_ICONS = {
   cloud: "cloud",
   local: "computer",
 } as const satisfies Readonly<Record<SessionEnvironment, IconName>>;
-
-const SOURCE_LABELS = {
-  desktop: "Desktop",
-  mobile: "Mobile",
-  web: "Web",
-  cli: "CLI",
-  setup: "Setup",
-  slack: "Slack",
-  linear: "Linear",
-  "source-control": "Source Control",
-  "grok-bot": "Grok Bot",
-  sdk: "SDK",
-  api: "API",
-  automations: "Automations",
-  bugbot: "Bugbot",
-  "frontend-qa": "Frontend QA",
-} as const satisfies Readonly<Record<SessionSource, string>>;
-
-const SOURCE_ICONS = {
-  desktop: "window-app",
-  mobile: "phone",
-  web: "website",
-  cli: "console",
-  setup: "settings",
-  slack: "slack",
-  linear: "linear",
-  "source-control": "git",
-  "grok-bot": "grok",
-  sdk: "code-brackets",
-  api: "cloud-api",
-  automations: "robot",
-  bugbot: "bug",
-  "frontend-qa": "test-tube",
-} as const satisfies Readonly<Record<SessionSource, IconName>>;
 
 function statusIcon(status: SessionStatus): IconName | undefined {
   switch (status) {
@@ -156,10 +119,6 @@ export function WorkspaceControls({
   const filtersActive = hasSessionFilters(value);
   const loadingReasonId = useId();
 
-  const resetFilters = (): void => {
-    onChange(clearSessionFilters(value));
-  };
-
   return (
     <span {...props(styles.controls)}>
       <Menu
@@ -198,13 +157,10 @@ export function WorkspaceControls({
                 <MenuRadioItem value="repository" icon="github" closeOnClick={false}>
                   Repository
                 </MenuRadioItem>
-                <MenuRadioItem value="workspace" icon="folder" closeOnClick={false}>
-                  Workspace
-                </MenuRadioItem>
                 <MenuRadioItem value="updated" icon="clock" closeOnClick={false}>
                   Updated
                 </MenuRadioItem>
-                <MenuRadioItem value="status" icon="square" closeOnClick={false}>
+                <MenuRadioItem value="status" icon="status" closeOnClick={false}>
                   Status
                 </MenuRadioItem>
                 <MenuRadioItem value="environment" icon="globe" closeOnClick={false}>
@@ -213,24 +169,13 @@ export function WorkspaceControls({
               </MenuRadioGroup>
             </MenuSubContent>
           </MenuSub>
-          <MenuSub>
-            <MenuSubTrigger icon="clock">Ordering</MenuSubTrigger>
-            <MenuSubContent xstyle={styles.popup}>
-              <MenuRadioGroup
-                value={value.ordering}
-                onValueChange={(ordering) => {
-                  if (isOption(ordering, ORDERINGS)) onChange({ ...value, ordering });
-                }}
-              >
-                <MenuRadioItem value="updated" icon="clock" closeOnClick={false}>
-                  Updated
-                </MenuRadioItem>
-                <MenuRadioItem value="status" icon="square" closeOnClick={false}>
-                  Status
-                </MenuRadioItem>
-              </MenuRadioGroup>
-            </MenuSubContent>
-          </MenuSub>
+          <MenuCheckboxItem
+            checked={value.sortByStatus}
+            icon="status"
+            onCheckedChange={(sortByStatus) => onChange({ ...value, sortByStatus })}
+          >
+            Sort by Status
+          </MenuCheckboxItem>
           <MenuSub>
             <MenuSubTrigger icon="eye">Show</MenuSubTrigger>
             <MenuSubContent xstyle={styles.popup}>
@@ -264,14 +209,14 @@ export function WorkspaceControls({
                   layout="plain"
                   closeOnClick={false}
                   xstyle={styles.groupAction}
-                  onClick={resetFilters}
+                  onClick={() => onChange(clearSessionFilters(value))}
                 >
                   Reset
                 </MenuItem>
               )}
             </div>
             <MenuSub>
-              <MenuSubTrigger icon="square">Status</MenuSubTrigger>
+              <MenuSubTrigger icon="status">Status</MenuSubTrigger>
               <MenuSubContent xstyle={styles.popup}>
                 {STATUSES.map((status) => (
                   <MenuCheckboxItem
@@ -343,26 +288,6 @@ export function WorkspaceControls({
                     }
                   >
                     {environment === "cloud" ? "Cloud" : "Local"}
-                  </MenuCheckboxItem>
-                ))}
-              </MenuSubContent>
-            </MenuSub>
-            <MenuSub>
-              <MenuSubTrigger icon="apps">Source</MenuSubTrigger>
-              <MenuSubContent xstyle={styles.popup}>
-                {SOURCES.map((source) => (
-                  <MenuCheckboxItem
-                    key={source}
-                    icon={SOURCE_ICONS[source]}
-                    checked={value.sources.includes(source)}
-                    onCheckedChange={(checked) =>
-                      onChange({
-                        ...value,
-                        sources: toggleOption(SOURCES, value.sources, source, checked),
-                      })
-                    }
-                  >
-                    {SOURCE_LABELS[source]}
                   </MenuCheckboxItem>
                 ))}
               </MenuSubContent>

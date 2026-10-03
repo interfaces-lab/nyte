@@ -11,11 +11,15 @@ const scheme = create({
   light: { colorScheme: "light" },
   dark: { colorScheme: "dark" },
 });
+
 const dark = createTheme(displayMode, {
   "--nyte-popup-material-filter": "blur(12px) brightness(120%)",
 });
+
 const arrow = createTheme(pointerCursor, { "--nyte-cursor-interactive": "default" });
+
 const opaque = createTheme(transparency, { "--nyte-reduce-transparency": "1" });
+
 const quiet = createTheme(focusModality, { "--nyte-focus-ring": "transparent" });
 
 function toggle(styles: StyleXArray<CompiledStyles>, enabled: boolean): void {

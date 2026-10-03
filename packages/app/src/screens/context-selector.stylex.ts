@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { button, glyph, menu, shape } from "@nyte-ai/ui/schema.stylex";
+import { button, glyph, menu, radius } from "@nyte-ai/ui/schema.stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 
 export const contextStyles = create({
@@ -41,7 +41,7 @@ export const contextStyles = create({
     maxWidth: "min(400px, calc(100vw - 16px))",
     paddingBlock: 6,
     paddingInline: 10,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
   },
@@ -59,7 +59,7 @@ export const contextStyles = create({
     minWidth: glyph.md,
     minHeight: glyph.md,
     padding: 0,
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     fontFamily: type.fontSans,
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,

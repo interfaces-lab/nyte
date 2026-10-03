@@ -8,6 +8,7 @@ import { launchDesktop } from "../../../desktop/benchmark/desktop.ts";
 import { collectErrors } from "../utils/errors.ts";
 
 const APP_ROOT = resolve(import.meta.dirname, "../..");
+
 const CREATED = "Created in the browser";
 
 test.beforeAll(() => {
@@ -22,8 +23,7 @@ test.beforeAll(() => {
 
 async function openRemoteAccess(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Environments", exact: true }).click();
-  await page.getByRole("tab", { name: "Remote access" }).click();
-  await expect(page.getByRole("heading", { name: "Serving this Mac" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Remote access" })).toBeVisible();
 }
 
 function sessionButton(page: Page, name: string) {
@@ -41,11 +41,13 @@ test("a browser paired through Remote access shares the desktop's chats until it
   // The unpackaged desktop serves `<app path>/../app/dist`; the fixture's app
   // path is a directory under `parent`, so `parent/app` points at this package.
   await symlink(APP_ROOT, join(parent, "app"), "junction");
+
   const desktop = await launchDesktop({
     parentDirectory: parent,
     sessionCount: 2,
     turnsPerSession: 1,
   });
+
   cleanup.defer(() => desktop.close());
   const context = await browser.newContext();
   cleanup.defer(() => context.close());
@@ -57,15 +59,16 @@ test("a browser paired through Remote access shares the desktop's chats until it
   const thisMacOnly = page
     .locator("div")
     .filter({ hasText: /^This Mac only/u, hasNotText: "Over Tailscale" });
+
   await thisMacOnly.getByRole("button", { name: "Start", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remote access: This Mac only" })).toBeVisible();
 
   await page.getByRole("button", { name: "Address and token" }).click();
   await page.getByRole("button", { name: "Reveal token" }).click();
   const link = page.getByLabel("Pairing link");
-  await expect(link).toHaveText(/^http:\/\/127\.0\.0\.1:\d+\/pair\?host=.+&token=[\w-]+$/u);
+  await expect(link).toHaveText(/^http:\/\/127\.0\.0\.1:\d+\/pair#host=.+&token=[\w-]+$/u);
   const pairingUrl = await link.innerText();
-  const token = new URL(pairingUrl).searchParams.get("token");
+  const token = new URLSearchParams(new URL(pairingUrl).hash.slice(1)).get("token");
 
   const remote = await context.newPage();
   const remoteErrors = collectErrors(remote);
@@ -91,13 +94,15 @@ test("a browser paired through Remote access shares the desktop's chats until it
     },
     { token, name: CREATED },
   );
+
   expect(status).toBe(200);
 
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await expect(sessionButton(page, CREATED)).toBeVisible();
 
   await openRemoteAccess(page);
-  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await page.getByRole("button", { name: "Remote access: This Mac only" }).click();
+  await page.getByRole("menuitem", { name: "Stop Remote Access" }).click();
   await expect(thisMacOnly.getByRole("button", { name: "Start", exact: true })).toBeEnabled();
 
   const [first] = seeded;

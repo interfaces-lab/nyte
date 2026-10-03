@@ -37,13 +37,14 @@ function lastUserText(context: Context): string {
 
   if (message?.role !== "user") return "";
 
-  if (typeof message.content === "string") return message.content;
+  if (!Array.isArray(message.content)) return message.content;
 
   return message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
 }
 
 function echo(_model: Model<Api>, context: Context) {
   const text = `Echo: ${lastUserText(context)}`;
+
   const answer: AssistantMessage = {
     role: "assistant",
     api: model.api,
@@ -61,6 +62,7 @@ function echo(_model: Model<Api>, context: Context) {
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     },
   };
+
   const stream = createAssistantMessageEventStream();
   stream.push({ type: "start", partial: { ...answer, content: [] } });
   stream.push({ type: "text_delta", contentIndex: 0, delta: text, partial: answer });
@@ -77,15 +79,25 @@ if (!existsSync(join(appRoot, "index.html"))) {
 }
 
 const cwd = await realpath(await mkdtemp(join(tmpdir(), "nyte-e2e-web-")));
+
 await writeFile(join(cwd, "README.md"), "# E2E workspace\n\nworkspace.read reached the browser.\n");
+
 execFileSync("git", ["init", "-q"], { cwd });
+
 execFileSync("git", ["config", "user.name", "E2E Author"], { cwd });
+
 execFileSync("git", ["config", "user.email", "e2e@example.test"], { cwd });
+
 execFileSync("git", ["add", "--", "README.md"], { cwd });
+
 execFileSync("git", ["commit", "-qm", "Seed workspace"], { cwd });
+
 const workspaces = new WorkspaceStore(join(cwd, ".workspaces.json"));
+
 const workspaceBackend = createWorkspaceBackend(workspaces);
+
 const store = new SqliteStore(":memory:");
+
 const sdk = await createNyte({
   store,
   streamFn: echo,
@@ -100,6 +112,7 @@ const sdk = await createNyte({
   plugins: [],
   env: { cwd },
 });
+
 const attached = new Set<SessionId>();
 
 const serving = await startServe({
@@ -113,7 +126,7 @@ const serving = await startServe({
   describe: () => ({ capabilities: { workspace: true }, persistence: "durable" }),
   host: "127.0.0.1",
   port: E2E_PORT,
-  token: E2E_TOKEN,
+  auth: { kind: "token", token: E2E_TOKEN },
   appRoot,
 });
 
@@ -127,5 +140,7 @@ const stop = (): void => {
 };
 
 process.once("SIGINT", stop);
+
 process.once("SIGTERM", stop);
+
 process.stdout.write(`Serving the e2e app at ${serving.address}\n`);

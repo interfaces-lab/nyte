@@ -7,16 +7,7 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 
 const NO_OPTIMISTIC_SESSIONS: ReadonlySet<SessionId> = new Set();
 
-export const GROUPINGS = [
-  "none",
-  "repository",
-  "workspace",
-  "updated",
-  "status",
-  "environment",
-] as const;
-
-export const ORDERINGS = ["updated", "status"] as const;
+export const GROUPINGS = ["none", "repository", "updated", "status", "environment"] as const;
 
 export const SHOW_FIELDS = ["updated", "environment", "pr", "branch", "machine"] as const;
 
@@ -26,26 +17,7 @@ export const PULL_REQUESTS = ["draft", "open", "merged", "closed", "none"] as co
 
 export const ENVIRONMENTS = ["cloud", "local"] as const;
 
-export const SOURCES = [
-  "desktop",
-  "mobile",
-  "web",
-  "cli",
-  "setup",
-  "slack",
-  "linear",
-  "source-control",
-  "grok-bot",
-  "sdk",
-  "api",
-  "automations",
-  "bugbot",
-  "frontend-qa",
-] as const;
-
 type SessionGrouping = (typeof GROUPINGS)[number];
-
-type SessionOrdering = (typeof ORDERINGS)[number];
 
 export type SessionShowField = (typeof SHOW_FIELDS)[number];
 
@@ -55,27 +27,13 @@ export type SessionPullRequest = (typeof PULL_REQUESTS)[number];
 
 export type SessionEnvironment = (typeof ENVIRONMENTS)[number];
 
-export type SessionSource = (typeof SOURCES)[number];
-
-const DEFAULT_SOURCES: readonly SessionSource[] = [
-  "desktop",
-  "mobile",
-  "web",
-  "cli",
-  "setup",
-  "slack",
-  "linear",
-  "source-control",
-];
-
 export interface SessionViewSettings {
   readonly grouping: SessionGrouping;
-  readonly ordering: SessionOrdering;
+  readonly sortByStatus: boolean;
   readonly show: readonly SessionShowField[];
   readonly statuses: readonly SessionStatus[];
   readonly pullRequests: readonly SessionPullRequest[];
   readonly environments: readonly SessionEnvironment[];
-  readonly sources: readonly SessionSource[];
   /** When unchecked, Archived hides archived sessions. */
   readonly archived: boolean;
 }
@@ -90,12 +48,11 @@ export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
   // One flat list across every workspace, ranked by what each chat needs;
   // folders and other groupings are opt-in from the filter menu.
   grouping: "none",
-  ordering: "status",
+  sortByStatus: true,
   show: ["updated", "environment", "pr"] as const,
-  statuses: STATUSES,
-  pullRequests: PULL_REQUESTS,
-  environments: ENVIRONMENTS,
-  sources: DEFAULT_SOURCES,
+  statuses: [],
+  pullRequests: [],
+  environments: [],
   archived: false,
 });
 
@@ -169,10 +126,10 @@ function stageRank(session: SessionInfo, optimistic: ReadonlySet<SessionId>): nu
 
 /** The row order a view settles on; the flat list merges workspaces with it. */
 export function sessionOrder(
-  ordering: SessionViewSettings["ordering"],
+  sortByStatus: boolean,
   optimistic: ReadonlySet<SessionId> = NO_OPTIMISTIC_SESSIONS,
 ): (left: SessionInfo, right: SessionInfo) => number {
-  if (ordering === "updated") return compareUpdated;
+  if (!sortByStatus) return compareUpdated;
 
   return (left, right) =>
     Number(right.pinned) - Number(left.pinned) ||
@@ -191,7 +148,6 @@ function groupSessions(
   switch (grouping) {
     case "none":
     case "repository":
-    case "workspace":
       return [{ key: grouping, label: undefined, sessions }];
     case "environment":
       return sessions.length === 0
@@ -263,30 +219,29 @@ export function sessionsForView(
   read: ReadSessions = EMPTY_READ_SESSIONS,
   optimistic: ReadonlySet<SessionId> = NO_OPTIMISTIC_SESSIONS,
 ): readonly SessionViewGroup[] {
+  if (
+    (settings.pullRequests.length > 0 && !settings.pullRequests.includes("none")) ||
+    (settings.environments.length > 0 && !settings.environments.includes(environment))
+  )
+    return [];
+
   const filtered = sessionsForNavigation(sessions, settings.archived).filter(
     (session) =>
-      settings.statuses.includes(statusOf(session, read, optimistic)) &&
-      settings.pullRequests.includes("none") &&
-      settings.environments.includes(environment) &&
-      settings.sources.includes("desktop"),
+      settings.statuses.length === 0 ||
+      settings.statuses.includes(statusOf(session, read, optimistic)),
   );
 
-  const ordered = filtered.toSorted(sessionOrder(settings.ordering, optimistic));
+  const ordered = filtered.toSorted(sessionOrder(settings.sortByStatus, optimistic));
 
   return groupSessions(ordered, settings.grouping, environment, now, read, optimistic);
-}
-
-function sameSelection<T extends string>(selected: readonly T[], all: readonly T[]): boolean {
-  return selected.length === all.length && all.every((option) => selected.includes(option));
 }
 
 export function hasSessionFilters(settings: SessionViewSettings): boolean {
   return (
     settings.archived ||
-    !sameSelection(settings.statuses, STATUSES) ||
-    !sameSelection(settings.pullRequests, PULL_REQUESTS) ||
-    !sameSelection(settings.environments, ENVIRONMENTS) ||
-    !sameSelection(settings.sources, DEFAULT_SOURCES)
+    settings.statuses.length > 0 ||
+    settings.pullRequests.length > 0 ||
+    settings.environments.length > 0
   );
 }
 
@@ -294,20 +249,11 @@ export function hasSessionFilters(settings: SessionViewSettings): boolean {
 export function clearSessionFilters(settings: SessionViewSettings): SessionViewSettings {
   return {
     ...settings,
-    statuses: STATUSES,
-    pullRequests: PULL_REQUESTS,
-    environments: ENVIRONMENTS,
-    sources: DEFAULT_SOURCES,
+    statuses: [],
+    pullRequests: [],
+    environments: [],
     archived: false,
   };
-}
-
-export function needsCompleteSessionDirectory(settings: SessionViewSettings): boolean {
-  return (
-    hasSessionFilters(settings) ||
-    settings.grouping !== DEFAULT_SESSION_VIEW.grouping ||
-    settings.ordering !== DEFAULT_SESSION_VIEW.ordering
-  );
 }
 
 export function isOption<T extends string>(value: unknown, options: readonly T[]): value is T {
@@ -320,10 +266,5 @@ export function toggleOption<T extends string>(
   option: T,
   checked: boolean,
 ): readonly T[] {
-  const next = new Set(selected);
-
-  if (checked) next.add(option);
-  else next.delete(option);
-
-  return all.filter((candidate) => next.has(candidate));
+  return all.filter((candidate) => (candidate === option ? checked : selected.includes(candidate)));
 }

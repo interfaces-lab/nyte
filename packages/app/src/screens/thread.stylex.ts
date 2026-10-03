@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { input, layer, shape } from "@nyte-ai/ui/schema.stylex";
+import { input, layer, radius } from "@nyte-ai/ui/schema.stylex";
 import { conversation, pane } from "../theme/schema.stylex.ts";
 import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 
@@ -66,7 +66,7 @@ export const threadStyles = create({
   renameInput: {
     flex: 1,
     height: input.heightMd,
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     fontWeight: 600,
   },
   body: { position: "relative", display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
@@ -115,7 +115,7 @@ export const threadStyles = create({
   },
   dropPreview: {
     position: "absolute",
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     borderWidth: 2,
     borderStyle: "solid",
     borderColor: role.borderInteractivePrimary,

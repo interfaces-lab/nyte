@@ -70,7 +70,7 @@ function limitTier(used: number): LimitTier {
   return "calm";
 }
 
-const USAGE_TABS = ["spend", "limits", "where", "tools"] as const;
+const USAGE_TABS = ["limits", "spend", "where", "tools"] as const;
 
 const WHERE_TABS = ["folders", "chats"] as const;
 
@@ -536,7 +536,7 @@ export function UsageSettings(): ReactElement {
     </Tabs.Root>
   );
 
-  if (report === undefined && error !== null) {
+  if (tab !== "limits" && report === undefined && error !== null) {
     return (
       <div role="alert">
         <EmptyPanel title="Couldn't read usage" body={error.message} action={refreshButton} />
@@ -585,19 +585,13 @@ export function UsageSettings(): ReactElement {
       }}
       xstyle={styles.page}
     >
-      {report === undefined && (
+      {tab !== "limits" && report === undefined && (
         <span role="status" {...props(srOnly)}>
           Reading local history…
         </span>
       )}
 
       <Tabs.List aria-label="Usage">
-        <Tabs.Tab value="spend">
-          Spend
-          {usage !== undefined && empty === undefined && (
-            <span {...props(styles.tabSummary)}>{formatUsd(usage.totals.cost)}</span>
-          )}
-        </Tabs.Tab>
         <Tabs.Tab value="limits">
           Limits
           {hottest !== undefined && hottestTier !== "calm" && (
@@ -610,6 +604,12 @@ export function UsageSettings(): ReactElement {
             >
               {hottest.plan.split(" · ")[0]} {String(hottest.used)}%
             </span>
+          )}
+        </Tabs.Tab>
+        <Tabs.Tab value="spend">
+          Spend
+          {usage !== undefined && empty === undefined && (
+            <span {...props(styles.tabSummary)}>{formatUsd(usage.totals.cost)}</span>
           )}
         </Tabs.Tab>
         <Tabs.Tab value="where">Where</Tabs.Tab>

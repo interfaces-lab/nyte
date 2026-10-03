@@ -5,6 +5,7 @@ import { PaneController } from "./pane-controller.ts";
 import { activeSelection, paneForSession, visibleSessionIds } from "./pane-layout.ts";
 
 const first = sessionId("first");
+
 const second = sessionId("second");
 
 test("Undo restores both archived panes and their original focus", () => {
@@ -38,7 +39,13 @@ test("Undo never replaces a newer chat or a new draft", () => {
   const restoreSecond = controller.removeSessionWithUndo(second);
   controller.viewState.writeBlank("primary", {
     ...controller.viewState.readBlank("primary"),
-    composer: { draft: "Keep my draft", selectionStart: 13, selectionEnd: 13, focused: true },
+    composer: {
+      draft: "Keep my draft",
+      attachments: [],
+      selectionStart: 13,
+      selectionEnd: 13,
+      focused: true,
+    },
   });
   assert.equal(restoreSecond(), false);
   assert.equal(controller.viewState.readBlank("primary").composer.draft, "Keep my draft");

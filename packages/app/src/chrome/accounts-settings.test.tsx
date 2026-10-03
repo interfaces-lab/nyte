@@ -1,27 +1,40 @@
 import assert from "node:assert/strict";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, test, vi } from "vitest";
-import type { GitHubProviderState, HostState } from "../bridge.ts";
+import { afterEach, test } from "vitest";
+import type { GitHubProviderState, HostState, NyteBridge } from "../bridge.ts";
+import { installBridge } from "../nyte.ts";
 import { keys } from "../query-keys.ts";
+import { createWebBridge } from "../web/bridge.ts";
 import { AccountsSettings } from "./accounts-settings.tsx";
 import { settingsSectionGroups } from "./settings-navigation.tsx";
 
-const bridge = vi.hoisted(() => ({
-  clientSurface: "web",
-  environment: true,
-  host: { github: { state: () => new Promise<never>(() => undefined) } },
-}));
+const web = createWebBridge().bridge;
 
-vi.mock("../nyte.ts", () => ({ nyte: bridge }));
+const pendingGitHub = (): Promise<never> => new Promise<never>(() => undefined);
+
+const withEnvironment: NyteBridge = {
+  ...web,
+  environment: true,
+  host: {
+    ...web.host,
+    github: {
+      state: pendingGitHub,
+      signIn: pendingGitHub,
+      signOut: pendingGitHub,
+      createPullRequest: pendingGitHub,
+    },
+  },
+};
+
+installBridge(withEnvironment);
 
 const clients = new Set<QueryClient>();
 
 afterEach(() => {
   for (const client of clients) client.clear();
   clients.clear();
-  bridge.clientSurface = "web";
-  bridge.environment = true;
+  installBridge(withEnvironment);
 });
 
 function render(state: GitHubProviderState): string {
@@ -56,6 +69,6 @@ test("a server's GitHub sign-in shows its device code with a way out", () => {
 test("the web app lists Accounts only when its server has an environment", () => {
   assert.ok(settingsSectionGroups().flat().includes("accounts"));
 
-  bridge.environment = false;
+  installBridge(web);
   assert.equal(settingsSectionGroups().flat().includes("accounts"), false);
 });

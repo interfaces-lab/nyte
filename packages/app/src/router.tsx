@@ -8,6 +8,9 @@
  * Settings, ⌘D and ⇧⌘D split the stage — because the renderer owns chords.
  */
 import { create, props } from "@stylexjs/stylex";
+import { Type } from "typebox";
+import type { Static } from "typebox";
+import { Value } from "typebox/value";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import {
   createMemoryHistory,
@@ -239,12 +242,19 @@ function WorkspaceRouteStage(): ReactElement {
   }
 }
 
+const searchText = Type.String();
+
+const shellSearch = Type.Object({
+  customize: Type.Optional(searchText),
+  environment: Type.Optional(searchText),
+});
+
+type ShellSearch = Static<typeof shellSearch>;
+
 const rootRoute = createRootRoute({
-  validateSearch: (
-    search: Record<string, unknown>,
-  ): { customize?: string; environment?: string } => ({
-    customize: typeof search.customize === "string" ? search.customize : undefined,
-    environment: typeof search.environment === "string" ? search.environment : undefined,
+  validateSearch: (search): ShellSearch => ({
+    customize: Value.Check(searchText, search.customize) ? search.customize : undefined,
+    environment: Value.Check(searchText, search.environment) ? search.environment : undefined,
   }),
 });
 
@@ -265,6 +275,7 @@ const indexRoute = createRoute({
   path: "/",
   beforeLoad: async ({ search }) => {
     if (search.customize !== undefined || search.environment !== undefined) return;
+
     if (!startupDestinationPending) return;
     startupDestinationPending = false;
 
@@ -370,6 +381,7 @@ export const router = createRouter({
 
 function restoreChromeStage(): void {
   const search = new URLSearchParams(router.state.location.searchStr);
+
   if (search.has("customize")) shellActions.openCustomize(currentRouteSession());
   else if (search.has("environment")) shellActions.openEnvironments();
   else shellActions.showWorkspace();
@@ -377,6 +389,7 @@ function restoreChromeStage(): void {
 
 subscribeShellStage((stage) => {
   const search = new URLSearchParams(router.state.location.searchStr);
+
   if (
     (stage.kind === "customize" && search.has("customize") && !search.has("environment")) ||
     (stage.kind === "environments" && search.has("environment") && !search.has("customize")) ||
@@ -387,9 +400,12 @@ subscribeShellStage((stage) => {
     to: ".",
     search: (previous) => {
       const { customize, environment, ...rest } = previous;
+
       if (stage.kind === "customize") return { ...rest, customize: customize ?? "plugins" };
+
       if (stage.kind === "environments")
         return { ...rest, environment: environment ?? "connections" };
+
       return rest;
     },
   });
@@ -399,6 +415,7 @@ router.subscribe("onResolved", () => {
   if (!router.state.matches.some((match) => match.routeId === settingsRoute.id))
     rememberWorkspaceHref(router.state.location.href);
   restoreChromeStage();
+
   try {
     if (
       router.state.location.searchStr.includes("customize=") ||
@@ -408,6 +425,7 @@ router.subscribe("onResolved", () => {
     } else window.sessionStorage.removeItem("nyte.chrome.route");
   } catch {}
 });
+
 restoreChromeStage();
 
 /** The chat the current location shows, if it is one. */

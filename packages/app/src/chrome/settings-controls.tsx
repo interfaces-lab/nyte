@@ -6,29 +6,23 @@ import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 export function SettingsRow({
   title,
   description,
-  variant = "standard",
   controlWidth = "standard",
   detail,
   children,
 }: {
   readonly title: string;
-  readonly description: string;
-  readonly variant?: "standard" | "slider";
+  readonly description?: string;
   readonly controlWidth?: "standard" | "wide";
   readonly detail?: ReactNode;
   readonly children: ReactNode;
 }): ReactElement {
   return (
-    <div
-      {...props(
-        settingsPatterns.row,
-        variant === "slider" && settingsPatterns.rowSlider,
-        detail !== undefined && settingsPatterns.rowDetailed,
-      )}
-    >
+    <div {...props(settingsPatterns.row, detail !== undefined && settingsPatterns.rowDetailed)}>
       <span {...props(settingsPatterns.rowCopy)}>
         <span {...props(settingsPatterns.rowTitle)}>{title}</span>
-        <span {...props(settingsPatterns.rowDescription)}>{description}</span>
+        {description !== undefined && (
+          <span {...props(settingsPatterns.rowDescription)}>{description}</span>
+        )}
       </span>
       <span
         {...props(

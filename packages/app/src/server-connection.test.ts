@@ -26,5 +26,6 @@ test("a server's default model becomes the catalog default", () => {
   assert.deepEqual(serverCatalog([model], model).defaults, {
     model: { provider: "openai", id: "gpt-fixture" },
     thinkingLevel: "off",
+    fast: false,
   });
 });

@@ -18,6 +18,13 @@
  * a layout grid.
  */
 
+import { Type } from "typebox";
+import { Value } from "typebox/value";
+
+const stringLiteral = Type.Object({ type: Type.Literal("Literal"), value: Type.String() });
+
+const numberLiteral = Type.Object({ type: Type.Literal("Literal"), value: Type.Number() });
+
 /**
  * Steps in px. Skipping 14 and 18 keeps near-duplicates from reappearing. The
  * step stays at 2px through the range a dense row uses, then widens where a
@@ -139,7 +146,7 @@ const literalColor = (text) => {
  * in, and only the literal parts of the template are the author's decision.
  */
 const styleText = (node) => {
-  if (node.type === "Literal" && typeof node.value === "string") return [node.value];
+  if (Value.Check(stringLiteral, node)) return [node.value];
 
   if (node.type === "TemplateLiteral") return node.quasis.map((quasi) => quasi.value.cooked ?? "");
 
@@ -196,7 +203,7 @@ const keyName = (key, computed) => {
 
   if (key.type === "Identifier") return key.name;
 
-  if (key.type === "Literal" && typeof key.value === "string") return key.value;
+  if (Value.Check(stringLiteral, key)) return key.value;
 
   return null;
 };
@@ -227,9 +234,9 @@ const stringLengths = (text) => {
 
 /** `gap: 6`, `marginTop: -4`, `padding: "5px 10px"`, and `{ default: 6 }`. */
 const lengthValues = (node) => {
-  if (node.type === "Literal" && typeof node.value === "number") return [node.value];
+  if (Value.Check(numberLiteral, node)) return [node.value];
 
-  if (node.type === "Literal" && typeof node.value === "string") return stringLengths(node.value);
+  if (Value.Check(stringLiteral, node)) return stringLengths(node.value);
 
   if (node.type === "UnaryExpression" && node.operator === "-") {
     const inner = lengthValues(node.argument);
@@ -409,6 +416,7 @@ const noRawColors = {
  * is a size that will not follow the component, nor grow for touch.
  */
 const CONTROL_SIZE_MIN = 14;
+
 const CONTROL_SIZE_MAX = 36;
 
 const controlSize = styleValueRule(

@@ -26,23 +26,29 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
   const vcs = useVcsSnapshot(workspace !== undefined);
   const github = useGitHubState(nyte.host.github);
   const repository = github.data?.repository;
+
   const workspaceName =
     workspace === undefined
       ? "Home"
       : repository === undefined
         ? workspace.name
         : `${repository.owner}/${repository.name}`;
+
   const head = vcs.data?.kind === "repository" ? vcs.data.head : undefined;
+
   const branch =
     head === undefined
       ? undefined
       : head.kind === "detached"
         ? `Detached ${head.oid.slice(0, 7)}`
         : head.branch;
+
   const openFolder = folderPicker();
+
   const recentWorkspaces = (workspaces.data ?? []).filter(
     (candidate) => candidate.path !== workspace?.path,
   );
+
   const workspaceItems = recentWorkspaces.map((candidate) => (
     <MenuRadioItem
       key={candidate.path}
@@ -64,8 +70,10 @@ export function WorkspaceContext({ active }: { readonly active: boolean }) {
           onValueChange={(value) => {
             if (value === "home") {
               if (workspace !== undefined) void nyte.host.closeWorkspace();
+
               return;
             }
+
             if (value !== workspace?.path)
               void nyte.host.openWorkspace({ path: value }).then(handleOpenOutcome);
           }}

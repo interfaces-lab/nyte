@@ -9,6 +9,7 @@ test(
       const setup = forcePseudoClasses.length
         ? 'document.documentElement.dataset.iconForced = "true";'
         : "";
+
       expect(
         await testRenderer(new URL("./icons.browser-test.tsx", import.meta.url), setup, {
           forcePseudoClasses,

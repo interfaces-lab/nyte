@@ -7,11 +7,14 @@ import { promisify } from "node:util";
 import { expect, test } from "vitest";
 
 const run = promisify(execFile);
+
 const here = dirname(fileURLToPath(import.meta.url));
+
 const fixture = join(here, "fixtures/control-size-fixture.ts");
 
 test("control sizes and touch sizes come from tokens", async () => {
   const directory = mkdtempSync(join(tmpdir(), "nyte-control-size-"));
+
   try {
     const config = join(directory, "oxlintrc.json");
     writeFileSync(
@@ -22,6 +25,7 @@ test("control sizes and touch sizes come from tokens", async () => {
         rules: { "nyte-design/control-size": "error", "nyte-design/touch-in-tokens": "error" },
       }),
     );
+
     const result = await run("node", [
       join(here, "../../../node_modules/oxlint/bin/oxlint"),
       "--config",
@@ -30,13 +34,17 @@ test("control sizes and touch sizes come from tokens", async () => {
       "json",
       fixture,
     ]).catch((error: { stdout?: string }) => ({ stdout: error.stdout ?? "" }));
+
     const report: {
       diagnostics?: Array<{ code?: string; labels?: Array<{ span: { line: number } }> }>;
     } = JSON.parse(result.stdout);
+
     const lines = readFileSync(fixture, "utf8").split("\n");
+
     const found = (report.diagnostics ?? [])
       .map((entry) => {
         const line = lines[(entry.labels?.[0]?.span.line ?? 0) - 1] ?? "";
+
         return `${line.trim().split(":")[0]} ${entry.code ?? ""}`;
       })
       .sort();

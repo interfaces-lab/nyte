@@ -39,30 +39,30 @@ const bridge = vi.hoisted(() => {
     requestAnimationFrame: (callback: FrameRequestCallback) => {
       nextFrame += 1;
       frames.set(nextFrame, callback);
+
       return nextFrame;
     },
     cancelAnimationFrame: (id: number) => frames.delete(id),
     setTimeout: (callback: () => void, delay: number) => Number(setTimeout(callback, delay)),
     clearTimeout: (timer: number) => clearTimeout(timer),
   });
-  // The trust prompt dismisses a toast, and sonner schedules that on the bare
-  // global rather than on the window the renderer reads.
-  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-    callback(0);
-    return 0;
-  });
+
   return { snapshot, metadata, watch, frames };
 });
 
 type CommitEvent = Extract<SessionEvent, { kind: "commit" }>;
+
 const ID = sessionId("live-display");
+
 /** The observer's own wait before it reads again after a failure. */
 const RETRY_MS = 1_000;
+
 const cleanups: (() => void)[] = [];
 
 function frame(): void {
   const callbacks = [...bridge.frames.values()];
   bridge.frames.clear();
+
   for (const callback of callbacks) callback(0);
 }
 
@@ -81,6 +81,7 @@ afterEach(async () => {
   bridge.metadata.mockReset();
   bridge.watch.mockReset();
 });
+
 afterAll(() => vi.unstubAllGlobals());
 
 function commit(
@@ -91,6 +92,7 @@ function commit(
   run = "r1",
 ): CommitEvent {
   const message = body.message;
+
   const stored =
     message.role === "assistant"
       ? ({
@@ -134,6 +136,7 @@ function commit(
               run,
               at: seq,
             } satisfies CommitEvent["item"]["commit"]);
+
   return {
     kind: "commit",
     head: "main",
@@ -142,10 +145,7 @@ function commit(
   };
 }
 
-function assistant(content: AssistantMessage["content"]): {
-  readonly kind: "message";
-  readonly message: AssistantMessage;
-} {
+function assistant(content: AssistantMessage["content"]): Extract<CommitBody, { kind: "message" }> {
   return {
     kind: "message",
     message: {
@@ -199,6 +199,7 @@ function result(callId: string, parent: string, seq: number): CommitEvent {
 
 function snapshot(events: readonly CommitEvent[], seq: number): SessionSnapshot {
   const tip = events.at(-1)?.item.oid ?? null;
+
   return {
     seq,
     head: "main",
@@ -258,6 +259,7 @@ function running(phase: Extract<SessionEvent, { kind: "run" }>["run"]["phase"], 
 function activeSnapshot(events: readonly CommitEvent[], seq: number): SessionSnapshot {
   const current = snapshot(events, seq);
   const run = running({ kind: "tools" }, seq).run;
+
   return {
     ...current,
     run,
@@ -271,6 +273,7 @@ function activeSnapshot(events: readonly CommitEvent[], seq: number): SessionSna
 function durable(): SessionSnapshot {
   const cached = queryClient.getQueryData<SessionSnapshot>(keys.snapshot(ID));
   assert.ok(cached);
+
   return cached;
 }
 
@@ -278,21 +281,26 @@ function durable(): SessionSnapshot {
 async function open(initial: SessionSnapshot) {
   bridge.snapshot.mockResolvedValueOnce(initial);
   bridge.metadata.mockResolvedValue(metadataOf(initial));
+
   const connections: {
     event: Parameters<NyteBridge["watch"]>[1];
     end: Parameters<NyteBridge["watch"]>[2];
   }[] = [];
+
   const stop = vi.fn();
   bridge.watch.mockImplementation((_input, event, end) => {
     const connection = { event, end };
     connections.push(connection);
+
     return stop;
   });
+
   // The snapshot query reads through the same observer the live view holds.
   const observer = new QueryObserver<SessionSnapshot>(queryClient, {
     queryKey: keys.snapshot(ID),
     queryFn: ({ signal }) => readSessionSnapshot(ID, signal),
   });
+
   cleanups.push(observer.subscribe(() => {}));
   const live = watchSessionLive(ID);
   let displayed = live.getSnapshot();
@@ -312,12 +320,14 @@ async function open(initial: SessionSnapshot) {
     enqueue: async (...events: readonly SessionEvent[]) => {
       const connection = connections.at(-1);
       assert.ok(connection);
+
       for (const event of events) connection.event(event);
       await folded();
     },
     emit: async (...events: readonly SessionEvent[]) => {
       const connection = connections.at(-1);
       assert.ok(connection);
+
       for (const event of events) connection.event(event);
       await folded();
       frame();
@@ -329,6 +339,7 @@ async function open(initial: SessionSnapshot) {
     },
     view: () => {
       frame();
+
       const parts = durable().transcript.flatMap((turn) =>
         turn.kind === "turn"
           ? displayTranscriptParts(turn.parts).flatMap((group): readonly TurnPart[] =>
@@ -336,6 +347,7 @@ async function open(initial: SessionSnapshot) {
             )
           : [],
       );
+
       return {
         text:
           parts
@@ -353,6 +365,7 @@ async function open(initial: SessionSnapshot) {
             .join(""),
         tools: parts.flatMap((part) => {
           if (part.kind !== "tool") return [];
+
           return [
             part.result === undefined
               ? (displayed.tools.get(part.callId)?.progress.text ?? "")
@@ -366,12 +379,15 @@ async function open(initial: SessionSnapshot) {
 
 function observeRefreshes(queryKey: readonly unknown[]) {
   const read = vi.fn(async () => "refreshed");
+
   const observer = new QueryObserver(queryClient, {
     queryKey,
     queryFn: read,
     initialData: "cached",
   });
+
   cleanups.push(observer.subscribe(() => {}));
+
   return read;
 }
 
@@ -405,6 +421,7 @@ test("queue, name, and run events fold locally and reread only session metadata"
 test("tool progress does not refetch every delegated child's snapshot", async () => {
   const view = await open(activeSnapshot([], 0));
   const children = observeRefreshes(keys.children(ID));
+
   for (let index = 0; index < 100; index += 1) await view.enqueue(progress("c1", String(index)));
   frame();
   assert.equal(children.mock.calls.length, 0);
@@ -437,6 +454,7 @@ test("failed tool results and terminal runs still refresh files they may have wr
   const view = await open(snapshot([calls], 1));
   const vcs = observeRefreshes(keys.vcsSnapshot);
   const mentions = observeRefreshes(keys.mentionFiles);
+
   const failed = commit(
     "failed-tool",
     calls.item.oid,
@@ -453,6 +471,7 @@ test("failed tool results and terminal runs still refresh files they may have wr
     },
     2,
   );
+
   await view.emit({
     kind: "head_moved",
     seq: 2,
@@ -468,6 +487,7 @@ test("failed tool results and terminal runs still refresh files they may have wr
   assert.deepEqual(view.view().tools, ["wrote a file then failed", ""]);
 
   let seq = 2;
+
   for (const phase of [
     { kind: "done" },
     { kind: "aborted" },
@@ -477,6 +497,7 @@ test("failed tool results and terminal runs still refresh files they may have wr
     await view.emit(running(phase, seq));
     await vi.waitFor(() => assert.equal(queryClient.isFetching(), 0));
   }
+
   assert.equal(vcs.mock.calls.length, 4);
   assert.equal(mentions.mock.calls.length, 4);
   assert.equal(bridge.snapshot.mock.calls.length, 1);
@@ -601,6 +622,7 @@ test("a fold-forced rebase reconciles what its dropped events would have, and bo
   const settings = observeRefreshes(keys.pluginSettings(ID));
   const customize = observeRefreshes(["customize", ID]);
   const catalog = observeRefreshes(keys.pluginCatalog);
+
   const reconciled = () =>
     [vcs, mentions, jobs, children, settings, customize, catalog].map(
       (read) => read.mock.calls.length,
@@ -682,11 +704,13 @@ test("a watch that dies and resumes on the same cursor reconciles nothing", asyn
   // cursor. Reacting to those would rescan the workspace once a second for as
   // long as the stream stays down, and each scan cancels the one before it.
   bridge.snapshot.mockResolvedValue(settled);
+
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     view.disconnect();
     await vi.advanceTimersByTimeAsync(RETRY_MS);
     await vi.waitFor(() => assert.equal(view.connections.length, attempt + 1));
   }
+
   assert.deepEqual([vcs.mock.calls.length, mentions.mock.calls.length], [0, 0]);
 
   // Work that landed while the stream was down did go unseen, and is owed.
@@ -705,6 +729,7 @@ test("a metadata read after a run event updates the session's own row; the sideb
     { environment: "local", workspacePath: "/repo", sessions: [initial.session] },
   ]);
   const view = await open(initial);
+
   const busy: SessionSnapshot = {
     ...initial,
     session: {
@@ -727,6 +752,7 @@ test("a metadata read after a run event updates the session's own row; the sideb
       ],
     },
   };
+
   bridge.metadata.mockResolvedValue(metadataOf(busy));
   await view.emit(running({ kind: "tools" }, 2));
   await vi.waitFor(() =>
@@ -779,6 +805,7 @@ test("a same-seq burst publishes once without losing deltas or changing tool/ord
   Object.defineProperty(tool, "progress", {
     get: () => {
       progressReads += 1;
+
       return toolProgress;
     },
   });
@@ -788,6 +815,7 @@ test("a same-seq burst publishes once without losing deltas or changing tool/ord
       published.push(view.live.getSnapshot().text.get(livePartKey("r1", 1, 0)) ?? "");
     }),
   );
+
   for (let index = 0; index < 100; index += 1) await view.enqueue(text("x"));
   assert.deepEqual(published, []);
   assert.equal(progressReads, 0);
@@ -888,10 +916,12 @@ test("a query read answers from the running observer, and a failed first read is
 test("cancelling a query read releases the observation before its slow read lands", async () => {
   const read = Promise.withResolvers<SessionSnapshot>();
   bridge.snapshot.mockReturnValueOnce(read.promise);
+
   const observer = new QueryObserver<SessionSnapshot>(queryClient, {
     queryKey: keys.snapshot(ID),
     queryFn: ({ signal }) => readSessionSnapshot(ID, signal),
   });
+
   cleanups.push(observer.subscribe(() => {}));
   await vi.waitFor(() => assert.equal(bridge.snapshot.mock.calls.length, 1));
   // The session is closed or deleted: its query goes, and the read with it.
@@ -945,16 +975,20 @@ test("acknowledging a selection waits for a read at that version before releasin
   await open(initial);
   const selection = sessionSelection(ID);
   selection.request();
+
   const chosen: SessionSnapshot = {
     ...initial,
     session: { ...initial.session, config: { thinkingLevel: "high" } },
   };
+
   const read = Promise.withResolvers<SessionMetadata>();
   bridge.metadata.mockReturnValueOnce(read.promise);
   let acknowledged = false;
+
   const acknowledging = selection.acknowledge().then(() => {
     acknowledged = true;
   });
+
   await vi.waitFor(() => assert.equal(bridge.metadata.mock.calls.length, 1));
   assert.equal(acknowledged, false);
   read.resolve(metadataOf(chosen));

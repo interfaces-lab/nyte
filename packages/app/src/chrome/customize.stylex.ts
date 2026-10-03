@@ -1,4 +1,4 @@
-import { glyph, input, shape } from "@nyte-ai/ui/schema.stylex";
+import { glyph, input, radius } from "@nyte-ai/ui/schema.stylex";
 /** Customize inventory feature styles. */
 import { create } from "@stylexjs/stylex";
 import { settings } from "../theme/schema.stylex.ts";
@@ -28,7 +28,7 @@ export const customizeStyles = create({
     height: input.heightLg,
     gap: 6,
     paddingInline: 10,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     borderColor: role.borderSecondaryTranslucent,
     outlineStyle: { default: "none", ":focus-within": "solid" },
     outlineWidth: 1,
@@ -62,7 +62,7 @@ export const customizeStyles = create({
     gap: 1,
     padding: 1,
     overflow: "hidden",
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     backgroundColor: role.borderSecondaryTranslucent,
   },
   row: {
@@ -77,19 +77,6 @@ export const customizeStyles = create({
   },
   rowLeading: { width: glyph.md },
   rowTitle: { fontWeight: 500 },
-  badge: {
-    flexShrink: 0,
-    padding: "2px 6px",
-    borderRadius: shape.pill,
-    backgroundColor: role.bgMutedTranslucent,
-    color: role.contentSecondary,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingXs,
-  },
-  failedBadge: {
-    backgroundColor: role.bgInteractiveSecondaryTranslucent,
-    color: role.contentSecondary,
-  },
   quiet: {
     minHeight: 48,
     display: "flex",
@@ -103,7 +90,7 @@ export const customizeStyles = create({
   loadingLine: {
     width: "42%",
     height: 8,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: role.bgMutedTranslucent,
   },
   error: { color: role.contentSecondary, fontSize: type.fontSm, lineHeight: type.leadingSm },

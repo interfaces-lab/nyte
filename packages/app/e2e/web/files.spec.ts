@@ -4,6 +4,7 @@ import { E2E_TOKEN, pairingLink } from "../server/address.ts";
 import { collectErrors } from "../utils/errors.ts";
 
 const README_LINE = "workspace.read reached the browser.";
+
 const SAVED_LINE = "Saved through workspace.save.";
 
 async function openFiles(page: Page) {

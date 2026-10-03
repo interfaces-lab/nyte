@@ -9,10 +9,10 @@ import { Value } from "typebox/value";
 import { expect, test } from "vitest";
 
 const execute = promisify(execFile);
+
 const rules = [
   "no-clickable-non-control",
   "drag-only-touch-action",
-  "no-hover-submenus",
   "restore-popup-focus",
   "named-stylex-imports",
   "accessible-pressable",
@@ -20,10 +20,14 @@ const rules = [
   "no-disabled-caption",
   "title-case-control-label",
 ];
+
+const FailedRun = Type.Object({ stdout: Type.String() });
+
 const Report = Type.Object({ diagnostics: Type.Array(Type.Object({ code: Type.String() })) });
 
 test("interaction guards reject regressions and accept semantic controls", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nyte-interaction-lint-"));
+
   try {
     const config = join(directory, "oxlintrc.json");
     await writeFile(
@@ -40,7 +44,7 @@ test("interaction guards reject regressions and accept semantic controls", async
       rejected,
       `import * as stylex from "@stylexjs/stylex";
 const layout = { touchAction: "none" };
-const controls = <><div onClick={() => {}} /><Menu openOnHover /><Dialog finalFocus={false} /><Pressable onPress={() => {}} /><Button>Confirm</Button><Button>save file</Button><MenuItem meta={disabled ? "No file open" : "⌘S"}>Save</MenuItem></>;`,
+const controls = <><div onClick={() => {}} /><Dialog finalFocus={false} /><Pressable onPress={() => {}} /><Button>Confirm</Button><Button>save file</Button><MenuItem meta={disabled ? "No file open" : "⌘S"}>Save</MenuItem></>;`,
     );
     await writeFile(
       accepted,
@@ -48,6 +52,7 @@ const controls = <><div onClick={() => {}} /><Menu openOnHover /><Dialog finalFo
 const layout = { touchAction: "manipulation" };
 const controls = <><button onClick={() => {}} /><div role="option" onClick={() => {}} /><Dialog /><Pressable accessibilityRole="link" /><Button>Delete File</Button><p>No {count} matches</p><MenuItem disabled={disabled} meta="⌘S">Save</MenuItem></>;`,
     );
+
     const output = await execute("node", [
       fileURLToPath(new URL("../../../node_modules/oxlint/bin/oxlint", import.meta.url)),
       "--config",
@@ -56,11 +61,11 @@ const controls = <><button onClick={() => {}} /><div role="option" onClick={() =
       "json",
       rejected,
       accepted,
-    ]).catch((error: unknown) => {
-      if (error instanceof Error && "stdout" in error && typeof error.stdout === "string")
-        return { stdout: error.stdout };
+    ]).catch((error) => {
+      if (Value.Check(FailedRun, error)) return { stdout: error.stdout };
       throw error;
     });
+
     const report = Value.Parse(Report, JSON.parse(output.stdout));
     expect(
       report.diagnostics

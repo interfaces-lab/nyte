@@ -6,10 +6,13 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { stylex } from "@nyte-ai/ui/stylex";
 import electron from "electron";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { build } from "vite";
 import { afterAll, beforeAll, expect, test } from "vitest";
 
 const execute = promisify(execFile);
+
 let directory = "";
 
 beforeAll(async () => {
@@ -39,6 +42,7 @@ beforeAll(async () => {
     },
   });
   const stylesheets: string[] = [];
+
   for await (const sheet of glob("**/*.css", { cwd: directory })) stylesheets.push(sheet);
   stylesheets.sort((first, second) => first.localeCompare(second));
   await writeFile(
@@ -79,11 +83,11 @@ afterAll(async () => {
 test.each(["no-preference", "reduce"])(
   "diff counts in Chromium with %s motion",
   async (motion) => {
-    if (typeof electron !== "string") throw new Error("Expected the Electron executable path");
+    const electronPath = Value.Parse(Type.String(), electron);
     const resultPath = join(directory, `${motion}.txt`);
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;
-    await execute(electron, [join(directory, "main.cjs"), motion, resultPath], {
+    await execute(electronPath, [join(directory, "main.cjs"), motion, resultPath], {
       env,
       timeout: 20_000,
     });

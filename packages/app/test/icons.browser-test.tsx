@@ -24,20 +24,25 @@ function check(condition: boolean, message: string): void {
 
 async function raster(sample: Element) {
   const original = sample.querySelector("svg");
+
   if (!original) throw new Error("Missing glyph");
   const copy = original.cloneNode(true);
+
   if (!(copy instanceof SVGElement)) throw new Error("Missing SVG clone");
   const originals = [original, ...original.querySelectorAll("*")];
   const copies = [copy, ...copy.querySelectorAll("*")];
   originals.forEach((element, index) => {
     const destination = copies[index];
+
     if (!(destination instanceof SVGElement)) throw new Error("Invalid SVG child");
     const computed = getComputedStyle(element);
+
     for (const property of ["color", "fill", "stroke", "stroke-width", "opacity"]) {
       destination.style.setProperty(property, computed.getPropertyValue(property));
     }
   });
   let opacity = Number(getComputedStyle(original).opacity);
+
   for (
     let parent = original.parentElement;
     parent && parent !== sample;
@@ -45,11 +50,14 @@ async function raster(sample: Element) {
   ) {
     opacity *= Number(getComputedStyle(parent).opacity);
   }
+
   copy.style.opacity = String(opacity);
   const image = new Image();
+
   const url = URL.createObjectURL(
     new Blob([new XMLSerializer().serializeToString(copy)], { type: "image/svg+xml" }),
   );
+
   try {
     image.src = url;
     await image.decode();
@@ -57,15 +65,19 @@ async function raster(sample: Element) {
     canvas.width = 16;
     canvas.height = 16;
     const context = canvas.getContext("2d");
+
     if (!context) throw new Error("Missing canvas context");
     context.drawImage(image, 0, 0, 16, 16);
     const pixels = context.getImageData(0, 0, 16, 16).data;
     let ink = 0;
     let luminance = 0;
+
     const linear = (value: number): number => {
       const channel = value / 255;
+
       return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
     };
+
     for (let index = 0; index < pixels.length; index += 4) {
       const alpha = pixels[index + 3] / 255;
       ink += alpha;
@@ -75,6 +87,7 @@ async function raster(sample: Element) {
           0.7152 * linear(pixels[index + 1]) +
           0.0722 * linear(pixels[index + 2]));
     }
+
     return { ink, luminance: luminance / ink, color: getComputedStyle(original).color };
   } finally {
     URL.revokeObjectURL(url);
@@ -82,7 +95,9 @@ async function raster(sample: Element) {
 }
 
 const host = document.createElement("div");
+
 const root = createRoot(host);
+
 let mounted = false;
 
 export function mount(): void {
@@ -96,6 +111,7 @@ export function mount(): void {
         {iconReferences.flatMap(({ name, outlined, filled }) =>
           (["outlined", "filled"] as const).map((variant) => {
             const Reference = variant === "outlined" ? outlined : filled;
+
             return (
               <div key={`${name}:${variant}`} data-icon-pair={`${name}:${variant}`}>
                 <span data-sample>
@@ -157,13 +173,16 @@ export function mount(): void {
 
 export async function run(): Promise<string> {
   mount();
+
   try {
     for (const mode of ["light", "dark"] as const) {
       applyDisplayMode(mode);
       host.className = props(styles.host).className ?? "";
+
       for (const pair of host.querySelectorAll("[data-icon-pair]")) {
         const sample = pair.querySelector("[data-sample]");
         const reference = pair.querySelector("[data-reference]");
+
         if (!sample || !reference) throw new Error("Missing reference pair");
         const actual = await raster(sample);
         const expected = await raster(reference);
@@ -172,11 +191,14 @@ export async function run(): Promise<string> {
         check(Math.abs(actual.ink / expected.ink - 1) < 0.05, `${name} ink changed`);
         check(Math.abs(actual.luminance - expected.luminance) < 0.015, `${name} luminance changed`);
       }
+
       for (const side of ["left", "right"]) {
         const sample = host.querySelector(`[data-panel="${side}:false"]`);
+
         const reference = host.querySelector(
           `[data-icon-pair="panel-${side}:outlined"] [data-reference]`,
         );
+
         if (!sample || !reference) throw new Error("Missing panel reference");
         const actual = await raster(sample);
         const expected = await raster(reference);
@@ -186,10 +208,13 @@ export async function run(): Promise<string> {
           `${mode} panel luminance changed`,
         );
       }
+
       const colors = new Map<string, string>();
       const opacities = new Map<string, string>();
+
       for (const sample of host.querySelectorAll("[data-control]")) {
         const control = sample.querySelector("button");
+
         if (!control) throw new Error("Missing control");
         const actual = await raster(sample);
         check(
@@ -199,10 +224,12 @@ export async function run(): Promise<string> {
         const name = sample.getAttribute("data-control") ?? "";
         colors.set(name, actual.color);
         opacities.set(name, getComputedStyle(control).opacity);
+
         if (name.startsWith("button:")) {
           const variant = name.split(":")[1];
           const disabled = name.endsWith(":true");
           const forced = document.documentElement.dataset.iconForced !== undefined;
+
           const expectedStyle =
             variant === "solid"
               ? styles.solid
@@ -211,6 +238,7 @@ export async function run(): Promise<string> {
                 : variant === "text"
                   ? styles.text
                   : styles.secondary;
+
           const probe = document.createElement("span");
           probe.className = props(expectedStyle).className ?? "";
           control.append(probe);
@@ -227,6 +255,7 @@ export async function run(): Promise<string> {
           const reference = host.querySelector(
             `[data-icon-pair="arrow-left:${name === "toolbar" || name === "local" ? "outlined" : "filled"}"] [data-reference]`,
           );
+
           if (!reference) throw new Error("Missing button reference");
           // A disabled control dims as a whole; only the glyph's own opacity must not leak.
           const dimming = Number(getComputedStyle(control).opacity);
@@ -236,6 +265,7 @@ export async function run(): Promise<string> {
           );
         }
       }
+
       check(
         colors.get("false:false") !== colors.get("false:true"),
         "Selection must change the control color",
@@ -246,6 +276,7 @@ export async function run(): Promise<string> {
         "Disabled must win over selection",
       );
     }
+
     return "passed";
   } finally {
     root.unmount();

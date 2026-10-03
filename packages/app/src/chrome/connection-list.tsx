@@ -1,12 +1,16 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { avatar, shape } from "@nyte-ai/ui/schema.stylex";
+import { avatar, radius } from "@nyte-ai/ui/schema.stylex";
 /**
  * The card of rows Settings uses for anything that connects: the GitHub
- * account and each model provider. A row says where it stands first, then
- * offers the actions that change that.
+ * account and each model provider. A row ends in one control: a button for
+ * what is not set up yet, or a status menu that holds the verbs.
  */
+import { srOnly } from "@nyte-ai/ui/a11y.stylex";
+import { Button } from "@nyte-ai/ui/button";
+import { Icon } from "@nyte-ai/ui/icon";
+import { Menu, MenuContent, MenuTrigger } from "@nyte-ai/ui/menu";
 import { create, props } from "@stylexjs/stylex";
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement, ReactNode, Ref } from "react";
 import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
@@ -19,11 +23,10 @@ const styles = create({
     alignItems: "center",
     columnGap: 12,
     rowGap: 8,
-    minHeight: settings.rowMinHeight,
     padding: settings.rowPadding,
     "::after": {
       position: "absolute",
-      insetInline: settings.rowPadding,
+      insetInline: settings.rowPaddingInline,
       insetBlockEnd: 0,
       height: 1,
       backgroundColor: role.borderSecondaryTranslucent,
@@ -31,18 +34,16 @@ const styles = create({
     },
     ":last-child::after": { display: "none" },
   },
-  dimmedGlyph: { color: role.contentTertiary },
-  dimmedText: { color: role.contentTertiary },
   glyph: {
     display: "grid",
     placeItems: "center",
     width: avatar.md,
     height: avatar.md,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     color: role.contentSecondary,
     overflow: "hidden",
   },
-  body: { display: "flex", flexDirection: "column", minWidth: 0, gap: 1 },
+  body: { display: "flex", flexDirection: "column", minWidth: 0, gap: 2 },
   title: {
     color: role.contentPrimary,
     fontSize: type.fontBase,
@@ -68,29 +69,21 @@ const styles = create({
     lineHeight: type.leadingSm,
     whiteSpace: "nowrap",
   },
-  dot: { width: 6, height: 6, borderRadius: shape.pill, backgroundColor: "currentColor" },
-  end: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 12,
-    minWidth: 0,
-    "@container (max-width: 600px)": {
-      gridColumn: "2 / -1",
-      justifyContent: "flex-end",
-      flexWrap: "wrap",
-    },
-  },
-  actions: {
+  dot: { width: 6, height: 6, borderRadius: radius.pill, backgroundColor: "currentColor" },
+  control: {
     display: "inline-flex",
     justifyContent: "flex-end",
-    gap: 8,
-    flexWrap: "wrap",
-    minWidth: 104,
+    "@container (max-width: 600px)": { gridColumn: "2 / -1" },
   },
   expansion: { gridColumn: "1 / -1", paddingTop: 4 },
 });
 
 type ConnectionTone = "on" | "off" | "warn" | "err";
+
+export interface ConnectionStanding {
+  readonly tone: ConnectionTone;
+  readonly status: string;
+}
 
 export function ConnectionStatus({
   tone,
@@ -114,6 +107,37 @@ export function ConnectionStatus({
   );
 }
 
+export function ConnectionMenu({
+  label,
+  tone,
+  status,
+  loading = false,
+  disabled = false,
+  ref,
+  children,
+}: ConnectionStanding & {
+  readonly label: string;
+  readonly loading?: boolean;
+  readonly disabled?: boolean;
+  readonly ref?: Ref<HTMLButtonElement>;
+  readonly children: ReactNode;
+}): ReactElement {
+  return (
+    <Menu>
+      <MenuTrigger
+        render={
+          <Button ref={ref} loading={loading} disabled={disabled}>
+            <span {...props(srOnly)}>{label}: </span>
+            <ConnectionStatus tone={tone}>{status}</ConnectionStatus>
+            <Icon name="chevron-down" size={12} />
+          </Button>
+        }
+      />
+      <MenuContent align="end">{children}</MenuContent>
+    </Menu>
+  );
+}
+
 export function ConnectionList({ children }: { children: ReactNode }): ReactElement {
   return <div {...props(settingsPatterns.group)}>{children}</div>;
 }
@@ -122,42 +146,24 @@ export function ConnectionRow({
   glyph,
   title,
   detail,
-  status,
-  actions,
-  trailing,
-  dimmed = false,
+  control,
   expansion,
 }: {
   glyph: ReactNode;
   title: ReactNode;
   detail: string | undefined;
-  /** Where the connection stands. Rows that only carry detail leave it out. */
-  status?: ReactElement;
-  actions?: ReactNode;
-  /** A control that stays live even when the row is dimmed, such as an on/off switch. */
-  trailing?: ReactNode;
-  dimmed?: boolean;
-  /** Full-width content under the row, such as a form the actions opened. */
+  control?: ReactNode;
+  /** Full-width content under the row, such as a form the control opened. */
   expansion?: ReactNode;
 }): ReactElement {
   return (
     <div {...props(styles.row)}>
-      <span {...props(styles.glyph, dimmed && styles.dimmedGlyph)}>{glyph}</span>
+      <span {...props(styles.glyph)}>{glyph}</span>
       <span {...props(styles.body)}>
-        <span {...props(styles.title, dimmed && styles.dimmedText)}>{title}</span>
-        {detail !== undefined && (
-          <span {...props(styles.detail, dimmed && styles.dimmedText)}>{detail}</span>
-        )}
+        <span {...props(styles.title)}>{title}</span>
+        {detail !== undefined && <span {...props(styles.detail)}>{detail}</span>}
       </span>
-      {(status !== undefined || actions !== undefined || trailing !== undefined) && (
-        <span {...props(styles.end)}>
-          {status}
-          {(actions !== undefined || trailing !== undefined) && (
-            <span {...props(styles.actions)}>{actions}</span>
-          )}
-          {trailing}
-        </span>
-      )}
+      {control !== undefined && <span {...props(styles.control)}>{control}</span>}
       {expansion !== undefined && <div {...props(styles.expansion)}>{expansion}</div>}
     </div>
   );

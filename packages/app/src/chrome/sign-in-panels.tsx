@@ -72,11 +72,12 @@ export function DeviceCodePanel({
           tone="primary"
           onClick={(event) => {
             event.preventDefault();
-            void nyte.host
-              .openExternal({ url: verificationUri })
-              .catch(() =>
-                toast.error(`Couldn't open ${host ?? "the link"}. Enter the code there yourself.`),
-              );
+            void nyte.host.openExternal({ url: verificationUri }).catch(() =>
+              toast.add({
+                type: "error",
+                title: `Couldn't open ${host ?? "the link"}. Enter the code there yourself.`,
+              }),
+            );
           }}
         >
           {openLabel}
@@ -105,7 +106,7 @@ function AnswerForm({ answer }: { answer: (code: string) => Promise<void> }): Re
 
   const send = useMutation({
     mutationFn: answer,
-    onError: () => toast.error("Couldn't send the code. Try again."),
+    onError: () => toast.add({ type: "error", title: "Couldn't send the code. Try again." }),
   });
 
   if (send.isSuccess) {
@@ -188,7 +189,9 @@ export function BrowserSignInPanel({
             event.preventDefault();
             void nyte.host
               .openExternal({ url: browser.url })
-              .catch(() => toast.error(`Couldn't open ${host ?? "the sign-in page"}.`));
+              .catch(() =>
+                toast.add({ type: "error", title: `Couldn't open ${host ?? "the sign-in page"}.` }),
+              );
           }}
         >
           {host === undefined ? "Open Sign-In Page" : `Open ${host}`}

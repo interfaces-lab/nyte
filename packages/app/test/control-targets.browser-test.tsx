@@ -15,8 +15,8 @@ import {
 import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button";
 import { Checkbox, CheckboxField } from "@nyte-ai/ui/checkbox";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
+import { Command } from "@nyte-ai/ui/command";
 import {
-  CommandMenuContent,
   Menu,
   MenuCheckboxItem,
   MenuContent,
@@ -63,6 +63,7 @@ import "../src/theme/tokens.stylex.ts";
 
 const selector =
   'button, a[href], input:not([type="hidden"]), textarea, [role="slider"], [role="checkbox"], [role="switch"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"]';
+
 function Sample({ children }: { children: ReactNode }) {
   return (
     <section style={{ display: "flex", alignItems: "center", gap: 16, padding: 16 }}>
@@ -70,34 +71,47 @@ function Sample({ children }: { children: ReactNode }) {
     </section>
   );
 }
+
 function hitArea(control: Element) {
   control.scrollIntoView({ block: "center", inline: "center" });
   const rect = control.getBoundingClientRect();
   const x = rect.left + rect.width / 2;
   const y = rect.top + rect.height / 2;
+
   const hits = (x: number, y: number): boolean => {
     const target = document.elementFromPoint(x, y);
+
     if (target === null) return false;
+
     if (control.contains(target)) return true;
+
     if (!(control instanceof HTMLInputElement)) return false;
+
     if (target.closest("button, a, input, textarea, [role=button]")) return false;
+
     return [...(control.labels ?? [])].some((label) => label.contains(target));
   };
+
   const reach = (dx: number, dy: number): number => {
     let distance = 0;
+
     while (distance < 512 && hits(x + dx * (distance + 0.125), y + dy * (distance + 0.125)))
       distance += 0.25;
+
     return distance;
   };
+
   const left = x - reach(-1, 0);
   const right = x + reach(1, 0);
   const top = y - reach(0, -1);
   const bottom = y + reach(0, 1);
+
   return { left, right, top, bottom, width: right - left, height: bottom - top };
 }
 
 export async function run(): Promise<string> {
   const coarse = matchMedia("(pointer: coarse)").matches;
+
   if (!coarse && !matchMedia("(pointer: fine)").matches)
     throw new Error("Pointer emulation failed");
   const floor = coarse ? 44 : 24;
@@ -105,9 +119,11 @@ export async function run(): Promise<string> {
   document.body.append(host);
   const root = createRoot(host);
   const failures: string[] = [];
+
   const measure = (container: ParentNode) => {
     const controls = [...container.querySelectorAll(selector)].filter((control) => {
       const style = getComputedStyle(control);
+
       return (
         control.getBoundingClientRect().width > 0 &&
         style.visibility !== "hidden" &&
@@ -115,24 +131,31 @@ export async function run(): Promise<string> {
         control.getAttribute("aria-hidden") !== "true"
       );
     });
+
     for (const control of controls) {
       const box = hitArea(control);
+
       if (box.width < floor - 0.25 || box.height < floor - 0.25)
         failures.push(
           `${control.outerHTML.slice(0, 180)} hit area ${box.width}x${box.height}, expected ${floor}`,
         );
     }
+
     return controls.length;
   };
+
   const paint = async (children: ReactNode, selector: string): Promise<void> => {
     flushSync(() => root.render(children));
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
     const content = document.querySelector(selector);
+
     if (content === null) throw new Error(`Missing control container ${selector}`);
+
     if (measure(content) === 0) throw new Error(`No controls in ${selector}`);
   };
+
   try {
     flushSync(() =>
       root.render(
@@ -281,13 +304,17 @@ export async function run(): Promise<string> {
       ),
     );
     const count = measure(host);
+
     if (count < 200) throw new Error(`Control matrix is incomplete: ${count}`);
+
     for (const group of host.querySelectorAll("[data-no-overlap]")) {
       const controls = [...group.querySelectorAll("button, a")];
       const boxes = controls.map(hitArea);
+
       for (let index = 0; index < boxes.length; index += 1) {
         for (const next of boxes.slice(index + 1)) {
           const box = boxes[index];
+
           if (
             Math.min(box.right, next.right) - Math.max(box.left, next.left) > 0.25 &&
             Math.min(box.bottom, next.bottom) - Math.max(box.top, next.top) > 0.25
@@ -296,6 +323,7 @@ export async function run(): Promise<string> {
         }
       }
     }
+
     flushSync(() =>
       root.render(
         <Menu open>
@@ -327,6 +355,7 @@ export async function run(): Promise<string> {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
     const popup = document.querySelector('[role="menu"]');
+
     if (popup === null) throw new Error("Missing menu popup");
     measure(popup);
     await paint(
@@ -340,13 +369,15 @@ export async function run(): Promise<string> {
       '[role="menu"]',
     );
     await paint(
-      <Menu open onOpenChange={() => {}}>
-        <MenuTrigger render={<Button>Commands</Button>} />
-        <CommandMenuContent>
-          <MenuItem>Open File</MenuItem>
-        </CommandMenuContent>
-      </Menu>,
-      '[role="menu"]',
+      <Command.Root open onOpenChange={() => {}}>
+        <Command.Popup items={["open"]}>
+          <Command.Input aria-label="Search commands" />
+          <Command.List>
+            <Command.Item value="open">Open File</Command.Item>
+          </Command.List>
+        </Command.Popup>
+      </Command.Root>,
+      '[role="dialog"]',
     );
     await paint(
       <Autocomplete open items={["Alpha", "Beta"]}>
@@ -408,22 +439,26 @@ export async function run(): Promise<string> {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
     const options = document.querySelector('[role="listbox"]');
+
     if (options === null) throw new Error("Missing Select options");
     measure(options);
     flushSync(() => root.render(<Toaster />));
-    toast("File saved", {
-      duration: Infinity,
-      action: { label: "Undo", onClick: () => {} },
-      cancel: { label: "Keep", onClick: () => {} },
+    toast.add({
+      title: "File saved",
+      timeout: 0,
+      actionProps: { children: "Undo", onClick: () => {} },
     });
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
-    const notification = document.querySelector("[data-sonner-toast]");
+    const notification = document.querySelector('[data-slot="toast"]');
+
     if (notification === null) throw new Error("Missing notification controls");
     measure(notification);
-    toast.dismiss();
+    toast.close();
+
     if (failures.length) throw new Error(`${coarse ? "coarse" : "fine"}:\n${failures.join("\n")}`);
+
     return "passed";
   } finally {
     root.unmount();

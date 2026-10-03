@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 /**
  * Settings › Usage. The page is the settings surface it lives on: a total in
  * plain text, a curve, and lists in the same divided group every other settings
@@ -103,7 +103,7 @@ export const usageStyles = create({
     lineHeight: type.leadingXs,
   },
   chartKey: { display: "inline-flex", alignItems: "center", gap: 6 },
-  chartSwatch: { width: 10, height: 2, borderRadius: shape.pill },
+  chartSwatch: { width: 10, height: 2, borderRadius: radius.pill },
   chartLine: { fill: "none", stroke: role.contentInteractiveTertiary },
   chartArea: { fill: role.bgInteractiveStrong },
   chartPlot: { height: CHART_HEIGHT, minWidth: 0 },
@@ -112,7 +112,7 @@ export const usageStyles = create({
     flexDirection: "column",
     gap: 2,
     padding: "6px 8px",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgElevated,
     boxShadow: shadow.shadowMd,
     color: role.contentPrimary,
@@ -128,7 +128,7 @@ export const usageStyles = create({
     display: "flex",
     flexDirection: "column",
     overflow: "clip",
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
   },
   /**
@@ -153,7 +153,7 @@ export const usageStyles = create({
     display: "flex",
     gap: 2,
     height: 8,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     // One step above the group fill, so the unranked remainder is still a track.
     backgroundColor: role.bgInteractivePrimaryTranslucent,
     overflow: "hidden",
@@ -205,7 +205,7 @@ export const usageStyles = create({
     lineHeight: type.leadingSm,
     overflowWrap: "anywhere",
   },
-  dot: { width: 8, height: 8, borderRadius: shape.pill, flexShrink: 0 },
+  dot: { width: 8, height: 8, borderRadius: radius.pill, flexShrink: 0 },
   rowMeta: {
     color: role.contentSecondary,
     fontSize: type.fontXs,
@@ -258,14 +258,14 @@ export const usageStyles = create({
   meterHead: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 },
   meterTrack: {
     height: 6,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: role.bgInteractivePrimaryTranslucent,
     overflow: "hidden",
   },
   meterFill: {
     display: "block",
     height: "100%",
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: role.bgInteractiveStrong,
     transitionProperty: "width, background-color",
     transitionDuration: motion.durationFast,
@@ -282,7 +282,7 @@ export const usageStyles = create({
     gap: 6,
     minHeight: 148,
     padding: 24,
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
     textAlign: "center",
   },
@@ -308,7 +308,7 @@ export const usageStyles = create({
     margin: 0,
     paddingBlock: 6,
     paddingInline: 10,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentSecondary,
     fontSize: type.fontSm,
@@ -339,7 +339,7 @@ export const skeletonStyles = create({
     display: "inline-block",
     verticalAlign: "middle",
     flexShrink: 0,
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     backgroundColor: role.bgInteractivePrimaryTranslucent,
     animationName: { default: bonePulse, "@media (prefers-reduced-motion: reduce)": "none" },
     animationDuration: "1.8s",

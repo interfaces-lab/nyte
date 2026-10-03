@@ -2,7 +2,7 @@
 import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { Icon } from "@nyte-ai/ui/icon";
-import { glyph, shape } from "@nyte-ai/ui/schema.stylex";
+import { glyph, radius } from "@nyte-ai/ui/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { role } from "@nyte-ai/ui/vars.stylex";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
@@ -39,7 +39,7 @@ const styles = create({
     boxSizing: "border-box",
     width: 8,
     height: 8,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     flexShrink: 0,
     pointerEvents: "none",
   },

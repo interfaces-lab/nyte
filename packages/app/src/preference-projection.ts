@@ -1,4 +1,36 @@
-import type { DesktopCatalog, PreferenceChange } from "./bridge.ts";
+import type { ModelThinkingLevel } from "@nyte-ai/schema";
+import type { DesktopCatalog, DesktopModelOption, PreferenceChange } from "./bridge.ts";
+import type { ModelPickerChange } from "./conversation/model-picker.tsx";
+
+/** The whole setup a picker change leaves behind becomes what the next new chat starts with. */
+export function pickerDefaults(
+  setup: {
+    readonly model: DesktopModelOption | undefined;
+    readonly thinkingLevel: ModelThinkingLevel | undefined;
+  },
+  change: ModelPickerChange,
+): PreferenceChange {
+  const model =
+    setup.model === undefined ? undefined : { provider: setup.model.provider, id: setup.model.id };
+
+  switch (change.kind) {
+    case "model":
+      return {
+        kind: "defaults",
+        model: { provider: change.option.provider, id: change.option.id },
+        thinkingLevel: change.thinkingLevel,
+      };
+    case "thinking":
+      return { kind: "defaults", model, thinkingLevel: change.thinkingLevel };
+    case "fast":
+      return { kind: "defaults", model, thinkingLevel: setup.thinkingLevel, fast: change.enabled };
+    default: {
+      const _exhaustive: never = change;
+
+      return _exhaustive;
+    }
+  }
+}
 
 /** Predict the selected controls; the host still chooses any replacement default. */
 export function projectPreference(
@@ -13,6 +45,7 @@ export function projectPreference(
       defaults: {
         model: change.model ?? catalog.defaults.model,
         thinkingLevel: change.thinkingLevel ?? catalog.defaults.thinkingLevel,
+        fast: change.fast ?? catalog.defaults.fast,
       },
     };
   }

@@ -1,4 +1,4 @@
-import { glyph, shape } from "@nyte-ai/ui/schema.stylex";
+import { glyph, radius } from "@nyte-ai/ui/schema.stylex";
 /** Controls unique to Settings › Appearance. */
 import { create } from "@stylexjs/stylex";
 import { settings } from "../theme/schema.stylex.ts";
@@ -26,7 +26,7 @@ export const appearancePanelStyles = create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderPrimaryTranslucent,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: role.bgInteractivePrimaryTranslucent,
   },
   tintSwatchActive: {
@@ -58,7 +58,7 @@ export const appearancePanelStyles = create({
   },
   codeFontPreview: {
     overflow: "hidden",
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     fontFamily: type.fontMono,
     fontSize: type.fontCode,
     lineHeight: "20px",

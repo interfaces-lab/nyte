@@ -256,10 +256,18 @@ export function useForgetWorkspace() {
         keys.workspaces,
         (workspaces) => workspaces?.filter((workspace) => workspace.path !== path),
       );
-      toast.success("Workspace removed from sidebar", { id: "workspace-forgotten" });
+      toast.add({
+        type: "success",
+        title: "Workspace removed from sidebar",
+        id: "workspace-forgotten",
+      });
     },
     onError: () =>
-      toast.error("Couldn't remove this workspace. Try again.", { id: "workspace-forget-error" }),
+      toast.add({
+        type: "error",
+        title: "Couldn't remove this workspace. Try again.",
+        id: "workspace-forget-error",
+      }),
     onSettled: () => client.invalidateQueries({ queryKey: keys.workspaces }),
   });
 }
@@ -306,20 +314,6 @@ export function useSessionLocation(sessionId: SessionId): SessionLocation | unde
   });
 
   return location.data ?? undefined;
-}
-
-export function useSessionPreview(enabled = true) {
-  const projection = useSessionProjection();
-  const host = useHostState();
-
-  return useQuery({
-    queryKey: keys.sessionDirectory,
-    queryFn: readSessionDirectory,
-    select: (directories) => ({
-      items: projection.list(localSessions(directories, host.data?.workspace?.path ?? null) ?? []),
-    }),
-    enabled,
-  });
 }
 
 export function useSessionSearch(search: string, enabled = true) {
@@ -774,6 +768,15 @@ export function usePluginCatalog() {
   return useQuery({ queryKey: keys.pluginCatalog, queryFn: readPluginCatalog });
 }
 
+export function useSessionCommands(sessionId: SessionId) {
+  return useQuery({
+    queryKey: keys.sessionCommands(sessionId),
+    queryFn: () => nyte.plugins.commands.list({ sessionId }),
+    staleTime: SNAPSHOT_WARM_MS,
+    refetchOnMount: true,
+  });
+}
+
 /** Controls show pending choices while the host returns the authoritative catalog. */
 export function useSetPreference() {
   const client = useQueryClient();
@@ -787,7 +790,8 @@ export function useSetPreference() {
       client.setQueryData(keys.catalog, catalog);
     },
     onSettled: () => client.invalidateQueries({ queryKey: keys.catalog, exact: true }),
-    onError: () => toast.error("Couldn't save model preferences. Try again."),
+    onError: () =>
+      toast.add({ type: "error", title: "Couldn't save model preferences. Try again." }),
   });
 }
 
@@ -998,7 +1002,11 @@ export function useApplyPluginSetting(sessionId: SessionId | undefined) {
       );
     },
     onError: () =>
-      toast.error("Couldn't change that setting. Try again.", { id: "plugin-setting-error" }),
+      toast.add({
+        type: "error",
+        title: "Couldn't change that setting. Try again.",
+        id: "plugin-setting-error",
+      }),
     onSettled: () => {
       if (sessionId === undefined) return;
 

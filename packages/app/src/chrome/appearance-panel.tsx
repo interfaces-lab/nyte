@@ -234,7 +234,7 @@ export function AppearanceSettings(): ReactElement {
   return (
     <div {...props(styles.root)}>
       <div {...props(settingsPatterns.group)}>
-        <SettingsRow title="Theme" description="Choose between light and dark themes">
+        <SettingsRow title="Theme">
           <Select
             items={THEME_OPTIONS}
             value={settings.theme}
@@ -255,7 +255,7 @@ export function AppearanceSettings(): ReactElement {
           </Select>
         </SettingsRow>
         <SettingsSwitchRow
-          title="Use Pointer Cursors"
+          title="Use pointer cursors"
           description="Change the cursor to a pointer when hovering over any interactive elements"
           checked={settings.pointerCursors}
           onCheckedChange={(pointerCursors) => update(settings, { pointerCursors })}
@@ -264,21 +264,17 @@ export function AppearanceSettings(): ReactElement {
 
       <section {...props(settingsPatterns.section)}>
         <div {...props(settingsPatterns.sectionHeader)}>
-          <h2 {...props(settingsPatterns.sectionTitle)}>Agent Conversations</h2>
+          <h2 {...props(settingsPatterns.sectionTitle)}>Agent conversations</h2>
         </div>
         <div {...props(settingsPatterns.group)}>
-          <SettingsRow
-            title="Tool Call Density"
-            description="Adjust how much detail is shown for tool calls"
-            variant="slider"
-          >
+          <SettingsRow title="Tool call density">
             <DensityControl
               value={settings.toolCalls}
               onValueChange={(toolCalls) => update(settings, { toolCalls })}
             />
           </SettingsRow>
           <SettingsSwitchRow
-            title="Code Block Word Wrap"
+            title="Code block word wrap"
             description="Wrap long lines in Agent conversation code blocks"
             checked={settings.codeBlockWordWrap}
             onCheckedChange={(codeBlockWordWrap) => update(settings, { codeBlockWordWrap })}
@@ -291,21 +287,21 @@ export function AppearanceSettings(): ReactElement {
           <h2 {...props(settingsPatterns.sectionTitle)}>Colors</h2>
         </div>
         <div {...props(settingsPatterns.group)}>
-          <SettingsRow title="Hue" description="Choose a tint color">
+          <SettingsRow title="Hue">
             <HueControl
               value={settings.tintHue}
               active={settings.tintIntensity > 0}
               onValueChange={(tintHue) => update(settings, { tintHue })}
             />
           </SettingsRow>
-          <SettingsRow title="Intensity" description="Control how strongly the tint is applied">
+          <SettingsRow title="Intensity">
             <IntensityControl
               value={settings.tintIntensity}
               onValueChange={(tintIntensity) => update(settings, { tintIntensity })}
             />
           </SettingsRow>
           <SettingsSwitchRow
-            title="Reduce Transparency"
+            title="Reduce transparency"
             description="Replace translucent surfaces with opaque backgrounds"
             checked={settings.reduceTransparency || systemTransparency}
             disabled={systemTransparency}
@@ -319,7 +315,7 @@ export function AppearanceSettings(): ReactElement {
           <h2 {...props(settingsPatterns.sectionTitle)}>Typography</h2>
         </div>
         <div {...props(settingsPatterns.group)}>
-          <SettingsRow title="UI Font Size" description="Font size for the Nyte user interface">
+          <SettingsRow title="UI font size">
             <NumberField
               defaultValue={settings.uiFontSize}
               min={12}
@@ -330,12 +326,12 @@ export function AppearanceSettings(): ReactElement {
             >
               <NumberFieldGroup>
                 <NumberFieldDecrement />
-                <NumberFieldInput aria-label="UI Font Size" />
+                <NumberFieldInput aria-label="UI font size" />
                 <NumberFieldIncrement />
               </NumberFieldGroup>
             </NumberField>
           </SettingsRow>
-          <SettingsRow title="Code Font Size" description="Font size for code editors and diffs">
+          <SettingsRow title="Code font size" description="Code editors and diffs">
             <NumberField
               defaultValue={settings.codeFontSize}
               min={11}
@@ -346,18 +342,14 @@ export function AppearanceSettings(): ReactElement {
             >
               <NumberFieldGroup>
                 <NumberFieldDecrement />
-                <NumberFieldInput aria-label="Code Font Size" />
+                <NumberFieldInput aria-label="Code font size" />
                 <NumberFieldIncrement />
               </NumberFieldGroup>
             </NumberField>
           </SettingsRow>
-          <SettingsRow
-            title="UI Font Family"
-            description="Override the Nyte user interface typeface"
-            controlWidth="wide"
-          >
+          <SettingsRow title="UI font family" controlWidth="wide">
             <FontFamilySelect<UiFont>
-              label="UI Font Family"
+              label="UI font family"
               value={settings.uiFont}
               groups={uiFontGroups}
               loading={fonts.isPending}
@@ -365,13 +357,13 @@ export function AppearanceSettings(): ReactElement {
             />
           </SettingsRow>
           <SettingsRow
-            title="Code Font Family"
-            description="Override the font for code editors and diffs"
+            title="Code font family"
+            description="Code editors and diffs"
             controlWidth="wide"
             detail={<CodeFontPreview />}
           >
             <FontFamilySelect<CodeFont>
-              label="Code Font Family"
+              label="Code font family"
               value={settings.codeFont}
               groups={codeFontGroups}
               loading={fonts.isPending}
@@ -380,7 +372,7 @@ export function AppearanceSettings(): ReactElement {
           </SettingsRow>
           {mac && (
             <SettingsSwitchRow
-              title="Font Smoothing"
+              title="Font smoothing"
               description="Use native macOS font anti-aliasing"
               checked={settings.fontSmoothing === "antialiased"}
               onCheckedChange={(antialiased) =>

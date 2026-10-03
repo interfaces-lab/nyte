@@ -25,8 +25,10 @@ test("readable roles and glyphs meet contrast in each scope", { timeout: 60_000 
   const result: unknown = JSON.parse(
     await testRenderer(new URL("./scope-contrast.fixture.ts", import.meta.url)),
   );
+
   if (!Value.Check(contrastResults, result)) throw new Error("Invalid renderer contrast results");
   expect(result.length).toBeGreaterThan(0);
+
   for (const row of result) {
     expect(
       row.ratio,

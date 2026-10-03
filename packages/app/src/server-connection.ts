@@ -66,6 +66,7 @@ export function serverCatalog(
       defaults: {
         model: { provider: defaultModel.provider, id: defaultModel.id },
         thinkingLevel: "off" as const,
+        fast: false,
       },
     }),
     models: models.map((model) => ({

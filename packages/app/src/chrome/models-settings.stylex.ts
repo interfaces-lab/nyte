@@ -1,4 +1,4 @@
-import { input, shape } from "@nyte-ai/ui/schema.stylex";
+import { input, radius } from "@nyte-ai/ui/schema.stylex";
 /** Settings › Models geometry beyond the shared settings patterns. */
 import { create } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
@@ -26,7 +26,7 @@ export const modelsSettingsStyles = create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentSecondary,
     fontSize: type.fontSm,
@@ -44,7 +44,7 @@ export const modelsSettingsStyles = create({
     paddingBlock: 4,
   },
   groupTrigger: {
-    borderRadius: shape.control,
+    borderRadius: radius.control,
   },
   groupLabel: {
     display: "flex",
@@ -75,13 +75,12 @@ export const modelsSettingsStyles = create({
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
   },
-  groupActions: { display: "inline-flex", gap: 8, flexWrap: "wrap", marginInlineStart: "auto" },
   quiet: {
     display: "flex",
     alignItems: "center",
     minHeight: 44,
     paddingInline: 12,
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentSecondary,
     fontSize: type.fontBase,
@@ -111,7 +110,7 @@ export const modelsSettingsStyles = create({
     boxSizing: "border-box",
     paddingInline: 10,
     paddingBlock: 4,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,

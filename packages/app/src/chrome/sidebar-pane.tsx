@@ -1,4 +1,3 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * The rail's seat in the stage owns visibility and the resize handle, so the
  * rail itself only ever renders at its full width.
@@ -63,15 +62,15 @@ const styles = create({
       insetBlock: 0,
       insetInlineEnd: 0,
       width: 1,
-      backgroundColor: role.borderSecondaryTranslucent,
+      backgroundColor: "transparent",
       transitionProperty: "background-color",
       transitionDuration: motion.durationFast,
       transitionTimingFunction: motion.easeOut,
     },
     ":hover::after": { backgroundColor: role.borderPrimaryTranslucent },
-    ":focus-visible::after": { backgroundColor: role.contentInteractiveTertiary },
+    ":focus-visible::after": { backgroundColor: role.borderStrongTranslucent },
   },
-  handleActive: { "::after": { backgroundColor: role.contentInteractiveTertiary } },
+  handleActive: { "::after": { backgroundColor: role.borderStrongTranslucent } },
 });
 
 interface ResizeState {
@@ -168,7 +167,7 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
           aria-valuemin={SIDEBAR_WIDTH_MIN}
           aria-valuemax={SIDEBAR_WIDTH_MAX}
           aria-valuenow={sidebarWidth}
-          {...props(intent.primary, styles.handle, resizing && styles.handleActive)}
+          {...props(styles.handle, resizing && styles.handleActive)}
           onKeyDown={resizeWithKeyboard}
           onPointerDown={beginResize}
           onPointerMove={moveResize}

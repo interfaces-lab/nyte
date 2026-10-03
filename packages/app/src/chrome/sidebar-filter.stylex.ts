@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { menu, shape } from "@nyte-ai/ui/schema.stylex";
+import { menu, radius } from "@nyte-ai/ui/schema.stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 
 export const sidebarFilterStyles = create({
@@ -19,7 +19,7 @@ export const sidebarFilterStyles = create({
     minHeight: menu.itemHeight,
     paddingInline: 6,
     paddingBlock: 2,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     color: {
       default: role.contentInteractiveSecondary,
       "[data-highlighted]": role.contentInteractivePrimary,

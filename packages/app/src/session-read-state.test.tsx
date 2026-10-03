@@ -62,10 +62,12 @@ test("opening a completed thread clears its indicator and Unread filter, includi
   const directory = mkdtempSync(join(tmpdir(), "nyte-read-sessions-"));
   const path = join(directory, "local-storage.json");
   writeFileSync(path, "null");
+
   const storage = {
     getItem: () => readFileSync(path, "utf8"),
     setItem: (_key: string, value: string) => writeFileSync(path, value),
   };
+
   try {
     const state = new SessionReadState(storage);
     const row = session();
@@ -113,6 +115,7 @@ test("execution and attention indicators take priority over unread completion", 
     ["retry", "Retrying"],
     ["failed", "Failed"],
   ] as const;
+
   for (const [mark, label] of cases) {
     for (const unread of [false, true]) {
       const html = renderToStaticMarkup(<StatusDot mark={mark} unread={unread} />);
@@ -132,10 +135,12 @@ test("read receipts are independent for sessions and heads", () => {
   const state = new SessionReadState();
   const first = session();
   const otherSession = { ...first, sessionId: sessionId("other") };
+
   const branch = {
     ...first,
     heads: first.heads.map((head) => ({ ...head, head: "branch" })),
   };
+
   state.markRead(first);
   assert.match(indicator(otherSession, state), /Completed, unread/);
   assert.match(indicator(branch, state), /Completed, unread/);
@@ -159,6 +164,7 @@ test("every row state looks different from the others", () => {
       .filter((token) => token !== "" && !token.includes("__"))
       .sort()
       .join(" ");
+
   const looks = [
     ...(["working", "waiting", "retry", "failed"] as const).map((mark) =>
       looksLike(renderToStaticMarkup(<StatusDot mark={mark} />)),
@@ -166,18 +172,22 @@ test("every row state looks different from the others", () => {
     looksLike(renderToStaticMarkup(<StatusDot mark="idle" unread />)),
     looksLike(renderToStaticMarkup(<StatusDot mark="idle" />)),
   ];
+
   assert.equal(new Set(looks).size, looks.length);
 });
 
 test("failed threads stay under Needs attention after opening, and parked ones stay under Working", () => {
   const state = new SessionReadState();
+
   const failed = session({
     kind: "failed",
     failure: { class: "provider", message: "Provider failed" },
   });
+
   const parked = { ...session({ kind: "waiting" }), sessionId: sessionId("parked") };
   state.markRead(failed);
   state.markRead(parked);
+
   const groups = sessionsForView(
     [failed, parked],
     { ...DEFAULT_SESSION_VIEW, grouping: "status" },
@@ -185,6 +195,7 @@ test("failed threads stay under Needs attention after opening, and parked ones s
     1000,
     state.getSnapshot(),
   );
+
   assert.deepEqual(
     groups.map((group) => group.label),
     ["Needs attention", "Working"],
@@ -199,6 +210,7 @@ test("invalid or unavailable storage still allows a thread to be marked read", (
         throw new Error("Storage unavailable");
       },
     });
+
     const row = session();
     assert.match(indicator(row, state), /Completed, unread/);
     state.markRead(row);

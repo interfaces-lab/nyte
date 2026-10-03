@@ -1,10 +1,10 @@
 import type { SessionId } from "@nyte-ai/protocol";
 import { schemas, sessionId } from "@nyte-ai/protocol";
 import type { Rect, VirtualItem } from "@tanstack/react-virtual";
-import type { Static } from "typebox";
+import type { Static, TSchema } from "typebox";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { DesktopCatalog } from "../bridge.ts";
+import type { ComposerImageAttachment } from "../conversation/composer-files.ts";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import type { PaneId, SplitDirection } from "./pane-layout.ts";
 
@@ -17,6 +17,7 @@ const strict = { additionalProperties: false };
 
 export interface ComposerViewState {
   readonly draft: string;
+  readonly attachments: readonly ComposerImageAttachment[];
   readonly selectionStart: number;
   readonly selectionEnd: number;
   readonly focused: boolean;
@@ -49,14 +50,13 @@ interface SessionViewState {
   readonly composer: ComposerViewState;
   readonly scroll: ScrollViewState;
   readonly transcript: TranscriptViewState;
+  readonly workGroups: ReadonlyMap<string, boolean>;
   readonly focusedPaneId: PaneId;
   readonly split: SplitViewState | undefined;
 }
 
 export interface BlankViewState {
   readonly composer: ComposerViewState;
-  readonly configuration: DesktopCatalog["defaults"] | undefined;
-  readonly fastSettings: ReadonlySet<string>;
 }
 
 export interface ChatDraft extends BlankViewState {
@@ -68,6 +68,7 @@ type ClaimedChatDraft = Omit<ChatDraft, "id">;
 
 export const DEFAULT_COMPOSER_VIEW_STATE: ComposerViewState = {
   draft: "",
+  attachments: [],
   selectionStart: 0,
   selectionEnd: 0,
   focused: false,
@@ -78,13 +79,18 @@ function defaultSessionViewState(paneId: PaneId): SessionViewState {
     composer: DEFAULT_COMPOSER_VIEW_STATE,
     scroll: { top: 0, bottomPinned: true },
     transcript: { measurements: [], viewport: undefined, density: undefined },
+    workGroups: new Map(),
     focusedPaneId: paneId,
     split: undefined,
   };
 }
 
+function composerHasContent(composer: ComposerViewState): boolean {
+  return composer.draft.trim() !== "" || composer.attachments.length > 0;
+}
+
 function draftHasContent(draft: BlankViewState): boolean {
-  return draft.composer.draft.trim() !== "";
+  return composerHasContent(draft.composer);
 }
 
 /** A draft lives in exactly one slot: active or parked under one pane. */
@@ -116,19 +122,6 @@ const chatDraftSchema = Type.Object(
     id: Type.String({ minLength: 1 }),
     updatedAt: Type.Number(),
     composer: composerSchema,
-    configuration: Type.Optional(
-      Type.Object(
-        {
-          model: Type.Object(
-            { provider: Type.String({ minLength: 1 }), id: Type.String({ minLength: 1 }) },
-            strict,
-          ),
-          thinkingLevel: schemas.ThinkingLevel,
-        },
-        strict,
-      ),
-    ),
-    fastSettings: Type.Array(Type.String({ minLength: 1 }), { uniqueItems: true }),
   },
   strict,
 );
@@ -153,17 +146,44 @@ const persistedSnapshotSchema = Type.Object(
   strict,
 );
 
+const attachmentsSchema = Type.Array(
+  Type.Object(
+    { id: Type.String({ minLength: 1 }), name: Type.String(), content: schemas.ImageContent },
+    strict,
+  ),
+);
+
+/**
+ * Images live under their own key, by draft and session id. Typing rewrites
+ * only the text snapshot, and a store too full for an image keeps the text.
+ */
+const persistedImagesSchema = Type.Object(
+  {
+    drafts: Type.Record(Type.String({ minLength: 1 }), attachmentsSchema),
+    sessions: Type.Record(Type.String({ minLength: 1 }), attachmentsSchema),
+  },
+  strict,
+);
+
 type PersistedComposer = Static<typeof composerSchema>;
 
 type PersistedChatDraft = Static<typeof chatDraftSchema>;
 
 type PersistedSnapshot = Static<typeof persistedSnapshotSchema>;
 
-function composerView(composer: PersistedComposer): ComposerViewState {
+type PersistedAttachments = Static<typeof attachmentsSchema>;
+
+type PersistedImages = Static<typeof persistedImagesSchema>;
+
+function composerView(
+  composer: PersistedComposer,
+  attachments: PersistedAttachments = [],
+): ComposerViewState {
   const length = composer.draft.length;
 
   return {
     draft: composer.draft,
+    attachments,
     selectionStart: Math.min(composer.selectionStart, length),
     selectionEnd: Math.min(composer.selectionEnd, length),
     focused: false,
@@ -179,34 +199,18 @@ function persistableComposer(composer: ComposerViewState): PersistedComposer {
 }
 
 function persistableDraft(draft: ChatDraft): PersistedChatDraft {
-  const persisted: PersistedChatDraft = {
+  return {
     id: draft.id,
     updatedAt: draft.updatedAt,
     composer: persistableComposer(draft.composer),
-    fastSettings: [...draft.fastSettings],
-  };
-
-  if (draft.configuration === undefined) return persisted;
-
-  return {
-    ...persisted,
-    configuration: {
-      model: {
-        provider: draft.configuration.model.provider,
-        id: draft.configuration.model.id,
-      },
-      thinkingLevel: draft.configuration.thinkingLevel,
-    },
   };
 }
 
-function hydrateDraft(draft: PersistedChatDraft): ChatDraft {
+function hydrateDraft(draft: PersistedChatDraft, images: PersistedImages | undefined): ChatDraft {
   return {
     id: draft.id,
     updatedAt: draft.updatedAt,
-    composer: composerView(draft.composer),
-    configuration: draft.configuration,
-    fastSettings: new Set(draft.fastSettings),
+    composer: composerView(draft.composer, images?.drafts[draft.id]),
   };
 }
 
@@ -220,24 +224,48 @@ function persistablePane(state: PaneDraftState): Static<typeof paneDraftsSchema>
   return { active: persistableDraft(state.active), parked };
 }
 
-function composerTextChanged(left: ComposerViewState, right: ComposerViewState): boolean {
+function composerChanged(left: ComposerViewState, right: ComposerViewState): boolean {
   return (
     left.draft !== right.draft ||
+    left.attachments !== right.attachments ||
     left.selectionStart !== right.selectionStart ||
     left.selectionEnd !== right.selectionEnd
   );
 }
 
-function parsePersistedSnapshot(value: string | null): PersistedSnapshot | undefined {
+function parseStored<Schema extends TSchema>(
+  schema: Schema,
+  value: string | null,
+): Static<Schema> | undefined {
   if (value === null) return undefined;
 
   try {
     const parsed: unknown = JSON.parse(value);
 
-    return Value.Check(persistedSnapshotSchema, parsed) ? parsed : undefined;
+    return Value.Check(schema, parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }
+}
+
+function readStored(persistence: Persistence, key: string): string | null {
+  try {
+    return persistence.storage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(persistence: Persistence, key: string, value: string): void {
+  try {
+    persistence.storage.setItem(key, value);
+  } catch {
+    // A denied or full local store must not drop the in-memory draft.
+  }
+}
+
+function imagesKey(persistence: Persistence): string {
+  return `${persistence.storageKey}:images`;
 }
 
 export class SessionViewStateStore {
@@ -246,6 +274,7 @@ export class SessionViewStateStore {
   readonly #listeners = new Set<() => void>();
   readonly #persistence: Persistence | undefined;
   #publishTimer: ReturnType<typeof setTimeout> | undefined;
+  #savedImages = "";
   #revision = 0;
 
   constructor(persistence?: Persistence) {
@@ -279,7 +308,7 @@ export class SessionViewStateStore {
 
     if (measured) this.#trimMeasurements();
 
-    if (composerTextChanged(previous?.composer ?? DEFAULT_COMPOSER_VIEW_STATE, state.composer)) {
+    if (composerChanged(previous?.composer ?? DEFAULT_COMPOSER_VIEW_STATE, state.composer)) {
       this.#persist();
     }
   }
@@ -304,7 +333,10 @@ export class SessionViewStateStore {
     const current = drafts.active;
 
     if (current === state) return;
-    const contentChanged = current.composer.draft !== state.composer.draft;
+
+    const contentChanged =
+      current.composer.draft !== state.composer.draft ||
+      current.composer.attachments !== state.composer.attachments;
 
     const next: ChatDraft = {
       ...state,
@@ -316,13 +348,7 @@ export class SessionViewStateStore {
 
     if (contentChanged) this.#schedulePublish();
 
-    if (
-      composerTextChanged(current.composer, next.composer) ||
-      current.configuration !== next.configuration ||
-      current.fastSettings !== next.fastSettings
-    ) {
-      this.#persist();
-    }
+    if (composerChanged(current.composer, next.composer)) this.#persist();
   }
 
   drafts(): readonly ChatDraft[] {
@@ -399,18 +425,10 @@ export class SessionViewStateStore {
 
     const submitted: ClaimedChatDraft = {
       composer,
-      configuration: current.configuration,
-      fastSettings: current.fastSettings,
       updatedAt: current.composer.draft === composer.draft ? current.updatedAt : Date.now(),
     };
 
-    // Sending is not a reason to drop the model the reader chose: the pane's
-    // next chat keeps it, and the catalog default applies only before a pick.
-    drafts.active = {
-      ...this.#createDraft(current.id),
-      configuration: current.configuration,
-      fastSettings: current.fastSettings,
-    };
+    drafts.active = this.#createDraft(current.id);
     this.#emit();
 
     return submitted;
@@ -456,8 +474,6 @@ export class SessionViewStateStore {
   #createDraft(id: string = crypto.randomUUID()): ChatDraft {
     return {
       composer: DEFAULT_COMPOSER_VIEW_STATE,
-      configuration: undefined,
-      fastSettings: new Set<string>(),
       id,
       updatedAt: Date.now(),
     };
@@ -487,17 +503,18 @@ export class SessionViewStateStore {
     const persistence = this.#persistence;
 
     if (persistence === undefined) return;
-    let raw: string | null = null;
 
-    try {
-      raw = persistence.storage.getItem(persistence.storageKey);
-    } catch {
-      return;
-    }
-
-    const persisted = parsePersistedSnapshot(raw);
+    const persisted = parseStored(
+      persistedSnapshotSchema,
+      readStored(persistence, persistence.storageKey),
+    );
 
     if (persisted === undefined) return;
+
+    const images = parseStored(
+      persistedImagesSchema,
+      readStored(persistence, imagesKey(persistence)),
+    );
 
     for (const paneId of ["primary", "secondary"] as const) {
       const stored = persisted.panes[paneId];
@@ -506,22 +523,21 @@ export class SessionViewStateStore {
       const parked = new Map<string, ChatDraft>();
 
       for (const storedDraft of stored.parked) {
-        const draft = hydrateDraft(storedDraft);
+        const draft = hydrateDraft(storedDraft, images);
 
         if (draftHasContent(draft) && draft.id !== stored.active.id) {
           parked.set(draft.id, draft);
         }
       }
 
-      this.#drafts.set(paneId, { active: hydrateDraft(stored.active), parked });
+      this.#drafts.set(paneId, { active: hydrateDraft(stored.active, images), parked });
     }
 
-    for (const [id, composer] of Object.entries(persisted.sessions)) {
-      if (composer.draft.trim() === "") continue;
-      this.#sessions.set(sessionId(id), {
-        ...defaultSessionViewState("primary"),
-        composer: composerView(composer),
-      });
+    for (const [id, stored] of Object.entries(persisted.sessions)) {
+      const composer = composerView(stored, images?.sessions[id]);
+
+      if (!composerHasContent(composer)) continue;
+      this.#sessions.set(sessionId(id), { ...defaultSessionViewState("primary"), composer });
     }
   }
 
@@ -544,18 +560,46 @@ export class SessionViewStateStore {
     const sessions: PersistedSnapshot["sessions"] = {};
 
     for (const [id, state] of this.#sessions) {
-      if (state.composer.draft.trim() === "") continue;
+      if (!composerHasContent(state.composer)) continue;
       sessions[id] = persistableComposer(state.composer);
     }
 
-    try {
-      persistence.storage.setItem(
-        persistence.storageKey,
-        JSON.stringify({ version: 1, panes, sessions } satisfies PersistedSnapshot),
-      );
-    } catch {
-      // A denied or full local store must not drop the in-memory draft.
+    writeStored(
+      persistence,
+      persistence.storageKey,
+      JSON.stringify({ version: 1, panes, sessions } satisfies PersistedSnapshot),
+    );
+    this.#persistImages(persistence);
+  }
+
+  /** Attachment ids stand for the image set; while it holds, its megabytes stay unwritten. */
+  #persistImages(persistence: Persistence): void {
+    const images: PersistedImages = { drafts: {}, sessions: {} };
+
+    for (const state of this.#drafts.values()) {
+      for (const draft of [state.active, ...state.parked.values()]) {
+        if (draft.composer.attachments.length === 0) continue;
+        images.drafts[draft.id] = [...draft.composer.attachments];
+      }
     }
+
+    for (const [id, state] of this.#sessions) {
+      if (state.composer.attachments.length === 0) continue;
+      images.sessions[id] = [...state.composer.attachments];
+    }
+
+    const signature = JSON.stringify(
+      [images.drafts, images.sessions].map((owners) =>
+        Object.entries(owners).map(([owner, attachments]) => [
+          owner,
+          attachments.map(({ id }) => id),
+        ]),
+      ),
+    );
+
+    if (signature === this.#savedImages) return;
+    this.#savedImages = signature;
+    writeStored(persistence, imagesKey(persistence), JSON.stringify(images));
   }
 
   #emit(): void {

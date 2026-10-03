@@ -16,6 +16,7 @@ export function run() {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
+
   try {
     flushSync(() =>
       root.render(
@@ -28,13 +29,16 @@ export function run() {
       ),
     );
     const kbd = container.querySelector("kbd");
+
     if (kbd === null) throw new Error("Kbd did not render");
     const computed = getComputedStyle(kbd);
+
     const actual = {
       className: [computed.paddingInlineStart, computed.color],
       style: computed.letterSpacing,
       xstyle: computed.fontWeight,
     };
+
     const expected = {
       className: ["10px", "rgb(255, 0, 0)"],
       style: "3px",

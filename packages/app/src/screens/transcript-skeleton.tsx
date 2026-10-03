@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 /**
  * The transcript's shape while a session's snapshot is still on its way:
  * a user card, a work row, and a prose block at the transcript's row gaps so
@@ -34,13 +34,13 @@ const styles = create({
     boxSizing: "border-box",
     height: 58,
     marginTop: 10,
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     backgroundColor: role.bgMutedTranslucent,
   },
   line: (width: string) => ({
     width,
     height: 12,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: role.bgMutedTranslucent,
   }),
   row: { display: "flex", flexDirection: "column", gap: 10, paddingBlock: 6 },

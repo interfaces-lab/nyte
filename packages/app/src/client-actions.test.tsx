@@ -59,9 +59,11 @@ test.each([true, false])("displayed bindings resolve to their action, mac=%s", (
 
 test("new chat keycaps use the platform binding that executes the action", () => {
   const mac = renderToStaticMarkup(<Kbd keys={clientActionKeys(clientActions.newChat, true)} />);
+
   const windows = renderToStaticMarkup(
     <Kbd keys={clientActionKeys(clientActions.newChat, false)} />,
   );
+
   expect(mac.replace(/<[^>]+>/g, "")).toBe("⌘N");
   expect(windows.replace(/<[^>]+>/g, "")).toBe("CtrlN");
   expect(clientActionShortcut(clientActions.settings, true)).toBe("⌘,");
@@ -89,6 +91,7 @@ test("settings and customize keep window navigation but do not split the workspa
       resolveAction(keyEvent({ key: "b", metaKey: true, altKey: true }), true, stage),
     ).toBeUndefined();
   }
+
   expect(resolveAction(keyEvent({ key: "b", metaKey: true }), true, "settings")).toBeUndefined();
   expect(resolveAction(keyEvent({ key: "b", metaKey: true }), true, "customize")?.id).toBe(
     "sidebar",
@@ -156,6 +159,7 @@ test.each([true, false])("account Settings hint follows the active binding, mac=
     const resolved = resolveAction(keyEvent({ key: ",", metaKey: mac, ctrlKey: !mac }), mac, stage);
     expect(shortcut === "").toBe(resolved === undefined);
     expect(clientActionAvailable(clientActions.generalSettings, stage, capabilities)).toBe(true);
+
     if (resolved !== undefined) expect(shortcut).toBe(mac ? "⌘," : "Ctrl+,");
   }
 });

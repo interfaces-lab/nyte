@@ -1,27 +1,23 @@
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { props } from "@stylexjs/stylex";
-// oxlint-disable-next-line no-restricted-imports -- the shortcut and input focus follow the open state
-import { useEffect, useId, useRef, useState } from "react";
+// oxlint-disable-next-line no-restricted-imports -- the shortcut follows the open state
+import { useEffect, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
-import { CommandMenuContent, Menu, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
+import { Command } from "@nyte-ai/ui/command";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
-import { Input } from "@nyte-ai/ui/input";
-import { formatTimeAgo, StatusDot } from "../components/ui.tsx";
+import { formatTimeAgo } from "../components/ui.tsx";
+import { StatusGlyph } from "./status-glyph.tsx";
 import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { macPlatform } from "../platform.ts";
 import { sessionActivityMark } from "../session-activity.ts";
 import { useOptimisticSessionIds } from "../use-outbox.ts";
 import { isOption, sessionsForNavigation } from "./sidebar-view.ts";
-import { useSessionPreview, useSessionSearch } from "../queries.ts";
+import { useSessionSearch } from "../queries.ts";
 import { PaletteLegend } from "./palette-legend.tsx";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
-import {
-  sessionHasUnreadCompletion,
-  sessionReadState,
-  useReadSessions,
-} from "../session-read-state.ts";
+import { sessionReadState } from "../session-read-state.ts";
 import { settingsSectionGroups, type SettingsSection } from "./settings-navigation.tsx";
 import {
   clientActionKeys,
@@ -40,6 +36,8 @@ interface SearchPaletteProps {
   readonly open: boolean;
   readonly platform: NodeJS.Platform | undefined;
   readonly sessionQueriesAvailable: boolean;
+  /** The sidebar's chat rows, in its order. Undefined while they load. */
+  readonly recentSessions: readonly SessionInfo[] | undefined;
   readonly onOpenChange: (open: boolean) => void;
   readonly onOpenSession: (sessionId: SessionId) => void;
   readonly onNewChat: () => void;
@@ -96,6 +94,7 @@ export function SearchPalette({
   open,
   platform,
   sessionQueriesAvailable,
+  recentSessions,
   onOpenChange,
   onOpenSession,
   onNewChat,
@@ -104,22 +103,16 @@ export function SearchPalette({
   onOpenSettings,
   onOpenCustomize,
 }: SearchPaletteProps): ReactElement {
-  const popupRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const resultsID = useId();
-  const triggerID = useId();
-  const readSessions = useReadSessions();
   const optimisticSessions = useOptimisticSessionIds();
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<PaletteTab>("all");
   const includesAgents = tab === "all" || tab === "agents";
   const searchingAgents = includesAgents && query.trim() !== "";
-  const recentSessions = useSessionPreview(open && sessionQueriesAvailable && includesAgents);
   const sessionSearch = useSessionSearch(query, open && sessionQueriesAvailable && searchingAgents);
 
-  const sessions = sessionsForNavigation(
-    searchingAgents ? (sessionSearch.data?.items ?? []) : (recentSessions.data?.items ?? []),
-  );
+  const sessions = searchingAgents
+    ? sessionsForNavigation(sessionSearch.data?.items ?? [])
+    : (recentSessions ?? []);
 
   const mac = macPlatform(platform);
   const settingsSections = settingsSectionGroups().flat();
@@ -178,14 +171,10 @@ export function SearchPalette({
     (action) => (tab === "all" || tab === action.group) && matches(action, query),
   );
 
-  // One stable node the whole time the palette is open: a live region that
-  // appears and disappears with the list announces nothing.
-  const resultCount =
-    tab === "agents"
-      ? sessions.length
-      : tab === "all"
-        ? sessions.length + visibleActions.length
-        : visibleActions.length;
+  const rows = [
+    ...(includesAgents ? sessions.map((session) => session.sessionId) : []),
+    ...(tab === "agents" ? [] : visibleActions.map((action) => action.key)),
+  ];
 
   const changeOpen = (nextOpen: boolean): void => {
     if (nextOpen) setTab("all");
@@ -216,125 +205,84 @@ export function SearchPalette({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [mac, open, onOpenChange]);
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const frame = window.requestAnimationFrame(() => inputRef.current?.focus());
+  const chatsPending = searchingAgents ? sessionSearch.isPending : recentSessions === undefined;
 
-    return () => window.cancelAnimationFrame(frame);
-  }, [open]);
+  const emptyMessage = (): string => {
+    if (includesAgents && (!sessionQueriesAvailable || chatsPending)) return "Loading chats…";
 
-  const focusResult = (edge: "first" | "last"): void => {
-    const items = popupRef.current?.querySelectorAll<HTMLElement>(
-      '[role="menuitem"]:not([data-disabled])',
-    );
+    if (searchingAgents && sessionSearch.isError) return "Couldn’t load chats. Try again.";
 
-    if (items === undefined || items.length === 0) return;
-    items[edge === "first" ? 0 : items.length - 1]?.focus();
+    if (tab === "agents")
+      return searchingAgents ? `No chats match "${query.trim()}"` : "No chats yet";
+
+    if (tab === "all") return `Nothing matches "${query.trim()}"`;
+
+    return `No ${tab} match this search.`;
   };
 
-  const agentContent = (embedded = false): ReactElement | null => {
-    if (!sessionQueriesAvailable)
-      return embedded ? null : (
-        <div aria-busy="true" {...props(styles.empty)}>
-          Loading chats…
-        </div>
-      );
+  const chatGroup = sessions.length > 0 && (
+    <Command.Group heading={searchingAgents ? "Chats" : "Recent chats"}>
+      {sessions.map((session) => (
+        <Command.Item
+          key={session.sessionId}
+          value={session.sessionId}
+          leading={
+            <StatusGlyph
+              session={session}
+              mark={sessionActivityMark(session, optimisticSessions.has(session.sessionId))}
+            />
+          }
+          meta={formatTimeAgo(session.lastActivityAt)}
+          onSelect={() =>
+            run(() => {
+              sessionReadState.markRead(session);
+              onOpenSession(session.sessionId);
+            })
+          }
+        >
+          {sessionTitle(session)}
+        </Command.Item>
+      ))}
+    </Command.Group>
+  );
 
-    if (searchingAgents ? sessionSearch.isPending : recentSessions.isPending)
-      return (
-        <div aria-busy="true" {...props(styles.empty)}>
-          Loading chats…
-        </div>
-      );
-
-    if (searchingAgents ? sessionSearch.isError : recentSessions.isError)
-      return embedded ? null : (
-        <div role="alert" {...props(styles.empty)}>
-          Couldn&rsquo;t load chats. Try again.
-        </div>
-      );
-
-    if (sessions.length === 0)
-      return embedded ? null : (
-        <div {...props(styles.empty)}>
-          {searchingAgents ? `No chats match "${query.trim()}"` : "No chats yet"}
-        </div>
-      );
-
-    return (
-      <>
-        <div {...props(styles.groupLabel)}>{searchingAgents ? "Chats" : "Recent chats"}</div>
-        {sessions.map((session) => (
-          <MenuItem
-            key={session.sessionId}
-            xstyle={styles.result}
-            leading={
-              <StatusDot
-                mark={sessionActivityMark(session, optimisticSessions.has(session.sessionId))}
-                unread={sessionHasUnreadCompletion(session, readSessions)}
-              />
-            }
-            meta={formatTimeAgo(session.lastActivityAt)}
-            label={sessionTitle(session)}
-            onClick={() =>
-              run(() => {
-                sessionReadState.markRead(session);
-                onOpenSession(session.sessionId);
-              })
-            }
-          >
-            {sessionTitle(session)}
-          </MenuItem>
-        ))}
-      </>
-    );
-  };
+  const actionGroup = visibleActions.length > 0 && (
+    <Command.Group heading={tab === "all" ? "Actions" : tabLabel(tab)}>
+      {visibleActions.map((action) => (
+        <Command.Item
+          key={action.key}
+          value={action.key}
+          leading={<Icon name={action.icon} size={16} />}
+          meta={action.meta}
+          onSelect={() => run(action.run)}
+        >
+          {action.label}
+        </Command.Item>
+      ))}
+    </Command.Group>
+  );
 
   return (
-    <Menu open={open} triggerId={triggerID} onOpenChange={changeOpen}>
-      <MenuTrigger id={triggerID} render={trigger} />
-      <CommandMenuContent ref={popupRef}>
+    <Command.Root open={open} onOpenChange={changeOpen}>
+      <Command.Trigger render={trigger} />
+      <Command.Popup
+        title="Search chats and actions"
+        items={rows}
+        value={query}
+        onValueChange={(value) => setQuery(value)}
+      >
+        <Command.Input
+          aria-label="Search"
+          placeholder="Search chats and actions…"
+          trailing={<Kbd keys={clientActionKeys(clientActions.search, mac)} />}
+        />
         <Tabs.Root
           variant="pill"
           value={tab}
-          xstyle={styles.root}
           onValueChange={(value) => {
             if (isOption(value, TABS)) setTab(value);
           }}
         >
-          <search {...props(styles.searchRow)}>
-            <Icon name="search" size={15} />
-            <Input
-              ref={inputRef}
-              variant="bare"
-              size="xl"
-              aria-label="Search"
-              aria-controls={`${resultsID}-${tab}`}
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="Search chats and actions…"
-              value={query}
-              xstyle={styles.input}
-              onValueChange={setQuery}
-              onKeyDown={(event) => {
-                if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  focusResult("first");
-                } else if (event.key === "ArrowUp") {
-                  event.preventDefault();
-                  focusResult("last");
-                } else if (
-                  event.key === "Home" ||
-                  event.key === "End" ||
-                  (event.key.length === 1 && !event.metaKey && !event.ctrlKey)
-                ) {
-                  // The menu's typeahead and list navigation would cancel text editing.
-                  event.stopPropagation();
-                }
-              }}
-            />
-            <Kbd keys={clientActionKeys(clientActions.search, mac)} />
-          </search>
           <Tabs.List aria-label="Search categories" xstyle={styles.tabs}>
             {TABS.map((option) => (
               <Tabs.Tab key={option} value={option}>
@@ -342,71 +290,17 @@ export function SearchPalette({
               </Tabs.Tab>
             ))}
           </Tabs.List>
-          <div role="status" {...props(srOnly)}>
-            {`${String(resultCount)} ${resultCount === 1 ? "result" : "results"}`}
-          </div>
-          <Tabs.Panel id={`${resultsID}-agents`} value="agents" xstyle={styles.results}>
-            {agentContent()}
-          </Tabs.Panel>
-          <Tabs.Panel id={`${resultsID}-all`} value="all" xstyle={styles.results}>
-            {agentContent(true)}
-            {visibleActions.length > 0 && (
-              <>
-                <div {...props(styles.groupLabel)}>Actions</div>
-                {visibleActions.map((action) => (
-                  <MenuItem
-                    key={action.key}
-                    xstyle={styles.result}
-                    leading={
-                      <span {...props(styles.resultIcon)}>
-                        <Icon name={action.icon} size={16} />
-                      </span>
-                    }
-                    meta={action.meta}
-                    label={action.label}
-                    onClick={() => run(action.run)}
-                  >
-                    {action.label}
-                  </MenuItem>
-                ))}
-              </>
-            )}
-          </Tabs.Panel>
-          {(["actions", "settings"] as const).map((panelTab) => (
-            <Tabs.Panel
-              key={panelTab}
-              id={`${resultsID}-${panelTab}`}
-              value={panelTab}
-              xstyle={styles.results}
-            >
-              {visibleActions.length === 0 ? (
-                <div {...props(styles.empty)}>No {panelTab} match this search.</div>
-              ) : (
-                <>
-                  <div {...props(styles.groupLabel)}>{tabLabel(panelTab)}</div>
-                  {visibleActions.map((action) => (
-                    <MenuItem
-                      key={action.key}
-                      xstyle={styles.result}
-                      leading={
-                        <span {...props(styles.resultIcon)}>
-                          <Icon name={action.icon} size={16} />
-                        </span>
-                      }
-                      meta={action.meta}
-                      label={action.label}
-                      onClick={() => run(action.run)}
-                    >
-                      {action.label}
-                    </MenuItem>
-                  ))}
-                </>
-              )}
-            </Tabs.Panel>
-          ))}
         </Tabs.Root>
+        <div role="status" {...props(srOnly)}>
+          {`${String(rows.length)} ${rows.length === 1 ? "result" : "results"}`}
+        </div>
+        <Command.List aria-label={tabLabel(tab)}>
+          <Command.Empty aria-busy={includesAgents && chatsPending}>{emptyMessage()}</Command.Empty>
+          {includesAgents && chatGroup}
+          {tab !== "agents" && actionGroup}
+        </Command.List>
         <PaletteLegend />
-      </CommandMenuContent>
-    </Menu>
+      </Command.Popup>
+    </Command.Root>
   );
 }

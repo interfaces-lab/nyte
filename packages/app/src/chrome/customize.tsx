@@ -194,15 +194,6 @@ function Inventory({
                   {pluginDetail(plugin)}
                 </Row.Description>
               </Row.Body>
-              <span
-                {...props(
-                  plugin.status === "failed" && intent.danger,
-                  styles.badge,
-                  plugin.status === "failed" && styles.failedBadge,
-                )}
-              >
-                {plugin.status}
-              </span>
             </Row>
           ))}
         </div>

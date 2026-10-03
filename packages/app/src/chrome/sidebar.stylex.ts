@@ -1,4 +1,4 @@
-import { input, shape, target } from "@nyte-ai/ui/schema.stylex";
+import { glyph, input, radius, target } from "@nyte-ai/ui/schema.stylex";
 /**
  * Sidebar feature styles.
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
@@ -124,7 +124,7 @@ export const sidebarStyles = create({
     paddingInlineStart: sidebar.rowPaddingInline,
     paddingInlineEnd: 4,
     flex: 1,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     color: "inherit",
   },
   sectionChevron: {
@@ -147,7 +147,7 @@ export const sidebarStyles = create({
     minHeight: sidebar.rowHeight,
     gap: sidebar.rowGap,
     "--_row-padding-inline": sidebar.rowPaddingInline,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     color: role.contentChrome,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,
@@ -233,7 +233,7 @@ export const sidebarStyles = create({
     // The label is a plain box, not a flex line, so the field fills it by width.
     width: "100%",
     height: input.heightMd,
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     borderColor: role.borderSecondaryTranslucent,
     outlineStyle: { default: "none", ":focus-visible": "solid" },
     outlineWidth: 1,
@@ -269,7 +269,7 @@ export const sidebarStyles = create({
     placeItems: "center",
     width: 12,
     height: 12,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: role.sidebarMaterial,
     color: role.contentSecondary,
   },
@@ -289,7 +289,7 @@ export const sidebarStyles = create({
     borderWidth: 1.5,
     borderStyle: "solid",
     borderColor: "currentColor",
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
   },
   workspaceGlyph: {
     position: "relative",
@@ -380,7 +380,7 @@ export const sidebarStyles = create({
   showMore: {
     "--_row-fill": { default: "transparent", ":hover": role.bgHover },
     paddingInline: `calc(${sidebar.rowPaddingInline} + ${sidebar.iconSlot} + ${sidebar.rowGap})`,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     color: { default: role.contentInteractiveSecondary, ":disabled": role.contentDisabled },
     fontSize: type.fontBase,
   },
@@ -404,7 +404,7 @@ export const sidebarStyles = create({
   avatarSlot: {
     width: sidebar.iconSlot,
     height: sidebar.iconSlot,
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     overflow: "hidden",
   },
   avatar: { display: "block", width: "100%", height: "100%", objectFit: "cover" },
@@ -421,5 +421,50 @@ export const sidebarStyles = create({
       ":is([data-highlighted])": role.contentPrimary,
       ":is([data-disabled])": role.contentDisabled,
     },
+  },
+  preview: {
+    display: "flex",
+    flexDirection: "column",
+    width: "max-content",
+    maxWidth: "min(260px, var(--available-width))",
+    padding: 8,
+    color: role.contentPrimary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    whiteSpace: "normal",
+  },
+  previewTitle: {
+    overflow: "hidden",
+    fontWeight: 500,
+    whiteSpace: "nowrap",
+    textOverflow: "ellipsis",
+  },
+  previewDetails: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    marginBlockStart: 6,
+  },
+  previewDetail: {
+    display: "grid",
+    gridTemplateColumns: "14px minmax(0, 1fr)",
+    alignItems: "center",
+    gap: 6,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+  },
+  previewDetailIcon: {
+    display: "grid",
+    placeItems: "center",
+    width: glyph.sm,
+    height: type.leadingSm,
+    color: role.contentTertiary,
+  },
+  previewDetailText: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
 });

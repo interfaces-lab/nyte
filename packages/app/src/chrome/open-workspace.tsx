@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 /**
  * Trust is requested when a session reports it through an observer snapshot
  * or activation event. Folder selection failures appear as a dismissible
@@ -26,7 +26,7 @@ const styles = create({
   title: { lineHeight: type.leadingBase },
   path: {
     padding: "6px 10px",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentSecondary,
     fontFamily: type.fontMono,
@@ -65,22 +65,24 @@ function setPrompt(next: string | undefined): void {
 export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
   switch (outcome.kind) {
     case "needs_trust":
-      toast.dismiss("workspace-open");
+      toast.close("workspace-open");
       setPrompt(outcome.path);
 
       return;
     case "failed":
       setPrompt(undefined);
-      toast.error("Couldn't open folder", {
+      toast.add({
+        type: "error",
+        title: "Couldn't open folder",
         id: "workspace-open",
         description: outcome.message,
-        duration: Infinity,
+        timeout: 0,
       });
 
       return;
     case "opened":
     case "cancelled":
-      toast.dismiss("workspace-open");
+      toast.close("workspace-open");
       setPrompt(undefined);
 
       return;
@@ -92,14 +94,46 @@ export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
   }
 }
 
-/** A session's activation says the folder needs trust; ask once per folder until granted. */
-export function requestTrust(activation: SessionActivationState): void {
-  if (activation.kind !== "requires") return;
-  const path = activation.requirement.cwd;
+let failedShown = false;
 
-  if (declined.has(path)) return;
-  toast.dismiss("workspace-open");
-  setPrompt(path);
+/** A session's activation says what it needs: trust, asked once per folder until granted, or a plugin fix. */
+export function observeActivation(activation: SessionActivationState): void {
+  switch (activation.kind) {
+    case "requires": {
+      const path = activation.requirement.cwd;
+
+      if (declined.has(path)) return;
+      toast.close("workspace-open");
+      setPrompt(path);
+
+      return;
+    }
+
+    case "failed":
+      failedShown = true;
+      toast.add({
+        type: "error",
+        title: "Plugins failed to load",
+        id: "plugins-failed",
+        description: activation.error,
+        timeout: 0,
+      });
+
+      return;
+    case "active":
+      if (!failedShown) return;
+      failedShown = false;
+      toast.close("plugins-failed");
+
+      return;
+    case "inactive":
+      return;
+    default: {
+      const _exhaustive: never = activation;
+
+      return _exhaustive;
+    }
+  }
 }
 
 function declineTrust(path: string): void {

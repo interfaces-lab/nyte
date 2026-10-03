@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 /** Settings navigation in the persistent sidebar and route-owned page content. */
 import { create } from "@stylexjs/stylex";
 import { settings, sidebar } from "../theme/schema.stylex.ts";
@@ -24,7 +24,7 @@ export const appearanceSettingsStyles = create({
     marginBlockEnd: 16,
     paddingInline: sidebar.rowPaddingInline,
     borderWidth: 0,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     boxShadow: {
       default: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
       ":focus-within": `inset 0 0 0 1px ${role.borderPrimaryTranslucent}`,

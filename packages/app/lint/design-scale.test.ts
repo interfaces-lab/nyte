@@ -13,20 +13,28 @@ import { afterAll, beforeAll, expect, test } from "vitest";
  * recognises, fails here rather than going quiet.
  */
 const run = promisify(execFile);
+
 const here = dirname(fileURLToPath(import.meta.url));
+
 const repoRoot = join(here, "../../..");
+
 const fixture = join(here, "fixtures/design-scale-fixture.ts");
+
 const foreignFixture = join(here, "fixtures/foreign-create-fixture.ts");
+
 const configDirectory = mkdtempSync(join(tmpdir(), "nyte-design-scale-"));
 
 type Violation = { file: string; line: number; rule: string; message: string };
+
 let violations: Array<Violation> = [];
 
 const lineOf = (needle: string): number => {
   const index = readFileSync(fixture, "utf8")
     .split("\n")
     .findIndex((line) => line.includes(needle));
+
   if (index < 0) throw new Error(`fixture line not found: ${needle}`);
+
   return index + 1;
 };
 
@@ -48,6 +56,7 @@ beforeAll(async () => {
       rules: { "nyte-design/spacing-scale": "error", "nyte-design/size-grid": "error" },
     }),
   );
+
   const result = await run("node", [
     join(repoRoot, "node_modules/oxlint/bin/oxlint"),
     "--config",
@@ -57,7 +66,9 @@ beforeAll(async () => {
     fixture,
     foreignFixture,
   ]).catch((error: { stdout?: string }) => ({ stdout: error.stdout ?? "" }));
+
   if (!result.stdout.startsWith("{")) throw new Error(`oxlint did not report: ${result.stdout}`);
+
   const report: {
     diagnostics?: Array<{
       code?: string;
@@ -66,6 +77,7 @@ beforeAll(async () => {
       labels?: Array<{ span: { line: number } }>;
     }>;
   } = JSON.parse(result.stdout);
+
   violations = (report.diagnostics ?? []).map((diagnostic) => ({
     file: diagnostic.filename ?? "",
     rule: diagnostic.code ?? "",

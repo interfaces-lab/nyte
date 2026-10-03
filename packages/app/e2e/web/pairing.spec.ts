@@ -5,6 +5,7 @@ import { pair } from "../utils/pairing.ts";
 import { collectErrors } from "../utils/errors.ts";
 
 const REJECTED = "The server rejected this token. Update the connection token.";
+
 const WRONG_TOKEN = "not-the-e2e-token-0123456789abcdef";
 
 /** Marks `<html>` once the connect form mounts, however briefly; runs before any page script. */

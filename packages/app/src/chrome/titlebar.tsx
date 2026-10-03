@@ -145,6 +145,7 @@ export function Titlebar(): ReactElement {
 
   const openTerminal = useCallback((): void => {
     if (nyte.host.terminal === undefined) return;
+
     const id = workbenchController.actions.openTab({
       view: viewKey,
       tab: { kind: "terminal", owner: { kind: "user" } },

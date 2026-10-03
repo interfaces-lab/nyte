@@ -101,6 +101,7 @@ function retain(): () => void {
   const entry = shared;
 
   if (entry === undefined) return () => {};
+
   window.clearTimeout(entry.idle);
   entry.idle = undefined;
   entry.surfaces += 1;

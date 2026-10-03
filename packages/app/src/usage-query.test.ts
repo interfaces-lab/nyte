@@ -2,14 +2,20 @@ import assert from "node:assert/strict";
 import { afterEach, test, vi } from "vitest";
 import { QueryObserver } from "@tanstack/react-query";
 import { sessionId } from "@nyte-ai/protocol";
-import type { UsageSnapshot, UsageWindow } from "./bridge.ts";
+import type { HostBridge, UsageSnapshot, UsageWindow } from "./bridge.ts";
+import { installBridge } from "./nyte.ts";
 import { queryClient, usageReportOptions } from "./queries.ts";
 import { USAGE_RANGES, USAGE_STALE_AFTER_MS, usageWindow } from "./chrome/usage-view.ts";
+import { createWebBridge } from "./web/bridge.ts";
 
-const readUsage = vi.hoisted(() => vi.fn<() => Promise<UsageSnapshot>>());
-vi.mock("./nyte.ts", () => ({ nyte: { host: { usage: readUsage } } }));
+const readUsage = vi.fn<HostBridge["usage"]>();
+
+const web = createWebBridge().bridge;
+
+installBridge({ ...web, host: { ...web.host, usage: readUsage } });
 
 const TODAY = "2026-09-02";
+
 /** The read is unbounded; only the day it was taken on is part of the key. */
 const WINDOW: UsageWindow = { sinceDay: null, untilDay: TODAY };
 
@@ -31,6 +37,7 @@ function report(overrides: Partial<UsageSnapshot> = {}): UsageSnapshot {
 }
 
 const empty = report();
+
 const recorded = report({
   claudeCode: { kind: "failed", message: "History unavailable" },
   readAt: 2,
@@ -68,6 +75,7 @@ const cleanups: (() => void)[] = [];
 function openUsage(untilDay: string = TODAY) {
   const observer = new QueryObserver(queryClient, usageReportOptions(untilDay));
   cleanups.push(observer.subscribe(() => {}));
+
   return observer;
 }
 
@@ -125,9 +133,11 @@ test("the read is unbounded, so one read answers every range", async () => {
 
 test("every range shares one key, so pressing between them reads nothing", () => {
   const at = Date.parse("2026-09-02T15:00:00");
+
   const keys = USAGE_RANGES.map(
     (range) => usageReportOptions(usageWindow(range, at).untilDay).queryKey,
   );
+
   assert.equal(new Set(keys.map((key) => JSON.stringify(key))).size, 1);
 });
 

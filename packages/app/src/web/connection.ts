@@ -101,13 +101,14 @@ export function forgetConnection(): void {
 }
 
 /**
- * A `/pair?host=<url>&token=<token>` link. The query leaves the address bar
- * and history as soon as it is read, so the token is not kept there.
+ * A `/pair#host=<url>&token=<token>` link. The fragment never leaves the
+ * browser, and it leaves the address bar and history as soon as it is read.
  */
 export function readPairingRequest(url: URL): Connection | undefined {
   if (url.pathname !== "/pair") return undefined;
-  const host = url.searchParams.get("host");
-  const token = url.searchParams.get("token");
+  const fragment = new URLSearchParams(url.hash.slice(1));
+  const host = fragment.get("host");
+  const token = fragment.get("token");
   history.replaceState(null, "", "/");
 
   if (host === null || token === null) return undefined;

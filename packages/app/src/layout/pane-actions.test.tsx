@@ -30,20 +30,25 @@ test.each([560, 640])("split availability and execution agree at window width %s
   shellActions.showWorkspace();
   const workspaceKey = `split-action-${String(width)}`;
   const controller = paneControllerForWorkspace(workspaceKey);
+
   const router = createRouter({
     routeTree: createRootRoute(),
     history: createMemoryHistory(),
     isServer: true,
   });
+
   let selected: { readonly actions: PaneActions; readonly available: boolean } | undefined;
+
   function Probe({
     inspect,
   }: {
     readonly inspect: (actions: PaneActions, available: boolean) => void;
   }) {
     inspect(usePaneActions(), useCanSplitPane());
+
     return null;
   }
+
   renderToStaticMarkup(
     <RouterContextProvider router={router}>
       <PaneControllerProvider workspaceKey={workspaceKey}>
@@ -61,10 +66,12 @@ test.each([560, 640])("split availability and execution agree at window width %s
   const layout = controller.getSnapshot().layout;
   assert.equal(layout.kind, selected.available ? "split" : "single");
   assert.equal(selected.actions.focusNext(), selected.available);
+
   if (layout.kind === "split") {
     assert.equal(controller.getSnapshot().focusRequest.paneId, "primary");
   }
 });
+
 afterAll(() => vi.unstubAllGlobals());
 
 test("new chat leaves Customize and selects the blank pane through the shared pane action", () => {
@@ -73,22 +80,27 @@ test("new chat leaves Customize and selects the blank pane through the shared pa
   const id = sessionId("previous-chat");
   controller.selectSession(id);
   shellActions.openCustomize(id);
+
   const router = createRouter({
     routeTree: createRootRoute(),
     history: createMemoryHistory(),
     isServer: true,
   });
+
   let actions: PaneActions | undefined;
+
   function Probe({ inspect }: { readonly inspect: (value: PaneActions) => void }) {
     inspect(usePaneActions());
     const shell = useShellState();
     const snapshot = usePaneControllerSnapshot();
+
     return (
       <span>
         {shell.stage.kind}:{snapshot.layout.kind}
       </span>
     );
   }
+
   const render = () =>
     renderToStaticMarkup(
       <RouterContextProvider router={router}>
@@ -101,6 +113,7 @@ test("new chat leaves Customize and selects the blank pane through the shared pa
         </PaneControllerProvider>
       </RouterContextProvider>,
     );
+
   expect(render()).toBe("<span>customize:single</span>");
   assert.ok(actions);
   actions.newChat();
