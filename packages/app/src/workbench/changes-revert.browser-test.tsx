@@ -19,6 +19,7 @@ function check(condition: boolean, message: string): void {
 
 async function until(predicate: () => boolean, what: string, timeoutMs = 5_000): Promise<void> {
   const deadline = performance.now() + timeoutMs;
+
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
     await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
@@ -65,27 +66,38 @@ export async function run(): Promise<string> {
         .querySelector("file-tree-container")
         ?.shadowRoot?.querySelectorAll('[role="treeitem"]') ?? [],
     ).map((row) => row.getAttribute("data-item-path") ?? "");
+
   const button = (label: string): HTMLButtonElement => {
     const found = container.querySelector(`button[aria-label="${label}"]`);
+
     if (!(found instanceof HTMLButtonElement)) throw new Error(`Missing button: ${label}`);
+
     return found;
   };
+
   // The confirmation is portalled out of the panel, so it is read from the page.
   const dialog = (): HTMLElement | null => document.querySelector('[role="alertdialog"]');
   const dialogText = (): string => dialog()?.textContent ?? "";
+
   const dialogButton = (label: string): HTMLButtonElement => {
     const found = Array.from(dialog()?.querySelectorAll("button") ?? []).find(
       (item) => item.textContent?.trim() === label,
     );
+
     if (found === undefined) throw new Error(`Missing dialog button: ${label} in ${dialogText()}`);
+
     return found;
   };
+
   const reviewCheckbox = (path: string): HTMLElement => {
     const header = Array.from(container.querySelectorAll("[data-change-path]")).find(
       (item) => item.getAttribute("data-change-path") === path,
     );
+
     const found = header?.querySelector('[role="checkbox"]');
+
     if (!(found instanceof HTMLElement)) throw new Error(`Missing review checkbox for ${path}`);
+
     return found;
   };
 

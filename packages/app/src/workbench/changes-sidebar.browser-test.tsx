@@ -28,6 +28,7 @@ export async function run(): Promise<string> {
   const revealed: string[] = [];
   let activePath = "src/alpha.ts";
   let added = 2;
+
   const files = (): readonly ChangesSidebarFile[] =>
     PATHS.map((path) => ({
       path,
@@ -36,6 +37,7 @@ export async function run(): Promise<string> {
       removed: 1,
       viewed: viewed.get(path) ?? "unviewed",
     }));
+
   const render = (): void =>
     flushSync(() =>
       root.render(
@@ -48,40 +50,54 @@ export async function run(): Promise<string> {
           }}
           onAllViewedChange={(paths, next) => {
             marks.push(`all(${paths.join(",")})=${String(next)}`);
+
             for (const path of paths) viewed.set(path, next ? "viewed" : "unviewed");
           }}
         />,
       ),
     );
+
   const tree = (): ShadowRoot => {
     const shadow = container.querySelector("file-tree-container")?.shadowRoot;
+
     if (shadow === undefined || shadow === null) throw new Error("Missing Pierre file tree");
+
     return shadow;
   };
+
   const rows = (): readonly string[] =>
     Array.from(tree().querySelectorAll('[role="treeitem"]')).map(
       (row) => row.getAttribute("data-item-path") ?? "",
     );
+
   const row = (path: string): HTMLElement => {
     const found = Array.from(tree().querySelectorAll('[role="treeitem"]')).find(
       (row) => row.getAttribute("data-item-path") === path,
     );
+
     if (!(found instanceof HTMLElement)) throw new Error(`Missing tree row ${path}`);
+
     return found;
   };
+
   const master = (): HTMLElement => {
     const found = container.querySelector('[role="checkbox"]');
+
     if (!(found instanceof HTMLElement)) throw new Error("Missing master checkbox");
+
     return found;
   };
+
   const search = async (value: string): Promise<void> => {
     const input = container.querySelector('input[aria-label="Filter changed files"]');
+
     if (!(input instanceof HTMLInputElement)) throw new Error("Missing search field");
     input.focus();
     input.select();
     document.execCommand(value === "" ? "delete" : "insertText", false, value);
     await settle();
   };
+
   try {
     render();
     await settle();
@@ -138,6 +154,7 @@ export async function run(): Promise<string> {
       "A status update retains collapsed folders",
     );
     check(!rows().includes("src/alpha.ts"), "Updating stats does not reopen a folder");
+
     return "passed";
   } catch (error) {
     return error instanceof Error ? (error.stack ?? error.message) : String(error);

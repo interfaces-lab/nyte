@@ -21,6 +21,7 @@ function check(condition: boolean, message: string): void {
 
 async function until(predicate: () => boolean, what: string, timeoutMs = 5_000): Promise<void> {
   const deadline = performance.now() + timeoutMs;
+
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
     await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
@@ -56,51 +57,70 @@ export async function run(): Promise<string> {
 
   const field = (label: string): HTMLInputElement => {
     const found = container.querySelector(`input[aria-label="${label}"]`);
+
     if (!(found instanceof HTMLInputElement)) throw new Error(`Missing field: ${label}`);
+
     return found;
   };
+
   /** Types into the field the way a reader does, so React sees a real edit. */
   const type = async (label: string, value: string): Promise<void> => {
     await until(() => !field(label).disabled, `the ${label} field to accept typing`);
     const input = field(label);
     input.focus();
     input.select();
+
     if (input.value !== "") document.execCommand("delete");
+
     if (value !== "") document.execCommand("insertText", false, value);
   };
+
   const buttonNamed = (name: string, scope: ParentNode = container): HTMLButtonElement => {
     const found = Array.from(scope.querySelectorAll("button")).find(
       (item) => item.textContent?.trim() === name || item.getAttribute("aria-label") === name,
     );
+
     if (found === undefined) throw new Error(`Missing button: ${name}`);
+
     return found;
   };
+
   const primary = (): HTMLButtonElement => {
     const found = Array.from(container.querySelectorAll("button")).find((item) =>
       /^(Commit|Create Branch|Push|Create Pull Request)/.test(item.textContent?.trim() ?? ""),
     );
+
     if (found === undefined) throw new Error("Missing the primary commit action");
+
     return found;
   };
+
   const report = (): string =>
     Array.from(container.querySelectorAll('[role="status"], [role="alert"]'))
       .map((node) => node.textContent ?? "")
       .join(" ");
+
   // The action menu is portalled out of the panel, so it is read from the page.
   const openActionMenu = async (): Promise<HTMLElement> => {
     buttonNamed("More commit actions").click();
     await until(() => document.querySelector('[role="menu"]') !== null, "the menu");
     const menu = document.querySelector('[role="menu"]');
+
     if (!(menu instanceof HTMLElement)) throw new Error("Missing the commit actions menu");
+
     return menu;
   };
+
   const menuItem = (menu: HTMLElement, name: string): HTMLElement => {
     const found = Array.from(menu.querySelectorAll('[role="menuitem"]')).find((item) =>
       (item.textContent ?? "").startsWith(name),
     );
+
     if (!(found instanceof HTMLElement)) throw new Error(`Missing menu item: ${name}`);
+
     return found;
   };
+
   /** A committed tree is empty; the next case needs a change and a read that sees it. */
   const restoreWorkingTree = (): void => {
     commitScript.files = [{ path: CHANGED, kind: "modified" }];
@@ -120,24 +140,18 @@ export async function run(): Promise<string> {
       primary().textContent?.trim() === "Commit and Push Changes",
       `Default action: ${String(primary().textContent)}`,
     );
-    check(
-      primary().getAttribute("aria-disabled") === "true",
-      "An empty message cannot be committed",
-    );
+    check(primary().hasAttribute("data-disabled"), "An empty message cannot be committed");
     const disabledMenu = await openActionMenu();
     const disabledCommit = menuItem(disabledMenu, "Commit Changes");
     check(
-      disabledCommit.getAttribute("aria-disabled") === "true",
+      disabledCommit.hasAttribute("data-disabled"),
       "The commit action is unavailable without a message",
     );
     disabledMenu.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await until(() => document.querySelector('[role="menu"]') === null, "the menu to close");
 
     await type("Commit message", "feat(desktop): add the commit bar");
-    await until(
-      () => primary().getAttribute("aria-disabled") !== "true",
-      "the action to become available",
-    );
+    await until(() => !primary().hasAttribute("data-disabled"), "the action to become available");
     const form = field("Commit message").form;
     check(form !== null, "The single-line message belongs to a submit form");
     form?.requestSubmit();
@@ -164,7 +178,7 @@ export async function run(): Promise<string> {
     ];
     await type("Commit message", "fix(desktop): report a push");
     await until(
-      () => primary().getAttribute("aria-disabled") !== "true",
+      () => !primary().hasAttribute("data-disabled"),
       "the action to become available again",
     );
     primary().click();
@@ -180,10 +194,7 @@ export async function run(): Promise<string> {
     restoreWorkingTree();
     commitScript.pushResults = [{ kind: "rejected", reason: "non-fast-forward" }];
     await type("Commit message", "fix(desktop): pull first");
-    await until(
-      () => primary().getAttribute("aria-disabled") !== "true",
-      "the action after a rejected push",
-    );
+    await until(() => !primary().hasAttribute("data-disabled"), "the action after a rejected push");
     primary().click();
     await until(() => report().includes("Pull them, then push again."), `rejected: ${report()}`);
     check(report().includes("non-fast-forward"), "Git's own words are kept");
@@ -195,7 +206,7 @@ export async function run(): Promise<string> {
     commitScript.pushResults = [];
     await type("Commit message", "chore(desktop): nothing here");
     await until(
-      () => primary().getAttribute("aria-disabled") !== "true",
+      () => !primary().hasAttribute("data-disabled"),
       "the action before an empty commit",
     );
     primary().click();
@@ -217,8 +228,7 @@ export async function run(): Promise<string> {
     check(commitScript.branches.length === 0, "Naming the branch is what creates it");
     await type("New branch name", "feature/commit-bar");
     await until(
-      () =>
-        buttonNamed("Create Branch and Commit Changes").getAttribute("aria-disabled") !== "true",
+      () => !buttonNamed("Create Branch and Commit Changes").hasAttribute("data-disabled"),
       "the branch confirmation",
     );
     buttonNamed("Create Branch and Commit Changes").click();
@@ -251,7 +261,7 @@ export async function run(): Promise<string> {
       "the push before the pull request",
     );
     await until(
-      () => primary().getAttribute("aria-disabled") !== "true",
+      () => !primary().hasAttribute("data-disabled"),
       "the refused pull request to settle",
     );
     check(report().includes("Pull them, then push again."), `refused push: ${report()}`);

@@ -273,7 +273,7 @@ export const terminalActions = {
 
           return { ...tab, state: { kind: "failed", message } };
         });
-        toast.error("Couldn't start terminal", { description: message });
+        toast.add({ type: "error", title: "Couldn't start terminal", description: message });
       })
       .finally(() => creating.delete(id));
 

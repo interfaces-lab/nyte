@@ -372,6 +372,7 @@ export function ChangesCommitBar({
   const [interrupted, setInterrupted] = useState<CommitAction | undefined>(undefined);
 
   const state: CommitBarState = { scope, fileCount, message, branch };
+
   const primaryDisabled =
     commitActionDisabled(action, state) || (branchPrompt !== undefined && branchName.trim() === "");
 
@@ -556,7 +557,9 @@ export function ChangesCommitBar({
       {...props(styles.bar)}
       onSubmit={(event) => {
         event.preventDefault();
+
         if (running || primaryDisabled) return;
+
         if (branchPrompt === undefined) start(action);
         else confirmBranch();
       }}
@@ -617,6 +620,7 @@ export function ChangesCommitBar({
           <MenuContent align="end">
             {actions.map((candidate, index) => {
               const previous = actions[index - 1];
+
               return (
                 <Fragment key={candidate}>
                   {previous !== undefined &&
@@ -660,6 +664,7 @@ export function ChangesCommitBar({
                   variant="text"
                   onClick={(event) => {
                     event.preventDefault();
+
                     if (result.url !== undefined)
                       void nyte.host.openExternal({ url: result.url }).catch(() => undefined);
                   }}

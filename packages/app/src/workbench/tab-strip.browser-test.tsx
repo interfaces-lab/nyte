@@ -20,6 +20,7 @@ function check(condition: boolean, message: string): void {
 
 export async function run(): Promise<string> {
   const session = sessionId("browser-tab-strip-session");
+
   const job: JobInfo = {
     id: "browser-tab-strip-job",
     origin: { kind: "run", runId: "run", callId: "call" },
@@ -31,6 +32,7 @@ export async function run(): Promise<string> {
     updatedAt: 1,
     output: "running\n",
   };
+
   const viewKey = workbenchViewKey("/workspace/browser-tab-strip");
   workbenchController.actions.openTab({
     view: viewKey,
@@ -43,11 +45,13 @@ export async function run(): Promise<string> {
     },
     activate: true,
   });
+
   const terminalId = workbenchController.actions.openTab({
     view: viewKey,
     tab: { kind: "terminal", owner: { kind: "agent", sessionId: session, jobId: job.id } },
     activate: false,
   });
+
   terminalActions.openJob({ id: terminalId, sessionId: session, job });
   fileActions.open(viewKey, { path: "/workspace/src/app.ts" });
   const active = workbenchController.getView(viewKey).active;
@@ -55,6 +59,7 @@ export async function run(): Promise<string> {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
+
   try {
     flushSync(() =>
       root.render(
@@ -85,6 +90,7 @@ export async function run(): Promise<string> {
       "Agent terminal tooltip lost its read-only label",
     );
     const accent = agentTab.querySelector<HTMLElement>('[data-agent-terminal="true"]');
+
     if (accent === null) throw new Error("Agent terminal has no accent class");
     const probe = document.createElement("span");
     probe.className = props(surfaceTheme.purple, styles.agentAccent).className ?? "";
@@ -94,12 +100,14 @@ export async function run(): Promise<string> {
       "Agent terminal does not use the readable purple accent",
     );
     const glyph = agentTab.querySelector("svg");
+
     if (glyph === null) throw new Error("Missing agent terminal glyph");
     check(
       getComputedStyle(glyph).color === getComputedStyle(agentTab).color,
       "Agent terminal glyph must use its tab control color",
     );
     check(workbenchController.getView(viewKey).active === active, "Rendering changed activation");
+
     return "passed";
   } finally {
     root.unmount();

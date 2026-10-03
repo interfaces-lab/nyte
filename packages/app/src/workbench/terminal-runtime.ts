@@ -45,7 +45,7 @@ function loadGhostty(): Promise<Ghostty> {
 }
 
 /** Canvas terminals need resolved sRGB values, not CSS variables or color-mix expressions. */
-function terminalAppearance(): { theme: ITheme; fontFamily: string; fontSize: number } {
+function terminalAppearance() {
   const probe = document.createElement("span");
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 1;
@@ -90,6 +90,7 @@ function terminalAppearance(): { theme: ITheme; fontFamily: string; fontSize: nu
     const font = getComputedStyle(probe);
     const fontFamily = font.fontFamily;
     const fontSize = Number.parseFloat(font.fontSize);
+
     const theme = {
       background: page,
       foreground: ink,
@@ -141,7 +142,9 @@ function sendInput(id: string, data: string): Promise<void> {
     const current = getTerminal(id);
 
     if (current !== undefined && isShellTerminal(current) && current.state.kind === "running") {
-      toast.error("Couldn't write to terminal", {
+      toast.add({
+        type: "error",
+        title: "Couldn't write to terminal",
         id: "terminal-write-" + id,
         description: errorMessage(cause),
       });
@@ -233,7 +236,9 @@ async function createView(id: string): Promise<TerminalView | undefined> {
         rows: Math.min(1000, Math.max(1, terminal.rows)),
       })
       .catch((cause: unknown) => {
-        toast.error("Couldn't resize terminal", {
+        toast.add({
+          type: "error",
+          title: "Couldn't resize terminal",
           id: "terminal-resize-" + id,
           description: errorMessage(cause),
         });
@@ -408,9 +413,11 @@ export function copyTerminal(id: string): void {
   const selection = views.get(id)?.terminal.getSelection();
 
   if (selection)
-    void navigator.clipboard
-      .writeText(selection)
-      .catch((cause: unknown) =>
-        toast.error("Couldn't copy selection", { description: errorMessage(cause) }),
-      );
+    void navigator.clipboard.writeText(selection).catch((cause: unknown) =>
+      toast.add({
+        type: "error",
+        title: "Couldn't copy selection",
+        description: errorMessage(cause),
+      }),
+    );
 }

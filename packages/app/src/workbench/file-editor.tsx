@@ -208,6 +208,7 @@ function TextFileEditor({
   document,
 }: FileEditorProps & { readonly document: TextFile }): ReactElement {
   const { navigationRevision } = file;
+
   const [buffer] = useState(() =>
     createFileDocument(
       file.draft === undefined

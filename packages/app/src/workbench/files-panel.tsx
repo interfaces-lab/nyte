@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 import { useFileTree } from "@pierre/trees/react";
 import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
@@ -79,14 +79,14 @@ const styles = create({
   menu: {
     minWidth: "min(220px, var(--available-width))",
     maxWidth: "min(420px, var(--available-width))",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
   },
   tree: {
     display: "block",
     flex: 1,
     width: "100%",
     minHeight: 0,
-    "--trees-border-radius-override": shape.indicator,
+    "--trees-border-radius-override": radius.indicator,
     "--trees-item-margin-x-override": "0px",
     "--trees-item-padding-x-override": "5px",
     "--trees-item-row-gap-override": "4px",
@@ -237,7 +237,9 @@ export function FilesPanel({
         )
     )
       return;
+
     if (window.getSelection()?.toString()) return;
+
     const row = event
       .composedPath()
       .find((target) => target instanceof HTMLElement && target.dataset.type === "item");
@@ -546,7 +548,7 @@ export function FilesPanel({
         open={discardPath !== undefined}
         pending={discarding}
         error={discardError}
-        returnFocusRef={menuRef}
+        finalFocus={menuRef}
         title="Discard Changes"
         description="Your unsaved edits will be replaced by the current file on disk."
         confirmLabel="Discard Changes"
@@ -678,6 +680,7 @@ function BreadcrumbTree({
   readonly onOpen: (file: MentionFile) => void;
 }): ReactElement {
   const prefix = directory === "" ? "" : `${directory}/`;
+
   const paths = useMemo(
     () =>
       (files ?? [])
@@ -685,6 +688,7 @@ function BreadcrumbTree({
         .map((file) => file.displayPath.slice(prefix.length)),
     [files, prefix],
   );
+
   const { model } = useFileTree({
     paths: [],
     density: "compact",
@@ -702,10 +706,13 @@ function BreadcrumbTree({
     const row = event
       .composedPath()
       .find((target) => target instanceof HTMLElement && target.dataset.type === "item");
+
     if (!(row instanceof HTMLElement) || row.dataset.itemType !== "file") return;
+
     const file = files?.find(
       (candidate) => candidate.displayPath === `${prefix}${row.dataset.itemPath}`,
     );
+
     if (file !== undefined) onOpen(file);
   };
 

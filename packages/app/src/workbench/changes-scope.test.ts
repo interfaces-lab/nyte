@@ -18,15 +18,20 @@ const report = Type.Array(
 async function readObservations() {
   const output = await testRenderer(new URL("./changes-scope.browser-test.tsx", import.meta.url));
   const parsed: unknown = JSON.parse(output);
+
   if (!Value.Check(report, parsed)) throw new Error(`The changes scope fixture failed: ${output}`);
+
   return (step: string) => {
     const found = parsed.find((observation) => observation.step === step);
+
     if (found === undefined) throw new Error(`Missing observation: ${step}`);
+
     return found;
   };
 }
 
 let reported: ReturnType<typeof readObservations> | undefined;
+
 const observations = () => (reported ??= readObservations());
 
 test(

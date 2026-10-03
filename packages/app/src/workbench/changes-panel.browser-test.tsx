@@ -25,6 +25,7 @@ function check(condition: boolean, message: string): void {
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
   const deadline = performance.now() + 5_000;
+
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
     await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
@@ -47,6 +48,7 @@ export async function run(): Promise<string> {
     const [selectedPath, setSelectedPath] = useState<string>();
     const [revealRevision, setRevealRevision] = useState(0);
     const [scrollTop, setScrollTop] = useState(0);
+
     return (
       <QueryClientProvider client={queryClient}>
         <ChangesPanel
@@ -68,41 +70,56 @@ export async function run(): Promise<string> {
       </QueryClientProvider>
     );
   };
+
   const render = (scope: WorkbenchChangesScope): void => {
     flushSync(() => root.render(<Panel scope={scope} />));
   };
+
   const stackHeaders = (): readonly HTMLElement[] =>
     Array.from(container.querySelectorAll("[data-change-path]")).filter(
       (element) => element instanceof HTMLElement,
     );
+
   const stackPaths = (): readonly string[] =>
     stackHeaders().map((header) => header.dataset.changePath ?? "");
+
   const treePaths = (): readonly string[] => {
     const host = container.querySelector("file-tree-container");
+
     if (!(host instanceof HTMLElement) || host.shadowRoot === null) return [];
+
     return Array.from(
       host.shadowRoot.querySelectorAll('[role="treeitem"][data-item-type="file"]'),
     ).map((item) => item.getAttribute("data-item-path") ?? "");
   };
+
   const header = (path: string): HTMLElement => {
     const found = stackHeaders().find((candidate) => candidate.dataset.changePath === path);
+
     if (found === undefined) throw new Error(`Missing diff header for ${path}`);
+
     return found;
   };
+
   const revertButton = (path: string): HTMLButtonElement => {
     const found = header(path).querySelector(`button[aria-label="Revert ${path}"]`);
+
     if (!(found instanceof HTMLButtonElement)) throw new Error(`Missing revert button for ${path}`);
+
     return found;
   };
+
   const checkStats = (path: string, label: string): void => {
     check(
       header(path).querySelector(`[aria-label="${label}"]`) !== null,
       `${path} does not show ${label}`,
     );
   };
+
   const checkTree = (expected: readonly string[]): void => {
     check(treePaths().join("|") === expected.join("|"), `Tree paths: ${treePaths().join("|")}`);
   };
+
   const checkStack = (expected: readonly string[]): void => {
     check(stackPaths().join("|") === expected.join("|"), `Stack paths: ${stackPaths().join("|")}`);
   };
@@ -116,11 +133,13 @@ export async function run(): Promise<string> {
     checkStack([STAGED, WORKING]);
     checkStats(STAGED, "3 added, 0 removed");
     checkStats(WORKING, "1 added, 2 removed");
+
     const workingTreeRow = Array.from(
       container
         .querySelector("file-tree-container")
         ?.shadowRoot?.querySelectorAll('[role="treeitem"]') ?? [],
     ).find((row) => row.getAttribute("data-item-path") === WORKING);
+
     check(
       workingTreeRow?.textContent?.includes("+1 -2") === true,
       "Tree counts match the diff header",
@@ -131,13 +150,17 @@ export async function run(): Promise<string> {
     const fileTree = container.querySelector("file-tree-container");
     container.style.height = "120px";
     await settle();
+
     const workingRow = Array.from(
       fileTree?.shadowRoot?.querySelectorAll('[role="treeitem"]') ?? [],
     ).find((row) => row.getAttribute("data-item-path") === WORKING);
+
     check(workingRow instanceof HTMLElement, "The native tree has the working file");
+
     if (workingRow instanceof HTMLElement) workingRow.click();
     await until(() => {
       const scrollport = container.querySelector("[data-nyte-scrollport]");
+
       return scrollport instanceof HTMLElement && scrollport.scrollTop > 0;
     }, "the native tree selection to scroll CodeView");
     await settle();
@@ -181,6 +204,7 @@ export async function run(): Promise<string> {
     );
     checkTree(["image.png"]);
     checkStack(["image.png"]);
+
     return "passed";
   } catch (error) {
     return error instanceof Error ? (error.stack ?? error.message) : String(error);

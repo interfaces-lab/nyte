@@ -19,17 +19,20 @@ export function useTreeStatusTheme() {
     const probe = document.createElement("span");
     probe.hidden = true;
     root.append(probe);
+
     const color = (scope: Tint): string => {
       probe.className = props(surfaceTheme[scope], styles.status).className ?? "";
 
       return getComputedStyle(probe).color;
     };
+
     const update = (): void => {
       const next = {
         added: color("green"),
         modified: color("yellow"),
         deleted: color("red"),
       };
+
       setColors((current) =>
         current.added === next.added &&
         current.modified === next.modified &&
@@ -38,6 +41,7 @@ export function useTreeStatusTheme() {
           : next,
       );
     };
+
     update();
     const appearance = new MutationObserver(update);
     appearance.observe(root, {

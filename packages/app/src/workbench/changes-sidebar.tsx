@@ -1,4 +1,4 @@
-import { shape, target } from "@nyte-ai/ui/schema.stylex";
+import { radius, target } from "@nyte-ai/ui/schema.stylex";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import type { FileTreeBatchOperation } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
@@ -101,7 +101,7 @@ const styles = create({
       content: "''",
       width: 6,
       height: 6,
-      borderRadius: shape.pill,
+      borderRadius: radius.pill,
       backgroundColor: "currentColor",
     },
   },

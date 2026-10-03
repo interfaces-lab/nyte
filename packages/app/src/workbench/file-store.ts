@@ -229,7 +229,7 @@ export function createFileTabStore(
     });
 
     if (existing !== undefined && !preview) pin(key, existing);
-    publish(key, { ...current, ...(recordHistory ? visit(current, location) : {}) });
+    publish(key, recordHistory ? { ...current, ...visit(current, location) } : current);
   };
 
   const navigate = (key: WorkbenchViewKey, historyIndex: number): void => {

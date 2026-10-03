@@ -37,6 +37,7 @@ export function workbenchReferenceOpener(input: {
         return () =>
           fileActions.open(viewKey, {
             path: file.path,
+            line: reference.lines?.start,
             preview: true,
           });
       }

@@ -7,6 +7,7 @@ test(
   async () => {
     const bridge =
       "window.nyte = { sessions: {}, watch: () => () => {}, host: { setThemePreference() {} } };";
+
     expect(
       await testRenderer(new URL("./changes-stack.browser-test.tsx", import.meta.url), bridge),
     ).toBe("passed");

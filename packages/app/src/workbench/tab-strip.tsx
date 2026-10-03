@@ -19,7 +19,7 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { nyte } from "../nyte.ts";
-import { button, glyph, shape, target } from "@nyte-ai/ui/schema.stylex";
+import { button, glyph, radius, target } from "@nyte-ai/ui/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/vars.stylex";
 import {
@@ -62,19 +62,19 @@ const styles = create({
     "--_tab-close-opacity": {
       default: "0",
       ":hover": "1",
-      ":focus-within": "1",
+      ":has(:focus-visible)": "1",
       "@media (hover: none)": "1",
     },
     "--_tab-close-pointer-events": {
       default: "none",
       ":hover": "auto",
-      ":focus-within": "auto",
+      ":has(:focus-visible)": "auto",
       "@media (hover: none)": "auto",
     },
     "--_tab-content-mask": {
       default: "none",
       ":hover": TAB_CONTENT_FADE,
-      ":focus-within": TAB_CONTENT_FADE,
+      ":has(:focus-visible)": TAB_CONTENT_FADE,
       "@media (hover: none)": TAB_CONTENT_FADE,
     },
     position: "relative",
@@ -85,7 +85,7 @@ const styles = create({
     height: button.heightSm,
     minHeight: target.min,
     WebkitAppRegion: "no-drag",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: { default: "transparent", ":hover": role.bgHover },
     color: role.contentInteractiveSecondary,
   },
@@ -99,7 +99,7 @@ const styles = create({
     paddingInlineStart: 4,
     paddingInlineEnd: 6,
     borderStyle: "none",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: "transparent",
     color: "inherit",
     fontSize: type.fontBase,
@@ -173,6 +173,7 @@ type TerminalCloseState =
 
 function newTerminal(view: WorkbenchViewKey, workspacePath: string | null): void {
   if (nyte.host.terminal === undefined) return;
+
   const id = workbenchController.actions.openTab({
     view,
     tab: { kind: "terminal", owner: { kind: "user" } },
@@ -451,7 +452,7 @@ export function WorkbenchTabStrip({
         pending={pendingFile?.saving === true}
         pendingLabel="Saving…"
         error={undefined}
-        returnFocusRef={fileCloseRef}
+        finalFocus={fileCloseRef}
         title="Discard Changes"
         description={`Your changes to ${pendingFile?.displayPath ?? "this file"} will be lost.`}
         confirmLabel="Discard Changes"
@@ -465,7 +466,7 @@ export function WorkbenchTabStrip({
         open={terminalClose.kind !== "closed"}
         pending={terminalClose.kind === "closing"}
         error={terminalClose.kind === "confirming" ? terminalClose.error : undefined}
-        returnFocusRef={terminalCloseRef}
+        finalFocus={terminalCloseRef}
         title="Close Terminal"
         description="This ends this shell session and any processes running in it."
         confirmLabel="Close Terminal"

@@ -12,44 +12,24 @@ import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import type { ReactElement } from "react";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
-import { OverlayRefProvider } from "@nyte-ai/ui/overlay";
-import { overlayRef } from "../components/overlay-occlusion.ts";
+import type { BrowserBoundsMessage } from "../bridge.ts";
 import { BrowserPanel } from "./browser-panel.tsx";
 import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 
 const URL_UNDER_TEST = "https://example.com/";
 
-interface RecordedBounds {
-  readonly visible: boolean;
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
+declare global {
+  interface Window {
+    readonly __nyteBounds: readonly BrowserBoundsMessage[];
+  }
 }
 
-function recordedBounds(): readonly RecordedBounds[] {
-  const raw: unknown = Reflect.get(window, "__nyteBounds");
-  if (!Array.isArray(raw)) throw new Error("The bounds recorder is missing");
-  return raw.map((entry: unknown) => {
-    if (typeof entry !== "object" || entry === null) throw new Error("Bad bounds message");
-    const visible: unknown = Reflect.get(entry, "visible");
-    const box: unknown = Reflect.get(entry, "bounds");
-    if (typeof visible !== "boolean" || typeof box !== "object" || box === null) {
-      throw new Error("Bad bounds message");
-    }
-    const read = (key: string): number => {
-      const value: unknown = Reflect.get(box, key);
-      if (typeof value !== "number") throw new Error(`Bad bounds ${key}`);
-      return value;
-    };
-    return { visible, x: read("x"), y: read("y"), width: read("width"), height: read("height") };
-  });
-}
+function last(): BrowserBoundsMessage {
+  const message = window.__nyteBounds.at(-1);
 
-function last(): RecordedBounds {
-  const message = recordedBounds().at(-1);
   if (message === undefined) throw new Error("The panel never reported bounds");
+
   return message;
 }
 
@@ -59,6 +39,7 @@ function check(condition: boolean, message: string): void {
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
   const deadline = performance.now() + 5_000;
+
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
     await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
@@ -99,35 +80,36 @@ export async function run(): Promise<string> {
   document.body.append(container);
   const root = createRoot(container);
   const queryClient = new QueryClient();
+
   const render = (menuOpen: boolean): void =>
     flushSync(() =>
       root.render(
         <QueryClientProvider client={queryClient}>
-          <OverlayRefProvider value={overlayRef}>
-            <Harness menuOpen={menuOpen} />
-          </OverlayRefProvider>
+          <Harness menuOpen={menuOpen} />
         </QueryClientProvider>,
       ),
     );
+
   render(false);
 
-  await until(() => recordedBounds().length > 0 && last().visible, "the page to be shown");
+  await until(() => window.__nyteBounds.length > 0 && last().visible, "the page to be shown");
   const shown = last();
-  check(shown.width > 0 && shown.height > 0, "The page was placed at zero size");
+  check(shown.bounds.width > 0 && shown.bounds.height > 0, "The page was placed at zero size");
 
   render(true);
   await until(() => !last().visible, "the page to hide under the menu");
   const hidden = last();
   check(
-    hidden.x === shown.x &&
-      hidden.y === shown.y &&
-      hidden.width === shown.width &&
-      hidden.height === shown.height,
+    hidden.bounds.x === shown.bounds.x &&
+      hidden.bounds.y === shown.bounds.y &&
+      hidden.bounds.width === shown.bounds.width &&
+      hidden.bounds.height === shown.bounds.height,
     "Hiding the page moved or resized it instead of leaving its bounds alone",
   );
 
   render(false);
   await until(() => last().visible, "the page to come back when the menu closes");
+
   return "passed";
 }
 

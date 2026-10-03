@@ -166,6 +166,7 @@ export function TerminalPanel({
   const cancellation = useMutation({
     mutationFn: (current: TerminalTab) => {
       if (!isJobTerminal(current)) throw new Error("Only agent commands can be stopped here");
+
       return nyte.jobs.cancel({ sessionId: current.source.sessionId, jobId: current.source.jobId });
     },
     onSuccess: () => jobs.refetch(),

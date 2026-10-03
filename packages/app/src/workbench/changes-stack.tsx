@@ -10,6 +10,11 @@ import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { Button } from "@nyte-ai/ui/button";
 import type { DiffFilesLoader } from "../conversation/diff-expansion.ts";
+import {
+  DIFF_SEPARATOR_CSS,
+  EXPANSION_LINE_COUNT,
+  adaptDiffExpanders,
+} from "../conversation/diff-view.tsx";
 import { diffStyles } from "../conversation/styles.stylex.ts";
 import { PIERRE_TOKEN_CSS, PierreWorkerProvider } from "../pierre-worker-provider.tsx";
 import { workbench } from "../theme/schema.stylex.ts";
@@ -70,6 +75,8 @@ const styles = create({
     textWrap: "pretty",
   },
 });
+
+const STACK_CSS = `${PIERRE_TOKEN_CSS}${DIFF_SEPARATOR_CSS}`;
 
 /**
  * The scroll position is workbench state, and every write to it re-renders the
@@ -133,10 +140,14 @@ export function ChangesStack({
         diffStyle: layout,
         overflow: wordWrap ? "wrap" : "scroll",
         loadDiffFiles,
+        expansionLineCount: EXPANSION_LINE_COUNT,
         stickyHeaders: true,
         // The first header starts flush with the file tree's filter row.
         layout: { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 },
-        unsafeCSS: PIERRE_TOKEN_CSS,
+        unsafeCSS: STACK_CSS,
+        onPostRender: (node, _instance, phase) => {
+          if (phase !== "unmount") adaptDiffExpanders(node);
+        },
       }) satisfies CodeViewReactOptions<string, undefined>,
     [appearance.theme, layout, loadDiffFiles, wordWrap],
   );

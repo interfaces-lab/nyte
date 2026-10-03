@@ -1,5 +1,7 @@
 import type { VcsFileKind } from "@nyte-ai/protocol";
 
+export const CHANGES_VISIBLE_FILES = 5;
+
 export function filesChangedLabel(count: number): string {
   return count === 1 ? "1 File Changed" : `${String(count)} Files Changed`;
 }

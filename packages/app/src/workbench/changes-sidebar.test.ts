@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import { testRenderer } from "../../test/renderer.ts";
+
 test(
   "the native changes tree filters, reveals files, and retains state across updates",
   { timeout: 60_000 },

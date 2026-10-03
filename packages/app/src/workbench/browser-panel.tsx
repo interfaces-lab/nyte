@@ -1,4 +1,4 @@
-import { button, input, row, shape } from "@nyte-ai/ui/schema.stylex";
+import { button, input, row, radius } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 // oxlint-disable-next-line no-restricted-imports -- the native surface follows its surface, workspace, and url
@@ -73,7 +73,7 @@ const styles = create({
     height: input.heightMd,
     paddingInline: 8,
     borderColor: role.borderSecondaryTranslucent,
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     // The ring belongs on the rounded field, not on the square input nested
     // inside it, so its corners stay concentric with the border it wraps.
     outlineStyle: { default: "none", ":focus-within": "solid" },

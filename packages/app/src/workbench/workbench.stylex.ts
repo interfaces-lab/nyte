@@ -1,5 +1,5 @@
 import { create } from "@stylexjs/stylex";
-import { layer, row, shape, target } from "@nyte-ai/ui/schema.stylex";
+import { layer, row, radius, target } from "@nyte-ai/ui/schema.stylex";
 import { workbench } from "../theme/schema.stylex.ts";
 import { appearance, role, shadow, type } from "@nyte-ai/ui/vars.stylex";
 
@@ -156,7 +156,7 @@ export const workbenchStyles = create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     backgroundImage: { default: "none", ":active": role.layerPressed },
     color: {
       default: role.contentSecondary,
@@ -178,9 +178,9 @@ export const workbenchStyles = create({
     outlineOffset: -1,
     backgroundColor: "transparent",
     "--_sash-rule": {
-      default: role.borderSecondaryTranslucent,
-      ":hover": role.bgInteractiveStrong,
-      ":focus-visible": role.bgInteractiveStrong,
+      default: "transparent",
+      ":hover": role.borderPrimaryTranslucent,
+      ":focus-visible": role.borderStrongTranslucent,
     },
     "::after": {
       content: "''",
@@ -194,7 +194,7 @@ export const workbenchStyles = create({
     touchAction: "none",
     WebkitAppRegion: "no-drag",
   },
-  sashActive: { "--_sash-rule": role.bgInteractiveStrong },
+  sashActive: { "--_sash-rule": role.borderStrongTranslucent },
   treeTheme: {
     "--trees-bg-override": role.bgBase,
     "--trees-bg-muted-override": role.bgHover,

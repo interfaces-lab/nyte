@@ -1,4 +1,4 @@
-import { glyph, row, shape, target } from "@nyte-ai/ui/schema.stylex";
+import { glyph, row, radius, target } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { hashKey } from "@tanstack/react-query";
 import { useId, useMemo, useState } from "react";
@@ -103,7 +103,7 @@ const styles = create({
     flexShrink: 0,
     height: type.leadingXs,
     paddingInline: 4,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: role.bgMutedTranslucent,
     fontSize: type.fontXs,
     lineHeight: type.leadingXs,
@@ -121,7 +121,7 @@ const styles = create({
     paddingInlineStart: 32,
     paddingInlineEnd: 8,
     marginBlockEnd: 2,
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     backgroundColor: { default: "transparent", ":hover": role.bgHover },
     color: role.contentSecondary,
     fontSize: type.fontBase,

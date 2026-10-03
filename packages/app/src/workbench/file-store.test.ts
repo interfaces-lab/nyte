@@ -4,14 +4,18 @@ import { createWorkbenchController, workbenchViewKey } from "./controller.ts";
 import { createFileTabStore } from "./file-store.ts";
 
 const first = { path: "/workspace/src/a.ts" };
+
 const second = { path: "/workspace/src/b.ts" };
+
 const third = { path: "/workspace/src/c.ts" };
+
 const key = workbenchViewKey("/workspace");
 
 describe("file runtime store", () => {
   test("documents use controller tab IDs while order and activation stay in the controller", () => {
     const controller = createWorkbenchController(() => ({ terminal: true, browser: true }));
     const store = createFileTabStore(controller);
+
     const changes = controller.actions.openTab({
       view: key,
       tab: {
@@ -23,6 +27,7 @@ describe("file runtime store", () => {
       },
       activate: true,
     });
+
     store.actions.open(key, first);
     store.actions.open(key, second);
     store.actions.open(key, { ...first, line: 12 });

@@ -43,7 +43,9 @@ function changesTab() {
   const tab = workbenchController
     .getView(viewKey)
     .tabs.find((candidate) => candidate.id === changesTabId);
+
   if (tab?.kind !== "changes") throw new Error("Missing Changes tab");
+
   return tab;
 }
 
@@ -51,6 +53,7 @@ function changesTab() {
 function Host({ withSession }: { readonly withSession: boolean }): ReactElement {
   useWorkbenchSnapshot();
   const tab = changesTab();
+
   const update = (patch: {
     readonly scope: typeof tab.scope;
     readonly selectedPath: string | null;
@@ -63,6 +66,7 @@ function Host({ withSession }: { readonly withSession: boolean }): ReactElement 
       kind: "changes",
       patch,
     });
+
   return (
     <ChangesPanel
       sessionId={withSession ? changesSession : undefined}
@@ -96,6 +100,7 @@ interface Observation {
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
   const deadline = performance.now() + 5_000;
+
   while (!predicate()) {
     if (performance.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
     await new Promise<void>((resolve) => window.setTimeout(resolve, 10));
@@ -113,6 +118,7 @@ export async function run(): Promise<string> {
   container.style.cssText = "display:flex;height:600px;width:900px";
   document.body.append(container);
   const root = createRoot(container);
+
   const render = (withSession = true): void => {
     flushSync(() =>
       root.render(
@@ -122,16 +128,23 @@ export async function run(): Promise<string> {
       ),
     );
   };
+
   const text = (element: Element | null): string | null =>
     element === null ? null : (element.textContent ?? "");
+
   const trigger = (): HTMLElement => {
     const found = container.querySelector('button[aria-haspopup="menu"]');
+
     if (!(found instanceof HTMLElement)) throw new Error("Missing scope trigger");
+
     return found;
   };
+
   const snapshotState = () =>
     queryClient.getQueryState<SessionSnapshot>(keys.snapshot(changesSession));
+
   const observations: Observation[] = [];
+
   const observe = (step: string): void => {
     const observation: Observation = {
       step,
@@ -142,6 +155,7 @@ export async function run(): Promise<string> {
       ),
       snapshotReads: changesScopeScript.snapshotReads,
     };
+
     observations.push(observation);
   };
 
@@ -152,15 +166,19 @@ export async function run(): Promise<string> {
       () => document.querySelectorAll('[role="menuitemradio"]').length > 0,
       "the scope menu to open",
     );
+
     const item = Array.from(document.querySelectorAll('[role="menuitemradio"]')).find((candidate) =>
       (candidate.textContent ?? "").startsWith(menuLabel),
     );
+
     if (!(item instanceof HTMLElement)) {
       const listed = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
         .map((candidate) => candidate.textContent ?? "")
         .join(" | ");
+
       throw new Error(`Missing menu item ${menuLabel} among: ${listed}`);
     }
+
     item.click();
     await until(
       () => document.querySelectorAll('[role="menuitemradio"]').length === 0,
@@ -242,6 +260,7 @@ export async function run(): Promise<string> {
       changesScopeScript.transcript = [firstTurn, secondTurn];
       queryClient.setQueryData(keys.snapshot(changesSession), snapshotWith([secondTurn]));
     };
+
     const restoreTranscript = (): void => {
       changesScopeScript.transcript = [firstTurn, secondTurn, thirdTurn];
       queryClient.setQueryData(

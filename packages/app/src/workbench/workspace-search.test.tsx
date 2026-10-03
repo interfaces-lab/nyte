@@ -8,6 +8,7 @@ import { WorkspaceSearch, WorkspaceSearchResults } from "./workspace-search.tsx"
 
 // The Electron preload is absent in Node. React, styles and query observers run unchanged.
 vi.hoisted(() => vi.stubGlobal("window", { nyte: {} }));
+
 afterAll(() => vi.unstubAllGlobals());
 
 function renderResults(state: ComponentProps<typeof WorkspaceSearchResults>["state"]): string {
@@ -39,16 +40,23 @@ const result: WorkspaceSearchResult = {
 
 test("search starts idle with named matching controls and no replace or ignore override", () => {
   const client = new QueryClient();
+
   try {
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <WorkspaceSearch onOpen={() => undefined} />
       </QueryClientProvider>,
     );
+
     assert.match(html, /<input[^>]*aria-label="Search workspace"/);
+
     for (const label of ["Match case", "Match whole word", "Use regular expression"]) {
-      assert.match(html, new RegExp(`<button[^>]*aria-label="${label}"[^>]*aria-pressed="false"`));
+      assert.match(
+        html,
+        new RegExp(`<button(?=[^>]*aria-label="${label}")[^>]*aria-pressed="false"`),
+      );
     }
+
     assert.match(html, /<button[^>]*aria-label="Search filters"[^>]*aria-expanded="false"/);
     assert.match(html, /Files to include/);
     assert.match(html, /Files to exclude/);
@@ -102,6 +110,7 @@ test("highlight offsets use UTF-16 columns relative to a bounded snippet", () =>
       ],
     },
   });
+
   assert.match(html, /1 match in 1 file/);
   assert.match(html, /<mark[^>]*>foo1234<\/mark>/);
   assert.match(html.replace(/<[^>]*>/g, ""), /😀 foo1234 end/);
@@ -124,6 +133,7 @@ test("zero-width regex matches have a visible marker without consuming snippet t
       ],
     },
   });
+
   assert.match(html, /<mark[^>]*aria-label="Zero-width match"[^>]*>\u200b<\/mark>/);
   assert.match(html.replace(/<[^>]*>/g, ""), /\u200bhello/);
 });
@@ -152,6 +162,7 @@ test("file contents and transport errors are text, never executable markup", () 
       ],
     },
   });
+
   assert.match(html, /<mark[^>]*>&lt;script&gt;<\/mark>/);
   assert.doesNotMatch(html, /<script>/);
   const error = renderResults({ kind: "error", message: "Invalid regex: <script>" });
@@ -175,15 +186,18 @@ test("partial results never claim a complete workspace search", () => {
     kind: "ready",
     result: { ...result, truncated: true },
   });
+
   assert.match(html, /3 matches in 2 files/);
   assert.match(html, /Search limit reached. Narrow your query or filters/);
   // ripgrep cannot count what it skipped, so the panel never claims a number.
   assert.doesNotMatch(html, /files skipped/);
   assert.match(html, /<mark[^>]*>Hello<\/mark>/);
+
   const empty = renderResults({
     kind: "ready",
     result: { ...result, files: [], matchCount: 0, truncated: true },
   });
+
   assert.match(empty, /No matches found before the search limit/);
   assert.doesNotMatch(empty, /No matches found\./);
 });

@@ -757,7 +757,7 @@ function ChangesPanelView({
         open={revertTarget !== undefined}
         pending={reverting}
         error={revertError}
-        returnFocusRef={revertReturnRef}
+        finalFocus={revertReturnRef}
         title={revertCopy.title}
         description={revertCopy.description}
         confirmLabel={revertCopy.confirmLabel}

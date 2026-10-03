@@ -30,6 +30,7 @@ test("an external refetch does not advance a dirty file's conflict baseline", as
   await buffer.save({
     write: async (input) => {
       expect(input.version).toBe("v1");
+
       return { kind: "conflict" };
     },
   });
@@ -40,13 +41,16 @@ test("formatting does not overwrite edits made while the formatter was running",
   const buffer = createFileDocument(document, "before format");
   const pending = Promise.withResolvers<WorkspaceFormatResult>();
   let writes = 0;
+
   const saving = buffer.save({
     format: () => pending.promise,
     write: async () => {
       writes += 1;
+
       return { kind: "saved", version: "v2" };
     },
   });
+
   buffer.edit("new typing");
   pending.resolve({
     kind: "formatted",
@@ -70,6 +74,7 @@ test("formatter failure keeps the draft and does not write unformatted text", as
     format: async () => ({ kind: "unsupported", message: "No formatter" }),
     write: async () => {
       writes += 1;
+
       return { kind: "saved", version: "v2" };
     },
   });
@@ -102,6 +107,7 @@ test("failed writes retain formatted text and the old disk version for retry", a
   await buffer.save({
     write: async (input) => {
       expect(input.contents).toBe("formatted");
+
       return { kind: "saved", version: "v2" };
     },
   });

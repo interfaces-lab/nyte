@@ -35,7 +35,7 @@ import { Toggle } from "@nyte-ai/ui/toggle";
 import { macPlatform } from "../platform.ts";
 import { useVcsDiff, useVcsLog } from "../queries.ts";
 import type { VcsDiffRead } from "../queries.ts";
-import { menu, shape } from "@nyte-ai/ui/schema.stylex";
+import { menu, radius } from "@nyte-ai/ui/schema.stylex";
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
@@ -178,7 +178,7 @@ const styles = create({
   branchTag: {
     flexShrink: 0,
     paddingInline: 4,
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     backgroundColor: role.bgMutedTranslucent,
     fontSize: type.fontXs,
     lineHeight: type.leadingXs,

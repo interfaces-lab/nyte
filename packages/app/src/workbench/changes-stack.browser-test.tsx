@@ -8,6 +8,7 @@ import "../theme/tokens.stylex.ts";
 
 function patchOf(path: string, prefix: string): string {
   const added = Array.from({ length: 16 }, (_, index) => `+${prefix} ${String(index)}`);
+
   return [`--- a/${path}`, `+++ b/${path}`, "@@ -1 +1,17 @@", " keep", ...added, ""].join("\n");
 }
 
@@ -77,12 +78,17 @@ export async function run(): Promise<string> {
 
   const header = (path: string): HTMLButtonElement => {
     const found = container.querySelector(`[data-change-path="${path}"] button[aria-expanded]`);
+
     if (!(found instanceof HTMLButtonElement)) throw new Error(`Missing header for ${path}`);
+
     return found;
   };
+
   const height = (): number => {
     const scrollport = container.querySelector("[data-nyte-scrollport]");
+
     if (!(scrollport instanceof HTMLElement)) throw new Error("Missing scrollport");
+
     return scrollport.scrollHeight;
   };
 

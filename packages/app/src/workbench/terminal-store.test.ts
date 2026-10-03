@@ -2,49 +2,6 @@ import assert from "node:assert/strict";
 import { sessionId } from "@nyte-ai/protocol";
 import type { JobInfo } from "@nyte-ai/protocol";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-
-const ipc = vi.hoisted(() => {
-  const terminalCreate = vi.fn(
-    async (input: { readonly id: string; readonly workspacePath: string | null }) => ({
-      id: input.id,
-      title: "zsh",
-      cwd: input.workspacePath ?? "/home/test",
-    }),
-  );
-  const terminalWrite = vi.fn(async () => undefined);
-  const terminalResize = vi.fn(async () => undefined);
-  const terminalAcknowledge = vi.fn(async () => undefined);
-  const terminalClose = vi.fn(async () => undefined);
-  const jobsCancel = vi.fn<
-    (input: {
-      readonly sessionId: string;
-      readonly jobId: string;
-    }) => Promise<{ readonly kind: "applied" | "finished" | "not_found" }>
-  >(async () => ({ kind: "applied" }));
-  return {
-    jobsCancel,
-    terminalAcknowledge,
-    terminalClose,
-    terminalCreate,
-    terminalResize,
-    terminalWrite,
-  };
-});
-vi.mock("../nyte.ts", () => ({
-  nyte: {
-    jobs: { cancel: ipc.jobsCancel },
-    host: {
-      terminal: {
-        create: ipc.terminalCreate,
-        write: ipc.terminalWrite,
-        resize: ipc.terminalResize,
-        acknowledge: ipc.terminalAcknowledge,
-        close: ipc.terminalClose,
-      },
-    },
-  },
-}));
-
 import {
   applyTerminalEvent,
   attachTerminalOutput,
@@ -56,10 +13,46 @@ import {
 } from "./terminal-store.ts";
 import { createWorkbenchController, workbenchViewKey } from "./controller.ts";
 import type { TerminalOutput } from "./terminal-store.ts";
+import type { NyteBridge, TerminalBridge } from "../bridge.ts";
+import { installBridge } from "../nyte.ts";
+import { createWebBridge } from "../web/bridge.ts";
+
+const ipc = {
+  jobsCancel: vi.fn<NyteBridge["jobs"]["cancel"]>(async () => ({ kind: "applied" })),
+  terminalCreate: vi.fn<TerminalBridge["create"]>(async (input) => ({
+    id: input.id,
+    title: "zsh",
+    cwd: input.workspacePath ?? "/home/test",
+  })),
+  terminalWrite: vi.fn<TerminalBridge["write"]>(async () => undefined),
+  terminalResize: vi.fn<TerminalBridge["resize"]>(async () => undefined),
+  terminalAcknowledge: vi.fn<TerminalBridge["acknowledge"]>(async () => undefined),
+  terminalClose: vi.fn<TerminalBridge["close"]>(async () => undefined),
+};
+
+const web = createWebBridge().bridge;
+
+installBridge({
+  ...web,
+  jobs: { ...web.jobs, cancel: ipc.jobsCancel },
+  host: {
+    ...web.host,
+    terminal: {
+      create: ipc.terminalCreate,
+      write: ipc.terminalWrite,
+      resize: ipc.terminalResize,
+      acknowledge: ipc.terminalAcknowledge,
+      idle: async () => false,
+      close: ipc.terminalClose,
+    },
+  },
+});
 
 let index = 0;
+
 function tabId(): string {
   index += 1;
+
   return `terminal-tab-${String(index)}`;
 }
 
@@ -82,6 +75,7 @@ function command(id: string, change: Partial<JobInfo> = {}): JobInfo {
 
 function sink() {
   let contents = "";
+
   return {
     get contents() {
       return contents;
@@ -110,11 +104,13 @@ describe("job-backed terminal runtime", () => {
   test("a job start adds an unfocused agent-owned tab with running runtime state", () => {
     const controller = createWorkbenchController(() => ({ terminal: true, browser: true }));
     const view = workbenchViewKey(`/workspace/${tabId()}`);
+
     const browser = controller.actions.openTab({
       view,
       tab: { kind: "browser", url: "about:blank" },
       activate: true,
     });
+
     const job = command(`job-${tabId()}`);
 
     const id = openJobTerminal({

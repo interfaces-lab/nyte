@@ -160,6 +160,7 @@ function openWorkbenchTab({
   readonly capabilities: ClientCapabilities;
 }): void {
   if (!workbenchTabAvailable({ kind: "project" }, kind, capabilities)) return;
+
   const id = workbenchController.actions.openTab({
     view,
     tab: defaultWorkbenchTab(kind),
@@ -188,6 +189,7 @@ function FloatingWorkbenchPanel({
 }): ReactElement {
   const terminals = useTerminalRuntime();
   const files = useFileTabs(viewKey);
+
   const visibleTabs = view.tabs.filter((tab) =>
     workbenchTabAvailable(scope, tab.kind, capabilities),
   );
@@ -455,6 +457,7 @@ function WorkbenchViewHost({
     );
 
     const panel = panelRef.current;
+
     if (panel !== null) {
       panel.style.width = `${String(resize.nextWidth)}px`;
       setActiveWidth(panel.getBoundingClientRect().width);
@@ -495,12 +498,14 @@ function WorkbenchViewHost({
   const panelVisible = current && view.expanded;
   useLayoutEffect(() => {
     const panel = panelRef.current;
+
     if (!panelVisible || panel === null) return;
     const update = (): void => setActiveWidth(panel.getBoundingClientRect().width);
     update();
     const observer = new ResizeObserver(update);
     observer.observe(panel);
     window.addEventListener("resize", update);
+
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", update);
@@ -510,6 +515,7 @@ function WorkbenchViewHost({
   const mountedTabs = view.tabs.filter((tab) =>
     workbenchTabAvailable(scope, tab.kind, capabilities),
   );
+
   const fileTab = mountedTabs.find((tab) => tab.kind === "file" || tab.kind === "files");
   const panelTabs = mountedTabs.filter((tab) => tab.kind !== "file" && tab.kind !== "files");
 
@@ -600,11 +606,7 @@ function WorkbenchViewHost({
             aria-valuenow={Math.round((panelWidth / stageWidth) * 100)}
             aria-valuetext={`${String(Math.round((panelWidth / stageWidth) * 100))}%`}
             title="Drag to resize. Double-click for equal panels."
-            {...props(
-              resizing && intent.primary,
-              workbenchStyles.sash,
-              resizing && workbenchStyles.sashActive,
-            )}
+            {...props(workbenchStyles.sash, resizing && workbenchStyles.sashActive)}
             onKeyDown={resizeWithKeyboard}
             onPointerDown={beginResize}
             onPointerMove={moveResize}
