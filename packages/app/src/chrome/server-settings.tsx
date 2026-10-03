@@ -40,8 +40,8 @@ import {
   ConnectionRow,
   type ConnectionStanding,
 } from "./connection-list.tsx";
-import { ConnectButton } from "./connect-dialog.tsx";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
+import { NyteConnection } from "./nyte-connection.tsx";
 import { PairingCode, pairingPayload } from "./pairing-code.tsx";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
@@ -952,14 +952,7 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
 
   return (
     <>
-      <ConnectionList>
-        <ConnectionRow
-          glyph={<Icon name="user" size={16} />}
-          title="Nyte account"
-          detail="Reach this Mac from your iPhone on any network."
-          control={<ConnectButton connect={nyte.host.connect} active={active} />}
-        />
-      </ConnectionList>
+      <NyteConnection connect={nyte.host.connect} active={active} />
       <div {...props(settingsPatterns.sectionHeader)}>
         <h2 {...props(settingsPatterns.sectionTitle)}>Manual setup</h2>
       </div>

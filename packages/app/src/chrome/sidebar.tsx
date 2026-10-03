@@ -73,7 +73,7 @@ import { sessionActivityMark } from "../session-activity.ts";
 import { useOptimisticSessionIds } from "../use-outbox.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
-import { ConnectButton } from "./connect-dialog.tsx";
+import { RemoteAccessGlyph } from "./link-tray.tsx";
 import { signOutDescription, useGitHubAccount, useGitHubState } from "./github-account.ts";
 import { folderPicker } from "./open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
@@ -985,7 +985,7 @@ export function Sidebar(): ReactElement {
         <div {...props(styles.footer)}>
           <div ref={footerRowRef} {...props(styles.footerRow)}>
             <AccountFooterMenu github={github} anchor={footerRowRef} />
-            <ConnectButton connect={nyte.host.connect} active compact />
+            <RemoteAccessGlyph connect={nyte.host.connect} />
           </div>
         </div>
       )}

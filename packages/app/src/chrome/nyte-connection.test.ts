@@ -2,12 +2,12 @@ import { expect, test } from "vitest";
 import { testRenderer } from "../../test/renderer.ts";
 
 test(
-  "the Nyte account chip and dialog sign in, link, report the lease, and unlink only on confirm",
+  "the link tray signs in and links, and the Environments row reports the lease and unlinks only on confirm",
   { timeout: 60_000 },
   async () => {
     expect(
       await testRenderer(
-        new URL("./connect-dialog.browser-test.tsx", import.meta.url),
+        new URL("./nyte-connection.browser-test.tsx", import.meta.url),
         `window.nyte = {
   host: {
     setThemePreference() {},
