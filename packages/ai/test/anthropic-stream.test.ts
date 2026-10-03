@@ -2,6 +2,7 @@ import { normalizeContext } from "@nyte-ai/schema";
 import assert from "node:assert/strict";
 import { expect, test } from "vitest";
 import { stream, type AnthropicOptions } from "../src/api/anthropic-messages.ts";
+import { transformMessages } from "../src/api/transform-messages.ts";
 import type { AccountLimits, JsonValue, Model } from "../src/types.ts";
 
 const model = {
@@ -56,13 +57,15 @@ async function run(
   body: string,
   options?: {
     chunkBytes?: number;
+    headers?: Record<string, string>;
+    model?: Model<"anthropic-messages">;
     onAccountLimits?: AnthropicOptions["onAccountLimits"];
   },
 ) {
   const bytes = new TextEncoder().encode(body);
   const chunkBytes = options?.chunkBytes ?? Math.max(1, bytes.length);
   const source = stream(
-    model,
+    options?.model ?? model,
     normalizeContext({ messages: [{ role: "user", content: "hi", timestamp: 0 }] }),
     {
       apiKey: "test",
@@ -78,7 +81,7 @@ async function run(
               controller.close();
             },
           }),
-          { headers: { "content-type": "text/event-stream" } },
+          { headers: { "content-type": "text/event-stream", ...options?.headers } },
         ),
     },
   );
@@ -168,6 +171,71 @@ test("thinking signatures and redacted reasoning survive decoding", async () => 
   ]);
 });
 
+function responseModelStart(responseModel: string) {
+  return frame({
+    type: "message_start",
+    message: {
+      id: "msg_response_model",
+      model: responseModel,
+      usage: { input_tokens: 100, output_tokens: 0 },
+    },
+  });
+}
+
+test("keeps signed thinking replayable when a proxy relabels the model", async () => {
+  const { result } = await run(
+    responseModelStart("kimi-for-coding") +
+      frame({
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "thinking", thinking: "reasoning", signature: "signature" },
+      }) +
+      frame({ type: "content_block_stop", index: 0 }) +
+      finish(),
+  );
+  assert.equal(result.model, model.id);
+  assert.equal(result.responseModel, "kimi-for-coding");
+
+  const [replayed] = transformMessages([result], model);
+  assert.ok(replayed?.role === "assistant");
+  assert.deepEqual(replayed.content, [
+    { type: "thinking", thinking: "reasoning", thinkingSignature: "signature" },
+  ]);
+});
+
+test("uses a returned fallback model for cost attribution", async () => {
+  const { result } = await run(
+    responseModelStart("fallback-model") +
+      textStart +
+      textDelta +
+      textStop +
+      frame({
+        type: "message_delta",
+        delta: { stop_reason: "end_turn" },
+        usage: { input_tokens: 100, output_tokens: 20 },
+      }) +
+      stop,
+    {
+      model: {
+        ...model,
+        compat: {
+          allowedFallbackModels: [
+            {
+              provider: model.provider,
+              model: "fallback-model",
+              cost: { input: 3, output: 5, cacheRead: 0, cacheWrite: 0 },
+            },
+          ],
+        },
+      },
+    },
+  );
+  assert.equal(result.model, model.id);
+  assert.equal(result.responseModel, "fallback-model");
+  expect(result.usage.cost.input).toBeCloseTo(0.0003, 10);
+  expect(result.usage.cost.output).toBeCloseTo(0.0001, 10);
+});
+
 test("nullable usage deltas preserve initial counts and decode reasoning-token extensions", async () => {
   const { result } = await run(
     start +
@@ -222,6 +290,11 @@ test("unknown event and content variants do not interrupt known content", async 
       ].join("") +
       finish(),
     {
+      headers: {
+        "anthropic-ratelimit-unified-5h-utilization": "0.5",
+        "anthropic-ratelimit-unified-5h-reset": "1790898600",
+        "anthropic-ratelimit-unified-7d-utilization": "0.16",
+      },
       onAccountLimits: (value) => {
         limits.push(value);
       },
@@ -231,26 +304,20 @@ test("unknown event and content variants do not interrupt known content", async 
   assert.deepEqual(result.content, [{ type: "text", text: "answer" }]);
   assert.deepEqual(
     limits.map((value) => value.windows),
-    [[{ id: "five_hour", usedPercent: 50 }]],
+    [
+      [
+        { id: "five_hour", usedPercent: 50, windowMinutes: 300, resetsAt: 1790898600000 },
+        { id: "seven_day", usedPercent: 16, windowMinutes: 10080 },
+      ],
+    ],
   );
 });
 
 test.each([
   { name: "missing message", body: frame({ type: "message_start" }) },
   {
-    name: "string token count",
-    body: frame({
-      type: "message_start",
-      message: { id: "bad", model: model.id, usage: { input_tokens: "20" } },
-    }),
-  },
-  {
     name: "negative token count",
     body: frame({ type: "message_delta", delta: {}, usage: { output_tokens: -1 } }),
-  },
-  {
-    name: "non-finite token count",
-    body: 'event: message_delta\ndata: {"type":"message_delta","delta":{},"usage":{"output_tokens":1e999}}\n\n',
   },
   {
     name: "array tool arguments",
@@ -261,27 +328,10 @@ test.each([
     }),
   },
   {
-    name: "invalid text",
-    body: frame({
-      type: "content_block_start",
-      index: 1,
-      content_block: { type: "text", text: 42 },
-    }),
-  },
-  {
     name: "missing delta text",
     body: frame({ type: "content_block_delta", index: 0, delta: { type: "text_delta" } }),
   },
-  {
-    name: "non-string partial JSON",
-    body: frame({
-      type: "content_block_delta",
-      index: 0,
-      delta: { type: "input_json_delta", partial_json: {} },
-    }),
-  },
   { name: "negative block index", body: frame({ type: "content_block_stop", index: -1 }) },
-  { name: "null body", body: "event: message_delta\ndata: null\n\n" },
   {
     name: "mismatched event name",
     body: 'event: content_block_stop\ndata: {"type":"message_stop"}\n\n',

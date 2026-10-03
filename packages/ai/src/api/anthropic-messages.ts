@@ -1,3 +1,9 @@
+/**
+ * Anthropic Messages adapter.
+ *
+ * Based on https://github.com/earendil-works/pi/blob/295cc72b03058ee4df1936046b1e1ec67978af4d/packages/ai/src/api/anthropic-messages.ts
+ * Synced with pi 295cc72b0.
+ */
 import Anthropic from "@anthropic-ai/sdk";
 import { Type, type Static } from "typebox";
 import { IsProperties, IsRequired } from "typebox/schema";
@@ -40,7 +46,7 @@ import type {
 import { combineAbortSignals } from "../utils/abort-signals.ts";
 import { splitDeferredTools } from "../utils/deferred-tools.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
-import { headersToRecord } from "../utils/headers.ts";
+import { hasHeader, headersToRecord, mergeProviderHeaders } from "../utils/headers.ts";
 import { repairJson, parseStreamingJson } from "../utils/json-parse.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
@@ -63,6 +69,7 @@ import {
 import {
   getJsonSchemaToolParameters,
   resolveJsonSchemaStrictSampling,
+  type UnsupportedStrictSchemaKeywordCheck,
 } from "./constrained-sampling.ts";
 import { buildCopilotDynamicHeaders } from "./github-copilot-headers.ts";
 import {
@@ -346,12 +353,17 @@ export interface AnthropicOptions extends StreamOptions {
   client?: Anthropic;
 }
 
-function mergeHeaders(...headerSources: (ProviderHeaders | undefined)[]): ProviderHeaders {
-  const merged: ProviderHeaders = {};
+// appendAnthropicBeta accumulates flags across differently-cased beta headers, so each spelling keeps its latest value.
+function mergeAnthropicHeaders(...headerSources: (ProviderHeaders | undefined)[]): ProviderHeaders {
+  const merged = mergeProviderHeaders(...headerSources);
+
+  for (const name of Object.keys(merged)) {
+    if (name.toLowerCase() === "anthropic-beta") delete merged[name];
+  }
 
   for (const headers of headerSources) {
-    if (headers) {
-      Object.assign(merged, headers);
+    for (const [name, value] of Object.entries(headers ?? {})) {
+      if (name.toLowerCase() === "anthropic-beta") merged[name] = value;
     }
   }
 
@@ -382,18 +394,7 @@ function appendAnthropicBeta(headers: ProviderHeaders, beta: string | undefined)
 }
 
 function mergeClientHeaders(...headerSources: (ProviderHeaders | undefined)[]): ProviderHeaders {
-  return mergeHeaders({ "User-Agent": getNyteUserAgent() }, ...headerSources);
-}
-
-function hasHeader(headers: ProviderHeaders | undefined, name: string): boolean {
-  if (!headers) return false;
-  const expected = name.toLowerCase();
-
-  for (const [key, value] of Object.entries(headers)) {
-    if (key.toLowerCase() === expected && value !== null && value.trim().length > 0) return true;
-  }
-
-  return false;
+  return mergeAnthropicHeaders({ "User-Agent": getNyteUserAgent() }, ...headerSources);
 }
 
 function assertRequestAuth(
@@ -588,17 +589,6 @@ async function* iterateSseMessages(
 
 const AccountResetSchema = Type.Optional(Type.Union([Type.Number(), Type.String(), Type.Null()]));
 
-const ClaudeRateLimitEventSchema = Type.Object({
-  type: Type.Optional(Type.Literal("rate_limit_event")),
-  rate_limit_info: Type.Object({
-    rateLimitType: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-    rate_limit_type: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-    utilization: Type.Number(),
-    resetsAt: AccountResetSchema,
-    resets_at: AccountResetSchema,
-  }),
-});
-
 const ClaudeUsageResponseSchema = Type.Record(Type.String(), Type.Unknown());
 
 const ClaudeUsageWindowSchema = Type.Object({
@@ -642,29 +632,45 @@ function accountLimitWindow(
   return window;
 }
 
-function claudeRateLimitEventLimits(
-  event: Static<typeof ClaudeRateLimitEventSchema>,
-  providerId: string,
-): AccountLimits | undefined {
-  const info = event.rate_limit_info;
-  const rateLimitType = info.rateLimitType ?? info.rate_limit_type;
-
-  if (rateLimitType === null || rateLimitType === undefined) return undefined;
-  const usedPercent = info.utilization <= 1 ? info.utilization * 100 : info.utilization;
-
-  return {
-    providerId,
-    windows: [accountLimitWindow(rateLimitType, usedPercent, info.resetsAt ?? info.resets_at)],
-    observedAt: Date.now(),
-  };
-}
-
 const CLAUDE_USAGE_WINDOWS = [
   { id: "five_hour", windowMinutes: 5 * 60 },
   { id: "seven_day", windowMinutes: 7 * 24 * 60 },
   { id: "seven_day_sonnet", windowMinutes: 7 * 24 * 60 },
   { id: "seven_day_opus", windowMinutes: 7 * 24 * 60 },
 ] as const;
+
+/**
+ * Every OAuth response carries the shared windows as
+ * `anthropic-ratelimit-unified-{5h,7d}-{utilization,reset}`, so a turn that
+ * just ran is also the freshest read of the account.
+ */
+function claudeHeaderLimits(
+  headers: Record<string, string>,
+  providerId: string,
+): AccountLimits | undefined {
+  const windows: AccountLimitWindow[] = [];
+
+  for (const [id, suffix, windowMinutes] of [
+    ["five_hour", "5h", 5 * 60],
+    ["seven_day", "7d", 7 * 24 * 60],
+  ] as const) {
+    const utilization = Number(headers[`anthropic-ratelimit-unified-${suffix}-utilization`]);
+
+    if (!Number.isFinite(utilization)) continue;
+    const reset = Number(headers[`anthropic-ratelimit-unified-${suffix}-reset`]);
+
+    windows.push(
+      accountLimitWindow(
+        id,
+        utilization * 100,
+        Number.isFinite(reset) ? reset : undefined,
+        windowMinutes,
+      ),
+    );
+  }
+
+  return windows.length === 0 ? undefined : { providerId, windows, observedAt: Date.now() };
+}
 
 function claudeUsageWindows(usage: Static<typeof ClaudeUsageResponseSchema>): AccountLimitWindow[] {
   const windows: AccountLimitWindow[] = [];
@@ -772,10 +778,6 @@ export async function fetchAnthropicAccountLimits(
 async function* iterateAnthropicEvents(
   response: Response,
   signal?: AbortSignal,
-  accountLimits?: {
-    providerId: string;
-    observe(limits: AccountLimits): void | Promise<void>;
-  },
 ): AsyncGenerator<AnthropicEvent> {
   if (!response.body) {
     throw new Error("Attempted to iterate over an Anthropic response with no body");
@@ -789,23 +791,7 @@ async function* iterateAnthropicEvents(
       throw new Error(sse.data);
     }
 
-    if (!Value.Check(AnthropicEventTypeSchema, sse.event)) {
-      if (accountLimits !== undefined) {
-        try {
-          const event = JSON.parse(sse.data);
-
-          const limits = Value.Check(ClaudeRateLimitEventSchema, event)
-            ? claudeRateLimitEventLimits(event, accountLimits.providerId)
-            : undefined;
-
-          if (limits !== undefined) await accountLimits.observe(limits);
-        } catch {
-          // Account telemetry must never fail the assistant stream.
-        }
-      }
-
-      continue;
-    }
+    if (!Value.Check(AnthropicEventTypeSchema, sse.event)) continue;
 
     try {
       let event: unknown;
@@ -951,7 +937,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
         if (requestBetas.length > 0) {
           requestOptions.headers = requestBetas.reduce(
             appendAnthropicBeta,
-            mergeHeaders(model.headers, options.headers),
+            mergeAnthropicHeaders(model.headers, options.headers),
           );
         }
       }
@@ -965,10 +951,15 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
         },
       );
 
-      await options?.onResponse?.(
-        { status: response.status, headers: headersToRecord(response.headers) },
-        model,
-      );
+      const responseHeaders = headersToRecord(response.headers);
+      await options?.onResponse?.({ status: response.status, headers: responseHeaders }, model);
+
+      if (options?.onAccountLimits !== undefined) {
+        const limits = claudeHeaderLimits(responseHeaders, model.provider);
+
+        if (limits !== undefined) await options.onAccountLimits(limits, model);
+      }
+
       stream.push({ type: "start", partial: output });
 
       type BlockSlot =
@@ -977,29 +968,21 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 
       const blocks = new Map<number, BlockSlot>();
 
-      for await (const event of iterateAnthropicEvents(
-        response,
-        options?.signal,
-        options?.onAccountLimits === undefined
-          ? undefined
-          : {
-              providerId: model.provider,
-              observe: (limits) => options.onAccountLimits?.(limits, model),
-            },
-      )) {
+      for await (const event of iterateAnthropicEvents(response, options?.signal)) {
         if (event.type === "message_start") {
           output.responseId = event.message.id;
-          output.model = event.message.model;
+          const responseModel = event.message.model;
+          if (responseModel !== model.id) output.responseModel = responseModel;
 
           const fallbackCost =
-            output.model === model.id
+            responseModel === model.id
               ? undefined
               : model.compat?.allowedFallbackModels?.find(
                   (fallback) =>
-                    fallback.provider === model.provider && fallback.model === output.model,
+                    fallback.provider === model.provider && fallback.model === responseModel,
                 )?.cost;
 
-          usageModel = fallbackCost ? { ...model, id: output.model, cost: fallbackCost } : model;
+          usageModel = fallbackCost ? { ...model, id: responseModel, cost: fallbackCost } : model;
           usedFastMode = event.message.usage.speed === "fast";
           // Capture initial token usage from message_start event
           // This ensures we have input token counts even if the stream is aborted early
@@ -1880,6 +1863,43 @@ function shouldUseFineGrainedToolStreamingBeta(
   );
 }
 
+// Keywords Anthropic strict tool use rejects with a 400 for the whole request.
+// https://platform.claude.com/docs/en/build-with-claude/structured-outputs#json-schema-limitations
+const ANTHROPIC_STRICT_UNSUPPORTED_KEYWORDS = new Set([
+  "minimum",
+  "maximum",
+  "exclusiveMinimum",
+  "exclusiveMaximum",
+  "multipleOf",
+  "maxItems",
+  "uniqueItems",
+  "minContains",
+  "maxContains",
+  "minProperties",
+  "maxProperties",
+]);
+
+const ANTHROPIC_STRICT_STRING_FORMATS = new Set([
+  "date-time",
+  "time",
+  "date",
+  "duration",
+  "email",
+  "hostname",
+  "uri",
+  "ipv4",
+  "ipv6",
+  "uuid",
+]);
+
+const isAnthropicStrictUnsupportedKeyword: UnsupportedStrictSchemaKeywordCheck = (key, value) => {
+  if (ANTHROPIC_STRICT_UNSUPPORTED_KEYWORDS.has(key)) return true;
+  if (key === "minItems") return value !== 0 && value !== 1;
+  if (key === "format")
+    return typeof value !== "string" || !ANTHROPIC_STRICT_STRING_FORMATS.has(value);
+  return false;
+};
+
 function convertTools(
   tools: Tool[],
   isOAuthToken: boolean,
@@ -1891,7 +1911,11 @@ function convertTools(
   if (!tools) return [];
 
   return tools.map((tool, index) => {
-    const strict = resolveJsonSchemaStrictSampling(tool, supportsStrictTools);
+    const strict = resolveJsonSchemaStrictSampling(
+      tool,
+      supportsStrictTools,
+      isAnthropicStrictUnsupportedKeyword,
+    );
     const parameters = getJsonSchemaToolParameters(tool, strict);
 
     const legacyInputSchema = {

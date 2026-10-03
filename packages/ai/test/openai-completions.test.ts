@@ -1,8 +1,9 @@
 import { normalizeContext } from "@nyte-ai/schema";
 import assert from "node:assert/strict";
+import { Type } from "typebox";
 import { expect, test } from "vitest";
 import { stream } from "../src/api/openai-completions.ts";
-import type { Context, JsonValue, Model } from "../src/types.ts";
+import type { Context, JsonValue, Model, Tool } from "../src/types.ts";
 
 const model = {
   id: "test-model",
@@ -26,16 +27,26 @@ const usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 const stopped = { choices: [{ delta: { content: "answer" }, finish_reason: "stop" }] };
+const ping: Tool = {
+  name: "ping",
+  description: "Ping tool",
+  parameters: Type.Object({
+    required: Type.String(),
+    optional: Type.Optional(Type.String()),
+  }),
+  constrainedSampling: { type: "json_schema", strict: "prefer" },
+};
 
 async function exchange(input: {
   messages?: Context["messages"];
+  tools?: Tool[];
   chunks: readonly JsonValue[];
   compat?: Model<"openai-completions">["compat"];
 }) {
   let body = "";
   const result = await stream(
     { ...model, compat: input.compat },
-    normalizeContext({ messages: input.messages ?? [] }),
+    normalizeContext({ messages: input.messages ?? [], tools: input.tools }),
     {
       apiKey: "test",
       maxRetries: 0,
@@ -77,6 +88,85 @@ test("reasoning details retain order and provider extensions across stream and r
   expect(JSON.parse(replay.body)).toMatchObject({
     messages: [{ role: "assistant", content: "answer", reasoning_details: details }],
   });
+});
+
+test("consecutive text and summary reasoning details deltas merge before replay", async () => {
+  const encrypted = { type: "reasoning.encrypted", id: "call_1", data: "encrypted-signature" };
+  const laterSummary = {
+    type: "reasoning.summary",
+    summary: "After encrypted block.",
+    format: "openai-responses-v1",
+    index: 0,
+  };
+  const deltas = [
+    { type: "reasoning.text", text: "The", index: 0 },
+    {
+      type: "reasoning.text",
+      text: " user wants the time.",
+      signature: "sha256:text-signature",
+      format: "openai-responses-v1",
+      index: 0,
+    },
+    { type: "reasoning.summary", summary: "Looked", index: 0 },
+    { type: "reasoning.summary", summary: " up time.", format: "openai-responses-v1", index: 0 },
+    encrypted,
+    laterSummary,
+  ] as const satisfies readonly JsonValue[];
+  const expected = [
+    {
+      type: "reasoning.text",
+      text: "The user wants the time.",
+      index: 0,
+      signature: "sha256:text-signature",
+      format: "openai-responses-v1",
+    },
+    {
+      type: "reasoning.summary",
+      summary: "Looked up time.",
+      index: 0,
+      format: "openai-responses-v1",
+    },
+    encrypted,
+    laterSummary,
+  ];
+  const { result } = await exchange({
+    chunks: [
+      ...deltas.map((detail) => ({ choices: [{ delta: { reasoning_details: [detail] } }] })),
+      stopped,
+    ],
+  });
+  const thinking = result.content.find((block) => block.type === "thinking");
+  assert.deepEqual(thinking, {
+    type: "thinking",
+    thinking: "",
+    thinkingSignature: JSON.stringify(expected),
+  });
+  const replay = await exchange({ messages: [result], chunks: [stopped] });
+  expect(JSON.parse(replay.body)).toMatchObject({
+    messages: [{ role: "assistant", content: "answer", reasoning_details: expected }],
+  });
+});
+
+test("user messages with images omit empty text parts", async () => {
+  const { body } = await exchange({
+    chunks: [stopped],
+    messages: [
+      {
+        role: "user",
+        timestamp: 0,
+        content: [
+          { type: "text", text: "" },
+          { type: "image", data: "ZmFrZQ==", mimeType: "image/png" },
+        ],
+      },
+    ],
+  });
+  expect(JSON.parse(body).messages).toEqual([
+    {
+      role: "user",
+      content: [{ type: "image_url", image_url: { url: "data:image/png;base64,ZmFrZQ==" } }],
+    },
+  ]);
 });
 
 test("incomplete tool arguments survive a failed stream without parser scratch fields", async () => {
@@ -171,5 +261,25 @@ test("message conversion keeps text, tool calls, grouped image results, and the 
       },
       { role: "user", content: "next" },
     ],
+  });
+});
+
+test("unknown OpenAI-compatible endpoints default to non-strict tools", async () => {
+  const { body } = await exchange({ tools: [ping], chunks: [stopped] });
+  const request = JSON.parse(body);
+  expect(request).not.toHaveProperty("tools.0.function.strict");
+  expect(request).toMatchObject({
+    tools: [{ function: { parameters: { required: ["required"] } } }],
+  });
+});
+
+test("catalog strict-mode metadata keeps strict tools", async () => {
+  const { body } = await exchange({
+    tools: [ping],
+    chunks: [stopped],
+    compat: { supportsStrictMode: true },
+  });
+  expect(JSON.parse(body)).toMatchObject({
+    tools: [{ function: { strict: true, parameters: { required: ["required", "optional"] } } }],
   });
 });

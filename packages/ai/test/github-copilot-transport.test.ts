@@ -1,3 +1,8 @@
+/**
+ * The Copilot identity and beta-header assertions in "a catalog Messages model" are based on
+ * https://github.com/earendil-works/pi/blob/dev/packages/ai/test/github-copilot-anthropic.test.ts
+ * Synced with pi a276dabe5.
+ */
 import { normalizeContext } from "@nyte-ai/schema";
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
@@ -436,6 +441,11 @@ describe("GitHub Copilot transport", () => {
     assert.equal(initial.headers.get("x-client-request-id"), null);
     assert.equal(initial.headers.get("x-session-affinity"), null);
     assert.equal(initial.headers.get("openai-intent"), "conversation-edits");
+    assert.match(initial.headers.get("user-agent") ?? "", /GitHubCopilotChat/);
+    assert.equal(initial.headers.get("copilot-integration-id"), "vscode-chat");
+    const betas = (initial.headers.get("anthropic-beta") ?? "").split(",");
+    assert.ok(!betas.includes("interleaved-thinking-2025-05-14"));
+    assert.ok(!betas.includes("fine-grained-tool-streaming-2025-05-14"));
     assert.equal(followUp.headers.get("x-initiator"), "agent");
     const body = requestBody(initial.body);
     assert.partialDeepStrictEqual(body, {
@@ -534,30 +544,12 @@ describe("GitHub Copilot chat completions reasoning state", () => {
 
   const opaqueReplayCases = [
     {
-      name: "opaque state before reasoning text survives later deltas",
-      chunks: [
-        { choices: [{ delta: { reasoning_opaque: "early-state" } }] },
-        { choices: [{ delta: { reasoning_text: "check " } }] },
-        { choices: [{ delta: { reasoning_text: "twice" } }] },
-        { choices: [{ delta: { content: "answer" }, finish_reason: "stop" }] },
-      ],
-      continuation: "continue",
-      signature: JSON.stringify({ reasoning_opaque: "early-state" }),
-      expected: {
-        role: "assistant",
-        content: "answer",
-        reasoning_text: "check twice",
-        reasoning_opaque: "early-state",
-      },
-    },
-    {
       name: "opaque state in the reasoning text chunk is kept",
       chunks: [
         { choices: [{ delta: { reasoning_text: "check", reasoning_opaque: "opaque-state" } }] },
         { choices: [{ delta: { content: "answer" }, finish_reason: "stop" }] },
       ],
       continuation: "continue",
-      signature: null,
       expected: {
         role: "assistant",
         content: "answer",
@@ -572,18 +564,12 @@ describe("GitHub Copilot chat completions reasoning state", () => {
         { choices: [{ delta: {}, finish_reason: "stop" }] },
       ],
       continuation: "go",
-      signature: null,
       expected: { role: "assistant", content: "answer", reasoning_opaque: "late-state" },
     },
   ];
 
   test.each(opaqueReplayCases)("$name", async (input) => {
     const first = await exchange([user("hello", 0)], input.chunks);
-    if (input.signature !== null) {
-      const thinking = first.result.content.find((block) => block.type === "thinking");
-      assert.ok(thinking && thinking.type === "thinking");
-      assert.equal(thinking.thinkingSignature, input.signature);
-    }
     const second = await exchange(
       [user("hello", 0), first.result, user(input.continuation, 1)],
       [{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }],

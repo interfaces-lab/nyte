@@ -1,5 +1,6 @@
 /** Shared GitHub Copilot HTTP, OAuth, catalog, and SSE fixtures. */
 import { vi } from "vitest";
+import { GITHUB_COPILOT_HEADERS } from "../src/api/github-copilot-headers.ts";
 import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
 import type { AuthEvent, ProviderAuthInteraction } from "../src/auth/types.ts";
 import { createModels } from "../src/models.ts";
@@ -116,6 +117,7 @@ export const copilotCatalog: readonly Model<Api>[] = [
     cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
     contextWindow: 1_000_000,
     maxTokens: 32_000,
+    headers: GITHUB_COPILOT_HEADERS,
     compat: { forceAdaptiveThinking: true },
   },
   {

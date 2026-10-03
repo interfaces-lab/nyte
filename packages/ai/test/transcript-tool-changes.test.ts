@@ -192,7 +192,9 @@ describe("transcript system messages", () => {
     });
     const updateText = Array.isArray(update?.content) ? update.content[0]?.text : undefined;
     expect(updateText).toContain("updated guidance");
-    expect(updateText).toContain("<rules>\nnew rules\n</rules>");
+    expect(updateText).toContain(
+      'Updated system prompt section "rules":\n\n<rules>\nnew rules\n</rules>',
+    );
     expect(updateText).toContain('Removed system prompt section "docs"');
 
     // The placeholder is declared before any change so its scaffolding is cached from request one.
@@ -312,44 +314,32 @@ describe("transcript system messages", () => {
     });
   });
 
-  test("folds Anthropic updates into the system prompt without native support", async () => {
-    const model: Model<"anthropic-messages"> = {
+  test("folds Anthropic updates into the system prompt without both native capabilities", async () => {
+    const unsupported: Model<"anthropic-messages"> = {
       ...modelBase,
       id: "claude-sonnet-4-5",
       name: "Claude Sonnet 4.5",
       api: "anthropic-messages",
       provider: "anthropic",
     };
-    const request = await captureRequest(anthropicMessagesApi(), model, context);
-    const payload = anthropicPayload(request.body);
-
-    expect(request.headers.get("anthropic-beta") ?? "").not.toContain(
-      MID_CONVERSATION_TOOL_CHANGES_BETA,
-    );
-    expect(payload.system?.map((block) => block.text)).toEqual([
-      "base prompt\n\nupdated guidance\n\n<rules>\nnew rules\n</rules>",
-    ]);
-    expect(payload.tools?.map((value) => value.name)).toEqual(["late_tool"]);
-    expect(payload.messages.map((message) => message.role)).toEqual(["user"]);
-  });
-
-  test("requires both Anthropic capabilities for native tool changes", async () => {
-    const model: Model<"anthropic-messages"> = {
-      ...modelBase,
-      id: "claude-opus-5",
-      name: "Claude Opus 5",
-      api: "anthropic-messages",
-      provider: "anthropic",
+    // Tool-change support alone is not native support: native updates need both capabilities.
+    const toolChangesOnly: Model<"anthropic-messages"> = {
+      ...anthropicNativeModel,
       compat: { supportsMidConvoToolChanges: true },
     };
-    const request = await captureRequest(anthropicMessagesApi(), model, context);
-    const payload = anthropicPayload(request.body);
+    for (const model of [unsupported, toolChangesOnly]) {
+      const request = await captureRequest(anthropicMessagesApi(), model, context);
+      const payload = anthropicPayload(request.body);
 
-    expect(request.headers.get("anthropic-beta") ?? "").not.toContain(
-      MID_CONVERSATION_TOOL_CHANGES_BETA,
-    );
-    expect(payload.tools?.map((value) => value.name)).toEqual(["late_tool"]);
-    expect(payload.messages.map((message) => message.role)).toEqual(["user"]);
+      expect(request.headers.get("anthropic-beta") ?? "").not.toContain(
+        MID_CONVERSATION_TOOL_CHANGES_BETA,
+      );
+      expect(payload.system?.map((block) => block.text)).toEqual([
+        "base prompt\n\nupdated guidance\n\n<rules>\nnew rules\n</rules>",
+      ]);
+      expect(payload.tools?.map((value) => value.name)).toEqual(["late_tool"]);
+      expect(payload.messages.map((message) => message.role)).toEqual(["user"]);
+    }
   });
 
   test("anchors OpenAI additions at their developer message", async () => {

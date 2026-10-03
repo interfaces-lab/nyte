@@ -1,8 +1,8 @@
 /**
  * OpenCode Zen provider.
  *
- * Based on https://github.com/earendil-works/pi/blob/77f2d1235ee2992c6072b9dcb6e99439a70c6f45/packages/ai/src/providers/opencode.ts
- * Synced with pi 77f2d1235.
+ * Based on https://github.com/earendil-works/pi/blob/561a2e066c0742e3d3e33c75d5d32a69b1d89194/packages/ai/src/providers/opencode.ts
+ * Synced with pi 561a2e066.
  */
 import { anthropicMessagesApi } from "../api/anthropic-messages.lazy.ts";
 import { googleGenerativeAIApi } from "../api/google-generative-ai.lazy.ts";
@@ -10,6 +10,7 @@ import { openAICompletionsApi } from "../api/openai-completions.lazy.ts";
 import { openAIResponsesApi } from "../api/openai-responses.lazy.ts";
 import { envApiKeyAuth } from "../auth/helpers.ts";
 import { createProvider, type Provider } from "../models.ts";
+import { withOpenCodeSessionHeader } from "./opencode-headers.ts";
 
 export type OpenCodeApi =
   | "anthropic-messages"
@@ -30,10 +31,10 @@ export function opencodeProvider(): Provider<OpenCodeApi> {
     },
     auth: { apiKey: envApiKeyAuth("OpenCode API key", ["OPENCODE_API_KEY"]) },
     api: {
-      "anthropic-messages": anthropicMessagesApi(),
-      "google-generative-ai": googleGenerativeAIApi(),
-      "openai-completions": openAICompletionsApi(),
-      "openai-responses": openAIResponsesApi(),
+      "anthropic-messages": withOpenCodeSessionHeader(anthropicMessagesApi()),
+      "google-generative-ai": withOpenCodeSessionHeader(googleGenerativeAIApi()),
+      "openai-completions": withOpenCodeSessionHeader(openAICompletionsApi()),
+      "openai-responses": withOpenCodeSessionHeader(openAIResponsesApi()),
     },
   });
 }

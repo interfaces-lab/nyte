@@ -402,24 +402,6 @@ describe("Models runtime", () => {
     });
   });
 
-  it("always gives providers a concrete signal", async () => {
-    let receivedSignal: AbortSignal | undefined;
-    const models = createModels();
-    models.setProvider(
-      testProvider({
-        id: "dynamic",
-        refreshModels: async (input) => {
-          receivedSignal = input.signal;
-        },
-      }),
-    );
-
-    const result = await models.refresh();
-    expect(result.aborted).toBe(false);
-    expect(receivedSignal).toBeInstanceOf(AbortSignal);
-    expect(receivedSignal?.aborted).toBe(false);
-  });
-
   it("binds model-store waits to the provider refresh signal", async () => {
     const storageSignals: (AbortSignal | undefined)[] = [];
     const store: ModelsStore = {
@@ -451,26 +433,10 @@ describe("Models runtime", () => {
     const result = await models.refresh({ providers: ["dynamic"] });
 
     expect(result.errors.size).toBe(0);
+    expect(result.aborted).toBe(false);
+    expect(providerSignal).toBeInstanceOf(AbortSignal);
     expect(storageSignals).toHaveLength(3);
     expect(storageSignals.every((signal) => signal === providerSignal)).toBe(true);
-  });
-
-  it("returns aborted state without reporting cancellation as a provider error", async () => {
-    const controller = new AbortController();
-    const models = createModels();
-    models.setProvider(
-      testProvider({
-        id: "dynamic",
-        refreshModels: async (input) => {
-          controller.abort();
-          if (input.signal.aborted) return;
-        },
-      }),
-    );
-
-    const result = await models.refresh({ signal: controller.signal });
-    expect(result.aborted).toBe(true);
-    expect(result.errors.size).toBe(0);
   });
 
   it("stops waiting on abort when a provider ignores its signal", async () => {
@@ -830,76 +796,46 @@ describe("Models runtime", () => {
     expect(await models.getAuth("p1")).toBeUndefined();
   });
 
-  it("refreshes expired oauth credentials and persists the rotated credential", async () => {
-    const credentials = new InMemoryCredentialStore();
-    const oauth = testOAuth({
-      refresh: async (credential) => ({
+  it.each([
+    {
+      label: "with less than five minutes remaining",
+      expires: () => Date.now() + 60_000,
+      options: undefined,
+    },
+    {
+      label: "inside a caller's longer minimum validity",
+      expires: () => Date.now() + 10 * 60_000,
+      options: { minOAuthValidityMs: 30 * 60_000 },
+    },
+  ])(
+    "refreshes oauth credentials $label and persists the rotated credential",
+    async ({ expires, options }) => {
+      const credentials = new InMemoryCredentialStore();
+      const refresh = vi.fn(async (credential) => ({
         ...credential,
         access: "new-token",
         expires: Date.now() + 60 * 60_000,
-      }),
-    });
-    const models = createModels({ credentials });
-    models.setProvider(testProvider({ id: "p1", auth: { oauth } }));
-    await credentials.modify("p1", async () => ({
-      type: "oauth",
-      access: "old-token",
-      refresh: "r",
-      expires: 0,
-    }));
+      }));
+      const models = createModels({ credentials });
+      models.setProvider(testProvider({ id: "p1", auth: { oauth: testOAuth({ refresh }) } }));
+      await credentials.modify("p1", async () => ({
+        type: "oauth",
+        access: "old-token",
+        refresh: "r",
+        expires: expires(),
+      }));
 
-    const resolution = await models.getAuth("p1");
-    expect(resolution?.auth.apiKey).toBe("new-token");
-    expect(await credentials.read("p1")).toMatchObject({ type: "oauth", access: "new-token" });
-  });
+      expect((await models.getAuth("p1", options))?.auth.apiKey).toBe("new-token");
+      expect(refresh).toHaveBeenCalledOnce();
+      expect(await credentials.read("p1")).toMatchObject({ type: "oauth", access: "new-token" });
+    },
+  );
 
-  it("refreshes oauth credentials with less than five minutes remaining", async () => {
-    const credentials = new InMemoryCredentialStore();
-    const refresh = vi.fn(async (credential) => ({
-      ...credential,
-      access: "new-token",
-      expires: Date.now() + 60 * 60_000,
-    }));
-    const models = createModels({ credentials });
-    models.setProvider(testProvider({ id: "p1", auth: { oauth: testOAuth({ refresh }) } }));
-    await credentials.modify("p1", async () => ({
-      type: "oauth",
-      access: "old-token",
-      refresh: "r",
-      expires: Date.now() + 60_000,
-    }));
-
-    expect((await models.getAuth("p1"))?.auth.apiKey).toBe("new-token");
-    expect(refresh).toHaveBeenCalledOnce();
-  });
-
-  it("honors a caller's longer OAuth minimum validity", async () => {
-    const credentials = new InMemoryCredentialStore();
-    const refresh = vi.fn(async (credential) => ({
-      ...credential,
-      access: "new-token",
-      expires: Date.now() + 60 * 60_000,
-    }));
-    const models = createModels({ credentials });
-    models.setProvider(testProvider({ id: "p1", auth: { oauth: testOAuth({ refresh }) } }));
-    await credentials.modify("p1", async () => ({
-      type: "oauth",
-      access: "old-token",
-      refresh: "r",
-      expires: Date.now() + 10 * 60_000,
-    }));
-
-    expect((await models.getAuth("p1", { minOAuthValidityMs: 30 * 60_000 }))?.auth.apiKey).toBe(
-      "new-token",
-    );
-    expect(refresh).toHaveBeenCalledOnce();
-  });
-
-  it("rejects with code oauth when refresh fails, preserving the stored credential", async () => {
+  it("rejects with code oauth when refresh fails, keeping the reason and the stored credential", async () => {
     const credentials = new InMemoryCredentialStore();
     const oauth = testOAuth({
       refresh: async () => {
-        throw new Error("invalid_grant");
+        throw new Error("token refresh failed (400): invalid_grant");
       },
     });
     const models = createModels({ credentials });
@@ -911,7 +847,10 @@ describe("Models runtime", () => {
       expires: 0,
     }));
 
-    await expect(models.getAuth("p1")).rejects.toMatchObject({ code: "oauth" });
+    await expect(models.getAuth("p1")).rejects.toMatchObject({
+      code: "oauth",
+      message: "OAuth refresh failed for p1: token refresh failed (400): invalid_grant",
+    });
     // credential preserved for retry / re-login
     expect(await credentials.read("p1")).toMatchObject({ type: "oauth", access: "old" });
   });
@@ -1004,33 +943,6 @@ describe("Models runtime", () => {
     await expect(oauthModels.getAuth("p1")).rejects.toMatchObject({ code: "auth" });
   });
 
-  it("keeps the underlying reason in wrapped oauth refresh errors", async () => {
-    const credentials = new InMemoryCredentialStore();
-    await credentials.modify("p1", async () => ({
-      type: "oauth",
-      access: "old",
-      refresh: "r",
-      expires: 0,
-    }));
-    const models = createModels({ credentials });
-    models.setProvider(
-      testProvider({
-        id: "p1",
-        auth: {
-          oauth: testOAuth({
-            refresh: async () => {
-              throw new Error("token refresh failed (400): invalid_grant");
-            },
-          }),
-        },
-      }),
-    );
-
-    await expect(models.getAuth("p1")).rejects.toThrow(
-      "OAuth refresh failed for p1: token refresh failed (400): invalid_grant",
-    );
-  });
-
   it("wraps api-key auth failures in ModelsError", async () => {
     const failing: ApiKeyAuth = {
       name: "Failing",
@@ -1070,57 +982,56 @@ describe("Models runtime", () => {
     expect(calls[0].options?.env).toEqual({ ACCOUNT_ID: "acct" });
   });
 
-  it.each(["simple", "api"] as const)(
-    "merges auth without dropping %s request options",
-    async (mode) => {
-      const calls: ProviderCall[] = [];
-      const apiKey: ApiKeyAuth = {
-        name: "Test",
-        resolve: async () => ({
-          auth: {
-            apiKey: "resolved-key",
-            headers: { Authorization: "Bearer resolved-key", "x-a": "auth", "x-b": "auth" },
-            baseUrl: "https://auth.test/v1",
-          },
-        }),
-      };
-      const models = createModels();
-      models.setProvider(testProvider({ id: "p1", auth: { apiKey }, calls }));
-      const model = testModel("p1", "model-a");
+  it("merges auth without dropping request options", async () => {
+    const calls: ProviderCall[] = [];
+    const apiKey: ApiKeyAuth = {
+      name: "Test",
+      resolve: async () => ({
+        auth: {
+          apiKey: "resolved-key",
+          headers: { Authorization: "Bearer resolved-key", "x-a": "auth", "x-b": "auth" },
+          baseUrl: "https://auth.test/v1",
+        },
+      }),
+    };
+    const models = createModels();
+    models.setProvider(testProvider({ id: "p1", auth: { apiKey }, calls }));
+    const model = testModel("p1", "model-a");
 
-      const options = {
-        apiKey: "explicit-key",
-        headers: { authorization: "Explicit token", "x-b": "explicit" },
-        temperature: 0.2,
-        maxTokens: 7,
-        vendor_field: { enabled: true },
-      };
-      const result = await (mode === "simple"
-        ? models.completeSimple(model, context, options)
-        : models.complete(model, context, options));
-      expect(result.stopReason).toBe("stop");
-      expect(calls).toHaveLength(1);
-      expect(calls[0].options).toMatchObject({
-        apiKey: "explicit-key",
-        temperature: 0.2,
-        maxTokens: 7,
-        vendor_field: { enabled: true },
-      });
-      expect(calls[0].options?.headers).toEqual({
-        authorization: "Explicit token",
-        "x-a": "auth",
-        "x-b": "explicit",
-      });
-      expect(calls[0].model.baseUrl).toBe("https://auth.test/v1");
+    const options = {
+      apiKey: "explicit-key",
+      headers: { authorization: "Explicit token", "x-b": "explicit" },
+      temperature: 0.2,
+      maxTokens: 7,
+      vendor_field: { enabled: true },
+    };
+    const result = await models.completeSimple(model, context, options);
+    expect(result.stopReason).toBe("stop");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].options).toMatchObject({
+      apiKey: "explicit-key",
+      temperature: 0.2,
+      maxTokens: 7,
+      vendor_field: { enabled: true },
+    });
+    expect(calls[0].options?.headers).toEqual({
+      authorization: "Explicit token",
+      "x-a": "auth",
+      "x-b": "explicit",
+    });
+    expect(calls[0].model.baseUrl).toBe("https://auth.test/v1");
 
-      // without explicit options, resolved auth applies
-      const result2 = await (mode === "simple"
-        ? models.completeSimple(model, context)
-        : models.complete(model, context));
-      expect(result2.stopReason).toBe("stop");
-      expect(calls[1].options?.apiKey).toBe("resolved-key");
-    },
-  );
+    // without explicit options, resolved auth applies
+    const result2 = await models.completeSimple(model, context);
+    expect(result2.stopReason).toBe("stop");
+    expect(calls[1].options?.apiKey).toBe("resolved-key");
+
+    // complete() merges through the same path
+    await models.complete(model, context, options);
+    expect(calls[2].options).toMatchObject({ apiKey: "explicit-key", temperature: 0.2 });
+    expect(calls[2].options?.headers).toEqual(calls[0].options?.headers);
+    expect(calls[2].model.baseUrl).toBe("https://auth.test/v1");
+  });
 
   it("adds model headers only for model auth and transforms assembled headers once", async () => {
     const calls: ProviderCall[] = [];

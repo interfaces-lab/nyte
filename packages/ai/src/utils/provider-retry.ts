@@ -4,6 +4,8 @@
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/provider-retry.ts
  * Synced with pi 7ebf9087e.
  */
+import { sleep } from "./abort.ts";
+
 const DEFAULT_MAX_RETRY_DELAY_MS = 60_000;
 
 interface ProviderRetryOptions {
@@ -93,31 +95,6 @@ function createAbortError(): Error {
   return error;
 }
 
-function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(createAbortError());
-
-      return;
-    }
-
-    const onAbort = () => {
-      clearTimeout(timeout);
-      reject(createAbortError());
-    };
-
-    const timeout = setTimeout(
-      () => {
-        signal?.removeEventListener("abort", onAbort);
-        resolve();
-      },
-      Math.max(0, ms),
-    );
-
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
 /**
  * Reproduce the retry behavior used by the OpenAI and Anthropic SDKs while making
  * their backoff sleep interruptible. Their built-in retry timers ignore the
@@ -145,9 +122,10 @@ export async function retryProviderRequest<T>(
 
       const retryIndex = maxRetries - retriesRemaining;
       retriesRemaining--;
-      await abortableSleep(
+      await sleep(
         getRetryDelayMs(error, retryIndex, options.maxRetryDelayMs),
         options.signal,
+        createAbortError,
       );
     }
   }

@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 
+/**
+ * Hosted catalog generator.
+ *
+ * Based on https://github.com/earendil-works/pi/blob/890f920884f6d21fc7617d236ef9e1cc5d7a0ef8/packages/ai/scripts/generate-models.ts
+ * Synced with pi 890f92088.
+ */
 import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { dirname, join, relative } from "path";
 import { fileURLToPath } from "url";
@@ -731,7 +737,7 @@ const OPENAI_COMPLETIONS_DEFAULT_COMPAT: OpenAICompletionsResolvedCompat = {
   chatTemplateKwargs: {},
   chatTemplateArgs: {},
   zaiToolStream: false,
-  supportsStrictMode: true,
+  supportsStrictMode: false,
   supportsOpenAIGrammarTools: false,
   supportsMidConvoSystemMessages: false,
   supportsMidConvoToolAdditions: false,
@@ -775,13 +781,13 @@ function detectOpenAICompletionsCompat(model: Model<Api>): OpenAICompletionsReso
 
   const isNvidia = provider === "nvidia" || baseUrl.includes("integrate.api.nvidia.com");
   const isAntLing = provider === "ant-ling" || baseUrl.includes("api.ant-ling.com");
+  const isCerebras = provider === "cerebras" || baseUrl.includes("cerebras.ai");
   const isTogetherReasoningOnly = isTogether && TOGETHER_REASONING_ONLY_MODELS.has(model.id);
   const isDeepSeek = provider === "deepseek" || baseUrl.toLowerCase().includes("deepseek.com");
 
   const isNonStandard =
     isNvidia ||
-    provider === "cerebras" ||
-    baseUrl.includes("cerebras.ai") ||
+    isCerebras ||
     provider === "xai" ||
     baseUrl.includes("api.x.ai") ||
     isTogether ||
@@ -847,7 +853,9 @@ function detectOpenAICompletionsCompat(model: Model<Api>): OpenAICompletionsReso
     chatTemplateKwargs: {},
     chatTemplateArgs: {},
     zaiToolStream: false,
-    supportsStrictMode: !isMoonshot && !isTogether && !isCloudflareAiGateway && !isNvidia,
+    // Preserve built-in behavior as explicit metadata against the conservative runtime default.
+    supportsStrictMode:
+      !isMoonshot && !isTogether && !isCloudflareAiGateway && !isNvidia && !isCerebras,
     supportsOpenAIGrammarTools: false,
     supportsMidConvoSystemMessages: false,
     supportsMidConvoToolAdditions: false,
@@ -1310,6 +1318,11 @@ function getAnthropicMessagesCompat(
   }
 
   if (provider === "xiaomi" || provider.startsWith("xiaomi-token-plan-")) {
+    compat.allowEmptySignature = true;
+  }
+
+  // OpenCode Qwen 3.8 Flash emits and accepts thinking blocks with empty signatures.
+  if ((provider === "opencode" || provider === "opencode-go") && modelId === "qwen3.8-flash") {
     compat.allowEmptySignature = true;
   }
 
@@ -2386,13 +2399,13 @@ async function loadModelsDevData(): Promise<Model<Api>[]> {
       if (m.status === "deprecated") continue;
 
       // Claude 4.x and 5.x models route to Anthropic Messages API
-      const isCopilotClaude = /^claude-(haiku|sonnet|opus)-[45]([.\-]|$)/.test(modelId);
+      const isCopilotClaude = /^claude-(haiku|sonnet|opus|fable)-[45]([.\-]|$)/.test(modelId);
 
-      // Grok, gpt-5, oswe, and MAI-Code models are only served through
+      // GPT, Grok, OSWE, and MAI-Code models are only served through
       // the Copilot /responses endpoint.
       const needsResponsesApi =
+        modelId.startsWith("gpt-") ||
         modelId.startsWith("grok-") ||
-        modelId.startsWith("gpt-5") ||
         modelId.startsWith("oswe") ||
         modelId.startsWith("mai-");
 
@@ -3103,35 +3116,6 @@ async function generateModels() {
       input: ["text"],
       cost: { input: 1.75, output: 14, cacheRead: 0.175, cacheWrite: 0 },
       contextWindow: CODEX_SPARK_CONTEXT,
-      maxTokens: CODEX_MAX_TOKENS,
-    },
-    {
-      id: "gpt-5.4",
-      name: "GPT-5.4",
-      api: "openai-codex-responses",
-      provider: "openai-codex",
-      baseUrl: CODEX_BASE_URL,
-      reasoning: true,
-      input: ["text", "image"],
-      cost: withOpenAiLongContextPricing({
-        input: 2.5,
-        output: 15,
-        cacheRead: 0.25,
-        cacheWrite: 0,
-      }),
-      contextWindow: CODEX_CONTEXT,
-      maxTokens: CODEX_MAX_TOKENS,
-    },
-    {
-      id: "gpt-5.4-mini",
-      name: "GPT-5.4 mini",
-      api: "openai-codex-responses",
-      provider: "openai-codex",
-      baseUrl: CODEX_BASE_URL,
-      reasoning: true,
-      input: ["text", "image"],
-      cost: { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0 },
-      contextWindow: CODEX_CONTEXT,
       maxTokens: CODEX_MAX_TOKENS,
     },
     {

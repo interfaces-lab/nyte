@@ -47,7 +47,7 @@ afterEach(() => {
 });
 
 describe("hosted model catalogs", () => {
-  it("persists validators, skips fresh checks, and revalidates with ETag when forced", async () => {
+  it("persists validators, skips fresh checks, revalidates with ETag when forced, and restores offline", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-04-01T00:00:00.000Z"));
     const requests: Request[] = [];
@@ -101,6 +101,17 @@ describe("hosted model catalogs", () => {
       lastModified: Date.parse("Tue, 31 Mar 2026 23:00:00 GMT"),
       checkedAt: Date.now(),
     });
+
+    const restarted = createModels({ modelsStore: store, catalog: { fetch } });
+    restarted.setProvider(provider());
+    const offline = await restarted.refresh({
+      providers: ["test-provider"],
+      allowNetwork: false,
+    });
+
+    expect(offline.errors.size).toBe(0);
+    expect(requests).toHaveLength(2);
+    expect(restarted.getModels("test-provider")).toEqual([model("first")]);
   });
 
   it("drops invalid, foreign, and undispatchable feed entries", async () => {
@@ -140,31 +151,6 @@ describe("hosted model catalogs", () => {
     expect(error.message).toContain("500");
     expect(error.message).not.toContain("sensitive body");
     expect(models.getModels("test-provider")).toEqual([model("cached")]);
-  });
-
-  it("restores stored models without network access", async () => {
-    const store = new InMemoryModelsStore();
-    await store.write("test-provider", {
-      models: [model("stored")],
-      etag: '"stored"',
-      checkedAt: 1,
-    });
-    let requests = 0;
-    const fetch: FetchFunction = async () => {
-      requests += 1;
-      throw new Error("Unexpected catalog request");
-    };
-    const models = createModels({ modelsStore: store, catalog: { fetch } });
-    models.setProvider(provider());
-
-    const result = await models.refresh({
-      providers: ["test-provider"],
-      allowNetwork: false,
-    });
-
-    expect(result.errors.size).toBe(0);
-    expect(requests).toBe(0);
-    expect(models.getModels("test-provider")).toEqual([model("stored")]);
   });
 
   it("stops an in-flight catalog request cleanly when aborted", async () => {

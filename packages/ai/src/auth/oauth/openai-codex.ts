@@ -17,6 +17,7 @@ import {
   type OAuthCredential,
   type ProviderAuthInteraction,
 } from "../types.ts";
+import { parseAuthorizationInput } from "./authorization-input.ts";
 import { pollOAuthDeviceCodeFlow } from "./device-code.ts";
 import { oauthErrorHtml, oauthSuccessHtml } from "./oauth-page.ts";
 import { generatePKCE } from "./pkce.ts";
@@ -104,40 +105,6 @@ function createState(): string {
   assertNodeRuntime();
 
   return process.getBuiltinModule("node:crypto").randomBytes(16).toString("hex");
-}
-
-function parseAuthorizationInput(input: string) {
-  const value = input.trim();
-
-  if (!value) return {};
-
-  try {
-    const url = new URL(value);
-
-    return {
-      code: url.searchParams.get("code") ?? undefined,
-      state: url.searchParams.get("state") ?? undefined,
-    };
-  } catch {
-    // not a URL
-  }
-
-  if (value.includes("#")) {
-    const [code, state] = value.split("#", 2);
-
-    return { code, state };
-  }
-
-  if (value.includes("code=")) {
-    const params = new URLSearchParams(value);
-
-    return {
-      code: params.get("code") ?? undefined,
-      state: params.get("state") ?? undefined,
-    };
-  }
-
-  return { code: value };
 }
 
 function decodeJwt(token: string) {

@@ -1,8 +1,8 @@
 /**
  * OpenAI-compatible Chat Completions adapter.
  *
- * Based on https://github.com/earendil-works/pi/blob/77f2d1235ee2992c6072b9dcb6e99439a70c6f45/packages/ai/src/api/openai-completions.ts
- * Synced with pi 77f2d1235.
+ * Based on https://github.com/earendil-works/pi/blob/1b6ddca87ca041e3b02b387d5a321eb77fc39eca/packages/ai/src/api/openai-completions.ts
+ * Synced with pi 1b6ddca87.
  */
 import OpenAI from "openai";
 import type { Stream } from "openai/streaming";
@@ -47,7 +47,7 @@ import type {
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { shortHash } from "../utils/hash.ts";
-import { headersToRecord } from "../utils/headers.ts";
+import { getClientApiKey, headersToRecord, mergeProviderHeaders } from "../utils/headers.ts";
 import { parseStreamingJson } from "../utils/json-parse.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
@@ -82,29 +82,6 @@ import { transformMessages } from "./transform-messages.ts";
  * This is needed because Anthropic (via proxy) requires the tools param
  * to be present when messages include tool_calls or tool role messages.
  */
-function hasHeader(headers: ProviderHeaders | undefined, name: string): boolean {
-  if (!headers) return false;
-  const expected = name.toLowerCase();
-
-  for (const [key, value] of Object.entries(headers)) {
-    if (key.toLowerCase() === expected && value !== null && value.trim().length > 0) return true;
-  }
-
-  return false;
-}
-
-function getClientApiKey(
-  provider: string,
-  apiKey: string | undefined,
-  headers: ProviderHeaders | undefined,
-): string {
-  if (apiKey) return apiKey;
-
-  if (hasHeader(headers, "authorization") || hasHeader(headers, "cf-aig-authorization"))
-    return "unused";
-  throw new Error(`No API key for provider: ${provider}`);
-}
-
 function hasToolHistory(messages: Message[]): boolean {
   for (const msg of messages) {
     if (msg.role === "toolResult") {
@@ -279,6 +256,37 @@ function parseLegacyEncryptedReasoningDetail(
   }
 }
 
+function fillMissingCommonReasoningDetailFields(
+  target: OpenAIReasoningDetail,
+  source: OpenAIReasoningDetail,
+): void {
+  target.id ??= source.id;
+  target.format ||= source.format;
+  target.index ??= source.index;
+}
+
+function appendOpenAIReasoningDetail(
+  details: OpenAIReasoningDetail[],
+  detail: OpenAIReasoningDetail,
+): void {
+  const lastDetail = details.at(-1);
+
+  if (detail.type === "reasoning.text" && lastDetail?.type === "reasoning.text") {
+    lastDetail.text += detail.text;
+    lastDetail.signature ||= detail.signature;
+    fillMissingCommonReasoningDetailFields(lastDetail, detail);
+    return;
+  }
+
+  if (detail.type === "reasoning.summary" && lastDetail?.type === "reasoning.summary") {
+    lastDetail.summary += detail.summary;
+    fillMissingCommonReasoningDetailFields(lastDetail, detail);
+    return;
+  }
+
+  details.push({ ...detail });
+}
+
 const OPENAI_COMPLETIONS_REASONING_FIELDS = [
   "reasoning",
   "reasoning_content",
@@ -391,6 +399,15 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
       },
       stopReason: "pending",
       timestamp: Date.now(),
+    };
+
+    // `reasoning_details` are replay metadata, not user-visible stream deltas.
+    // Keep them in memory during streaming and serialize once when the block is finalized.
+    let streamedReasoningDetails: OpenAIReasoningDetail[] | undefined;
+
+    const applyStreamedReasoningDetails = (block: ThinkingContent) => {
+      if (streamedReasoningDetails === undefined) return;
+      block.thinkingSignature = JSON.stringify(streamedReasoningDetails);
     };
 
     try {
@@ -513,6 +530,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
             partial: output,
           });
         } else if (block.type === "thinking") {
+          applyStreamedReasoningDetails(block);
           stream.push({
             type: "thinking_end",
             contentIndex,
@@ -802,12 +820,12 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
           if (Value.Check(ReasoningDetailsDeltaSchema, deltaFields)) {
             for (const detail of deltaFields.reasoning_details) {
               if (!Value.Check(OpenAIReasoningDetailSchema, detail)) continue;
-              const block = ensureThinkingBlock("");
-              const preservedDetails = parseOpenAIReasoningDetails(block.thinkingSignature) ?? [];
-              preservedDetails.push(detail);
-              // Keep provider replay data in the existing signature slot. OpenRouter
-              // requires the complete reasoning_details sequence in its original order.
-              block.thinkingSignature = JSON.stringify(preservedDetails);
+              ensureThinkingBlock("");
+              streamedReasoningDetails ??= [];
+              // Keep provider replay data in the existing signature slot. OpenRouter streams
+              // reasoning_details as deltas: consecutive text/summary deltas are merged into
+              // logical entries, while encrypted entries remain opaque and discrete.
+              appendOpenAIReasoningDetail(streamedReasoningDetails, detail);
             }
           }
         }
@@ -843,6 +861,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
       stream.end();
     } catch (error) {
       for (const block of blocks) {
+        if (block.type === "thinking") applyStreamedReasoningDetails(block);
         if (block.type !== "toolCall") continue;
         delete block.partialArgs;
         delete block.customInput;
@@ -905,35 +924,28 @@ function createClient(input: {
   cacheRetention: CacheRetention;
   compat: ResolvedOpenAICompletionsCompat;
 }) {
-  const headers: ProviderHeaders = { "User-Agent": getNyteUserAgent(), ...input.model.headers };
-
-  if (input.model.provider === "github-copilot") {
-    const copilotHeaders = buildCopilotDynamicHeaders({
-      messages: input.context.messages,
-      sessionId: input.options?.sessionId,
-    });
-
-    Object.assign(headers, copilotHeaders);
-  }
+  const copilotHeaders =
+    input.model.provider === "github-copilot"
+      ? buildCopilotDynamicHeaders({
+          messages: input.context.messages,
+          sessionId: input.options?.sessionId,
+        })
+      : undefined;
 
   const cacheSessionId = input.cacheRetention === "none" ? undefined : input.options?.sessionId;
+  const affinityHeaders: ProviderHeaders = {};
 
   if (cacheSessionId && input.compat.sendSessionAffinityHeaders) {
     if (input.compat.sessionAffinityFormat === "openrouter") {
-      headers["x-session-id"] = cacheSessionId;
+      affinityHeaders["x-session-id"] = cacheSessionId;
     } else {
       if (input.compat.sessionAffinityFormat === "openai") {
-        headers.session_id = cacheSessionId;
+        affinityHeaders.session_id = cacheSessionId;
       }
 
-      headers["x-client-request-id"] = cacheSessionId;
-      headers["x-session-affinity"] = cacheSessionId;
+      affinityHeaders["x-client-request-id"] = cacheSessionId;
+      affinityHeaders["x-session-affinity"] = cacheSessionId;
     }
-  }
-
-  // Merge options headers last so they can override defaults
-  if (input.options?.headers) {
-    Object.assign(headers, input.options.headers);
   }
 
   return new OpenAI({
@@ -941,7 +953,14 @@ function createClient(input: {
     baseURL: input.model.baseUrl,
     dangerouslyAllowBrowser: true,
     fetch: input.options?.fetch,
-    defaultHeaders: headers,
+    // Options headers come last so they can override defaults
+    defaultHeaders: mergeProviderHeaders(
+      { "User-Agent": getNyteUserAgent() },
+      input.model.headers,
+      copilotHeaders,
+      affinityHeaders,
+      input.options?.headers,
+    ),
   });
 }
 
@@ -1469,8 +1488,9 @@ export function convertMessages(
           content: sanitizeSurrogates(msg.content),
         });
       } else {
-        const content: ChatCompletionContentPart[] = msg.content.map(
-          (item): ChatCompletionContentPart => {
+        const content: ChatCompletionContentPart[] = msg.content
+          .filter((item) => item.type !== "text" || item.text.length > 0)
+          .map((item): ChatCompletionContentPart => {
             if (item.type === "text") {
               return {
                 type: "text",
@@ -1484,8 +1504,7 @@ export function convertMessages(
                 },
               } satisfies ChatCompletionContentPartImage;
             }
-          },
-        );
+          });
 
         if (content.length === 0) continue;
         params.push({
@@ -1972,7 +1991,8 @@ function detectCompat(model: Model<"openai-completions">): ResolvedOpenAIComplet
     zaiToolStream: false,
     supportsThinkingTokenBudget: false,
     thinkingTokenBudgetField: undefined,
-    supportsStrictMode: !isMoonshot && !isTogether && !isCloudflareAiGateway && !isNvidia,
+    // OpenAI compatibility alone does not imply strict JSON-schema tool support.
+    supportsStrictMode: false,
     supportsOpenAIGrammarTools: false,
     supportsMidConvoSystemMessages: false,
     supportsMidConvoToolAdditions: false,

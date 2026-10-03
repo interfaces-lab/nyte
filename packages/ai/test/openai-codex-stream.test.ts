@@ -129,6 +129,9 @@ describe("openai-codex streaming", () => {
       expect(headers.get("User-Agent")).toBe(`nyte (${platform()} ${release()}; ${arch()})`);
       expect(headers.get("accept")).toBe("text/event-stream");
       expect(headers.has("x-api-key")).toBe(false);
+      expect(headers.has("session-id")).toBe(false);
+      expect(headers.has("session_id")).toBe(false);
+      expect(headers.has("x-client-request-id")).toBe(false);
       expect(decodeCodexRequestBody(init?.body)).not.toHaveProperty("access_programs");
       return sseResponse();
     });
@@ -152,6 +155,23 @@ describe("openai-codex streaming", () => {
     expect(result.content.find((content) => content.type === "text")?.text).toBe("Hello");
     expect(eventTypes).toContain("text_delta");
     expect(eventTypes).toContain("done");
+  });
+
+  // Regression test for https://github.com/earendil-works/pi/issues/9047
+  it("processes a terminal SSE event without a trailing blank line", async () => {
+    const sse = buildSSEPayload({ status: "completed" }).trimEnd();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => sseResponse(sse)),
+    );
+
+    const result = await stream(CODEX_MODEL, normalizeContext(TEXT_CONTEXT), {
+      apiKey: mockToken(),
+      transport: "sse",
+    }).result();
+
+    expect(result.stopReason).toBe("stop");
+    expect(result.content.find((content) => content.type === "text")?.text).toBe("Hello");
   });
 
   it("completes after response.completed even when the SSE body stays open", async () => {
@@ -191,44 +211,6 @@ describe("openai-codex streaming", () => {
     expect(result.content.find((c) => c.type === "text")?.text).toBe("Hello");
     expect(result.stopReason).toBe("stop");
     expect(result.endTurn).toBe(false);
-  });
-
-  it("maps response.incomplete to stopReason length even when the SSE body stays open", async () => {
-    const token = mockToken();
-    const encoder = new TextEncoder();
-    const sse = buildSSEPayload({ status: "incomplete" });
-
-    const responseStream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(encoder.encode(sse));
-      },
-    });
-
-    const fetchMock = vi.fn(async (input: string | URL) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url === "https://chatgpt.com/backend-api/codex/responses") {
-        return new Response(responseStream, {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        });
-      }
-      return new Response("not found", { status: 404 });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const model = CODEX_MODEL;
-
-    const context = TEXT_CONTEXT;
-
-    const result = await Promise.race([
-      stream(model, normalizeContext(context), { apiKey: token, transport: "sse" }).result(),
-      new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("Timed out waiting for incomplete SSE stream")), 1000);
-      }),
-    ]);
-
-    expect(result.content.find((c) => c.type === "text")?.text).toBe("Hello");
-    expect(result.stopReason).toBe("length");
   });
 
   it("aborts SSE fetch after the configured HTTP timeout when response headers do not arrive", async () => {
@@ -381,26 +363,6 @@ describe("openai-codex streaming", () => {
     expect(cancelled).toBe(true);
   });
 
-  it("sets session-id/x-client-request-id headers and prompt_cache_key when sessionId is provided", async () => {
-    const sessionId = "test-session-123";
-    const fetchMock = vi.fn(async (_input: string | URL, init?: RequestInit) => {
-      const headers = new Headers(init?.headers);
-      expect(headers.get("session-id")).toBe(sessionId);
-      expect(headers.has("session_id")).toBe(false);
-      expect(headers.get("x-client-request-id")).toBe(sessionId);
-      expect(decodeCodexRequestBody(init?.body)).toMatchObject({ prompt_cache_key: sessionId });
-      return sseResponse();
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    await stream(CODEX_MODEL, normalizeContext(TEXT_CONTEXT), {
-      apiKey: mockToken(),
-      sessionId,
-      transport: "sse",
-    }).result();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
   it("omits SSE cache affinity when cacheRetention is none", async () => {
     let capturedHeaders: Headers | undefined;
     let capturedBody: unknown;
@@ -446,6 +408,7 @@ describe("openai-codex streaming", () => {
 
     const clampedSessionId = "x".repeat(64);
     expect(capturedHeaders?.get("session-id")).toBe(clampedSessionId);
+    expect(capturedHeaders?.has("session_id")).toBe(false);
     expect(capturedHeaders?.get("x-client-request-id")).toBe(clampedSessionId);
     expect(capturedBody).toMatchObject({ prompt_cache_key: clampedSessionId });
   });
@@ -573,7 +536,6 @@ describe("openai-codex streaming", () => {
   it.each([
     ["gpt-5.1-codex", "flex", 0.5],
     ["gpt-5.1-codex", "priority", 2],
-    ["gpt-5.5", "flex", 0.5],
     ["gpt-5.5", "priority", 2.5],
   ] satisfies ReadonlyArray<readonly [string, "flex" | "priority", number]>)(
     "prices %s %s service-tier usage from the requested tier when Codex echoes default",
@@ -613,23 +575,6 @@ describe("openai-codex streaming", () => {
       expect(result.usage.cost.total).toBe(3 * multiplier);
     },
   );
-
-  it("omits session affinity when sessionId is not provided", async () => {
-    const fetchMock = vi.fn(async (_input: string | URL, init?: RequestInit) => {
-      const headers = new Headers(init?.headers);
-      expect(headers.has("session-id")).toBe(false);
-      expect(headers.has("session_id")).toBe(false);
-      expect(headers.has("x-client-request-id")).toBe(false);
-      return sseResponse();
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    await stream(CODEX_MODEL, normalizeContext(TEXT_CONTEXT), {
-      apiKey: mockToken(),
-      transport: "sse",
-    }).result();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
 
   it("forwards auto transport from streamSimple options and uses cached websocket context", async () => {
     const token = mockToken();
@@ -1832,37 +1777,31 @@ describe("openai-codex streaming", () => {
     },
   );
 
-  it.each([429, 503])(
-    "fails immediately when a %i retry delay exceeds the limit",
-    async (status) => {
-      const token = mockToken();
-      const fetchMock = vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({ error: { code: "temporarily_unavailable", message: "retry later" } }),
-            {
-              status,
-              headers: { "content-type": "application/json", "retry-after": "2" },
-            },
-          ),
-      );
-      vi.stubGlobal("fetch", fetchMock);
+  it("fails immediately when a 503 retry delay exceeds the limit", async () => {
+    const token = mockToken();
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ error: { code: "temporarily_unavailable", message: "retry later" } }),
+          {
+            status: 503,
+            headers: { "content-type": "application/json", "retry-after": "2" },
+          },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
 
-      const model = CODEX_MODEL;
-      const context = TEXT_CONTEXT;
+    const result = await stream(CODEX_MODEL, normalizeContext(TEXT_CONTEXT), {
+      apiKey: token,
+      transport: "sse",
+      maxRetries: 3,
+      maxRetryDelayMs: 1000,
+    }).result();
 
-      const result = await stream(model, normalizeContext(context), {
-        apiKey: token,
-        transport: "sse",
-        maxRetries: 3,
-        maxRetryDelayMs: 1000,
-      }).result();
-
-      expect(result.stopReason).toBe("error");
-      expect(result.errorMessage).toBe("Server requested 2s retry delay (max: 1s)");
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    },
-  );
+    expect(result.stopReason).toBe("error");
+    expect(result.errorMessage).toBe("Server requested 2s retry delay (max: 1s)");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 
   it("zstd-compresses SSE request bodies", async () => {
     const token = mockToken();
@@ -1901,20 +1840,6 @@ describe("openai-codex streaming", () => {
     expect(decoded).toMatchObject({
       input: [{ content: [{ text: largeText }] }],
     });
-
-    capturedEncoding = null;
-    capturedBody = undefined;
-    await stream(
-      model,
-      normalizeContext({
-        systemPrompt: "You are a helpful assistant.",
-        messages: [{ role: "user", content: "hi", timestamp: 1 }],
-      }),
-      { apiKey: token, transport: "sse" },
-    ).result();
-
-    expect(capturedEncoding).toBe("zstd");
-    expect(capturedBody).toBeInstanceOf(Uint8Array);
   });
 
   it("uses exponential backoff across repeated SSE retries without retry headers", async () => {

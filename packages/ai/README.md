@@ -2,9 +2,10 @@
 
 Provider streaming, authentication, and model catalogs. Every Nyte client composes the same
 providers through `createNyteModels()` over the shared `~/.nyte` credential and model stores
-(`NYTE_HOME` overrides the directory). Catalogs come from `https://models.nyte.sh` and are cached
-in `~/.nyte/models-store.json`; `NYTE_MODELS_URL` overrides the catalog origin. A login made in one
-client is a login in all of them.
+(`NYTE_HOME` overrides the directory). Catalogs come from the R2 bucket named by
+`DEFAULT_MODELS_CATALOG_URL` in `src/models.ts` and are cached in `~/.nyte/models-store.json`;
+`NYTE_MODELS_URL` overrides the catalog origin. A login made in one client is a login in all of
+them.
 
 ## Layout
 
@@ -15,6 +16,7 @@ client is a login in all of them.
 | `src/api/` | Wire adapters: Anthropic Messages, OpenAI Responses and Chat Completions, Codex, Google |
 | `src/api/github-copilot-headers.ts` | Copilot identity shared by auth, catalog generation, and request adapters |
 | `src/providers/` | Provider factories and provider-specific account filtering |
+| `src/providers/opencode-headers.ts` | Maps `sessionId` to `x-opencode-session` for OpenCode Zen and Go requests |
 | `src/providers/nyte-catalog.ts` | The provider list and default models each client starts from |
 | `scripts/` | Hosted catalog generation and R2 publishing (`pnpm models:generate`, `pnpm models:publish`) |
 

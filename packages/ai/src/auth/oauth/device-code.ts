@@ -6,6 +6,7 @@
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/oauth/device-code.ts
  * Synced with pi 7ebf9087e.
  */
+import { sleep } from "../../utils/abort.ts";
 
 const CANCEL_MESSAGE = "Login cancelled";
 
@@ -44,25 +45,7 @@ export function abortableSleep(
   signal: AbortSignal,
   cancelMessage: string,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) {
-      reject(new Error(cancelMessage));
-
-      return;
-    }
-
-    const onAbort = () => {
-      clearTimeout(timeout);
-      reject(new Error(cancelMessage));
-    };
-
-    const timeout = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
+  return sleep(ms, signal, () => new Error(cancelMessage));
 }
 
 export async function pollOAuthDeviceCodeFlow<T>(

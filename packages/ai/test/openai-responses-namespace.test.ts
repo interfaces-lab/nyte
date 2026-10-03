@@ -189,22 +189,46 @@ describe("OpenAI Responses tool-call namespaces", () => {
       expect(customToolCall).not.toHaveProperty("namespace");
     }
   });
+});
 
-  it("does not add a namespace to ordinary function calls", () => {
-    const output = createOutput();
-    output.content.push({
-      type: "toolCall",
-      id: "call_test|fc_test",
-      name: "lookup",
-      arguments: { value: "hello" },
-    });
-
+describe("OpenAI Responses grammar tool replay", () => {
+  // earendil-works/radius#115: a gateway forwards another model's history as a foreign provider.
+  it("drops foreign item ids when replaying grammar calls as custom Responses items", () => {
+    const output: AssistantMessage = {
+      ...createOutput(),
+      api: "pi-messages",
+      provider: "radius",
+      model: "gpt-other",
+      content: [
+        {
+          type: "toolCall",
+          id: "call_1|ctc_1",
+          name: "sample_tool",
+          arguments: { payload: "abc" },
+        },
+      ],
+      stopReason: "toolUse",
+    };
     const replayed = convertResponsesMessages(
       model,
-      normalizeContext({ messages: [output] }),
+      normalizeContext({
+        messages: [
+          output,
+          {
+            role: "toolResult",
+            toolCallId: "call_1|ctc_1",
+            toolName: "sample_tool",
+            content: [{ type: "text", text: "done" }],
+            isError: false,
+            timestamp: Date.now(),
+          },
+        ],
+      }),
       new Set(["openai"]),
-    ).find((item) => item.type === "function_call");
-    expect(replayed).toBeDefined();
-    expect(replayed).not.toHaveProperty("namespace");
+      { grammarToolInputProperties: new Map([["sample_tool", "payload"]]) },
+    );
+    const call = replayed.find((item) => item.type === "custom_tool_call");
+    expect(call).toMatchObject({ type: "custom_tool_call", call_id: "call_1", input: "abc" });
+    expect(call).not.toHaveProperty("id", expect.anything());
   });
 });

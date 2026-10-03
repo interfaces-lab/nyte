@@ -4,10 +4,10 @@
  * `FailureClass`; everything downstream switches on the class.
  *
  * Context-window patterns are based on
- * https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/overflow.ts
- * and the transient-error patterns on
- * https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/retry.ts
- * (both synced with pi 7ebf9087e).
+ * https://github.com/earendil-works/pi/blob/3dd803d7e780fb04b815261b510f76bff563d46d/packages/ai/src/utils/overflow.ts
+ * (synced with pi 3dd803d7e) and the transient-error patterns on
+ * https://github.com/earendil-works/pi/blob/3874b3e98983c70fa05fa193b675d42cfcb8b9f8/packages/ai/src/utils/retry.ts
+ * (synced with pi 3874b3e98, without the ChatGPT subscription-sharing patterns from 02eed88fd).
  *
  * Context-window examples by provider:
  *
@@ -28,9 +28,10 @@
  * - MiniMax: "invalid params, context window exceeds limit"
  * - Kimi For Coding: "Your request exceeded model token limit: X (requested: Y)"
  * - DS4: "Prompt has X tokens, but the configured context size is Y tokens"
- * - Cerebras: "400/413 status code (no body)"
+ * - Cerebras: "400/413 status code (no body)", only from the cerebras provider
  * - Mistral: "Prompt contains X tokens ... too large for model with Y maximum context length"
- * - z.ai: accepts overflow silently; detected via usage.input > contextWindow
+ * - z.ai: "Prompt too long", "Prompt exceeds max length" (CN endpoint), or silent
+ *   overflow detected via usage.input > contextWindow
  * - Xiaomi MiMo: truncates input to fill contextWindow, then returns finish_reason "length"
  *   with output=0; detected via stopReason "length" + zero output + input filling the window.
  * - DashScope/Qwen: "Range of input length should be [1, X]"
@@ -39,7 +40,8 @@
 import type { Api, AssistantMessage, Failure, FailureClass, Model } from "@nyte-ai/schema";
 
 const CONTEXT_WINDOW_PATTERNS = [
-  /prompt is too long/i,
+  /prompt (?:is )?too long/i,
+  /prompt exceeds max length/i,
   /request_too_large/i,
   /input is too long for requested model/i,
   /exceeds the context window/i,
@@ -63,8 +65,9 @@ const CONTEXT_WINDOW_PATTERNS = [
   /context[_ ]length[_ ]exceeded/i,
   /too many tokens/i,
   /token limit exceeded/i,
-  /^4(?:00|13)\s*(?:status code)?\s*\(no body\)/i,
 ];
+
+const CEREBRAS_BODYLESS_CONTEXT_WINDOW_PATTERN = /^4(?:00|13)\s*(?:status code)?\s*\(no body\)/i;
 
 /**
  * Bedrock formats throttling as "ThrottlingException: Too many tokens, please
@@ -105,8 +108,10 @@ const RATE_LIMIT_PATTERN = pattern([
 
 const OVERLOADED_PATTERN = pattern([
   "\\b529\\b",
-  "\\b5(?:00|02|03|04|24)\\b",
+  "\\b5(?:00|02|03|04|20|24)\\b",
   "overload",
+  "currently experiencing high demand",
+  "model is at capacity",
   "service.?unavailable",
   "temporarily unavailable",
   "server.?error",
@@ -182,8 +187,12 @@ function structuredClass(message: AssistantMessage): FailureClass | undefined {
   return undefined;
 }
 
-function classOf(text: string): FailureClass {
-  if (!NOT_CONTEXT_WINDOW_PATTERN.test(text) && CONTEXT_WINDOW_PATTERNS.some((p) => p.test(text))) {
+function classOf(text: string, provider: string): FailureClass {
+  if (
+    !NOT_CONTEXT_WINDOW_PATTERN.test(text) &&
+    (CONTEXT_WINDOW_PATTERNS.some((p) => p.test(text)) ||
+      (provider === "cerebras" && CEREBRAS_BODYLESS_CONTEXT_WINDOW_PATTERN.test(text)))
+  ) {
     return "context_window";
   }
 
@@ -255,7 +264,10 @@ export function classifyAssistantFailure(
   }
 
   const text = message.errorMessage ?? "Unknown error";
-  const failure: Failure = { class: structuredClass(message) ?? classOf(text), message: text };
+  const failure: Failure = {
+    class: structuredClass(message) ?? classOf(text, message.provider),
+    message: text,
+  };
   const delay = retryAfterMs(message);
 
   return delay === undefined ? failure : { ...failure, retryAfterMs: delay };

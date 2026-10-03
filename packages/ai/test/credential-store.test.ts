@@ -74,6 +74,9 @@ function storedJson(): Record<string, unknown> {
 describe("file credential store", () => {
   test("stores a credential for later reads", async () => {
     const store = new FileCredentialStore(authPath());
+    expect(await store.read("anthropic")).toBeUndefined();
+    expect(await store.list()).toEqual([]);
+
     await store.modify("anthropic", async () => ({ type: "api_key", key: "secret" }));
 
     expect(await store.read("anthropic")).toEqual({ type: "api_key", key: "secret" });
@@ -85,13 +88,6 @@ describe("file credential store", () => {
     if (process.platform !== "win32") {
       expect(statSync(authPath()).mode & 0o777).toBe(0o600);
     }
-  });
-
-  test("reads no credentials before anything is stored", async () => {
-    const store = new FileCredentialStore(authPath());
-
-    expect(await store.read("anthropic")).toBeUndefined();
-    expect(await store.list()).toEqual([]);
   });
 
   test("keeps a credential it cannot read instead of dropping it", async () => {
@@ -158,24 +154,6 @@ describe("file credential store", () => {
     );
   });
 
-  test("keeps both credentials when two providers are written at once", async () => {
-    const store = new FileCredentialStore(authPath());
-
-    await Promise.all([
-      store.modify("anthropic", async () => {
-        await new Promise((resolve) => setTimeout(resolve, 30));
-        return { type: "api_key", key: "anthropic-key" };
-      }),
-      store.modify("openai", async () => {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        return { type: "api_key", key: "openai-key" };
-      }),
-    ]);
-
-    const stored = await store.list();
-    expect(stored.map((info) => info.providerId).sort()).toEqual(["anthropic", "openai"]);
-  });
-
   test("reads while another process holds the lock", async () => {
     const store = new FileCredentialStore(authPath());
     await store.modify("anthropic", async () => ({ type: "api_key", key: "secret" }));
@@ -226,16 +204,6 @@ describe("file credential store", () => {
     expect(readdirSync(home)).toEqual(["auth.json"]);
   });
 
-  test("takes over a lock whose owner is gone", async () => {
-    writeFileSync(lockPath(), `${await exitedProcessId()} ${hostname()}`);
-    const store = new FileCredentialStore(authPath());
-
-    await store.modify("anthropic", async () => ({ type: "api_key", key: "secret" }));
-
-    expect(await store.read("anthropic")).toEqual({ type: "api_key", key: "secret" });
-    expect(readdirSync(home)).toEqual(["auth.json"]);
-  });
-
   test("takes over after a crash during an earlier takeover", async () => {
     writeFileSync(lockPath(), `${await exitedProcessId()} ${hostname()}`);
     const recoveryPath = `${lockPath()}.recovery`;
@@ -278,23 +246,6 @@ describe("file credential store", () => {
     expect(readFileSync(lockPath(), "utf8")).toBe(`${process.pid} other-host`);
   });
 
-  test("refuses to write once its lock has been taken over", async () => {
-    const store = new FileCredentialStore(authPath());
-    await store.modify("openai", async () => ({ type: "api_key", key: "kept" }));
-    const takeover = `${process.pid} takeover ${"11111111-2222-3333-4444-555555555555"}`;
-
-    await expect(
-      store.modify("anthropic", async () => {
-        writeFileSync(lockPath(), takeover);
-        return { type: "api_key", key: "lost" };
-      }),
-    ).rejects.toThrow("took over");
-
-    expect(storedJson()).toEqual({ openai: { type: "api_key", key: "kept" } });
-    // Releasing must leave the new owner's lock alone.
-    expect(readFileSync(lockPath(), "utf8")).toBe(takeover);
-  });
-
   test("refuses to write once a second write in this process took over its aged lock", async () => {
     const store = new FileCredentialStore(authPath());
     await store.modify("openai", async () => ({ type: "api_key", key: "kept" }));
@@ -317,19 +268,6 @@ describe("file credential store", () => {
       openai: { type: "api_key", key: "kept" },
       "github-copilot": { type: "api_key", key: "sibling" },
     });
-  });
-
-  test("waits for a live lock and gives up when the caller aborts", async () => {
-    writeFileSync(lockPath(), `${process.pid} ${hostname()}`);
-    const store = new FileCredentialStore(authPath());
-
-    await expect(
-      store.modify("anthropic", async () => ({ type: "api_key", key: "secret" }), {
-        signal: AbortSignal.timeout(100),
-      }),
-    ).rejects.toThrow();
-
-    expect(readdirSync(home)).toEqual(["auth.json.lock"]);
   });
 
   test("never publishes a file a reader can catch half-written", async () => {

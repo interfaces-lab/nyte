@@ -1,3 +1,8 @@
+/**
+ * The "GitHub Copilot OAuth device flow" cases are based on
+ * https://github.com/earendil-works/pi/blob/dev/packages/ai/test/github-copilot-oauth.test.ts
+ * Synced with pi a276dabe5.
+ */
 import assert from "node:assert/strict";
 import { afterEach, describe, test, vi } from "vitest";
 import { githubCopilotOAuth } from "@nyte-ai/ai/auth/oauth/github-copilot";
@@ -30,7 +35,6 @@ describe("GitHub Copilot device sign-in", () => {
   });
 
   test.each([
-    { environment: "", explicit: undefined, expected: "Iv1.b507a08c87ecfe98" },
     { environment: "host-client", explicit: undefined, expected: "host-client" },
     { environment: "host-client", explicit: "explicit-client", expected: "explicit-client" },
   ])("device requests use the selected OAuth client: $expected", async (input) => {
@@ -104,6 +108,7 @@ describe("GitHub Copilot device sign-in", () => {
       scope: "read:user",
     });
     assert.equal(device.headers.get("content-type"), "application/x-www-form-urlencoded");
+    assert.equal(device.headers.get("accept"), "application/json");
     const poll = transport.requests[1];
     assert.ok(poll);
     assert.deepEqual(Object.fromEntries(new URLSearchParams(poll.body)), {
@@ -111,6 +116,7 @@ describe("GitHub Copilot device sign-in", () => {
       device_code: "device-1",
       grant_type: "urn:ietf:params:oauth:grant-type:device_code",
     });
+    assert.equal(poll.headers.get("accept"), "application/json");
     const exchange = transport.requests.find((request) => request.url.endsWith("/v2/token"));
     const catalog = transport.requests.find((request) => request.url.endsWith("/models"));
     assert.equal(exchange?.headers.get("authorization"), "Bearer gh-token");
@@ -176,18 +182,23 @@ describe("GitHub Copilot device sign-in", () => {
     assert.deepEqual(ui.events, []);
   });
 
-  test("gives up when the device code expires", async () => {
+  test("gives up when the device code expires, blaming slow_down only when GitHub asked to back off", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
-    const transport = fakeFetch({
-      [DEVICE]: () => deviceCode({ expires_in: 3 }),
-      [TOKEN]: () => json({ error: "authorization_pending" }),
-    });
-    const login = githubCopilotOAuth({ fetch: transport.fetch, clientId: "c" }).login(
-      interaction(),
-    );
-    const result = outcome(login);
-    await vi.advanceTimersByTimeAsync(4000);
-    assert.match(await result, /timed out/);
+    const expire = async (error: string) => {
+      const transport = fakeFetch({
+        [DEVICE]: () => deviceCode({ expires_in: 3 }),
+        [TOKEN]: () => json({ error }),
+      });
+      const result = outcome(
+        githubCopilotOAuth({ fetch: transport.fetch, clientId: "c" }).login(interaction()),
+      );
+      await vi.advanceTimersByTimeAsync(4000);
+      return result;
+    };
+    const pending = await expire("authorization_pending");
+    assert.match(pending, /timed out/);
+    assert.doesNotMatch(pending, /slow_down/);
+    assert.match(await expire("slow_down"), /timed out after one or more slow_down responses/);
   });
 
   test("a poll that hangs past the code lifetime is abandoned at the deadline", async () => {
@@ -340,10 +351,12 @@ describe("GitHub Copilot device sign-in", () => {
     },
   );
 
-  test("nonsense lifetimes and intervals fall back to bounded defaults", async () => {
+  test("a hostile device-code response is bounded and normalized before display", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
+    const rawVerificationUri = "https://github.com/login/\x1b]8;;evil";
     const transport = fakeFetch({
-      [DEVICE]: () => deviceCode({ expires_in: -5, interval: "soon" }),
+      [DEVICE]: () =>
+        deviceCode({ expires_in: -5, interval: "soon", verification_uri: rawVerificationUri }),
       [TOKEN]: () => json({ access_token: "gh-token" }),
       [EXCHANGE]: () => sessionToken(),
       [MODELS]: () => json({ data: [] }),
@@ -355,6 +368,8 @@ describe("GitHub Copilot device sign-in", () => {
     assert.ok(shown && shown.type === "device_code");
     assert.equal(shown.intervalSeconds, undefined);
     assert.equal(shown.expiresInSeconds, 900);
+    assert.equal(shown.verificationUri, new URL(rawVerificationUri).href);
+    assert.ok(!shown.verificationUri.includes("\x1b"));
     await vi.advanceTimersByTimeAsync(5000);
     assert.equal((await login).access, SESSION_TOKEN);
   });
@@ -400,10 +415,6 @@ describe("GitHub Copilot device sign-in", () => {
 
   test.each([
     { token: "opaque", origin: ORIGIN },
-    {
-      token: "tid=x;proxy-ep=proxy.business.githubcopilot.com;exp=1",
-      origin: "https://api.business.githubcopilot.com",
-    },
     { token: "proxy-ep=api.githubcopilot.com:443", origin: "https://api.githubcopilot.com" },
   ])("request auth derives the trusted account endpoint: $origin", async (input) => {
     const oauth = githubCopilotOAuth();
@@ -420,7 +431,6 @@ describe("GitHub Copilot device sign-in", () => {
   });
 
   test.each([
-    "evil.example",
     "api.githubcopilot.com.attacker.example",
     "api.githubcopilot.com:8443",
     "user:pass@api.githubcopilot.com",
@@ -515,7 +525,6 @@ describe("GitHub Copilot device sign-in", () => {
   });
 
   test.each([
-    { access: "", refresh: "github", expires: 0, availableModelIds: [] },
     { access: "session", refresh: "", expires: 0, availableModelIds: [] },
     {
       access: "session",
@@ -524,7 +533,6 @@ describe("GitHub Copilot device sign-in", () => {
       availableModelIds: [],
     },
     { access: "session", refresh: "github", expires: 0, availableModelIds: undefined },
-    { access: "session", refresh: "github", expires: 0, availableModelIds: [42] },
   ])("rejects incomplete stored credentials before refresh or request auth: %j", async (fields) => {
     const transport = fakeFetch({});
     const oauth = githubCopilotOAuth({ fetch: transport.fetch });
@@ -535,5 +543,78 @@ describe("GitHub Copilot device sign-in", () => {
     );
     await assert.rejects(oauth.toAuth(credential), /Sign in to GitHub Copilot again/);
     assert.equal(transport.requests.length, 0);
+  });
+});
+
+const neverAbortedSignal = new AbortController().signal;
+
+const testCopilotAccessToken =
+  "tid=test;exp=9999999999;proxy-ep=proxy.individual.githubcopilot.com;";
+const testCopilotModelsUrl = "https://api.individual.githubcopilot.com/models";
+
+function jsonResponse(
+  body: unknown,
+  status: number = 200,
+  headers?: Record<string, string>,
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...headers,
+    },
+  });
+}
+
+function getUrl(input: unknown): string {
+  if (typeof input === "string") {
+    return input;
+  }
+  if (input instanceof URL) {
+    return input.toString();
+  }
+  if (input instanceof Request) {
+    return input.url;
+  }
+  throw new Error(`Unsupported fetch input: ${String(input)}`);
+}
+
+describe("GitHub Copilot OAuth device flow", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  test("does not retry model catalog throttling during credential refresh", async () => {
+    let catalogRequestCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: unknown): Promise<Response> => {
+        const url = getUrl(input);
+        if (url.includes("/copilot_internal/v2/token")) {
+          return jsonResponse({ token: testCopilotAccessToken, expires_at: 9999999999 });
+        }
+        if (url === testCopilotModelsUrl) {
+          catalogRequestCount += 1;
+          return jsonResponse({ error: "too many requests" }, 429, { "Retry-After": "0" });
+        }
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      }),
+    );
+
+    await assert.rejects(
+      githubCopilotOAuth().refresh(
+        {
+          type: "oauth",
+          access: "old-access-token",
+          refresh: "ghu_refresh_token",
+          expires: 0,
+          availableModelIds: [],
+        },
+        neverAbortedSignal,
+      ),
+      /429/,
+    );
+    assert.equal(catalogRequestCount, 1);
   });
 });

@@ -186,13 +186,18 @@ async function startDeviceAuthorization(input: {
   };
 }
 
+/** The poll loop owns the expiry message; the lifetime signal only cuts off a request that hangs past it. */
+const LIFETIME_GRACE_MS = 1_000;
+
 async function pollForGitHubToken(input: {
   fetch: FetchFunction | undefined;
   clientId: string;
   device: Awaited<ReturnType<typeof startDeviceAuthorization>>;
   signal: AbortSignal;
 }): Promise<Static<typeof GitHubToken>> {
-  const lifetime = AbortSignal.timeout(Math.ceil(input.device.expires_in * 1000));
+  const lifetime = AbortSignal.timeout(
+    Math.ceil(input.device.expires_in * 1000) + LIFETIME_GRACE_MS,
+  );
   const pollSignal = AbortSignal.any([input.signal, lifetime]);
 
   try {

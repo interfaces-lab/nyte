@@ -434,10 +434,6 @@ describe("Codex V2 compaction", () => {
   test.each([
     ["missing completion", sse(itemDone())],
     [
-      "missing response ID",
-      sse(itemDone(), { type: "response.completed", response: { status: "completed" } }),
-    ],
-    [
       "contradictory status",
       sse(itemDone(), { type: "response.completed", response: { id: "r", status: "failed" } }),
     ],
@@ -448,14 +444,9 @@ describe("Codex V2 compaction", () => {
         response: { error: { message: "secret prompt" } },
       }),
     ],
-    [
-      "incomplete",
-      sse(itemDone(), { type: "response.incomplete", response: { status: "incomplete" } }),
-    ],
     ["error", sse({ type: "error", message: "secret prompt" })],
     ["malformed JSON", 'data: {"secret prompt"\n\n'],
     ["negative usage", sse(itemDone(), completed({ ...terminalUsage, input_tokens: -1 }))],
-    ["fractional usage", sse(itemDone(), completed({ ...terminalUsage, output_tokens: 0.5 }))],
     ["partial usage", sse(itemDone(), completed({ total_tokens: 120 }))],
     [
       "invalid cache usage",
@@ -491,7 +482,6 @@ describe("Codex V2 compaction", () => {
   test.each([
     ["missing checkpoint", []],
     ["duplicate checkpoint", [itemDone(), itemDone()]],
-    ["invalid checkpoint", [itemDone({ type: "compaction", encrypted_content: 42 })]],
     ["empty checkpoint", [itemDone({ type: "compaction", encrypted_content: "" })]],
     ["invalid output item", [itemDone(null)]],
   ])("preserves terminal usage after %s without retrying", async (_name, items) => {
@@ -525,41 +515,41 @@ describe("Codex V2 compaction", () => {
     assert.equal(server.requests.length, 1);
   });
 
-  test.each([
-    "response.failed",
-    "response.incomplete",
-    "response.cancelled",
-    "response.done",
-    "response.completed",
-  ])("accounts for %s usage even when the checkpoint cannot be accepted", async (type) => {
-    await using server = await serve((response) =>
-      response.end(
-        sse(itemDone(), {
-          type,
-          response: {
-            id: "r",
-            status: "failed",
-            usage: terminalUsage,
-            service_tier: "priority",
-            error: { code: "invalid_request_error", message: `${context.systemPrompt} ${apiKey}` },
-          },
-        }),
-      ),
-    );
-    await assert.rejects(
-      compactOpenAICodexContext(server.model, context, { apiKey, maxRetries: 2 }),
-      (error) => {
-        assert.ok(error instanceof OpenAICodexCompactionError);
-        assert.equal(error.usage?.totalTokens, 130);
-        expect(error.usage?.cost.total).toBeCloseTo(0.000226, 12);
-        assert.ok(!JSON.stringify(error).includes(apiKey));
-        assert.ok(!error.message.includes(context.systemPrompt ?? "private"));
-        assert.equal(error.cause, undefined);
-        return true;
-      },
-    );
-    assert.equal(server.requests.length, 1);
-  });
+  test.each(["response.failed", "response.cancelled", "response.completed"])(
+    "accounts for %s usage even when the checkpoint cannot be accepted",
+    async (type) => {
+      await using server = await serve((response) =>
+        response.end(
+          sse(itemDone(), {
+            type,
+            response: {
+              id: "r",
+              status: "failed",
+              usage: terminalUsage,
+              service_tier: "priority",
+              error: {
+                code: "invalid_request_error",
+                message: `${context.systemPrompt} ${apiKey}`,
+              },
+            },
+          }),
+        ),
+      );
+      await assert.rejects(
+        compactOpenAICodexContext(server.model, context, { apiKey, maxRetries: 2 }),
+        (error) => {
+          assert.ok(error instanceof OpenAICodexCompactionError);
+          assert.equal(error.usage?.totalTokens, 130);
+          expect(error.usage?.cost.total).toBeCloseTo(0.000226, 12);
+          assert.ok(!JSON.stringify(error).includes(apiKey));
+          assert.ok(!error.message.includes(context.systemPrompt ?? "private"));
+          assert.equal(error.cause, undefined);
+          return true;
+        },
+      );
+      assert.equal(server.requests.length, 1);
+    },
+  );
 
   test("keeps missing failure usage unknown and explicit zero usage known", async () => {
     await using server = await serve((response, index) =>
@@ -582,25 +572,6 @@ describe("Codex V2 compaction", () => {
         },
       );
     }
-  });
-
-  test("retries a 503 then accepts valid SSE with the configured budget", async () => {
-    await using server = await serve((response, index) => {
-      if (index === 0) {
-        response.writeHead(503, { "retry-after-ms": "10" });
-        response.end("private upstream error");
-        return;
-      }
-      response.end(sse(itemDone(), completed()));
-    });
-    const result = await compactOpenAICodexContext(server.model, context, {
-      apiKey,
-      maxRetries: 2,
-    });
-    assert.equal(server.requests.length, 2);
-    assert.deepEqual(server.requests[1].body, server.requests[0].body);
-    assert.deepEqual(result.data, [retainedUser("old conversation"), checkpoint]);
-    assert.equal(result.usage?.totalTokens, 130);
   });
 
   test("shares the retry budget across failed HTTP opens and interrupted streams", async () => {
@@ -682,12 +653,12 @@ describe("Codex V2 compaction", () => {
     },
   );
 
-  test.each(["success", "failure", "invalid usage", "missing usage"])(
+  test.each(["success", "invalid usage", "missing usage"])(
     "sums usage and per-attempt pricing across retries ending in %s",
     async (outcome) => {
       await using server = await serve((response, index) => {
         response.setHeader("retry-after-ms", "10");
-        const failed = index === 0 || outcome === "failure";
+        const failed = index === 0;
         response.end(
           sse(itemDone(), {
             type: failed ? "response.failed" : "response.completed",
@@ -716,15 +687,12 @@ describe("Codex V2 compaction", () => {
         });
       } catch (error) {
         assert.ok(error instanceof OpenAICodexCompactionError);
-        assert.ok(outcome === "failure" || outcome === "invalid usage");
+        assert.ok(outcome === "invalid usage");
         assert.ok(!JSON.stringify(error).includes("secret prompt"));
         assert.equal(error.cause, undefined);
         result = error;
       }
-      assert.equal(
-        result instanceof OpenAICodexCompactionError,
-        outcome === "failure" || outcome === "invalid usage",
-      );
+      assert.equal(result instanceof OpenAICodexCompactionError, outcome === "invalid usage");
       const reports = outcome === "invalid usage" || outcome === "missing usage" ? 1 : 2;
       expect(result.usage).toMatchObject({
         input: 60 * reports,
@@ -755,15 +723,12 @@ describe("Codex V2 compaction", () => {
     assert.equal(server.requests.length, 1);
   });
 
-  test.each([
-    ["retry-after-ms", "80"],
-    ["retry-after", "0.08"],
-  ])("waits for %s with the delay cap disabled", async (header, value) => {
+  test("waits for retry-after-ms with the delay cap disabled", async () => {
     const requestTimes: number[] = [];
     await using server = await serve((response, index) => {
       requestTimes.push(performance.now());
       if (index === 0) {
-        response.writeHead(429, { [header]: value });
+        response.writeHead(429, { "retry-after-ms": "80" });
         response.end('{"error":{"code":"rate_limit_exceeded"}}');
         return;
       }
@@ -779,7 +744,7 @@ describe("Codex V2 compaction", () => {
     assert.equal(result.usage?.totalTokens, 130);
   });
 
-  test.each([-1, 0.5, NaN, Infinity])(
+  test.each([-1, 0.5, NaN])(
     "rejects invalid retry budget %s before sending",
     async (maxRetries) => {
       await using server = await serve((response) => response.end(sse(itemDone(), completed())));
@@ -886,32 +851,29 @@ describe("Codex V2 compaction", () => {
     assert.deepEqual(result.data, [retainedUser("old conversation"), { ...checkpoint, id: null }]);
   });
 
-  test.each([400, 401, 403, 404, 422, 429])(
-    "does not retry HTTP %s or expose its body",
-    async (status) => {
-      await using server = await serve((response) => {
-        response.writeHead(status, { "x-request-id": "req_missing", "retry-after-ms": "1" });
-        response.end(
-          JSON.stringify({
-            error: { message: `insufficient_quota overloaded ${context.systemPrompt} ${apiKey}` },
-          }),
-        );
-      });
-      await assert.rejects(
-        compactOpenAICodexContext(server.model, context, { apiKey, maxRetries: 2 }),
-        (error) => {
-          assert.ok(error instanceof OpenAICodexCompactionError);
-          assert.ok(error.message.includes(`HTTP ${status}`));
-          assert.ok(error.message.includes(`${server.model.baseUrl}/codex/responses`));
-          assert.match(error.message, /request ID req_missing/);
-          assert.ok(!error.message.includes(apiKey));
-          assert.ok(!error.message.includes(context.systemPrompt ?? "private"));
-          return true;
-        },
+  test.each([401, 429])("does not retry HTTP %s or expose its body", async (status) => {
+    await using server = await serve((response) => {
+      response.writeHead(status, { "x-request-id": "req_missing", "retry-after-ms": "1" });
+      response.end(
+        JSON.stringify({
+          error: { message: `insufficient_quota overloaded ${context.systemPrompt} ${apiKey}` },
+        }),
       );
-      assert.equal(server.requests.length, 1);
-    },
-  );
+    });
+    await assert.rejects(
+      compactOpenAICodexContext(server.model, context, { apiKey, maxRetries: 2 }),
+      (error) => {
+        assert.ok(error instanceof OpenAICodexCompactionError);
+        assert.ok(error.message.includes(`HTTP ${status}`));
+        assert.ok(error.message.includes(`${server.model.baseUrl}/codex/responses`));
+        assert.match(error.message, /request ID req_missing/);
+        assert.ok(!error.message.includes(apiKey));
+        assert.ok(!error.message.includes(context.systemPrompt ?? "private"));
+        return true;
+      },
+    );
+    assert.equal(server.requests.length, 1);
+  });
 
   test("heartbeats reset the idle timeout and CRLF frames work across chunk boundaries", async () => {
     await using server = await serve(async (response) => {

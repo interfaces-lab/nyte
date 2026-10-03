@@ -2,9 +2,9 @@
  * Google Generative AI adapter.
  *
  * Based on:
- * - https://github.com/earendil-works/pi/blob/77f2d1235ee2992c6072b9dcb6e99439a70c6f45/packages/ai/src/api/google-generative-ai.ts
- * - https://github.com/earendil-works/pi/blob/77f2d1235ee2992c6072b9dcb6e99439a70c6f45/packages/ai/src/api/google-shared.ts
- * Synced with pi 77f2d1235.
+ * - https://github.com/earendil-works/pi/blob/16235fd93521f9f96164f5891beea62e6bea5b18/packages/ai/src/api/google-generative-ai.ts
+ * - https://github.com/earendil-works/pi/blob/16235fd93521f9f96164f5891beea62e6bea5b18/packages/ai/src/api/google-shared.ts
+ * Synced with pi 16235fd93.
  */
 import {
   type Content,
@@ -23,7 +23,6 @@ import type {
   AssistantMessage,
   ImageContent,
   Model,
-  ModelThinkingLevel,
   ProviderHeaders,
   SimpleStreamOptions,
   StopReason,
@@ -366,14 +365,22 @@ export const streamSimple: StreamFunction<"google-generative-ai", SimpleStreamOp
   }
 
   const clampedReasoning = clampThinkingLevel(model, options.reasoning);
+
+  if (clampedReasoning === "off") {
+    return stream(model, context, {
+      ...base,
+      thinking: { enabled: false },
+    } satisfies GoogleOptions);
+  }
+
   const resolvedLevel = resolveGoogleThinkingLevel(model, clampedReasoning);
 
-  if (isGemini3ProModel(model) || isGemini3FlashModel(model) || isGemma4Model(model)) {
+  if (usesGoogleThinkingLevel(model)) {
     return stream(model, context, {
       ...base,
       thinking: {
         enabled: true,
-        level: getThinkingLevel(resolvedLevel, model),
+        level: toGoogleThinkingLevel(resolvedLevel),
       },
     } satisfies GoogleOptions);
   }
@@ -434,7 +441,7 @@ function buildParams(
     generationConfig.maxOutputTokens = options.maxTokens;
   }
 
-  const supportsStrictMode = supportsGoogleStrictToolSampling(model.id);
+  const supportsStrictMode = isGemini3OrLater(model.id);
 
   const functionCallingMode =
     currentTools.length > 0
@@ -485,71 +492,31 @@ function buildParams(
   return params;
 }
 
-function isGemma4Model(model: Model<"google-generative-ai">): boolean {
-  return /gemma-?4/.test(model.id.toLowerCase());
-}
-
-function isGemini3ProModel(model: Model<"google-generative-ai">): boolean {
-  return /gemini-3(?:\.\d+)?-pro/.test(model.id.toLowerCase());
-}
-
-function isGemini3FlashModel(model: Model<"google-generative-ai">): boolean {
+function usesGoogleThinkingLevel(model: Model<"google-generative-ai">): boolean {
   const id = model.id.toLowerCase();
 
   return (
-    /gemini-3(?:\.\d+)?-flash/.test(id) ||
+    /gemini-3(?:\.\d+)?-(?:pro|flash)/.test(id) ||
     id === "gemini-flash-latest" ||
-    id === "gemini-flash-lite-latest"
+    id === "gemini-flash-lite-latest" ||
+    /gemma-?4/.test(id)
   );
 }
 
 function getDisabledThinkingConfig(model: Model<"google-generative-ai">): ThinkingConfig {
-  // Google docs: Gemini 3.1 Pro cannot disable thinking, and Gemini 3 Flash / Flash-Lite
-  // do not support full thinking-off either. For Gemini 3 models, use the lowest supported
-  // thinkingLevel without includeThoughts so hidden thinking remains invisible to pi.
-  if (isGemini3ProModel(model)) {
-    return { thinkingLevel: GoogleThinkingLevel.LOW };
-  }
+  if (!usesGoogleThinkingLevel(model)) return { thinkingBudget: 0 };
 
-  if (isGemini3FlashModel(model)) {
-    return { thinkingLevel: GoogleThinkingLevel.MINIMAL };
-  }
+  // Gemini 3 and Gemma 4 cannot fully disable thinking; use the lowest supported level without
+  // includeThoughts so hidden thinking stays invisible.
+  const fallback = clampThinkingLevel(model, "off");
 
-  if (isGemma4Model(model)) {
-    return { thinkingLevel: GoogleThinkingLevel.MINIMAL };
-  }
+  if (fallback === "off") return { thinkingBudget: 0 };
 
-  // Gemini 2.x supports disabling via thinkingBudget = 0.
-  return { thinkingBudget: 0 };
+  return { thinkingLevel: toGoogleThinkingLevel(resolveGoogleThinkingLevel(model, fallback)) };
 }
 
-function getThinkingLevel(
-  effort: ResolvedThinkingLevel,
-  model: Model<"google-generative-ai">,
-): GoogleThinkingLevel {
-  if (isGemini3ProModel(model)) {
-    switch (effort) {
-      case "minimal":
-      case "low":
-        return GoogleThinkingLevel.LOW;
-      case "medium":
-      case "high":
-        return GoogleThinkingLevel.HIGH;
-    }
-  }
-
-  if (isGemma4Model(model)) {
-    switch (effort) {
-      case "minimal":
-      case "low":
-        return GoogleThinkingLevel.MINIMAL;
-      case "medium":
-      case "high":
-        return GoogleThinkingLevel.HIGH;
-    }
-  }
-
-  switch (effort) {
+function toGoogleThinkingLevel(level: ResolvedThinkingLevel): GoogleThinkingLevel {
+  switch (level) {
     case "minimal":
       return GoogleThinkingLevel.MINIMAL;
     case "low":
@@ -608,10 +575,8 @@ function getGoogleBudget(
 
 function resolveGoogleThinkingLevel(
   model: Model<"google-generative-ai">,
-  level: ModelThinkingLevel,
+  level: ThinkingLevel,
 ): ResolvedThinkingLevel {
-  if (level === "off") return "high";
-
   const mapped = model.thinkingLevelMap?.[level];
   const resolvedLevel = mapped?.toLowerCase() ?? level;
 
@@ -668,7 +633,8 @@ function getGeminiMajorVersion(modelId: string): number | undefined {
   return match ? Number.parseInt(match[1], 10) : undefined;
 }
 
-function requiresToolCallId(modelId: string): boolean {
+/** Gemini 3+ requires tool call ids and supports strict tool sampling. */
+function isGemini3OrLater(modelId: string): boolean {
   const majorVersion = getGeminiMajorVersion(modelId);
 
   return majorVersion !== undefined && majorVersion >= 3;
@@ -689,7 +655,7 @@ function convertMessages(
   const contents: Content[] = [];
 
   const normalizeToolCallId = (id: string): string => {
-    if (!requiresToolCallId(model.id)) return id;
+    if (!isGemini3OrLater(model.id)) return id;
 
     return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
   };
@@ -770,7 +736,7 @@ function convertMessages(
           functionCall: {
             name: block.name,
             args: block.arguments ?? {},
-            ...(requiresToolCallId(model.id) && { id: block.id }),
+            ...(isGemini3OrLater(model.id) && { id: block.id }),
           },
           ...(thoughtSignature && { thoughtSignature }),
         });
@@ -811,7 +777,7 @@ function convertMessages(
         name: message.toolName,
         response: message.isError ? { error: responseValue } : { output: responseValue },
         ...(hasImages && supportsMultimodalResponse && { parts: imageParts }),
-        ...(requiresToolCallId(model.id) && { id: message.toolCallId }),
+        ...(isGemini3OrLater(model.id) && { id: message.toolCallId }),
       },
     };
 
@@ -850,12 +816,6 @@ function convertTools(tools: Tool[], supportsStrictMode: boolean) {
       }),
     },
   ];
-}
-
-function supportsGoogleStrictToolSampling(modelId: string): boolean {
-  const majorVersion = getGeminiMajorVersion(modelId);
-
-  return majorVersion !== undefined && majorVersion >= 3;
 }
 
 function resolveGoogleFunctionCallingMode(

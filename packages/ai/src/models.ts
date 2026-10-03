@@ -22,6 +22,7 @@ import type {
 } from "./auth/types.ts";
 import { InMemoryModelsStore, type ModelsStore, type ModelsStoreEntry } from "./models-store.ts";
 import type {
+  AccountLimits,
   Api,
   ApiStreamOptions,
   AssistantMessage,
@@ -43,6 +44,7 @@ import type {
   Usage,
 } from "./types.ts";
 import { operationSignal, raceWithAbortSignal } from "./utils/abort.ts";
+import { mergeProviderHeaders } from "./utils/headers.ts";
 
 export { ModelsError, type ModelsErrorCode } from "./auth/resolve.ts";
 
@@ -209,6 +211,15 @@ export interface Models {
   /** Check whether a provider has complete auth configuration without refreshing OAuth. */
   checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined>;
 
+  /**
+   * The account state a provider last reported on one of this collection's
+   * requests. Instant and never a network call; undefined until a request has
+   * run. Providers report their shared windows on every response, so this is
+   * as current as the last turn, though it may omit windows only a usage
+   * endpoint lists.
+   */
+  getAccountLimits(providerId: string): AccountLimits | undefined;
+
   /** Return models whose providers have complete auth configuration. */
   getAvailable(providerId?: string, options?: AuthOperationOptions): Promise<readonly Model<Api>[]>;
 
@@ -273,6 +284,8 @@ export interface MutableModels extends Models {
   clearProviders(): void;
 }
 
+export const DEFAULT_MODELS_CATALOG_URL = "https://pub-426b80ba181f408387bc9361b2fcbe3f.r2.dev";
+
 export interface CreateModelsOptions {
   credentials?: CredentialStore;
   modelsStore?: ModelsStore;
@@ -283,55 +296,41 @@ export interface CreateModelsOptions {
   };
 }
 
-function mergeHeaders(
-  base: ProviderHeaders | undefined,
-  override: ProviderHeaders | undefined,
-): ProviderHeaders | undefined {
-  if (!base && !override) return undefined;
-  const merged = { ...base };
-
-  for (const [name, value] of Object.entries(override ?? {})) {
-    const lowerName = name.toLowerCase();
-
-    for (const existingName of Object.keys(merged)) {
-      if (existingName.toLowerCase() === lowerName) delete merged[existingName];
-    }
-
-    merged[name] = value;
-  }
-
-  return merged;
-}
-
 class ModelsImpl implements MutableModels {
   private providers = new Map<string, Provider>();
   private credentials: CredentialStore;
   private modelsStore: ModelsStore;
   private authContext: AuthContext;
   private catalog: RefreshModelsContext["catalog"];
+  /** Shared with `withProvider` registries the way the stores are: one account per provider. */
+  private accountLimits: Map<string, AccountLimits>;
   private refreshGenerations = new Map<string, number>();
   private refreshControllers = new Map<string, AbortController>();
   /** Settles once the running refresh for a provider has restored its cached catalog. */
   private restorations = new Map<string, Promise<void>>();
   private publicationChains = new Map<string, Promise<unknown>>();
 
-  constructor(options?: CreateModelsOptions) {
+  constructor(options?: CreateModelsOptions, accountLimits = new Map<string, AccountLimits>()) {
     this.credentials = options?.credentials ?? new InMemoryCredentialStore();
     this.modelsStore = options?.modelsStore ?? new InMemoryModelsStore();
     this.authContext = options?.authContext ?? defaultAuthContext();
     this.catalog = {
-      url: options?.catalog?.url ?? "https://pub-426b80ba181f408387bc9361b2fcbe3f.r2.dev",
+      url: options?.catalog?.url ?? DEFAULT_MODELS_CATALOG_URL,
       fetch: options?.catalog?.fetch ?? globalThis.fetch,
     };
+    this.accountLimits = accountLimits;
   }
 
   withProvider(provider: Provider): Models {
-    const models = new ModelsImpl({
-      credentials: this.credentials,
-      modelsStore: this.modelsStore,
-      authContext: this.authContext,
-      catalog: this.catalog,
-    });
+    const models = new ModelsImpl(
+      {
+        credentials: this.credentials,
+        modelsStore: this.modelsStore,
+        authContext: this.authContext,
+        catalog: this.catalog,
+      },
+      this.accountLimits,
+    );
 
     for (const entry of this.providers.values()) models.setProvider(entry);
     models.setProvider(provider);
@@ -671,6 +670,10 @@ class ModelsImpl implements MutableModels {
     return resolution ? { source: resolution.source, type: "api_key" } : undefined;
   }
 
+  getAccountLimits(providerId: string): AccountLimits | undefined {
+    return this.accountLimits.get(providerId);
+  }
+
   checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined> {
     const signal = operationSignal(options?.signal);
 
@@ -752,7 +755,7 @@ class ModelsImpl implements MutableModels {
       ...result,
       auth: {
         ...result.auth,
-        headers: mergeHeaders(result.auth.headers, providerOrModel.headers),
+        headers: mergeProviderHeaders(result.auth.headers, providerOrModel.headers),
       },
     };
   }
@@ -866,7 +869,10 @@ class ModelsImpl implements MutableModels {
 
     // Explicit request options win per-field; the Models-only transform runs last.
     const apiKey = options?.apiKey ?? auth.apiKey;
-    let headers = mergeHeaders(auth.headers, options?.headers);
+    let headers =
+      auth.headers || options?.headers
+        ? mergeProviderHeaders(auth.headers, options?.headers)
+        : undefined;
 
     if (options?.transformHeaders) headers = await options.transformHeaders(headers ?? {});
 
@@ -878,7 +884,15 @@ class ModelsImpl implements MutableModels {
     const requestModel = auth.baseUrl ? { ...model, baseUrl: auth.baseUrl } : model;
     const { transformHeaders: _transformHeaders, ...providerOptions } = options ?? {};
 
-    const requestOptions = { ...providerOptions, apiKey, headers, env };
+    const onAccountLimits: ProviderRequestOptions["onAccountLimits"] = async (
+      limits,
+      requested,
+    ) => {
+      this.accountLimits.set(limits.providerId, limits);
+      await options?.onAccountLimits?.(limits, requested);
+    };
+
+    const requestOptions = { ...providerOptions, apiKey, headers, env, onAccountLimits };
 
     return { requestModel, requestOptions };
   }

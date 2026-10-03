@@ -5,26 +5,7 @@
  * Synced with pi 7fbbd5f4a.
  */
 import type { AssistantMessage, AssistantMessageEvent } from "@nyte-ai/schema";
-
-class FifoQueue<T> {
-  private incoming: T[] = [];
-  private outgoing: T[] = [];
-
-  enqueue(value: T): void {
-    this.incoming.push(value);
-  }
-
-  dequeue(): T | undefined {
-    if (this.outgoing.length === 0) {
-      const drained = this.incoming;
-      drained.reverse();
-      this.incoming = this.outgoing;
-      this.outgoing = drained;
-    }
-
-    return this.outgoing.pop();
-  }
-}
+import { FifoQueue } from "./fifo-queue.ts";
 
 // Generic event stream class for async iteration
 export class EventStream<T, R = T> implements AsyncIterable<T> {

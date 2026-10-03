@@ -44,12 +44,15 @@ const fetch: typeof globalThis.fetch = async (input, init) => {
   requests.push({ headers: request.headers, body });
   return new Response(responseBody, {
     status: 200,
-    headers: { "content-type": "text/event-stream" },
+    headers: {
+      "content-type": "text/event-stream",
+      "anthropic-ratelimit-unified-5h-utilization": "0.42",
+      "anthropic-ratelimit-unified-5h-reset": "2000000000",
+    },
   });
 };
 
 const NYTE_USER_AGENT = `nyte (${platform()} ${release()}; ${arch()})`;
-const neverAbortedSignal = new AbortController().signal;
 
 const context: Context = {
   systemPrompt: "System prompt.",
@@ -82,48 +85,7 @@ beforeEach(() => {
 });
 
 describe("Anthropic auth token env", () => {
-  it("resolves ANTHROPIC_AUTH_TOKEN as a bearer Authorization header", async () => {
-    const provider = anthropicProvider();
-    const auth = await provider.auth.apiKey?.resolve({
-      ctx: {
-        env: async (name) =>
-          ({
-            ANTHROPIC_AUTH_TOKEN: "auth-token",
-            ANTHROPIC_OAUTH_TOKEN: "oauth-token",
-            ANTHROPIC_API_KEY: "api-key",
-          })[name],
-        fileExists: async () => false,
-      },
-      signal: neverAbortedSignal,
-    });
-
-    expect(auth).toEqual({
-      auth: { headers: { Authorization: "Bearer auth-token" } },
-      source: ANTHROPIC_AUTH_TOKEN_ENV,
-    });
-  });
-
-  it("preserves ANTHROPIC_OAUTH_TOKEN as OAuth-shaped API auth", async () => {
-    const provider = anthropicProvider();
-    const auth = await provider.auth.apiKey?.resolve({
-      ctx: {
-        env: async (name) =>
-          ({
-            ANTHROPIC_OAUTH_TOKEN: "oauth-token",
-            ANTHROPIC_API_KEY: "api-key",
-          })[name],
-        fileExists: async () => false,
-      },
-      signal: neverAbortedSignal,
-    });
-
-    expect(auth).toEqual({
-      auth: { apiKey: "oauth-token" },
-      source: ANTHROPIC_OAUTH_TOKEN_ENV,
-    });
-  });
-
-  it("reports account-limit events without adding them to the message stream", async () => {
+  it("reports account-limit headers without adding them to the message stream", async () => {
     const observed: unknown[] = [];
     const eventTypes: string[] = [];
     const source = stream(anthropicModel, normalizeContext(context), {
@@ -148,6 +110,7 @@ describe("Anthropic auth token env", () => {
           {
             id: "five_hour",
             usedPercent: 42,
+            windowMinutes: 300,
             resetsAt: 2_000_000_000_000,
           },
         ],
@@ -156,34 +119,24 @@ describe("Anthropic auth token env", () => {
     ]);
   });
 
-  it("uses Authorization headers without OAuth-mode request shaping", async () => {
-    const result = await stream(anthropicModel, normalizeContext(context), {
-      headers: { Authorization: "Bearer gateway-token" },
-      fetch,
-      cacheRetention: "none",
-    }).result();
-
-    expect(result.stopReason).toBe("stop");
-    expect(requests).toHaveLength(1);
-    expect(requests[0]?.headers.get("authorization")).toBe("Bearer gateway-token");
-    expect(requests[0]?.headers.get("x-api-key")).toBeNull();
-    expect(requests[0]?.headers.get("anthropic-beta") ?? "").not.toContain("oauth-2025-04-20");
-    expect(requests[0]?.body).toMatchObject({
-      model: "claude-test",
-      system: [{ text: "System prompt." }],
-      messages: [{ role: "user", content: "Hello" }],
-      stream: true,
-    });
-  });
-
-  it("threads authContext ANTHROPIC_AUTH_TOKEN through request headers", async () => {
+  it("threads ANTHROPIC_AUTH_TOKEN ahead of other env credentials, unless explicit headers override it", async () => {
     const models = createModels({
       authContext: {
-        env: async (name) => (name === "ANTHROPIC_AUTH_TOKEN" ? "ctx-token" : undefined),
+        env: async (name) =>
+          ({
+            ANTHROPIC_AUTH_TOKEN: "ctx-token",
+            ANTHROPIC_OAUTH_TOKEN: "oauth-token",
+            ANTHROPIC_API_KEY: "api-key",
+          })[name],
         fileExists: async () => false,
       },
     });
     models.setProvider(anthropicProvider());
+
+    expect(await models.checkAuth("anthropic")).toEqual({
+      type: "api_key",
+      source: ANTHROPIC_AUTH_TOKEN_ENV,
+    });
 
     const result = await models
       .streamSimple(anthropicModel, context, { fetch, cacheRetention: "none" })
@@ -195,16 +148,37 @@ describe("Anthropic auth token env", () => {
     expect(requests[0]?.headers.get("x-api-key")).toBeNull();
     expect(requests[0]?.headers.get("anthropic-beta") ?? "").not.toContain("oauth-2025-04-20");
     expect(requests[0]?.body).toMatchObject({ system: [{ text: "System prompt." }] });
+
+    await models
+      .streamSimple(anthropicModel, context, {
+        headers: { Authorization: "Bearer explicit-token" },
+        fetch,
+        cacheRetention: "none",
+      })
+      .result();
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.headers.get("authorization")).toBe("Bearer explicit-token");
+    expect(requests[1]?.headers.get("x-api-key")).toBeNull();
   });
 
-  it("preserves OAuth request shaping for ANTHROPIC_OAUTH_TOKEN", async () => {
+  it("preserves OAuth request shaping for ANTHROPIC_OAUTH_TOKEN ahead of ANTHROPIC_API_KEY", async () => {
     const models = createModels({
       authContext: {
-        env: async (name) => (name === "ANTHROPIC_OAUTH_TOKEN" ? "sk-ant-oat-test" : undefined),
+        env: async (name) =>
+          ({
+            ANTHROPIC_OAUTH_TOKEN: "sk-ant-oat-test",
+            ANTHROPIC_API_KEY: "api-key",
+          })[name],
         fileExists: async () => false,
       },
     });
     models.setProvider(anthropicProvider());
+
+    expect(await models.checkAuth("anthropic")).toEqual({
+      type: "api_key",
+      source: ANTHROPIC_OAUTH_TOKEN_ENV,
+    });
 
     const result = await models
       .streamSimple(anthropicModel, context, { fetch, cacheRetention: "none" })
@@ -222,33 +196,10 @@ describe("Anthropic auth token env", () => {
       ],
     });
   });
-
-  it("lets explicit request headers override ANTHROPIC_AUTH_TOKEN", async () => {
-    const models = createModels({
-      authContext: {
-        env: async (name) => (name === "ANTHROPIC_AUTH_TOKEN" ? "ctx-token" : undefined),
-        fileExists: async () => false,
-      },
-    });
-    models.setProvider(anthropicProvider());
-
-    const result = await models
-      .streamSimple(anthropicModel, context, {
-        headers: { Authorization: "Bearer explicit-token" },
-        fetch,
-        cacheRetention: "none",
-      })
-      .result();
-
-    expect(result.stopReason).toBe("stop");
-    expect(requests).toHaveLength(1);
-    expect(requests[0]?.headers.get("authorization")).toBe("Bearer explicit-token");
-    expect(requests[0]?.headers.get("x-api-key")).toBeNull();
-  });
 });
 
 describe("Anthropic-compatible user agents", () => {
-  it("uses Nyte's User-Agent by default for Anthropic Messages requests", async () => {
+  it("uses Nyte's User-Agent by default and lets explicit headers override it", async () => {
     const result = await stream(anthropicModel, normalizeContext(context), {
       apiKey: "anthropic-key",
       fetch,
@@ -259,19 +210,16 @@ describe("Anthropic-compatible user agents", () => {
     expect(requests[0]?.headers.get("x-api-key")).toBe("anthropic-key");
     expect(requests[0]?.headers.get("authorization")).toBeNull();
     expect(requests[0]?.headers.get("user-agent")).toBe(NYTE_USER_AGENT);
-  });
 
-  it("lets explicit headers override the default Anthropic Messages User-Agent", async () => {
-    const result = await stream(kimiCodingModel, normalizeContext(context), {
+    await stream(kimiCodingModel, normalizeContext(context), {
       apiKey: "kimi-key",
       headers: { "User-Agent": "custom-client" },
       fetch,
     }).result();
 
-    expect(result.stopReason).toBe("stop");
-    expect(requests).toHaveLength(1);
-    expect(requests[0]?.headers.get("x-api-key")).toBe("kimi-key");
-    expect(requests[0]?.headers.get("authorization")).toBeNull();
-    expect(requests[0]?.headers.get("user-agent")).toBe("custom-client");
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.headers.get("x-api-key")).toBe("kimi-key");
+    expect(requests[1]?.headers.get("authorization")).toBeNull();
+    expect(requests[1]?.headers.get("user-agent")).toBe("custom-client");
   });
 });

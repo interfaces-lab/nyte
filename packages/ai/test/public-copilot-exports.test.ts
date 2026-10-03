@@ -7,6 +7,7 @@ import { runInNewContext } from "node:vm";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { test } from "vitest";
+import { DEFAULT_MODELS_CATALOG_URL } from "../src/models.ts";
 import {
   DEVICE,
   EXCHANGE,
@@ -50,7 +51,7 @@ test("public Copilot composition bundles and logs in without Node globals", asyn
       [TOKEN]: () => json({ access_token: "github-secret" }),
       [EXCHANGE]: () => sessionToken(),
       [MODELS]: () => json({ data: [{ id: "claude-sonnet-4.6", model_picker_enabled: true }] }),
-      "GET https://models.nyte.sh/github-copilot.json": () => json(copilotCatalog),
+      [`GET ${DEFAULT_MODELS_CATALOG_URL}/github-copilot.json`]: () => json(copilotCatalog),
     });
     const result = Promise.withResolvers<unknown>();
     const events: unknown[] = [];

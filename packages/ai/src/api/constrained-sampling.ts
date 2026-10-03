@@ -1,3 +1,9 @@
+/**
+ * Constrained sampling helpers for provider tool schemas.
+ *
+ * Based on https://github.com/earendil-works/pi/blob/295cc72b03058ee4df1936046b1e1ec67978af4d/packages/ai/src/api/constrained-sampling.ts
+ * Synced with pi 295cc72b0.
+ */
 import { Type } from "typebox";
 import {
   IsAdditionalProperties,
@@ -16,6 +22,9 @@ import { Value } from "typebox/value";
 import type { Tool, ToolCall } from "../types.ts";
 
 class UnsupportedStrictJsonSchemaError extends Error {}
+
+/** Returns true when a provider's strict mode rejects this schema keyword with this value. */
+export type UnsupportedStrictSchemaKeywordCheck = (key: string, value: unknown) => boolean;
 
 const UNSUPPORTED_STRICT_SCHEMA_KEYS = [
   "$ref",
@@ -64,7 +73,10 @@ function schemaAllowsNull(schema: XSchema): boolean {
   return IsAnyOf(schema) && schema.anyOf.some((variant) => schemaAllowsNull(variant));
 }
 
-function makeJsonSchemaNodeStrict(schema: XSchema): void {
+function makeJsonSchemaNodeStrict(
+  schema: XSchema,
+  isUnsupportedKeyword?: UnsupportedStrictSchemaKeywordCheck,
+): void {
   if (!IsSchemaObject(schema)) {
     throw new UnsupportedStrictJsonSchemaError("boolean schemas are unsupported");
   }
@@ -72,6 +84,16 @@ function makeJsonSchemaNodeStrict(schema: XSchema): void {
   for (const key of UNSUPPORTED_STRICT_SCHEMA_KEYS) {
     if (key in schema) {
       throw new UnsupportedStrictJsonSchemaError(`${key} schemas are unsupported`);
+    }
+  }
+
+  if (isUnsupportedKeyword) {
+    for (const [key, value] of Object.entries(schema)) {
+      if (isUnsupportedKeyword(key, value)) {
+        throw new UnsupportedStrictJsonSchemaError(
+          `${key}: ${JSON.stringify(value)} is unsupported`,
+        );
+      }
     }
   }
 
@@ -85,7 +107,7 @@ function makeJsonSchemaNodeStrict(schema: XSchema): void {
         throw new UnsupportedStrictJsonSchemaError("object and array unions are unsupported");
       }
 
-      makeJsonSchemaNodeStrict(variant);
+      makeJsonSchemaNodeStrict(variant, isUnsupportedKeyword);
     }
   }
 
@@ -98,7 +120,7 @@ function makeJsonSchemaNodeStrict(schema: XSchema): void {
       throw new UnsupportedStrictJsonSchemaError("tuple schemas are unsupported");
     }
 
-    makeJsonSchemaNodeStrict(schema.items);
+    makeJsonSchemaNodeStrict(schema.items, isUnsupportedKeyword);
   }
 
   const isObjectSchema = IsType(schema) && schema.type === "object";
@@ -135,7 +157,7 @@ function makeJsonSchemaNodeStrict(schema: XSchema): void {
   }
 
   for (const [key, property] of Object.entries(properties)) {
-    makeJsonSchemaNodeStrict(property);
+    makeJsonSchemaNodeStrict(property, isUnsupportedKeyword);
 
     if (!required.has(key) && !schemaAllowsNull(property)) {
       properties[key] = { anyOf: [property, { type: "null" }] };
@@ -146,14 +168,17 @@ function makeJsonSchemaNodeStrict(schema: XSchema): void {
 }
 
 /** Convert a tool schema to the strict subset expected by provider constrained sampling. */
-function makeStrictJsonSchema(schema: Tool["parameters"]): XSchemaObject {
+function makeStrictJsonSchema(
+  schema: Tool["parameters"],
+  isUnsupportedKeyword?: UnsupportedStrictSchemaKeywordCheck,
+): XSchemaObject {
   const cloned = structuredClone(schema);
 
   if (!IsSchemaObject(cloned)) {
     throw new UnsupportedStrictJsonSchemaError("root schema must have type object");
   }
 
-  makeJsonSchemaNodeStrict(cloned);
+  makeJsonSchemaNodeStrict(cloned, isUnsupportedKeyword);
 
   if (!IsType(cloned) || cloned.type !== "object") {
     throw new UnsupportedStrictJsonSchemaError("root schema must have type object");
@@ -258,9 +283,14 @@ function inferGrammarInputProperty(tool: Tool): string {
   return inputProperty;
 }
 
+/**
+ * Decide whether a JSON-schema tool is sent in strict mode. `isUnsupportedKeyword` lets a provider
+ * reject extra keywords its strict mode does not accept, so "prefer" tools fall back to non-strict.
+ */
 export function resolveJsonSchemaStrictSampling(
   tool: Tool,
   supportsStrictMode: boolean,
+  isUnsupportedKeyword?: UnsupportedStrictSchemaKeywordCheck,
 ): boolean | undefined {
   const config = tool.constrainedSampling;
 
@@ -268,7 +298,7 @@ export function resolveJsonSchemaStrictSampling(
 
   if (supportsStrictMode) {
     try {
-      makeStrictJsonSchema(tool.parameters);
+      makeStrictJsonSchema(tool.parameters, isUnsupportedKeyword);
 
       return true;
     } catch (error) {

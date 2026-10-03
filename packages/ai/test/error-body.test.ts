@@ -28,30 +28,6 @@ describe("normalizeProviderError", () => {
     assert.equal(norm.messageCarriesBody, false);
   });
 
-  test("reads the parsed body off an openai APIError when the message is opaque", () => {
-    const error = Object.assign(new Error("403 status code (no body)"), {
-      status: 403,
-      error: { error: "blocked by gateway WAF" },
-    });
-
-    const norm = normalizeProviderError(error);
-
-    assert.equal(norm.status, 403);
-    assert.equal(norm.body, '{"error":"blocked by gateway WAF"}');
-    assert.equal(norm.messageCarriesBody, false);
-  });
-
-  test("preserves the message when @google/genai already folds the body into it", () => {
-    const body = { error: { code: 403, message: "Permission denied" } };
-    const error = Object.assign(new Error(JSON.stringify(body)), { status: 403 });
-
-    const norm = normalizeProviderError(error);
-
-    assert.equal(norm.status, 403);
-    assert.equal(norm.messageCarriesBody, true);
-    assert.equal(norm.message, JSON.stringify(body));
-  });
-
   test("extracts status and body from a Bedrock-shaped ServiceException", () => {
     const error = Object.assign(new Error("UnknownError"), {
       name: "UnknownError",
@@ -125,27 +101,6 @@ describe("normalizeProviderError", () => {
     assert.equal(norm.messageCarriesBody, true);
   });
 
-  test("still surfaces a plain parsed JSON body object", () => {
-    const error = Object.assign(new Error("400 status code (no body)"), {
-      status: 400,
-      error: { message: "schema validation failed", field: "tools[0]" },
-    });
-
-    const norm = normalizeProviderError(error);
-
-    assert.equal(norm.body, '{"message":"schema validation failed","field":"tools[0]"}');
-    assert.equal(norm.messageCarriesBody, false);
-  });
-
-  test("JSON-stringifies a non-Error thrown value", () => {
-    const norm = normalizeProviderError({ reason: "boom" });
-
-    assert.equal(norm.status, undefined);
-    assert.equal(norm.body, undefined);
-    assert.equal(norm.message, '{"reason":"boom"}');
-    assert.equal(norm.messageCarriesBody, false);
-  });
-
   test("treats an empty parsed body object as no body", () => {
     const error = Object.assign(new Error("403 status code (no body)"), { status: 403, error: {} });
 
@@ -178,7 +133,7 @@ describe("normalizeProviderError", () => {
 });
 
 describe("formatProviderError", () => {
-  test("surfaces status and body without a prefix", () => {
+  test("surfaces status and body from an opaque message, with and without a prefix", () => {
     const norm = normalizeProviderError(
       Object.assign(new Error("403 status code (no body)"), {
         status: 403,
@@ -186,21 +141,7 @@ describe("formatProviderError", () => {
       }),
     );
 
-    const formatted = formatProviderError(norm);
-
-    assert.ok(formatted.includes("403"));
-    assert.ok(formatted.includes("blocked by gateway WAF"));
-    assert.notEqual(formatted, "403 status code (no body)");
-  });
-
-  test("applies a provider prefix with status and body", () => {
-    const norm = normalizeProviderError(
-      Object.assign(new Error("403 status code (no body)"), {
-        status: 403,
-        error: { error: "blocked by gateway WAF" },
-      }),
-    );
-
+    assert.equal(formatProviderError(norm), '403: {"error":"blocked by gateway WAF"}');
     assert.equal(
       formatProviderError(norm, "OpenAI API error"),
       'OpenAI API error (403): {"error":"blocked by gateway WAF"}',

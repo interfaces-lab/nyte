@@ -29,23 +29,6 @@ const tool = {
   parameters: Type.Object({ value: Type.String() }),
 } satisfies Tool;
 
-const schemaCompatibilityTool = {
-  ...tool,
-  parameters: Type.Object(
-    { value: Type.String() },
-    { additionalProperties: false, title: "LookupInput" },
-  ),
-} satisfies Tool;
-
-const strictTool = {
-  ...tool,
-  parameters: Type.Object(
-    { value: Type.String(), optional: Type.Optional(Type.Number()) },
-    { title: "StrictLookupInput" },
-  ),
-  constrainedSampling: { type: "json_schema", strict: "prefer" },
-} satisfies Tool;
-
 const responseBody = [
   `event: message_start\ndata: ${JSON.stringify({
     type: "message_start",
@@ -144,57 +127,5 @@ describe("Anthropic eager tool input streaming compatibility", () => {
       messages: [{ role: "user", content: "Use the tool" }],
     });
     expect(request.body).not.toHaveProperty("tools");
-  });
-
-  it("only sends the full input schema for strict JSON-schema tools", async () => {
-    const legacyRequest = await captureAnthropicRequest({
-      compat: { supportsStrictTools: true },
-      context: {
-        messages: [{ role: "user", content: "Use the tool", timestamp: Date.now() }],
-        tools: [schemaCompatibilityTool],
-      },
-    });
-
-    expect(legacyRequest.headers.get("x-api-key")).toBe("test-key");
-    expect(legacyRequest.headers.get("authorization")).toBeNull();
-    expect(legacyRequest.body).toMatchObject({
-      tools: [
-        {
-          name: "lookup",
-          input_schema: {
-            type: "object",
-            properties: { value: { type: "string" } },
-            required: ["value"],
-          },
-        },
-      ],
-    });
-    expect(legacyRequest.body).not.toHaveProperty("tools.0.input_schema.additionalProperties");
-    expect(legacyRequest.body).not.toHaveProperty("tools.0.input_schema.title");
-
-    const strictRequest = await captureAnthropicRequest({
-      compat: { supportsStrictTools: true },
-      context: {
-        messages: [{ role: "user", content: "Use the tool", timestamp: Date.now() }],
-        tools: [strictTool],
-      },
-    });
-
-    expect(strictRequest.headers.get("x-api-key")).toBe("test-key");
-    expect(strictRequest.headers.get("authorization")).toBeNull();
-    expect(strictRequest.body).toMatchObject({
-      tools: [
-        {
-          name: "lookup",
-          strict: true,
-          input_schema: {
-            additionalProperties: false,
-            required: ["value", "optional"],
-            properties: { optional: { anyOf: [{ type: "number" }, { type: "null" }] } },
-            title: "StrictLookupInput",
-          },
-        },
-      ],
-    });
   });
 });

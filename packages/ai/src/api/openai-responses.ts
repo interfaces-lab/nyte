@@ -1,7 +1,19 @@
+/**
+ * OpenAI Responses adapter.
+ *
+ * Based on https://github.com/earendil-works/pi/blob/0c7bb7c5c72118e4c71e4c04dfa2ad4a0a6a62f1/packages/ai/src/api/openai-responses.ts
+ * Synced with pi 0c7bb7c5c.
+ */
+/**
+ * OpenAI Responses adapter.
+ *
+ * Based on https://github.com/earendil-works/pi/blob/17de82d7bea18a6589677a9761baabc2060c9efb/packages/ai/src/api/openai-responses.ts
+ * Synced with pi 17de82d7b.
+ */
 import OpenAI from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import { clampThinkingLevel } from "../models.ts";
-import { getServiceTierCostMultiplier } from "../model-pricing.ts";
+import { applyServiceTierPricing } from "../model-pricing.ts";
 import type {
   AssistantMessage,
   CacheRetention,
@@ -13,7 +25,6 @@ import type {
   StreamFunction,
   StreamOptions,
   TranscriptContext,
-  Usage,
 } from "../types.ts";
 import { resolveCacheRetention } from "../prompt-cache.ts";
 import { splitDeferredTools } from "../utils/deferred-tools.ts";
@@ -27,7 +38,7 @@ import {
 } from "../utils/transcript.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
-import { headersToRecord } from "../utils/headers.ts";
+import { getClientApiKey, headersToRecord, mergeProviderHeaders } from "../utils/headers.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
@@ -46,29 +57,6 @@ const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"
 
 // OpenAI Responses rejects max_output_tokens below 16: https://github.com/earendil-works/pi/issues/6265
 const OPENAI_RESPONSES_MIN_OUTPUT_TOKENS = 16;
-
-function hasHeader(headers: ProviderHeaders | undefined, name: string): boolean {
-  if (!headers) return false;
-  const expected = name.toLowerCase();
-
-  for (const [key, value] of Object.entries(headers)) {
-    if (key.toLowerCase() === expected && value !== null && value.trim().length > 0) return true;
-  }
-
-  return false;
-}
-
-function getClientApiKey(
-  provider: string,
-  apiKey: string | undefined,
-  headers: ProviderHeaders | undefined,
-): string {
-  if (apiKey) return apiKey;
-
-  if (hasHeader(headers, "authorization") || hasHeader(headers, "cf-aig-authorization"))
-    return "unused";
-  throw new Error(`No API key for provider: ${provider}`);
-}
 
 function detectSessionAffinityFormat(
   model: Pick<Model<"openai-responses">, "provider" | "baseUrl">,
@@ -97,7 +85,21 @@ function getPromptCacheRetention(
   compat: Required<OpenAIResponsesCompat>,
   cacheRetention: CacheRetention,
 ): "24h" | undefined {
-  return cacheRetention === "long" && compat.supportsLongCacheRetention ? "24h" : undefined;
+  return cacheRetention === "long" &&
+    compat.supportsLongCacheRetention &&
+    !compat.supportsExplicitPromptCacheMode
+    ? "24h"
+    : undefined;
+}
+
+function getPromptCacheOptions(
+  compat: Required<OpenAIResponsesCompat>,
+  cacheRetention: CacheRetention,
+): { mode?: "explicit"; ttl?: "30m" } | undefined {
+  if (!compat.supportsExplicitPromptCacheMode) return undefined;
+  if (cacheRetention === "none") return { mode: "explicit" };
+  if (cacheRetention === "long" && compat.supportsLongCacheRetention) return { ttl: "30m" };
+  return undefined;
 }
 
 // OpenAI Responses-specific options
@@ -295,7 +297,10 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
       stripStreamingScratchState(output.content);
 
       output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-      output.errorMessage = formatProviderError(normalizeProviderError(error), "OpenAI API error");
+      output.errorMessage = formatProviderError(
+        normalizeProviderError(error),
+        `${model.provider === "openai" ? "OpenAI" : model.provider} API error`,
+      );
       stream.push({ type: "error", reason: output.stopReason, error: output });
       stream.end();
     }
@@ -337,34 +342,27 @@ function createClient(input: {
   cacheRetention: CacheRetention;
   compat: Required<OpenAIResponsesCompat>;
 }) {
-  const headers: ProviderHeaders = { "User-Agent": getNyteUserAgent(), ...input.model.headers };
-
-  if (input.model.provider === "github-copilot") {
-    const copilotHeaders = buildCopilotDynamicHeaders({
-      messages: input.context.messages,
-      sessionId: input.options?.sessionId,
-    });
-
-    Object.assign(headers, copilotHeaders);
-  }
+  const copilotHeaders =
+    input.model.provider === "github-copilot"
+      ? buildCopilotDynamicHeaders({
+          messages: input.context.messages,
+          sessionId: input.options?.sessionId,
+        })
+      : undefined;
 
   const cacheSessionId = input.cacheRetention === "none" ? undefined : input.options?.sessionId;
+  const affinityHeaders: ProviderHeaders = {};
 
   if (cacheSessionId) {
     if (input.compat.sessionAffinityFormat === "openrouter") {
-      headers["x-session-id"] = cacheSessionId;
+      affinityHeaders["x-session-id"] = cacheSessionId;
     } else {
       if (input.compat.sessionAffinityFormat === "openai") {
-        headers.session_id = cacheSessionId;
+        affinityHeaders.session_id = cacheSessionId;
       }
 
-      headers["x-client-request-id"] = cacheSessionId;
+      affinityHeaders["x-client-request-id"] = cacheSessionId;
     }
-  }
-
-  // Merge options headers last so they can override defaults
-  if (input.options?.headers) {
-    Object.assign(headers, input.options.headers);
   }
 
   return new OpenAI({
@@ -372,7 +370,14 @@ function createClient(input: {
     baseURL: input.model.baseUrl,
     dangerouslyAllowBrowser: true,
     fetch: input.options?.fetch,
-    defaultHeaders: headers,
+    // Options headers come last so they can override defaults
+    defaultHeaders: mergeProviderHeaders(
+      { "User-Agent": getNyteUserAgent() },
+      input.model.headers,
+      copilotHeaders,
+      affinityHeaders,
+      input.options?.headers,
+    ),
   });
 }
 
@@ -415,17 +420,16 @@ function buildParams(
     },
   });
 
-  const disableImplicitPromptCache =
-    cacheRetention === "none" && compat.supportsExplicitPromptCacheMode;
-
-  const params: ResponseCreateParamsStreaming & { prompt_cache_options?: { mode: "explicit" } } = {
+  const params: ResponseCreateParamsStreaming & {
+    prompt_cache_options?: { mode?: "explicit"; ttl?: "30m" };
+  } = {
     model: model.id,
     input: messages,
     stream: true,
     prompt_cache_key:
       cacheRetention === "none" ? undefined : clampOpenAIPromptCacheKey(options?.sessionId),
     prompt_cache_retention: getPromptCacheRetention(compat, cacheRetention),
-    prompt_cache_options: disableImplicitPromptCache ? { mode: "explicit" } : undefined,
+    prompt_cache_options: getPromptCacheOptions(compat, cacheRetention),
     store: false,
   };
 
@@ -487,21 +491,4 @@ function buildParams(
   }
 
   return params;
-}
-
-function applyServiceTierPricing(
-  usage: Usage,
-  serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-  model: Pick<Model<"openai-responses">, "id">,
-) {
-  const multiplier = getServiceTierCostMultiplier(model, serviceTier ?? undefined);
-
-  if (multiplier === 1) return;
-
-  usage.cost.input *= multiplier;
-  usage.cost.output *= multiplier;
-  usage.cost.cacheRead *= multiplier;
-  usage.cost.cacheWrite *= multiplier;
-  usage.cost.total =
-    usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 }

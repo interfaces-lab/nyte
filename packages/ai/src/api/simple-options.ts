@@ -51,6 +51,7 @@ export function buildBaseOptions(
     headers: options?.headers,
     onPayload: options?.onPayload,
     onResponse: options?.onResponse,
+    onAccountLimits: options?.onAccountLimits,
     timeoutMs: options?.timeoutMs,
     websocketConnectTimeoutMs: options?.websocketConnectTimeoutMs,
     maxRetries: options?.maxRetries,

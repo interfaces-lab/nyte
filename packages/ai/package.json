@@ -18,6 +18,7 @@
     "./session-resources": "./src/session-resources.ts",
     "./types": "./src/types.ts",
     "./utils/event-stream": "./src/utils/event-stream.ts",
+    "./utils/fifo-queue": "./src/utils/fifo-queue.ts",
     "./utils/overflow": "./src/utils/overflow.ts",
     "./utils/retry": "./src/utils/retry.ts",
     "./utils/text": "./src/utils/text.ts",

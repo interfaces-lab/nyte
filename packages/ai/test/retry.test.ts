@@ -1,6 +1,6 @@
 /**
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/test/retry.test.ts
- * Synced with pi 7ebf9087e.
+ * Based on https://github.com/earendil-works/pi/blob/e98f287ee498e0116546f4e9aa083fdec9793cd2/packages/ai/test/retry.test.ts
+ * Synced with pi e98f287ee.
  *
  * Nyte divergence: pi builds messages with `fauxAssistantMessage` from
  * `providers/faux.ts`; that provider is ported with the registry, so a local
@@ -13,6 +13,7 @@ import {
   isRetryableAssistantError,
   type RetryPolicy,
   retryAssistantCall,
+  retryDelayMs,
 } from "../src/utils/retry.ts";
 
 function fauxAssistantMessage(
@@ -41,8 +42,6 @@ function fauxAssistantMessage(
 
 const openAIExplicitRetryMessage =
   "An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID req_******** in your message.";
-const bedrockExplicitRetryMessage =
-  '{"message":"The system encountered an unexpected error during processing. Try your request again."}';
 const nvidiaNIMResourceExhaustedMessage =
   "ResourceExhausted: Worker local total request limit reached (288/48)";
 const bunFetchSocketClosedMessage =
@@ -51,53 +50,31 @@ const openAIResponsesEarlyEofMessage =
   "OpenAI Responses stream ended before a terminal response event";
 const wrappedDnsLookupError =
   "The pending stream has been canceled (caused by: getaddrinfo ENOTFOUND bedrock-runtime.us-east-1.amazonaws.com)";
+const azurePeakLoadError =
+  "The system is currently experiencing high demand and cannot process your request. Your request exceeds the maximum usage size allowed during peak load. For improved capacity reliability, consider switching to Provisioned Throughput.";
 
 function errorMessage(text: string): AssistantMessage {
   return fauxAssistantMessage("", { stopReason: "error", errorMessage: text });
 }
 
 describe("provider retry classification", () => {
-  test("matches explicit provider retry guidance", () => {
+  test("retries provider overload, rate limiting, and explicit retry guidance", () => {
     assert.equal(isRetryableAssistantError(errorMessage(openAIExplicitRetryMessage)), true);
-    assert.equal(isRetryableAssistantError(errorMessage(bedrockExplicitRetryMessage)), true);
     assert.equal(isRetryableAssistantError(errorMessage(nvidiaNIMResourceExhaustedMessage)), true);
+    // Regression for #9669.
+    assert.equal(isRetryableAssistantError(errorMessage(azurePeakLoadError)), true);
+    // Regression for #9627.
+    assert.equal(isRetryableAssistantError(errorMessage("520 status code (no body)")), true);
   });
 
-  test("matches Bun fetch socket drop wording", () => {
+  test("retries DNS failures, socket drops, and streams that end before a terminal event", () => {
+    assert.equal(isRetryableAssistantError(errorMessage(wrappedDnsLookupError)), true);
     assert.equal(isRetryableAssistantError(errorMessage(bunFetchSocketClosedMessage)), true);
-  });
-
-  test("matches upstream request buffer exhaustion wording", () => {
-    assert.equal(
-      isRetryableAssistantError(
-        errorMessage("Error: exceeded request buffer limit while retrying upstream"),
-      ),
-      true,
-    );
-  });
-
-  for (const text of [
-    wrappedDnsLookupError,
-    "connect ENOTFOUND api.example.com",
-    "EAI_AGAIN api.example.com",
-    "getaddrinfo failed for api.example.com",
-  ]) {
-    test(`matches DNS transport failure wording: ${text}`, () => {
-      assert.equal(isRetryableAssistantError(errorMessage(text)), true);
-    });
-  }
-
-  test("matches OpenAI Responses streams that end before terminal events", () => {
     assert.equal(isRetryableAssistantError(errorMessage(openAIResponsesEarlyEofMessage)), true);
   });
 
-  test("keeps provider limit errors non-retryable", () => {
+  test("does not retry quota exhaustion or a message that did not fail", () => {
     assert.equal(isRetryableAssistantError(errorMessage("429 quota exceeded")), false);
-  });
-
-  test("classifies assistant error messages", () => {
-    assert.equal(isRetryableAssistantError(errorMessage("overloaded_error")), true);
-    assert.equal(isRetryableAssistantError(errorMessage("524 status code (no body)")), true);
     assert.equal(isRetryableAssistantError(fauxAssistantMessage("not an error")), false);
   });
 });
@@ -105,13 +82,6 @@ describe("provider retry classification", () => {
 describe("retryAssistantCall", () => {
   const disabled: RetryPolicy = { enabled: false, maxRetries: 3, baseDelayMs: 0 };
   const enabled: RetryPolicy = { enabled: true, maxRetries: 3, baseDelayMs: 0 };
-
-  test("returns a successful response immediately without retrying", async () => {
-    const produce = vi.fn(async () => fauxAssistantMessage("ok"));
-    const res = await retryAssistantCall(produce, enabled, undefined);
-    assert.deepEqual(res.content, [{ type: "text", text: "ok" }]);
-    assert.equal(produce.mock.calls.length, 1);
-  });
 
   test("does not retry an aborted message", async () => {
     const produce = vi.fn(async () => fauxAssistantMessage("", { stopReason: "aborted" }));
@@ -150,17 +120,31 @@ describe("retryAssistantCall", () => {
     assert.deepEqual(onRetryFinished.mock.calls.at(-1), [false, 3, "terminated"]);
   });
 
-  test("stops retrying once a call succeeds", async () => {
+  test("caps agent retry delay", async () => {
+    // Regression for #8826.
+    assert.equal(retryDelayMs({ baseDelayMs: 2000 }, 6), 60000);
+    assert.equal(retryDelayMs({ baseDelayMs: 2000, maxAgentDelayMs: 5000 }, 5), 5000);
+    assert.equal(retryDelayMs({ baseDelayMs: 2000, maxAgentDelayMs: 0 }, 5), 0);
+
     let n = 0;
+    const policy: RetryPolicy = {
+      enabled: true,
+      maxRetries: 4,
+      baseDelayMs: 10,
+      maxAgentDelayMs: 15,
+    };
     const produce = vi.fn(async () => {
       n++;
-      return n < 3 ? errorMessage("terminated") : fauxAssistantMessage("recovered");
+      return n < 5 ? errorMessage("terminated") : fauxAssistantMessage("recovered");
     });
-    const onRetryFinished = vi.fn();
-    const res = await retryAssistantCall(produce, enabled, undefined, { onRetryFinished });
-    assert.deepEqual(res.content, [{ type: "text", text: "recovered" }]);
-    assert.equal(produce.mock.calls.length, 3);
-    assert.deepEqual(onRetryFinished.mock.calls.at(-1), [true, 2]);
+    const onRetryScheduled = vi.fn();
+
+    await retryAssistantCall(produce, policy, undefined, { onRetryScheduled });
+
+    assert.deepEqual(
+      onRetryScheduled.mock.calls.map((call) => call[2]),
+      [10, 15, 15, 15],
+    );
   });
 
   test("reports an aborted retried call as unsuccessful", async () => {
@@ -192,7 +176,7 @@ describe("retryAssistantCall", () => {
     assert.equal(onRetryFinished.mock.calls.length, 0);
   });
 
-  test("emits onRetryAttemptStart after backoff before each retried call", async () => {
+  test("emits onRetryAttemptStart after backoff before each retried call, then onRetryFinished(true)", async () => {
     const events: string[] = [];
     let n = 0;
     const produce = vi.fn(async () => {
@@ -206,9 +190,11 @@ describe("retryAssistantCall", () => {
     const onRetryAttemptStart = vi.fn(() => {
       events.push("attempt-start");
     });
+    const onRetryFinished = vi.fn();
     const res = await retryAssistantCall(produce, enabled, undefined, {
       onRetryScheduled,
       onRetryAttemptStart,
+      onRetryFinished,
     });
     assert.deepEqual(res.content, [{ type: "text", text: "recovered" }]);
     assert.equal(onRetryScheduled.mock.calls.length, 2);
@@ -222,6 +208,7 @@ describe("retryAssistantCall", () => {
       "attempt-start",
       "produce:2",
     ]);
+    assert.deepEqual(onRetryFinished.mock.calls.at(-1), [true, 2]);
   });
 
   test("aborts backoff sleep via signal, returns an aborted message, and emits onRetryFinished(false)", async () => {

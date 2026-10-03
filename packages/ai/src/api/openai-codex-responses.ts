@@ -1,3 +1,9 @@
+/**
+ * OpenAI Codex Responses adapter.
+ *
+ * Based on https://github.com/earendil-works/pi/blob/e86102f18f58868b2b722e742d129c54d0b01d56/packages/ai/src/api/openai-codex-responses.ts
+ * Synced with pi e86102f18.
+ */
 import { OpenAICodexCompactionError } from "./openai-codex-compaction-error.ts";
 import type * as NodeZlib from "node:zlib";
 import type {
@@ -12,7 +18,7 @@ import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 
 import { calculateCost, clampThinkingLevel } from "../models.ts";
-import { getServiceTierCostMultiplier } from "../model-pricing.ts";
+import { applyServiceTierPricing } from "../model-pricing.ts";
 import { registerSessionResourceCleanup } from "../session-resources.ts";
 import type {
   AccountLimitWindow,
@@ -30,6 +36,7 @@ import type {
   StreamOptions,
   Usage,
 } from "../types.ts";
+import { sleep } from "../utils/abort.ts";
 import { combineAbortSignals } from "../utils/abort-signals.ts";
 import { splitDeferredTools } from "../utils/deferred-tools.ts";
 import { getSystemMessageText } from "../utils/text.ts";
@@ -47,7 +54,8 @@ import {
 } from "../utils/diagnostics.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
-import { headersToRecord } from "../utils/headers.ts";
+import { FifoQueue } from "../utils/fifo-queue.ts";
+import { headersToRecord, providerHeadersToRecord } from "../utils/headers.ts";
 import { resolveHttpProxyUrlForTarget } from "../utils/node-http-proxy.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { uuidv7 } from "../utils/uuid.ts";
@@ -275,22 +283,6 @@ function validateRetryDelayMs(delayMs: number, options?: StreamOptions): number 
   }
 
   return delayMs;
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new Error("Request was aborted"));
-
-      return;
-    }
-
-    const timeout = setTimeout(resolve, ms);
-    signal?.addEventListener("abort", () => {
-      clearTimeout(timeout);
-      reject(new Error("Request was aborted"));
-    });
-  });
 }
 
 function normalizeTimeoutMs(value: number | undefined): number | undefined {
@@ -584,12 +576,16 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
             combinedSignal.cleanup();
           }
 
-          await options?.onResponse?.(
-            { status: response.status, headers: headersToRecord(response.headers) },
-            model,
-          );
+          const responseHeaders = headersToRecord(response.headers);
+          await options?.onResponse?.({ status: response.status, headers: responseHeaders }, model);
 
           if (response.ok) {
+            if (options?.onAccountLimits !== undefined) {
+              const limits = codexHeaderLimits(responseHeaders, model.provider);
+
+              if (limits !== undefined) await options.onAccountLimits(limits, model);
+            }
+
             break;
           }
 
@@ -603,7 +599,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
                 ? BASE_DELAY_MS * 2 ** attempt
                 : validateRetryDelayMs(retryAfterDelayMs, options);
 
-            await sleep(delayMs, options?.signal);
+            await sleep(delayMs, options?.signal, () => new Error("Request was aborted"));
             continue;
           }
 
@@ -631,7 +627,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
             !lastError.message.includes("usage limit")
           ) {
             const delayMs = BASE_DELAY_MS * 2 ** attempt;
-            await sleep(delayMs, options?.signal);
+            await sleep(delayMs, options?.signal, () => new Error("Request was aborted"));
             continue;
           }
 
@@ -782,7 +778,9 @@ function buildRequestBody(
   if (options?.reasoningEffort !== undefined) {
     const effort =
       options.reasoningEffort === "none"
-        ? (model.thinkingLevelMap?.off ?? "none")
+        ? model.thinkingLevelMap?.off === undefined
+          ? "none"
+          : model.thinkingLevelMap.off
         : (model.thinkingLevelMap?.[options.reasoningEffort] ?? options.reasoningEffort);
 
     if (effort !== null) {
@@ -791,6 +789,8 @@ function buildRequestBody(
         summary: options.reasoningSummary ?? "auto",
       };
     }
+  } else if (model.reasoning && model.thinkingLevelMap?.off !== null) {
+    body.reasoning = { effort: model.thinkingLevelMap?.off ?? "none" };
   }
 
   return body;
@@ -1168,7 +1168,11 @@ export async function compactOpenAICodexContext(
         getRetryAfterDelayMs(response?.headers ?? new Headers()) ?? BASE_DELAY_MS * 2 ** attempt;
 
       failure = "Retry delay exceeded";
-      await sleep(validateRetryDelayMs(delayMs, options), options?.signal);
+      await sleep(
+        validateRetryDelayMs(delayMs, options),
+        options?.signal,
+        () => new Error("Request was aborted"),
+      );
     }
   } catch (error) {
     if (options?.signal?.aborted) failure = "Request was aborted";
@@ -1283,6 +1287,94 @@ const CodexUsageResponseSchema = Type.Object({
 
 const CodexPlanSchema = Type.Object({ plan_type: Type.String() });
 
+/** The `codex.rate_limits` WebSocket frame: windows in minutes, the plan beside them. */
+const CodexRateLimitsFrameSchema = Type.Object({
+  type: Type.Literal("codex.rate_limits"),
+  plan_type: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  rate_limits: Type.Optional(
+    Type.Union([
+      Type.Object({
+        primary: Type.Optional(Type.Unknown()),
+        secondary: Type.Optional(Type.Unknown()),
+      }),
+      Type.Null(),
+    ]),
+  ),
+});
+
+const CodexRateLimitWindowSchema = Type.Object({
+  used_percent: Type.Number(),
+  window_minutes: OptionalJsonNumber,
+  reset_at: OptionalJsonNumber,
+});
+
+function codexWindow(
+  fallbackId: "primary" | "secondary",
+  window: Static<typeof CodexRateLimitWindowSchema>,
+): AccountLimitWindow | undefined {
+  // A window the plan does not have arrives as zero minutes.
+  if (!window.window_minutes) return undefined;
+
+  return accountWindow(fallbackId, {
+    used_percent: window.used_percent,
+    limit_window_seconds: window.window_minutes * 60,
+    reset_at: window.reset_at,
+  });
+}
+
+function codexFrameLimits(frame: CodexFrame, providerId: string): AccountLimits | undefined {
+  if (!Value.Check(CodexRateLimitsFrameSchema, frame)) return undefined;
+  const windows: AccountLimitWindow[] = [];
+
+  for (const id of ["primary", "secondary"] as const) {
+    const window = frame.rate_limits?.[id];
+    const parsed = Value.Check(CodexRateLimitWindowSchema, window)
+      ? codexWindow(id, window)
+      : undefined;
+
+    if (parsed !== undefined) windows.push(parsed);
+  }
+
+  if (windows.length === 0) return undefined;
+  const limits: AccountLimits = { providerId, windows, observedAt: Date.now() };
+
+  if (frame.plan_type) limits.plan = frame.plan_type;
+
+  return limits;
+}
+
+/** Every SSE response carries the same windows as `x-codex-{primary,secondary}-*` headers. */
+function codexHeaderLimits(
+  headers: Record<string, string>,
+  providerId: string,
+): AccountLimits | undefined {
+  const windows: AccountLimitWindow[] = [];
+
+  for (const id of ["primary", "secondary"] as const) {
+    const usedPercent = Number(headers[`x-codex-${id}-used-percent`]);
+
+    if (!Number.isFinite(usedPercent)) continue;
+    const resetHeader = headers[`x-codex-${id}-reset-at`];
+    const resetAt = resetHeader ? Number(resetHeader) : Number.NaN;
+
+    const parsed = codexWindow(id, {
+      used_percent: usedPercent,
+      window_minutes: Number(headers[`x-codex-${id}-window-minutes`]),
+      reset_at: Number.isFinite(resetAt) ? resetAt : null,
+    });
+
+    if (parsed !== undefined) windows.push(parsed);
+  }
+
+  if (windows.length === 0) return undefined;
+  const limits: AccountLimits = { providerId, windows, observedAt: Date.now() };
+  const plan = headers["x-codex-plan-type"];
+
+  if (plan) limits.plan = plan;
+
+  return limits;
+}
+
 function accountWindow(
   fallbackId: "primary" | "secondary",
   window: Static<typeof CodexUsageWindowSchema>,
@@ -1377,23 +1469,6 @@ export async function fetchOpenAICodexAccountLimits(
   } finally {
     combinedSignal.cleanup();
   }
-}
-
-function applyServiceTierPricing(
-  usage: Usage,
-  serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-  model: Pick<Model<"openai-codex-responses">, "id">,
-) {
-  const multiplier = getServiceTierCostMultiplier(model, serviceTier ?? undefined);
-
-  if (multiplier === 1) return;
-
-  usage.cost.input *= multiplier;
-  usage.cost.output *= multiplier;
-  usage.cost.cacheRead *= multiplier;
-  usage.cost.cacheWrite *= multiplier;
-  usage.cost.total =
-    usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 }
 
 function resolveCodexServiceTier(
@@ -1510,9 +1585,24 @@ function extractCodexEventError(event: CodexFrame): CodexEventError {
 async function* mapCodexEvents(
   events: AsyncIterable<CodexFrame>,
   output: AssistantMessage,
+  onAccountLimits?: (limits: AccountLimits) => void | Promise<void>,
 ): AsyncGenerator<ResponsesStreamEvent> {
   for await (const event of events) {
     const { type } = event;
+
+    if (type === "codex.rate_limits") {
+      if (onAccountLimits !== undefined) {
+        try {
+          const limits = codexFrameLimits(event, output.provider);
+
+          if (limits !== undefined) await onAccountLimits(limits);
+        } catch {
+          // Account telemetry must never fail the assistant stream.
+        }
+      }
+
+      continue;
+    }
 
     if (type === "error") {
       const { code, message } = extractCodexEventError(event);
@@ -1610,9 +1700,10 @@ async function* parseSSE(
 
       if (idleTimedOut) throw new DOMException("Codex SSE idle timeout", "TimeoutError");
 
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
       buffer = buffer.replace(/\r\n/g, "\n");
+      // Treat EOF as terminating the residual SSE frame.
+      if (done && buffer.trim()) buffer += "\n\n";
 
       let idx = buffer.indexOf("\n\n");
 
@@ -1644,6 +1735,8 @@ async function* parseSSE(
 
         idx = buffer.indexOf("\n\n");
       }
+
+      if (done) break;
     }
   } finally {
     clearTimeout(idleTimer);
@@ -2197,7 +2290,7 @@ async function* parseWebSocket(
   signal?: AbortSignal,
   idleTimeoutMs?: number,
 ): AsyncGenerator<CodexFrame> {
-  const queue: QueuedWebSocketEvent[] = [];
+  const queue = new FifoQueue<QueuedWebSocketEvent>();
   let pending: (() => void) | null = null;
 
   const wake = () => {
@@ -2208,7 +2301,7 @@ async function* parseWebSocket(
   };
 
   const enqueue = (event: QueuedWebSocketEvent) => {
-    queue.push(event);
+    queue.enqueue(event);
     wake();
   };
 
@@ -2259,7 +2352,7 @@ async function* parseWebSocket(
         });
       }
 
-      const event = queue.shift();
+      const event = queue.dequeue();
 
       if (!event) continue;
 
@@ -2447,7 +2540,13 @@ async function processWebSocketStream(
     socket.send(JSON.stringify({ type: "response.create", ...requestBody }));
     await processResponsesStream(
       startWebSocketOutputOnFirstEvent(
-        mapCodexEvents(parseWebSocket(socket, options?.signal, idleTimeoutMs), output),
+        mapCodexEvents(
+          parseWebSocket(socket, options?.signal, idleTimeoutMs),
+          output,
+          options?.onAccountLimits === undefined
+            ? undefined
+            : (limits) => options.onAccountLimits?.(limits, model),
+        ),
         onStart,
       ),
       output,
@@ -2562,16 +2661,9 @@ function buildBaseCodexHeaders(
   accountId: string,
   token: string,
 ): Headers {
-  const headers = new Headers(initHeaders);
-
-  for (const [key, value] of Object.entries(additionalHeaders || {})) {
-    if (value === null) {
-      headers.delete(key);
-    } else {
-      headers.set(key, value);
-    }
-  }
-
+  const headers = new Headers(
+    Object.entries(providerHeadersToRecord(initHeaders, additionalHeaders) ?? {}),
+  );
   headers.set("Authorization", `Bearer ${token}`);
   headers.set("chatgpt-account-id", accountId);
   headers.set("originator", "nyte");

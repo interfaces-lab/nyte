@@ -1,5 +1,5 @@
 /**
- * AbortSignal helpers: an operation-local signal for optional-signal APIs, and racing a promise against a signal while still observing the abandoned promise.
+ * AbortSignal helpers: an interruptible sleep, an operation-local signal for optional-signal APIs, and racing a promise against a signal while still observing the abandoned promise.
  *
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/abort.ts
  * Synced with pi 7fbbd5f4a.
@@ -10,6 +10,39 @@ function abortReason(signal: AbortSignal): unknown {
   error.name = "AbortError";
 
   return error;
+}
+
+/**
+ * Resolve after `ms`, or reject with `abortError()` once `signal` aborts.
+ * The abort listener is detached when the timer fires.
+ */
+export function sleep(
+  ms: number,
+  signal: AbortSignal | undefined,
+  abortError: () => Error,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError());
+
+      return;
+    }
+
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(abortError());
+    };
+
+    const timeout = setTimeout(
+      () => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      },
+      Math.max(0, ms),
+    );
+
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 /** Create an operation-local signal for public APIs whose signal is optional. */

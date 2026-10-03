@@ -31,19 +31,6 @@ afterEach(() => {
 });
 
 describe("GitHub Copilot account availability", () => {
-  test("accepts account IDs without endpoints, limits, billing, or capability metadata", () => {
-    assert.deepEqual(
-      parseCatalog(
-        { data: [listedModel("gemini-3.8-flash"), listedModel("claude-sonnet-4.6")] },
-        ORIGIN,
-      ),
-      {
-        availableModelIds: ["gemini-3.8-flash", "claude-sonnet-4.6"],
-        needsApproval: false,
-      },
-    );
-  });
-
   test("respects disabled policies, hidden models, and explicit lack of tools", () => {
     const parsed = parseCatalog(
       {
@@ -94,7 +81,7 @@ describe("GitHub Copilot account availability", () => {
       },
       ORIGIN,
     );
-    assert.deepEqual(catalog.availableModelIds, ["claude-sonnet-4.6"]);
+    assert.deepEqual(catalog, { availableModelIds: ["claude-sonnet-4.6"], needsApproval: false });
   });
 
   test("an actual empty list is valid, but a malformed list fails discovery", () => {

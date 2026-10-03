@@ -1,8 +1,8 @@
 /**
  * Resolves the HTTP(S) proxy URL for a target from the usual proxy environment variables, honoring NO_PROXY.
  *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/node-http-proxy.ts
- * Synced with pi 7ebf9087e.
+ * Based on https://github.com/earendil-works/pi/blob/a63fb12c135b27aef26a2aa71d8c72f747e96e99/packages/ai/src/utils/node-http-proxy.ts
+ * Synced with pi a63fb12c1.
  */
 import type { ProviderEnv } from "../types.ts";
 import { getProviderEnvValue } from "./provider-env.ts";
@@ -41,6 +41,37 @@ function parseProxyTargetUrl(targetUrl: string | URL): URL | undefined {
   }
 }
 
+function stripBrackets(host: string): string {
+  return host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+}
+
+function parseNoProxyEntry(entry: string): { host: string; port: number } | undefined {
+  const trimmed = entry.trim().toLowerCase();
+
+  if (!trimmed) return undefined;
+
+  const closingBracket = trimmed.startsWith("[") ? trimmed.indexOf("]") : -1;
+
+  if (closingBracket !== -1) {
+    const rest = trimmed.slice(closingBracket + 1);
+    const port = rest.startsWith(":") ? Number.parseInt(rest.slice(1), 10) : 0;
+
+    return { host: trimmed.slice(1, closingBracket), port: Number.isNaN(port) ? 0 : port };
+  }
+
+  const colonIndex = trimmed.indexOf(":");
+
+  if (colonIndex === -1 || colonIndex !== trimmed.lastIndexOf(":")) {
+    return { host: trimmed, port: 0 };
+  }
+
+  const port = Number.parseInt(trimmed.slice(colonIndex + 1), 10);
+
+  return Number.isNaN(port)
+    ? { host: trimmed, port: 0 }
+    : { host: trimmed.slice(0, colonIndex), port };
+}
+
 function shouldProxyHostname(hostname: string, port: number, env?: ProviderEnv): boolean {
   const noProxy = getProxyEnv("no_proxy", env).toLowerCase();
 
@@ -52,28 +83,23 @@ function shouldProxyHostname(hostname: string, port: number, env?: ProviderEnv):
     return false;
   }
 
-  return noProxy.split(/[,\s]/).every((proxy) => {
-    if (!proxy) {
+  const targetHost = stripBrackets(hostname.toLowerCase());
+
+  return noProxy.split(/[,\s]/).every((entry) => {
+    const parsed = parseNoProxyEntry(entry);
+
+    if (!parsed || (parsed.port && parsed.port !== port)) {
       return true;
     }
 
-    const parsedProxy = proxy.match(/^(.+):(\d+)$/);
-    let proxyHostname = parsedProxy ? parsedProxy[1] : proxy;
-    const proxyPort = parsedProxy ? Number.parseInt(parsedProxy[2]!, 10) : 0;
+    const host = stripBrackets(parsed.host);
+    const domain = host.startsWith("*.")
+      ? host.slice(2)
+      : host.startsWith(".") || host.startsWith("*")
+        ? host.slice(1)
+        : host;
 
-    if (proxyPort && proxyPort !== port) {
-      return true;
-    }
-
-    if (!/^[.*]/.test(proxyHostname)) {
-      return hostname !== proxyHostname;
-    }
-
-    if (proxyHostname.startsWith("*")) {
-      proxyHostname = proxyHostname.slice(1);
-    }
-
-    return !hostname.endsWith(proxyHostname);
+    return !domain || (targetHost !== domain && !targetHost.endsWith(`.${domain}`));
   });
 }
 
@@ -85,7 +111,7 @@ function getProxyForUrl(targetUrl: string | URL, env?: ProviderEnv): string {
   }
 
   const protocol = parsedUrl.protocol.split(":", 1)[0]!;
-  const hostname = parsedUrl.host.replace(/:\d*$/, "");
+  const hostname = stripBrackets(parsedUrl.hostname || parsedUrl.host.replace(/:\d*$/, ""));
   const port = Number.parseInt(parsedUrl.port, 10) || DEFAULT_PROXY_PORTS.get(protocol) || 0;
 
   if (!shouldProxyHostname(hostname, port, env)) {

@@ -55,7 +55,7 @@ describe("lax message content handling", () => {
       },
     ];
 
-    // Invoke the JavaScript boundary without claiming that malformed histories are typed Messages.
+    // oxlint-disable-next-line no-restricted-globals -- invokes the untyped JavaScript boundary without claiming malformed histories are typed Messages
     const result: unknown = Reflect.apply(transformMessages, undefined, [messages, model]);
     expect(result).toEqual([
       expect.objectContaining({ role: "user", content: [] }),

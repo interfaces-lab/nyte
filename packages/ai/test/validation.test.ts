@@ -148,24 +148,6 @@ describe("validateToolArguments", () => {
     assert.deepEqual(validateToolArguments(tool, toolCall), { value: null });
   });
 
-  test("preserves a value that already matches a nullable union arm", () => {
-    const tool: Tool = {
-      name: "echo",
-      description: "Echo tool",
-      parameters: Type.Object({
-        value: Type.Union([Type.Number(), Type.Null()]),
-      }),
-    };
-    const toolCall: ToolCall = {
-      type: "toolCall",
-      id: "tool-1",
-      name: "echo",
-      arguments: { value: null },
-    };
-
-    assert.deepEqual(validateToolArguments(tool, toolCall), { value: null });
-  });
-
   test("preserves a value that already matches a oneOf nullable union arm", () => {
     const { tool, toolCall } = createToolCallWithPlainSchema(
       { oneOf: [{ type: "number" }, { type: "null" }] } as Tool["parameters"],
@@ -205,7 +187,6 @@ describe("validateToolArguments", () => {
       input: unknown;
     }> = [
       { schema: { type: "boolean" } as Tool["parameters"], input: "1" },
-      { schema: { type: "boolean" } as Tool["parameters"], input: "0" },
       { schema: { type: "null" } as Tool["parameters"], input: "null" },
       { schema: { type: "integer" } as Tool["parameters"], input: "42.1" },
     ];

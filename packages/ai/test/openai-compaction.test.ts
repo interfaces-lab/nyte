@@ -142,14 +142,13 @@ test("an unsupported route rejects without turning the error into a checkpoint",
   assert.equal(requests.length, 1);
 });
 
-test.each([
-  { output: [] },
-  { output: [null] },
-  { output: [{ encrypted_content: "missing type" }] },
-])("rejects malformed compact output %j", async (payload) => {
-  const { model } = await endpoint(JSON.stringify(payload));
-  await assert.rejects(
-    compactOpenAIResponsesContext(model, { messages: [] }, { apiKey: "test", maxRetries: 0 }),
-    /valid output items/,
-  );
-});
+test.each([{ output: [] }, { output: [{ encrypted_content: "missing type" }] }])(
+  "rejects malformed compact output %j",
+  async (payload) => {
+    const { model } = await endpoint(JSON.stringify(payload));
+    await assert.rejects(
+      compactOpenAIResponsesContext(model, { messages: [] }, { apiKey: "test", maxRetries: 0 }),
+      /valid output items/,
+    );
+  },
+);

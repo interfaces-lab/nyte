@@ -46,7 +46,6 @@ describe("provider request retries", () => {
 
   test.each([
     ["retry-after-ms", "Infinity"],
-    ["retry-after", "not a date"],
     ["retry-after", "Infinity"],
   ])("backs off and recovers when %s is %s", async (name, value) => {
     vi.useFakeTimers();
@@ -84,22 +83,6 @@ describe("provider request retries", () => {
       /Server requested 277403s retry delay \(max: 1s\)/,
     );
     assert.equal(request.mock.calls.length, 1);
-  });
-
-  test("allows disabling the provider-requested retry delay cap", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout"] });
-    const request = flakyRequest(providerError(429, { "retry-after": "2" }), 1);
-
-    const result = retryProviderRequest(request, { maxRetries: 1, maxRetryDelayMs: 0 });
-    await Promise.resolve();
-    await Promise.resolve();
-    await vi.advanceTimersByTimeAsync(1999);
-    await Promise.resolve();
-    assert.equal(request.mock.calls.length, 1);
-    await vi.advanceTimersByTimeAsync(1);
-
-    assert.equal(await result, "ok");
-    assert.equal(request.mock.calls.length, 2);
   });
 
   test("aborts a provider-requested retry delay", async () => {

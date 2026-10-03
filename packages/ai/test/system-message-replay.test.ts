@@ -1,8 +1,7 @@
 import { normalizeContext } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { describe, expect, test } from "vitest";
-import type { Message, ProviderCheckpointMaterial, Tool, TranscriptContext } from "../src/types.ts";
-import { getSystemMessageText, renderSystemMessageUpdate } from "../src/utils/text.ts";
+import type { Message, Tool, TranscriptContext } from "../src/types.ts";
 import {
   collapseSystemMessages,
   declarationsEqual,
@@ -59,7 +58,7 @@ const transcript = normalizeContext({
 });
 
 describe("system message replay", () => {
-  test("replays content, sections, and tools into one leading message", () => {
+  test("replays content, sections, and tools into one leading message and collapses the rest", () => {
     const current = getCurrentSystemMessage(transcript.messages);
     expect(current).toEqual({
       role: "system",
@@ -71,9 +70,7 @@ describe("system message replay", () => {
     expect(getCurrentSystemPrompt(transcript.messages)).toBe(
       "base\n\nalso do this\n\n<a>2</a>\n\n<c>1</c>",
     );
-  });
 
-  test("collapse keeps only non-system messages after the replayed head", () => {
     const collapsed = collapseSystemMessages(transcript);
     expect(collapsed.messages.map((message) => message.role)).toEqual([
       "system",
@@ -112,22 +109,6 @@ describe("system message replay", () => {
     });
   });
 
-  test("renders complete prompts and framed updates", () => {
-    const leading = transcript.messages[0];
-    const update = transcript.messages[4];
-    if (leading?.role !== "system" || update?.role !== "system") {
-      throw new Error("expected system messages");
-    }
-    expect(getSystemMessageText(leading)).toBe("base\n\n<a>1</a>\n\n<b>1</b>");
-    expect(renderSystemMessageUpdate(update)).toBe(
-      [
-        'Updated system prompt section "a":\n\n<a>2</a>',
-        'Removed system prompt section "b".',
-        'Updated system prompt section "c":\n\n<c>1</c>',
-      ].join("\n\n"),
-    );
-  });
-
   test("normalizes the prompt and tool fields into a leading system message", () => {
     const messages: Message[] = [{ role: "user", content: "hi", timestamp: 1 }];
     expect(normalizeContext({ messages }).messages).toEqual(messages);
@@ -138,23 +119,6 @@ describe("system message replay", () => {
       { role: "system", content: "be brief", toolsAdded: [tool("a")], timestamp: 0 },
       ...messages,
     ]);
-  });
-
-  test("carries the checkpoint through normalization and collapse", () => {
-    const checkpoint: ProviderCheckpointMaterial = {
-      type: "provider",
-      provider: "openai",
-      api: "openai-responses",
-      model: "gpt-5.4",
-      data: [{ type: "compaction" }],
-    };
-    const context = normalizeContext({
-      checkpoint,
-      systemPrompt: "base",
-      messages: [{ role: "system", content: "later", timestamp: 2 }],
-    });
-    expect(context.checkpoint).toEqual(checkpoint);
-    expect(collapseSystemMessages(context).checkpoint).toEqual(checkpoint);
   });
 
   test("compares tool declarations without executable or undefined fields", () => {

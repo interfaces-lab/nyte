@@ -2,17 +2,19 @@
  * The bounded exponential-backoff retry loop for assistant calls. What counts as
  * transient is decided by the failure class in `failure.ts`.
  *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/retry.ts
- * Synced with pi 7ebf9087e.
+ * Based on https://github.com/earendil-works/pi/blob/c37b0e03b5d727c44a5d6b47d6ecf7e7b3d32e7a/packages/ai/src/utils/retry.ts
+ * Synced with pi c37b0e03b.
  */
 import type { AssistantMessage } from "@nyte-ai/schema";
+import { sleep } from "./abort.ts";
 import { classifyAssistantFailure, isRetryableFailureClass } from "./failure.ts";
 
 /**
  * Retry policy: bounded attempts with exponential backoff (`baseDelayMs * 2^(attempt-1)`).
- * Matches `settings.retry` (`enabled`, `maxRetries`, `baseDelayMs`) in coding-agent; kept
- * here so the classifier and the policy-driven retry loop live together and stay reusable
- * by the SDK and other callers.
+ * `maxAgentDelayMs` caps each computed delay and defaults to 60 seconds.
+ * Matches `settings.retry` (`enabled`, `maxRetries`, `baseDelayMs`, `maxAgentDelayMs`) in
+ * coding-agent; kept here so the classifier and the policy-driven retry loop live together
+ * and stay reusable by the SDK and other callers.
  */
 export interface RetryPolicy {
   enabled: boolean;
@@ -20,7 +22,11 @@ export interface RetryPolicy {
   maxRetries: number;
   /** Base delay in ms. Per-attempt delay is `baseDelayMs * 2^(attempt-1)` before jitter. */
   baseDelayMs: number;
+  /** Optional cap for agent-level retry delays in ms. Defaults to 60 seconds. */
+  maxAgentDelayMs?: number;
 }
+
+export const DEFAULT_MAX_AGENT_RETRY_DELAY_MS = 60_000;
 
 /** Optional callbacks emitted by {@link retryAssistantCall} around each retry. */
 export interface RetryCallbacks {
@@ -45,8 +51,14 @@ export interface RetryCallbacks {
  * Backoff before `attempt`, 1-based. The one definition: a caller that schedules its own
  * retries must compute the delay here rather than restating the formula.
  */
-export function retryDelayMs(policy: RetryPolicy, attempt: number): number {
-  return policy.baseDelayMs * 2 ** (attempt - 1);
+export function retryDelayMs(
+  policy: Pick<RetryPolicy, "baseDelayMs" | "maxAgentDelayMs">,
+  attempt: number,
+): number {
+  const delay = policy.baseDelayMs * 2 ** Math.max(0, attempt - 1);
+  const safeDelay = Number.isSafeInteger(delay) ? delay : Number.MAX_SAFE_INTEGER;
+
+  return Math.min(safeDelay, policy.maxAgentDelayMs ?? DEFAULT_MAX_AGENT_RETRY_DELAY_MS);
 }
 
 class RetrySleepAbortError extends Error {
@@ -57,23 +69,7 @@ class RetrySleepAbortError extends Error {
 
 /** Resolves after `ms`. Rejects the moment `signal` aborts, and only then. */
 export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new RetrySleepAbortError());
-
-      return;
-    }
-
-    const timeout = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timeout);
-        reject(new RetrySleepAbortError());
-      },
-      { once: true },
-    );
-  });
+  return sleep(ms, signal, () => new RetrySleepAbortError());
 }
 
 /**
@@ -143,7 +139,9 @@ export async function retryAssistantCall(
       await callbacks?.onRetryFinished?.(false, attempt, lastRetry.errorMessage);
 
       if (error instanceof RetrySleepAbortError) {
-        return { ...response, stopReason: "aborted", errorMessage: undefined };
+        const { errorMessage: _errorMessage, ...rest } = response;
+
+        return { ...rest, stopReason: "aborted" };
       }
 
       throw error;

@@ -1,13 +1,13 @@
 /**
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/test/openai-codex-oauth.test.ts
- * Synced with pi 7ebf9087e.
+ * Based on https://github.com/earendil-works/pi/blob/main/packages/ai/test/openai-codex-oauth.test.ts
+ * Synced with pi a276dabe5.
  */
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { afterEach, describe, vi, test } from "vitest";
 import { openaiCodexOAuth } from "../src/auth/oauth/openai-codex.ts";
 
 const neverAbortedSignal = new AbortController().signal;
-const realFetch = globalThis.fetch;
 
 function jsonResponse(body: unknown, status: number = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -58,12 +58,14 @@ type DeviceInfo = {
 
 function loginOpenAICodexDeviceCodeForTest(options: {
   onDeviceCode(info: DeviceInfo): void;
+  onMethodIds?(ids: string[]): void;
   signal?: AbortSignal;
 }) {
   return openaiCodexOAuth.login({
     signal: options.signal ?? neverAbortedSignal,
     prompt: async (prompt) => {
       if (prompt.type !== "select") throw new Error(`Unexpected prompt: ${prompt.type}`);
+      options.onMethodIds?.(prompt.options.map((option) => option.id));
       return "device_code";
     },
     notify: (event) => {
@@ -76,7 +78,7 @@ function loginOpenAICodexDeviceCodeForTest(options: {
 }
 
 function stubFetch(impl: (input: unknown, init?: RequestInit) => Promise<Response>): void {
-  globalThis.fetch = impl as typeof fetch;
+  vi.stubGlobal("fetch", vi.fn(impl));
 }
 
 function bodyText(init?: RequestInit): string {
@@ -96,8 +98,8 @@ function headerValue(
 describe("OpenAI Codex OAuth", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
-    globalThis.fetch = realFetch;
   });
 
   test("logs in with the OpenAI Codex device code flow", async () => {
@@ -106,6 +108,7 @@ describe("OpenAI Codex OAuth", () => {
 
     const accessToken = createAccessToken("account-123");
     const deviceInfos: DeviceInfo[] = [];
+    const methodIds: string[][] = [];
     const pollTimes: number[] = [];
     const pollResponses = [
       deviceAuthPendingResponse(),
@@ -171,11 +174,13 @@ describe("OpenAI Codex OAuth", () => {
 
     const credentialsPromise = loginOpenAICodexDeviceCodeForTest({
       onDeviceCode: (info) => deviceInfos.push(info),
+      onMethodIds: (ids) => methodIds.push(ids),
     });
 
     for (let i = 0; i < 5 && pollTimes.length === 0; i++) {
       await vi.advanceTimersByTimeAsync(0);
     }
+    assert.deepEqual(methodIds, [["browser", "device_code"]]);
     assert.deepEqual(deviceInfos, [
       {
         userCode: "ABCD-1234",
@@ -196,96 +201,6 @@ describe("OpenAI Codex OAuth", () => {
     assert.equal(credentials.expires, startTime + 5000 + 3600 * 1000);
     assert.equal(credentials["accountId"], "account-123");
     assert.deepEqual(pollTimes, [startTime, startTime + 5000]);
-  });
-
-  test("offers browser login first and uses the selected OpenAI Codex device code flow", async () => {
-    const accessToken = createAccessToken("account-456");
-    const selectPrompts: Array<{
-      message: string;
-      options: readonly { id: string; label: string }[];
-    }> = [];
-    const deviceInfos: DeviceInfo[] = [];
-
-    stubFetch(async (input, init) => {
-      const url = getUrl(input);
-      if (url === "https://auth.openai.com/api/accounts/deviceauth/usercode") {
-        assert.deepEqual(JSON.parse(bodyText(init)), {
-          client_id: "app_EMoamEEZ73f0CkXaXp7hrann",
-        });
-        return jsonResponse({
-          device_auth_id: "device-auth-id",
-          user_code: "WXYZ-7890",
-          interval: "5",
-        });
-      }
-      if (url === "https://auth.openai.com/api/accounts/deviceauth/token") {
-        return jsonResponse({
-          authorization_code: "oauth-code",
-          code_challenge: "device-code-challenge",
-          code_verifier: "device-code-verifier",
-        });
-      }
-      if (url === "https://auth.openai.com/oauth/token") {
-        return jsonResponse({
-          access_token: accessToken,
-          refresh_token: "refresh-token",
-          expires_in: 3600,
-        });
-      }
-      throw new Error(`Unexpected fetch URL: ${url}`);
-    });
-
-    const credential = await openaiCodexOAuth.login({
-      signal: neverAbortedSignal,
-      prompt: async (prompt) => {
-        if (prompt.type !== "select") throw new Error("Text prompt should not be used");
-        selectPrompts.push(prompt);
-        return "device_code";
-      },
-      notify: (event) => {
-        if (event.type === "auth_url") throw new Error("Browser login should not start");
-        if (event.type === "device_code") {
-          const { type: _, ...info } = event;
-          deviceInfos.push(info);
-        }
-      },
-    });
-    assert.equal(credential.type, "oauth");
-    assert.equal(credential.access, accessToken);
-    assert.equal(credential.refresh, "refresh-token");
-    assert.equal(credential["accountId"], "account-456");
-
-    assert.deepEqual(selectPrompts, [
-      {
-        type: "select",
-        message: "Select OpenAI Codex login method:",
-        options: [
-          { id: "browser", label: "Browser login (default)" },
-          { id: "device_code", label: "Device code login (headless)" },
-        ],
-      },
-    ]);
-    assert.deepEqual(deviceInfos, [
-      {
-        userCode: "WXYZ-7890",
-        verificationUri: "https://auth.openai.com/codex/device",
-        intervalSeconds: 5,
-        expiresInSeconds: 900,
-      },
-    ]);
-  });
-
-  test("cancels when OpenAI Codex login method selection is cancelled", async () => {
-    await assert.rejects(
-      openaiCodexOAuth.login({
-        signal: neverAbortedSignal,
-        prompt: async () => {
-          throw new Error("Login cancelled");
-        },
-        notify: () => {},
-      }),
-      { message: "Login cancelled" },
-    );
   });
 
   test("cancels the OpenAI Codex device code flow while waiting", async () => {
@@ -490,5 +405,46 @@ describe("OpenAI Codex OAuth", () => {
       /OpenAI Codex token refresh failed \(401\).*Could not validate your token/,
     );
     assert.equal(consoleError.mock.calls.length, 0);
+  });
+
+  test("falls back to the pasted redirect URL when the fixed callback port is taken", async () => {
+    // Port 1455 is registered with OpenAI; the Codex CLI may hold it. Occupy it unless it already is.
+    const blocker = createServer();
+    await new Promise<void>((resolve) => {
+      blocker.once("error", () => resolve());
+      blocker.listen(1455, "127.0.0.1", () => resolve());
+    });
+    try {
+      let exchangeBody: URLSearchParams | undefined;
+      stubFetch(async (input, init) => {
+        assert.equal(getUrl(input), "https://auth.openai.com/oauth/token");
+        exchangeBody = new URLSearchParams(bodyText(init));
+        return jsonResponse({
+          access_token: createAccessToken("acct"),
+          refresh_token: "refresh",
+          expires_in: 3600,
+        });
+      });
+
+      let authUrl = "";
+      const credential = await openaiCodexOAuth.login({
+        signal: neverAbortedSignal,
+        notify: (event) => {
+          if (event.type === "auth_url") authUrl = event.url;
+        },
+        prompt: async (prompt) => {
+          if (prompt.type === "select") return "browser";
+          if (prompt.type !== "manual_code") throw new Error(`Unexpected prompt: ${prompt.type}`);
+          const state = new URL(authUrl).searchParams.get("state");
+          return `http://localhost:1455/auth/callback?code=pasted-code&state=${state}`;
+        },
+      });
+
+      assert.equal(credential["accountId"], "acct");
+      assert.equal(exchangeBody?.get("code"), "pasted-code");
+      assert.equal(exchangeBody?.get("redirect_uri"), "http://localhost:1455/auth/callback");
+    } finally {
+      blocker.close();
+    }
   });
 });

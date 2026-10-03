@@ -17,6 +17,7 @@ import {
   type OAuthCredential,
   type ProviderAuthInteraction,
 } from "../types.ts";
+import { parseAuthorizationInput } from "./authorization-input.ts";
 import { oauthErrorHtml, oauthSuccessHtml } from "./oauth-page.ts";
 import { generatePKCE } from "./pkce.ts";
 
@@ -24,6 +25,7 @@ type CallbackServerInfo = {
   server: Server;
   redirectUri: string;
   cancelWait: () => void;
+  failWait: (error: Error) => void;
   waitForCode: () => Promise<{ code: string; state: string } | null>;
 };
 
@@ -45,40 +47,6 @@ const REDIRECT_URI = `http://localhost:${CALLBACK_PORT}${CALLBACK_PATH}`;
 
 const SCOPES =
   "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
-
-function parseAuthorizationInput(input: string) {
-  const value = input.trim();
-
-  if (!value) return {};
-
-  try {
-    const url = new URL(value);
-
-    return {
-      code: url.searchParams.get("code") ?? undefined,
-      state: url.searchParams.get("state") ?? undefined,
-    };
-  } catch {
-    // not a URL
-  }
-
-  if (value.includes("#")) {
-    const [code, state] = value.split("#", 2);
-
-    return { code, state };
-  }
-
-  if (value.includes("code=")) {
-    const params = new URLSearchParams(value);
-
-    return {
-      code: params.get("code") ?? undefined,
-      state: params.get("state") ?? undefined,
-    };
-  }
-
-  return { code: value };
-}
 
 function formatErrorDetails(cause: unknown): string {
   if (cause instanceof Error) {
@@ -104,24 +72,28 @@ function formatErrorDetails(cause: unknown): string {
 
 async function startCallbackServer(expectedState: string): Promise<CallbackServerInfo> {
   return new Promise((resolve, reject) => {
-    let settleWait: ((value: { code: string; state: string } | null) => void) | undefined;
+    let settleWait: ((value: { code: string; state: string } | Error | null) => void) | undefined;
 
     const waitForCodePromise = new Promise<{ code: string; state: string } | null>(
-      (resolveWait) => {
+      (resolveWait, rejectWait) => {
         let settled = false;
         settleWait = (value) => {
           if (settled) return;
           settled = true;
-          resolveWait(value);
+
+          if (value instanceof Error) rejectWait(value);
+          else resolveWait(value);
         };
       },
     );
+
+    waitForCodePromise.catch(() => undefined);
 
     const server = createServer((req, res) => {
       try {
         const url = new URL(req.url || "", "http://localhost");
 
-        if (url.pathname !== CALLBACK_PATH) {
+        if (req.method !== "GET" || url.pathname !== CALLBACK_PATH) {
           res.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
           res.end(
             oauthErrorHtml(
@@ -136,34 +108,36 @@ async function startCallbackServer(expectedState: string): Promise<CallbackServe
         const state = url.searchParams.get("state");
         const error = url.searchParams.get("error");
 
-        if (error) {
-          res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-          res.end(
-            oauthErrorHtml(
-              "Anthropic sent back an error instead of a code. Run the login command again to retry.",
-              `Error: ${error}`,
-            ),
-          );
-
-          return;
-        }
-
-        if (!code || !state) {
-          res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-          res.end(
-            oauthErrorHtml(
-              "The callback arrived without a code or state, so Nyte could not finish sign-in.",
-            ),
-          );
-
-          return;
-        }
-
         if (state !== expectedState) {
           res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
           res.end(
             oauthErrorHtml(
               "The callback's state did not match this login attempt, so Nyte ignored it.",
+            ),
+          );
+
+          return;
+        }
+
+        if (error) {
+          const description = url.searchParams.get("error_description") ?? error;
+          res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(
+            oauthErrorHtml(
+              "Anthropic sent back an error instead of a code. Run the login command again to retry.",
+              `Error: ${description}`,
+            ),
+          );
+          settleWait?.(new Error(`Anthropic authorization failed: ${description}`));
+
+          return;
+        }
+
+        if (!code) {
+          res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(
+            oauthErrorHtml(
+              "The callback arrived without a code, so Nyte could not finish sign-in.",
             ),
           );
 
@@ -189,6 +163,9 @@ async function startCallbackServer(expectedState: string): Promise<CallbackServe
         redirectUri: REDIRECT_URI,
         cancelWait: () => {
           settleWait?.(null);
+        },
+        failWait: (error) => {
+          settleWait?.(error);
         },
         waitForCode: () => waitForCodePromise,
       });
@@ -278,7 +255,7 @@ async function loginAnthropic(interaction: ProviderAuthInteraction): Promise<OAu
   const manualAbort = new AbortController();
 
   const onAbort = () => {
-    server.cancelWait();
+    server.failWait(new Error("Login cancelled"));
     server.server.close();
   };
 
