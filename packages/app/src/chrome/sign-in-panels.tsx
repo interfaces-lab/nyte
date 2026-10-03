@@ -8,6 +8,7 @@ import { props } from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
+import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { Button, ButtonLink } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
 import { toast } from "@nyte-ai/ui/toast";
@@ -20,10 +21,18 @@ function linkHost(url: string): string | undefined {
   return URL.canParse(url) ? new URL(url).hostname : undefined;
 }
 
+/** Where a verification link goes, as people would type it: host and path, no scheme. */
+function linkText(url: string): string {
+  if (!URL.canParse(url)) return url;
+  const { host, pathname } = new URL(url);
+
+  return pathname === "/" ? host : `${host}${pathname}`;
+}
+
 /**
- * The code and the provider's instructions stay on screen until the attempt
- * ends; the flow's messages sit under them so a poll update never hides what
- * the user still has to type or read.
+ * The code is the one thing to read, so it sits first and largest, beside where
+ * to enter it. The flow's messages sit under it so a poll update never hides
+ * what the user still has to type.
  */
 export function DeviceCodePanel({
   deviceCode,
@@ -34,57 +43,52 @@ export function DeviceCodePanel({
 }): ReactElement {
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const { userCode, verificationUri, expiresInSeconds, instructions } = deviceCode;
-  const host = linkHost(verificationUri);
 
   const expiryMinutes =
     expiresInSeconds === undefined ? undefined : Math.max(1, Math.round(expiresInSeconds / 60));
 
-  const openLabel = host === undefined ? "Open Link" : `Open ${host}`;
-
   return (
     <div {...props(styles.deviceCodePanel)}>
-      <span {...props(styles.deviceCodeLead)}>
-        Enter this code at {verificationUri} to continue signing in.
-        {expiryMinutes !== undefined && ` It expires in about ${String(expiryMinutes)} min.`}
-      </span>
-      {instructions !== undefined && <span {...props(styles.deviceCodeNote)}>{instructions}</span>}
-      <div {...props(styles.deviceCodeRow)}>
+      <div {...props(styles.deviceCodeBox)}>
         <code aria-label="Device code" {...props(styles.deviceCode)}>
           {userCode}
         </code>
+        <span {...props(styles.deviceCodeLead)}>
+          Enter this code on{" "}
+          <a
+            href={verificationUri}
+            target="_blank"
+            rel="noreferrer"
+            {...props(styles.deviceCodeLink)}
+            onClick={(event) => {
+              event.preventDefault();
+              void nyte.host.openExternal({ url: verificationUri }).catch(() =>
+                toast.add({
+                  type: "error",
+                  title: `Couldn't open ${linkText(verificationUri)}. Enter the code there yourself.`,
+                }),
+              );
+            }}
+          >
+            {linkText(verificationUri)}
+          </a>
+          {expiryMinutes !== undefined && `. It expires in about ${String(expiryMinutes)} min.`}
+        </span>
         <Button
-          variant="outline"
+          iconOnly
           icon={copyStatus === "copied" ? "checkmark" : "copy"}
+          aria-label="Copy Sign-In Code"
           onClick={() => {
             void navigator.clipboard.writeText(userCode).then(
               () => setCopyStatus("copied"),
               () => setCopyStatus("failed"),
             );
           }}
-        >
-          Copy Sign-In Code
-        </Button>
-        <ButtonLink
-          href={verificationUri}
-          target="_blank"
-          rel="noreferrer"
-          variant="solid"
-          tone="primary"
-          onClick={(event) => {
-            event.preventDefault();
-            void nyte.host.openExternal({ url: verificationUri }).catch(() =>
-              toast.add({
-                type: "error",
-                title: `Couldn't open ${host ?? "the link"}. Enter the code there yourself.`,
-              }),
-            );
-          }}
-        >
-          {openLabel}
-        </ButtonLink>
+        />
       </div>
+      {instructions !== undefined && <span {...props(styles.deviceCodeNote)}>{instructions}</span>}
       {copyStatus === "copied" && (
-        <span role="status" {...props(styles.deviceCodeNote)}>
+        <span role="status" {...props(srOnly)}>
           Sign-in code copied
         </span>
       )}
@@ -93,9 +97,11 @@ export function DeviceCodePanel({
           Couldn&rsquo;t copy the code. Select it and copy it yourself.
         </span>
       )}
-      <span role="status" aria-live="polite" {...props(styles.deviceCodeNote)}>
-        {message ?? "Nyte connects on its own once you approve."}
-      </span>
+      {message !== undefined && (
+        <span role="status" aria-live="polite" {...props(styles.deviceCodeNote)}>
+          {message}
+        </span>
+      )}
     </div>
   );
 }

@@ -217,7 +217,7 @@ test(
     await code.waitFor();
     assert.equal(await code.textContent(), "ABCD-1234");
     await page.getByText("Waiting for approval").waitFor();
-    await page.getByText(/continue signing in/).waitFor();
+    await page.getByText(/Enter this code on/).waitFor();
     const instructions = page.getByText("GitHub will show OpenCode as the OAuth app.");
     await instructions.waitFor();
     assert.equal(await page.getByRole("button", { name: "Cancel" }).count(), 1);
@@ -228,7 +228,7 @@ test(
       "ABCD-1234",
     ]);
 
-    await page.getByRole("link", { name: "Open github.com" }).click();
+    await page.getByRole("link", { name: "github.com/login/device" }).click();
     const opened = (await recordedCalls()).filter((call) => call.path === "host.openExternal");
     assert.deepEqual(
       opened.map((call) => call.input),
@@ -322,7 +322,7 @@ test(
     await page.getByText("Waiting for approval").waitFor();
     assert.equal(await cancel.isDisabled(), false, "not stuck on Cancelling");
 
-    await page.getByRole("link", { name: "Open github.com" }).click();
+    await page.getByRole("link", { name: "github.com/login/device" }).click();
     await page.getByText(/Couldn't open github\.com/).waitFor();
 
     await page.getByRole("button", { name: "Copy Sign-In Code" }).click();

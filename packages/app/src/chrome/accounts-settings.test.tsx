@@ -61,7 +61,7 @@ test("a server's GitHub sign-in shows its device code with a way out", () => {
 
   assert.match(markup, /ABCD-1234/);
   assert.match(markup, /Waiting for approval/);
-  assert.match(markup, /Open github\.com/);
+  assert.match(markup, /github\.com\/login\/device/);
   assert.match(markup, />Cancel</);
   assert.doesNotMatch(markup, />Sign in</);
 });

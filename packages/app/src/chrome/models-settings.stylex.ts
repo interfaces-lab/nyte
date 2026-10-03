@@ -97,24 +97,25 @@ export const modelsSettingsStyles = create({
   },
   keyHint: { color: role.contentSecondary, fontSize: type.fontSm, lineHeight: type.leadingSm },
   deviceCodePanel: { display: "flex", flexDirection: "column", gap: 8 },
-  deviceCodeLead: {
-    color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: type.leadingBase,
-    overflowWrap: "anywhere",
-  },
   deviceCodeRow: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 },
-  // The code is the one thing to read here: mono, wide-tracked, and selected
-  // whole so a click cannot grab half of it.
-  deviceCode: {
-    boxSizing: "border-box",
-    paddingInline: 10,
-    paddingBlock: 4,
-    borderRadius: radius.control,
+  deviceCodeBox: {
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    columnGap: 16,
+    rowGap: 8,
+    paddingInline: 12,
+    paddingBlock: 10,
+    borderRadius: radius.card,
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: role.borderSecondaryTranslucent,
     backgroundColor: role.bgBase,
+  },
+  // The code is the one thing to read here: mono, wide-tracked, and selected
+  // whole so a click cannot grab half of it.
+  deviceCode: {
+    flexShrink: 0,
     color: role.contentPrimary,
     fontFamily: type.fontMono,
     fontSize: type.fontLg,
@@ -122,6 +123,19 @@ export const modelsSettingsStyles = create({
     letterSpacing: "0.12em",
     userSelect: "all",
     whiteSpace: "nowrap",
+  },
+  deviceCodeLead: {
+    flex: "1 1 180px",
+    minWidth: 0,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    overflowWrap: "anywhere",
+  },
+  deviceCodeLink: {
+    color: role.contentPrimary,
+    textDecorationLine: { default: "none", ":hover": "underline" },
+    textUnderlineOffset: 3,
   },
   deviceCodeNote: {
     color: role.contentSecondary,
