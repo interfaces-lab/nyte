@@ -1,9 +1,3 @@
-/**
- * Ls tool ported from pi's tools/ls.ts, adapted to Nyte's AgentTool contract.
- * TUI rendering code from pi is dropped.
- *
- * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/tools/ls.ts
- */
 import { readdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { Type, type Static } from "typebox";

@@ -168,7 +168,14 @@ async function fixture(background: boolean, continuingParent = false) {
         session(api) {
           api.agents.add((draft) => draft.set("worker", { id: "worker", mode: "subagent" }));
           api.tools.add((draft) => {
-            draft.set("bash", createBashTool(cwd));
+            const bash = createBashTool(cwd);
+            draft.set("bash", {
+              ...bash,
+              parameters: Type.Object({
+                ...bash.parameters.properties,
+                background: Type.Optional(Type.Boolean()),
+              }),
+            });
             draft.set("checkpoint", {
               name: "checkpoint",
               description: "Continue the parent run",

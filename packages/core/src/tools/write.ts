@@ -1,46 +1,54 @@
-/**
- * Write tool ported from pi's write tool, bound to Nyte's AgentTool
- * contract and direct filesystem access (pi routes writes through its
- * ExecutionEnv effects boundary).
- *
- * Based on https://github.com/earendil-works/pi/blob/main/packages/agent/src/harness/tools/write.ts
- */
-import { existsSync } from "node:fs";
-import {
-  mkdir as fsMkdir,
-  readFile as fsReadFile,
-  writeFile as fsWriteFile,
-} from "node:fs/promises";
-import { dirname, relative } from "node:path";
-import { Type } from "typebox";
 import type { AgentTool } from "../kernel/loop/types.ts";
-import { toolResultContent } from "../kernel/loop/tool-result.ts";
-import { type FileMutationDetails, generateFileMutationDetails } from "./edit-diff.ts";
-import { argumentParser } from "./support/arguments.ts";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import { type Static, Type } from "typebox";
 import { withFileMutationQueue } from "./support/file-mutation-queue.ts";
 import { resolveToCwd } from "./support/path-utils.ts";
 
-const writeParameters = Type.Object({
+const writeSchema = Type.Object({
   path: Type.String({ description: "Path to the file to write (relative or absolute)" }),
   content: Type.String({ description: "Content to write to the file" }),
 });
 
+export type WriteToolInput = Static<typeof writeSchema>;
+
+/**
+ * Pluggable operations for the write tool.
+ * Override these to delegate file writing to remote systems (for example SSH).
+ */
+export interface WriteOperations {
+  /** Write content to a file */
+  writeFile: (absolutePath: string, content: string) => Promise<void>;
+  /** Create directory recursively */
+  mkdir: (dir: string) => Promise<void>;
+}
+
+const defaultWriteOperations: WriteOperations = {
+  writeFile: (path, content) => writeFile(path, content, "utf-8"),
+  mkdir: (dir) => mkdir(dir, { recursive: true }).then(() => {}),
+};
+
+export interface WriteToolOptions {
+  /** Custom operations for file writing. Default: local filesystem */
+  operations?: WriteOperations;
+}
+
 export function createWriteTool(
   cwd: string,
-): AgentTool<typeof writeParameters, FileMutationDetails> {
+  options?: WriteToolOptions,
+): AgentTool<typeof writeSchema, undefined> {
+  const ops = options?.operations ?? defaultWriteOperations;
   return {
     name: "write",
+    label: "write",
     description:
       "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
-    parameters: writeParameters,
-    prepareArguments: argumentParser(writeParameters),
-    present: ({ path }, _context, result) =>
-      result === undefined
-        ? { kind: "file_write", path }
-        : { kind: "file_patch", op: "write", path, ...result.details },
-    async execute(_toolCallId, { path, content }, signal?, _onUpdate?) {
+    parameters: writeSchema,
+    present: ({ path }) => ({ kind: "file_write", path }),
+    constrainedSampling: { type: "json_schema", strict: "prefer" },
+    async execute(_toolCallId, { path, content }, signal) {
       const absolutePath = resolveToCwd(path, cwd);
-
+      const dir = dirname(absolutePath);
       return withFileMutationQueue(absolutePath, async () => {
         // Do not reject from an abort event listener here: that would release the
         // mutation queue while an in-flight filesystem operation may still finish.
@@ -51,25 +59,17 @@ export function createWriteTool(
         };
 
         throwIfAborted();
-
-        const previousContent = existsSync(absolutePath)
-          ? await fsReadFile(absolutePath, "utf-8")
-          : "";
-
-        throwIfAborted();
-
         // Create parent directories if needed.
-        await fsMkdir(dirname(absolutePath), { recursive: true });
+        await ops.mkdir(dir);
         throwIfAborted();
 
         // Write the file contents.
-        await fsWriteFile(absolutePath, content, "utf-8");
+        await ops.writeFile(absolutePath, content);
         throwIfAborted();
 
         return {
-          content: toolResultContent(`Wrote ${path}.`),
-          details: generateFileMutationDetails(path, previousContent, content),
-          title: relative(cwd, absolutePath),
+          content: [{ type: "text", text: `Successfully wrote to ${path}` }],
+          details: undefined,
         };
       });
     },

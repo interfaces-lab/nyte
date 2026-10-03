@@ -1,107 +1,147 @@
-/**
- * Edit tool ported from pi's edit tool, bound to Nyte's AgentTool
- * contract and direct filesystem access (pi routes file access through its
- * ExecutionEnv effects boundary). The matching logic lives in edit-diff.ts
- * and is unchanged.
- *
- * Based on https://github.com/earendil-works/pi/blob/main/packages/agent/src/harness/tools/edit.ts
- */
-
-import { readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
-import { relative } from "node:path";
-import { Type, type Static } from "typebox";
-import { Value } from "typebox/value";
-import type { AgentTool, AgentToolCall, AgentToolResult } from "../kernel/loop/types.ts";
-import { toolResultContent } from "../kernel/loop/tool-result.ts";
+import type { AgentTool } from "../kernel/loop/types.ts";
+import { parsePatchFacts } from "@nyte-ai/client";
+import { constants } from "node:fs";
+import { access, readFile, writeFile } from "node:fs/promises";
+import { type Static, Type } from "typebox";
 import {
   applyEditsToNormalizedContent,
   detectLineEnding,
-  type FileMutationDetails,
-  generateFileMutationDetails,
+  type Edit,
+  generateDiffString,
+  generateUnifiedPatch,
   normalizeToLF,
   restoreLineEndings,
-  stripBom,
 } from "./edit-diff.ts";
-
-export type { Edit } from "./edit-diff.ts";
-
-import { argumentParser } from "./support/arguments.ts";
 import { withFileMutationQueue } from "./support/file-mutation-queue.ts";
 import { resolveToCwd } from "./support/path-utils.ts";
 
-const editParameters = Type.Object({
-  path: Type.String({ description: "Path to the file to edit (relative or absolute)" }),
-  edits: Type.Array(
-    Type.Object({
-      oldText: Type.String({
-        description:
-          "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call.",
-      }),
-      newText: Type.String({ description: "Replacement text for this targeted edit." }),
+const replaceEditSchema = Type.Object(
+  {
+    oldText: Type.String({
+      description:
+        "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call.",
     }),
-    {
+    newText: Type.String({ description: "Replacement text for this targeted edit." }),
+  },
+  {},
+);
+
+const editSchema = Type.Object(
+  {
+    path: Type.String({ description: "Path to the file to edit (relative or absolute)" }),
+    edits: Type.Array(replaceEditSchema, {
       description:
         "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead.",
-    },
-  ),
-});
+    }),
+  },
+  {},
+);
 
-export type EditToolInput = Static<typeof editParameters>;
-
-export type EditToolDetails = FileMutationDetails;
-
-const ErrorWithCode = Type.Object({ code: Type.Unknown() });
-
-const EditsText = Type.Object({ edits: Type.String() });
-
-const SingleEdit = Type.Object({ oldText: Type.String(), newText: Type.String() });
-
-function editAccessError(path: string, cause: unknown): Error {
-  const code = Value.Check(ErrorWithCode, cause) ? String(cause.code) : String(cause);
-
-  return new Error(`Could not edit file: ${path}. Error code: ${code}.`, {
-    cause: cause instanceof Error ? cause : undefined,
-  });
+export type EditToolInput = Static<typeof editSchema>;
+export interface EditToolDetails {
+  /** Display-oriented diff of the changes made */
+  diff: string;
+  /** Standard unified patch of the changes made */
+  patch: string;
+  /** Line number of the first change in the new file (for editor navigation) */
+  firstChangedLine?: number;
 }
 
-const parseEditArguments = argumentParser(editParameters);
-
-/** Models sometimes send `edits` as a JSON string, or one replacement at the top level; both fold into `edits`. */
-function prepareEditInput(input: AgentToolCall["arguments"]): EditToolInput {
-  let listed: unknown = input.edits;
-
-  if (Value.Check(EditsText, input)) {
-    try {
-      listed = JSON.parse(input.edits);
-    } catch {
-      // The strict check below reports the malformed value.
-    }
-  }
-
-  const edits: unknown[] = [
-    ...(Array.isArray(listed) ? listed : []),
-    ...(Value.Check(SingleEdit, input) ? [{ oldText: input.oldText, newText: input.newText }] : []),
-  ];
-
-  if (edits.length === 0) {
-    throw new Error("Invalid arguments: edits must contain at least one replacement");
-  }
-
-  return parseEditArguments({ ...input, edits });
+/**
+ * Pluggable operations for the edit tool.
+ * Override these to delegate file editing to remote systems (for example SSH).
+ */
+export interface EditOperations {
+  /** Read file contents as a Buffer */
+  readFile: (absolutePath: string) => Promise<Buffer>;
+  /** Write content to a file */
+  writeFile: (absolutePath: string, content: string) => Promise<void>;
+  /** Check if file is readable and writable (throw if not) */
+  access: (absolutePath: string) => Promise<void>;
 }
 
-export function createEditTool(cwd: string): AgentTool<typeof editParameters, EditToolDetails> {
+const defaultEditOperations: EditOperations = {
+  readFile: (path) => readFile(path),
+  writeFile: (path, content) => writeFile(path, content, "utf-8"),
+  access: (path) => access(path, constants.R_OK | constants.W_OK),
+};
+
+export interface EditToolOptions {
+  /** Custom operations for file editing. Default: local filesystem */
+  operations?: EditOperations;
+}
+
+function prepareEditArguments(input: unknown): unknown {
+  if (!input || typeof input !== "object") return input;
+  if ("edits" in input) {
+    if (typeof input.edits === "string") {
+      try {
+        const parsed: unknown = JSON.parse(input.edits);
+        if (Array.isArray(parsed)) input.edits = parsed;
+        else if (isSingleEditInput(parsed)) input.edits = [parsed];
+      } catch {}
+    } else if (isSingleEditInput(input.edits)) input.edits = [input.edits];
+  }
+  if (
+    !("oldText" in input) ||
+    typeof input.oldText !== "string" ||
+    !("newText" in input) ||
+    typeof input.newText !== "string"
+  )
+    return input;
+  const edits: unknown[] = "edits" in input && Array.isArray(input.edits) ? [...input.edits] : [];
+  edits.push({ oldText: input.oldText, newText: input.newText });
+  const { oldText: _oldText, newText: _newText, ...rest } = input;
+  return { ...rest, edits };
+}
+
+function isSingleEditInput(value: unknown): value is Edit {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    "oldText" in value &&
+    typeof value.oldText === "string" &&
+    "newText" in value &&
+    typeof value.newText === "string"
+  );
+}
+
+function validateEditInput(input: EditToolInput): { path: string; edits: Edit[] } {
+  if (!Array.isArray(input.edits) || input.edits.length === 0) {
+    throw new Error("Edit tool input is invalid. edits must contain at least one replacement.");
+  }
+  return { path: input.path, edits: input.edits };
+}
+
+export function createEditTool(
+  cwd: string,
+  options?: EditToolOptions,
+): AgentTool<typeof editSchema, EditToolDetails | undefined> {
+  const ops = options?.operations ?? defaultEditOperations;
   return {
     name: "edit",
+    label: "edit",
     description:
       "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
-    parameters: editParameters,
-    prepareArguments: prepareEditInput,
-    present: ({ path }, _context, result) =>
-      result === undefined
-        ? { kind: "file_edit", path }
-        : { kind: "file_patch", op: "edit", path, ...result.details },
-    async execute(_toolCallId, { path, edits }, signal): Promise<AgentToolResult<EditToolDetails>> {
+    parameters: editSchema,
+    present({ path }, _context, result) {
+      const facts =
+        result?.details === undefined ? undefined : parsePatchFacts(result.details.patch);
+      if (facts === undefined) return { kind: "file_edit", path };
+      return {
+        kind: "file_patch",
+        op: "edit",
+        path,
+        patch: facts.patch,
+        added: facts.added,
+        removed: facts.removed,
+      };
+    },
+    constrainedSampling: { type: "json_schema", strict: "prefer" },
+    prepareArguments: prepareEditArguments,
+    async execute(_toolCallId, input, signal) {
+      const { path, edits } = validateEditInput(input);
       const absolutePath = resolveToCwd(path, cwd);
 
       return withFileMutationQueue(absolutePath, async () => {
@@ -115,62 +155,50 @@ export function createEditTool(cwd: string): AgentTool<typeof editParameters, Ed
 
         throwIfAborted();
 
-        // Check that the target exists and is an editable file.
-        let info: Awaited<ReturnType<typeof fsStat>>;
-
+        // Check if file exists.
         try {
-          info = await fsStat(absolutePath);
+          await ops.access(absolutePath);
         } catch (error: unknown) {
           throwIfAborted();
-          throw editAccessError(path, error);
+          const errorMessage =
+            error instanceof Error && "code" in error
+              ? `Error code: ${String(error.code)}`
+              : String(error);
+          throw new Error(`Could not edit file: ${path}. ${errorMessage}.`);
         }
-
-        if (!info.isFile()) {
-          throw new Error(`Could not edit file: ${path}. Path is not a file.`);
-        }
-
         throwIfAborted();
 
         // Read the file.
-        let rawContent: string;
-
-        try {
-          rawContent = await fsReadFile(absolutePath, "utf-8");
-        } catch (error: unknown) {
-          throwIfAborted();
-          throw editAccessError(path, error);
-        }
-
+        const buffer = await ops.readFile(absolutePath);
+        const rawContent = buffer.toString("utf-8");
         throwIfAborted();
 
         // Strip BOM before matching. The model will not include an invisible BOM in oldText.
-        const { bom, text: content } = stripBom(rawContent);
+        const bom = rawContent.startsWith("\uFEFF") ? "\uFEFF" : "";
+        const content = rawContent.slice(bom.length);
         const originalEnding = detectLineEnding(content);
         const normalizedContent = normalizeToLF(content);
-
         const { baseContent, newContent } = applyEditsToNormalizedContent(
           normalizedContent,
           edits,
           path,
         );
-
         throwIfAborted();
 
         const finalContent = bom + restoreLineEndings(newContent, originalEnding);
-
-        try {
-          await fsWriteFile(absolutePath, finalContent, "utf-8");
-        } catch (error: unknown) {
-          throwIfAborted();
-          throw editAccessError(path, error);
-        }
-
+        await ops.writeFile(absolutePath, finalContent);
         throwIfAborted();
 
+        const diffResult = generateDiffString(baseContent, newContent);
+        const patch = generateUnifiedPatch(path, baseContent, newContent);
         return {
-          content: toolResultContent(`Replaced ${edits.length} block(s) in ${path}.`),
-          details: generateFileMutationDetails(path, baseContent, newContent),
-          title: relative(cwd, absolutePath),
+          content: [
+            {
+              type: "text",
+              text: `Successfully replaced ${edits.length} block(s) in ${path}.`,
+            },
+          ],
+          details: { diff: diffResult.diff, patch, firstChangedLine: diffResult.firstChangedLine },
         };
       });
     },

@@ -6,13 +6,11 @@
  * - Byte limit (default: 50KB)
  *
  * Never returns partial lines (except bash tail truncation edge case).
- *
- * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/tools/truncate.ts
  */
 
 export const DEFAULT_MAX_LINES = 2000;
-
 export const DEFAULT_MAX_BYTES = 50 * 1024; // 50KB
+export const GREP_MAX_LINE_LENGTH = 500; // Max chars per grep match line
 
 export interface TruncationResult {
   /** The truncated content */
@@ -50,13 +48,10 @@ function splitLinesForCounting(content: string): string[] {
   if (content.length === 0) {
     return [];
   }
-
   const lines = content.split("\n");
-
   if (content.endsWith("\n")) {
     lines.pop();
   }
-
   return lines;
 }
 
@@ -107,7 +102,6 @@ export function truncateHead(content: string, options: TruncationOptions = {}): 
 
   // Check if first line alone exceeds byte limit
   const firstLineBytes = Buffer.byteLength(lines[0], "utf-8");
-
   if (firstLineBytes > maxBytes) {
     return {
       content: "",
@@ -196,7 +190,7 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
     };
   }
 
-  // Work backwards from the end, collecting newest first and reversing once.
+  // Work backwards from the end
   const outputLinesArr: string[] = [];
   let outputBytesCount = 0;
   let truncatedBy: "lines" | "bytes" = "lines";
@@ -208,24 +202,20 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
 
     if (outputBytesCount + lineBytes > maxBytes) {
       truncatedBy = "bytes";
-
       // Edge case: if we haven't added ANY lines yet and this line exceeds maxBytes,
       // take the end of the line (partial)
       if (outputLinesArr.length === 0) {
         const truncatedLine = truncateStringToBytesFromEnd(line, maxBytes);
-        outputLinesArr.push(truncatedLine);
+        outputLinesArr.unshift(truncatedLine);
         outputBytesCount = Buffer.byteLength(truncatedLine, "utf-8");
         lastLinePartial = true;
       }
-
       break;
     }
 
-    outputLinesArr.push(line);
+    outputLinesArr.unshift(line);
     outputBytesCount += lineBytes;
   }
-
-  outputLinesArr.reverse();
 
   // If we exited due to line limit
   if (outputLinesArr.length >= maxLines && outputBytesCount <= maxBytes) {
@@ -256,7 +246,6 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
  */
 function truncateStringToBytesFromEnd(str: string, maxBytes: number): string {
   const buf = Buffer.from(str, "utf-8");
-
   if (buf.length <= maxBytes) {
     return str;
   }
@@ -270,4 +259,56 @@ function truncateStringToBytesFromEnd(str: string, maxBytes: number): string {
   }
 
   return buf.slice(start).toString("utf-8");
+}
+
+/**
+ * Truncate a single line to max characters, adding [truncated] suffix.
+ * Used for grep match lines.
+ */
+export function truncateLine(
+  line: string,
+  maxChars: number = GREP_MAX_LINE_LENGTH,
+): { text: string; wasTruncated: boolean } {
+  if (line.length <= maxChars) {
+    return { text: line, wasTruncated: false };
+  }
+  return { text: `${line.slice(0, maxChars)}... [truncated]`, wasTruncated: true };
+}
+
+export interface MiddleTruncationResult {
+  /** The start and end of the content with a `…N chars truncated…` marker between them. */
+  content: string;
+  truncated: boolean;
+  /** Characters left out. */
+  removedChars: number;
+  totalBytes: number;
+  totalLines: number;
+}
+
+/**
+ * Keep the start and the end of `content`, half of `maxBytes` each, and replace the middle with a
+ * `…N chars truncated…` marker, like Codex does for tool output. Cuts only at character boundaries.
+ */
+export function truncateMiddle(content: string, maxBytes: number): MiddleTruncationResult {
+  const buf = Buffer.from(content, "utf-8");
+  const totalLines = splitLinesForCounting(content).length;
+  if (buf.length <= maxBytes) {
+    return { content, truncated: false, removedChars: 0, totalBytes: buf.length, totalLines };
+  }
+  // Continuation bytes (10xxxxxx) are not character starts.
+  const isBoundary = (index: number) => index >= buf.length || (buf[index] & 0xc0) !== 0x80;
+  let headEnd = Math.floor(maxBytes / 2);
+  while (headEnd > 0 && !isBoundary(headEnd)) headEnd--;
+  let tailStart = buf.length - (maxBytes - Math.floor(maxBytes / 2));
+  while (tailStart < buf.length && !isBoundary(tailStart)) tailStart++;
+  const head = buf.subarray(0, headEnd).toString("utf-8");
+  const tail = buf.subarray(tailStart).toString("utf-8");
+  const removedChars = Array.from(buf.subarray(headEnd, tailStart).toString("utf-8")).length;
+  return {
+    content: `${head}…${removedChars} chars truncated…${tail}`,
+    truncated: true,
+    removedChars,
+    totalBytes: buf.length,
+    totalLines,
+  };
 }

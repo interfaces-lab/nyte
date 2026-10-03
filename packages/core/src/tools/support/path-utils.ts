@@ -1,17 +1,8 @@
-/**
- * Path helpers for the coding tools, ported from pi (earendil-works).
- *
- * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/utils/paths.ts
- * and https://github.com/earendil-works/pi/blob/main/packages/agent/src/harness/tools/path-utils.ts
- * (Nyte resolves read-path variants locally where pi asks its ExecutionEnv).
- */
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve as nodeResolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
-
-// --- Inlined path helpers (from pi's utils/paths.ts) ---
 
 const UNICODE_SPACES = /[  -   　]/g;
 
@@ -87,8 +78,6 @@ function resolvePath(
     ? nodeResolvePath(normalized)
     : nodeResolvePath(normalizedBaseDir, normalized);
 }
-
-// --- Tool path utilities (from pi's tools/path-utils.ts) ---
 
 const NARROW_NO_BREAK_SPACE = " ";
 

@@ -3,14 +3,15 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PhotonImage } from "@cf-wasm/photon/node";
-import { describe, test } from "vitest";
-import { createLocalBashOperations } from "../src/tools/bash.ts";
+import { describe, expect, test } from "vitest";
+import { createBashTool, createLocalBashOperations } from "../src/tools/bash.ts";
 import { applyEditsToNormalizedContent } from "../src/tools/edit-diff.ts";
 import { createEditTool } from "../src/tools/edit.ts";
+import { createAllTools } from "../src/tools/index.ts";
 import { createLsTool } from "../src/tools/ls.ts";
 import { createReadTool } from "../src/tools/read.ts";
 import { createWriteTool } from "../src/tools/write.ts";
-import { toolResultText } from "../src/kernel/loop/tool-result.ts";
+import { ToolError, toolResultText } from "../src/kernel/loop/tool-result.ts";
 
 test("read preserves small images and bounds converted, oversized, and oriented images", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nyte-read-image-"));
@@ -55,7 +56,6 @@ test("read preserves small images and bounds converted, oversized, and oriented 
       const result = await tool.execute("read", { path: fixture.name });
       const image = result.content.find((part) => part.type === "image");
       assert.ok(image, `${fixture.name} returns an attachment`);
-      assert.equal(result.title, fixture.name);
       assert.ok(image.data.length <= 4.5 * 1024 * 1024);
       if (fixture.name === "small") assert.equal(image.data, png.toString("base64"));
       if (fixture.name === "bitmap") assert.equal(image.mimeType, "image/png");
@@ -98,7 +98,7 @@ describe("ls tool", () => {
 });
 
 describe("file mutation tools", () => {
-  test("write returns a patch for creates and overwrites", async () => {
+  test("write creates and overwrites files", async () => {
     const directory = await mkdtemp(join(tmpdir(), "nyte-write-tool-"));
     const path = "nested/example.ts";
     const absolutePath = join(directory, path);
@@ -106,13 +106,13 @@ describe("file mutation tools", () => {
 
     try {
       const created = await tool.execute("call_1", { path, content: "first\nkept\n" });
-      assert.equal(toolResultText(created.content), `Wrote ${path}.`);
-      assert.match(created.details.patch, /@@ -0,0 \+1,2 @@/u);
-      assert.deepEqual([created.details.added, created.details.removed], [2, 0]);
+      assert.equal(toolResultText(created.content), `Successfully wrote to ${path}`);
+      assert.equal(created.details, undefined);
+      assert.equal(await readFile(absolutePath, "utf8"), "first\nkept\n");
 
       const updated = await tool.execute("call_2", { path, content: "changed\nkept\n" });
-      assert.match(updated.details.patch, /-first\n\+changed/u);
-      assert.deepEqual([updated.details.added, updated.details.removed], [1, 1]);
+      assert.equal(toolResultText(updated.content), `Successfully wrote to ${path}`);
+      assert.equal(updated.details, undefined);
       assert.equal(await readFile(absolutePath, "utf8"), "changed\nkept\n");
     } finally {
       await rm(directory, { recursive: true, force: true });
@@ -129,9 +129,10 @@ describe("file mutation tools", () => {
         path,
         edits: [{ oldText: "before", newText: "after" }],
       });
-      assert.equal(toolResultText(result.content), `Replaced 1 block(s) in ${path}.`);
+      assert.equal(toolResultText(result.content), `Successfully replaced 1 block(s) in ${path}.`);
+      assert.ok(result.details);
       assert.match(result.details.patch, /-before\n\+after/u);
-      assert.deepEqual([result.details.added, result.details.removed], [1, 1]);
+      assert.equal(result.details.firstChangedLine, 1);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -226,4 +227,25 @@ describe("local bash lifecycle", () => {
       assert.equal(alive, false);
     },
   );
+
+  test("coding defaults expose four tools and structured shell results", async () => {
+    assert.deepEqual(
+      createAllTools(process.cwd()).map((tool) => tool.name),
+      ["read", "bash", "edit", "write"],
+    );
+    const tool = createBashTool(process.cwd());
+    assert.deepEqual(Object.keys(tool.parameters.properties), ["command", "timeout"]);
+    const result = await tool.execute("bash", { command: "printf done" });
+    expect(result.content).toEqual([{ type: "text", text: "done" }]);
+    expect(result.structuredContent).toMatchObject({ output: "done", exit_code: 0 });
+    await assert.rejects(
+      tool.execute("bash-error", { command: "printf failed; exit 7" }),
+      (error) => {
+        assert.ok(error instanceof ToolError);
+        assert.match(toolResultText(error.result.content), /failed\n\nCommand exited with code 7/u);
+        expect(error.result.structuredContent).toMatchObject({ output: "failed", exit_code: 7 });
+        return true;
+      },
+    );
+  });
 });

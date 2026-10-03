@@ -10,12 +10,12 @@ import { OutputAccumulator } from "../src/tools/support/output-accumulator.ts";
 import { toolResultText } from "../src/kernel/loop/tool-result.ts";
 
 describe("bounded shell output", () => {
-  test("persists every byte before accepting more output", async () => {
+  test("persists every byte when output exceeds the display limit", async () => {
     const accumulator = new OutputAccumulator({ maxBytes: 1024, maxLines: 10_000 });
     const data = Buffer.alloc(2 * 1024 * 1024, "x");
 
-    await accumulator.append(data);
-    await accumulator.finish();
+    accumulator.append(data);
+    accumulator.finish();
     const snapshot = accumulator.snapshot();
     await accumulator.closeTempFile();
 
@@ -28,55 +28,34 @@ describe("bounded shell output", () => {
     }
   });
 
-  test("reports spill-file errors during append", async () => {
+  test("reports spill-file errors when closing output", async () => {
     const accumulator = new OutputAccumulator({
       maxBytes: 1,
       tempFilePrefix: join(`nyte-missing-${randomUUID()}`, "output"),
     });
 
-    const append = accumulator.append(Buffer.from("too large"));
-    const earlyError = accumulator.waitForTempFileError();
-
-    await assert.rejects(append, /ENOENT/u);
-    await assert.rejects(
-      earlyError.then((error) => {
-        throw error;
-      }),
-      /ENOENT/u,
-    );
+    accumulator.append(Buffer.from("too large"));
+    await assert.rejects(accumulator.closeTempFile(), /ENOENT/u);
   });
 
   test(
-    "serializes stdout and stderr delivery",
+    "delivers stdout and stderr from the local shell",
     { skip: process.platform === "win32" },
     async () => {
       const operations = createLocalBashOperations();
-      let activeCallbacks = 0;
-      let maxActiveCallbacks = 0;
       let output = "";
-      let delayedFirstChunk = false;
 
       const result = await operations.exec(
         "for i in {1..2000}; do printf 'out-%04d\\n' \"$i\"; printf 'err-%04d\\n' \"$i\" >&2; done",
         "/tmp",
         {
-          onData: async (chunk) => {
-            activeCallbacks++;
-            maxActiveCallbacks = Math.max(maxActiveCallbacks, activeCallbacks);
-            if (!delayedFirstChunk) {
-              delayedFirstChunk = true;
-              await new Promise<void>((resolve) => setTimeout(resolve, 150));
-            } else {
-              await new Promise<void>((resolve) => setImmediate(resolve));
-            }
+          onData: (chunk) => {
             output += chunk.toString("utf8");
-            activeCallbacks--;
           },
         },
       );
 
       assert.equal(result.exitCode, 0);
-      assert.equal(maxActiveCallbacks, 1);
       assert.match(output, /out-2000/u);
       assert.match(output, /err-2000/u);
     },
@@ -95,20 +74,22 @@ describe("bounded text reads", () => {
       await writeFile(join(directory, "unicode.txt"), "\ufeffhello");
       const head = await tool.execute("read", { path: "unicode.txt" });
       assert.equal(toolResultText(head.content), "\ufeffhello");
-      await assert.rejects(tool.execute("read", { path: directory }), /regular file/u);
+      await assert.rejects(tool.execute("read", { path: directory }), /EISDIR/u);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
   });
 
-  test("rejects device files", { skip: process.platform === "win32" }, async () => {
+  test("rejects an aborted read before opening its path", async () => {
+    const controller = new AbortController();
+    controller.abort();
     await assert.rejects(
-      createReadTool("/tmp").execute("read", { path: "/dev/zero", limit: 1 }),
-      /regular file/u,
+      createReadTool("/tmp").execute("read", { path: "/dev/zero", limit: 1 }, controller.signal),
+      /Operation aborted/u,
     );
   });
 
-  test("counts the file without retaining text past the output limits", async () => {
+  test("truncates text and continues with offset and limit", async () => {
     const directory = await mkdtemp(join(tmpdir(), "nyte-bounded-read-"));
     const lines = Array.from(
       { length: 10_000 },
@@ -151,7 +132,7 @@ describe("bounded text reads", () => {
     }
   });
 
-  test("measures an oversized first line without retaining it", async () => {
+  test("reports an oversized first line", async () => {
     const directory = await mkdtemp(join(tmpdir(), "nyte-long-line-read-"));
     try {
       await writeFile(join(directory, "long.txt"), `${"x".repeat(60 * 1024)}\ntail`);

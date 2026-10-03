@@ -28,6 +28,7 @@ export default defineConfig(({ command }) => ({
           index: resolve("src/main/index.ts"),
           "usage-worker": resolve("src/main/usage-worker.ts"),
           "store-worker": resolve("src/main/store-worker.ts"),
+          "image-resize-worker": resolve("../core/src/tools/support/image-resize-worker.ts"),
           "codemode-worker": resolve("src/main/codemode-worker.ts"),
           "codemode-runtime": resolve("src/main/codemode-runtime.ts"),
         },

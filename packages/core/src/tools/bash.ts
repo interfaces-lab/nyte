@@ -1,27 +1,19 @@
-/**
- * Bash tool ported from pi's bash tool, bound to Nyte's AgentTool
- * contract. The BashOperations seam stands in for pi's ExecutionEnv shell
- * boundary (env.executeShell) until Nyte grows an execution-env abstraction,
- * so command execution can be delegated to remote systems (for example SSH).
- *
- * Based on https://github.com/earendil-works/pi/blob/main/packages/agent/src/harness/tools/bash.ts
- * and https://github.com/earendil-works/pi/blob/main/packages/agent/src/harness/utils/shell-output.ts
- */
+import { access } from "node:fs/promises";
+import { constants } from "node:os";
+import type { AgentTool } from "../kernel/loop/types.ts";
+import { ToolError } from "../kernel/loop/tool-result.ts";
 import { spawn } from "node:child_process";
-import { constants } from "node:fs";
-import { access as fsAccess } from "node:fs/promises";
-import { Type } from "typebox";
-import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "../kernel/loop/types.ts";
-import { toolResultContent } from "../kernel/loop/tool-result.ts";
-import { argumentParser } from "./support/arguments.ts";
-import { OutputAccumulator } from "./support/output-accumulator.ts";
+import { type Static, Type } from "typebox";
+import { waitForChildProcess } from "./support/shell.ts";
 import {
   getShellConfig,
   getShellEnv,
   killProcessTree,
-  sanitizeBinaryOutput,
-  waitForChildProcess,
+  type ShellConfig,
+  trackDetachedChildPid,
+  untrackDetachedChildPid,
 } from "./support/shell.ts";
+import { OutputAccumulator } from "./support/output-accumulator.ts";
 import {
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
@@ -30,37 +22,45 @@ import {
 } from "./support/truncate.ts";
 
 const MAX_TIMEOUT_MS = 2_147_483_647;
-
+/** Output limit of `structuredContent.output`, which programmatic callers such as codemode scripts receive. */
+const STRUCTURED_OUTPUT_MAX_BYTES = 1024 * 1024;
 const MAX_TIMEOUT_SECONDS = MAX_TIMEOUT_MS / 1000;
 
 function resolveTimeoutMs(timeout: number | undefined): number | undefined {
   if (timeout === undefined) return undefined;
-
   if (!Number.isFinite(timeout) || timeout <= 0) {
     throw new Error("Invalid timeout: must be a finite number of seconds");
   }
 
   const timeoutMs = timeout * 1000;
-
   if (timeoutMs > MAX_TIMEOUT_MS) {
     throw new Error(`Invalid timeout: maximum is ${MAX_TIMEOUT_SECONDS} seconds`);
   }
-
   return timeoutMs;
 }
 
-const bashParameters = Type.Object({
-  command: Type.String({ description: "Bash command to execute" }),
+const bashSchema = Type.Object({
+  command: Type.String({ description: "Shell command to execute" }),
   timeout: Type.Optional(
     Type.Number({ description: "Timeout in seconds (optional, no default timeout)" }),
   ),
-  background: Type.Optional(
-    Type.Boolean({
-      description:
-        "Start the command and return a job id with its first output instead of waiting for it to exit. Use for servers, watchers, and other long-lived commands. The command keeps running across turns; its exit is reported before your next response while you are still working, or with the user's next message. Do not use it to speed up ordinary commands.",
-    }),
-  ),
 });
+
+export type BashToolInput = Static<typeof bashSchema>;
+
+/**
+ * Result for programmatic callers such as codemode scripts. A non-zero exit code is an error result for the model, but scripts still resolve to this value.
+ * `output` is not limited like the model-facing output: callers decide how much of it reaches the model.
+ */
+const bashOutputSchema = Type.Object({
+  output: Type.String({ description: "Combined stdout and stderr, possibly truncated" }),
+  truncated: Type.Boolean(),
+  full_output_path: Type.Optional(Type.String({ description: "Full output, when truncated" })),
+  exit_code: Type.Number(),
+  wall_time_seconds: Type.Number(),
+});
+
+export type BashToolOutput = Static<typeof bashOutputSchema>;
 
 export interface BashToolDetails {
   truncation?: TruncationResult;
@@ -77,13 +77,14 @@ export interface BashOperations {
    * @param command The command to execute
    * @param cwd Working directory
    * @param options Execution options
-   * @returns Promise resolving to exit code (null if killed)
+   * @returns Promise resolving to the exit code. Report signal terminations as 128 + signal number;
+   * a null exit code is treated as a failed command.
    */
   exec: (
     command: string,
     cwd: string,
     options: {
-      onData: (data: Buffer) => Promise<void>;
+      onData: (data: Buffer) => void;
       signal?: AbortSignal;
       timeout?: number;
       env?: NodeJS.ProcessEnv;
@@ -91,31 +92,27 @@ export interface BashOperations {
   ) => Promise<{ exitCode: number | null }>;
 }
 
-/**
- * Create bash operations using the built-in local shell execution backend.
- *
- * This is useful for callers that intercept bash execution and still want the
- * standard local shell behavior while wrapping or rewriting commands.
- */
-export function createLocalBashOperations(options?: { shellPath?: string }): BashOperations {
+/** Shared process execution used by the built-in shell tools. */
+export function createLocalShellOperations(
+  shellName: string,
+  resolveShellConfig: () => ShellConfig,
+): BashOperations {
   return {
     exec: async (command, cwd, { onData, signal, timeout, env }) => {
       const timeoutMs = resolveTimeoutMs(timeout);
-
       if (signal?.aborted) {
         throw new Error("aborted");
       }
-
-      const shellConfig = getShellConfig(options?.shellPath);
-
+      const shellConfig = resolveShellConfig();
       try {
-        await fsAccess(cwd, constants.F_OK);
+        await access(cwd);
       } catch {
-        throw new Error(`Working directory does not exist: ${cwd}\nCannot execute bash commands.`);
+        throw new Error(
+          `Working directory does not exist: ${cwd}\nCannot execute ${shellName} commands.`,
+        );
       }
 
       const commandFromStdin = shellConfig.commandTransport === "stdin";
-
       const child = spawn(
         shellConfig.shell,
         commandFromStdin ? shellConfig.args : [...shellConfig.args, command],
@@ -127,47 +124,15 @@ export function createLocalBashOperations(options?: { shellPath?: string }): Bas
           windowsHide: true,
         },
       );
-
       if (commandFromStdin) {
         child.stdin?.on("error", () => {});
         child.stdin?.end(command);
       }
-
+      if (child.pid) trackDetachedChildPid(child.pid);
       let timedOut = false;
       let timeoutHandle: NodeJS.Timeout | undefined;
-      let pendingOutputChunks = 0;
-      let outputDelivery = Promise.resolve();
-      let outputFailure: Error | undefined;
-
       const onAbort = () => {
         if (child.pid) killProcessTree(child.pid);
-      };
-
-      const handleOutput = (data: Buffer) => {
-        if (outputFailure) return;
-        child.stdout?.pause();
-        child.stderr?.pause();
-        pendingOutputChunks++;
-        outputDelivery = outputDelivery.then(async () => {
-          if (!outputFailure) {
-            try {
-              await onData(data);
-            } catch (error) {
-              outputFailure = error instanceof Error ? error : new Error(String(error));
-
-              if (child.pid) killProcessTree(child.pid);
-              child.stdout?.resume();
-              child.stderr?.resume();
-            }
-          }
-
-          pendingOutputChunks--;
-
-          if (pendingOutputChunks === 0 && !outputFailure) {
-            child.stdout?.resume();
-            child.stderr?.resume();
-          }
-        });
       };
 
       try {
@@ -175,47 +140,43 @@ export function createLocalBashOperations(options?: { shellPath?: string }): Bas
         if (timeoutMs !== undefined) {
           timeoutHandle = setTimeout(() => {
             timedOut = true;
-
             if (child.pid) killProcessTree(child.pid);
           }, timeoutMs);
         }
-
-        child.stdout?.on("data", handleOutput);
-        child.stderr?.on("data", handleOutput);
-
+        // Stream stdout and stderr.
+        child.stdout?.on("data", onData);
+        child.stderr?.on("data", onData);
         // Handle abort signal by killing the entire process tree.
         if (signal) {
           if (signal.aborted) onAbort();
           else signal.addEventListener("abort", onAbort, { once: true });
         }
-
         // Handle shell spawn errors and wait for the process to terminate without hanging
         // on inherited stdio handles held by detached descendants.
         const exitCode = await waitForChildProcess(child);
-
-        while (pendingOutputChunks > 0) await outputDelivery;
-
-        if (outputFailure) throw outputFailure;
-
         if (signal?.aborted) {
           throw new Error("aborted");
         }
-
         if (timedOut) {
           throw new Error(`timeout:${timeout}`);
         }
-
-        return { exitCode };
+        // A signal-killed shell has no exit code. Use the standard shell convention so
+        // callers do not mistake the termination for a successful command.
+        const signalCode = child.signalCode;
+        return {
+          exitCode: exitCode ?? (signalCode ? 128 + (constants.signals[signalCode] ?? 0) : 1),
+        };
       } finally {
-        child.stdout?.removeListener("data", handleOutput);
-        child.stderr?.removeListener("data", handleOutput);
-
+        if (child.pid) untrackDetachedChildPid(child.pid);
         if (timeoutHandle) clearTimeout(timeoutHandle);
-
         if (signal) signal.removeEventListener("abort", onAbort);
       }
     },
   };
+}
+
+export function createLocalBashOperations(options?: { shellPath?: string }): BashOperations {
+  return createLocalShellOperations("bash", () => getShellConfig(options?.shellPath));
 }
 
 export interface BashSpawnContext {
@@ -231,8 +192,7 @@ function resolveSpawnContext(
   cwd: string,
   spawnHook: BashSpawnHook | undefined,
 ): BashSpawnContext {
-  const baseContext: BashSpawnContext = { command, cwd, env: { ...getShellEnv() } };
-
+  const baseContext: BashSpawnContext = { command, cwd, env: getShellEnv() };
   return spawnHook ? spawnHook(baseContext) : baseContext;
 }
 
@@ -249,27 +209,22 @@ export interface BashToolOptions {
 
 const BASH_UPDATE_THROTTLE_MS = 100;
 
-/** Bash tool: run a command in the working directory with streamed, truncated output. */
 export function createBashTool(
   cwd: string,
   options?: BashToolOptions,
-): AgentTool<typeof bashParameters, BashToolDetails | undefined> {
+): AgentTool<typeof bashSchema, BashToolDetails | undefined> {
   const ops = options?.operations ?? createLocalBashOperations({ shellPath: options?.shellPath });
   const commandPrefix = options?.commandPrefix;
   const spawnHook = options?.spawnHook;
-
   return {
     name: "bash",
+    label: "bash",
     description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
-    parameters: bashParameters,
-    prepareArguments: argumentParser(bashParameters),
+    parameters: bashSchema,
     present: ({ command }) => ({ kind: "shell", command }),
-    async execute(
-      _toolCallId: string,
-      { command, timeout },
-      signal?: AbortSignal,
-      onUpdate?: AgentToolUpdateCallback<BashToolDetails | undefined>,
-    ): Promise<AgentToolResult<BashToolDetails | undefined>> {
+    outputSchema: bashOutputSchema,
+    constrainedSampling: { type: "json_schema", strict: "prefer" },
+    async execute(_toolCallId, { command, timeout }, signal, onUpdate) {
       const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
       const spawnContext = resolveSpawnContext(resolvedCommand, cwd, spawnHook);
       const output = new OutputAccumulator({ tempFilePrefix: "nyte-bash" });
@@ -282,10 +237,9 @@ export function createBashTool(
         if (!onUpdate || !updateDirty) return;
         updateDirty = false;
         lastUpdateAt = Date.now();
-        const snapshot = output.snapshot();
+        const snapshot = output.snapshot({ persistIfTruncated: true });
         onUpdate({
-          content: toolResultContent(sanitizeBinaryOutput(snapshot.content) || ""),
-          title: command,
+          content: [{ type: "text", text: snapshot.content || "" }],
           details: {
             truncation: snapshot.truncation.truncated ? snapshot.truncation : undefined,
             fullOutputPath: snapshot.fullOutputPath,
@@ -304,38 +258,32 @@ export function createBashTool(
         if (!onUpdate) return;
         updateDirty = true;
         const delay = BASH_UPDATE_THROTTLE_MS - (Date.now() - lastUpdateAt);
-
         if (delay <= 0) {
           clearUpdateTimer();
           emitOutputUpdate();
-
           return;
         }
-
         updateTimer ??= setTimeout(() => {
           updateTimer = undefined;
           emitOutputUpdate();
         }, delay);
       };
 
-      if (onUpdate) {
-        onUpdate({ content: [], details: undefined, title: command });
-      }
+      if (onUpdate) onUpdate({ content: [], details: undefined });
 
-      const handleData = async (data: Buffer) => {
+      const handleData = (data: Buffer) => {
         if (!acceptingOutput) return;
-        await output.append(data);
+        output.append(data);
         scheduleOutputUpdate();
       };
 
       const finishOutput = async () => {
         acceptingOutput = false;
-        await output.finish();
+        output.finish();
         clearUpdateTimer();
         emitOutputUpdate();
-        const snapshot = output.snapshot();
+        const snapshot = output.snapshot({ persistIfTruncated: true });
         await output.closeTempFile();
-
         return snapshot;
       };
 
@@ -344,14 +292,12 @@ export function createBashTool(
         emptyText = "(no output)",
       ) => {
         const truncation = snapshot.truncation;
-        let text = sanitizeBinaryOutput(snapshot.content) || emptyText;
+        let text = snapshot.content || emptyText;
         let details: BashToolDetails | undefined;
-
         if (truncation.truncated) {
           details = { truncation, fullOutputPath: snapshot.fullOutputPath };
           const startLine = truncation.totalLines - truncation.outputLines + 1;
           const endLine = truncation.totalLines;
-
           if (truncation.lastLinePartial) {
             const lastLineSize = formatSize(output.getLastLineBytes());
             text += `\n\n[Showing last ${formatSize(truncation.outputBytes)} of line ${endLine} (line is ${lastLineSize}). Full output: ${snapshot.fullOutputPath}]`;
@@ -361,61 +307,65 @@ export function createBashTool(
             text += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(DEFAULT_MAX_BYTES)} limit). Full output: ${snapshot.fullOutputPath}]`;
           }
         }
-
         return { text, details };
       };
 
       const appendStatus = (text: string, status: string) =>
         `${text ? `${text}\n\n` : ""}${status}`;
+      const startedAt = performance.now();
 
       try {
         let exitCode: number | null;
-
         try {
-          const outputAbortController = new AbortController();
-
-          const operationSignal = signal
-            ? AbortSignal.any([signal, outputAbortController.signal])
-            : outputAbortController.signal;
-
-          const execution = ops.exec(spawnContext.command, spawnContext.cwd, {
+          const result = await ops.exec(spawnContext.command, spawnContext.cwd, {
             onData: handleData,
-            signal: operationSignal,
+            signal,
             timeout,
             env: spawnContext.env,
           });
-
-          const tempFileFailure = output.waitForTempFileError().then((error) => {
-            outputAbortController.abort();
-            throw error;
-          });
-
-          const result = await Promise.race([execution, tempFileFailure]);
           exitCode = result.exitCode;
         } catch (err) {
           const snapshot = await finishOutput();
           const { text } = formatOutput(snapshot, "");
-
           if (err instanceof Error && err.message === "aborted") {
             throw new Error(appendStatus(text, "Command aborted"));
           }
-
           if (err instanceof Error && err.message.startsWith("timeout:")) {
             const timeoutSecs = err.message.split(":")[1];
             throw new Error(appendStatus(text, `Command timed out after ${timeoutSecs} seconds`));
           }
-
           throw err;
         }
 
         const snapshot = await finishOutput();
         const { text: outputText, details } = formatOutput(snapshot);
-
-        if (exitCode !== 0 && exitCode !== null) {
-          throw new Error(appendStatus(outputText, `Command exited with code ${exitCode}`));
+        if (exitCode === null) {
+          throw new Error(appendStatus(outputText, "Command terminated without an exit code"));
         }
-
-        return { content: toolResultContent(outputText), details, title: command };
+        const wallTimeSeconds = Math.round((performance.now() - startedAt) / 100) / 10;
+        const fullOutput = await output.readFullOutput(STRUCTURED_OUTPUT_MAX_BYTES);
+        const structuredContent: BashToolOutput = {
+          output: fullOutput.content,
+          truncated: fullOutput.truncated,
+          ...(fullOutput.truncated && snapshot.fullOutputPath
+            ? { full_output_path: snapshot.fullOutputPath }
+            : {}),
+          exit_code: exitCode,
+          wall_time_seconds: wallTimeSeconds,
+        };
+        if (exitCode !== 0) {
+          throw new ToolError({
+            content: [
+              {
+                type: "text",
+                text: appendStatus(outputText, `Command exited with code ${exitCode}`),
+              },
+            ],
+            details,
+            structuredContent,
+          });
+        }
+        return { content: [{ type: "text", text: outputText }], details, structuredContent };
       } finally {
         clearUpdateTimer();
       }

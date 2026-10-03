@@ -51,6 +51,7 @@ for (const target of targets) {
     entrypoints: [
       join(packages, "tui/src/binary.ts"),
       join(packages, "core/src/kernel/store-worker.ts"),
+      join(packages, "core/src/tools/support/image-resize-worker.ts"),
       join(packages, "tui/src/codemode-worker.ts"),
     ],
     root: packages,
