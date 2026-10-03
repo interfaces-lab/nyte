@@ -29,7 +29,7 @@ import { LayoutGroup, motion, MotionConfig } from "motion/react";
 import type { Transition } from "motion/react";
 // oxlint-disable-next-line no-restricted-imports -- neighbouring sessions preload as the active session changes
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { ReactElement, ReactNode, RefObject } from "react";
+import type { ReactElement, ReactNode } from "react";
 import type { SessionMark } from "@nyte-ai/client";
 import type { SessionId, SessionInfo, WorkspaceInfo } from "@nyte-ai/protocol";
 import type { ChatDraft } from "../layout/session-view-state.ts";
@@ -39,7 +39,7 @@ import { Input } from "@nyte-ai/ui/input";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@nyte-ai/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { floatingSurfaceStyles } from "@nyte-ai/ui/floating-surface.stylex";
-import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
+import { MenuItem, MenuSeparator } from "@nyte-ai/ui/menu";
 import { formatTimeAgo } from "../components/ui.tsx";
 import { StatusGlyph } from "./status-glyph.tsx";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
@@ -73,8 +73,9 @@ import { sessionActivityMark } from "../session-activity.ts";
 import { useOptimisticSessionIds } from "../use-outbox.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
+import { AccountFooterMenu } from "./account-footer.tsx";
 import { RemoteAccessGlyph } from "./remote-access-glyph.tsx";
-import { signOutDescription, useGitHubAccount, useGitHubState } from "./github-account.ts";
+import { useGitHubState } from "./github-account.ts";
 import { folderPicker } from "./open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
 import { WorkspaceControls } from "./sidebar-filter.tsx";
@@ -92,7 +93,7 @@ import { shellActions, useShellState } from "./shell-state.ts";
 import { activateWorkspace } from "./use-show-session.ts";
 import { clientActionAriaShortcut, clientActionKeys, clientActions } from "../client-actions.ts";
 import { cloudSessions, localSessions } from "../bridge.ts";
-import type { GitHubBridge, GitHubRepository } from "../bridge.ts";
+import type { GitHubRepository } from "../bridge.ts";
 
 /** Which list a sidebar panel shows: one local store, or the connected server's sessions. */
 type SessionPlace =
@@ -100,8 +101,6 @@ type SessionPlace =
   | { readonly kind: "cloud" };
 
 const COLLAPSED_SESSION_LIMIT = 5;
-
-const REPORT_ISSUE_URL = "https://github.com/interfaces-lab/nyte/issues/new";
 
 const INSTANT: Transition = { duration: 0 };
 
@@ -984,7 +983,12 @@ export function Sidebar(): ReactElement {
       {github !== undefined && (
         <div {...props(styles.footer)}>
           <div ref={footerRowRef} {...props(styles.footerRow)}>
-            <AccountFooterMenu github={github} anchor={footerRowRef} />
+            <AccountFooterMenu
+              github={github}
+              connect={nyte.host.connect}
+              anchor={footerRowRef}
+              onOpenProfile={() => openSettings("profile")}
+            />
             <RemoteAccessGlyph connect={nyte.host.connect} />
           </div>
         </div>
@@ -1029,93 +1033,6 @@ export function Sidebar(): ReactElement {
         />
       )}
     </aside>
-  );
-}
-
-/**
- * The account row is the stable trigger for account-level actions. GitHub is
- * optional, so unresolved and projectless states keep the generic label
- * instead of making the footer disappear while a workspace changes.
- */
-function AccountFooterMenu({
-  github,
-  anchor,
-}: {
-  github: GitHubBridge;
-  anchor: RefObject<HTMLDivElement | null>;
-}): ReactElement {
-  const account = useGitHubAccount(github);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
-  const state = account.query.data;
-  const avatarUrl = state?.kind === "ready" ? state.account.avatarUrl : undefined;
-  const label = state?.kind === "ready" ? state.account.login : "Accounts";
-
-  return (
-    <>
-      <Menu highlightItemOnHover={false}>
-        <MenuTrigger
-          render={
-            <Row
-              ref={triggerRef}
-              variant="nav"
-              aria-busy={account.busy || undefined}
-              xstyle={[styles.navRow, styles.accountButton]}
-            >
-              <Row.Leading xstyle={styles.avatarSlot}>
-                {avatarUrl === undefined ? (
-                  <Icon name="user" size={14} />
-                ) : (
-                  <img alt="" src={avatarUrl} {...props(styles.avatar)} />
-                )}
-              </Row.Leading>
-              <Row.Label>{label}</Row.Label>
-            </Row>
-          }
-        />
-        <MenuContent side="top" align="start" anchor={anchor} sideOffset={4} matchAnchorWidth>
-          <MenuItem
-            icon="bubble-question"
-            xstyle={styles.accountMenuItem}
-            onClick={() => void nyte.host.openExternal({ url: REPORT_ISSUE_URL })}
-          >
-            Report Issue
-          </MenuItem>
-          {state?.kind === "ready" && (
-            <>
-              <MenuSeparator inset />
-              <MenuItem
-                icon="arrow-wall-left"
-                variant="danger"
-                onClick={() => setConfirmingSignOut(true)}
-              >
-                Sign Out of GitHub CLI…
-              </MenuItem>
-            </>
-          )}
-        </MenuContent>
-      </Menu>
-      {state?.kind === "ready" && (
-        <ConfirmDialog
-          open={confirmingSignOut}
-          pending={account.busy}
-          error={
-            account.auth.isError
-              ? "Sign-out failed. Run gh auth status in a terminal, then try again."
-              : undefined
-          }
-          finalFocus={triggerRef}
-          title="Sign Out of GitHub CLI"
-          description={signOutDescription(state.account.login)}
-          confirmLabel="Sign Out of GitHub CLI"
-          pendingLabel="Signing out…"
-          onOpenChange={setConfirmingSignOut}
-          onConfirm={() =>
-            account.auth.mutate("signOut", { onSuccess: () => setConfirmingSignOut(false) })
-          }
-        />
-      )}
-    </>
   );
 }
 
