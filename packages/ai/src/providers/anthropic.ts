@@ -1,7 +1,8 @@
 import { anthropicMessagesApi } from "../api/anthropic-messages.lazy.ts";
 import { lazyOAuth } from "../auth/helpers.ts";
 import { loadAnthropicOAuth } from "../auth/oauth/load.ts";
-import type { ApiKeyAuth } from "../auth/types.ts";
+import type { ApiKeyAuth, ProviderAuth } from "../auth/types.ts";
+import { verifyWithRequest } from "../auth/verify.ts";
 import {
   ANTHROPIC_API_KEY_ENV,
   ANTHROPIC_AUTH_TOKEN_ENV,
@@ -52,11 +53,30 @@ function anthropicApiKeyAuth(): ApiKeyAuth {
   };
 }
 
+const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
+
+const verifyAnthropicAuth: NonNullable<ProviderAuth["verify"]> = async ({ auth, signal }) => {
+  if (auth.apiKey?.includes("sk-ant-oat")) {
+    return { ok: true, verified: false, detail: "OAuth credential" };
+  }
+
+  return verifyWithRequest({
+    provider: "Anthropic",
+    url: `${auth.baseUrl ?? ANTHROPIC_BASE_URL}/v1/models`,
+    headers: {
+      ...auth.headers,
+      "anthropic-version": "2023-06-01",
+      ...(auth.apiKey ? { "x-api-key": auth.apiKey } : {}),
+    },
+    signal,
+  });
+};
+
 export function anthropicProvider(): Provider<"anthropic-messages"> {
   return createProvider<"anthropic-messages">({
     id: "anthropic",
     name: "Anthropic",
-    baseUrl: "https://api.anthropic.com",
+    baseUrl: ANTHROPIC_BASE_URL,
     promptCache: {
       minimumRetentionMs: { short: 5 * 60_000, long: 60 * 60_000 },
     },
@@ -67,6 +87,7 @@ export function anthropicProvider(): Provider<"anthropic-messages"> {
         isSubscription: true,
         load: loadAnthropicOAuth,
       }),
+      verify: verifyAnthropicAuth,
     },
     api: { "anthropic-messages": anthropicMessagesApi() },
   });

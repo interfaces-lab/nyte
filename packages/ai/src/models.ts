@@ -16,6 +16,7 @@ import type {
   AuthOperationOptions,
   AuthResult,
   AuthType,
+  AuthVerification,
   Credential,
   CredentialStore,
   ProviderAuth,
@@ -210,6 +211,13 @@ export interface Models {
 
   /** Check whether a provider has complete auth configuration without refreshing OAuth. */
   checkAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthCheck | undefined>;
+
+  /**
+   * Resolve provider auth and prove it with the provider's `auth.verify` request.
+   * Providers without one report a present credential as unverified. Rejects
+   * only on abort or the auth resolution failures `getAuth()` rejects with.
+   */
+  verifyAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthVerification>;
 
   /**
    * The account state a provider last reported on one of this collection's
@@ -691,6 +699,52 @@ class ModelsImpl implements MutableModels {
     })();
 
     return raceWithAbortSignal(check, signal);
+  }
+
+  verifyAuth(providerId: string, options?: AuthOperationOptions): Promise<AuthVerification> {
+    const signal = operationSignal(options?.signal);
+
+    const verification = (async (): Promise<AuthVerification> => {
+      signal.throwIfAborted();
+      const provider = this.providers.get(providerId);
+
+      if (!provider) {
+        return { ok: false, reason: "unconfigured", message: `Unknown provider: ${providerId}` };
+      }
+
+      const resolution = await resolveProviderAuth(provider, this.credentials, this.authContext, {
+        signal,
+      });
+
+      if (!resolution) {
+        return {
+          ok: false,
+          reason: "unconfigured",
+          message: `${provider.name} has no credential configured`,
+        };
+      }
+
+      const source = resolution.source ?? provider.name;
+      const verify = provider.auth.verify;
+
+      if (!verify) return { ok: true, source, verified: false };
+
+      try {
+        const result = await verify({ auth: resolution.auth, ctx: this.authContext, signal });
+
+        return result.ok ? { ...result, source, verified: result.verified ?? true } : result;
+      } catch {
+        signal.throwIfAborted();
+
+        return {
+          ok: false,
+          reason: "unreachable",
+          message: `${provider.name} could not be reached to verify the credential`,
+        };
+      }
+    })();
+
+    return raceWithAbortSignal(verification, signal);
   }
 
   getAvailable(

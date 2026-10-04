@@ -125,3 +125,7 @@ export { opencodeProvider } from "./providers/opencode.ts";
 export { openaiProvider } from "./providers/openai.ts";
 
 export { openaiCodexProvider } from "./providers/openai-codex.ts";
+
+export { openrouterProvider } from "./providers/openrouter.ts";
+
+export { vercelAiGatewayProvider } from "./providers/vercel-ai-gateway.ts";

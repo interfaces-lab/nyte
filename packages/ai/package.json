@@ -15,6 +15,8 @@
     "./models": "./src/models.ts",
     "./providers/github-copilot": "./src/providers/github-copilot.ts",
     "./providers/openai-codex": "./src/providers/openai-codex.ts",
+    "./providers/openrouter": "./src/providers/openrouter.ts",
+    "./providers/vercel-ai-gateway": "./src/providers/vercel-ai-gateway.ts",
     "./session-resources": "./src/session-resources.ts",
     "./types": "./src/types.ts",
     "./utils/event-stream": "./src/utils/event-stream.ts",

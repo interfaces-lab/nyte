@@ -266,4 +266,34 @@ export interface OAuthAuth {
 export interface ProviderAuth {
   apiKey?: ApiKeyAuth;
   oauth?: OAuthAuth;
+
+  /**
+   * Prove resolved auth against the provider with one cheap, non-generating
+   * request. Network failures may throw; `Models.verifyAuth()` reports them as
+   * `unreachable`. Results must not carry secret material.
+   */
+  verify?(input: {
+    auth: ModelAuth;
+    ctx: AuthContext;
+    signal: AbortSignal;
+  }): Promise<ProviderAuthVerification>;
 }
+
+export type AuthVerification =
+  | {
+      readonly ok: true;
+      readonly source: string;
+      /** False when a credential is present but no provider request proved it. */
+      readonly verified: boolean;
+      readonly detail?: string;
+    }
+  | {
+      readonly ok: false;
+      readonly reason: "unconfigured" | "rejected" | "unreachable";
+      readonly message: string;
+    };
+
+/** A provider's verdict; `Models.verifyAuth()` adds the credential source. */
+export type ProviderAuthVerification =
+  | { readonly ok: true; readonly verified?: false; readonly detail?: string }
+  | Extract<AuthVerification, { ok: false }>;

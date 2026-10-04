@@ -16,6 +16,8 @@ import { openaiCodexProvider } from "./openai-codex.ts";
 import { openaiProvider } from "./openai.ts";
 import { opencodeGoProvider } from "./opencode-go.ts";
 import { opencodeProvider } from "./opencode.ts";
+import { openrouterProvider } from "./openrouter.ts";
+import { vercelAiGatewayProvider } from "./vercel-ai-gateway.ts";
 
 /** In the order a client falls back through them when nothing else decides. */
 const NYTE_PROVIDERS: readonly (() => Provider)[] = [
@@ -25,6 +27,8 @@ const NYTE_PROVIDERS: readonly (() => Provider)[] = [
   opencodeProvider,
   opencodeGoProvider,
   githubCopilotProvider,
+  vercelAiGatewayProvider,
+  openrouterProvider,
 ];
 
 /**
