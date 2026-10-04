@@ -1,11 +1,10 @@
 /**
- * Anthropic OAuth flow (Claude Pro/Max): PKCE against claude.ai, a localhost
- * callback server on port 53692 raced against a manual paste prompt, and
- * token refresh against platform.claude.com. Node-only (node:http); the
- * callback server is for CLI use, not browsers.
+ * Anthropic OAuth flow (Claude Pro/Max): PKCE against claude.ai with browser
+ * callback or copy-code login, and token refresh against platform.claude.com.
+ * Node-only (node:http); the callback server is for CLI use, not browsers.
  *
- * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/auth/oauth/anthropic.ts
- * Synced with pi 7ebf9087e.
+ * Based on https://github.com/earendil-works/pi/blob/83692682f095528f8b71652ddacff7075e36e893/packages/ai/src/auth/oauth/anthropic.ts
+ * Login methods aligned with pi 83692682f; Nyte owns callback handling and token validation.
  */
 
 import { createServer, type Server } from "node:http";
@@ -44,6 +43,8 @@ const CALLBACK_PORT = 53692;
 const CALLBACK_PATH = "/callback";
 
 const REDIRECT_URI = `http://localhost:${CALLBACK_PORT}${CALLBACK_PATH}`;
+
+const COPY_CODE_REDIRECT_URI = "https://platform.claude.com/oauth/code/callback";
 
 const SCOPES =
   "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
@@ -249,30 +250,36 @@ async function exchangeAuthorizationCode(
   };
 }
 
-async function loginAnthropic(interaction: ProviderAuthInteraction): Promise<OAuthCredential> {
+async function loginAnthropic(
+  interaction: ProviderAuthInteraction,
+  method: "browser" | "copy_code",
+): Promise<OAuthCredential> {
   const { verifier, challenge } = await generatePKCE();
-  const server = await startCallbackServer(verifier);
+  const redirectUri = method === "copy_code" ? COPY_CODE_REDIRECT_URI : REDIRECT_URI;
+  const server =
+    method === "browser" ? await startCallbackServer(verifier).catch(() => undefined) : undefined;
   const manualAbort = new AbortController();
 
   const onAbort = () => {
-    server.failWait(new Error("Login cancelled"));
-    server.server.close();
+    server?.failWait(new Error("Login cancelled"));
+    manualAbort.abort();
+    server?.server.close();
   };
 
   interaction.signal.addEventListener("abort", onAbort, { once: true });
 
   if (interaction.signal.aborted) onAbort();
-  let code: string | undefined;
-  let state: string | undefined;
   let manualInput: string | undefined;
   let manualError: Error | undefined;
 
   try {
+    if (interaction.signal.aborted) throw new Error("Login cancelled");
+
     const authParams = new URLSearchParams({
       code: "true",
       client_id: CLIENT_ID,
       response_type: "code",
-      redirect_uri: REDIRECT_URI,
+      redirect_uri: redirectUri,
       scope: SCOPES,
       code_challenge: challenge,
       code_challenge_method: "S256",
@@ -283,68 +290,56 @@ async function loginAnthropic(interaction: ProviderAuthInteraction): Promise<OAu
       type: "auth_url",
       url: `${AUTHORIZE_URL}?${authParams.toString()}`,
       instructions:
-        "Complete login in your browser. If the browser is on another machine, paste the final redirect URL here.",
+        method === "copy_code"
+          ? "Complete login in your browser, then copy the code Anthropic shows and paste it here."
+          : "Complete login in your browser. If the browser is on another machine, paste the final redirect URL here.",
     });
 
     const manualPromise = interaction
       .prompt({
         type: "manual_code",
         message:
-          "Complete login in your browser, or paste the authorization code / redirect URL here:",
-        placeholder: REDIRECT_URI,
+          method === "copy_code"
+            ? "Paste the code Anthropic shows after you sign in:"
+            : "Complete login in your browser, or paste the authorization code / redirect URL here:",
+        placeholder: method === "copy_code" ? "code#state" : REDIRECT_URI,
         signal: manualAbort.signal,
       })
       .then((input) => {
         manualInput = input;
-        server.cancelWait();
+        server?.cancelWait();
       })
       .catch((error) => {
         manualError = error instanceof Error ? error : new Error(String(error));
-        server.cancelWait();
+        server?.cancelWait();
       });
 
-    const result = await server.waitForCode();
+    const result = await server?.waitForCode();
 
+    if (!result) await manualPromise;
+    if (interaction.signal.aborted) throw new Error("Login cancelled");
     if (manualError) throw manualError;
 
-    if (result?.code) {
-      code = result.code;
-      state = result.state;
-    } else if (manualInput) {
-      const parsed = parseAuthorizationInput(manualInput);
+    const parsed = result ?? parseAuthorizationInput(manualInput ?? "");
+    if (parsed.state && parsed.state !== verifier) throw new Error("OAuth state mismatch");
+    if (!parsed.code) throw new Error("Missing authorization code");
 
-      if (parsed.state && parsed.state !== verifier) throw new Error("OAuth state mismatch");
-      code = parsed.code;
-      state = parsed.state ?? verifier;
-    }
-
-    if (!code) {
-      await manualPromise;
-
-      if (manualError) throw manualError;
-
-      if (manualInput) {
-        const parsed = parseAuthorizationInput(manualInput);
-
-        if (parsed.state && parsed.state !== verifier) throw new Error("OAuth state mismatch");
-        code = parsed.code;
-        state = parsed.state ?? verifier;
-      }
-    }
-
-    if (!code) throw new Error("Missing authorization code");
-
-    if (!state) throw new Error("Missing OAuth state");
     interaction.notify({
       type: "progress",
       message: "Exchanging authorization code for tokens...",
     });
 
-    return exchangeAuthorizationCode(code, state, verifier, REDIRECT_URI, interaction.signal);
+    return exchangeAuthorizationCode(
+      parsed.code,
+      parsed.state ?? verifier,
+      verifier,
+      redirectUri,
+      interaction.signal,
+    );
   } finally {
     interaction.signal.removeEventListener("abort", onAbort);
     manualAbort.abort();
-    server.server.close();
+    server?.server.close();
   }
 }
 
@@ -400,7 +395,26 @@ async function refreshAnthropicToken(
 export const anthropicOAuth: OAuthAuth = {
   name: "Anthropic (Claude Pro/Max)",
   isSubscription: true,
-  login: loginAnthropic,
+  async login(interaction) {
+    if (interaction.signal.aborted) throw new Error("Login cancelled");
+
+    const method = await interaction.prompt({
+      type: "select",
+      message: "Select Anthropic login method:",
+      options: [
+        { id: "browser", label: "Browser login (default)" },
+        { id: "copy_code", label: "Copy code login (headless)" },
+      ],
+      signal: interaction.signal,
+    });
+
+    if (interaction.signal.aborted) throw new Error("Login cancelled");
+    if (method !== "browser" && method !== "copy_code") {
+      throw new Error(`Unknown Anthropic login method: ${method}`);
+    }
+
+    return loginAnthropic(interaction, method);
+  },
   refresh: (credential, signal) => refreshAnthropicToken(credential.refresh, signal),
 
   async toAuth(credential) {
