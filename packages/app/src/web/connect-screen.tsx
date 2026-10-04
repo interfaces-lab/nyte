@@ -1,41 +1,19 @@
-import { radius } from "@nyte-ai/ui/schema.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
-import { role, shadow, type } from "@nyte-ai/ui/vars.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { errorMessage } from "../errors.ts";
 import { serverConnectionProblem } from "../server-connection.ts";
 import type { Connection } from "./bridge.ts";
 import { parseConnection, saveConnection } from "./connection.ts";
 import { webBridge } from "./install.ts";
+import { WebPage } from "./web-page.tsx";
 
 const styles = create({
-  page: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    height: "100%",
-    padding: 24,
-    backgroundColor: role.bgBase,
-  },
-  card: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-    width: "max-content",
-    maxWidth: "100%",
-    padding: 24,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: role.borderSecondaryTranslucent,
-    borderRadius: radius.card,
-    backgroundColor: role.bgElevated,
-    boxShadow: shadow.shadowMd,
-  },
-  heading: { margin: 0, fontSize: type.fontLg, lineHeight: type.leadingLg, fontWeight: "inherit" },
+  form: { display: "flex", flexDirection: "column", gap: 16 },
   field: {
     display: "flex",
     flexDirection: "column",
@@ -46,7 +24,6 @@ const styles = create({
   },
   error: {
     margin: 0,
-    color: role.contentSecondary,
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
   },
@@ -104,16 +81,24 @@ export function ConnectScreen({
   };
 
   return (
-    <main {...props(styles.page)}>
+    <WebPage
+      title="Connect to a Desktop"
+      busy={pending}
+      footer={
+        onBack !== undefined && (
+          <Button size="sm" disabled={pending} onClick={onBack}>
+            Sign In Instead
+          </Button>
+        )
+      }
+    >
       <form
-        {...props(styles.card)}
-        aria-busy={pending}
+        {...props(styles.form)}
         onSubmit={(event) => {
           event.preventDefault();
           void connect();
         }}
       >
-        <h1 {...props(styles.heading)}>Connect to a Mac</h1>
         <label {...props(styles.field)}>
           Address
           <Input
@@ -148,14 +133,9 @@ export function ConnectScreen({
           </p>
         )}
         <Button type="submit" variant="solid" tone="primary" loading={pending}>
-          Connect to Mac
+          Connect
         </Button>
-        {onBack !== undefined && (
-          <Button type="button" disabled={pending} onClick={onBack}>
-            Back
-          </Button>
-        )}
       </form>
-    </main>
+    </WebPage>
   );
 }

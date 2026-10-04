@@ -13,7 +13,7 @@ async function watchForConnectForm(page: Page): Promise<void> {
   await page.addInitScript(() => {
     new MutationObserver((records) => {
       const mounted = records.some((record) =>
-        [...record.addedNodes].some((node) => node.textContent?.includes("Connect to a Mac")),
+        [...record.addedNodes].some((node) => node.textContent?.includes("Connect to a Desktop")),
       );
 
       if (mounted) document.documentElement.dataset.sawConnectForm = "true";
@@ -23,7 +23,7 @@ async function watchForConnectForm(page: Page): Promise<void> {
 
 async function expectShellWithoutConnectForm(page: Page): Promise<void> {
   await expect(page.getByRole("form", { name: "Message composer" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Connect to a Mac" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Connect to a Desktop" })).toHaveCount(0);
   await expect(page.locator("html")).not.toHaveAttribute("data-saw-connect-form");
 }
 
@@ -63,7 +63,7 @@ test("a reload keeps the paired connection", async ({ page }) => {
 test("a wrong token in the form is rejected and nothing is stored", async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Connect to a Mac" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connect to a Desktop" })).toBeVisible();
 
   await page.getByLabel("Address").fill(E2E_ORIGIN);
   await page.getByLabel("Token").fill(WRONG_TOKEN);
