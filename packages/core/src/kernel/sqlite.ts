@@ -38,8 +38,8 @@ import type {
   Store,
 } from "./store.ts";
 
-/** Oids per DELETE statement; SQLite binds at most 32 766 parameters. */
-const DELETE_CHUNK = 500;
+/** Durable Object SQLite allows 100 parameters, including the session ID. */
+const DELETE_CHUNK = 99;
 
 const DEFAULT_WATCH_POLL_INTERVAL_MS = 25;
 
