@@ -1,7 +1,7 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { create, props } from "@stylexjs/stylex";
 import { useState, type ReactElement } from "react";
-import { customizeStyles } from "@nyte-ai/app/chrome/customize.stylex.ts";
+import { inventoryStyles } from "./inventory.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
@@ -94,12 +94,12 @@ const REMOTE_ENTRIES: readonly Entry[] = [
 
 function EntryRow({ entry }: { readonly entry: Entry }): ReactElement {
   return (
-    <Row xstyle={customizeStyles.row}>
+    <Row xstyle={inventoryStyles.row}>
       <Row.Leading>
         <Icon name={entry.icon} size={14} />
       </Row.Leading>
       <Row.Body>
-        <Row.Label xstyle={customizeStyles.rowTitle}>{entry.title}</Row.Label>
+        <Row.Label xstyle={inventoryStyles.rowTitle}>{entry.title}</Row.Label>
         <Row.Description title={entry.detail}>{entry.detail}</Row.Description>
       </Row.Body>
       <span {...props(styles.badge, entry.on && [intent.success, styles.onBadge])}>
@@ -180,19 +180,19 @@ export function EnvironmentsSurface({
   } as const satisfies Readonly<Record<Tab, readonly Entry[]>>;
 
   return (
-    <div {...props(customizeStyles.surface)}>
+    <div {...props(inventoryStyles.surface)}>
       <Tabs.Root
         variant="pill"
         value={tab}
-        xstyle={customizeStyles.root}
+        xstyle={inventoryStyles.root}
         onValueChange={(value: unknown) => {
           const next = TABS.find(([id]) => id === value);
 
           if (next !== undefined) setTab(next[0]);
         }}
       >
-        <search {...props(customizeStyles.searchRow)}>
-          <InputGroup variant="quiet" xstyle={customizeStyles.searchField}>
+        <search {...props(inventoryStyles.searchRow)}>
+          <InputGroup variant="quiet" xstyle={inventoryStyles.searchField}>
             <Icon name="search" size={13} />
             <Input
               type="search"
@@ -201,7 +201,7 @@ export function EnvironmentsSurface({
               spellCheck={false}
               placeholder="Search machines and connections…"
               value={query}
-              xstyle={customizeStyles.searchInput}
+              xstyle={inventoryStyles.searchInput}
               onValueChange={setQuery}
             />
           </InputGroup>
@@ -223,14 +223,14 @@ export function EnvironmentsSurface({
               key={panel}
               value={panel}
               render={<section />}
-              xstyle={customizeStyles.inventory}
+              xstyle={inventoryStyles.inventory}
             >
-              <div {...props(customizeStyles.inventoryHeading, styles.heading)}>
+              <div {...props(inventoryStyles.inventoryHeading, styles.heading)}>
                 <span {...props(styles.titleGroup)}>
-                  <h1 {...props(customizeStyles.inventoryTitle)}>
+                  <h1 {...props(inventoryStyles.inventoryTitle)}>
                     {panel === "connections" ? "Connected" : "Serving this Mac"}
                   </h1>
-                  <span {...props(customizeStyles.inventoryCount)}>{visible.length}</span>
+                  <span {...props(inventoryStyles.inventoryCount)}>{visible.length}</span>
                 </span>
                 {panel === "connections" && (
                   <Button size="sm" icon="plus">
@@ -239,11 +239,11 @@ export function EnvironmentsSurface({
                 )}
               </div>
               {visible.length === 0 ? (
-                <div {...props(customizeStyles.list)}>
-                  <div {...props(customizeStyles.quiet)}>Nothing matches this search.</div>
+                <div {...props(inventoryStyles.list)}>
+                  <div {...props(inventoryStyles.quiet)}>Nothing matches this search.</div>
                 </div>
               ) : (
-                <div {...props(customizeStyles.list)}>
+                <div {...props(inventoryStyles.list)}>
                   {visible.map((entry) => (
                     <EntryRow key={entry.id} entry={entry} />
                   ))}

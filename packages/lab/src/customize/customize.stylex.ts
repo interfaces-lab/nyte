@@ -1,30 +1,40 @@
 import { avatar, radius } from "@nyte-ai/ui/schema.stylex";
-/** Customize: plugins, MCP servers, and skills, laid out like Settings. */
+import { settings } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { create } from "@stylexjs/stylex";
-import { settings } from "../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 
 export const customizeStyles = create({
   surface: {
     flex: 1,
-    minWidth: 0,
     minHeight: 0,
     overflowY: "auto",
     backgroundColor: role.bgBase,
+    containerType: "inline-size",
   },
-  root: {
+  column: {
     display: "flex",
     flexDirection: "column",
-    containerType: "inline-size",
     gap: settings.sectionGap,
-    width: `min(${settings.contentWidth}, calc(100% - 2 * ${settings.contentGutter}))`,
-    minHeight: "100%",
+    width: "100%",
+    maxWidth: settings.contentWidth,
     marginInline: "auto",
-    paddingBlock: "48px 80px",
+    paddingInline: settings.contentGutter,
+    paddingBlock: "32px 64px",
   },
-  title: { paddingInline: 4 },
+  pageCopy: { display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 0 },
   sectionHeader: { display: "flex", alignItems: "flex-end", gap: 16, paddingInline: 4 },
   sectionCopy: { display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 0 },
+  code: {
+    fontFamily: type.fontMono,
+    fontSize: "0.92em",
+    color: role.contentPrimary,
+  },
+
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+    gap: 8,
+  },
   subheading: {
     paddingInline: 4,
     paddingBlockStart: 8,
@@ -32,25 +42,25 @@ export const customizeStyles = create({
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
   },
-  code: { color: role.contentPrimary, fontFamily: type.fontMono, fontSize: type.fontSm },
-  muted: { color: role.contentSecondary },
-
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-    gap: 8,
-  },
   card: {
+    display: "flex",
+    alignItems: "center",
     gap: 12,
-    flexShrink: 1,
     minWidth: 0,
     padding: 12,
+    borderWidth: 0,
     borderRadius: radius.card,
-    "--_row-fill": {
+    backgroundColor: {
       default: role.bgMutedTranslucent,
       ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
     },
-    color: role.contentPrimary,
+    color: "inherit",
+    font: "inherit",
+    textAlign: "start",
+    cursor: "pointer",
+    outlineStyle: { default: "none", ":focus-visible": "solid" },
+    outlineWidth: 1,
+    outlineColor: role.borderInteractivePrimary,
   },
   tile: {
     display: "grid",
@@ -63,14 +73,22 @@ export const customizeStyles = create({
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
     color: role.contentPrimary,
   },
-  cardCopy: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0 },
-  ellipsis: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  tileLarge: { width: 48, height: 48, borderRadius: radius.card },
+  cardCopy: { display: "flex", flexDirection: "column", minWidth: 0, flex: 1 },
+  cardTitle: {
+    overflow: "hidden",
+    color: role.contentPrimary,
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
   cardMeta: {
     display: "flex",
     alignItems: "center",
     gap: 6,
+    color: role.contentSecondary,
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
+    whiteSpace: "nowrap",
   },
   tag: {
     paddingInline: 6,
@@ -92,13 +110,16 @@ export const customizeStyles = create({
     borderRadius: radius.card,
   },
   emptyCopy: { display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 },
+  emptyTitle: { color: role.contentPrimary },
+  muted: { color: role.contentSecondary },
+  actions: { display: "flex", alignItems: "center", gap: 4, flexShrink: 0 },
 
   folderHeading: {
     display: "flex",
     alignItems: "center",
     gap: 8,
     paddingBlock: 8,
-    paddingInline: `${settings.rowPaddingInline} 12px`,
+    paddingInline: "20px 12px",
     borderBlockEndWidth: 1,
     borderBlockEndStyle: "solid",
     borderBlockEndColor: role.borderSecondaryTranslucent,
@@ -106,10 +127,18 @@ export const customizeStyles = create({
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
   },
-  folderPath: { flex: 1, minWidth: 0, fontFamily: type.fontMono },
+  folderPath: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    fontFamily: type.fontMono,
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
 
   back: { alignSelf: "flex-start", marginInlineStart: -8, marginBlockEnd: -24 },
   detailHeader: { display: "flex", alignItems: "center", gap: 16 },
+  frame: { height: "calc(100dvh - 96px)", minHeight: 640 },
   facts: {
     display: "flex",
     alignItems: "center",
@@ -119,15 +148,23 @@ export const customizeStyles = create({
     backgroundColor: role.bgMutedTranslucent,
   },
   fact: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
-  factGrow: { flex: 1 },
   factLabel: {
     color: role.contentSecondary,
     fontSize: type.fontXs,
     lineHeight: type.leadingXs,
+    letterSpacing: "0.04em",
     textTransform: "uppercase",
   },
+  factValue: {
+    overflow: "hidden",
+    color: role.contentPrimary,
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  factPath: { fontFamily: type.fontMono, fontSize: type.fontSm },
+  factGrow: { flex: 1 },
+
   contribution: {
-    position: "relative",
     display: "flex",
     alignItems: "baseline",
     gap: 12,
@@ -140,14 +177,17 @@ export const customizeStyles = create({
       backgroundColor: role.borderSecondaryTranslucent,
       content: '""',
     },
+    position: "relative",
     ":first-child::before": { display: "none" },
   },
   contributionName: {
     flexShrink: 0,
+    minWidth: 160,
     color: role.contentPrimary,
     fontFamily: type.fontMono,
     fontSize: type.fontSm,
   },
+  contributionDescription: { color: role.contentSecondary, minWidth: 0 },
 
   failure: {
     display: "flex",
@@ -158,7 +198,7 @@ export const customizeStyles = create({
     backgroundColor: role.bgMutedTranslucent,
     boxShadow: `inset 0 0 0 1px ${role.borderInteractivePrimaryTranslucent}`,
   },
-  failureHead: { display: "flex", alignItems: "flex-start", gap: 8 },
+  failureHead: { display: "flex", alignItems: "center", gap: 8, color: role.contentPrimary },
   failureIcon: { color: role.contentInteractivePrimary },
   trace: {
     margin: 0,
@@ -173,17 +213,41 @@ export const customizeStyles = create({
     whiteSpace: "pre-wrap",
     overflowWrap: "anywhere",
   },
-  actions: { display: "flex", alignItems: "center", gap: 4 },
-  note: {
-    paddingInline: 4,
+  listRow: {
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    width: "100%",
+    padding: "12px 16px",
+    borderWidth: 0,
+    backgroundColor: {
+      default: "transparent",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+    },
+    color: "inherit",
+    font: "inherit",
+    textAlign: "start",
+    cursor: "pointer",
+    outlineStyle: { default: "none", ":focus-visible": "solid" },
+    outlineWidth: 1,
+    outlineColor: role.borderInteractivePrimary,
+    outlineOffset: -1,
+    "::before": {
+      position: "absolute",
+      insetInline: 16,
+      insetBlockStart: 0,
+      height: 1,
+      backgroundColor: role.borderSecondaryTranslucent,
+      content: '""',
+    },
+    ":first-child::before": { display: "none" },
+  },
+  listDescription: {
+    overflow: "hidden",
     color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
-  loadingLine: {
-    width: "42%",
-    height: 8,
-    borderRadius: radius.pill,
-    backgroundColor: role.bgMutedTranslucent,
-  },
+  chevron: { color: role.contentTertiary },
 });

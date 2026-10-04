@@ -929,7 +929,10 @@ export function useConfigureSession(sessionId: SessionId) {
   );
 }
 
-export type CustomizeInventory = Pick<PluginCatalog, "plugins" | "settings" | "skills">;
+export type CustomizeInventory = Pick<
+  PluginCatalog,
+  "plugins" | "settings" | "skills" | "commands"
+>;
 
 interface ApplyPluginSettingInput {
   readonly id: string;

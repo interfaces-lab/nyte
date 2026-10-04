@@ -6,7 +6,9 @@ const PAGES = [
   ["/core", "Core"],
   ["/moon", "Moon"],
   ["/environments", "Environments"],
-  ["/pipeline", "Pipeline"],
+  ["/review", "Review"],
+  ["/tabs", "Tabs"],
+  ["/customize", "Customize"],
 ] as const;
 
 type Path = (typeof PAGES)[number][0];
