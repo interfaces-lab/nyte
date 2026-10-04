@@ -14,7 +14,8 @@ import { css, html } from "react-strict-dom";
 import remend from "remend";
 import { EnrichedMarkdownText } from "react-native-enriched-markdown";
 import type { Failure, SessionId, TurnPart, TurnToolClass } from "@nyte-ai/protocol";
-import type { SessionState } from "@nyte-ai/client";
+import { formatToolDuration, toolStatus } from "@nyte-ai/client";
+import type { SessionState, ToolTense } from "@nyte-ai/client";
 import {
   controls,
   conversation,
@@ -200,10 +201,12 @@ function AssistantMessage({
 
 function Disclosure({
   title,
+  note,
   text,
   layout,
 }: {
   title: string;
+  note?: string;
   text: string;
   layout: ConversationLayout;
 }) {
@@ -218,6 +221,7 @@ function Disclosure({
         style={styles.disclosureButton}
       >
         <html.span style={[textStyles.secondary, styles.disclosureTitle]}>{title}</html.span>
+        {note !== undefined ? <html.span style={textStyles.caption}>{note}</html.span> : null}
         <html.div style={styles.chevron(expanded)}>
           <SymbolView name="chevron.right" size={11} weight="semibold" tintColor={theme.muted} />
         </html.div>
@@ -256,28 +260,47 @@ function EditRow({
   );
 }
 
+type Verbs = Readonly<Record<Exclude<ToolTense, "none">, string>>;
+
+const READ: Verbs = { running: "Reading", past: "Read" };
+
+const LIST: Verbs = { running: "Listing", past: "Listed" };
+
+const RUN: Verbs = { running: "Running", past: "Ran" };
+
+const EDIT: Verbs = { running: "Editing", past: "Edited" };
+
+const WRITE: Verbs = { running: "Writing", past: "Wrote" };
+
+/** Verb then subject while a verb is true; else the subject, then the tool's noun when a path needs one. */
+function titled(verbs: Verbs, tense: ToolTense, subject: string, noun?: string): string {
+  if (tense !== "none") return `${verbs[tense]} ${subject}`;
+
+  return noun === undefined ? subject : `${subject} ${noun}`;
+}
+
 function toolTitle(
   toolClass: TurnToolClass,
-  settled: boolean,
+  tense: ToolTense,
   delegateNames: ReadonlyMap<SessionId, string>,
 ): string {
   switch (toolClass.kind) {
     case "file_read":
-      return `${settled ? "Read" : "Reading"} ${toolClass.path}`;
+      return titled(READ, tense, toolClass.path, "read");
     case "list":
-      return `${settled ? "Listed" : "Listing"} ${toolClass.path}`;
+      return titled(LIST, tense, toolClass.path, "list");
     case "shell":
-      return `${settled ? "Ran" : "Running"} ${toolClass.description ?? toolClass.command}`;
+      return titled(RUN, tense, toolClass.description ?? toolClass.command);
     case "file_edit":
-      return `${settled ? "Edited" : "Editing"} ${toolClass.path}`;
+      return titled(EDIT, tense, toolClass.path, "edit");
     case "file_write":
-      return `${settled ? "Wrote" : "Writing"} ${toolClass.path}`;
+      return titled(WRITE, tense, toolClass.path, "write");
     case "file_patch":
-      return `${toolClass.op === "edit" ? "Edited" : "Wrote"} ${toolClass.path}`;
+      return titled(toolClass.op === "edit" ? EDIT : WRITE, tense, toolClass.path, toolClass.op);
     case "delegate":
-      return delegateTitle(toolClass, settled, delegateNames);
+      return delegateTitle(toolClass, tense, delegateNames);
     case "custom":
-      return toolClass.label;
+      return titled(RUN, tense, toolClass.label);
     default: {
       const _exhaustive: never = toolClass;
 
@@ -390,12 +413,30 @@ function WorkRow({
 
               if (part.kind !== "tool") return null;
 
-              if (part.class.kind === "file_patch" && part.result?.isError === false)
+              if (part.class.kind === "file_patch" && part.state.kind === "success")
                 return <EditRow key={part.callId} patch={part.class} onOpenFile={onOpenFile} />;
-              const title = `${part.result?.isError === true ? "Failed: " : ""}${toolTitle(part.class, part.result !== undefined, delegateNames)}`;
-              const text = part.result?.output ?? "";
+              const status = toolStatus(part.state);
+              const subject = toolTitle(part.class, status.tense, delegateNames);
 
-              return <Disclosure key={part.callId} title={title} text={text} layout={layout} />;
+              const title =
+                status.word === undefined ? subject : `${subject} \u00b7 ${status.word}`;
+
+              const text = part.output ?? "";
+
+              const note =
+                part.class.kind === "shell" && part.class.facts !== undefined
+                  ? formatToolDuration(part.class.facts.durationMs)
+                  : undefined;
+
+              return (
+                <Disclosure
+                  key={part.callId}
+                  title={title}
+                  note={note}
+                  text={text}
+                  layout={layout}
+                />
+              );
             })}
           </html.div>
         ) : null}

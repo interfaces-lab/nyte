@@ -1,3 +1,4 @@
+import type { ToolTense } from "@nyte-ai/client";
 import type { SessionId, SessionInfo, TurnToolClass } from "@nyte-ai/protocol";
 
 type ChildSessionName = Pick<SessionInfo, "sessionId" | "name" | "preview">;
@@ -12,16 +13,23 @@ export function indexDelegateNames(
   );
 }
 
-function delegateVerb(role: DelegateClass["role"], settled: boolean): string {
+/** Verbs for the tenses that assert one, and the noun that follows the agent's name when none does. */
+interface DelegateWords {
+  readonly running: string;
+  readonly past: string;
+  readonly noun: string | undefined;
+}
+
+function delegateWords(role: DelegateClass["role"]): DelegateWords {
   switch (role) {
     case "create":
-      return "Agent";
+      return { running: "Agent", past: "Agent", noun: undefined };
     case "send":
-      return settled ? "Sent to" : "Sending to";
+      return { running: "Sending to", past: "Sent to", noun: "message" };
     case "read":
-      return settled ? "Read" : "Reading";
+      return { running: "Reading", past: "Read", noun: "transcript" };
     case "stop":
-      return settled ? "Stopped" : "Stopping";
+      return { running: "Stopping", past: "Stopped", noun: "stop" };
     default: {
       const _exhaustive: never = role;
 
@@ -32,10 +40,13 @@ function delegateVerb(role: DelegateClass["role"], settled: boolean): string {
 
 export function delegateTitle(
   toolClass: DelegateClass,
-  settled: boolean,
+  tense: ToolTense,
   names: ReadonlyMap<SessionId, string>,
 ): string {
-  const { session } = toolClass.target;
+  const name = names.get(toolClass.target.session) ?? toolClass.target.session;
+  const words = delegateWords(toolClass.role);
 
-  return `${delegateVerb(toolClass.role, settled)} ${names.get(session) ?? session}`;
+  if (tense !== "none") return `${words[tense]} ${name}`;
+
+  return words.noun === undefined ? name : `${name} ${words.noun}`;
 }

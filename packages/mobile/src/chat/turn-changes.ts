@@ -14,10 +14,7 @@ export function latestChangedTurn(items: readonly Turn[]): ConversationTurn | un
     if (
       turn.parts.some(
         (part) =>
-          part.kind === "tool" &&
-          part.class.kind === "file_patch" &&
-          part.result !== undefined &&
-          !part.result.isError,
+          part.kind === "tool" && part.class.kind === "file_patch" && part.state.kind === "success",
       )
     )
       return turn;
@@ -40,7 +37,8 @@ export function recordedEdits(items: readonly Turn[]): Map<string, RecordedEdit[
     if (turn.kind !== "turn") continue;
 
     for (const part of turn.parts) {
-      if (part.kind !== "tool" || part.result === undefined || part.result.isError) continue;
+      if (part.kind !== "tool" || part.state.kind !== "success" || part.state.commit === null)
+        continue;
 
       if (part.class.kind !== "file_patch") continue;
       const facts = parsePatchFacts(part.class.patch);
@@ -50,7 +48,7 @@ export function recordedEdits(items: readonly Turn[]): Map<string, RecordedEdit[
       for (const file of facts.files) {
         const edit: RecordedEdit = {
           turnId: turn.id,
-          commit: part.result.commit,
+          commit: part.state.commit,
           file,
         };
 
