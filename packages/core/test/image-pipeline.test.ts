@@ -34,15 +34,11 @@ function dimensions(base64: string) {
   }
 }
 
-test("processImage bounds dimensions and reports the coordinate scale", async () => {
+test("processImage bounds dimensions", async () => {
   const processed = await processImage(oversizedPng(), "image/png");
   assert.ok(processed.kind === "image", "an oversized PNG is still delivered");
   assert.deepEqual(dimensions(processed.data), { width: 2000, height: 1000 });
   assert.ok(processed.data.length <= IMAGE_LIMITS.maxBase64Bytes);
-  assert.ok(
-    processed.hints.some((hint) => hint.includes("Multiply coordinates by 1.20")),
-    processed.hints.join("\n"),
-  );
 });
 
 test("a tool's own image is bounded before it reaches the model", async () => {
@@ -64,10 +60,10 @@ test("a tool's own image is bounded before it reaches the model", async () => {
   const image = result.content.find((part) => part.type === "image");
   assert.ok(image);
   assert.deepEqual(dimensions(image.data), { width: 2000, height: 1000 });
-  const hint = result.content.find(
-    (part) => part.type === "text" && part.text.includes("original"),
+  assert.deepEqual(
+    result.content.filter((part) => part.type === "text"),
+    [{ type: "text", text: "shot" }],
   );
-  assert.ok(hint, "the model is told how to map coordinates back");
 });
 
 test("an undecodable tool image is passed through rather than dropped", async () => {

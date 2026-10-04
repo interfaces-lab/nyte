@@ -34,7 +34,6 @@ export type ProcessedImage =
       readonly kind: "image";
       readonly data: string;
       readonly mimeType: string;
-      readonly hints: readonly string[];
     }
   | { readonly kind: "omitted"; readonly message: string };
 
@@ -97,18 +96,6 @@ async function orient(image: PhotonImage, bytes: Uint8Array): Promise<PhotonImag
   return oriented;
 }
 
-/** The scale factor lets a model map coordinates it reads back to the original. */
-function dimensionHint(args: {
-  readonly originalWidth: number;
-  readonly originalHeight: number;
-  readonly width: number;
-  readonly height: number;
-}): string {
-  const scale = args.originalWidth / args.width;
-
-  return `[Image: original ${String(args.originalWidth)}x${String(args.originalHeight)}, displayed at ${String(args.width)}x${String(args.height)}. Multiply coordinates by ${scale.toFixed(2)} to map to original image.]`;
-}
-
 /**
  * Convert an unsupported format to PNG and bound the result to `IMAGE_LIMITS`.
  * Strategy: orient, scale into the dimension bounds, then at each size try PNG
@@ -132,7 +119,6 @@ export async function processImage(bytes: Uint8Array, mimeType: string): Promise
         kind: "image",
         data: Buffer.from(bytes).toString("base64"),
         mimeType: sourceMimeType,
-        hints: [],
       };
     }
 
@@ -152,17 +138,8 @@ export async function processImage(bytes: Uint8Array, mimeType: string): Promise
     while (true) {
       for (const candidate of encodeCandidates(image, width, height)) {
         if (candidate.data.length > IMAGE_LIMITS.maxBase64Bytes) continue;
-        const hints: string[] = [];
 
-        if (sourceMimeType !== candidate.mimeType) {
-          hints.push(`[Image converted from ${mimeType} to ${candidate.mimeType}.]`);
-        }
-
-        if (width !== originalWidth || height !== originalHeight) {
-          hints.push(dimensionHint({ originalWidth, originalHeight, width, height }));
-        }
-
-        return { kind: "image", data: candidate.data, mimeType: candidate.mimeType, hints };
+        return { kind: "image", data: candidate.data, mimeType: candidate.mimeType };
       }
 
       if (width === 1 && height === 1) break;
@@ -186,8 +163,7 @@ export async function processImage(bytes: Uint8Array, mimeType: string): Promise
 }
 
 /**
- * Bound every image block in message or tool-result content, appending each
- * image's hints as a following text block.
+ * Bound every image block in message or tool-result content.
  *
  * A block that cannot be processed is kept as it arrived: the producer already
  * decided to send it, and the failure may only mean the image backend is
@@ -215,10 +191,6 @@ export async function normalizeImageContent(
     }
 
     normalized.push({ ...block, data: processed.data, mimeType: processed.mimeType });
-
-    if (processed.hints.length > 0) {
-      normalized.push({ type: "text", text: processed.hints.join("\n") });
-    }
   }
 
   return normalized;

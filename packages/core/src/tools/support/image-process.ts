@@ -1,5 +1,5 @@
 import { convertImageBytesToPng } from "./image-convert.ts";
-import { formatDimensionNote, type ImageResizeOptions, resizeImage } from "./image-resize.ts";
+import { type ImageResizeOptions, resizeImage } from "./image-resize.ts";
 
 export interface ProcessImageOptions {
   /** Whether to resize images to inline provider limits. Default: true */
@@ -13,7 +13,6 @@ export type ProcessImageResult =
       ok: true;
       data: string;
       mimeType: string;
-      hints: string[];
     }
   | {
       ok: false;
@@ -23,7 +22,6 @@ export type ProcessImageResult =
 interface NormalizedImage {
   bytes: Uint8Array;
   mimeType: string;
-  convertedFrom?: string;
 }
 
 function baseMimeType(mimeType: string): string {
@@ -63,13 +61,7 @@ async function normalizeImage(
   return {
     bytes: pngBytes,
     mimeType: "image/png",
-    convertedFrom: baseMimeType(mimeType),
   };
-}
-
-function conversionHint(from: string | undefined, to: string): string | undefined {
-  if (!from || from === to) return undefined;
-  return `[Image converted from ${from} to ${to}.]`;
 }
 
 export async function processImage(
@@ -99,28 +91,16 @@ export async function processImage(
       };
     }
 
-    const hints: string[] = [];
-    const convertedHint = conversionHint(normalized.convertedFrom, resized.mimeType);
-    if (convertedHint) hints.push(convertedHint);
-    const dimensionNote = formatDimensionNote(resized);
-    if (dimensionNote) hints.push(dimensionNote);
-
     return {
       ok: true,
       data: resized.data,
       mimeType: resized.mimeType,
-      hints,
     };
   }
-
-  const hints: string[] = [];
-  const convertedHint = conversionHint(normalized.convertedFrom, normalized.mimeType);
-  if (convertedHint) hints.push(convertedHint);
 
   return {
     ok: true,
     data: Buffer.from(normalized.bytes).toString("base64"),
     mimeType: normalized.mimeType,
-    hints,
   };
 }
