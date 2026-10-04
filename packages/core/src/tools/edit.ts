@@ -1,7 +1,5 @@
 import type { ToolDefinition } from "../kernel/loop/types.ts";
 import { type JsonObject, parsePatchFacts } from "@nyte-ai/client";
-import { constants } from "node:fs";
-import { access, readFile, writeFile } from "node:fs/promises";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 import {
@@ -12,6 +10,7 @@ import {
   normalizeToLF,
   restoreLineEndings,
 } from "./edit-diff.ts";
+import { requireEnv } from "./env.ts";
 import { withFileMutationQueue } from "./support/file-mutation-queue.ts";
 import { resolveToCwd } from "./support/path-utils.ts";
 
@@ -47,30 +46,6 @@ export interface EditToolDetails {
   firstChangedLine?: number;
 }
 
-/**
- * Pluggable operations for the edit tool.
- * Override these to delegate file editing to remote systems (for example SSH).
- */
-export interface EditOperations {
-  /** Read file contents as a Buffer */
-  readFile: (absolutePath: string) => Promise<Buffer>;
-  /** Write content to a file */
-  writeFile: (absolutePath: string, content: string) => Promise<void>;
-  /** Check if file is readable and writable (throw if not) */
-  access: (absolutePath: string) => Promise<void>;
-}
-
-const defaultEditOperations: EditOperations = {
-  readFile: (path) => readFile(path),
-  writeFile: (path, content) => writeFile(path, content, "utf-8"),
-  access: (path) => access(path, constants.R_OK | constants.W_OK),
-};
-
-export interface EditToolOptions {
-  /** Custom operations for file editing. Default: local filesystem */
-  operations?: EditOperations;
-}
-
 const serializedEditsSchema = Type.String();
 
 function prepareEditArguments(input: JsonObject): JsonObject {
@@ -89,11 +64,10 @@ function prepareEditArguments(input: JsonObject): JsonObject {
   return { ...rest, edits };
 }
 
-export function createEditToolDefinition(
-  cwd: string,
-  options?: EditToolOptions,
-): ToolDefinition<typeof editSchema, EditToolDetails | undefined> {
-  const ops = options?.operations ?? defaultEditOperations;
+export function createEditToolDefinition(): ToolDefinition<
+  typeof editSchema,
+  EditToolDetails | undefined
+> {
   return {
     label: "edit",
     description:
@@ -114,13 +88,15 @@ export function createEditToolDefinition(
     },
     constrainedSampling: { type: "json_schema", strict: "prefer" },
     prepareArguments: prepareEditArguments,
-    async execute({ path, edits }, { signal }) {
+    async execute({ path, edits }, call) {
       if (edits.length === 0) {
         throw new Error("Edit tool input is invalid. edits must contain at least one replacement.");
       }
-      const absolutePath = resolveToCwd(path, cwd);
+      const { signal } = call;
+      const env = requireEnv(call);
+      const absolutePath = resolveToCwd(path, env.cwd);
 
-      return withFileMutationQueue(absolutePath, async () => {
+      return withFileMutationQueue(env, absolutePath, async () => {
         // Do not reject from an abort event listener here: that would release the
         // mutation queue while an in-flight filesystem operation may still finish.
         // Checking signal.aborted after each await observes the same aborts while
@@ -130,22 +106,14 @@ export function createEditToolDefinition(
         };
 
         throwIfAborted();
-
-        // Check if file exists.
-        try {
-          await ops.access(absolutePath);
-        } catch (error: unknown) {
-          throwIfAborted();
-          const errorMessage =
-            error instanceof Error && "code" in error
-              ? `Error code: ${String(error.code)}`
-              : String(error);
-          throw new Error(`Could not edit file: ${path}. ${errorMessage}.`);
-        }
+        const info = await env.stat(absolutePath);
         throwIfAborted();
 
-        // Read the file.
-        const buffer = await ops.readFile(absolutePath);
+        if (info === undefined) throw new Error(`Could not edit file: ${path}. File not found.`);
+
+        if (info.kind !== "file") throw new Error(`Could not edit file: ${path}. Not a file.`);
+
+        const buffer = await env.readFile(absolutePath);
         const rawContent = buffer.toString("utf-8");
         throwIfAborted();
 
@@ -162,7 +130,7 @@ export function createEditToolDefinition(
         throwIfAborted();
 
         const finalContent = bom + restoreLineEndings(newContent, originalEnding);
-        await ops.writeFile(absolutePath, finalContent);
+        await env.writeFile(absolutePath, finalContent);
         throwIfAborted();
 
         const diffResult = generateDiffString(baseContent, newContent);

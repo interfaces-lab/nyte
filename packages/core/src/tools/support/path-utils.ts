@@ -1,8 +1,7 @@
-import { constants } from "node:fs";
-import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve as nodeResolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ExecutionEnv } from "../../kernel/loop/env.ts";
 
 const UNICODE_SPACES = /[  -   　]/g;
 
@@ -96,16 +95,6 @@ function tryCurlyQuoteVariant(filePath: string): string {
   return filePath.replace(/'/g, "’");
 }
 
-export async function pathExists(filePath: string): Promise<boolean> {
-  try {
-    await access(filePath, constants.F_OK);
-
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Resolve a path relative to the given cwd.
  * Handles ~ expansion and absolute paths.
@@ -114,38 +103,39 @@ export function resolveToCwd(filePath: string, cwd: string): string {
   return resolvePath(filePath, cwd, { normalizeUnicodeSpaces: true, stripAtPrefix: true });
 }
 
-export async function resolveReadPathAsync(filePath: string, cwd: string): Promise<string> {
-  const resolved = resolveToCwd(filePath, cwd);
+export async function resolveReadPathAsync(env: ExecutionEnv, filePath: string): Promise<string> {
+  const resolved = resolveToCwd(filePath, env.cwd);
+  const exists = async (path: string): Promise<boolean> => (await env.stat(path)) !== undefined;
 
-  if (await pathExists(resolved)) {
+  if (await exists(resolved)) {
     return resolved;
   }
 
   // Try macOS AM/PM variant (narrow no-break space before AM/PM)
   const amPmVariant = tryMacOSScreenshotPath(resolved);
 
-  if (amPmVariant !== resolved && (await pathExists(amPmVariant))) {
+  if (amPmVariant !== resolved && (await exists(amPmVariant))) {
     return amPmVariant;
   }
 
   // Try NFD variant (macOS stores filenames in NFD form)
   const nfdVariant = tryNFDVariant(resolved);
 
-  if (nfdVariant !== resolved && (await pathExists(nfdVariant))) {
+  if (nfdVariant !== resolved && (await exists(nfdVariant))) {
     return nfdVariant;
   }
 
   // Try curly quote variant (macOS uses U+2019 in screenshot names)
   const curlyVariant = tryCurlyQuoteVariant(resolved);
 
-  if (curlyVariant !== resolved && (await pathExists(curlyVariant))) {
+  if (curlyVariant !== resolved && (await exists(curlyVariant))) {
     return curlyVariant;
   }
 
   // Try combined NFD + curly quote (for French macOS screenshots like "Capture d'écran")
   const nfdCurlyVariant = tryCurlyQuoteVariant(nfdVariant);
 
-  if (nfdCurlyVariant !== resolved && (await pathExists(nfdCurlyVariant))) {
+  if (nfdCurlyVariant !== resolved && (await exists(nfdCurlyVariant))) {
     return nfdCurlyVariant;
   }
 

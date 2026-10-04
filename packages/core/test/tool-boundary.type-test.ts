@@ -1,5 +1,6 @@
 import { Type } from "typebox";
 import { bindTool } from "../src/plugins/index.ts";
+import { createLocalExecutionEnv } from "../src/tools/env.ts";
 import { createLsToolDefinition, type LsToolInput } from "../src/tools/ls.ts";
 import { createWriteToolDefinition } from "../src/tools/write.ts";
 import type { createJobs } from "../src/kernel/sdk/jobs.ts";
@@ -29,7 +30,7 @@ export function toolTypeContracts() {
     // @ts-expect-error The schema, not the executor, determines the input type.
     execute: async (input: { text: string }) => ({ content: [], details: input.text }),
   });
-  new ToolMapDraft().set("bad", {
+  new ToolMapDraft(createLocalExecutionEnv({ cwd: "/tmp" })).set("bad", {
     name: "bad",
     description: "An incompatible registry contribution",
     parameters: countSchema,
@@ -40,8 +41,8 @@ export function toolTypeContracts() {
 }
 
 export function builtinTypeContracts(jobs: ReturnType<typeof createJobs>) {
-  const ls = { ...createLsToolDefinition("/tmp"), name: "ls" };
-  const write = { ...createWriteToolDefinition("/tmp"), name: "write" };
+  const ls = { ...createLsToolDefinition(), name: "ls" };
+  const write = { ...createWriteToolDefinition(), name: "write" };
   // @ts-expect-error The factory's schema requires a numeric limit.
   void ls.execute({ limit: "2" }, toolCall("call"));
   // @ts-expect-error The public input type is derived from the same schema.

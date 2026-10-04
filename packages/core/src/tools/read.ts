@@ -1,11 +1,10 @@
 import type { ImageResizeOptions } from "./support/image-resize.ts";
 import type { AgentToolResult, ToolDefinition } from "../kernel/loop/types.ts";
 import type { ImageContent, TextContent } from "@nyte-ai/schema";
-import { constants } from "node:fs";
-import { access, readFile } from "node:fs/promises";
 import { type Static, Type } from "typebox";
+import { requireEnv } from "./env.ts";
 import { processImage } from "./support/image-process.ts";
-import { detectSupportedImageMimeTypeFromFile } from "./support/image.ts";
+import { detectSupportedImageMimeType } from "./support/image.ts";
 import { resolveReadPathAsync } from "./support/path-utils.ts";
 import {
   DEFAULT_MAX_BYTES,
@@ -29,48 +28,27 @@ export interface ReadToolDetails {
   truncation?: TruncationResult;
 }
 
-/**
- * Pluggable operations for the read tool.
- * Override these to delegate file reading to remote systems (for example SSH).
- */
-export interface ReadOperations {
-  /** Read file contents as a Buffer */
-  readFile: (absolutePath: string) => Promise<Buffer>;
-  /** Check if file is readable (throw if not) */
-  access: (absolutePath: string) => Promise<void>;
-  /** Detect image MIME type, return null or undefined for non-images */
-  detectImageMimeType?: (absolutePath: string) => Promise<string | null | undefined>;
-}
-
-const defaultReadOperations: ReadOperations = {
-  readFile: (path) => readFile(path),
-  access: (path) => access(path, constants.R_OK),
-  detectImageMimeType: detectSupportedImageMimeTypeFromFile,
-};
-
 export interface ReadToolOptions {
   /** Whether to auto-resize images. Default: true */
   autoResizeImages?: boolean;
   /** Fallback resize profile when the execution context has no model metadata. */
   resizeOptions?: ImageResizeOptions;
-  /** Custom operations for file reading. Default: local filesystem */
-  operations?: ReadOperations;
 }
 
 export function createReadToolDefinition(
-  cwd: string,
   options?: ReadToolOptions,
 ): ToolDefinition<typeof readSchema, ReadToolDetails | undefined> {
   const autoResizeImages = options?.autoResizeImages ?? true;
   const fallbackResizeOptions = options?.resizeOptions;
-  const ops = options?.operations ?? defaultReadOperations;
   return {
     label: "read",
     description: `Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
     parameters: readSchema,
     present: ({ path }) => ({ kind: "file_read", path }),
     constrainedSampling: { type: "json_schema", strict: "prefer" },
-    async execute({ path, offset, limit }, { signal }) {
+    async execute({ path, offset, limit }, call) {
+      const { signal } = call;
+      const env = requireEnv(call);
       return new Promise<AgentToolResult<ReadToolDetails | undefined>>((resolve, reject) => {
         if (signal.aborted) {
           reject(new Error("Operation aborted"));
@@ -85,37 +63,29 @@ export function createReadToolDefinition(
 
         void (async () => {
           try {
-            const absolutePath = await resolveReadPathAsync(path, cwd);
+            const absolutePath = await resolveReadPathAsync(env, path);
             if (aborted) return;
-            // Check if file exists and is readable.
-            await ops.access(absolutePath);
+            const buffer = await env.readFile(absolutePath);
             if (aborted) return;
-            const mimeType = ops.detectImageMimeType
-              ? await ops.detectImageMimeType(absolutePath)
-              : undefined;
+            const mimeType = detectSupportedImageMimeType(buffer);
             let content: (TextContent | ImageContent)[];
             let details: ReadToolDetails | undefined;
             if (mimeType) {
-              // Read image as binary.
-              const buffer = await ops.readFile(absolutePath);
               const processed = await processImage(buffer, mimeType, {
                 autoResizeImages,
                 resizeOptions: fallbackResizeOptions,
               });
               if (!processed.ok) {
-                let textNote = `Read image file [${mimeType}]\n${processed.message}`;
-                content = [{ type: "text", text: textNote }];
-              } else {
-                let textNote = `Read image file [${processed.mimeType}]`;
-                if (processed.hints.length > 0) textNote += `\n${processed.hints.join("\n")}`;
                 content = [
-                  { type: "text", text: textNote },
+                  { type: "text", text: `Read image file [${mimeType}]\n${processed.message}` },
+                ];
+              } else {
+                content = [
+                  { type: "text", text: `Read image file [${processed.mimeType}]` },
                   { type: "image", data: processed.data, mimeType: processed.mimeType },
                 ];
               }
             } else {
-              // Read text content.
-              const buffer = await ops.readFile(absolutePath);
               const textContent = buffer.toString("utf-8");
               const allLines = textContent.split("\n");
               const totalFileLines = allLines.length;

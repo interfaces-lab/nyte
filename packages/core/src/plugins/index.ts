@@ -41,9 +41,18 @@ export { acceptsSelectionReply } from "@nyte-ai/protocol";
 
 export type { Choice, Selection, SelectionReply } from "@nyte-ai/protocol";
 
-export { ToolError, toolResultContent } from "../kernel/loop/tool-result.ts";
+export { ToolError, stopReason, toolResultContent } from "../kernel/loop/tool-result.ts";
 
 export { bindTool } from "../tools/bind-tool.ts";
+
+/**
+ * Where a call acts. The kernel hands one to every tool call as `call.env`;
+ * a tool that reaches files or processes takes it from there, never from
+ * anything captured when the tool was built.
+ */
+export type { ExecutionEnv, ExecOptions, FileInfo, FileKind } from "../kernel/loop/env.ts";
+
+export { requireEnv } from "../tools/env.ts";
 
 /** Shared truncation helpers so tool output notices read identically to `read` and `bash`. */
 export { truncateHead, formatSize, type TruncationResult } from "../tools/support/truncate.ts";

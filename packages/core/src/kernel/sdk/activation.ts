@@ -33,6 +33,7 @@ import {
   type AgentTool,
   type ThinkingLevel,
 } from "../loop/types.ts";
+import { toolOutcome } from "../loop/tool-result.ts";
 import type { StreamOptions } from "../stream-options.ts";
 import type { CompactionSettings } from "../compaction.ts";
 import { isJsonObject, toJsonValue } from "@nyte-ai/client";
@@ -50,6 +51,8 @@ import { contextMessages } from "@nyte-ai/client";
 import { contextCommits } from "../graph.ts";
 import { FACT_PREFIX, decodeFactKey, encodeFactKey, factRef, headRef, runRef } from "../names.ts";
 import type { Session } from "../store.ts";
+import type { ExecutionEnv } from "../loop/env.ts";
+import { createLocalExecutionEnv } from "../../tools/env.ts";
 import { projectEvent } from "./events.ts";
 import { providerCompactionFor, requestStream, type RequestStreamFn } from "./requests.ts";
 import { NAME_FACT, PARENT_FACT } from "./snapshot.ts";
@@ -77,6 +80,8 @@ export interface Activation {
   readonly registries: PluginRegistries;
   readonly hooks: HookRegistry;
   readonly plugins: PluginHost;
+  /** Where this activation's tools act. Every contributed tool is bound to it. */
+  readonly env: ExecutionEnv;
   tools(): readonly AgentTool[];
   /** The prompt registry as named, ordered sections: what `SystemMessage.sections` declares. */
   promptSections(): Record<string, string>;
@@ -218,7 +223,8 @@ export async function activate(input: {
   plugins: readonly Plugin[];
   env: PluginEnv;
 }): Promise<ActivationOutcome> {
-  const registries = createRegistries();
+  const env = createLocalExecutionEnv({ cwd: input.env.cwd });
+  const registries = createRegistries(env);
   let initializing = true;
   const session = input.target.kind === "session" ? input.target.session : undefined;
   const facts = session === undefined ? transientFacts() : factsFor(session);
@@ -520,6 +526,7 @@ export async function activate(input: {
     registries,
     hooks,
     plugins,
+    env,
     tools: () => registries.tools.values(),
     promptSections,
     systemPrompt,
@@ -960,7 +967,7 @@ export function turnFor(
           case "modify":
             return { args: decision.args };
           case "reject":
-            return { block: true, reason: decision.message };
+            return { block: true, reason: decision.message, cause: { kind: "denied" } };
           case "error":
             policyFailures.set(invocation.input.run.id, decision.message);
 
@@ -972,10 +979,11 @@ export function turnFor(
           }
         }
       },
-      afterToolCall: async ({ toolCall, args, result, kind, context }, signal) => {
+      afterToolCall: async ({ toolCall, args, context, ...executed }, signal) => {
         const invocation = toolInvocation(context, signal);
 
         if (!activation.hooks.has("after_tool")) return undefined;
+        const { result } = executed;
 
         const hookInput = {
           head: invocation.input.run.head,
@@ -986,7 +994,7 @@ export function turnFor(
           content: result.content,
           details: toJsonValue(result.details),
           structuredContent: result.structuredContent,
-          kind,
+          outcome: toolOutcome(executed),
         };
 
         return activation.hooks.run(
@@ -1002,6 +1010,7 @@ export function turnFor(
       model: resolved.model,
       sections: resolved.sections,
       tools: resolved.tools,
+      env: activation.env,
       thinkingLevel: resolved.thinkingLevel,
       loop,
       retry: defaults.retry,

@@ -14,12 +14,10 @@ export function toolsFsPlugin() {
   return definePlugin({
     id: "tools-fs",
     session(api) {
-      const { cwd } = api.env;
-
-      api.tools.add("read", { ...createReadToolDefinition(cwd), replay: "safe" });
-      api.tools.add("bash", { ...createBashToolDefinition(cwd), replay: "never" });
-      api.tools.add("edit", { ...createEditToolDefinition(cwd), replay: "never" });
-      api.tools.add("write", { ...createWriteToolDefinition(cwd), replay: "never" });
+      api.tools.add("read", { ...createReadToolDefinition(), replay: "safe" });
+      api.tools.add("bash", { ...createBashToolDefinition(), replay: "never" });
+      api.tools.add("edit", { ...createEditToolDefinition(), replay: "never" });
+      api.tools.add("write", { ...createWriteToolDefinition(), replay: "never" });
       api.prompt.add((draft) =>
         draft.set("cwd", { text: `Current working directory: ${api.env.cwd}` }),
       );

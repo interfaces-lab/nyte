@@ -1,10 +1,10 @@
-import { readdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { Type, type Static } from "typebox";
 import type { ToolDefinition } from "../kernel/loop/types.ts";
 import { toolResultContent } from "../kernel/loop/tool-result.ts";
+import { requireEnv } from "./env.ts";
 import { argumentParser } from "./support/arguments.ts";
-import { pathExists, resolveToCwd } from "./support/path-utils.ts";
+import { resolveToCwd } from "./support/path-utils.ts";
 import {
   DEFAULT_MAX_BYTES,
   formatSize,
@@ -21,32 +21,6 @@ export interface LsToolDetails {
   entryLimitReached?: number;
 }
 
-/**
- * Pluggable operations for the ls tool.
- * Override these to delegate directory listing to remote systems (for example SSH).
- */
-export interface LsOperations {
-  /** Check if path exists */
-  exists: (absolutePath: string) => Promise<boolean> | boolean;
-  /** Get file or directory stats. Throws if not found. */
-  stat: (
-    absolutePath: string,
-  ) => Promise<{ isDirectory: () => boolean }> | { isDirectory: () => boolean };
-  /** Read directory entries */
-  readdir: (absolutePath: string) => Promise<string[]> | string[];
-}
-
-const defaultLsOperations: LsOperations = {
-  exists: pathExists,
-  stat,
-  readdir,
-};
-
-export interface LsToolOptions {
-  /** Custom operations for directory listing. Default: local filesystem */
-  operations?: LsOperations;
-}
-
 const lsParameters = Type.Object({
   path: Type.Optional(
     Type.String({ description: "Directory to list (default: current directory)" }),
@@ -56,40 +30,38 @@ const lsParameters = Type.Object({
   ),
 });
 
-export function createLsToolDefinition(
-  cwd: string,
-  options?: LsToolOptions,
-): ToolDefinition<typeof lsParameters, LsToolDetails | undefined> {
-  const ops = options?.operations ?? defaultLsOperations;
-
+export function createLsToolDefinition(): ToolDefinition<
+  typeof lsParameters,
+  LsToolDetails | undefined
+> {
   return {
     description: `List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to ${DEFAULT_LIMIT} entries or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
     parameters: lsParameters,
     prepareArguments: argumentParser(lsParameters),
     present: ({ path }) => ({ kind: "list", path: path || "." }),
-    async execute({ path, limit }, { signal }) {
+    async execute({ path, limit }, call) {
+      const { signal } = call;
+      const env = requireEnv(call);
       const throwIfAborted = (): void => {
         if (signal.aborted) throw new Error("Operation aborted");
       };
 
-      const dirPath = resolveToCwd(path || ".", cwd);
-      const title = relative(cwd, dirPath) || ".";
+      const dirPath = resolveToCwd(path || ".", env.cwd);
+      const title = relative(env.cwd, dirPath) || ".";
       const effectiveLimit = limit ?? DEFAULT_LIMIT;
 
       throwIfAborted();
-
-      if (!(await ops.exists(dirPath))) throw new Error(`Path not found: ${dirPath}`);
+      const info = await env.stat(dirPath);
       throwIfAborted();
 
-      const stat = await ops.stat(dirPath);
-      throwIfAborted();
+      if (info === undefined) throw new Error(`Path not found: ${dirPath}`);
 
-      if (!stat.isDirectory()) throw new Error(`Not a directory: ${dirPath}`);
+      if (info.kind !== "directory") throw new Error(`Not a directory: ${dirPath}`);
 
       let entries: string[];
 
       try {
-        entries = await ops.readdir(dirPath);
+        entries = await env.readdir(dirPath);
       } catch (error) {
         throwIfAborted();
         throw new Error(
@@ -113,9 +85,11 @@ export function createLsToolDefinition(
         throwIfAborted();
 
         try {
-          const entryStat = await ops.stat(join(dirPath, entry));
+          const entryInfo = await env.stat(join(dirPath, entry));
           throwIfAborted();
-          results.push(entry + (entryStat.isDirectory() ? "/" : ""));
+
+          if (entryInfo !== undefined)
+            results.push(entry + (entryInfo.kind === "directory" ? "/" : ""));
         } catch {
           throwIfAborted();
           // A disappearing or unreadable entry does not invalidate the listing.

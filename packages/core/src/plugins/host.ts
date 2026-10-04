@@ -1,4 +1,5 @@
 import type { Skill } from "@nyte-ai/schema";
+import type { ExecutionEnv } from "../kernel/loop/env.ts";
 import type { AgentTool } from "../kernel/loop/types.ts";
 import { bindSessionApi, type PluginSessionStorage } from "./api.ts";
 import type { Hooks } from "./hooks.ts";
@@ -34,13 +35,13 @@ export interface PluginRegistries {
   readonly modelContext: ContributionRegistry<ModelContextPolicy, ModelContextDraft>;
 }
 
-export function createRegistries(): PluginRegistries {
+export function createRegistries(env: ExecutionEnv): PluginRegistries {
   // Binding must not make an unchanged contribution appear changed on every rebuild.
   const toolBindings = new WeakMap<object, AgentTool>();
 
   return {
     agents: new ContributionRegistry(() => new MapDraft<Agent>()),
-    tools: new ContributionRegistry(() => new ToolMapDraft(toolBindings)),
+    tools: new ContributionRegistry(() => new ToolMapDraft(env, toolBindings)),
     commands: new ContributionRegistry(() => new MapDraft<Command>()),
     prompt: new ContributionRegistry(() => new MapDraft<PromptSection>()),
     resources: new ContributionRegistry(() => new MapDraft<Skill>()),

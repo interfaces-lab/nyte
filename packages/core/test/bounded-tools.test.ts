@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "vitest";
-import { createLocalBashOperations } from "../src/tools/bash.ts";
+import { createLocalExecutionEnv, withExecutionEnv } from "../src/tools/env.ts";
 import { createReadToolDefinition } from "../src/tools/read.ts";
 import { OutputAccumulator } from "../src/tools/support/output-accumulator.ts";
 import { toolResultText } from "../src/kernel/loop/tool-result.ts";
@@ -12,6 +12,9 @@ import { toolResultText } from "../src/kernel/loop/tool-result.ts";
 function callContext(id: string, signal = new AbortController().signal) {
   return { id, signal, update: () => {} };
 }
+
+const readAt = (cwd: string) =>
+  withExecutionEnv(createReadToolDefinition(), createLocalExecutionEnv({ cwd }));
 
 describe("bounded shell output", () => {
   test("persists every byte when output exceeds the display limit", async () => {
@@ -46,12 +49,11 @@ describe("bounded shell output", () => {
     "delivers stdout and stderr from the local shell",
     { skip: process.platform === "win32" },
     async () => {
-      const operations = createLocalBashOperations();
+      const operations = createLocalExecutionEnv({ cwd: "/tmp" });
       let output = "";
 
       const result = await operations.exec(
         "for i in {1..2000}; do printf 'out-%04d\\n' \"$i\"; printf 'err-%04d\\n' \"$i\" >&2; done",
-        "/tmp",
         {
           onData: (chunk) => {
             output += chunk.toString("utf8");
@@ -72,7 +74,7 @@ describe("bounded text reads", () => {
     try {
       const content = `\ufeff${"x".repeat(65_532)}🐈\nnext`;
       await writeFile(join(directory, "unicode.txt"), content);
-      const tool = createReadToolDefinition(directory);
+      const tool = readAt(directory);
       const tail = await tool.execute({ path: "unicode.txt", offset: 2 }, callContext("read"));
       assert.equal(toolResultText(tail.content), "next");
       await writeFile(join(directory, "unicode.txt"), "\ufeffhello");
@@ -88,7 +90,7 @@ describe("bounded text reads", () => {
     const controller = new AbortController();
     controller.abort();
     await assert.rejects(
-      createReadToolDefinition("/tmp").execute(
+      readAt("/tmp").execute(
         { path: "/dev/zero", limit: 1 },
         callContext("read", controller.signal),
       ),
@@ -104,7 +106,7 @@ describe("bounded text reads", () => {
     );
     try {
       await writeFile(join(directory, "large.txt"), lines.join("\n"));
-      const tool = createReadToolDefinition(directory);
+      const tool = readAt(directory);
 
       const truncated = await tool.execute({ path: "large.txt" }, callContext("read"));
       assert.equal(truncated.details?.truncation?.truncatedBy, "lines");
@@ -133,10 +135,7 @@ describe("bounded text reads", () => {
     const content = `${Array.from({ length: 2000 }, () => "x").join("\n")}\n`;
     try {
       await writeFile(join(directory, "lines.txt"), content);
-      const result = await createReadToolDefinition(directory).execute(
-        { path: "lines.txt" },
-        callContext("read"),
-      );
+      const result = await readAt(directory).execute({ path: "lines.txt" }, callContext("read"));
 
       assert.equal(toolResultText(result.content), content);
       assert.equal(result.details, undefined);
@@ -149,10 +148,7 @@ describe("bounded text reads", () => {
     const directory = await mkdtemp(join(tmpdir(), "nyte-long-line-read-"));
     try {
       await writeFile(join(directory, "long.txt"), `${"x".repeat(60 * 1024)}\ntail`);
-      const result = await createReadToolDefinition(directory).execute(
-        { path: "long.txt" },
-        callContext("read"),
-      );
+      const result = await readAt(directory).execute({ path: "long.txt" }, callContext("read"));
 
       assert.match(toolResultText(result.content), /Line 1 is 60\.0KB, exceeds 50\.0KB limit/u);
       assert.equal(result.details?.truncation?.firstLineExceedsLimit, true);
@@ -167,7 +163,7 @@ describe("bounded text reads", () => {
     try {
       await writeFile(join(directory, "large.txt"), Buffer.alloc(8 * 1024 * 1024, "x"));
       const controller = new AbortController();
-      const execution = createReadToolDefinition(directory).execute(
+      const execution = readAt(directory).execute(
         { path: "large.txt" },
         callContext("read", controller.signal),
       );

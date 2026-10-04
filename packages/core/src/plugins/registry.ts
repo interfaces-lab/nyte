@@ -5,6 +5,8 @@
  */
 import type { TSchema } from "typebox";
 import { bindTool } from "../tools/bind-tool.ts";
+import { withExecutionEnv } from "../tools/env.ts";
+import type { ExecutionEnv } from "../kernel/loop/env.ts";
 import type { AgentTool } from "../kernel/loop/types.ts";
 import type { Disposer, Draft, ToolDraft } from "./types.ts";
 
@@ -65,16 +67,19 @@ export class MapDraft<T> implements Draft<T> {
   }
 }
 
+/** Binds every contributed tool and hands it the activation's environment on each call. */
 export class ToolMapDraft extends MapDraft<AgentTool> implements ToolDraft {
+  private readonly env: ExecutionEnv;
   private readonly bindings: WeakMap<object, AgentTool>;
 
-  constructor(bindings = new WeakMap<object, AgentTool>()) {
+  constructor(env: ExecutionEnv, bindings = new WeakMap<object, AgentTool>()) {
     super();
+    this.env = env;
     this.bindings = bindings;
   }
 
   override set<T extends TSchema, Details>(id: string, tool: AgentTool<T, Details>): void {
-    const bound = this.bindings.get(tool) ?? bindTool(tool);
+    const bound = this.bindings.get(tool) ?? withExecutionEnv(bindTool(tool), this.env);
     this.bindings.set(tool, bound);
     super.set(id, bound);
   }
