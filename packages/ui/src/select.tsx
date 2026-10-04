@@ -2,12 +2,12 @@ import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { focus } from "./a11y.stylex.ts";
-import { button, layer, menu, radius, target } from "./schema.stylex.ts";
+import { layer, menu, radius } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
 import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
-import { Icon } from "./icon.tsx";
+import { buttonStyle, type ButtonLayout } from "./button.tsx";
+import { ControlGlyphs, Icon } from "./icon.tsx";
 
 const COLLISION: NonNullable<SelectPrimitive.Positioner.Props["collisionAvoidance"]> = {
   side: "flip",
@@ -21,45 +21,14 @@ const OVER_TRIGGER: NonNullable<SelectPrimitive.Positioner.Props["sideOffset"]> 
 }) => -(side === "top" || side === "bottom" ? anchor.height : anchor.width);
 
 const styles = create({
-  trigger: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 6,
-    boxSizing: "border-box",
-    minWidth: 112,
-    maxWidth: 180,
-    height: button.heightSm,
-    minHeight: target.min,
-    paddingBlock: 0,
-    paddingInline: button.paddingInlineSm,
-    overflow: "hidden",
-    appearance: "none",
-    borderRadius: button.radiusSm,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: role.borderPrimaryTranslucent,
-    backgroundColor: role.bgInteractiveSecondaryTranslucent,
-    backgroundImage: {
-      default: "none",
-      ":hover": role.layerHover,
-      "[data-popup-open]": role.layerHover,
-      "[data-disabled]": "none",
-    },
-    color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
-    fontFamily: type.fontSans,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-    cursor: { default: appearance.cursorInteractive, "[data-disabled]": "default" },
-    flexShrink: 0,
-  },
+  /** The trigger is an `outline` `md` button; only its width is its own. */
+  trigger: { maxWidth: 180 },
   value: {
     display: "block",
     flex: 1,
     minWidth: 0,
     overflow: "hidden",
     fontFamily: "inherit",
-    lineHeight: type.leadingSm,
     textOverflow: "ellipsis",
     textAlign: "left",
     whiteSpace: "nowrap",
@@ -83,7 +52,7 @@ const styles = create({
     overflowY: "auto",
     overscrollBehavior: "contain",
     borderStyle: "none",
-    borderRadius: radius.control,
+    borderRadius: radius.surface,
     outline: "none",
     backgroundColor: role.popupMaterial,
     backdropFilter: appearance.popupMaterialFilter,
@@ -161,11 +130,12 @@ const styles = create({
 
 const triggerWidths = create({
   standard: {},
-  wide: { minWidth: 0, maxWidth: "100%" },
+  wide: { maxWidth: "100%" },
 });
 
 export const Select = SelectPrimitive.Root;
 
+/** An `outline` `md` button that ends in a chevron, the same control a Menu opens from. */
 export function SelectTrigger({
   width = "standard",
   children,
@@ -173,24 +143,27 @@ export function SelectTrigger({
   className,
   style,
   ...rest
-}: StyledProps<SelectPrimitive.Trigger.Props> & {
+}: Omit<StyledProps<SelectPrimitive.Trigger.Props>, "xstyle"> & {
   /** `wide` lets the trigger fill its container instead of stopping at 180px. */
   readonly width?: keyof typeof triggerWidths;
+  readonly xstyle?: ButtonLayout;
 }): ReactElement {
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
-      {...mergeStyleProps(
-        props(styles.trigger, triggerWidths[width], focus.ring, xstyle),
+      {...buttonStyle("outline", "md", {
+        xstyle: [styles.trigger, triggerWidths[width], xstyle],
         className,
         style,
-      )}
+      })}
       {...rest}
     >
-      {children}
-      <SelectPrimitive.Icon {...props(styles.icon)}>
-        <Icon name="chevron-up-down" size={11} />
-      </SelectPrimitive.Icon>
+      <ControlGlyphs>
+        {children}
+        <SelectPrimitive.Icon {...props(styles.icon)}>
+          <Icon name="chevron-down" size={12} />
+        </SelectPrimitive.Icon>
+      </ControlGlyphs>
     </SelectPrimitive.Trigger>
   );
 }
