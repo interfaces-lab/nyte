@@ -8,7 +8,7 @@ export function resolveCacheRetention(
 ): CacheRetention {
   if (retention !== undefined) return retention;
 
-  return getProviderEnvValue("PI_CACHE_RETENTION", env) === "long" ? "long" : "short";
+  return getProviderEnvValue("NYTE_CACHE_RETENTION", env) === "short" ? "short" : "long";
 }
 
 /** The provider's minimum warm window for the requested retention mode. */

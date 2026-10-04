@@ -17,7 +17,7 @@ import type { CacheWarmingMode, CacheWarmingStatus } from "../../src/kernel/cach
 import { definePlugin, type Plugin } from "../../src/plugins/index.ts";
 import { assistant, openStore, storePath, within } from "./helpers.ts";
 
-/** Five-minute pricing with a 10.2 s cache lifetime, so a refresh is due 200 ms after dispatch. */
+/** One-hour pricing with a 10.2 s cache lifetime, so a refresh is due 200 ms after dispatch. */
 const model: Model<Api> = {
   id: "claude-opus-4-6",
   name: "Claude Opus 4.6",
@@ -30,7 +30,7 @@ const model: Model<Api> = {
   contextWindow: 1_000_000,
   maxTokens: 128_000,
   compat: { forceAdaptiveThinking: true },
-  promptCache: { short: 10.2 },
+  promptCache: { long: 10.2 },
 };
 
 const replyUsage: Usage = {

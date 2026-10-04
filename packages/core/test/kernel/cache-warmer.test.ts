@@ -140,7 +140,7 @@ function request(
   model: Model<Api> = adaptiveModel,
   options: ModelsSimpleStreamOptions = {},
 ): CacheWarmRequest {
-  return { model, context: requestContext, options };
+  return { model, context: requestContext, options: { cacheRetention: "short", ...options } };
 }
 
 const current = () => true;
@@ -153,10 +153,10 @@ describe("cache warming", () => {
       getPromptCacheTtlMs(adaptiveModel, undefined),
       getPromptCacheTtlMs(adaptiveModel, { cacheRetention: "long" }),
       getPromptCacheTtlMs(adaptiveModel, { cacheRetention: "none" }),
-      getPromptCacheTtlMs(adaptiveModel, { env: { PI_CACHE_RETENTION: "long" } }),
+      getPromptCacheTtlMs(adaptiveModel, { env: { NYTE_CACHE_RETENTION: "short" } }),
       getPromptCacheTtlMs(openaiModel, { cacheRetention: "long" }),
       getPromptCacheTtlMs(unknownModel, undefined),
-    ]).toEqual([300_000, 3_600_000, undefined, 3_600_000, 86_400_000, undefined]);
+    ]).toEqual([3_600_000, 3_600_000, undefined, 300_000, 86_400_000, undefined]);
     expect([
       getCacheWarmingDelayMs(300_000),
       getCacheWarmingDelayMs(60_000),
@@ -188,6 +188,7 @@ describe("cache warming", () => {
     expect(calls[0]?.model).toBe(adaptiveModel);
     expect(calls[0]?.context).toEqual(requestContext);
     expect(calls[0]?.options).toEqual({
+      cacheRetention: "short",
       reasoning: "high",
       sessionId: "s",
       transformHeaders,

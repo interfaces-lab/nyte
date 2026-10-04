@@ -209,7 +209,7 @@ export interface StreamOptions extends ProviderRequestOptions<Model<Api>> {
   transport?: Transport;
   /**
    * Prompt cache retention preference. Providers map this to their supported values.
-   * Default: "short".
+   * Default: "long".
    */
   cacheRetention?: CacheRetention;
   /**
