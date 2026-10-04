@@ -8,7 +8,8 @@ import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Row } from "@nyte-ai/ui/row";
 import { Tabs } from "@nyte-ai/ui/tabs";
-import { role } from "@nyte-ai/ui/vars.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import type { LabEnvironment } from "./fixtures";
 
 const TABS = [
@@ -22,6 +23,15 @@ type Tab = (typeof TABS)[number][0];
 const styles = create({
   heading: { display: "flex", alignItems: "center", justifyContent: "space-between" },
   titleGroup: { display: "flex", alignItems: "baseline", gap: 6 },
+  badge: {
+    flexShrink: 0,
+    padding: "2px 6px",
+    borderRadius: radius.pill,
+    backgroundColor: role.bgMutedTranslucent,
+    color: role.contentSecondary,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingXs,
+  },
   onBadge: {
     backgroundColor: role.bgInteractiveSecondaryTranslucent,
     color: role.contentSecondary,
@@ -92,7 +102,7 @@ function EntryRow({ entry }: { readonly entry: Entry }): ReactElement {
         <Row.Label xstyle={customizeStyles.rowTitle}>{entry.title}</Row.Label>
         <Row.Description title={entry.detail}>{entry.detail}</Row.Description>
       </Row.Body>
-      <span {...props(customizeStyles.badge, entry.on && [intent.success, styles.onBadge])}>
+      <span {...props(styles.badge, entry.on && [intent.success, styles.onBadge])}>
         {entry.badge}
       </span>
       {entry.actions !== "none" && (

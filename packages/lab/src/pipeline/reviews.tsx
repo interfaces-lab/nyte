@@ -1,5 +1,5 @@
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { avatar, glyph, row, shape } from "@nyte-ai/ui/schema.stylex";
+import { avatar, glyph, row, radius } from "@nyte-ai/ui/schema.stylex";
 /**
  * The Reviews list beside the app sidebar: For me or Created, grouped by
  * what each pull request needs from you, closest to shipping first.
@@ -245,7 +245,7 @@ const styles = create({
     height: row.heightMd,
     paddingInline: 8,
     borderStyle: "none",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentSecondary,
     font: "inherit",
@@ -261,7 +261,7 @@ const styles = create({
     paddingBlock: 8,
     paddingInline: 10,
     borderStyle: "none",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: { default: "transparent", ":hover:not(:disabled)": role.bgHover },
     color: role.contentPrimary,
     font: "inherit",
@@ -298,7 +298,7 @@ const styles = create({
     placeItems: "center",
     width: glyph.md,
     height: glyph.md,
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     flexShrink: 0,
   },
   markGood: {
@@ -322,7 +322,7 @@ const styles = create({
     placeItems: "center",
     width: avatar.xs,
     height: avatar.xs,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: role.bgInteractivePrimaryTranslucent,
     color: role.contentSecondary,
     fontSize: 9,

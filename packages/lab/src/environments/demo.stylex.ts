@@ -1,4 +1,4 @@
-import { button, shape } from "@nyte-ai/ui/schema.stylex";
+import { button, radius } from "@nyte-ai/ui/schema.stylex";
 import { shell } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { create } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
@@ -10,7 +10,7 @@ export const demoStyles = create({
     height: 680,
     marginInline: 32,
     marginBlockEnd: 40,
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     backgroundColor: role.bgBase,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
     overflow: "hidden",
@@ -30,7 +30,7 @@ export const demoStyles = create({
   light: {
     width: 12,
     height: 12,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: role.bgInteractivePrimaryTranslucent,
   },
   /** `titlebarStyles.sessionTitle`'s type; the crumbs ahead of it drop a tone. */
@@ -108,7 +108,7 @@ export const demoStyles = create({
     minHeight: 52,
     paddingInlineStart: 14,
     paddingInlineEnd: 10,
-    borderRadius: shape.surface,
+    borderRadius: radius.surface,
     backgroundColor: role.bgElevated,
     boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
     color: role.contentTertiary,
@@ -119,7 +119,7 @@ export const demoStyles = create({
     placeItems: "center",
     width: button.heightMd,
     height: button.heightMd,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: role.bgInteractivePrimaryTranslucent,
     color: role.contentInteractiveSecondary,
   },

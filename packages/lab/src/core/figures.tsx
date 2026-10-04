@@ -1,5 +1,5 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { glyph, shape } from "@nyte-ai/ui/schema.stylex";
+import { glyph, radius } from "@nyte-ai/ui/schema.stylex";
 /**
  * The two figures that carry the page's top-down reading: the layer stack,
  * and one message traced through it, each write shown as the `refs.update`
@@ -54,7 +54,7 @@ const styles = create({
     paddingBlock: 8,
     paddingInline: 12,
     overflowX: "auto",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     fontFamily: type.fontMono,
     fontSize: type.fontCode,

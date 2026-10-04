@@ -1,4 +1,4 @@
-import { button, shape } from "@nyte-ai/ui/schema.stylex";
+import { button, radius } from "@nyte-ai/ui/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 
@@ -61,7 +61,7 @@ export const newChatStyles = create({
     justifyContent: "space-between",
     minHeight: 104,
     padding: 12,
-    borderRadius: shape.surface,
+    borderRadius: radius.surface,
     backgroundColor: role.bgElevated,
     boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
     color: role.contentTertiary,
@@ -78,7 +78,7 @@ export const newChatStyles = create({
     placeItems: "center",
     width: button.heightMd,
     height: button.heightMd,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: role.bgInteractivePrimaryTranslucent,
     color: role.contentInteractiveSecondary,
   },

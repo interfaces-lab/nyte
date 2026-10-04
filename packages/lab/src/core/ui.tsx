@@ -1,5 +1,5 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 /**
  * The page's reading primitives: section, heading, prose, inline code,
  * source link, table. Layout and type only, on `@nyte-ai/ui` tokens; every
@@ -54,7 +54,7 @@ const styles = create({
   code: {
     paddingInline: "0.25em",
     paddingBlock: "0.08em",
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     backgroundColor: role.bgMutedTranslucent,
     fontFamily: type.fontMono,
     fontSize: "0.86em",

@@ -1,5 +1,5 @@
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 /**
  * Code on the page, in two forms. `Source` is a verbatim excerpt with its
  * line numbers and a link to the line; `Sketch` is a summary written for the
@@ -56,7 +56,7 @@ const styles = create({
     margin: 0,
     paddingBlock: 8,
     overflow: "hidden",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentPrimary,
     fontFamily: type.fontMono,
@@ -103,11 +103,11 @@ const styles = create({
   },
   addedWord: {
     backgroundColor: role.bgInteractivePrimaryTranslucent,
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
   },
   removedWord: {
     backgroundColor: role.bgInteractivePrimaryTranslucent,
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
   },
   /* The skipped lines between hunks: a quiet band in the code's own columns, naming where it resumes. */
   gap: { marginBlock: 4, backgroundColor: role.bgHover, opacity: 0.75 },

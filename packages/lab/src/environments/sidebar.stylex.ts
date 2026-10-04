@@ -1,4 +1,4 @@
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 import { create } from "@stylexjs/stylex";
 import { role } from "@nyte-ai/ui/vars.stylex";
 
@@ -27,7 +27,7 @@ export const railStyles = create({
     placeItems: "center",
     width: 12,
     height: 12,
-    borderRadius: shape.pill,
+    borderRadius: radius.pill,
     backgroundColor: role.sidebarMaterial,
     color: role.contentSecondary,
   },

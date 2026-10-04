@@ -1,5 +1,5 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { glyph, row, shape } from "@nyte-ai/ui/schema.stylex";
+import { glyph, row, radius } from "@nyte-ai/ui/schema.stylex";
 /**
  * Linear's Guide: one band per section. The left third says what the
  * section changes and why, and lists its files; the right two thirds hold
@@ -258,7 +258,7 @@ const styles = create({
     height: row.heightLg,
     paddingInline: 10,
     borderStyle: "none",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: { default: role.bgMutedTranslucent, ":hover": role.bgHover },
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
     color: role.contentPrimary,
@@ -285,7 +285,7 @@ const styles = create({
   cards: { display: "flex", flexDirection: "column", gap: 12, minWidth: 0 },
   card: {
     overflow: "hidden",
-    borderRadius: shape.card,
+    borderRadius: radius.card,
     backgroundColor: role.bgBase,
     boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
     scrollMarginTop: 16,

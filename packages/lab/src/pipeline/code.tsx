@@ -1,5 +1,5 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { shape } from "@nyte-ai/ui/schema.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 /**
  * What every code surface in the review shares: one Pierre preset, one file
  * header, and one way to turn a line selection into a side-chat reference.
@@ -238,7 +238,7 @@ const styles = create({
     marginInlineEnd: "calc(-1lh + 1ch)",
     padding: 0,
     borderStyle: "none",
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     backgroundColor: { default: role.buttonFill, ":hover": role.buttonFillHover },
     color: role.contentOnInteractiveStrong,
     cursor: appearance.cursorInteractive,
@@ -286,7 +286,7 @@ const styles = create({
   updated: {
     flexShrink: 0,
     paddingInline: 6,
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     backgroundColor: role.bgInteractiveSecondaryTranslucent,
     color: role.contentSecondary,
     fontSize: type.fontXs,
