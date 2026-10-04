@@ -376,6 +376,33 @@ batch stores phase `waiting` and keeps effect refs.
 Exactly-once execution is not promised. `safe` is at-least-once after an uncertain crash. `never`
 is at-most-once and reports an unknown outcome after interruption.
 
+### Recovery guarantees
+
+A crash is any loss of the running process, lease, or host between durable writes. The next
+runner, on any host, reads refs and continues. These are the guarantees a caller may rely on:
+
+| Lost while                    | Durable state                       | The next step                                         | External outcome                                     |
+| ----------------------------- | ----------------------------------- | ----------------------------------------------------- | ---------------------------------------------------- |
+| the model request streams     | run phase `respond`, no commit      | requests again unless a configured ceiling is reached | provider may have been called; no history commit     |
+| a `safe` tool runs            | effect `intent` with `safe`         | executes the tool again                               | at-least-once                                        |
+| a `never` tool runs           | effect `intent` with `never`        | settles an `interrupted` error and does not replay    | at-most-once, uncertain                              |
+| after a tool result is stored | effect `result`                     | reuses the stored result and never executes again     | exactly what was stored                              |
+| a tool is parked              | effect `waiting`, optional `until`  | restores the wait and awaits a signal or deadline     | whatever the tool did before parking stands          |
+| a provider retry is pending   | run phase `retry { at }`            | returns `retry` before `at`, then requests again      | none until responding                                |
+| a batch commit publishes      | partial loose objects, refs unmoved | re-reads and republishes; loose objects are garbage   | prior tool effects stand; no partial ref publication |
+
+A restarted model request repeats the provider call and its cost but never duplicates history: a
+commit either moved the head or did not. Each request reserves an attempt on the chain. With a
+ceiling configured by the `steps` option or the agent's `steps`, a host that crashes on every
+request ends the run at the ceiling instead of looping. A `never` tool reports uncertainty in its
+result message so the model and the user can inspect the world rather than assume it. A parked
+wait needs no process; the signal CAS or deadline CAS wins exactly once, whichever host performs
+it.
+
+The kernel keeps these guarantees given a store that meets the [`Store`
+contract](#many-runners-one-store). A host adds the scheduling guarantee: accepted work gets a
+next step without a client returning. See [Deployment](#deployment).
+
 ### Wait and wake
 
 A waiting run needs no process or held lease. Its run and effect refs hold its resume state. A ref
@@ -612,6 +639,38 @@ The server **must not** attach a runner or step for a connection. Host compositi
 store, provides trusted plugins and models, and decides when runners attach. Disconnect or server
 close **must not** cancel accepted submissions or stop host runners. Close rejects new work and
 ends streams; dispatched SDK operations may finish.
+
+### Scheduling obligations
+
+Admission is a store write. Stepping is a host decision. A serverless host that admits in one
+request and schedules in another has a gap: a crash after the admission commit and before the
+scheduler registration leaves accepted input with no runner, and the inbox stays durable but
+unattended. Retrying the submission repairs it, but [a submitted message is never
+lost](#a-submitted-message-is-never-lost) promises more than that: it does not require the
+client to return.
+
+A host closes the gap by persisting a scheduling obligation **before** admission and clearing it
+only after the scheduler holds the work. The obligation names a session and optional head, never
+conversation content. Anything that reconciles outstanding obligations may dispatch them again,
+because a redundant step on a fenced head returns `busy` or `idle` and changes nothing.
+
+```text
+record obligation        durable, names (session, head)
+    ↓
+admit                    core CAS; the inbox holds the message
+    ↓
+register with scheduler  Workflow start, alarm, queue, or cron
+    ↓
+settle obligation        delete the record
+    ↓
+return receipt
+```
+
+Two demos implement this. The Cloudflare host calls `setAlarm` before every admission and again
+after it, and its `alarm()` scans every head; a Durable Object's alarm is the obligation, and
+`open()` re-arms it when sessions exist. The Vercel host writes an `nyte_dispatch` row before
+admission, starts a Workflow, deletes the row, and a cron plus cold-start reconciliation dispatch
+rows older than a grace period.
 
 Authentication precedes body parsing. Optional permissions decide each operation from validated
 input and each watch from its validated session id before SDK access. A supplied policy **must**
