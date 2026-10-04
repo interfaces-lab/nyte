@@ -1,7 +1,9 @@
-import type { Api, Model } from "./types.ts";
-
 export interface ModelsStoreEntry {
-  models: readonly Model<Api>[];
+  /**
+   * Hosted catalog response as received. Each client validates and filters on
+   * read, so a client whose schema rejects a model never persists the loss.
+   */
+  models: readonly unknown[];
   /** Unix timestamp from the remote catalog's Last-Modified header. */
   lastModified?: number;
   /** Unix timestamp of the last completed remote check. */

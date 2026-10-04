@@ -276,7 +276,7 @@ test("a provider/id restores its persisted catalog offline and splits only the f
       refreshes.push(context.allowNetwork);
       await context.publish({
         update: () => {
-          catalog = context.stored?.models ?? [];
+          catalog = context.stored ? [model] : [];
         },
       });
     },

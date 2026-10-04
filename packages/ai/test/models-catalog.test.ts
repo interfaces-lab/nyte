@@ -1,5 +1,9 @@
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ApiKeyAuth } from "../src/auth/types.ts";
+import { FileModelsStore } from "../src/file-models-store.ts";
 import { createModels, createProvider, ModelsError } from "../src/models.ts";
 import { InMemoryModelsStore } from "../src/models-store.ts";
 import type { FetchFunction, Model, ProviderStreams } from "../src/types.ts";
@@ -127,6 +131,73 @@ describe("hosted model catalogs", () => {
 
     expect(result.errors.size).toBe(0);
     expect(models.getModels("test-provider")).toEqual([good]);
+  });
+
+  it("persists the raw feed and filters it on every read, including after a 304", async () => {
+    const good = { ...model("good"), promptCache: { short: 300 } };
+    const future = { ...model("future"), futureField: true };
+    const feed = [good, future, { id: "invalid" }];
+    const responses = [
+      jsonResponse(feed, { ETag: '"catalog-v1"' }),
+      new Response(null, { status: 304 }),
+    ];
+    const fetch: FetchFunction = async () => {
+      const response = responses.shift();
+      if (!response) throw new Error("Unexpected catalog request");
+      return response;
+    };
+    const store = new InMemoryModelsStore();
+    const models = createModels({ modelsStore: store, catalog: { fetch } });
+    models.setProvider(provider());
+
+    await models.refresh({ providers: ["test-provider"] });
+
+    expect(models.getModels("test-provider")).toEqual([good]);
+    expect((await store.read("test-provider"))?.models).toEqual(feed);
+
+    const restarted = createModels({ modelsStore: store, catalog: { fetch } });
+    restarted.setProvider(provider());
+    const revalidated = await restarted.refresh({ providers: ["test-provider"], force: true });
+
+    expect(revalidated.errors.size).toBe(0);
+    expect(responses).toHaveLength(0);
+    expect(restarted.getModels("test-provider")).toEqual([good]);
+    expect((await store.read("test-provider"))?.models).toEqual(feed);
+  });
+
+  it("refetches the full feed instead of trusting a legacy pre-filtered file entry", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-04-01T00:00:00.000Z"));
+    const path = join(mkdtempSync(join(tmpdir(), "nyte-models-store-")), "models-store.json");
+    const legacy = {
+      models: [model("survivor")],
+      etag: '"catalog-v1"',
+      checkedAt: Date.now(),
+    };
+    const other = { models: [], etag: '"other"' };
+    writeFileSync(path, JSON.stringify({ "test-provider": legacy, other }));
+    const requests: Request[] = [];
+    const feed = [model("survivor"), model("dropped-by-old-client")];
+    const fetch: FetchFunction = async (input, init) => {
+      requests.push(new Request(input, init));
+      return jsonResponse(feed, { ETag: '"catalog-v1"' });
+    };
+    const store = new FileModelsStore(path);
+    const models = createModels({ modelsStore: store, catalog: { fetch } });
+    models.setProvider(provider());
+
+    await models.refresh({ providers: ["test-provider"] });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.headers.get("if-none-match")).toBeNull();
+    expect(models.getModels("test-provider")).toEqual(feed);
+    expect(await store.read("test-provider")).toEqual({
+      models: feed,
+      etag: '"catalog-v1"',
+      checkedAt: Date.now(),
+    });
+    const saved: unknown = JSON.parse(readFileSync(path, "utf8"));
+    expect(saved).toMatchObject({ "test-provider": legacy, other });
   });
 
   it("reports HTTP failures and retains the previous catalog", async () => {

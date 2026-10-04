@@ -305,7 +305,7 @@ describe("Models runtime", () => {
       testProvider({
         id: "dynamic",
         refreshModels: async (context) => {
-          expect(context.stored?.models[0]?.id).toBe("stored");
+          expect(context.stored?.models).toEqual([testModel("dynamic", "stored")]);
           await context.publish({
             persist: null,
             update: () => {
@@ -520,7 +520,7 @@ describe("Models runtime", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(state).toBe("generation-2");
-    expect((await store.read("dynamic"))?.models[0]?.id).toBe("generation-2");
+    expect((await store.read("dynamic"))?.models).toEqual([testModel("dynamic", "generation-2")]);
   });
 
   it("passes caller signals to provider auth callbacks", async () => {

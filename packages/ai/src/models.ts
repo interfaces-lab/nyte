@@ -1080,7 +1080,13 @@ export function createProvider<TApi extends Api = Api>(
 
   const apiFor = (model: Model<Api>): ProviderStreams | undefined => single ?? byApi.get(model.api);
 
-  const isDispatchable = (model: Model<Api>): model is Model<TApi> => apiFor(model) !== undefined;
+  const usableModels = (catalog: readonly unknown[]): readonly Model<TApi>[] =>
+    catalog.filter(
+      (model): model is Model<TApi> =>
+        Value.Check(ModelSchema, model) &&
+        model.provider === input.id &&
+        apiFor(model) !== undefined,
+    );
 
   const dispatch = (
     model: Model<Api>,
@@ -1110,9 +1116,7 @@ export function createProvider<TApi extends Api = Api>(
     getModels: () => catalogModels,
     refreshModels: async (context) => {
       if (context.stored) {
-        const restored = context.stored.models.filter(
-          (model): model is Model<TApi> => model.provider === input.id && isDispatchable(model),
-        );
+        const restored = usableModels(context.stored.models);
 
         if (
           !(await context.publish({
@@ -1199,10 +1203,7 @@ export function createProvider<TApi extends Api = Api>(
         );
       }
 
-      const refreshed = value.filter(
-        (model): model is Model<TApi> =>
-          Value.Check(ModelSchema, model) && model.provider === input.id && isDispatchable(model),
-      );
+      const refreshed = usableModels(value);
 
       const lastModifiedHeader = response.headers.get("Last-Modified");
 
@@ -1217,7 +1218,7 @@ export function createProvider<TApi extends Api = Api>(
       if (context.signal.aborted) return;
       await context.publish({
         persist: {
-          models: refreshed,
+          models: value,
           etag: response.headers.get("ETag") ?? undefined,
           lastModified,
           checkedAt,

@@ -165,7 +165,7 @@ async function fixture(
         refreshes.push(context.allowNetwork);
         await context.publish({
           update: () => {
-            restored = context.stored?.models ?? [];
+            restored = context.stored ? [cached] : [];
           },
         });
       },
