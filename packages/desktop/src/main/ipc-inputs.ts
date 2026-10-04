@@ -4,18 +4,24 @@
  * imports `typebox/value` and never `typebox/compile`.
  */
 import { HOST_OPERATION_PATHS, SDK_OPERATION_PATHS } from "../shared/ipc.ts";
-import { BROWSER_ACTIONS, CONTEXT_MENU_ROLES } from "@nyte-ai/app/bridge.ts";
 import { Type } from "typebox";
 import type { Static, TProperties, TSchema } from "typebox";
 import { Compile } from "typebox/compile";
 import type { Validator } from "typebox/compile";
 import { ParseError } from "typebox/value";
 import { ExpectedHostError } from "./errors.ts";
-import { ENVIRONMENT_OPERATIONS, OPERATIONS } from "@nyte-ai/protocol";
+import { ENVIRONMENT_OPERATIONS, OPERATIONS, schemas } from "@nyte-ai/protocol";
 import { Uuid } from "@nyte-ai/connect";
 import { sessionId } from "@nyte-ai/app/schemas.ts";
 import type { CallInput, CallPath, CallRequest, WatchStartInput } from "../shared/ipc.ts";
-import type { BrowserBoundsMessage } from "@nyte-ai/app/bridge.ts";
+import type {
+  BrowserAction,
+  BrowserBoundsMessage,
+  BrowserNavigationAction,
+  ContextMenuRole,
+  RemoteAccessPluginId,
+  RemoteReach,
+} from "@nyte-ai/app/bridge.ts";
 
 type Parser<T> = Pick<Validator<TProperties, TSchema, T>, "Parse">;
 
@@ -56,7 +62,7 @@ const nonEmpty = Type.String({ minLength: 1 });
 
 const noInput = Type.Optional(Type.Undefined());
 
-const remotePlugin = Type.Literal("cloudflare");
+const remotePlugin = schemas.typed<RemoteAccessPluginId>()(Type.Literal("cloudflare"));
 
 export const CALL_INPUT_SCHEMAS = {
   // The SDK operations validate with the wire protocol's own input schemas, compiled here.
@@ -134,11 +140,7 @@ export const CALL_INPUT_SCHEMAS = {
   "host.remote.state": compile(noInput),
   "host.remote.start": compile(
     strict({
-      reach: Type.Union([
-        Type.Literal("local"),
-        Type.Literal("tailnet"),
-        Type.Literal("cloudflare"),
-      ]),
+      reach: schemas.typed<RemoteReach>()(Type.Enum(["local", "tailnet", "cloudflare"])),
     }),
   ),
   "host.remote.stop": compile(noInput),
@@ -168,6 +170,7 @@ export const CALL_INPUT_SCHEMAS = {
   "host.openExternal": compile(strict({ url: Type.String() })),
   "host.confirmExternal": compile(strict({ url: Type.String() })),
   "host.revealPath": compile(strict({ path: nonEmpty })),
+  "host.openPluginsFolder": compile(noInput),
   "host.contextMenu": compile(
     strict({
       items: Type.Array(
@@ -175,7 +178,9 @@ export const CALL_INPUT_SCHEMAS = {
           strict({ kind: Type.Literal("separator") }),
           strict({
             kind: Type.Literal("role"),
-            role: Type.Enum(CONTEXT_MENU_ROLES),
+            role: schemas.typed<ContextMenuRole>()(
+              Type.Enum(["cut", "copy", "paste", "selectAll"]),
+            ),
             label: nonEmpty,
           }),
           strict({
@@ -206,7 +211,9 @@ export const CALL_INPUT_SCHEMAS = {
   "host.browser.navigate": compile(
     strict({
       surface: nonEmpty,
-      action: Type.Enum(["back", "forward", "reload", "stop"]),
+      action: schemas.typed<BrowserNavigationAction>()(
+        Type.Enum(["back", "forward", "reload", "stop"]),
+      ),
     }),
   ),
   "host.browser.menu": compile(
@@ -218,7 +225,19 @@ export const CALL_INPUT_SCHEMAS = {
     }),
   ),
   "host.browser.perform": compile(
-    strict({ surface: nonEmpty, action: Type.Enum(BROWSER_ACTIONS) }),
+    strict({
+      surface: nonEmpty,
+      action: schemas.typed<BrowserAction>()(
+        Type.Enum([
+          "screenshot",
+          "hard-reload",
+          "copy-url",
+          "clear-history",
+          "clear-cookies",
+          "clear-cache",
+        ]),
+      ),
+    }),
   ),
   "host.browser.close": compile(strict({ surface: nonEmpty })),
   "host.browser.captureFrame": compile(strict({ surface: nonEmpty })),

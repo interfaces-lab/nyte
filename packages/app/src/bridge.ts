@@ -64,6 +64,9 @@ export type ClientSurface = "desktop" | "web";
 
 export type AppMenuAction =
   | typeof clientActions.newChat.id
+  | typeof clientActions.newTab.id
+  | typeof clientActions.closeTab.id
+  | typeof clientActions.reopenTab.id
   | typeof clientActions.openFolder.id
   | typeof clientActions.newTerminal.id
   | typeof clientActions.newBrowser.id
@@ -284,10 +287,8 @@ export type RemoteAccessState =
 export type ConnectUnavailable =
   /** The build carries no usable broker origin or Clerk keys. */
   | "not_configured"
-  /** `~/.nyte/connect.json` cannot be read or written; nothing is accepted until that is fixed. */
-  | "store_failed"
-  /** Electron `safeStorage` cannot encrypt here, so the machine key would have no OS protection. */
-  | "keychain_unavailable";
+  /** `~/.nyte/connect.json` cannot be used; nothing is accepted. */
+  | "store_failed";
 
 /** The Clerk session on this desktop. Display only; never a credential. */
 export type ConnectAccount =
@@ -462,16 +463,13 @@ export interface BrowserSurfaceState {
   readonly agentHolders: number;
 }
 
-export const BROWSER_ACTIONS = [
-  "screenshot",
-  "hard-reload",
-  "copy-url",
-  "clear-history",
-  "clear-cookies",
-  "clear-cache",
-] as const;
-
-export type BrowserAction = (typeof BROWSER_ACTIONS)[number];
+export type BrowserAction =
+  | "screenshot"
+  | "hard-reload"
+  | "copy-url"
+  | "clear-history"
+  | "clear-cookies"
+  | "clear-cache";
 
 export type BrowserMenuAction = BrowserAction | "toggle-bookmarks";
 
@@ -481,9 +479,7 @@ export type BrowserNavigationAction = "back" | "forward" | "reload" | "stop";
  * Clipboard and selection roles run in the focused web contents, so a native
  * paste keeps the formats a renderer-side clipboard read cannot reach.
  */
-export const CONTEXT_MENU_ROLES = ["cut", "copy", "paste", "selectAll"] as const;
-
-export type ContextMenuRole = (typeof CONTEXT_MENU_ROLES)[number];
+export type ContextMenuRole = "cut" | "copy" | "paste" | "selectAll";
 
 export type ExternalLinkChoice = "open" | "copy" | "trust" | "cancel";
 
@@ -726,6 +722,8 @@ export interface HostBridge {
   confirmExternal(input: { url: string }): Promise<ExternalLinkChoice>;
   /** Show a file or folder in the system file manager. Absent where the files live on another machine. */
   readonly revealPath?: (input: { path: string }) => Promise<void>;
+  /** Open the folder the user's own plugins load from, creating it first. Absent where files live elsewhere. */
+  readonly openPluginsFolder?: () => Promise<void>;
   /** The absolute path behind a dropped or picked `File`; empty when nothing on disk backs it. */
   pathForFile(file: File): string;
   /**
