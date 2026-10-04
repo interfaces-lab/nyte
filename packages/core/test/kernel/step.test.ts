@@ -80,8 +80,11 @@ const asks = (...ids: string[]): RespondOutcome => ({
 });
 const results = (...ids: string[]): ToolBatchOutcome => ({
   kind: "complete",
-  messages: ids.map((id) => toolResult(id, "read", `out ${id}`)),
-  calls: {},
+  settlements: ids.map((id) => ({
+    outcome: { kind: "success" },
+    message: toolResult(id, "read", `out ${id}`),
+    call: { kind: "custom", label: "read" },
+  })),
 });
 
 async function currentRun(session: Session): Promise<Run | undefined> {
@@ -613,8 +616,13 @@ test("a stopped run whose tool batch fails still ends aborted; its failure outpu
     [
       {
         kind: "failed",
-        messages: [toolResult("a", "read", "read blew up", { isError: true })],
-        calls: {},
+        settlements: [
+          {
+            outcome: { kind: "error", reason: { kind: "error" } },
+            message: toolResult("a", "read", "read blew up", { isError: true }),
+            call: { kind: "custom", label: "read" },
+          },
+        ],
         error: "read blew up",
       },
     ],
@@ -894,76 +902,94 @@ test("a completion queued behind a stop survives closing the store; after reopen
   assert.deepEqual(await pending(reopened, "main"), []);
 });
 
-test("configuration after a stop applies without resuming, and the next message uses it from any delivery", async () => {
-  const session = await openSession();
-  const turn = new Script([
-    async (input) => {
-      await flagAbort(input.session, input.run);
-      return {
-        kind: "aborted",
-        message: assistant("", { stop: "aborted" }),
-        failure: { class: "aborted", message: "Aborted" },
-      };
-    },
-    complete("configured answer"),
-  ]);
-  await submit(session, {
-    preparation: { kind: "none" },
-    head: "main",
-    delivery: "steer",
-    kind: "user",
-    body: say("hi"),
-  });
-  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
-  const stopped = await currentRun(session);
-  assert.equal(stopped?.phase.kind, "aborted");
-  const stoppedOid = await session.refs.read(runRef("main"));
+const configAfterStop = [
+  {
+    configFrom: "next",
+    messageFrom: "steer",
+    landed: ["config"],
+    queued: ["steer"],
+    joined: ["completion", "user"],
+  },
+  {
+    configFrom: "steer",
+    messageFrom: "next",
+    landed: ["completion", "config"],
+    queued: [],
+    joined: ["user"],
+  },
+] as const;
 
-  await submit(session, {
-    preparation: { kind: "none" },
-    head: "main",
-    delivery: "steer",
-    kind: "report",
-    body: completion("job"),
-  });
-  await submit(session, {
-    preparation: { kind: "none" },
-    head: "main",
-    delivery: "next",
-    kind: "passive",
-    body: { kind: "config", thinkingLevel: "high" },
-  });
-  // Twice: the config still has to land, and the stop must survive it.
-  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "idle");
-  assert.deepEqual(await branchBodyRoles(session), ["user", "assistant", "config"]);
-  assert.equal(await session.refs.read(runRef("main")), stoppedOid);
-  assert.deepEqual(
-    (await pending(session, "main")).map((item) => item.delivery),
-    ["steer"],
-  );
-  assert.deepEqual(await waitForHead(session, { head: "main" }), { kind: "idle" });
+for (const { configFrom, messageFrom, landed, queued, joined } of configAfterStop) {
+  test(`configuration after a stop applies without resuming from ${configFrom}, and a message from ${messageFrom} uses it`, async () => {
+    const session = await openSession();
+    const turn = new Script([
+      async (input) => {
+        await flagAbort(input.session, input.run);
+        return {
+          kind: "aborted",
+          message: assistant("", { stop: "aborted" }),
+          failure: { class: "aborted", message: "Aborted" },
+        };
+      },
+      complete("configured answer"),
+    ]);
+    await submit(session, {
+      preparation: { kind: "none" },
+      head: "main",
+      delivery: "steer",
+      kind: "user",
+      body: say("hi"),
+    });
+    assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
+    const stopped = await currentRun(session);
+    assert.equal(stopped?.phase.kind, "aborted");
+    const stoppedOid = await session.refs.read(runRef("main"));
 
-  await submit(session, {
-    preparation: { kind: "none" },
-    head: "main",
-    delivery: "next",
-    kind: "user",
-    body: say("go on"),
+    await submit(session, {
+      preparation: { kind: "none" },
+      head: "main",
+      delivery: "steer",
+      kind: "report",
+      body: completion("job"),
+    });
+    await submit(session, {
+      preparation: { kind: "none" },
+      head: "main",
+      delivery: configFrom,
+      kind: "passive",
+      body: { kind: "config", thinkingLevel: "high" },
+    });
+    // Twice: the config still has to land, and the stop must survive it.
+    assert.equal((await drive(session, turn, { head: "main", drain })).kind, "idle");
+    assert.deepEqual(await branchBodyRoles(session), ["user", "assistant", ...landed]);
+    assert.equal(await session.refs.read(runRef("main")), stoppedOid);
+    assert.deepEqual(
+      (await pending(session, "main")).map((item) => item.delivery),
+      queued,
+    );
+    assert.deepEqual(await waitForHead(session, { head: "main" }), { kind: "idle" });
+
+    await submit(session, {
+      preparation: { kind: "none" },
+      head: "main",
+      delivery: messageFrom,
+      kind: "user",
+      body: say("go on"),
+    });
+    assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
+    const answered = await currentRun(session);
+    assert.notEqual(answered?.id, stopped?.id);
+    assert.equal(answered?.config.thinkingLevel, "high");
+    assert.deepEqual(await branchBodyRoles(session), [
+      "user",
+      "assistant",
+      ...landed,
+      ...joined,
+      "assistant",
+    ]);
+    assert.equal(await textAt(session, 5), "configured answer");
   });
-  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
-  const answered = await currentRun(session);
-  assert.notEqual(answered?.id, stopped?.id);
-  assert.equal(answered?.config.thinkingLevel, "high");
-  assert.deepEqual(await branchBodyRoles(session), [
-    "user",
-    "assistant",
-    "config",
-    "user",
-    "completion",
-    "assistant",
-  ]);
-  assert.equal(await textAt(session, 5), "configured answer");
-});
+}
 
 test("a repeated abort changes nothing, before or after the run ends", async () => {
   const session = await openSession();
@@ -1537,6 +1563,7 @@ test("a waiting run resumes when every effect already has a result", async () =>
         lease: held,
         view: waiting,
         result: toolResult("ask", "read", "out ask"),
+        settlement: { kind: "success" },
       })
     ).kind,
     "settled",

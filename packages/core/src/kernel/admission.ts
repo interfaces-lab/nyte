@@ -192,21 +192,17 @@ export function boundaryBatch(
 }
 
 export async function leadFor(session: Session, changes: readonly PendingChange[]): Promise<Lead> {
-  const first = changes.find((item) => item.change.kind !== "passive");
+  let lead: Lead = { kind: "none" };
 
-  if (first === undefined) return changes.length === 0 ? { kind: "none" } : { kind: "passive" };
+  for (const item of changes) {
+    switch (item.change.kind) {
+      case "user":
+        return { kind: "user" };
+      case "answer": {
+        const authorization = await authorizedContinuation(session, item);
 
-  switch (first.change.kind) {
-    case "user":
-      return { kind: "user" };
-    case "report":
-      return { kind: "report" };
-    case "answer": {
-      const authorization = await authorizedContinuation(session, first);
-
-      return authorization === undefined
-        ? { kind: "answer", authorization: { kind: "none" } }
-        : {
+        if (authorization !== undefined) {
+          return {
             kind: "answer",
             authorization: {
               kind: "authorized",
@@ -219,16 +215,27 @@ export async function leadFor(session: Session, changes: readonly PendingChange[
               },
             },
           };
-    }
+        }
 
-    case "passive":
-      return { kind: "passive" };
-    default: {
-      const _exhaustive: never = first.change.kind;
+        if (lead.kind === "none") lead = { kind: "answer", authorization: { kind: "none" } };
+        break;
+      }
 
-      return _exhaustive;
+      case "report":
+        if (lead.kind === "none") lead = { kind: "report" };
+        break;
+      case "passive":
+        lead = { kind: "passive" };
+        break;
+      default: {
+        const _exhaustive: never = item.change.kind;
+
+        return _exhaustive;
+      }
     }
   }
+
+  return lead;
 }
 
 export function agentChanged(run: Run | undefined, changes: readonly PendingChange[]): boolean {

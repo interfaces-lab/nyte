@@ -70,7 +70,7 @@ refs/deleted                   Blob: the session is being deleted
 | `postgres/`  | Shared PostgreSQL storage: session row locks, atomic CAS and events, database-clock leases, cursor polling across hosts. |
 | `graph.ts`    | Walking commits: branch, ancestry, the context cut at a checkpoint. Pages `objects.chain`, never one read per commit. |
 | `queue.ts`    | `submit`, `pending`, `cancel`: the `steer` and `next` inbox chains behind tip and base refs. |
-| `admission.ts` | What the head's latest run and the first non-passive change let the queue land: live, settling a stop, fresh, or idle after a terminal run. User input starts model work; an authorized delegate answer may also start it once. `step.ts` lands by it; `sdk/wait.ts` and `sdk/relocate.ts` read it. |
+| `admission.ts` | What the head's latest run and the first change that may start work let the queue land: live, settling a stop, fresh, or idle after a terminal run. User input starts model work; an authorized delegate answer may also start it once. `step.ts` lands by it; `sdk/wait.ts` and `sdk/relocate.ts` read it. |
 | `effects.ts`  | The effect sandwich for one tool call, and recovery.                   |
 | `stacks.ts`   | Branch create, delete, stale check, fast-forward.                      |
 | `step.ts`     | One durable step of a run, and `drive` to loop it under one lease.     |
@@ -474,7 +474,7 @@ The drills every backend and every runner must pass:
 - A head move during a run makes the run's publish fail; the run ends, the
   head stays where the participant put it, and the queue is untouched.
 - A lease takeover fences every event and ref write from the former runner.
-- A crash between effect intent and result follows `safe` or `never` replay.
+- A crash between effect intent and result follows `safe` or `never` replay; a `safe` intent replays only on the filesystem it was opened for.
 - The first signal to a waiting effect wins.
 - Two clients with independent cursors reconstruct the same event stream.
 - A cursor older than the floor is refused and takes a snapshot.
