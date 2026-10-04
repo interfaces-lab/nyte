@@ -12,6 +12,8 @@ export const shell = defineConsts({
   titlebarHeight: "var(--nyte-titlebar-height)",
   /** macOS reserves this zoom-adjusted lane for the traffic lights. */
   trafficLightInset: "var(--nyte-titlebar-traffic-light-inset)",
+  /** With window tabs the main area is a card set this far into the chrome. */
+  cardInset: "var(--nyte-shell-card-inset)",
 });
 
 export const conversation = defineConsts({

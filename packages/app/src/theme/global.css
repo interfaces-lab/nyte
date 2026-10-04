@@ -115,3 +115,9 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* macOS draws traffic lights on the frameless window; fullscreen hides them. */
+:root:not([data-platform="darwin"]),
+:root[data-fullscreen] {
+  --nyte-titlebar-traffic-light-inset: 0px;
+}

@@ -149,7 +149,7 @@ test("titlebar controls and workbench stay aligned at every zoom and on every di
 
           return measured.workbench === null
             ? Infinity
-            : Math.abs(measured.track.width - measured.workbench.width);
+            : Math.abs(measured.track.left - measured.workbench.left);
         })
         .toBeLessThanOrEqual(1);
       const measured = await geometry();

@@ -15,6 +15,7 @@ import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react
 import { sidebar } from "../theme/schema.stylex.ts";
 import { layer } from "@nyte-ai/ui/schema.stylex";
 import { motion, role } from "@nyte-ai/ui/vars.stylex";
+import { windowTabs } from "../tabs/window-tabs.ts";
 import {
   clampSidebarWidth,
   SIDEBAR_WIDTH_MAX,
@@ -64,7 +65,7 @@ const styles = create({
       insetBlock: 0,
       insetInlineEnd: 0,
       width: 1,
-      backgroundColor: role.borderSecondaryTranslucent,
+      backgroundColor: "transparent",
       transitionProperty: "background-color",
       transitionDuration: motion.durationFast,
       transitionTimingFunction: motion.easeOut,
@@ -72,6 +73,8 @@ const styles = create({
     ":hover::after": { backgroundColor: role.borderPrimaryTranslucent },
     ":focus-visible::after": { backgroundColor: role.borderStrongTranslucent },
   },
+  /** Without window tabs the content is flush with the rail; the handle draws their edge. */
+  handleEdge: { "::after": { backgroundColor: role.borderSecondaryTranslucent } },
   handleActive: { "::after": { backgroundColor: role.borderStrongTranslucent } },
 });
 
@@ -169,7 +172,11 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
           aria-valuemin={SIDEBAR_WIDTH_MIN}
           aria-valuemax={SIDEBAR_WIDTH_MAX}
           aria-valuenow={sidebarWidth}
-          {...props(styles.handle, resizing && styles.handleActive)}
+          {...props(
+            styles.handle,
+            !windowTabs.enabled && styles.handleEdge,
+            resizing && styles.handleActive,
+          )}
           onKeyDown={resizeWithKeyboard}
           onPointerDown={beginResize}
           onPointerMove={moveResize}

@@ -38,6 +38,7 @@ import { getStartupDestination, startupSession } from "./startup-preference.ts";
 import { WorkspaceStage } from "./shell/workspace-stage.tsx";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { radius } from "@nyte-ai/ui/schema.stylex";
+import { shell } from "./theme/schema.stylex.ts";
 import { sessionId } from "@nyte-ai/protocol";
 import type { SessionId } from "@nyte-ai/protocol";
 import { nyte } from "./nyte.ts";
@@ -77,12 +78,12 @@ const styles = create({
   },
   /** With window tabs the main area is a card set into the chrome, which the titlebar shares. */
   card: {
-    marginInlineEnd: 8,
-    marginBlockEnd: 8,
+    marginInlineEnd: shell.cardInset,
+    marginBlockEnd: shell.cardInset,
     borderRadius: radius.card,
     boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
   },
-  cardSidebarHidden: { marginInlineStart: 8 },
+  cardSidebarHidden: { marginInlineStart: shell.cardInset },
   loadError: {
     display: "flex",
     flexDirection: "column",

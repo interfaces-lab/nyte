@@ -3,6 +3,10 @@ import { button, layer } from "@nyte-ai/ui/schema.stylex";
 import { shell, sidebar, workbench } from "../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 
+/**
+ * One row of three slots, each sized by the token its stage column already
+ * uses, so the chrome lines up with the columns beneath it by construction.
+ */
 export const titlebarStyles = create({
   bar: {
     position: "relative",
@@ -11,62 +15,63 @@ export const titlebarStyles = create({
     alignItems: "center",
     height: shell.titlebarHeight,
     minHeight: button.heightMd,
-    paddingInlineEnd: 10,
-    paddingInlineStart: 10,
     flexShrink: 0,
     WebkitAppRegion: "drag",
   },
-  contentFill: {
-    position: "absolute",
-    insetBlock: 0,
-    insetInlineStart: sidebar.width,
-    insetInlineEnd: 0,
-    backgroundColor: role.bgBase,
-    pointerEvents: "none",
-  },
-  contentFillSidebarHidden: { insetInlineStart: 0 },
-  workbenchTrack: {
-    position: "absolute",
-    zIndex: 3,
-    insetBlock: 0,
-    insetInlineEnd: 0,
+  /** The traffic-light lane is 0 off macOS and in fullscreen, so the row's own 10px wins there. */
+  sidebarSlot: {
     display: "flex",
     alignItems: "center",
     gap: 8,
-    width: workbench.activeWidth,
+    width: sidebar.width,
+    minWidth: "max-content",
+    height: "100%",
+    flexShrink: 0,
+    paddingInlineStart: `max(${shell.trafficLightInset}, 10px)`,
+    paddingInlineEnd: 8,
+  },
+  sidebarSlotHidden: { width: "auto" },
+  contentArea: {
+    display: "flex",
+    alignItems: "center",
+    flex: 1,
     minWidth: 0,
-    paddingInlineStart: 6,
+    height: "100%",
+    backgroundColor: role.bgBase,
+  },
+  contentAreaTabbed: { backgroundColor: "transparent" },
+  /** Tabs or title and the chat actions; it yields first when the workbench overlays the center. */
+  center: {
+    display: "flex",
+    alignItems: "center",
+    flex: 1,
+    minWidth: 0,
+    height: "100%",
+    overflow: "clip",
+  },
+  workbenchSlot: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    minWidth: 0,
+    height: "100%",
+    flexShrink: 1,
     paddingInlineEnd: 10,
+  },
+  workbenchSlotOpen: {
+    width: workbench.activeWidth,
+    paddingInlineStart: 6,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
     borderInlineStartColor: role.borderSecondaryTranslucent,
     boxShadow: `inset 0 -1px ${role.borderSecondaryTranslucent}`,
-    backgroundColor: role.bgBase,
-    WebkitAppRegion: "drag",
   },
-  /** Window tabs: the strip sits on the chrome, over the workbench column of the inset card. */
-  workbenchTrackTabbed: {
-    insetInlineEnd: 8,
+  /** Window tabs: the panel sits inside the inset card, so the slot runs from its edge to the window's. */
+  workbenchSlotOpenTabbed: {
+    width: `calc(${workbench.activeWidth} + ${shell.cardInset})`,
     borderInlineStartWidth: 0,
     boxShadow: "none",
-    backgroundColor: "transparent",
   },
-  workbenchTrackSidebarHiddenMac: {
-    maxWidth: `calc(100% - ${shell.trafficLightInset} - ${button.heightMd} - 12px)`,
-  },
-  workbenchTrackSidebarHidden: { maxWidth: `calc(100% - ${button.heightMd} - 20px)` },
-  workbenchReservation: {
-    width: `calc(${workbench.activeWidth} - 10px)`,
-    flexShrink: 0,
-  },
-  workbenchReservationTabbed: { width: `calc(${workbench.activeWidth} - 2px)` },
-  tabSlot: { pointerEvents: "auto" },
-  tabSlotWorkbenchOpen: { insetInlineEnd: `calc(${workbench.activeWidth} + 52px)` },
-  titleSlotWorkbenchOpen: {
-    insetInlineEnd: `calc(${workbench.activeWidth} + 44px)`,
-  },
-  // macOS reserves a traffic-light lane at the leading edge.
-  barMac: { paddingInlineStart: shell.trafficLightInset },
   actionTrack: {
     display: "inline-flex",
     alignItems: "center",
@@ -74,25 +79,7 @@ export const titlebarStyles = create({
     width: button.heightMd,
     height: button.heightMd,
     flexShrink: 0,
-    position: "relative",
-    zIndex: 1,
     WebkitAppRegion: "no-drag",
-  },
-  navigationTrack: {
-    position: "absolute",
-    zIndex: 2,
-    insetInlineStart: `calc(${sidebar.width} - ${button.heightMd} * 2 - 16px)`,
-    insetBlock: 0,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    WebkitAppRegion: "drag",
-  },
-  navigationTrackMac: {
-    insetInlineStart: `max(calc(${sidebar.width} - ${button.heightMd} * 2 - 16px), calc(${shell.trafficLightInset} + ${button.heightMd} + 8px))`,
-  },
-  titleSlotMac: {
-    insetInlineStart: `max(calc(${sidebar.width} + 12px), calc(${shell.trafficLightInset} + ${button.heightMd} * 3 + 28px))`,
   },
   historyControl: {
     display: "inline-flex",
@@ -104,25 +91,15 @@ export const titlebarStyles = create({
     overflowClipMargin: 2,
     WebkitAppRegion: "no-drag",
   },
+  historyControlBack: { marginInlineStart: "auto" },
   control: { display: "inline-flex", flexShrink: 0, WebkitAppRegion: "no-drag" },
-  spacer: { flex: 1, minWidth: 0 },
   titleSlot: {
-    position: "absolute",
-    zIndex: 1,
-    insetBlock: 0,
-    insetInlineStart: `calc(${sidebar.width} + 12px)`,
-    insetInlineEnd: 96,
     display: "flex",
     alignItems: "center",
+    flex: 1,
     minWidth: 0,
-    pointerEvents: "none",
+    paddingInlineStart: 12,
   },
-  // 72px of traffic lights, the 28px toggle, then a 12px title gap on macOS;
-  // elsewhere the toggle alone.
-  titleSlotSidebarHiddenMac: {
-    insetInlineStart: `calc(${shell.trafficLightInset} + ${button.heightMd} + 12px)`,
-  },
-  titleSlotSidebarHidden: { insetInlineStart: `calc(${button.heightMd} + 20px)` },
   sessionTitleGroup: {
     display: "flex",
     alignItems: "center",
@@ -132,7 +109,6 @@ export const titlebarStyles = create({
   sessionBack: {
     display: "inline-flex",
     flexShrink: 0,
-    pointerEvents: "auto",
     WebkitAppRegion: "no-drag",
   },
   /** A step of the chat's location: the title's type, one tone quieter. */

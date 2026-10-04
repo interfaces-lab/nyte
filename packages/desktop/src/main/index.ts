@@ -22,6 +22,7 @@ import {
   WATCH_EVENT_CHANNEL,
   WATCH_START_CHANNEL,
   WATCH_STOP_CHANNEL,
+  WINDOW_FULLSCREEN_CHANNEL,
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
 import type { WatchEnvelope } from "../shared/ipc.ts";
@@ -321,18 +322,19 @@ function senderWindow(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent
   return entry;
 }
 
-function updateWindowButtonPosition(entry: NyteWindow): void {
+function syncMacWindowChrome(entry: NyteWindow): void {
   if (process.platform !== "darwin" || entry.window.isDestroyed()) return;
 
   const zoomFactor = entry.window.webContents.getZoomFactor();
 
   entry.window.setWindowButtonPosition(macOSTrafficLightPosition(zoomFactor));
+  entry.window.webContents.send(WINDOW_FULLSCREEN_CHANNEL, entry.window.isFullScreen());
 }
 
 function registerIpc(): void {
   if (process.platform === "darwin") {
     ipcMain.on(WINDOW_ZOOM_CHANNEL, (event) => {
-      updateWindowButtonPosition(senderWindow(event));
+      syncMacWindowChrome(senderWindow(event));
     });
   }
 
@@ -416,11 +418,12 @@ function createWindow(): NyteWindow {
   };
 
   created.webContents.on("render-process-gone", releaseRendererWork);
-  const syncWindowChrome = (): void => updateWindowButtonPosition(entry);
+  const syncWindowChrome = (): void => syncMacWindowChrome(entry);
   created.webContents.on("did-finish-load", syncWindowChrome);
   created.webContents.on("zoom-changed", syncWindowChrome);
   created.on("move", syncWindowChrome);
   created.on("resize", syncWindowChrome);
+  created.on("enter-full-screen", syncWindowChrome);
   created.on("leave-full-screen", syncWindowChrome);
   screen.on("display-metrics-changed", syncWindowChrome);
   // Only a committed main-frame navigation has left the document behind. The

@@ -6,6 +6,7 @@ export const windowInput = defineVars({ "--nyte-window-zoom": "1" });
 export const layout = defineVars({
   "--nyte-titlebar-height": "35px",
   "--nyte-titlebar-traffic-light-inset": "calc(72px / var(--nyte-window-zoom, 1))",
+  "--nyte-shell-card-inset": "8px",
   "--nyte-sidebar-width": "220px",
   "--nyte-sidebar-handle-width": "8px",
   "--nyte-sidebar-row-height": "var(--nyte-row-height-md)",

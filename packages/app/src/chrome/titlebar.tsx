@@ -45,6 +45,7 @@ import {
 
 import { WorkbenchTabStrip } from "../workbench/tab-strip.tsx";
 import { canTravel } from "../tabs/model.ts";
+import type { WindowState } from "../tabs/model.ts";
 import { useWindowTabItems, useWindowTabsState } from "../tabs/use-window-tabs.tsx";
 import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
 import { windowTabs } from "../tabs/window-tabs.ts";
@@ -119,6 +120,25 @@ function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
   );
 }
 
+/** Its own component, so the session directory re-renders the strip and not the titlebar. */
+function TitlebarTabStrip({ state, mac }: { state: WindowState; mac: boolean }): ReactElement {
+  return (
+    <WindowTabStrip
+      tabs={useWindowTabItems(state)}
+      activeTabId={state.activeTabId}
+      mac={mac}
+      onActivate={(tabId) => windowTabs.dispatch({ kind: "activate-tab", tabId })}
+      onClose={(tabId) => windowTabs.dispatch({ kind: "close-tab", tabId })}
+      onNewTab={() => windowTabs.dispatch({ kind: "new-tab" })}
+      onReorder={(tabIds) => windowTabs.dispatch({ kind: "reorder", tabIds })}
+      onTogglePin={(tabId) => windowTabs.dispatch({ kind: "toggle-pin", tabId })}
+      onDuplicate={(tabId) => windowTabs.dispatch({ kind: "duplicate-tab", tabId })}
+      onCloseOthers={(tabId) => windowTabs.dispatch({ kind: "close-others", tabId })}
+      onCloseToRight={(tabId) => windowTabs.dispatch({ kind: "close-right", tabId })}
+    />
+  );
+}
+
 export function Titlebar(): ReactElement {
   const shellRouter = useRouter();
   const host = useHostState();
@@ -129,7 +149,6 @@ export function Titlebar(): ReactElement {
   const { sidebarVisible, stage } = useShellState();
   const mac = macPlatform(host.data?.platform);
   const capabilities = clientCapabilities(nyte.host);
-  const nativeMac = nyte.clientSurface === "desktop" && mac;
   const selection = activePane(layout).selection;
   const workspacePath = host.data?.workspace?.path;
   const viewKey = workbenchViewKey(workspacePath);
@@ -149,7 +168,6 @@ export function Titlebar(): ReactElement {
   const historyCanGoBack = useCanGoBack();
   const tabbed = windowTabs.enabled;
   const tabs = useWindowTabsState();
-  const tabItems = useWindowTabItems(tabs);
 
   const canGoBack = tabbed
     ? canTravel(tabs, -1)
@@ -268,252 +286,200 @@ export function Titlebar(): ReactElement {
 
   if (settingsOpen) {
     return (
-      <header {...props(titlebarStyles.bar, nativeMac && titlebarStyles.barMac)}>
-        <span aria-hidden="true" {...props(titlebarStyles.contentFill)} />
+      <header {...props(titlebarStyles.bar)}>
+        <span {...props(titlebarStyles.sidebarSlot)} />
+        <div {...props(titlebarStyles.contentArea, tabbed && titlebarStyles.contentAreaTabbed)} />
       </header>
     );
   }
 
   return (
-    <header {...props(titlebarStyles.bar, nativeMac && titlebarStyles.barMac)}>
-      {!tabbed && (
-        <span
-          aria-hidden="true"
-          {...props(
-            titlebarStyles.contentFill,
-            !sidebarVisible && titlebarStyles.contentFillSidebarHidden,
-          )}
-        />
-      )}
-      <span {...props(titlebarStyles.actionTrack)}>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Toggle
-                iconOnly
-                indicator="glyph"
-                aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
-                pressed={sidebarVisible}
-                aria-keyshortcuts={clientActionAriaShortcut(clientActions.sidebar, mac)}
-                onPressedChange={() => shellActions.toggleSidebar()}
-                title={undefined}
-              >
-                <PanelToggleIcon side="left" visible={sidebarVisible} />
-              </Toggle>
-            }
-          />
-          <TooltipContent>{`${sidebarVisible ? "Hide Sidebar" : "Show Sidebar"} ${clientActionShortcut(clientActions.sidebar, mac)}`}</TooltipContent>
-        </Tooltip>
+    <header {...props(titlebarStyles.bar)}>
+      <span
+        {...props(titlebarStyles.sidebarSlot, !sidebarVisible && titlebarStyles.sidebarSlotHidden)}
+      >
+        <span {...props(titlebarStyles.actionTrack)}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Toggle
+                  iconOnly
+                  indicator="glyph"
+                  aria-label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
+                  pressed={sidebarVisible}
+                  aria-keyshortcuts={clientActionAriaShortcut(clientActions.sidebar, mac)}
+                  onPressedChange={() => shellActions.toggleSidebar()}
+                  title={undefined}
+                >
+                  <PanelToggleIcon side="left" visible={sidebarVisible} />
+                </Toggle>
+              }
+            />
+            <TooltipContent>{`${sidebarVisible ? "Hide Sidebar" : "Show Sidebar"} ${clientActionShortcut(clientActions.sidebar, mac)}`}</TooltipContent>
+          </Tooltip>
+        </span>
+        <span {...props(titlebarStyles.historyControl, titlebarStyles.historyControlBack)}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  iconOnly
+                  icon="arrow-left"
+                  aria-label="Go back"
+                  disabled={!canGoBack}
+                  aria-keyshortcuts={clientActionAriaShortcut(clientActions.back, mac)}
+                  onClick={() => {
+                    if (tabbed) {
+                      windowTabs.dispatch({ kind: "travel", step: -1 });
+
+                      return;
+                    }
+
+                    if (stage.kind !== "workspace" && !shellRouter.history.canGoBack()) {
+                      shellActions.showWorkspace();
+
+                      return;
+                    }
+
+                    shellRouter.history.back();
+                  }}
+                  title={undefined}
+                />
+              }
+            />
+            <TooltipContent>{`Go Back ${clientActionShortcut(clientActions.back, mac)}`}</TooltipContent>
+          </Tooltip>
+        </span>
+        <span {...props(titlebarStyles.historyControl)}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  iconOnly
+                  icon="arrow-right"
+                  aria-label="Go forward"
+                  aria-keyshortcuts={clientActionAriaShortcut(clientActions.forward, mac)}
+                  disabled={tabbed && !canTravel(tabs, 1)}
+                  onClick={() =>
+                    tabbed
+                      ? windowTabs.dispatch({ kind: "travel", step: 1 })
+                      : shellRouter.history.forward()
+                  }
+                  title={undefined}
+                />
+              }
+            />
+            <TooltipContent>{`Go Forward ${clientActionShortcut(clientActions.forward, mac)}`}</TooltipContent>
+          </Tooltip>
+        </span>
       </span>
-      {sidebarVisible && (
-        <span
-          {...props(titlebarStyles.navigationTrack, nativeMac && titlebarStyles.navigationTrackMac)}
-        >
-          <span {...props(titlebarStyles.historyControl)}>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    iconOnly
-                    icon="arrow-left"
-                    aria-label="Go back"
-                    disabled={!canGoBack}
-                    aria-keyshortcuts={clientActionAriaShortcut(clientActions.back, mac)}
-                    onClick={() => {
-                      if (tabbed) {
-                        windowTabs.dispatch({ kind: "travel", step: -1 });
-
-                        return;
-                      }
-
-                      if (stage.kind !== "workspace" && !shellRouter.history.canGoBack()) {
-                        shellActions.showWorkspace();
-
-                        return;
-                      }
-
-                      shellRouter.history.back();
-                    }}
-                    title={undefined}
-                  />
-                }
-              />
-              <TooltipContent>{`Go Back ${clientActionShortcut(clientActions.back, mac)}`}</TooltipContent>
-            </Tooltip>
-          </span>
-          <span {...props(titlebarStyles.historyControl)}>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    iconOnly
-                    icon="arrow-right"
-                    aria-label="Go forward"
-                    aria-keyshortcuts={clientActionAriaShortcut(clientActions.forward, mac)}
-                    disabled={tabbed && !canTravel(tabs, 1)}
-                    onClick={() =>
-                      tabbed
-                        ? windowTabs.dispatch({ kind: "travel", step: 1 })
-                        : shellRouter.history.forward()
-                    }
-                    title={undefined}
-                  />
-                }
-              />
-              <TooltipContent>{`Go Forward ${clientActionShortcut(clientActions.forward, mac)}`}</TooltipContent>
-            </Tooltip>
-          </span>
-        </span>
-      )}
-      {tabbed && (
-        <span
-          {...props(
-            titlebarStyles.titleSlot,
-            titlebarStyles.tabSlot,
-            nativeMac && titlebarStyles.titleSlotMac,
-            workbenchOpen && titlebarStyles.tabSlotWorkbenchOpen,
-            !sidebarVisible &&
-              (nativeMac
-                ? titlebarStyles.titleSlotSidebarHiddenMac
-                : titlebarStyles.titleSlotSidebarHidden),
+      <div {...props(titlebarStyles.contentArea, tabbed && titlebarStyles.contentAreaTabbed)}>
+        <span {...props(titlebarStyles.center)}>
+          {tabbed ? (
+            <TitlebarTabStrip state={tabs} mac={mac} />
+          ) : (
+            <span {...props(titlebarStyles.titleSlot)}>
+              {workspaceVisible && selection.kind === "session" && (
+                <SessionTitle sessionId={selection.sessionId} />
+              )}
+            </span>
           )}
-        >
-          <WindowTabStrip
-            tabs={tabItems}
-            activeTabId={tabs.activeTabId}
-            mac={mac}
-            onActivate={(tabId) => windowTabs.dispatch({ kind: "activate-tab", tabId })}
-            onClose={(tabId) => windowTabs.dispatch({ kind: "close-tab", tabId })}
-            onNewTab={() => windowTabs.dispatch({ kind: "new-tab" })}
-            onReorder={(tabIds) => windowTabs.dispatch({ kind: "reorder", tabIds })}
-            onTogglePin={(tabId) => windowTabs.dispatch({ kind: "toggle-pin", tabId })}
-            onDuplicate={(tabId) => windowTabs.dispatch({ kind: "duplicate-tab", tabId })}
-            onCloseOthers={(tabId) => windowTabs.dispatch({ kind: "close-others", tabId })}
-            onCloseToRight={(tabId) => windowTabs.dispatch({ kind: "close-right", tabId })}
-          />
-        </span>
-      )}
-      {!tabbed && workspaceVisible && selection.kind === "session" && (
-        <span
-          {...props(
-            titlebarStyles.titleSlot,
-            nativeMac && titlebarStyles.titleSlotMac,
-            workbenchOpen && titlebarStyles.titleSlotWorkbenchOpen,
-            !sidebarVisible &&
-              (nativeMac
-                ? titlebarStyles.titleSlotSidebarHiddenMac
-                : titlebarStyles.titleSlotSidebarHidden),
-          )}
-        >
-          <SessionTitle sessionId={selection.sessionId} />
-        </span>
-      )}
-      <span {...props(titlebarStyles.spacer)} />
-      {(workspaceVisible || tabbed) &&
-        layout.kind === "single" &&
-        !(workbenchOpen && view.maximized) && (
-          <span {...props(titlebarStyles.actionTrack)}>
-            <Menu>
-              <MenuTrigger render={<Button iconOnly icon="more" aria-label="Chat actions" />} />
-              <MenuContent align="end">
-                <MenuItem
-                  icon="split-down"
-                  meta={clientActionShortcut(clientActions.splitDown, mac)}
-                  disabled={!canSplit || !workspaceVisible}
-                  onClick={() => panes.split("down")}
-                >
-                  {clientActions.splitDown.label}
-                </MenuItem>
-                <MenuItem
-                  icon="split-right"
-                  meta={clientActionShortcut(clientActions.splitRight, mac)}
-                  disabled={!canSplit || !workspaceVisible}
-                  onClick={() => panes.split("right")}
-                >
-                  {clientActions.splitRight.label}
-                </MenuItem>
-              </MenuContent>
-            </Menu>
-          </span>
-        )}
-      {workbenchOpen && (
-        <span
-          aria-hidden="true"
-          {...props(
-            titlebarStyles.workbenchReservation,
-            tabbed && titlebarStyles.workbenchReservationTabbed,
-          )}
-        />
-      )}
-      {workspaceVisible && (
-        <div
-          {...props(
-            workbenchOpen ? titlebarStyles.workbenchTrack : titlebarStyles.actionTrack,
-            workbenchOpen && tabbed && titlebarStyles.workbenchTrackTabbed,
-            workbenchOpen &&
-              !sidebarVisible &&
-              (nativeMac
-                ? titlebarStyles.workbenchTrackSidebarHiddenMac
-                : titlebarStyles.workbenchTrackSidebarHidden),
-          )}
-        >
-          {workbenchOpen && (
-            <>
-              <WorkbenchTabStrip
-                key={viewKey}
-                viewKey={viewKey}
-                view={view}
-                scope={scope}
-                capabilities={capabilities}
-                workspacePath={terminalWorkspacePath}
-              />
-              <span {...props(titlebarStyles.control)}>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        iconOnly
-                        icon={view.maximized ? "minimize" : "expand"}
-                        aria-label={view.maximized ? "Restore workbench width" : "Expand workbench"}
-                        onClick={() =>
-                          workbenchController.actions.toggleMaximized({ view: viewKey })
-                        }
-                        title={undefined}
-                      />
-                    }
-                  />
-                  <TooltipContent>
-                    {view.maximized ? "Restore Workbench Width" : "Expand Workbench"}
-                  </TooltipContent>
-                </Tooltip>
+          {(workspaceVisible || tabbed) &&
+            layout.kind === "single" &&
+            !(workbenchOpen && view.maximized) && (
+              <span {...props(titlebarStyles.actionTrack)}>
+                <Menu>
+                  <MenuTrigger render={<Button iconOnly icon="more" aria-label="Chat actions" />} />
+                  <MenuContent align="end">
+                    <MenuItem
+                      icon="split-down"
+                      meta={clientActionShortcut(clientActions.splitDown, mac)}
+                      disabled={!canSplit || !workspaceVisible}
+                      onClick={() => panes.split("down")}
+                    >
+                      {clientActions.splitDown.label}
+                    </MenuItem>
+                    <MenuItem
+                      icon="split-right"
+                      meta={clientActionShortcut(clientActions.splitRight, mac)}
+                      disabled={!canSplit || !workspaceVisible}
+                      onClick={() => panes.split("right")}
+                    >
+                      {clientActions.splitRight.label}
+                    </MenuItem>
+                  </MenuContent>
+                </Menu>
               </span>
-            </>
-          )}
-          <span {...props(titlebarStyles.control)}>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Toggle
-                    iconOnly
-                    indicator="glyph"
-                    id="workbench-toggle"
-                    aria-label={workbenchOpen ? "Close workbench panel" : "Open workbench panel"}
-                    pressed={workbenchOpen}
-                    aria-keyshortcuts={clientActionAriaShortcut(clientActions.workbench, mac)}
-                    onPressedChange={() =>
-                      workbenchController.actions.toggleWorkbench({ view: viewKey })
-                    }
-                    title={undefined}
-                  >
-                    <PanelToggleIcon side="right" visible={workbenchOpen} />
-                  </Toggle>
-                }
-              />
-              <TooltipContent>{`${workbenchOpen ? "Close Workbench Panel" : "Open Workbench Panel"} ${clientActionShortcut(clientActions.workbench, mac)}`}</TooltipContent>
-            </Tooltip>
-          </span>
-        </div>
-      )}
+            )}
+        </span>
+        {workspaceVisible && (
+          <div
+            {...props(
+              titlebarStyles.workbenchSlot,
+              workbenchOpen && titlebarStyles.workbenchSlotOpen,
+              workbenchOpen && tabbed && titlebarStyles.workbenchSlotOpenTabbed,
+            )}
+          >
+            {workbenchOpen && (
+              <>
+                <WorkbenchTabStrip
+                  key={viewKey}
+                  viewKey={viewKey}
+                  view={view}
+                  scope={scope}
+                  capabilities={capabilities}
+                  workspacePath={terminalWorkspacePath}
+                />
+                <span {...props(titlebarStyles.control)}>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          iconOnly
+                          icon={view.maximized ? "minimize" : "expand"}
+                          aria-label={
+                            view.maximized ? "Restore workbench width" : "Expand workbench"
+                          }
+                          onClick={() =>
+                            workbenchController.actions.toggleMaximized({ view: viewKey })
+                          }
+                          title={undefined}
+                        />
+                      }
+                    />
+                    <TooltipContent>
+                      {view.maximized ? "Restore Workbench Width" : "Expand Workbench"}
+                    </TooltipContent>
+                  </Tooltip>
+                </span>
+              </>
+            )}
+            <span {...props(titlebarStyles.control)}>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Toggle
+                      iconOnly
+                      indicator="glyph"
+                      id="workbench-toggle"
+                      aria-label={workbenchOpen ? "Close workbench panel" : "Open workbench panel"}
+                      pressed={workbenchOpen}
+                      aria-keyshortcuts={clientActionAriaShortcut(clientActions.workbench, mac)}
+                      onPressedChange={() =>
+                        workbenchController.actions.toggleWorkbench({ view: viewKey })
+                      }
+                      title={undefined}
+                    >
+                      <PanelToggleIcon side="right" visible={workbenchOpen} />
+                    </Toggle>
+                  }
+                />
+                <TooltipContent>{`${workbenchOpen ? "Close Workbench Panel" : "Open Workbench Panel"} ${clientActionShortcut(clientActions.workbench, mac)}`}</TooltipContent>
+              </Tooltip>
+            </span>
+          </div>
+        )}
+      </div>
     </header>
   );
 }

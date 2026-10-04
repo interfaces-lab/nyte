@@ -28,6 +28,8 @@ export const BROWSER_BOUNDS_CHANNEL = "nyte:browser-bounds";
 
 export const WINDOW_ZOOM_CHANNEL = "nyte:window-zoom";
 
+export const WINDOW_FULLSCREEN_CHANNEL = "nyte:window-fullscreen";
+
 /** Every SDK operation the bridge carries, one path per operation. Each is a wire-protocol operation. */
 export const SDK_OPERATION_PATHS = [
   "sessions.create",
