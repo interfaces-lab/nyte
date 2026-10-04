@@ -30,7 +30,7 @@
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "@opentui/core": "^0.5.12",
-    "typebox": "1.3.7"
+    "typebox": "1.3.34"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
