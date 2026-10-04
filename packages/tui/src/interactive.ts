@@ -25,9 +25,10 @@ import {
   resolveHostPlugins,
 } from "@nyte-ai/host";
 import { createOtelExport } from "@nyte-ai/host/otel";
-import { catalogForUsage, UsageScanner } from "@nyte-ai/host/store-usage";
+import { catalogForUsage } from "@nyte-ai/host/store-usage";
+import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
 import { observedAccountUsage, readAccountUsage } from "@nyte-ai/host/usage";
-import type { AccountUsage, LocalUsage } from "@nyte-ai/host/usage";
+import type { AccountUsage } from "@nyte-ai/host/usage";
 import { clampThinkingLevel, getSupportedThinkingLevels } from "@nyte-ai/ai";
 import type { Api, AuthInteraction, Model } from "@nyte-ai/ai";
 import { collectAbandoned, projectTree } from "@nyte-ai/client";
@@ -177,6 +178,7 @@ import type { UpdateProgress } from "./update.ts";
 import { updateSeverity } from "./cli-style.ts";
 import { UsagePanel } from "./usage-panel.ts";
 import { usageCard } from "./usage.ts";
+import type { UsageHistory } from "./usage.ts";
 import { checkForUpdate } from "./version.ts";
 import { readWorkspaceStatus } from "./workspace.ts";
 import { requestWorkspaceTrust } from "./trust-dialog.ts";
@@ -641,7 +643,14 @@ interface InteractiveOptions {
 }
 
 class Interactive {
-  private readonly usageScanner = new UsageScanner(nyteHome());
+  private readonly usageScanner = new UsageScanWorker(
+    nyteHome(),
+    import.meta.url.startsWith("file:///$bunfs/")
+      ? new URL("file:///$bunfs/root/host/src/usage-worker.js")
+      : new URL("../../host/src/usage-worker.ts", import.meta.url),
+  );
+  private usageHistory: UsageHistory = { kind: "loading" };
+  private scanningUsage: Promise<void> | undefined;
   private readonly tasks: TaskBrowser;
   private tuiPlugins: PluginProvider;
   private readonly renderer: CliRenderer;
@@ -854,6 +863,7 @@ class Interactive {
     this.renderer.setTerminalTitle(TERMINAL_TITLE_BASE);
     this.closing = Promise.allSettled([
       plugins,
+      this.usageScanner.close(),
       ...disposed,
       ...[...this.shellCommands.values()].map((entry) => entry.process.done),
     ]).then((outcomes) => {
@@ -1274,7 +1284,8 @@ class Interactive {
       }
     }
 
-    if (state.pending !== pending.previous?.pending) this.syncGutter(pending.session);
+    if (state.pending !== pending.previous?.pending || state.run !== pending.previous?.run)
+      this.syncGutter(pending.session);
 
     if (
       state.info.config !== pending.previous?.info.config ||
@@ -1456,10 +1467,10 @@ class Interactive {
 
   private syncGutter(session: FollowedSession): void {
     const rows = sessionRows(session);
-    // Enter's messages take the shape of the turns they become; ctrl+enter's wait in the compact rows.
-    const steering = rows.filter((row) => rowDelivery(row) === this.roles.steer);
-    const queued = rows.filter((row) => rowDelivery(row) !== this.roles.steer);
-    this.shell.pendingTail.sync(steering, { hint: queued.length === 0 });
+    const running = session.state.run !== undefined && !isTerminalPhase(session.state.run.phase);
+    const steering = rows.filter((row) => !running || rowDelivery(row) === this.roles.steer);
+    const queued = rows.filter((row) => running && rowDelivery(row) !== this.roles.steer);
+    this.shell.pendingTail.sync(steering, { hint: queued.length === 0, running });
     this.shell.pendingGutter.sync(queued);
 
     if (this.queueMenu !== undefined || this.queueSelection !== undefined) {
@@ -1470,7 +1481,7 @@ class Interactive {
         this.queueSelection = undefined;
     }
 
-    patchStatus(this.shell, { queued: rows.length });
+    patchStatus(this.shell, { queued: running ? rows.length : 0 });
   }
 
   // -------------------------------------------------------------------------
@@ -4248,7 +4259,6 @@ class Interactive {
     }
   }
 
-  /** Read once, then display the complete report in the composer panel. */
   private openUsage(): void {
     const session = this.requireSession();
 
@@ -4266,9 +4276,28 @@ class Interactive {
       this.refreshHints();
     };
 
+    const models = this.runtime.models;
+    const providers = ["anthropic", "openai-codex"] as const;
+    const accounts = new Map<AccountUsage["provider"], AccountUsage>();
+
+    for (const provider of providers) {
+      const observed = observedAccountUsage(models, provider);
+
+      if (observed !== undefined) accounts.set(provider, observed);
+    }
+
+    const readCard = () =>
+      usageCard({
+        history: this.usageHistory,
+        sessionId: session.sessionId,
+        accounts: providers.flatMap((provider) => accounts.get(provider) ?? []),
+      });
+
+    let card = readCard();
+
     const panel = openPanel(
       this.shell,
-      new UsagePanel(this.shell, close, (rows) => setSlotRows(this.shell, rows)),
+      new UsagePanel(this.shell, card, close, (rows) => setSlotRows(this.shell, rows)),
     );
 
     this.shell.dismissInfoPanel = close;
@@ -4279,56 +4308,47 @@ class Interactive {
       !controller.signal.aborted &&
       this.shell.dismissInfoPanel === close;
 
-    // Each part paints as it lands. The provider stated its limits on the last
-    // turn, so those paint at once; the usage endpoints and the transcript scan
-    // replace them. The scan is never aborted: finishing it warms the persisted
-    // cache that the next read pays stat calls against.
-    const models = this.runtime.models;
-    const providers = ["anthropic", "openai-codex"] as const;
+    const paint = (): void => {
+      if (active())
+        panel.update({
+          ...card,
+          accounts: providers.flatMap((provider) => accounts.get(provider) ?? []),
+        });
+    };
+
     const accountSignal = AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]);
-    let accounts: readonly AccountUsage[] = providers.flatMap(
-      (provider) => observedAccountUsage(models, provider) ?? [],
-    );
-    let local: LocalUsage | undefined;
 
-    const probed = Promise.all(
-      providers.map((provider) => readAccountUsage({ models, provider, signal: accountSignal })),
-    );
+    for (const provider of providers) {
+      void readAccountUsage({ models, provider, signal: accountSignal }).then(
+        (account) => {
+          accounts.set(provider, account);
+          paint();
+        },
+        () => undefined,
+      );
+    }
 
-    const scanned = this.usageScanner.scan({ stores: [], catalog: catalogForUsage(models) });
-
-    panel.layout.load(
-      () => this.host.workspaceUsage(session.sessionId),
-      (report) => {
-        const paint = (): void => {
-          if (active()) panel.update({ kind: "ready", card: usageCard(report, local, accounts) });
-        };
-
-        paint();
-        void probed.then(
-          (next) => {
-            accounts = next;
-            paint();
-          },
-          () => undefined,
-        );
-        void scanned.then(
-          (scan) => {
-            local = scan;
-            paint();
-          },
-          (cause: unknown) => {
-            const failed = { kind: "failed", message: errorMessage(cause) } as const;
-            local = { claudeCode: failed, codex: failed };
-            paint();
-          },
-        );
-      },
-      (cause) => {
-        if (active()) panel.update({ kind: "failed", message: errorMessage(cause) });
-        controller.abort();
-      },
-    );
+    this.scanningUsage ??= this.usageScanner
+      .scan({
+        stores: [{ workspacePath: this.host.cwd, path: this.host.storePath }],
+        catalog: catalogForUsage(models),
+      })
+      .then(
+        (scan) => {
+          this.usageHistory = { kind: "ready", scan };
+        },
+        (cause: unknown) => {
+          this.usageHistory = { kind: "failed", message: errorMessage(cause) };
+        },
+      )
+      .finally(() => {
+        this.scanningUsage = undefined;
+      });
+    void this.scanningUsage.then(() => {
+      if (!active()) return;
+      card = readCard();
+      paint();
+    });
   }
 
   // -------------------------------------------------------------------------

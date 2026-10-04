@@ -18,11 +18,6 @@ import { displayWidth, padDisplay } from "./width.ts";
 
 const BAR_CELLS = 20;
 
-type UsagePanelState =
-  | { readonly kind: "loading" }
-  | { readonly kind: "ready"; readonly card: UsageCard }
-  | { readonly kind: "failed"; readonly message: string };
-
 /** A read-only report. The shell owns focus; the native scroll box owns scrolling and selection. */
 export class UsagePanel implements EphemeralPanel {
   readonly container: BoxRenderable;
@@ -32,13 +27,15 @@ export class UsagePanel implements EphemeralPanel {
   private readonly scroll: ScrollBoxRenderable;
   private readonly text: TextRenderable;
   private readonly theme: CliTheme;
-  private state: UsagePanelState = { kind: "loading" };
+  private card: UsageCard;
 
   constructor(
     shell: Pick<Shell, "renderer" | "keymap" | "theme" | "nextId" | "newScrollAcceleration">,
+    card: UsageCard,
     onClose: () => void,
     onRows: (rows: number) => void,
   ) {
+    this.card = card;
     this.onRows = onRows;
     this.theme = shell.theme;
     this.layout = new PanelLayout({ ...shell, title: "Usage" });
@@ -132,16 +129,16 @@ export class UsagePanel implements EphemeralPanel {
   }
 
   get rows(): number {
-    return this.state.kind === "ready" ? this.layout.rows + 13 : this.layout.rows + 1;
+    return this.layout.rows + 13;
   }
 
   private readonly resize = (): void => {
     this.onRows(this.rows);
   };
 
-  update(state: UsagePanelState): void {
+  update(card: UsageCard): void {
     if (this.container.isDestroyed) return;
-    this.state = state;
+    this.card = card;
     this.resize();
     this.paint();
   }
@@ -166,27 +163,7 @@ export class UsagePanel implements EphemeralPanel {
     // Percent widths can include the scrollbar column and clip a character at each wrap.
     this.text.width = Math.max(1, this.scroll.viewport.width);
 
-    switch (this.state.kind) {
-      case "loading":
-        this.text.content = new StyledText([fg(this.theme.muted)("Reading usage…")]);
-
-        return;
-      case "ready":
-        this.text.content = usageText(this.state.card, this.scroll.viewport.width, this.theme);
-
-        return;
-      case "failed":
-        this.text.content = new StyledText([
-          fg(this.theme.error)(`Failed to load usage: ${this.state.message}`),
-        ]);
-
-        return;
-      default: {
-        const exhaustive: never = this.state;
-
-        return exhaustive;
-      }
-    }
+    this.text.content = usageText(this.card, this.scroll.viewport.width, this.theme);
   }
 }
 
@@ -280,7 +257,7 @@ function usageText(card: UsageCard, width: number, theme: CliTheme): StyledText 
 
   const workspace = card.workspace;
 
-  if (workspace.kind === "empty") {
+  if (workspace.kind === "message") {
     heading(`${workspace.title} · ${workspace.message}`);
   } else {
     heading(`${workspace.title} · ${workspace.total}`);

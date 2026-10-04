@@ -11,6 +11,9 @@ import { InlineMenu } from "./picker.ts";
 import type { Choice, MenuScreen } from "./picker.ts";
 import { TreeSelector } from "./tree-selector.ts";
 import { UsagePanel } from "./usage-panel.ts";
+import { usageCard } from "./usage.ts";
+import { sessionId } from "@nyte-ai/core";
+import type { AccountUsage } from "@nyte-ai/host/usage";
 import { createScrollAcceleration } from "./scrolling.ts";
 import { openDiagnosticReport } from "./diagnostic-report.ts";
 import { projectTree } from "@nyte-ai/client";
@@ -582,41 +585,70 @@ test("tree loads after paint, preserves search and draws branches inside its all
 });
 
 test("usage shares the bounded shell and keeps its report scrollable after data arrives", async () => {
-  const app = await panelFixture(40, 7);
+  const app = await panelFixture(80, 13);
+  const id = sessionId("usage");
+
+  const accounts: readonly AccountUsage[] = [
+    {
+      provider: "anthropic",
+      kind: "ready",
+      limits: {
+        providerId: "anthropic",
+        observedAt: 0,
+        windows: [{ id: "five_hour", usedPercent: 25 }],
+      },
+    },
+  ];
+
   const panel = new UsagePanel(
     { ...app.options, newScrollAcceleration: () => createScrollAcceleration(false) },
+    usageCard({ history: { kind: "loading" }, sessionId: id, accounts: [] }),
     () => panel.destroy(),
     () => {},
   );
+
   app.host.add(panel.container);
   panel.focus();
+
   try {
     await app.flush();
     expect(app.captureCharFrame()).toContain("Usage");
     expect(app.captureCharFrame()).toContain("Reading usage…");
+    panel.update(usageCard({ history: { kind: "loading" }, sessionId: id, accounts }));
+    await app.flush();
+    expect(app.captureCharFrame()).toContain("25% used");
+    expect(app.captureCharFrame()).toContain("Reading usage…");
+    panel.update(
+      usageCard({
+        history: { kind: "failed", message: "History failed" },
+        sessionId: id,
+        accounts,
+      }),
+    );
+    await app.flush();
+    expect(app.captureCharFrame()).toContain("25% used");
+    expect(app.captureCharFrame()).toContain("History failed");
     panel.update({
-      kind: "ready",
-      card: {
-        accounts: [],
-        workspace: { kind: "empty", title: "Workspace", message: "No usage" },
-        claudeCode: { kind: "message", message: "No local history" },
-        codex: {
-          kind: "message",
-          message: Array.from({ length: 20 }, (_, index) => `Usage row ${String(index)}`).join(
-            "\n",
-          ),
-        },
+      accounts,
+      workspace: { kind: "message", title: "Workspace", message: "No usage" },
+      claudeCode: { kind: "message", message: "No local history" },
+      codex: {
+        kind: "message",
+        message: Array.from({ length: 20 }, (_, index) => `Usage row ${String(index)}`).join("\n"),
       },
     });
     await app.flush();
     expect(app.captureCharFrame()).not.toContain("Reading usage…");
+
     for (let page = 0; page < 12; page++) app.mockInput.pressKey("\x1b[6~");
     await app.flush();
     expect(app.captureCharFrame()).toContain("Usage row 19");
-    expect(app.captureCharFrame().split("\n")[7]).toContain("Outside panel");
+    expect(app.captureCharFrame().split("\n")[13]).toContain("Outside panel");
     app.mockInput.pressEscape();
     await app.flush();
-    panel.update({ kind: "failed", message: "Late error" });
+    panel.update(
+      usageCard({ history: { kind: "failed", message: "Late error" }, sessionId: id, accounts }),
+    );
     await app.flush();
     expect(app.captureCharFrame()).not.toContain("Late error");
   } finally {

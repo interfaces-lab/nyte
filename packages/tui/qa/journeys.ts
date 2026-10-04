@@ -1107,7 +1107,7 @@ const long: Scenario = {
             "picker.close",
             (screen) => !screen.text.includes("Settings") && composer(screen, ""),
           );
-          await command(terminal, "usage", (screen) => screen.text.includes("Usage"));
+          await command(terminal, "usage", (screen) => /workspace · \d+ chats?/u.test(screen.text));
           await press(
             terminal,
             "picker.close",

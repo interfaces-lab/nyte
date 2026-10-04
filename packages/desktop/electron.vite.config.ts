@@ -26,7 +26,7 @@ export default defineConfig(({ command }) => ({
       rolldownOptions: {
         input: {
           index: resolve("src/main/index.ts"),
-          "usage-worker": resolve("src/main/usage-worker.ts"),
+          "usage-worker": resolve("../host/src/usage-worker.ts"),
           "store-worker": resolve("src/main/store-worker.ts"),
           "image-resize-worker": resolve("../core/src/tools/support/image-resize-worker.ts"),
           "codemode-worker": resolve("src/main/codemode-worker.ts"),

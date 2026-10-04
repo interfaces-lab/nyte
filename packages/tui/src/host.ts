@@ -3,21 +3,13 @@
  * workspace, composed the way the design record says a host composes
  * (`createNyte` with a store, a stream function, a model catalog, plugins
  * behind trust) and volunteered as a runner with `attach()`.
- *
- * Everything the client draws goes through SDK operations. The two reads that
- * span more than a branch, the session tree and the usage panel, are host
- * reads over the store entry's documented contract (design record, "Roles").
  */
-import { emptyUsageSummary, mergeUsageSummaries, projectUsage } from "@nyte-ai/client";
-import type { UsageSummary } from "@nyte-ai/client";
-import { sessionId } from "@nyte-ai/core";
 import type { Disposer, Plugin, Nyte, SessionId, TrustedWorkspace } from "@nyte-ai/core";
 import { WorkerStore } from "@nyte-ai/core/store";
 import type { Store } from "@nyte-ai/core/store";
 import type { Session } from "@nyte-ai/core/store";
 import { createHost } from "@nyte-ai/host";
 import type { HostOptions } from "@nyte-ai/host";
-import type { Usage } from "@nyte-ai/schema";
 import { createBunPluginSources } from "./plugin-loader.ts";
 import { codemodeRuntimeOptions } from "./codemode-runtime.ts";
 
@@ -42,34 +34,24 @@ interface OpenHostOptions extends Omit<HostOptions, "store"> {
   readonly watchPollIntervalMs?: number;
 }
 
-export interface WorkspaceUsage {
-  /** Chats that recorded any usage. */
-  readonly chats: number;
-  readonly workspace: UsageSummary;
-  /** The active chat's share, zero when it has no usage yet. */
-  readonly current: UsageSummary;
-}
-
-function hasUsage(usage: Usage): boolean {
-  return usage.totalTokens > 0 || usage.cost.total > 0;
-}
-
 export class Host {
   readonly nyte: Nyte;
   readonly store: Store;
   readonly cwd: string;
+  readonly storePath: string;
   readonly pluginSources: ReturnType<typeof createBunPluginSources>;
   private closing: Promise<HostCloseOutcome> | undefined;
 
   private constructor(
     nyte: Nyte,
     store: Store,
-    cwd: string,
+    options: Pick<OpenHostOptions, "cwd" | "storePath">,
     pluginSources: ReturnType<typeof createBunPluginSources>,
   ) {
     this.nyte = nyte;
     this.store = store;
-    this.cwd = cwd;
+    this.cwd = options.cwd;
+    this.storePath = options.storePath;
     this.pluginSources = pluginSources;
   }
 
@@ -96,7 +78,12 @@ export class Host {
             }
           : host.plugins;
 
-      return new Host(await createHost({ ...host, plugins, store }), store, cwd, pluginSources);
+      return new Host(
+        await createHost({ ...host, plugins, store }),
+        store,
+        { cwd, storePath },
+        pluginSources,
+      );
     } catch (cause) {
       pluginSources.dispose();
       await store.close().catch(() => undefined);
@@ -132,37 +119,6 @@ export class Host {
     } finally {
       await session.close().catch(() => undefined);
     }
-  }
-
-  /** Usage across every session in the workspace: one read-only pass over the store. */
-  async workspaceUsage(currentSessionId: SessionId): Promise<WorkspaceUsage> {
-    let workspace = emptyUsageSummary();
-    let current = emptyUsageSummary();
-    let chats = 0;
-
-    for (const { id } of await this.store.list()) {
-      const info = await this.nyte.sessions.get({ sessionId: sessionId(id) });
-
-      if (info === undefined) continue;
-      const session = await this.store.open(id);
-      let commits: readonly StoredCommit[];
-
-      try {
-        commits = await session.objects.commits();
-      } finally {
-        await session.close().catch(() => undefined);
-      }
-
-      const summary = projectUsage(commits.map((item) => item.commit));
-
-      if (!hasUsage(summary.total)) continue;
-      chats += 1;
-      workspace = mergeUsageSummaries(workspace, summary);
-
-      if (info.sessionId === currentSessionId) current = summary;
-    }
-
-    return { chats, workspace, current };
   }
 
   /** Best-effort shutdown; every caller observes the same settlement and original causes. */

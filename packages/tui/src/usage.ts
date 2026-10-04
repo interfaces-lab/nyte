@@ -1,8 +1,15 @@
 /** Recorded token consumption and estimated cost, grouped by workspace and local tool. */
-import type { AccountUsage, LocalHistoryUsage, LocalUsage } from "@nyte-ai/host/usage";
+import { emptyUsageSummary, mergeUsageSummaries, summarizeUsage } from "@nyte-ai/client";
+import type { SessionId } from "@nyte-ai/core";
+import type { UsageScan } from "@nyte-ai/host/store-usage";
+import type { AccountUsage, LocalHistoryUsage } from "@nyte-ai/host/usage";
 import type { Usage } from "@nyte-ai/schema";
 import { formatTokens } from "./format.ts";
-import type { WorkspaceUsage } from "./host.ts";
+
+export type UsageHistory =
+  | { readonly kind: "loading" }
+  | { readonly kind: "ready"; readonly scan: UsageScan }
+  | { readonly kind: "failed"; readonly message: string };
 
 export interface UsageCardRow {
   readonly label: string;
@@ -14,7 +21,7 @@ export interface UsageCardRow {
 }
 
 type WorkspaceUsageCard =
-  | { readonly kind: "empty"; readonly title: string; readonly message: string }
+  | { readonly kind: "message"; readonly title: string; readonly message: string }
   | {
       readonly kind: "usage";
       readonly title: string;
@@ -105,13 +112,30 @@ function breakdownLines(total: Usage): readonly [string, ...string[]] {
   return cache.length === 0 ? [primary] : [primary, cache.join(" · ")];
 }
 
-function workspaceCard(report: WorkspaceUsage): WorkspaceUsageCard {
-  const { chats, workspace, current } = report;
+function workspaceCard(scan: UsageScan, sessionId: SessionId): WorkspaceUsageCard {
+  let workspace = emptyUsageSummary();
+  let current = emptyUsageSummary();
+  let chats = 0;
+  const failures: string[] = [];
+
+  for (const store of scan.stores) {
+    if (store.failure !== null) failures.push(`Failed to load usage: ${store.failure}`);
+
+    for (const session of store.sessions) {
+      const summary = summarizeUsage(session.commits);
+
+      if (!hasUsage(summary.total)) continue;
+      chats += 1;
+      workspace = mergeUsageSummaries(workspace, summary);
+
+      if (session.sessionId === sessionId) current = summary;
+    }
+  }
 
   const empty: WorkspaceUsageCard = {
-    kind: "empty",
+    kind: "message",
     title: "workspace",
-    message: "No usage recorded",
+    message: failures.length === 0 ? "No usage recorded" : failures.join("\n"),
   };
 
   if (chats === 0) return empty;
@@ -140,7 +164,7 @@ function workspaceCard(report: WorkspaceUsage): WorkspaceUsageCard {
     title: `workspace · ${count(chats, "chat")}`,
     total: formatCost(workspace.total.cost.total),
     rows: [first, ...rest],
-    breakdown: breakdownLines(workspace.total),
+    breakdown: [...breakdownLines(workspace.total), ...failures],
   };
 
   if (chats > 1 && hasUsage(current.total)) {
@@ -213,17 +237,45 @@ function localUsageCard(result: LocalHistoryUsage, name: string): LocalUsageCard
 }
 
 /** Keep external tool consumption separate from Nyte workspace totals. */
-export function usageCard(
-  report: WorkspaceUsage,
-  local: LocalUsage | undefined,
-  accounts: readonly AccountUsage[],
-): UsageCard {
-  const reading = { kind: "message", message: "Reading local history…" } as const;
+export function usageCard({
+  history,
+  sessionId,
+  accounts,
+}: {
+  readonly history: UsageHistory;
+  readonly sessionId: SessionId;
+  readonly accounts: readonly AccountUsage[];
+}): UsageCard {
+  switch (history.kind) {
+    case "loading":
+      return {
+        accounts,
+        workspace: { kind: "message", title: "workspace", message: "Reading usage…" },
+        claudeCode: { kind: "message", message: "Reading local history…" },
+        codex: { kind: "message", message: "Reading local history…" },
+      };
+    case "failed":
+      return {
+        accounts,
+        workspace: {
+          kind: "message",
+          title: "workspace",
+          message: `Failed to load usage: ${history.message}`,
+        },
+        claudeCode: { kind: "message", message: history.message },
+        codex: { kind: "message", message: history.message },
+      };
+    case "ready":
+      return {
+        accounts,
+        workspace: workspaceCard(history.scan, sessionId),
+        claudeCode: localUsageCard(history.scan.claudeCode, "Claude Code"),
+        codex: localUsageCard(history.scan.codex, "Codex"),
+      };
+    default: {
+      const exhaustive: never = history;
 
-  return {
-    accounts,
-    workspace: workspaceCard(report),
-    claudeCode: local === undefined ? reading : localUsageCard(local.claudeCode, "Claude Code"),
-    codex: local === undefined ? reading : localUsageCard(local.codex, "Codex"),
-  };
+      return exhaustive;
+    }
+  }
 }

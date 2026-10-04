@@ -8,7 +8,7 @@
 - Assert visible screens, provider requests, task/process outcomes, and clean exit output. Do not import the application controller into QA.
 - The terminal driver and isolated loopback fixtures live in `qa/`. Record input-to-matching-screen latency per action.
 - Cover relevant widths, scrolling, resize, and cancellation. Wait for observable states with deadlines; close every process, PTY, renderer and fixture.
-- The store runs in a worker thread (`WorkerStore` over core's `store-worker`), so the rendering thread never waits on SQLite. `scripts/build-binary.ts` compiles the worker as a second entry from `packages/`; `src/host.ts` opens it at `/$bunfs/root/core/src/kernel/store-worker.js` in the binary and from source beside `WorkerStore`.
+- SQLite runs through `WorkerStore`; usage history runs through the host package's shared `UsageScanWorker`. Both stay off the rendering thread. `scripts/build-binary.ts` embeds their entries under `/$bunfs/root/core/src/kernel/store-worker.js` and `/$bunfs/root/host/src/usage-worker.js`; source runs load the corresponding `.ts` files.
 - Each workspace has one store for every client at `~/.nyte/workspaces/<path-hash>/sessions.db` (`workspaceStorePath` in `@nyte-ai/host`). The TUI attaches as runner only to sessions it opened; children follow their parent.
 - Every local input paints before host work starts: notices for stop and task actions, selected model and effort, and the composer's own text. Keys are blocked with a reason until the session is open.
 
