@@ -20,7 +20,10 @@ export interface Connection {
 export interface WebBridge {
   readonly bridge: NyteBridge;
   /** Verify with GET /v1/info, then route every call to this server. Rejects with the client's NyteWireError/NyteTransportError on failure. */
-  connect(connection: Connection, signal?: AbortSignal): Promise<ServerInfo>;
+  connect(
+    connection: Connection,
+    options?: { readonly signal?: AbortSignal; readonly relay?: true },
+  ): Promise<ServerInfo>;
 }
 
 const REFRESH_MS = 10_000;
@@ -67,6 +70,7 @@ function openOutcome(outcome: WorkspaceSelectOutcome): OpenWorkspaceOutcome {
 export function createWebBridge(): WebBridge {
   let client: NyteClient | undefined;
   let environment: ServerInfo["environment"];
+  let relay: true | undefined;
   let polling = false;
   const listeners = new Set<(event: HostEvent) => void>();
 
@@ -137,6 +141,9 @@ export function createWebBridge(): WebBridge {
     clientSurface: "web",
     get environment() {
       return environment;
+    },
+    get relay() {
+      return relay;
     },
     sessions: {
       create: mutate((current) => current.sessions.create),
@@ -318,8 +325,8 @@ export function createWebBridge(): WebBridge {
 
   return {
     bridge,
-    connect: async ({ url, token }, signal) => {
-      const verification = signal ?? AbortSignal.timeout(10_000);
+    connect: async ({ url, token }, options) => {
+      const verification = options?.signal ?? AbortSignal.timeout(10_000);
       let verifying = true;
 
       const next = createNyteClient({
@@ -339,6 +346,7 @@ export function createWebBridge(): WebBridge {
       verifying = false;
       client = next;
       environment = info.environment;
+      relay = options?.relay;
       directory.reset();
 
       if (!polling) {

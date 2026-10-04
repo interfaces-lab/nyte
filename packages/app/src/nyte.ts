@@ -29,6 +29,9 @@ export const nyte: NyteBridge = {
   get environment() {
     return bridge().environment;
   },
+  get relay() {
+    return bridge().relay;
+  },
   get sessions() {
     return bridge().sessions;
   },

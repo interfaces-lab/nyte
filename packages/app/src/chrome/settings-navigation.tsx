@@ -107,9 +107,19 @@ const SECTION_GROUPS: readonly (readonly SettingsSection[])[] = [
 
 const WEB_SECTION_GROUPS: readonly (readonly SettingsSection[])[] = [["general", "appearance"]];
 
+/** A desktop over the relay: its sign-ins are changed on it, so no credential crosses the relay. */
+const RELAY_SECTION_GROUPS: readonly (readonly SettingsSection[])[] = [
+  ["general", "appearance"],
+  ["usage"],
+];
+
 /** What this host can show. The web app reaches Profile, Providers, and Usage only through a server environment. */
 export function settingsSectionGroups(): readonly (readonly SettingsSection[])[] {
-  return nyte.clientSurface === "desktop" || nyte.environment ? SECTION_GROUPS : WEB_SECTION_GROUPS;
+  if (nyte.clientSurface === "desktop") return SECTION_GROUPS;
+
+  if (nyte.relay) return RELAY_SECTION_GROUPS;
+
+  return nyte.environment ? SECTION_GROUPS : WEB_SECTION_GROUPS;
 }
 
 export function isSettingsSection(value: string): value is SettingsSection {

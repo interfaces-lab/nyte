@@ -749,6 +749,8 @@ export interface NyteBridge {
   readonly clientSurface: ClientSurface;
   /** The web app's server answers `environment.*`, as `ServerInfo.environment` reported. The desktop always has its own. */
   readonly environment?: true;
+  /** The web app reaches a desktop through the Nyte account relay. That desktop's provider and GitHub sign-ins stay on it. */
+  readonly relay?: true;
   readonly sessions: SessionsBridge;
   readonly messages: MessagesBridge;
   readonly jobs: RemoteNyte["jobs"];

@@ -221,10 +221,10 @@ function AccountFlow({
 
         try {
           const connection = accountConnection(saved);
-          await webBridge.connect(
-            connection,
-            AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]),
-          );
+          await webBridge.connect(connection, {
+            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]),
+            relay: true,
+          });
 
           if (!controller.signal.aborted)
             onConnected(connection, (node) => {

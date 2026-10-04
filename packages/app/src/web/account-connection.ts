@@ -68,10 +68,10 @@ export async function connectAccountEnvironment(input: {
     if (acceptance === "cancelled" || input.signal.aborted) return undefined;
 
     if (acceptance !== "accepted") throw new AcceptanceError(acceptance);
-    await webBridge.connect(
-      connection,
-      AbortSignal.any([input.signal, AbortSignal.timeout(READINESS.windowMs)]),
-    );
+    await webBridge.connect(connection, {
+      signal: AbortSignal.any([input.signal, AbortSignal.timeout(READINESS.windowMs)]),
+      relay: true,
+    });
 
     if (input.signal.aborted) return undefined;
     saveAccountDevice(sessionStorage, device);
