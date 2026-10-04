@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build, defaultClientConditions } from "vite";
 import { stylex } from "@nyte-ai/app/vite";
+import { deferredClerk } from "../../account.vite.ts";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { AccountOperations } from "../account/operations.ts";
 import {
@@ -307,17 +308,17 @@ test("sign-in uses the existing Nyte window, in real Electron", async () => {
       configFile: false,
       envDir: false,
       logLevel: "silent",
-      plugins: [stylex.rollup({ devMode: "css-only", runtimeInjection: false })],
+      plugins: [deferredClerk(), stylex.rollup({ devMode: "css-only", runtimeInjection: false })],
       define: { "process.env.NODE_ENV": JSON.stringify("production") },
       oxc: { jsx: { development: false } },
       resolve: { conditions: ["nyte-source", ...defaultClientConditions] },
       build: {
         outDir: directory,
         emptyOutDir: false,
+        manifest: true,
         lib: {
           entry: fileURLToPath(new URL("./fixtures/account-renderer.tsx", import.meta.url)),
-          formats: ["iife"],
-          name: "accountFixture",
+          formats: ["es"],
           fileName: () => "renderer.js",
         },
       },

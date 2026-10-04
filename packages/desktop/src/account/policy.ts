@@ -122,6 +122,7 @@ export const accountAnswer = Compile(
         Type.Literal("impersonated"),
         Type.Literal("no_token"),
         Type.Literal("sign_out_failed"),
+        Type.Literal("unreachable"),
       ]),
     }),
   ]),

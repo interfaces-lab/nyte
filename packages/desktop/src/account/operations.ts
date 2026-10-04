@@ -22,6 +22,7 @@ const FAILURES: Record<AccountFailure, string> = {
   impersonated: "An impersonated session can't link this Mac.",
   no_token: "Clerk didn't issue a session token. Try again.",
   sign_out_failed: "Clerk couldn't sign out. Try again.",
+  unreachable: "Nyte can't reach the account service. Try again.",
 };
 
 /**

@@ -25,7 +25,19 @@ The build guard budgets these entries:
 | --- | ---: |
 | Electron main | 700 KiB |
 | Preload | 16 KiB |
-| Renderer entry | 4,200 KiB |
+| Renderer startup graph | 4,600 KiB |
+
+The renderer budget includes the entry, HTML module preloads, and every transitively
+imported static JavaScript chunk, counted once. The Vite manifest supplies the import
+graph, so moving startup code into a shared chunk cannot hide it from the guard.
+
+Clerk is a separate module entry loaded only for an account command. Launch and normal
+workspace use neither load the SDK nor wait for account configuration. The sign-in
+dialog paints a loading state immediately, supports cancellation, and offers a retry
+if the module fails to load. Account rendering has its own error boundary and never
+wraps the workspace. Source imports remain static; the account loader inserts a module
+script, and the build rejects Clerk dependencies reachable from a startup entry.
+The account chunk has no extracted CSS; its dialog styles ship with the app stylesheet.
 
 The budgets are the promise; the sizes on a given day are not. Run
 `pnpm --dir packages/desktop build` and read the table

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { app, BrowserWindow, safeStorage, shell } from "electron";
 import type { WebContents } from "electron";
 import { Type } from "typebox";
@@ -83,13 +83,30 @@ async function until(check: () => boolean | Promise<boolean>, message: string): 
 
 let mode: "answer" | "hold" = "answer";
 
+let accountModuleRequests = 0;
+
+let accountModuleMode: "hold" | "fail" | "serve" = "hold";
+
+const releaseAccountModule: Array<() => void> = [];
+
 const server = createServer((request, response) => {
-  if (request.url === "/renderer.js") {
-    void readFile(join(directory, "renderer.js")).then(
-      (source) =>
-        response.writeHead(200, { "content-type": "text/javascript; charset=utf-8" }).end(source),
-      () => response.writeHead(404).end(),
-    );
+  const path = new URL(request.url ?? "/", "http://localhost").pathname;
+
+  if (path.endsWith(".js")) {
+    const serve = () =>
+      void readFile(join(directory, basename(path))).then(
+        (source) =>
+          response.writeHead(200, { "content-type": "text/javascript; charset=utf-8" }).end(source),
+        () => response.writeHead(404).end(),
+      );
+
+    if (basename(path).startsWith("clerk-")) {
+      accountModuleRequests += 1;
+
+      if (accountModuleMode === "hold") releaseAccountModule.push(serve);
+      else if (accountModuleMode === "fail") response.writeHead(503).end();
+      else serve();
+    } else serve();
 
     return;
   }
@@ -97,7 +114,7 @@ const server = createServer((request, response) => {
   if (request.url === "/lazy") {
     response
       .writeHead(200, { "content-type": "text/html" })
-      .end('<!doctype html><body><script src="/renderer.js"></script>');
+      .end('<!doctype html><body><script type="module" src="/renderer.js"></script>');
 
     return;
   }
@@ -193,12 +210,63 @@ async function run(): Promise<void> {
   contents.send(ACCOUNT_CHANNELS.command, null);
   await new Promise((resolve) => setTimeout(resolve, 100));
   assert.equal(clerkRequests, 0);
+  assert.equal(accountModuleRequests, 0);
   assert.equal(await contents.executeJavaScript(count), "1");
   assert.deepEqual(cipherCalls, []);
+
+  const cancelled = account.requestSessionToken({ signal });
+  const cancellation = assert.rejects(cancelled, AccountCancelled);
+
+  await until(() => accountModuleRequests === 1, "Account command did not request the module");
+  await until(
+    async () =>
+      (await contents.executeJavaScript('document.querySelector("[role=status]")?.textContent')) ===
+      "Loading…",
+    "Sign-in did not show loading while the module was pending",
+  );
+  await contents.executeJavaScript(
+    "document.querySelector('[aria-label=\"Close sign-in\"]').click()",
+  );
+  await cancellation;
+  assert.equal(clerkRequests, 0);
+  assert.equal(await contents.executeJavaScript(count), "1");
+
+  for (const release of releaseAccountModule.splice(0)) release();
+  accountModuleMode = "serve";
+  await until(
+    async () =>
+      (await contents.executeJavaScript("window.nyteAccountRuntime !== undefined")) === true,
+    "Account module did not finish loading",
+  );
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(clerkRequests, 0, "Cancelled loading must not initialize Clerk");
+
+  accountModuleMode = "fail";
+  await window.loadURL(`${origin}/lazy`);
+  await until(
+    async () => (await contents.executeJavaScript(count)) === "0",
+    "Renderer did not mount after reload",
+  );
   const requested = account.requestSessionToken({ signal });
   const ended = assert.rejects(requested);
 
-  await until(() => clerkRequests > 0, "Account command did not load Clerk");
+  await until(
+    async () =>
+      (await contents.executeJavaScript('document.querySelector("[role=alert]")?.textContent')) ===
+      "Couldn’t load sign-in.",
+    "Module failure did not offer retry",
+  );
+  assert.equal(accountModuleRequests, 2);
+  await contents.executeJavaScript('document.getElementById("count").click()');
+  assert.equal(await contents.executeJavaScript(count), "1");
+  assert.equal(clerkRequests, 0);
+
+  accountModuleMode = "serve";
+  await contents.executeJavaScript(
+    `Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Try again").click()`,
+  );
+  await until(() => clerkRequests > 0, "Retry did not load Clerk");
+  assert.equal(accountModuleRequests, 3);
 
   assert.equal(await contents.executeJavaScript(count), "1");
   await window.loadURL(rendererUrl);

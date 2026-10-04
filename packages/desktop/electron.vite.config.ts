@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { resolveQuickJSWasmPath } from "@nyte-ai/plugin/codemode-runtime";
 import { defaultClientConditions, type Plugin } from "vite";
 import { dropInlinedGhosttyWasm, stylex } from "@nyte-ai/app/vite";
+import { deferredClerk } from "./account.vite.ts";
 
 export default defineConfig(({ command }) => ({
   main: {
@@ -56,6 +57,7 @@ export default defineConfig(({ command }) => ({
   },
   renderer: {
     plugins: [
+      deferredClerk(),
       dropInlinedGhosttyWasm(),
       stylex.vite({
         // Development installs component rules before React mounts them.
@@ -91,6 +93,7 @@ export default defineConfig(({ command }) => ({
     },
     build: {
       chunkSizeWarningLimit: 6_000,
+      manifest: true,
       minify: true,
       target: "chrome152",
       rolldownOptions: {

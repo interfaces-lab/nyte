@@ -5,6 +5,8 @@
   in plugins. Keep API/IPC input validation.
 - Background agents get no ask-question tool.
 - Use Electron and Node APIs, not Bun-only APIs. Keep desktop-owned imports static.
+  Clerk is the sole opt-in renderer entry: load it only for an account command,
+  never from the workspace startup graph.
 - Use Vitest for state, host, and IPC behavior with real local fixtures where possible.
 - Browser pages are native `WebContentsView`s and composite above every DOM layer.
   A floating surface that can overlap a page must carry a `data-slot` listed in

@@ -194,8 +194,10 @@ is set up: this Mac opens one WebSocket to the broker's relay at
 `<origin>/v1/environments/<id>/relay`, and phones reach it at
 `<origin>/r/<id>`.
 
-Clerk loads in a window only when main sends it an account command. Release
-builds keep the sign-in in `account.json` in the app's user data folder, 0600:
+Clerk ships in a separate module and loads in a window only when main sends it
+an account command. The workspace starts without the SDK or an account configuration
+request. Sign-in shows a loading dialog while its module loads; a load failure can be
+retried without reloading the workspace. Release builds keep the sign-in in `account.json` in the app's user data folder, 0600:
 Clerk's client token sealed with Electron `safeStorage`, and the address
 Settings shows. Launching and opening Settings read only that address. The
 Keychain is asked when Clerk first needs the token in a run, when a new token

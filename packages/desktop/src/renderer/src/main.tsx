@@ -52,12 +52,6 @@ const startupMessage = document.getElementById("startup-message");
 
 const startupRetry = document.getElementById("startup-retry");
 
-let publishableKey: string | undefined;
-
-const accountConfig = window.nyteAccount.config().then((config) => {
-  publishableKey = config?.publishableKey;
-});
-
 applyStartupTheme({ shell: startupShell, retry: startupRetry });
 
 performance.mark("nyte:startup");
@@ -66,7 +60,7 @@ startRendererStartup({
   mountShell: () => {
     createRoot(container).render(
       <StrictMode>
-        <AccountProvider publishableKey={publishableKey}>
+        <AccountProvider>
           <App appIcon={appIcon} />
         </AccountProvider>
       </StrictMode>,
@@ -75,7 +69,6 @@ startRendererStartup({
   loadResources: () =>
     Promise.all([
       loadLocalResources(),
-      accountConfig,
       document.fonts.load('13px "Inter Variable"'),
       document.fonts.load('12px "JetBrains Mono Variable"'),
     ]).then(() => undefined),

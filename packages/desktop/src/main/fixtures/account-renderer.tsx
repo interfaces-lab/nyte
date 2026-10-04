@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import { useState } from "react";
+import { StrictMode, useState } from "react";
 import { AccountProvider } from "../../account/provider.tsx";
 
 function App() {
@@ -13,7 +13,9 @@ function App() {
 }
 
 createRoot(document.body).render(
-  <AccountProvider publishableKey={`pk_test_${btoa("clerk.example.com$")}`}>
-    <App />
-  </AccountProvider>,
+  <StrictMode>
+    <AccountProvider>
+      <App />
+    </AccountProvider>
+  </StrictMode>,
 );
