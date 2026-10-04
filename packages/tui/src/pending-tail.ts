@@ -83,22 +83,26 @@ export class PendingTail {
   }
 
   /** `hint` is false while the compact gutter below already carries the key that opens the queue. */
-  sync(items: readonly GutterRow[], options: { readonly hint?: boolean } = {}): void {
+  sync(
+    items: readonly GutterRow[],
+    options: { readonly hint: boolean; readonly running: boolean },
+  ): void {
     this.items = items;
-    this.hint = options.hint ?? true;
+    this.hint = options.hint;
 
     for (const [index, item] of items.entries()) {
       const ids = rowIds(item);
       const current = this.blocks[index];
 
-      if (current !== undefined && current.ids.some((id) => ids.includes(id))) {
-        current.ids = ids;
-        continue;
-      }
+      const block =
+        current !== undefined && current.ids.some((id) => ids.includes(id))
+          ? current
+          : this.mount(item, current?.root);
 
-      const block = this.mount(item, current?.root);
-
-      if (current !== undefined) this.unmount(current);
+      if (current !== undefined && current !== block) this.unmount(current);
+      block.ids = ids;
+      block.status.visible =
+        options.running || (item.kind === "sending" && item.row.state.kind === "retrying");
       this.blocks[index] = block;
     }
 
@@ -122,7 +126,6 @@ export class PendingTail {
     else this.container.insertBefore(root, before);
     appendMessage(this.transcript, { align: "end", content: rowContent(item) }, root);
 
-    // The same box the turn's activity row takes: block margin, one row, the transcript inset.
     const statusRow = new BoxRenderable(renderer, {
       id: nextId("pending-status"),
       height: 1,
