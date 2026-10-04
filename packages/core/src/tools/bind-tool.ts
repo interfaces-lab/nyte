@@ -38,7 +38,7 @@ export function bindTool<T extends TSchema, Details>(
         return await boundImages(await tool.execute(parse(input), call));
       } catch (error) {
         if (!(error instanceof ToolError)) throw error;
-        throw new ToolError(await boundImages(error.result));
+        throw new ToolError(await boundImages(error.result), error.reason);
       }
     },
   };

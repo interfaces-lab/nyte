@@ -70,6 +70,7 @@ export const ObjectSchema = Type.Union([
     tool: Type.String(),
     args: schemas.JsonValue,
     replay: Type.Union([Type.Literal("safe"), Type.Literal("never")]),
+    fs: Type.Optional(Type.String()),
     at: Type.Number(),
   }),
   Type.Object({
@@ -99,6 +100,7 @@ export const ObjectSchema = Type.Union([
     state: Type.Literal("result"),
     intent: Type.String(),
     result: schemas.ToolResultMessage,
+    settlement: Type.Optional(schemas.ToolOutcome),
     at: Type.Number(),
   }),
   Type.Object({ kind: Type.Literal("stack"), parent: Type.String(), base: NullableString }),

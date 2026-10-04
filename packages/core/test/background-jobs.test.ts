@@ -167,7 +167,7 @@ async function fixture(background: boolean, continuingParent = false) {
       session(api) {
         api.agents.add((draft) => draft.set("worker", { id: "worker", mode: "subagent" }));
         api.tools.add((draft) => {
-          const bash = createBashToolDefinition(cwd);
+          const bash = createBashToolDefinition();
           draft.set("bash", {
             ...bash,
             name: "bash",
@@ -398,6 +398,13 @@ for (const background of [false, true]) {
       expect
         .soft(only(await f.nyte.jobs.list({ sessionId: f.parent })).phase.kind)
         .toBe("cancelled");
+      if (!background) {
+        const transcript = await f.nyte.messages.list({ sessionId: f.parent });
+        const parts = transcript.flatMap((turn) => (turn.kind === "turn" ? turn.parts : []));
+        expect(parts.find((part) => part.kind === "tool")).toMatchObject({
+          state: { kind: "error", reason: { kind: "cancelled" } },
+        });
+      }
       await expect.poll(() => alive(f.pid()), poll).toBe("dead");
     } finally {
       await f.close();
@@ -756,7 +763,8 @@ test("foreground work waits and returns a normal tool result, including after pl
     expect(
       parts.find((part) => part.kind === "tool" && part.callId === origin.callId),
     ).toMatchObject({
-      result: { output: expect.stringContaining("job-result"), isError: false },
+      state: { kind: "success" },
+      output: expect.stringContaining("job-result"),
     });
     expect(f.requests.filter((request) => request.text.startsWith("Background "))).toEqual([]);
     expect(f.requests.filter((request) => request.text === "start")).toHaveLength(2);

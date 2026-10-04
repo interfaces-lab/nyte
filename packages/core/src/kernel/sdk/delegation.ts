@@ -735,7 +735,7 @@ export function createDelegation(input: {
               return [];
             case "tool":
               return [
-                `[${part.class.kind}${part.result === undefined ? "" : `: ${part.result.output.slice(0, 200)}`}]`,
+                `[${part.class.kind}${part.output === undefined ? "" : `: ${part.output.slice(0, 200)}`}]`,
               ];
             default: {
               const _exhaustive: never = part;

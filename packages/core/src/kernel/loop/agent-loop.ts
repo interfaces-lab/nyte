@@ -9,6 +9,7 @@
 
 import type { AssistantMessage, ToolResultMessage } from "@nyte-ai/ai/types";
 import { validateToolArguments } from "@nyte-ai/ai/utils/validation";
+import type { ToolReason } from "@nyte-ai/protocol";
 import { normalizeContext } from "@nyte-ai/schema";
 import type {
   AgentContext,
@@ -17,15 +18,28 @@ import type {
   AgentTool,
   AgentToolCall,
   AgentToolResult,
-  AgentToolUpdateCallback,
+  ReadyToolCall,
   StreamFn,
   ToolCallOutcome,
 } from "./types.ts";
-import { toolCallArguments, toolFailure, toolResultMessage, toolSuccess } from "./tool-result.ts";
+import {
+  stopReason,
+  toolCallArguments,
+  toolFailure,
+  toolResultMessage,
+  toolSuccess,
+} from "./tool-result.ts";
 
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
 
 type ToolUpdateSink = (partialResult: AgentToolResult<unknown>) => Promise<void> | void;
+
+/** One call after its result message was emitted: the outcome it settled with and the message the model reads. */
+export interface SettledToolCall {
+  readonly toolCall: AgentToolCall;
+  readonly outcome: ToolCallOutcome;
+  readonly message: ToolResultMessage;
+}
 
 /**
  * Stream one assistant response and emit message_start, message_update, and
@@ -107,33 +121,34 @@ export async function generateAssistant(
 export async function failToolCallsFromTruncatedMessage(
   toolCalls: AgentToolCall[],
   emit: AgentEventSink,
-): Promise<ToolResultMessage[]> {
-  const messages: ToolResultMessage[] = [];
+): Promise<SettledToolCall[]> {
+  const settled: SettledToolCall[] = [];
 
   for (const toolCall of toolCalls) {
     await emitToolExecutionStart(toolCall, emit);
 
-    const finalized: FinalizedToolCallOutcome = {
+    const finalized: FinalizedToolCall = {
       toolCall,
-      ...toolFailure(
+      outcome: toolFailure(
         `Tool call "${toolCall.name}" was not executed: the response hit the output token limit, so its arguments may be truncated. Re-issue the tool call with complete arguments.`,
       ),
     };
 
     await emitToolExecutionEnd(finalized, emit);
-    messages.push(await emitToolResultMessage(finalized, emit));
+    settled.push(await emitToolResultMessage(finalized, emit));
   }
 
-  return messages;
+  return settled;
 }
 
 /**
  * Execute the tool calls of an assistant message. Calls are prepared in
  * source order, then run concurrently; `tool_execution_end` arrives in
- * completion order and the result messages in source order. The runner also
- * calls this directly to settle calls an interrupted run left unstarted.
- * `onFinalized` persists a call after result hooks and before its completion
- * event. A persistence failure rejects the batch.
+ * completion order and the result messages in source order. Every call
+ * settles, whether it ran, was refused, or the batch was stopped; a tool
+ * reads the signal and decides for itself. `onFinalized` persists a call
+ * after result hooks and before its completion event. A persistence failure
+ * rejects the batch.
  */
 export async function executeToolCalls(
   currentContext: AgentContext,
@@ -142,78 +157,65 @@ export async function executeToolCalls(
   signal: AbortSignal | undefined,
   emit: AgentEventSink,
   onFinalized?: (toolCall: AgentToolCall, outcome: ToolCallOutcome) => Promise<void>,
-): Promise<ToolResultMessage[]> {
+): Promise<SettledToolCall[]> {
   const toolCalls = assistantMessage.content.filter((c) => c.type === "toolCall");
-  const finalizedCalls: Promise<FinalizedToolCallOutcome>[] = [];
+  const finalizedCalls: Promise<FinalizedToolCall>[] = [];
 
   for (const toolCall of toolCalls) {
     await emitToolExecutionStart(toolCall, emit);
 
-    const preparation = await prepareToolCall(
-      currentContext,
-      assistantMessage,
-      toolCall,
-      config,
-      signal,
-    );
+    const recovered = await config.recoverToolCall?.(toolCall);
 
-    if (preparation.kind === "immediate") {
-      const finalized = { toolCall, ...preparation.outcome };
+    const preparation =
+      recovered === undefined
+        ? await prepareToolCall(currentContext, assistantMessage, toolCall, config, signal)
+        : { kind: "prepared" as const, toolCall, ...recovered };
+
+    const completion = (async () => {
+      const finalized =
+        preparation.kind === "immediate"
+          ? { toolCall, outcome: preparation.outcome }
+          : await finalizeExecutedToolCall(
+              currentContext,
+              assistantMessage,
+              preparation,
+              await executePreparedToolCall(preparation, signal, (partialResult) =>
+                emit({
+                  type: "tool_execution_update",
+                  toolCallId: toolCall.id,
+                  toolName: toolCall.name,
+                  args: toolCall.arguments,
+                  partialResult,
+                }),
+              ),
+              config,
+              signal,
+            );
+
+      await onFinalized?.(toolCall, finalized.outcome);
       await emitToolExecutionEnd(finalized, emit);
-      finalizedCalls.push(Promise.resolve(finalized));
-    } else {
-      const completion = (async () => {
-        const executed = await executePreparedToolCall(preparation, signal, (partialResult) =>
-          emit({
-            type: "tool_execution_update",
-            toolCallId: toolCall.id,
-            toolName: toolCall.name,
-            args: toolCall.arguments,
-            partialResult,
-          }),
-        );
 
-        const finalized = await finalizeExecutedToolCall(
-          currentContext,
-          assistantMessage,
-          preparation,
-          executed,
-          config,
-          signal,
-        );
+      return finalized;
+    })();
 
-        await onFinalized?.(toolCall, finalized);
-        await emitToolExecutionEnd(finalized, emit);
-
-        return finalized;
-      })();
-
-      // Later policy decisions may await input. Observe failures now; the
-      // original promise still rejects the awaited batch below.
-      void completion.catch(() => undefined);
-      finalizedCalls.push(completion);
-    }
-
-    if (signal?.aborted) break;
+    // Later policy decisions may await input. Observe failures now; the
+    // original promise still rejects the awaited batch below.
+    void completion.catch(() => undefined);
+    finalizedCalls.push(completion);
   }
 
-  const messages: ToolResultMessage[] = [];
+  const settled: SettledToolCall[] = [];
 
   for (const finalized of await Promise.all(finalizedCalls)) {
-    messages.push(await emitToolResultMessage(finalized, emit));
+    settled.push(await emitToolResultMessage(finalized, emit));
   }
 
-  return messages;
+  return settled;
 }
 
-type PreparedToolCall = {
-  kind: "prepared";
-  toolCall: AgentToolCall;
-  execute: (
-    signal: AbortSignal | undefined,
-    onUpdate: AgentToolUpdateCallback,
-  ) => Promise<AgentToolResult<unknown>>;
-  args: unknown;
+type PreparedToolCall = ReadyToolCall & {
+  readonly kind: "prepared";
+  readonly toolCall: AgentToolCall;
 };
 
 type ImmediateToolCallOutcome = {
@@ -221,7 +223,7 @@ type ImmediateToolCallOutcome = {
   outcome: ToolCallOutcome;
 };
 
-type FinalizedToolCallOutcome = ToolCallOutcome & { readonly toolCall: AgentToolCall };
+type FinalizedToolCall = { readonly toolCall: AgentToolCall; readonly outcome: ToolCallOutcome };
 
 function prepareToolCallArguments(tool: AgentTool, toolCall: AgentToolCall): AgentToolCall {
   if (!tool.prepareArguments) {
@@ -255,6 +257,14 @@ export async function runToolCall(
   options: RunToolCallOptions,
 ): Promise<ToolCallOutcome> {
   const { context, assistantMessage, signal } = options;
+
+  // Nothing durable stands behind a nested call: a stop before or during its
+  // preparation keeps it from starting.
+  const notStarted = (stopped: AbortSignal) =>
+    toolFailure(`Tool call "${toolCall.name}" was not started.`, undefined, stopReason(stopped));
+
+  if (signal?.aborted) return notStarted(signal);
+
   const preparation = await prepareToolCall(
     context,
     assistantMessage,
@@ -264,8 +274,11 @@ export async function runToolCall(
     options.tools,
   );
   if (preparation.kind === "immediate") return preparation.outcome;
+
+  if (signal?.aborted) return notStarted(signal);
+
   const executed = await executePreparedToolCall(preparation, signal, options.onUpdate);
-  return finalizeExecutedToolCall(
+  const finalized = await finalizeExecutedToolCall(
     context,
     assistantMessage,
     preparation,
@@ -273,6 +286,8 @@ export async function runToolCall(
     options,
     signal,
   );
+
+  return finalized.outcome;
 }
 
 async function prepareToolCall(
@@ -283,7 +298,6 @@ async function prepareToolCall(
   signal: AbortSignal | undefined,
   tools: readonly AgentTool[] = currentContext.tools ?? [],
 ): Promise<PreparedToolCall | ImmediateToolCallOutcome> {
-  if (signal?.aborted) return { kind: "immediate", outcome: toolFailure("Operation aborted") };
   const tool = tools.find((t) => t.name === toolCall.name);
 
   if (!tool) {
@@ -305,12 +319,18 @@ async function prepareToolCall(
         signal,
       );
 
-      if (signal?.aborted) return { kind: "immediate", outcome: toolFailure("Operation aborted") };
-
       if (beforeResult?.block) {
+        const cause: ToolReason = beforeResult.cause ?? { kind: "error" };
+
         return {
           kind: "immediate",
-          outcome: toolFailure(beforeResult.reason || "Tool execution was blocked"),
+          outcome: toolFailure(
+            cause.kind === "denied"
+              ? `Tool call denied${beforeResult.reason ? `: ${beforeResult.reason}` : ""}`
+              : beforeResult.reason || "Tool execution was blocked",
+            undefined,
+            cause,
+          ),
         };
       }
 
@@ -321,8 +341,6 @@ async function prepareToolCall(
         });
       }
     }
-
-    if (signal?.aborted) return { kind: "immediate", outcome: toolFailure("Operation aborted") };
 
     return {
       kind: "prepared",
@@ -366,7 +384,7 @@ async function executePreparedToolCall(
 
     // The settlement is self-contained: an abort or crash keeps the last
     // progress the tool reported instead of losing it.
-    return toolFailure(error, lastPartial);
+    return toolFailure(error, lastPartial, signal?.aborted ? stopReason(signal) : undefined);
   } finally {
     acceptingUpdates = false;
   }
@@ -375,14 +393,14 @@ async function executePreparedToolCall(
 async function finalizeExecutedToolCall(
   currentContext: AgentContext,
   assistantMessage: AssistantMessage,
-  prepared: PreparedToolCall,
+  prepared: Pick<PreparedToolCall, "toolCall" | "args">,
   executed: ToolCallOutcome,
   config: ToolCallHooks,
   signal: AbortSignal | undefined,
-): Promise<FinalizedToolCallOutcome> {
+): Promise<FinalizedToolCall> {
   const { toolCall } = prepared;
 
-  if (!config.afterToolCall) return { toolCall, ...executed };
+  if (!config.afterToolCall) return { toolCall, outcome: executed };
 
   const { result } = executed;
 
@@ -392,14 +410,14 @@ async function finalizeExecutedToolCall(
       signal,
     );
 
-    if (!afterResult) return { toolCall, ...executed };
-    const { kind, ...patch } = afterResult;
+    if (!afterResult) return { toolCall, outcome: executed };
+    const { outcome = executed, ...patch } = afterResult;
 
-    return { toolCall, kind: kind ?? executed.kind, result: { ...result, ...patch } };
+    return { toolCall, outcome: { ...outcome, result: { ...result, ...patch } } };
   } catch (error) {
     return {
       toolCall,
-      ...toolFailure(error, {
+      outcome: toolFailure(error, {
         content: [],
         details: {},
         structuredContent: result.structuredContent,
@@ -421,29 +439,28 @@ async function emitToolExecutionStart(
 }
 
 async function emitToolExecutionEnd(
-  finalized: FinalizedToolCallOutcome,
+  finalized: FinalizedToolCall,
   emit: AgentEventSink,
 ): Promise<void> {
   await emit({
     type: "tool_execution_end",
     toolCallId: finalized.toolCall.id,
     toolName: finalized.toolCall.name,
-    kind: finalized.kind,
-    result: finalized.result,
+    ...finalized.outcome,
   });
 }
 
 async function emitToolResultMessage(
-  finalized: FinalizedToolCallOutcome,
+  finalized: FinalizedToolCall,
   emit: AgentEventSink,
-): Promise<ToolResultMessage> {
+): Promise<SettledToolCall> {
   const message = toolResultMessage(
     { toolCallId: finalized.toolCall.id, toolName: finalized.toolCall.name },
-    finalized,
+    finalized.outcome,
   );
 
   await emit({ type: "message_start", message });
   await emit({ type: "message_end", message });
 
-  return message;
+  return { ...finalized, message };
 }

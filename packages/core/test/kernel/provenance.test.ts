@@ -114,6 +114,29 @@ test("an edit call is stamped as file_edit, and its result as the settled patch"
   assert.deepEqual([patch.added, patch.removed], [2, 1]);
   assert.match(patch.patch, /^-two\n\+2\n\+2b$/mu);
   assert.equal(settled.tree, null);
+  assert.deepEqual(settled.settlement, { kind: "success" });
+});
+
+test("a shell result commit stores its exit code as the settlement and what core measured as facts", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "nyte-provenance-"));
+  const session = await openSession();
+  const run = call("call-sh", "bash", { command: "printf out; exit 3" });
+  const { commits } = await drive(
+    session,
+    scripted([assistant("", { calls: [run] }), assistant("done")]),
+    cwd,
+    4,
+  );
+  const [, settled] = conversation(commits);
+  assert.ok(settled !== undefined && "call" in settled);
+  assert.deepEqual(settled.settlement, { kind: "error", reason: { kind: "exit", code: 3 } });
+  assert.equal(settled.body.message.isError, true);
+  const shell = settled.call;
+  assert.ok(shell.kind === "shell" && shell.facts !== undefined);
+  assert.equal(shell.command, "printf out; exit 3");
+  assert.equal(shell.facts.truncated, false);
+  assert.ok(shell.facts.durationMs >= 0);
+  assert.ok(!("exitCode" in shell.facts));
 });
 
 test("a provider error is classified once, on the commit and on the retry phase", async () => {
@@ -126,7 +149,7 @@ test("a provider error is classified once, on the commit and on the retry phase"
   );
   const failure = { class: "rate_limit", message: "429 rate limit exceeded" };
   const failed = commits.at(-1);
-  assert.ok(failed !== undefined && "outcome" in failed);
+  assert.ok(failed !== undefined && "calls" in failed);
   assert.deepEqual(failed.outcome, { kind: "failed", failure });
   assert.deepEqual(failed.calls, {});
   assert.ok(run?.phase.kind === "retry");

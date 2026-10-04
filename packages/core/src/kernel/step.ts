@@ -17,6 +17,7 @@ import { listEffects, waitingBatchReady } from "./effects.ts";
 import { branch, contextCommits } from "./graph.ts";
 import { hashObject } from "./hash.ts";
 import { LeaseLost, withLeaseRenewal } from "./lease.ts";
+import { ToolStop } from "./loop/tool-result.ts";
 import {
   DELETED_REF,
   cancelledRef,
@@ -434,16 +435,19 @@ async function callTurn<T>(
 ): Promise<{ readonly kind: "fenced" } | { readonly kind: "outcome"; readonly outcome: T }> {
   const controller = new AbortController();
   let fenced = false;
-  const abort = (): void => controller.abort();
+  // The cause travels with the stop: a participant's abort names itself, the
+  // host's own stop (shutdown, a lost lease) stays anonymous.
+  const abort = (): void => controller.abort(context.options.signal?.reason);
 
-  if (abortRequested || context.options.signal?.aborted === true) abort();
+  if (abortRequested) controller.abort(new ToolStop("cancelled"));
+  else if (context.options.signal?.aborted === true) abort();
   else context.options.signal?.addEventListener("abort", abort, { once: true });
 
   const outbox = createOutbox(context.session, {
     lease: context.lease,
     onFenced: () => {
       fenced = true;
-      abort();
+      controller.abort();
     },
   });
 
@@ -915,17 +919,16 @@ function toolCommits(
   const commits: Commit[] = [];
   let previous = parent;
 
-  for (const message of results.messages) {
-    const settled = results.calls[message.toolCallId];
-
+  for (const settlement of results.settlements) {
     const commit: Commit = {
       kind: "commit",
       parent: previous,
-      body: { kind: "message", message },
+      body: { kind: "message", message: settlement.message },
       run: runId,
       at: now(),
-      call: settled ?? { kind: "custom", label: message.toolName },
+      call: settlement.call,
       tree: tree ?? null,
+      settlement: settlement.outcome,
     };
 
     previous = hashObject(commit);

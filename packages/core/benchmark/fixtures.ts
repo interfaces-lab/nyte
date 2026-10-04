@@ -214,9 +214,8 @@ export function checkTranscript(
       if (part.kind === "assistant") assert.equal(part.text, TEXT);
 
       if (part.kind === "tool") {
-        assert.ok(part.result);
-        assert.equal(part.result.output, TEXT);
-        assert.equal(part.result.isError, false);
+        assert.equal(part.state.kind, "success");
+        assert.equal(part.output, TEXT);
       }
     }
 
@@ -228,7 +227,8 @@ export function checkTranscript(
       assert.equal(tool.class.kind, "file_patch");
       assert.ok("path" in tool.class && tool.class.path === path);
       const resultIndex = index * (fixture.metadata.pairsPerTurn * 2 + 2) + 2 + pair * 2;
-      assert.equal(tool.result?.commit, fixture.items[resultIndex]?.oid);
+      assert.ok(tool.state.kind === "success");
+      assert.equal(tool.state.commit, fixture.items[resultIndex]?.oid);
     }
   }
 

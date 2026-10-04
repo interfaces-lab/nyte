@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { hostname } from "node:os";
 import { test } from "vitest";
 import { foldEvent, stateFromSnapshot, type SessionState } from "@nyte-ai/client";
 import { CursorExpired } from "@nyte-ai/protocol";
@@ -100,6 +101,17 @@ test("A crash between effect intent and result follows safe or never replay", as
 
   const reopenedStore = openStore(path);
   const recoverySession = await reopenedStore.open(sessionId);
+  const intents = await Promise.all(
+    (await recoverySession.refs.list("refs/effects/")).map(({ oid }) =>
+      recoverySession.objects.get(oid),
+    ),
+  );
+  // A safe replay is only safe on the same disk, so every intent names where it was opened.
+  assert.equal(intents.length, 2);
+  for (const intent of intents) {
+    assert.ok(intent?.kind === "effect" && intent.state === "intent");
+    assert.equal(intent.fs, `local:${hostname()}`);
+  }
   const abandonedLease = await recoverySession.leases.read(headRef("main"));
   assert.ok(abandonedLease);
   assert.equal(await recoverySession.leases.renew(abandonedLease, 1), true);
@@ -115,10 +127,10 @@ test("A crash between effect intent and result follows safe or never replay", as
     );
     const safe = parts.find((part) => part.callId === "safe-call");
     const never = parts.find((part) => part.callId === "never-call");
-    assert.equal(safe?.result?.output, "safe run 2");
-    assert.equal(safe?.result?.isError, false);
-    assert.equal(never?.result?.isError, true);
-    assert.match(never?.result?.output ?? "", /interrupted/u);
+    assert.equal(safe?.output, "safe run 2");
+    assert.equal(safe?.state.kind, "success");
+    assert.equal(never?.state.kind, "error");
+    assert.match(never?.output ?? "", /interrupted/u);
   } finally {
     await reopened.close();
   }
@@ -186,7 +198,7 @@ test("A waiting effect survives its host and accepts only the first signal", asy
     const tool = (await reopened.messages.list({ sessionId })).flatMap((turn) =>
       turn.kind === "turn" ? turn.parts.filter((part) => part.kind === "tool") : [],
     )[0];
-    assert.equal(tool?.result?.output, `winner ${JSON.stringify(winner)}`);
+    assert.equal(tool?.output, `winner ${JSON.stringify(winner)}`);
   } finally {
     await reopened.close();
   }

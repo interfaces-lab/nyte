@@ -359,7 +359,7 @@ for (const selected of [opus, astra]) {
       ).flatMap((turn) => (turn.kind === "turn" ? turn.parts : []));
       const tool = parts.find((part) => part.kind === "tool");
       assert.ok(tool?.kind === "tool");
-      assert.equal(tool.result?.isError, false);
+      assert.equal(tool.state.kind, "success");
       assert.deepEqual(tool.class, {
         kind: "delegate",
         role: "create",

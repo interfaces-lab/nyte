@@ -3,6 +3,7 @@ import { test } from "vitest";
 import { Type } from "typebox";
 import { executeToolCalls } from "../src/kernel/loop/agent-loop.ts";
 import { bindTool } from "../src/tools/bind-tool.ts";
+import { createLocalExecutionEnv } from "../src/tools/env.ts";
 import { ContributionRegistry, ToolMapDraft } from "../src/plugins/registry.ts";
 import type { AgentEvent, AgentLoopConfig, AgentTool, ToolCall } from "../src/kernel/loop/types.ts";
 import { assistant, call, toolCall, within } from "./kernel/helpers.ts";
@@ -43,7 +44,8 @@ test("the bound executor rejects invalid runtime input before work starts", asyn
 });
 
 test("heterogeneous registry tools keep their schema after wrapping and rebuilding", async () => {
-  const registry = new ContributionRegistry<AgentTool, ToolMapDraft>(() => new ToolMapDraft());
+  const env = createLocalExecutionEnv({ cwd: "/tmp" });
+  const registry = new ContributionRegistry<AgentTool, ToolMapDraft>(() => new ToolMapDraft(env));
   registry.add("tools", 0, (draft) => {
     draft.set("count", {
       name: "count",
@@ -85,10 +87,10 @@ test("heterogeneous registry tools keep their schema after wrapping and rebuildi
       () => undefined,
     );
     assert.deepEqual(
-      messages.map((message) => message.details),
+      messages.map(({ message }) => message.details),
       [42, "TRUE"],
     );
-    assert.ok(messages.every((message) => !message.isError));
+    assert.ok(messages.every(({ message }) => !message.isError));
   }
 });
 
@@ -121,7 +123,7 @@ test("compatibility runs before validation and hook replacements are revalidated
       undefined,
       () => undefined,
     );
-    assert.equal(result[0]?.isError, scenario.isError);
+    assert.equal(result[0]?.message.isError, scenario.isError);
   }
   assert.deepEqual(seen, [3]);
 });
@@ -165,14 +167,14 @@ test("concurrent results retain source order and identity; failed tools retain p
   }
   const messages = await within(batch);
   assert.deepEqual(
-    messages.map((message) => message.toolCallId),
+    messages.map(({ message }) => message.toolCallId),
     ["first", "second"],
   );
-  assert.deepEqual(messages[1]?.content, [
+  assert.deepEqual(messages[1]?.message.content, [
     { type: "text", text: "stopped" },
     { type: "text", text: "partial" },
   ]);
-  assert.equal(messages[1]?.details, 0);
+  assert.equal(messages[1]?.message.details, 0);
   const end = events.find(
     (event) => event.type === "tool_execution_end" && event.toolCallId === "first",
   );
@@ -202,6 +204,6 @@ test("after hooks retain every falsy details override", async () => {
       undefined,
       () => undefined,
     );
-    assert.equal(messages[0]?.details, details);
+    assert.equal(messages[0]?.message.details, details);
   }
 });

@@ -35,7 +35,6 @@ import type {
   SystemMessage,
   TextContent,
   Tool,
-  ToolResultMessage,
   Usage,
 } from "@nyte-ai/schema";
 import {
@@ -49,6 +48,7 @@ import {
   executeToolCalls,
   failToolCallsFromTruncatedMessage,
   generateAssistant,
+  type SettledToolCall,
 } from "./loop/agent-loop.ts";
 import type {
   AgentContext,
@@ -57,17 +57,24 @@ import type {
   AgentTool,
   AgentToolCall,
   AgentToolResult,
+  ReadyToolCall,
   StreamFn,
   ThinkingLevel,
+  ToolCall,
   ToolCallOutcome,
   WaitingCall,
 } from "./loop/types.ts";
 import { isToolWait, waitTerms } from "./loop/types.ts";
+import type { ExecutionEnv } from "./loop/env.ts";
 import {
   ToolError,
+  stopReason,
+  storedOutcome,
   toolCallArguments,
+  toolOutcome,
   toolResultContent,
   toolResultMessage,
+  type ToolSettlement,
 } from "./loop/tool-result.ts";
 import { liveTools } from "./loop/nested-tool-calls.ts";
 import { modelTools } from "./loop/tool-catalog.ts";
@@ -87,9 +94,11 @@ import { contextMessages, modelContext } from "@nyte-ai/client";
 import {
   decideRecovery,
   expireEffect,
+  listEffects,
   openEffect,
   parkEffect,
   settleEffect,
+  withdrawEffect,
   type EffectView,
 } from "./effects.ts";
 import { isJsonObject, toJsonValue } from "@nyte-ai/client";
@@ -192,10 +201,9 @@ export type RespondOutcome =
   | { readonly kind: "failed"; readonly message: AssistantMessage; readonly failure: Failure }
   | { readonly kind: "aborted"; readonly message: AssistantMessage; readonly failure: Failure };
 
-/** Settled results in the assistant message's call order, with the settled class of each call whose tool presents one. */
+/** Settled results in the assistant message's call order, each with the class its tool presents for it. */
 export interface ToolBatchResults {
-  readonly messages: readonly ToolResultMessage[];
-  readonly calls: Readonly<Record<string, ToolClass>>;
+  readonly settlements: readonly ToolSettlement[];
 }
 
 export type ToolBatchOutcome =
@@ -225,6 +233,8 @@ export interface TurnOptions {
   /** The prompt as named, ordered sections; they become `SystemMessage.sections`. */
   readonly sections: Readonly<Record<string, string>>;
   readonly tools: readonly AgentTool[];
+  /** Where this turn's calls act; stamped on each intent so a `safe` replay runs only on the same filesystem. */
+  readonly env?: ExecutionEnv;
   readonly thinkingLevel?: ThinkingLevel;
   readonly loop?: Pick<AgentLoopConfig, "transformContext" | "beforeToolCall" | "afterToolCall"> &
     Omit<SimpleStreamOptions, "reasoning" | "signal">;
@@ -583,6 +593,8 @@ async function checkpointOutcome(
 
 interface ToolBatchState {
   stopped?: Extract<ToolBatchOutcome, { readonly kind: "fenced" | "conflict" | "failed" }>;
+  /** Calls the host left for the next step because it was leaving before they started. */
+  readonly deferred: Set<string>;
 }
 
 function stopBatch(state: ToolBatchState, outcome: NonNullable<ToolBatchState["stopped"]>): void {
@@ -594,30 +606,20 @@ async function runTools(
   input: TurnInput & { readonly assistant: AssistantMessage },
 ): Promise<ToolBatchOutcome> {
   const toolCalls = input.assistant.content.filter((part) => part.type === "toolCall");
-  const effectiveArguments = new Map<string, { readonly value: unknown }>();
+  const effectiveArguments = new Map<string, CallArguments>();
 
-  const settled = (messages: readonly ToolResultMessage[]): ToolBatchResults => ({
-    messages,
-    calls: Object.fromEntries(
-      messages.flatMap((message) => {
-        const call = toolCalls.find((part) => part.id === message.toolCallId);
-
-        if (call === undefined) return [];
-        const tool = options.tools.find((candidate) => candidate.name === message.toolName);
-        const effective = effectiveArguments.get(call.id);
-
-        const args: CallArguments =
-          effective === undefined
-            ? { kind: "invalid" }
-            : { kind: "validated", value: effective.value };
-
-        const result = message.isError
-          ? undefined
-          : { content: message.content, details: message.details };
-
-        return [[message.toolCallId, presentCall(tool, call, input.run, args, result)]];
-      }),
-    ),
+  const settled = (calls: readonly SettledToolCall[]): ToolBatchResults => ({
+    settlements: calls.map(({ toolCall, outcome, message }) => ({
+      outcome: toolOutcome(outcome),
+      message,
+      call: presentCall(
+        options.tools.find((candidate) => candidate.name === toolCall.name),
+        toolCall,
+        input.run,
+        effectiveArguments.get(toolCall.id) ?? { kind: "invalid" },
+        outcome.result,
+      ),
+    })),
   });
 
   if (input.assistant.stopReason === "length") {
@@ -629,7 +631,8 @@ async function runTools(
 
   const parked = new Set<string>();
   const settling = new Map<string, EffectView>();
-  const state: ToolBatchState = {};
+  const state: ToolBatchState = { deferred: new Set() };
+  const recorded = new Map<string, EffectView>();
   let history: Promise<readonly Message[]> | undefined;
   const readHistory = () => (history ??= fullHistory(input));
   const declared = await declaredTools(options, input, readHistory);
@@ -647,23 +650,59 @@ async function runTools(
       afterToolCall: options.loop?.afterToolCall,
     },
   });
-  const tools = durableTools({
+  const durable = durableCalls({
     input,
     parked,
     settling,
     state,
     tools: live.filter((tool) => declaredNames.has(tool.name)),
+    fs: options.env?.fs,
   });
-  context.tools = tools;
+  context.tools = durable.tools;
   const callerBeforeToolCall = options.loop?.beforeToolCall;
   const callerAfterToolCall = options.loop?.afterToolCall;
 
+  const refusal = async (toolCall: AgentToolCall): Promise<EffectView | undefined> => {
+    const opened = await openEffect(input.session, {
+      lease: input.lease,
+      runId: input.run.id,
+      callId: toolCall.id,
+      tool: toolCall.name,
+      args: toolCall.arguments,
+      replay: "never",
+    });
+
+    if (opened.kind === "opened") return opened.view;
+
+    if (opened.kind !== "exists") stopBatch(state, opened);
+
+    return undefined;
+  };
+
   const config = agentConfig(options, input.telemetry, {
+    recoverToolCall: async (toolCall) => {
+      const record = recorded.get(toolCall.id);
+
+      if (record === undefined) return durable.unstarted(toolCall);
+      const tool = live.find((candidate) => candidate.name === toolCall.name);
+
+      if (isJsonObject(record.intent.args)) {
+        effectiveArguments.set(
+          toolCall.id,
+          callArguments(tool, { ...toolCall, arguments: record.intent.args }),
+        );
+      }
+
+      return durable.recorded(tool, toolCall, record);
+    },
     beforeToolCall: async (hookContext, signal) => {
       const outcome = await callerBeforeToolCall?.(hookContext, signal ?? input.signal);
 
       if (outcome?.args === undefined) {
-        effectiveArguments.set(hookContext.toolCall.id, { value: hookContext.args });
+        effectiveArguments.set(hookContext.toolCall.id, {
+          kind: "validated",
+          value: hookContext.args,
+        });
 
         return outcome;
       }
@@ -672,6 +711,7 @@ async function runTools(
 
       if (tool === undefined) throw new Error(`Tool ${hookContext.toolCall.name} not found`);
       effectiveArguments.set(hookContext.toolCall.id, {
+        kind: "validated",
         value: validateToolArguments(tool, {
           ...hookContext.toolCall,
           arguments: outcome.args,
@@ -688,21 +728,37 @@ async function runTools(
   });
 
   try {
-    const messages = await executeToolCalls(
+    for (const view of await listEffects(input.session, input.run.id)) {
+      recorded.set(view.intent.callId, view);
+    }
+
+    const calls = await executeToolCalls(
       context,
       input.assistant,
       config,
       input.signal.aborted ? undefined : input.signal,
       (event) => emitToolProgress(input, event),
       async (toolCall, outcome) => {
-        const view = settling.get(toolCall.id);
+        if (
+          state.stopped !== undefined ||
+          parked.has(toolCall.id) ||
+          state.deferred.has(toolCall.id)
+        ) {
+          return;
+        }
 
-        if (state.stopped !== undefined || view === undefined) return;
+        const view =
+          settling.get(toolCall.id) ??
+          (recorded.has(toolCall.id) ? undefined : await refusal(toolCall));
+
+        if (view === undefined) return;
         await settleCall({ session: input.session, lease: input.lease, view, outcome, state });
       },
     );
 
     if (state.stopped !== undefined) return state.stopped;
+
+    if (state.deferred.size > 0) return { kind: "conflict" };
 
     if (parked.size > 0) {
       return {
@@ -711,15 +767,14 @@ async function runTools(
       };
     }
 
-    return { kind: "complete", ...settled(messages) };
+    return { kind: "complete", ...settled(calls) };
   } catch (error) {
     if (state.stopped !== undefined) return state.stopped;
 
     return {
       kind: "failed",
       cause: error,
-      messages: [],
-      calls: {},
+      settlements: [],
       error: error instanceof Error ? error.message : String(error),
     };
   }
@@ -727,7 +782,7 @@ async function runTools(
 
 /**
  * What a call is, from the tool's own typed view of its arguments (and result,
- * once it settled without error). A tool without `present`, an unknown tool,
+ * once it settled). A tool without `present`, an unknown tool,
  * or arguments the tool's parse refuses answer `custom` under the tool's label.
  */
 type CallArguments =
@@ -821,13 +876,14 @@ function agentContext(options: {
 function agentConfig(
   options: TurnOptions,
   telemetryContext: TelemetryContext,
-  hooks: Pick<AgentLoopConfig, "beforeToolCall" | "afterToolCall"> = {},
+  hooks: Pick<AgentLoopConfig, "recoverToolCall" | "beforeToolCall" | "afterToolCall"> = {},
 ): AgentLoopConfig {
   return {
     ...options.loop,
     telemetryContext,
     model: options.model,
     reasoning: options.thinkingLevel === "off" ? undefined : options.thinkingLevel,
+    recoverToolCall: hooks.recoverToolCall,
     beforeToolCall: hooks.beforeToolCall ?? options.loop?.beforeToolCall,
     afterToolCall: hooks.afterToolCall ?? options.loop?.afterToolCall,
   };
@@ -887,227 +943,347 @@ function retrySchedule(options: {
   return { at: Date.now() + delay, retries };
 }
 
-function durableTools(options: {
+/**
+ * The effect sandwich around every call of a batch. A fresh call opens its
+ * intent when its tool runs; a recorded call is answered from its record,
+ * before any lookup, validation, or policy; a call the host will not start
+ * (stopped before it ran) settles or waits without a record. Stops are read
+ * from the signal's cause: a participant's `cancelled` settles, the host's own
+ * stop defers whatever has not started to the next step.
+ */
+function durableCalls(options: {
   readonly input: TurnInput;
   readonly parked: Set<string>;
   readonly settling: Map<string, EffectView>;
   readonly state: ToolBatchState;
   readonly tools: readonly AgentTool[];
-}): AgentTool[] {
-  return options.tools.map((tool) => {
-    const execute: AgentTool["execute"] = async (input, call) => {
-      const callId = call.id;
-      if (options.state.stopped !== undefined) return waitingResult();
-      const args = toJsonValue(input);
-      let opened;
+  readonly fs: string | undefined;
+}) {
+  const executionSignal = options.input.signal;
 
-      try {
-        opened = await openEffect(options.input.session, {
-          lease: options.input.lease,
-          runId: options.input.run.id,
-          callId,
-          tool: tool.name,
-          args,
-          replay: tool.replay ?? "never",
-        });
-      } catch (cause) {
-        stopBatch(options.state, {
-          kind: "failed",
-          messages: [],
-          calls: {},
-          cause,
-          error: cause instanceof Error ? cause.message : String(cause),
-        });
+  const cancelled = () =>
+    executionSignal.aborted && stopReason(executionSignal).kind === "cancelled";
+
+  const leaving = () => executionSignal.aborted && !cancelled();
+
+  const defer = (callId: string): AgentToolResult<unknown> => {
+    options.state.deferred.add(callId);
+    options.settling.delete(callId);
+
+    return waitingResult();
+  };
+
+  const notStarted = (name: string) =>
+    new ToolError(
+      {
+        content: toolResultContent(`Tool call "${name}" was cancelled before it started.`),
+        details: {},
+      },
+      { kind: "cancelled" },
+    );
+
+  const failed = (cause: unknown): AgentToolResult<unknown> => {
+    stopBatch(options.state, {
+      kind: "failed",
+      settlements: [],
+      cause,
+      error: cause instanceof Error ? cause.message : String(cause),
+    });
+
+    return waitingResult();
+  };
+
+  const proceed = async (
+    tool: AgentTool | undefined,
+    name: string,
+    intent: Pick<EffectView["intent"], "args" | "replay" | "fs">,
+    args: () => unknown,
+    call: ToolCall,
+  ): Promise<AgentToolResult<unknown>> => {
+    const callId = call.id;
+    if (options.state.stopped !== undefined) return waitingResult();
+    let opened;
+
+    try {
+      opened = await openEffect(options.input.session, {
+        lease: options.input.lease,
+        runId: options.input.run.id,
+        callId,
+        tool: name,
+        args: intent.args,
+        replay: intent.replay,
+        ...(intent.fs === undefined ? {} : { fs: intent.fs }),
+      });
+    } catch (cause) {
+      return failed(cause);
+    }
+
+    if (opened.kind === "fenced" || opened.kind === "conflict") {
+      stopBatch(options.state, opened);
+
+      return waitingResult();
+    }
+
+    // Another call may have lost ownership while this open was in flight.
+    if (options.state.stopped !== undefined) return waitingResult();
+    let view = opened.view;
+    let recovery = opened.kind === "opened" ? "execute" : decideRecovery(view, options.fs);
+
+    if (
+      recovery === "blocked" &&
+      view.effect.state === "waiting" &&
+      view.effect.until !== undefined &&
+      view.effect.until <= options.input.now &&
+      !executionSignal.aborted
+    ) {
+      const expiration = await expireEffect(options.input.session, {
+        lease: options.input.lease,
+        view,
+        now: options.input.now,
+      });
+
+      if (expiration.kind !== "expired") {
+        stopBatch(options.state, expiration);
 
         return waitingResult();
       }
 
-      if (opened.kind === "fenced" || opened.kind === "conflict") {
-        stopBatch(options.state, opened);
+      view = expiration.view;
+      recovery = "wake";
+    }
 
-        return waitingResult();
-      }
+    if (recovery !== "reuse") options.settling.set(callId, view);
 
-      // Another call may have lost ownership while this open was in flight.
-      if (options.state.stopped !== undefined) return waitingResult();
-      let view = opened.view;
-      let recovery = opened.kind === "opened" ? "execute" : decideRecovery(view);
-      const executionSignal = options.input.signal;
+    const waiting = (): AgentToolResult<unknown> => {
+      options.settling.delete(callId);
+      options.parked.add(callId);
 
-      if (
-        recovery === "blocked" &&
-        view.effect.state === "waiting" &&
-        view.effect.until !== undefined &&
-        view.effect.until <= options.input.now &&
-        !executionSignal.aborted
-      ) {
-        const expiration = await expireEffect(options.input.session, {
-          lease: options.input.lease,
-          view,
-          now: options.input.now,
-        });
+      return waitingResult();
+    };
 
-        if (expiration.kind !== "expired") {
-          stopBatch(options.state, expiration);
+    switch (recovery) {
+      case "execute": {
+        if (leaving()) {
+          if (opened.kind !== "opened") return defer(callId);
+
+          const withdrawal = await withdrawEffect(options.input.session, {
+            lease: options.input.lease,
+            view,
+          });
+
+          if (withdrawal.kind === "withdrawn") return defer(callId);
+          stopBatch(options.state, { kind: withdrawal.kind });
 
           return waitingResult();
         }
 
-        view = expiration.view;
-        recovery = "wake";
-      }
+        if (cancelled()) throw notStarted(name);
 
-      if (recovery !== "reuse") options.settling.set(callId, view);
+        if (tool === undefined) throw new Error(`Tool ${name} not found`);
 
-      const waiting = (): AgentToolResult<unknown> => {
-        options.settling.delete(callId);
-        options.parked.add(callId);
-
-        return waitingResult();
-      };
-
-      switch (recovery) {
-        case "execute": {
-          try {
-            return await tool.execute(input, { ...call, signal: executionSignal });
-          } catch (error) {
-            if (!isToolWait(error)) throw error;
-            await parkCall({
-              session: options.input.session,
-              lease: options.input.lease,
-              view,
-              state: options.state,
-              ...parkedWait(tool.name, error),
-            });
-
-            return waiting();
-          }
-        }
-
-        case "interrupted":
-          throw new Error(
-            `Tool call "${tool.name}" was interrupted before completing and was not replayed.`,
-          );
-        case "blocked": {
-          if (!executionSignal.aborted) return waiting();
-
-          if (tool.wake !== undefined) {
-            const outcome = await tool.wake(waitingCall(view, options.input.run.head), {
-              signal: executionSignal,
-              aborted: true,
-              expired: false,
-            });
-
-            if (outcome.kind === "error") throw new ToolError(outcome.result);
-
-            if (outcome.kind === "success") return outcome.result;
-          }
-
-          throw new Error(`Tool call "${tool.name}" was aborted while waiting.`);
-        }
-
-        case "wake": {
-          if (view.effect.state !== "signal" && view.effect.state !== "expired") {
-            throw new Error(
-              `Effect ${view.ref} was classified for wake without a signal or expiry`,
-            );
-          }
-
-          if (tool.wake === undefined) {
-            if (view.effect.state === "expired") {
-              throw new Error(`Tool call "${tool.name}" timed out while waiting.`);
-            }
-
-            throw new Error(
-              `Tool call "${tool.name}" cannot resume because it has no wake handler.`,
-            );
-          }
-
-          const outcome = await tool.wake(
-            waitingCall(view, options.input.run.head),
-            view.effect.state === "expired"
-              ? {
-                  signal: executionSignal,
-                  aborted: executionSignal.aborted,
-                  expired: true,
-                }
-              : {
-                  signal: executionSignal,
-                  aborted: options.input.run.abortRequested === true,
-                  expired: false,
-                  reply: view.effect.signal,
-                },
-          );
-
-          if (outcome.kind === "error") throw new ToolError(outcome.result);
-
-          if (outcome.kind === "success") return outcome.result;
-
+        try {
+          return await tool.execute(args(), { ...call, signal: executionSignal });
+        } catch (error) {
+          if (!isToolWait(error)) throw error;
           await parkCall({
             session: options.input.session,
             lease: options.input.lease,
             view,
             state: options.state,
-            ...parkedWait(tool.name, waitTerms(outcome)),
+            ...parkedWait(name, error),
           });
 
           return waiting();
         }
+      }
 
-        case "reuse": {
-          if (view.effect.state !== "result") {
-            throw new Error(`Effect ${view.ref} was classified for reuse without a result`);
+      case "interrupted":
+        throw new ToolError(
+          {
+            content: toolResultContent(
+              `Tool call "${name}" was interrupted before completing and was not replayed.`,
+            ),
+            details: {},
+          },
+          { kind: "interrupted" },
+        );
+      case "blocked": {
+        if (!cancelled()) return waiting();
+
+        if (tool?.wake !== undefined) {
+          const outcome = await tool.wake(waitingCall(view, options.input.run.head), {
+            signal: executionSignal,
+            aborted: true,
+            expired: false,
+          });
+
+          if (outcome.kind === "error") throw new ToolError(outcome.result, outcome.reason);
+
+          if (outcome.kind === "success") return outcome.result;
+        }
+
+        throw new ToolError(
+          {
+            content: toolResultContent(`Tool call "${name}" was aborted while waiting.`),
+            details: {},
+          },
+          { kind: "cancelled" },
+        );
+      }
+
+      case "wake": {
+        if (view.effect.state !== "signal" && view.effect.state !== "expired") {
+          throw new Error(`Effect ${view.ref} was classified for wake without a signal or expiry`);
+        }
+
+        if (tool?.wake === undefined) {
+          if (view.effect.state === "expired") {
+            throw new ToolError(
+              {
+                content: toolResultContent(`Tool call "${name}" timed out while waiting.`),
+                details: {},
+              },
+              { kind: "timeout" },
+            );
           }
 
-          const stored = view.effect.result;
+          throw new Error(`Tool call "${name}" cannot resume because it has no wake handler.`);
+        }
 
-          const result: AgentToolResult<unknown> = {
-            ...stored,
-            content: stored.content,
-            details: stored.details,
-          };
+        const outcome = await tool.wake(
+          waitingCall(view, options.input.run.head),
+          view.effect.state === "expired"
+            ? { signal: executionSignal, aborted: cancelled(), expired: true }
+            : {
+                signal: executionSignal,
+                aborted: cancelled(),
+                expired: false,
+                reply: view.effect.signal,
+              },
+        );
 
-          if (stored.isError) throw new ToolError(result);
+        if (outcome.kind === "error") throw new ToolError(outcome.result, outcome.reason);
+
+        if (outcome.kind === "success") return outcome.result;
+
+        await parkCall({
+          session: options.input.session,
+          lease: options.input.lease,
+          view,
+          state: options.state,
+          ...parkedWait(name, waitTerms(outcome)),
+        });
+
+        return waiting();
+      }
+
+      case "reuse": {
+        if (view.effect.state !== "result") {
+          throw new Error(`Effect ${view.ref} was classified for reuse without a result`);
+        }
+
+        const stored = view.effect.result;
+
+        const result: AgentToolResult<unknown> = {
+          ...stored,
+          content: stored.content,
+          details: stored.details,
+        };
+
+        const outcome = storedOutcome(view.effect.settlement, stored);
+
+        if (outcome.kind === "error") throw new ToolError(result, outcome.reason);
+
+        return result;
+      }
+
+      default: {
+        const _exhaustive: never = recovery;
+
+        return _exhaustive;
+      }
+    }
+  };
+
+  const traced = (name: string, callId: string, run: () => Promise<AgentToolResult<unknown>>) =>
+    startSpan(
+      options.input.telemetry,
+      "nyte.tool",
+      { "nyte.run.id": options.input.run.id, "nyte.tool.name": name, "nyte.call.id": callId },
+      async (span) => {
+        try {
+          const result = await run();
+          span.setAttributes({
+            "nyte.tool.is_error": false,
+            "nyte.tool.parked": options.parked.has(callId),
+          });
 
           return result;
+        } catch (error) {
+          span.setAttributes({ "nyte.tool.is_error": true, "nyte.tool.parked": false });
+          throw error;
         }
+      },
+    );
 
-        default: {
-          const _exhaustive: never = recovery;
-
-          return _exhaustive;
-        }
-      }
-    };
-
-    return {
+  return {
+    tools: options.tools.map((tool): AgentTool => ({
       ...tool,
       execute: (input, call) =>
-        startSpan(
-          options.input.telemetry,
-          "nyte.tool",
-          {
-            "nyte.run.id": options.input.run.id,
-            "nyte.tool.name": tool.name,
-            "nyte.call.id": call.id,
-          },
-          async (span) => {
-            try {
-              const result = await execute(input, call);
-              span.setAttributes({
-                "nyte.tool.is_error": false,
-                "nyte.tool.parked": options.parked.has(call.id),
-              });
+        traced(tool.name, call.id, async () => {
+          if (leaving()) return defer(call.id);
 
-              return result;
-            } catch (error) {
-              span.setAttributes({ "nyte.tool.is_error": true, "nyte.tool.parked": false });
-              throw error;
-            }
-          },
+          if (cancelled()) throw notStarted(tool.name);
+
+          return proceed(
+            tool,
+            tool.name,
+            {
+              args: toJsonValue(input),
+              replay: tool.replay ?? "never",
+              ...(options.fs === undefined ? {} : { fs: options.fs }),
+            },
+            () => input,
+            call,
+          );
+        }),
+    })),
+    unstarted: (toolCall: AgentToolCall): ReadyToolCall | undefined =>
+      executionSignal.aborted
+        ? {
+            args: toolCall.arguments,
+            execute: () =>
+              traced(toolCall.name, toolCall.id, async () => {
+                if (leaving()) return defer(toolCall.id);
+                throw notStarted(toolCall.name);
+              }),
+          }
+        : undefined,
+    recorded: (
+      tool: AgentTool | undefined,
+      toolCall: AgentToolCall,
+      record: EffectView,
+    ): ReadyToolCall => ({
+      args: record.intent.args,
+      execute: (signal, onUpdate) =>
+        traced(toolCall.name, toolCall.id, () =>
+          proceed(
+            tool,
+            toolCall.name,
+            record.intent,
+            () => {
+              if (tool === undefined) throw new Error(`Tool ${toolCall.name} not found`);
+
+              return validateToolArguments(tool, {
+                ...toolCall,
+                arguments: toolCallArguments(record.intent.args),
+              });
+            },
+            { id: toolCall.id, signal: signal ?? executionSignal, update: onUpdate },
+          ),
         ),
-    };
-  });
+    }),
+  };
 }
 
 async function settleCall(options: {
@@ -1125,14 +1301,14 @@ async function settleCall(options: {
         { toolCallId: options.view.intent.callId, toolName: options.view.intent.tool },
         options.outcome,
       ),
+      settlement: toolOutcome(options.outcome),
     });
 
     if (outcome.kind !== "settled") stopBatch(options.state, outcome);
   } catch (cause) {
     stopBatch(options.state, {
       kind: "failed",
-      messages: [],
-      calls: {},
+      settlements: [],
       cause,
       error: cause instanceof Error ? cause.message : String(cause),
     });
@@ -1238,8 +1414,7 @@ async function parkCall(options: {
   } catch (cause) {
     stopBatch(options.state, {
       kind: "failed",
-      messages: [],
-      calls: {},
+      settlements: [],
       cause,
       error: cause instanceof Error ? cause.message : String(cause),
     });

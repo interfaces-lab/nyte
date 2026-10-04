@@ -14,6 +14,7 @@ import { parseHeadRef, isHeadName, parseInboxRef, runRef } from "../names.ts";
 import type { Session } from "../store.ts";
 import { drive, type StepOptions } from "../step.ts";
 import type { StreamFn } from "../loop/types.ts";
+import { ToolStop } from "../loop/tool-result.ts";
 import { advanceStep } from "./advance.ts";
 import { turnFor, type Activation } from "./activation.ts";
 import type { TurnInput } from "../turn.ts";
@@ -39,6 +40,8 @@ import {
 const EFFECT_PREFIX = "refs/effects/";
 
 const RUNNER_RESTART_DELAY_MS = 1000;
+
+const BUSY_RETRY_MIN_MS = 250;
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
@@ -344,7 +347,7 @@ export function createRunners(input: {
         await requireRunnerLocation();
         const error = missingChildModel(input.run.config);
 
-        if (error !== undefined) return { kind: "failed", messages: [], calls: {}, error };
+        if (error !== undefined) return { kind: "failed", settlements: [], error };
 
         return bound.turn.tools(input);
       },
@@ -495,7 +498,12 @@ export function createRunners(input: {
                 prepared.optionsFor(head, controller.signal),
               );
 
-              if (outcome.kind === "busy") return;
+              if (outcome.kind === "busy") {
+                // Lease expiry and release emit no event; look again when the holder's lease lapses.
+                driveAt(head, Math.max(outcome.holder.expiresAt, Date.now() + BUSY_RETRY_MIN_MS));
+
+                return;
+              }
 
               // A job or a child that finished while its call was being parked
               // signalled a not-yet-waiting effect. Recheck only this run's parked calls.
@@ -575,7 +583,9 @@ export function createRunners(input: {
 
       if (state.runId === undefined) state.runId = stored.run.id;
 
-      if (state.runId === stored.run.id && stored.run.abortRequested === true) controller.abort();
+      if (state.runId === stored.run.id && stored.run.abortRequested === true) {
+        controller.abort(new ToolStop("cancelled"));
+      }
     };
 
     const handleRef = async (event: Extract<Event, { readonly kind: "ref" }>): Promise<void> => {
@@ -811,7 +821,9 @@ export function createRunners(input: {
 
     if (state?.controller === undefined) return;
 
-    if (state.runId === undefined || state.runId === runId) state.controller.abort();
+    if (state.runId === undefined || state.runId === runId) {
+      state.controller.abort(new ToolStop("cancelled"));
+    }
   }
 
   return {

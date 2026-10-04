@@ -166,6 +166,7 @@ for (const state of ["missing", "intent", "waiting", "expired", "signal", "resul
               lease: f.held,
               view: opened.view,
               result: toolResult("call", "test", "winner"),
+              settlement: { kind: "success" },
             })
           ).kind,
           "settled",
@@ -185,6 +186,7 @@ for (const state of ["missing", "intent", "waiting", "expired", "signal", "resul
           lease: f.held,
           view: stored,
           result: toolResult("call", "test", "loser"),
+          settlement: { kind: "success" },
         }),
         { kind: "fenced" },
       );
@@ -327,7 +329,14 @@ for (const through of ["turn", "step"] as const) {
           const view = await f.read();
           assert.ok(view?.effect.state === "intent");
           assert.equal(
-            (await settleEffect(f.session, { lease: f.held, view, result: winner })).kind,
+            (
+              await settleEffect(f.session, {
+                lease: f.held,
+                view,
+                result: winner,
+                settlement: { kind: "success" },
+              })
+            ).kind,
             "settled",
           );
           cursor = await f.session.events.last();
@@ -373,6 +382,6 @@ test("an unexpected closed-store open remains a failed batch with its original c
   assert.ok(outcome.kind === "failed");
   assert.ok(outcome.cause instanceof Error);
   assert.match(outcome.cause.message, /Session is closed/u);
-  assert.deepEqual(outcome.messages, []);
+  assert.deepEqual(outcome.settlements, []);
   assert.equal(executions, 0);
 });

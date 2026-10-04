@@ -224,10 +224,10 @@ test("a run's first commit and its tool results carry trees, and runs.diff/rever
     );
     assert.ok(request !== undefined && "start" in request && request.start.kind === "run");
     assert.equal(request.start.tree, vcs.trees[0]);
-    assert.ok(ask !== undefined && "outcome" in ask);
+    assert.ok(ask !== undefined && "calls" in ask);
     assert.ok(result !== undefined && "call" in result);
     assert.equal(result.tree, vcs.trees[2]);
-    assert.ok(answer !== undefined && "outcome" in answer);
+    assert.ok(answer !== undefined && "calls" in answer);
 
     const [diffResult] = await nyte.runs.diff({ sessionId, runs: [run.runId] });
     assert.ok(diffResult !== undefined);

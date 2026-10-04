@@ -24,6 +24,7 @@ import type {
   RunPhase,
   Selection,
   Seq,
+  ToolOutcome,
   ToolProgress,
 } from "@nyte-ai/protocol";
 
@@ -47,6 +48,7 @@ export type {
   Selection,
   Seq,
   ToolClass,
+  ToolOutcome,
   ToolProgress,
 } from "@nyte-ai/protocol";
 
@@ -116,6 +118,8 @@ export type Effect =
       readonly args: JsonValue;
       /** After a crash between intent and result: run again, or settle as interrupted. */
       readonly replay: "safe" | "never";
+      /** The filesystem the call acts in. A `safe` replay runs only where this matches; absent, the call has no environment. */
+      readonly fs?: string;
       readonly at: number;
     }
   | {
@@ -147,6 +151,8 @@ export type Effect =
       readonly state: "result";
       readonly intent: Oid;
       readonly result: ToolResultMessage;
+      /** How the call settled. Absent on an effect written before settlements were stored. */
+      readonly settlement?: ToolOutcome;
       readonly at: number;
     };
 

@@ -241,6 +241,20 @@ async function fixture(hook: RefUpdateHook = ({ proceed }) => proceed()) {
       const session = await reader.open(id);
       return branch(session.objects, await session.refs.read(headRef("main")));
     },
+    /** The parent's newest stored tool result: an await settles here even though no transcript draws it. */
+    async lastStoredResult() {
+      const commits = await this.childCommits(parent);
+      const item = commits.findLast(({ commit }) => "call" in commit);
+      assert.ok(item !== undefined && "call" in item.commit);
+      const { body } = item.commit;
+      assert.ok(body.kind === "message" && body.message.role === "toolResult");
+      return {
+        class: item.commit.call,
+        isError: body.message.isError,
+        output: toolResultText(body.message.content),
+      };
+    },
+
     async queuedCompletions() {
       const session = await reader.open(parent);
       return (await pending(session, "main")).flatMap((item) =>
@@ -572,7 +586,7 @@ test("a failed child publication abandons its prepared delegation request", asyn
       agent: child.sessionId,
       message: "orphaned request",
     });
-    expect(sent.part.result?.isError).toBe(true);
+    expect(sent.part.state.kind).toBe("error");
     expect(await f.nyte.messages.list({ sessionId: child.sessionId })).toEqual([]);
 
     await f.command("stop", { agent: child.sessionId });
@@ -759,12 +773,15 @@ test("await returns phases at its deadline without settling the child, and the r
       mode: "all",
       timeoutMs: 300,
     });
-    expect(timedOut.part.class).toEqual({
+    const stored = await f.lastStoredResult();
+    expect(stored.class).toEqual({
       kind: "delegate",
       role: "await",
       target: { kind: "many", sessions: [child.sessionId], mode: "all" },
     });
-    expect(timedOut.part.result?.isError).toBe(false);
+    expect(stored.isError).toBe(false);
+    // An await is the run's own control flow: the transcript draws the send before it, not the await.
+    expect(timedOut.part.class).toMatchObject({ kind: "delegate", role: "send" });
     expect(timedOut.said).toContain(`Agent helper (${child.sessionId}) is respond; no report yet.`);
     expect(timedOut.said).toContain("reached its timeout");
     expect(
@@ -800,12 +817,12 @@ test("await classifies every target and its mode", async () => {
     const children = await f.nyte.sessions.list({ parent: f.parent });
     const second = children.items.find((item) => item.sessionId !== first.sessionId);
     assert.ok(second);
-    const awaited = await f.command("await", {
+    await f.command("await", {
       agents: [first.sessionId, second.sessionId],
       mode: "any",
       timeoutMs: 0,
     });
-    expect(awaited.part.class).toEqual({
+    expect((await f.lastStoredResult()).class).toEqual({
       kind: "delegate",
       role: "await",
       target: {
@@ -841,7 +858,8 @@ test("a parked await wakes when the child answers", async () => {
         role: "create",
         target: { kind: "one", session: child.sessionId },
       },
-      result: { isError: false, output: expect.stringContaining("answer: prompt") },
+      state: { kind: "success" },
+      output: expect.stringContaining("answer: prompt"),
     });
   } finally {
     await f.close();
@@ -869,7 +887,8 @@ test("aborting the parent revokes its child's continuation", async () => {
         role: "create",
         target: { kind: "one", session: child.sessionId },
       },
-      result: { isError: true, output: expect.stringContaining("cancelled") },
+      state: { kind: "error" },
+      output: expect.stringContaining("cancelled"),
     });
     const running = await f.nyte.runs.current({ sessionId: child.sessionId });
     assert.ok(running && !isTerminalPhase(running.phase));
@@ -903,17 +922,15 @@ test("aborting the parent cancels its parked await and leaves the child running;
     expect((await f.nyte.runs.current({ sessionId: f.parent }))?.phase).toEqual({
       kind: "aborted",
     });
-    const parts = (await f.nyte.messages.list({ sessionId: f.parent })).flatMap((turn) =>
-      turn.kind === "turn" ? turn.parts.filter((part) => part.kind === "tool") : [],
-    );
     // A failed call keeps its call-time class.
-    expect(parts.at(-1)).toMatchObject({
+    expect(await f.lastStoredResult()).toEqual({
       class: {
         kind: "delegate",
         role: "await",
         target: { kind: "many", sessions: [child.sessionId], mode: "all" },
       },
-      result: { isError: true, output: expect.stringContaining("cancelled") },
+      isError: true,
+      output: expect.stringContaining("cancelled"),
     });
     const running = await f.nyte.runs.current({ sessionId: child.sessionId });
     assert.ok(running && !isTerminalPhase(running.phase));
@@ -935,7 +952,7 @@ test("aborting the parent cancels its parked await and leaves the child running;
       .poll(() => f.completions(), poll)
       .toEqual([expect.objectContaining({ session: child.sessionId, end: { kind: "cancelled" } })]);
     const refused = await f.command("send", { agent: child.sessionId, message: "again" });
-    expect(refused.part.result?.isError).toBe(true);
+    expect(refused.part.state.kind).toBe("error");
     expect(refused.said).toContain("was stopped");
     expect((await f.child()).sessionId).toBe(child.sessionId);
   } finally {
@@ -965,7 +982,7 @@ test("read answers with the child's latest turns and phase without parking", asy
       ),
     ).toBe(false);
     const unknown = await f.command("read", { agent: "s_nobody" });
-    expect(unknown.part.result?.isError).toBe(true);
+    expect(unknown.part.state.kind).toBe("error");
     expect(unknown.said).toContain("No agent s_nobody belongs to this session");
   } finally {
     await f.close();
@@ -1157,6 +1174,12 @@ test("one chain budget covers two outstanding children and user input starts a f
   await step(session, script, { head: "main", drain, steps: 2 });
   expect((await storedRun(session))?.phase.kind).toBe("done");
 
+  await queueDelegate(
+    session,
+    sessionId("unauthorized-child"),
+    { kind: "commit", oid: "unauthorized-request" },
+    "main",
+  );
   await queueDelegate(session, firstChild, firstRequest, "main");
   await step(session, script, { head: "main", drain, steps: 2 });
   const firstContinuation = await storedRun(session);

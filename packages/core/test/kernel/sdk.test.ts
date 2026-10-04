@@ -742,6 +742,31 @@ test("idle from runs.wait means the head is free: a runner still holding the lea
   }
 });
 
+test("a runner that finds the head held drives it after the holder's lease lapses, with no other event", async () => {
+  const store = openStore();
+  const nyte = await open(echo(), { store });
+  try {
+    const { sessionId: id } = await nyte.sessions.create();
+    const session = await store.open(id);
+    // A holder that crashed: its lease lapses without a release or an event.
+    assert.ok((await session.leases.acquire(headRef("main"), 300)).ok);
+    nyte.attach();
+    await nyte.messages.send({ sessionId: id, content: "one" });
+    await sleep(100);
+    assert.equal((await nyte.messages.pending({ sessionId: id })).length, 1);
+
+    await within(
+      (async () => {
+        while ((await transcript(nyte, id)).length < 2) await sleep(20);
+      })(),
+    );
+    assert.deepEqual(await transcript(nyte, id), ["user:one", "assistant:saw 1"]);
+    assert.deepEqual(await nyte.messages.pending({ sessionId: id }), []);
+  } finally {
+    await nyte.close();
+  }
+});
+
 test("closing while a run is still streaming does not hang", async () => {
   let release: (() => void) | undefined;
   const opened = new Promise<void>((resolve) => {

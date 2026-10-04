@@ -20,10 +20,16 @@ import { bindTool } from "../../src/tools/bind-tool.ts";
 import { builtinTools } from "../builtin-tools.ts";
 import { createJobs } from "../../src/kernel/sdk/jobs.ts";
 import { openEffect, readEffect, signalEffect } from "../../src/kernel/effects.ts";
-import type { Commit, EventBody, Lease, Run } from "../../src/kernel/model.ts";
+import type { Commit, EventBody, Lease, Run, ToolClass } from "../../src/kernel/model.ts";
 import { effectPrefix, headRef } from "../../src/kernel/names.ts";
 import type { Session } from "../../src/kernel/store.ts";
-import { bindTurn, type Turn, type TurnInput, type TurnOptions } from "../../src/kernel/turn.ts";
+import {
+  bindTurn,
+  type ToolBatchResults,
+  type Turn,
+  type TurnInput,
+  type TurnOptions,
+} from "../../src/kernel/turn.ts";
 import {
   backgroundWait,
   ToolWait,
@@ -31,7 +37,8 @@ import {
   type StreamFn,
   type ToolCall,
 } from "../../src/kernel/loop/types.ts";
-import { ToolError } from "../../src/kernel/loop/tool-result.ts";
+import { ToolError, ToolStop } from "../../src/kernel/loop/tool-result.ts";
+import { runToolCall } from "../../src/kernel/loop/agent-loop.ts";
 import { contextCommits } from "../../src/kernel/graph.ts";
 import {
   assistant,
@@ -43,6 +50,7 @@ import {
   openSession,
   seedHead,
   storePath,
+  toolResult,
   user,
   within,
 } from "./helpers.ts";
@@ -193,6 +201,15 @@ function turnWith(
 const askTool = (id = "call-1", value = "input") =>
   assistant("", { calls: [call(id, "test", { value })] });
 
+const DENIED = { kind: "error", reason: { kind: "denied" } } as const;
+
+/** The settled class of each call, by call id. */
+function classes(results: ToolBatchResults): Record<string, ToolClass> {
+  return Object.fromEntries(
+    results.settlements.map(({ message, call: settled }) => [message.toolCallId, settled]),
+  );
+}
+
 async function effectState(session: Session, callId = "call-1"): Promise<string | undefined> {
   return (await readEffect(session, { runId: "run_1", callId }))?.effect.state;
 }
@@ -298,9 +315,11 @@ test("a tool runs once inside its effect, reports progress, and settles with its
   const outcome = await turn.tools({ ...b.input(), assistant: askTool() });
   assert.equal(outcome.kind, "complete");
   if (outcome.kind !== "complete") return;
-  assert.equal(outcome.messages[0]?.toolCallId, "call-1");
+  assert.equal(outcome.settlements[0]?.message.toolCallId, "call-1");
   assert.equal(
-    outcome.messages[0]?.content[0]?.type === "text" ? outcome.messages[0].content[0].text : "",
+    outcome.settlements[0]?.message.content[0]?.type === "text"
+      ? outcome.settlements[0].message.content[0].text
+      : "",
     "got input",
   );
   assert.equal(executions, 1);
@@ -336,7 +355,7 @@ test("settled presentation uses arguments replaced by before-tool", async () => 
   }).tools({ ...b.input(), assistant: requested });
   assert.equal(outcome.kind, "complete");
   if (outcome.kind !== "complete") return;
-  assert.deepEqual(outcome.calls["path-call"], { kind: "file_read", path: "approved.txt" });
+  assert.deepEqual(classes(outcome)["path-call"], { kind: "file_read", path: "approved.txt" });
 });
 
 test("settled calls without a presenter are classified as custom", async () => {
@@ -349,7 +368,7 @@ test("settled calls without a presenter are classified as custom", async () => {
   ]).tools({ ...b.input(), assistant: requested });
   assert.equal(outcome.kind, "complete");
   if (outcome.kind !== "complete") return;
-  assert.deepEqual(outcome.calls, {
+  assert.deepEqual(classes(outcome), {
     known: { kind: "custom", label: "test" },
     missing: { kind: "custom", label: "missing" },
   });
@@ -385,7 +404,7 @@ test("after-tool patches survive a waiting sibling and recovery without running 
         return {
           content: [{ type: "text", text: `public ${toolCall.id}` }],
           details: { public: true },
-          kind: "error",
+          outcome: DENIED,
           usage: patchedUsage,
         };
       },
@@ -404,6 +423,7 @@ test("after-tool patches survive a waiting sibling and recovery without running 
   assert.deepEqual(stored.result.content, [{ type: "text", text: "public settled" }]);
   assert.deepEqual(stored.result.details, { public: true });
   assert.equal(stored.result.isError, true);
+  assert.deepEqual(stored.settlement, DENIED);
   assert.deepEqual(stored.result.usage, patchedUsage);
 
   await signalEffect(b.session, { runId: "run_1", callId: "waiting", signal: "yes" });
@@ -412,16 +432,18 @@ test("after-tool patches survive a waiting sibling and recovery without running 
     const outcome = await recovered.tools({ ...b.input(), assistant: requested });
     assert.ok(outcome.kind === "complete");
     assert.deepEqual(
-      outcome.messages.map((result) => ({
+      outcome.settlements.map(({ message: result, outcome: settled }) => ({
         content: result.content,
         details: result.details,
         isError: result.isError,
+        outcome: settled,
         usage: result.usage,
       })),
       ["settled", "waiting"].map((id) => ({
         content: [{ type: "text", text: `public ${id}` }],
         details: { public: true },
         isError: true,
+        outcome: DENIED,
         usage: patchedUsage,
       })),
     );
@@ -448,9 +470,9 @@ test("an after-tool hook failure is the durable result on recovery", async () =>
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const outcome = await turn.tools({ ...b.input(), assistant: askTool() });
     assert.ok(outcome.kind === "complete");
-    assert.equal(outcome.messages[0]?.isError, true);
-    assert.match(JSON.stringify(outcome.messages[0]?.content), /redaction failed/u);
-    assert.doesNotMatch(JSON.stringify(outcome.messages[0]?.content), /private output/u);
+    assert.equal(outcome.settlements[0]?.message.isError, true);
+    assert.match(JSON.stringify(outcome.settlements[0]?.message.content), /redaction failed/u);
+    assert.doesNotMatch(JSON.stringify(outcome.settlements[0]?.message.content), /private output/u);
   }
   assert.equal(hooks, 1);
 });
@@ -526,8 +548,8 @@ test("a tool that throws settles an error; a truncated batch fails without touch
   const outcome = await throwing.tools({ ...b.input(), assistant: askTool() });
   assert.equal(outcome.kind, "complete");
   if (outcome.kind === "complete") {
-    assert.equal(outcome.messages[0]?.isError, true);
-    assert.match(JSON.stringify(outcome.messages[0]?.content), /disk on fire/u);
+    assert.equal(outcome.settlements[0]?.message.isError, true);
+    assert.match(JSON.stringify(outcome.settlements[0]?.message.content), /disk on fire/u);
   }
   assert.equal(await effectState(b.session), "result");
 
@@ -536,7 +558,7 @@ test("a tool that throws settles an error; a truncated batch fails without touch
     assistant: { ...askTool("call-2"), stopReason: "length" },
   });
   assert.equal(truncated.kind, "complete");
-  if (truncated.kind === "complete") assert.equal(truncated.messages[0]?.isError, true);
+  if (truncated.kind === "complete") assert.equal(truncated.settlements[0]?.message.isError, true);
   assert.equal(await effectState(b.session, "call-2"), undefined);
 });
 
@@ -574,9 +596,338 @@ test("after a crash, an intent replays only when its tool says that is safe", as
   assert.equal(never.kind, "complete");
   assert.equal(executions, 1);
   if (never.kind === "complete") {
-    assert.equal(never.messages[0]?.isError, true);
-    assert.match(JSON.stringify(never.messages[0]?.content), /interrupted/u);
+    assert.deepEqual(never.settlements[0]?.outcome, {
+      kind: "error",
+      reason: { kind: "interrupted" },
+    });
+    assert.equal(never.settlements[0]?.message.isError, true);
+    assert.match(JSON.stringify(never.settlements[0]?.message.content), /interrupted/u);
   }
+});
+
+test("a settled success is reused as a success when the run is stepped again under a participant's stop", async () => {
+  const b = await bench();
+  let executions = 0;
+  const turn = turnWith(scripted([]).streamFn, [
+    tool(async () => {
+      executions += 1;
+      return { content: [{ type: "text", text: "ran" }], details: {} };
+    }),
+  ]);
+  const first = await turn.tools({ ...b.input(), assistant: askTool() });
+  assert.ok(first.kind === "complete");
+  assert.deepEqual(first.settlements[0]?.outcome, { kind: "success" });
+  const stored = (await readEffect(b.session, { runId: "run_1", callId: "call-1" }))?.effect;
+  assert.ok(stored?.state === "result");
+  assert.deepEqual(stored.settlement, { kind: "success" });
+
+  const controller = new AbortController();
+  controller.abort(new ToolStop("cancelled"));
+  const again = await turn.tools({
+    ...b.input({ signal: controller.signal, abort: true }),
+    assistant: askTool(),
+  });
+  assert.ok(again.kind === "complete");
+  assert.deepEqual(again.settlements[0]?.outcome, { kind: "success" });
+  assert.equal(again.settlements[0]?.message.isError, false);
+  assert.equal(executions, 1);
+});
+
+test("a stored result is read before the stop and the policy: a stop mid-batch reuses it, siblings that never started settle cancelled without a policy decision", async () => {
+  const b = await bench();
+  const controller = new AbortController();
+  const executed: string[] = [];
+  const policed: string[] = [];
+  const turn = turnWith(
+    scripted([]).streamFn,
+    [
+      tool(async (_input, call) => {
+        executed.push(call.id);
+        return { content: [{ type: "text", text: `ran ${call.id}` }], details: {} };
+      }),
+    ],
+    {
+      loop: {
+        beforeToolCall: async ({ toolCall }) => {
+          policed.push(toolCall.id);
+          if (toolCall.id === "fresh") controller.abort(new ToolStop("cancelled"));
+          return toolCall.id === "late" ? { block: true, cause: DENIED.reason } : undefined;
+        },
+      },
+    },
+  );
+  const first = await turn.tools({
+    ...b.input(),
+    assistant: assistant("", { calls: [call("stored", "test", { value: "x" })] }),
+  });
+  assert.ok(first.kind === "complete");
+  const again = await turn.tools({
+    ...b.input({ signal: controller.signal }),
+    assistant: assistant("", {
+      calls: [
+        call("fresh", "test", { value: "x" }),
+        call("stored", "test", { value: "x" }),
+        call("late", "test", { value: "x" }),
+      ],
+    }),
+  });
+  assert.ok(again.kind === "complete");
+  assert.deepEqual(
+    again.settlements.map(({ message, outcome }) => [message.toolCallId, outcome]),
+    [
+      ["fresh", { kind: "error", reason: { kind: "cancelled" } }],
+      ["stored", { kind: "success" }],
+      ["late", { kind: "error", reason: { kind: "cancelled" } }],
+    ],
+  );
+  assert.deepEqual(executed, ["stored"]);
+  assert.deepEqual(policed, ["stored", "fresh"]);
+  for (const id of ["fresh", "stored", "late"]) {
+    assert.equal(await effectState(b.session, id), "result");
+  }
+});
+
+test("a refusal is durable: a denied call is not executed when its parked sibling wakes, and the stored arguments hold", async () => {
+  const b = await bench();
+  let deny = true;
+  const executed: unknown[] = [];
+  const turn = turnWith(
+    scripted([]).streamFn,
+    [
+      tool(
+        async (input) => {
+          if (input.value === "wait") throw new ToolWait(backgroundWait);
+          executed.push(input);
+          return { content: [], details: {} };
+        },
+        { wake: async () => ({ kind: "success", result: { content: [], details: {} } }) },
+      ),
+    ],
+    {
+      loop: {
+        beforeToolCall: async ({ toolCall }) => {
+          if (toolCall.id === "denied")
+            return deny ? { block: true, cause: DENIED.reason } : undefined;
+          return { args: { value: toolCall.id === "waiting" ? "wait" : "approved" } };
+        },
+      },
+    },
+  );
+  const requested = assistant("", {
+    calls: [
+      call("denied", "test", { value: "no" }),
+      call("waiting", "test", { value: "raw" }),
+      call("ran", "test", { value: "raw" }),
+    ],
+  });
+  const first = await turn.tools({ ...b.input(), assistant: requested });
+  assert.deepEqual(first, { kind: "waiting", calls: ["waiting"] });
+  const refusal = (await readEffect(b.session, { runId: "run_1", callId: "denied" }))?.effect;
+  assert.ok(refusal?.state === "result");
+  assert.deepEqual(refusal.settlement, DENIED);
+  assert.equal(refusal.result.isError, true);
+  deny = false;
+  await signalEffect(b.session, { runId: "run_1", callId: "waiting", signal: "yes" });
+  const woken = await turn.tools({ ...b.input(), assistant: requested });
+  assert.ok(woken.kind === "complete");
+  assert.deepEqual(
+    woken.settlements.map(({ outcome }) => outcome),
+    [DENIED, { kind: "success" }, { kind: "success" }],
+  );
+  assert.deepEqual(executed, [{ value: "approved" }]);
+  assert.deepEqual(classes(woken).ran, { kind: "custom", label: "test" });
+});
+
+test("the host's stop is not a settlement: what ran is recorded, what had not started is unrecorded and runs on the next step", async () => {
+  const b = await bench();
+  const controller = new AbortController();
+  const executed: string[] = [];
+  const turn = turnWith(scripted([]).streamFn, [
+    tool(async (_input, call) => {
+      executed.push(call.id);
+      if (call.id === "first") controller.abort();
+      call.signal.throwIfAborted();
+      return { content: [{ type: "text", text: "ran" }], details: {} };
+    }),
+  ]);
+  const requested = assistant("", {
+    calls: [call("first", "test", { value: "x" }), call("second", "test", { value: "x" })],
+  });
+  const left = await turn.tools({
+    ...b.input({ signal: controller.signal }),
+    assistant: requested,
+  });
+  assert.deepEqual(left, { kind: "conflict" });
+  assert.deepEqual(executed, ["first"]);
+  const first = (await readEffect(b.session, { runId: "run_1", callId: "first" }))?.effect;
+  assert.ok(first?.state === "result");
+  assert.deepEqual(first.settlement, { kind: "error", reason: { kind: "interrupted" } });
+  assert.equal(await effectState(b.session, "second"), undefined);
+  const resumed = await turn.tools({ ...b.input(), assistant: requested });
+  assert.ok(resumed.kind === "complete");
+  assert.deepEqual(
+    resumed.settlements.map(({ outcome }) => outcome),
+    [{ kind: "error", reason: { kind: "interrupted" } }, { kind: "success" }],
+  );
+  assert.deepEqual(executed, ["first", "second"]);
+});
+
+test("a recorded result is answered before lookup and validation: today's tool set and schema do not decide it", async () => {
+  const b = await bench();
+  const first = await turnWith(scripted([]).streamFn, [
+    tool(async () => ({ content: [{ type: "text", text: "ran" }], details: {} })),
+  ]).tools({ ...b.input(), assistant: askTool() });
+  assert.ok(first.kind === "complete");
+  const evolved = bindTool({
+    name: "test",
+    description: "the next release's tool",
+    parameters: Type.Object({ value: Type.String(), requiredNow: Type.String() }),
+    execute: async () => assert.fail("a recorded result is never re-executed"),
+  });
+  for (const tools of [[evolved], []]) {
+    const again = await turnWith(scripted([]).streamFn, tools).tools({
+      ...b.input(),
+      assistant: assistant("", { calls: [call("call-1", "test", { unknown: true })] }),
+    });
+    assert.ok(again.kind === "complete");
+    assert.deepEqual(again.settlements[0]?.outcome, { kind: "success" });
+    assert.deepEqual(again.settlements[0]?.message.content, [{ type: "text", text: "ran" }]);
+  }
+});
+
+test("a stop is read before preparation: a participant's stop settles an unstarted call without a policy decision, the host's stop still answers a recorded result", async () => {
+  const b = await bench();
+  let policies = 0;
+  const turn = turnWith(
+    scripted([]).streamFn,
+    [tool(async () => ({ content: [{ type: "text", text: "ran" }], details: {} }))],
+    {
+      loop: {
+        beforeToolCall: async () => {
+          policies += 1;
+          return { block: true, cause: DENIED.reason };
+        },
+      },
+    },
+  );
+  const participant = new AbortController();
+  participant.abort(new ToolStop("cancelled"));
+  const stopped = await turn.tools({
+    ...b.input({ signal: participant.signal }),
+    assistant: assistant("", {
+      calls: [
+        call("unknown", "nope", {}),
+        call("invalid", "test", { value: 1 }),
+        call("fresh", "test", { value: "x" }),
+      ],
+    }),
+  });
+  assert.ok(stopped.kind === "complete");
+  assert.deepEqual(
+    stopped.settlements.map(({ outcome }) => outcome),
+    Array.from({ length: 3 }, () => ({ kind: "error", reason: { kind: "cancelled" } })),
+  );
+  assert.equal(policies, 0);
+  const recorded = await turnWith(scripted([]).streamFn, [
+    tool(async () => ({ content: [{ type: "text", text: "ran" }], details: {} })),
+  ]).tools({ ...b.input(), assistant: askTool("stored") });
+  assert.ok(recorded.kind === "complete");
+  const host = new AbortController();
+  host.abort();
+  const read = await turn.tools({
+    ...b.input({ signal: host.signal }),
+    assistant: askTool("stored"),
+  });
+  assert.ok(read.kind === "complete");
+  assert.deepEqual(read.settlements[0]?.outcome, { kind: "success" });
+  assert.equal(policies, 0);
+});
+
+test("a nested call does not start when the stop arrives while its policy runs, and a stopped one skips the policy", async () => {
+  const controller = new AbortController();
+  let executions = 0;
+  let policies = 0;
+  const target = tool(async () => {
+    executions += 1;
+    return { content: [], details: {} };
+  });
+  const run = (beforeToolCall: () => void) =>
+    runToolCall(call("c", "test", { value: "x" }), {
+      context: { messages: [], tools: [target] },
+      assistantMessage: askTool(),
+      tools: [target],
+      signal: controller.signal,
+      beforeToolCall: async () => {
+        policies += 1;
+        beforeToolCall();
+        return undefined;
+      },
+    });
+  const during = await run(() => controller.abort(new ToolStop("cancelled")));
+  assert.deepEqual(during.kind === "error" ? during.reason : during, { kind: "cancelled" });
+  assert.equal(policies, 1);
+  const before = await run(() => assert.fail("a stopped call asks no policy"));
+  assert.deepEqual(before.kind === "error" ? before.reason : before, { kind: "cancelled" });
+  assert.equal(policies, 1);
+  assert.equal(executions, 0);
+});
+
+test("a safe replay runs the live tool, with the run context a fresh call would have", async () => {
+  const b = await bench();
+  await openEffect(b.session, {
+    lease: b.lease,
+    runId: b.run.id,
+    callId: "call-1",
+    tool: "test",
+    args: { value: "recorded" },
+    replay: "safe",
+  });
+  const replayed = await turnWith(scripted([]).streamFn, [
+    tool(
+      async (input, call) => {
+        assert.ok(call.run, "a replayed call runs inside its run");
+        return { content: [{ type: "text", text: `${call.run.id}:${input.value}` }], details: {} };
+      },
+      { replay: "safe" },
+    ),
+  ]).tools({ ...b.input(), assistant: askTool() });
+  assert.ok(replayed.kind === "complete");
+  assert.deepEqual(replayed.settlements[0]?.outcome, { kind: "success" });
+  assert.deepEqual(replayed.settlements[0]?.message.content, [
+    { type: "text", text: "run_1:recorded" },
+  ]);
+});
+
+test("a stored result without a settlement is reused through its isError bit", async () => {
+  const b = await bench();
+  const opened = await openEffect(b.session, {
+    lease: b.lease,
+    runId: "run_1",
+    callId: "call-1",
+    tool: "test",
+    args: { value: "x" },
+    replay: "never",
+  });
+  assert.ok(opened.kind === "opened");
+  const legacy = {
+    kind: "effect",
+    state: "result",
+    intent: opened.view.oid,
+    result: toolResult("call-1", "test", "old failure", { isError: true }),
+    at: 2,
+  } as const;
+  const [oid] = await b.session.objects.put([legacy]);
+  assert.ok(oid !== undefined);
+  await b.session.refs.update([{ name: opened.view.ref, from: opened.view.oid, to: oid }], {
+    reason: "effect",
+    lease: b.lease,
+  });
+  const outcome = await turnWith(scripted([]).streamFn, [
+    tool(async () => assert.fail("a stored result is never re-executed")),
+  ]).tools({ ...b.input(), assistant: askTool("call-1", "x") });
+  assert.ok(outcome.kind === "complete");
+  assert.deepEqual(outcome.settlements[0]?.outcome, { kind: "error", reason: { kind: "error" } });
+  assert.deepEqual(outcome.settlements[0]?.message.content, legacy.result.content);
 });
 
 test("a tool that waits parks its call, wakes with the reply, and settles exactly once", async () => {
@@ -608,7 +959,7 @@ test("a tool that waits parks its call, wakes with the reply, and settles exactl
   await signalEffect(b.session, { runId: "run_1", callId: "call-1", signal: "yes" });
   const woken = await asking.tools({ ...b.input(), assistant: askTool() });
   assert.equal(woken.kind, "complete");
-  const answered = woken.kind === "complete" ? woken.messages[0]?.content[0] : undefined;
+  const answered = woken.kind === "complete" ? woken.settlements[0]?.message.content[0] : undefined;
   assert.equal(answered?.type === "text" ? answered.text : "", 'answer: "yes"');
   assert.equal(wakes, 1);
   assert.equal(await effectState(b.session), "result");
@@ -644,7 +995,7 @@ test("a deadline uses the step's clock and wakes without a reply", async () => {
   const completed = await asking.tools({ ...b.input({ now: 100 }), assistant: askTool() });
   assert.equal(completed.kind, "complete");
   if (completed.kind === "complete") {
-    const content = completed.messages[0]?.content[0];
+    const content = completed.settlements[0]?.message.content[0];
     assert.equal(content?.type === "text" ? content.text : undefined, "done");
   }
   assert.deepEqual(wakes, [{ expired: true, reply: undefined }]);
@@ -658,14 +1009,26 @@ test("an abort settles a parked call as an error so the run can end", async () =
     }),
   ]);
   await asking.tools({ ...b.input(), assistant: askTool() });
+  const host = new AbortController();
+  host.abort();
+  assert.deepEqual(
+    await asking.tools({ ...b.input({ signal: host.signal }), assistant: askTool() }),
+    { kind: "waiting", calls: ["call-1"] },
+  );
+  assert.equal(await effectState(b.session), "waiting");
   const controller = new AbortController();
-  controller.abort();
+  controller.abort(new ToolStop("cancelled"));
   const outcome = await asking.tools({
     ...b.input({ signal: controller.signal, abort: true }),
     assistant: askTool(),
   });
   assert.equal(outcome.kind, "complete");
-  if (outcome.kind === "complete") assert.equal(outcome.messages[0]?.isError, true);
+  if (outcome.kind === "complete") {
+    assert.deepEqual(outcome.settlements[0]?.outcome, {
+      kind: "error",
+      reason: { kind: "cancelled" },
+    });
+  }
   assert.equal(await effectState(b.session), "result");
   assert.equal((await b.session.refs.list(effectPrefix("run_1"))).length, 1);
   assert.equal(await b.session.refs.read(headRef("main")), null);
@@ -736,10 +1099,10 @@ test("builtin factories execute approved arguments after durable intent and jobs
       const outcome = await turn.tools({ ...b.input(), assistant: requested });
       assert.ok(outcome.kind === "complete");
       assert.deepEqual(
-        outcome.messages.map((result) => result.toolCallId),
+        outcome.settlements.map(({ message: result }) => result.toolCallId),
         ["job", "write"],
       );
-      assert.ok(outcome.messages.every((result) => !result.isError));
+      assert.ok(outcome.settlements.every(({ message: result }) => !result.isError));
     }
     assert.equal(await readFile(join(directory, "command.txt"), "utf8"), "approved");
     assert.equal(executions, 1);
@@ -856,7 +1219,7 @@ test("tool activation and full tool history follow durable branch ancestry acros
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const outcome = await activatedTurn.tools({ ...b.input(), assistant: searchMessage });
     assert.ok(outcome.kind === "complete");
-    loaded = outcome.messages[0];
+    loaded = outcome.settlements[0]?.message;
     assert.deepEqual(loaded?.addedToolNames, ["later"]);
     assert.deepEqual(loaded?.structuredContent, { loaded: true });
   }
@@ -907,8 +1270,8 @@ test("tool activation and full tool history follow durable branch ancestry acros
     assistant: assistant("", { calls: [call("fabricated", "later", { value: "input" })] }),
   });
   assert.ok(fabricated.kind === "complete");
-  assert.equal(fabricated.messages[0]?.isError, true);
-  assert.equal(await effectState(b.session, "fabricated"), undefined);
+  assert.equal(fabricated.settlements[0]?.message.isError, true);
+  assert.equal(await effectState(b.session, "fabricated"), "result");
 });
 
 test("nested bash finishes inside the caller without parking a durable job", async () => {
@@ -941,7 +1304,7 @@ test("nested bash finishes inside the caller without parking a durable job", asy
     });
     const outcome = await turn.tools({ ...b.input(), assistant: askTool() });
     assert.ok(outcome.kind === "complete");
-    assert.equal(outcome.messages[0]?.isError, false);
+    assert.equal(outcome.settlements[0]?.message.isError, false);
     assert.equal(await readFile(join(directory, "nested.txt"), "utf8"), "approved");
     assert.deepEqual(await jobs.list(), []);
     assert.equal((await b.session.refs.list(effectPrefix("run_1"))).length, 1);

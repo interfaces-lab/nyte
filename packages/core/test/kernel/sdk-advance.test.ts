@@ -439,7 +439,7 @@ test("replacement preserves the offered tool and parked wake handler while anoth
       messages.some(
         (turn) =>
           turn.kind === "turn" &&
-          turn.parts.some((part) => part.kind === "tool" && part.result?.output === "old answer"),
+          turn.parts.some((part) => part.kind === "tool" && part.output === "old answer"),
       ),
     );
   } finally {

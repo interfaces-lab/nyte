@@ -82,6 +82,7 @@ test("every object a ref can reach through the graph is kept", async () => {
     lease: held,
     view: opened.view,
     result: toolResult("c1", "read", "x"),
+    settlement: { kind: "success" },
   });
   await trimStream(session, { keepAfterSeq: await session.events.last() });
 

@@ -9,6 +9,7 @@ import type { Run } from "../src/kernel/model.ts";
 import { runRef } from "../src/kernel/names.ts";
 import { pending, submit } from "../src/kernel/queue.ts";
 import { createJobs, JOB_PREFIX, parseJobRecord } from "../src/kernel/sdk/jobs.ts";
+import { ToolError } from "../src/kernel/loop/tool-result.ts";
 import {
   ToolWait,
   type AgentTool,
@@ -276,9 +277,78 @@ test("cancellation drains only the in-flight and latest pending progress", async
     release.resolve();
     expect(await cancelling).toEqual({ kind: "applied" });
     expect(progressWrites).toBe(2);
-    expect((await f.stored(job.id)).info).toMatchObject({
-      output: "latest-99",
-      phase: { kind: "cancelled" },
+    const stopped = await f.stored(job.id);
+    expect(stopped.info).toMatchObject({ output: "latest-99", phase: { kind: "cancelled" } });
+    // The tool never answered its stop: the record keeps the output it reached, no result of its own.
+    expect(stopped.result).toBeUndefined();
+    expect(stopped.settlement).toEqual({ kind: "error", reason: { kind: "cancelled" } });
+  } finally {
+    release.resolve();
+    await f.close();
+  }
+});
+
+test("a job's end, result, and settlement land in one write; close leaves a finished job completed", async () => {
+  const f = await fixture();
+  const jobs = f.manager();
+  const failing = controlledTool();
+  const finishing = controlledTool();
+  const seen: unknown[] = [];
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  try {
+    await expect(
+      jobs.wrap(failing.tool).execute({ command: "fail" }, f.call),
+    ).rejects.toBeInstanceOf(ToolWait);
+    await within(failing.started.promise);
+    const job = only(await jobs.list());
+    const writes = f.session.refs.update.bind(f.session.refs);
+    vi.spyOn(f.session.refs, "update").mockImplementation(async (updates, options) => {
+      const written = await writes(updates, options);
+      for (const update of updates) {
+        if (update.name !== JOB_PREFIX + job.id || update.to === null) continue;
+        seen.push(await f.stored(job.id));
+      }
+      return written;
+    });
+    failing.finished.reject(
+      new ToolError(
+        { content: [{ type: "text", text: "partial\n\nCommand exited with code 2" }], details: {} },
+        { kind: "exit", code: 2 },
+      ),
+    );
+    await expect.poll(async () => (await f.stored(job.id)).info.phase.kind).toBe("failed");
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      info: { phase: { kind: "failed" }, output: "partial\n\nCommand exited with code 2" },
+      result: { isError: true },
+      settlement: { kind: "error", reason: { kind: "exit", code: 2 } },
+    });
+    vi.restoreAllMocks();
+    // Close arrives after the work finished but before its end was written.
+    const append = f.session.events.append.bind(f.session.events);
+    vi.spyOn(f.session.events, "append").mockImplementation(async (events, options) => {
+      if (events.some((event) => event.kind === "progress")) {
+        entered.resolve();
+        await release.promise;
+      }
+      return append(events, options);
+    });
+    await expect(
+      jobs.wrap(finishing.tool).execute({ command: "finish" }, { ...f.call, id: "call-2" }),
+    ).rejects.toBeInstanceOf(ToolWait);
+    await within(finishing.started.promise);
+    const finished = only((await jobs.list()).filter((info) => info.command === "finish"));
+    finishing.publish();
+    await within(entered.promise);
+    finishing.finished.resolve(result);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const closing = jobs.close();
+    release.resolve();
+    await within(closing);
+    expect(await f.stored(finished.id)).toMatchObject({
+      info: { phase: { kind: "completed" } },
+      settlement: { kind: "success" },
     });
   } finally {
     release.resolve();

@@ -3,8 +3,10 @@ import {
   isTerminalPhase,
   schemas,
   type JobActionOutcome,
+  type JobEnd,
   type JobInfo,
   type JobReport,
+  type ToolOutcome,
 } from "@nyte-ai/protocol";
 import type { JsonValue } from "@nyte-ai/schema";
 import { Type, type Static } from "typebox";
@@ -18,7 +20,10 @@ import type {
 } from "../loop/types.ts";
 import { backgroundWait, ToolWait } from "../loop/types.ts";
 import {
+  stopReason,
+  ToolStop,
   toolFailure,
+  toolOutcome,
   toolResultContent,
   toolResultMessage,
   toolResultText,
@@ -47,6 +52,7 @@ const BACKGROUND_PEEK_MS = 1_500;
 const jobRecord = Type.Object({
   info: schemas.JobInfo,
   result: Type.Optional(schemas.ToolResultMessage),
+  settlement: Type.Optional(schemas.ToolOutcome),
   completion: Type.Union([
     Type.Object({ kind: Type.Literal("none") }),
     Type.Object({ kind: Type.Literal("owed") }),
@@ -119,6 +125,34 @@ function jobId(runId: string, callId: string): string {
     .update(JSON.stringify([runId, callId]))
     .digest("hex")
     .slice(0, 24)}`;
+}
+
+/** How a job recorded before settlements were stored settled its call. */
+function legacyEndOutcome(end: JobEnd): ToolOutcome {
+  switch (end.kind) {
+    case "completed":
+      return { kind: "success" };
+    case "failed":
+      return { kind: "error", reason: { kind: "error" } };
+    case "cancelled":
+    case "interrupted":
+      return { kind: "error", reason: { kind: end.kind } };
+    default: {
+      const _exhaustive: never = end;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/** A job's end from its settlement: a stop names who stopped it, any other failure keeps its message. */
+function jobEnd(outcome: ToolCallOutcome, failure: string): JobEnd {
+  if (outcome.kind === "success") return { kind: "completed" };
+  const { kind } = outcome.reason;
+
+  return kind === "cancelled" || kind === "interrupted"
+    ? { kind }
+    : { kind: "failed", reason: failure };
 }
 
 /**
@@ -358,8 +392,8 @@ export function createJobs(input: {
     const runtime = live.get(id);
 
     if (runtime !== undefined) {
-      runtime.controller.abort();
-      await settleWrites(runtime);
+      runtime.controller.abort(new ToolStop(kind));
+      await runtime.done;
     }
 
     const next = await update(
@@ -377,6 +411,7 @@ export function createJobs(input: {
         return {
           ...record,
           completion,
+          settlement: { kind: "error", reason: { kind } },
           info: { ...record.info, phase: { kind }, updatedAt: Date.now() },
         };
       },
@@ -475,6 +510,7 @@ export function createJobs(input: {
     if (stored === undefined)
       return {
         kind: "error",
+        reason: { kind: "interrupted" },
         result: {
           content: toolResultContent("Work was interrupted before it could start."),
           details: {},
@@ -496,6 +532,7 @@ export function createJobs(input: {
 
     // Background work already answered its call with the receipt; its end is a completion.
     if (completion.kind !== "none") return { kind: "success", result: receipt(info) };
+    const outcome = stored.record.settlement ?? legacyEndOutcome(info.phase);
 
     if (result !== undefined) {
       const settled = { content: result.content, details: result.details };
@@ -503,7 +540,7 @@ export function createJobs(input: {
       const measured = result.usage === undefined ? titled : { ...titled, usage: result.usage };
 
       return {
-        kind: info.phase.kind === "completed" ? "success" : "error",
+        ...outcome,
         result:
           result.addedToolNames === undefined
             ? measured
@@ -512,7 +549,7 @@ export function createJobs(input: {
     }
 
     return {
-      kind: "error",
+      ...outcome,
       result: {
         content: toolResultContent(
           `Command ${info.phase.kind}.${info.output ? `\n${info.output}` : ""}`,
@@ -713,10 +750,15 @@ export function createJobs(input: {
       runtime.writes = writes;
     };
 
+    const stopping = AbortSignal.any([controller.signal, shutdown.signal]);
+
     runtime.done = track(
       (async () => {
         let outcome: ToolCallOutcome;
-        let failure: string | undefined;
+        let failure = "";
+        // A tool that answers its stop settles with its own result; one the
+        // stop had to abandon keeps the output it had reached.
+        let answered = true;
 
         try {
           const result = await withLeaseRenewal(
@@ -724,7 +766,7 @@ export function createJobs(input: {
               session: input.session,
               lease: acquired.lease,
               ttlMs: LEASE_MS,
-              signal: AbortSignal.any([controller.signal, shutdown.signal]),
+              signal: stopping,
             },
             async (jobSignal) => {
               const aborted = Promise.withResolvers<never>();
@@ -778,11 +820,21 @@ export function createJobs(input: {
           outcome = toolSuccess(result);
         } catch (cause) {
           failure = cause instanceof Error ? cause.message : String(cause);
-          outcome = toolFailure(cause);
+          answered = !stopping.aborted || cause !== stopping.reason;
+          outcome = toolFailure(
+            cause,
+            undefined,
+            stopping.aborted ? stopReason(stopping) : undefined,
+          );
         }
 
         await settleWrites(runtime);
-        const reason = failure;
+        const end = jobEnd(outcome, failure);
+
+        const result = answered
+          ? { result: toolResultMessage({ toolCallId: callId, toolName: tool.name }, outcome) }
+          : {};
+
         await update(
           id,
           (current) =>
@@ -790,15 +842,14 @@ export function createJobs(input: {
               ? current
               : {
                   ...current,
-                  result: toolResultMessage({ toolCallId: callId, toolName: tool.name }, outcome),
+                  ...result,
+                  settlement: toolOutcome(outcome),
                   info: {
                     ...current.info,
-                    phase: shutdown.signal.aborted
-                      ? { kind: "interrupted" }
-                      : reason !== undefined
-                        ? { kind: "failed", reason }
-                        : { kind: "completed" },
-                    output: toolResultText(outcome.result.content).slice(-OUTPUT_LIMIT),
+                    phase: end,
+                    output: answered
+                      ? toolResultText(outcome.result.content).slice(-OUTPUT_LIMIT)
+                      : current.info.output,
                     updatedAt: Date.now(),
                   },
                 },

@@ -21,7 +21,7 @@
  *   chain and `continue` is not terminal, so no decision bypasses a later
  *   policy. The first `reject` or `error` stops the chain. A throwing handler
  *   becomes `error` (fail-closed).
- * - `after_tool`: field-wise chained patch.
+ * - `after_tool`: field-wise chained patch; `outcome` replaces how the call settled.
  * - `before_compaction`: first provider checkpoint wins; failed attempts carry
  *   usage into later handlers or portable compaction. Only exhausted failures
  *   report a fallback warning.
@@ -32,12 +32,13 @@
  * Synced with pi 7ebf9087e.
  */
 import type { Context, JsonValue, Message, Usage } from "@nyte-ai/schema";
+import { schemas, type ToolOutcome } from "@nyte-ai/protocol";
 import type { ProviderCompaction } from "../kernel/compaction.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { isJsonObject, toJsonValue, type JsonObject } from "@nyte-ai/client";
 import { addUsage } from "@nyte-ai/client";
-import type { AgentToolResult, ToolCallOutcome } from "../kernel/loop/types.ts";
+import type { AgentToolResult } from "../kernel/loop/types.ts";
 import {
   applyStreamOptionsPatch,
   createStreamOptionsPatch,
@@ -117,7 +118,7 @@ export interface HookMap {
 /** A settled call as hooks see it: the loop's outcome with JSON details. */
 type ToolOutcomeView = Pick<AgentToolResult<unknown>, "content" | "structuredContent" | "usage"> & {
   details?: JsonValue;
-  kind: ToolCallOutcome["kind"];
+  outcome: ToolOutcome;
 };
 
 export type HookName = keyof HookMap;
@@ -530,7 +531,15 @@ export class HookRegistry implements Hooks {
           signal,
         );
 
-        if (result !== undefined) aggregate = { ...aggregate, ...result };
+        if (result === undefined) continue;
+
+        if (result.outcome !== undefined && !Value.Check(schemas.ToolOutcome, result.outcome)) {
+          throw new Error(
+            `after_tool hook${registration.id === undefined ? "" : ` ${registration.id}`} returned a malformed outcome for ${event.toolName}`,
+          );
+        }
+
+        aggregate = { ...aggregate, ...result };
       } catch (error) {
         await this.reportError(normalizeError(error), "after_tool", event.head);
       }

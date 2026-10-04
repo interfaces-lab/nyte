@@ -16,9 +16,12 @@ import {
   type SettleEffectOutcome,
 } from "../../src/kernel/effects.ts";
 import { headRef } from "../../src/kernel/names.ts";
+import { checkObject } from "../../src/kernel/store-schemas.ts";
 import type { Lease } from "../../src/kernel/model.ts";
 import type { Session } from "../../src/kernel/store.ts";
 import { granted, lease, openSession, sleep, toolResult } from "./helpers.ts";
+
+const SUCCESS = { kind: "success" } as const;
 
 async function open(
   session: Session,
@@ -121,7 +124,7 @@ test("expiry claims a wait once and refuses every later answer", async () => {
   );
   const expired = await expireEffect(session, { lease: held, view: waiting, now: 0 });
   assert.ok(expired.kind === "expired");
-  assert.equal(decideRecovery(expired.view), "wake");
+  assert.equal(decideRecovery(expired.view, undefined), "wake");
 
   assert.equal(
     (
@@ -136,6 +139,28 @@ test("expiry claims a wait once and refuses every later answer", async () => {
   assert.equal(
     (await readEffect(session, { runId: "run_1", callId: "expired" }))?.effect.state,
     "expired",
+  );
+});
+
+test("a safe intent replays only on the filesystem it was opened for", async () => {
+  const session = await openSession();
+  const held = await lease(session, "main");
+  const opened = await openEffect(session, {
+    lease: held,
+    runId: "run_1",
+    callId: "placed",
+    tool: "read",
+    args: { path: "a.txt" },
+    replay: "safe",
+    fs: "local:one",
+  });
+  assert.ok(opened.kind === "opened");
+  assert.equal(decideRecovery(opened.view, "local:one"), "execute");
+  assert.equal(decideRecovery(opened.view, "local:two"), "interrupted");
+  assert.equal(decideRecovery(opened.view, undefined), "interrupted");
+  assert.equal(
+    decideRecovery(await open(session, held, "anywhere", "safe"), "local:two"),
+    "execute",
   );
 });
 
@@ -196,11 +221,15 @@ test("a call settles once, from any live state, and a stale view cannot settle i
   const result = toolResult("c1", "read", "contents");
 
   const fromIntent = await open(session, held, "c1");
-  const settled = view(await settleEffect(session, { lease: held, view: fromIntent, result }));
+  const settlement = { lease: held, view: fromIntent, result, settlement: SUCCESS };
+  const settled = view(await settleEffect(session, settlement));
   assert.ok(settled.effect.state === "result");
   assert.deepEqual(settled.effect.result, result);
+  assert.deepEqual(settled.effect.settlement, SUCCESS);
+  assert.ok(checkObject.Check(settled.effect));
+  assert.equal(checkObject.Check({ ...settled.effect, settlement: { kind: "ok" } }), false);
   const cursor = await session.events.last();
-  assert.deepEqual(await settleEffect(session, { lease: held, view: fromIntent, result }), {
+  assert.deepEqual(await settleEffect(session, settlement), {
     kind: "conflict",
   });
   assert.deepEqual(await parkEffect(session, { lease: held, view: fromIntent }), {
@@ -213,7 +242,7 @@ test("a call settles once, from any live state, and a stale view cannot settle i
     await parkEffect(session, { lease: held, view: await open(session, held, "c2") }),
   );
   assert.equal(
-    view(await settleEffect(session, { lease: held, view: waiting, result })).effect.state,
+    view(await settleEffect(session, { ...settlement, view: waiting })).effect.state,
     "result",
   );
 
@@ -224,7 +253,7 @@ test("a call settles once, from any live state, and a stale view cannot settle i
   const signalled = await readEffect(session, { runId: "run_1", callId: "c3" });
   assert.ok(signalled !== undefined);
   assert.equal(
-    view(await settleEffect(session, { lease: held, view: signalled, result })).effect.state,
+    view(await settleEffect(session, { ...settlement, view: signalled })).effect.state,
     "result",
   );
   assert.equal(parked.effect.state, "waiting");
@@ -278,6 +307,7 @@ test("a runner that lost its lease can no longer move an effect", async () => {
       lease: old,
       view: opened,
       result: toolResult("c1", "read", "x"),
+      settlement: SUCCESS,
     }),
     { kind: "fenced" },
   );

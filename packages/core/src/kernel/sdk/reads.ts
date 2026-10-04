@@ -231,7 +231,7 @@ export function createReads(input: {
         head,
         tip,
         config: projected.config,
-        transcript: transcriptFromCommits(commits),
+        transcript: transcriptFromCommits(commits, { run, parked }),
         pending: pendingItems(selectedPending ?? data.pendingChanges),
         context: projected.status,
       };

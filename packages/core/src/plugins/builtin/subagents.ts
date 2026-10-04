@@ -378,14 +378,17 @@ function awaitResult(
   };
 
   const failed =
-    end === "cancelled" ||
     statuses.some((status) => status.kind === "not_found") ||
     (statuses.length > 0 &&
       statuses.every(
         (status) => status.kind === "report" && status.report.end.kind !== "completed",
       ));
 
-  return { kind: failed ? "error" : "success", result };
+  if (end === "cancelled") return { kind: "error", reason: { kind: "cancelled" }, result };
+
+  return failed
+    ? { kind: "error", reason: { kind: "error" }, result }
+    : { kind: "success", result };
 }
 
 /** Installed only in root sessions. */
@@ -434,7 +437,7 @@ export function subagentsPlugin(host: SubagentHost) {
     );
 
   const settle = <Details>(outcome: ToolCallOutcome<Details>): AgentToolResult<Details> => {
-    if (outcome.kind === "error") throw new ToolError(outcome.result);
+    if (outcome.kind === "error") throw new ToolError(outcome.result, outcome.reason);
 
     return outcome.result;
   };
@@ -443,7 +446,7 @@ export function subagentsPlugin(host: SubagentHost) {
     outcome: ToolCallOutcome<AwaitDetails>,
     agent: SessionId,
   ): ToolCallOutcome<AgentDetails & AwaitDetails> => ({
-    kind: outcome.kind,
+    ...outcome,
     result: { ...outcome.result, details: { agent, ...outcome.result.details } },
   });
 

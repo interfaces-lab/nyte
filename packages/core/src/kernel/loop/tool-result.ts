@@ -1,6 +1,31 @@
 import { isJsonObject, toJsonValue, type JsonObject } from "@nyte-ai/client";
+import type { ToolClass, ToolOutcome, ToolReason } from "@nyte-ai/protocol";
 import type { ImageContent, TextContent, ToolResultMessage } from "@nyte-ai/schema";
 import type { AgentToolResult, ToolCallOutcome } from "./types.ts";
+
+const GENERIC_ERROR: ToolReason = { kind: "error" };
+
+export interface ToolSettlement {
+  readonly outcome: ToolOutcome;
+  readonly message: ToolResultMessage;
+  readonly call: ToolClass;
+}
+
+/** A participant's stop, carried as the abort reason so the call it reaches settles with the cause. */
+export class ToolStop extends Error {
+  readonly reason: ToolReason;
+
+  constructor(kind: "cancelled" | "interrupted") {
+    super(`Operation ${kind}`);
+    this.name = "ToolStop";
+    this.reason = { kind };
+  }
+}
+
+/** Why an aborted signal stops a call: `interrupted` unless a `ToolStop` names the participant. */
+export function stopReason(signal: AbortSignal): ToolReason {
+  return signal.reason instanceof ToolStop ? signal.reason.reason : { kind: "interrupted" };
+}
 
 /** Wraps plain text as tool-result content. */
 export function toolResultContent(text: string): TextContent[] {
@@ -14,14 +39,16 @@ export function toolResultText(content: (TextContent | ImageContent)[]): string 
     .join("\n");
 }
 
-/** A failed tool execution whose structured result must survive settlement. */
+/** A failed tool execution whose structured result and reason must survive settlement. */
 export class ToolError<TDetails = unknown> extends Error {
   readonly result: AgentToolResult<TDetails>;
+  readonly reason: ToolReason;
 
-  constructor(result: AgentToolResult<TDetails>) {
+  constructor(result: AgentToolResult<TDetails>, reason: ToolReason = GENERIC_ERROR) {
     super(toolResultText(result.content).trim() || "Tool execution failed");
     this.name = "ToolError";
     this.result = result;
+    this.reason = reason;
   }
 }
 
@@ -67,8 +94,29 @@ export function toolSuccess<TDetails>(
 export function toolFailure(
   cause: unknown,
   lastPartial?: AgentToolResult<unknown>,
+  reason: ToolReason = GENERIC_ERROR,
 ): ToolCallOutcome {
-  return { kind: "error", result: toolErrorResult(cause, lastPartial) };
+  return {
+    kind: "error",
+    reason: cause instanceof ToolError || cause instanceof ToolStop ? cause.reason : reason,
+    result: toolErrorResult(cause, lastPartial),
+  };
+}
+
+export function toolOutcome(outcome: ToolCallOutcome): ToolOutcome {
+  return outcome.kind === "success"
+    ? { kind: "success" }
+    : { kind: "error", reason: outcome.reason };
+}
+
+/** The stored settlement, or the one a record from before settlements were stored implies. */
+export function storedOutcome(
+  settlement: ToolOutcome | undefined,
+  message: Pick<ToolResultMessage, "isError">,
+): ToolOutcome {
+  if (settlement !== undefined) return settlement;
+
+  return message.isError ? { kind: "error", reason: GENERIC_ERROR } : { kind: "success" };
 }
 
 /** Tool-call arguments as the durable log will replay them. */

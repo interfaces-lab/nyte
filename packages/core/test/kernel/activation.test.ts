@@ -265,6 +265,57 @@ test("hooks bend the turn: a policy can rewrite a tool's arguments and the conte
   await activation.close();
 });
 
+test("a policy objection settles the call as denied; a policy that cannot decide settles it as a plain error", async () => {
+  const session = await openSession();
+  const seen: unknown[] = [];
+  const activation = await activated({
+    target: { kind: "session", session },
+    env,
+    plugins: [
+      plugin("policy", (api) => {
+        api.tools.add((draft) => draft.set("echo", echoTool(seen)));
+        api.prompt.add((draft) => draft.set("p", { text: "base prompt" }));
+        api.hook("before_tool", (event) => {
+          if (event.args.path === "/blocked") return { action: "reject", message: "not allowed" };
+          if (event.args.path === "/broken") return { action: "error", message: "policy down" };
+
+          return { action: "continue" };
+        });
+      }),
+    ],
+  });
+  const bound = turnFor(activation, { streamFn: scripted("ok").streamFn, model });
+
+  const denied = await bound.turn.tools({
+    ...(await inputFor(session, runWith())),
+    assistant: assistant("", { calls: [call("c1", "echo", { path: "/blocked" })] }),
+  });
+  assert.ok(denied.kind === "complete");
+  assert.deepEqual(denied.settlements[0]?.outcome, {
+    kind: "error",
+    reason: { kind: "denied" },
+  });
+  assert.equal(
+    contentText(denied.settlements[0]?.message.content ?? ""),
+    "Tool call denied: not allowed",
+  );
+  assert.equal(bound.policyFailure("run_1"), undefined);
+
+  const undecided = await bound.turn.tools({
+    ...(await inputFor(session, runWith({}, "run_2"))),
+    assistant: assistant("", { calls: [call("c2", "echo", { path: "/broken" })] }),
+  });
+  assert.ok(undecided.kind === "complete");
+  assert.deepEqual(undecided.settlements[0]?.outcome, {
+    kind: "error",
+    reason: { kind: "error" },
+  });
+  assert.equal(contentText(undecided.settlements[0]?.message.content ?? ""), "policy down");
+  assert.equal(bound.policyFailure("run_2"), "policy down");
+  assert.deepEqual(seen, []);
+  await activation.close();
+});
+
 test("a run's declared agent brings its own model, persona, and step ceiling; an unknown agent falls back", async () => {
   const session = await openSession();
   const activation = await activated({
@@ -482,8 +533,8 @@ test("nested calls share the agent catalog and SDK policy with a sandbox signal"
     });
     assert.equal(outcome.kind, "complete");
     if (outcome.kind !== "complete") return;
-    assert.equal(outcome.messages[0]?.isError, false);
-    assert.deepEqual(outcome.messages[0]?.structuredContent, { path: "/redacted" });
+    assert.equal(outcome.settlements[0]?.message.isError, false);
+    assert.deepEqual(outcome.settlements[0]?.message.structuredContent, { path: "/redacted" });
     assert.deepEqual(seen, [{ path: "/redacted" }]);
     assert.deepEqual(hooks, [
       "before:outer",

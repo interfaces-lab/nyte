@@ -23,11 +23,12 @@ import type {
 } from "@nyte-ai/ai";
 import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
 import type { JsonValue } from "@nyte-ai/schema";
-import type { Selection, ToolClass } from "@nyte-ai/protocol";
+import type { Selection, ToolClass, ToolOutcome, ToolReason } from "@nyte-ai/protocol";
 import type { JsonObject } from "@nyte-ai/client";
 import { Type } from "typebox";
 import type { Static, TSchema } from "typebox";
 import { Value } from "typebox/value";
+import type { ExecutionEnv } from "./env.ts";
 
 /**
  * Stream function used by the agent loop. `Models.streamSimple` satisfies
@@ -63,11 +64,13 @@ export type AgentToolCall = Extract<AssistantMessage["content"][number], { type:
  * Result returned from `beforeToolCall`.
  *
  * Returning `{ block: true }` prevents the tool from executing. The loop emits an error tool result instead.
- * `reason` becomes the text shown in that error result. If omitted, a default blocked message is used.
+ * `cause` is the typed reason that result settles with: `denied` for a policy objection. Default `error`.
+ * The result's text names the cause, then `reason` when given.
  */
 export interface BeforeToolCallResult {
   block?: boolean;
   reason?: string;
+  cause?: ToolReason;
   /**
    * Replacement arguments. The loop validates them against the tool's schema
    * before the tool runs, exactly as it validated the model's proposal.
@@ -77,12 +80,12 @@ export interface BeforeToolCallResult {
 
 /**
  * Partial override returned from `afterToolCall`. A field present replaces the
- * executed result's in full; `kind` replaces the outcome. Omitted fields keep
- * their values. Nothing is deep-merged.
+ * executed result's in full; `outcome` replaces how the call settled. Omitted
+ * fields keep their values. Nothing is deep-merged.
  */
 export type AfterToolCallResult = Partial<
   Pick<AgentToolResult<unknown>, "content" | "details" | "structuredContent" | "usage">
-> & { readonly kind?: ToolCallOutcome["kind"] };
+> & { readonly outcome?: ToolOutcome };
 
 /** Context passed to `beforeToolCall`. */
 export interface BeforeToolCallContext {
@@ -98,6 +101,16 @@ export interface BeforeToolCallContext {
 
 /** Context passed to `afterToolCall`: the executed outcome before any overrides. */
 export type AfterToolCallContext = BeforeToolCallContext & ToolCallOutcome;
+
+/** A call ready to run: its executor, and the arguments the result hooks see. */
+export interface ReadyToolCall {
+  readonly args: unknown;
+  execute(
+    this: void,
+    signal: AbortSignal | undefined,
+    onUpdate: AgentToolUpdateCallback,
+  ): Promise<AgentToolResult<unknown>>;
+}
 
 export interface AgentLoopConfig extends SimpleStreamOptions {
   model: Model<Api>;
@@ -136,6 +149,13 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
   ) => Promise<BeforeToolCallResult | undefined>;
 
   /**
+   * Answers a call the host decides for itself, before the loop looks its tool
+   * up, validates its arguments, or asks the policy: one the host already
+   * recorded, or one it will not start. Undefined leaves the call to the loop.
+   */
+  recoverToolCall?: (toolCall: AgentToolCall) => Promise<ReadyToolCall | undefined>;
+
+  /**
    * Called after a tool finishes executing, before `tool_execution_end` and tool-result message events are emitted.
    *
    * Return an `AfterToolCallResult` to override parts of the executed tool result:
@@ -143,7 +163,7 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
    * - `details` replaces the full details payload
    * - `structuredContent` replaces the structured content
    * - `usage` replaces the tool result usage
-   * - `kind` replaces the outcome kind
+   * - `outcome` replaces how the call settled
    *
    * Any omitted fields keep their original values. No deep merge is performed.
    * The hook receives the agent abort signal and is responsible for honoring it.
@@ -191,10 +211,10 @@ export interface AgentToolResult<T> {
  */
 export type AgentToolUpdateCallback<T = unknown> = (partialResult: AgentToolResult<T>) => void;
 
-/** How a tool call settled: its result, and whether that result is a failure. */
-export type ToolCallOutcome<TDetails = unknown> =
-  | { readonly kind: "success"; readonly result: AgentToolResult<TDetails> }
-  | { readonly kind: "error"; readonly result: AgentToolResult<TDetails> };
+/** How a tool call settled: the wire outcome with its typed reason, and the result it carries. */
+export type ToolCallOutcome<TDetails = unknown> = ToolOutcome & {
+  readonly result: AgentToolResult<TDetails>;
+};
 
 // ---------------------------------------------------------------------------
 // Durable tool wait (design record: "Wait and wake")
@@ -334,8 +354,8 @@ export interface ToolRun {
 
 /**
  * One call of a tool, as the runtime hands it to `execute` beside the parsed
- * input. `run` is absent only in the bare loop, which executes tools outside
- * any run; a session always supplies it.
+ * input. `run` and `env` are absent only in the bare loop, which executes
+ * tools outside any run; a session always supplies both.
  */
 export interface ToolCall<TDetails = unknown> {
   readonly id: string;
@@ -343,6 +363,8 @@ export interface ToolCall<TDetails = unknown> {
   /** Stream a partial result. A call made after `execute` settles is ignored. */
   update(this: void, partial: AgentToolResult<TDetails>): void;
   readonly run?: ToolRun;
+  /** Where the call acts. */
+  readonly env?: ExecutionEnv;
 }
 
 /** The call `present` classifies: the run and head that committed it, and its call id. */
@@ -376,7 +398,7 @@ export interface AgentTool<
   /**
    * What this call is, for the record. Called with the parsed args and the
    * call's identity when the call is committed, and again with the result
-   * when it settles without error.
+   * when it settles, whatever the outcome.
    * A method, so its parameters are bivariant: a typed tool still erases to
    * `AgentTool` for the registry, which hands it back its own result.
    */

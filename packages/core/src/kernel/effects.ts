@@ -1,8 +1,19 @@
 import { effectPrefix, effectRef } from "./names.ts";
-import type { Actor, Effect, Lease, Oid, RefName, RefUpdateOutcome, Selection } from "./model.ts";
+import type {
+  Actor,
+  Effect,
+  Lease,
+  Oid,
+  RefName,
+  RefUpdateOutcome,
+  Selection,
+  ToolOutcome,
+} from "./model.ts";
 import type { Session } from "./store.ts";
 
 type EffectIntent = Extract<Effect, { readonly state: "intent" }>;
+
+type EffectResult = Extract<Effect, { readonly state: "result" }>;
 
 export interface EffectView {
   readonly ref: RefName;
@@ -160,13 +171,14 @@ export async function openEffect(
     readonly tool: string;
     readonly args: EffectIntent["args"];
     readonly replay: EffectIntent["replay"];
+    readonly fs?: string;
   },
 ): Promise<OpenEffectOutcome> {
   const existing = await readEffect(session, options);
 
   if (existing !== undefined) return assertExistingEffect(session, options.lease, existing);
 
-  const effect: EffectIntent = {
+  const intent = {
     kind: "effect",
     state: "intent",
     runId: options.runId,
@@ -175,7 +187,9 @@ export async function openEffect(
     args: options.args,
     replay: options.replay,
     at: Date.now(),
-  };
+  } as const;
+
+  const effect: EffectIntent = options.fs === undefined ? intent : { ...intent, fs: options.fs };
 
   const ref = effectRef(options.runId, options.callId);
   const oid = await putEffect(session, effect);
@@ -193,6 +207,23 @@ export async function openEffect(
   return winner === undefined
     ? { kind: "conflict" }
     : assertExistingEffect(session, options.lease, winner);
+}
+
+/**
+ * Takes back an intent this host opened and never acted on, so the call is
+ * unrecorded again. Only the opener, under its lease, may withdraw; an intent
+ * that may have run stays and recovers as interrupted.
+ */
+export async function withdrawEffect(
+  session: Session,
+  options: { readonly lease: Lease; readonly view: EffectView },
+): Promise<{ readonly kind: "withdrawn" | "conflict" | "fenced" }> {
+  const outcome = await session.refs.update(
+    [{ name: options.view.ref, from: options.view.oid, to: null }],
+    { reason: "effect", lease: options.lease },
+  );
+
+  return outcome.ok ? { kind: "withdrawn" } : { kind: outcome.reason };
 }
 
 export async function parkEffect(
@@ -332,7 +363,8 @@ export async function settleEffect(
   options: {
     readonly lease: Lease;
     readonly view: EffectView;
-    readonly result: Extract<Effect, { readonly state: "result" }>["result"];
+    readonly result: EffectResult["result"];
+    readonly settlement: ToolOutcome;
   },
 ): Promise<SettleEffectOutcome> {
   const effect: Effect = {
@@ -340,6 +372,7 @@ export async function settleEffect(
     state: "result",
     intent: intentOidForSettlement(options.view),
     result: options.result,
+    settlement: options.settlement,
     at: effectTimeAfter(options.view, Date.now()),
   };
 
@@ -381,19 +414,21 @@ export async function clearEffects(
 }
 
 /**
- * Recovery depends only on the durable state. An unstarted intent follows its replay policy, a
- * parked call stays blocked until signalled or expired, either wake state enters the handler, and a
- * settled result is reused.
+ * Recovery depends only on the durable state and where this runner acts. An unstarted intent
+ * follows its replay policy, and a `safe` one reruns only on the filesystem it was opened for; a
+ * parked call stays blocked until signalled or expired, either wake state enters the handler, and
+ * a settled result is reused.
  * This avoids guessing whether the uncertain work ran after a process disappeared.
  */
 export function decideRecovery(
   view: EffectView,
+  fs: string | undefined,
 ): "execute" | "interrupted" | "blocked" | "wake" | "reuse" {
   switch (view.effect.state) {
     case "intent":
       switch (view.effect.replay) {
         case "safe":
-          return "execute";
+          return view.effect.fs === undefined || view.effect.fs === fs ? "execute" : "interrupted";
         case "never":
           return "interrupted";
         default: {
