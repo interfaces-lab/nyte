@@ -34,8 +34,8 @@ import type {
 } from "@nyte-ai/protocol";
 import { EMPTY_LIVE_PARTS, foldLiveParts } from "../views/live-parts.ts";
 import type { LiveParts } from "../views/live-parts.ts";
-import { appendTranscriptCommit } from "../views/transcript.ts";
-import type { TranscriptState } from "../views/transcript.ts";
+import { appendTranscriptCommit, transcriptWithRun } from "../views/transcript.ts";
+import type { RunEvidence, TranscriptState } from "../views/transcript.ts";
 
 /** A parked call only a participant can answer: the one whose wait carries a selection. */
 export type Ask = ParkedCall & { readonly selection: Selection };
@@ -94,6 +94,27 @@ function settleToolCall(
   return new Set([...state.settledToolCalls, callId]);
 }
 
+/** The current run's stored results, so a progress frame replayed after a reconnect cannot reopen them. */
+function settledToolCallsOf(snapshot: SessionSnapshot): ReadonlySet<string> {
+  const run = snapshot.run;
+
+  if (run === undefined || isTerminalPhase(run.phase)) return EMPTY_SETTLED_TOOL_CALLS;
+
+  const callIds = snapshot.transcript.flatMap((turn) =>
+    turn.kind === "turn" && turn.run.kind === "run" && turn.run.id === run.runId
+      ? turn.parts.flatMap((part) =>
+          part.kind === "tool" &&
+          (part.state.kind === "success" || part.state.kind === "error") &&
+          part.state.commit !== null
+            ? [part.callId]
+            : [],
+        )
+      : [],
+  );
+
+  return callIds.length === 0 ? EMPTY_SETTLED_TOOL_CALLS : new Set(callIds);
+}
+
 export function stateFromSnapshot(snapshot: SessionSnapshot): SessionState {
   return {
     sessionId: snapshot.session.sessionId,
@@ -106,7 +127,7 @@ export function stateFromSnapshot(snapshot: SessionSnapshot): SessionState {
     run: snapshot.run,
     compaction: snapshot.compaction,
     overlay: EMPTY_LIVE_PARTS,
-    settledToolCalls: EMPTY_SETTLED_TOOL_CALLS,
+    settledToolCalls: settledToolCallsOf(snapshot),
     parked: (snapshot.parked ?? []).filter(isAsk),
     context: snapshot.context,
     expectedTip: undefined,
@@ -225,7 +246,9 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
       };
     case "commit": {
       if (event.head !== state.head) return { kind: "state", state: base };
-      const transcript = appendTranscriptCommit(state.transcript, event.item);
+
+      const evidence: RunEvidence = { run: state.run, parked: state.parked };
+      const transcript = appendTranscriptCommit(state.transcript, event.item, evidence);
 
       if (transcript === undefined) return { kind: "resnapshot" };
       const reached = state.expectedTip === transcript.tip;
@@ -272,6 +295,7 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
         kind: "state",
         state: {
           ...base,
+          transcript: transcriptWithRun(state.transcript, { run: event.run, parked }),
           run: event.run,
           overlay,
           settledToolCalls:

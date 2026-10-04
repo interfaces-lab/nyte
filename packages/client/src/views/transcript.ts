@@ -1,5 +1,14 @@
-import type { ToolTurnPart, Turn, TurnPart, TurnToolClass, UserTurnPart } from "@nyte-ai/protocol";
-import type { Commit, CommitBody, MessageSource, Oid, ToolClass } from "@nyte-ai/protocol";
+import type { Turn, TurnPart, TurnToolClass, UserTurnPart } from "@nyte-ai/protocol";
+import type {
+  Commit,
+  CommitBody,
+  MessageSource,
+  Oid,
+  ParkedCall,
+  RunInfo,
+  ToolClass,
+  ToolState,
+} from "@nyte-ai/protocol";
 
 type MessageBody = Extract<CommitBody, { kind: "message" }>;
 
@@ -20,8 +29,135 @@ type ConversationTurn = Extract<Turn, { kind: "turn" }>;
 
 type CommitItem = { readonly oid: Oid; readonly commit: Commit };
 
+/** What a call without a result commit is read against: the head's run and the asks parked on it. */
+export interface RunEvidence {
+  readonly run: Pick<RunInfo, "phase"> | undefined;
+  readonly parked: readonly Pick<ParkedCall, "callId" | "waitId" | "selection">[];
+}
+
+export const NO_RUN: RunEvidence = { run: undefined, parked: [] };
+
+const INTERRUPTED: ToolState = { kind: "error", reason: { kind: "interrupted" }, commit: null };
+
+type OpenToolState = Extract<ToolState, { readonly kind: "pending" | "running" }>;
+
+function isOpen(state: ToolState): state is OpenToolState {
+  return state.kind === "pending" || state.kind === "running";
+}
+
+/** A state the projection wrote from run evidence, not from a commit: every stored result names its commit. */
+function isSynthetic(state: ToolState): boolean {
+  return isOpen(state) || state.commit === null;
+}
+
+/** The state of a call in the newest turn that has no result commit. */
+function openToolState(callId: string, evidence: RunEvidence): ToolState {
+  const { run } = evidence;
+
+  if (run === undefined) return INTERRUPTED;
+
+  switch (run.phase.kind) {
+    case "respond":
+    case "retry":
+      return { kind: "pending" };
+    case "tools":
+      return { kind: "running" };
+    case "waiting": {
+      const ask = evidence.parked.find(
+        (call) => call.callId === callId && call.selection !== undefined,
+      );
+
+      return ask === undefined
+        ? { kind: "running" }
+        : { kind: "running", waitingFor: { kind: "input", waitId: ask.waitId } };
+    }
+
+    case "done":
+    case "aborted":
+    case "failed":
+      return INTERRUPTED;
+    default: {
+      const _exhaustive: never = run.phase;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/**
+ * The state a result commit settles a call into: the settlement core stored, or
+ * the one a record from before settlements were stored implies through `isError`.
+ */
+function settledToolState(item: CommitItem & { readonly commit: ToolResultCommit }): ToolState {
+  const { settlement } = item.commit;
+
+  if (settlement !== undefined) return { ...settlement, commit: item.oid };
+
+  return item.commit.body.message.isError
+    ? { kind: "error", reason: { kind: "error" }, commit: item.oid }
+    : { kind: "success", commit: item.oid };
+}
+
+function sameSyntheticState(state: ToolState, next: ToolState): boolean {
+  switch (next.kind) {
+    case "pending":
+    case "success":
+      return state.kind === next.kind;
+    case "running":
+      return state.kind === "running" && state.waitingFor?.waitId === next.waitingFor?.waitId;
+    case "error":
+      return state.kind === "error" && state.reason.kind === next.reason.kind;
+    default: {
+      const _exhaustive: never = next;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/** Re-read the newest turn's synthetic states against the run; nothing else can change without a commit. */
+export function transcriptWithRun(state: TranscriptState, evidence: RunEvidence): TranscriptState {
+  const last = state.items.at(-1);
+
+  if (last?.kind !== "turn") return state;
+  let changed = false;
+
+  const parts = last.parts.map((part): TurnPart => {
+    if (part.kind !== "tool" || !isSynthetic(part.state)) return part;
+    const next = openToolState(part.callId, evidence);
+
+    if (sameSyntheticState(part.state, next)) return part;
+    changed = true;
+
+    return { ...part, state: next };
+  });
+
+  if (!changed) return state;
+
+  return { items: [...state.items.slice(0, -1), { ...last, parts }], tip: state.tip };
+}
+
+/** A turn the conversation moved past can no longer settle its calls. */
+function abandonOpenCalls(builder: TranscriptBuilder): void {
+  const last = builder.items.at(-1);
+
+  if (
+    last?.kind !== "turn" ||
+    !last.parts.some((part) => part.kind === "tool" && isOpen(part.state))
+  )
+    return;
+
+  builder.items[builder.items.length - 1] = {
+    ...last,
+    parts: last.parts.map((part) =>
+      part.kind === "tool" && isOpen(part.state) ? { ...part, state: INTERRUPTED } : part,
+    ),
+  };
+}
+
 interface TranscriptBuilder {
   readonly items: Turn[];
+  readonly evidence: RunEvidence;
   readonly sharedTail?: Turn;
   readonly toolCalls?: Map<string, number>;
 }
@@ -82,6 +218,7 @@ function toolResultText(message: ToolResultMessage): string {
 function assistantParts(
   item: CommitItem & { readonly commit: AssistantCommit },
   message: AssistantMessage,
+  evidence: RunEvidence,
 ): TurnPart[] {
   const parts: TurnPart[] = [];
 
@@ -119,7 +256,13 @@ function assistantParts(
         const drawn = drawnToolClass(toolClass);
 
         if (drawn !== undefined) {
-          parts.push({ kind: "tool", callId: part.id, class: drawn, at: item.commit.at });
+          parts.push({
+            kind: "tool",
+            callId: part.id,
+            class: drawn,
+            state: openToolState(part.id, evidence),
+            at: item.commit.at,
+          });
         }
 
         break;
@@ -205,7 +348,7 @@ function appendAssistant(
   message: AssistantMessage,
 ): void {
   const failure = item.commit.outcome.kind === "failed" ? item.commit.outcome.failure : undefined;
-  const parts = assistantParts(item, message);
+  const parts = assistantParts(item, message, builder.evidence);
 
   if (parts.length === 0 && failure === undefined) return;
   const turn = landingTurn(builder, item);
@@ -232,12 +375,9 @@ function appendToolResult(
 
   if (settled === undefined) return;
   const turn = landingTurn(builder, item);
-
-  const result: ToolTurnPart["result"] = {
-    commit: item.oid,
-    output: toolResultText(message),
-    isError: message.isError,
-  };
+  const state = settledToolState(item);
+  const output = toolResultText(message);
+  const settlement = output === "" ? { state } : { state, output };
 
   const index =
     builder.toolCalls === undefined
@@ -247,7 +387,7 @@ function appendToolResult(
   const call = turn.parts[index];
 
   if (call?.kind === "tool") {
-    turn.parts[index] = { ...call, class: settled, result, at: item.commit.at };
+    turn.parts[index] = { ...call, class: settled, ...settlement, at: item.commit.at };
 
     return;
   }
@@ -257,7 +397,7 @@ function appendToolResult(
     kind: "tool",
     callId: message.toolCallId,
     class: settled,
-    result,
+    ...settlement,
     at: item.commit.at,
   });
 }
@@ -272,13 +412,14 @@ function appendToolResult(
 export function appendTranscriptCommit(
   state: TranscriptState,
   item: { readonly oid: Oid; readonly commit: Commit },
+  evidence: RunEvidence = NO_RUN,
 ): TranscriptState | undefined {
   if (item.oid === state.tip) return state;
 
   if (item.commit.parent !== state.tip) return undefined;
 
   const items = [...state.items];
-  appendTranscriptItem({ items, sharedTail: state.items.at(-1) }, item);
+  appendTranscriptItem({ items, evidence, sharedTail: state.items.at(-1) }, item);
 
   return { items, tip: item.oid };
 }
@@ -301,6 +442,7 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
           break;
         case "user":
           builder.toolCalls?.clear();
+          abandonOpenCalls(builder);
           appendUser(items, item, body.message, "source" in body ? body.source : undefined);
           break;
         case "system":
@@ -317,6 +459,7 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
 
     case "completion":
       builder.toolCalls?.clear();
+      abandonOpenCalls(builder);
       // A background result answers the model, not the user. It opens its own
       // turn, with nothing to draw, so the response it triggers does not graft
       // onto an earlier request's turn or stretch that turn's duration.
@@ -331,12 +474,15 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
       });
       break;
     case "checkpoint":
+      abandonOpenCalls(builder);
       items.push({ kind: "checkpoint", commit: item.oid, at: item.commit.at, body });
       break;
     case "summary":
+      abandonOpenCalls(builder);
       items.push({ kind: "summary", commit: item.oid, at: item.commit.at, body });
       break;
     case "config":
+      abandonOpenCalls(builder);
       items.push({ kind: "config", commit: item.oid, at: item.commit.at, body });
       break;
     case "usage":
@@ -352,8 +498,9 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
 /** Project one branch, oldest first, into the conversation items a client renders. */
 export function transcriptFromCommits(
   commits: readonly { readonly oid: Oid; readonly commit: Commit }[],
+  evidence: RunEvidence = NO_RUN,
 ): Turn[] {
-  const builder: TranscriptBuilder = { items: [], toolCalls: new Map() };
+  const builder: TranscriptBuilder = { items: [], evidence, toolCalls: new Map() };
   let tip: Oid | null = null;
 
   for (const item of commits) {

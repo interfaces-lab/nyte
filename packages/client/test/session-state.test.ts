@@ -18,6 +18,7 @@ import {
   type Selection,
   type SessionEvent,
   type SessionSnapshot,
+  type Turn,
 } from "@nyte-ai/protocol";
 import { foldEvent, stateFromSnapshot, waitingCall, type SessionState } from "../src/index.ts";
 
@@ -245,6 +246,46 @@ test("terminal jobs clear progress and late frames cannot restore it", () => {
   });
   assert.ok(late.kind === "state");
   assert.deepEqual(late.state.overlay, []);
+});
+
+test("a snapshot's settled calls stay settled when a progress frame replays after it", () => {
+  const settledTurn = {
+    kind: "turn",
+    id: "t",
+    run: { kind: "run", id: "run" },
+    startedAt: 0,
+    durationMs: 0,
+    parts: [
+      {
+        kind: "tool",
+        callId: "call",
+        at: 0,
+        class: { kind: "shell", command: "ls" },
+        state: { kind: "success", commit: "c" },
+      },
+      {
+        kind: "tool",
+        callId: "open",
+        at: 0,
+        class: { kind: "shell", command: "sleep" },
+        state: { kind: "running" },
+      },
+    ],
+  } satisfies Turn;
+  const state = stateFromSnapshot({ ...snapshot(), run: activeRun, transcript: [settledTurn] });
+  const frame = (callId: string, seq: number): SessionEvent => ({
+    seq,
+    kind: "tool_progress",
+    runId: "run",
+    callId,
+    progress: { text: "late" },
+  });
+  const late = foldEvent(state, frame("call", 2));
+  assert.ok(late.kind === "state");
+  assert.deepEqual(late.state.overlay, []);
+  const live = foldEvent(late.state, frame("open", 3));
+  assert.ok(live.kind === "state");
+  assert.equal(live.state.overlay.length, 1);
 });
 
 test("a waiting effect requests a snapshot only when it asks something", () => {

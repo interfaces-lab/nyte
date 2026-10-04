@@ -51,20 +51,20 @@ function accumulateTurnChanges(builder: ChangesBuilder, turn: Turn): void {
   if (turn.kind !== "turn") return;
 
   for (const part of turn.parts) {
-    if (part.kind !== "tool" || part.result === undefined || part.class.kind !== "file_patch") {
+    if (part.kind !== "tool" || part.state.kind !== "success" || part.class.kind !== "file_patch") {
       continue;
     }
 
-    const { result } = part;
+    const commit = part.state.commit;
 
-    if (result.isError || (builder.owned ?? builder.base).folded.has(result.commit)) continue;
+    if (commit === null || (builder.owned ?? builder.base).folded.has(commit)) continue;
     builder.owned ??= {
       files: [...builder.base.files],
       index: new Map(builder.base.files.map((entry, position) => [entry.path, position])),
       folded: new Set(builder.base.folded),
     };
     const { files, index } = builder.owned;
-    builder.owned.folded.add(result.commit);
+    builder.owned.folded.add(commit);
     const { path } = part.class;
     const position = index.get(path);
     const previous = position === undefined ? undefined : files[position];
