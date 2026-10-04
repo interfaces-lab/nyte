@@ -1,0 +1,6 @@
+{
+  "name": "nyte-cloudflare-types",
+  "compatibility_date": "2026-10-02",
+  "compatibility_flags": ["nodejs_compat"],
+  "alias": { "@cf-wasm/photon/node": "@cf-wasm/photon/workerd" },
+}

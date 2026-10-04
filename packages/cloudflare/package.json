@@ -1,0 +1,38 @@
+{
+  "name": "@nyte-ai/cloudflare",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./sqlite": "./src/sqlite.ts",
+    "./agents": "./src/agents.ts",
+    "./routing": "./src/routing.ts"
+  },
+  "scripts": {
+    "typecheck": "pnpm types && tsc --noEmit",
+    "test": "vitest --run",
+    "types": "wrangler types worker-configuration.d.ts"
+  },
+  "dependencies": {
+    "@nyte-ai/core": "workspace:*",
+    "@nyte-ai/server": "workspace:*",
+    "typebox": "1.3.34"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261001.1",
+    "@types/node": "^26.6.3",
+    "agents": "0.26.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2",
+    "wrangler": "4.146.0"
+  },
+  "peerDependencies": {
+    "agents": "0.26.0"
+  },
+  "peerDependenciesMeta": {
+    "agents": {
+      "optional": true
+    }
+  }
+}
