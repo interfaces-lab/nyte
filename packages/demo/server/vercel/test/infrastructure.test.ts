@@ -17,12 +17,23 @@ test("a lost dispatch can be retried through the production execution loop and r
   let dispatchAvailable = false;
   const queued: Parameters<WakeSession>[0][] = [];
   const token = "nyte-infrastructure-fixture-token";
+  const obligations = new Set<string>();
   const server = createChatServer({
     sdk,
     token,
     async wake(input) {
       if (!dispatchAvailable) throw new Error("The dispatcher is temporarily unavailable");
       queued.push(input);
+    },
+    outbox: {
+      async record() {
+        const id = crypto.randomUUID();
+        obligations.add(id);
+        return id;
+      },
+      async settle(id) {
+        obligations.delete(id);
+      },
     },
   });
   context.onTestFinished(() => server.close());
@@ -35,8 +46,10 @@ test("a lost dispatch can be retried through the production execution loop and r
   const message = { sessionId, content: "Persist this reply.", key: "one-admission" };
   await assert.rejects(client.messages.send(message), { code: "internal" });
   assert.equal((await client.sessions.snapshot({ sessionId }))?.pending.length, 1);
+  assert.equal(obligations.size, 1, "a failed dispatch leaves its obligation for reconciliation");
   dispatchAvailable = true;
   assert.equal((await client.messages.send(message)).kind, "duplicate");
+  assert.equal(obligations.size, 1, "only the retried request settles its own obligation");
 
   for (const input of queued) await runSession(input.sessionId, input.head ?? "main");
   await sdk.close();

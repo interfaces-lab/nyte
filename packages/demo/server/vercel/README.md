@@ -5,9 +5,10 @@ and Vercel Workflow runs accepted work independently of desktop connections.
 
 ```text
 desktop ── HTTP/SSE ──▶ HTTP function ──▶ PostgreSQL
-                             │                 ▲
-                             └─ Workflow ──────┘
-                                one sdk.advance() per step
+                             │                 ▲   nyte_* tables + nyte_dispatch outbox
+                             ├─ Workflow ──────┘
+                             │  one sdk.advance() per step
+   cron ── /v1/reconcile ────┘  redispatches orphaned outbox rows
 ```
 
 Each Workflow step reads current state under core's fenced lease, performs one
@@ -45,13 +46,15 @@ Production needs these environment variables:
 | --- | --- |
 | `DATABASE_URL` | Shared PostgreSQL connection string, with TLS configured by the provider |
 | `NYTE_TOKEN` | Desktop bearer token, at least 16 characters |
-| `NYTE_MODEL` | Default provider/model; defaults to `openai-codex/gpt-5.6-sol` |
-| `OPENAI_CODEX_ACCESS_TOKEN` | Synced Codex OAuth access token for the default model |
+| `CRON_SECRET` | Vercel sends it on cron requests to `/v1/reconcile`. Without it the route answers 401. |
+| `NYTE_MODEL` | Default provider/model; defaults to `vercel-ai-gateway/thinkingmachines/inkling` at medium thinking |
+| `AI_GATEWAY_API_KEY` | Optional Vercel AI Gateway key; project OIDC needs none |
+| `OPENROUTER_API_KEY` | Optional OpenRouter key |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` | Optional direct provider keys |
 
-For an API-key provider, use `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` and select
-the matching `NYTE_MODEL`. The host refuses to start without `DATABASE_URL`;
-there is no temporary filesystem fallback. It initializes its `nyte_*` tables
-inside the supplied database.
+The host refuses to start without `DATABASE_URL`; there is no temporary
+filesystem fallback. It initializes its `nyte_*` tables inside the supplied
+database.
 
 One option is Neon through the Vercel Marketplace. Accept its terms in Vercel,
 then create and connect a free database in the function's region:
@@ -67,24 +70,28 @@ The integration supplies `DATABASE_URL` to the project. An existing PostgreSQL
 database works too. Set secrets through the Vercel dashboard or `vercel env add`;
 do not put credentials in source, command arguments, or build output.
 
-## Use the local Codex OAuth sign-in
+## Provider credentials
 
-Sign in to OpenAI Codex in the local Nyte desktop, then run:
+The host authenticates to models with its own credential, never a user's
+subscription sign-in. Local OAuth sign-ins stay on the desktop. In order of
+preference:
+
+1. Vercel AI Gateway with project OIDC. There is no secret to provision: each
+   function request carries a fresh `VERCEL_OIDC_TOKEN`, which the host reads at
+   request time. Older projects may need Settings › Security › **Secure backend
+   access with OIDC federation** enabled. Select a gateway model with
+   `NYTE_MODEL=vercel-ai-gateway/<model>`.
+2. `AI_GATEWAY_API_KEY` for the same gateway models; it takes precedence over
+   OIDC.
+3. `OPENROUTER_API_KEY` with `NYTE_MODEL=openrouter/<model>`.
+4. `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` with the matching `NYTE_MODEL`.
+
+Gateway and OpenRouter model ids contain slashes; the provider is everything
+before the first one. Then deploy:
 
 ```sh
-pnpm --dir packages/demo/server/vercel sync:codex
 pnpm --dir packages/demo/server/vercel run deploy
 ```
-
-`sync:codex` copies only the local access token into the linked `nyte-server`
-project's sensitive Production environment variable. It sets `NYTE_MODEL` to
-`openai-codex/gpt-5.6-sol`; `--model <id>` selects another known Codex model.
-The token goes to the Vercel CLI through stdin and is never printed or bundled.
-
-The refresh token stays on the Mac. The command prints the copied token's
-expiry. Repeat `sync:codex` and `run deploy` when it expires; refresh happens
-under the local credential store's lock before copying. This subscription-auth
-setup is for personal testing and does not implement hosted account sign-in.
 
 `run deploy` builds the Vercel output and uploads it with `vercel deploy
 --prebuilt --prod`. The linked project's production domain is
@@ -93,8 +100,9 @@ sign-in, so use the production domain in Nyte clients.
 
 ## Check and test
 
-Check authentication, host metadata, and the existing SDK model catalog without
-creating a chat or calling a provider:
+Check reachability, durable storage, and, through the `provider.status`
+operation, that the host's model credential is accepted by its provider. The
+check makes no model request and creates no chat:
 
 ```sh
 pnpm --dir packages/demo/server/vercel check \
@@ -152,8 +160,29 @@ Create a Cloud chat, send a short message, and reopen it after switching chats.
 Closing a watch disconnects that client; it does not cancel the Workflow. Use
 the chat's stop action to request an abort.
 
-Admission precedes Workflow dispatch. If dispatch or the response fails, retry
-the message with its original idempotency key: the input remains durable and a
-duplicate receipt dispatches again. Incompatible persisted-format changes still
-require an explicit upgrade policy; this example does not add migrations for
-older prototypes' temporary SQLite databases.
+## Dispatch is durable
+
+Every mutating request records a row in `nyte_dispatch` before admission, starts
+the Workflow, then deletes the row. A crash anywhere after admission leaves the
+row; the input is durable and so is the obligation to step it. A Vercel cron
+calls `/v1/reconcile` every minute with `Authorization: Bearer $CRON_SECRET`,
+and a cold HTTP instance runs the same reconciliation once its runtime has
+opened. Reconciliation claims rows older than 60 seconds and dispatches them;
+a row older than 15 minutes is deleted after a successful wake, since no
+admission can still be committing by then. A duplicate Workflow is harmless: the fenced step
+returns `busy` or `idle`.
+
+Vercel runs cron jobs only for production deployments, not previews. Hobby plans
+reject schedules more frequent than once a day, so the default every-minute
+schedule needs Pro or Enterprise. On Hobby, build with
+`NYTE_RECONCILE_SCHEDULE="0 4 * * *"` for a daily backstop and rely on cold-start
+reconciliation or an external scheduler calling `/v1/reconcile` for faster
+repair. Previews still reconcile on cold start, so a preview sharing the
+production `DATABASE_URL` dispatches production rows with preview code; give
+previews their own database.
+
+Retrying a failed request with its original idempotency key still works and
+returns `duplicate`, but no client has to return for accepted work to run.
+Incompatible persisted-format changes still require an explicit upgrade policy;
+this example does not add migrations for older prototypes' temporary SQLite
+databases.

@@ -1,5 +1,6 @@
 import { PGlite } from "@electric-sql/pglite";
 import { PostgresStore, type PostgresDatabase, type PostgresRow } from "@nyte-ai/core/postgres";
+import { dispatchOutbox } from "@nyte-ai/vercel/outbox";
 import { createChatSdk } from "../src/chat.ts";
 import { serverModels } from "./echo.ts";
 
@@ -25,11 +26,14 @@ export async function postgresFixture() {
       };
 
       const store = new PostgresStore(connection, { watchPollIntervalMs: 5 });
+      const outbox = dispatchOutbox(connection);
       await store.initialize();
+      await outbox.initialize();
       const sdk = await createChatSdk({ ...configured, store });
 
       const owned = {
         ...sdk,
+        outbox,
         async close() {
           await sdk.close();
           await store.close();

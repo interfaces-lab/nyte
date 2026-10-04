@@ -21,8 +21,9 @@ the saved reply. The test chat remains on the server for inspection.
 Uses NYTE_TOKEN unless --token-file is supplied. Never prints the token.
 The deployment needs credentials for its default model. Times out after 90 seconds.
 
---check-only       Check authentication, server metadata, and the SDK model catalog
-                   without sending a prompt or changing a session.
+--check-only       Check authentication, server metadata, the SDK model catalog, and
+                   whether the provider accepts the server's credential, without
+                   sending a prompt or changing a session.
 --require-durable  Fail unless the host advertises durable session storage.`);
 
     return;
@@ -84,6 +85,20 @@ The deployment needs credentials for its default model. Times out after 90 secon
     console.log(`Server model: ${selected.provider}/${selected.id}`);
 
     if (values["check-only"]) {
+      const { model, auth } = await client.provider.status();
+
+      const outcome =
+        auth.kind === "ready" || auth.kind === "unverified"
+          ? [auth.source, auth.detail].filter((part) => part !== undefined).join(", ")
+          : auth.message;
+
+      console.log(`model ${model.provider}/${model.id}: ${auth.kind} (${outcome})`);
+
+      if (auth.kind === "unconfigured" || auth.kind === "rejected" || auth.kind === "unreachable")
+        throw new Error(auth.message);
+
+      if (auth.kind === "unverified") console.log("The provider has no credential check.");
+
       console.log(
         "Configuration checks passed. Run test:provider to verify a real provider reply.",
       );

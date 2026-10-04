@@ -15,7 +15,6 @@
     "test:provider": "node scripts/test-provider.ts --require-durable",
     "build:fixture": "node scripts/build-fixture.ts",
     "test:deployment": "node fixtures/check.ts",
-    "sync:codex": "node scripts/sync-codex.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -23,6 +22,7 @@
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/plugin": "workspace:*",
     "@nyte-ai/server": "workspace:*",
+    "@nyte-ai/vercel": "workspace:*",
     "@vercel/functions": "3.9.7",
     "pg": "8.23.0",
     "workflow": "4.8.8"
