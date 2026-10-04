@@ -1,6 +1,8 @@
 # Plugin examples
 
-These plugins demonstrate Nyte's public `@nyte-ai/plugin` contract. Hosts preinstall rename, bash description, fast mode, and web search. The question tool is not preinstalled: it is the extensibility demo, and installing it from a discovered directory is the whole setup. Every client then renders it, because what it asks the user to pick travels with the waiting call rather than with the plugin:
+These plugins demonstrate Nyte's public `@nyte-ai/plugin` contract. Hosts preinstall rename, bash description, fast mode, web search, and question. The question tool is also the extensibility demo: no client knows it, yet every client renders it, because what it asks the user to pick travels with the waiting call rather than with the plugin.
+
+A plugin root entry with the same id replaces the preinstalled copy, so a linked checkout runs your edits:
 
 ```sh
 mkdir -p ~/.nyte/plugins/question
@@ -9,8 +11,7 @@ ln -s "$PWD/packages/plugin/examples/question.ts" ~/.nyte/plugins/question/index
 
 Each directory is one plugin unit. `index.ts` exports its session plugin; optional
 `tui.ts` exports its terminal UI definition. The directory name matches both ids.
-A later plugin root replaces the whole unit. A discovered session plugin with the
-same id as a preinstalled copy replaces it.
+A later plugin root replaces the whole unit.
 
 | Plugin | What it demonstrates |
 | --- | --- |

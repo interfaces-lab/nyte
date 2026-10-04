@@ -19,6 +19,7 @@ import type { ExecutionEnv, Plugin } from "@nyte-ai/core/plugins";
 import { pluginSource, withPluginSource } from "@nyte-ai/core/plugin-source";
 import { bashDescriptionPlugin } from "@nyte-ai/plugin/examples/bash-description";
 import { fastModePlugin } from "@nyte-ai/plugin/examples/fast-mode";
+import { questionPlugin } from "@nyte-ai/plugin/examples/question";
 import { openaiCompactionPlugin } from "@nyte-ai/plugin/openai-compaction";
 import { openaiAstraContextPlugin } from "@nyte-ai/plugin/openai-astra-context";
 import { renamePlugin } from "@nyte-ai/plugin/examples/rename";
@@ -97,6 +98,7 @@ export async function resolveHostPlugins(
       openaiCompactionPlugin({ models: context.models }),
       openaiAstraContextPlugin(),
       fastModePlugin({ models: context.models, defaultModel: context.model }),
+      questionPlugin,
       ...webSearchPlugins({ credentials: webSearchCredentials() }),
       mcpPlugin({ servers: mcpServers, config: mcp }),
       ...(context.extra ?? []),

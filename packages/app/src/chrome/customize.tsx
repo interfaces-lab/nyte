@@ -51,6 +51,14 @@ const BUILTINS = new Map<string, Presentation>([
     { name: "Fast mode", description: "Priority processing at a premium", icon: "speed-low" },
   ],
   [
+    "question",
+    {
+      name: "Questions",
+      description: "Lets the agent ask you to choose",
+      icon: "bubble-question",
+    },
+  ],
+  [
     "rename",
     { name: "Chat titles", description: "Names a chat from its first message", icon: "writing" },
   ],
