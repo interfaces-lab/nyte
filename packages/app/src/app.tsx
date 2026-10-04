@@ -4,7 +4,8 @@ import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/protocol";
 import { Toaster, toast } from "@nyte-ai/ui/toast";
 import { keys, loadLocalResources, queryClient } from "./queries.ts";
-import { currentRouteSession, router, Shell } from "./router";
+import { currentRouteSession, Shell } from "./router.tsx";
+import type { AppRouter } from "./router.tsx";
 import { nyte } from "./nyte.ts";
 import type { HostState } from "./nyte.ts";
 import { useMountEffect } from "./use-mount-effect.ts";
@@ -21,9 +22,9 @@ import { applyLoginEvent } from "./chrome/login-attempts.ts";
  * current route is applied to it, as a sidebar click applies its selection
  * before it navigates.
  */
-function bindRouteToOpenFolder(): void {
+function bindRouteToOpenFolder(router: AppRouter): void {
   const workspacePath = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path;
-  const sessionId = currentRouteSession();
+  const sessionId = currentRouteSession(router);
   paneControllerForWorkspace(workspacePath).syncSelection(
     sessionId === undefined ? BLANK_SELECTION : { kind: "session", sessionId },
   );
@@ -37,7 +38,7 @@ function focusedSession(): SessionId | undefined {
 }
 
 /** Host events reshape the world; queries re-read it. */
-function useHostEvents(): void {
+function useHostEvents(router: AppRouter): void {
   useMountEffect(() => {
     return nyte.host.onEvent((event) => {
       switch (event.kind) {
@@ -52,7 +53,7 @@ function useHostEvents(): void {
           // again against the newest host state.
           void loadLocalResources()
             .then(() => {
-              bindRouteToOpenFolder();
+              bindRouteToOpenFolder(router);
 
               return router.invalidate();
             })
@@ -112,8 +113,8 @@ function useHostEvents(): void {
   });
 }
 
-export function App({ appIcon }: { appIcon: string }): ReactElement {
-  useHostEvents();
+export function App({ appIcon, router }: { appIcon: string; router: AppRouter }): ReactElement {
+  useHostEvents(router);
   useMountEffect(() => {
     const frame = requestAnimationFrame(() => {
       performance.mark("nyte:shell-ready");

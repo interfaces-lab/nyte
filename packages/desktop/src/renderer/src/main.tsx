@@ -9,17 +9,24 @@ import "@nyte-ai/app/theme/focus-modality.ts";
 import "@nyte-ai/app/theme/global.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { createMemoryHistory } from "@tanstack/react-router";
 import { focusManager } from "@tanstack/react-query";
 import {
   App,
   connectSessionDirectory,
   loadLocalResources,
-  router,
+  createAppRouter,
+  initialChromeRoute,
   startRendererStartup,
 } from "@nyte-ai/app";
 import { applyStartupTheme } from "@nyte-ai/app/theme/startup.ts";
 import appIcon from "../../../build/icon-macos.svg";
 import { AccountProvider } from "../../account/provider.tsx";
+
+export const router = createAppRouter({
+  history: createMemoryHistory({ initialEntries: [initialChromeRoute()] }),
+  persistChromeRoute: true,
+});
 
 const container = document.getElementById("root");
 
@@ -61,7 +68,7 @@ startRendererStartup({
     createRoot(container).render(
       <StrictMode>
         <AccountProvider>
-          <App appIcon={appIcon} />
+          <App appIcon={appIcon} router={router} />
         </AccountProvider>
       </StrictMode>,
     );

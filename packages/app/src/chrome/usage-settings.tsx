@@ -22,6 +22,7 @@ import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { useAccountLimits, useUsageReport } from "../queries.ts";
 import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
+import type { ShellSearch } from "../router.tsx";
 import { useChromeTab } from "./use-chrome-tab.ts";
 import { isOption } from "./sidebar-view.ts";
 import { skeletonStyles as bone, usageStyles as styles } from "./usage-settings.stylex.ts";
@@ -442,7 +443,7 @@ function SubTabs<Value extends string>({
   labels,
   children,
 }: {
-  readonly searchKey: string;
+  readonly searchKey: keyof ShellSearch;
   readonly label: string;
   readonly options: readonly [Value, ...Value[]];
   readonly labels: Readonly<Record<Value, string>>;

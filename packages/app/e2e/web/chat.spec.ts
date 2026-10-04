@@ -22,5 +22,33 @@ test("a new chat shows the reply and takes its title from the provider", async (
       .getByRole("button", { name: "Echo: hello" })
       .and(page.locator("[aria-current=page]")),
   ).toBeVisible();
+  await expect(page).toHaveURL(/\/session\/[^/?#]+$/u);
+  const sessionUrl = page.url();
+
+  await page.reload();
+  await expect(pane.getByText("Echo: hello", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(sessionUrl);
+
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await expect(page).toHaveURL(/\/settings\/general$/u);
+  await page.goBack();
+  await expect(page).toHaveURL(sessionUrl);
+  await expect(pane.getByText("Echo: hello", { exact: true })).toBeVisible();
+  await page.goForward();
+  await expect(page).toHaveURL(/\/settings\/general$/u);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "General", exact: true })).toBeVisible();
+
+  await page.evaluate(() => localStorage.setItem("nyte:startup-destination:v1", "last-session"));
+  await page.goto(sessionUrl);
+  await expect(pane.getByText("Echo: hello", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(sessionUrl);
+  await page.getByRole("button", { name: /New Chat/u }).click();
+  await expect(page).toHaveURL(new URL("/", sessionUrl).href);
+  await expect(composer).toHaveValue("");
+
+  await page.reload();
+  await expect(page).toHaveURL(/\/session\/[^/?#]+$/u);
+  await expect(page.getByRole("form", { name: "Message composer" })).toBeVisible();
   expect(errors).toEqual({ pageErrors: [], consoleErrors: [] });
 });

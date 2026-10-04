@@ -1,12 +1,7 @@
 import "../../test/window-bridge.ts";
 import { TooltipProvider } from "@nyte-ai/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
-import {
-  createMemoryHistory,
-  createRootRoute,
-  createRouter,
-  RouterContextProvider,
-} from "@tanstack/react-router";
+import { createMemoryHistory, RouterContextProvider } from "@tanstack/react-router";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { sessionId } from "@nyte-ai/protocol";
@@ -23,6 +18,7 @@ import { PaneControllerProvider } from "../layout/pane-context.tsx";
 import { SessionDndProvider } from "../layout/session-dnd.tsx";
 import { keys, queryClient } from "../queries.ts";
 import { ThreadScreen } from "./thread.tsx";
+import { createAppRouter } from "../router.tsx";
 import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 
@@ -178,8 +174,7 @@ export async function runTest(): Promise<string> {
   queryClient.setQueryData(keys.mentionFiles, []);
   queryClient.setQueryData(keys.jobs(ID), []);
 
-  const router = createRouter({
-    routeTree: createRootRoute(),
+  const router = createAppRouter({
     history: createMemoryHistory({ initialEntries: [`/session/${ID}`] }),
   });
 

@@ -7,13 +7,14 @@ import "../theme/boot.ts";
 import "../theme/focus-modality.ts";
 import "../theme/global.css";
 import { create, props } from "@stylexjs/stylex";
+import { createBrowserHistory } from "@tanstack/react-router";
 import { focusManager } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Button } from "@nyte-ai/ui/button";
 import { App } from "../app.tsx";
 import { connectSessionDirectory, loadLocalResources } from "../queries.ts";
-import { router } from "../router.tsx";
+import { createAppRouter } from "../router.tsx";
 import { serverConnectionProblem } from "../server-connection.ts";
 import { startRendererStartup } from "../startup.ts";
 import type { Connection } from "./bridge.ts";
@@ -40,6 +41,10 @@ const styles = create({
 const container = document.getElementById("root");
 
 if (container === null) throw new Error("Missing #root");
+
+const pairing = readPairingRequest(new URL(location.href));
+
+const router = createAppRouter({ history: createBrowserHistory() });
 
 const root = createRoot(container);
 
@@ -70,7 +75,7 @@ function start(connection: Connection): void {
     mountShell: () => {
       root.render(
         <StrictMode>
-          <App appIcon="/icon.svg" />
+          <App appIcon="/icon.svg" router={router} />
         </StrictMode>,
       );
     },
@@ -115,8 +120,6 @@ async function resume(connection: Connection, fromLink: boolean): Promise<void> 
   saveConnection(connection);
   start(connection);
 }
-
-const pairing = readPairingRequest(new URL(location.href));
 
 const known = pairing ?? loadConnection();
 

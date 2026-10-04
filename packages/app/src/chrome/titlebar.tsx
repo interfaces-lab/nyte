@@ -4,7 +4,7 @@ import { titlebarStyles } from "./titlebar.stylex.ts";
  * actions and the stage-level workbench entry stay at the trailing edge.
  */
 import { props } from "@stylexjs/stylex";
-import { useMatch, useRouter } from "@tanstack/react-router";
+import { createLink, useCanGoBack, useMatch, useRouter } from "@tanstack/react-router";
 import { closeSettings } from "./settings-return.ts";
 // oxlint-disable-next-line no-restricted-imports -- menu commands and shortcuts act on the current workspace state
 import { useCallback, useEffect } from "react";
@@ -81,6 +81,8 @@ function SessionLocation({ sessionId }: { sessionId: SessionId }): ReactElement 
   );
 }
 
+const SessionLink = createLink(ButtonLink);
+
 function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
   const session = useSession(sessionId);
   const panes = usePaneActions();
@@ -91,11 +93,12 @@ function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
     <span {...props(titlebarStyles.sessionTitleGroup)}>
       {parentSessionId !== undefined && (
         <span {...props(titlebarStyles.sessionBack)}>
-          <ButtonLink
+          <SessionLink
             iconOnly
             icon="arrow-left"
             aria-label="Back to parent chat"
-            href={`/session/${parentSessionId}`}
+            to="/session/$sessionId"
+            params={{ sessionId: parentSessionId }}
             onClick={(event) => {
               if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
               event.preventDefault();
@@ -139,9 +142,8 @@ export function Titlebar(): ReactElement {
   const settingsOpen = settingsMatch !== undefined;
   const workspaceVisible = !settingsOpen && stage.kind === "workspace";
   const workbenchOpen = workspaceVisible && view.expanded;
-  const canGoBack = stage.kind !== "workspace" || settingsOpen || shellRouter.history.canGoBack();
-  const historyIndex = shellRouter.history.location.state.__TSR_index;
-  const canGoForward = historyIndex < shellRouter.history.length - 1;
+  const historyCanGoBack = useCanGoBack();
+  const canGoBack = stage.kind !== "workspace" || settingsOpen || historyCanGoBack;
 
   const openTerminal = useCallback((): void => {
     if (nyte.host.terminal === undefined) return;
@@ -316,7 +318,6 @@ export function Titlebar(): ReactElement {
                     iconOnly
                     icon="arrow-right"
                     aria-label="Go forward"
-                    disabled={!canGoForward}
                     aria-keyshortcuts={clientActionAriaShortcut(clientActions.forward, mac)}
                     onClick={() => shellRouter.history.forward()}
                     title={undefined}

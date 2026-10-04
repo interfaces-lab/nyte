@@ -34,12 +34,18 @@ async function storedConnection(page: Page): Promise<string | null> {
 test("a pairing link opens the shell and leaves no token in the address bar", async ({ page }) => {
   const errors = collectErrors(page);
   await watchForConnectForm(page);
+  await page.addInitScript(() => {
+    sessionStorage.setItem("pairing-history-length", String(history.length));
+  });
 
   await pair(page);
 
   await expectShellWithoutConnectForm(page);
   await expect(page).toHaveURL(`${E2E_ORIGIN}/`);
   expect(page.url()).not.toContain(E2E_TOKEN);
+  expect(await page.evaluate(() => String(history.length))).toBe(
+    await page.evaluate(() => sessionStorage.getItem("pairing-history-length")),
+  );
   expect(errors).toEqual({ pageErrors: [], consoleErrors: [] });
 });
 
