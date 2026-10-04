@@ -48,21 +48,22 @@ async function ranWith(description: string) {
   return { offered, part };
 }
 
-test("the model is offered a description and a trimmed one heads the call", async () => {
+test("the model is offered a description and a trimmed one heads the call; bash's own facts stay", async () => {
   const { offered, part } = await ranWith("  Print a greeting  ");
   const bash = offered.find((tool) => tool.name === "bash");
   assert.ok(bash && Value.Check(parameters, bash.parameters));
   assert.ok("description" in bash.parameters.properties);
   assert.ok(!bash.parameters.required.includes("description"));
-  assert.deepEqual(part.class, {
-    kind: "shell",
-    command: "echo hi",
-    description: "Print a greeting",
-  });
-  assert.equal(part.result?.output.trim(), "hi");
+  assert.ok(part.class.kind === "shell");
+  assert.equal(part.class.command, "echo hi");
+  assert.equal(part.class.description, "Print a greeting");
+  assert.equal(part.class.facts?.truncated, false);
+  assert.equal(part.output?.trim(), "hi");
 });
 
 test("a blank description is left out of the call", async () => {
   const { part } = await ranWith("   ");
-  assert.deepEqual(part.class, { kind: "shell", command: "echo hi" });
+  assert.ok(part.class.kind === "shell");
+  assert.equal(part.class.command, "echo hi");
+  assert.ok(!("description" in part.class));
 });

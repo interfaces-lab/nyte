@@ -4,7 +4,8 @@
  * shell class, so a client can head the call with the description and keep
  * the command as the detail, the way Cursor shows "Ran <description>". Core's
  * bash is wrapped as the registry hands it over: its execute, replay, output
- * schema, and wording stay; only the parameters and `present` change.
+ * schema, wording, and the facts its own `present` measures stay; only the
+ * parameters change and `present` adds the description.
  */
 import { definePlugin } from "@nyte-ai/plugin";
 import { IsObject, IsString, Type } from "typebox";
@@ -35,12 +36,15 @@ export const bashDescriptionPlugin = definePlugin({
           command,
           description: bashDescriptionParameter,
         }),
-        present: (args) => {
+        present: (args, context, result) => {
+          const presented = bash.present?.(args, context, result);
+          const shell =
+            presented?.kind === "shell"
+              ? presented
+              : { kind: "shell" as const, command: args.command };
           const description = args.description?.trim() ?? "";
 
-          return description === ""
-            ? { kind: "shell", command: args.command }
-            : { kind: "shell", command: args.command, description };
+          return description === "" ? shell : { ...shell, description };
         },
       });
     });
