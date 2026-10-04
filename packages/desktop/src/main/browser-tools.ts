@@ -3,10 +3,12 @@ import {
   bindTool,
   definePlugin,
   selectionReply,
+  stopReason,
   ToolError,
   ToolWait,
 } from "@nyte-ai/plugin";
 import type { AgentTool, AgentToolResult, Selection, SessionApi } from "@nyte-ai/plugin";
+import type { ToolReason } from "@nyte-ai/protocol";
 import type { TextContent, ImageContent } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static, TProperties, TSchema } from "typebox";
@@ -131,7 +133,12 @@ const OFF = "Browser access is off for this folder.";
 const READ_ONLY =
   "Browser access is read-only for this folder, so this tool cannot run. Ask the user to allow full browser access if you need to click, type, or evaluate.";
 
-const refuse = (text: string) => new ToolError({ content: [{ type: "text", text }], details: {} });
+const refuse = (text: string, reason?: ToolReason) =>
+  new ToolError({ content: [{ type: "text", text }], details: {} }, reason);
+
+/** The call stopped: the durable abort it was woken with, else what its signal says. */
+const stopped = (context: { readonly aborted: boolean; readonly signal: AbortSignal }) =>
+  refuse(CANCELLED, context.aborted ? { kind: "cancelled" } : stopReason(context.signal));
 
 export function browserToolsPlugin(options: {
   readonly agent: BrowserAgent;
@@ -238,7 +245,10 @@ export function browserToolsPlugin(options: {
 
           if (result?.kind === "ok")
             parts.push(...renderPageReport({ state: result.state }).content);
-          throw new ToolError({ content: parts, details: {}, title });
+          throw new ToolError(
+            { content: parts, details: {}, title },
+            signal.aborted ? stopReason(signal) : undefined,
+          );
         }
 
         const content: (TextContent | ImageContent)[] =
@@ -320,7 +330,7 @@ export function browserToolsPlugin(options: {
             return run(input, call.signal);
           },
           async wake(waiting, context) {
-            if (context.aborted || context.signal.aborted) throw refuse(CANCELLED);
+            if (context.aborted || context.signal.aborted) throw stopped(context);
 
             if (context.reply === undefined) return { kind: "wait", selection: ACCESS_SELECTION };
 
@@ -462,7 +472,7 @@ export function browserToolsPlugin(options: {
             if (signal.aborted) throw signal.reason;
             const evaluated = await agent.evaluate({ session: sid, ...params, signal });
 
-            if (signal.aborted) throw refuse(CANCELLED);
+            if (signal.aborted) throw stopped({ aborted: false, signal });
             const content = renderEvaluateReport(evaluated).content;
 
             return { content, details: {}, title: "browser_evaluate" };
