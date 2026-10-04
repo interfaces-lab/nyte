@@ -1,10 +1,10 @@
-import { cloudSource, getLLMText, source } from "~/lib/source";
+import { kernelSource, cloudSource, getLLMText, source } from "~/lib/source";
 
 async function everyPage() {
   "use cache";
 
   const scanned = await Promise.all(
-    [...source.getPages(), ...cloudSource.getPages()].map(getLLMText),
+    [...source.getPages(), ...cloudSource.getPages(), ...kernelSource.getPages()].map(getLLMText),
   );
 
   return scanned.join("\n\n");

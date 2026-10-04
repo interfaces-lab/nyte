@@ -26,21 +26,16 @@
     text-rendering: optimizeLegibility;
   }
 
-  .doc :focus-visible {
+  .doc :focus-visible:where(:not(.cloud-preview *)) {
     outline: 1px solid;
     @apply outline-ring;
     outline-offset: 2px;
     border-radius: 3px;
   }
 
-  .doc a {
+  .doc a:where(:not(.cloud-preview *)) {
     color: inherit;
     text-decoration: none;
-  }
-
-  .doc button {
-    font: inherit;
-    color: inherit;
   }
 
   /* ---- frame ----------------------------------------------------------- */

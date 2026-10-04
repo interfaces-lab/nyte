@@ -109,7 +109,7 @@ export function SiteSearch() {
             autoFocus
             variant="bare"
             className="min-h-12 border-b border-b-border-subtle px-4 text-[15px]"
-            placeholder="Search Cloud and the docs"
+            placeholder="Search Docs, Cloud and Kernel"
             aria-label="Search"
             aria-controls={listId}
             value={query}

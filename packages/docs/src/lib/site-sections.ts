@@ -1,8 +1,8 @@
-import { cloudRoute, docsRoute } from "./shared";
+import { cloudRoute, docsRoute, kernelRoute } from "./shared";
 
-export type SiteSectionId = "docs" | "cloud";
+export type SiteSectionId = "docs" | "cloud" | "kernel";
 
-export type SiteFeatureIcon = "docs" | "cloud";
+export type SiteFeatureIcon = "docs" | "cloud" | "kernel";
 
 export interface SiteFeature {
   href: string;
@@ -45,5 +45,11 @@ export const SITE_SECTIONS = [
         icon: "cloud",
       },
     ],
+  },
+  {
+    id: "kernel",
+    label: "Kernel",
+    href: kernelRoute,
+    features: [{ href: kernelRoute, title: "Nyte core", icon: "kernel" }],
   },
 ] as const satisfies readonly SiteSection[];

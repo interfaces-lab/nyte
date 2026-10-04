@@ -28,13 +28,13 @@ button {
   color: inherit;
 }
 
-:root:is([data-lab-page="/core"], [data-lab-page="/moon"]) {
+:root[data-lab-page="/core"] {
   overflow: auto;
   user-select: text;
   line-height: normal;
 }
 
-:root:is([data-lab-page="/core"], [data-lab-page="/moon"]) :is(body, #root) {
+:root[data-lab-page="/core"] :is(body, #root) {
   block-size: auto;
   min-block-size: 100%;
   overflow: visible;

@@ -1,0 +1,40 @@
+---
+title: "Objects"
+---
+
+import { EXCERPTS } from "~/components/mdx/kernel/excerpts";
+
+A `Change` is a commit body waiting for its parent: a user message, a completion or a config. Landing turns it into a commit. The `Run` object is replaced on every phase change, so the run ref's history is the run's history. `done`, `failed` and `aborted` are terminal.
+
+<Source title="Change and Run" excerpt={EXCERPTS.objects} />
+
+<Source title="RunPhase" excerpt={EXCERPTS.runPhase} />
+
+<Table
+  head={["Body", "Reaches the model as"]}
+  rows={[
+    [
+      <C key="0">message</C>,
+      <Inline
+        key="1"
+        text="The message itself: user, assistant, tool result or `system`. An assistant message that ended `error`, `aborted` or `deferred` stays in history and is left out of context."
+      />,
+    ],
+    [<C key="0">completion</C>, "A user message holding the job's output."],
+    [<C key="0">checkpoint</C>, "Its system message, its summary, then the retained tail."],
+    [
+      <C key="0">summary</C>,
+      <Inline
+        key="1"
+        text="One user message with its text. `imports` names the abandoned commits and is never sent."
+      />,
+    ],
+    [
+      <C key="0">config</C>,
+      "Nothing. The newest value of each field sets the model, thinking level and agent.",
+    ],
+    [<C key="0">usage</C>, "Nothing. It bills a model call that wrote no message."],
+  ]}
+/>
+
+Every commit records when it was written, and the run that wrote it when a runner did. Assistant `calls` and `outcome`, a tool result's `call` and `tree`, and `start` on the commit that opens a run are provenance: the runner stamps them, and the model never sees them.

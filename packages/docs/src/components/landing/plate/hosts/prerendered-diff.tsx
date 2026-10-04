@@ -26,6 +26,9 @@ export function PrerenderedDiff({ html, className }: { html: string; className: 
       `light-dark(${platformScopes.light.red.bgInteractiveSecondaryTranslucent}, ${platformScopes.dark.red.bgInteractiveSecondaryTranslucent})`,
       `light-dark(${platformScopes.light.green.bgInteractivePrimaryTranslucent}, ${platformScopes.dark.green.bgInteractivePrimaryTranslucent})`,
       `light-dark(${platformScopes.light.red.bgInteractivePrimaryTranslucent}, ${platformScopes.dark.red.bgInteractivePrimaryTranslucent})`,
+      `light-dark(${platformScopes.light.green.contentSecondary}, ${platformScopes.dark.green.contentSecondary})`,
+      `light-dark(${platformScopes.light.red.contentSecondary}, ${platformScopes.dark.red.contentSecondary})`,
+      `light-dark(${platformScopes.light.blue.contentSecondary}, ${platformScopes.dark.blue.contentSecondary})`,
     ),
   );
 
@@ -47,16 +50,25 @@ const styles = create({
     "--diffs-bg-buffer-override": role.bgBase,
     "--diffs-bg-context-override": role.bgBase,
     "--diffs-bg-context-gutter-override": role.bgBase,
+    "--diffs-bg-separator-override": role.bgMutedTranslucent,
+    "--diffs-fg-number-override": role.contentTertiary,
+    "--diffs-bg-selection-override": role.bgInteractiveSecondaryTranslucent,
   },
   palette: (
     addition: string,
     deletion: string,
     additionEmphasis: string,
     deletionEmphasis: string,
+    additionColor: string,
+    deletionColor: string,
+    modifiedColor: string,
   ) => ({
     "--diffs-bg-addition-override": addition,
     "--diffs-bg-deletion-override": deletion,
     "--diffs-bg-addition-emphasis-override": additionEmphasis,
     "--diffs-bg-deletion-emphasis-override": deletionEmphasis,
+    "--diffs-addition-color-override": additionColor,
+    "--diffs-deletion-color-override": deletionColor,
+    "--diffs-modified-color-override": modifiedColor,
   }),
 });

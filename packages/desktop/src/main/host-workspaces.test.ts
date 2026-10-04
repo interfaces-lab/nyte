@@ -848,6 +848,63 @@ test("a closed directory refresh drops owners for sessions removed from its stor
   );
 });
 
+test("a refresh hands a moved session to its new store when that store is read first", async () => {
+  const { root, events, createHost } = await fixture();
+  const path = join(root, "refreshed-project");
+  const later = ["first", "second", "third"].map((name) => join(root, name));
+  await Promise.all([path, ...later].map((folder) => mkdir(folder)));
+
+  const seed = createHost();
+  await seed.call(1, "host.openWorkspace", { path });
+  const moved = await seed.call(1, "sessions.create", { name: "Project copy" });
+  await seed.close();
+
+  const reader = createHost();
+  await reader.call(1, "host.sessionDirectory", undefined);
+
+  const writer = createHost();
+  await writer.call(1, "host.openWorkspace", { path });
+  await writer.call(1, "sessions.delete", { sessionId: moved.sessionId });
+  await writer.call(1, "host.closeWorkspace", undefined);
+  await writer.call(1, "sessions.create", { sessionId: moved.sessionId, name: "Home copy" });
+  await writer.close();
+
+  // Opened after the project, these list ahead of it, so Home's read finishes a batch before the project's starts.
+  for (const folder of later) await reader.call(1, "host.openWorkspace", { path: folder });
+
+  const now = Date.now();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(now + 60_001);
+
+  try {
+    await reader.call(1, "host.sessionDirectory", undefined);
+    await vi.waitFor(
+      () => {
+        assert.ok(
+          events.some(
+            (event) =>
+              event.kind === "session_directory" &&
+              event.changes.some(
+                (change) =>
+                  change.kind === "upsert" &&
+                  change.source.environment === "local" &&
+                  change.source.workspacePath === null &&
+                  change.session.sessionId === moved.sessionId,
+              ),
+          ),
+        );
+      },
+      { timeout: 10_000 },
+    );
+  } finally {
+    clock.mockRestore();
+  }
+
+  assert.equal(
+    (await reader.call(1, "sessions.get", { sessionId: moved.sessionId }))?.name,
+    "Home copy",
+  );
+});
+
 test("a closed project lists a root moved to an untrusted folder as needing trust", async () => {
   const { root, createHost } = await fixture();
   const path = join(root, "project");

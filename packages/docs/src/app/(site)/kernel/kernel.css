@@ -1,0 +1,105 @@
+@reference "../../global.css";
+
+@layer components {
+  .doc-prose .kernel-stack {
+    display: flex;
+    flex-direction: column;
+    margin-block: 24px;
+  }
+
+  .doc-prose .kernel-stack a {
+    padding: 12px;
+    border-bottom: 1px solid;
+    @apply border-border-subtle text-foreground;
+    text-decoration: none;
+  }
+
+  .doc-prose .kernel-stack a:hover {
+    @apply bg-fill-hover;
+  }
+
+  .doc-prose .kernel-cas {
+    margin-block: 16px;
+    padding: 12px;
+    overflow-x: auto;
+    border-radius: 8px;
+    @apply bg-fill-selected;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  .doc-prose .kernel-cas table {
+    margin: 8px 0 0;
+    font: inherit;
+  }
+
+  .doc-prose .kernel-cas td {
+    padding: 0 16px 0 0;
+    border: 0;
+    white-space: nowrap;
+  }
+
+  .doc-prose .kernel-trace,
+  .doc-prose .kernel-quiz ol {
+    padding: 0;
+    list-style: none;
+  }
+
+  .doc-prose .kernel-trace > li,
+  .doc-prose .kernel-quiz li {
+    margin-block: 24px;
+  }
+
+  .doc-prose .kernel-trace h3 {
+    margin: 0;
+  }
+
+  .doc-prose .kernel-code {
+    min-width: 0;
+    margin-block: 16px;
+  }
+
+  .kernel-code[data-numbered] .line::before {
+    counter-increment: kernel-line;
+    content: counter(kernel-line);
+    display: inline-block;
+    min-width: 4ch;
+    margin-right: 16px;
+    text-align: right;
+    user-select: none;
+    @apply text-muted-foreground;
+  }
+
+  .kernel-issue {
+    padding-block: 8px;
+    border-bottom: 1px solid;
+    @apply border-border-subtle;
+  }
+
+  .kernel-issue summary {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 8px;
+  }
+
+  .kernel-issue summary::before {
+    content: "+";
+  }
+
+  .kernel-issue[open] summary::before {
+    content: "−";
+  }
+
+  .kernel-issue summary:hover {
+    @apply bg-fill-hover;
+  }
+
+  .kernel-quiz fieldset {
+    min-width: 0;
+    border: 0;
+    padding: 0;
+  }
+}

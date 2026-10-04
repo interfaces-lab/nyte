@@ -1,0 +1,29 @@
+{
+  "title": "Kernel",
+  "pages": [
+    "---Overview---",
+    "index",
+    "life-of-a-message",
+    "---Runtime---",
+    "runner",
+    "step",
+    "inbox",
+    "admission",
+    "respond",
+    "tools",
+    "stop",
+    "heads",
+    "events",
+    "plugins",
+    "agents",
+    "---Storage---",
+    "store",
+    "refs",
+    "objects",
+    "---Reference---",
+    "constants",
+    "functions",
+    "open-issues",
+    "quiz"
+  ]
+}

@@ -1,41 +1,16 @@
 ---
 title: Build an agent app
-description: Run Nyte first, then compose a custom TUI or an editor app from the existing packages
+description: How Nyte's packages fit together, and how to build your own terminal, web, or editor app on them
 ---
 
-Use a repository checkout for these examples. Most Nyte packages are private workspace packages
-exporting TypeScript source.
+Nyte's TUI and desktop app are built from the same packages you can use. This page walks through
+how those pieces fit, why we split them where we did, and how to put them back together in a
+different shape.
 
-## Run an app first
+The packages are private workspace packages that export TypeScript source, so you'll work from a
+checkout of the repository.
 
-Install the repository's runtime versions and dependencies:
-
-```sh
-mise install
-pnpm install
-```
-
-Choose one entry point from the repository root:
-
-```sh
-pnpm dev:tui
-pnpm dev:desktop
-pnpm serve -- --trust
-```
-
-Sign in through the TUI or desktop, or run `nyte login` if the binary is installed.
-`pnpm serve` builds the web app, serves a local workspace host, and prints a browser pairing link.
-`--trust` grants the current folder permission to load project code and run tools.
-
-To run only the web interface against an existing server:
-
-```sh
-pnpm --dir packages/app dev
-```
-
-Enter the server address and token. Add the app's origin to the server's `browserOrigins`.
-
-## Package composition
+## How it's put together
 
 ```text
 @nyte-ai/ai                 models, providers, credentials
@@ -57,13 +32,35 @@ your interface
 NyteBridge                 desktop IPC or web client
 ```
 
-## Compose a conversation demo
+Read it from the top. `@nyte-ai/core` is the part that matters most. It stores every session the
+way git stores a repository, as immutable objects plus a few refs that move, and it runs the agent
+against that history. `@nyte-ai/host` makes the choices a real app has to make on top of core:
+which models answer, which plugins load, and whether a folder is trusted.
 
-`createHost` supplies the model catalog, streaming function, and plugin policies. Chat mode runs
-without a project folder or filesystem tools.
+Everything below core is about reaching it. You get the same SDK whether you hold it in your own
+process or talk to it over HTTP, so an interface written against one works against the other. We
+did this because the TUI, the desktop app, and the web app all needed the same conversation, and
+we didn't want three ways of reading it.
 
-This Node host uses credentials from Nyte's provider sign-in or provider environment variables.
-Set `NYTE_MODEL` to another available `provider/model` if needed.
+## Sending a message doesn't run it
+
+This is the one idea to have in your head before writing code. `messages.send` writes the message
+to the session's inbox and returns. It doesn't call a model. A process that has called
+`attach()` picks the message up and runs it. If no process has attached, `runs.wait` waits
+forever.
+
+We split it this way so a session outlives the process that started it. The message is durable
+the moment `send` returns. If the runner crashes halfway through, the work so far is already in the
+store, and another runner can carry on once the first one's lease expires. Interfaces can come
+and go while the agent keeps working, and several of them can watch the same session at once.
+
+In practice your host calls `attach()` once at startup and keeps it until shutdown. Your interface
+only sends and watches.
+
+## Build your own host
+
+`createHost` builds the SDK from a model catalog, a store, and a plugin policy. Start with chat
+mode, which has no project folder and no filesystem tools:
 
 ```ts title="Conversation host"
 import process from "node:process";
@@ -103,15 +100,16 @@ try {
 }
 ```
 
-`attach()` makes this process a runner for admitted messages. Keep it and the SDK open until app
-shutdown.
+The host reads credentials from Nyte's provider sign-in or from provider environment variables.
+`key` makes the send idempotent. Send twice with the same key and you get one message, which is
+what lets clients retry safely later on.
 
-## Enable a coding workspace
+### Give it a workspace
 
-For a coding agent, use workspace mode and provide the workspace backend. This replaces the host
-construction above and reuses its `models`, `model`, and `store`.
+A coding agent needs a folder to work in. Swap the plugin policy for workspace mode and pass a
+workspace backend:
 
-```ts title="Workspace composition"
+```ts title="Workspace host"
 import process from "node:process";
 import { createHost, createWorkspaceBackend, createWorkspaceStore } from "@nyte-ai/host";
 
@@ -130,25 +128,26 @@ const sdk = await createHost({
 });
 ```
 
-`require()` checks an existing trust grant. After explicit user approval, an application grants
-trust with `await workspaces.trust(cwd)`. Trust permits project code and unrestricted workspace
-tools; it is not a sandbox or per-tool approval.
+`require()` throws unless the user has already trusted the folder. Ask them first, then call
+`workspaces.trust(cwd)`. Be honest with them about what that means. Trust lets project plugins run
+and gives the agent unrestricted tools in that folder. It isn't a sandbox, and Nyte doesn't ask
+per tool call. We chose one clear decision per folder over a stream of prompts people learn to
+click through.
 
-Workspace mode loads shared built-ins, home and trusted project plugins, and skills. Use
-`workspaceStorePath(workspace.cwd)` from `@nyte-ai/host` instead of `./agent.db` to share Nyte's
-existing workspace history. The third plugin mode, `custom`, accepts caller-supplied plugins and
-a plugin environment.
+Workspace mode loads the shared built-ins, your home and project plugins, and skills. To share
+history with the TUI and desktop app, open the store at `workspaceStorePath(workspace.cwd)`
+instead of `./agent.db`.
+
+If you're embedding Nyte in your own product and want to choose every plugin yourself, use
+`{ kind: "custom", plugins, cwd }`.
 
 ## Build your own TUI
 
-Keep the host and replace the terminal rendering. `SessionObserver` and `createOutbox` from
-`@nyte-ai/client` work with both a local SDK and a remote client. The existing TUI uses them in
-[`packages/tui/src/interactive.ts`](https://github.com/interfaces-lab/nyte/blob/main/packages/tui/src/interactive.ts).
+Keep the host and write your own rendering. You need two things from `@nyte-ai/client`. The
+`SessionObserver` keeps an up-to-date view of the session. The outbox holds the messages the user
+has typed but the store hasn't confirmed yet.
 
-The following wiring assumes an open `sdk`, a created `session`, and a `draw` callback supplied by
-your interface. `draw` receives folded session state and optimistic outbox rows.
-
-```ts title="Conversation state wiring"
+```ts title="Conversation state"
 import { createOutbox, SessionObserver } from "@nyte-ai/client";
 
 const observer = new SessionObserver(sdk, {
@@ -175,34 +174,28 @@ await outbox.submit({
 });
 ```
 
-The observer folds snapshots and live events, recovering from structural changes or watch failures.
-The outbox retries each submission with the same idempotency key and keeps its optimistic row until
-the observer sees it in durable state.
+`draw` is yours. It gets the session state and the pending rows, and renders both.
 
-When the view unmounts, call both unsubscribe functions and `observer.close()`. That stops drawing
-and watching, not accepted agent work. The application owns the outbox's lifetime; give it storage
-and call `activate()` if unsent messages must survive a reload.
+They're separate pieces because they solve different problems. The SDK itself never retries. A
+call that fails throws, and a watch that drops just ends. The observer handles reading: it takes a
+snapshot, follows live events, and starts over from a fresh snapshot when the watch breaks. The
+outbox handles writing: it shows the message the moment the user hits enter, retries with the same
+key until the send lands, and drops its copy once the observer sees the real one.
 
-For a remote host, create the client instead of opening a local SDK:
+`delivery: "next"` queues the message for when the agent is idle. `"steer"` delivers it at the next
+response boundary while the agent is still working.
 
-```ts title="Remote connection"
-import { createNyteClient } from "@nyte-ai/client";
+When the view goes away, call both unsubscribe functions and `observer.close()`. That stops your
+interface, not the agent. If unsent messages should survive a restart, give the outbox a `storage`
+and call `activate()` on startup.
 
-const sdk = createNyteClient({
-  baseUrl: "http://127.0.0.1:5180",
-  token,
-});
-const session = await sdk.sessions.create();
-```
+The shipped TUI wires these the same way in
+[`packages/tui/src/interactive.ts`](https://github.com/interfaces-lab/nyte/blob/main/packages/tui/src/interactive.ts).
 
-`token` is the host credential. Use the observer for watch recovery and the outbox for send retries.
+## Put the host behind a server
 
-Nyte's OpenTUI/Solid transcript, composer, and `runTui` are app internals. To extend the existing TUI,
-use plugins through `@nyte-ai/plugin`, including the `session.composer.top` slot.
-
-## Serve your composed host
-
-`createNyteServer` exposes an open SDK through a Web Request/Response handler.
+When the interface runs somewhere else, like a browser or another machine, put `@nyte-ai/server`
+in front of the SDK:
 
 ```ts title="HTTP handler"
 import { createNyteServer } from "@nyte-ai/server";
@@ -216,33 +209,56 @@ const server = createNyteServer({
 const handler = server.fetch;
 ```
 
-Hand `handler` to your runtime's HTTP adapter. Tokens require at least 16 characters. The application
-owns the listener and runner; bind to loopback unless you have configured remote access. On shutdown,
-close the server and listener, detach the runner, close the SDK, then close the store.
+The server is a plain `Request` to `Response` handler. Hand it to `Bun.serve`, `Deno.serve`, or a
+Node adapter. It doesn't open a socket or attach a runner, because that's your process and your
+decision. Tokens need at least 16 characters. Bind to loopback unless you've set up remote access
+properly.
 
-## Build a Cursor-style app
+On shutdown, close in reverse order. Close the server and listener, detach the runner, close the
+SDK, then close the store.
 
-Start with `pnpm dev:desktop`. Electron's main process owns local hosts, remote connections, and
-native services. The renderer reads through a `NyteBridge`.
+On the other side, create a client where you would have opened an SDK:
 
-The desktop installs `window.nyte` as the app's bridge before modules that read it evaluate. Its
-renderer then mounts the shared app:
+```ts title="Remote client"
+import { createNyteClient } from "@nyte-ai/client";
 
-```tsx title="Shared app mount"
+const sdk = createNyteClient({
+  baseUrl: "http://127.0.0.1:5180",
+  token,
+});
+const session = await sdk.sessions.create();
+```
+
+Everything from the TUI section works unchanged with this `sdk`. That's the payoff of keeping one
+SDK shape on both sides of the wire.
+
+## Build your own editor
+
+The desktop and web apps share one React app, `@nyte-ai/app`, which contains the conversation and
+the workbench. The app never imports core. It reads everything through a `NyteBridge` on
+`window.nyte`, which is the SDK plus host services like the terminal and the native browser.
+
+That bridge is the seam. Desktop backs it with Electron IPC to a host running in the main
+process. The web entry backs it with `createNyteClient`. Same app, two hosts. We drew the line
+there so the renderer can't reach the filesystem or credentials directly, and so the app runs in a
+browser without changes.
+
+To build your own editor, give the app a bridge and mount it:
+
+```tsx title="Mount the app"
 import { App } from "@nyte-ai/app";
 import { createRoot } from "react-dom/client";
 
 createRoot(container).render(<App appIcon={appIcon} />);
 ```
 
-Follow
+The bridge has to be installed before any module that reads it loads. Copy the order from
 [`packages/desktop/src/renderer/src/main.tsx`](https://github.com/interfaces-lab/nyte/blob/main/packages/desktop/src/renderer/src/main.tsx)
-and its bridge installation module for initialization order, fonts, styles, resource loading, and
-router startup. The web entry in
-[`packages/app/src/web/entry.tsx`](https://github.com/interfaces-lab/nyte/blob/main/packages/app/src/web/entry.tsx)
-installs a bridge backed by `createNyteClient` instead of Electron IPC.
+or the web entry at
+[`packages/app/src/web/entry.tsx`](https://github.com/interfaces-lab/nyte/blob/main/packages/app/src/web/entry.tsx).
+Both also handle fonts, styles, and router startup.
 
-The current workbench lives in `packages/app/src/workbench`:
+The workbench lives in `packages/app/src/workbench`:
 
 | Module                | Implementation                                                      |
 | --------------------- | ------------------------------------------------------------------- |
@@ -251,13 +267,19 @@ The current workbench lives in `packages/app/src/workbench`:
 | `file-editor.tsx`     | Editing using `@pierre/diffs`                                       |
 | `terminal-runtime.ts` | Terminal rendering using `ghostty-web`                              |
 
-Desktop supplies interactive PTYs through `@lydell/node-pty` and the optional host terminal service.
-HTTP clients need a separate interactive terminal backend.
+Reuse the whole app rather than single panels. The panels depend on the app's stores, queries,
+router, theme, and workers. The build setup for StyleX, source resolution, and WASM is in the app's
+own config. Desktop gets interactive terminals from `@lydell/node-pty`. An HTTP client has no
+terminal unless you provide a backend for one.
 
-Reuse the React app through its bridge. Individual workbench panels depend on app stores, queries,
-router, theme, and workers. Follow the app build configuration for StyleX, source resolution, and WASM.
+## Or extend what's already there
 
-## Current demos and reuse limits
+If you mostly like the TUI and want to change part of it, write a plugin instead. The TUI's
+rendering, transcript, and composer are internal. Through `@nyte-ai/plugin` you can add tools to
+sessions, listen to session events, show toasts, and render into the `session.composer.top` slot.
+That's far less code to own.
+
+## What there is to copy
 
 | Path                              | What runs                                                          |
 | --------------------------------- | ------------------------------------------------------------------ |
@@ -265,13 +287,13 @@ router, theme, and workers. Follow the app build configuration for StyleX, sourc
 | `packages/demo/server/vercel`     | PostgreSQL-backed chat host with durable Vercel Workflow execution |
 | `packages/demo/website`           | Static interface previews, not a live agent                        |
 
-The server demos are chat-only and have no workspace or interactive terminal backend. Their setup,
-credentials, and deployment requirements live in the
+The server demos are chat only, with no workspace or terminal. They're worth reading for one
+thing. Each shows a runner that isn't a long-lived process, which is the inbox design from the top
+of this page doing its job. Setup lives in the
 [Cloudflare guide](https://github.com/interfaces-lab/nyte/blob/main/packages/demo/server/cloudflare/README.md)
-and [Vercel guide](https://github.com/interfaces-lab/nyte/blob/main/packages/demo/server/vercel/README.md).
+and the [Vercel guide](https://github.com/interfaces-lab/nyte/blob/main/packages/demo/server/vercel/README.md).
 
-The shipped apps are the TUI and editor composition examples. `packages/demo` has no standalone
-starter for either.
+For a full app, the TUI and desktop are the examples. There's no separate starter for either.
 
 ## Related
 

@@ -45,7 +45,7 @@ export function HostStage({ hosts }: { hosts: Record<Host, ReactNode> }) {
   return (
     <Tabs.Root
       defaultValue="desktop"
-      className="relative overflow-hidden bg-(--panel) text-left text-foreground [--panel:color-mix(in_oklab,var(--color-foreground)_4%,var(--color-background))] after:pointer-events-none after:absolute after:inset-0 after:border after:border-border-subtle"
+      className="relative overflow-hidden bg-(--site-panel) text-left text-foreground after:pointer-events-none after:absolute after:inset-0 after:border after:border-border-subtle"
     >
       <div
         aria-hidden="true"
@@ -67,7 +67,7 @@ export function HostStage({ hosts }: { hosts: Record<Host, ReactNode> }) {
 
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-linear-to-t from-(--panel) from-30% to-transparent"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-linear-to-t from-(--site-panel) from-30% to-transparent"
       />
 
       <div className="absolute bottom-4 left-1/2 z-10 -translate-x-1/2 md:bottom-6">

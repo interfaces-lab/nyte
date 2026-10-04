@@ -1,17 +1,19 @@
 /**
- * The guide for one head: what the change does, in the order a reviewer
- * should read it. One band per section: the left third says what the part
- * does and lists its files; the right two thirds hold their diffs.
+ * The guide: the change told in the order a reviewer should read it. Each
+ * section is a band. Its story stays put on the left while its code scrolls
+ * past on the right, and code the story names links to the line that holds
+ * it: pointing at the name lights the line, clicking scrolls to it.
  *
- * A sticky index names every section with how much of it you have reviewed
- * and marks the one in view. While a brief is written, the status line says
- * so and core's own tool steps show what the reviewer is reading. A guide for
- * an earlier head stays up while the next one is written by interdiff.
+ * Files open as hunks. A deleted file, a long one and one you have reviewed
+ * start folded to their header, so a section reads in one screen. While a
+ * brief is written, the status line says so and core's own tool steps show
+ * what the reviewer reads. A guide for an earlier head stays up while the
+ * next one is written from the interdiff.
  */
 import { create, props } from "@stylexjs/stylex";
 import type { SelectedLineRange } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
-import { useRef, useState, type ReactElement } from "react";
+import { useRef, useState, type ReactElement, type ReactNode } from "react";
 import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
 import { FileTypeIcon } from "@nyte-ai/app/components/file-type-icon.tsx";
 import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
@@ -36,10 +38,14 @@ import {
 import { workspace } from "../shell/host-stub";
 import { useHeadTurns, useRetry, type ConversationTurn } from "./api";
 import { plural, sectionFiles } from "./files";
+import { linkProse, type LineTarget, type ProseSegment } from "./prose-links";
 import type { Brief, Guide, ReviewDetail } from "./wire";
 
-/** Files a section opens with; the rest start collapsed so a large section stays scannable. */
+/** Files a section opens with; the rest start folded so a large section stays scannable. */
 const OPEN_FILES = 3;
+
+/** Past this many changed lines a file starts folded; its header still counts them. */
+const LONG_DIFF = 240;
 
 const NO_LIVE_TOOLS = new Map();
 
@@ -54,6 +60,16 @@ export interface GuideFiles {
   readonly onReference: (reference: CodeReference) => void;
 }
 
+/** How the page around the guide follows it. */
+export interface GuideNavigation {
+  /** The section in view, reported as the guide scrolls. */
+  readonly onInView: (index: number) => void;
+  /** Each band as it mounts and unmounts, for the toolbar and the Overview to scroll to. */
+  readonly onBand: (index: number, node: HTMLElement | null) => void;
+}
+
+export const sectionNumber = (index: number): string => String(index + 1).padStart(2, "0");
+
 function lastStep(turns: readonly ConversationTurn[]): string | undefined {
   const part = turns
     .flatMap((turn) => turn.parts)
@@ -66,7 +82,7 @@ function lastStep(turns: readonly ConversationTurn[]): string | undefined {
   return part.class.kind === "custom" ? part.class.label : undefined;
 }
 
-function StatusLine({
+export function StatusLine({
   review,
   current,
   shown,
@@ -151,20 +167,42 @@ function StatusLine({
   );
 }
 
+const startsFolded = (file: ReviewFile, open: boolean, reviewed: boolean): boolean =>
+  !open ||
+  reviewed ||
+  file.metadata === undefined ||
+  file.metadata.type === "deleted" ||
+  file.added + file.removed > LONG_DIFF;
+
+/** Pierre draws each file in a shadow root; its rows carry the line number and the row type. */
+function lineRow(card: HTMLElement | undefined, target: LineTarget): Element | undefined {
+  const root = card?.querySelector("diffs-container")?.shadowRoot;
+
+  return (
+    root?.querySelector(`[data-line="${target.line}"][data-line-type="${target.row}"]`) ??
+    root?.querySelector(`[data-line="${target.line}"]`) ??
+    undefined
+  );
+}
+
 function FileCard({
   file,
-  open,
+  fallback,
   input,
+  lit,
   register,
+  onDrawn,
 }: {
   readonly file: ReviewFile;
-  readonly open: boolean;
+  readonly fallback: boolean;
   readonly input: GuideFiles;
+  readonly lit: LineTarget | undefined;
   readonly register: (path: string, node: HTMLDivElement | null) => void;
+  /** Pierre finished drawing: a line waiting to be scrolled to can be found now. */
+  readonly onDrawn: (path: string) => void;
 }): ReactElement {
   const options = usePierreOptions("unified");
   const selection = useRef<SelectedLineRange | null>(null);
-  const fallback = !open || file.metadata === undefined || input.reviewed(file.path) === "reviewed";
   const collapsed = input.collapsed(file.path, fallback);
 
   return (
@@ -186,12 +224,16 @@ function FileCard({
         ) : (
           <FileDiff
             fileDiff={file.metadata}
+            selectedLines={
+              lit?.path === file.path ? { start: lit.line, end: lit.line, side: lit.side } : null
+            }
             options={{
               ...options,
               disableFileHeader: true,
               onLineSelectionEnd: (range) => {
                 selection.current = range;
               },
+              onPostRender: () => onDrawn(file.path),
             }}
             renderGutterUtility={(hovered) => (
               <AddToChat
@@ -215,12 +257,69 @@ function FileCard({
   );
 }
 
+/** One run of a section's story: words, or a name that points into the code beside it. */
+function Segment({
+  segment,
+  lit,
+  onPoint,
+  onShowLine,
+  onShowFile,
+}: {
+  readonly segment: ProseSegment;
+  readonly lit: LineTarget | undefined;
+  readonly onPoint: (target: LineTarget | undefined) => void;
+  readonly onShowLine: (target: LineTarget) => void;
+  readonly onShowFile: (path: string) => void;
+}): ReactNode {
+  if (segment.kind === "text") return segment.text;
+
+  if (segment.kind === "file")
+    return (
+      <button
+        type="button"
+        title={segment.path}
+        onClick={() => onShowFile(segment.path)}
+        {...props(styles.link)}
+      >
+        {segment.text}
+      </button>
+    );
+
+  const { target } = segment;
+
+  if (target === undefined) return <code {...props(styles.code)}>{segment.text}</code>;
+
+  const on =
+    lit !== undefined &&
+    lit.path === target.path &&
+    lit.line === target.line &&
+    lit.side === target.side;
+
+  return (
+    <button
+      type="button"
+      title={`${target.path}:${target.line}`}
+      aria-pressed={on}
+      onPointerEnter={() => onPoint(target)}
+      onPointerLeave={() => onPoint(undefined)}
+      onFocus={() => onPoint(target)}
+      onBlur={() => onPoint(undefined)}
+      onClick={() => onShowLine(target)}
+      {...props(styles.link, styles.code, on && styles.linkLit)}
+    >
+      {segment.text}
+    </button>
+  );
+}
+
 export function ReviewGuide({
   review,
   current,
   shown,
   version,
   input,
+  header,
+  navigation,
   onAsk,
 }: {
   readonly review: ReviewDetail;
@@ -228,169 +327,204 @@ export function ReviewGuide({
   readonly shown: (Brief & { readonly guide: Guide }) | undefined;
   readonly version: number;
   readonly input: GuideFiles;
+  /** The pull request's title block, above the guide's status. */
+  readonly header: ReactNode;
+  readonly navigation: GuideNavigation;
   readonly onAsk: (section: string) => void;
 }): ReactElement {
   const cards = useRef(new Map<string, HTMLDivElement>());
   const bands = useRef(new Map<number, HTMLElement>());
-  const [inView, setInView] = useState(0);
-
-  const register = (path: string, node: HTMLDivElement | null): void => {
-    if (node === null) cards.current.delete(path);
-    else cards.current.set(path, node);
-  };
-
-  const reveal = (path: string): void =>
-    cards.current.get(path)?.scrollIntoView({ block: "start", behavior: "smooth" });
+  const waiting = useRef<LineTarget | undefined>(undefined);
+  const inView = useRef(0);
+  const [pointed, setPointed] = useState<LineTarget | undefined>(undefined);
+  const [pinned, setPinned] = useState<LineTarget | undefined>(undefined);
+  const lit = pointed ?? pinned;
 
   const sections = (shown?.guide.sections ?? []).map((section, index) => ({
     section,
     index,
-    id: `section-${index + 1}`,
+    id: `${review.id}-section-${index + 1}`,
     files: sectionFiles(section, input.files),
   }));
 
-  const total = String(sections.length).padStart(2, "0");
-  const added = input.files.reduce((sum, file) => sum + file.added, 0);
-  const removed = input.files.reduce((sum, file) => sum + file.removed, 0);
+  const fallbacks = new Map(
+    sections.flatMap(({ files }) =>
+      files.map((file, position): [string, boolean] => [
+        file.path,
+        startsFolded(file, position < OPEN_FILES, input.reviewed(file.path) === "reviewed"),
+      ]),
+    ),
+  );
 
-  /** The section in view is the last one whose band has reached the line under the sticky index. */
+  const unfold = (path: string): boolean => {
+    const fallback = fallbacks.get(path) ?? false;
+
+    if (!input.collapsed(path, fallback)) return false;
+
+    input.onToggle(path, fallback);
+
+    return true;
+  };
+
+  const showFile = (path: string): void => {
+    unfold(path);
+    cards.current.get(path)?.scrollIntoView({ block: "start", behavior: "smooth" });
+  };
+
+  const showLine = (target: LineTarget): void => {
+    setPinned(target);
+
+    const row = unfold(target.path) ? undefined : lineRow(cards.current.get(target.path), target);
+
+    if (row !== undefined) {
+      row.scrollIntoView({ block: "center", behavior: "smooth" });
+
+      return;
+    }
+
+    // Folded or still drawing: Pierre's next draw scrolls to it.
+    waiting.current = target;
+    cards.current.get(target.path)?.scrollIntoView({ block: "start", behavior: "smooth" });
+  };
+
+  const drawn = (path: string): void => {
+    const target = waiting.current;
+
+    if (target?.path !== path) return;
+
+    const found = lineRow(cards.current.get(path), target);
+
+    if (found === undefined) return;
+
+    waiting.current = undefined;
+    found.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
+
+  /** The section in view is the last band whose top has passed the upper third. */
   const follow = (scroller: HTMLElement): void => {
-    const line = scroller.getBoundingClientRect().top + 96;
-    let current = 0;
+    const box = scroller.getBoundingClientRect();
+    const line = box.top + box.height / 3;
+    let reached = 0;
 
     for (const [index, node] of bands.current)
-      if (node.getBoundingClientRect().top <= line) current = Math.max(current, index);
+      if (node.getBoundingClientRect().top <= line) reached = Math.max(reached, index);
 
-    if (current !== inView) setInView(current);
+    if (reached === inView.current) return;
+
+    inView.current = reached;
+    navigation.onInView(reached);
   };
 
   return (
     <PierreWorkerProvider>
-      <div onScroll={(event) => follow(event.currentTarget)} {...props(styles.scroll)}>
-        <header {...props(styles.intro)}>
-          <h1 {...props(styles.title)}>{review.title}</h1>
-          <p {...props(styles.meta)}>
-            <span {...props(styles.refs)}>
-              <span translate="no">{review.baseRef}</span>
-              <span aria-hidden="true" {...props(styles.arrow)}>
-                ←
-              </span>
-              <span translate="no">{review.headRef}</span>
-            </span>
-            <span aria-hidden="true">·</span>
-            <span>{plural(review.commits.length, "commit", "commits")}</span>
-            <span aria-hidden="true">·</span>
-            <span>{plural(review.files.length, "file", "files")}</span>
-            <span {...props(styles.counts)}>
-              <span {...props([intent.success, styles.added])}>+{added}</span>
-              <span {...props([intent.danger, styles.removed])}>−{removed}</span>
-            </span>
-          </p>
+      <div
+        onScroll={(event) => follow(event.currentTarget)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setPinned(undefined);
+        }}
+        {...props(styles.scroll)}
+      >
+        <div {...props(styles.top)}>
+          {header}
           <StatusLine review={review} current={current} shown={shown} version={version} />
-        </header>
-        {sections.length > 0 && (
-          <nav aria-label="Guide sections" {...props(styles.index)}>
-            <ol {...props(styles.indexList)}>
-              {sections.map(({ section, index, id, files }) => {
-                const done = files.filter(
-                  (file) => input.reviewed(file.path) === "reviewed",
-                ).length;
+        </div>
+        {sections.map(({ section, index, id, files }) => {
+          const done = files.filter((file) => input.reviewed(file.path) === "reviewed").length;
 
-                return (
-                  <li key={id}>
-                    <a
-                      href={`#${id}`}
-                      aria-current={index === inView ? "location" : undefined}
-                      {...props(styles.indexLink)}
-                    >
-                      <span {...props(styles.indexNumber)}>
-                        {String(index + 1).padStart(2, "0")}
-                      </span>
-                      <span {...props(styles.indexTitle)}>{section.title}</span>
-                      <span
-                        aria-label={`${done} of ${files.length} files reviewed`}
-                        {...props(styles.indexCount, done === files.length && styles.indexDone)}
-                      >
-                        {done === files.length ? (
-                          <Icon name="checkmark" size={12} />
-                        ) : (
-                          `${done}/${files.length}`
-                        )}
-                      </span>
-                    </a>
-                  </li>
-                );
-              })}
-            </ol>
-          </nav>
-        )}
-        {sections.map(({ section, index, id, files }) => (
-          <section
-            key={id}
-            id={id}
-            ref={(node) => {
-              if (node === null) bands.current.delete(index);
-              else bands.current.set(index, node);
-            }}
-            aria-labelledby={`${id}-title`}
-            {...props(styles.band)}
-          >
-            <div {...props(styles.story)}>
-              <span {...props(styles.counter)}>
-                <span {...props(styles.counterNow)}>{String(index + 1).padStart(2, "0")}</span> /{" "}
-                {total}
-              </span>
-              <h2 id={`${id}-title`} {...props(styles.sectionTitle)}>
-                {section.title}
-              </h2>
-              <p {...props(styles.explanation)}>{section.explanation}</p>
-              <ul aria-label={`Files in ${section.title}`} {...props(styles.fileList)}>
-                {files.map((file) => {
-                  const name = file.path.split("/").at(-1) ?? file.path;
+          return (
+            <section
+              key={id}
+              id={id}
+              ref={(node) => {
+                if (node === null) bands.current.delete(index);
+                else bands.current.set(index, node);
 
-                  return (
-                    <li key={file.path}>
-                      <button
-                        type="button"
-                        title={file.path}
-                        onClick={() => reveal(file.path)}
-                        {...props(styles.fileRow)}
-                      >
-                        <FileTypeIcon path={file.path} />
-                        <span {...props(styles.fileName)}>{name}</span>
-                        <Counts file={file} />
-                        <span {...props(intent.primary, styles.check)}>
-                          {input.reviewed(file.path) === "reviewed" && (
-                            <Icon name="checkmark" size={14} label="Reviewed" />
-                          )}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-              <Button
-                variant="ghost"
-                icon="bubble-question"
-                xstyle={styles.ask}
-                onClick={() => onAsk(section.title)}
-              >
-                Ask about this section
-              </Button>
-            </div>
-            <div {...props(styles.cards)}>
-              {files.map((file, position) => (
-                <FileCard
-                  key={file.path}
-                  file={file}
-                  open={position < OPEN_FILES}
-                  input={input}
-                  register={register}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
+                navigation.onBand(index, node);
+              }}
+              aria-labelledby={`${id}-title`}
+              {...props(styles.band)}
+            >
+              <div {...props(styles.story)}>
+                <p {...props(styles.eyebrow)}>
+                  <span {...props(styles.eyebrowNumber)}>{sectionNumber(index)}</span>
+                  <span>of {sectionNumber(sections.length - 1)}</span>
+                  {done === files.length && (
+                    <span {...props(styles.eyebrowDone)}>
+                      <Icon name="checkmark" size={12} /> Reviewed
+                    </span>
+                  )}
+                </p>
+                <h2 id={`${id}-title`} {...props(styles.sectionTitle)}>
+                  {section.title}
+                </h2>
+                <p {...props(styles.explanation)}>
+                  {linkProse(section.explanation, files).map((segment, position) => (
+                    <Segment
+                      key={`${position}:${segment.text}`}
+                      segment={segment}
+                      lit={lit}
+                      onPoint={setPointed}
+                      onShowLine={showLine}
+                      onShowFile={showFile}
+                    />
+                  ))}
+                </p>
+                <ul aria-label={`Files in ${section.title}`} {...props(styles.fileList)}>
+                  {files.map((file) => {
+                    const name = file.path.split("/").at(-1) ?? file.path;
+
+                    return (
+                      <li key={file.path}>
+                        <button
+                          type="button"
+                          title={file.path}
+                          onClick={() => showFile(file.path)}
+                          {...props(styles.fileRow)}
+                        >
+                          <FileTypeIcon path={file.path} />
+                          <span {...props(styles.fileName)}>{name}</span>
+                          <span {...props(styles.fileDirectory)}>
+                            {file.path.slice(0, file.path.length - name.length)}
+                          </span>
+                          <Counts file={file} />
+                          <span {...props(intent.primary, styles.check)}>
+                            {input.reviewed(file.path) === "reviewed" && (
+                              <Icon name="checkmark" size={14} label="Reviewed" />
+                            )}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <Button
+                  variant="ghost"
+                  icon="bubble-question"
+                  xstyle={styles.ask}
+                  onClick={() => onAsk(section.title)}
+                >
+                  Ask about this section
+                </Button>
+              </div>
+              <div {...props(styles.cards)}>
+                {files.map((file) => (
+                  <FileCard
+                    key={file.path}
+                    file={file}
+                    fallback={fallbacks.get(file.path) ?? false}
+                    input={input}
+                    lit={lit}
+                    register={(path, node) => {
+                      if (node === null) cards.current.delete(path);
+                      else cards.current.set(path, node);
+                    }}
+                    onDrawn={drawn}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
     </PierreWorkerProvider>
   );
@@ -402,49 +536,10 @@ const styles = create({
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    paddingInline: 28,
+    paddingInline: 32,
     paddingBlockEnd: 96,
-    scrollPaddingBlockStart: 64,
   },
-  intro: { display: "flex", flexDirection: "column", gap: 8, paddingBlock: "20px 24px" },
-  title: {
-    margin: 0,
-    maxWidth: "56ch",
-    color: role.contentPrimary,
-    fontSize: type.font2xl,
-    lineHeight: 1.2,
-    fontWeight: 600,
-    letterSpacing: type.letterLg,
-    textWrap: "balance",
-  },
-  meta: {
-    display: "flex",
-    flexWrap: "wrap",
-    alignItems: "center",
-    columnGap: 6,
-    rowGap: 2,
-    margin: 0,
-    color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-  },
-  refs: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    fontFamily: type.fontMono,
-    fontSize: type.fontXs,
-  },
-  arrow: { color: role.contentDisabled },
-  counts: {
-    display: "inline-flex",
-    gap: 6,
-    fontFamily: type.fontMono,
-    fontSize: type.fontXs,
-    fontVariantNumeric: "tabular-nums",
-  },
-  added: { color: role.contentSecondary },
-  removed: { color: role.contentSecondary },
+  top: { display: "flex", flexDirection: "column", gap: 4, paddingBlock: "28px 8px" },
   writing: { display: "flex", flexDirection: "column", gap: 8 },
   status: {
     display: "flex",
@@ -468,113 +563,95 @@ const styles = create({
     overflowWrap: "anywhere",
   },
   steps: { paddingInline: 12 },
-  index: {
-    position: "sticky",
-    top: 0,
-    zIndex: 2,
-    marginInline: -28,
-    paddingInline: 28,
-    paddingBlock: 8,
-    marginBlockEnd: 24,
-    backgroundColor: role.bgBase,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
-  },
-  indexList: {
-    display: "flex",
-    gap: 4,
-    margin: 0,
-    padding: 0,
-    overflowX: "auto",
-    listStyle: "none",
-    scrollbarWidth: "none",
-  },
-  indexLink: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    height: row.heightMd,
-    paddingInline: 10,
-    borderRadius: radius.control,
-    color: {
-      default: role.contentSecondary,
-      ":hover": role.contentPrimary,
-      "[aria-current]": role.contentPrimary,
-    },
-    backgroundColor: {
-      default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
-      "[aria-current]": role.bgInteractiveSecondaryTranslucent,
-    },
-    boxShadow: { default: "none", "[aria-current]": `inset 0 0 0 1px ${role.borderPrimary}` },
-    fontSize: type.fontSm,
-    textDecoration: "none",
-    whiteSpace: "nowrap",
-  },
-  indexNumber: {
-    color: role.contentSecondary,
-    fontFamily: type.fontMono,
-    fontSize: type.fontXs,
-    fontVariantNumeric: "tabular-nums",
-  },
-  indexTitle: { color: "inherit", fontWeight: 500 },
-  indexCount: {
-    display: "inline-grid",
-    placeItems: "center",
-    minWidth: glyph.md,
-    color: role.contentSecondary,
-    fontFamily: type.fontMono,
-    fontSize: type.fontXs,
-    fontVariantNumeric: "tabular-nums",
-  },
-  indexDone: { color: role.contentSecondary },
   band: {
     display: "grid",
-    gridTemplateColumns: "minmax(220px, 1fr) minmax(0, 2fr)",
-    columnGap: 32,
+    gridTemplateColumns: "minmax(260px, 5fr) minmax(0, 8fr)",
+    columnGap: 40,
     alignItems: "start",
-    paddingBlockEnd: 72,
-    scrollMarginBlockStart: 64,
-    "@container (max-width: 760px)": { gridTemplateColumns: "minmax(0, 1fr)", rowGap: 16 },
+    paddingBlock: "32px 48px",
+    borderTopWidth: 1,
+    borderTopStyle: "solid",
+    borderTopColor: role.borderSecondaryTranslucent,
+    scrollMarginBlockStart: 8,
+    "@container (max-width: 820px)": { gridTemplateColumns: "minmax(0, 1fr)", rowGap: 20 },
   },
+  // The story stays beside its code while the code scrolls.
   story: {
-    position: "sticky",
-    top: 64,
+    position: { default: "sticky", "@container (max-width: 820px)": "static" },
+    top: 24,
     display: "flex",
     flexDirection: "column",
     alignItems: "flex-start",
     minWidth: 0,
-    paddingBlockStart: 12,
   },
-  counter: {
+  eyebrow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    margin: 0,
     color: role.contentSecondary,
     fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
     fontVariantNumeric: "tabular-nums",
   },
-  counterNow: { color: role.contentPrimary },
+  eyebrowNumber: { color: role.contentPrimary, fontWeight: 500 },
+  eyebrowDone: { display: "inline-flex", alignItems: "center", gap: 4, marginInlineStart: 6 },
   sectionTitle: {
-    marginBlock: "10px 0",
+    marginBlock: "8px 0",
     color: role.contentPrimary,
     fontSize: type.fontLg,
     lineHeight: type.leadingLg,
     fontWeight: 600,
+    letterSpacing: type.letterLg,
     textWrap: "balance",
   },
+  // The story is the page's reading text: the size and colour of prose, not of a caption.
   explanation: {
-    marginBlock: "12px 0",
-    maxWidth: "60ch",
-    color: role.contentSecondary,
-    fontSize: type.fontBase,
-    lineHeight: 1.6,
+    marginBlock: "6px 0",
+    maxWidth: "62ch",
+    color: role.contentPrimary,
+    fontSize: type.fontLg,
+    lineHeight: type.leadingLg,
+    letterSpacing: type.letterLg,
     textWrap: "pretty",
+  },
+  code: {
+    fontFamily: type.fontMono,
+    fontSize: type.fontBase,
+    overflowWrap: "anywhere",
+  },
+  link: {
+    display: "inline",
+    margin: 0,
+    paddingInline: 2,
+    marginInline: -2,
+    borderStyle: "none",
+    borderRadius: radius.indicator,
+    backgroundColor: {
+      default: "transparent",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
+      ":focus-visible": role.bgHover,
+    },
+    color: "inherit",
+    font: "inherit",
+    textAlign: "inherit",
+    textDecorationLine: "underline",
+    textDecorationStyle: "dotted",
+    textDecorationColor: role.contentSecondary,
+    textDecorationThickness: 1,
+    textUnderlineOffset: 3,
+    cursor: appearance.cursorInteractive,
+  },
+  linkLit: {
+    backgroundColor: role.bgInteractiveSecondaryTranslucent,
+    textDecorationColor: role.contentPrimary,
   },
   fileList: {
     display: "flex",
     flexDirection: "column",
     alignSelf: "stretch",
-    gap: 6,
-    margin: "24px 0 0",
+    gap: 4,
+    margin: "20px 0 0",
     padding: 0,
     listStyle: "none",
   },
@@ -591,18 +668,18 @@ const styles = create({
       default: role.bgMutedTranslucent,
       ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
     },
-    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
     color: role.contentPrimary,
     font: "inherit",
     fontSize: type.fontSm,
     textAlign: "start",
     cursor: appearance.cursorInteractive,
   },
-  fileName: {
+  fileName: { flexShrink: 0, maxWidth: "60%", overflow: "hidden", fontWeight: 500, textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  fileDirectory: {
     flex: 1,
     minWidth: 0,
     overflow: "hidden",
-    fontWeight: 500,
+    color: role.contentSecondary,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
@@ -620,7 +697,7 @@ const styles = create({
     borderRadius: radius.card,
     backgroundColor: role.bgBase,
     boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
-    scrollMarginBlockStart: 64,
+    scrollMarginBlockStart: 16,
   },
   undrawn: {
     display: "flex",

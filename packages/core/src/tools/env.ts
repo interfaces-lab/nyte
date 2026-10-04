@@ -13,8 +13,6 @@ import {
   getShellConfig,
   getShellEnv,
   killProcessTree,
-  trackDetachedChildPid,
-  untrackDetachedChildPid,
   waitForChildProcess,
 } from "./support/shell.ts";
 
@@ -159,7 +157,6 @@ export function localOps(cwd: string): EnvOps {
         child.stdin?.end(command);
       }
 
-      if (child.pid) trackDetachedChildPid(child.pid);
       let stop: ToolError<undefined> | undefined;
       let timeoutHandle: NodeJS.Timeout | undefined;
 
@@ -198,8 +195,6 @@ export function localOps(cwd: string): EnvOps {
           exitCode: exitCode ?? (signalCode ? 128 + (constants.signals[signalCode] ?? 0) : 1),
         };
       } finally {
-        if (child.pid) untrackDetachedChildPid(child.pid);
-
         if (timeoutHandle) clearTimeout(timeoutHandle);
 
         if (signal) signal.removeEventListener("abort", onAbort);

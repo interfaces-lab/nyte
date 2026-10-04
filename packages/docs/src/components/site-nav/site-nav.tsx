@@ -5,9 +5,8 @@ import { SiteNavSections } from "~/components/site-nav/sections";
 import { ThemeToggle } from "~/components/site-nav/theme-toggle";
 import { cloudNavGroups } from "~/lib/cloud-nav";
 import { docsNavGroups } from "~/lib/docs-nav";
-import { gitConfig } from "~/lib/shared";
-
-const githubHref = `https://github.com/${gitConfig.user}/${gitConfig.repo}`;
+import { kernelNavGroups } from "~/lib/kernel-nav";
+import { githubUrl } from "~/lib/shared";
 
 /*
  * Same bar on landing, /docs, and /cloud. Family metrics from the HTML
@@ -32,12 +31,17 @@ export function SiteNav() {
           <NyteWordmark size={18} />
         </a>
 
-        <SiteNavSections githubHref={githubHref} />
+        <SiteNavSections githubHref={githubUrl} />
 
         <div className="flex items-center gap-2 justify-self-end">
           <ThemeToggle />
           <SiteSearch />
-          <SiteMobileNav cloud={cloudNavGroups()} docs={docsNavGroups()} githubHref={githubHref} />
+          <SiteMobileNav
+            cloud={cloudNavGroups()}
+            docs={docsNavGroups()}
+            kernel={kernelNavGroups()}
+            githubHref={githubUrl}
+          />
         </div>
       </div>
     </header>

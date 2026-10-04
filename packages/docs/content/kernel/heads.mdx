@@ -1,0 +1,41 @@
+---
+title: "Heads"
+---
+
+A head is a name. `heads.move` defaults it to `main`; the other calls require one, and none takes the head lease. A parent or head the session does not list answers `unknown_parent` or `not_found`. `heads.delete` answers `busy` while the head lease is live, and the SDK throws for `main`.
+
+<Table
+  head={["Call", "One CAS", "Answers"]}
+  rows={[
+    [
+      <C key="0">heads.create</C>,
+      "Writes the head at the parent's tip and its stack. From a commit, the head alone.",
+      <Codes key="2" items={["created", "exists", "unknown_parent"]} />,
+    ],
+    [
+      <C key="0">heads.move</C>,
+      "Moves the head from the tip the call read.",
+      <Codes key="2" items={["moved", "moved_since", "not_found", "busy", "failed"]} />,
+    ],
+    [
+      <C key="0">heads.delete</C>,
+      "Deletes the head, its stack, both inbox deliveries and its run ref.",
+      <Codes key="2" items={["deleted", "not_found", "busy"]} />,
+    ],
+    [
+      <C key="0">heads.merge</C>,
+      "Moves the parent to the child's tip and the stack's base to the same tip.",
+      <Codes key="2" items={["merged", "stale", "empty", "no_stack"]} />,
+    ],
+  ]}
+/>
+
+## Moving a head
+
+`heads.move` runs these checks in order, and the CAS at the end decides. If `expect` is set and the tip differs, the call answers `moved_since`. A run in any phase but `done`, `failed` or `aborted` answers `busy`, a parked run included. A target that is not a commit answers `not_found`. A message that lands between the checks and the CAS moves the tip, so the move answers `moved_since`.
+
+A user message target lands on its parent and comes back as `restored`, so the client can refill the composer. With `summary`, a model call writes one `summary` commit over the abandoned commits, parented on the landing target, and the head moves to it. With nothing abandoned the move stays plain. A failed call answers `failed` and leaves the head put.
+
+## Stacks
+
+A stack holds the parent's name and a `base`, the parent's tip when the head was cut. A stacked head is stale when `base` differs from the parent's tip, and `heads.list` reports it. `heads.merge` answers `no_stack` without a stack, `stale` for a stale one, and `empty` when the child has no commit past `base`. It never answers `busy`. A run live on the parent loses its next publish and ends `aborted` with reason `superseded`.

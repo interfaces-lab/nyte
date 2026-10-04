@@ -85,6 +85,37 @@ environment. Shell-only GitHub tokens and configuration overrides do not carry o
 Set `NYTE_OTEL_ENDPOINT` in the launch environment to enable OTLP export. GitHub commands emit
 `desktop.github.command` spans with only an allowlisted operation, outcome, exit code, and duration.
 
+## Tabs
+
+Each window keeps a strip of tabs in the titlebar. A tab is a saved place: a chat, a new chat, a
+split of two, or a full-tab page such as Customize or Environments. Settings covers the window and
+hides the strip. The web app has no tabs; its URL and browser history work as before.
+
+A sidebar click opens the place in the focused pane of the current tab. Cmd+click or middle-click
+opens a background tab; Cmd+Shift+click opens a tab and switches to it. New Chat opens a new tab
+in the current folder. The sidebar's grouping and filters don't affect tabs.
+
+Back and Forward are per tab. They walk the focused pane's history first, then the views the tab
+moved between. A pinned tab stays on its place at the front of the strip: anything opened from it
+lands in a new tab, and it can't split or go back. When the active tab closes, the next unpinned
+tab to the right takes over, then the one to the left; with none left, a new chat opens. The
+workbench follows the focused chat's folder. A window keeps its tabs across a reload, and the first
+window after a restart restores the last focused window's tabs.
+
+| Keys                         | Action                   |
+| ---------------------------- | ------------------------ |
+| Cmd+T, Cmd+N                 | New chat tab             |
+| Cmd+W                        | Close tab                |
+| Cmd+Shift+W                  | Close window             |
+| Cmd+Shift+T                  | Reopen a closed tab      |
+| Cmd+1 to Cmd+9               | Go to tab 1 to 9         |
+| Ctrl+Tab, Cmd+Option+→       | Next tab                 |
+| Ctrl+Shift+Tab, Cmd+Option+← | Previous tab             |
+| Cmd+[, Cmd+]                 | Back, forward in the tab |
+
+Drag a tab or a workbench tab to reorder it. Drag a file or folder from the file tree onto the
+composer to mention it.
+
 ## Related
 
 <Cards>

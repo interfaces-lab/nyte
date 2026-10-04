@@ -1,0 +1,59 @@
+---
+title: "Runner"
+---
+
+import { EXCERPTS } from "~/components/mdx/kernel/excerpts";
+
+A host keeps one loop per attached session. The loop never polls. It watches the store's event log and wakes the head that a heads, inbox, runs or effects ref belongs to.
+
+<Sketch
+              title="loop and wake, sdk/runner.ts"
+              code={`async function loop() {
+  const watching = session.events.watch({ afterSeq: await session.events.last() });
+
+// A head may hold pending changes from before this host started.
+for (const { head } of await listSessionHeads(session)) wake(head);
+
+// A heads, inbox, runs or effects ref names the head to wake.
+for await (const event of watching) {
+if (event.kind === "ref") await handleRef(event);
+}
+}
+
+function wake(head: HeadName) {
+state.dirty = true;
+if (state.running) return; // the running pass will see dirty
+
+state.running = (async () => {
+while (state.dirty) {
+state.dirty = false;
+const outcome = await drive(session, turn, optionsFor(head, signal));
+
+      if (outcome.kind === "busy") {
+        // Lease expiry writes no event: look again when the holder's lease lapses, at least 250 ms out.
+        driveAt(head, Math.max(outcome.holder.expiresAt, Date.now() + BUSY_RETRY_MIN_MS));
+        return;
+      }
+
+      if (outcome.kind === "waiting") {
+        await jobs.recheck(outcome.run.id);
+        await delegation.recheck(outcome.run.id);
+
+        // A timer that calls wake at the nearest parked deadline.
+        if (outcome.until !== undefined) driveAt(head, outcome.until);
+      }
+    }
+
+})();
+}`}
+/>
+
+A ref event during a drive only marks the head. That is how a `next` message queued mid-run lands after the run ends.
+
+<Source title="drive" excerpt={EXCERPTS.drive} />
+
+`drive` holds one lease for as many steps as the head needs. It renews before each step and lets go when a step answers anything but `continue` or `retry`. During a provider or tool call, `withLeaseRenewal` renews every 10 s, and a failed renewal aborts the call.
+
+## Who volunteers
+
+`nyte.attach()` volunteers this process for every session in the store, and `attach({ sessions })` names some. A named session also covers the children it delegates to. A client that never attaches only queues. Before each step, and before `prepare`, `respond` and `tools`, a runner checks that its environment still acts where `refs/workspace` says. If another host moved the tree, the step throws and the session runs again once its new workspace opens here.

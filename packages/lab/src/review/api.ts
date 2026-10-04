@@ -339,3 +339,15 @@ export function useSideChat(review: ReviewDetail, version: number): readonly Cha
 
   return data ?? [];
 }
+
+/**
+ * A review and how many core events have touched it, with both of its
+ * sessions watched: the reviewer's and Nyte's. Every surface showing the same
+ * review shares the same streams, because the queries share their keys.
+ */
+export function useLiveReview(id: string | undefined) {
+  const sessions = useSessions(id);
+  const version = useCoreEvents(sessions?.sessionId) + useCoreEvents(sessions?.authorSessionId);
+
+  return { review: useReview(id, version), version };
+}

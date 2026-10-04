@@ -183,8 +183,7 @@ export function usePaneActions(): PaneActions {
         navigateToActive(controller.selectSessionInPane(paneId, sessionId));
       },
       split(direction) {
-        if (activeTabPinned() || !canSplitPane(controller.getSnapshot().layout, windowWidth()))
-          return;
+        if (!canSplitPane(controller.getSnapshot().layout, windowWidth())) return;
         navigateToActive(controller.split(direction));
       },
       close(paneId) {

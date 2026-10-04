@@ -431,6 +431,7 @@ export function reduce(
 
       return openInTab(state, action.place, action.target !== "background", createId);
     }
+
     case "layout":
       return reduceLayout(state, action.action, action.layout, createId);
     case "page-section": {
@@ -444,6 +445,7 @@ export function reduce(
         withView(tab, { kind: "page", page: { ...view.page, section: action.section } }),
       );
     }
+
     case "leave-page": {
       const tab = activeTab(state);
 
@@ -457,6 +459,7 @@ export function reduce(
 
       return withTab(state, pushView(tab, covered));
     }
+
     case "new-tab":
       return insertTab(state, newTab(createId(), BLANK), state.tabs.length, true);
     case "close-tab":
@@ -485,6 +488,7 @@ export function reduce(
         createId,
       );
     }
+
     case "toggle-pin":
       return {
         ...state,
@@ -507,6 +511,7 @@ export function reduce(
         true,
       );
     }
+
     case "reopen-tab": {
       const [last, ...rest] = state.closed;
 
@@ -521,6 +526,7 @@ export function reduce(
         closed: rest,
       };
     }
+
     case "activate-tab":
       return state.activeTabId !== action.tabId && state.tabs.some((tab) => tab.id === action.tabId)
         ? { ...state, activeTabId: action.tabId }
@@ -533,6 +539,7 @@ export function reduce(
         ? state
         : { ...state, activeTabId: tab.id };
     }
+
     case "cycle-tab": {
       const index = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
       const tab = state.tabs[(index + action.step + state.tabs.length) % state.tabs.length];
@@ -541,17 +548,20 @@ export function reduce(
         ? state
         : { ...state, activeTabId: tab.id };
     }
+
     case "reorder": {
       const tabs = action.tabIds.flatMap((id) => state.tabs.filter((tab) => tab.id === id));
 
       return tabs.length === state.tabs.length ? { ...state, tabs: pinnedFirst(tabs) } : state;
     }
+
     case "travel": {
       const tab = activeTab(state);
       const next = tab.pinned ? undefined : travelTab(tab, action.step);
 
       return next === undefined ? state : withTab(state, next);
     }
+
     default: {
       const _exhaustive: never = action;
 

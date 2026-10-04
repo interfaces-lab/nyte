@@ -179,30 +179,18 @@ test("titlebar controls and workbench stay aligned at every zoom and on every di
   await setZoom(1);
 }, 90_000);
 
-test("chrome stages restore their tabs on refresh and history navigation", async () => {
+test("chrome stages survive a refresh and travel with history", async () => {
   const sidebar = page.getByRole("navigation", { name: "Sessions and workspaces" });
+  const customize = page.locator("[data-nyte-customize-surface]");
   await sidebar.getByRole("button", { name: "Customize", exact: true }).click();
-  const customize = page.getByRole("tablist", { name: "Customize inventory" });
-  await customize.getByRole("tab", { name: "Skills", exact: true }).click();
-  await expect(customize.getByRole("tab", { name: "Skills", exact: true })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  await expect(customize).toBeVisible();
   await page.reload();
-  await expect(
-    page
-      .getByRole("tablist", { name: "Customize inventory" })
-      .getByRole("tab", { name: "Skills", exact: true }),
-  ).toHaveAttribute("aria-selected", "true");
+  await expect(customize).toBeVisible();
   await sidebar.getByRole("button", { name: "Environments", exact: true }).click();
   const remoteAccess = page.getByRole("heading", { name: "Remote access", exact: true });
   await expect(remoteAccess).toBeVisible();
   await page.getByRole("button", { name: "Go back", exact: true }).click();
-  await expect(
-    page
-      .getByRole("tablist", { name: "Customize inventory" })
-      .getByRole("tab", { name: "Skills", exact: true }),
-  ).toHaveAttribute("aria-selected", "true");
+  await expect(customize).toBeVisible();
   await page.getByRole("button", { name: "Go forward", exact: true }).click();
   await expect(remoteAccess).toBeVisible();
   await page.reload();

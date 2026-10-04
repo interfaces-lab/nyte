@@ -1,0 +1,33 @@
+---
+title: "Admission"
+---
+
+import { ADMISSION } from "~/components/mdx/kernel/data";
+
+Admission decides what queued input may land, and whether it may start model work. User input starts a run. So does a delegate's answer to a request its run authorized, unless that run was stopped or failed.
+
+<Sketch
+              title="land, step.ts"
+              code={`// Pending is (base, tip], minus anything with a refs/cancelled/* tombstone.
+const queued = await pendingIn(session, { head, delivery });
+
+// At a boundary that owes an answer, only leading answers and reports.
+// Otherwise drain "one" takes everything through the first user change.
+const batch = atBoundary
+? boundaryBatch(queued, drain, awaitingAnswer)
+: nextBatch(queued, drain);
+
+const decision = decide(headFor(run), await leadFor(session, batch), agentChanged(run, batch));`}
+/>
+
+<Table
+  head={["Head \\ lead", "none", "user", "passive", "report", "authorized answer", "other answer"]}
+  nowrap={[0, 1, 2, 3, 4, 5, 6]}
+  rows={ADMISSION.map(([head, ...cells]) => [<C key="0">{head}</C>, ...cells])}
+/>
+
+- `fresh` has no run and `idle` has a terminal one. `live` is any other phase, and `settling` is live with `abortRequested`. A live head is decided only at a `respond` boundary.
+- The lead is the batch's first `user` change or authorized `answer`. Without one it is `passive` when any change in the batch is passive, and otherwise the first `report` or unauthorized `answer`.
+- `join*` becomes `handoff` when the batch names another agent. Handoff ends the run `done` and leaves the batch pending.
+- An authorized answer is a child's answer to a request whose run was neither stopped nor failed, and that no landing has consumed. It starts a continuation that inherits the chain counter, and the landing CAS consumes the authorization.
+- On an idle head a `report` or unauthorized `answer` starts nothing. The next run picks it up in its first batch or at its first `respond` boundary. A `passive` lead lands its batch without a model call.

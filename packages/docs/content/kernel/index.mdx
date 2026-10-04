@@ -1,0 +1,58 @@
+---
+title: "Nyte core"
+description: "Each session is a small git repository. Objects never change. Refs are the only mutable state, and every ref write is a compare-and-swap. On each head one runner holds a lease and advances the run one phase per step."
+---
+
+import { LAYERS } from "~/components/mdx/kernel/layers";
+
+## Architecture
+
+Core is a stack. Work moves down it: a client queues a message, a runner notices, a step lands it, a turn calls the model. Results move back up as events in the store's log, which every layer above can watch. A host is a process that calls `createNyte`. It supplies the store, the models and the plugins, and may `attach` runners.
+
+<LayerStack layers={LAYERS} />
+
+Three rules hold throughout.
+
+- A step keeps nothing in memory. The next step starts again from the refs, so any host can take over a head between two steps.
+- A runner moves refs only through `refs.update`, carrying the head lease and asserting that `refs/deleted` is absent. A stale lease or a moved ref loses the whole write.
+- No submission fails because a run is live. Contention exists only on leases, on a runner's publish, and on head operations that refuse a held head, such as `deleteHead`.
+
+## Two drivers
+
+Something has to call `step`. Both drivers run the same step under the same lease.
+
+<Table
+  head={["Driver", "Used by", "Loop"]}
+  rows={[
+    [
+      <To key="0" href="/kernel/runner">
+        runner
+      </To>,
+      "Desktop and TUI hosts",
+      "Watches ref events, wakes the head, drives it until it rests.",
+    ],
+    [
+      <To key="0" href="/kernel/functions#fn-advanceStep">
+        nyte.advance
+      </To>,
+      "Serverless schedulers",
+      <>
+        One step per call. Answers <C>idle</C>, <C>continue</C>, <C>finished</C>, <C>fenced</C>,{" "}
+        <C>retry</C> with <C>at</C>, <C>waiting</C> with an optional <C>until</C>, or <C>busy</C>{" "}
+        with the lease expiry. The caller schedules the next call.
+      </>,
+    ],
+  ]}
+/>
+
+Admission is a store write and stepping is the host's decision, so a crash between them leaves an accepted message with no runner. The host closes the gap with an obligation, a durable record of a session and an optional head, written first.
+
+<Sketch
+  title="withDispatch, vercel/src/admission.ts"
+  code={`const obligation = await outbox.record(target); // names the session and head, no content
+const outcome = await admit(); // the core CAS
+if (accepted(outcome)) await wake(target); // start a workflow
+await outbox.settle(obligation);`}
+/>
+
+A reconciler re-dispatches old records, which is safe because a second `advance` answers `busy` or `idle`. It clears a record only past an age the host sets, because an admission that began earlier can still commit after the cleanup.

@@ -1951,6 +1951,13 @@ export class DesktopHost {
         .slice(0, CLOSED_DIRECTORY_REFRESH_BATCH),
     );
 
+    const listings: {
+      readonly owner: OpenLocalTarget | WorkspaceTarget;
+      readonly workspacePath: string | null;
+      readonly items: readonly SessionInfo[];
+      readonly startedAt: number | undefined;
+    }[] = [];
+
     for (let index = 0; index < targets.length; index += 4) {
       const reads = await Promise.allSettled(
         targets.slice(index, index + 4).map(async (target) => {
@@ -1958,69 +1965,76 @@ export class DesktopHost {
           const existing = this.openTargets.get(workspacePath);
 
           if (existing !== undefined) {
-            await this.sweepOpen(existing);
+            const items = await this.sweepOpen(existing);
 
-            return;
+            return { owner: existing, workspacePath, items, startedAt: undefined };
           }
 
           if (this.closedDirectories.has(workspacePath) && !refreshClosed.has(workspacePath)) {
-            return;
+            return undefined;
           }
 
           this.closedDirectories.set(workspacePath, Date.now());
           const startedAt = this.directory.clock();
           const items = await this.readClosedDirectory(target);
 
-          // Composed meanwhile: its own listing answers for it now.
-          if (this.closed || this.openTargets.has(workspacePath)) return;
-          const source = { environment: "local", workspacePath } as const;
-          const current = new Set(items.map((session) => session.sessionId));
-
-          for (const session of this.directory.rows(source)) {
-            if (current.has(session.sessionId)) continue;
-            const owner = this.sessionOwners.get(session.sessionId);
-
-            if (
-              owner !== undefined &&
-              !("sdk" in owner) &&
-              (owner.kind === "home"
-                ? workspacePath === null
-                : owner.workspace.path === workspacePath)
-            ) {
-              this.sessionOwners.delete(session.sessionId);
-            }
-          }
-
-          for (const session of items) {
-            if (!this.sessionOwners.has(session.sessionId)) {
-              this.sessionOwners.set(session.sessionId, target);
-            }
-          }
-
-          this.directory.replace(source, items, startedAt);
+          return { owner: target, workspacePath, items, startedAt };
         }),
       );
 
       for (const read of reads) {
         if (read.status === "rejected") {
           retainDiagnostic({ correlationId: "session-directory", cause: read.reason });
+        } else if (read.value !== undefined) {
+          listings.push(read.value);
         }
+      }
+    }
+
+    if (this.closed) return;
+
+    // Owners settle over every listing at once, so no claim depends on which read finished first.
+    const settled = listings.filter(
+      ({ owner, workspacePath }) =>
+        this.openTargets.get(workspacePath) === ("sdk" in owner ? owner : undefined),
+    );
+
+    for (const { workspacePath, items, startedAt } of settled) {
+      if (startedAt === undefined) continue;
+      const listed = new Set(items.map((session) => session.sessionId));
+
+      for (const [sessionId, owner] of this.sessionOwners) {
+        if (
+          !listed.has(sessionId) &&
+          !("sdk" in owner) &&
+          (owner.kind === "home" ? workspacePath === null : owner.workspace.path === workspacePath)
+        ) {
+          this.sessionOwners.delete(sessionId);
+        }
+      }
+    }
+
+    for (const { owner, workspacePath, items, startedAt } of settled) {
+      for (const session of items) {
+        if (!this.sessionOwners.has(session.sessionId)) {
+          this.sessionOwners.set(session.sessionId, owner);
+        }
+      }
+
+      if (startedAt !== undefined) {
+        this.directory.replace({ environment: "local", workspacePath }, items, startedAt);
       }
     }
   }
 
-  private async sweepOpen(open: OpenLocalTarget): Promise<void> {
+  private async sweepOpen(open: OpenLocalTarget): Promise<readonly SessionInfo[]> {
     const startedAt = this.directory.clock();
     const { items } = await open.sdk.sessions.list({ parent: null, includeArchived: true });
     const workspacePath = open.kind === "home" ? null : open.workspace.path;
 
-    if (this.closed || this.openTargets.get(workspacePath) !== open) return;
+    if (this.closed || this.openTargets.get(workspacePath) !== open) return [];
 
     for (const session of items) {
-      if (!this.sessionOwners.has(session.sessionId)) {
-        this.sessionOwners.set(session.sessionId, open);
-      }
-
       if (session.archived) {
         await this.releaseSessionIfIdle(open, session.sessionId).catch(() => undefined);
       }
@@ -2031,6 +2045,8 @@ export class DesktopHost {
     for (const session of items) {
       if (!isSettled(session)) this.track(open, session.sessionId);
     }
+
+    return items;
   }
 
   /** Keep the last known chats visible when a remote read fails, with its failure shown separately. */

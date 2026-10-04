@@ -1,0 +1,23 @@
+---
+title: "Events"
+---
+
+A client never reads refs while a run streams. It takes a snapshot, then folds events from the snapshot's cursor.
+
+<Sketch
+              title="turn to client"
+              code={`// turn → store: outbox.ts
+emit(delta); // buffered, flushed every 25 ms or 64 events; progress coalesces per call
+await events.append(batch, { lease }); // fenced aborts the call
+
+// store → client: nyte.watch, sdk/watch.ts
+for await (const event of events.watch({ afterSeq })) {
+yield\* projectEvent(event); // one kernel event → zero or more SessionEvents
+}
+// { kind: "synced" } marks the seq that was last when the watch began
+// a cursor below the floor throws CursorExpired: take a new snapshot`}
+/>
+
+Deltas are keyed by run id, attempt and index, never by commit id. A commit's id is its hash and does not exist until the message is whole. Treat deltas as provisional until `head_moved` shows the commit. A fenced or lost publish can leave deltas in the log with no commit behind them.
+
+A seq is a place in the log, not an event's identity, so a consumer must not drop an event because its seq repeats. The host-local events `activation_changed`, `plugins_changed`, `notification` and `status_changed` are stamped with the latest seq and are not in the log.

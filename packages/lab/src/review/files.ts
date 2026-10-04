@@ -1,12 +1,8 @@
 /**
- * What the Review page derives from a review: files ready for Pierre, guide
- * sections expanded to the files they cover, and the reviewed marks you left,
- * which stay attached to the patch you saw so a changed file asks again.
+ * What the review demo derives from a review: files ready for Pierre, guide
+ * sections expanded to the files they cover, and how numbers and dates read.
  */
-import { useState } from "react";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
-import { parsePatch, type ReviewedState, type ReviewFile } from "./code";
+import { parsePatch, type ReviewFile } from "./code";
 import type { GuideSection, Patch } from "./wire";
 
 const TEST = /(^|\/)(test|tests|__tests__|e2e)\/|\.(test|spec|browser-test)\.[cm]?[jt]sx?$/;
@@ -42,66 +38,6 @@ export function sectionFiles<File extends { readonly path: string }>(
       .filter((file) => covers(entry, file.path))
       .toSorted((left, right) => left.path.localeCompare(right.path)),
   );
-}
-
-/** FNV-1a: enough to tell whether the patch under a reviewed mark changed. */
-function fingerprint(text: string): string {
-  let hash = 0x811c9dc5;
-
-  for (let index = 0; index < text.length; index++) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-
-  return (hash >>> 0).toString(36);
-}
-
-const MarksSchema = Type.Record(Type.String(), Type.String());
-
-function readMarks(key: string): Readonly<Record<string, string>> {
-  try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(key) ?? "{}");
-
-    return Value.Check(MarksSchema, parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Reviewed marks for one review, kept in this browser. Mount the view with
- * `key={reviewId}` so another review starts from its own marks.
- */
-export function useReviewed(reviewId: string, files: readonly ReviewFile[]) {
-  const key = `nyte-lab:reviewed:${reviewId}`;
-  const [marks, setMarks] = useState(() => readMarks(key));
-
-  const patchOf = (path: string): string | undefined =>
-    files.find((file) => file.path === path)?.patch;
-
-  const reviewed = (path: string): ReviewedState => {
-    const seen = marks[path];
-
-    if (seen === undefined) return "unreviewed";
-
-    return seen === fingerprint(patchOf(path) ?? "") ? "reviewed" : "changed";
-  };
-
-  const setReviewed = (paths: readonly string[], next: boolean): void => {
-    const value = { ...marks };
-
-    for (const path of paths) {
-      if (next) value[path] = fingerprint(patchOf(path) ?? "");
-      else delete value[path];
-    }
-
-    window.localStorage.setItem(key, JSON.stringify(value));
-    setMarks(value);
-  };
-
-  const count = files.filter((file) => reviewed(file.path) === "reviewed").length;
-
-  return { reviewed, setReviewed, count };
 }
 
 const DATE = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });

@@ -1,12 +1,5 @@
 import { convertImageBytesToPng } from "./image-convert.ts";
-import { type ImageResizeOptions, resizeImage } from "./image-resize.ts";
-
-export interface ProcessImageOptions {
-  /** Whether to resize images to inline provider limits. Default: true */
-  autoResizeImages?: boolean;
-  /** Optional resize overrides. Uses resizeImage defaults when omitted. */
-  resizeOptions?: ImageResizeOptions;
-}
+import { resizeImage } from "./image-resize.ts";
 
 export type ProcessImageResult =
   | {
@@ -67,9 +60,7 @@ async function normalizeImage(
 export async function processImage(
   bytes: Uint8Array,
   mimeType: string,
-  options?: ProcessImageOptions,
 ): Promise<ProcessImageResult> {
-  const autoResizeImages = options?.autoResizeImages ?? true;
   const normalized = await normalizeImage(bytes, mimeType);
   if (!normalized) {
     return {
@@ -78,29 +69,17 @@ export async function processImage(
     };
   }
 
-  if (autoResizeImages) {
-    const resized = await resizeImage(
-      normalized.bytes,
-      normalized.mimeType,
-      options?.resizeOptions,
-    );
-    if (!resized) {
-      return {
-        ok: false,
-        message: "[Image omitted: could not be resized below the inline image size limit.]",
-      };
-    }
-
+  const resized = await resizeImage(normalized.bytes, normalized.mimeType);
+  if (!resized) {
     return {
-      ok: true,
-      data: resized.data,
-      mimeType: resized.mimeType,
+      ok: false,
+      message: "[Image omitted: could not be resized below the inline image size limit.]",
     };
   }
 
   return {
     ok: true,
-    data: Buffer.from(normalized.bytes).toString("base64"),
-    mimeType: normalized.mimeType,
+    data: resized.data,
+    mimeType: resized.mimeType,
   };
 }

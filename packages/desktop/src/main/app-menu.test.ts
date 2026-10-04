@@ -4,7 +4,6 @@ import type { AppInfo, AppMenuCommand } from "@nyte-ai/app/bridge.ts";
 import { clientActions } from "@nyte-ai/app/client-actions.ts";
 import { applicationMenuTemplate, createMenuCommandDelivery } from "./app-menu.ts";
 
-
 const info = {
   name: "Nyte",
   version: "0.0.2",
@@ -68,7 +67,8 @@ test("live commands arrive immediately, but reloaded windows wait again", () => 
   expect(received).toEqual([about, about, settings]);
 });
 
-test.each(["darwin", "linux"] as const)(
+// macOS adds SF Symbol icons, which need Electron's nativeImage; its File items are the same.
+test.each(["linux", "win32"] as const)(
   "on %s the primary W closes a tab and closing the window takes Shift",
   (platform) => {
     const template = applicationMenuTemplate({
@@ -86,6 +86,7 @@ test.each(["darwin", "linux"] as const)(
       ]);
 
     const all = items(template);
+
     const labelled = (accelerator: string) =>
       all.filter((item) => item.accelerator === accelerator).map((item) => item.label ?? item.role);
 

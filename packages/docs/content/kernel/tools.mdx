@@ -1,0 +1,39 @@
+---
+title: "Tools"
+---
+
+import { EXCERPTS } from "~/components/mdx/kernel/excerpts";
+
+`executeToolCalls` prepares calls in source order, runs them concurrently, and returns results in source order. `durableTools` wraps each `tool.execute` in an effect ref, so a crash between starting a call and landing its result can be recovered from the store alone.
+
+<Sketch
+              title="one call, turn.ts"
+              code={`// effects/<run>/<call>: null → intent { tool, args, replay, environment: env.id }
+const view = await openEffect(call);
+
+switch (decideRecovery(view, env.id)) {
+case "execute": return settle(await tool.execute(input, call)); // a thrown ToolWait parks instead
+case "interrupted": return settle(interruptedError); // it may have run once already
+case "blocked": return waiting(); // still parked
+case "wake": return settle(await tool.wake(call, { reply, expired }));
+case "reuse": return view.effect.result; // never runs twice
+}`}
+/>
+
+An effect ref holds one immutable object per state. `intent` moves to `result`, or to `waiting` when the tool parks. A reply moves `waiting` to `signal`, the deadline moves it to `expired`, and a stop settles it to `result`. `wake` then settles the call or parks it again, and `tools` runs the whole batch again. Settled calls reuse their result, so only the woken call does new work, and `publishTools` clears `effects/<run>/*` only when its CAS wins.
+
+## Where a call acts
+
+A tool acts through `call.env`, an `ExecutionEnv`: an environment `id`, a `cwd`, `resolve` for paths, file operations and `exec`. Built-in tools reach files and processes only through it. `activation.tools()` binds the activation's env outside every plugin wrapper, so a plugin's `draft.wrap` and the jobs wrapper see it too. The env opens where the root's `refs/workspace` says, through the provider plugin for its `kind`. A plugin's `wrapEnv` extends its operations and never changes its `id`.
+
+`sessions.create` writes `refs/workspace` before it returns, from the root's `workspace` input or `defaultWorkspace`. `relocate` moves a whole tree to another workspace and answers `relocated`, `busy` or the destination's refusal. `busy` means a live drive, a non-terminal run, queued work the runner would land, a running job or a held lease anywhere in the tree.
+
+A `safe` intent reruns only when the resuming runner's environment `id` equals the one its intent recorded. Otherwise it settles `interrupted`, as does an intent that recorded none. A `never` call runs at most once.
+
+## Parking a call
+
+A tool parks by throwing `ToolWait`. Its effect moves to `waiting` and the run follows. A plugin's wait must name a `selection` someone can answer, an `until` the runner expires, or both, so every parked call can end. Only the kernel parks with neither, through `backgroundWait`, for jobs it wakes itself.
+
+<Source title="ToolWaitOptions" excerpt={EXCERPTS.toolWait} />
+
+`runs.reply` answers a parked call without a lease. Its `waitId` must equal the current waiting oid, so a stale reply cannot answer a re-park. The CAS on that oid gives racing replies, and a reply racing the deadline, one winner&nbsp;<Src path="effects.ts" line={266} />. A reply at or after `until` answers `not_waiting`. Core checks a selection before it writes one, and a malformed one fails its call as a tool error. It stores a reply as given, and the tool's `wake` handler decides what it means. A waiting run that asks someone reports `awaitingReply` and the selection's title as `question` in its summary.

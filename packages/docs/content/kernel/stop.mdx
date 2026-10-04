@@ -1,0 +1,46 @@
+---
+title: "Stop"
+---
+
+import { EXCERPTS } from "~/components/mdx/kernel/excerpts";
+
+A stop is a flag on the run, written without a lease. The runner honours it at its next publish, and nothing clears it. A second stop is a no-op.
+
+<Source title="requestAbortAtRef" excerpt={EXCERPTS.requestAbortAtRef} />
+
+The flag and the revoked delegate authorizations land in one CAS. `abortLocalDrive` then cancels this host's provider or tool call, and `runs.abort` interrupts the command jobs the run owns.
+
+<Table
+  head={["Where", "What the flag does"]}
+  rows={[
+    [
+      "An in-flight publish",
+      <>
+        Conflicts, because the flag moved <C>refs/runs/&lt;head&gt;</C>.
+      </>,
+    ],
+    [
+      <C key="0">afterConflict</C>,
+      <>
+        Keeps the step's output and ends the run <C>aborted</C>. A tool batch keeps <C>tools</C> or{" "}
+        <C>waiting</C> so its calls can settle first.
+      </>,
+    ],
+    [
+      <C key="0">respond</C>,
+      <>
+        Ends the run <C>aborted</C> before any model call.
+      </>,
+    ],
+    [
+      <C key="0">headFor</C>,
+      <>
+        Reads the run as <C>settling</C>, so admission lands nothing.
+      </>,
+    ],
+  ]}
+/>
+
+<Source title="withPhase and endingPhase" excerpt={EXCERPTS.endingPhase} />
+
+A failure it would have reported becomes a runner notice. A tool that ignores its signal keeps running, and the lease keeps renewing until it returns. Children the run created keep working; only `stop` ends a child.

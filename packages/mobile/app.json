@@ -2,7 +2,7 @@
   "expo": {
     "name": "Nyte",
     "slug": "nyte-ios",
-    "version": "0.1.0",
+    "version": "0.0.15",
     "icon": "../desktop/build/icon-ios.png",
     "orientation": "portrait",
     "scheme": "nyte",

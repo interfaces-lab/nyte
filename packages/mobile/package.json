@@ -1,6 +1,6 @@
 {
   "name": "@nyte-ai/ios",
-  "version": "0.1.0",
+  "version": "0.0.15",
   "private": true,
   "description": "Nyte's native iOS companion for a remote Mac host.",
   "type": "module",

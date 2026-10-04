@@ -438,6 +438,51 @@ for (const operation of ["runs.compact", "heads.move"] satisfies SummaryDiagnost
   });
 }
 
+test("a new plugin set recovers a root whose own plugins failed to start", async () => {
+  const broken = definePlugin({
+    id: "broken-plugin",
+    session() {
+      throw new Error("setup failed");
+    },
+  });
+  let started = 0;
+  const working = countingPlugin(() => {
+    started += 1;
+  });
+  const nyte = await openHost({ trust: () => ({ kind: "trusted" }), plugins: [broken] });
+  const controller = new AbortController();
+  try {
+    const root = (await nyte.sessions.create()).sessionId;
+    const parent = { sessionId: root, runId: "run_1", callId: "call_1", depth: 1 };
+    const child = (await nyte.sessions.create({ parent })).sessionId;
+    assert.deepEqual(await nyte.plugins.commands.list({ sessionId: root }), []);
+    assert.deepEqual(await nyte.plugins.commands.list({ sessionId: child }), []);
+    assert.equal((await nyte.sessions.get({ sessionId: root }))?.activation.kind, "failed");
+    assert.equal((await nyte.sessions.get({ sessionId: child }))?.activation.kind, "failed");
+    const watching = nyte
+      .watch({ sessionId: root, live: true, signal: controller.signal })
+      [Symbol.asyncIterator]();
+    assert.equal((await nextActivation(watching)).activation.kind, "failed");
+    assert.deepEqual(await nyte.setPlugins([working]), { kind: "applied" });
+    assert.equal((await nyte.sessions.get({ sessionId: root }))?.activation.kind, "active");
+    assert.equal((await nyte.sessions.get({ sessionId: child }))?.activation.kind, "active");
+    assert.equal(started, 2);
+    assert.equal((await nextActivation(watching)).activation.kind, "active");
+    await nyte.sessions.setPinned({ sessionId: root, pinned: true });
+    const activations: SessionEvent[] = [];
+    for (;;) {
+      const result = await within(watching.next());
+      if (result.done) assert.fail("watch ended before the pin");
+      if (result.value.kind === "fact" && result.value.key === "pinned") break;
+      if (result.value.kind === "activation_changed") activations.push(result.value);
+    }
+    assert.deepEqual(activations, []);
+  } finally {
+    controller.abort();
+    await nyte.close();
+  }
+});
+
 test("a new plugin set recovers a child read before its failed root", async () => {
   const path = storePath();
   let broken = false;

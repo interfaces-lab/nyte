@@ -4,7 +4,7 @@
  * focused chat, and the strip reads its items from the session directory.
  */
 import { useRouter } from "@tanstack/react-router";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { WorkspaceSessionDirectory } from "../bridge.ts";
@@ -14,6 +14,7 @@ import { userDisplayText } from "../conversation/transcript-presentation.ts";
 import { keys, queryClient, useWorkspaceSessionDirectory } from "../queries.ts";
 import { sessionActivityMark } from "../session-activity.ts";
 import { sessionHasUnreadCompletion, useReadSessions } from "../session-read-state.ts";
+import { useMountEffect } from "../use-mount-effect.ts";
 import { useOptimisticSessionIds } from "../use-outbox.ts";
 import { activeTab, currentView, isPage, tabPlace, tabPlaces } from "./model.ts";
 import type { Place, WindowState } from "./model.ts";
@@ -40,9 +41,12 @@ function sessionFolder(sessionId: SessionId): string | null | undefined {
 export function useWindowTabsSync(): void {
   const router = useRouter();
 
-  useEffect(() => {
+  useMountEffect(() => {
     if (!windowTabs.enabled) return undefined;
     let followed = "";
+    // Switches run one at a time and only the latest, so a fast ⌃Tab ends on its last folder.
+    let switching = Promise.resolve();
+    let wanted: string | null = null;
 
     const sync = (): void => {
       const state = windowTabs.getSnapshot();
@@ -59,20 +63,26 @@ export function useWindowTabsSync(): void {
       if (place.kind !== "session") return;
       const folder = sessionFolder(place.sessionId);
 
-      if (folder !== undefined) void activateWorkspace(folder);
+      if (folder === undefined) return;
+      wanted = folder;
+      switching = switching
+        .then(() => (wanted === folder ? activateWorkspace(folder) : undefined))
+        .then(
+          () => undefined,
+          () => undefined,
+        );
     };
 
     const unsubscribeRouter = router.subscribe("onResolved", () => {
       const location = locationPlace(router);
+
+      if (location === undefined || !isPage(location)) return;
       const view = currentView(activeTab(windowTabs.getSnapshot()));
 
-      if (
-        location !== undefined &&
-        isPage(location) &&
-        view.kind === "page" &&
-        view.page.kind === location.kind &&
-        pageSection(view.page) !== pageSection(location)
-      )
+      // A page reached by URL alone, as Settings reaches Environments, becomes the tab's.
+      if (view.kind !== "page" || view.page.kind !== location.kind)
+        windowTabs.dispatch({ kind: "open", place: location, target: "here" });
+      else if (pageSection(view.page) !== pageSection(location))
         windowTabs.dispatch({ kind: "page-section", section: pageSection(location) });
     });
 
@@ -83,7 +93,7 @@ export function useWindowTabsSync(): void {
       unsubscribeRouter();
       unsubscribeTabs();
     };
-  }, [router]);
+  });
 }
 
 function sessionTitle(session: SessionInfo | undefined): string {
@@ -133,6 +143,7 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
     const place = tabPlace(tab);
     const view = currentView(tab);
     const session = place.kind === "session" ? sessions.get(place.sessionId) : undefined;
+
     const mark =
       session === undefined
         ? "idle"

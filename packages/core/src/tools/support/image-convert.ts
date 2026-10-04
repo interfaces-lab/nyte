@@ -22,28 +22,3 @@ export async function convertImageBytesToPng(bytes: Uint8Array): Promise<Uint8Ar
     return null;
   }
 }
-
-/**
- * Convert image to PNG format for terminal display.
- * Kitty graphics protocol requires PNG format (f=100).
- */
-export async function convertToPng(
-  base64Data: string,
-  mimeType: string,
-): Promise<{ data: string; mimeType: string } | null> {
-  // Already PNG, no conversion needed
-  if (mimeType === "image/png") {
-    return { data: base64Data, mimeType };
-  }
-
-  const bytes = new Uint8Array(Buffer.from(base64Data, "base64"));
-  const pngBytes = await convertImageBytesToPng(bytes);
-  if (!pngBytes) {
-    return null;
-  }
-
-  return {
-    data: Buffer.from(pngBytes).toString("base64"),
-    mimeType: "image/png",
-  };
-}

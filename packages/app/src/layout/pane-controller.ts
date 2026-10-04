@@ -78,6 +78,7 @@ export class PaneController {
       route === undefined
         ? parsePersistedPaneLayout(this.#readLayout())
         : (initialLayout ?? createSinglePane());
+
     this.#snapshot = {
       layout,
       focusRequest: { paneId: activePane(layout).id, revision: 0 },

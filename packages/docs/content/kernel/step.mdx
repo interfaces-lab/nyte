@@ -1,0 +1,57 @@
+---
+title: "Step"
+---
+
+import { PHASES } from "~/components/mdx/kernel/data";
+import { EXCERPTS } from "~/components/mdx/kernel/excerpts";
+
+`step` is one leased unit of work. `runStep` settles any leftover checkpoint work, reads the tip, the run and `refs/deleted`, and hands the run to `advance`, which switches on its phase.
+
+<Source title="advance" excerpt={EXCERPTS.advance} />
+
+<Table head={["Phase", "Handler", "Work", "Next"]} rows={PHASES} nowrap={[1]} />
+
+## One way to write
+
+Every write a step makes to a run or head goes through one function.
+
+<Source title="publish" excerpt={EXCERPTS.publish} />
+
+The appended update is an assertion. It writes nothing, but it must hold, so once `sessions.delete` writes `refs/deleted`, every runner publish conflicts. Effect writes are the exception. They call `refs.update` with the lease alone.
+
+## When a publish loses
+
+A `conflict` means another writer moved a ref first. `afterConflict` re-reads the run and the tip and decides from what it finds.
+
+<Table
+  head={["Found", "Outcome"]}
+  rows={[
+    [
+      "Another run on the head",
+      <>
+        <C>fenced</C>. The drive ends.
+      </>,
+    ],
+    [
+      <>
+        The same run, with <C>abortRequested</C>
+      </>,
+      <>
+        A stop raced the step. Keep the output. A <C>tools</C> or <C>waiting</C> phase publishes as
+        is with reason <C>interrupt</C>. Anything else ends <C>aborted</C>.
+      </>,
+    ],
+    [
+      "The same run, tip moved",
+      <>
+        End <C>aborted</C> with reason <C>superseded</C>.
+      </>,
+    ],
+    [
+      "Anything else",
+      <>
+        <C>continue</C>. The next step re-reads.
+      </>,
+    ],
+  ]}
+/>

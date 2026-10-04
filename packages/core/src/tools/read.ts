@@ -1,4 +1,3 @@
-import type { ImageResizeOptions } from "./support/image-resize.ts";
 import type { AgentToolResult, ToolDefinition } from "../kernel/loop/types.ts";
 import type { ImageContent, TextContent } from "@nyte-ai/schema";
 import { type Static, Type } from "typebox";
@@ -27,18 +26,10 @@ export interface ReadToolDetails {
   truncation?: TruncationResult;
 }
 
-export interface ReadToolOptions {
-  /** Whether to auto-resize images. Default: true */
-  autoResizeImages?: boolean;
-  /** Fallback resize profile when the execution context has no model metadata. */
-  resizeOptions?: ImageResizeOptions;
-}
-
-export function createReadToolDefinition(
-  options?: ReadToolOptions,
-): ToolDefinition<typeof readSchema, ReadToolDetails | undefined> {
-  const autoResizeImages = options?.autoResizeImages ?? true;
-  const fallbackResizeOptions = options?.resizeOptions;
+export function createReadToolDefinition(): ToolDefinition<
+  typeof readSchema,
+  ReadToolDetails | undefined
+> {
   return {
     label: "read",
     description: `Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
@@ -69,10 +60,7 @@ export function createReadToolDefinition(
             let content: (TextContent | ImageContent)[];
             let details: ReadToolDetails | undefined;
             if (mimeType) {
-              const processed = await processImage(buffer, mimeType, {
-                autoResizeImages,
-                resizeOptions: fallbackResizeOptions,
-              });
+              const processed = await processImage(buffer, mimeType);
               if (!processed.ok) {
                 content = [
                   { type: "text", text: `Read image file [${mimeType}]\n${processed.message}` },

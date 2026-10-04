@@ -1,0 +1,52 @@
+---
+title: "Plugins"
+---
+
+import { EXCERPTS } from "~/components/mdx/kernel/excerpts";
+
+Plugins load per session. Each registers tools, hooks and commands into its own scope, and disposing the scope undoes all of it. Every call into plugin code other than a tool runs under a wall-clock budget, and running out counts as a thrown error. A stop cancels a tool through the call's signal.
+
+<Source title="HOOK_BUDGETS_MS" excerpt={EXCERPTS.hookBudgets} />
+
+<Table
+  head={["Call", "Budget", "When it fails or runs out"]}
+  rows={[
+    [
+      <C key="0">session()</C>,
+      "5 s",
+      "The load fails and its scope is disposed. A reload keeps the old plugin.",
+    ],
+    [
+      <C key="0">before_tool</C>,
+      "5 s",
+      "Fails closed. This call and the rest of its batch get the policy's message as an error result.",
+    ],
+    [
+      <Codes
+        key="0"
+        items={[
+          "transform_context",
+          "transform_transcript",
+          "before_request",
+          "after_tool",
+          "cache_warming_decision",
+        ]}
+      />,
+      "5 s",
+      "Reported. The handler's result is skipped.",
+    ],
+    [<C key="0">before_compaction</C>, "300 s", "The next provider, then portable compaction."],
+    [
+      "command, event listener",
+      "5 s",
+      "The command rejects; a listener failure becomes a diagnostic.",
+    ],
+    ["disposer", "5 s", "Reported. The next disposer runs."],
+  ]}
+/>
+
+Hooks run in plugin order. `before_tool` policies chain: `modify` hands new arguments to the next policy, `continue` objects to nothing, and the first `reject` or `error` ends the chain. A reload loads the new scope before it disposes the old one, so policy hooks never lapse. `setPlugins` answers `queued` while the session has an offered response, a run in `tools` or `waiting`, or a running command or listener, and the set publishes once they finish. File plugin ids are lowercase letters, digits and hyphens, and `subagents` and `jobs` are reserved.
+
+## Where plugins come from
+
+A host passes `NyteOptions.plugins`, among them the providers that open workspaces. Its `trust` answer decides each workspace once, when it opens, as `trusted`, `inactive` or `requires`, and only a trusted workspace reaches its provider. Once the provider has opened the environment, the answer's `plugins` loader adds the project plugins, and it runs again before each response. Project plugins can wrap an environment but cannot provide one. Without a `trust` function, only `defaultWorkspace` is trusted.

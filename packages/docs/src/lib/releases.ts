@@ -1,7 +1,7 @@
 import { cacheLife } from "next/cache";
-import { gitConfig } from "./shared";
+import { gitConfig, githubUrl } from "./shared";
 
-export const releasesUrl = `https://github.com/${gitConfig.user}/${gitConfig.repo}/releases`;
+export const releasesUrl = `${githubUrl}/releases`;
 
 export interface MacRelease {
   version: string;

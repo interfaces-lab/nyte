@@ -4,6 +4,12 @@ import { DocCard } from "~/components/mdx/doc-card";
 import { Mermaid } from "~/components/mdx/mermaid";
 import { sharedMdxComponents } from "~/app/(site)/_layout/mdx";
 
+import { Source, Sketch, Diff } from "~/components/mdx/kernel/code";
+import { Cas, LayerStack, Trace, TraceStep } from "~/components/mdx/kernel/figures";
+import { Quiz } from "~/components/mdx/kernel/quiz";
+import { Constants, Functions, OpenIssues } from "~/components/mdx/kernel/reference";
+import { C, Codes, Inline, P, Src, Table, To } from "~/components/mdx/kernel/ui";
+
 function Cards({ children }: { children?: ReactNode }) {
   return <div className="docs-cards">{children}</div>;
 }
@@ -18,6 +24,24 @@ export function docsMdxComponents(): MDXComponents {
     Cards,
     DocCard,
     Mermaid,
+    Source,
+    Sketch,
+    Diff,
+    Cas,
+    LayerStack,
+    Trace,
+    TraceStep,
+    Quiz,
+    Constants,
+    Functions,
+    OpenIssues,
+    C,
+    Codes,
+    Inline,
+    P,
+    Src,
+    Table,
+    To,
   };
 }
 

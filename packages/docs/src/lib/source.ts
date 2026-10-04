@@ -5,6 +5,8 @@ import {
   docsContentRoute,
   docsImageRoute,
   docsRoute,
+  kernelRoute,
+  kernelContentRoute,
 } from "./shared";
 import { defineDocs } from "fumadocs-mdx/macro";
 import { metaSchema, pageSchema } from "fumadocs-core/source/schema";
@@ -37,6 +39,15 @@ const cloud = defineDocs({
   },
 });
 
+const kernel = defineDocs({
+  dir: "content/kernel",
+  docs: {
+    schema: pageSchema,
+    postprocess: { includeProcessedMarkdown: true },
+  },
+  meta: { schema: metaSchema },
+});
+
 // See https://fumadocs.dev/docs/headless/source-api for more info
 // The sidebar tree carries no icons; Central Icons appear only in page
 // content through <DocCard icon="…" /> (src/components/mdx/doc-card.tsx).
@@ -50,7 +61,10 @@ export const cloudSource = loader({
   source: cloud.toFumadocsSource(),
 });
 
-// Both collections share one page schema, so one page type serves both loaders.
+export const kernelSource = loader({
+  baseUrl: kernelRoute,
+  source: kernel.toFumadocsSource(),
+});
 type DocsPage = (typeof source)["$inferPage"];
 
 export function getPageImageUrl(page: DocsPage) {
@@ -78,6 +92,15 @@ export function getCloudPageMarkdownUrl(page: DocsPage) {
     segments,
     url:
       "/" + [page.locale, ...cloudContentRoute.split("/"), ...segments].filter(Boolean).join("/"),
+  };
+}
+
+export function getKernelPageMarkdownUrl(page: DocsPage) {
+  const segments = [...page.slugs, "content.md"];
+  return {
+    segments,
+    url:
+      "/" + [page.locale, ...kernelContentRoute.split("/"), ...segments].filter(Boolean).join("/"),
   };
 }
 

@@ -13,7 +13,7 @@ import {
 } from "@tanstack/react-router";
 import type { RouterHistory } from "@tanstack/react-router";
 // oxlint-disable-next-line no-restricted-imports -- shortcuts act on the current pane state
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { AboutDialog } from "./chrome/about-dialog.tsx";
 import type { ReactElement } from "react";
 import { WorkspaceDialogHost } from "./chrome/open-workspace.tsx";
@@ -46,7 +46,7 @@ import { macPlatform } from "./platform.ts";
 import { clientCapabilities, resolveClientAction, resolveTabShortcut } from "./client-actions.ts";
 import { activeTab, currentView, tabPlace } from "./tabs/model.ts";
 import { placeHref } from "./tabs/places.ts";
-import { useWindowTabsState, useWindowTabsSync } from "./tabs/use-window-tabs.tsx";
+import { useWindowTabsSync } from "./tabs/use-window-tabs.tsx";
 import { windowTabs } from "./tabs/window-tabs.ts";
 
 import { CustomizeSurface } from "./chrome/customize.tsx";
@@ -103,13 +103,17 @@ const styles = create({
 /** `appIcon` is the host's product mark, shown in About; the host bundles it. */
 export function Shell({ appIcon }: { appIcon: string }): ReactElement {
   const host = useHostState();
-  const tabs = useWindowTabsState();
+
+  const activeTabId = useSyncExternalStore(
+    windowTabs.subscribe,
+    () => windowTabs.getSnapshot().activeTabId,
+  );
 
   return (
     <TooltipProvider>
       <PaneControllerProvider
         workspaceKey={host.data?.workspace?.path}
-        controller={windowTabs.enabled ? windowTabs.controller(tabs.activeTabId) : undefined}
+        controller={windowTabs.enabled ? windowTabs.controller(activeTabId) : undefined}
       >
         <ShellChrome appIcon={appIcon} />
       </PaneControllerProvider>

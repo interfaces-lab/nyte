@@ -1,0 +1,61 @@
+---
+title: "Respond"
+---
+
+`respond` runs its checks in a fixed order. Anything that changes the run publishes and returns, and the next step starts the list again.
+
+<Sketch
+              title="respond, step.ts"
+              code={`await land("steer", boundary); // a joining batch returns continue
+if (run.abortRequested) return endRun("aborted");
+if (!lastIsUserOrToolResult) return endRun("done");
+if (resolvedConfig !== run.config) return storeRun(resolved); // phase stays respond
+if (chain.attempts >= ceiling) return endRun(failed("step ceiling"));
+
+const prepared = await callTurn(turn.prepare); // not an attempt
+if (prepared.kind === "checkpoint") return publishCheckpoint(prepared); // phase stays respond
+if (prepared.kind === "system") tip = await publishSystem(prepared.message);
+
+await publish({ chains: chain.attempts + 1 }, "reserve response");
+const outcome = await callTurn(turn.respond); // lease renewal and outbox around the call
+
+if (outcome.kind === "checkpoint") return publishCheckpoint(outcome); // overflow; phase stays respond
+await publish({ head: assistantCommit, run: nextPhase(outcome) }, "respond");`}
+/>
+
+<Table
+  head={["stopReason", "Outcome", "Phase"]}
+  widths={["230px", "auto", "200px"]}
+  rows={[
+    [
+      <Codes key="0" items={["toolUse", "stop", "pending", "deferred"]} />,
+      "Tools when the message has tool calls, otherwise complete.",
+      <Codes key="2" items={["tools", "done"]} />,
+    ],
+    [
+      <C key="0">length</C>,
+      <>
+        The same. <C>turn.tools</C> then fails every call as truncated.
+      </>,
+      <Codes key="2" items={["tools", "done"]} />,
+    ],
+    [
+      <C key="0">error</C>,
+      "An eligible overflow tries a checkpoint first. Otherwise a retryable failure under the limit retries, and anything else fails.",
+      <Codes key="2" items={["respond", "retry", "failed"]} />,
+    ],
+    [<C key="0">aborted</C>, "The call was cancelled.", <C key="2">aborted</C>],
+  ]}
+/>
+
+A host that cannot supply the model a run recorded fails `respond` with a runner failure. It never answers under a substitute.
+
+Retries cover `rate_limit`, `overloaded` and `network`&nbsp;<Src root="ai/src" path="utils/failure.ts" line={265} />. Three retries wait 1 s, 2 s and 4 s, or the provider's `retryAfterMs` when it is longer. `phase.at` is stored on the run, so any host can resume the retry. Each retry commits the failed attempt and adds one to `attempts`. A request reserves its response before the call, so retries spend the step ceiling, and so does a crash mid-request, which repeats the call.
+
+## Prepare
+
+`turn.prepare` compares the branch with the prompt and tools this host wants the model to have. When the branch lacks some, it returns one `system` message that declares them. The step commits that and goes on to `turn.respond`, so a resumed run finds nothing left to declare.
+
+## Checkpoints
+
+`turn.prepare` checkpoints once the context passes `contextWindow − 16_384` tokens. An overflow error from `turn.respond` also tries a checkpoint, and a successful one replaces the failed response. While the work runs, `refs/compactions/<head>` names it; `publishCheckpoint` lands the checkpoint commit and clears that ref in one CAS. A successor that finds a leftover record clears it before anything else. History reads stop at the newest checkpoint.

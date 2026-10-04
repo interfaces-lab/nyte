@@ -1,6 +1,7 @@
 /** Where each window-tab place lives in the route, and back. */
 import type { useRouter } from "@tanstack/react-router";
 import { schemas } from "@nyte-ai/protocol";
+import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { sameSelection } from "../layout/pane-layout.ts";
 import { isPage } from "./model.ts";
@@ -32,19 +33,23 @@ export function placeHref(place: Place): string {
 
 type AppRouter = ReturnType<typeof useRouter>;
 
+const pageSearch = Type.Object({
+  customize: Type.Optional(Type.String()),
+  environment: Type.Optional(Type.String()),
+});
+
 /** What the latest requested location shows; undefined while Settings covers the window. */
 export function locationPlace(router: AppRouter): Place | undefined {
   const { pathname, search } = router.history.location;
 
   if (pathname.startsWith("/settings/")) return undefined;
-  const params = router.options.parseSearch(search);
-  const customize = params.customize;
-  const environment = params.environment;
+  const params: unknown = router.options.parseSearch(search);
+  const { customize, environment } = Value.Check(pageSearch, params) ? params : {};
 
-  if (typeof customize === "string")
+  if (customize !== undefined)
     return { kind: "customize", section: customize, sessionId: undefined };
 
-  if (typeof environment === "string") return { kind: "environments", section: environment };
+  if (environment !== undefined) return { kind: "environments", section: environment };
   const segment = /^\/session\/([^/]+)$/.exec(pathname)?.[1];
 
   if (segment === undefined) return pathname === "/" ? { kind: "blank" } : undefined;

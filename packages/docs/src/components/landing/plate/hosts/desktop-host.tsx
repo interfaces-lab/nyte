@@ -1,26 +1,25 @@
+import { Spinner } from "@nyte-ai/ui/spinner";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { role } from "@nyte-ai/ui/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
-
 import {
   IconArrowLeft,
   IconArrowRight,
   IconArrowUp,
   IconBlocks,
   IconChevronDownMedium,
-  IconChevronDownSmall,
+  IconChevronRightMedium,
   IconCollaborationPointerRight,
   IconDotGrid1x3VerticalTight,
+  IconEyeOpen,
   IconFolder1,
   IconFolderOpen,
+  IconMacbook,
   IconMagnifyingGlass,
   IconPlusSmall,
+  IconServer,
   IconSettingsGear2,
-  IconSidebarHiddenLeftWide,
-  IconSidebarHiddenRightWide,
-  IconUser,
 } from "central-icons-desktop";
-import { Spinner } from "@nyte-ai/ui/spinner";
 import type { ReactNode } from "react";
 import { Bezel } from "./bezel";
 import { EDIT_STATS, editDiffHTML } from "./edit-diff";
@@ -38,148 +37,188 @@ const CHATS = [
 
 function SideRow({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex h-7 items-center gap-1.5 rounded-[6px] px-1 text-muted-foreground">
+    <div className="flex h-7 shrink-0 items-center gap-1.5 rounded-[8px] px-1 text-(--nyte-content-chrome)">
       <span className="grid w-5 shrink-0 place-items-center">{icon}</span>
       <span className="min-w-0 flex-1 truncate">{children}</span>
     </div>
   );
 }
 
+function PanelGlyph({ side }: { side: "left" | "right" }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M2.75 6.75C2.75 5.64543 3.64543 4.75 4.75 4.75H19.25C20.3546 4.75 21.25 5.64543 21.25 6.75V17.25C21.25 18.3546 20.3546 19.25 19.25 19.25H4.75C3.64543 19.25 2.75 18.3546 2.75 17.25V6.75Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d={side === "left" ? "M9 4.75V12V19.25" : "M17.75 8.25V12V15.75"}
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap={side === "right" ? "round" : undefined}
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function ToolLine({
   verb,
   detail,
+  expandable = false,
+  open = false,
   children,
 }: {
   verb: string;
   detail: string;
+  expandable?: boolean;
+  open?: boolean;
   children?: ReactNode;
 }) {
   return (
-    <div className="flex min-h-6 min-w-0 items-baseline gap-1">
-      <span className="shrink-0 text-muted-foreground">{verb}</span>
-      <span className="min-w-0 truncate text-muted-foreground">{detail}</span>
+    <div className="flex min-h-6 min-w-0 items-center gap-1 text-muted-foreground">
+      <span className="shrink-0">{verb}</span>
+      <span className="min-w-0 truncate">{detail}</span>
       {children}
+      {expandable ? (
+        <IconChevronDownMedium
+          size={open ? 10 : 12}
+          className={open ? "rotate-180 text-tertiary-foreground" : "text-tertiary-foreground"}
+        />
+      ) : null}
     </div>
   );
 }
 
-/*
- * The desktop app mid-session, measured from packages/desktop: a 35px
- * titlebar over a 220px sidebar, 28px rows, an 840px transcript, and the pill
- * composer. Colours are the app's own (`.desktop-host` in global.css).
- */
 export async function DesktopHost() {
   const diff = await editDiffHTML();
 
   return (
     <Bezel className="h-full">
-      <div className="desktop-host flex h-full flex-col overflow-hidden rounded-t-[14px] bg-background text-left text-foreground shadow-[0_0_0_1px_rgb(0_0_0/0.05)]">
-        <div className="flex h-[35px] shrink-0 border-b border-border-subtle">
-          <div className="flex items-center border-r border-border-subtle bg-sidebar pr-1 text-muted-foreground md:w-[190px] lg:w-[220px]">
-            <div className="flex w-[72px] shrink-0 gap-2 pl-[11px]">
-              <span className="size-3 rounded-full bg-foreground/15" />
-              <span className="size-3 rounded-full bg-foreground/15" />
-              <span className="size-3 rounded-full bg-foreground/15" />
+      <div className="desktop-host flex h-full flex-col overflow-hidden rounded-t-[14px] text-left text-foreground shadow-[0_0_0_1px_rgb(0_0_0/0.05)]">
+        <div className="flex h-[35px] shrink-0 items-center pr-2.5 text-muted-foreground">
+          <div className="flex shrink-0 items-center md:w-[220px]">
+            <div className="flex w-[72px] shrink-0 gap-1.5 pl-[11px]">
+              <span className="size-3.5 rounded-full bg-foreground/15" />
+              <span className="size-3.5 rounded-full bg-foreground/15" />
+              <span className="size-3.5 rounded-full bg-foreground/15" />
             </div>
-            <span className="grid size-7 place-items-center">
-              <IconSidebarHiddenLeftWide size={16} />
+            <span className="grid size-7 place-items-center text-foreground">
+              <PanelGlyph side="left" />
             </span>
-            <span className="grid size-7 place-items-center max-sm:hidden">
-              <IconArrowLeft size={16} />
-            </span>
-            <span className="grid size-7 place-items-center opacity-40 max-sm:hidden">
-              <IconArrowRight size={16} />
-            </span>
+            <div className="ml-auto mr-2 hidden items-center gap-2 md:flex">
+              <span className="grid size-7 place-items-center">
+                <IconArrowLeft size={16} />
+              </span>
+              <span className="grid size-7 place-items-center opacity-50">
+                <IconArrowRight size={16} />
+              </span>
+            </div>
           </div>
-          <div className="flex min-w-0 flex-1 items-center pr-1 pl-3 text-muted-foreground">
-            <span className="min-w-0 flex-1 truncate text-[12px]/4 text-muted-foreground max-sm:invisible">
+          <div className="flex min-w-0 flex-1 items-center gap-1 pl-3">
+            <span className="min-w-0 max-w-[240px] flex-1 truncate rounded-[8px] bg-background px-2.5 py-1.5 text-[12px]/4 text-foreground shadow-[inset_0_0_0_1px_var(--nyte-border-secondary-translucent)] max-sm:hidden">
               Migrate stored runs on open
             </span>
-            <span className="grid size-7 place-items-center">
+            <span className="grid size-7 shrink-0 place-items-center max-sm:hidden">
+              <IconPlusSmall size={16} />
+            </span>
+            <span className="flex-1" />
+            <span className="grid size-7 shrink-0 place-items-center">
               <IconDotGrid1x3VerticalTight size={16} />
             </span>
-            <span className="grid size-7 place-items-center">
-              <IconSidebarHiddenRightWide size={16} />
+            <span className="grid size-7 shrink-0 place-items-center">
+              <PanelGlyph side="right" />
             </span>
           </div>
         </div>
 
         <div className="flex min-h-0 flex-1">
-          <div className="hidden w-[190px] shrink-0 flex-col gap-px border-r border-border-subtle bg-sidebar p-2 text-[13px]/[18px] md:flex lg:w-[220px]">
-            <SideRow icon={<IconCollaborationPointerRight size={14} />}>New Chat</SideRow>
-            <SideRow icon={<IconMagnifyingGlass size={14} />}>Search</SideRow>
-            <SideRow icon={<IconBlocks size={14} />}>Customize</SideRow>
-
-            <div className="mt-3 flex h-7 items-center px-1 text-muted-foreground">Workspaces</div>
-            <SideRow icon={<IconFolderOpen size={14} />}>nyte</SideRow>
-            {CHATS.map((chat) => (
-              <div
-                key={chat.title}
-                data-selected={chat.selected ? "" : undefined}
-                className="group flex h-7 items-center gap-1.5 rounded-[6px] px-1 text-muted-foreground data-selected:bg-fill-selected data-selected:text-foreground"
-              >
-                <span className="grid w-5 shrink-0 place-items-center">
-                  {chat.mark === "spinner" ? (
-                    <Spinner
-                      {...props(intent.primary, styles.glyph)}
-                      style={{ width: 15, height: 15 }}
-                    />
-                  ) : null}
-                  {chat.mark === "unread" ? (
-                    <span {...props(intent.primary, styles.dot)} className="size-2 rounded-full" />
-                  ) : null}
+          <div className="hidden w-[220px] shrink-0 flex-col text-[13px]/[18px] md:flex">
+            <div className="flex flex-col gap-px px-2 pt-1.5">
+              <SideRow icon={<IconCollaborationPointerRight size={14} />}>New Chat</SideRow>
+              <SideRow icon={<IconMagnifyingGlass size={14} />}>Search</SideRow>
+              <SideRow icon={<IconBlocks size={14} />}>Customize</SideRow>
+              <SideRow icon={<IconServer size={14} />}>Environments</SideRow>
+              <SideRow icon={<IconSettingsGear2 size={14} />}>
+                <span className="flex items-center justify-between">
+                  Settings
+                  <IconChevronRightMedium size={14} />
                 </span>
-                <span className="min-w-0 flex-1 truncate">{chat.title}</span>
-                <span className="w-10 shrink-0 text-right text-[11px]/[14px] text-muted-foreground tabular-nums group-data-selected:text-muted-foreground">
-                  {chat.time}
-                </span>
+              </SideRow>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col gap-px overflow-hidden p-2">
+              <div className="flex h-7 shrink-0 items-center px-1 text-muted-foreground">
+                Workspaces
               </div>
-            ))}
-            <SideRow icon={<IconFolder1 size={14} />}>website</SideRow>
-
-            <div className="mt-auto flex items-center">
+              <SideRow icon={<IconFolderOpen size={14} />}>nyte</SideRow>
+              {CHATS.map((chat) => (
+                <div
+                  key={chat.title}
+                  data-selected={chat.selected ? "" : undefined}
+                  className="flex h-7 shrink-0 items-center gap-1.5 rounded-[8px] px-1 text-(--nyte-content-chrome) data-selected:bg-fill-selected data-selected:text-foreground data-selected:shadow-[inset_0_0_0_1px_var(--nyte-border-primary)]"
+                >
+                  <span className="grid w-5 shrink-0 place-items-center">
+                    {chat.mark === "spinner" ? <Spinner style={{ width: 15, height: 15 }} /> : null}
+                    {chat.mark === "unread" ? <IconEyeOpen size={14} /> : null}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+                  <span className="w-10 shrink-0 text-right text-[11px]/[14px] tracking-[0.07px] text-muted-foreground tabular-nums">
+                    {chat.time}
+                  </span>
+                </div>
+              ))}
+              <SideRow icon={<IconFolder1 size={14} />}>website</SideRow>
+            </div>
+            <div className="flex items-center gap-0.5 p-2">
               <div className="min-w-0 flex-1">
-                <SideRow icon={<IconUser size={14} />}>Accounts</SideRow>
+                <SideRow icon={<IconMacbook size={14} />}>Profile</SideRow>
               </div>
               <span className="grid size-7 place-items-center text-muted-foreground">
-                <IconSettingsGear2 size={14} />
+                <IconSettingsGear2 size={16} />
               </span>
             </div>
           </div>
 
-          <div className="relative min-w-0 flex-1">
-            <div className="mx-auto flex max-w-[840px] flex-col gap-2 px-4 pt-[26px] text-[15px]/6">
-              <p className="rounded-[12px] border border-border-subtle bg-popover px-2.5 py-2">
+          <div className="relative mr-2 mb-2 min-w-0 flex-1 overflow-hidden rounded-[12px] bg-background shadow-[0_0_0_1px_var(--nyte-border-secondary-translucent)] max-md:ml-2">
+            <div className="mx-auto flex max-w-[840px] flex-col gap-2 px-4 pt-[26px] text-[15px]/6 tracking-[-0.016em]">
+              <p className="mb-1 rounded-[12px] border border-border-subtle bg-popover px-2.5 py-2">
                 Stored runs from 0.0.8 fail to open. Migrate them when the store opens, and keep
                 sessions we can&rsquo;t read out of the sidebar.
               </p>
 
-              <div className="mt-1 flex flex-col">
-                <div className="flex items-center gap-1.5 py-1.5 text-muted-foreground">
-                  Worked for 6s
-                  <span {...props(intent.success, styles.status)} className="tabular-nums">
-                    +{EDIT_STATS.added}
+              <div className="flex min-w-0 flex-col">
+                <div className="flex min-h-6 min-w-0 items-center gap-1 text-muted-foreground">
+                  <span className="shrink-0">Edited</span>
+                  <span className="min-w-0 truncate">
+                    store-schemas.ts, explored store-schemas.ts, ran 2 commands
                   </span>
-                  <span {...props(intent.danger, styles.status)} className="tabular-nums">
-                    -{EDIT_STATS.removed}
+                  <span className="flex shrink-0 gap-1.5 tabular-nums">
+                    <span {...props(intent.success, styles.status)}>+{EDIT_STATS.added}</span>
+                    <span {...props(intent.danger, styles.status)}>-{EDIT_STATS.removed}</span>
                   </span>
-                  <IconChevronDownSmall size={12} className="text-muted-foreground" />
+                  <IconChevronDownMedium size={16} className="ml-0.5 shrink-0 rotate-180" />
                 </div>
-                <div className="mt-1 flex flex-col gap-1.5 py-0.5 pl-4">
-                  <ToolLine verb="Read" detail="packages/core/src/kernel/store-schemas.ts" />
-                  <ToolLine verb="Ran" detail={'rg -n "schemaVersion" packages/core/src'} />
+                <div className="flex flex-col gap-1.5 pt-1.5">
+                  <ToolLine verb="Read" detail="store-schemas.ts" />
+                  <ToolLine
+                    verb="Ran"
+                    detail={'rg -n "schemaVersion" packages/core/src'}
+                    expandable
+                  />
                   <div>
-                    <ToolLine verb="Edited" detail="store-schemas.ts">
-                      <span className="ml-1 flex shrink-0 gap-1.5 tabular-nums">
+                    <ToolLine verb="Edited" detail="store-schemas.ts" expandable open>
+                      <span className="ml-2 flex shrink-0 gap-1 tabular-nums">
                         <span {...props(intent.success, styles.status)}>+{EDIT_STATS.added}</span>
                         <span {...props(intent.danger, styles.status)}>-{EDIT_STATS.removed}</span>
                       </span>
                     </ToolLine>
-                    <div className="mt-1 mb-0.5 overflow-hidden rounded-[6px] border border-border-subtle bg-sidebar">
+                    <div className="mt-1 mb-0.5 overflow-hidden rounded-[8px] border border-border-subtle bg-background">
                       <PrerenderedDiff html={diff} className="desktop-diff" />
                     </div>
                   </div>
-                  <ToolLine verb="Ran" detail="pnpm --dir packages/core test" />
+                  <ToolLine verb="Ran" detail="pnpm --dir packages/core test" expandable />
                 </div>
               </div>
 
@@ -189,23 +228,20 @@ export async function DesktopHost() {
               </p>
             </div>
 
-            <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-background from-60% to-transparent px-4 pt-6 pb-4 max-sm:hidden">
-              <div className="mx-auto flex h-10 max-w-[808px] items-center gap-2 rounded-full border border-border-subtle bg-popover py-1 pr-2 pl-2.5">
-                <span
-                  {...props(styles.add)}
-                  className="grid size-7 shrink-0 place-items-center rounded-full text-foreground"
-                >
+            <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-background from-60% to-transparent px-4 pt-8 pb-3.5 max-sm:hidden">
+              <div className="mx-auto flex min-h-10 max-w-[808px] items-center gap-2 rounded-full border border-border-subtle bg-popover py-1 pr-2 pl-2.5">
+                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-popover text-muted-foreground shadow-[inset_0_0_0_1px_var(--nyte-border-primary),var(--nyte-shadow-sm)]">
                   <IconPlusSmall size={16} />
                 </span>
-                <span className="min-w-0 flex-1 truncate text-[15px] text-muted-foreground">
+                <span className="min-w-0 flex-1 truncate text-[15px] tracking-[-0.016em] text-muted-foreground">
                   Add a follow-up
                 </span>
-                <span className="inline-flex h-6 shrink-0 items-center gap-0.5 rounded-[6px] px-1.5 text-[12px] text-muted-foreground">
-                  GPT-5.6 Sol
-                  <span className="text-muted-foreground">· High</span>
-                  <IconChevronDownMedium size={12} className="text-muted-foreground" />
+                <span className="inline-flex h-6 min-w-0 shrink items-center gap-1.5 rounded-[6px] px-2 text-[12px]/4 font-medium text-muted-foreground">
+                  <span className="truncate">GPT-5.6 Luna</span>
+                  <span>Medium</span>
+                  <IconChevronDownMedium size={10} className="shrink-0" />
                 </span>
-                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-foreground text-background">
+                <span {...props(intent.primary, styles.send)}>
                   <IconArrowUp size={16} />
                 </span>
               </div>
@@ -219,9 +255,15 @@ export async function DesktopHost() {
 
 const styles = create({
   status: { color: role.contentSecondary },
-  glyph: { color: role.contentInteractiveTertiary },
-  dot: { backgroundColor: role.bgInteractiveStrong },
-  add: {
-    boxShadow: `inset 0 0 0 1px ${role.borderPrimaryTranslucent}, 0 1px 2px rgb(0 0 0 / 0.06)`,
+  send: {
+    display: "grid",
+    placeItems: "center",
+    flexShrink: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 9999,
+    opacity: 0.5,
+    backgroundColor: role.buttonFill,
+    color: role.contentOnInteractiveStrong,
   },
 });

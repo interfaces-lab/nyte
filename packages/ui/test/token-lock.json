@@ -763,6 +763,7 @@
       "--nyte-settings-section-gap",
       "--nyte-settings-section-title-line-height",
       "--nyte-settings-section-title-size",
+      "--nyte-shell-card-inset",
       "--nyte-sidebar-action-size",
       "--nyte-sidebar-ask-row-height",
       "--nyte-sidebar-gutter",
@@ -1041,7 +1042,7 @@
       "sectionTitleLineHeight",
       "sectionTitleSize"
     ],
-    "app/src/theme/schema.stylex.ts shell": ["titlebarHeight", "trafficLightInset"],
+    "app/src/theme/schema.stylex.ts shell": ["cardInset", "titlebarHeight", "trafficLightInset"],
     "app/src/theme/schema.stylex.ts sidebar": [
       "actionSize",
       "askRowHeight",

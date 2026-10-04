@@ -1,0 +1,15 @@
+---
+title: "Agents"
+---
+
+An agent preset is data from the `agents` registry: a model pin, a persona added to the base prompt, a tool allowlist and a `steps` ceiling. A run records the preset's name in `config.agent`.
+
+The `subagents` plugin gives a parent's model six tools: `task`, `create`, `send`, `await`, `read` and `stop`. Only root sessions get them, so depth is 1. A child's `parent` fact names the parent session, run and call. The child's id hashes those with the head, so a replayed `create` finds the child it already made. A child also loses every tool marked `availability: "foreground"`, because nobody is there to answer it. A child with no `model` tries `DEFAULT_TASK_MODELS` in order, and an explicit `model` never falls back.
+
+## A request and its answer
+
+A parent and a child are two sessions, so no CAS spans them, and `send` orders its writes instead. It first writes the request record at `refs/delegations/<child>/<change>` in the parent's store, in a CAS that asserts the parent's run ref. A stop that moved that ref makes the write fail, and `send` abandons the request. Only then does the child's inbox tip move, with a `user` change, and a submit that fails removes the record.
+
+The record carries the authorization: `authorized` for a model's `send` or `task`, `input` for a message a person sends to the child. When the child's run for the request ends, `deliverDue` submits one `answer` to the parent head as `steer` under the key `delegate-<child>-<change>`, and then marks the record delivered. A crash between the two writes lands nothing twice, because the key answers `duplicate`.
+
+`await`, and `task` with `waitMs`, park the call with an `until` and no selection. `wakeWaits` signals it when the named children satisfy `any` or `all`, or when user input is queued on the parent's head, so the model can answer the user first.

@@ -15,6 +15,7 @@ function FeatureGlyph({ icon }: { icon: SiteFeatureIcon }) {
   switch (icon) {
     case "docs":
       return <IconBookSimple size={18} />;
+    case "kernel":
     case "cloud":
       return <IconLayersThree size={18} />;
   }

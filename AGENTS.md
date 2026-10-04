@@ -6,6 +6,10 @@ Leave dev servers to the user. Build and test commands target individual package
 
 Prefer the smallest complete fix. Leave unrelated work alone.
 
+Core contracts live in `packages/docs/content/kernel/` and `packages/core/src/kernel/README.md`.
+
+Work on the public site's design, copy, or docs layout loads `.agents/skills/site-design`.
+
 Add backward compatibility only when requested.
 
 ## Commits and PR titles

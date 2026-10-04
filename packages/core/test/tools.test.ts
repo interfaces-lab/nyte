@@ -1,39 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { PhotonImage } from "@cf-wasm/photon/node";
 import { describe, expect, test } from "vitest";
-import { createToolArgumentParser } from "@nyte-ai/ai/utils/validation";
-import { executeToolCalls } from "../src/kernel/loop/agent-loop.ts";
-import { bindTool } from "../src/plugins/index.ts";
 import { createRegistries } from "../src/plugins/host.ts";
 import { createBashToolDefinition } from "../src/tools/bash.ts";
 import { applyEditsToNormalizedContent } from "../src/tools/edit-diff.ts";
 import { createEditToolDefinition } from "../src/tools/edit.ts";
 import { bindEnv, builtinTools } from "./builtin-tools.ts";
-import { createLsToolDefinition } from "../src/tools/ls.ts";
 import { createReadToolDefinition } from "../src/tools/read.ts";
 import { createWriteToolDefinition } from "../src/tools/write.ts";
 import { ToolError, ToolStop, toolResultText } from "../src/kernel/loop/tool-result.ts";
 import type { ExecutionEnv } from "../src/kernel/loop/env.ts";
-import type { AgentLoopConfig } from "../src/kernel/loop/types.ts";
-import { assistant, call, localEnv, storePath, toolCall } from "./kernel/helpers.ts";
-
-const config: AgentLoopConfig = {
-  model: {
-    id: "test",
-    name: "test",
-    api: "openai-responses",
-    provider: "openai",
-    baseUrl: "https://example.invalid",
-    reasoning: false,
-    input: ["text"],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 1000,
-    maxTokens: 100,
-  },
-};
+import { localEnv, toolCall } from "./kernel/helpers.ts";
 
 test(
   "read preserves small images and bounds converted, oversized, and oriented images",
@@ -100,84 +80,6 @@ test(
     }
   },
 );
-
-describe("ls tool", () => {
-  test("observes aborts while an operation is in flight", async () => {
-    let finishRead: ((entries: string[]) => void) | undefined;
-    const entries = new Promise<string[]>((resolve) => {
-      finishRead = resolve;
-    });
-
-    const tool = bindEnv(
-      { ...createLsToolDefinition(), name: "ls" },
-      {
-        ...localEnv("/workspace"),
-        stat: async () => ({ kind: "directory" }),
-        readdir: () => entries,
-      },
-    );
-    const controller = new AbortController();
-
-    const execution = tool.execute({}, toolCall("call_1", { signal: controller.signal }));
-    controller.abort();
-    finishRead?.([]);
-
-    await assert.rejects(execution, /Operation aborted/);
-  });
-
-  test("retains preparer rejection while schema parsing coerces and omits optional nulls", async () => {
-    const directory = dirname(storePath());
-    await writeFile(join(directory, "a.txt"), "a");
-    await writeFile(join(directory, "b.txt"), "b");
-    const ls = { ...createLsToolDefinition(), name: "ls" };
-    const tools = [bindEnv(bindTool(ls), localEnv(directory))];
-    const parse = createToolArgumentParser(ls);
-    assert.deepEqual(parse({ path: null, limit: "1" }), { limit: 1 });
-    assert.deepEqual(parse({ limit: null }), {});
-    assert.deepEqual(ls.prepareArguments?.({ ignored: true }), {});
-    assert.throws(() => ls.prepareArguments?.({ limit: Number.NaN }), /limit must be number/);
-    for (const args of [{ limit: "1" }, { limit: null }, { path: null }, { path: 1 }]) {
-      const result = await executeToolCalls(
-        { messages: [], tools },
-        assistant("", { calls: [call("ls", "ls", args)] }),
-        config,
-        undefined,
-        () => {},
-      );
-      assert.equal(result[0]?.outcome.kind, "error");
-    }
-    const result = await executeToolCalls(
-      { messages: [], tools },
-      assistant("", { calls: [call("ls", "ls", { limit: 2 })] }),
-      { ...config, beforeToolCall: async () => ({ args: { path: null, limit: "1" } }) },
-      undefined,
-      () => {},
-    );
-    assert.equal(result[0]?.outcome.kind, "success");
-    assert.deepEqual(result[0]?.message.details, { entryLimitReached: 1 });
-    assert.match(toolResultText(result[0]?.message.content ?? []), /^a.txt\n/u);
-  });
-
-  test("skips entries that disappear after readdir and still marks surviving directories", async () => {
-    const directory = dirname(storePath());
-    await writeFile(join(directory, "gone"), "gone");
-    await writeFile(join(directory, "z.txt"), "z");
-    await mkdir(join(directory, "folder"));
-    const env = localEnv(directory);
-
-    const ls = bindEnv(bindTool({ name: "ls", ...createLsToolDefinition() }), {
-      ...env,
-      readdir: async (path) => {
-        const entries = await env.readdir(path);
-        await rm(join(path, "gone"));
-
-        return entries;
-      },
-    });
-
-    assert.equal(toolResultText((await ls.execute({}, toolCall("ls"))).content), "folder/\nz.txt");
-  });
-});
 
 test("builtin registry contributions retain identity through rebuilds", () => {
   const registries = createRegistries();

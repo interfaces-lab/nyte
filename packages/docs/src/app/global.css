@@ -39,6 +39,8 @@
     /* Header top below the plate edge, so nav pills sit concentric in its corner. */
     --plate-nav-drop: calc(var(--plate-inset) - var(--site-nav-pad));
     --plate-ink: #0e0e5c;
+
+    --site-panel: color-mix(in oklab, var(--color-foreground) 4%, var(--color-background));
   }
 
   /* Set by viewport only, never by page, so the nav keeps its edges across routes. */
@@ -64,7 +66,8 @@
 
 @theme {
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
-  --font-display: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-pixel: var(--font-geist-pixel-square), var(--font-geist-mono), ui-monospace, monospace;
 
   --ease-nav: cubic-bezier(0.22, 1, 0.36, 1);
   --animate-nav-panel-in: nav-panel-in 420ms var(--ease-nav) both;
@@ -104,9 +107,9 @@
 }
 
 /* The landing hero plate repaints the shared site nav until the preview reaches it. */
-@custom-variant hero (html:not([data-nav-stuck]) body:has(.landing-plate) &);
-@custom-variant stuck (html[data-nav-stuck] body:has(.landing-plate) &);
-@custom-variant plate (body:has(.landing-plate) &);
+@custom-variant hero (html:not([data-nav-stuck]) body:has(.landing-plate:not([style*="display: none"] *)) &);
+@custom-variant stuck (html[data-nav-stuck] body:has(.landing-plate:not([style*="display: none"] *)) &);
+@custom-variant plate (body:has(.landing-plate:not([style*="display: none"] *)) &);
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
@@ -167,25 +170,6 @@
   }
 
   /* Anchored to the product window, so the plate turns to paper behind it at every width. */
-
-  /* A pastel aura seen through a 4px halftone screen. */
-  .install-halo {
-    background:
-      radial-gradient(38% 60% at 28% 42%, rgb(244 114 182 / 0.95), transparent 75%),
-      radial-gradient(40% 60% at 50% 36%, rgb(167 139 250 / 0.9), transparent 75%),
-      radial-gradient(38% 60% at 72% 56%, rgb(96 165 250 / 0.95), transparent 75%);
-    mask-image:
-      radial-gradient(circle, black 1.1px, transparent 1.5px),
-      radial-gradient(closest-side, black 20%, transparent);
-    mask-size:
-      4px 4px,
-      100% 100%;
-    mask-composite: intersect;
-  }
-
-  .dark .install-halo {
-    opacity: 0.55;
-  }
 
   /* Facts pop out of a word: scale and tilt overshoot, then drift after the pointer. */
   .fact-pill {
@@ -248,26 +232,39 @@
     }
   }
 
+  .desktop-host {
+    background-color: var(--nyte-sidebar-material);
+    font-family: var(--nyte-font-family-sans);
+    font-size: var(--nyte-font-size-base);
+    line-height: var(--nyte-line-height-base);
+    font-weight: 400;
+    font-optical-sizing: auto;
+    font-variant-numeric: tabular-nums;
+  }
+
   /* Pierre's host variables, as conversation/styles.stylex.ts sets them on a receipt. */
   .desktop-diff {
     display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     --diffs-light-bg: transparent;
     --diffs-dark-bg: transparent;
     --diffs-gap-style: none;
     --diffs-gap-block: 0px;
     --diffs-min-number-column-width: calc(4ch + 8px);
-    --diffs-font-family: var(--font-mono);
-    --diffs-header-font-family: var(--font-sans);
-    --diffs-font-size: 12px;
+    --diffs-font-family: var(--nyte-font-family-mono);
+    --diffs-header-font-family: var(--nyte-font-family-sans);
+    --diffs-font-size: var(--nyte-font-size-code);
     --diffs-line-height: 20px;
     --diffs-tab-size: 4;
   }
 }
 
 @layer utilities {
-  /* The plate scrolls the document; the nav stays pinned in its corner. */
-  html:has(.landing-plate),
-  html:has(.landing-plate) body {
+  /* The plate scrolls the document; the nav stays pinned in its corner. A cached, hidden plate does not. */
+  html:has(.landing-plate:not([style*="display: none"] *)),
+  html:has(.landing-plate:not([style*="display: none"] *)) body {
     height: auto;
     overflow: visible;
   }

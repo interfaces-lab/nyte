@@ -1,0 +1,87 @@
+---
+title: "Store"
+---
+
+import { EXCERPTS } from "~/components/mdx/kernel/excerpts";
+
+Everything above runs on four authorities, modelled on git. <Src path="store.ts" /> defines them, a backend implements them, and the kernel calls nothing else.
+
+<Table
+  head={["Git", "Kernel", "Holds"]}
+  rows={[
+    ["object database", <C key="1">objects</C>, "Content-addressed, immutable values."],
+    ["ref, update-ref", <C key="1">refs</C>, "The only mutable state, moved by multi-ref CAS."],
+    ["lock file", <C key="1">leases</C>, "Fenced execution rights. Never history."],
+    ["reflog", <C key="1">events</C>, "One ordered stream per session."],
+  ]}
+/>
+
+Git does not fit everywhere. A commit has exactly one context parent, because model context is linear. There is no worktree; a client reads at any commit. The SDK carries a stale branch forward with a summary commit instead of rebasing. The event log can be trimmed, so a cursor can expire.
+
+## One publish
+
+1. The runner puts the new objects. Nothing names them yet, so no reader can see them.
+2. It calls `refs.update` with its lease. A stale lease answers `fenced` before any ref is compared&nbsp;<Src path="sqlite.ts" line={653} />.
+3. Every ref must still hold its `from`. One mismatch answers `conflict` and writes nothing.
+4. Each moved ref appends a `ref` event in the same transaction, and watchers wake when the transaction commits.
+
+<Source title="Refs and Leases" excerpt={EXCERPTS.refs} />
+
+## Terms
+
+<Table
+  head={["Term", "Meaning"]}
+  rows={[
+    ["object", "An immutable JSON value: commit, change, run, effect, stack or blob."],
+    [
+      "body",
+      <>
+        An object's stored JSON: keys sorted by UTF-16 code unit, arrays in order, <C>undefined</C>{" "}
+        properties dropped, as RFC 8785 specifies. <C>hash.ts</C> owns it, and a stored body is
+        hashed again on every read.
+      </>,
+    ],
+    ["oid", "The SHA-256 of the body."],
+    ["ref", "A named pointer to an oid."],
+    [
+      "CAS",
+      <>
+        Compare-and-swap. A ref moves to <C>to</C> only if it still holds <C>from</C>.
+      </>,
+    ],
+    [
+      "assertion",
+      <>
+        An update with <C>to === from</C>. It must hold, and it writes no row and no event.
+      </>,
+    ],
+    [
+      "lease",
+      <>
+        An expiring lock on a name. A step, a compaction and a relocation hold{" "}
+        <C>refs/heads/&lt;head&gt;</C>, and a job holds <C>refs/jobs/&lt;job&gt;</C>.
+      </>,
+    ],
+    [
+      "fence",
+      <>
+        A lease's generation. Writes that carry an older fence answer <C>fenced</C>. Renew and
+        release match the owner and the fence, never the expiry, so a holder past its expiry keeps
+        its write rights until another host takes over.
+      </>,
+    ],
+    ["seq", "An event's position in the session log, from 1."],
+    [
+      "cursor",
+      <>
+        The last seq a reader has seen, passed as <C>afterSeq</C>.
+      </>,
+    ],
+    [
+      "floor",
+      <>
+        The highest trimmed seq. A cursor below it throws <C>CursorExpired</C>.
+      </>,
+    ],
+  ]}
+/>

@@ -35,10 +35,10 @@ export function Toc({ entries }: { entries: TocEntry[] }) {
       setCurrent(chosen?.id ?? null);
     };
     pick();
-    window.addEventListener("scroll", pick, { passive: true });
+    window.addEventListener("scroll", pick, { passive: true, capture: true });
     window.addEventListener("resize", pick);
     return () => {
-      window.removeEventListener("scroll", pick);
+      window.removeEventListener("scroll", pick, { capture: true });
       window.removeEventListener("resize", pick);
     };
   }, [entries]);

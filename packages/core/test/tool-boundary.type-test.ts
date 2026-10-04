@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { bindTool } from "../src/plugins/index.ts";
-import { createLsToolDefinition, type LsToolInput } from "../src/tools/ls.ts";
-import { createWriteToolDefinition } from "../src/tools/write.ts";
+import { createReadToolDefinition } from "../src/tools/read.ts";
+import { createWriteToolDefinition, type WriteToolInput } from "../src/tools/write.ts";
 import type { createJobs } from "../src/kernel/sdk/jobs.ts";
 import type { AgentTool, ExecutableTool } from "../src/kernel/loop/types.ts";
 import { ToolMapDraft } from "../src/plugins/registry.ts";
@@ -42,19 +42,19 @@ export function toolTypeContracts() {
 }
 
 export function builtinTypeContracts(jobs: ReturnType<typeof createJobs>) {
-  const ls = { ...createLsToolDefinition(), name: "ls" };
+  const read = { ...createReadToolDefinition(), name: "read" };
   const write = { ...createWriteToolDefinition(), name: "write" };
-  // @ts-expect-error The factory's schema requires a numeric limit.
-  void ls.execute({ limit: "2" }, toolCall("call"));
+  // @ts-expect-error The factory's schema requires string content.
+  void write.execute({ path: "a.ts", content: 2 }, toolCall("call"));
   // @ts-expect-error The public input type is derived from the same schema.
-  const invalidInput: LsToolInput = { path: false };
-  // @ts-expect-error A write executor cannot implement the ls schema.
-  bindTool({ ...ls, execute: write.execute });
+  const invalidInput: WriteToolInput = { path: false, content: "" };
+  // @ts-expect-error A write executor cannot implement the read schema.
+  bindTool({ ...read, execute: write.execute });
   // @ts-expect-error Heterogeneous factories must be bound before storage.
-  const unchecked: AgentTool[] = [ls, write];
+  const unchecked: AgentTool[] = [read, write];
   // @ts-expect-error Jobs wrapping cannot erase a concrete executor unchecked.
   jobs.wrap(write);
-  const checked: AgentTool[] = [bindTool(ls), bindTool(write)];
+  const checked: AgentTool[] = [bindTool(read), bindTool(write)];
   const wrapped: AgentTool[] = builtinTools("/tmp").map((tool) => jobs.wrap(tool));
   return { invalidInput, unchecked, checked, wrapped };
 }

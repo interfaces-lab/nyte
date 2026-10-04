@@ -1106,13 +1106,6 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
 
       const prepared: Extract<PreparedPluginReplacement, { kind: "ready" }>[] = [];
       const errors: string[] = [];
-      // A new set is a new chance for a session its old set failed. Clear every
-      // one first, or a child resolved before its root copies the root's failed state.
-      for (const [, pooled] of pool.entries()) {
-        if (!pooled.relocating && pooled.activationState?.kind === "failed")
-          pooled.activationState = undefined;
-      }
-
       for (const [id, pooled] of pool.entries()) {
         if (pooled.relocating) continue;
         await pool.resolveSessionActivation(id, pooled);
@@ -1142,6 +1135,15 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         else if (outcome.kind === "queued") queued = true;
       }
       pool.setPluginsOverride(next);
+      // The new set is a new chance for a session its old set failed; it reaches
+      // the session through the override, so clear only once that is in place, and
+      // every one first, or a child resolved before its root copies the root's failed state.
+      const recovering = [...pool.entries()].filter(
+        ([, pooled]) =>
+          !pooled.relocating && !pooled.scopedPlugins && pooled.activationState?.kind === "failed",
+      );
+      for (const [, pooled] of recovering) pooled.activationState = undefined;
+      for (const [id, pooled] of recovering) await pool.activationFor(id, pooled);
       if (errors.length) return { kind: "rejected", error: errors.join("; ") };
       return { kind: queued ? "queued" : "applied" };
     },

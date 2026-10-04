@@ -43,17 +43,12 @@ export interface BashToolDetails {
   durationMs?: number;
 }
 
-export interface BashToolOptions {
-  /** Command prefix prepended to every command (for example shell setup commands) */
-  commandPrefix?: string;
-}
-
 const BASH_UPDATE_THROTTLE_MS = 100;
 
-export function createBashToolDefinition(
-  options?: BashToolOptions,
-): ToolDefinition<typeof bashSchema, BashToolDetails | undefined> {
-  const commandPrefix = options?.commandPrefix;
+export function createBashToolDefinition(): ToolDefinition<
+  typeof bashSchema,
+  BashToolDetails | undefined
+> {
   return {
     label: "bash",
     description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
@@ -81,7 +76,6 @@ export function createBashToolDefinition(
     constrainedSampling: { type: "json_schema", strict: "prefer" },
     async execute({ command, timeout }, call) {
       const { signal, update, env } = call;
-      const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
       const output = new OutputAccumulator({ tempFilePrefix: "nyte-bash" });
       let acceptingOutput = true;
       let updateTimer: NodeJS.Timeout | undefined;
@@ -179,7 +173,7 @@ export function createBashToolDefinition(
       try {
         let exitCode: number;
         try {
-          const result = await env.exec(resolvedCommand, {
+          const result = await env.exec(command, {
             onData: handleData,
             signal,
             timeout,

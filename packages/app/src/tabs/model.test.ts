@@ -35,6 +35,7 @@ test("back walks the focused pane, then returns from a page to the exact split",
     { kind: "open", place: chat("a"), target: "here" },
     { kind: "open", place: chat("b"), target: "here" },
   ]);
+
   state = run([pane(state, { kind: "split", direction: "right" })], state);
   state = run([{ kind: "open", place: chat("c"), target: "here" }], state);
   const split = activeTab(state).views[activeTab(state).index];
@@ -59,6 +60,7 @@ test("back walks the focused pane, then returns from a page to the exact split",
 
 test("a new chat that starts its chat is replaced, not stacked", () => {
   const state = run([]);
+
   const started = run(
     [pane(state, { kind: "select-in-pane", paneId: "primary", selection: chat("a") })],
     state,
@@ -75,6 +77,7 @@ test("closing hands over right, then left, never to a pinned tab", () => {
     { kind: "open", place: chat("c"), target: "background" },
     { kind: "activate-index", index: 1 },
   ]);
+
   expect(state.tabs.map((tab) => tabPlace(tab))).toEqual([chat("a"), chat("c"), chat("b")]);
 
   const right = run([{ kind: "close-tab", tabId: state.activeTabId }], state);
@@ -88,6 +91,7 @@ test("closing hands over right, then left, never to a pinned tab", () => {
     ],
     state,
   );
+
   expect(tabPlace(activeTab(pinned))).toEqual(chat("c"));
 
   const alone = run([{ kind: "close-others", tabId: "t1" }], pinned);
@@ -101,6 +105,7 @@ test("a pinned tab keeps its place and opens what it is asked to past the pinned
     { kind: "open", place: chat("b"), target: "background" },
     { kind: "toggle-pin", tabId: "t1" },
   ]);
+
   state = run([pane(state, { kind: "select", selection: chat("c") })], state);
 
   expect(state.tabs.map((tab) => tabPlace(tab))).toEqual([chat("a"), chat("c"), chat("b")]);

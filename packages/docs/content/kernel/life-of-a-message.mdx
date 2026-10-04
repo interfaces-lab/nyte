@@ -1,0 +1,106 @@
+---
+title: "Life of a message"
+---
+
+Follow one `messages.send` from the SDK until the head is idle again. Each write below shows its `refs.update` as a table of the refs it compares. `=` marks an assertion, a ref that must already hold that value and is not written.
+
+<Trace>
+  <TraceStep number={1} title="Submit" where={<Src path="queue.ts" line={199} />}>
+    <P>
+      <C>messages.send</C> writes a <C>Change</C> object, then moves the inbox tip to it. A submit
+      never waits on a run. With a key, the same CAS claims <C>refs/keys/&lt;key&gt;</C>, so a
+      retried send answers <C>duplicate</C>. The client's outbox mints the key on Enter and resends
+      it, 500 ms apart and doubling to 10 s, until the store answers <C>queued</C> or{" "}
+      <C>duplicate</C>. Both mean the change is durable. A lost tip race retries.{" "}
+      <C>reconcileRunner</C> then starts the session's runner without waiting for it.
+    </P>
+    <Cas
+      reason="submit"
+      note="no lease"
+      moves={[
+        { ref: "inbox/main/next/tip", from: "tip", to: "change" },
+        { ref: "keys/<key>", from: "null", to: "change, when keyed" },
+      ]}
+    />
+  </TraceStep>
+  <TraceStep number={2} title="Wake" where={<Src path="sdk/runner.ts" line={389} />}>
+    <P>
+      The moved tip appends a <C>ref</C> event. The runner's watch sees it, <C>handleRef</C> maps
+      the ref to head <C>main</C>, and <C>wake</C> starts a drive. <C>drive</C> takes the lease on{" "}
+      <C>refs/heads/main</C> for 30 s. <C>step</C> finds no run and calls <C>landOrIdle</C>.
+    </P>
+  </TraceStep>
+  <TraceStep number={3} title="Land" where={<Src path="step.ts" line={256} />}>
+    <P>
+      <C>steer</C> is empty and <C>next</C> holds the change. Admission answers <C>start</C> for a
+      fresh head and a user lead. One CAS commits the message, advances the inbox base, creates the
+      run, and opens the chain's response counter.
+    </P>
+    <Cas
+      reason="land"
+      moves={[
+        { ref: "heads/main", from: "tip", to: "user commit { start }" },
+        { ref: "inbox/main/next/base", from: "base", to: "change" },
+        { ref: "runs/main", from: "null", to: "Run { phase: respond, attempts: 0 }" },
+        { ref: "chains/<root>", from: "null", to: "{ attempts: 0 }" },
+        { ref: "cancelled/<change>", from: "null", to: "null" },
+        { ref: "deleted", from: "null", to: "null" },
+      ]}
+    />
+  </TraceStep>
+  <TraceStep number={4} title="Respond" where={<Src path="step.ts" line={667} />}>
+    <P>
+      The run is in <C>respond</C>. The step reserves one response on the chain counter in its own
+      CAS, then calls <C>turn.respond</C>. Deltas reach the event log through the outbox while the
+      model writes. The finished message lands together with the next phase.
+    </P>
+    <Cas
+      reason="reserve response"
+      moves={[
+        { ref: "chains/<root>", from: "{ attempts: 0 }", to: "{ attempts: 1 }" },
+        { ref: "deleted", from: "null", to: "null" },
+      ]}
+    />
+    <Cas
+      reason="respond"
+      moves={[
+        { ref: "heads/main", from: "user commit", to: "assistant commit" },
+        { ref: "runs/main", from: "Run", to: "Run { phase: tools, attempts: 1 }" },
+        { ref: "deleted", from: "null", to: "null" },
+      ]}
+    />
+  </TraceStep>
+  <TraceStep number={5} title="Tools" where={<Src path="step.ts" line={888} />}>
+    <P>
+      Each call gets an effect ref, which moves from <C>intent</C> to <C>result</C> in its own
+      leased CAS with reason <C>effect</C>. Once every call has settled, one CAS lands the results
+      and clears the effects.
+    </P>
+    <Cas
+      reason="tools"
+      moves={[
+        { ref: "heads/main", from: "assistant commit", to: "tool result commits" },
+        { ref: "runs/main", from: "Run", to: "Run { phase: respond }" },
+        { ref: "effects/<run>/<call>", from: "result", to: "null" },
+        { ref: "deleted", from: "null", to: "null" },
+      ]}
+    />
+  </TraceStep>
+  <TraceStep number={6} title="Finish" where={<Src path="step.ts" line={1124} />}>
+    <P>
+      The model answers without tool calls. <C>respond</C> publishes the message with phase{" "}
+      <C>done</C> and <C>drive</C> returns <C>finished</C>. The run-ref events from this drive
+      marked the head dirty, so <C>wake</C> drives once more. <C>landOrIdle</C> finds nothing, so
+      the second drive answers <C>idle</C> and releases its lease.
+    </P>
+    <Cas
+      reason="respond"
+      note="after a second reserve"
+      moves={[
+        { ref: "heads/main", from: "tool result commit", to: "assistant commit" },
+        { ref: "runs/main", from: "Run", to: "Run { phase: done, attempts: 2 }" },
+        { ref: "deleted", from: "null", to: "null" },
+      ]}
+    />
+  </TraceStep>
+</Trace>

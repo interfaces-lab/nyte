@@ -30,7 +30,7 @@ const historySchema = Type.Object(
   strict,
 );
 
-const section = Type.Optional(Type.String({ minLength: 1 }));
+const section = Type.Optional(Type.String());
 
 const viewSchema = Type.Union([
   Type.Object(
@@ -263,6 +263,7 @@ class WindowTabs {
     const existing = this.#controllers.get(tabId);
 
     if (existing !== undefined) return existing;
+
     const tab =
       this.#state.tabs.find((candidate) => candidate.id === tabId) ?? activeTab(this.#state);
 
