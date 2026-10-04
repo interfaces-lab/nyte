@@ -48,22 +48,15 @@ backend. History remains in `.wrangler/state` across dev-server restarts.
 
 ## Read the code top down
 
-1. [src/index.ts](src/index.ts) routes to one named DO, opens SQLite, creates
-   Nyte, and serves the desktop protocol. Calls that admit work persist an
-   alarm before changing state and before returning. Its `alarm()` method
-   reads Nyte's sessions and heads, advances each one, and schedules the next
-   continuation, retry, wait deadline, or lease expiry.
-2. [src/sqlite.ts](src/sqlite.ts) maps Nyte's existing SQLite connection
-   interface onto DO SQL and synchronous transactions.
-3. [src/models.ts](src/models.ts) loads the synced model and supplies its Codex
+1. [src/index.ts](src/index.ts) checks the bearer token in the Worker, routes
+   to one named DO, and configures `NyteDurableObject` from
+   [`@nyte-ai/cloudflare`](../../../cloudflare/README.md). The package opens DO
+   SQLite, creates Nyte, serves the desktop protocol, and drives `sdk.advance()`
+   from the DO alarm.
+2. [src/models.ts](src/models.ts) loads the synced model and supplies its Codex
    provider and streaming function.
-4. [scripts/dev.ts](scripts/dev.ts) forwards the Codex response endpoint through
+3. [scripts/dev.ts](scripts/dev.ts) forwards the Codex response endpoint through
    Node for this local OAuth test. It does not run the agent loop or store chats.
-
-The alarm is persisted before accepting work. Admission counters stay in memory
-because they track requests running in this DO instance. If a request overlaps
-an alarm scan, the scan schedules another pass. A watchdog alarm covers an
-interrupted advance; after a restart, Nyte reads its state from SQLite.
 
 The local Node transport is necessary because Codex rejected the request sent
 directly by workerd in this test. It preserves request compression and streams
