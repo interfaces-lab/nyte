@@ -1,3 +1,5 @@
+import { toolStatus } from "@nyte-ai/client";
+import type { ToolStatus, ToolTense } from "@nyte-ai/client";
 import { create, props } from "@stylexjs/stylex";
 import type { ToolClass, ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
@@ -13,9 +15,8 @@ import { fileFromUrl } from "./message-references.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import { activityStyles } from "./styles.stylex.ts";
 import { terminalText } from "./terminal-text.ts";
-import { customTool, placeName } from "./tool-copy.ts";
-import type { CustomTool, ToolPhase, ToolVerbs } from "./tool-copy.ts";
-import { toolPhase } from "./transcript-presentation.ts";
+import { customTool, placeName, toolNoun, toolVerbs } from "./tool-copy.ts";
+import type { CustomTool } from "./tool-copy.ts";
 
 export type LineToolClass = Extract<ToolClass, { readonly kind: "file_read" | "list" | "custom" }>;
 
@@ -73,6 +74,7 @@ export const toolLineStyles = create({
     },
   },
   dimmed: { "--_action": DIMMED, "--_details": DIMMED },
+  dimmedText: { color: DIMMED },
   icon: {
     display: "inline-flex",
     alignItems: "center",
@@ -94,7 +96,6 @@ export const toolLineStyles = create({
   },
   strong: { color: "var(--_action)", ...COLOR_TRANSITION },
   outcome: { flexShrink: 0, color: role.contentSecondary },
-  failed: { color: role.contentSecondary },
   chevron: {
     color: role.contentTertiary,
     opacity: "var(--_chevron)",
@@ -141,18 +142,27 @@ export const toolLineStyles = create({
   },
 });
 
-const READ: ToolVerbs = { running: "Reading", done: "Read", error: "Read" };
-
-const LIST: ToolVerbs = { running: "Listing", done: "Listed", error: "List" };
-
-function lineCopy(toolClass: LineToolClass, cwd: string | undefined): CustomTool {
+/** Without a verb the subject names the tool itself: "x.ts read", or a custom tool's own name. */
+function lineCopy(toolClass: LineToolClass, cwd: string | undefined, tense: ToolTense): CustomTool {
   switch (toolClass.kind) {
     case "file_read":
-      return { verbs: READ, detail: placeName(toolClass.path, cwd) };
-    case "list":
-      return { verbs: LIST, detail: placeName(toolClass.path, cwd) };
-    case "custom":
-      return customTool(toolClass.label);
+    case "list": {
+      const place = placeName(toolClass.path, cwd);
+
+      return {
+        verbs: toolVerbs(toolClass),
+        detail: tense === "none" ? `${place} ${toolNoun(toolClass) ?? ""}` : place,
+      };
+    }
+
+    case "custom": {
+      const tool = customTool(toolClass.label);
+
+      return tense === "none" && tool.name === undefined
+        ? { ...tool, detail: toolClass.label }
+        : tool;
+    }
+
     default: {
       const _exhaustive: never = toolClass;
 
@@ -161,10 +171,22 @@ function lineCopy(toolClass: LineToolClass, cwd: string | undefined): CustomTool
   }
 }
 
-function action(verbs: ToolVerbs, phase: ToolPhase): string {
-  if (phase === "running") return verbs.running;
+/** The word the outcome adds after the subject; a failure takes the danger tone, a stop stays quiet. */
+export function ToolOutcome({ status }: { readonly status: ToolStatus }): ReactElement | null {
+  if (status.word === undefined) return null;
 
-  return phase === "done" ? verbs.done : verbs.error;
+  return (
+    <span
+      {...props(
+        status.tone === "failure" && intent.danger,
+        status.tone === "attention" && intent.warning,
+        toolLineStyles.outcome,
+        status.tone === "stopped" && toolLineStyles.dimmedText,
+      )}
+    >
+      · {status.word}
+    </span>
+  );
 }
 
 function fileUrl(path: string, cwd: string | undefined): string | undefined {
@@ -183,24 +205,23 @@ export const ToolLineView = memo(function ToolLineView({
   toolClass,
   progress,
   cwd,
-  active,
 }: {
   part: ToolTurnPart;
   toolClass: LineToolClass;
   progress: ToolProgress | undefined;
   cwd: string | undefined;
-  active: boolean;
 }): ReactElement {
-  const phase = toolPhase(part, active);
+  const status = toolStatus(part.state);
+  const running = status.tense === "running";
   const opener = useReferenceOpener();
-  const raw = part.result === undefined ? (progress?.text ?? "") : part.result.output;
+  const raw = part.output ?? (running ? (progress?.text ?? "") : "");
   const output = useMemo(() => terminalText(raw).trimEnd(), [raw]);
-  const copy = lineCopy(toolClass, cwd);
+  const copy = lineCopy(toolClass, cwd, status.tense);
   const [expanded, setExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
 
   const file =
-    toolClass.kind === "file_read" && phase === "done"
+    toolClass.kind === "file_read" && status.tone === "success"
       ? fileFromUrl(fileUrl(toolClass.path, cwd) ?? "")
       : undefined;
 
@@ -215,15 +236,17 @@ export const ToolLineView = memo(function ToolLineView({
           <Icon name="mcp" size={14} />
         </span>
       )}
-      <span
-        {...props(
-          toolLineStyles.action,
-          !hasDetails && toolLineStyles.actionOnly,
-          phase === "running" && activityStyles.shimmer,
-        )}
-      >
-        {action(copy.verbs, phase)}
-      </span>
+      {status.tense !== "none" && (
+        <span
+          {...props(
+            toolLineStyles.action,
+            !hasDetails && toolLineStyles.actionOnly,
+            running && activityStyles.shimmer,
+          )}
+        >
+          {copy.verbs[status.tense]}
+        </span>
+      )}
       {hasDetails && (
         <span {...props(toolLineStyles.details)}>
           {copy.name !== undefined && <span {...props(toolLineStyles.strong)}>{copy.name}</span>}
@@ -231,25 +254,21 @@ export const ToolLineView = memo(function ToolLineView({
           {copy.name === undefined && copy.detail}
         </span>
       )}
-      {phase === "failed" && (
-        <span {...props(intent.danger, toolLineStyles.outcome, toolLineStyles.failed)}>failed</span>
-      )}
-      {phase === "interrupted" && <span {...props(toolLineStyles.outcome)}>stopped</span>}
+      <ToolOutcome status={status} />
     </>
   );
 
-  const toneStyles = [toolLineStyles.line, phase === "interrupted" && toolLineStyles.dimmed];
+  const dimmed = status.tone === "stopped" && toolLineStyles.dimmed;
 
   if (open !== undefined) {
     return (
       <a
         href={file?.url}
-        data-tool-status={phase}
         onClick={(event) => {
           event.preventDefault();
           open();
         }}
-        {...props(...toneStyles, toolLineStyles.clickable, focus.ringInset)}
+        {...props(toolLineStyles.line, toolLineStyles.clickable, dimmed, focus.ringInset)}
       >
         {content}
       </a>
@@ -257,11 +276,7 @@ export const ToolLineView = memo(function ToolLineView({
   }
 
   if (!expandable) {
-    return (
-      <div data-tool-status={phase} {...props(...toneStyles)}>
-        {content}
-      </div>
-    );
+    return <div {...props(toolLineStyles.line, dimmed)}>{content}</div>;
   }
 
   return (
@@ -274,7 +289,7 @@ export const ToolLineView = memo(function ToolLineView({
       }}
     >
       <PreviewCard
-        open={hovered && !expanded && phase !== "running"}
+        open={hovered && !expanded && !running}
         onOpenChange={(next, details) => {
           if (details.reason === "trigger-press" || details.reason === "outside-press") return;
 
@@ -287,8 +302,7 @@ export const ToolLineView = memo(function ToolLineView({
           render={
             <Collapsible.Trigger
               variant="plain"
-              data-tool-status={phase}
-              xstyle={[...toneStyles, toolLineStyles.clickable, focus.ringInset]}
+              xstyle={[toolLineStyles.line, toolLineStyles.clickable, dimmed, focus.ringInset]}
             />
           }
         >

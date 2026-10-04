@@ -366,11 +366,7 @@ async function open(initial: SessionSnapshot) {
         tools: parts.flatMap((part) => {
           if (part.kind !== "tool") return [];
 
-          return [
-            part.result === undefined
-              ? (displayed.tools.get(part.callId)?.progress.text ?? "")
-              : part.result.output,
-          ];
+          return [part.output ?? displayed.tools.get(part.callId)?.progress.text ?? ""];
         }),
       };
     },

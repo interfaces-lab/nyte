@@ -197,12 +197,12 @@ export function transcriptRows({
 const USER_ROW_ESTIMATE = 76;
 
 /**
- * A work group's height depends on the density posture: compact settles to
+ * A step group's height depends on the density posture: compact settles to
  * the summary line and clips live work to a preview, detailed leaves the
  * whole list open. A turn's live state is unknown before it measures, so
  * the estimate splits those postures rather than guessing one number.
  */
-const WORK_GROUP_ESTIMATE = {
+const STEP_GROUP_ESTIMATE = {
   compact: 64,
   balanced: 140,
   detailed: 240,
@@ -258,7 +258,7 @@ function estimateTurnSize(turn: Turn, density: ToolCallDensity): number {
   if (turn.kind !== "turn") return RECORD_ROW_ESTIMATE;
   let size = 0;
   let prose = 0;
-  let work = false;
+  let step = false;
 
   for (const part of turn.parts) {
     switch (part.kind) {
@@ -270,7 +270,7 @@ function estimateTurnSize(turn: Turn, density: ToolCallDensity): number {
         break;
       case "thinking":
       case "tool":
-        work = true;
+        step = true;
         break;
       default: {
         const _exhaustive: never = part;
@@ -280,7 +280,7 @@ function estimateTurnSize(turn: Turn, density: ToolCallDensity): number {
     }
   }
 
-  if (work) size += WORK_GROUP_ESTIMATE[density];
+  if (step) size += STEP_GROUP_ESTIMATE[density];
   const files = changesFromTurns([turn]).length;
 
   if (files > 0) {

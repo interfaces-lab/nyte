@@ -5,11 +5,11 @@ import type { ReactNode } from "react";
 import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
 import "../theme/global.css";
-import { WorkGroupView } from "./tool-group.tsx";
+import { StepGroupView } from "./step-group.tsx";
 import { IDLE } from "../live-fold.ts";
 import type { LiveSnapshot } from "../live-fold.ts";
-import type { WorkTurnPart } from "./transcript-presentation.ts";
-import { FOLLOW_RESUME_MS } from "./tool-group-follow.ts";
+import type { StepTurnPart } from "./transcript-presentation.ts";
+import { FOLLOW_RESUME_MS } from "./step-group-follow.ts";
 import { sessionId } from "@nyte-ai/protocol";
 import { PaneControllerProvider } from "../layout/pane-context.tsx";
 import { TranscriptProvider } from "./transcript.tsx";
@@ -26,7 +26,7 @@ async function settle() {
   for (let index = 0; index < 4; index += 1) await frame();
 }
 
-function thoughts(count: number): WorkTurnPart[] {
+function thoughts(count: number): StepTurnPart[] {
   return Array.from({ length: count }, (_, index) => ({
     kind: "thinking",
     commit: String(index),
@@ -42,10 +42,10 @@ export async function run() {
   document.body.append(outer);
   const root = createRoot(outer);
 
-  const render = (parts: readonly WorkTurnPart[], running: boolean) =>
+  const render = (parts: readonly StepTurnPart[], running: boolean) =>
     flushSync(() =>
       root.render(
-        <WorkGroupView
+        <StepGroupView
           parts={parts}
           run={{ kind: "none" }}
           liveTools={new Map()}
@@ -153,7 +153,7 @@ export async function run() {
       "Revealing earlier steps keeps focus in the group",
     );
 
-    const firstThought: WorkTurnPart = {
+    const firstThought: StepTurnPart = {
       kind: "thinking",
       commit: "thought-0",
       contentIndex: 0,
@@ -161,7 +161,7 @@ export async function run() {
       at: 0,
     };
 
-    const settledThought: WorkTurnPart = {
+    const settledThought: StepTurnPart = {
       kind: "thinking",
       commit: "thought-1",
       contentIndex: 0,
@@ -183,7 +183,7 @@ export async function run() {
     flushSync(() => root.render(null));
     flushSync(() =>
       root.render(
-        <WorkGroupView
+        <StepGroupView
           parts={[firstThought]}
           run={{ kind: "run", id: "run" }}
           liveTools={new Map()}
@@ -204,7 +204,7 @@ export async function run() {
     await settle();
     flushSync(() =>
       root.render(
-        <WorkGroupView
+        <StepGroupView
           parts={[firstThought]}
           run={{ kind: "run", id: "run" }}
           live={streaming}
@@ -231,7 +231,7 @@ export async function run() {
     check(streamedParagraph !== undefined, "Streaming thought is visible");
     flushSync(() =>
       root.render(
-        <WorkGroupView
+        <StepGroupView
           parts={[firstThought, settledThought]}
           run={{ kind: "run", id: "run" }}
           liveTools={new Map()}
@@ -267,10 +267,10 @@ export async function run() {
     const transcript = (group: ReactNode) =>
       flushSync(() =>
         root.render(
-          <PaneControllerProvider workspaceKey="work-group-test">
+          <PaneControllerProvider workspaceKey="step-group-test">
             <TranscriptProvider
               paneId="primary"
-              sessionId={sessionId("work-group-test")}
+              sessionId={sessionId("step-group-test")}
               ready
               autoScroll
               scrollEdgeThreshold={60}
@@ -282,7 +282,7 @@ export async function run() {
       );
 
     const liveOnly = (index: number) => (
-      <WorkGroupView
+      <StepGroupView
         key={`live:${String(index)}`}
         parts={[]}
         run={{ kind: "none" }}
@@ -304,7 +304,7 @@ export async function run() {
     await settle();
     check(expandedState() === "true", "A live-only group opens");
     transcript(
-      <WorkGroupView
+      <StepGroupView
         key="durable"
         parts={[
           { kind: "thinking", commit: "landed", contentIndex: 3, text: "Live thought", at: 0 },

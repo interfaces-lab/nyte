@@ -50,7 +50,7 @@ interface SessionViewState {
   readonly composer: ComposerViewState;
   readonly scroll: ScrollViewState;
   readonly transcript: TranscriptViewState;
-  readonly workGroups: ReadonlyMap<string, boolean>;
+  readonly stepGroups: ReadonlyMap<string, boolean>;
   readonly focusedPaneId: PaneId;
   readonly split: SplitViewState | undefined;
 }
@@ -79,7 +79,7 @@ function defaultSessionViewState(paneId: PaneId): SessionViewState {
     composer: DEFAULT_COMPOSER_VIEW_STATE,
     scroll: { top: 0, bottomPinned: true },
     transcript: { measurements: [], viewport: undefined, density: undefined },
-    workGroups: new Map(),
+    stepGroups: new Map(),
     focusedPaneId: paneId,
     split: undefined,
   };

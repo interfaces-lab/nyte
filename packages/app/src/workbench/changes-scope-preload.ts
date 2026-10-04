@@ -37,7 +37,7 @@ function changedTurn(id: string, paths: readonly string[]): ConversationTurn {
         removed: 0,
         patch: patchOf(path, id),
       },
-      result: { commit: `${id}-result-${String(index)}`, output: "", isError: false },
+      state: { kind: "success", commit: `${id}-result-${String(index)}` },
       at: 1,
     })),
   };

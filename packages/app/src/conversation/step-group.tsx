@@ -21,38 +21,38 @@ import { focus, srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { livePartKey } from "../live.ts";
 import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
 import type { ToolCallDensity } from "../theme/boot.ts";
-import { activityStyles, toolGroupStyles } from "./styles.stylex.ts";
+import { activityStyles, stepGroupStyles } from "./styles.stylex.ts";
 import { ToolCallView } from "./tool-call.tsx";
 import { Prose } from "./prose.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
 import { reasoningHeading } from "./reasoning-heading.ts";
-import type { WorkTurnPart } from "./transcript-presentation.ts";
+import type { StepTurnPart } from "./transcript-presentation.ts";
 import {
   FOLLOW_INPUT_MS,
   FOLLOW_RESUME_MS,
   followOnScroll,
   overflows,
-} from "./tool-group-follow.ts";
-import { useWorkGroupOpen } from "./transcript.tsx";
-import { workGroupContent } from "./work-group-content.ts";
+} from "./step-group-follow.ts";
+import { useStepGroupOpen } from "./transcript.tsx";
+import { stepGroupContent } from "./step-group-content.ts";
 import {
-  durableWorkGroupPresentation,
-  liveWorkGroupPresentation,
-} from "./work-group-presentation.ts";
+  durableStepGroupPresentation,
+  liveStepGroupPresentation,
+} from "./step-group-presentation.ts";
 
 const STEP_LIMIT = 200;
 
 const FOCUSABLE = "a[href], button, [tabindex]";
 
-type WorkEntry =
-  | { readonly key: string; readonly kind: "part"; readonly part: WorkTurnPart }
+type StepEntry =
+  | { readonly key: string; readonly kind: "part"; readonly part: StepTurnPart }
   | { readonly key: string; readonly kind: "live-thinking"; readonly text: string };
 
-function workEntryKey(part: WorkTurnPart): string {
+function stepEntryKey(part: StepTurnPart): string {
   return part.kind === "tool" ? part.callId : turnPartId(part);
 }
 
-type ThinkingPart = Extract<WorkTurnPart, { readonly kind: "thinking" }>;
+type ThinkingPart = Extract<StepTurnPart, { readonly kind: "thinking" }>;
 
 type ThinkingKeyInput =
   | {
@@ -67,12 +67,12 @@ type ThinkingKeyInput =
       readonly part: ThinkingPart;
     };
 
-function createThinkingKey(parts: readonly WorkTurnPart[]): (input: ThinkingKeyInput) => string {
+function createThinkingKey(parts: readonly StepTurnPart[]): (input: ThinkingKeyInput) => string {
   const settled = new Map<string, string>();
 
   for (const part of parts) {
     if (part.kind !== "thinking") continue;
-    const key = workEntryKey(part);
+    const key = stepEntryKey(part);
     settled.set(key, key);
   }
 
@@ -97,7 +97,7 @@ function createThinkingKey(parts: readonly WorkTurnPart[]): (input: ThinkingKeyI
       }
 
       case "settled": {
-        const durable = workEntryKey(input.part);
+        const durable = stepEntryKey(input.part);
         const existing = settled.get(durable);
 
         if (existing !== undefined) return existing;
@@ -152,19 +152,17 @@ function createThinkingKey(parts: readonly WorkTurnPart[]): (input: ThinkingKeyI
   };
 }
 
-function WorkEntryView({
+function StepEntryView({
   entry,
   liveTools,
   cwd,
-  active,
   density,
   thinkingOnly,
   titled,
 }: {
-  entry: WorkEntry;
+  entry: StepEntry;
   liveTools: ReadonlyMap<string, LiveToolProgress>;
   cwd: string | undefined;
-  active: boolean;
   density: ToolCallDensity;
   thinkingOnly: boolean;
   /** The group header already carries this lone thought's heading. */
@@ -172,7 +170,7 @@ function WorkEntryView({
 }): ReactElement | null {
   if (entry.kind === "live-thinking") {
     return thinkingOnly ? (
-      <div {...props(toolGroupStyles.thinking)}>
+      <div {...props(stepGroupStyles.thinking)}>
         <span {...props(srOnly)}>Reasoning</span>
         <Prose markdown={entry.text} streaming />
       </div>
@@ -186,7 +184,7 @@ function WorkEntryView({
   switch (part.kind) {
     case "thinking":
       return thinkingOnly ? (
-        <div {...props(toolGroupStyles.thinking)}>
+        <div {...props(stepGroupStyles.thinking)}>
           <span {...props(srOnly)}>Reasoning</span>
           <Prose markdown={titled ? reasoningHeading(part.text).body : part.text} />
         </div>
@@ -199,7 +197,6 @@ function WorkEntryView({
           part={part}
           progress={liveTools.get(part.callId)?.progress}
           cwd={cwd}
-          active={active}
           density={density}
         />
       );
@@ -211,7 +208,7 @@ function WorkEntryView({
   }
 }
 
-export function WorkGroupView({
+export function StepGroupView({
   parts,
   run,
   live,
@@ -222,7 +219,7 @@ export function WorkGroupView({
   running,
   density,
 }: {
-  parts: readonly WorkTurnPart[];
+  parts: readonly StepTurnPart[];
   run: TurnRun;
   live?: LiveSnapshot;
   liveTools: ReadonlyMap<string, LiveToolProgress>;
@@ -253,13 +250,13 @@ export function WorkGroupView({
       : Math.max(0, (running ? now : (parts.at(-1)?.at ?? firstPart.at)) - firstPart.at);
 
   const durablePresentation = useMemo(
-    () => durableWorkGroupPresentation({ parts, durationMs, added, removed, running }),
+    () => durableStepGroupPresentation({ parts, durationMs, added, removed, running }),
     [added, durationMs, parts, removed, running],
   );
 
   const presentation = useMemo(
     () =>
-      liveWorkGroupPresentation({
+      liveStepGroupPresentation({
         durable: durablePresentation,
         live: presentationLive,
       }),
@@ -273,7 +270,7 @@ export function WorkGroupView({
   const thinkingOnly = parts.every((part) => part.kind === "thinking");
 
   const liveThinking = useMemo(() => {
-    const merged: WorkEntry[] = [];
+    const merged: StepEntry[] = [];
     let adjacent = false;
 
     for (const ref of liveOrder ?? []) {
@@ -307,7 +304,7 @@ export function WorkGroupView({
 
   const settledEntries = useMemo(
     () =>
-      parts.reduce<WorkEntry[]>((merged, part) => {
+      parts.reduce<StepEntry[]>((merged, part) => {
         const previous = merged.at(-1);
 
         // Consecutive reasoning between tool calls reads as one thought.
@@ -329,7 +326,7 @@ export function WorkGroupView({
           key:
             part.kind === "thinking"
               ? thinkingKey({ kind: "settled", run, part })
-              : workEntryKey(part),
+              : stepEntryKey(part),
           kind: "part",
           part,
         });
@@ -346,9 +343,9 @@ export function WorkGroupView({
 
   const firstLive = liveOrder?.find((ref) => ref.kind === "thinking");
 
-  const [open, setOpen] = useWorkGroupOpen(
+  const [open, setOpen] = useStepGroupOpen(
     firstPart !== undefined
-      ? workEntryKey(firstPart)
+      ? stepEntryKey(firstPart)
       : firstLive === undefined
         ? undefined
         : `live:${firstLive.runId}:${String(firstLive.index)}`,
@@ -370,7 +367,7 @@ export function WorkGroupView({
       reasoningHeading(onlyThought.text).body.trim() === ""
     );
 
-  const content = workGroupContent({
+  const content = stepGroupContent({
     density,
     active,
     open,
@@ -474,19 +471,19 @@ export function WorkGroupView({
 
   const summaryLine = (
     <>
-      <span {...props(toolGroupStyles.verb, active && activityStyles.shimmer)}>{summary.verb}</span>
+      <span {...props(stepGroupStyles.verb, active && activityStyles.shimmer)}>{summary.verb}</span>
       {summary.detail !== undefined && (
-        <span {...props(toolGroupStyles.summary)}>{summary.detail}</span>
+        <span {...props(stepGroupStyles.summary)}>{summary.detail}</span>
       )}
       {(summary.added > 0 || summary.removed > 0) && (
-        <span {...props(toolGroupStyles.stats)}>
+        <span {...props(stepGroupStyles.stats)}>
           {summary.added > 0 && (
-            <span {...props(intent.success, toolGroupStyles.added)}>
+            <span {...props(intent.success, stepGroupStyles.added)}>
               +<AnimatedNumber value={summary.added} />
             </span>
           )}
           {summary.removed > 0 && (
-            <span {...props(intent.danger, toolGroupStyles.removed)}>
+            <span {...props(intent.danger, stepGroupStyles.removed)}>
               -<AnimatedNumber value={summary.removed} />
             </span>
           )}
@@ -497,7 +494,7 @@ export function WorkGroupView({
 
   if (!hasContent) {
     return (
-      <div aria-busy={active || undefined} {...props(toolGroupStyles.root, toolGroupStyles.status)}>
+      <div aria-busy={active || undefined} {...props(stepGroupStyles.root, stepGroupStyles.status)}>
         {summaryLine}
       </div>
     );
@@ -510,7 +507,7 @@ export function WorkGroupView({
   const disclosure = {
     variant: "plain",
     "aria-controls": expanded ? panelId : undefined,
-    xstyle: [toolGroupStyles.toggle, focus.ring],
+    xstyle: [stepGroupStyles.toggle, focus.ring],
   } as const;
 
   return (
@@ -518,26 +515,26 @@ export function WorkGroupView({
       open={expanded}
       onOpenChange={setOpen}
       aria-busy={active || undefined}
-      xstyle={toolGroupStyles.root}
+      xstyle={stepGroupStyles.root}
     >
       <Collapsible.Trigger ref={triggerRef} {...disclosure}>
         {summaryLine}
-        <Collapsible.Chevron xstyle={toolGroupStyles.chevron} />
+        <Collapsible.Chevron xstyle={stepGroupStyles.chevron} />
       </Collapsible.Trigger>
       {content !== "closed" && (
         <Row
           id={panelId}
           ref={viewportRef}
           data-nyte-scrollport={preview || undefined}
-          data-work-preview={preview || undefined}
-          xstyle={[toolGroupStyles.panel, preview && toolGroupStyles.preview]}
+          data-step-preview={preview || undefined}
+          xstyle={[stepGroupStyles.panel, preview && stepGroupStyles.preview]}
         >
           {preview && (
             <Row.Primary tabIndex={-1} aria-hidden xstyle={srOnly} onClick={() => setOpen(true)}>
               Show work details
             </Row.Primary>
           )}
-          <div ref={callsRef} {...props(toolGroupStyles.calls)}>
+          <div ref={callsRef} {...props(stepGroupStyles.calls)}>
             {expanded && earlier > 0 && (
               <Button
                 variant="plain"
@@ -548,18 +545,17 @@ export function WorkGroupView({
                   const step = first?.matches(FOCUSABLE) ? first : first?.querySelector(FOCUSABLE);
                   (step instanceof HTMLElement ? step : triggerRef.current)?.focus();
                 }}
-                xstyle={toolGroupStyles.earlier}
+                xstyle={stepGroupStyles.earlier}
               >
                 Show {earlier} earlier steps
               </Button>
             )}
             {entries.slice(earlier).map((entry) => (
-              <WorkEntryView
+              <StepEntryView
                 key={entry.key}
                 entry={entry}
                 liveTools={liveTools}
                 cwd={cwd}
-                active={active}
                 density={density}
                 thinkingOnly={thinkingOnly}
                 titled={titled}

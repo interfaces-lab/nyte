@@ -3,7 +3,8 @@ import { create, props } from "@stylexjs/stylex";
 import type { StyleXStyles } from "@stylexjs/stylex";
 import { useCallback } from "react";
 import type { ReactElement } from "react";
-import type { SessionId, SessionInfo, TurnToolClass } from "@nyte-ai/protocol";
+import { toolStatus } from "@nyte-ai/client";
+import type { SessionId, SessionInfo, ToolState, TurnToolClass } from "@nyte-ai/protocol";
 import { TextRoll } from "../components/text-roll.tsx";
 import { UnreadMark } from "../components/ui.tsx";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
@@ -22,14 +23,13 @@ import { activityStyles, subagentCallStyles } from "./styles.stylex.ts";
 import { useChildSession, useOpenSubagentTray } from "./subagent-sessions.ts";
 import {
   callStatus,
+  DELEGATE_NOUNS,
   DELEGATE_VERBS,
-  phaseVerb,
   sessionStatus,
   subagentActivity,
 } from "./subagent-status.ts";
 import type { SubagentStatus } from "./subagent-status.ts";
-import type { ToolPhase } from "./tool-copy.ts";
-import { toolLineStyles } from "./tool-line.tsx";
+import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 
 export type DelegateToolClass = Extract<TurnToolClass, { readonly kind: "delegate" }>;
 
@@ -241,19 +241,21 @@ function SubagentNestedRows({
   );
 }
 
+const STARTING: SubagentStatus = { indicator: "running", text: "Starting up" };
+
 export function SubagentCallView({
   session,
   title,
-  phase,
+  state,
   cwd,
 }: {
   readonly session: SessionId;
   readonly title: string;
-  readonly phase: ToolPhase;
+  readonly state: ToolState;
   readonly cwd: string | undefined;
 }): ReactElement {
   // The parent's list lags the child, and a parent that stopped or was left
-  // behind lists no provisional one. The call's phase is the parent's, not the
+  // behind lists no provisional one. The call's state is the parent's, not the
   // child's: it speaks only once the child is known never to have started.
   const listed = useChildSession(session);
   const read = useSession(session);
@@ -262,9 +264,9 @@ export function SubagentCallView({
 
   const subject: SubagentSubject =
     child === undefined
-      ? { kind: "call", status: callStatus(read.data === null ? phase : "running") }
+      ? { kind: "call", status: read.data === null ? callStatus(toolStatus(state)) : STARTING }
       : "kind" in child
-        ? { kind: "call", status: callStatus("running") }
+        ? { kind: "call", status: STARTING }
         : { kind: "session", session: child };
 
   return (
@@ -284,13 +286,15 @@ export function SubagentCallView({
 /** A call on a child, drawn as a tool line: the verb, then the agent it names, which opens the child. */
 export function SubagentLineView({
   toolClass,
-  phase,
+  state,
   output,
 }: {
   readonly toolClass: DelegateToolClass;
-  readonly phase: ToolPhase;
+  readonly state: ToolState;
   readonly output: string;
 }): ReactElement {
+  const status = toolStatus(state);
+  const running = status.tense === "running";
   const session = toolClass.target.session;
   const childSession = useChildSession(session);
 
@@ -303,7 +307,7 @@ export function SubagentLineView({
 
   const openTray = useOpenSubagentTray();
   const label = child ?? "agent";
-  const verbs = DELEGATE_VERBS[toolClass.role];
+  const verb = status.tense === "none" ? undefined : DELEGATE_VERBS[toolClass.role][status.tense];
   const expandable = output.trim() !== "";
 
   const agent = (
@@ -317,27 +321,25 @@ export function SubagentLineView({
 
   const line = (
     <div
-      data-tool-status={phase}
       {...props(
         toolLineStyles.line,
         (expandable || openTray !== undefined) && toolLineStyles.clickable,
-        phase === "interrupted" && toolLineStyles.dimmed,
+        status.tone === "stopped" && toolLineStyles.dimmed,
       )}
     >
-      {expandable ? (
-        <Collapsible.Trigger
-          variant="plain"
-          tabIndex={-1}
-          aria-hidden="true"
-          xstyle={[toolLineStyles.action, phase === "running" && activityStyles.shimmer]}
-        >
-          {phaseVerb(verbs, phase)}
-        </Collapsible.Trigger>
-      ) : (
-        <span {...props(toolLineStyles.action, phase === "running" && activityStyles.shimmer)}>
-          {phaseVerb(verbs, phase)}
-        </span>
-      )}
+      {verb !== undefined &&
+        (expandable ? (
+          <Collapsible.Trigger
+            variant="plain"
+            tabIndex={-1}
+            aria-hidden="true"
+            xstyle={[toolLineStyles.action, running && activityStyles.shimmer]}
+          >
+            {verb}
+          </Collapsible.Trigger>
+        ) : (
+          <span {...props(toolLineStyles.action, running && activityStyles.shimmer)}>{verb}</span>
+        ))}
       <span {...props(toolLineStyles.details, lineStyles.detailsRow)}>
         {openTray === undefined ? (
           <span {...props(lineStyles.agent)}>{agent}</span>
@@ -350,10 +352,10 @@ export function SubagentLineView({
           </Row.Primary>
         )}
       </span>
-      {phase === "failed" && (
-        <span {...props(intent.danger, toolLineStyles.outcome, toolLineStyles.failed)}>failed</span>
+      {verb === undefined && (
+        <span {...props(toolLineStyles.action)}>{DELEGATE_NOUNS[toolClass.role]}</span>
       )}
-      {phase === "interrupted" && <span {...props(toolLineStyles.outcome)}>stopped</span>}
+      <ToolOutcome status={status} />
       {expandable && (
         <Collapsible.Trigger
           variant="plain"

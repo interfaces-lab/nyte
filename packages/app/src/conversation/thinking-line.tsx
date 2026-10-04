@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { ReactElement } from "react";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
-import { activityStyles, toolGroupStyles } from "./styles.stylex.ts";
+import { activityStyles, stepGroupStyles } from "./styles.stylex.ts";
 import { Prose } from "./prose.tsx";
 import { reasoningHeading } from "./reasoning-heading.ts";
 
@@ -22,26 +22,26 @@ export function ThinkingLine({
   const { title, body } = streaming ? { title: undefined, body: text } : reasoningHeading(text);
 
   const label = (
-    <span {...props(toolGroupStyles.verb, streaming && activityStyles.shimmer)}>
+    <span {...props(stepGroupStyles.verb, streaming && activityStyles.shimmer)}>
       {streaming ? "Thinking" : (title ?? "Thought")}
     </span>
   );
 
-  if (body.trim() === "") return <div {...props(toolGroupStyles.status)}>{label}</div>;
+  if (body.trim() === "") return <div {...props(stepGroupStyles.status)}>{label}</div>;
 
   return (
     <Collapsible.Root
       open={open ?? streaming}
       onOpenChange={setOpen}
       aria-busy={streaming || undefined}
-      xstyle={toolGroupStyles.root}
+      xstyle={stepGroupStyles.root}
     >
-      <Collapsible.Trigger variant="plain" xstyle={[toolGroupStyles.toggle, focus.ring]}>
+      <Collapsible.Trigger variant="plain" xstyle={[stepGroupStyles.toggle, focus.ring]}>
         {label}
-        <Collapsible.Chevron xstyle={toolGroupStyles.chevron} />
+        <Collapsible.Chevron xstyle={stepGroupStyles.chevron} />
       </Collapsible.Trigger>
       <Collapsible.Panel>
-        <div {...props(toolGroupStyles.calls, toolGroupStyles.thinking)}>
+        <div {...props(stepGroupStyles.calls, stepGroupStyles.thinking)}>
           <Prose markdown={body} streaming={streaming} />
         </div>
       </Collapsible.Panel>

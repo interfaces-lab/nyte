@@ -1100,6 +1100,9 @@ export const activityStyles = create({
   },
 });
 
+/** A stopped call stays legible but recedes: between the secondary and tertiary content roles. */
+const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 55%, ${role.contentTertiary})`;
+
 export const toolCallStyles = create({
   root: { display: "flex", flexDirection: "column", minWidth: 0 },
   line: {
@@ -1135,6 +1138,7 @@ export const toolCallStyles = create({
     "--_verb-color": role.contentSecondary,
     "--_detail-color": role.contentSecondary,
   },
+  lineDimmed: { "--_verb-color": DIMMED, "--_detail-color": DIMMED },
   lineDetailed: {
     width: "100%",
     minHeight: button.heightLg,
@@ -1143,7 +1147,6 @@ export const toolCallStyles = create({
     backgroundColor: role.bgMutedTranslucent,
     boxShadow: CODE_RING,
   },
-  failed: { "--_verb-color": role.contentSecondary, "--_detail-color": role.contentSecondary },
   verb: {
     flexShrink: 0,
     color: "var(--_verb-color)",
@@ -1303,7 +1306,7 @@ export const subagentCallStyles = create({
   statusAttention: { color: role.contentSecondary },
 });
 
-export const toolGroupStyles = create({
+export const stepGroupStyles = create({
   root: {
     display: "flex",
     flexDirection: "column",

@@ -1,5 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
-import { parsePatchFacts } from "@nyte-ai/client";
+import { parsePatchFacts, toolStatus } from "@nyte-ai/client";
 import type { ToolClass, ToolTurnPart } from "@nyte-ai/protocol";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
@@ -16,8 +16,8 @@ import { DiffView } from "./diff-view.tsx";
 import { fileFromUrl } from "./message-references.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import { activityStyles } from "./styles.stylex.ts";
-import { tidyPath, toolVerb } from "./tool-copy.ts";
-import { toolPhase } from "./transcript-presentation.ts";
+import { tidyPath, toolNoun, toolVerbs } from "./tool-copy.ts";
+import { ToolOutcome } from "./tool-line.tsx";
 
 export type EditToolClass = Extract<
   ToolClass,
@@ -25,6 +25,8 @@ export type EditToolClass = Extract<
 >;
 
 const HOVER = "@media (hover: hover) and (pointer: fine)";
+
+const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 55%, ${role.contentTertiary})`;
 
 const CARD_COLLAPSED_HEIGHT = 80;
 
@@ -64,6 +66,7 @@ const styles = create({
       "[data-panel-open]": "1",
     },
   },
+  lineDimmed: { "--_action": DIMMED, "--_file": DIMMED },
   action: { flexShrink: 0, color: "var(--_action)", transitionProperty: "color", ...TRANSITION },
   file: {
     flexShrink: 1,
@@ -214,16 +217,15 @@ export const EditCallView = memo(function EditCallView({
   part,
   toolClass,
   cwd,
-  active,
   density,
 }: {
   readonly part: ToolTurnPart;
   readonly toolClass: EditToolClass;
   readonly cwd: string | undefined;
-  readonly active: boolean;
   readonly density: ToolCallDensity;
 }): ReactElement {
-  const phase = toolPhase(part, active);
+  const status = toolStatus(part.state);
+  const running = status.tense === "running";
   const opener = useReferenceOpener();
   const [open, setOpen] = useState(false);
 
@@ -244,8 +246,14 @@ export const EditCallView = memo(function EditCallView({
     facts.removed === 0 &&
     facts.files.every((file) => file.hunks.every((hunk) => hunk.oldLines === 0));
 
-  const verb = phase === "done" && created ? "Created" : toolVerb(toolClass, phase);
-  const file = phase === "running" ? undefined : fileFromUrl(fileUrl(toolClass.path, cwd) ?? "");
+  const verb =
+    status.tense === "none"
+      ? undefined
+      : status.tone === "success" && created
+        ? "Created"
+        : toolVerbs(toolClass)[status.tense];
+
+  const file = running ? undefined : fileFromUrl(fileUrl(toolClass.path, cwd) ?? "");
   const openFile = file === undefined ? undefined : opener?.({ kind: "file", file });
 
   const diff =
@@ -268,16 +276,12 @@ export const EditCallView = memo(function EditCallView({
         </span>
         <span {...props(styles.headerFile)}>{name}</span>
         <Stats added={added} removed={removed} line={false} />
+        <ToolOutcome status={status} />
       </>
     );
 
     return (
-      <Collapsible.Root
-        open={open}
-        onOpenChange={setOpen}
-        data-tool-status={phase}
-        xstyle={styles.card}
-      >
+      <Collapsible.Root open={open} onOpenChange={setOpen} xstyle={styles.card}>
         <Tooltip>
           <TooltipTrigger
             render={
@@ -331,10 +335,16 @@ export const EditCallView = memo(function EditCallView({
         variant="plain"
         nativeButton={false}
         render={<div />}
-        data-tool-status={phase}
-        xstyle={[styles.line, diff !== undefined && styles.lineToggle, focus.ringInset]}
+        xstyle={[
+          styles.line,
+          diff !== undefined && styles.lineToggle,
+          status.tone === "stopped" && styles.lineDimmed,
+          focus.ringInset,
+        ]}
       >
-        <span {...props(styles.action, phase === "running" && activityStyles.shimmer)}>{verb}</span>
+        {verb !== undefined && (
+          <span {...props(styles.action, running && activityStyles.shimmer)}>{verb}</span>
+        )}
         <Tooltip>
           <TooltipTrigger
             render={
@@ -356,7 +366,9 @@ export const EditCallView = memo(function EditCallView({
           />
           <TooltipContent>{path}</TooltipContent>
         </Tooltip>
-        {phase !== "running" && <Stats added={added} removed={removed} line />}
+        {verb === undefined && <span {...props(styles.action)}>{toolNoun(toolClass)}</span>}
+        {!running && <Stats added={added} removed={removed} line />}
+        <ToolOutcome status={status} />
         {diff !== undefined && <Collapsible.Chevron size={10} xstyle={styles.chevron} />}
       </Collapsible.Trigger>
       {diff !== undefined && (

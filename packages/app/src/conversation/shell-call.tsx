@@ -1,3 +1,5 @@
+import { formatToolDuration, toolStatus } from "@nyte-ai/client";
+import type { ShellFacts } from "@nyte-ai/client";
 import { create, props } from "@stylexjs/stylex";
 import type { ToolClass, ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
@@ -5,7 +7,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
 import { radius } from "@nyte-ai/ui/schema.stylex";
-import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
+import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { appearance, motion, role, type } from "@nyte-ai/ui/vars.stylex";
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -13,10 +15,8 @@ import type { ReactElement, ReactNode } from "react";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { activityStyles } from "./styles.stylex.ts";
 import { terminalText } from "./terminal-text.ts";
-import { condensedCommand } from "./tool-copy.ts";
-import type { ToolPhase } from "./tool-copy.ts";
-import { toolLineStyles } from "./tool-line.tsx";
-import { toolPhase } from "./transcript-presentation.ts";
+import { condensedCommand, toolVerbs } from "./tool-copy.ts";
+import { ToolOutcome, toolLineStyles } from "./tool-line.tsx";
 
 export type ShellToolClass = Extract<ToolClass, { readonly kind: "shell" }>;
 
@@ -72,6 +72,17 @@ const styles = create({
   commandWithMenu: { paddingRight: "calc(4px + 28px)" },
   prompt: { userSelect: "none" },
   output: { ...MONO, display: "block", paddingTop: 0, paddingInline: 8, paddingBottom: 6 },
+  facts: {
+    display: "block",
+    paddingInline: 8,
+    paddingBottom: 6,
+    color: role.contentTertiary,
+    fontFamily: type.fontMono,
+    fontSize: type.fontXs,
+    lineHeight: type.leadingSm,
+    fontVariantNumeric: "tabular-nums",
+    userSelect: "text",
+  },
   card: {
     position: "relative",
     display: "flex",
@@ -212,16 +223,9 @@ function outputTail(text: string) {
   return { text: text.slice(-PREVIEW_CHARS), clipped: text.length > PREVIEW_CHARS };
 }
 
-function Outcome({ phase }: { readonly phase: ToolPhase }): ReactElement | null {
-  if (phase === "failed") {
-    return (
-      <span {...props(intent.danger, toolLineStyles.outcome, toolLineStyles.failed)}>failed</span>
-    );
-  }
-
-  if (phase === "interrupted") return <span {...props(toolLineStyles.outcome)}>stopped</span>;
-
-  return null;
+/** How long core measured the command took; a cut output already says so in its own last line. */
+function Facts({ facts }: { readonly facts: ShellFacts }): ReactElement {
+  return <span {...props(styles.facts)}>{formatToolDuration(facts.durationMs)}</span>;
 }
 
 function CommandCode({
@@ -358,19 +362,18 @@ export const ShellCallView = memo(function ShellCallView({
   toolClass,
   progress,
   cwd,
-  active,
   density,
 }: {
   readonly part: ToolTurnPart;
   readonly toolClass: ShellToolClass;
   readonly progress: ToolProgress | undefined;
   readonly cwd: string | undefined;
-  readonly active: boolean;
   readonly density: ToolCallDensity;
 }): ReactElement {
-  const phase = toolPhase(part, active);
+  const status = toolStatus(part.state);
+  const running = status.tense === "running";
   const [open, setOpen] = useState(false);
-  const raw = part.result === undefined ? (progress?.text ?? "") : part.result.output;
+  const raw = part.output ?? (running ? (progress?.text ?? "") : "");
   const output = useMemo(() => terminalText(raw).trim(), [raw]);
   const tokens = useMemo(() => shellTokens(toolClass.command), [toolClass.command]);
   const description = toolClass.description?.trim() ?? "";
@@ -380,27 +383,30 @@ export const ShellCallView = memo(function ShellCallView({
       ? condensedCommand(toolClass.command, cwd)
       : `${description.charAt(0).toUpperCase()}${description.slice(1)}`;
 
-  const running = phase === "running";
-  const verb = running ? "Running" : "Ran";
+  const verb = status.tense === "none" ? undefined : toolVerbs(toolClass)[status.tense];
+  const heading = verb === undefined ? label : `${verb} ${label}`;
   const follow = running ? output : undefined;
 
   const body = (withMenu: boolean): ReactElement => (
     <>
       <CommandCode tokens={tokens} withMenu={withMenu} />
       {output !== "" && <pre {...props(styles.output)}>{output}</pre>}
+      {toolClass.facts !== undefined && <Facts facts={toolClass.facts} />}
     </>
   );
 
   if (density === "detailed") {
     return (
-      <Collapsible.Root
-        open={open}
-        onOpenChange={setOpen}
-        data-tool-status={phase}
-        xstyle={styles.card}
-      >
+      <Collapsible.Root open={open} onOpenChange={setOpen} xstyle={styles.card}>
         <div {...props(styles.headerRow)}>
-          <Collapsible.Trigger variant="plain" xstyle={[styles.header, focus.ringInset]}>
+          <Collapsible.Trigger
+            variant="plain"
+            xstyle={[
+              styles.header,
+              status.tone === "stopped" && toolLineStyles.dimmedText,
+              focus.ringInset,
+            ]}
+          >
             <span aria-hidden="true" {...props(styles.iconSwap)}>
               <span {...props(styles.iconDefault)}>
                 <Icon name="console" size={14} />
@@ -409,10 +415,8 @@ export const ShellCallView = memo(function ShellCallView({
                 <Icon name={open ? "chevron-down" : "chevron-right"} size={14} />
               </span>
             </span>
-            <span {...props(styles.description, running && activityStyles.shimmer)}>
-              {verb} {label}
-            </span>
-            <Outcome phase={phase} />
+            <span {...props(styles.description, running && activityStyles.shimmer)}>{heading}</span>
+            <ToolOutcome status={status} />
           </Collapsible.Trigger>
           <span {...props(styles.headerActions)}>
             <CopyCommand command={toolClass.command} />
@@ -435,17 +439,18 @@ export const ShellCallView = memo(function ShellCallView({
     <Collapsible.Root open={open} onOpenChange={setOpen} xstyle={toolLineStyles.root}>
       <Collapsible.Trigger
         variant="plain"
-        data-tool-status={phase}
         xstyle={[
           toolLineStyles.line,
-          phase === "interrupted" && toolLineStyles.dimmed,
           toolLineStyles.clickable,
+          status.tone === "stopped" && toolLineStyles.dimmed,
           focus.ringInset,
         ]}
       >
-        <span {...props(toolLineStyles.action, running && activityStyles.shimmer)}>{verb}</span>
+        {verb !== undefined && (
+          <span {...props(toolLineStyles.action, running && activityStyles.shimmer)}>{verb}</span>
+        )}
         <span {...props(toolLineStyles.details)}>{label}</span>
-        <Outcome phase={phase} />
+        <ToolOutcome status={status} />
         <Collapsible.Chevron size={12} xstyle={toolLineStyles.chevron} />
       </Collapsible.Trigger>
       <Collapsible.Panel

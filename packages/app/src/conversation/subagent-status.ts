@@ -1,7 +1,9 @@
+import { toolStatus } from "@nyte-ai/client";
+import type { ToolStatus } from "@nyte-ai/client";
 import type { SessionInfo, TurnToolClass } from "@nyte-ai/protocol";
 import type { SessionFrame } from "../live.ts";
-import { toolDetail, toolVerb } from "./tool-copy.ts";
-import type { ToolPhase, ToolVerbs } from "./tool-copy.ts";
+import { toolDetail, toolVerbs } from "./tool-copy.ts";
+import type { ToolVerbs } from "./tool-copy.ts";
 
 export interface SubagentStatus {
   readonly indicator: "running" | "attention" | "failed" | "unread" | "done";
@@ -12,18 +14,20 @@ export interface SubagentStatus {
 const PLANNING: SubagentStatus = { indicator: "running", text: "Planning next moves" };
 
 /** The create call speaks for a child until the parent lists it. */
-export function callStatus(phase: ToolPhase): SubagentStatus {
-  switch (phase) {
+export function callStatus(status: ToolStatus): SubagentStatus {
+  switch (status.tone) {
     case "running":
       return { indicator: "running", text: "Starting up" };
-    case "done":
+    case "attention":
+      return { indicator: "attention", text: status.word ?? "" };
+    case "success":
       return { indicator: "done", text: "" };
-    case "failed":
-      return { indicator: "failed", text: "Couldn’t start" };
-    case "interrupted":
-      return { indicator: "failed", text: "Stopped" };
+    case "failure":
+      return { indicator: "failed", text: status.word ?? "" };
+    case "stopped":
+      return { indicator: "done", text: status.word ?? "" };
     default: {
-      const _exhaustive: never = phase;
+      const _exhaustive: never = status.tone;
 
       return _exhaustive;
     }
@@ -64,17 +68,19 @@ export function sessionStatus(session: SessionInfo, unread: boolean): SubagentSt
 type DelegateRole = Extract<TurnToolClass, { readonly kind: "delegate" }>["role"];
 
 export const DELEGATE_VERBS: Readonly<Record<DelegateRole, ToolVerbs>> = {
-  create: { running: "Creating", done: "Created", error: "Create" },
-  send: { running: "Messaging", done: "Messaged", error: "Message" },
-  read: { running: "Reading transcript", done: "Read transcript", error: "Read transcript" },
-  stop: { running: "Stopping", done: "Stopped", error: "Stop" },
+  create: { running: "Creating", past: "Created" },
+  send: { running: "Messaging", past: "Messaged" },
+  read: { running: "Reading transcript", past: "Read transcript" },
+  stop: { running: "Stopping", past: "Stopped" },
 };
 
-export function phaseVerb(verbs: ToolVerbs, phase: ToolPhase): string {
-  if (phase === "running") return verbs.running;
-
-  return phase === "done" ? verbs.done : verbs.error;
-}
+/** The noun a verbless line adds after the agent it names: "review agent message · Blocked". */
+export const DELEGATE_NOUNS: Readonly<Record<DelegateRole, string>> = {
+  create: "agent",
+  send: "message",
+  read: "transcript",
+  stop: "stop",
+};
 
 function delegateDetail(toolClass: Extract<TurnToolClass, { readonly kind: "delegate" }>): string {
   return toolClass.role === "create" ? toolClass.title : "subagent";
@@ -89,14 +95,16 @@ export function subagentActivity(
 
   const call =
     turn?.kind === "turn"
-      ? turn.parts.findLast((part) => part.kind === "tool" && part.result === undefined)
+      ? turn.parts.findLast(
+          (part) => part.kind === "tool" && toolStatus(part.state).tense === "running",
+        )
       : undefined;
 
   if (call?.kind === "tool") {
     const verb =
       call.class.kind === "delegate"
         ? DELEGATE_VERBS[call.class.role].running
-        : toolVerb(call.class, "running");
+        : toolVerbs(call.class).running;
 
     const detail =
       call.class.kind === "delegate"

@@ -1,12 +1,9 @@
-import { intent } from "@nyte-ai/ui/surface-theme";
 /**
  * One tool call: a quiet verb line that expands into its evidence. Ported from
  * the Honk design system's `tool-call.tsx` and recolored onto this palette.
  * Its locked law carries over: no status icons on tool calls. The running
- * state is the shimmer, failure is the red line, and the chevron is a
- * control, not a status. Neither shimmer nor red line survives a screen
- * reader or a colour-blind eye, so the same two states also ship as
- * visually hidden text.
+ * state is the shimmer, the outcome is a word after the subject, and the
+ * chevron is a control, not a status.
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/ui/src/tool-call.tsx
  */
@@ -14,7 +11,7 @@ import { props } from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { parsePatchFacts } from "@nyte-ai/client";
+import { parsePatchFacts, toolStatus } from "@nyte-ai/client";
 import type { ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
@@ -27,9 +24,8 @@ import { activityStyles, toolCallStyles } from "./styles.stylex.ts";
 import { ShellCallView } from "./shell-call.tsx";
 import { SubagentCallView, SubagentLineView } from "./subagent-call.tsx";
 import { terminalText } from "./terminal-text.ts";
-import { tidyPath, toolDetail, toolVerb } from "./tool-copy.ts";
-import { ToolLineView } from "./tool-line.tsx";
-import { toolPhase } from "./transcript-presentation.ts";
+import { tidyPath, toolDetail, toolNoun, toolVerbs } from "./tool-copy.ts";
+import { ToolLineView, ToolOutcome } from "./tool-line.tsx";
 
 type ToolBody =
   | { readonly kind: "none" }
@@ -126,16 +122,15 @@ export const ToolCallView = memo(function ToolCallView({
   part,
   progress,
   cwd,
-  active,
   density,
 }: {
   part: ToolTurnPart;
   progress: ToolProgress | undefined;
   cwd: string | undefined;
-  active: boolean;
   density: ToolCallDensity;
 }): ReactElement {
-  const phase = toolPhase(part, active);
+  const status = toolStatus(part.state);
+  const running = status.tense === "running";
 
   // Hunks are parsed once per part; the counts beside them are the class's own.
   const facts = useMemo(
@@ -143,8 +138,8 @@ export const ToolCallView = memo(function ToolCallView({
     [part],
   );
 
-  const { class: toolClass, result } = part;
-  const raw = result === undefined ? (progress?.text ?? "") : result.output;
+  const { class: toolClass } = part;
+  const raw = part.output ?? (running ? (progress?.text ?? "") : "");
   const text = useMemo(() => terminalText(raw), [raw]);
 
   const body: ToolBody =
@@ -164,11 +159,11 @@ export const ToolCallView = memo(function ToolCallView({
       <SubagentCallView
         session={toolClass.target.session}
         title={toolClass.title}
-        phase={phase}
+        state={part.state}
         cwd={cwd}
       />
     ) : (
-      <SubagentLineView toolClass={toolClass} phase={phase} output={text} />
+      <SubagentLineView toolClass={toolClass} state={part.state} output={text} />
     );
   }
 
@@ -179,61 +174,51 @@ export const ToolCallView = memo(function ToolCallView({
         toolClass={toolClass}
         progress={progress}
         cwd={cwd}
-        active={active}
         density={density}
       />
     );
   }
 
   if (toolClass.kind === "file_read" || toolClass.kind === "list" || toolClass.kind === "custom") {
-    return (
-      <ToolLineView
-        part={part}
-        toolClass={toolClass}
-        progress={progress}
-        cwd={cwd}
-        active={active}
-      />
-    );
+    return <ToolLineView part={part} toolClass={toolClass} progress={progress} cwd={cwd} />;
   }
 
   if (
     toolClass.kind === "file_patch" ||
-    ((toolClass.kind === "file_edit" || toolClass.kind === "file_write") && phase === "running")
+    ((toolClass.kind === "file_edit" || toolClass.kind === "file_write") && running)
   ) {
-    return (
-      <EditCallView part={part} toolClass={toolClass} cwd={cwd} active={active} density={density} />
-    );
+    return <EditCallView part={part} toolClass={toolClass} cwd={cwd} density={density} />;
   }
 
-  const verb = toolVerb(toolClass, phase);
+  const verb = status.tense === "none" ? undefined : toolVerbs(toolClass)[status.tense];
   const detail = toolDetail(toolClass, cwd);
   const expandable = body.kind !== "none";
   const editDiff = body.kind === "diff";
+  const dimmed = status.tone === "stopped" && toolCallStyles.lineDimmed;
 
   const lineContent = (
     <>
-      <span {...props(toolCallStyles.verb, phase === "running" && activityStyles.shimmer)}>
-        {verb}
-      </span>
+      {verb !== undefined && (
+        <span {...props(toolCallStyles.verb, running && activityStyles.shimmer)}>{verb}</span>
+      )}
       {detail !== undefined && (
         <Tooltip>
           <TooltipTrigger render={<span {...props(toolCallStyles.detail)}>{detail.text}</span>} />
           <TooltipContent>{detail.title ?? detail.text}</TooltipContent>
         </Tooltip>
       )}
+      {verb === undefined && <span {...props(toolCallStyles.verb)}>{toolNoun(toolClass)}</span>}
+      <ToolOutcome status={status} />
     </>
   );
 
   const line = expandable ? (
     <Collapsible.Trigger
-      data-tool-status={phase}
       xstyle={[
         toolCallStyles.line,
         editDiff && toolCallStyles.editLine,
         density === "detailed" && toolCallStyles.lineDetailed,
-        phase === "failed" && intent.danger,
-        phase === "failed" && toolCallStyles.failed,
+        dimmed,
       ]}
     >
       {lineContent}
@@ -241,13 +226,11 @@ export const ToolCallView = memo(function ToolCallView({
     </Collapsible.Trigger>
   ) : (
     <div
-      data-tool-status={phase}
       {...props(
         toolCallStyles.line,
         density === "detailed" && toolCallStyles.lineDetailed,
         toolCallStyles.lineStatic,
-        phase === "failed" && intent.danger,
-        phase === "failed" && toolCallStyles.failed,
+        dimmed,
       )}
     >
       {lineContent}

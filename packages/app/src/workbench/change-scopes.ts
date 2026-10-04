@@ -57,9 +57,10 @@ export function turnChangeOptions(turns: readonly Turn[]): readonly TurnChangeOp
     for (const part of turn.parts) {
       if (part.kind !== "tool" || part.class.kind !== "file_patch") continue;
 
-      if (part.result === undefined || part.result.isError || folded.has(part.result.commit))
-        continue;
-      folded.add(part.result.commit);
+      if (part.state.kind !== "success" || part.state.commit === null) continue;
+
+      if (folded.has(part.state.commit)) continue;
+      folded.add(part.state.commit);
       const { path, patch } = part.class;
       const previous = patches.get(path);
 

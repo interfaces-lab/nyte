@@ -11,7 +11,7 @@ import { conversation } from "../theme/schema.stylex.ts";
 import { motion } from "@nyte-ai/ui/vars.stylex";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { Prose } from "./prose.tsx";
-import { WorkGroupView } from "./tool-group.tsx";
+import { StepGroupView } from "./step-group.tsx";
 
 /** Dimmed while core still holds the message behind a live run; full weight once it lands. */
 const PENDING_OPACITY = 0.6;
@@ -69,7 +69,7 @@ export function LiveTurn({
   return (
     <div {...props(liveTurnStyles.root)}>
       {!settledWork && hasLiveWork && (
-        <WorkGroupView
+        <StepGroupView
           parts={[]}
           run={{ kind: "none" }}
           live={live}

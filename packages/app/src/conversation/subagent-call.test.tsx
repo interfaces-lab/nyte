@@ -85,7 +85,8 @@ const turn: RenderedTurn = {
         title: "Map the workbench",
         target: { kind: "one", session: child },
       },
-      result: { commit: "created", output: "Started Map the workbench", isError: false },
+      state: { kind: "success", commit: "created" },
+      output: "Started Map the workbench",
     },
   ],
 };
@@ -138,7 +139,7 @@ for (const kind of ["list", "detail"] as const) {
           <SubagentCallView
             session={child}
             title={provisional.title}
-            phase="running"
+            state={{ kind: "running" }}
             cwd={undefined}
           />
           <SubagentTray

@@ -1,6 +1,8 @@
+import type { ToolTense } from "@nyte-ai/client";
 import type { Failure, ToolClass } from "@nyte-ai/protocol";
 
-export type ToolPhase = "running" | "done" | "failed" | "interrupted";
+/** The verb for each tense that asserts one; a call that did not finish shows none. */
+export type ToolVerbs = Readonly<Record<Exclude<ToolTense, "none">, string>>;
 
 export function tidyPath(path: string, cwd: string | undefined): string {
   if (cwd !== undefined && path.startsWith(`${cwd}/`)) return path.slice(cwd.length + 1);
@@ -20,12 +22,6 @@ export function placeName(path: string, cwd: string | undefined): string {
   return basename(tidy.replace(/[\\/]+$/u, "")) || tidy;
 }
 
-export interface ToolVerbs {
-  readonly running: string;
-  readonly done: string;
-  readonly error: string;
-}
-
 export interface CustomTool {
   readonly verbs: ToolVerbs;
   readonly name?: string;
@@ -33,57 +29,28 @@ export interface CustomTool {
   readonly detail?: string;
 }
 
-const RAN: ToolVerbs = { running: "Running", done: "Ran", error: "Run" };
+const RAN: ToolVerbs = { running: "Running", past: "Ran" };
 
 const NAMED_TOOLS = new Map<string, CustomTool>([
-  ["codemode", { verbs: { running: "Running script", done: "Ran script", error: "Run script" } }],
-  [
-    "tool_search",
-    {
-      verbs: { running: "Exploring", done: "Explored", error: "Explore" },
-      detail: "available tools",
-    },
-  ],
-  ["websearch", { verbs: { running: "Searching web", done: "Searched web", error: "Search web" } }],
-  [
-    "web_search",
-    { verbs: { running: "Searching web", done: "Searched web", error: "Search web" } },
-  ],
-  ["webfetch", { verbs: { running: "Fetching page", done: "Fetched page", error: "Fetch page" } }],
-  ["web_fetch", { verbs: { running: "Fetching page", done: "Fetched page", error: "Fetch page" } }],
-  [
-    "rename_chat",
-    { verbs: { running: "Renaming chat", done: "Renamed chat", error: "Rename chat" } },
-  ],
-  ["browser_open", { verbs: { running: "Opening page", done: "Opened page", error: "Open page" } }],
-  ["browser_click", { verbs: { running: "Clicking", done: "Clicked", error: "Click" } }],
-  ["browser_type", { verbs: { running: "Typing", done: "Typed", error: "Type" } }],
-  [
-    "browser_press",
-    { verbs: { running: "Pressing key", done: "Pressed key", error: "Press key" } },
-  ],
-  ["browser_scroll", { verbs: { running: "Scrolling", done: "Scrolled", error: "Scroll" } }],
-  ["browser_wait", { verbs: { running: "Waiting", done: "Waited", error: "Wait" } }],
-  [
-    "browser_snapshot",
-    {
-      verbs: { running: "Taking snapshot", done: "Took snapshot", error: "Take snapshot" },
-    },
-  ],
+  ["codemode", { verbs: { running: "Running script", past: "Ran script" } }],
+  ["tool_search", { verbs: { running: "Exploring", past: "Explored" }, detail: "available tools" }],
+  ["websearch", { verbs: { running: "Searching web", past: "Searched web" } }],
+  ["web_search", { verbs: { running: "Searching web", past: "Searched web" } }],
+  ["webfetch", { verbs: { running: "Fetching page", past: "Fetched page" } }],
+  ["web_fetch", { verbs: { running: "Fetching page", past: "Fetched page" } }],
+  ["rename_chat", { verbs: { running: "Renaming chat", past: "Renamed chat" } }],
+  ["browser_open", { verbs: { running: "Opening page", past: "Opened page" } }],
+  ["browser_click", { verbs: { running: "Clicking", past: "Clicked" } }],
+  ["browser_type", { verbs: { running: "Typing", past: "Typed" } }],
+  ["browser_press", { verbs: { running: "Pressing key", past: "Pressed key" } }],
+  ["browser_scroll", { verbs: { running: "Scrolling", past: "Scrolled" } }],
+  ["browser_wait", { verbs: { running: "Waiting", past: "Waited" } }],
+  ["browser_snapshot", { verbs: { running: "Taking snapshot", past: "Took snapshot" } }],
   [
     "browser_console",
-    {
-      verbs: {
-        running: "Checking console logs",
-        done: "Checked console logs",
-        error: "Check console logs",
-      },
-    },
+    { verbs: { running: "Checking console logs", past: "Checked console logs" } },
   ],
-  [
-    "browser_evaluate",
-    { verbs: { running: "Executing JS", done: "Executed JS", error: "Execute JS" } },
-  ],
+  ["browser_evaluate", { verbs: { running: "Executing JS", past: "Executed JS" } }],
 ]);
 
 const MCP_LABEL = /^(?<server>[^:\s]+): (?<name>\S+)$/u;
@@ -101,7 +68,7 @@ export function customTool(label: string): CustomTool {
     return { verbs: RAN, name: mcp.name, server: mcp.server };
   }
 
-  if (/\s/u.test(label)) return { verbs: { running: label, done: label, error: label } };
+  if (/\s/u.test(label)) return { verbs: { running: label, past: label } };
 
   return { verbs: RAN, name: label };
 }
@@ -161,57 +128,59 @@ export function toolDetail(
   }
 }
 
-function phased(
-  phase: ToolPhase,
-  words: {
-    readonly running: string;
-    readonly done: string;
-    readonly noun: string;
-    readonly interrupted?: string;
-  },
-): string {
-  switch (phase) {
-    case "running":
-      return words.running;
-    case "done":
-      return words.done;
-    case "failed":
-      return `${words.noun} failed`;
-    case "interrupted":
-      return words.interrupted ?? `${words.noun} stopped`;
+export const READ: ToolVerbs = { running: "Reading", past: "Read" };
+
+export const LIST: ToolVerbs = { running: "Listing", past: "Listed" };
+
+const EDIT: ToolVerbs = { running: "Editing", past: "Edited" };
+
+const WRITE: ToolVerbs = { running: "Writing", past: "Wrote" };
+
+export function toolVerbs(toolClass: Exclude<ToolClass, { readonly kind: "delegate" }>): ToolVerbs {
+  switch (toolClass.kind) {
+    case "file_read":
+      return READ;
+    case "list":
+      return LIST;
+    case "shell":
+      return RAN;
+    case "file_edit":
+      return EDIT;
+    case "file_write":
+      return WRITE;
+    case "file_patch":
+      return toolClass.op === "edit" ? EDIT : WRITE;
+    case "custom":
+      return customTool(toolClass.label).verbs;
     default: {
-      const _exhaustive: never = phase;
+      const _exhaustive: never = toolClass;
 
       return _exhaustive;
     }
   }
 }
 
-export function toolVerb(
+/**
+ * What a verbless line adds after its subject so the tool stays named: a path
+ * alone does not say read from edit. A command or a tool's name needs nothing.
+ */
+export function toolNoun(
   toolClass: Exclude<ToolClass, { readonly kind: "delegate" }>,
-  phase: ToolPhase,
-): string {
+): string | undefined {
   switch (toolClass.kind) {
     case "file_read":
-      return phased(phase, { running: "Reading", done: "Read", noun: "Read" });
+      return "read";
     case "list":
-      return phased(phase, { running: "Listing", done: "Listed", noun: "List" });
-    case "shell":
-      return phased(phase, { running: "Running", done: "Ran", noun: "Command" });
+      return "list";
     case "file_edit":
-      return phased(phase, { running: "Editing", done: "Edited", noun: "Edit" });
+      return "edit";
     case "file_write":
-      return phased(phase, { running: "Writing", done: "Wrote", noun: "Write" });
+      return "write";
     case "file_patch":
-      return toolClass.op === "edit"
-        ? phased(phase, { running: "Editing", done: "Edited", noun: "Edit" })
-        : phased(phase, { running: "Writing", done: "Wrote", noun: "Write" });
-    case "custom": {
-      const { verbs } = customTool(toolClass.label);
-
-      return phased(phase, { running: verbs.running, done: verbs.done, noun: verbs.error });
-    }
-
+      return toolClass.op;
+    case "shell":
+    case "custom":
+      return undefined;
     default: {
       const _exhaustive: never = toolClass;
 

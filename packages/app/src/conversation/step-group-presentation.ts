@@ -1,12 +1,13 @@
+import { toolStatus } from "@nyte-ai/client";
 import type { TurnToolClass } from "@nyte-ai/protocol";
 import type { LiveSnapshot } from "../live.ts";
-import { formatRunDuration, toolPhase } from "./transcript-presentation.ts";
-import { DELEGATE_VERBS, phaseVerb } from "./subagent-status.ts";
+import { formatRunDuration } from "./transcript-presentation.ts";
+import { DELEGATE_VERBS } from "./subagent-status.ts";
 import { reasoningHeading } from "./reasoning-heading.ts";
-import type { WorkTurnPart } from "./transcript-presentation.ts";
+import type { StepTurnPart } from "./transcript-presentation.ts";
 
-export interface WorkGroupPresentationInput {
-  readonly parts: readonly WorkTurnPart[];
+export interface StepGroupPresentationInput {
+  readonly parts: readonly StepTurnPart[];
   readonly durationMs: number;
   readonly added: number;
   readonly removed: number;
@@ -14,7 +15,7 @@ export interface WorkGroupPresentationInput {
   readonly live?: Pick<LiveSnapshot, "order" | "tools">;
 }
 
-export type DurableWorkGroupPresentation =
+export type DurableStepGroupPresentation =
   | {
       readonly active: false;
       readonly summary: {
@@ -47,7 +48,7 @@ function activityLabel(running: readonly TurnToolClass[]): string | undefined {
     case "file_patch":
       return "Editing";
     case "delegate":
-      return phaseVerb(DELEGATE_VERBS[newest.role], "running");
+      return DELEGATE_VERBS[newest.role].running;
     case "custom":
       return `Running ${newest.label}`;
     default: {
@@ -66,16 +67,31 @@ function count(n: number, noun: string, plural = `${noun}s`): string {
   return `${String(n)} ${n === 1 ? noun : plural}`;
 }
 
-/** One changed or read file is named; more are counted. */
-function settledSummary(parts: readonly WorkTurnPart[], durationMs: number) {
+/** One changed or read file is named; more are counted. Only a call that succeeded did its thing. */
+function settledSummary(parts: readonly StepTurnPart[], durationMs: number) {
   const changed = new Set<string>();
   const read = new Set<string>();
   const listed = new Set<string>();
   let commands = 0;
   let tools = 0;
+  let failed = 0;
+  let stopped = 0;
 
   for (const part of parts) {
     if (part.kind !== "tool") continue;
+    const { tone } = toolStatus(part.state);
+
+    if (tone === "failure") {
+      failed += 1;
+      continue;
+    }
+
+    if (tone === "stopped") {
+      stopped += 1;
+      continue;
+    }
+
+    if (tone !== "success") continue;
 
     switch (part.class.kind) {
       case "file_patch":
@@ -105,12 +121,45 @@ function settledSummary(parts: readonly WorkTurnPart[], durationMs: number) {
     }
   }
 
-  if (changed.size + read.size + listed.size + commands + tools === 0) {
+  const did = changed.size + read.size + listed.size + commands + tools;
+
+  if (did + failed + stopped === 0) {
     const { title } = reasoningHeading(
       parts.map((part) => (part.kind === "thinking" ? part.text : "")).join("\n\n"),
     );
 
     return { verb: title ?? "Thought", detail: formatRunDuration(durationMs) };
+  }
+
+  const trouble: (readonly [what: string, n: number])[] = [];
+
+  if (failed > 0) trouble.push(["failed", failed]);
+
+  if (stopped > 0) trouble.push(["stopped", stopped]);
+
+  if (did === 0) {
+    return {
+      verb: trouble
+        .map(([what, n], index) => `${index === 0 ? count(n, "call") : String(n)} ${what}`)
+        .join(", "),
+      detail: undefined,
+    };
+  }
+
+  // A step that lost a call claims no verb: each tally says what became of it.
+  if (trouble.length > 0) {
+    const landed = [
+      changed.size > 0 ? `${count(changed.size, "file")} edited` : undefined,
+      read.size > 0 ? `${count(read.size, "file")} read` : undefined,
+      listed.size > 0 ? `${count(listed.size, "directory", "directories")} listed` : undefined,
+      commands > 0 ? `${count(commands, "command")} succeeded` : undefined,
+      tools > 0 ? `${count(tools, "tool")} succeeded` : undefined,
+    ].filter((text) => text !== undefined);
+
+    return {
+      verb: [...landed, ...trouble.map(([what, n]) => `${String(n)} ${what}`)].join(", "),
+      detail: undefined,
+    };
   }
 
   const explored = read.size + listed.size > 0;
@@ -155,22 +204,22 @@ function settledSummary(parts: readonly WorkTurnPart[], durationMs: number) {
   return { verb, detail: details.join(", ") };
 }
 
-export function durableWorkGroupPresentation({
+export function durableStepGroupPresentation({
   parts,
   durationMs,
   added,
   removed,
   running,
 }: Pick<
-  WorkGroupPresentationInput,
+  StepGroupPresentationInput,
   "parts" | "durationMs" | "added" | "removed" | "running"
->): DurableWorkGroupPresentation {
+>): DurableStepGroupPresentation {
   const runningClasses: TurnToolClass[] = [];
 
   for (const part of parts) {
     if (part.kind !== "tool") continue;
 
-    if (toolPhase(part, running) === "running") runningClasses.push(part.class);
+    if (toolStatus(part.state).tense === "running") runningClasses.push(part.class);
   }
 
   if (!running) {
@@ -183,11 +232,11 @@ export function durableWorkGroupPresentation({
   return { active: true, runningClasses, added, removed };
 }
 
-export function liveWorkGroupPresentation({
+export function liveStepGroupPresentation({
   durable,
   live,
 }: {
-  readonly durable: DurableWorkGroupPresentation;
+  readonly durable: DurableStepGroupPresentation;
   readonly live?: Pick<LiveSnapshot, "order" | "tools">;
 }) {
   if (!durable.active) return durable;

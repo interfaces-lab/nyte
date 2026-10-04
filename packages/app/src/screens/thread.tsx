@@ -443,7 +443,7 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
   // The indicator belongs under the last turn the transcript draws, which is
   // not always the last turn in the snapshot.
   const lastTurn = useMemo(() => turns.findLast(rendersInTranscript), [turns]);
-  // A turn that ends in a work group already draws the run's indicator there.
+  // A turn that ends in a step group already draws the run's indicator there.
   // One that ends in prose needs it below the prose, or the model looks idle while it
   // prepares its next step.
   const parked = snapshot.data?.parked;
@@ -451,7 +451,7 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
 
   const settledWork = useMemo(
     () =>
-      lastTurn?.kind === "turn" && displayTranscriptParts(lastTurn.parts).at(-1)?.kind === "work",
+      lastTurn?.kind === "turn" && displayTranscriptParts(lastTurn.parts).at(-1)?.kind === "step",
     [lastTurn],
   );
 
@@ -520,7 +520,7 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
           part.kind !== "tool" ||
           part.class.kind !== "delegate" ||
           part.class.role !== "create" ||
-          part.result?.isError === true
+          part.state.kind === "error"
         )
           continue;
         sessions.set(part.class.target.session, {

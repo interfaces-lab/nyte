@@ -1,29 +1,21 @@
-import type { ToolTurnPart, TurnPart } from "@nyte-ai/protocol";
+import type { TurnPart } from "@nyte-ai/protocol";
 import { messageParts } from "./message-references.ts";
-import type { ToolPhase } from "./tool-copy.ts";
 
 type AssistantTurnPart = Extract<TurnPart, { readonly kind: "assistant" }>;
 
-export type WorkTurnPart = Extract<TurnPart, { readonly kind: "thinking" | "tool" }>;
+export type StepTurnPart = Extract<TurnPart, { readonly kind: "thinking" | "tool" }>;
 
 type TranscriptDisplayPart =
   | { readonly kind: "part"; readonly part: TurnPart }
-  | { readonly kind: "work"; readonly parts: readonly WorkTurnPart[] }
+  | { readonly kind: "step"; readonly parts: readonly StepTurnPart[] }
   | { readonly kind: "response"; readonly parts: readonly AssistantTurnPart[] };
 
-function isWorkPart(part: TurnPart): part is WorkTurnPart {
+function isStepPart(part: TurnPart): part is StepTurnPart {
   // A create owns a child session and outlives the call, so it is not a step
   // inside someone else's episode; the bookkeeping on that child is.
   if (part.kind === "tool") return part.class.kind !== "delegate" || part.class.role !== "create";
 
   return part.kind === "thinking";
-}
-
-/** A call with no result is still running only while its run is; otherwise the run left it behind. */
-export function toolPhase(part: ToolTurnPart, running: boolean): ToolPhase {
-  if (part.result !== undefined) return part.result.isError ? "failed" : "done";
-
-  return running ? "running" : "interrupted";
 }
 
 /**
@@ -40,12 +32,12 @@ export function toolPhase(part: ToolTurnPart, running: boolean): ToolPhase {
  */
 export function displayTranscriptParts(parts: readonly TurnPart[]): TranscriptDisplayPart[] {
   const display: TranscriptDisplayPart[] = [];
-  let work: WorkTurnPart[] = [];
+  let step: StepTurnPart[] = [];
   let response: AssistantTurnPart[] = [];
 
-  const flushWork = (): void => {
-    if (work.length > 0) display.push({ kind: "work", parts: work });
-    work = [];
+  const flushStep = (): void => {
+    if (step.length > 0) display.push({ kind: "step", parts: step });
+    step = [];
   };
 
   const flushResponse = (): void => {
@@ -56,23 +48,23 @@ export function displayTranscriptParts(parts: readonly TurnPart[]): TranscriptDi
   for (const part of parts) {
     if (part.kind === "assistant") {
       if (part.text.trim() === "") continue;
-      flushWork();
+      flushStep();
       response.push(part);
       continue;
     }
 
-    if (isWorkPart(part)) {
+    if (isStepPart(part)) {
       flushResponse();
-      work.push(part);
+      step.push(part);
       continue;
     }
 
-    flushWork();
+    flushStep();
     flushResponse();
     display.push({ kind: "part", part });
   }
 
-  flushWork();
+  flushStep();
   flushResponse();
 
   return display;

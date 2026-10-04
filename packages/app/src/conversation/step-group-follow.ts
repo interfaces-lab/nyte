@@ -1,5 +1,5 @@
 /**
- * Follow rules for the compact work window. The preview tails new output
+ * Follow rules for the compact step window. The preview tails new output
  * until the reader scrolls up, then tails again once they are back at the
  * bottom or after a quiet spell. An opened group stays open until the reader
  * closes it.

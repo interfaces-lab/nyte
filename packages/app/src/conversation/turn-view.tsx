@@ -49,7 +49,7 @@ import {
 } from "./styles.stylex.ts";
 import { StatusMarker } from "./row-surfaces.tsx";
 import { ToolCallView } from "./tool-call.tsx";
-import { WorkGroupView } from "./tool-group.tsx";
+import { StepGroupView } from "./step-group.tsx";
 import { ThinkingLine } from "./thinking-line.tsx";
 import { failureNotice } from "./tool-copy.ts";
 import { displayTranscriptParts, userDisplayText } from "./transcript-presentation.ts";
@@ -490,7 +490,6 @@ function TurnPartView({
   liveTools,
   cwd,
   toolCalls,
-  running,
   onEditUser,
   branchModel,
 }: {
@@ -498,7 +497,6 @@ function TurnPartView({
   liveTools: ReadonlyMap<string, LiveToolProgress>;
   cwd: string | undefined;
   toolCalls: ToolCallDensity;
-  running: boolean;
   onEditUser?: (
     part: UserTurnPart,
     content: UserTurnPart["content"],
@@ -529,7 +527,6 @@ function TurnPartView({
           part={part}
           progress={liveTools.get(part.callId)?.progress}
           cwd={cwd}
-          active={running}
           density={toolCalls}
         />
       );
@@ -605,7 +602,7 @@ export const TurnView = memo(function TurnView({
       return (
         <div {...props(turnStyles.turn)}>
           {display.map((item, index) => {
-            if (item.kind === "work") {
+            if (item.kind === "step") {
               const first = item.parts[0];
               // Only the trailing group carries the run; an earlier one is
               // settled history, and the run's indicator belongs below the
@@ -623,14 +620,13 @@ export const TurnView = memo(function TurnView({
                     liveTools={liveTools}
                     cwd={cwd}
                     toolCalls={appearance.toolCalls}
-                    running={false}
                   />
                 );
               }
 
               return (
-                <WorkGroupView
-                  key={`work:${first === undefined ? turn.id : turnPartId(first)}`}
+                <StepGroupView
+                  key={`step:${first === undefined ? turn.id : turnPartId(first)}`}
                   parts={item.parts}
                   run={turn.run}
                   live={trailing ? live : undefined}
@@ -662,7 +658,6 @@ export const TurnView = memo(function TurnView({
                 liveTools={liveTools}
                 cwd={cwd}
                 toolCalls={appearance.toolCalls}
-                running={running}
                 onEditUser={onEditUser}
                 branchModel={branchModel}
               />
