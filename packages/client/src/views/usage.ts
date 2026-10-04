@@ -148,16 +148,17 @@ function summarize(
 
 /** Fold every supplied commit, including commits on abandoned branches. */
 export function projectUsage(commits: readonly Commit[]): UsageSummary {
+  return summarizeUsage(commits.flatMap((commit) => commitUsage(commit) ?? []));
+}
+
+export function summarizeUsage(
+  spends: readonly NonNullable<ReturnType<typeof commitUsage>>[],
+): UsageSummary {
   const models = new Map<string, ModelUsage>();
   let compaction = emptyUsage();
   let tools = emptyUsage();
 
-  for (const commit of commits) {
-    const spend = commitUsage(commit);
-
-    if (spend === undefined) continue;
-    const { subject, usage } = spend;
-
+  for (const { subject, usage } of spends) {
     switch (subject.kind) {
       case "model": {
         const key = JSON.stringify([subject.provider, subject.model]);
