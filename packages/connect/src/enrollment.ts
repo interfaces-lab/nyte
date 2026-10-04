@@ -52,6 +52,7 @@ export async function awaitAcceptance(input: {
   readonly signal: AbortSignal;
   readonly readiness: typeof READINESS;
 }): Promise<"accepted" | "notAccepted" | "silent" | "cancelled"> {
+  const { fetch } = input;
   const deadline = Date.now() + input.readiness.windowMs;
   let last: "notAccepted" | "silent" = "silent";
 
@@ -68,7 +69,7 @@ export async function awaitAcceptance(input: {
       baseUrl: input.connection.url,
       token: input.connection.token,
       fetch: (resource, init) =>
-        input.fetch(resource, { ...init, credentials: "omit", signal: attempt.signal }),
+        fetch(resource, { ...init, credentials: "omit", signal: attempt.signal }),
     });
 
     try {
@@ -113,11 +114,12 @@ export async function releaseOnHost(input: {
   readonly fetch: Fetch;
   readonly timeoutMs: number;
 }): Promise<Release> {
+  const { fetch } = input;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), input.timeoutMs);
 
   try {
-    const response = await input.fetch(`${input.connection.url}${DESKTOP_ROUTES.device}`, {
+    const response = await fetch(`${input.connection.url}${DESKTOP_ROUTES.device}`, {
       method: "DELETE",
       headers: { authorization: `Bearer ${input.connection.token}` },
       credentials: "omit",
