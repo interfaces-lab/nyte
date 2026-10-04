@@ -153,12 +153,34 @@ function ConnectForm({
   );
 }
 
+const checking: ConnectionStanding = { tone: "warn", status: "Checking…" };
+
+function serverStanding(state: Exclude<ServerState, { kind: "none" }>): ConnectionStanding {
+  if (state.kind === "unavailable") {
+    return {
+      tone: "err",
+      status: state.problem.kind === "authentication" ? "Access required" : "Unavailable",
+    };
+  }
+
+  const { auth } = state.provider;
+
+  return auth.kind === "ready" || auth.kind === "unverified"
+    ? { tone: "on", status: "Connected" }
+    : { tone: "warn", status: "Model unavailable" };
+}
+
 function serverDetail(state: Exclude<ServerState, { kind: "none" }>): string {
   if (state.kind === "unavailable") return state.problem.message;
+  const { model, auth } = state.provider;
+  const name = `${model.provider}/${model.id}`;
+
+  if (auth.kind !== "ready" && auth.kind !== "unverified") return `${name}: ${auth.message}.`;
+  const modelLine = auth.kind === "ready" ? `${name}.` : `${name}, not verified.`;
   const host = state.info.host;
 
   if (host.kind === "unspecified")
-    return "The server responds, but does not report its tools or history storage.";
+    return `${modelLine} The server responds, but does not report its tools or history storage.`;
 
   const persistence =
     host.persistence === "durable"
@@ -167,7 +189,7 @@ function serverDetail(state: Exclude<ServerState, { kind: "none" }>): string {
         ? "Chat history is temporary and can disappear when the server restarts."
         : "The server has not reported how chat history is stored.";
 
-  return `${host.capabilities.workspace ? "Workspace tools available." : "Chat only."} ${persistence}`;
+  return `${modelLine} ${host.capabilities.workspace ? "Workspace tools available." : "Chat only."} ${persistence}`;
 }
 
 export function CloudConnection({ active }: { readonly active: boolean }): ReactElement {
@@ -235,16 +257,7 @@ export function CloudConnection({ active }: { readonly active: boolean }): React
           control={
             <ConnectionMenu
               label="Server"
-              tone={server.isFetching ? "warn" : state.kind === "connected" ? "on" : "err"}
-              status={
-                server.isFetching
-                  ? "Checking…"
-                  : state.kind === "connected"
-                    ? "Connected"
-                    : state.problem.kind === "authentication"
-                      ? "Access required"
-                      : "Unavailable"
-              }
+              {...(server.isFetching ? checking : serverStanding(state))}
               loading={disconnect.isPending}
               disabled={connect.isPending}
             >

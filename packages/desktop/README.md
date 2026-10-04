@@ -56,8 +56,9 @@ Read [AGENTS.md](AGENTS.md) for process boundaries, [UPDATES.md](UPDATES.md) for
 ## Testing a deployed server
 
 Deploy the [Vercel example](../demo/server/vercel/README.md) with `NYTE_TOKEN`
-and provider credentials. For an existing Nyte Codex OAuth sign-in, use the
-example's `sync:codex` command, then `run deploy`. Test from this checkout:
+and a model credential from its
+[Provider credentials](../demo/server/vercel/README.md#provider-credentials)
+section, then `run deploy`. Test from this checkout:
 
 1. Run `pnpm dev:desktop` from the repository root.
 2. Open Environments › Connections, enter the production domain and its `NYTE_TOKEN`, and
@@ -193,8 +194,30 @@ is set up: this Mac opens one WebSocket to the broker's relay at
 `<origin>/v1/environments/<id>/relay`, and phones reach it at
 `<origin>/r/<id>`.
 
+Clerk loads in a window only when main sends it an account command. Release
+builds keep the sign-in in `account.json` in the app's user data folder, 0600:
+Clerk's client token sealed with Electron `safeStorage`, and the address
+Settings shows. Launching and opening Settings read only that address. The
+Keychain is asked when Clerk first needs the token in a run, when a new token
+is sealed, and for machine-key work: linking, turning remote access on or
+resuming it at launch, and sending pending unlinks or device revocations. A
+token the Keychain will not open is dropped, and the account shows signed out.
+When the Keychain refuses machine-key work, Settings says so and remote access
+stays off.
+
+Every Keychain call uses the async `safeStorage` API. It opens keys the
+synchronous API sealed, and the main process keeps running while macOS asks.
+It does not stop macOS from asking. macOS lets an app read its Keychain item
+without asking only while the app's signature meets the requirement recorded
+when the item was made. A release signed with the same Developer ID team and
+bundle id meets it after an update. An ad-hoc signature names the exact
+binary, so each new Electron version, re-prepared dev bundle, or update-test
+build is a different app to macOS. Development and update-test builds keep
+the client token in memory, and quitting signs out. Their machine-key work can
+still prompt after such a change.
+
 **Link** opens a sign-in dialog in the current window, sends one fresh Clerk session JWT with a
-proof from a new Ed25519 machine key, and keeps nothing of the JWT. The key is
+proof from a new Ed25519 machine key, and keeps nothing of the session JWT. The key is
 sealed with Electron `safeStorage` (refused where it would fall back to plain
 text) in `~/.nyte/connect.json`, 0600 and fsynced. A file from another version
 or one that does not parse is refused, not replaced; Settings says to fix or

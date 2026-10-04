@@ -16,6 +16,7 @@ import type {
   LoginMethod,
   LoginOutcome,
   PreferenceChange,
+  ProviderAuthStatus,
   ProviderCatalog,
   RemoteNyte,
   Seq,
@@ -143,7 +144,12 @@ export function cloudSessions(
 /** The server the desktop reaches, without its token; the renderer never reads that back. */
 export type ServerState =
   | { readonly kind: "none" }
-  | { readonly kind: "connected"; readonly baseUrl: string; readonly info: ServerInfo }
+  | {
+      readonly kind: "connected";
+      readonly baseUrl: string;
+      readonly info: ServerInfo;
+      readonly provider: ProviderAuthStatus;
+    }
   | {
       readonly kind: "unavailable";
       readonly baseUrl: string;

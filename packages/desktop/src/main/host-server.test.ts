@@ -301,7 +301,14 @@ test("connecting proves the token before saving it", async () => {
   const saved = await host.call(1, "host.server.state", undefined);
   assert.equal(saved.kind, "connected");
 
-  if (saved.kind === "connected") assert.equal(saved.baseUrl, baseUrl);
+  if (saved.kind === "connected") {
+    assert.equal(saved.baseUrl, baseUrl);
+    assert.deepEqual(saved.provider, {
+      model: { provider: "echo", id: "echo" },
+      auth: { kind: "unverified", source: "echo" },
+    });
+  }
+
   assert.deepEqual(events, [{ kind: "server_changed" }]);
 });
 

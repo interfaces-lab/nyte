@@ -2218,8 +2218,9 @@ export class DesktopHost {
 
     try {
       const info = await server.sdk.info();
+      const provider = await server.sdk.provider.status();
 
-      return { kind: "connected", baseUrl: server.baseUrl, info };
+      return { kind: "connected", baseUrl: server.baseUrl, info, provider };
     } catch (cause) {
       retainDiagnostic({ correlationId: `server:${server.baseUrl}`, cause });
 
@@ -2667,6 +2668,7 @@ export class DesktopHost {
           },
           default: () => cursor.open.sdk.provider.models.default(),
         },
+        status: () => cursor.open.sdk.provider.status(),
       },
       plugins: {
         catalog: () => cursor.open.sdk.plugins.catalog(),
