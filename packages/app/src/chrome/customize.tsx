@@ -2,14 +2,10 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { PluginInfo, SessionId, SettingInfo } from "@nyte-ai/protocol";
-import type { Skill } from "@nyte-ai/schema";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
-import { Input, InputGroup } from "@nyte-ai/ui/input";
-import { Row } from "@nyte-ai/ui/row";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { revealLabel } from "../components/context-menu.ts";
 import { nyte } from "../nyte.ts";
@@ -23,6 +19,7 @@ import {
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
 import { SettingsRow, SettingsSwitchRow } from "./settings-controls.tsx";
+import { appearanceSettingsStyles as page } from "./appearance-settings.stylex.ts";
 import { customizeStyles as styles } from "./customize.stylex.ts";
 
 interface Presentation {
@@ -95,102 +92,73 @@ function present(plugin: PluginInfo, settings: readonly SettingInfo[]): PluginVi
   return { name: plugin.id, icon: "box-3d", ...builtin, info: plugin, off };
 }
 
-function matches(query: string, ...values: readonly (string | undefined)[]): boolean {
-  const needle = query.trim().toLocaleLowerCase();
-
-  return (
-    needle === "" || values.some((value) => value?.toLocaleLowerCase().includes(needle) === true)
-  );
-}
-
 function parentPath(path: string): string {
   return path.slice(0, Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")));
-}
-
-/** Skills grouped by the folder their own folders sit in. */
-function skillFolders(skills: readonly Skill[]): readonly (readonly [string, readonly Skill[]])[] {
-  const folders = new Map<string, Skill[]>();
-
-  for (const skill of skills) {
-    const folder = parentPath(parentPath(skill.filePath));
-    folders.set(folder, [...(folders.get(folder) ?? []), skill]);
-  }
-
-  return [...folders];
-}
-
-function PluginStatus({ plugin }: { readonly plugin: PluginView }): ReactElement | null {
-  if (plugin.info.status === "failed")
-    return <ConnectionStatus tone="err">Couldn&rsquo;t load</ConnectionStatus>;
-
-  if (plugin.off) return <ConnectionStatus tone="off">Off</ConnectionStatus>;
-
-  return null;
 }
 
 function Section({
   title,
   description,
-  action,
   children,
 }: {
   readonly title: string;
-  readonly description?: ReactNode;
-  readonly action?: ReactNode;
+  readonly description?: string;
   readonly children: ReactNode;
 }): ReactElement {
   return (
     <section {...props(settingsPatterns.section)}>
-      <header {...props(styles.sectionHeader)}>
-        <div {...props(styles.sectionCopy)}>
-          <h2 {...props(settingsPatterns.sectionTitle)}>{title}</h2>
-          {description !== undefined && (
-            <p {...props(settingsPatterns.sectionDescription)}>{description}</p>
-          )}
-        </div>
-        {action}
-      </header>
+      <div {...props(settingsPatterns.sectionHeader)}>
+        <h2 {...props(settingsPatterns.sectionTitle)}>{title}</h2>
+        {description !== undefined && (
+          <p {...props(settingsPatterns.sectionDescription)}>{description}</p>
+        )}
+      </div>
       {children}
     </section>
   );
 }
 
-function PluginGrid({
-  plugins,
-  onOpen,
-}: {
-  readonly plugins: readonly PluginView[];
-  readonly onOpen: (plugin: PluginView) => void;
-}): ReactElement {
+/** A plugin earns a page only when the page would have something on it. */
+function hasPage(plugin: PluginView, inventory: CustomizeInventory): boolean {
+  const owns = (owner: string): boolean => owner === plugin.info.id;
+
   return (
-    <div {...props(styles.grid)}>
-      {plugins.map((plugin) => (
-        <Row key={plugin.info.id} variant="nav" xstyle={styles.card} onClick={() => onOpen(plugin)}>
-          <span {...props(styles.tile)}>
-            <Icon name={plugin.icon} size={16} />
-          </span>
-          <span {...props(styles.cardCopy)}>
-            <span {...props(settingsPatterns.rowTitle, styles.ellipsis)}>{plugin.name}</span>
-            <span {...props(styles.cardMeta)}>
-              <PluginStatus plugin={plugin} />
-              {plugin.info.source === "project" && <span {...props(styles.tag)}>Project</span>}
-            </span>
-          </span>
-        </Row>
-      ))}
-    </div>
+    plugin.info.status === "failed" ||
+    plugin.info.path !== undefined ||
+    inventory.settings.some((setting) => owns(setting.owner)) ||
+    inventory.commands.some((command) => owns(command.owner))
   );
 }
 
-function OpenPluginsFolder(): ReactElement | null {
-  const open = nyte.host.openPluginsFolder;
-
-  if (open === undefined) return null;
+function PluginRow({
+  plugin,
+  inventory,
+  onOpen,
+}: {
+  readonly plugin: PluginView;
+  readonly inventory: CustomizeInventory;
+  readonly onOpen: (plugin: PluginView) => void;
+}): ReactElement {
+  const detail =
+    plugin.info.status === "failed" ? (
+      <ConnectionStatus tone="err">Couldn&rsquo;t load</ConnectionStatus>
+    ) : plugin.off ? (
+      <ConnectionStatus tone="off">Off</ConnectionStatus>
+    ) : (
+      plugin.description
+    );
 
   return (
-    <Button icon="folder-open" onClick={() => void open()}>
-      Open Plugins Folder
-    </Button>
+    <ConnectionRow
+      glyph={<Icon name={plugin.icon} size={16} />}
+      title={plugin.name}
+      detail={detail}
+      control={
+        hasPage(plugin, inventory) ? (
+          <Button onClick={() => onOpen(plugin)}>Manage</Button>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -201,89 +169,79 @@ function Overview({
   readonly inventory: CustomizeInventory;
   readonly onOpen: (plugin: PluginView) => void;
 }): ReactElement {
-  const [query, setQuery] = useState("");
   const host = useHostState();
   const reveal = nyte.host.revealPath;
-
-  const plugins = inventory.plugins
-    .flatMap((plugin) => present(plugin, inventory.settings) ?? [])
-    .filter((plugin) => matches(query, plugin.name, plugin.description, plugin.info.id));
-
+  const openPluginsFolder = nyte.host.openPluginsFolder;
+  const plugins = inventory.plugins.flatMap((plugin) => present(plugin, inventory.settings) ?? []);
   const yours = plugins.filter((plugin) => plugin.info.source !== "builtin");
   const builtIn = plugins.filter((plugin) => plugin.info.source === "builtin");
-  const noneOfYours = inventory.plugins.every((plugin) => plugin.source === "builtin");
-
-  const folders = skillFolders(
-    inventory.skills.filter((skill) => matches(query, skill.name, skill.description)),
-  );
-
-  const searching = query.trim() !== "";
 
   return (
     <>
-      <InputGroup>
-        <Icon name="search" size={14} />
-        <Input
-          type="search"
-          aria-label="Search"
-          placeholder="Search"
-          autoComplete="off"
-          spellCheck={false}
-          value={query}
-          onValueChange={setQuery}
-        />
-      </InputGroup>
-
-      <Section title="Plugins" action={noneOfYours ? undefined : <OpenPluginsFolder />}>
-        {yours.length > 0 && <PluginGrid plugins={yours} onOpen={onOpen} />}
-        {noneOfYours && !searching && nyte.host.openPluginsFolder !== undefined && (
-          <div {...props(styles.empty)}>
-            <span {...props(styles.emptyCopy, settingsPatterns.rowTitle)}>Add your own plugin</span>
-            <OpenPluginsFolder />
-          </div>
-        )}
-        {builtIn.length > 0 && (
-          <>
-            <div {...props(styles.subheading)}>Built in</div>
-            <PluginGrid plugins={builtIn} onOpen={onOpen} />
-          </>
-        )}
-      </Section>
-
-      {folders.length > 0 && (
-        <Section title="Skills">
-          {folders.map(([folder, skills]) => (
-            <ConnectionList key={folder}>
-              <div {...props(styles.folderHeading)}>
-                <Icon name="folder" size={14} />
-                <span title={folder} {...props(styles.folderPath, styles.ellipsis)}>
-                  {folder}
-                </span>
-                {reveal !== undefined && (
-                  <Button
-                    size="sm"
-                    iconOnly
-                    icon="folder-open"
-                    aria-label={revealLabel(host.data?.platform)}
-                    onClick={() => void reveal({ path: folder })}
-                  />
-                )}
-              </div>
-              {skills.map((skill) => (
-                <ConnectionRow
-                  key={skill.filePath}
-                  glyph={<Icon name="skills" size={16} />}
-                  title={skill.name}
-                  detail={skill.description}
-                />
-              ))}
-            </ConnectionList>
-          ))}
+      {(yours.length > 0 || openPluginsFolder !== undefined) && (
+        <Section title="Your plugins">
+          <ConnectionList>
+            {yours.map((plugin) => (
+              <PluginRow
+                key={plugin.info.id}
+                plugin={plugin}
+                inventory={inventory}
+                onOpen={onOpen}
+              />
+            ))}
+            {openPluginsFolder !== undefined && (
+              <ConnectionRow
+                glyph={<Icon name="folder-add" size={16} />}
+                title="Add your own plugin"
+                control={
+                  <Button icon="folder-open" onClick={() => void openPluginsFolder()}>
+                    Open Plugins Folder
+                  </Button>
+                }
+              />
+            )}
+          </ConnectionList>
         </Section>
       )}
 
-      {searching && plugins.length + folders.length === 0 && (
-        <p {...props(styles.note)}>Nothing matches &ldquo;{query.trim()}&rdquo;</p>
+      {builtIn.length > 0 && (
+        <Section title="Built in">
+          <ConnectionList>
+            {builtIn.map((plugin) => (
+              <PluginRow
+                key={plugin.info.id}
+                plugin={plugin}
+                inventory={inventory}
+                onOpen={onOpen}
+              />
+            ))}
+          </ConnectionList>
+        </Section>
+      )}
+
+      {inventory.skills.length > 0 && (
+        <Section title="Skills">
+          <ConnectionList>
+            {inventory.skills.map((skill) => (
+              <ConnectionRow
+                key={skill.filePath}
+                glyph={<Icon name="skills" size={16} />}
+                title={skill.name}
+                detail={skill.description}
+                control={
+                  reveal === undefined ? undefined : (
+                    <Button
+                      iconOnly
+                      icon="folder-open"
+                      aria-label={revealLabel(host.data?.platform)}
+                      onClick={() => void reveal({ path: parentPath(skill.filePath) })}
+                    />
+                  )
+                }
+              />
+            ))}
+          </ConnectionList>
+        </Section>
       )}
     </>
   );
@@ -350,7 +308,6 @@ function Detail({
   const { info } = plugin;
   const settings = inventory.settings.filter((setting) => setting.owner === info.id);
   const commands = inventory.commands.filter((command) => command.owner === info.id);
-  const builtin = info.source === "builtin";
   const failure = info.status === "failed" ? info.error : undefined;
   const path = info.path;
 
@@ -360,58 +317,46 @@ function Detail({
         Customize
       </Button>
 
-      <header {...props(styles.detailHeader)}>
-        <span {...props(styles.tile)}>
-          <Icon name={plugin.icon} size={20} />
-        </span>
-        <div {...props(styles.sectionCopy)}>
-          <h1 {...props(settingsPatterns.pageTitle)}>{plugin.name}</h1>
-          {plugin.description !== undefined && (
-            <p {...props(settingsPatterns.sectionDescription)}>{plugin.description}</p>
-          )}
-        </div>
-      </header>
+      <div {...props(page.titleRow, styles.titleCopy)}>
+        <h1 {...props(settingsPatterns.pageTitle)}>{plugin.name}</h1>
+        {plugin.description !== undefined && (
+          <p {...props(settingsPatterns.sectionDescription)}>{plugin.description}</p>
+        )}
+      </div>
 
       {failure !== undefined && (
-        <div role="alert" {...props(intent.danger, styles.failure)}>
-          <div {...props(styles.failureHead)}>
-            <span {...props(styles.failureIcon)}>
-              <Icon name="circle-x" size={16} />
-            </span>
-            <span {...props(styles.cardCopy)}>
-              <span {...props(settingsPatterns.rowTitle)}>Couldn&rsquo;t load this plugin</span>
-              <span {...props(styles.muted)}>
-                Nyte tries again when a file in its folder changes.
+        <ConnectionList>
+          <ConnectionRow
+            glyph={
+              <span {...props(intent.danger, styles.failed)}>
+                <Icon name="circle-x" size={16} />
               </span>
-            </span>
-          </div>
-          <pre {...props(styles.trace)}>{failure}</pre>
-          <div {...props(styles.actions)}>
-            <Button icon="copy" onClick={() => void navigator.clipboard.writeText(failure)}>
-              Copy Error
-            </Button>
-          </div>
-        </div>
+            }
+            title="Couldn’t load this plugin"
+            detail="Nyte tries again when a file in its folder changes."
+            control={
+              <Button icon="copy" onClick={() => void navigator.clipboard.writeText(failure)}>
+                Copy Error
+              </Button>
+            }
+            expansion={<pre {...props(styles.trace)}>{failure}</pre>}
+          />
+        </ConnectionList>
       )}
 
-      {!builtin && (
-        <div {...props(styles.facts)}>
-          <span {...props(styles.fact)}>
-            <span {...props(styles.factLabel)}>Version</span>
-            <span {...props(settingsPatterns.rowTitle)}>{info.version}</span>
-          </span>
+      {info.source !== "builtin" && (
+        <div {...props(settingsPatterns.group)}>
+          <SettingsRow title="Version">
+            <span {...props(styles.value)}>{info.version}</span>
+          </SettingsRow>
           {path !== undefined && (
-            <span {...props(styles.fact, styles.factGrow)}>
-              <span {...props(styles.factLabel)}>Location</span>
-              <span title={path} {...props(styles.code, styles.ellipsis)}>
-                {path}
-              </span>
-            </span>
-          )}
-          {path !== undefined && reveal !== undefined && (
-            <Button icon="folder-open" onClick={() => void reveal({ path })}>
-              {revealLabel(host.data?.platform)}
-            </Button>
+            <SettingsRow title="Location" description={path} controlWidth="wide">
+              {reveal !== undefined && (
+                <Button icon="folder-open" onClick={() => void reveal({ path })}>
+                  {revealLabel(host.data?.platform)}
+                </Button>
+              )}
+            </SettingsRow>
           )}
         </div>
       )}
@@ -442,10 +387,12 @@ function Detail({
         <Section title="Commands">
           <ConnectionList>
             {commands.map((command) => (
-              <div key={command.name} {...props(styles.contribution)}>
-                <span {...props(styles.contributionName)}>/{command.name}</span>
-                <span {...props(styles.muted)}>{command.description}</span>
-              </div>
+              <ConnectionRow
+                key={command.name}
+                glyph={<Icon name="command" size={16} />}
+                title={`/${command.name}`}
+                detail={command.description}
+              />
             ))}
           </ConnectionList>
         </Section>
@@ -507,8 +454,8 @@ export function CustomizeSurface({
       : present(openPlugin, inventory.data.settings);
 
   return (
-    <div data-nyte-customize-surface {...props(styles.surface)}>
-      <div {...props(styles.root)}>
+    <div data-nyte-customize-surface {...props(page.content)}>
+      <div {...props(page.contentInner)}>
         {opened !== undefined && inventory.data !== undefined ? (
           <Detail
             key={opened.info.id}
@@ -519,10 +466,16 @@ export function CustomizeSurface({
           />
         ) : (
           <>
-            <h1 {...props(settingsPatterns.pageTitle, styles.title)}>Customize</h1>
+            <div {...props(page.titleRow)}>
+              <h1 {...props(settingsPatterns.pageTitle)}>Customize</h1>
+            </div>
             {inventory.isPending && <InventoryLoading />}
             {inventory.isError && (
-              <p role="alert" title={inventory.error.message} {...props(styles.note)}>
+              <p
+                role="alert"
+                title={inventory.error.message}
+                {...props(settingsPatterns.sectionDescription)}
+              >
                 Couldn&rsquo;t load plugins and skills. Try again.
               </p>
             )}
