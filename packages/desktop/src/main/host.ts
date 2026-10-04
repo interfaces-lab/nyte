@@ -9,18 +9,18 @@
  * tests headless under Vitest.
  */
 import { existsSync } from "node:fs";
-import { realpath } from "node:fs/promises";
+import { mkdir, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { MutableModels } from "@nyte-ai/ai";
 import { createNyte, dispatch } from "@nyte-ai/core";
+import { createLocalExecutionEnv, localEnvironmentPlugin } from "@nyte-ai/core/plugins";
 import { watchPluginDirectories } from "@nyte-ai/host/plugins";
 import type { ResolvedPlugins } from "@nyte-ai/host/plugins";
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { Environment, OperationInput } from "@nyte-ai/protocol";
 import type {
   Disposer,
-  SessionActivation,
   SessionId,
   SessionInfo,
   Nyte,
@@ -29,6 +29,7 @@ import type {
   WorkspaceSelectInput,
   WorkspaceSelectOutcome,
   WorkspaceSelection,
+  WorkspaceTrust,
 } from "@nyte-ai/core";
 import { createNyteClient, sessionMark } from "@nyte-ai/client";
 import type { NyteClient } from "@nyte-ai/client";
@@ -42,9 +43,11 @@ import {
   createHost,
   createWorkspaceBackend,
   createWorkspaceStore,
+  environmentId,
   nyteHome,
   pluginWatchTargets,
   resolveHostPlugins,
+  userPluginDirectory,
   runGitHubCommand,
   workspaceStorePath,
   WorkspaceTrustRequired,
@@ -165,6 +168,8 @@ export interface DesktopHostDependencies {
   confirmExternal(url: string, window: HostWindow): ReturnType<HostBridge["confirmExternal"]>;
   /** Show a file or folder in the system file manager. */
   revealPath(path: string): void;
+  /** Open a folder in the system file manager. Absent, the host reveals it instead. */
+  readonly openPath?: (path: string) => Promise<void>;
   /** Where a discarded untracked file goes; the app uses the OS trash. Absent, the host's own trash. */
   readonly trashPath?: (path: string) => Promise<void>;
   /** Native right-click menu, with the renderer's own signature. */
@@ -647,6 +652,17 @@ export class DesktopHost {
         return undefined;
       }
 
+      case "host.openPluginsFolder": {
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+        const folder = userPluginDirectory();
+        await mkdir(folder, { recursive: true });
+
+        if (this.dependencies.openPath === undefined) this.dependencies.revealPath(folder);
+        else await this.dependencies.openPath(folder);
+
+        return undefined;
+      }
+
       case "host.contextMenu":
         return this.dependencies.showContextMenu(CALL_INPUT_SCHEMAS[path].Parse(input), window);
       case "host.browser.open":
@@ -885,21 +901,8 @@ export class DesktopHost {
         const sessionId = decoded.target.kind === "session" ? decoded.target.sessionId : undefined;
         const open = await this.owner(window, sessionId);
 
-        if (open.kind === "project") {
-          const cwd =
-            sessionId === undefined
-              ? open.workspace.path
-              : await open.sdk.sessionCwd({ sessionId });
-
-          if (cwd === undefined) {
-            throw new ExpectedHostError({
-              code: "not_found",
-              message: "The session workspace could not be resolved",
-            });
-          }
-
-          await this.requireTrust(cwd, window);
-        }
+        if (open.kind === "project")
+          await this.requireTrust(await this.workspaceOperationCwd(open, decoded.target), window);
 
         return dispatch(open.sdk, path, decoded);
       }
@@ -1553,6 +1556,7 @@ export class DesktopHost {
     }
 
     const projectCwd = target.kind === "project" ? target.workspace.path : undefined;
+    const cwd = projectCwd ?? homedir();
 
     const store = new WorkerStore({
       path: await storePath(target),
@@ -1628,6 +1632,7 @@ export class DesktopHost {
               model: fallback,
               extra: extraPlugins,
               codemode,
+              env: createLocalExecutionEnv({ id: await environmentId(), cwd }),
             });
 
             const replacement = await host.setPlugins(reloaded.plugins);
@@ -1652,6 +1657,7 @@ export class DesktopHost {
           // Storage opens before trust; project code loads once the user has granted it.
           target: {
             kind: "deferred",
+            cwd,
             resolve: async () => {
               const resolved = await this.pluginTarget(target);
 
@@ -1793,7 +1799,9 @@ export class DesktopHost {
         });
       }
 
-      let activation: Promise<SessionActivation> | undefined;
+      const id = await environmentId();
+      const cwd = target.kind === "home" ? homedir() : target.workspace.path;
+      let decided: Promise<WorkspaceTrust> | undefined;
       sdk = await createNyte({
         store,
         models,
@@ -1801,23 +1809,36 @@ export class DesktopHost {
         drain: "all",
         streamFn: (model, context, options) => models.streamSimple(model, context, options),
         telemetry: this.otel.telemetry,
-        resolveActivation: () =>
-          (activation ??= this.pluginTarget(target).then((resolved): SessionActivation => {
-            switch (resolved.kind) {
-              case "home":
-                return { kind: "active", plugins: [], env: { cwd: homedir() } };
-              case "project":
-                return { kind: "active", plugins: [], env: { cwd: resolved.workspace.cwd } };
-              case "inactive":
-              case "requires":
-                return resolved;
-              default: {
-                const _exhaustive: never = resolved;
+        plugins: [localEnvironmentPlugin({ id })],
+        defaultWorkspace: { kind: "local", id, cwd },
+        trust: async (workspace): Promise<WorkspaceTrust> => {
+          if (workspace.id !== id) return { kind: "trusted" };
 
-                return _exhaustive;
-              }
+          if (workspace.cwd === cwd)
+            return (decided ??= this.pluginTarget(target).then((resolved): WorkspaceTrust =>
+              resolved.kind === "home" || resolved.kind === "project"
+                ? { kind: "trusted" }
+                : resolved,
+            ));
+          const resolution = await this.workspaces.resolve(workspace.cwd).catch(() => undefined);
+
+          if (resolution === undefined) return { kind: "inactive" };
+
+          switch (resolution.kind) {
+            case "trusted":
+              return { kind: "trusted" };
+            case "unknown":
+              return {
+                kind: "requires",
+                requirement: { kind: "workspace_trust", cwd: resolution.cwd },
+              };
+            default: {
+              const _exhaustive: never = resolution;
+
+              return _exhaustive;
             }
-          })),
+          }
+        },
       });
       const { items } = await sdk.sessions.list({ parent: null, includeArchived: true });
 
@@ -2700,6 +2721,7 @@ export class DesktopHost {
       advance: (input) => sdk(input.sessionId).advance(input),
       reactivate: () => cursor.open.sdk.reactivate(),
       sessionCwd: (input) => sdk(input.sessionId).sessionCwd(input),
+      sessionWorkspace: (input) => sdk(input.sessionId).sessionWorkspace(input),
       relocate: (input) => sdk(input.sessionId).relocate(input),
       setPlugins: (plugins, input) => sdk(input?.sessionId).setPlugins(plugins, input),
       close: () => cursor.open.sdk.close(),

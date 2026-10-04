@@ -1,8 +1,7 @@
 /**
- * `window.nyte`: the SDK interfaces verbatim (design record, "What each client
- * deletes" — desktop). Every operation is one `invoke` carrying its path and input
- * object; `watch` is the one transport adaptation, an AsyncIterable become a
- * push subscription with the same cursor semantics.
+ * `window.nyte`: the SDK interfaces verbatim. Every operation is one `invoke`
+ * carrying its path and input object; `watch` is the one transport adaptation,
+ * an AsyncIterable become a push subscription with the same cursor semantics.
  *
  * Main owns request decoding and reply construction. Preload preserves each
  * path's input/output relationship instead of widening transport payloads.
@@ -272,6 +271,7 @@ const bridge = {
     openExternal: object("host.openExternal"),
     confirmExternal: object("host.confirmExternal"),
     revealPath: object("host.revealPath"),
+    openPluginsFolder: none("host.openPluginsFolder"),
     pathForFile: (file: File) => webUtils.getPathForFile(file),
     contextMenu: object("host.contextMenu"),
     terminal: {

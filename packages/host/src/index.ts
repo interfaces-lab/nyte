@@ -5,28 +5,19 @@
  * workspace must have granted before project code runs.
  */
 import { homedir } from "node:os";
-import { realpath, stat } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
 import type { MutableModels } from "@nyte-ai/ai";
 import { createNyte } from "@nyte-ai/core";
-import type {
-  ActivationRequirement,
-  ActiveSessionActivation,
-  Plugin,
-  Nyte,
-  NyteOptions,
-  SessionActivation,
-  SessionId,
-  TrustedWorkspace,
-} from "@nyte-ai/core";
-import { systemPromptPlugin } from "@nyte-ai/core/plugins";
-import type { PluginEnv } from "@nyte-ai/core/plugins";
+import type { Plugin, Nyte, NyteOptions, WorkspaceTrust } from "@nyte-ai/core";
+import { localEnvironmentPlugin, systemPromptPlugin } from "@nyte-ai/core/plugins";
+import type { EnvironmentPlugin } from "@nyte-ai/core/plugins";
 import { openaiCompactionPlugin } from "@nyte-ai/plugin/openai-compaction";
 import { openaiAstraContextPlugin } from "@nyte-ai/plugin/openai-astra-context";
 import type { CodemodeSandboxOptions } from "@nyte-ai/plugin/codemode-runtime";
 import type { Api, Model } from "@nyte-ai/schema";
 import { createModelCatalog, createModelPreferencesStore } from "./catalog.ts";
+import { environmentId } from "./environment-id.ts";
 import { nyteHome } from "./paths.ts";
 import type { PluginTarget } from "./paths.ts";
 import { PluginPreparationError, resolveHostPlugins, samePluginSources } from "./plugins.ts";
@@ -37,12 +28,15 @@ import { readCacheWarmingMode } from "./settings.ts";
 
 export { cacheWarmingMode } from "./settings.ts";
 
+export { environmentId } from "./environment-id.ts";
+
 export {
   manifestPaths,
   nyteHome,
   pluginDirectories,
   pluginWatchTargets,
   skillDirectories,
+  userPluginDirectory,
   workspaceStorePath,
 } from "./paths.ts";
 
@@ -56,6 +50,7 @@ export {
   WorkspaceStore,
   WorkspaceTrustRequired,
   workspaceName,
+  type TrustedWorkspace,
   type WorkspaceTrustResolution,
 } from "./workspace-store.ts";
 
@@ -96,35 +91,40 @@ export { InvalidRipgrepPattern } from "./ripgrep.ts";
 
 export type DeferredPluginTarget =
   | PluginTarget
-  | { readonly kind: "inactive" }
-  | { readonly kind: "requires"; readonly requirement: ActivationRequirement };
+  | Exclude<WorkspaceTrust, { readonly kind: "trusted" }>;
 
 export type HostPlugins =
-  /** No local data: a system prompt and provider context policies. `env.cwd` is informational. */
+  /** No local data: a system prompt and provider context policies. Sessions start in `process.cwd()`. */
   | { readonly kind: "chat"; readonly system?: string }
   /** The workspace set behind trust: shared built-ins, user and project plugin directories, skills. */
   | {
       readonly kind: "workspace";
       readonly target:
         | PluginTarget
-        /** Storage opens now; the target (and so trust) is resolved when the first session activates. */
-        | { readonly kind: "deferred"; readonly resolve: () => Promise<DeferredPluginTarget> };
+        /** Storage opens now; the target (and so trust) is resolved when the host first opens `cwd`. */
+        | {
+            readonly kind: "deferred";
+            readonly cwd: string;
+            readonly resolve: () => Promise<DeferredPluginTarget>;
+          };
       /** Client-specific built-ins, appended after the shared set. */
       readonly extra?: readonly Plugin[];
       readonly sources?: PluginSources<unknown>;
       readonly codemode?: Pick<CodemodeSandboxOptions, "workerUrl" | "wasm">;
       readonly onFailure?: (failure: ResolvedPlugins["failures"][number]) => void;
     }
-  /** Plugins the caller loaded itself (an embedded product, a test), passed through unchanged. */
-  | { readonly kind: "custom"; readonly plugins: readonly Plugin[]; readonly env: PluginEnv };
+  /** Plugins the caller loaded itself (an embedded product, a test), installed as given. Sessions start in `cwd`. */
+  | { readonly kind: "custom"; readonly plugins: readonly Plugin[]; readonly cwd: string };
 
 export type HostOptions = Omit<
   NyteOptions,
-  "streamFn" | "models" | "plugins" | "env" | "resolveActivation" | "prepareResponsePlugins"
+  "streamFn" | "models" | "plugins" | "defaultWorkspace" | "trust"
 > & {
   /** Supplies both the catalog and the stream function. */
   readonly models: MutableModels;
   readonly plugins: HostPlugins;
+  /** Environment providers installed after this machine's, in every mode. */
+  readonly environments?: readonly EnvironmentPlugin[];
 };
 
 export function createWorkspaceStore(): WorkspaceStore {
@@ -151,49 +151,10 @@ export async function resolveModel(models: MutableModels, ref: string): Promise<
 }
 
 export async function createHost(options: HostOptions): Promise<Nyte> {
-  const { models, plugins, ...base } = options;
+  const { models, plugins, environments = [], ...base } = options;
   const providers = providerOverrides(models);
-  const relocatedWorkspaces = new Map<SessionId, TrustedWorkspace>();
-
-  const create = async (input: NyteOptions): Promise<Nyte> => {
-    const resolveActivation = input.resolveActivation;
-    const prepareResponsePlugins = input.prepareResponsePlugins;
-    const responsePreparation: Pick<NyteOptions, "prepareResponsePlugins"> = {
-      prepareResponsePlugins:
-        prepareResponsePlugins === undefined
-          ? undefined
-          : async (request) => providers.wrap(await prepareResponsePlugins(request)),
-    };
-
-    const sdk = await (resolveActivation === undefined
-      ? createNyte({
-          ...input,
-          ...responsePreparation,
-          plugins: providers.wrap(input.plugins ?? []),
-        })
-      : createNyte({
-          ...input,
-          ...responsePreparation,
-          resolveActivation: async (target) => {
-            const activation = await resolveActivation(target);
-
-            return activation.kind === "active"
-              ? { ...activation, plugins: providers.wrap(activation.plugins) }
-              : activation;
-          },
-        }));
-
-    const setPlugins = sdk.setPlugins.bind(sdk);
-    const relocate = sdk.relocate.bind(sdk);
-    sdk.setPlugins = (next, target) => setPlugins(providers.wrap(next), target);
-    sdk.relocate = async (target) => {
-      const outcome = await relocate({ ...target, plugins: providers.wrap(target.plugins) });
-      if (outcome.kind === "relocated") relocatedWorkspaces.set(target.sessionId, target.workspace);
-      return outcome;
-    };
-
-    return sdk;
-  };
+  const id = await environmentId();
+  const local = localEnvironmentPlugin({ id });
 
   // Delegation can choose a provider other than the parent before any picker opens.
   await models.refresh({ allowNetwork: false });
@@ -211,123 +172,125 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
     streamFn: providers.stream,
   } satisfies Partial<NyteOptions>;
 
+  const create = async (
+    cwd: string,
+    bootstrap: readonly Plugin[],
+    trust: NonNullable<NyteOptions["trust"]>,
+  ): Promise<Nyte> => {
+    if (plugins.kind !== "workspace" || plugins.target.kind !== "deferred")
+      await options.workspace?.touch(cwd);
+
+    const sdk = await createNyte({
+      ...shared,
+      plugins: [local, ...environments, ...providers.wrap(bootstrap)],
+      defaultWorkspace: { kind: "local", id, cwd },
+      trust,
+    });
+
+    const setPlugins = sdk.setPlugins.bind(sdk);
+    sdk.setPlugins = (next, target) =>
+      setPlugins([local, ...environments, ...providers.wrap(next)], target);
+
+    return sdk;
+  };
+
+  /** Without a trust store, `cwd` and other environments are trusted; this machine's other folders wait for a grant. */
+  const trustCwd =
+    (cwd: string): NonNullable<NyteOptions["trust"]> =>
+    (workspace) =>
+      workspace.id !== id || workspace.cwd === cwd
+        ? { kind: "trusted" }
+        : { kind: "requires", requirement: { kind: "workspace_trust", cwd: workspace.cwd } };
+
   switch (plugins.kind) {
-    case "chat":
-      return create({
-        ...shared,
-        plugins: [
+    case "chat": {
+      const cwd = process.cwd();
+
+      return create(
+        cwd,
+        [
           systemPromptPlugin(plugins.system),
           openaiCompactionPlugin({ models }),
           openaiAstraContextPlugin(),
         ],
-        env: { cwd: process.cwd() },
-      });
+        trustCwd(cwd),
+      );
+    }
+
     case "custom":
-      return create({ ...shared, plugins: plugins.plugins, env: plugins.env });
+      return create(plugins.cwd, plugins.plugins, trustCwd(plugins.cwd));
     case "workspace": {
       const workspaces = createWorkspaceStore();
-      let activeTarget: PluginTarget | undefined;
-      let snapshot: readonly Plugin[] | undefined;
-      const prepare = async (target: PluginTarget): Promise<readonly Plugin[]> => {
-        const resolved = await resolveHostPlugins(target, {
-          models,
-          model: options.model,
-          extra: plugins.extra,
-          sources: plugins.sources,
-          codemode: plugins.codemode,
-        }).catch((cause: unknown) => {
-          if (cause instanceof PluginPreparationError)
-            for (const failure of cause.failures) plugins.onFailure?.(failure);
-          throw cause;
-        });
-
-        if (snapshot !== undefined && samePluginSources(snapshot, resolved.plugins))
-          return snapshot;
-        snapshot = resolved.plugins;
-        return snapshot;
-      };
-      const activate = async (target: PluginTarget): Promise<ActiveSessionActivation> => {
-        const prepared = await prepare(target);
-        activeTarget = target;
-        return {
-          kind: "active",
-          plugins: prepared,
-          env: { cwd: target.kind === "project" ? target.workspace.cwd : homedir() },
-        };
-      };
-      const prepareResponsePlugins: NonNullable<NyteOptions["prepareResponsePlugins"]> = async ({
-        sessionId,
-        cwd,
-      }) => {
-        const relocated = relocatedWorkspaces.get(sessionId);
-        const target: PluginTarget | undefined =
-          relocated === undefined ? activeTarget : { kind: "project", workspace: relocated };
-        if (target === undefined) throw new Error("Workspace plugins are not activated");
-        const realCwd = await realpath(cwd);
-        if (!(await stat(realCwd)).isDirectory())
-          throw new Error(`Not a workspace directory: ${realCwd}`);
-        const authorizedCwd =
-          target.kind === "project" ? target.workspace.cwd : await realpath(homedir());
-        if (realCwd === authorizedCwd) return prepare(target);
-        return prepare({ kind: "project", workspace: await workspaces.require(realCwd) });
-      };
-
       const { target } = plugins;
 
-      switch (target.kind) {
-        case "home":
-        case "project":
-          return activate(target).then((active) =>
-            create({ ...shared, plugins: active.plugins, env: active.env, prepareResponsePlugins }),
-          );
-        case "deferred": {
-          let active: ActiveSessionActivation | undefined;
-          let resolving: Promise<SessionActivation> | undefined;
+      const cwd =
+        target.kind === "home"
+          ? homedir()
+          : target.kind === "project"
+            ? target.workspace.cwd
+            : target.cwd;
 
-          return create({
-            ...shared,
-            prepareResponsePlugins,
-            resolveActivation: () => {
-              if (active !== undefined) return active;
+      /** Loads `resolved`'s plugins through the opened environment, the same objects while their sources are unchanged. */
+      const trusted = (resolved: PluginTarget): WorkspaceTrust => {
+        let snapshot: readonly Plugin[] | undefined;
 
-              if (resolving !== undefined) return resolving;
-              resolving = target
-                .resolve()
-                .then(async (resolved): Promise<SessionActivation> => {
-                  switch (resolved.kind) {
-                    case "home":
-                    case "project": {
-                      const composition = await activate(resolved);
-                      active = composition;
+        return {
+          kind: "trusted",
+          plugins: async (env) => {
+            const next = await resolveHostPlugins(resolved, {
+              models,
+              model: options.model,
+              extra: plugins.extra,
+              sources: plugins.sources,
+              codemode: plugins.codemode,
+              env,
+            }).catch((cause: unknown) => {
+              const failures =
+                cause instanceof PluginPreparationError
+                  ? cause.failures
+                  : [
+                      {
+                        path: "plugins",
+                        error: cause instanceof Error ? cause.message : String(cause),
+                      },
+                    ];
 
-                      return composition;
-                    }
+              for (const failure of failures) plugins.onFailure?.(failure);
+              // Paths and plugin errors stay on the host; the session's activation reaches clients.
+              throw new Error("Plugins failed to load");
+            });
 
-                    case "inactive":
-                    case "requires":
-                      return resolved;
-                    default: {
-                      const _exhaustive: never = resolved;
+            if (snapshot === undefined || !samePluginSources(snapshot, next.plugins))
+              snapshot = next.plugins;
 
-                      return _exhaustive;
-                    }
-                  }
-                })
-                .finally(() => {
-                  resolving = undefined;
-                });
+            return providers.wrap(snapshot);
+          },
+        };
+      };
 
-              return resolving;
-            },
-          });
-        }
+      const trustTarget = async (): Promise<WorkspaceTrust> => {
+        if (target.kind !== "deferred") return trusted(target);
+        const resolved = await target.resolve();
 
-        default: {
-          const _exhaustive: never = target;
+        return resolved.kind === "home" || resolved.kind === "project"
+          ? trusted(resolved)
+          : resolved;
+      };
 
-          return _exhaustive;
-        }
-      }
+      return create(cwd, [], async (workspace) => {
+        // Another environment runs the host's own plugins, never a project folder's.
+        if (workspace.id !== id) return trusted({ kind: "home" });
+
+        if (workspace.cwd === cwd) return trustTarget();
+        // A folder that is gone or unreadable waits, as an unavailable workspace does.
+        const resolution = await workspaces.resolve(workspace.cwd).catch(() => undefined);
+
+        if (resolution === undefined) return { kind: "inactive" };
+
+        return resolution.kind === "trusted"
+          ? trusted({ kind: "project", workspace: resolution.workspace })
+          : { kind: "requires", requirement: { kind: "workspace_trust", cwd: resolution.cwd } };
+      });
     }
 
     default: {

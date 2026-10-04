@@ -6,9 +6,9 @@ import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import process from "node:process";
 import { DatabaseSync } from "node:sqlite";
-import type { TrustedWorkspace } from "@nyte-ai/core";
 import type { PluginRoot } from "./plugins/units.ts";
 import type { WatchTarget } from "./plugins/watch.ts";
+import type { TrustedWorkspace } from "./workspace-store.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 
@@ -20,8 +20,13 @@ export function nyteHome(): string {
   return resolve(process.env.NYTE_HOME ?? join(homedir(), ".nyte"));
 }
 
+/** Where the user's own plugins load from, in every workspace. */
+export function userPluginDirectory(): string {
+  return join(nyteHome(), "plugins");
+}
+
 export function pluginDirectories(target: PluginTarget): PluginRoot[] {
-  const user: PluginRoot = { path: join(nyteHome(), "plugins"), source: "user" };
+  const user: PluginRoot = { path: userPluginDirectory(), source: "user" };
 
   switch (target.kind) {
     case "home":

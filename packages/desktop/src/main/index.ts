@@ -39,13 +39,13 @@ import { CloudflareTunnelPlugin } from "./cloudflare-tunnel.ts";
 import { registerAccount } from "./account.ts";
 import type { AccountSession } from "./account-session.ts";
 import { AccountStore } from "./account-store.ts";
+import type { SecretCipher } from "./account-store.ts";
 import { accountScheme } from "../account/scheme.ts";
 import { registerRenderer } from "./renderer.ts";
 import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
 import { readConnectConfig } from "./connect-config.ts";
 import type { ConnectConfig } from "./connect-config.ts";
 import { ConnectRuntime } from "./connect-runtime.ts";
-import type { SecretCipher } from "./connect-store.ts";
 import { DesktopHost, type DesktopHostDependencies, type HostWindow } from "./host.ts";
 import { registerUpdates } from "./updates.ts";
 import { ensureShellEnvironment } from "./shell-environment.ts";
@@ -213,6 +213,11 @@ const hostDependencies = {
     return (["open", "copy", "trust", "cancel"] as const)[response] ?? "cancel";
   },
   revealPath: (path) => shell.showItemInFolder(path),
+  openPath: async (path) => {
+    const failure = await shell.openPath(path);
+
+    if (failure !== "") throw new Error(failure);
+  },
   trashPath: (path) => shell.trashItem(path),
   showContextMenu: (input, window) =>
     showContextMenu({ window: windows.get(window)?.window, input }),
@@ -242,7 +247,7 @@ function getHost(): DesktopHost {
 }
 
 /**
- * Sealed by the OS keychain; refused where Electron would fall back to plain text. The async
+ * The account sign-in is sealed by the OS keychain; refused where Electron would fall back to plain text. The async
  * API keeps the main process running while macOS asks for Keychain access, and opens what the
  * synchronous API sealed.
  */
@@ -297,7 +302,6 @@ function createConnect(config: ConnectConfig | undefined): ConnectRuntime {
   return new ConnectRuntime({
     config,
     home: nyteHome(),
-    cipher: keychain,
     account,
     onChange: () => broadcast({ kind: "remote_access_changed" }),
   });

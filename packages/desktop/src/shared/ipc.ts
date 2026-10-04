@@ -123,6 +123,7 @@ export const HOST_OPERATION_PATHS = [
   "host.openExternal",
   "host.confirmExternal",
   "host.revealPath",
+  "host.openPluginsFolder",
   "host.contextMenu",
   "host.browser.open",
   "host.browser.navigate",
