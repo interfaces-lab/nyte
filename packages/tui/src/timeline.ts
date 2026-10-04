@@ -770,7 +770,7 @@ export class Timeline {
     const state = this.state;
 
     if (mounted.kind === "shell" && item?.kind === "shell") {
-      mounted.card.sync(item.execution, undefined, false);
+      mounted.card.sync(item.execution, undefined);
       mounted.card.setNote(item.note);
 
       return;
@@ -1154,7 +1154,6 @@ export class Timeline {
                   root,
                   undefined,
                   undefined,
-                  false,
                   item.item.note,
                 );
 

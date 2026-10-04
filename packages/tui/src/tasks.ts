@@ -3,9 +3,9 @@ import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { JobInfo, Nyte, RunInfo, SessionEvent, SessionId } from "@nyte-ai/core";
 import { GLYPHS } from "./constants.ts";
 import { userText } from "./format.ts";
-import { SessionObserver } from "@nyte-ai/client";
-import type { SessionState } from "@nyte-ai/client";
-import { toolLabel, toolPhase, toolSubject, type ToolPhase } from "./tool-copy.ts";
+import { SessionObserver, toolStatus } from "@nyte-ai/client";
+import type { SessionState, ToolTone } from "@nyte-ai/client";
+import { toolTitle } from "./tool-copy.ts";
 
 export type Task =
   | { readonly kind: "agent"; readonly id: string; readonly state: SessionState }
@@ -77,18 +77,21 @@ export function taskStatus(task: Task): TaskStatus {
   }
 }
 
-export function phaseStatus(phase: ToolPhase): TaskStatus {
-  switch (phase) {
+/** A tool call's tone in the task vocabulary, so one mark draws both. */
+export function toneStatus(tone: ToolTone): TaskStatus {
+  switch (tone) {
     case "running":
       return "running";
-    case "done":
+    case "attention":
+      return "waiting";
+    case "success":
       return "done";
-    case "failed":
+    case "failure":
       return "failed";
-    case "interrupted":
+    case "stopped":
       return "stopped";
     default: {
-      const _exhaustive: never = phase;
+      const _exhaustive: never = tone;
 
       return _exhaustive;
     }
@@ -187,10 +190,13 @@ export function taskSteps(state: SessionState): TaskStep[] {
     for (const part of item.parts) {
       if (part.kind === "tool") {
         calls.set(part.callId, steps.length);
-        const phase = toolPhase(part.result, true);
+        const status = toolStatus(part.state);
+        const title = toolTitle(part.class, status.tense);
         steps.push({
-          status: phaseStatus(phase),
-          text: oneLine(`${toolLabel(part.class, phase)} ${toolSubject(part.class) ?? ""}`),
+          status: toneStatus(status.tone),
+          text: oneLine(
+            status.word === undefined ? title : `${title} · ${status.word.toLowerCase()}`,
+          ),
         });
       } else if (part.kind === "assistant") {
         steps.push({ status: "done", text: oneLine(part.text) });

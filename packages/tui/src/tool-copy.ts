@@ -1,66 +1,36 @@
 /** Wording for tool cards and turn notices: lowercase, terse, the glyph carries the state. */
+import type { ToolTense } from "@nyte-ai/client";
 import type { Failure, TurnToolClass } from "@nyte-ai/protocol";
 import { ACTIVITY_FAILED_LABEL, ACTIVITY_STOPPED_LABEL, GLYPHS } from "./constants.ts";
 
-export type ToolPhase = "running" | "done" | "failed" | "interrupted";
-
 type DelegateClass = Extract<TurnToolClass, { readonly kind: "delegate" }>;
 
-/** A call with no result is still running only while its run is; otherwise the run left it behind. */
-export function toolPhase(
-  result: { readonly isError: boolean } | undefined,
-  running: boolean,
-): ToolPhase {
-  if (result !== undefined) return result.isError ? "failed" : "done";
+type Verbs = Readonly<Record<Exclude<ToolTense, "none">, string>>;
 
-  return running ? "running" : "interrupted";
-}
+const READ: Verbs = { running: "reading", past: "read" };
 
-function phased(
-  phase: ToolPhase,
-  words: { readonly running: string; readonly done: string; readonly noun: string },
-): string {
-  switch (phase) {
-    case "running":
-      return words.running;
-    case "done":
-      return words.done;
-    case "failed":
-      return `${words.noun} failed`;
-    case "interrupted":
-      return `${words.noun} stopped`;
-    default: {
-      const _exhaustive: never = phase;
+const EDIT: Verbs = { running: "editing", past: "edited" };
 
-      return _exhaustive;
-    }
-  }
-}
+const WRITE: Verbs = { running: "writing", past: "wrote" };
 
-export function toolLabel(toolClass: TurnToolClass, phase: ToolPhase): string {
+function toolVerbs(toolClass: TurnToolClass): Verbs {
   switch (toolClass.kind) {
     case "file_read":
-      return phased(phase, { running: "reading", done: "read", noun: "read" });
+      return READ;
     case "list":
-      return phased(phase, { running: "listing", done: "listed", noun: "list" });
+      return { running: "listing", past: "listed" };
     case "shell":
-      return phased(phase, { running: "running", done: "ran", noun: "command" });
+      return { running: "running", past: "ran" };
     case "file_edit":
-      return phased(phase, { running: "editing", done: "edited", noun: "edit" });
+      return EDIT;
     case "file_write":
-      return phased(phase, { running: "writing", done: "wrote", noun: "write" });
+      return WRITE;
     case "file_patch":
-      return toolClass.op === "edit"
-        ? phased(phase, { running: "editing", done: "edited", noun: "edit" })
-        : phased(phase, { running: "writing", done: "wrote", noun: "write" });
+      return toolClass.op === "edit" ? EDIT : WRITE;
     case "delegate":
-      return phased(phase, delegateWords(toolClass.role));
+      return delegateVerbs(toolClass.role);
     case "custom":
-      return phased(phase, {
-        running: toolClass.label,
-        done: toolClass.label,
-        noun: toolClass.label,
-      });
+      return { running: toolClass.label, past: toolClass.label };
     default: {
       const _exhaustive: never = toolClass;
 
@@ -69,16 +39,79 @@ export function toolLabel(toolClass: TurnToolClass, phase: ToolPhase): string {
   }
 }
 
-function delegateWords(role: DelegateClass["role"]) {
+/** The verb for a tense that asserts one; a call that did not finish has none. */
+export function toolLabel(toolClass: TurnToolClass, tense: ToolTense): string | undefined {
+  return tense === "none" ? undefined : toolVerbs(toolClass)[tense];
+}
+
+/**
+ * What a verbless heading adds after its subject so the tool stays named: a
+ * path alone does not say read from edit. A command or a tool's name needs
+ * nothing; a custom call's label is already its name.
+ */
+export function toolNoun(toolClass: TurnToolClass): string | undefined {
+  switch (toolClass.kind) {
+    case "file_read":
+      return "read";
+    case "list":
+      return "list";
+    case "file_edit":
+      return "edit";
+    case "file_write":
+      return "write";
+    case "file_patch":
+      return toolClass.op;
+    case "delegate":
+      return delegateNoun(toolClass.role);
+    case "shell":
+    case "custom":
+      return undefined;
+    default: {
+      const _exhaustive: never = toolClass;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/** The words of a heading before its outcome: verb then subject, or subject then noun. */
+export function toolTitle(toolClass: TurnToolClass, tense: ToolTense): string {
+  const subject = toolSubject(toolClass);
+  const verb = toolLabel(toolClass, tense);
+
+  if (verb !== undefined) return subject === undefined ? verb : `${verb} ${subject}`;
+
+  return [subject, toolNoun(toolClass)].filter((value) => value !== undefined).join(" ");
+}
+
+function delegateNoun(role: DelegateClass["role"]): string | undefined {
   switch (role) {
     case "create":
-      return { running: "agent", done: "agent", noun: "agent" };
+      return undefined;
     case "send":
-      return { running: "sending to", done: "sent to", noun: "send" };
+      return "message";
     case "read":
-      return { running: "reading", done: "read", noun: "read" };
+      return "transcript";
     case "stop":
-      return { running: "stopping", done: "stopped", noun: "stop" };
+      return "stop";
+    default: {
+      const _exhaustive: never = role;
+
+      return _exhaustive;
+    }
+  }
+}
+
+function delegateVerbs(role: DelegateClass["role"]): Verbs {
+  switch (role) {
+    case "create":
+      return { running: "agent", past: "agent" };
+    case "send":
+      return { running: "sending to", past: "sent to" };
+    case "read":
+      return READ;
+    case "stop":
+      return { running: "stopping", past: "stopped" };
     default: {
       const _exhaustive: never = role;
 

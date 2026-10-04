@@ -93,14 +93,11 @@ function richTurn(index: number): TranscriptTurn {
         kind: "tool",
         callId: `rich-tool-${suffix}`,
         class: { kind: "shell", command: `printf rich-${suffix}` },
-        result: {
-          commit: `rich-result-${suffix}`,
-          output: Array.from(
-            { length: 24 },
-            (_, line) => `tool-${suffix}-row-${String(line).padStart(2, "0")} λ`,
-          ).join("\n"),
-          isError: false,
-        },
+        state: { kind: "success", commit: `rich-result-${suffix}` },
+        output: Array.from(
+          { length: 24 },
+          (_, line) => `tool-${suffix}-row-${String(line).padStart(2, "0")} λ`,
+        ).join("\n"),
         at: 0,
       },
       {

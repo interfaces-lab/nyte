@@ -31,7 +31,8 @@ import type {
   TextChunk,
   OptimizedBuffer,
 } from "@opentui/core";
-import { parsePatchFacts, turnPartId } from "@nyte-ai/client";
+import { formatToolDuration, parsePatchFacts, toolStatus, turnPartId } from "@nyte-ai/client";
+import type { ToolStatus } from "@nyte-ai/client";
 import type { Failure, ToolProgress, ToolTurnPart, TurnPart } from "@nyte-ai/protocol";
 import type { RunInfo, Turn } from "@nyte-ai/core";
 import { diffWordsWithSpace } from "diff";
@@ -62,7 +63,6 @@ import {
   type PreviewCut,
   previewLines,
   resultSummary,
-  toolHeading,
   unchangedLinesLabel,
 } from "./format.ts";
 import {
@@ -74,7 +74,7 @@ import {
 import { appendMessage } from "./message.ts";
 import { renderMermaidASCII } from "beautiful-mermaid";
 import { livePartKey, type LivePart } from "@nyte-ai/client";
-import { phaseStatus, statusMark, taskActivity, taskLabel, taskStatus } from "./tasks.ts";
+import { statusMark, taskActivity, taskLabel, taskStatus, toneStatus } from "./tasks.ts";
 import {
   bufferWidths,
   repaints,
@@ -88,9 +88,8 @@ import {
   failureNotice,
   runningActivityLabel,
   toolLabel,
-  toolPhase,
+  toolNoun,
   toolSubject,
-  type ToolPhase,
 } from "./tool-copy.ts";
 import { displayWidth } from "./width.ts";
 
@@ -449,7 +448,7 @@ export function wordSpans(content: string, pair: ChangedLinePair): SimpleHighlig
   return spans;
 }
 
-/** Highlight the changed words after the hunk's syntax colours, so the inverse wins. */
+/** Tint the changed words after the hunk's syntax colours, so the emphasis sits under them. */
 function markChangedWords(diff: DiffRenderable, pair: ChangedLinePair): void {
   const code = diff
     .getChildren()
@@ -528,8 +527,8 @@ function syntaxStyle(theme: CliTheme, subtle: boolean): SyntaxStyle {
     "markup.list": { fg: color(theme.dim) },
     "markup.quote": { fg: color(theme.dim), italic: true },
     conceal: { fg: color(theme.dim) },
-    "diff.plus": { bg: theme.ok, fg: theme.background },
-    "diff.minus": { bg: theme.error, fg: theme.background },
+    "diff.plus": { bg: theme.diffAddedEmphasis },
+    "diff.minus": { bg: theme.diffRemovedEmphasis },
   });
 }
 
@@ -952,8 +951,6 @@ export class ToolCard {
   private readonly structuredBodies: Renderable[] = [];
   private current: ToolTurnPart | ShellExecution;
   private live: ToolProgress | undefined;
-  /** Whether the run that made the call is still on it; a call left behind is interrupted. */
-  private running: boolean;
   private expanded = false;
   private destroyed = false;
   private textBody: CodeRenderable | undefined;
@@ -961,23 +958,6 @@ export class ToolCard {
   private window: TextRenderable | undefined;
   /** A dim remark after the result and clock: what this call is not (`not sent to model`). */
   private note: string | undefined;
-
-  /**
-   * A shell call's clock, ticking from the card's first frame until the result
-   * lands: how long a command has been running says whether it is stuck. A
-   * card built from a settled part never started one.
-   *
-   * Based on pi's Elapsed/Took row under a bash call:
-   * https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/tools/renderers/bash.ts
-   */
-  private timing:
-    | {
-        readonly kind: "running";
-        readonly startedAt: number;
-        readonly ticker: ReturnType<typeof setInterval>;
-      }
-    | { readonly kind: "took"; readonly ms: number }
-    | undefined;
 
   private headingState: [icon: string, color: string, result?: string] = ["", ""];
   private readonly refreshHeading = (): void => {
@@ -990,13 +970,11 @@ export class ToolCard {
     parent: Renderable,
     before: Renderable | undefined,
     live: ToolProgress | undefined,
-    running: boolean,
     note?: string,
   ) {
     this.transcript = transcript;
     this.current = part;
     this.live = live;
-    this.running = running;
     this.note = note;
     this.container = section(transcript, "tool", parent, before);
     this.heading = new TranscriptTextRenderable(transcript.renderer, {
@@ -1018,17 +996,8 @@ export class ToolCard {
     repaints.set(this.container, () => this.retheme());
     const unregister = transcript.toolOutput.register(this);
 
-    if (this.toolClass?.kind === "shell" && !this.completed) {
-      this.timing = {
-        kind: "running",
-        startedAt: performance.now(),
-        ticker: setInterval(this.refreshHeading, 1000),
-      };
-    }
-
     this.container.once(RenderableEvents.DESTROYED, () => {
       this.destroyed = true;
-      this.stopClock();
       unregister();
     });
 
@@ -1044,14 +1013,15 @@ export class ToolCard {
     return this.current.kind === "tool" ? this.current.class : undefined;
   }
 
-  private get result() {
-    return this.current.kind === "tool" ? this.current.result : undefined;
+  /** The settled part's output; a running call's text is its progress. */
+  private get output(): string | undefined {
+    return this.current.kind === "tool" ? this.current.output : undefined;
   }
 
   get completed(): boolean {
     return this.current.kind === "shell"
       ? this.current.state !== "running"
-      : this.result !== undefined;
+      : this.status().tense !== "running";
   }
 
   setExpanded(expanded: boolean): void {
@@ -1067,28 +1037,16 @@ export class ToolCard {
   }
 
   /** The settled part, or a fresh progress report while the call runs. */
-  sync(
-    part: ToolTurnPart | ShellExecution,
-    live: ToolProgress | undefined,
-    running: boolean,
-  ): void {
-    const changed = part !== this.current || live !== this.live || running !== this.running;
+  sync(part: ToolTurnPart | ShellExecution, live: ToolProgress | undefined): void {
+    const changed = part !== this.current || live !== this.live;
     this.current = part;
     this.live = live;
-    this.running = running;
-
-    if (this.completed) this.stopClock();
 
     // A delegation follows the child, which changes without this part.
     if (changed || this.toolClass?.kind === "delegate") this.render();
   }
 
-  private stopClock(): void {
-    if (this.timing?.kind !== "running") return;
-    clearInterval(this.timing.ticker);
-    this.timing = { kind: "took", ms: performance.now() - this.timing.startedAt };
-  }
-
+  /** A local command's clock, or how long core measured a settled shell call took. */
   private clock(): string | undefined {
     if (this.current.kind === "shell") {
       const until = this.current.state === "running" ? Date.now() : this.current.finishedAt;
@@ -1096,19 +1054,9 @@ export class ToolCard {
       return formatDuration(Math.max(0, until - this.current.startedAt));
     }
 
-    switch (this.timing?.kind) {
-      case "running":
-        return formatDuration(performance.now() - this.timing.startedAt);
-      case "took":
-        return formatDuration(this.timing.ms);
-      case undefined:
-        return undefined;
-      default: {
-        const _exhaustive: never = this.timing;
+    const facts = this.current.class.kind === "shell" ? this.current.class.facts : undefined;
 
-        return _exhaustive;
-      }
-    }
+    return facts === undefined ? undefined : formatToolDuration(facts.durationMs);
   }
 
   private retheme(): void {
@@ -1128,14 +1076,9 @@ export class ToolCard {
     }
 
     const output = this.live?.text ?? "";
+    const { tone } = this.status();
     this.headingState[1] =
-      this.result === undefined
-        ? output === ""
-          ? theme.running
-          : theme.user
-        : this.result.isError
-          ? theme.error
-          : theme.ok;
+      tone === "running" && output !== "" ? theme.user : theme[statusMark(toneStatus(tone)).tone];
     this.refreshHeading();
     this.detail.backgroundColor = theme.codeBackground;
     const diffs: DiffRenderable[] = [];
@@ -1146,10 +1089,10 @@ export class ToolCard {
         node.fg = theme.foreground;
         node.addedBg = theme.diffAddedBackground;
         node.removedBg = theme.diffRemovedBackground;
-        node.addedLineNumberBg = theme.diffAddedBackground;
-        node.removedLineNumberBg = theme.diffRemovedBackground;
-        node.addedSignColor = theme.ok;
-        node.removedSignColor = theme.error;
+        node.addedLineNumberBg = theme.diffAddedGutterBackground;
+        node.removedLineNumberBg = theme.diffRemovedGutterBackground;
+        node.addedSignColor = theme.diffAdded;
+        node.removedSignColor = theme.diffRemoved;
         node.lineNumberFg = theme.dim;
         node.selectionBg = theme.selectionBackground;
         node.selectionFg = theme.selectionForeground;
@@ -1160,7 +1103,7 @@ export class ToolCard {
 
       if (node instanceof CodeRenderable) {
         node.syntaxStyle = this.transcript.syntaxStyle;
-        node.fg = this.result?.isError === true ? theme.error : theme.dim;
+        node.fg = this.status().tone === "failure" ? theme.error : theme.dim;
         node.bg = theme.codeBackground;
         node.selectionBg = theme.selectionBackground;
         node.selectionFg = theme.selectionForeground;
@@ -1180,7 +1123,9 @@ export class ToolCard {
     const { theme } = this.transcript;
     const chunks = [fg(color)(icon), ...this.headingTitle()];
 
-    const tail = [result, this.clock(), this.note]
+    const word = this.current.kind === "tool" ? this.status().word?.toLowerCase() : undefined;
+
+    const tail = [result, word, this.clock(), this.note]
       .filter((value) => value !== undefined)
       .join(" · ");
 
@@ -1190,8 +1135,9 @@ export class ToolCard {
   }
 
   /**
-   * The call's label and its subject. A shell call's subject is a command, which
-   * reads as code, so it is highlighted as one once the grammar answers.
+   * The call's verb and its subject, or the subject and the tool's noun when
+   * no verb is true. A shell call's subject is a command, which reads as code,
+   * so it is highlighted as one once the grammar answers.
    */
   private headingTitle(): TextChunk[] {
     const { theme, labelSyntax } = this.transcript;
@@ -1202,9 +1148,13 @@ export class ToolCard {
         ? this.note === undefined
           ? "!"
           : "!!"
-        : toolLabel(this.current.class, this.phase());
+        : toolLabel(this.current.class, this.status().tense);
 
-    const plain = fg(theme.foreground)(` ${toolHeading(name, title)}`);
+    const noun =
+      this.current.kind === "tool" && name === undefined ? toolNoun(this.current.class) : undefined;
+
+    const words = name === undefined ? [title, noun] : [name, title];
+    const plain = fg(theme.foreground)(` ${words.filter((word) => word !== undefined).join(" ")}`);
     const command = this.current.kind === "shell" || this.current.class.kind === "shell";
 
     if (!command || title === undefined) return [plain];
@@ -1218,11 +1168,13 @@ export class ToolCard {
 
     if (highlighted === undefined) return [plain];
 
-    return [fg(theme.foreground)(` ${name} `), ...highlighted];
+    return [fg(theme.foreground)(name === undefined ? " " : ` ${name} `), ...highlighted];
   }
 
-  private phase(): ToolPhase {
-    return toolPhase(this.result, this.running);
+  private status(): ToolStatus {
+    return this.current.kind === "tool"
+      ? toolStatus(this.current.state)
+      : { tense: "running", tone: "running", word: undefined };
   }
 
   private title(): string | undefined {
@@ -1246,17 +1198,18 @@ export class ToolCard {
       return;
     }
 
-    const phase = this.phase();
+    const { tone } = this.status();
 
-    switch (phase) {
+    switch (tone) {
       case "running":
-      case "interrupted": {
-        const text = this.live?.text ?? "";
+      case "attention":
+      case "stopped": {
+        const text = this.output ?? this.live?.text ?? "";
         const inline = inlineToolPreview(text);
-        const mark = statusMark(phaseStatus(phase));
+        const mark = statusMark(toneStatus(tone));
         this.heading.content = this.headingContent(
           mark.glyph,
-          phase === "running" && text !== "" ? theme.user : theme[mark.tone],
+          tone === "running" && text !== "" ? theme.user : theme[mark.tone],
           inline ?? resultSummary(text),
         );
 
@@ -1266,16 +1219,16 @@ export class ToolCard {
         return;
       }
 
-      case "failed":
+      case "failure":
         this.renderSettled(true);
 
         return;
-      case "done":
+      case "success":
         this.renderSettled(false);
 
         return;
       default: {
-        const _exhaustive: never = phase;
+        const _exhaustive: never = tone;
 
         return _exhaustive;
       }
@@ -1326,22 +1279,29 @@ export class ToolCard {
         (candidate) => candidate.kind === "agent" && candidate.id === delegation.target.session,
       );
 
-    const phase = this.phase();
-    // A listed child speaks for itself; until then its call does.
-    const mark = statusMark(task === undefined ? phaseStatus(phase) : taskStatus(task));
+    const status = this.status();
+    const word = status.word?.toLowerCase();
 
+    // A call on a child is its own call: the child's state says nothing about it.
     if (delegation.role !== "create") {
+      const own = statusMark(toneStatus(status.tone));
       const name = task === undefined ? delegateSubject(delegation) : taskLabel(task);
+      const verb = toolLabel(delegation, status.tense);
 
       this.heading.content = new StyledText([
-        fg(theme[mark.tone])(`${mark.glyph} `),
-        fg(theme.foreground)(`${toolLabel(delegation, phase)} `),
+        fg(theme[own.tone])(`${own.glyph} `),
+        ...(verb === undefined ? [] : [fg(theme.foreground)(`${verb} `)]),
         fg(theme.tool)(name),
+        ...(verb === undefined ? [fg(theme.foreground)(` ${toolNoun(delegation) ?? ""}`)] : []),
+        ...(word === undefined ? [] : [fg(theme.dim)(`  ${word}`)]),
       ]);
       this.clearBody();
 
       return;
     }
+
+    // A listed child speaks for itself; until then its create call does.
+    const mark = statusMark(task === undefined ? toneStatus(status.tone) : taskStatus(task));
 
     const config =
       task?.kind === "agent"
@@ -1350,10 +1310,12 @@ export class ToolCard {
             .join(" · ")
         : "";
 
+    const tail = task === undefined ? word : config === "" ? undefined : config;
+
     this.heading.content = new StyledText([
       fg(theme[mark.tone])(`${mark.glyph} `),
       fg(theme.foreground)(delegation.title),
-      ...(config === "" ? [] : [fg(theme.dim)(`  ${config}`)]),
+      ...(tail === undefined ? [] : [fg(theme.dim)(`  ${tail}`)]),
     ]);
 
     if (this.window === undefined) {
@@ -1374,7 +1336,7 @@ export class ToolCard {
 
   private renderSettled(isError: boolean): void {
     const { theme } = this.transcript;
-    const output = this.result?.output ?? "";
+    const output = this.output ?? "";
     const toolClass = this.toolClass;
 
     if (toolClass?.kind === "file_patch" && !isError) {
@@ -1518,10 +1480,10 @@ export class ToolCard {
           fg: this.transcript.theme.foreground,
           addedBg: this.transcript.theme.diffAddedBackground,
           removedBg: this.transcript.theme.diffRemovedBackground,
-          addedLineNumberBg: this.transcript.theme.diffAddedBackground,
-          removedLineNumberBg: this.transcript.theme.diffRemovedBackground,
-          addedSignColor: this.transcript.theme.ok,
-          removedSignColor: this.transcript.theme.error,
+          addedLineNumberBg: this.transcript.theme.diffAddedGutterBackground,
+          removedLineNumberBg: this.transcript.theme.diffRemovedGutterBackground,
+          addedSignColor: this.transcript.theme.diffAdded,
+          removedSignColor: this.transcript.theme.diffRemoved,
           lineNumberFg: this.transcript.theme.dim,
           selectionBg: this.transcript.theme.selectionBackground,
           selectionFg: this.transcript.theme.selectionForeground,
@@ -1642,7 +1604,6 @@ export class TurnBlock {
 
   sync(turn: Extract<Turn, { kind: "turn" }> | undefined, status: TurnStatus): void {
     const progress = new Map<string, ToolProgress>();
-    const running = status.kind === "open";
 
     if (status.kind === "open") {
       for (const part of status.live) {
@@ -1654,14 +1615,14 @@ export class TurnBlock {
       this.durationMs = turn.durationMs;
 
       for (const part of turn.parts)
-        this.syncPart(part, part.kind === "tool" ? progress.get(part.callId) : undefined, running);
+        this.syncPart(part, part.kind === "tool" ? progress.get(part.callId) : undefined);
       this.lastTurn = turn;
     }
 
     for (const [callId, card] of this.tools) {
       const part = card.part;
 
-      if (part !== undefined) card.sync(part, progress.get(callId), running);
+      if (part !== undefined) card.sync(part, progress.get(callId));
     }
 
     switch (status.kind) {
@@ -1703,7 +1664,7 @@ export class TurnBlock {
     this.root.destroyRecursively();
   }
 
-  private syncPart(part: TurnPart, progress: ToolProgress | undefined, running: boolean): void {
+  private syncPart(part: TurnPart, progress: ToolProgress | undefined): void {
     const id = turnPartId(part);
 
     switch (part.kind) {
@@ -1762,13 +1723,13 @@ export class TurnBlock {
         if (card === undefined) {
           this.tools.set(
             part.callId,
-            new ToolCard(this.transcript, part, this.root, this.contentAnchor(), progress, running),
+            new ToolCard(this.transcript, part, this.root, this.contentAnchor(), progress),
           );
 
           return;
         }
 
-        card.sync(part, progress, running);
+        card.sync(part, progress);
 
         return;
       }
@@ -1868,14 +1829,16 @@ export class TurnBlock {
     return this.activity;
   }
 
-  /** Tool calls still without a result, in call order. */
+  /** Tool calls still going, in call order. */
   private runningActivity(): string | undefined {
     const running: ToolTurnPart["class"][] = [];
 
     for (const card of this.tools.values()) {
       const part = card.part;
 
-      if (part !== undefined && part.result === undefined) running.push(part.class);
+      if (part !== undefined && toolStatus(part.state).tense === "running") {
+        running.push(part.class);
+      }
     }
 
     return runningActivityLabel(running);

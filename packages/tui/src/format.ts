@@ -7,11 +7,6 @@ import type { UserMessage } from "@nyte-ai/schema";
 import { GLYPHS } from "./constants.ts";
 import { displayWidth, truncateDisplay } from "./width.ts";
 
-/** One heading per tool call: the tool's own title after its name, else the name alone. */
-export function toolHeading(toolName: string, title: string | undefined): string {
-  return title === undefined ? toolName : `${toolName} ${title}`;
-}
-
 /** How long an operation took, read as a duration rather than a clock. */
 export function formatDuration(ms: number): string {
   const seconds = ms / 1000;
