@@ -1,5 +1,5 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
-import { shape, target } from "@nyte-ai/ui/schema.stylex";
+import { radius, target } from "@nyte-ai/ui/schema.stylex";
 /**
  * The side chat is the PR's own Nyte session: the product transcript
  * (`TurnView`) and composer, with selected code attached as references. Its
@@ -10,7 +10,6 @@ import { create, props } from "@stylexjs/stylex";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { FileTypeIcon } from "@nyte-ai/app/components/file-type-icon.tsx";
 import { composerStyles, messageScrollerStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
-import { NO_WAITS } from "@nyte-ai/app/conversation/transcript-presentation.ts";
 import type { RenderedTurn } from "@nyte-ai/app/conversation/transcript-rows.ts";
 import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
@@ -66,7 +65,7 @@ export function SideChat({
   return (
     <aside aria-label="Side chat" {...props(styles.pane)}>
       <div {...props(styles.head)}>
-        <Icon name="robot" size={14} />
+        <Icon name="agent" size={14} />
         <span {...props(styles.title)}>{title}</span>
         <span
           title={
@@ -93,7 +92,6 @@ export function SideChat({
                 cwd={workspace.path}
                 onOpenChanges={() => {}}
                 running={running && index === turns.length - 1}
-                waits={NO_WAITS}
               />
             </div>
           ))}
@@ -202,7 +200,7 @@ const styles = create({
     maxWidth: "65%",
     paddingInline: 6,
     height: type.leadingLg,
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     backgroundColor: role.bgMutedTranslucent,
     color: role.contentSecondary,
     fontFamily: type.fontMono,
@@ -227,7 +225,7 @@ const styles = create({
     gap: 6,
     minHeight: target.min,
     paddingInline: "6px 4px",
-    borderRadius: shape.control,
+    borderRadius: radius.control,
     backgroundColor: role.bgMutedTranslucent,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
     color: role.contentSecondary,
@@ -240,7 +238,7 @@ const styles = create({
     width: target.min,
     height: target.min,
     borderStyle: "none",
-    borderRadius: shape.indicator,
+    borderRadius: radius.indicator,
     backgroundColor: { default: "transparent", ":hover": role.bgHover },
     color: role.contentInteractiveSecondary,
     cursor: appearance.cursorInteractive,

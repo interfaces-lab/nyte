@@ -12,7 +12,7 @@ import { intent } from "@nyte-ai/ui/surface-theme";
  */
 import { create, props } from "@stylexjs/stylex";
 import { useEffect, useState, type ReactElement } from "react";
-import type { ToolClass, TurnPart } from "@nyte-ai/protocol";
+import type { TurnPart, TurnToolClass } from "@nyte-ai/protocol";
 import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
 import type { RenderedTurn } from "@nyte-ai/app/conversation/transcript-rows.ts";
 import { sidebarStyles } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
@@ -188,21 +188,26 @@ function tool(
   callId: string,
   at: number,
   now: number,
-  klass: ToolClass,
+  klass: TurnToolClass,
   done: number,
   output: string,
   isError = false,
 ): TurnPart {
+  if (now < done) return { kind: "tool", callId, at, class: klass, state: { kind: "running" } };
+
   return {
     kind: "tool",
     callId,
     at,
     class: klass,
-    ...(now >= done ? { result: { commit: `${callId}-result`, output, isError } } : {}),
+    state: isError
+      ? { kind: "error", reason: { kind: "error" }, commit: `${callId}-result` }
+      : { kind: "success", commit: `${callId}-result` },
+    output,
   };
 }
 
-function patchClass(from: string, to: string, path: string): ToolClass {
+function patchClass(from: string, to: string, path: string): TurnToolClass {
   const patch = patchBetween(from, to, path);
 
   return {
@@ -215,8 +220,8 @@ function patchClass(from: string, to: string, path: string): ToolClass {
   };
 }
 
-const shell = (command: string): ToolClass => ({ kind: "shell", command });
-const custom = (label: string): ToolClass => ({ kind: "custom", label });
+const shell = (command: string): TurnToolClass => ({ kind: "shell", command });
+const custom = (label: string): TurnToolClass => ({ kind: "custom", label });
 
 /** The PR's session: the automation run on the story clock. */
 function automationTurn(time: number): RenderedTurn {
@@ -451,7 +456,7 @@ const STORY_ACTIVITY: readonly (Activity & { readonly time: number })[] = [
   {
     time: 30,
     at: "0:30",
-    icon: "robot",
+    icon: "agent",
     title: `${AGENT.name} delegated ${CHILD.name}`,
     detail: PAIRING_PATH,
   },
@@ -529,7 +534,7 @@ function ActivityTab({
           </Row>
           <Row>
             <Row.Leading>
-              <Icon name="robot" size={14} />
+              <Icon name="agent" size={14} />
             </Row.Leading>
             <Row.Label>{AGENT.name}</Row.Label>
             <Row.Meta>On behalf of you · {AGENT.model}</Row.Meta>
