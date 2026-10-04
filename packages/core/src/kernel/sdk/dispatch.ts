@@ -63,6 +63,7 @@ const DISPATCH: Dispatch = {
   "workspace.vcs.push": (sdk, input) => sdk.workspace.vcs.push(input),
   "provider.models.list": (sdk) => sdk.provider.models.list(),
   "provider.models.default": (sdk) => sdk.provider.models.default(),
+  "provider.status": (sdk) => sdk.provider.status(),
   "plugins.catalog": (sdk) => sdk.plugins.catalog(),
   "plugins.list": (sdk, input) => sdk.plugins.list(input),
   "plugins.commands.list": (sdk, input) => sdk.plugins.commands.list(input),

@@ -6,6 +6,7 @@
 import type { Message } from "@nyte-ai/schema";
 import type { CommitBody, Failure, MessageSource, Oid, ToolClass } from "./kernel.ts";
 import type { RunId } from "./sdk.ts";
+import type { ToolState } from "./tool-state.ts";
 
 type UserMessage = Extract<Message, { role: "user" }>;
 
@@ -29,8 +30,9 @@ export type ToolTurnPart = {
   readonly at: number;
   /** The settled class once the result commit landed, else the call's. */
   readonly class: TurnToolClass;
-  /** Absent while the call has not settled on this branch. */
-  readonly result?: { readonly commit: Oid; readonly output: string; readonly isError: boolean };
+  readonly state: ToolState;
+  /** What the call returned, when it returned anything. Never decides the state. */
+  readonly output?: string;
 };
 
 export type TurnPart =

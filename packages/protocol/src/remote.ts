@@ -81,6 +81,7 @@ export interface RemoteProvider {
     readonly list: OperationFn<"provider.models.list">;
     readonly default: OperationFn<"provider.models.default">;
   };
+  readonly status: OperationFn<"provider.status">;
 }
 
 export interface RemotePlugins {

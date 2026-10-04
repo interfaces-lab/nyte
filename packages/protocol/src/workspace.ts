@@ -213,6 +213,18 @@ export type ModelInfo = Readonly<Pick<Model<Api>, "id" | "provider" | "name" | "
   readonly thinkingLevels: readonly ModelThinkingLevel[];
 };
 
+/** Whether the host's default model has a credential its provider accepts. */
+export interface ProviderAuthStatus {
+  readonly model: { readonly provider: string; readonly id: string };
+  readonly auth:
+    | { readonly kind: "ready"; readonly source: string; readonly detail?: string }
+    /** A credential is present; the provider has no request that proves it. */
+    | { readonly kind: "unverified"; readonly source: string; readonly detail?: string }
+    | { readonly kind: "unconfigured"; readonly message: string }
+    | { readonly kind: "rejected"; readonly message: string }
+    | { readonly kind: "unreachable"; readonly message: string };
+}
+
 export type WorkspaceFileDocument = Readonly<Static<typeof WorkspaceFileDocumentSchema>>;
 
 export type WorkspaceFileSaveOutcome = Readonly<Static<typeof WorkspaceFileSaveOutcomeSchema>>;

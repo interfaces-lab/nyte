@@ -34,6 +34,7 @@ import {
   Oid,
   PluginCatalog,
   PluginInfo,
+  ProviderAuthStatus,
   RedeliverOutcome,
   ReplyOutcome,
   Revision,
@@ -346,6 +347,7 @@ export const OPERATIONS = Object.freeze({
 
   "provider.models.list": operation(none, list(ModelInfo)),
   "provider.models.default": operation(none, optional(ModelInfo)),
+  "provider.status": operation(none, ProviderAuthStatus),
 
   "plugins.catalog": operation(none, PluginCatalog),
   "plugins.list": operation(sessionOnly, list(PluginInfo)),

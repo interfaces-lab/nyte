@@ -19,6 +19,7 @@ import type { Failure } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
 import { TreeId as TreeIdSchema } from "./schemas.ts";
 import type { JobReport, SessionId } from "./sdk.ts";
+import type { ToolOutcome } from "./tool-state.ts";
 
 export type { Failure, FailureClass } from "@nyte-ai/schema";
 
@@ -65,6 +66,14 @@ export type MessageSource = {
   readonly label: string;
 };
 
+/** What core measured about a shell call once it settled. A client reads these; it never measures. */
+export interface ShellFacts {
+  readonly durationMs: number;
+  readonly truncated: boolean;
+  /** Where the whole output went when `truncated`. */
+  readonly fullOutputPath?: string;
+}
+
 /**
  * What a tool call is, stamped by the runner from the tool's own typed
  * arguments when the call commits, and again from its result when it settles.
@@ -85,7 +94,12 @@ export type ToolClass =
     }
   | { readonly kind: "file_read"; readonly path: string }
   | { readonly kind: "list"; readonly path: string }
-  | { readonly kind: "shell"; readonly command: string; readonly description?: string }
+  | {
+      readonly kind: "shell";
+      readonly command: string;
+      readonly description?: string;
+      readonly facts?: ShellFacts;
+    }
   /** A create names the child it owns; the card draws from this title before the child is listed. */
   | {
       readonly kind: "delegate";
@@ -153,6 +167,12 @@ export type Commit = CommitBase &
         readonly body: { readonly kind: "message"; readonly message: ToolResultMessage };
         readonly call: ToolClass;
         readonly tree: TreeId | null;
+        /**
+         * How the call settled. Absent on a record written before settlements were
+         * stored; `isError` then stands in. Not `outcome`: every released schema
+         * forbids that key here, and an older process shares the store.
+         */
+        readonly settlement?: ToolOutcome;
       }
     | {
         readonly body: { readonly kind: "message"; readonly message: SystemMessage };

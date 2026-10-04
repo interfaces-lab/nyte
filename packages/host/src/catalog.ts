@@ -179,6 +179,7 @@ export function createModelCatalog(
   return {
     getModels: models.getModels.bind(models),
     getModel: models.getModel.bind(models),
+    verifyAuth: models.verifyAuth?.bind(models),
     async getAvailable(provider, options) {
       const available = await models.getAvailable(provider, options);
       const current = await preferences.read();

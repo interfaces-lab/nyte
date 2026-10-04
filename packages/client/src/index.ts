@@ -387,6 +387,7 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
         list: operation("provider.models.list"),
         default: operation("provider.models.default"),
       },
+      status: operation("provider.status"),
     },
     plugins: {
       catalog: operation("plugins.catalog"),
@@ -720,10 +721,23 @@ export {
 } from "./views/patch.ts";
 
 export {
+  formatToolDuration,
+  toolStatus,
+  type ShellFacts,
+  type ToolStatus,
+  type ToolTense,
+  type ToolTone,
+  type ToolWord,
+} from "./views/tool-status.ts";
+
+export {
   appendTranscriptCommit,
   EMPTY_TRANSCRIPT,
+  NO_RUN,
   transcriptFromCommits,
+  transcriptWithRun,
   turnPartId,
+  type RunEvidence,
   type ToolTurnPart,
   type TranscriptState,
   type Turn,
@@ -746,6 +760,7 @@ export {
   emptyUsageSummary,
   mergeUsageSummaries,
   projectUsage,
+  summarizeUsage,
   usageTokens,
   type ModelUsage,
   type UsageSubject,

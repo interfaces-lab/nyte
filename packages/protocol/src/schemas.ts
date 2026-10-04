@@ -37,8 +37,9 @@ import type {
   UserMessage as UserMessageType,
 } from "@nyte-ai/schema";
 import { Type, Unsafe } from "typebox";
-import type { Static, TProperties, TSchema, TUnsafe } from "typebox";
 import { HeadName } from "./names.ts";
+import { list, literals, nullable, open, optional, strict, typed } from "./schema-helpers.ts";
+import { ToolOutcome, ToolReason, ToolState } from "./tool-state.ts";
 import type {
   Choice as ChoiceType,
   Selection as SelectionType,
@@ -106,6 +107,7 @@ import type {
 import type {
   MentionFile as MentionFileType,
   ModelInfo as ModelInfoType,
+  ProviderAuthStatus as ProviderAuthStatusType,
   VcsBranchOutcome as VcsBranchOutcomeType,
   VcsCommitOutcome as VcsCommitOutcomeType,
   VcsCommitTarget as VcsCommitTargetType,
@@ -131,55 +133,6 @@ import type {
 } from "./workspace.ts";
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** `T` with every `readonly` removed, so a schema's static type (never readonly) can be compared to it. */
-type Mutable<T> = T extends string | number | boolean | null | undefined
-  ? T
-  : T extends readonly [infer Head, ...infer Rest]
-    ? [Mutable<Head>, ...Mutable<Rest>]
-    : T extends readonly (infer Item)[]
-      ? Mutable<Item>[]
-      : T extends object
-        ? { -readonly [K in keyof T]: Mutable<T[K]> }
-        : T;
-
-type Proof<S extends TSchema, T> = [Static<S>] extends [T]
-  ? [Mutable<T>] extends [Static<S>]
-    ? S
-    : never
-  : never;
-
-/**
- * Pin a runtime schema to the interface it validates. The argument type
- * collapses to `never` when the schema admits a value that is not a `T`, or
- * refuses a value that is one (readonly aside).
- */
-export const typed =
-  <T>() =>
-  <S extends TSchema>(schema: Proof<S, T>): TUnsafe<T> =>
-    Unsafe<T>(schema);
-
-/** An input object: every key named, no other key accepted. */
-export const strict = <P extends TProperties>(properties: P) =>
-  Type.Object(properties, { additionalProperties: false });
-
-/** An output object: the named keys, extra keys tolerated. */
-const open = <P extends TProperties>(properties: P) => Type.Object(properties);
-
-/** An operation input that may be absent altogether. */
-export const optional = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Undefined()]);
-
-const nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
-
-/** An output array. The SDK hands out `readonly` arrays, so the static type says so too. */
-export const list = <T extends TSchema>(item: T) => Unsafe<readonly Static<T>[]>(Type.Array(item));
-
-/** A union of string literals whose static type keeps every member. */
-const literals = <Values extends string[]>(values: readonly [...Values]) => Type.Enum(values);
-
-// ---------------------------------------------------------------------------
 // Primitives
 // ---------------------------------------------------------------------------
 
@@ -197,6 +150,10 @@ export const TreeId = Unsafe<TreeIdType>({
 export const Seq = Type.Integer({ minimum: 0 });
 
 export { HeadName };
+
+export { list, optional, strict, typed };
+
+export { ToolOutcome, ToolReason, ToolState };
 
 export const NonEmptyString = Type.String({ minLength: 1 });
 
@@ -640,6 +597,13 @@ export const TurnToolClass = typed<TurnToolClassType>()(
       kind: Type.Literal("shell"),
       command: Type.String(),
       description: Type.Optional(Type.String()),
+      facts: Type.Optional(
+        open({
+          durationMs: Type.Number({ minimum: 0 }),
+          truncated: Type.Boolean(),
+          fullOutputPath: Type.Optional(Type.String()),
+        }),
+      ),
     }),
     open({
       kind: Type.Literal("delegate"),
@@ -721,6 +685,7 @@ export const Commit = typed<CommitType>()(
         body: ToolResultCommitMessageBody,
         call: ToolClass,
         tree: nullable(TreeId),
+        settlement: Type.Optional(ToolOutcome),
         start: Type.Optional(Type.Never()),
         calls: Type.Optional(Type.Never()),
         outcome: Type.Optional(Type.Never()),
@@ -959,7 +924,8 @@ export const ToolTurnPart = typed<ToolTurnPartType>()(
     callId: Type.String(),
     at: Type.Number(),
     class: TurnToolClass,
-    result: Type.Optional(open({ commit: Oid, output: Type.String(), isError: Type.Boolean() })),
+    state: ToolState,
+    output: Type.Optional(Type.String()),
   }),
 );
 
@@ -1658,6 +1624,27 @@ export const ModelInfo = typed<ModelInfoType>()(
       cacheWrite: Type.Number(),
     }),
     thinkingLevels: Type.Array(ThinkingLevel),
+  }),
+);
+
+export const ProviderAuthStatus = typed<ProviderAuthStatusType>()(
+  open({
+    model: open({ provider: Type.String(), id: Type.String() }),
+    auth: Type.Union([
+      open({
+        kind: Type.Literal("ready"),
+        source: Type.String(),
+        detail: Type.Optional(Type.String()),
+      }),
+      open({
+        kind: Type.Literal("unverified"),
+        source: Type.String(),
+        detail: Type.Optional(Type.String()),
+      }),
+      open({ kind: Type.Literal("unconfigured"), message: Type.String() }),
+      open({ kind: Type.Literal("rejected"), message: Type.String() }),
+      open({ kind: Type.Literal("unreachable"), message: Type.String() }),
+    ]),
   }),
 );
 

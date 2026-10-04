@@ -288,7 +288,10 @@ A compaction checkpoint arrives as a `commit`; `compaction` reports progress onl
 
 ## What the host still owns
 
-1. Build `Models`, register providers, and resolve a credential.
+1. Build `Models`, register providers, and resolve a credential. `provider.status` proves the default
+   model's credential with one non-generating request: `ready`, `unverified` (present, but the
+   provider has no way to check it), `unconfigured`, `rejected`, or `unreachable`. Without
+   `models.verifyAuth` it can only tell `unverified` from `unconfigured`.
 2. Gate project plugins on workspace trust with `WorkspaceStore` from `@nyte-ai/host`. Grants live in
    `~/.nyte/workspaces.json`, and a directory inherits trust from its nearest trusted ancestor. Print
    mode never grants trust.

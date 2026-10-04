@@ -226,6 +226,26 @@ test("remote model choices use current host availability and persist selected in
   assert.deepEqual(await client.provider.models.list(), []);
 });
 
+test("provider status reports a rejected credential", async () => {
+  const { client } = await fixture({
+    models: {
+      getModels: () => [model],
+      getModel: () => model,
+      getAvailable: async () => [model],
+      verifyAuth: async () => ({
+        ok: false,
+        reason: "rejected",
+        message: "OpenAI rejected the key",
+      }),
+    },
+  });
+
+  assert.deepEqual(await client.provider.status(), {
+    model: { provider: model.provider, id: model.id },
+    auth: { kind: "rejected", message: "OpenAI rejected the key" },
+  });
+});
+
 test("create, read, list, snapshot, and rename a session through the client", async () => {
   const { client } = await fixture();
   const created = await client.sessions.create({ name: "first" });

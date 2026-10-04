@@ -44,6 +44,7 @@ import type {
   Page,
   PendingItem,
   PluginCatalog,
+  ProviderAuthStatus,
   RedeliverOutcome,
   ReplyOutcome,
   RunInfo,
@@ -128,6 +129,7 @@ export {
   type ParkedCall,
   type PendingItem,
   type PluginCatalog,
+  type ProviderAuthStatus,
   type RedeliverOutcome,
   type ReplyOutcome,
   type RunConfig,
@@ -468,6 +470,8 @@ export interface Provider {
     list(): Promise<readonly ModelInfo[]>;
     default(): Promise<ModelInfo | undefined>;
   };
+  /** The default model's credential, proven with one non-generating provider request. */
+  status(): Promise<ProviderAuthStatus>;
 }
 
 // ---------------------------------------------------------------------------
@@ -605,7 +609,9 @@ export interface LazyNyteOptions extends NyteBaseOptions {
 
 export type NyteOptions = StaticNyteOptions | LazyNyteOptions;
 
-export type ModelCatalog = Pick<Models, "getModels" | "getModel" | "getAvailable">;
+/** Without `verifyAuth`, `provider.status` can only tell a configured credential from a missing one. */
+export type ModelCatalog = Pick<Models, "getModels" | "getModel" | "getAvailable"> &
+  Partial<Pick<Models, "verifyAuth">>;
 
 export interface CacheWarming {
   status(input: { readonly sessionId: SessionId; readonly head?: HeadName }): CacheWarmingStatus;

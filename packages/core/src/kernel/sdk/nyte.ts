@@ -6,7 +6,7 @@
 import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isTerminalPhase, OPERATIONS, validateHeadName } from "@nyte-ai/protocol";
-import { getSupportedThinkingLevels } from "@nyte-ai/ai";
+import { getSupportedThinkingLevels, ModelsError } from "@nyte-ai/ai";
 import { Value } from "typebox/value";
 import { branch } from "../graph.ts";
 import { signalEffect } from "../effects.ts";
@@ -57,11 +57,13 @@ import {
   type CommandOutcome,
   type ConfigureOutcome,
   type Disposer,
+  type ModelCatalog,
   type ModelInfo,
   type MoveOutcome,
   type Nyte,
   type NyteOptions,
   type PendingItem,
+  type ProviderAuthStatus,
   type ReplyOutcome,
   type SendInput,
   type SendReceipt,
@@ -126,6 +128,28 @@ function toModelInfo(model: NyteOptions["model"]): ModelInfo {
       cacheWrite: model.cost.cacheWrite,
     },
     thinkingLevels: getSupportedThinkingLevels(model),
+  };
+}
+
+async function providerAuth(
+  models: ModelCatalog,
+  provider: string,
+  signal: AbortSignal,
+): Promise<ProviderAuthStatus["auth"]> {
+  if (models.verifyAuth === undefined) {
+    return (await models.getAvailable(provider, { signal })).length === 0
+      ? { kind: "unconfigured", message: `${provider} has no credential configured` }
+      : { kind: "unverified", source: provider };
+  }
+
+  const verification = await models.verifyAuth(provider, { signal });
+
+  if (!verification.ok) return { kind: verification.reason, message: verification.message };
+
+  return {
+    kind: verification.verified ? "ready" : "unverified",
+    source: verification.source,
+    detail: verification.detail,
   };
 }
 
@@ -462,9 +486,14 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       async list(input) {
         pool.alive();
         const session = (await pool.open(input.sessionId)).session;
-        const tip = await session.refs.read(headRef(input.head ?? MAIN));
+        const head = input.head ?? MAIN;
+        const tip = await session.refs.read(headRef(head));
+        const run = await pool.currentRun(session, head);
 
-        return transcriptFromCommits(await branch(session.objects, tip));
+        return transcriptFromCommits(await branch(session.objects, tip), {
+          run,
+          parked: run === undefined ? [] : await pool.parkedCalls(session, run),
+        });
       },
       async pending(input): Promise<readonly PendingItem[]> {
         pool.alive();
@@ -915,6 +944,29 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
 
           return toModelInfo(options.model);
         },
+      },
+      async status(): Promise<ProviderAuthStatus> {
+        pool.alive();
+        const model = { provider: options.model.provider, id: options.model.id };
+        const signal = AbortSignal.timeout(15_000);
+
+        try {
+          return { model, auth: await providerAuth(options.models, model.provider, signal) };
+        } catch (error) {
+          if (signal.aborted) {
+            const message = `${model.provider} did not answer in time`;
+
+            return { model, auth: { kind: "unreachable", message } };
+          }
+
+          if (error instanceof ModelsError && error.code === "oauth") {
+            const message = `${model.provider} sign-in could not be refreshed`;
+
+            return { model, auth: { kind: "rejected", message } };
+          }
+
+          throw error;
+        }
       },
     },
 

@@ -14,6 +14,8 @@ export * from "./ui.ts";
 
 export * from "./views.ts";
 
+export type { ToolOutcome, ToolReason, ToolState } from "./tool-state.ts";
+
 export * from "./plugins.ts";
 
 export * from "./workspace.ts";
