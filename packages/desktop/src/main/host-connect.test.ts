@@ -132,15 +132,15 @@ function fixtureCipher(available = true): SecretCipher {
   const key = randomBytes(32);
 
   return {
-    available: () => available,
-    seal: (plain) => {
+    available: async () => available,
+    seal: async (plain) => {
       const iv = randomBytes(12);
       const cipher = createCipheriv("aes-256-gcm", key, iv);
       const body = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
 
       return Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64");
     },
-    open: (sealed) => {
+    open: async (sealed) => {
       const bytes = Buffer.from(sealed, "base64");
       const decipher = createDecipheriv("aes-256-gcm", key, bytes.subarray(0, 12));
       decipher.setAuthTag(bytes.subarray(12, 28));
@@ -798,7 +798,10 @@ test("a linked Mac serves only leased devices, and no secret reaches disk in the
   assert.equal(file.includes('"d"'), false);
   assert.deepEqual(parsed.link.environment, { id: serving.environment.id, name: "Fixture Mac" });
   assert.ok(
-    Value.Check(Type.Object({ d: Type.String() }), JSON.parse(setup.cipher.open(parsed.link.key))),
+    Value.Check(
+      Type.Object({ d: Type.String() }),
+      JSON.parse(await setup.cipher.open(parsed.link.key)),
+    ),
   );
   assert.equal(parsed.link.devices[0].digest, await sha256(phone.token));
 
@@ -1699,7 +1702,57 @@ test("waking refuses everyone until a fresh lease and dials the relay again", as
   await vi.waitFor(async () => assert.deepEqual(await info(setup, phone.token), allowed));
 });
 
-test("nothing is offered without configuration or a keychain", async () => {
+test("launches and views leave the keychain alone until remote access needs the key", async () => {
+  const setup = await fixture();
+
+  const spies = [
+    vi.spyOn(setup.cipher, "available"),
+    vi.spyOn(setup.cipher, "seal"),
+    vi.spyOn(setup.cipher, "open"),
+  ];
+
+  const keychainCalls = (): number => spies.reduce((sum, spy) => sum + spy.mock.calls.length, 0);
+  const first = await desktop(setup);
+
+  await first.host.autostartConnect(1);
+  assert.equal((await view(first.host)).kind, "unlinked");
+  assert.equal(keychainCalls(), 0);
+  await first.host.call(1, "host.connect.link", undefined);
+  await first.host.close();
+  const linkCalls = keychainCalls();
+  assert.ok(linkCalls > 0);
+
+  const { host } = await desktop(setup);
+
+  await host.autostartConnect(1);
+  const current = await linked(host);
+
+  assert.equal(current.enabled, false);
+  assert.deepEqual(current.connection, { kind: "stopped" });
+  assert.equal(keychainCalls(), linkCalls);
+});
+
+test("a keychain that refuses at launch keeps remote access off, and turning it off needs no keychain", async () => {
+  const setup = await fixture();
+  const first = await desktop(setup);
+
+  await serve(first);
+  await first.host.close();
+  const available = vi.spyOn(setup.cipher, "available").mockResolvedValue(false);
+  const open = vi.spyOn(setup.cipher, "open");
+  const { host } = await desktop(setup);
+
+  await host.autostartConnect(1);
+  await relayGone(setup);
+  assert.deepEqual(await view(host), { kind: "unavailable", reason: "keychain_unavailable" });
+  available.mockClear();
+  await host.call(1, "host.connect.setEnabled", { enabled: false });
+  assert.equal(JSON.parse(await stored(setup)).enabled, false);
+  assert.equal(available.mock.calls.length, 0);
+  assert.equal(open.mock.calls.length, 0);
+});
+
+test("nothing is linked without configuration or a keychain", async () => {
   const setup = await fixture();
 
   const cases: readonly [Parameters<typeof desktop>[1], ConnectView][] = [
@@ -1709,8 +1762,8 @@ test("nothing is offered without configuration or a keychain", async () => {
 
   for (const [options, expected] of cases) {
     const { host } = await desktop(setup, options);
-    assert.deepEqual(await view(host), expected);
     await assert.rejects(host.call(1, "host.connect.link", undefined));
+    assert.deepEqual(await view(host), expected);
     await host.close();
   }
 

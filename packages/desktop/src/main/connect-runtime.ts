@@ -289,6 +289,7 @@ export class ConnectRuntime {
   /** Refused here before the store has caught up. */
   private readonly denied = new Set<string>();
   private key: { readonly sealed: string; readonly jwk: PrivateJwk } | undefined;
+  private keychainUnavailable = false;
   private highWater: HighWater | undefined;
   private keysReadAt = Number.NEGATIVE_INFINITY;
   private revocationsSentAt = Number.NEGATIVE_INFINITY;
@@ -367,7 +368,7 @@ export class ConnectRuntime {
   async link(): Promise<ConnectView> {
     await this.requireUsable();
 
-    if (this.options.account === undefined) throw unavailable();
+    if (this.options.account === undefined || !(await this.keychainUsable())) throw unavailable();
     const pending = this.linkAttempt;
 
     if (pending !== undefined) {
@@ -417,6 +418,8 @@ export class ConnectRuntime {
     } else {
       await this.serial(async () => {
         if (this.closed) throw closed();
+
+        if (!(await this.keychainUsable())) throw unavailable();
         const file = await this.readyFile();
 
         if (file.link === null) throw notLinked();
@@ -449,6 +452,8 @@ export class ConnectRuntime {
       const read = await this.store.read();
 
       if (read.kind === "failed" || !read.file.enabled || read.file.link === null) return;
+
+      if (!(await this.keychainUsable())) return;
       await this.startServing(share).catch(() => undefined);
     });
     this.changed();
@@ -605,10 +610,10 @@ export class ConnectRuntime {
         const resumable =
           pending !== null && (pending.owner === null || owner === null || pending.owner === owner);
 
-        const key = resumable ? this.openKey(pending.sealed) : await generateMachineKey();
+        const key = resumable ? await this.openKey(pending.sealed) : await generateMachineKey();
 
         if (!resumable) {
-          const sealed = this.options.cipher.seal(JSON.stringify(key));
+          const sealed = await this.options.cipher.seal(JSON.stringify(key));
           await this.change((current) => ({ ...current, linkKey: { sealed, owner } }));
         }
 
@@ -673,7 +678,7 @@ export class ConnectRuntime {
     if (broker === undefined) throw unavailable();
 
     if (link === null) throw notLinked();
-    this.machineKey(link);
+    await this.machineKey(link);
     const url = broker.relayUrl(link.environment.id);
     const epoch = this.epoch;
 
@@ -718,7 +723,7 @@ export class ConnectRuntime {
         if (current === undefined || !this.isLive(serving)) throw new Error("Not serving");
 
         return broker.relayProof({
-          key: this.machineKey(current),
+          key: await this.machineKey(current),
           environmentId: serving.environmentId,
         });
       },
@@ -828,7 +833,7 @@ export class ConnectRuntime {
 
     try {
       const answer = await this.broker.lease({
-        key: this.machineKey(link),
+        key: await this.machineKey(link),
         environmentId: serving.environmentId,
         signal: serving.controller.signal,
       });
@@ -1278,7 +1283,7 @@ export class ConnectRuntime {
       status: 200,
       body: {
         receipt: await signClaims({
-          key: this.machineKey(link),
+          key: await this.machineKey(link),
           typ: TOKEN_TYPES.receipt,
           claims: receipt,
         }),
@@ -1408,11 +1413,11 @@ export class ConnectRuntime {
     const read = this.store.snapshot();
     const link = read?.kind === "ready" ? read.file.link : null;
 
-    if (link === null) return;
+    if (link === null || link.revocations.length === 0 || !(await this.keychainUsable())) return;
 
     for (const sent of link.revocations) {
       const input = {
-        key: this.machineKey(link),
+        key: await this.machineKey(link),
         environmentId: link.environment.id,
         deviceId: sent.deviceId,
         signal: this.lifetime.signal,
@@ -1489,10 +1494,11 @@ export class ConnectRuntime {
   private async sendUnlinks(): Promise<void> {
     const broker = this.broker;
 
-    if (broker === undefined || this.closed || !this.options.cipher.available()) return;
+    if (broker === undefined || this.closed) return;
     const read = await this.store.read();
 
-    if (read.kind === "failed") return;
+    if (read.kind === "failed" || read.file.unlinks.length === 0 || !(await this.keychainUsable()))
+      return;
     let remaining = 0;
 
     for (const pending of read.file.unlinks) {
@@ -1500,7 +1506,7 @@ export class ConnectRuntime {
 
       try {
         await broker.removeEnvironment({
-          key: this.openKey(pending.key),
+          key: await this.openKey(pending.key),
           environmentId: pending.environmentId,
           signal: this.lifetime.signal,
         });
@@ -1569,15 +1575,22 @@ export class ConnectRuntime {
   private unavailableReason(): ConnectUnavailable | undefined {
     if (this.broker === undefined) return "not_configured";
 
-    if (!this.options.cipher.available()) return "keychain_unavailable";
+    if (this.keychainUnavailable) return "keychain_unavailable";
 
     return undefined;
+  }
+
+  /** Asking can reach the OS keychain, so only key work asks; Settings shows the last answer. */
+  private async keychainUsable(): Promise<boolean> {
+    this.keychainUnavailable = !(await this.options.cipher.available());
+
+    return !this.keychainUnavailable;
   }
 
   private async requireUsable(): Promise<void> {
     if (this.closed) throw closed();
 
-    if (this.unavailableReason() !== undefined) throw unavailable();
+    if (this.broker === undefined) throw unavailable();
 
     if ((await this.store.read()).kind === "failed") throw storeFailed();
   }
@@ -1609,17 +1622,17 @@ export class ConnectRuntime {
     }
   }
 
-  private openKey(sealed: string): PrivateJwk {
-    const key: unknown = JSON.parse(this.options.cipher.open(sealed));
+  private async openKey(sealed: string): Promise<PrivateJwk> {
+    const key: unknown = JSON.parse(await this.options.cipher.open(sealed));
 
     if (!Value.Check(PrivateJwk, key)) throw new Error("The sealed machine key is not a key");
 
     return key;
   }
 
-  private machineKey(link: StoredLink): PrivateJwk {
+  private async machineKey(link: StoredLink): Promise<PrivateJwk> {
     if (this.key?.sealed === link.key) return this.key.jwk;
-    const jwk = this.openKey(link.key);
+    const jwk = await this.openKey(link.key);
     this.key = { sealed: link.key, jwk };
 
     return jwk;

@@ -25,13 +25,16 @@ import {
   Uuid,
 } from "@nyte-ai/connect";
 
-/** Encrypts secrets with a key the OS holds for this app. */
+/**
+ * Encrypts secrets with a key the OS holds for this app. Each call may reach the OS keychain,
+ * which on macOS can ask the user, so callers ask only when they need a key.
+ */
 export interface SecretCipher {
   /** False when the OS would store the key in plain text, or has none. */
-  available(): boolean;
-  seal(plain: string): string;
-  /** Throws when the sealed text is not this app's. */
-  open(sealed: string): string;
+  available(): Promise<boolean>;
+  seal(plain: string): Promise<string>;
+  /** Rejects when the sealed text is not this app's. */
+  open(sealed: string): Promise<string>;
 }
 
 /** Local revocations whose broker revoke has not been confirmed. */
@@ -152,6 +155,34 @@ function isMissing(cause: unknown): boolean {
   return cause instanceof Error && "code" in cause && cause.code === "ENOENT";
 }
 
+/** Write `text` to `path`, 0600, through an fsynced temporary file renamed into place. */
+export async function writePrivateFile(input: {
+  readonly path: string;
+  readonly text: string;
+}): Promise<void> {
+  const directory = dirname(input.path);
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const temporary = `${input.path}.${randomBytes(8).toString("hex")}.tmp`;
+
+  try {
+    const handle = await open(temporary, "wx", 0o600);
+
+    try {
+      await handle.writeFile(input.text);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+
+    await rename(temporary, input.path);
+  } catch (cause) {
+    await rm(temporary, { force: true }).catch(() => undefined);
+    throw cause;
+  }
+
+  await syncDirectory(directory);
+}
+
 export class ConnectStore {
   private readonly path: string;
   private loading: Promise<ConnectRead> | undefined;
@@ -197,7 +228,10 @@ export class ConnectStore {
       if (!connectFile.Check(next.file)) throw new ConnectStoreFailed();
 
       try {
-        await this.persist(next.file);
+        await writePrivateFile({
+          path: this.path,
+          text: `${JSON.stringify(next.file, null, 2)}\n`,
+        });
       } catch {
         this.loaded = { kind: "failed" };
         throw new ConnectStoreFailed();
@@ -227,29 +261,5 @@ export class ConnectStore {
     } catch {
       return { kind: "failed" };
     }
-  }
-
-  private async persist(file: ConnectFile): Promise<void> {
-    const directory = dirname(this.path);
-    await mkdir(directory, { recursive: true, mode: 0o700 });
-    const temporary = `${this.path}.${randomBytes(8).toString("hex")}.tmp`;
-
-    try {
-      const handle = await open(temporary, "wx", 0o600);
-
-      try {
-        await handle.writeFile(`${JSON.stringify(file, null, 2)}\n`);
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
-
-      await rename(temporary, this.path);
-    } catch (cause) {
-      await rm(temporary, { force: true }).catch(() => undefined);
-      throw cause;
-    }
-
-    await syncDirectory(directory);
   }
 }

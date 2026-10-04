@@ -170,15 +170,15 @@ function memoryCipher(): SecretCipher {
   const key = randomBytes(32);
 
   return {
-    available: () => true,
-    seal: (plain) => {
+    available: async () => true,
+    seal: async (plain) => {
       const iv = randomBytes(12);
       const cipher = createCipheriv("aes-256-gcm", key, iv);
       const body = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
 
       return Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64");
     },
-    open: (sealed) => {
+    open: async (sealed) => {
       const bytes = Buffer.from(sealed, "base64");
       const decipher = createDecipheriv("aes-256-gcm", key, bytes.subarray(0, 12));
       decipher.setAuthTag(bytes.subarray(12, 28));
