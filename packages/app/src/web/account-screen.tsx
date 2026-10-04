@@ -92,12 +92,15 @@ const appearance = {
     rootBox: { width: "100%" },
     cardBox: { width: "100%", boxShadow: "none" },
     headerTitle: {
-      fontSize: "var(--nyte-settings-page-title-size)",
-      lineHeight: "var(--nyte-settings-page-title-line-height)",
-      fontWeight: 500,
+      fontSize: "var(--nyte-font-size-lg)",
+      lineHeight: "var(--nyte-line-height-lg)",
+      fontWeight: 600,
       color: "var(--_title)",
     },
     buttonArrowIcon: { display: "none" },
+    formFieldInput: { height: "var(--nyte-input-height-md)", paddingBlock: 0 },
+    formButtonPrimary: { height: "var(--nyte-btn-height-md)", paddingBlock: 0 },
+    socialButtonsBlockButton: { height: "var(--nyte-btn-height-md)", paddingBlock: 0 },
   },
 } satisfies NonNullable<ClerkProviderProps["appearance"]>;
 

@@ -2,7 +2,6 @@ import { radius } from "@nyte-ai/ui/schema.stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
-import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 
 const styles = create({
   page: {
@@ -33,7 +32,19 @@ const styles = create({
     textAlign: "center",
   },
   mark: { alignSelf: "center", width: 40, height: 40, marginBottom: -8, borderRadius: radius.card },
-  description: { textWrap: "pretty" },
+  title: {
+    margin: 0,
+    fontSize: type.fontLg,
+    fontWeight: 600,
+    lineHeight: type.leadingLg,
+  },
+  description: {
+    margin: 0,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    textWrap: "pretty",
+  },
   footer: {
     display: "flex",
     flexWrap: "wrap",
@@ -65,12 +76,8 @@ export function WebPage({
         <img src="/icon.svg" alt="" width={40} height={40} {...props(styles.mark)} />
         {title !== undefined && (
           <header {...props(styles.header)}>
-            <h1 {...props(settingsPatterns.pageTitle)}>{title}</h1>
-            {description !== undefined && (
-              <p {...props(settingsPatterns.sectionDescription, styles.description)}>
-                {description}
-              </p>
-            )}
+            <h1 {...props(styles.title)}>{title}</h1>
+            {description !== undefined && <p {...props(styles.description)}>{description}</p>}
           </header>
         )}
         {children}

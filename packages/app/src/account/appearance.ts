@@ -10,6 +10,7 @@ export const accountAppearance = {
     colorInput: "var(--nyte-bg-base)",
     colorInputForeground: "var(--nyte-content-primary)",
     colorRing: "var(--nyte-content-primary)",
+    fontSize: "var(--nyte-font-size-base)",
   },
   elements: { cardBox: { boxShadow: "none" } },
 };

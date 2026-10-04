@@ -18,10 +18,10 @@ const styles = create({
     display: "flex",
     flexDirection: "column",
     gap: 6,
-    color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
   },
+  label: { fontWeight: 500 },
   error: {
     margin: 0,
     fontSize: type.fontSm,
@@ -100,7 +100,7 @@ export function ConnectScreen({
         }}
       >
         <label {...props(styles.field)}>
-          Address
+          <span {...props(styles.label)}>Address</span>
           <Input
             type="url"
             autoComplete="off"
@@ -115,7 +115,7 @@ export function ConnectScreen({
           />
         </label>
         <label {...props(styles.field)}>
-          Token
+          <span {...props(styles.label)}>Token</span>
           <Input
             type="password"
             autoComplete="off"
