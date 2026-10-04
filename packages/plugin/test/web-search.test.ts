@@ -28,6 +28,7 @@ import {
   respond,
   runCommand,
   settingOf,
+  settledCall,
   testModel,
   toolCall,
   toolParts,
@@ -139,9 +140,8 @@ async function search(query: string, options: WebSearchPluginOptions) {
   }
   const [part, ...rest] = await toolParts(sdk, sessionId);
   assert.ok(part !== undefined && rest.length === 0, "one search ran");
-  assert.ok(part.result !== undefined, "the search settled");
   const message = await toolResultOf({ sdk, sessionId, callId: part.callId });
-  return { sdk, sessionId, result: part.result, message };
+  return { sdk, sessionId, result: settledCall(part), message };
 }
 
 /** Only this provider holds a key, so `auto` routes to it. */
@@ -205,7 +205,7 @@ describe("web search plugin", () => {
     });
     assert.equal(message.title, "Effect 4 · Exa");
     assert.match(result.output, /## \[Effect 4\]\(https:\/\/example.com\/effect\)/);
-    assert.equal(result.isError, false);
+    assert.equal(result.failed, false);
 
     const progress = (await eventsSoFar(sdk, sessionId)).flatMap((event) =>
       event.kind === "tool_progress" ? [event.progress.text] : [],
@@ -361,7 +361,7 @@ describe("web search plugin", () => {
       max_results: 8,
     });
     const [part] = await toolParts(sdk, sessionId);
-    assert.ok(part?.result !== undefined, "the search settled");
+    assert.ok(part !== undefined, "the search settled");
     assert.deepEqual((await toolResultOf({ sdk, sessionId, callId: part.callId })).details, {
       provider: "tavily",
       mode: "auto",
@@ -395,7 +395,7 @@ describe("web search plugin", () => {
       results: [],
     });
     assert.equal(result.output, "No search results found. Please try a different query.");
-    assert.equal(result.isError, false);
+    assert.equal(result.failed, false);
   });
 
   test("names the failures a user can act on and never retries a chosen provider", async () => {
@@ -405,7 +405,7 @@ describe("web search plugin", () => {
       fetch: fetchMock(calls, () => new Response("slow down", { status: 429 })),
     });
     assert.equal(calls.length, 1);
-    assert.equal(rateLimited.result.isError, true);
+    assert.equal(rateLimited.result.failed, true);
     assert.equal(rateLimited.result.output, "Web search rate limited (HTTP 429)");
     assert.deepEqual(rateLimited.message.details, {
       provider: "exa",

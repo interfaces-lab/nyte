@@ -210,7 +210,14 @@ export async function runCommand(
   return outcome.output;
 }
 
-/** Every tool call on the branch, with its result where one has landed. */
+/** A settled call's verdict and text; fails when the call is still open. */
+export function settledCall(part: ToolTurnPart | undefined): { failed: boolean; output: string } {
+  if (part?.state.kind !== "success" && part?.state.kind !== "error")
+    throw new Error("the call has not settled");
+  return { failed: part.state.kind === "error", output: part.output ?? "" };
+}
+
+/** Every tool call on the branch, with its state and output where a result has landed. */
 export async function toolParts(sdk: Nyte, sessionId: SessionId): Promise<ToolTurnPart[]> {
   const turns = await sdk.messages.list({ sessionId });
   return turns.flatMap((turn) =>

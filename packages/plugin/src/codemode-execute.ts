@@ -11,7 +11,7 @@ import type {
 } from "@earendil-works/pi-codemode";
 import { renderToolSample } from "@earendil-works/pi-codemode/declarations";
 import { parseCodemodeSource } from "@earendil-works/pi-codemode/source";
-import { ToolError } from "@nyte-ai/core/plugins";
+import { ToolError, stopReason } from "@nyte-ai/core/plugins";
 import type { AgentTool, AgentToolResult, ToolCall, ToolRun } from "@nyte-ai/core/plugins";
 import { contentText } from "@nyte-ai/schema";
 import type { ImageContent, Message, TextContent } from "@nyte-ai/schema";
@@ -243,6 +243,13 @@ export async function executeCodemode(input: {
     content: [{ type: "text", text: header } satisfies TextContent, ...truncated.items],
     details,
   };
-  if (!result.ok) throw new ToolError(output);
-  return output;
+  if (result.ok) return output;
+  throw new ToolError(
+    output,
+    result.error.kind === "timeout"
+      ? { kind: "timeout" }
+      : result.error.kind === "aborted"
+        ? stopReason(input.call.signal)
+        : { kind: "error" },
+  );
 }

@@ -231,8 +231,8 @@ test("the plugin offers the server's tools to the model and runs a call through 
   ]);
   const parts = await toolParts(sdk, sessionId);
   assert.deepEqual(
-    parts.map((part) => [part.callId, part.class, part.result?.output, part.result?.isError]),
-    [["c1", { kind: "custom", label: "echo: echo" }, "echo: there", false]],
+    parts.map((part) => [part.callId, part.class, part.output, part.state.kind]),
+    [["c1", { kind: "custom", label: "echo: echo" }, "echo: there", "success"]],
   );
   assert.equal(
     (await toolResultOf({ sdk, sessionId, callId: "c1" })).toolName,

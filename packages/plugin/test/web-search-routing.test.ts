@@ -19,6 +19,7 @@ import {
   respond,
   runCommand,
   settingOf,
+  settledCall,
   testModel,
   toolCall,
   toolParts,
@@ -139,9 +140,9 @@ function destinations(requests: readonly Request[]): string[] {
 /** The latest call's transcript result, with the tool's own message beside it. */
 async function lastResult(sdk: Nyte, sessionId: SessionId) {
   const part = (await toolParts(sdk, sessionId)).at(-1);
-  assert.ok(part?.result, "the latest search has a durable result");
+  assert.ok(part !== undefined, "the latest search has a durable result");
   const message = await toolResultOf({ sdk, sessionId, callId: part.callId });
-  return { ...part.result, message };
+  return { ...settledCall(part), message };
 }
 
 async function search(sdk: Nyte, sessionId: SessionId, query = "search current releases") {
@@ -158,7 +159,7 @@ async function parked(sdk: Nyte, sessionId: SessionId) {
   assert.ok(event?.kind === "effect");
   assert.equal(event.tool, WEB_SEARCH_TOOL_NAME);
   assert.deepEqual(event.args, { query: "search private query" });
-  assert.equal((await toolParts(sdk, sessionId)).at(-1)?.result, undefined);
+  assert.equal((await toolParts(sdk, sessionId)).at(-1)?.state.kind, "running");
   return event.callId;
 }
 
@@ -207,7 +208,7 @@ describe("web search routing through the SDK", () => {
     assert.deepEqual(destinations(fixture.state.requests), ["alpha", "alpha"]);
     const results = await toolParts(sdk, fixture.world.sessionId);
     assert.equal(results.length, 2);
-    assert.ok(results.every((part) => part.result?.isError === false));
+    assert.ok(results.every((part) => part.state.kind === "success"));
   });
 
   test("a restored anonymous wait requires a reply before searching and can fail over after consent", async () => {
@@ -238,16 +239,16 @@ describe("web search routing through the SDK", () => {
     fixture.state.keys.set("beta", "beta-secret");
     const sdk = await fixture.open();
     const sessionId = fixture.world.sessionId;
-    assert.equal((await search(sdk, sessionId)).isError, false);
+    assert.equal((await search(sdk, sessionId)).failed, false);
     fixture.state.random = 0.99;
-    assert.equal((await search(sdk, sessionId, "search again")).isError, false);
+    assert.equal((await search(sdk, sessionId, "search again")).failed, false);
     await sdk.close();
 
     const restarted = await fixture.open();
-    assert.equal((await search(restarted, sessionId, "search after restart")).isError, false);
+    assert.equal((await search(restarted, sessionId, "search after restart")).failed, false);
     const other = (await restarted.sessions.create()).sessionId;
-    assert.equal((await search(restarted, other)).isError, false);
-    assert.equal((await search(restarted, sessionId, "search original session")).isError, false);
+    assert.equal((await search(restarted, other)).failed, false);
+    assert.equal((await search(restarted, sessionId, "search original session")).failed, false);
     assert.deepEqual(destinations(fixture.state.requests), [
       "alpha",
       "alpha",
@@ -266,7 +267,7 @@ describe("web search routing through the SDK", () => {
     const sdk = await fixture.open();
     const sessionId = fixture.world.sessionId;
     const result = await search(sdk, sessionId);
-    assert.equal(result.isError, false);
+    assert.equal(result.failed, false);
     assert.deepEqual(result.message.details, {
       provider: "beta",
       mode: "auto",
@@ -294,11 +295,11 @@ describe("web search routing through the SDK", () => {
     );
     await assertPrivate(sdk, sessionId, ["alpha-secret", "beta-secret"]);
     const repeated = await search(sdk, sessionId, "search after failover");
-    assert.equal(repeated.isError, false);
+    assert.equal(repeated.failed, false);
     expect(repeated.message.details).toMatchObject({ rateLimited: [] });
     await sdk.close();
     const restarted = await fixture.open();
-    assert.equal((await search(restarted, sessionId)).isError, false);
+    assert.equal((await search(restarted, sessionId)).failed, false);
     assert.deepEqual(destinations(fixture.state.requests), ["alpha", "beta", "beta", "beta"]);
   });
 
@@ -310,7 +311,7 @@ describe("web search routing through the SDK", () => {
     fixture.state.responses.set("beta", [httpFailure(429), httpFailure(429)]);
     const sdk = await fixture.open();
     const result = await search(sdk, fixture.world.sessionId);
-    assert.equal(result.isError, true);
+    assert.equal(result.failed, true);
     assert.match(result.output, /HTTP 429/);
     assert.deepEqual(destinations(fixture.state.requests), ["alpha", "beta"]);
     expect(result.message.details).toMatchObject({ rateLimited: ["alpha"] });
@@ -323,7 +324,7 @@ describe("web search routing through the SDK", () => {
     fixture.state.responses.set("beta", [httpFailure(429)]);
     const sdk = await fixture.open();
     const result = await search(sdk, fixture.world.sessionId);
-    assert.equal(result.isError, true);
+    assert.equal(result.failed, true);
     assert.match(result.output, /HTTP 429/);
     assert.deepEqual(destinations(fixture.state.requests), ["beta"]);
   });
@@ -344,7 +345,7 @@ describe("web search routing through the SDK", () => {
       { kind: "applied" },
     );
     const result = await search(sdk, sessionId);
-    assert.equal(result.isError, true);
+    assert.equal(result.failed, true);
     assert.deepEqual(result.message.details, {
       provider: "beta",
       mode: "explicit",
@@ -388,7 +389,7 @@ describe("web search routing through the SDK", () => {
     fixture.state.responses.set("alpha", [failure]);
     const sdk = await fixture.open();
     const result = await search(sdk, fixture.world.sessionId);
-    assert.equal(result.isError, true);
+    assert.equal(result.failed, true);
     assert.match(result.output, message);
     assert.deepEqual(destinations(fixture.state.requests), ["alpha"]);
     await assertPrivate(sdk, fixture.world.sessionId, ["alpha-secret", "beta-secret"]);
@@ -430,20 +431,17 @@ describe("web search routing through the SDK", () => {
       const callId = await parked(sdk, sessionId);
       assert.equal(fixture.state.requests.length, 0);
       const result = await reply(sdk, sessionId, callId, choice);
-      assert.equal(result.isError, false);
+      assert.equal(result.failed, false);
       expect(result.message.details).toMatchObject({
         credential: "anonymous",
         mode: choice === "auto" ? "auto" : "explicit",
       });
       assert.equal(await settingOf(sdk, sessionId, WEB_SEARCH_SETTING_ID), choice);
       fixture.state.random = 0.99;
-      assert.equal((await search(sdk, sessionId, "search approved again")).isError, false);
+      assert.equal((await search(sdk, sessionId, "search approved again")).failed, false);
       await sdk.close();
       const restarted = await fixture.open();
-      assert.equal(
-        (await search(restarted, sessionId, "search remembered consent")).isError,
-        false,
-      );
+      assert.equal((await search(restarted, sessionId, "search remembered consent")).failed, false);
       const provider = choice === "auto" ? "alpha" : "beta";
       assert.deepEqual(destinations(fixture.state.requests), [provider, provider, provider]);
       assert.ok(
@@ -461,7 +459,7 @@ describe("web search routing through the SDK", () => {
     const sessionId = fixture.world.sessionId;
     const callId = await parked(sdk, sessionId);
     const result = await reply(sdk, sessionId, callId, "off");
-    assert.equal(result.isError, true);
+    assert.equal(result.failed, true);
     assert.match(result.output, /Web search is off/);
     assert.equal(await settingOf(sdk, sessionId, WEB_SEARCH_SETTING_ID), "off");
     assert.deepEqual(await prompt(sdk, sessionId, "search disabled"), { kind: "idle" });
@@ -483,7 +481,7 @@ describe("web search routing through the SDK", () => {
       const sessionId = fixture.world.sessionId;
       const callId = await parked(sdk, sessionId);
       const result = await reply(sdk, sessionId, callId, value);
-      assert.equal(result.isError, true);
+      assert.equal(result.failed, true);
       assert.match(result.output, /not approved/);
       await parked(sdk, sessionId);
       assert.equal(fixture.state.requests.length, 0);
@@ -497,9 +495,9 @@ describe("web search routing through the SDK", () => {
     const callId = await parked(sdk, sessionId);
     await sdk.messages.send({ sessionId, content: "auto" });
     assert.equal((await sdk.runs.wait({ sessionId })).kind, "waiting");
-    assert.equal((await toolParts(sdk, sessionId)).at(-1)?.result, undefined);
+    assert.equal((await toolParts(sdk, sessionId)).at(-1)?.state.kind, "running");
     assert.equal(fixture.state.requests.length, 0);
-    assert.equal((await reply(sdk, sessionId, callId, "auto")).isError, false);
+    assert.equal((await reply(sdk, sessionId, callId, "auto")).failed, false);
     assert.deepEqual(destinations(fixture.state.requests), ["alpha"]);
   });
 
@@ -510,7 +508,7 @@ describe("web search routing through the SDK", () => {
     await parked(sdk, sessionId);
     await sdk.runs.abort({ sessionId });
     await idle(sdk, sessionId);
-    assert.equal((await lastResult(sdk, sessionId)).isError, true);
+    assert.equal((await lastResult(sdk, sessionId)).failed, true);
     assert.equal(fixture.state.requests.length, 0);
     await parked(sdk, sessionId);
     assert.equal(fixture.state.requests.length, 0);

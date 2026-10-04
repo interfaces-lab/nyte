@@ -205,9 +205,9 @@ test("the rename_chat tool names the chat, trimming and capping; a blank name is
 
   const [blank, named, ...rest] = await toolParts(sdk, world.sessionId);
   assert.ok(named !== undefined && rest.length === 0);
-  assert.equal(blank?.result?.isError, true);
-  assert.equal(named.result?.isError, false);
-  assert.equal(named.result?.output, `Chat named ${expected}`);
+  assert.equal(blank?.state.kind, "error");
+  assert.equal(named.state.kind, "success");
+  assert.equal(named.output, `Chat named ${expected}`);
   const message = await toolResultOf({ sdk, sessionId: world.sessionId, callId: named.callId });
   assert.deepEqual(message.details, { name: expected });
   assert.equal(message.title, expected);

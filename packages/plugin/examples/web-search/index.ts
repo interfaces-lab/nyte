@@ -12,6 +12,7 @@ import {
   acceptsSelectionReply,
   definePlugin,
   selectionReply,
+  stopReason,
   ToolError,
   ToolWait,
 } from "@nyte-ai/plugin";
@@ -316,11 +317,10 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
               };
             } catch (error) {
               if (signal.aborted) {
-                throw new ToolError({
-                  content: [{ type: "text", text: "Web search cancelled" }],
-                  details,
-                  title,
-                });
+                throw new ToolError(
+                  { content: [{ type: "text", text: "Web search cancelled" }], details, title },
+                  stopReason(signal),
+                );
               }
 
               const message =
@@ -353,10 +353,10 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
         },
         async wake(waiting, context) {
           if (context.aborted || context.signal.aborted) {
-            throw new ToolError({
-              content: [{ type: "text", text: "Web search cancelled" }],
-              details: {},
-            });
+            throw new ToolError(
+              { content: [{ type: "text", text: "Web search cancelled" }], details: {} },
+              context.aborted ? { kind: "cancelled" } : stopReason(context.signal),
+            );
           }
 
           if (!Value.Check(webSearchParameters, waiting.args))

@@ -14,6 +14,7 @@ import {
   lastAssistantText,
   prompt,
   respond,
+  settledCall,
   testModel,
   toolCall,
   toolParts,
@@ -79,9 +80,8 @@ async function reply(
   assert.deepEqual(await sdk.runs.wait({ sessionId }), { kind: "idle" });
   const [part, ...rest] = await toolParts(sdk, sessionId);
   assert.ok(part !== undefined && rest.length === 0, "one question was asked");
-  assert.ok(part.result !== undefined, "the question settled");
   return {
-    ...part.result,
+    ...settledCall(part),
     class: part.class,
     message: await toolResultOf({ sdk, sessionId, callId }),
   };
@@ -115,11 +115,11 @@ test("asking parks the run; the waiting call carries the question a client rende
   // A conversation message is not an answer: the call stays parked.
   await sdk.messages.send({ sessionId, content: "actually, one more thing" });
   assert.equal((await sdk.runs.wait({ sessionId })).kind, "waiting");
-  assert.equal((await toolParts(sdk, sessionId))[0]?.result, undefined);
+  assert.equal((await toolParts(sdk, sessionId))[0]?.state.kind, "running");
 
   const settled = await reply(sdk, sessionId, callId, waitId, "2");
   assert.equal(settled.output, "Broad rewrite");
-  assert.equal(settled.isError, false);
+  assert.equal(settled.failed, false);
   assert.deepEqual(settled.message.details, {
     question: "Which implementation?",
     answer: "Broad rewrite",
@@ -133,14 +133,14 @@ test("a reply in the user's own words is the answer", async () => {
   const { sdk, sessionId, callId, waitId } = await openParked();
   const settled = await reply(sdk, sessionId, callId, waitId, "  Wait for the migration  ");
   assert.equal(settled.output, "Wait for the migration");
-  assert.equal(settled.isError, false);
+  assert.equal(settled.failed, false);
   assert.equal(await lastAssistantText(sdk, sessionId), "Proceeding with Wait for the migration");
 });
 
 test("walking away is not an answer, and the model carries on", async () => {
   const { sdk, sessionId, callId, waitId } = await openParked();
   const settled = await reply(sdk, sessionId, callId, waitId, "   ");
-  assert.equal(settled.isError, false);
+  assert.equal(settled.failed, false);
   assert.match(settled.output, /didn't answer/);
   assert.deepEqual(settled.message.details, { question: "Which implementation?" });
 });
@@ -226,8 +226,8 @@ test.each(Object.entries(MALFORMED))(
     const { sessionId } = world;
     assert.equal((await prompt(sdk, sessionId, "go")).kind, "idle");
     const [part] = await toolParts(sdk, sessionId);
-    assert.ok(part?.result?.isError === true, "the call settled as a tool error");
-    assert.match(part.result.output, /malformed selection/);
+    assert.equal(part?.state.kind, "error", "the call settled as a tool error");
+    assert.match(part?.output ?? "", /malformed selection/);
     assert.equal((await sdk.sessions.snapshot({ sessionId }))?.parked, undefined);
     assert.equal(await lastAssistantText(sdk, sessionId), "moving on");
   },
@@ -376,6 +376,6 @@ test("a wait past its deadline is woken by the runner, with no reply and no clie
   }
   assert.ok(Date.now() - started >= 150, "woke no earlier than the deadline");
   assert.deepEqual(wakes, [{ expired: true, reply: undefined }]);
-  assert.equal((await toolParts(sdk, sessionId))[0]?.result?.output, "expired");
+  assert.equal((await toolParts(sdk, sessionId))[0]?.output, "expired");
   assert.equal(await lastAssistantText(sdk, sessionId), "carried on");
 });
