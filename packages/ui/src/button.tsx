@@ -299,6 +299,7 @@ export type ButtonLayout = StyleXStyles<{
 }>;
 
 export interface ButtonAppearance {
+  /** Pill corners. A `ghost` button has no edge to square against, so it defaults on; the other variants keep the size radius and sit flush beside inputs. */
   readonly round?: boolean;
   readonly icon?: IconName;
   readonly tone?: ButtonTone;
@@ -330,7 +331,7 @@ export function buttonStyle(
   size: ButtonSize,
   {
     iconOnly = false,
-    round = false,
+    round,
     joined = false,
     tone = variant === "text" ? "primary" : "neutral",
     xstyle,
@@ -343,15 +344,17 @@ export function buttonStyle(
     },
   glyphPressed = false,
 ) {
+  const pill = round ?? (variant === "ghost" && !joined);
+
   return mergeStyleProps(
     props(
       tone !== "neutral" && intent[tone],
       control.base,
       buttonSizes[size],
-      round && pillSizes[size],
+      pill && pillSizes[size],
       iconOnly && control.iconOnly,
       buttonVariants[variant],
-      round && control.round,
+      pill && control.round,
       joined && control.joined,
       joined && iconOnly && control.joinedIcon,
       size === "2xs" ? focus.ringInset : focus.ring,
