@@ -20,7 +20,7 @@ export interface Connection {
 export interface WebBridge {
   readonly bridge: NyteBridge;
   /** Verify with GET /v1/info, then route every call to this server. Rejects with the client's NyteWireError/NyteTransportError on failure. */
-  connect(connection: Connection): Promise<ServerInfo>;
+  connect(connection: Connection, signal?: AbortSignal): Promise<ServerInfo>;
 }
 
 const REFRESH_MS = 10_000;
@@ -318,9 +318,25 @@ export function createWebBridge(): WebBridge {
 
   return {
     bridge,
-    connect: async ({ url, token }) => {
-      const next = createNyteClient({ baseUrl: url, token });
+    connect: async ({ url, token }, signal) => {
+      const verification = signal ?? AbortSignal.timeout(10_000);
+      let verifying = true;
+
+      const next = createNyteClient({
+        baseUrl: url,
+        token,
+        fetch: (resource, init) =>
+          fetch(resource, {
+            ...init,
+            credentials: "omit",
+            signal: verifying ? verification : init?.signal,
+          }),
+      });
+
       const info = await next.info();
+
+      if (verification.aborted) throw new Error("Connecting stopped.");
+      verifying = false;
       client = next;
       environment = info.environment;
       directory.reset();

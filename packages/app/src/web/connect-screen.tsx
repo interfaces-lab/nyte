@@ -25,8 +25,8 @@ const styles = create({
     display: "flex",
     flexDirection: "column",
     gap: 16,
-    width: "100%",
-    maxWidth: 360,
+    width: "max-content",
+    maxWidth: "100%",
     padding: 24,
     borderWidth: 1,
     borderStyle: "solid",
@@ -35,7 +35,7 @@ const styles = create({
     backgroundColor: role.bgElevated,
     boxShadow: shadow.shadowMd,
   },
-  heading: { margin: 0, fontSize: type.fontLg, lineHeight: type.leadingLg, fontWeight: 600 },
+  heading: { margin: 0, fontSize: type.fontLg, lineHeight: type.leadingLg, fontWeight: "inherit" },
   field: {
     display: "flex",
     flexDirection: "column",
@@ -57,9 +57,15 @@ interface ConnectScreenProps {
   readonly initial?: Connection;
   readonly problem?: string;
   readonly onConnected: (connection: Connection) => void;
+  readonly onBack?: () => void;
 }
 
-export function ConnectScreen({ initial, problem, onConnected }: ConnectScreenProps): ReactElement {
+export function ConnectScreen({
+  initial,
+  problem,
+  onConnected,
+  onBack,
+}: ConnectScreenProps): ReactElement {
   const errorId = useId();
   const connecting = useRef(false);
   const [address, setAddress] = useState(initial?.url ?? "");
@@ -144,6 +150,11 @@ export function ConnectScreen({ initial, problem, onConnected }: ConnectScreenPr
         <Button type="submit" variant="solid" tone="primary" loading={pending}>
           Connect to Mac
         </Button>
+        {onBack !== undefined && (
+          <Button type="button" disabled={pending} onClick={onBack}>
+            Back
+          </Button>
+        )}
       </form>
     </main>
   );

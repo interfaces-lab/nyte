@@ -10,6 +10,7 @@ import { create, props } from "@stylexjs/stylex";
 import { createBrowserHistory } from "@tanstack/react-router";
 import { focusManager } from "@tanstack/react-query";
 import { StrictMode } from "react";
+import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { Button } from "@nyte-ai/ui/button";
 import { App } from "../app.tsx";
@@ -19,6 +20,10 @@ import { serverConnectionProblem } from "../server-connection.ts";
 import { startRendererStartup } from "../startup.ts";
 import type { Connection } from "./bridge.ts";
 import { ConnectScreen } from "./connect-screen.tsx";
+import { releaseStoredAccountDevice } from "./account-connection.ts";
+import { readAccountDevice } from "./account-device.ts";
+import { accountConfig } from "./account-config.ts";
+import { AccountScreen } from "./account-screen.tsx";
 import {
   displayAddress,
   forgetConnection,
@@ -48,7 +53,10 @@ const router = createAppRouter({ history: createBrowserHistory() });
 
 const root = createRoot(container);
 
-function start(connection: Connection): void {
+function start(
+  connection: Connection,
+  mount: (shell: ReactNode) => void = (shell) => root.render(shell),
+): void {
   // Directory changes are pushed; listen before the first snapshot is read so none slips between.
   connectSessionDirectory();
 
@@ -73,7 +81,7 @@ function start(connection: Connection): void {
 
   startRendererStartup({
     mountShell: () => {
-      root.render(
+      mount(
         <StrictMode>
           <App appIcon="/icon.svg" router={router} />
         </StrictMode>,
@@ -87,7 +95,7 @@ function start(connection: Connection): void {
       ]).then(() => undefined),
     loadRouter: () => router.load(),
     showError: (retry) => {
-      root.render(
+      mount(
         <main {...props(styles.failure)}>
           <p role="alert">Couldn’t open the workspace on {displayAddress(connection)}.</p>
           <Button onClick={retry}>Try Again</Button>
@@ -99,10 +107,23 @@ function start(connection: Connection): void {
 }
 
 function showConnectScreen(initial?: Connection, problem?: string): void {
-  root.render(<ConnectScreen initial={initial} problem={problem} onConnected={start} />);
+  root.render(
+    initial === undefined && accountConfig !== undefined ? (
+      <AccountScreen config={accountConfig} onConnected={start} />
+    ) : (
+      <ConnectScreen
+        initial={initial}
+        problem={problem}
+        onConnected={start}
+        onBack={accountConfig === undefined ? undefined : () => showConnectScreen()}
+      />
+    ),
+  );
 }
 
 async function resume(connection: Connection, fromLink: boolean): Promise<void> {
+  if (fromLink) await releaseStoredAccountDevice(accountConfig);
+
   try {
     await webBridge.connect(connection);
   } catch (cause) {
@@ -121,7 +142,10 @@ async function resume(connection: Connection, fromLink: boolean): Promise<void> 
   start(connection);
 }
 
-const known = pairing ?? loadConnection();
+const accountDevice =
+  accountConfig === undefined ? undefined : readAccountDevice(sessionStorage, accountConfig);
+
+const known = pairing ?? (accountDevice === undefined ? loadConnection() : undefined);
 
 if (known === undefined) showConnectScreen();
 else void resume(known, pairing !== undefined);

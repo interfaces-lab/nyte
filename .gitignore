@@ -9,6 +9,7 @@ dist/
 .vercel
 .wrangler/
 .env*
+!/packages/app/.env.example
 
 __pycache__/
 *.pyc

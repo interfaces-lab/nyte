@@ -7,7 +7,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./signing": "./src/signing.ts",
-    "./relay": "./src/relay.ts"
+    "./relay": "./src/relay.ts",
+    "./enrollment": "./src/enrollment.ts",
+    "./account-config": "./src/account-config.ts"
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
@@ -15,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@nyte-ai/client": "workspace:*",
     "jose": "6.2.12",
     "typebox": "1.3.34"
   },
