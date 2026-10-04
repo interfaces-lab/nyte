@@ -28,7 +28,7 @@
     "@nyte-ai/connect": "workspace:*",
     "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/ui": "workspace:*",
-    "@tanstack/react-query": "5.102.5",
+    "@tanstack/react-query": "5.104.1",
     "@use-voltra/ios": "2.3.2",
     "@use-voltra/ios-client": "2.3.2",
     "expo": "57.0.26",

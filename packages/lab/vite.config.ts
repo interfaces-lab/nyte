@@ -9,6 +9,7 @@ export default defineConfig(({ command }) => ({
     dedupe: ["react", "react-dom", "@stylexjs/stylex"],
   },
   optimizeDeps: {
+    exclude: ["@nyte-ai/ui", "@nyte-ai/app"],
     include: [
       "react",
       "react-dom/client",

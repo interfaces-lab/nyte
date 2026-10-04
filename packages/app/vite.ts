@@ -8,14 +8,15 @@ export function dropInlinedGhosttyWasm(): Plugin {
   return {
     name: "nyte:drop-inlined-ghostty-wasm",
     apply: "build",
-    transform(code, id) {
-      if (!id.split("?")[0]?.endsWith("/ghostty-web/dist/ghostty-web.js")) return null;
+    transform: {
+      filter: { id: /\/ghostty-web\/dist\/ghostty-web\.js(?:\?|$)/u },
+      handler(code) {
+        if (!inlinedWasm.test(code)) {
+          this.error("ghostty-web no longer inlines its wasm; remove dropInlinedGhosttyWasm");
+        }
 
-      if (!inlinedWasm.test(code)) {
-        this.error("ghostty-web no longer inlines its wasm; remove dropInlinedGhosttyWasm");
-      }
-
-      return { code: code.replace(inlinedWasm, '""'), map: null };
+        return { code: code.replace(inlinedWasm, '""'), map: null };
+      },
     },
   };
 }
