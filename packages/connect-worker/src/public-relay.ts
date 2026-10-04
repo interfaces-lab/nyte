@@ -60,7 +60,9 @@ async function admit(
 
   if (method === undefined) return refused("method_not_allowed", { allow: methods.join(", ") });
 
-  if (request.headers.has("origin")) return refused("forbidden");
+  const origin = request.headers.get("origin");
+
+  if (origin !== null && !context.config.webOrigins.includes(origin)) return refused("forbidden");
   const declared = request.headers.get("content-length");
 
   if (declared !== null && !(Number(declared) <= RELAY_BODY_LIMIT_BYTES))

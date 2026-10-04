@@ -346,6 +346,7 @@ export async function createHarness(): Promise<Harness> {
     DB: db,
     RELAY: relay.namespace(),
     CONNECT_ORIGIN: ORIGIN,
+    CONNECT_WEB_ORIGINS: AZP,
     CLERK_ISSUER: ISSUER,
     CLERK_AUTHORIZED_PARTIES: AZP,
     CLERK_JWT_KEY: await exportSPKI(clerkKeys.publicKey),

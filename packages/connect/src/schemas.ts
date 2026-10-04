@@ -158,7 +158,7 @@ export const CompactJws = Type.String({
 
 export const Name = Type.String({ minLength: 1, maxLength: NAME_LIMIT });
 
-/** One install of the phone app, generated once and kept in its Keychain. */
+/** One phone install or browser tab, generated once and kept with its device token. */
 export const ClientId = Type.String({ pattern: "^[A-Za-z0-9_-]{16,64}$" });
 
 /** A device bearer token: `DEVICE_TOKEN_BYTES` of CSPRNG output as unpadded base64url. */
@@ -354,9 +354,10 @@ export const EnvironmentList = Type.Object({
 export type EnvironmentList = Static<typeof EnvironmentList>;
 
 /**
- * `POST /v1/environments/:id/devices`. The phone generated a 256-bit token
- * with a native CSPRNG and sends only its digest; the token itself never
- * reaches the broker. An earlier device with the same `clientId` is revoked.
+ * `POST /v1/environments/:id/devices`. The client generated a 256-bit token
+ * with a CSPRNG and sends only its digest during enrollment. The relay
+ * later reads the bearer token on every request. An earlier device with the
+ * same `clientId` is revoked.
  */
 export const EnrollRequest = strict({ clientId: ClientId, clientName: Name, digest: Base64Url32 });
 

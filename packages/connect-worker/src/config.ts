@@ -15,6 +15,7 @@ export interface Env {
   readonly RELAY: RelayNamespace;
   /** The broker's own origin: proofs, Clerk `aud`, token issuer, and relay addresses. */
   readonly CONNECT_ORIGIN: string;
+  readonly CONNECT_WEB_ORIGINS: string;
   /** The exact Clerk `iss`, such as `https://clerk.example.com`. */
   readonly CLERK_ISSUER: string;
   /** Comma-separated `azp` values a session token may carry. Native sessions carry none. */
@@ -42,6 +43,7 @@ const SigningKeys = Type.Array(SigningKey, { minItems: 1, maxItems: 4 });
 
 export interface Config {
   readonly origin: string;
+  readonly webOrigins: readonly string[];
   readonly clerk: {
     readonly issuer: string;
     readonly jwtKey: string;
@@ -72,6 +74,35 @@ function parseSigningKeys(text: string): SigningKey[] | undefined {
   return kids.size === parsed.length ? parsed : undefined;
 }
 
+export function parseWebOrigins(value: unknown): string[] | undefined {
+  if (typeof value !== "string") return undefined;
+  const origins = value.split(",").map((origin) => origin.trim());
+
+  if (value === "") return [];
+
+  for (const origin of origins) {
+    if (isBrokerOrigin(origin)) continue;
+    let url: URL;
+
+    try {
+      url = new URL(origin);
+    } catch {
+      return undefined;
+    }
+
+    if (
+      url.protocol !== "http:" ||
+      !(url.hostname === "localhost" || url.hostname === "127.0.0.1") ||
+      url.username !== "" ||
+      url.password !== "" ||
+      url.origin !== origin
+    )
+      return undefined;
+  }
+
+  return new Set(origins).size === origins.length ? origins : undefined;
+}
+
 /** The names of the bindings that failed, or the parsed configuration. */
 export function parseConfig(env: Env): Config | { readonly invalid: readonly string[] } {
   const invalid: string[] = [];
@@ -79,6 +110,8 @@ export function parseConfig(env: Env): Config | { readonly invalid: readonly str
     if (!ok) invalid.push(name);
   };
 
+  const webOrigins = parseWebOrigins(env.CONNECT_WEB_ORIGINS);
+  check("CONNECT_WEB_ORIGINS", webOrigins !== undefined);
   check("CONNECT_ORIGIN", isBrokerOrigin(env.CONNECT_ORIGIN));
   check("CLERK_ISSUER", isBrokerOrigin(env.CLERK_ISSUER));
   check("CLERK_JWT_KEY", env.CLERK_JWT_KEY.includes("-----BEGIN PUBLIC KEY-----"));
@@ -89,10 +122,12 @@ export function parseConfig(env: Env): Config | { readonly invalid: readonly str
 
   check("BROKER_SIGNING_KEYS", active !== undefined);
 
-  if (invalid.length > 0 || keys === undefined || active === undefined) return { invalid };
+  if (invalid.length > 0 || keys === undefined || active === undefined || webOrigins === undefined)
+    return { invalid };
 
   return {
     origin: env.CONNECT_ORIGIN,
+    webOrigins,
     clerk: {
       issuer: env.CLERK_ISSUER,
       jwtKey: env.CLERK_JWT_KEY,

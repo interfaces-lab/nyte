@@ -4,9 +4,11 @@
  * relay, which answers in the Nyte server's envelope instead.
  */
 import { BROKER_ROUTES, RELAY_PREFIX, UUID_PATTERN } from "@nyte-ai/connect";
-import { relayRefusal } from "@nyte-ai/connect/relay";
+import { PUBLIC_RELAY_METHODS, publicRelayTarget, relayRefusal } from "@nyte-ai/connect/relay";
 import { publicKeySet } from "@nyte-ai/connect/signing";
+import { parseWebOrigins } from "./config.ts";
 import type { Env } from "./config.ts";
+import { browserResponse, withBrowserCors } from "./cors.ts";
 import { createContext, throttle } from "./context.ts";
 import type { Context, Dependencies } from "./context.ts";
 import { sweep } from "./cron.ts";
@@ -32,6 +34,24 @@ const ENVIRONMENT_PATH = new RegExp(
   `^/v1/environments/(${UUID})(?:/(lease|relay)|/(devices)(?:/(${UUID})(/release)?)?)?$`,
   "u",
 );
+
+function browserMethods(url: URL): readonly string[] {
+  const target = publicRelayTarget(url);
+
+  if (target !== undefined) return PUBLIC_RELAY_METHODS[target.kind];
+
+  if (url.pathname === BROKER_ROUTES.environments) return ["GET"];
+  const match = ENVIRONMENT_PATH.exec(url.pathname);
+
+  if (match === null) return [];
+  const [, , action, devices, deviceId, release] = match;
+
+  if (action !== undefined || release !== undefined) return [];
+
+  if (devices === undefined || deviceId !== undefined) return ["DELETE"];
+
+  return ["POST"];
+}
 
 function methodNotAllowed(allow: string): Response {
   return json(405, { error: { code: "invalid", message: "Method not allowed." } }, { allow });
@@ -107,29 +127,36 @@ export function createBroker(dependencies: Dependencies) {
 
   return {
     async fetch(request: Request, env: Env, execution: ExecutionContext): Promise<Response> {
+      const url = new URL(request.url);
+      const publicRelay = url.pathname.startsWith(RELAY_PREFIX);
+      const methods = browserMethods(url);
+      const origins = parseWebOrigins(env.CONNECT_WEB_ORIGINS) ?? [];
+      const cors = (response: Response) => withBrowserCors({ response, request, origins, methods });
+      const browser = browserResponse({ request, origins, methods, publicRelay });
+
+      if (browser !== undefined) return cors(browser);
       const context = createContext({
         env,
         dependencies,
         waitUntil: (task) => execution.waitUntil(task),
       });
-      const publicRelay = new URL(request.url).pathname.startsWith(RELAY_PREFIX);
 
       if (context === undefined)
-        return publicRelay ? relayRefusal("internal") : refusal("internal");
-
-      if (publicRelay) return relayPublic(context, request);
+        return cors(publicRelay ? relayRefusal("internal") : refusal("internal"));
 
       try {
-        return await route(context, request);
+        return cors(await (publicRelay ? relayPublic(context, request) : route(context, request)));
       } catch (error) {
         if (error instanceof Refusal)
-          return refusal(error.code, {
-            status: error.status,
-            headers: error.status === 429 || error.status === 503 ? { "retry-after": "60" } : {},
-          });
+          return cors(
+            refusal(error.code, {
+              status: error.status,
+              headers: error.status === 429 || error.status === 503 ? { "retry-after": "60" } : {},
+            }),
+          );
         log.error("request.failed", { error: errorName(error) });
 
-        return refusal("internal");
+        return cors(publicRelay ? relayRefusal("internal") : refusal("internal"));
       }
     },
 

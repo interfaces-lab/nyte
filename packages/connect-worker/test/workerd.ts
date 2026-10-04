@@ -395,8 +395,9 @@ export async function startWorkerdBroker(): Promise<WorkerdBroker> {
         configPath: "./workerd.jsonc",
         secrets: {
           CONNECT_ORIGIN: WORKERD_ORIGIN,
+          CONNECT_WEB_ORIGINS: "https://app.nyte.sh,http://localhost:5179,http://127.0.0.1:5179",
           CLERK_ISSUER: WORKERD_ISSUER,
-          CLERK_AUTHORIZED_PARTIES: WORKERD_AUTHORIZED_PARTY,
+          CLERK_AUTHORIZED_PARTIES: `${WORKERD_AUTHORIZED_PARTY},https://app.nyte.sh,http://localhost:5179,http://127.0.0.1:5179`,
           CLERK_JWT_KEY: await exportSPKI(clerkKeys.publicKey),
           CLERK_SECRET_KEY: clerkSecretKey,
           CLERK_WEBHOOK_SIGNING_SECRET: `whsec_${Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64")}`,

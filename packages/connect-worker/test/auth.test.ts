@@ -111,6 +111,39 @@ describe("Clerk session verification", () => {
     ).toBe(200);
   });
 
+  it.each([
+    "https://app.nyte.sh/",
+    "https://APP.nyte.sh",
+    "https://user:pass@app.nyte.sh",
+    "https://app.nyte.sh?query=1",
+    "https://app.nyte.sh#fragment",
+    "http://app.nyte.sh",
+    "null",
+    "https://app.nyte.sh,",
+    "https://app.nyte.sh,https://app.nyte.sh",
+  ])("fails closed on noncanonical web origin config %s", async (origins) => {
+    const answer = await harness.send({
+      method: "GET",
+      path: "/v1/environments",
+      env: { CONNECT_WEB_ORIGINS: origins },
+    });
+    expect(answer.status).toBe(500);
+    expect(
+      harness.logs.some((entry) => JSON.stringify(entry.fields).includes("CONNECT_WEB_ORIGINS")),
+    ).toBe(true);
+  });
+
+  it("adds CORS even when other broker configuration fails", async () => {
+    const answer = await harness.send({
+      method: "GET",
+      path: "/v1/environments",
+      headers: { origin: AZP },
+      env: { BROKER_SIGNING_KEYS: "[]" },
+    });
+    expect(answer.status).toBe(500);
+    expect(answer.headers.get("access-control-allow-origin")).toBe(AZP);
+  });
+
   it("serves the broker key set and fails closed on bad configuration", async () => {
     const keys = await harness.send({ method: "GET", path: "/.well-known/jwks.json" });
 

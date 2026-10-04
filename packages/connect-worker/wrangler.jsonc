@@ -24,10 +24,11 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["EnvironmentRelay"] }],
   "vars": {
     "CONNECT_ORIGIN": "https://nyte-connect.daniel-fu90.workers.dev",
+    "CONNECT_WEB_ORIGINS": "https://app.nyte.sh,http://localhost:5179,http://127.0.0.1:5179",
     "CLERK_ISSUER": "https://wise-ocelot-6839.clerk.accounts.dev",
     // Comma-separated `azp` values a session token may carry. A token without
     // `azp` (native iOS) is accepted; a token with one must match exactly.
-    "CLERK_AUTHORIZED_PARTIES": "http://127.0.0.1:5174,nyte-desktop://account,nyte-desktop-test://account",
+    "CLERK_AUTHORIZED_PARTIES": "http://127.0.0.1:5174,nyte-desktop://account,nyte-desktop-test://account,https://app.nyte.sh,http://localhost:5179,http://127.0.0.1:5179",
   },
   // Set each with `wrangler secret put <NAME>`. Never commit their values.
   "secrets": {

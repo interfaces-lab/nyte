@@ -23,6 +23,29 @@ It is served at `https://nyte-connect.daniel-fu90.workers.dev` (`workers_dev`, n
 
 Another owner's environment or device answers 404, the same as one that does not exist. Under `/r/`, refusals use the Nyte server's error envelope (`{ ok: false, error }`), and an offline desktop answers 503 `closed`, never an auth error.
 
+## Browser access
+
+`CONNECT_WEB_ORIGINS` is an explicit comma-separated allowlist of exact canonical origins. HTTPS is required except for HTTP `localhost` and `127.0.0.1`; paths, credentials, queries, fragments, noncanonical forms, duplicate entries, and empty entries are invalid. An empty string disables browser access. Bad configuration fails closed.
+
+The checked-in hosted configuration includes `https://app.nyte.sh`, `http://localhost:5179`, and `http://127.0.0.1:5179`, matching the web app's `APP_ORIGINS`. Both dev origins are deliberately enabled on the hosted broker so a local SPA can use real linked desktops through the public relay. Other software serving those exact local origins is also trusted for CORS, but still needs Clerk or device bearer authentication. To exclude development from production, remove both dev entries from `CONNECT_WEB_ORIGINS` and `CLERK_AUTHORIZED_PARTIES`; put them in a separate development broker's `.dev.vars` instead. The shared client requires an HTTPS broker origin even during development.
+
+Only these route/method pairs gain CORS and unauthenticated OPTIONS preflights:
+
+| Route | Allowed methods |
+| --- | --- |
+| `/v1/environments` | GET |
+| `/v1/environments/:id` | DELETE with owner JWT only |
+| `/v1/environments/:id/devices` | POST |
+| `/v1/environments/:id/devices/:deviceId` | DELETE with owner JWT only |
+| `/r/:id/v1/...` | GET, POST, including GET SSE streams |
+| `/r/:id/_nyte/connect/device` | DELETE with device bearer |
+
+Preflights allow only `authorization` and `content-type`, cache for 600 seconds, and advertise methods per route. Actual responses, including auth refusals and internal errors, echo the exact allowed origin and include `Vary: Origin`. `retry-after` and `allow` are exposed; the only header the Nyte HTTP/SSE client reads, `content-type`, is already CORS-safelisted. No wildcard or `Access-Control-Allow-Credentials` is sent. Unlisted origins are refused without CORS. No-Origin requests retain their previous behavior.
+
+Desktop linking, leases, relay socket upgrades, broker machine-key release, webhook, and JWKS publication do not gain CORS. Browser requests with `nyte-proof` are refused without CORS even on the shared DELETE paths. The relay request-header allowlist already strips Origin, cookies, Referer, Sec-Fetch headers, and forwarding headers before frames reach the desktop; only authorization, content-type, and accept remain. The desktop relay uses its fixed loopback host. Its Connect route handler's no-Origin/host checks and the Nyte server's local origin and bearer checks stay unchanged.
+
+Browser token lifetime and XSS risks, the required strict CSP, and the browser client API are documented in `packages/connect/README.md`. Cloudflare and the broker still see all relayed traffic.
+
 ## How it holds together
 
 **Owners.** A Clerk session JWT is verified offline with `CLERK_JWT_KEY`. The broker then requires `iss` to equal `CLERK_ISSUER`, `aud` to name `CONNECT_ORIGIN`, a non-empty `sid`, an `azp` from `CLERK_AUTHORIZED_PARTIES` when one is present, no `sts` other than `active`, and no `act` claim. The `owners` table records what Clerk says: banned or locked users are `disabled`, deleted users are `deleted` for good. Webhook updates apply only when newer than what the table holds, by Clerk's `updated_at`. A ban or lock also ends the owner's open relay channels; it keeps every link.
@@ -31,7 +54,7 @@ Another owner's environment or device answers 404, the same as one that does not
 
 **Environments.** At most three active environments per owner, enforced by one conditional `INSERT`. A revoked row is a tombstone: its key and id never return. A desktop told `revoked` must generate a new machine key before it links again. An environment lists as online while its relay socket is authenticated and its last lease is within 90 seconds.
 
-**Relay.** The desktop's first frame proves its machine key for `GET` on its relay route; the proof's `jti` is spent in D1 before anything is forwarded. Unproven sockets close after 5 seconds, at most four wait at once, and a newer proven socket replaces the old one (close 4409, its channels reset). A phone request is checked for route, method, no browser `Origin`, size, and a bearer whose SHA-256 matches an active device of an active environment, before the relay opens a channel. The desktop still checks the digest and its current lease on every request. A phone that disconnects resets its channel. Socket state lives in hibernation attachments; no credential does.
+**Relay.** The desktop's first frame proves its machine key for `GET` on its relay route; the proof's `jti` is spent in D1 before anything is forwarded. Unproven sockets close after 5 seconds, at most four wait at once, and a newer proven socket replaces the old one (close 4409, its channels reset). A phone request is checked for route, method, an absent or explicitly allowed browser `Origin`, size, and a bearer whose SHA-256 matches an active device of an active environment, before the relay opens a channel. The desktop still checks the digest and its current lease on every request. A phone that disconnects resets its channel. Socket state lives in hibernation attachments; no credential does.
 
 **Devices.** Enrollment reserves a row, signs a 60 second grant, relays it to the desktop's `/_nyte/connect/enroll`, verifies the desktop's signed receipt (grant id, nonce, device id, digest), and only then compare-and-sets the row active. The set fails if the device was revoked or released meanwhile, the grant lapsed, its Clerk session was denied, or the environment changed generation. A reservation that never activates is never in a lease, and the cron revokes it once its grant lapses.
 
@@ -52,7 +75,7 @@ No Cloudflare API token, DNS zone, or tunnel is involved.
 1. Configure the Clerk instance as the shared contract's README describes (`packages/connect/README.md`, section Clerk). In short:
    - Turn on **Native applications** so the iOS app can sign in through the Native API.
    - Under **Sessions → Customize session token**, add `{ "aud": "https://nyte-connect.daniel-fu90.workers.dev" }`, equal to `CONNECT_ORIGIN`.
-   - Add the desktop account window's origins to **Allowed origins** and its redirect URLs to the redirect allowlist: `nyte-desktop://account`, `nyte-desktop-test://account`, and `http://127.0.0.1:5174`. `CLERK_AUTHORIZED_PARTIES` in `wrangler.jsonc` lists the same origins.
+   - Add `https://app.nyte.sh`, `http://localhost:5179`, and `http://127.0.0.1:5179` to Clerk's **Allowed origins** and allow their web sign-in redirects. Add the desktop account window's origins to **Allowed origins** and its redirect URLs to the redirect allowlist: `nyte-desktop://account`, `nyte-desktop-test://account`, and `http://127.0.0.1:5174`. `CLERK_AUTHORIZED_PARTIES` in `wrangler.jsonc` lists the same origins.
 2. Add a Clerk webhook endpoint at `<CONNECT_ORIGIN>/v1/clerk/webhook`, subscribed to `user.updated` and `user.deleted`.
 3. `wrangler.jsonc` already names the account, the D1 database, the relay Durable Object (a SQLite class, as the Workers Free plan requires), and the vars. Check them before deploying.
 4. `wrangler d1 migrations apply nyte-connect --remote`.
@@ -79,6 +102,6 @@ To rotate, put the new key first and keep the old one second until no token sign
 
 ## Tests
 
-`pnpm --dir packages/connect-worker test` runs two kinds of test. Most run the broker in Node against a local D1 from wrangler's `getPlatformProxy` (`test/wrangler.jsonc`), with an injected clock and a fake relay that answers enrollments as a desktop would. `test/relay.test.ts` runs the whole Worker, the relay Durable Object, and D1 in local workerd through wrangler's `createTestHarness` (`test/workerd.ts`, `test/workerd.jsonc`), with real WebSockets and HTTP. Signatures are real everywhere; only Clerk's Backend API is fake. No test reads `.dev.vars`.
+`pnpm --dir packages/connect-worker test` runs two kinds of test. Most run the broker in Node against a local D1 from wrangler's `getPlatformProxy` (`test/wrangler.jsonc`), with an injected clock and a fake relay that answers enrollments as a desktop would. `test/relay.test.ts` covers browser CORS, preflights, HTTP/SSE forwarding, and native behavior, and runs the whole Worker, the relay Durable Object, and D1 in local workerd through wrangler's `createTestHarness` (`test/workerd.ts`, `test/workerd.jsonc`), with real WebSockets and HTTP. Signatures are real everywhere; only Clerk's Backend API is fake. No test reads `.dev.vars`.
 
 Local workerd delivers a phone's disconnect to the Worker about 10 seconds late, and leaves a client socket that never sent a frame in CLOSING when the relay closes it. Neither is relied on in production.

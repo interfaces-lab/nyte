@@ -323,7 +323,7 @@ export function publicRelayTarget(url: URL): PublicRelayTarget | undefined {
 export const RELAY_REFUSALS = {
   /** No bearer, or one the broker holds for no usable device of this environment. */
   unauthorized: { status: 401, message: "The device credential was refused" },
-  /** A browser `Origin`, or a release for a revoked device. */
+  /** An unlisted browser `Origin`, or a release for a revoked device. */
   forbidden: { status: 403, message: "Refused" },
   not_found: { status: 404, message: "Not found" },
   method_not_allowed: { status: 405, message: "Method not allowed" },

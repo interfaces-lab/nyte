@@ -85,7 +85,7 @@ function relayProof(input: { environmentId: string; key: PrivateJwk; path?: stri
 }
 
 /** A desktop on its relay with one enrolled phone, answering with `handler`. */
-async function enrolled(handler: RelayHandler = echo, userId = "user_alice") {
+async function enrolled(handler: RelayHandler = echo, userId = "user_alice", origin?: string) {
   const { environmentId, key } = await linked(userId);
   const desktop = await attached({ environmentId, key });
   const bearer = deviceToken();
@@ -100,7 +100,12 @@ async function enrolled(handler: RelayHandler = echo, userId = "user_alice") {
   const answer = await broker.fetch(`${broker.origin}${BROKER_ROUTES.devices(environmentId)}`, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${await broker.sessionToken({ userId, sessionId: "sess_phone" })}`,
+      authorization: `Bearer ${await broker.sessionToken({
+        userId,
+        sessionId: "sess_phone",
+        claims: origin === undefined ? {} : { azp: origin },
+      })}`,
+      ...(origin === undefined ? {} : { origin }),
       "content-type": "application/json",
     },
     body: JSON.stringify({
@@ -112,6 +117,8 @@ async function enrolled(handler: RelayHandler = echo, userId = "user_alice") {
   const body: unknown = await answer.json();
 
   expect(answer.status).toBe(201);
+
+  if (origin !== undefined) expectCors(answer, origin);
 
   if (!Value.Check(EnrollResponse, body))
     throw new Error("Enrollment answered outside the contract");
@@ -321,6 +328,247 @@ describe("the desktop's relay socket", () => {
 
     again.send({ t: "auth", proof: await relayProof({ environmentId, key }) });
     expect((await again.closed).code).toBe(RELAY_CLOSE.revoked);
+  });
+});
+
+const WEB_ORIGINS = ["https://app.nyte.sh", "http://localhost:5179", "http://127.0.0.1:5179"];
+
+function expectCors(response: Response, origin: string): void {
+  expect(response.headers.get("access-control-allow-origin")).toBe(origin);
+  expect(response.headers.get("vary")?.toLowerCase().split(/,\s*/u)).toContain("origin");
+  expect(response.headers.get("access-control-allow-credentials")).toBeNull();
+  expect(response.headers.get("access-control-expose-headers")).toBe("retry-after, allow");
+}
+
+describe("browser clients", () => {
+  it.each(WEB_ORIGINS)(
+    "preflights only client routes for %s without authentication",
+    async (origin) => {
+      const environmentId = crypto.randomUUID();
+      const deviceId = crypto.randomUUID();
+      const routes = [
+        [BROKER_ROUTES.environments, "GET", "GET"],
+        [BROKER_ROUTES.environment(environmentId), "DELETE", "DELETE"],
+        [BROKER_ROUTES.devices(environmentId), "POST", "POST"],
+        [BROKER_ROUTES.device(environmentId, deviceId), "DELETE", "DELETE"],
+        [`/r/${environmentId}/v1/events`, "GET", "GET, POST"],
+        [`/r/${environmentId}/v1/sessions`, "POST", "GET, POST"],
+        [`/r/${environmentId}/_nyte/connect/device`, "DELETE", "DELETE"],
+      ];
+
+      for (const [path, method, methods] of routes) {
+        const answer = await broker.fetch(`${broker.origin}${path}`, {
+          method: "OPTIONS",
+          headers: {
+            origin,
+            "access-control-request-method": method ?? "",
+            "access-control-request-headers": "Authorization, Content-Type",
+          },
+        });
+
+        expect(answer.status).toBe(204);
+        expect(await answer.text()).toBe("");
+        expectCors(answer, origin);
+        expect(answer.headers.get("access-control-allow-methods")).toBe(methods);
+        expect(answer.headers.get("access-control-allow-headers")).toBe(
+          "authorization, content-type",
+        );
+        expect(answer.headers.get("access-control-max-age")).toBe("600");
+      }
+    },
+  );
+
+  it.each(WEB_ORIGINS)(
+    "lists, enrolls, and relays HTTP, SSE and self-release for %s",
+    async (origin) => {
+      const seen: unknown[] = [];
+      const input = await enrolled(
+        async (request) => {
+          seen.push({ method: request.method, path: request.path, headers: request.headers });
+
+          return request.method === "DELETE"
+            ? { status: 204 }
+            : {
+                status: 200,
+                headers: { "content-type": "text/event-stream" },
+                body: "data: hello\n\n",
+              };
+        },
+        "user_alice",
+        origin,
+      );
+      const list = await broker.fetch(`${broker.origin}${BROKER_ROUTES.environments}`, {
+        headers: {
+          origin,
+          authorization: `Bearer ${await broker.sessionToken({ userId: "user_alice", claims: { azp: origin } })}`,
+        },
+      });
+
+      expect(list.status).toBe(200);
+      expectCors(list, origin);
+      const body: unknown = await list.json();
+      expect(Value.Check(EnvironmentList, body)).toBe(true);
+
+      for (const method of ["GET", "POST"]) {
+        const answer = await phone(input, "/v1/events?live=1", {
+          method,
+          headers: {
+            origin,
+            accept: "text/event-stream",
+            cookie: "secret=discard",
+            referer: `${origin}/workspace`,
+            "sec-fetch-site": "cross-site",
+            "x-forwarded-host": "evil.example",
+          },
+        });
+
+        expect(answer.status).toBe(200);
+        expectCors(answer, origin);
+        expect(answer.headers.get("content-type")).toBe("text/event-stream");
+        expect(await answer.text()).toBe("data: hello\n\n");
+        expect(seen.pop()).toEqual({
+          method,
+          path: "/v1/events?live=1",
+          headers: { authorization: `Bearer ${input.bearer}`, accept: "text/event-stream" },
+        });
+      }
+
+      const release = await phone(input, "/_nyte/connect/device", {
+        method: "DELETE",
+        headers: { origin, accept: "application/json" },
+      });
+      expect(release.status).toBe(204);
+      expectCors(release, origin);
+      expect(seen.pop()).toEqual({
+        method: "DELETE",
+        path: "/_nyte/connect/device",
+        headers: { authorization: `Bearer ${input.bearer}`, accept: "application/json" },
+      });
+
+      const revoked = await broker.fetch(
+        `${broker.origin}${BROKER_ROUTES.device(input.environmentId, input.deviceId)}`,
+        {
+          method: "DELETE",
+          headers: {
+            origin,
+            authorization: `Bearer ${await broker.sessionToken({ userId: "user_alice" })}`,
+          },
+        },
+      );
+      expect(revoked.status).toBe(204);
+      expectCors(revoked, origin);
+      const removed = await broker.fetch(
+        `${broker.origin}${BROKER_ROUTES.environment(input.environmentId)}`,
+        {
+          method: "DELETE",
+          headers: {
+            origin,
+            authorization: `Bearer ${await broker.sessionToken({ userId: "user_alice" })}`,
+          },
+        },
+      );
+      expect(removed.status).toBe(204);
+      expectCors(removed, origin);
+    },
+  );
+
+  it("makes auth and offline errors readable but refuses unlisted origins before forwarding", async () => {
+    const origin = "https://app.nyte.sh";
+    const input = await enrolled();
+    input.desktop.handler = undefined;
+    const missing = await phone({ environmentId: input.environmentId }, "/v1/health", {
+      headers: { origin },
+    });
+    expectCors(missing, origin);
+    expect(await wireError(missing)).toEqual(refused(401, "unauthorized"));
+    const invalidSession = await broker.fetch(`${broker.origin}${BROKER_ROUTES.environments}`, {
+      headers: { origin },
+    });
+    expect(invalidSession.status).toBe(401);
+    expectCors(invalidSession, origin);
+    await invalidSession.body?.cancel();
+
+    for (const unlisted of [
+      "https://evil.example",
+      "null",
+      "https://app.nyte.sh/",
+      "http://localhost:5180",
+    ]) {
+      const denied = await phone(input, "/v1/health", { headers: { origin: unlisted } });
+      expect(await wireError(denied)).toEqual(refused(403, "forbidden"));
+      expect(denied.headers.get("access-control-allow-origin")).toBeNull();
+      const preflight = await broker.fetch(`${broker.origin}${BROKER_ROUTES.environments}`, {
+        method: "OPTIONS",
+        headers: { origin: unlisted, "access-control-request-method": "GET" },
+      });
+      expect(preflight.status).toBe(403);
+      expect(preflight.headers.get("access-control-allow-origin")).toBeNull();
+      await preflight.body?.cancel();
+    }
+    expect(input.desktop.pending("open")).toEqual([]);
+    input.desktop.close();
+    const offline = await phone(input, "/v1/health", { headers: { origin } });
+    expectCors(offline, origin);
+    expect(await wireError(offline)).toEqual(refused(503, "closed"));
+  });
+
+  it("keeps desktop operations and machine-key authentication outside CORS", async () => {
+    const origin = "https://app.nyte.sh";
+    const environmentId = crypto.randomUUID();
+    const deviceId = crypto.randomUUID();
+    const routes = [
+      [BROKER_ROUTES.environments, "POST"],
+      [BROKER_ROUTES.lease(environmentId), "POST"],
+      [BROKER_ROUTES.relay(environmentId), "GET"],
+      [BROKER_ROUTES.release(environmentId, deviceId), "POST"],
+      [BROKER_ROUTES.keys, "GET"],
+      [BROKER_ROUTES.webhook, "POST"],
+    ];
+
+    for (const [path, method] of routes) {
+      for (const preflight of [false, true]) {
+        const answer = await broker.fetch(`${broker.origin}${path}`, {
+          method: preflight ? "OPTIONS" : method,
+          headers: { origin, "access-control-request-method": method ?? "" },
+        });
+        expect(answer.status).toBe(403);
+        expect(answer.headers.get("access-control-allow-origin")).toBeNull();
+        await answer.body?.cancel();
+      }
+    }
+    const signed = await broker.fetch(
+      `${broker.origin}${BROKER_ROUTES.environment(environmentId)}`,
+      {
+        method: "DELETE",
+        headers: { origin, "nyte-proof": "invalid" },
+      },
+    );
+    expect(signed.status).toBe(403);
+    expect(signed.headers.get("access-control-allow-origin")).toBeNull();
+    await signed.body?.cancel();
+
+    const headers = await broker.fetch(`${broker.origin}${BROKER_ROUTES.environments}`, {
+      method: "OPTIONS",
+      headers: {
+        origin,
+        "access-control-request-method": "GET",
+        "access-control-request-headers": "nyte-proof",
+      },
+    });
+    expect(headers.status).toBe(403);
+    expectCors(headers, origin);
+    await headers.body?.cancel();
+  });
+
+  it("leaves native requests and their OPTIONS behavior unchanged", async () => {
+    const input = await enrolled();
+    const answer = await phone(input, "/v1/health");
+    expect(answer.status).toBe(200);
+    expect(await answer.text()).toBe("GET /v1/health");
+    expect(answer.headers.get("access-control-allow-origin")).toBeNull();
+    const options = await phone(input, "/v1/health", { method: "OPTIONS" });
+    expect(await wireError(options)).toEqual(refused(405, "method_not_allowed"));
+    expect(options.headers.get("access-control-allow-origin")).toBeNull();
   });
 });
 
@@ -691,25 +939,37 @@ describe("cancellation and revocation", () => {
     await desktop.next("reset", (reset) => reset.ch === ch);
   });
 
-  it("resets the desktop's channel when the phone goes away mid-stream", async () => {
-    const { environmentId, desktop, bearer } = await enrolled();
+  it.each([undefined, "https://app.nyte.sh"])(
+    "resets the desktop channel when a client with Origin %s goes away mid-stream",
+    async (origin) => {
+      const { environmentId, desktop, bearer } = await enrolled();
 
-    desktop.handler = undefined;
-    const abort = new AbortController();
-    const answer = phone({ environmentId, bearer }, "/v1/events", { signal: abort.signal });
-    const { ch } = await desktop.next("open");
+      desktop.handler = undefined;
+      const abort = new AbortController();
+      const answer = phone({ environmentId, bearer }, "/v1/events", {
+        signal: abort.signal,
+        headers: origin === undefined ? {} : { origin },
+      });
+      const { ch } = await desktop.next("open");
 
-    desktop.send({ t: "head", ch, status: 200, headers: { "content-type": "text/event-stream" } });
+      desktop.send({
+        t: "head",
+        ch,
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
 
-    for (const data of encodeChunks(new TextEncoder().encode("data: one\n\n")))
-      desktop.send({ t: "data", ch, data });
-    const response = await answer;
-    const reader = response.body?.getReader();
+      for (const data of encodeChunks(new TextEncoder().encode("data: one\n\n")))
+        desktop.send({ t: "data", ch, data });
+      const response = await answer;
+      const reader = response.body?.getReader();
 
-    expect(new TextDecoder().decode((await reader?.read())?.value)).toBe("data: one\n\n");
-    abort.abort();
-    await desktop.next("reset", (reset) => reset.ch === ch);
-  });
+      expect(new TextDecoder().decode((await reader?.read())?.value)).toBe("data: one\n\n");
+      if (origin !== undefined) expectCors(response, origin);
+      abort.abort();
+      await desktop.next("reset", (reset) => reset.ch === ch);
+    },
+  );
 
   it("ends a revoked device's open channels at once and refuses its bearer after", async () => {
     const { environmentId, desktop, bearer, deviceId } = await enrolled();
