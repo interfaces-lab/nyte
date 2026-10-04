@@ -49,8 +49,17 @@ export interface CliTheme {
   readonly pasteForeground: string;
   readonly scrollbarTrack: string;
   readonly scrollbarThumb: string;
+  /** Pierre's addition and deletion bases: the sign, and what every diff tint mixes toward. */
+  readonly diffAdded: string;
+  readonly diffRemoved: string;
   readonly diffAddedBackground: string;
   readonly diffRemovedBackground: string;
+  /** The gutter sits a step closer to the page than its line. */
+  readonly diffAddedGutterBackground: string;
+  readonly diffRemovedGutterBackground: string;
+  /** A changed word: the line tint with the base laid over it; the text keeps its colour. */
+  readonly diffAddedEmphasis: string;
+  readonly diffRemovedEmphasis: string;
 }
 
 /** The theme store's shape: a palette whose roles the screen may replace. */
@@ -58,8 +67,9 @@ export type ActiveCliTheme = { -readonly [Role in keyof CliTheme]: CliTheme[Role
 
 /**
  * Pierre's dark roles. Diff rows are `codeBackground` mixed 80% in CIELAB
- * with Pierre's added and removed bases, fixed here because terminals
- * cannot mix.
+ * with Pierre's added and removed bases, gutters 85%, and a changed word is
+ * the row with the base at 20% over it, fixed here because terminals cannot
+ * mix.
  *
  * Based on https://github.com/pierrecomputer/pierre/blob/main/packages/theme/src/roles/dark.ts
  * and https://github.com/pierrecomputer/pierre/blob/main/packages/diffs/src/style.css
@@ -99,13 +109,20 @@ export const DARK_THEME: CliTheme = Object.freeze({
   pasteForeground: "#d4d4d4",
   scrollbarTrack: "#101010",
   scrollbarThumb: "#262626",
+  diffAdded: "#5ecc71",
+  diffRemoved: "#ff6762",
   diffAddedBackground: "#273628",
   diffRemovedBackground: "#402725",
+  diffAddedGutterBackground: "#232e23",
+  diffRemovedGutterBackground: "#362321",
+  diffAddedEmphasis: "#325437",
+  diffRemovedEmphasis: "#663431",
 });
 
 /**
- * Pierre's light roles, with the diff mix at 88%. Text takes the 600 shade
- * where Pierre's light roles use 500, as its `ansi` roles do.
+ * Pierre's light roles, with the diff row mix at 88%, the gutter at 91%, and
+ * the changed word at 15%. Text takes the 600 shade where Pierre's light
+ * roles use 500, as its `ansi` roles do.
  *
  * Based on https://github.com/pierrecomputer/pierre/blob/main/packages/theme/src/roles/light.ts
  * and https://github.com/pierrecomputer/pierre/blob/main/packages/diffs/src/style.css
@@ -145,8 +162,14 @@ export const LIGHT_THEME: CliTheme = Object.freeze({
   pasteForeground: "#404040",
   scrollbarTrack: "#f5f5f5",
   scrollbarThumb: "#d4d4d4",
+  diffAdded: "#0dbe4e",
+  diffRemoved: "#ff2e3f",
   diffAddedBackground: "#e0efe1",
   diffRemovedBackground: "#fce1dd",
+  diffAddedGutterBackground: "#e5f1e6",
+  diffRemovedGutterBackground: "#fbe6e3",
+  diffAddedEmphasis: "#c0e8cb",
+  diffRemovedEmphasis: "#fcc6c5",
 });
 
 /** `dark`/`light`, plus the `night`/`day` aliases. Anything else is no answer. */
