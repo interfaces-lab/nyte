@@ -10,7 +10,9 @@
     "./plugins": "./src/plugins.ts",
     "./otel": "./src/otel.ts",
     "./store-usage": "./src/store-usage.ts",
-    "./usage": "./src/usage.ts"
+    "./usage": "./src/usage.ts",
+    "./usage-scan": "./src/usage-scan.ts",
+    "./usage-worker": "./src/usage-worker.ts"
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
@@ -30,7 +32,7 @@
     "@opentelemetry/sdk-trace": "^2.11.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
     "diff": "^9.0.0",
-    "typebox": "1.3.7"
+    "typebox": "1.3.34"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
