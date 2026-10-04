@@ -17,14 +17,26 @@ export const TRANSCRIPT_PADDING_END = 114;
 /** A row's own top may sit a hair below the scroll offset after subpixel layout. */
 const STICKY_MESSAGE_ACTIVATION_EPSILON = 2;
 
+/** Subpixel scroll positions still count as the real bottom. */
+export const TRANSCRIPT_END_TOLERANCE = 1;
+
 export interface ScrollMetrics {
   readonly scrollTop: number;
   readonly scrollHeight: number;
   readonly clientHeight: number;
 }
 
-export function isBottomPinned(metrics: ScrollMetrics, threshold: number): boolean {
-  return metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight < threshold;
+/**
+ * How far the scrollport sits above its real end. The scroll height is the
+ * full DOM extent, so the docked composer below the rows counts; the
+ * virtualizer's own total does not include it.
+ */
+export function distanceFromEnd(metrics: ScrollMetrics): number {
+  return metrics.scrollHeight - metrics.clientHeight - metrics.scrollTop;
+}
+
+export function isAtEnd(metrics: ScrollMetrics): boolean {
+  return distanceFromEnd(metrics) <= TRANSCRIPT_END_TOLERANCE;
 }
 
 export interface StickyCandidate {
@@ -36,7 +48,7 @@ export interface StickyCandidate {
 
 /**
  * Which candidate's prompt is stuck to the top edge: the last one whose turn
- * has scrolled past the top. While pinned to the bottom the latest turn gets
+ * has scrolled past the top. While following the bottom the latest turn gets
  * slack equal to its own height, so its prompt lifts as soon as the reply
  * outgrows the viewport instead of waiting for the turn's top to cross the
  * edge.
@@ -44,13 +56,13 @@ export interface StickyCandidate {
 export function activeStickyCandidate(
   candidates: readonly StickyCandidate[],
   scrollTop: number,
-  bottomPinned: boolean,
+  following: boolean,
 ): number | undefined {
   let active: number | undefined;
 
   for (const [index, candidate] of candidates.entries()) {
     const last = index === candidates.length - 1;
-    const slack = bottomPinned && last ? candidate.height : STICKY_MESSAGE_ACTIVATION_EPSILON;
+    const slack = following && last ? candidate.height : STICKY_MESSAGE_ACTIVATION_EPSILON;
 
     if (candidate.start <= scrollTop + slack) active = index;
   }
