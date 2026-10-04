@@ -30,4 +30,6 @@ pnpm lint
 pnpm typecheck
 ```
 
+To run an app first or build your own TUI or editor app, see [Build an agent app](packages/docs/content/docs/composition.mdx).
+
 Build and test individual packages. See [CONTRIBUTING.md](CONTRIBUTING.md) for the package map, checks, and commit conventions, the [design record](packages/docs/content/docs/design.mdx) for architecture, and [AGENTS.md](AGENTS.md) for agent instructions.

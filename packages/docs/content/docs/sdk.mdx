@@ -5,6 +5,8 @@ description: Host API for stores, models, plugins, operations, and events
 
 Create one `Nyte` from a store, stream function, model catalog, and plugins.
 
+For runnable apps and higher-level host composition, start with [Build an agent app](/docs/composition).
+
 `messages.send` writes to the inbox but does not start a run. The process that called `attach()` runs
 the message. Without one, `runs.wait` never returns.
 
