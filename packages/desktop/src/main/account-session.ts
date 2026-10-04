@@ -1,6 +1,8 @@
 /**
- * The Nyte account on this Mac, as the connect service sees it. Clerk lives in
- * the main renderer; interactive broker calls request a fresh token over IPC.
+ * The Nyte account on this Mac, as the connect service sees it. Clerk loads in
+ * a renderer on the first account command. Its client token lives in
+ * main-process memory, and release builds also keep it sealed in an
+ * `AccountStore`. Interactive broker calls request a fresh session JWT over IPC.
  *
  * The account session and the machine link have separate lifetimes. Signing out
  * here leaves the link and remote access as they are; background work such as the

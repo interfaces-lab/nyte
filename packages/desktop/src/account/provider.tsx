@@ -175,30 +175,42 @@ export function AccountProvider({
   readonly publishableKey: string | undefined;
   readonly children: ReactNode;
 }): ReactElement {
-  if (publishableKey === undefined) return <>{children}</>;
+  const [active, setActive] = useState(false);
+
+  useEffect(() => {
+    if (publishableKey === undefined || active) return;
+
+    return bridge.onCommand((command) => {
+      if (command !== undefined) setActive(true);
+    });
+  }, [publishableKey, active]);
 
   return (
-    <ClerkProvider
-      publishableKey={publishableKey}
-      telemetry={false}
-      appearance={{
-        variables: {
-          colorPrimary: "var(--nyte-content-primary)",
-          colorPrimaryForeground: "var(--nyte-bg-elevated)",
-          colorNeutral: "var(--nyte-content-primary)",
-          colorForeground: "var(--nyte-content-primary)",
-          colorBackground: "var(--nyte-bg-elevated)",
-          colorMuted: "var(--nyte-bg-muted)",
-          colorMutedForeground: "var(--nyte-content-secondary)",
-          colorInput: "var(--nyte-bg-base)",
-          colorInputForeground: "var(--nyte-content-primary)",
-          colorRing: "var(--nyte-content-primary)",
-        },
-        elements: { cardBox: { boxShadow: "none" } },
-      }}
-    >
-      <Account />
+    <>
       {children}
-    </ClerkProvider>
+      {active && publishableKey !== undefined && (
+        <ClerkProvider
+          publishableKey={publishableKey}
+          telemetry={false}
+          appearance={{
+            variables: {
+              colorPrimary: "var(--nyte-content-primary)",
+              colorPrimaryForeground: "var(--nyte-bg-elevated)",
+              colorNeutral: "var(--nyte-content-primary)",
+              colorForeground: "var(--nyte-content-primary)",
+              colorBackground: "var(--nyte-bg-elevated)",
+              colorMuted: "var(--nyte-bg-muted)",
+              colorMutedForeground: "var(--nyte-content-secondary)",
+              colorInput: "var(--nyte-bg-base)",
+              colorInputForeground: "var(--nyte-content-primary)",
+              colorRing: "var(--nyte-content-primary)",
+            },
+            elements: { cardBox: { boxShadow: "none" } },
+          }}
+        >
+          <Account />
+        </ClerkProvider>
+      )}
+    </>
   );
 }

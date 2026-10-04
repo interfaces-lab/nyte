@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { build } from "vite";
+import { build, defaultClientConditions } from "vite";
+import { stylex } from "@nyte-ai/app/vite";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { AccountOperations } from "../account/operations.ts";
 import {
@@ -17,6 +18,7 @@ import {
 } from "../account/policy.ts";
 import { ACCOUNT_SCHEMES, accountScheme } from "../account/scheme.ts";
 import { AccountCancelled } from "./account-session.ts";
+import { AccountStore } from "./account-store.ts";
 
 const HOST = "clerk.example.com";
 
@@ -231,6 +233,35 @@ describe("account operations", () => {
 
 const execute = promisify(execFile);
 
+test("a keychain that will not seal leaves no sign-in on disk", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "nyte-account-store-"));
+  const path = join(directory, "account.json");
+  const sealed: string[] = [];
+
+  const store = new AccountStore({
+    path,
+    cipher: {
+      available: async () => false,
+      seal: async (plain) => {
+        sealed.push(plain);
+
+        return plain;
+      },
+      open: async (text) => text,
+    },
+  });
+
+  try {
+    await writeFile(path, JSON.stringify({ sealed: "older", label: "ada@example.com" }));
+    await store.save({ token: "client.one", label: "ada@example.com" });
+    await expect(readFile(path, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    expect(sealed).toEqual([]);
+    expect(await store.open("older")).toBeUndefined();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("sign-in uses the existing Nyte window, in real Electron", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nyte-account-"));
 
@@ -252,11 +283,6 @@ test("sign-in uses the existing Nyte window, in real Electron", async () => {
         resolve: {
           conditions: ["node"],
           mainFields: ["module", "main"],
-          alias: {
-            "@clerk/electron/storage": fileURLToPath(
-              new URL("./fixtures/account-storage.ts", import.meta.url),
-            ),
-          },
         },
         build: {
           target: "node24",
@@ -276,6 +302,26 @@ test("sign-in uses the existing Nyte window, in real Electron", async () => {
         },
       });
     }
+
+    await build({
+      configFile: false,
+      envDir: false,
+      logLevel: "silent",
+      plugins: [stylex.rollup({ devMode: "css-only", runtimeInjection: false })],
+      define: { "process.env.NODE_ENV": JSON.stringify("production") },
+      oxc: { jsx: { development: false } },
+      resolve: { conditions: ["nyte-source", ...defaultClientConditions] },
+      build: {
+        outDir: directory,
+        emptyOutDir: false,
+        lib: {
+          entry: fileURLToPath(new URL("./fixtures/account-renderer.tsx", import.meta.url)),
+          formats: ["iife"],
+          name: "accountFixture",
+          fileName: () => "renderer.js",
+        },
+      },
+    });
 
     await writeFile(
       join(directory, "package.json"),

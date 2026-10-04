@@ -34,10 +34,11 @@ import { showContextMenu } from "./context-menu.ts";
 import { ipcResult } from "./errors.ts";
 import { callIpc } from "./ipc-call.ts";
 import { localFonts } from "./fonts.ts";
-import { UsageScanWorker } from "./usage-scan.ts";
+import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
 import { CloudflareTunnelPlugin } from "./cloudflare-tunnel.ts";
 import { registerAccount } from "./account.ts";
 import type { AccountSession } from "./account-session.ts";
+import { AccountStore } from "./account-store.ts";
 import { accountScheme } from "../account/scheme.ts";
 import { registerRenderer } from "./renderer.ts";
 import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
@@ -240,14 +241,19 @@ function getHost(): DesktopHost {
   return desktopHost;
 }
 
-/** Sealed by the OS keychain; refused where Electron would fall back to plain text. */
+/**
+ * Sealed by the OS keychain; refused where Electron would fall back to plain text. The async
+ * API keeps the main process running while macOS asks for Keychain access, and opens what the
+ * synchronous API sealed.
+ */
 const keychain: SecretCipher = {
-  available: () =>
-    safeStorage.isEncryptionAvailable() &&
+  available: async () =>
+    (await safeStorage.isAsyncEncryptionAvailable()) &&
     (process.platform !== "linux" ||
       !["basic_text", "unknown"].includes(safeStorage.getSelectedStorageBackend())),
-  seal: (plain) => safeStorage.encryptString(plain).toString("base64"),
-  open: (sealed) => safeStorage.decryptString(Buffer.from(sealed, "base64")),
+  seal: async (plain) => (await safeStorage.encryptStringAsync(plain)).toString("base64"),
+  open: async (sealed) =>
+    (await safeStorage.decryptStringAsync(Buffer.from(sealed, "base64"))).result,
 };
 
 function createConnect(config: ConnectConfig | undefined): ConnectRuntime {
@@ -260,6 +266,17 @@ function createConnect(config: ConnectConfig | undefined): ConnectRuntime {
         scheme: accountScheme({ packaged: app.isPackaged, updateTest }),
         window: (id) => (id === undefined ? currentWindow() : windows.get(id))?.window,
         onChange: () => connect?.accountChanged(),
+        // macOS lets an app read its Keychain item without asking only while the app's
+        // signature meets the requirement recorded with the item. Development and update-test
+        // builds are ad-hoc signed, which names the exact binary, so they keep the sign-in for
+        // one run.
+        store:
+          app.isPackaged && !updateTest
+            ? new AccountStore({
+                path: join(app.getPath("userData"), "account.json"),
+                cipher: keychain,
+              })
+            : undefined,
       });
     } catch {
       account = undefined;

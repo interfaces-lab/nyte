@@ -1,7 +1,7 @@
 import { app, ipcMain } from "electron";
 import type { BrowserWindow, IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import { createClerkBridge } from "@clerk/electron";
-import { storage } from "@clerk/electron/storage";
+import { Value } from "typebox/value";
 import { AccountOperations } from "../account/operations.ts";
 import { accountAnswer, accountReport } from "../account/policy.ts";
 import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
@@ -9,6 +9,7 @@ import type { AccountConfig } from "../account/protocol.ts";
 import { ACCOUNT_HOST } from "../account/scheme.ts";
 import type { accountScheme } from "../account/scheme.ts";
 import type { AccountSession, AccountState } from "./account-session.ts";
+import type { AccountStore } from "./account-store.ts";
 
 const CLIENT_TOKEN_KEY = "__clerk_client_jwt";
 
@@ -17,14 +18,92 @@ export function registerAccount(options: {
   readonly scheme: ReturnType<typeof accountScheme>;
   readonly window: (id?: number) => BrowserWindow | undefined;
   readonly onChange: () => void;
+  /** Keeps the sign-in across restarts. Without one, quitting signs out. */
+  readonly store: AccountStore | undefined;
 }): AccountSession {
-  const tokens = storage();
+  const { store } = options;
+  let state: AccountState = { kind: "signed_out" };
+  let clientToken: string | null = null;
+  /** A restored token, sealed until Clerk first asks for it. */
+  let sealed: string | undefined;
+  let opening: Promise<void> | undefined;
+  /** What this run last saved; undefined before then, when the file may hold a restored token. */
+  let kept: { readonly signIn: Parameters<AccountStore["save"]>[0] } | undefined;
+
+  /** Bring the store in line with memory: a sign-in once both token and address describe one. */
+  const keep = (): void => {
+    if (store === undefined || sealed !== undefined) return;
+
+    const next = {
+      signIn:
+        clientToken !== null && state.kind === "signed_in"
+          ? { token: clientToken, label: state.label }
+          : undefined,
+    };
+
+    if (Value.Equal(kept, next)) return;
+    kept = next;
+    void store.save(next.signIn).catch(() => undefined);
+  };
+
+  const setState = (next: AccountState): void => {
+    if (
+      next.kind === state.kind &&
+      (next.kind !== "signed_in" || (state.kind === "signed_in" && state.label === next.label))
+    )
+      return;
+    state = next;
+    keep();
+    options.onChange();
+  };
+
+  const restoring = store?.load().then((saved) => {
+    if (saved === undefined || clientToken !== null || state.kind !== "signed_out") return;
+    sealed = saved.sealed;
+    setState({ kind: "signed_in", label: saved.label });
+  });
+
+  /** Open the restored token. One the keychain will not open signs out and leaves the store. */
+  const unseal = async (): Promise<void> => {
+    const restored = sealed;
+
+    if (store === undefined || restored === undefined) return;
+    const opened = await store.open(restored);
+
+    if (sealed !== restored) return;
+    sealed = undefined;
+
+    if (opened !== undefined) {
+      clientToken = opened;
+
+      return;
+    }
+
+    setState({ kind: "signed_out" });
+    keep();
+  };
 
   const bridge = createClerkBridge({
     storage: {
-      getItem: (key) => (key === CLIENT_TOKEN_KEY ? tokens.getItem(key) : null),
-      setItem: (key, value) => (key === CLIENT_TOKEN_KEY ? tokens.setItem(key, value) : undefined),
-      removeItem: (key) => (key === CLIENT_TOKEN_KEY ? tokens.removeItem(key) : undefined),
+      getItem: async (key) => {
+        if (key !== CLIENT_TOKEN_KEY) return null;
+        await restoring;
+        await (opening ??= unseal());
+
+        return clientToken;
+      },
+      setItem: (key, value) => {
+        if (key !== CLIENT_TOKEN_KEY) return;
+        clientToken = value;
+        sealed = undefined;
+        keep();
+      },
+      removeItem: (key) => {
+        if (key !== CLIENT_TOKEN_KEY) return;
+        clientToken = null;
+        sealed = undefined;
+        keep();
+      },
     },
     manageSingleInstanceLock: false,
     renderer: { scheme: options.scheme, host: ACCOUNT_HOST },
@@ -36,17 +115,6 @@ export function registerAccount(options: {
 
   const operations = new AccountOperations();
   let pending: { readonly id: string; readonly window: BrowserWindow } | undefined;
-  let state: AccountState = { kind: "signed_out" };
-
-  const setState = (next: AccountState): void => {
-    if (
-      next.kind === state.kind &&
-      (next.kind !== "signed_in" || (state.kind === "signed_in" && state.label === next.label))
-    )
-      return;
-    state = next;
-    options.onChange();
-  };
 
   const fromRenderer = (event: IpcMainEvent | IpcMainInvokeEvent): boolean => {
     const contents = options.window(event.sender.id)?.webContents;
@@ -150,8 +218,10 @@ export function registerAccount(options: {
 
       try {
         await serve({ id, result });
-        await tokens.removeItem(CLIENT_TOKEN_KEY);
+        clientToken = null;
+        sealed = undefined;
         setState({ kind: "signed_out" });
+        keep();
       } finally {
         clearTimeout(timer);
       }
