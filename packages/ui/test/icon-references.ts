@@ -100,6 +100,7 @@ import {
   IconUnpinDefault,
   IconUserDefault,
   IconUserKeyDefault,
+  IconVercelDefault,
   IconWebsiteDefault,
   IconWindowAppDefault,
   IconZaiDefault,
@@ -206,6 +207,7 @@ import {
   IconUnpin,
   IconUser,
   IconUserKey,
+  IconVercel,
   IconWebsite,
   IconWindowApp,
   IconZai,
@@ -315,6 +317,7 @@ export const iconReferences = [
   { name: "pin", outlined: IconPin, filled: IconPinDefault },
   { name: "plus", outlined: IconPlusSmall, filled: IconPlusSmallDefault },
   { name: "provider-opencode", outlined: IconOpencode, filled: IconOpencodeDefault },
+  { name: "provider-vercel", outlined: IconVercel, filled: IconVercelDefault },
   { name: "pull-request", outlined: IconPullRequest, filled: IconPullRequestDefault },
   {
     name: "pull-request-closed",

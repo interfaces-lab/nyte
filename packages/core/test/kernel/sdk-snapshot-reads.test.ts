@@ -10,7 +10,17 @@ import { step } from "../../src/kernel/step.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
 import type { Turn } from "../../src/kernel/turn.ts";
 import { definePlugin } from "../../src/plugins/index.ts";
-import { assistant, call, drain, message, openStore, seedHead, setHead, user } from "./helpers.ts";
+import {
+  assistant,
+  call,
+  drain,
+  localOptions,
+  message,
+  openStore,
+  seedHead,
+  setHead,
+  user,
+} from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "test-model",
@@ -73,15 +83,14 @@ async function fixture() {
     streamFn: () => {
       throw new Error("Snapshot must not invoke a provider");
     },
-    plugins: [
+    ...localOptions("/tmp/snapshot-fixture", [
       definePlugin({
         id: "observer",
         session() {
           assert.fail("Snapshot must not instantiate observer plugins");
         },
       }),
-    ],
-    env: { cwd: "/tmp/snapshot-fixture" },
+    ]),
   });
   const id = sessionId(session.id);
   await nyte.sessions.get({ sessionId: id });

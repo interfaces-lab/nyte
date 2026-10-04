@@ -171,14 +171,14 @@ export async function openEffect(
     readonly tool: string;
     readonly args: EffectIntent["args"];
     readonly replay: EffectIntent["replay"];
-    readonly fs?: string;
+    readonly environment: string;
   },
 ): Promise<OpenEffectOutcome> {
   const existing = await readEffect(session, options);
 
   if (existing !== undefined) return assertExistingEffect(session, options.lease, existing);
 
-  const intent = {
+  const effect: EffectIntent = {
     kind: "effect",
     state: "intent",
     runId: options.runId,
@@ -186,10 +186,9 @@ export async function openEffect(
     tool: options.tool,
     args: options.args,
     replay: options.replay,
+    environment: options.environment,
     at: Date.now(),
-  } as const;
-
-  const effect: EffectIntent = options.fs === undefined ? intent : { ...intent, fs: options.fs };
+  };
 
   const ref = effectRef(options.runId, options.callId);
   const oid = await putEffect(session, effect);
@@ -414,21 +413,21 @@ export async function clearEffects(
 }
 
 /**
- * Recovery depends only on the durable state and where this runner acts. An unstarted intent
- * follows its replay policy, and a `safe` one reruns only on the filesystem it was opened for; a
- * parked call stays blocked until signalled or expired, either wake state enters the handler, and
- * a settled result is reused.
+ * Recovery depends only on the durable state and the environment this runner acts in. An
+ * unstarted intent follows its replay policy, and a `safe` one reruns only in the environment it
+ * was opened in (one that recorded none reruns nowhere); a parked call stays blocked until
+ * signalled or expired, either wake state enters the handler, and a settled result is reused.
  * This avoids guessing whether the uncertain work ran after a process disappeared.
  */
 export function decideRecovery(
   view: EffectView,
-  fs: string | undefined,
+  environment: string,
 ): "execute" | "interrupted" | "blocked" | "wake" | "reuse" {
   switch (view.effect.state) {
     case "intent":
       switch (view.effect.replay) {
         case "safe":
-          return view.effect.fs === undefined || view.effect.fs === fs ? "execute" : "interrupted";
+          return view.effect.environment === environment ? "execute" : "interrupted";
         case "never":
           return "interrupted";
         default: {

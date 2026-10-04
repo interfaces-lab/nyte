@@ -166,10 +166,10 @@ export const workbenchStyles = create({
     textAlign: "center",
   },
   sash: {
-    position: "absolute",
-    zIndex: 2,
+    position: "fixed",
+    zIndex: layer.sash,
     insetBlock: 0,
-    insetInlineStart: `calc(${target.min} * -1)`,
+    insetInlineEnd: workbench.activeWidth,
     width: target.min,
     borderStyle: "none",
     outlineStyle: { default: "none", ":focus-visible": "solid" },

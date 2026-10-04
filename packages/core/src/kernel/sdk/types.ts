@@ -14,10 +14,11 @@
  * the settled commit supplies its durable identity afterward.
  */
 import type { Models } from "@nyte-ai/ai";
-import type { Api, Model, Skill } from "@nyte-ai/schema";
+import type { Api, JsonValue, Model, Skill } from "@nyte-ai/schema";
 import type { TelemetryContext } from "@nyte-ai/telemetry";
 import type {
   AbortOutcome,
+  ActivationRequirement,
   Operation,
   OperationInput,
   OperationOutput,
@@ -74,6 +75,7 @@ import type {
   VcsSnapshot,
   WaitOutcome,
   WorkspaceInfo,
+  WorkspaceRef,
   WorkspaceSelectInput,
   WorkspaceSelectOutcome,
   WorkspaceSelection,
@@ -83,11 +85,11 @@ import type {
   Disposer,
   Plugin,
   PluginReplacement,
-  PluginEnv,
   PluginInfo,
   SettingInfo,
 } from "../../plugins/types.ts";
 import type { StreamFn, ThinkingLevel } from "../loop/types.ts";
+import type { ExecutionEnv } from "../loop/env.ts";
 import type { StreamOptions } from "../stream-options.ts";
 import type { CacheWarmingMode, CacheWarmingStatus } from "../cache-warmer.ts";
 import type { CompactionSettings } from "../compaction.ts";
@@ -172,30 +174,32 @@ export {
   type VcsSnapshot,
   type WaitOutcome,
   type WorkspaceInfo,
+  type WorkspaceRef,
   type WorkspaceSelectInput,
   type WorkspaceSelectOutcome,
   type WorkspaceSelection,
   type WorkspaceTarget,
 } from "@nyte-ai/protocol";
 
-export const TRUSTED_WORKSPACE: unique symbol = Symbol("TrustedWorkspace");
-
-/** A realpath workspace that passed the host's trust decision. */
-export interface TrustedWorkspace {
-  readonly cwd: string;
-  readonly [TRUSTED_WORKSPACE]: true;
-}
-
 // ---------------------------------------------------------------------------
 // Sessions
 // ---------------------------------------------------------------------------
 
+/**
+ * Where a session tree acts, stored on its root: the client ref plus a
+ * `locator` the kind's provider reopens it with. The locator is plain text, so
+ * keep credentials out. Children act in their root's.
+ */
+export type Workspace = WorkspaceRef & { readonly locator?: JsonValue };
+
 export interface Sessions {
-  create(input?: {
-    readonly sessionId?: SessionId;
-    readonly name?: string;
-    readonly parent?: SessionParent;
-  }): Promise<SessionInfo>;
+  /** A root acts in `workspace`, or where the host starts new sessions; a child acts in its root's. */
+  create(
+    input?: { readonly sessionId?: SessionId; readonly name?: string } & (
+      | { readonly parent?: SessionParent; readonly workspace?: never }
+      | { readonly parent?: never; readonly workspace?: Workspace }
+    ),
+  ): Promise<SessionInfo>;
   get(input: { readonly sessionId: SessionId }): Promise<SessionInfo | undefined>;
   snapshot(input: {
     readonly sessionId: SessionId;
@@ -386,7 +390,11 @@ export interface VcsBackend {
   >;
 }
 
-/** Everything the SDK's `workspace` namespace answers from; the host supplies it all. */
+/**
+ * Everything the SDK's `workspace` namespace answers from; the host supplies it
+ * all. It reads the default workspace's environment, so a session that is not
+ * active, or acts in any other environment, gets none of it.
+ */
 export interface WorkspaceBackend {
   list(): Promise<readonly WorkspaceInfo[]>;
   touch(path: string, now?: number): Promise<void>;
@@ -405,7 +413,8 @@ export interface WorkspaceBackend {
   readonly vcs?: VcsBackend;
 }
 
-export interface Workspace {
+/** The SDK's folder namespace: the picker, files, and version control of local directories. Not where a session acts; see `Workspace`. */
+export interface WorkspaceApi {
   list(): Promise<readonly WorkspaceInfo[]>;
   current(): Promise<WorkspaceSelection>;
   select(input: WorkspaceSelectInput): Promise<WorkspaceSelectOutcome>;
@@ -413,8 +422,8 @@ export interface Workspace {
   /**
    * Files and folders in the workspace. Without `query` every one comes back,
    * which the Files tree needs; with one the host ranks and caps them for an `@`
-   * menu. `sessionId` picks the session's directory; without one the directory a
-   * new session would start in answers.
+   * menu. `target` picks a session's directory or the one a new session would
+   * start in.
    */
   files(input: {
     readonly target: WorkspaceTarget;
@@ -545,7 +554,21 @@ export type SummaryDiagnostic = Extract<MoveOutcome, { readonly code: "internal"
   readonly cause: unknown;
 };
 
-interface NyteBaseOptions {
+/** The host's decision for one workspace, asked once when the SDK opens it. */
+export type WorkspaceTrust =
+  | {
+      readonly kind: "trusted";
+      /**
+       * Plugins that live in the workspace, loaded once its environment is
+       * open and again before each response. They can wrap the environment,
+       * never provide one.
+       */
+      readonly plugins?: (env: ExecutionEnv) => Promise<readonly Plugin[]>;
+    }
+  | { readonly kind: "inactive" }
+  | { readonly kind: "requires"; readonly requirement: ActivationRequirement };
+
+export interface NyteOptions {
   /** Receives converted summary failures once, before the public outcome is returned. */
   readonly onDiagnostic?: (diagnostic: SummaryDiagnostic) => void | Promise<void>;
   readonly store: Store;
@@ -563,51 +586,23 @@ interface NyteBaseOptions {
   /** default: records nothing */
   readonly telemetry?: TelemetryContext;
   readonly workspace?: WorkspaceBackend;
-  readonly prepareResponsePlugins?: (input: {
-    readonly sessionId: SessionId;
-    readonly cwd: string;
-  }) => Promise<readonly Plugin[]>;
-}
-
-export interface ActiveSessionActivation {
-  readonly kind: "active";
+  /**
+   * Installed when the SDK is created; every session runs these plugins, then
+   * its workspace's project plugins. Their `environment` providers open
+   * workspaces. `createNyte` throws if two provide one kind, or none provides
+   * `defaultWorkspace.kind`.
+   */
   readonly plugins: readonly Plugin[];
-  readonly env: PluginEnv;
+  /** Where a root session acts when `sessions.create` names no workspace. */
+  readonly defaultWorkspace: Workspace;
+  /** Decides each workspace once, before its provider is reached. Default: trusted for `defaultWorkspace`, `requires/workspace_trust` for any other. */
+  readonly trust?: (workspace: Workspace) => WorkspaceTrust | Promise<WorkspaceTrust>;
 }
 
-/** A plugin set the host could not bring up; the inventory names the plugin that stopped it. */
-export interface FailedSessionActivation {
-  readonly kind: "failed";
-  readonly error: string;
-  readonly plugins: readonly PluginInfo[];
-}
-
-export type SessionActivation =
-  | ActiveSessionActivation
-  | FailedSessionActivation
-  | Exclude<SessionActivationState, { readonly kind: "active" | "failed" }>;
-
-export type ActivationTarget =
-  | { readonly kind: "new-session" }
-  | { readonly kind: "session"; readonly sessionId: SessionId };
-
-export type SessionActivationResolver = (
-  target: ActivationTarget,
-) => SessionActivation | Promise<SessionActivation>;
-
-export interface StaticNyteOptions extends NyteBaseOptions {
-  readonly plugins: readonly Plugin[];
-  readonly env: PluginEnv;
-  readonly resolveActivation?: never;
-}
-
-export interface LazyNyteOptions extends NyteBaseOptions {
-  readonly plugins?: never;
-  readonly env?: never;
-  readonly resolveActivation: SessionActivationResolver;
-}
-
-export type NyteOptions = StaticNyteOptions | LazyNyteOptions;
+export type RelocateOutcome =
+  | { readonly kind: "relocated" }
+  | { readonly kind: "busy" }
+  | Exclude<SessionActivationState, { readonly kind: "active" }>;
 
 /** Without `verifyAuth`, `provider.status` can only tell a configured credential from a missing one. */
 export type ModelCatalog = Pick<Models, "getModels" | "getModel" | "getAvailable"> &
@@ -625,7 +620,7 @@ export interface Nyte {
   readonly runs: Runs;
   readonly jobs: Jobs;
   readonly heads: Heads;
-  readonly workspace: Workspace;
+  readonly workspace: WorkspaceApi;
   readonly provider: Provider;
   readonly plugins: Plugins;
   readonly cacheWarming: CacheWarming;
@@ -643,14 +638,22 @@ export interface Nyte {
     readonly signal?: AbortSignal;
   }): Promise<AdvanceOutcome>;
   reactivate(): Promise<void>;
-  /** Host-only location read. A saved path is not a trust grant. */
+  /**
+   * Host-only location read. Returns the tree's directory while it is active in
+   * the environment the host's workspace backend reads, and `undefined`
+   * otherwise. A saved path is not a trust grant.
+   */
   sessionCwd(input: { readonly sessionId: SessionId }): Promise<string | undefined>;
-  /** Replace one idle session's environment and plugins, keeping its store and history. */
+  /** Host-only read of the tree's workspace, locator included. */
+  sessionWorkspace(input: { readonly sessionId: SessionId }): Promise<Workspace>;
+  /**
+   * Move an idle session tree to another workspace, opened as any workspace
+   * opens: a child moves its root. Store and history stay.
+   */
   relocate(input: {
     readonly sessionId: SessionId;
-    readonly workspace: TrustedWorkspace;
-    readonly plugins: readonly Plugin[];
-  }): Promise<{ readonly kind: "relocated" } | { readonly kind: "busy" }>;
+    readonly workspace: Workspace;
+  }): Promise<RelocateOutcome>;
   /** Global preparation failure preserves all sessions and defaults; publication is per activation and advances the default even if a session rejects revalidation. */
   setPlugins(
     plugins: readonly Plugin[],

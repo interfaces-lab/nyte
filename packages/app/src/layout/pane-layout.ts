@@ -148,7 +148,7 @@ function otherPaneId(paneId: PaneId): PaneId {
   return paneId === "primary" ? "secondary" : "primary";
 }
 
-function sameSelection(left: PaneSelection, right: PaneSelection): boolean {
+export function sameSelection(left: PaneSelection, right: PaneSelection): boolean {
   if (left.kind !== right.kind) return false;
 
   if (left.kind === "blank" || right.kind === "blank") return true;
@@ -366,9 +366,29 @@ const directionSchema = Type.Enum(["right", "down"]);
 
 const ratioSchema = Type.Number({ minimum: MIN_SPLIT_RATIO, maximum: MAX_SPLIT_RATIO });
 
-const paneSelectionSchema = Type.Union([
+export const paneSelectionSchema = Type.Union([
   Type.Object({ kind: Type.Literal("blank") }, strict),
   Type.Object({ kind: Type.Literal("session"), sessionId }, strict),
+]);
+
+/** A layout as a window tab stores it: the persisted shape without its version. */
+export const paneLayoutSchema = Type.Union([
+  Type.Object(
+    { kind: Type.Literal("single"), paneId: paneIdSchema, selection: paneSelectionSchema },
+    strict,
+  ),
+  Type.Object(
+    {
+      kind: Type.Literal("split"),
+      direction: directionSchema,
+      ratio: ratioSchema,
+      leading: paneIdSchema,
+      primary: paneSelectionSchema,
+      secondary: paneSelectionSchema,
+      activePaneId: paneIdSchema,
+    },
+    strict,
+  ),
 ]);
 
 const persistedPaneLayoutSchema = Type.Union([

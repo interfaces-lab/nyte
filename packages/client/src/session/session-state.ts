@@ -1,6 +1,6 @@
 /**
  * The client's model of one head, folded from `sessions.snapshot` and the
- * events `watch` yields after it (design record, "Events and views").
+ * events `watch` yields after it (Core guide, "Events").
  *
  * Durable state is the snapshot's and advances by commit: the transcript fold
  * is core's own, so a restore and a live append land on the same items. The

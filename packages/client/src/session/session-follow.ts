@@ -3,8 +3,8 @@
  * changed: one snapshot, then `watch` from the snapshot's seq, refolded with
  * `foldEvent`. Ordinary events fold locally. A rebase, one full snapshot,
  * happens on structural change or recovery: the fold cannot apply an event, a
- * watch fails (including a cursor older than the event floor; design record,
- * "Events and views"), or a head moved without the commits to follow. The
+ * watch fails (including a cursor older than the event floor; Core guide,
+ * "Events"), or a head moved without the commits to follow. The
  * observer owns bootstrap and recovery: a failed read is reported and retried
  * until it succeeds or `close`. Session metadata (the session row, effective
  * inputs, context) is core's projection; it is re-read through the narrow

@@ -17,7 +17,15 @@ import {
 import type { Session, Store } from "../../src/kernel/store.ts";
 import { definePlugin } from "../../src/plugins/index.ts";
 import type { Diagnostics } from "../../src/plugins/types.ts";
-import { message, openSession, openStore, seedHead, user, within } from "./helpers.ts";
+import {
+  localOptions,
+  message,
+  openSession,
+  openStore,
+  seedHead,
+  user,
+  within,
+} from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "watch-model",
@@ -92,8 +100,7 @@ async function fixture() {
     streamFn: () => {
       throw new Error("Watch must not invoke a provider");
     },
-    env: { cwd: "/tmp/watch-fixture" },
-    plugins: [
+    ...localOptions("/tmp/watch-fixture", [
       definePlugin({
         id: "watch-notices",
         session(api) {
@@ -101,7 +108,7 @@ async function fixture() {
           diagnostics.resolve(api.diagnostics);
         },
       }),
-    ],
+    ]),
   });
   const id = sessionId(session.id);
   await nyte.sessions.get({ sessionId: id });
@@ -337,7 +344,7 @@ test("expired cursors fail before first yield and slow replay expires and drains
       .watch({ sessionId: f.id, afterSeq: 0, signal: stop.signal })
       [Symbol.asyncIterator]();
     assert.equal((await next(iterator)).kind, "activation_changed");
-    assert.equal((await next(iterator)).kind, "fact");
+    assert.equal((await next(iterator)).kind, "diagnostic");
     const floor = (await f.session.events.last()) - 1;
     await f.session.events.trim(floor);
     await assert.rejects(

@@ -10,6 +10,7 @@ function session(id: SessionId): SessionInfo {
   return {
     sessionId: id,
     activation: { kind: "active" },
+    workspace: { kind: "local", id: "fixture", cwd: "/" },
     name: id,
     createdAt: 1,
     lastActivityAt: 1,

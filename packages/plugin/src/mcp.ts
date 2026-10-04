@@ -19,7 +19,7 @@ import {
 } from "@earendil-works/pi-mcp";
 import type { ContentBlock, LlmContent } from "@earendil-works/pi-mcp";
 import { ToolError, definePlugin, formatSize } from "@nyte-ai/core/plugins";
-import type { AgentTool, Disposer } from "@nyte-ai/core/plugins";
+import type { AgentTool, Disposer, ExecutionEnv } from "@nyte-ai/core/plugins";
 import { contentText } from "@nyte-ai/schema";
 import type { JsonValue } from "@nyte-ai/schema";
 import { Type, Unsafe } from "typebox";
@@ -674,7 +674,9 @@ function bridgeTool(
       );
       const convertedContent =
         result.content.length > 0
-          ? (await Promise.all(result.content.map(blockToContent))).flat()
+          ? (
+              await Promise.all(result.content.map((block) => blockToContent(block, call.env)))
+            ).flat()
           : toLlmContent(result);
       if (result.isError === true && contentText(convertedContent) === "") {
         convertedContent.push({
@@ -682,7 +684,7 @@ function bridgeTool(
           text: `MCP tool ${server}/${tool.name} returned an error`,
         });
       }
-      const { content, fullOutputPath } = await limitMcpContent(convertedContent);
+      const { content, fullOutputPath } = await limitMcpContent(convertedContent, call.env);
       const { _meta: _ignored, ...structuredContent } = result;
       const converted = {
         content,
@@ -704,7 +706,7 @@ async function saveOutput(data: string | Uint8Array, extension: string): Promise
   return path;
 }
 
-async function blockToContent(block: ContentBlock): Promise<LlmContent[]> {
+async function blockToContent(block: ContentBlock, env: ExecutionEnv): Promise<LlmContent[]> {
   if (block.type === "resource_link") {
     const details = [
       block.mimeType,
@@ -739,7 +741,14 @@ async function blockToContent(block: ContentBlock): Promise<LlmContent[]> {
     try {
       const uriPath = URL.canParse(uri) ? new URL(uri).pathname : uri;
       const path = await saveOutput(data, /\.[A-Za-z0-9]{1,8}$/.exec(uriPath)?.[0] ?? ".bin");
-      return [{ type: "text", text: `[Binary resource ${uri} (${kind}) saved to ${path}]` }];
+      const visible = (await env.stat(path).catch(() => undefined))?.kind === "file";
+
+      return [
+        {
+          type: "text",
+          text: `[Binary resource ${uri} (${kind})${visible ? ` saved to ${path}` : ""}]`,
+        },
+      ];
     } catch (cause) {
       return [
         {
@@ -777,20 +786,25 @@ function truncateMiddle(content: string, maxBytes: number) {
 
 async function limitMcpContent(
   content: LlmContent[],
+  env: ExecutionEnv,
 ): Promise<{ content: LlmContent[]; fullOutputPath?: string }> {
   const combined = contentText(content);
   const truncation = truncateMiddle(combined, MCP_OUTPUT_MAX_BYTES);
   if (!truncation.truncated) return { content };
   let fullOutputPath: string | undefined;
-  let where: string;
+  let where = "";
   try {
-    fullOutputPath = await saveOutput(combined, ".txt");
-    where = `[Full output: ${fullOutputPath} (read it with offset/limit)]`;
+    const saved = await saveOutput(combined, ".txt");
+
+    if ((await env.stat(saved).catch(() => undefined))?.kind === "file") {
+      fullOutputPath = saved;
+      where = `\n\n[Full output: ${saved} (read it with offset/limit)]`;
+    }
   } catch (cause) {
-    where = `[Could not save the full output: ${errorMessage(cause)}]`;
+    where = `\n\n[Could not save the full output: ${errorMessage(cause)}]`;
   }
   const tokens = Math.ceil(truncation.totalBytes / 4);
-  const text = `Warning: truncated output (original token count: ${String(tokens)})\nTotal output lines: ${String(truncation.totalLines)}\n\n${truncation.content}\n\n${where}`;
+  const text = `Warning: truncated output (original token count: ${String(tokens)})\nTotal output lines: ${String(truncation.totalLines)}\n\n${truncation.content}${where}`;
   return {
     content: [{ type: "text", text }, ...content.filter((block) => block.type === "image")],
     ...(fullOutputPath ? { fullOutputPath } : {}),

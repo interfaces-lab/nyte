@@ -133,6 +133,10 @@ function snapshot(): ShellState {
   return state;
 }
 
+type ShellPage = Exclude<ShellStage, WorkspaceStage>;
+
+let pageRoute: ((page: ShellPage | undefined) => void) | undefined;
+
 export const shellActions = Object.freeze({
   showAbout(about: AppInfo | undefined): void {
     publish({ ...state, about });
@@ -162,18 +166,39 @@ export const shellActions = Object.freeze({
     publish(next);
   },
   openCustomize(sessionId: SessionId | undefined): void {
-    if (state.stage.kind === "customize" && state.stage.sessionId === sessionId) return;
-    publish({ ...state, stage: { kind: "customize", sessionId } });
+    if (pageRoute !== undefined) pageRoute({ kind: "customize", sessionId });
+    else applyShellStage({ kind: "customize", sessionId });
   },
   openEnvironments(): void {
-    if (state.stage.kind === "environments") return;
-    publish({ ...state, stage: { kind: "environments" } });
+    if (pageRoute !== undefined) pageRoute({ kind: "environments" });
+    else applyShellStage({ kind: "environments" });
   },
   showWorkspace(): void {
     if (state.stage.kind === "workspace") return;
-    publish({ ...state, stage: { kind: "workspace" } });
+
+    if (pageRoute !== undefined) pageRoute(undefined);
+    else applyShellStage({ kind: "workspace" });
   },
 });
+
+/**
+ * Window tabs own the stage on the desktop: opening or leaving a page becomes
+ * tab navigation, and the stage then follows the route like any other place.
+ */
+export function routeShellPages(route: (page: ShellPage | undefined) => void): void {
+  pageRoute = route;
+}
+
+/** Show a stage as the route names it. */
+export function applyShellStage(stage: ShellStage): void {
+  if (
+    stage.kind === state.stage.kind &&
+    (stage.kind !== "customize" ||
+      (state.stage.kind === "customize" && state.stage.sessionId === stage.sessionId))
+  )
+    return;
+  publish({ ...state, stage });
+}
 
 export function useShellState(): ShellState {
   return useSyncExternalStore(subscribe, snapshot, snapshot);

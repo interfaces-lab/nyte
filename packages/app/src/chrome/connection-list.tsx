@@ -151,7 +151,7 @@ export function ConnectionRow({
 }: {
   glyph: ReactNode;
   title: ReactNode;
-  detail: string | undefined;
+  detail?: ReactNode;
   control?: ReactNode;
   /** Full-width content under the row, such as a form the control opened. */
   expansion?: ReactNode;

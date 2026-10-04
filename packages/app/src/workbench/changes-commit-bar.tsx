@@ -582,7 +582,6 @@ export function ChangesCommitBar({
             placeholder="fix/tab-close"
             autoComplete="off"
             spellCheck={false}
-            autoFocus
             value={branchName}
             readOnly={running}
             xstyle={styles.branchField}

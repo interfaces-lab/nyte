@@ -12,7 +12,8 @@ import {
 } from "@nyte-ai/ai";
 import type { MutableModels, Provider } from "@nyte-ai/ai";
 import { sessionMark } from "@nyte-ai/client";
-import { createHost } from "@nyte-ai/host";
+import { SqliteStore } from "@nyte-ai/core/store";
+import { createHost, environmentId, workspaceStorePath } from "@nyte-ai/host";
 import { definePlugin, ToolWait } from "@nyte-ai/plugin";
 import { getCurrentTools } from "@nyte-ai/schema";
 import type { Api, AssistantMessage, Model } from "@nyte-ai/schema";
@@ -467,6 +468,7 @@ test("watch pump forwards activation notices instead of interpreting them", asyn
           envelope.kind === "event" &&
           envelope.event.kind === "activation_changed" &&
           envelope.event.activation.kind === "requires" &&
+          envelope.event.activation.requirement.kind === "workspace_trust" &&
           envelope.event.activation.requirement.cwd === path,
       ),
     );
@@ -585,7 +587,7 @@ test("trustWorkspace reactivates every open target", async () => {
   });
 });
 
-test("history survives restart while an unavailable workspace requires trust", async () => {
+test("history survives restart while the workspace folder is missing", async () => {
   const { root, createHost } = await fixture();
   const path = join(root, "project");
   await mkdir(path);
@@ -604,10 +606,7 @@ test("history survives restart while an unavailable workspace requires trust", a
   assert.equal((await restarted.call(1, "host.openWorkspace", { path })).kind, "opened");
   const snapshot = await restarted.call(1, "sessions.snapshot", { sessionId: session.sessionId });
   assert.ok(snapshot);
-  assert.deepEqual(snapshot.session.activation, {
-    kind: "requires",
-    requirement: { kind: "workspace_trust", cwd: path },
-  });
+  assert.deepEqual(snapshot.session.activation, { kind: "inactive" });
   assert.equal((await restarted.call(1, "workspace.list", undefined))[0]?.available, false);
 
   const send = {
@@ -847,6 +846,43 @@ test("a closed directory refresh drops owners for sessions removed from its stor
     (await reader.call(1, "sessions.get", { sessionId: moved.sessionId }))?.name,
     "Home copy",
   );
+});
+
+test("a closed project lists a root moved to an untrusted folder as needing trust", async () => {
+  const { root, createHost } = await fixture();
+  const path = join(root, "project");
+  const untrusted = join(root, "untrusted");
+  await Promise.all([mkdir(path), mkdir(untrusted)]);
+  const host = createHost();
+  await host.call(1, "host.openWorkspace", { path });
+  await host.call(1, "host.trustWorkspace", { path });
+  const stays = await host.call(1, "sessions.create", { name: "Stays" });
+  await host.call(1, "host.closeWorkspace", undefined);
+  await host.close();
+
+  const store = new SqliteStore(await workspaceStorePath(path));
+  const moved = await store.create({});
+  const workspace = { kind: "local", id: await environmentId(), cwd: untrusted };
+  const [oid] = await moved.objects.put([{ kind: "blob", value: workspace }]);
+  assert.ok(oid);
+
+  const written = await moved.refs.update([{ name: "refs/workspace", from: null, to: oid }], {
+    reason: "moved",
+  });
+
+  assert.equal(written.ok, true);
+  await moved.close();
+  await store.close();
+
+  const { directories } = await createHost().call(1, "host.sessionDirectory", undefined);
+  const listed = localSessions(directories, path);
+  assert.deepEqual(listed?.find((session) => session.sessionId === stays.sessionId)?.activation, {
+    kind: "active",
+  });
+  assert.deepEqual(listed?.find((session) => session.sessionId === moved.id)?.activation, {
+    kind: "requires",
+    requirement: { kind: "workspace_trust", cwd: untrusted },
+  });
 });
 
 test("subagent children stay out of the sidebar directory", async () => {
@@ -1343,7 +1379,7 @@ test("thread choices survive workspace switches and restart before and after the
   assert.deepEqual(snapshot?.session.config, selected);
 });
 
-test("failed plugin preparation rejects activation and retains the available failure record only in main", async () => {
+test("failed plugin preparation fails the session with a redacted error and keeps the failure record in main", async () => {
   const { root, createHost, events } = await fixture();
   const path = join(root, "plugin-project");
   const directory = join(path, ".nyte", "plugins", "broken");
@@ -1354,10 +1390,8 @@ test("failed plugin preparation rejects activation and retains the available fai
   await host.call(1, "host.openWorkspace", { path });
   await host.call(1, "host.trustWorkspace", { path });
   const before = new Set(ipcDiagnostics.keys());
-  await assert.rejects(
-    host.call(1, "sessions.create", { name: "Plugin failure" }),
-    /synthetic-secret-plugin-body/,
-  );
+  const session = await host.call(1, "sessions.create", { name: "Plugin failure" });
+  assert.deepEqual(session.activation, { kind: "failed", error: "Plugins failed to load" });
   const status = events.filter((event) => event.kind === "status");
   assert.equal(status.length, 1);
   const diagnostics = [...ipcDiagnostics.entries()].filter(([id]) => !before.has(id));

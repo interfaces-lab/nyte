@@ -15,7 +15,7 @@ import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
 import { glyph, layer, menu, radius, switchControl } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { intent, surfaceTheme, type Tint } from "./surface-theme.ts";
-import { motion, role, shadow, type } from "./vars.stylex.ts";
+import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
 import { Icon, type IconName } from "./icon.tsx";
 
 export const MENU_COLLISION: NonNullable<MenuPrimitive.Positioner.Props["collisionAvoidance"]> = {
@@ -23,6 +23,8 @@ export const MENU_COLLISION: NonNullable<MenuPrimitive.Positioner.Props["collisi
   align: "shift",
   fallbackAxisSide: "none",
 };
+
+const THUMB_TRAVEL = `calc(${switchControl.widthMd} - ${switchControl.knobMd} - ${switchControl.paddingMd} * 2)`;
 
 export const menuStyles = create({
   positioner: { zIndex: layer.menu, outline: "none" },
@@ -83,7 +85,10 @@ export const menuStyles = create({
     paddingBlock: menu.itemPaddingBlock,
     paddingInline: menu.itemPaddingInline,
     borderRadius: menu.itemRadius,
-    outline: "none",
+    outlineStyle: { default: "none", "[data-highlighted]": "solid" },
+    outlineWidth: 1,
+    outlineColor: appearance.focusRing,
+    outlineOffset: -1,
     backgroundColor: {
       default: "transparent",
       "[data-highlighted]": role.bgHover,
@@ -173,7 +178,10 @@ export const menuStyles = create({
       boxShadow: shadow.shadowSm,
       transform: {
         default: "translateX(0)",
-        "[data-checked]": `translateX(calc(${switchControl.widthMd} - ${switchControl.knobMd} - ${switchControl.paddingMd} * 2))`,
+        "[data-checked]": {
+          default: `translateX(${THUMB_TRAVEL})`,
+          ":dir(rtl)": `translateX(calc(${THUMB_TRAVEL} * -1))`,
+        },
       },
     },
   },

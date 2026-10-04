@@ -36,7 +36,7 @@ To start a client yourself, run `pnpm dev:tui` or `pnpm dev:desktop`. The docume
 | [docs](packages/docs/README.md) | Documentation website and design system reference |
 | [demo](packages/demo) | Website and server deployment examples |
 
-Read the [design record](packages/docs/content/docs/design.mdx) for architecture and the affected package's README for details. Read root and ancestor `AGENTS.md` files before editing. Package instructions currently live in [core](packages/core/AGENTS.md), [desktop](packages/desktop/AGENTS.md), [tui](packages/tui/AGENTS.md), [mobile](packages/mobile/AGENTS.md), and [docs](packages/docs/AGENTS.md).
+Read the [Core guide](packages/lab/src/core/guide.tsx) for architecture and the affected package's README for details. Read root and ancestor `AGENTS.md` files before editing. Package instructions currently live in [core](packages/core/AGENTS.md), [desktop](packages/desktop/AGENTS.md), [tui](packages/tui/AGENTS.md), [mobile](packages/mobile/AGENTS.md), and [docs](packages/docs/AGENTS.md).
 
 ## Verification
 

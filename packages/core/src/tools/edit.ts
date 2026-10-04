@@ -10,7 +10,6 @@ import {
   normalizeToLF,
   restoreLineEndings,
 } from "./edit-diff.ts";
-import { requireEnv } from "./env.ts";
 import { withFileMutationQueue } from "./support/file-mutation-queue.ts";
 import { resolveToCwd } from "./support/path-utils.ts";
 
@@ -92,9 +91,8 @@ export function createEditToolDefinition(): ToolDefinition<
       if (edits.length === 0) {
         throw new Error("Edit tool input is invalid. edits must contain at least one replacement.");
       }
-      const { signal } = call;
-      const env = requireEnv(call);
-      const absolutePath = resolveToCwd(path, env.cwd);
+      const { signal, env } = call;
+      const absolutePath = resolveToCwd(path, env);
 
       return withFileMutationQueue(env, absolutePath, async () => {
         // Do not reject from an abort event listener here: that would release the

@@ -197,7 +197,7 @@ export function Src(input: {
       title={`packages/${path}`}
       {...props(styles.src)}
     >
-      {sourceLabel(path, input.line)} ↗
+      {sourceLabel(path, input.line)} <span aria-hidden>↗</span>
     </a>
   );
 }

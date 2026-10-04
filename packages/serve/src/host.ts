@@ -6,7 +6,7 @@
  */
 import { createNyteModels } from "@nyte-ai/ai";
 import type { MutableModels } from "@nyte-ai/ai";
-import type { Nyte, SessionId, TrustedWorkspace } from "@nyte-ai/core";
+import type { Nyte, SessionId } from "@nyte-ai/core";
 import { SqliteStore } from "@nyte-ai/core/store";
 import {
   createGitHubService,
@@ -17,7 +17,7 @@ import {
   WorkspaceTrustRequired,
   workspaceStorePath,
 } from "@nyte-ai/host";
-import type { GitHubCommandRunner } from "@nyte-ai/host";
+import type { GitHubCommandRunner, TrustedWorkspace } from "@nyte-ai/host";
 import { createModelPreferencesStore, readCatalog } from "@nyte-ai/host/catalog";
 import type { ModelPreferencesStore, ResolvedCatalog } from "@nyte-ai/host/catalog";
 import { createProviderEnvironment } from "@nyte-ai/host/environment";

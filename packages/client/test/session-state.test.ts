@@ -47,6 +47,7 @@ function snapshot(
     session: {
       sessionId: SESSION,
       activation: { kind: "active" },
+      workspace: { kind: "local", id: "fixture", cwd: "/" },
       createdAt: 0,
       lastActivityAt: 0,
       pinned: false,

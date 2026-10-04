@@ -2,7 +2,7 @@ import { cloudRoute, docsRoute } from "./shared";
 
 export type SiteSectionId = "docs" | "cloud";
 
-export type SiteFeatureIcon = "design" | "cloud";
+export type SiteFeatureIcon = "docs" | "cloud";
 
 export interface SiteFeature {
   href: string;
@@ -25,12 +25,12 @@ export const SITE_SECTIONS = [
   {
     id: "docs",
     label: "Docs",
-    href: `${docsRoute}/design`,
+    href: `${docsRoute}/composition`,
     features: [
       {
-        href: `${docsRoute}/design`,
-        title: "Design",
-        icon: "design",
+        href: `${docsRoute}/composition`,
+        title: "Build an agent app",
+        icon: "docs",
       },
     ],
   },

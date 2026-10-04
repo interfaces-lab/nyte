@@ -1,6 +1,7 @@
 import { stylex } from "@nyte-ai/ui/stylex";
 import react from "@vitejs/plugin-react";
 import { defaultClientConditions, defineConfig } from "vite";
+import { reviewCore } from "./server/plugin.ts";
 
 /** A blank room: StyleX and nothing else. No Tailwind, no inherited palette. */
 export default defineConfig(({ command }) => ({
@@ -31,6 +32,7 @@ export default defineConfig(({ command }) => ({
       lightningcssOptions: { targets: { chrome: 152 << 16 } },
     }),
     react(),
+    reviewCore(),
   ],
   build: {
     rolldownOptions: {

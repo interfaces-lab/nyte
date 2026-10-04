@@ -163,6 +163,7 @@ test("a tool round commits the call, then every result in order, then the answer
             tool: "read",
             args: { id: callId },
             replay: "never",
+            environment: "test",
           });
         }
         return results("c1", "c2");
@@ -1490,6 +1491,7 @@ test("drive runs a head to idle under one lease; a parked run releases the head 
           tool: "read",
           args: {},
           replay: "never",
+          environment: "test",
         });
         assert.ok(opened.kind === "opened");
         await parkEffect(input.session, { lease: input.lease, view: opened.view });
@@ -1535,6 +1537,7 @@ test("a waiting run resumes when every effect already has a result", async () =>
           tool: "read",
           args: {},
           replay: "never",
+          environment: "test",
         });
         assert.ok(opened.kind === "opened");
         await parkEffect(input.session, { lease: input.lease, view: opened.view });

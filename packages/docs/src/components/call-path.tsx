@@ -4,9 +4,9 @@ import { cn } from "cn";
 import Link from "next/link";
 
 /*
- * Built rows link to the design section that covers them. The last connector is
- * dashed because @nyte-ai/protocol is named and not built. Accent means built.
- * Reserved rows stay muted, with a hollow marker.
+ * Built rows link to the docs section that covers them, if there is one. The
+ * last connector is dashed because @nyte-ai/protocol is named and not built.
+ * Accent means built. Reserved rows stay muted, with a hollow marker.
  */
 
 interface Stage {
@@ -22,28 +22,26 @@ const stages: Stage[] = [
   {
     name: "client",
     note: "tui (OpenTUI) · desktop (Electron)",
-    href: "/docs/design#deployment",
+    href: "/docs/sdk#the-client-loop",
     built: true,
     hop: "solid",
   },
   {
     name: "step",
     note: "one durable step under a fenced lease; drive loops it",
-    href: "/docs/design#leases-and-the-step",
     built: true,
     hop: "solid",
   },
   {
     name: "turn",
     note: "respond, then the tool batch; the step commits between",
-    href: "/docs/design#the-turn",
     built: true,
     hop: "solid",
   },
   {
     name: "StreamFn",
     note: "one injected function; the loop knows no provider",
-    href: "/docs/design#the-sdk",
+    href: "/docs/sdk",
     built: true,
     hop: "solid",
   },

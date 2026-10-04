@@ -6,7 +6,7 @@ import { afterEach, test, vi } from "vitest";
 import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
 import type { MutableModels } from "@nyte-ai/ai";
 import type { Api, Model } from "@nyte-ai/schema";
-import { SKILLS_PLUGIN_ID } from "@nyte-ai/core/plugins";
+import { createLocalExecutionEnv, SKILLS_PLUGIN_ID } from "@nyte-ai/core/plugins";
 import { pluginSource } from "@nyte-ai/core/plugin-source";
 import {
   createWorkspaceStore,
@@ -181,7 +181,11 @@ function offlineModels(): MutableModels {
 
 test("a discovered plugin can replace a host builtin", async () => {
   const f = await fixture();
-  const context = { models: offlineModels(), model };
+  const context = {
+    models: offlineModels(),
+    model,
+    env: createLocalExecutionEnv({ id: "test", cwd: f.cwd }),
+  };
   const builtins = await resolveHostPlugins({ kind: "home" }, context);
   const builtin = builtins.plugins.find((plugin) => plugin.id === "rename");
   assert.ok(builtin);
@@ -219,7 +223,11 @@ test("the skills plugin is versioned by what a scan finds, not by how often it r
     );
   await write("Boil the water first.");
   const target = { kind: "project", workspace: f.workspace } as const;
-  const context = { models: offlineModels(), model };
+  const context = {
+    models: offlineModels(),
+    model,
+    env: createLocalExecutionEnv({ id: "test", cwd: f.cwd }),
+  };
 
   const first = await resolveHostPlugins(target, context);
   // An unchanged scan must keep the version, or every resolution reactivates the plugin.

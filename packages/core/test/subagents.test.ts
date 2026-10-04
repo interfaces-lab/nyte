@@ -3,7 +3,7 @@
  * call parks, the host runs the child in its own session, and the
  * child's terminal state wakes the parent with its report. The provider is a
  * script; the store, the runner, and both sessions are real. Design:
- * design.mdx, "Agents".
+ * packages/core/src/kernel/README.md, "Delegation".
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
@@ -16,7 +16,7 @@ import { definePlugin, type Plugin } from "../src/plugins/index.ts";
 import type { AgentTool, StreamFn } from "../src/kernel/loop/types.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { assistant, call, openStore, sleep, within } from "./kernel/helpers.ts";
+import { assistant, call, localOptions, openStore, sleep, within } from "./kernel/helpers.ts";
 
 const model: Model<Api> = {
   id: "script-model",
@@ -161,8 +161,7 @@ async function open(
       getAvailable: extra.getAvailable ?? (async () => catalog),
     },
     model,
-    plugins: plugins(extra.plugins),
-    env: { cwd: "/tmp/nowhere" },
+    ...localOptions("/tmp/nowhere", plugins(extra.plugins)),
   });
 }
 

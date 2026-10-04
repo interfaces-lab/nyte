@@ -14,7 +14,7 @@ import { bindTool } from "../src/tools/bind-tool.ts";
 import type { AgentTool } from "../src/kernel/loop/types.ts";
 import { IMAGE_LIMITS, processImage } from "../src/kernel/loop/image.ts";
 import type { StreamFn } from "../src/kernel/loop/types.ts";
-import { assistant, openStore, sleep, toolCall, within } from "./kernel/helpers.ts";
+import { assistant, localOptions, openStore, sleep, toolCall, within } from "./kernel/helpers.ts";
 
 function oversizedPng(): Buffer {
   const image = new PhotonImage(new Uint8Array(4 * 2400 * 1200).fill(255), 2400, 1200);
@@ -113,8 +113,7 @@ test("an uploaded image is bounded before the message lands", async () => {
       getAvailable: async () => [model],
     },
     model,
-    plugins: [],
-    env: { cwd: "/tmp/nowhere" },
+    ...localOptions("/tmp/nowhere"),
   });
   try {
     const { sessionId } = await nyte.sessions.create();

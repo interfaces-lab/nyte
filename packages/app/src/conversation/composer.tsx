@@ -15,7 +15,7 @@ import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { trayStyles } from "../theme/tray.stylex.ts";
 import { props } from "@stylexjs/stylex";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, ReactElement, ReactNode } from "react";
+import type { DragEvent, KeyboardEvent, ReactElement, ReactNode } from "react";
 import type {
   CommandInfo,
   Delivery,
@@ -58,7 +58,12 @@ import type { ComposerDocumentState, ComposerSubmission } from "./composer-docum
 import { ComposerEditor, type ComposerEditorHandle } from "./composer-editor.tsx";
 import { composerSource, useComposerSuggestions } from "./composer-suggestions.tsx";
 import type { ComposerMentionFiles, ComposerSuggestionCatalog } from "./composer-suggestions.tsx";
-import { bindComposerFileDrop, carriesFiles } from "./composer-file-drop.ts";
+import {
+  bindComposerFileDrop,
+  carriesFiles,
+  carriesTreeFiles,
+  droppedTreeFiles,
+} from "./composer-file-drop.ts";
 import { attachComposerFiles } from "./composer-files.ts";
 import type { ComposerImageAttachment } from "./composer-files.ts";
 import {
@@ -234,7 +239,6 @@ interface ComposerFrameProps {
     document: ComposerDocumentState,
   ) => boolean | Promise<boolean>;
   placeholder: string;
-  autoFocus?: boolean;
   disabled?: boolean;
   /** A run is live: empty-input Esc and the stop button both request an abort. */
   busy?: boolean;
@@ -271,7 +275,6 @@ export function ComposerFrame({
   onDocumentChange,
   onSubmit,
   placeholder,
-  autoFocus = false,
   disabled = false,
   busy = false,
   stopping = false,
@@ -290,14 +293,14 @@ export function ComposerFrame({
   onFilesSelected,
   onAttachmentRemove,
   editing,
-  runningMessagePreference = "queue",
+  runningMessagePreference = "steer",
   answering = false,
 }: ComposerFrameProps): ReactElement {
   const frameRef = useRef<HTMLFormElement>(null);
   const areaRef = useRef<ComposerEditorHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const host = useHostState();
-  const [dragging, setDragging] = useState(false);
+  const [dragging, setDragging] = useState<"files" | "mention">();
   const [editorNeedsExpansion, setEditorNeedsExpansion] = useState(false);
   const [narrow, setNarrow] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -320,6 +323,15 @@ export function ComposerFrame({
 
   const roles = useMemo(() => deliveryChoices, []);
   const canAttach = onFilesSelected !== undefined;
+
+  const dropKind = (event: DragEvent): "files" | "mention" | undefined => {
+    if (disabled) return undefined;
+
+    if (canAttach && carriesFiles(event)) return "files";
+
+    return carriesTreeFiles(event) ? "mention" : undefined;
+  };
+
   const hasInstructionChip = references.some((reference) => reference.kind !== "mention");
   const hasSubmission = document.text.trim() !== "" || attachments.length > 0 || hasInstructionChip;
   const canSubmit = !disabled && !submitting && !attachmentBusy && hasSubmission;
@@ -521,31 +533,46 @@ export function ComposerFrame({
         }}
         onDragEnter={(event) => {
           event.preventDefault();
-
-          if (!disabled && canAttach && carriesFiles(event)) setDragging(true);
+          setDragging(dropKind(event));
         }}
         onDragOver={(event) => {
           event.preventDefault();
-          const accepted = !disabled && canAttach && carriesFiles(event);
-          event.dataTransfer.dropEffect = accepted ? "copy" : "none";
+          const kind = dropKind(event);
+          // A tree drag only allows "move".
+          event.dataTransfer.dropEffect =
+            kind === "files" ? "copy" : kind === "mention" ? "move" : "none";
 
-          if (accepted) setDragging(true);
+          if (kind !== undefined) setDragging(kind);
         }}
         onDragLeave={(event) => {
           const nextTarget = event.relatedTarget;
 
           if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
-          setDragging(false);
+          setDragging(undefined);
         }}
         onDropCapture={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          setDragging(false);
+          setDragging(undefined);
 
-          if (disabled || !canAttach || !carriesFiles(event)) return;
-          onFilesSelected(Array.from(event.dataTransfer.files));
+          if (disabled) return;
+
+          if (canAttach && carriesFiles(event)) {
+            onFilesSelected(Array.from(event.dataTransfer.files));
+
+            return;
+          }
+
+          const files = droppedTreeFiles(event);
+
+          if (files.length > 0)
+            areaRef.current?.dropReferences(
+              files.map((file) => ({ kind: "file", file })),
+              event.clientX,
+              event.clientY,
+            );
         }}
-        onDragEnd={() => setDragging(false)}
+        onDragEnd={() => setDragging(undefined)}
         {...props(
           dragging && intent.primary,
           composerStyles.frame,
@@ -556,7 +583,8 @@ export function ComposerFrame({
           dragging && composerStyles.frameDragging,
         )}
       >
-        {dragging && <span aria-hidden="true" {...props(composerStyles.dropGuard)} />}
+        {/* A mention lands on the text under the pointer, so only files get the guard. */}
+        {dragging === "files" && <span aria-hidden="true" {...props(composerStyles.dropGuard)} />}
         {canAttach && (
           <input
             ref={fileInputRef}
@@ -603,9 +631,8 @@ export function ComposerFrame({
               }
               files={suggestionMenu.files}
               combobox={suggestionMenu.combobox}
-              placeholder={dragging ? DROP_PLACEHOLDER : placeholder}
+              placeholder={dragging === "files" ? DROP_PLACEHOLDER : placeholder}
               document={document}
-              autoFocus={autoFocus && !disabled}
               disabled={disabled}
               onReferencesChange={setReferences}
               onDocumentChange={(next, completion) => {
@@ -925,7 +952,6 @@ export function Composer({
   initialViewState = DEFAULT_COMPOSER_VIEW_STATE,
   onViewStateChange,
   inputRef,
-  autoFocus = true,
   fileDropRoot,
   backgroundWork,
   answer,
@@ -946,7 +972,6 @@ export function Composer({
   initialViewState?: ComposerViewState;
   onViewStateChange?: (state: ComposerViewState) => void;
   inputRef?: (element: ComposerEditorHandle | null) => void;
-  autoFocus?: boolean;
   fileDropRoot?: HTMLElement | null;
   backgroundWork?: { readonly content: ReactNode; readonly onEscape: () => boolean };
   /** A waiting question the composer's words answer. */
@@ -1752,7 +1777,6 @@ export function Composer({
             }}
             onSubmit={send}
             placeholder={answer?.placeholder ?? FOLLOW_UP_PLACEHOLDER}
-            autoFocus={autoFocus}
             disabled={disabled}
             busy={liveRun !== undefined}
             runningMessagePreference={runningMessagePreference}

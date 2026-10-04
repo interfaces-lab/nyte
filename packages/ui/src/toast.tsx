@@ -60,7 +60,7 @@ const styles = create({
       "[data-expanded]": "translateX(var(--toast-swipe-movement-x)) translateY(var(--_offset-y))",
       "[data-starting-style]": EXIT,
       "[data-ending-style]": {
-        default: EXIT,
+        default: "translateY(8px)",
         "[data-swipe-direction='left']":
           "translateX(calc(var(--toast-swipe-movement-x) - 150%)) translateY(var(--_offset-y))",
         "[data-swipe-direction='right']":
@@ -68,7 +68,11 @@ const styles = create({
         "[data-swipe-direction='down']": "translateY(calc(var(--toast-swipe-movement-y) + 150%))",
       },
     },
-    opacity: { default: 1, "[data-limited]": 0 },
+    opacity: {
+      default: 1,
+      "[data-limited]": 0,
+      "[data-ending-style]": { default: 0, "[data-swipe-direction]": 1 },
+    },
     transitionProperty: "transform, opacity, height",
     transitionDuration: {
       default: `${motion.durationNormal}, ${motion.durationNormal}, ${motion.durationFast}`,

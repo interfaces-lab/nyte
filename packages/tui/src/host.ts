@@ -1,10 +1,9 @@
 /**
  * The terminal host over the SDK: one store worker and one `Nyte` per
- * workspace, composed the way the design record says a host composes
- * (`createNyte` with a store, a stream function, a model catalog, plugins
- * behind trust) and volunteered as a runner with `attach()`.
+ * workspace, composed with `createNyte` (a store, a stream function, a model
+ * catalog, plugins behind trust) and volunteered as a runner with `attach()`.
  */
-import type { Disposer, Plugin, Nyte, SessionId, TrustedWorkspace } from "@nyte-ai/core";
+import type { Disposer, Nyte, SessionId } from "@nyte-ai/core";
 import { WorkerStore } from "@nyte-ai/core/store";
 import type { Store } from "@nyte-ai/core/store";
 import type { Session } from "@nyte-ai/core/store";
@@ -94,16 +93,6 @@ export class Host {
   /** Volunteer this process as the runner for one session and its children. */
   attach(id: SessionId): Disposer {
     return this.nyte.attach({ sessions: [id] });
-  }
-
-  /** The conversation's execution directory, independent of this host's database directory. */
-  async sessionCwd(id: SessionId): Promise<string> {
-    return (await this.nyte.sessionCwd({ sessionId: id })) ?? this.cwd;
-  }
-
-  /** The caller validates destination trust and resolves its plugins before changing location. */
-  relocate(id: SessionId, workspace: TrustedWorkspace, plugins: readonly Plugin[]) {
-    return this.nyte.relocate({ sessionId: id, workspace, plugins });
   }
 
   /**

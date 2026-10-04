@@ -2,11 +2,7 @@
 
 Git's object database with messages in place of files. This directory is the
 durable core of `@nyte-ai/core`: it decides what survives, who may write, and
-in what order everyone sees it. It imports `@nyte-ai/protocol` (the SDK data
-types and the ref-name rules), `@nyte-ai/schema` (the pi-derived
-message types), `@nyte-ai/ai` (the provider stream), `@nyte-ai/telemetry` (the
-span contract), `typebox`, `node:crypto`, and
-`node:sqlite` for local storage. The separate `@nyte-ai/core/postgres` entrypoint
+in what order everyone sees it. The `@nyte-ai/core/postgres` entrypoint
 loads the `pg` driver for hosted PostgreSQL storage.
 
 ## Four authorities
@@ -52,6 +48,7 @@ refs/keys/<key>                idempotency receipt: the Change a key produced; t
                                sender can recognize its message by identity
 refs/cancelled/<change>        Blob: a submitted change withdrawn before it landed
 refs/facts/<key>               Blob: a small session value
+refs/workspace                 Blob { kind, id, cwd, locator? }: where the session tree acts; on the root session only
 refs/deleted                   Blob: the session is being deleted
 ```
 
@@ -96,8 +93,9 @@ only while the matching head lease is still held. SDK `compaction` events carry
 that activity or `null` when it ends. Successful publication clears the activity
 in the same update as the checkpoint; failure and cancellation clear it without
 a checkpoint. A successor clears abandoned activity before resuming work.
-The `before_compaction` hook can provide native context. `@nyte-ai/host` installs `@nyte-ai/plugin/openai-compaction` for every composition, so TUI and desktop both get it for
-OpenAI and OpenAI Codex. Codex uses streaming compaction V2 on the Responses
+The `before_compaction` hook can provide native context. `@nyte-ai/host` installs
+`@nyte-ai/plugin/openai-compaction` in the `chat` and `workspace` compositions, so TUI and desktop
+both get it for OpenAI and OpenAI Codex. Codex uses streaming compaction V2 on the Responses
 endpoint and stores an encrypted checkpoint with bounded retained user input;
 OpenAI API compaction stores the complete returned window. Neither successful
 path requests a local summary. Unsupported or failed requests use the portable
@@ -392,9 +390,9 @@ owes no completion, signals no effect, survives `runs.abort`, and only
 ## Delegation
 
 A child is a session the parent addresses by `SessionId`, created by `create`
-or `task` at `childIdOf(parent, runId, callId)` with a `parent` fact, the
-parent's directory, the title as its `name` fact, and a config commit naming
-its model. It persists until `stop`: `send` enqueues a user message on its
+or `task` at `childIdOf(parent, head, runId, callId)` with a `parent` fact, the
+title as its `name` fact, and a config commit naming its model. It acts in its
+root's workspace. It persists until `stop`: `send` enqueues a user message on its
 `main` head as the parent (`{ clientId: parent, device: "delegate" }`), with
 `delivery: "next"` when the child is idle and `delivery: "steer"` when it is
 live. Each send writes
@@ -442,24 +440,52 @@ client-side approval prompt.
 
 ## Session location
 
-Host-only `sessionCwd({ sessionId })` reads `refs/facts/cwd`, falling back to
-that session's activation environment. `relocate({ sessionId, workspace, plugins })`
-accepts a trusted workspace and its resolved plugin set. It replaces only that
-session's activation and saves the directory in the original store. IDs, heads,
-queues, and conversation history do not move. Global `setPlugins` skips these
-session-scoped plugin sets; hosts reload one with `setPlugins(plugins, { sessionId })`.
-Scoped reload keeps the activation environment and supports hot reload during a run.
+A root session's `refs/workspace` holds `{ kind, id, cwd, locator? }`: the kind
+of provider plugin that opens it, the environment's id, the directory inside it,
+and what the provider reopens it with. `sessions.create` writes it for a root,
+from `input.workspace` or the host's `defaultWorkspace`, before it returns. A
+child stores no location; it resolves through its parent to the root. A root
+without the ref acts in the default workspace at the directory its legacy
+`refs/facts/cwd` holds; nothing writes that fact. Host-only
+`sessionWorkspace({ sessionId })` returns the tree's workspace, locator
+included. `sessionCwd({ sessionId })` returns its `cwd` only while the tree is
+active in the environment the host's workspace backend reads, else `undefined`.
 
-Relocation returns `busy` while the session or a child has an active drive, run,
+Each `Nyte` opens a workspace once. The host's `trust(workspace)` answers first,
+then the provider for its `kind` opens it, then the trust answer's `plugins`
+loader loads the project plugins. Without `trust`, only `defaultWorkspace` is
+trusted and any other workspace reports `requires/workspace_trust`. `createNyte`
+rejects when no plugin provides `defaultWorkspace.kind`. A refusal opens and
+loads nothing and reaches clients as `inactive` or `requires`. A kind with no
+provider is `requires/workspace_unavailable` with reason `unsupported`; an
+environment that fails to open, or opens with a different `id` or `cwd`, is
+`unreachable`. Children run under their root's open, and nothing asks again.
+
+`relocate({ sessionId, workspace })` moves the whole tree of that session's
+root. The destination opens as any workspace opens, and a refusal returns that
+state with nothing moved. The kernel holds every head lease in the tree while
+the destination's plugins activate, then writes the root's `refs/workspace` as a
+CAS against the value it read when the move began. Every descendant follows the
+next time it resolves. IDs, heads, queues, and conversation history do not move.
+Global `setPlugins` reaches only roots in the default workspace that have not
+moved since this `Nyte` opened them, and their children. Hosts reload any other
+tree with `setPlugins(plugins, { sessionId })`.
+Scoped reload keeps the activation environment and supports hot reload during a
+run.
+
+Relocation returns `busy` while any session in the tree has an active drive, run,
 head lease, queued input the runner would land, running job, or job lease. A
 completion waiting for user input is not work and does not hold the move. Work
-is never cancelled to change directories. Restoring an inactive session to its already-saved directory
-allows persisted unfinished work, but still refuses live drives and leases.
+is never cancelled to move a tree. Moving an inactive tree back to its stored
+workspace allows persisted unfinished work, but still refuses live drives and
+leases. A runner whose tree another host moved stops before its next step, and
+the session runs once its new workspace opens.
 
-A saved path is not a trust decision. Reopening through a host composed for a
-different directory reports `requires/workspace_trust` and does not instantiate
-plugins or run tools. The host reads `sessionCwd`, validates trust, resolves that
-directory's plugins and skills, then calls `relocate` before attaching a runner.
+A saved path is not a trust decision. When the host's `trust` answers
+`requires/workspace_trust` for a root's stored folder, the session instantiates
+no plugins and runs no tools. The root keeps that answer until `reactivate()`
+asks again or its tree moves. A new root or a relocation into that workspace
+asks again.
 
 ## Acceptance
 
@@ -474,7 +500,7 @@ The drills every backend and every runner must pass:
 - A head move during a run makes the run's publish fail; the run ends, the
   head stays where the participant put it, and the queue is untouched.
 - A lease takeover fences every event and ref write from the former runner.
-- A crash between effect intent and result follows `safe` or `never` replay; a `safe` intent replays only on the filesystem it was opened for.
+- A crash between effect intent and result follows `safe` or `never` replay; a `safe` intent replays only in the environment whose `id` it recorded, and one that recorded none replays nowhere.
 - The first signal to a waiting effect wins.
 - Two clients with independent cursors reconstruct the same event stream.
 - A cursor older than the floor is refused and takes a snapshot.

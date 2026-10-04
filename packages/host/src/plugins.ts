@@ -15,7 +15,7 @@ import {
   systemPromptPlugin,
   toolsFsPlugin,
 } from "@nyte-ai/core/plugins";
-import type { Plugin } from "@nyte-ai/core/plugins";
+import type { ExecutionEnv, Plugin } from "@nyte-ai/core/plugins";
 import { pluginSource, withPluginSource } from "@nyte-ai/core/plugin-source";
 import { bashDescriptionPlugin } from "@nyte-ai/plugin/examples/bash-description";
 import { fastModePlugin } from "@nyte-ai/plugin/examples/fast-mode";
@@ -35,7 +35,6 @@ import {
   skillDirectories,
 } from "./paths.ts";
 import type { PluginTarget } from "./paths.ts";
-import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import { createPluginSources } from "./plugins/sources.ts";
 import type { PluginSources } from "./plugins/sources.ts";
@@ -56,6 +55,8 @@ export async function resolveHostPlugins(
     readonly extra?: readonly Plugin[];
     readonly sources?: PluginSources<unknown>;
     readonly codemode?: Pick<CodemodeSandboxOptions, "workerUrl" | "wasm">;
+    /** The opened workspace the context files are read through. */
+    readonly env: ExecutionEnv;
   },
 ): Promise<ResolvedPlugins> {
   const [manifest, skills] = await Promise.all([
@@ -68,8 +69,9 @@ export async function resolveHostPlugins(
   ]);
 
   const mcp = manifest.mcp ?? {};
-  const contextFiles = loadProjectContextFiles({
-    cwd: target.kind === "project" ? target.workspace.cwd : homedir(),
+
+  const contextFiles = await loadProjectContextFiles({
+    env: context.env,
     globalDir: nyteHome(),
     warn: (message) => {
       throw new Error(message);

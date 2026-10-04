@@ -1,7 +1,9 @@
 import { expect, test } from "vitest";
+import type { MenuItemConstructorOptions } from "electron";
 import type { AppInfo, AppMenuCommand } from "@nyte-ai/app/bridge.ts";
 import { clientActions } from "@nyte-ai/app/client-actions.ts";
-import { createMenuCommandDelivery } from "./app-menu.ts";
+import { applicationMenuTemplate, createMenuCommandDelivery } from "./app-menu.ts";
+
 
 const info = {
   name: "Nyte",
@@ -65,3 +67,33 @@ test("live commands arrive immediately, but reloaded windows wait again", () => 
   delivery.ready();
   expect(received).toEqual([about, about, settings]);
 });
+
+test.each(["darwin", "linux"] as const)(
+  "on %s the primary W closes a tab and closing the window takes Shift",
+  (platform) => {
+    const template = applicationMenuTemplate({
+      platform,
+      name: "Nyte",
+      appInfo: () => info,
+      dispatch: () => {},
+      newWindow: () => {},
+    });
+
+    const items = (entries: readonly MenuItemConstructorOptions[]): MenuItemConstructorOptions[] =>
+      entries.flatMap((item) => [
+        item,
+        ...(Array.isArray(item.submenu) ? items(item.submenu) : []),
+      ]);
+
+    const all = items(template);
+    const labelled = (accelerator: string) =>
+      all.filter((item) => item.accelerator === accelerator).map((item) => item.label ?? item.role);
+
+    expect(labelled("CommandOrControl+W")).toEqual(["Close Tab"]);
+    expect(labelled("CommandOrControl+T")).toEqual(["New Tab"]);
+    expect(labelled("Shift+CommandOrControl+T")).toEqual(["Reopen Closed Tab"]);
+    expect(all.filter((item) => item.role === "close").map((item) => item.accelerator)).toEqual([
+      "Shift+CommandOrControl+W",
+    ]);
+  },
+);

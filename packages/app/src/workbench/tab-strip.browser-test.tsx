@@ -18,6 +18,36 @@ function check(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
 
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+async function drag(from: HTMLElement, distance: number): Promise<void> {
+  const rect = from.getBoundingClientRect();
+  const point = { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
+  const pointer = { bubbles: true, cancelable: true, isPrimary: true, pointerId: 1, button: 0 };
+
+  from.dispatchEvent(new PointerEvent("pointerdown", { ...pointer, ...point, buttons: 1 }));
+
+  for (let moved = 10; moved <= distance; moved += 10) {
+    await nextFrame();
+    document.dispatchEvent(
+      new PointerEvent("pointermove", {
+        ...pointer,
+        ...point,
+        clientX: point.clientX + moved,
+        buttons: 1,
+      }),
+    );
+  }
+
+  await nextFrame();
+  document.dispatchEvent(
+    new PointerEvent("pointerup", { ...pointer, ...point, clientX: point.clientX + distance }),
+  );
+  await nextFrame();
+}
+
 export async function run(): Promise<string> {
   const session = sessionId("browser-tab-strip-session");
 
@@ -53,7 +83,7 @@ export async function run(): Promise<string> {
   });
 
   terminalActions.openJob({ id: terminalId, sessionId: session, job });
-  fileActions.open(viewKey, { path: "/workspace/src/app.ts" });
+  fileActions.open(viewKey, { path: "/workspace/browser-tab-strip/src/app.ts" });
   const active = workbenchController.getView(viewKey).active;
 
   const container = document.createElement("div");
@@ -107,6 +137,28 @@ export async function run(): Promise<string> {
       "Agent terminal glyph must use its tab control color",
     );
     check(workbenchController.getView(viewKey).active === active, "Rendering changed activation");
+
+    const kinds = (): string =>
+      workbenchController
+        .getView(viewKey)
+        .tabs.map((tab) => tab.kind)
+        .join("|");
+
+    const [changesTab] = tabs;
+
+    if (changesTab === undefined) throw new Error("Missing changes tab");
+    const close = container.querySelector<HTMLElement>('[aria-label="Close Changes tab"]');
+
+    if (close === null) throw new Error("Missing close button");
+    await drag(close, 400);
+    check(kinds() === "changes|terminal|file", "Pressing a close button started a drag");
+    await drag(changesTab, 400);
+    check(kinds() === "terminal|file|changes", "Dragging a tab past the end did not reorder it");
+    check(
+      workbenchController.getView(viewKey).active ===
+        workbenchController.getView(viewKey).tabs.find((tab) => tab.kind === "changes")?.id,
+      "Picking a tab up did not select it",
+    );
 
     return "passed";
   } finally {

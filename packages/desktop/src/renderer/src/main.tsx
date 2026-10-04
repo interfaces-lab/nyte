@@ -16,16 +16,19 @@ import {
   connectSessionDirectory,
   loadLocalResources,
   createAppRouter,
-  initialChromeRoute,
   startRendererStartup,
+  startWindowTabs,
+  windowTabRoute,
 } from "@nyte-ai/app";
 import { applyStartupTheme } from "@nyte-ai/app/theme/startup.ts";
 import appIcon from "../../../build/icon-macos.svg";
 import { AccountProvider } from "../../account/provider.tsx";
 
+// A reload restores this window's tabs at once; the first window of a launch adopts the saved strip.
+const windowTabsReady = startWindowTabs();
+
 export const router = createAppRouter({
-  history: createMemoryHistory({ initialEntries: [initialChromeRoute()] }),
-  persistChromeRoute: true,
+  history: createMemoryHistory({ initialEntries: [windowTabRoute()] }),
 });
 
 const container = document.getElementById("root");
@@ -78,8 +81,13 @@ startRendererStartup({
       loadLocalResources(),
       document.fonts.load('13px "Inter Variable"'),
       document.fonts.load('12px "JetBrains Mono Variable"'),
+      windowTabsReady,
     ]).then(() => undefined),
-  loadRouter: () => router.load(),
+  loadRouter: () => {
+    router.history.replace(windowTabRoute());
+
+    return router.load();
+  },
   showError: (retry) => {
     startupShell?.setAttribute("data-state", "error");
 

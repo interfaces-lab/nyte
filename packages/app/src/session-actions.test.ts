@@ -16,6 +16,7 @@ function chat(id: string): SessionInfo {
   return {
     sessionId: sessionId(id),
     activation: { kind: "active" },
+    workspace: { kind: "local", id: "fixture", cwd: "/" },
     name: id,
     createdAt: 1,
     lastActivityAt: 1,

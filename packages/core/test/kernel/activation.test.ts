@@ -33,6 +33,7 @@ import {
   commit,
   declared,
   lease,
+  localEnv,
   message,
   openSession,
   seedHead,
@@ -54,7 +55,7 @@ const model: Model<Api> = {
 };
 const other: Model<Api> = { ...model, id: "other-model" };
 
-const env = { cwd: "/tmp/nowhere" };
+const env = localEnv("/tmp/nowhere");
 
 const parameters = Type.Object({ path: Type.String() });
 

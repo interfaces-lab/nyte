@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { afterEach, test, vi } from "vitest";
 import {
   contentText,
@@ -12,6 +12,8 @@ import {
 } from "@nyte-ai/ai";
 import type { Provider } from "@nyte-ai/ai";
 import type { Nyte, SessionId } from "@nyte-ai/core";
+import { createLocalExecutionEnv } from "@nyte-ai/core/plugins";
+import type { ExecutionEnv } from "@nyte-ai/core/plugins";
 
 import { providerPlugin } from "@nyte-ai/plugin/provider";
 import { SqliteStore } from "@nyte-ai/core/store";
@@ -23,7 +25,6 @@ import {
   createWorkspaceStore,
   resolveHostPlugins,
   resolveModel,
-  WorkspaceStore,
 } from "../src/index.ts";
 
 const model: Model<Api> = {
@@ -170,7 +171,7 @@ test("global idle mode refreshes a settled request; project settings cannot enab
       store: f.store(`${mode ?? "default"}.db`),
       models: f.models,
       model: cachedModel,
-      plugins: { kind: "custom", plugins: [], env: { cwd: f.cwd } },
+      plugins: { kind: "custom", plugins: [], cwd: f.cwd },
     });
     hosts.push(host);
     const { sessionId: id } = await host.sessions.create();
@@ -301,6 +302,7 @@ test("deferred target caches only active composition", async () => {
       kind: "workspace",
       target: {
         kind: "deferred",
+        cwd: f.cwd,
         resolve: async () => {
           calls += 1;
           return active
@@ -345,6 +347,7 @@ test("deferred target returns requires without loading project code", async () =
       kind: "workspace",
       target: {
         kind: "deferred",
+        cwd: f.cwd,
         resolve: async () => {
           calls += 1;
           return {
@@ -366,7 +369,7 @@ test("deferred target returns requires without loading project code", async () =
   assert.equal(failures, 0);
 });
 
-test("plugin discovery failures report onFailure and reject partial activation", async () => {
+test("plugin discovery failures report onFailure and fail the session without partial activation", async () => {
   const f = await fixture();
   const workspace = await createWorkspaceStore().trust(f.cwd);
   await mkdir(join(f.cwd, ".nyte", "plugins", "broken"), { recursive: true });
@@ -375,19 +378,19 @@ test("plugin discovery failures report onFailure and reject partial activation",
     'throw new Error("broken plugin");',
   );
   const failures: string[] = [];
-  await assert.rejects(
-    createHost({
-      store: f.store("static.db"),
-      models: f.models,
-      model,
-      plugins: {
-        kind: "workspace",
-        target: { kind: "project", workspace },
-        onFailure: (failure) => failures.push(failure.error),
-      },
-    }),
-    /broken plugin/,
-  );
+  const host = await createHost({
+    store: f.store("static.db"),
+    models: f.models,
+    model,
+    plugins: {
+      kind: "workspace",
+      target: { kind: "project", workspace },
+      onFailure: (failure) => failures.push(failure.error),
+    },
+  });
+  hosts.push(host);
+  const { activation } = await host.sessions.create();
+  assert.deepEqual(activation, { kind: "failed", error: "Plugins failed to load" });
   assert.equal(failures.length, 1);
   assert.match(failures[0] ?? "", /broken plugin/);
 });
@@ -435,7 +438,7 @@ test("provider overrides toggle per session, share credentials, and restore the 
     store,
     models: f.models,
     model,
-    plugins: { kind: "custom", plugins: [loaded], env: { cwd: f.cwd } },
+    plugins: { kind: "custom", plugins: [loaded], cwd: f.cwd },
   } satisfies Parameters<typeof createHost>[0];
   const host = await createHost(options);
   hosts.push(host);
@@ -500,7 +503,7 @@ test("the last enabled provider plugin wins and override failures do not fall th
     store: f.store("provider-order.db"),
     models: f.models,
     model,
-    plugins: { kind: "custom", plugins: [first, last], env: { cwd: f.cwd } },
+    plugins: { kind: "custom", plugins: [first, last], cwd: f.cwd },
   });
   hosts.push(host);
   const id = (await host.sessions.create()).sessionId;
@@ -568,13 +571,18 @@ test("context activation uses its fingerprinted snapshot and reloads in the same
   await writeFile(context, "original context snapshot");
   const workspace = await createWorkspaceStore().trust(f.cwd);
   const target = { kind: "project", workspace } as const;
-  const prepared = await resolveHostPlugins(target, { models: f.models, model });
+  const resolving = {
+    models: f.models,
+    model,
+    env: createLocalExecutionEnv({ id: "test", cwd: f.cwd }),
+  };
+  const prepared = await resolveHostPlugins(target, resolving);
   await writeFile(context, "updated context snapshot");
   const host = await createHost({
     store: f.store("context.db"),
     models: f.models,
     model,
-    plugins: { kind: "custom", plugins: prepared.plugins, env: { cwd: f.cwd } },
+    plugins: { kind: "custom", plugins: prepared.plugins, cwd: f.cwd },
   });
   hosts.push(host);
   const id = (await host.sessions.create()).sessionId;
@@ -582,13 +590,13 @@ test("context activation uses its fingerprinted snapshot and reloads in the same
   await answer(host, id, "first");
   assert.match(f.prompts.at(-1) ?? "", /original context snapshot/);
   assert.doesNotMatch(f.prompts.at(-1) ?? "", /updated context snapshot/);
-  const next = await resolveHostPlugins(target, { models: f.models, model });
+  const next = await resolveHostPlugins(target, resolving);
   await host.setPlugins(next.plugins);
   await answer(host, id, "second");
   assert.match(f.prompts.at(-1) ?? "", /updated context snapshot/);
   await mkdir(join(f.cwd, "home"), { recursive: true });
   await writeFile(join(f.cwd, "home", "nyte.json"), "{");
-  await assert.rejects(resolveHostPlugins(target, { models: f.models, model }), /nyte.json/);
+  await assert.rejects(resolveHostPlugins(target, resolving), /nyte.json/);
   await answer(host, id, "third");
   assert.match(f.prompts.at(-1) ?? "", /updated context snapshot/);
 });
@@ -601,6 +609,32 @@ function toolPluginSource(id: string, name: string): string {
       async execute() { return { content: [{ type: "text", text: "fresh" }], details: {} }; },
     }));
   } };`;
+}
+
+function toolCallStream(
+  selected: Model<Api>,
+  call: { readonly id: string; readonly name: string; readonly arguments: Record<string, string> },
+) {
+  const message: AssistantMessage = {
+    role: "assistant",
+    content: [{ type: "toolCall", ...call }],
+    api: selected.api,
+    provider: selected.provider,
+    model: selected.id,
+    stopReason: "toolUse",
+    timestamp: Date.now(),
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+  };
+  const events = createAssistantMessageEventStream();
+  events.push({ type: "done", reason: "toolUse", message });
+  return events;
 }
 
 test("a plugin written by a real tool reaches the immediate next provider request without a watcher", async () => {
@@ -616,36 +650,11 @@ test("a plugin written by a real tool reaches the immediate next provider reques
     requests.push(tools.map((tool) => tool.name));
     if (written) return f.provider.streamSimple(selected, context, options);
     written = true;
-    const message: AssistantMessage = {
-      role: "assistant",
-      content: [
-        {
-          type: "toolCall",
-          id: "write-plugin",
-          name: "write",
-          arguments: {
-            path,
-            content: toolPluginSource("fresh", "fresh_tool"),
-          },
-        },
-      ],
-      api: selected.api,
-      provider: selected.provider,
-      model: selected.id,
-      stopReason: "toolUse",
-      timestamp: Date.now(),
-      usage: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      },
-    };
-    const events = createAssistantMessageEventStream();
-    events.push({ type: "done", reason: "toolUse", message });
-    return events;
+    return toolCallStream(selected, {
+      id: "write-plugin",
+      name: "write",
+      arguments: { path, content: toolPluginSource("fresh", "fresh_tool") },
+    });
   };
   f.models.setProvider({ ...f.provider, streamSimple: stream });
   const host = await createHost({
@@ -664,13 +673,11 @@ test("a plugin written by a real tool reaches the immediate next provider reques
   assert.ok((await host.plugins.list({ sessionId: id })).some((plugin) => plugin.id === "fresh"));
 });
 
-test("response preparation follows a relocated session's explicit trust grant rather than the host directory", async () => {
+test("relocation asks the host's trust for the destination, then loads its plugins", async () => {
   const f = await fixture();
   const workspace = await createWorkspaceStore().trust(f.cwd);
   const destination = await realpath(await mkdtemp(join(tmpdir(), "nyte-host-relocated-plugins-")));
   directories.push(destination);
-  const grant = await new WorkspaceStore(join(f.cwd, "separate-grants.json")).trust(destination);
-  assert.equal((await createWorkspaceStore().resolve(destination)).kind, "unknown");
   const host = await createHost({
     store: f.store("relocated-plugins.db"),
     models: f.models,
@@ -679,12 +686,13 @@ test("response preparation follows a relocated session's explicit trust grant ra
   });
   hosts.push(host);
   const id = (await host.sessions.create()).sessionId;
-  const target = { kind: "project", workspace: grant } as const;
-  const prepared = await resolveHostPlugins(target, { models: f.models, model });
-  assert.equal(
-    (await host.relocate({ sessionId: id, workspace: grant, plugins: prepared.plugins })).kind,
-    "relocated",
-  );
+  const moved = { ...(await host.sessionWorkspace({ sessionId: id })), cwd: destination };
+  assert.deepEqual(await host.relocate({ sessionId: id, workspace: moved }), {
+    kind: "requires",
+    requirement: { kind: "workspace_trust", cwd: destination },
+  });
+  await createWorkspaceStore().trust(destination);
+  assert.equal((await host.relocate({ sessionId: id, workspace: moved })).kind, "relocated");
   for (const [cwd, name] of [
     [f.cwd, "original"],
     [destination, "destination"],
@@ -697,4 +705,74 @@ test("response preparation follows a relocated session's explicit trust grant ra
   await answer(host, id, "use the relocated plugin");
   assert.ok(f.tools.at(-1)?.includes("destination_tool"));
   assert.ok(!f.tools.at(-1)?.includes("original_tool"));
+});
+
+test("a workspace host runs another environment's workspace with its own plugins, never a project's", async () => {
+  const f = await fixture();
+  const workspace = await createWorkspaceStore().trust(f.cwd);
+  const unit = join(f.cwd, ".nyte", "plugins", "project-only");
+  await mkdir(unit, { recursive: true });
+  await writeFile(join(unit, "index.ts"), toolPluginSource("project-only", "project_tool"));
+  const files = new Map<string, string>();
+  const sandbox: ExecutionEnv = {
+    id: "fake:one",
+    cwd: "/work",
+    resolve: (...paths) => posix.resolve("/work", ...paths),
+    readFile: async (path) => {
+      const content = files.get(path);
+      if (content === undefined) throw new Error(`ENOENT: ${path}`);
+      return Buffer.from(content);
+    },
+    writeFile: async (path, content) => {
+      files.set(path, content);
+    },
+    mkdir: async () => undefined,
+    stat: async (path) =>
+      files.has(path) ? { kind: "file" } : path === "/work" ? { kind: "directory" } : undefined,
+    readdir: async () => [],
+    realpath: async (path) => (files.has(path) ? path : undefined),
+    exec: async () => ({ exitCode: 0 }),
+  };
+  let written = false;
+  f.models.setProvider({
+    ...f.provider,
+    streamSimple: (selected, context, options) => {
+      if (written || !getCurrentTools(context.messages).some((tool) => tool.name === "write"))
+        return f.provider.streamSimple(selected, context, options);
+      written = true;
+      return toolCallStream(selected, {
+        id: "write-note",
+        name: "write",
+        arguments: { path: "note.txt", content: "from the sandbox session" },
+      });
+    },
+  });
+  const host = await createHost({
+    store: f.store("sandbox.db"),
+    models: f.models,
+    model,
+    environments: [
+      {
+        id: "fake-sandbox",
+        environment: { kind: "fake-sandbox", open: async () => sandbox },
+        session: () => undefined,
+      },
+    ],
+    plugins: { kind: "workspace", target: { kind: "project", workspace } },
+  });
+  hosts.push(host);
+  const local = (await host.sessions.create()).sessionId;
+  const remote = await host.sessions.create({
+    workspace: { kind: "fake-sandbox", id: "fake:one", cwd: "/work" },
+  });
+  assert.deepEqual(remote.activation, { kind: "active" });
+  const ids = async (sessionId: SessionId) =>
+    (await host.plugins.list({ sessionId })).map((plugin) => plugin.id);
+  assert.ok((await ids(local)).includes("project-only"));
+  const remoteIds = await ids(remote.sessionId);
+  assert.ok(remoteIds.includes("tools-fs"));
+  assert.ok(!remoteIds.includes("project-only"));
+  host.attach();
+  await answer(host, remote.sessionId, "write a note");
+  assert.equal(files.get("/work/note.txt"), "from the sandbox session");
 });

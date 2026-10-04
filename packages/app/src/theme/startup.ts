@@ -9,9 +9,9 @@ const styles = create({
     "--startup-font": type.fontSans,
   },
   retry: {
-    "--startup-fill": role.bgInteractiveStrong,
-    "--startup-hover": role.bgInteractiveStrongHover,
-    "--startup-pressed": role.bgInteractiveStrongPressed,
+    "--startup-fill": role.buttonFill,
+    "--startup-hover": role.buttonFillHover,
+    "--startup-pressed": role.buttonFillPressed,
     "--startup-on-fill": role.contentOnInteractiveStrong,
     "--startup-accent": appearance.focusRing,
   },

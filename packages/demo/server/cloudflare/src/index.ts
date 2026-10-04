@@ -1,5 +1,9 @@
 import { NyteDurableObject, routeNyteRequest, type CloudflareOptions } from "@nyte-ai/cloudflare";
+import { localEnvironmentPlugin } from "@nyte-ai/core/plugins";
 import { configureModels } from "./models.ts";
+
+/** Sessions record this id; changing it makes them unreachable. */
+const ENVIRONMENT_ID = "367dfd75-92fa-4845-a113-9054a069d295";
 
 const encoder = new TextEncoder();
 
@@ -44,7 +48,11 @@ export default {
 export class NyteHost extends NyteDurableObject<Env> {
   protected configure(): CloudflareOptions {
     return {
-      nyte: { ...configureModels(this.env), plugins: [], env: { cwd: "/tmp" } },
+      nyte: {
+        ...configureModels(this.env),
+        plugins: [localEnvironmentPlugin({ id: ENVIRONMENT_ID })],
+        defaultWorkspace: { kind: "local", id: ENVIRONMENT_ID, cwd: "/tmp" },
+      },
       server: {
         version: "0.0.0-cloudflare-demo",
         auth: { kind: "token", token: this.env.NYTE_TOKEN },

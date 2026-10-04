@@ -9,6 +9,7 @@ import {
   clientActions,
   clientActionShortcut,
   resolveClientAction,
+  resolveTabShortcut,
 } from "./client-actions.ts";
 
 const capabilities = { terminal: true, browser: true };
@@ -162,4 +163,23 @@ test.each([true, false])("account Settings hint follows the active binding, mac=
 
     if (resolved !== undefined) expect(shortcut).toBe(mac ? "⌘," : "Ctrl+,");
   }
+});
+
+test("tab shortcuts pick by position and step with wrap keys", () => {
+  expect(resolveTabShortcut(keyEvent({ key: "9", code: "Digit9", metaKey: true }), true)).toEqual({
+    kind: "activate-index",
+    index: 8,
+  });
+  expect(
+    resolveTabShortcut(keyEvent({ key: "Tab", code: "Tab", ctrlKey: true, shiftKey: true }), true),
+  ).toEqual({ kind: "cycle-tab", step: -1 });
+  expect(
+    resolveTabShortcut(
+      keyEvent({ key: "ArrowRight", code: "ArrowRight", metaKey: true, altKey: true }),
+      true,
+    ),
+  ).toEqual({ kind: "cycle-tab", step: 1 });
+  expect(resolveTabShortcut(keyEvent({ key: "1", code: "Digit1", ctrlKey: true }), true)).toBe(
+    undefined,
+  );
 });

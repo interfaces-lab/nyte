@@ -70,7 +70,7 @@ export const ObjectSchema = Type.Union([
     tool: Type.String(),
     args: schemas.JsonValue,
     replay: Type.Union([Type.Literal("safe"), Type.Literal("never")]),
-    fs: Type.Optional(Type.String()),
+    environment: Type.Optional(Type.String()),
     at: Type.Number(),
   }),
   Type.Object({

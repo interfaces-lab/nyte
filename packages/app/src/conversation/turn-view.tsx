@@ -15,6 +15,7 @@ import { AttachmentGroup } from "@nyte-ai/ui/attachment";
 // oxlint-disable-next-line no-restricted-imports -- the outside-click listener lives only while an edit can dismiss
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { changesFromTurns, turnPartId } from "@nyte-ai/client";
 import type { FileChange, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
 import type { ModelThinkingLevel } from "@nyte-ai/schema";
@@ -217,17 +218,20 @@ export function UserMessageView({
 
   const begin = (): void => {
     const text = messageDraftText(original);
-    setEdit({
-      document: { text, selectionStart: text.length, selectionEnd: text.length },
-      attachments: attachmentsOf(content),
-      attachmentReads: 0,
-      attachmentError: undefined,
-      saving: false,
-      error: undefined,
-      model: branchModel?.model,
-      thinkingLevel: branchModel?.thinkingLevel,
-      fastEnabled: new Set(branchModel?.fastEnabled),
-    });
+    flushSync(() =>
+      setEdit({
+        document: { text, selectionStart: text.length, selectionEnd: text.length },
+        attachments: attachmentsOf(content),
+        attachmentReads: 0,
+        attachmentError: undefined,
+        saving: false,
+        error: undefined,
+        model: branchModel?.model,
+        thinkingLevel: branchModel?.thinkingLevel,
+        fastEnabled: new Set(branchModel?.fastEnabled),
+      }),
+    );
+    editorRef.current?.focus();
   };
 
   const patchEdit = (patch: (current: UserEditState) => UserEditState): void => {
@@ -365,7 +369,6 @@ export function UserMessageView({
               }
               onSubmit={save}
               placeholder="Edit message"
-              autoFocus
               disabled={edit.saving}
               suggestionCatalog={composerSource(pluginCatalog.data, pluginCatalog.isError)}
               mentionFiles={composerSource(workspaceFiles.data, workspaceFiles.isError)}

@@ -15,6 +15,7 @@ import {
   assistant,
   call,
   granted,
+  localOptions,
   openInProcessStore,
   openSession,
   openStore,
@@ -44,8 +45,7 @@ async function fixture(store: Store = openStore(), existingId?: string) {
     store,
     model,
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
-    env: { cwd: "/tmp/nowhere" },
-    plugins: [
+    ...localOptions("/tmp/nowhere", [
       definePlugin({
         id: "question",
         session(api) {
@@ -68,7 +68,7 @@ async function fixture(store: Store = openStore(), existingId?: string) {
           );
         },
       }),
-    ],
+    ]),
     streamFn: (_model, context, options) => {
       if (options?.signal !== undefined) providerSignals.push(options.signal);
       const stream = createAssistantMessageEventStream();

@@ -1,3 +1,5 @@
+import { schemas } from "@nyte-ai/protocol";
+import { Value } from "typebox/value";
 import type { Change, Commit, Effect, Event, Oid, RefName } from "../model.ts";
 import { compactionInfoFromObject } from "../compaction.ts";
 import { history } from "../graph.ts";
@@ -8,6 +10,7 @@ import {
   FACT_PREFIX,
   HEAD_PREFIX,
   STACK_PREFIX,
+  WORKSPACE_REF,
   decodeFactKey,
   parseCompactionRef,
   parseInboxRef,
@@ -331,6 +334,19 @@ async function projectRef(
 
   if (event.name === DELETED_REF) {
     return event.to === null ? [] : [{ seq: event.seq, kind: "deleted" }];
+  }
+
+  // The tree's workspace reaches clients as the `workspace` fact, without its locator.
+  if (event.name === WORKSPACE_REF) {
+    if (event.to === null)
+      return [{ seq: event.seq, kind: "fact", key: "workspace", value: undefined }];
+    const workspace = await read.get(event.to);
+
+    if (workspace?.kind !== "blob" || !Value.Check(schemas.WorkspaceRef, workspace.value))
+      throw new Error(`Corrupt workspace ref at ${event.to}`);
+    const { kind, id, cwd } = workspace.value;
+
+    return [{ seq: event.seq, kind: "fact", key: "workspace", value: { kind, id, cwd } }];
   }
 
   if (event.name.startsWith(KEY_PREFIX)) return [];

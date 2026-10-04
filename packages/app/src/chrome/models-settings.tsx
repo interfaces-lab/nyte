@@ -74,6 +74,10 @@ function providerIcon(providerId: string): IconName {
 
   if (providerId === "opencode" || providerId === "opencode-go") return "provider-opencode";
 
+  if (providerId === "openrouter") return "provider-openrouter";
+
+  if (providerId === "vercel-ai-gateway") return "provider-vercel";
+
   if (providerId === "github-copilot") return "github";
 
   return "model-generic";
@@ -197,7 +201,6 @@ function ApiKeyForm({
           type="password"
           aria-label={label}
           autoComplete="off"
-          autoFocus
           spellCheck={false}
           placeholder={`Paste your ${label}`}
           value={key}

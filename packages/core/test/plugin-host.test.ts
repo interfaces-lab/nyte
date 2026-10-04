@@ -9,7 +9,7 @@ import { test } from "vitest";
 import { HOOK_BUDGETS_MS, HookRegistry, type HookInvocation } from "../src/plugins/hooks.ts";
 import { createRegistries, PluginHost, type PluginNotice } from "../src/plugins/host.ts";
 import { definePlugin, type Plugin, type SessionApi } from "../src/plugins/index.ts";
-import { createLocalExecutionEnv } from "../src/tools/env.ts";
+import { localEnv } from "./kernel/helpers.ts";
 
 const toolCall: HookInvocation<"before_tool"> = {
   head: "main",
@@ -27,7 +27,7 @@ function hostFor(
     return true;
   },
 ) {
-  const registries = createRegistries(createLocalExecutionEnv({ cwd: "/tmp/nowhere" }));
+  const registries = createRegistries();
   const notices: PluginNotice[] = [];
 
   const host = new PluginHost(
@@ -42,7 +42,7 @@ function hostFor(
         setFact: async () => undefined,
       },
       events: { subscribe: () => () => undefined, transitions: () => () => undefined },
-      env: { cwd: "/tmp/nowhere" },
+      env: localEnv("/tmp/nowhere"),
       subscribe: () => () => undefined,
       rebuildAll: () => {
         for (const registry of Object.values(registries)) registry.rebuild();

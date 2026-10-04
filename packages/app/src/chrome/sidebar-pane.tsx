@@ -13,6 +13,7 @@ import { useMatch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { sidebar } from "../theme/schema.stylex.ts";
+import { layer } from "@nyte-ai/ui/schema.stylex";
 import { motion, role } from "@nyte-ai/ui/vars.stylex";
 import {
   clampSidebarWidth,
@@ -47,22 +48,23 @@ const styles = create({
   },
   railHidden: { opacity: 0 },
   handle: {
-    position: "absolute",
-    zIndex: 5,
+    position: "fixed",
+    zIndex: layer.sash,
     insetBlock: 0,
-    insetInlineEnd: 0,
+    insetInlineStart: `calc(${sidebar.width} - ${sidebar.handleWidth})`,
     width: sidebar.handleWidth,
     cursor: "col-resize",
     touchAction: "none",
 
     outlineStyle: "none",
+    WebkitAppRegion: "no-drag",
     "::after": {
       content: '""',
       position: "absolute",
       insetBlock: 0,
       insetInlineEnd: 0,
       width: 1,
-      backgroundColor: "transparent",
+      backgroundColor: role.borderSecondaryTranslucent,
       transitionProperty: "background-color",
       transitionDuration: motion.durationFast,
       transitionTimingFunction: motion.easeOut,

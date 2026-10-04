@@ -2,6 +2,7 @@ import type { SessionId } from "@nyte-ai/protocol";
 import {
   activePane,
   activeSelection,
+  createSinglePane,
   orderedPanes,
   paneForSession,
   paneSelection,
@@ -29,6 +30,12 @@ export interface PaneControllerSnapshot {
   readonly focusRequest: { readonly paneId: PaneId; readonly revision: number };
 }
 
+/**
+ * A window tab owns the layout and its history: the controller proposes each
+ * change and adopts whichever layout the tab settles on.
+ */
+type LayoutRoute = (current: PaneLayout, next: PaneLayout, action: PaneLayoutAction) => PaneLayout;
+
 function actionRequestsFocus(action: PaneLayoutAction): boolean {
   return action.kind !== "resize" && action.kind !== "remove-session";
 }
@@ -46,23 +53,31 @@ export class PaneController {
   readonly #storageKey: string;
   readonly #viewState: SessionViewStateStore;
   readonly #listeners = new Set<() => void>();
+  readonly #route: LayoutRoute | undefined;
   #snapshot: PaneControllerSnapshot;
 
-  constructor({ storage, storageKey }: { storage?: LayoutStorage; storageKey: string }) {
+  constructor({
+    storage,
+    storageKey,
+    initialLayout,
+    route,
+  }: {
+    storage?: LayoutStorage;
+    storageKey: string;
+    initialLayout?: PaneLayout;
+    route?: LayoutRoute;
+  }) {
     this.#storage = storage;
     this.#storageKey = storageKey;
+    this.#route = route;
     this.#viewState = new SessionViewStateStore(
       storage === undefined ? undefined : { storage, storageKey: `${storageKey}:composer-drafts` },
     );
-    let persisted: string | null = null;
 
-    try {
-      persisted = storage?.getItem(storageKey) ?? null;
-    } catch {
-      persisted = null;
-    }
-
-    const layout = parsePersistedPaneLayout(persisted);
+    const layout =
+      route === undefined
+        ? parsePersistedPaneLayout(this.#readLayout())
+        : (initialLayout ?? createSinglePane());
     this.#snapshot = {
       layout,
       focusRequest: { paneId: activePane(layout).id, revision: 0 },
@@ -100,6 +115,13 @@ export class PaneController {
     }
 
     if (layout === current) return current;
+
+    if (this.#route !== undefined) {
+      layout = this.#route(current, layout, action);
+
+      if (layout === current) return current;
+    }
+
     this.#rememberLayout(layout);
 
     const focusRequest = actionRequestsFocus(action)
@@ -112,7 +134,8 @@ export class PaneController {
     this.#snapshot = { layout, focusRequest };
 
     try {
-      this.#storage?.setItem(this.#storageKey, serializePaneLayout(layout));
+      if (this.#route === undefined)
+        this.#storage?.setItem(this.#storageKey, serializePaneLayout(layout));
     } catch {
       // A denied or full local store must not break pane navigation.
     }
@@ -120,6 +143,21 @@ export class PaneController {
     for (const listener of this.#listeners) listener();
 
     return layout;
+  }
+
+  /** Adopt a layout the owning tab moved to on its own, as Back does. */
+  show(layout: PaneLayout): void {
+    if (layout === this.#snapshot.layout) return;
+    this.#rememberLayout(layout);
+    this.#snapshot = {
+      layout,
+      focusRequest: {
+        paneId: activePane(layout).id,
+        revision: this.#snapshot.focusRequest.revision + 1,
+      },
+    };
+
+    for (const listener of this.#listeners) listener();
   }
 
   syncSelection(selection: PaneSelection): PaneLayout {
@@ -247,6 +285,14 @@ export class PaneController {
 
       return true;
     };
+  }
+
+  #readLayout(): string | null {
+    try {
+      return this.#storage?.getItem(this.#storageKey) ?? null;
+    } catch {
+      return null;
+    }
   }
 
   #requestFocus(paneId: PaneId): void {

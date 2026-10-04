@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { isTerminalPhase } from "@nyte-ai/protocol";
-import type { ReplyOutcome, SelectionReply, SessionId } from "@nyte-ai/protocol";
+import type { Delivery, ReplyOutcome, SelectionReply, SessionId } from "@nyte-ai/protocol";
 import { waitingCall, type SessionState } from "@nyte-ai/client";
 import type { FileChange } from "@nyte-ai/client";
 import type { UserContent } from "./remote-chat.ts";
@@ -25,7 +25,7 @@ type ChatScreenProps = {
   streamingText: string;
   sending: boolean;
   error: string | undefined;
-  onSend: (content: UserContent) => Promise<boolean>;
+  onSend: (content: UserContent, delivery?: Delivery) => Promise<boolean>;
   onStop: () => void;
   onReply: (reply: SelectionReply) => Promise<ReplyOutcome | undefined>;
   delegateNames: ReadonlyMap<SessionId, string>;
@@ -121,7 +121,7 @@ export function ChatScreen({
                 running,
                 stopping,
                 error,
-                onSend: (content) => anchorSend(onSend(content)),
+                onSend: (content, delivery) => anchorSend(onSend(content, delivery)),
                 onStop,
               }}
               placeholder="Follow up…"

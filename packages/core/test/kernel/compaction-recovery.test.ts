@@ -10,7 +10,18 @@ import { bindTurn } from "../../src/kernel/turn.ts";
 import { projectEvent } from "../../src/kernel/sdk/events.ts";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import type { SessionEvent } from "../../src/kernel/sdk/types.ts";
-import { assistant, drain, lease, message, openStore, seedHead, user, within } from "./helpers.ts";
+import {
+  assistant,
+  drain,
+  lease,
+  localEnv,
+  localOptions,
+  message,
+  openStore,
+  seedHead,
+  user,
+  within,
+} from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "test-model",
@@ -31,8 +42,7 @@ test("a successor clears abandoned compaction for existing watchers before respo
     store,
     model,
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
-    plugins: [],
-    env: { cwd: "/tmp" },
+    ...localOptions("/tmp"),
     streamFn: () => {
       const stream = createAssistantMessageEventStream();
       stream.push({ type: "done", reason: "stop", message: assistant("resumed work") });
@@ -172,6 +182,7 @@ test.each(["save", "publish"])(
         model,
         sections: { prompt: "test" },
         tools: [],
+        env: localEnv("/tmp"),
         compaction: { enabled: true, reserveTokens: 1_000, keepRecentTokens: 0 },
         streamFn: () => {
           const stream = createAssistantMessageEventStream();

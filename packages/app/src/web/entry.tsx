@@ -40,6 +40,7 @@ const styles = create({
     justifyContent: "center",
     gap: 12,
     height: "100%",
+    overflowWrap: "anywhere",
   },
 });
 

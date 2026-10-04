@@ -11,7 +11,7 @@ import { step } from "../../src/kernel/step.ts";
 import type { Session } from "../../src/kernel/store.ts";
 import { startSpan } from "../../src/kernel/telemetry.ts";
 import { bindTurn } from "../../src/kernel/turn.ts";
-import { assistant, drain, message, openSession, seedHead, user } from "./helpers.ts";
+import { assistant, drain, localEnv, message, openSession, seedHead, user } from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "test-model",
@@ -183,6 +183,7 @@ test("the publish span reports the checkpoint CAS result, and durable state matc
       model,
       sections: { prompt: "test" },
       tools: [],
+      env: localEnv("/tmp"),
       compaction: { enabled: true, reserveTokens: 1_000, keepRecentTokens: 0 },
       streamFn: () => {
         const stream = createAssistantMessageEventStream();

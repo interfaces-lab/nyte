@@ -14,6 +14,7 @@ import {
 import {
   assistant,
   chain,
+  localOptions,
   message,
   openSession,
   openStore,
@@ -227,8 +228,7 @@ test("an ordinary scripted run folds to the authoritative snapshot", async () =>
   const nyte = await createNyte({
     store: openStore(),
     model,
-    plugins: [],
-    env: { cwd: "/tmp/nowhere" },
+    ...localOptions("/tmp/nowhere"),
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     streamFn: () => {
       const stream = createAssistantMessageEventStream();

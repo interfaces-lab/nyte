@@ -15,7 +15,7 @@ import type { Nyte, SessionId } from "../../src/kernel/sdk/types.ts";
 import type { Store } from "../../src/kernel/store.ts";
 import type { CacheWarmingMode, CacheWarmingStatus } from "../../src/kernel/cache-warmer.ts";
 import { definePlugin, type Plugin } from "../../src/plugins/index.ts";
-import { assistant, openStore, storePath, within } from "./helpers.ts";
+import { assistant, localOptions, openStore, storePath, within } from "./helpers.ts";
 
 /** One-hour pricing with a 10.2 s cache lifetime, so a refresh is due 200 ms after dispatch. */
 const model: Model<Api> = {
@@ -130,8 +130,7 @@ async function open(
     },
     model,
     cacheWarming,
-    plugins,
-    env: { cwd: "/tmp/nowhere" },
+    ...localOptions("/tmp/nowhere", plugins),
   });
 }
 

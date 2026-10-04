@@ -44,6 +44,10 @@ import {
 } from "../client-actions.ts";
 
 import { WorkbenchTabStrip } from "../workbench/tab-strip.tsx";
+import { canTravel } from "../tabs/model.ts";
+import { useWindowTabItems, useWindowTabsState } from "../tabs/use-window-tabs.tsx";
+import { WindowTabStrip } from "../tabs/window-tab-strip.tsx";
+import { windowTabs } from "../tabs/window-tabs.ts";
 
 /**
  * Where the open chat runs, ahead of its title: the machine when it is not
@@ -143,7 +147,13 @@ export function Titlebar(): ReactElement {
   const workspaceVisible = !settingsOpen && stage.kind === "workspace";
   const workbenchOpen = workspaceVisible && view.expanded;
   const historyCanGoBack = useCanGoBack();
-  const canGoBack = stage.kind !== "workspace" || settingsOpen || historyCanGoBack;
+  const tabbed = windowTabs.enabled;
+  const tabs = useWindowTabsState();
+  const tabItems = useWindowTabItems(tabs);
+
+  const canGoBack = tabbed
+    ? canTravel(tabs, -1)
+    : stage.kind !== "workspace" || settingsOpen || historyCanGoBack;
 
   const openTerminal = useCallback((): void => {
     if (nyte.host.terminal === undefined) return;
@@ -174,7 +184,20 @@ export function Titlebar(): ReactElement {
 
       switch (command.action) {
         case clientActions.newChat.id:
+        case clientActions.newTab.id:
+          if (settingsOpen) closeSettings(shellRouter);
           panes.newChat();
+
+          return;
+        case clientActions.reopenTab.id:
+          if (settingsOpen) closeSettings(shellRouter);
+          windowTabs.dispatch({ kind: "reopen-tab" });
+
+          return;
+        case clientActions.closeTab.id:
+          if (settingsOpen) closeSettings(shellRouter);
+          else
+            windowTabs.dispatch({ kind: "close-tab", tabId: windowTabs.getSnapshot().activeTabId });
 
           return;
         case clientActions.openFolder.id:
@@ -253,13 +276,15 @@ export function Titlebar(): ReactElement {
 
   return (
     <header {...props(titlebarStyles.bar, nativeMac && titlebarStyles.barMac)}>
-      <span
-        aria-hidden="true"
-        {...props(
-          titlebarStyles.contentFill,
-          !sidebarVisible && titlebarStyles.contentFillSidebarHidden,
-        )}
-      />
+      {!tabbed && (
+        <span
+          aria-hidden="true"
+          {...props(
+            titlebarStyles.contentFill,
+            !sidebarVisible && titlebarStyles.contentFillSidebarHidden,
+          )}
+        />
+      )}
       <span {...props(titlebarStyles.actionTrack)}>
         <Tooltip>
           <TooltipTrigger
@@ -295,6 +320,12 @@ export function Titlebar(): ReactElement {
                     disabled={!canGoBack}
                     aria-keyshortcuts={clientActionAriaShortcut(clientActions.back, mac)}
                     onClick={() => {
+                      if (tabbed) {
+                        windowTabs.dispatch({ kind: "travel", step: -1 });
+
+                        return;
+                      }
+
                       if (stage.kind !== "workspace" && !shellRouter.history.canGoBack()) {
                         shellActions.showWorkspace();
 
@@ -319,7 +350,12 @@ export function Titlebar(): ReactElement {
                     icon="arrow-right"
                     aria-label="Go forward"
                     aria-keyshortcuts={clientActionAriaShortcut(clientActions.forward, mac)}
-                    onClick={() => shellRouter.history.forward()}
+                    disabled={tabbed && !canTravel(tabs, 1)}
+                    onClick={() =>
+                      tabbed
+                        ? windowTabs.dispatch({ kind: "travel", step: 1 })
+                        : shellRouter.history.forward()
+                    }
                     title={undefined}
                   />
                 }
@@ -329,7 +365,35 @@ export function Titlebar(): ReactElement {
           </span>
         </span>
       )}
-      {workspaceVisible && selection.kind === "session" && (
+      {tabbed && (
+        <span
+          {...props(
+            titlebarStyles.titleSlot,
+            titlebarStyles.tabSlot,
+            nativeMac && titlebarStyles.titleSlotMac,
+            workbenchOpen && titlebarStyles.tabSlotWorkbenchOpen,
+            !sidebarVisible &&
+              (nativeMac
+                ? titlebarStyles.titleSlotSidebarHiddenMac
+                : titlebarStyles.titleSlotSidebarHidden),
+          )}
+        >
+          <WindowTabStrip
+            tabs={tabItems}
+            activeTabId={tabs.activeTabId}
+            mac={mac}
+            onActivate={(tabId) => windowTabs.dispatch({ kind: "activate-tab", tabId })}
+            onClose={(tabId) => windowTabs.dispatch({ kind: "close-tab", tabId })}
+            onNewTab={() => windowTabs.dispatch({ kind: "new-tab" })}
+            onReorder={(tabIds) => windowTabs.dispatch({ kind: "reorder", tabIds })}
+            onTogglePin={(tabId) => windowTabs.dispatch({ kind: "toggle-pin", tabId })}
+            onDuplicate={(tabId) => windowTabs.dispatch({ kind: "duplicate-tab", tabId })}
+            onCloseOthers={(tabId) => windowTabs.dispatch({ kind: "close-others", tabId })}
+            onCloseToRight={(tabId) => windowTabs.dispatch({ kind: "close-right", tabId })}
+          />
+        </span>
+      )}
+      {!tabbed && workspaceVisible && selection.kind === "session" && (
         <span
           {...props(
             titlebarStyles.titleSlot,
@@ -345,36 +409,47 @@ export function Titlebar(): ReactElement {
         </span>
       )}
       <span {...props(titlebarStyles.spacer)} />
-      {workspaceVisible && layout.kind === "single" && !(workbenchOpen && view.maximized) && (
-        <span {...props(titlebarStyles.actionTrack)}>
-          <Menu>
-            <MenuTrigger render={<Button iconOnly icon="more" aria-label="Chat actions" />} />
-            <MenuContent align="end">
-              <MenuItem
-                icon="split-down"
-                meta={clientActionShortcut(clientActions.splitDown, mac)}
-                disabled={!canSplit}
-                onClick={() => panes.split("down")}
-              >
-                {clientActions.splitDown.label}
-              </MenuItem>
-              <MenuItem
-                icon="split-right"
-                meta={clientActionShortcut(clientActions.splitRight, mac)}
-                disabled={!canSplit}
-                onClick={() => panes.split("right")}
-              >
-                {clientActions.splitRight.label}
-              </MenuItem>
-            </MenuContent>
-          </Menu>
-        </span>
+      {(workspaceVisible || tabbed) &&
+        layout.kind === "single" &&
+        !(workbenchOpen && view.maximized) && (
+          <span {...props(titlebarStyles.actionTrack)}>
+            <Menu>
+              <MenuTrigger render={<Button iconOnly icon="more" aria-label="Chat actions" />} />
+              <MenuContent align="end">
+                <MenuItem
+                  icon="split-down"
+                  meta={clientActionShortcut(clientActions.splitDown, mac)}
+                  disabled={!canSplit || !workspaceVisible}
+                  onClick={() => panes.split("down")}
+                >
+                  {clientActions.splitDown.label}
+                </MenuItem>
+                <MenuItem
+                  icon="split-right"
+                  meta={clientActionShortcut(clientActions.splitRight, mac)}
+                  disabled={!canSplit || !workspaceVisible}
+                  onClick={() => panes.split("right")}
+                >
+                  {clientActions.splitRight.label}
+                </MenuItem>
+              </MenuContent>
+            </Menu>
+          </span>
+        )}
+      {workbenchOpen && (
+        <span
+          aria-hidden="true"
+          {...props(
+            titlebarStyles.workbenchReservation,
+            tabbed && titlebarStyles.workbenchReservationTabbed,
+          )}
+        />
       )}
-      {workbenchOpen && <span aria-hidden="true" {...props(titlebarStyles.workbenchReservation)} />}
       {workspaceVisible && (
         <div
           {...props(
             workbenchOpen ? titlebarStyles.workbenchTrack : titlebarStyles.actionTrack,
+            workbenchOpen && tabbed && titlebarStyles.workbenchTrackTabbed,
             workbenchOpen &&
               !sidebarVisible &&
               (nativeMac

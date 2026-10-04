@@ -1,8 +1,8 @@
 import process from "node:process";
 import { createNyteModels, FileCredentialStore } from "@nyte-ai/ai";
 import type { AuthType } from "@nyte-ai/ai";
-import type { TrustedWorkspace } from "@nyte-ai/core";
 import { createWorkspaceStore, WorkspaceTrustRequired } from "@nyte-ai/host";
+import type { TrustedWorkspace } from "@nyte-ai/host";
 import { createOtelExport } from "@nyte-ai/host/otel";
 import { loginProvider, logoutProvider } from "./auth.ts";
 import { loadAuthenticatedModels, requireProvider } from "./catalog.ts";

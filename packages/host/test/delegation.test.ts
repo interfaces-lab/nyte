@@ -18,11 +18,11 @@ import {
   InMemoryModelsStore,
 } from "@nyte-ai/ai";
 import type { Provider } from "@nyte-ai/ai";
-import type { Nyte, SessionId, TrustedWorkspace } from "@nyte-ai/core";
+import type { Nyte, SessionId } from "@nyte-ai/core";
 import { SqliteStore } from "@nyte-ai/core/store";
 import type { Api, AssistantMessage, Context, Model } from "@nyte-ai/schema";
 import { createHost, createWorkspaceStore } from "../src/index.ts";
-import type { HostPlugins } from "../src/index.ts";
+import type { HostPlugins, TrustedWorkspace } from "../src/index.ts";
 import { createModelPreferencesStore } from "../src/catalog.ts";
 
 const CHILD_PROMPT = "Map the repository.";
@@ -230,7 +230,11 @@ const compositions: readonly {
     name: "deferred project target",
     plugins: (workspace) => ({
       kind: "workspace",
-      target: { kind: "deferred", resolve: async () => ({ kind: "project", workspace }) },
+      target: {
+        kind: "deferred",
+        cwd: workspace.cwd,
+        resolve: async () => ({ kind: "project", workspace }),
+      },
     }),
   },
 ];

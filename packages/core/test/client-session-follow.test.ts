@@ -38,6 +38,7 @@ function metadataAt(input: {
   const session: SessionInfo = {
     sessionId: SESSION,
     activation: { kind: "active" },
+    workspace: { kind: "local", id: "test", cwd: "/" },
     createdAt: 0,
     lastActivityAt: 0,
     pinned: false,

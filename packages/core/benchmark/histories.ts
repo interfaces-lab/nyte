@@ -3,6 +3,7 @@ import { sessionId } from "@nyte-ai/protocol";
 import { SqliteStore } from "../src/kernel/sqlite.ts";
 import { createNyte } from "../src/kernel/sdk/nyte.ts";
 import { contextCommits } from "../src/kernel/graph.ts";
+import { localEnvironmentPlugin } from "../src/tools/env.ts";
 import {
   COMPACTION_SUMMARY_PREFIX,
   contextMessages,
@@ -39,7 +40,9 @@ export async function histories(count: number, repetitions: Repetitions) {
       nyte = await createNyte({
         store,
         model: MODEL,
-        resolveActivation: () => ({ kind: "inactive" }),
+        plugins: [localEnvironmentPlugin({ id: "benchmark" })],
+        defaultWorkspace: { kind: "local", id: "benchmark", cwd: process.cwd() },
+        trust: () => ({ kind: "inactive" }),
         models: {
           getModel: () => MODEL,
           getModels: () => [MODEL],

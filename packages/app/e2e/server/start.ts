@@ -11,6 +11,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { createAssistantMessageEventStream } from "@nyte-ai/ai";
 import { createNyte } from "@nyte-ai/core";
+import { localEnvironmentPlugin } from "@nyte-ai/core/plugins";
 import { SqliteStore } from "@nyte-ai/core/store";
 import { createWorkspaceBackend, WorkspaceStore } from "@nyte-ai/host";
 import type { SessionId } from "@nyte-ai/core";
@@ -18,6 +19,8 @@ import type { Api, AssistantMessage, Context, Model } from "@nyte-ai/schema";
 // Relative: a package dependency on serve, which depends on this app, is a turbo task cycle.
 import { appDistRoot, startServe } from "../../../serve/src/index.ts";
 import { E2E_PORT, E2E_TOKEN } from "./address.ts";
+
+const ENVIRONMENT_ID = "e2e";
 
 const model: Model<Api> = {
   id: "echo",
@@ -109,8 +112,8 @@ const sdk = await createNyte({
   },
   model,
   workspace: { ...workspaceBackend, vcs: undefined },
-  plugins: [],
-  env: { cwd },
+  plugins: [localEnvironmentPlugin({ id: ENVIRONMENT_ID })],
+  defaultWorkspace: { kind: "local", id: ENVIRONMENT_ID, cwd },
 });
 
 const attached = new Set<SessionId>();

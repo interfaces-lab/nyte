@@ -1,2 +1,2 @@
-Nyte's design decisions, customer-facing documentation, and Cloud design-system reference.
-`content/docs/design.mdx` defines core contracts; product guides describe what ships. Experiments belong in `packages/lab`.
+Nyte's customer-facing documentation and Cloud design-system reference.
+`packages/lab/src/core/guide.tsx` and `packages/core/src/kernel/README.md` define core contracts; product guides here describe what ships. Experiments belong in `packages/lab`.

@@ -2,7 +2,8 @@
  * Children as persistent sessions: the parent creates one, sends it work,
  * waits with a deadline, reads it, and stops it; each answered request lands
  * on the parent as one completion. The provider is a script; the store, the
- * runners, and every session are real. Design: design.mdx, "Agents".
+ * runners, and every session are real. Design:
+ * packages/core/src/kernel/README.md, "Delegation".
  */
 import assert from "node:assert/strict";
 import { dirname } from "node:path";
@@ -40,6 +41,7 @@ import {
   call,
   granted,
   drain,
+  localOptions,
   message,
   only,
   openSession,
@@ -174,7 +176,7 @@ async function fixture(hook: RefUpdateHook = ({ proceed }) => proceed()) {
       getModel: () => model,
       getAvailable: async () => [model],
     },
-    plugins: [
+    ...localOptions(cwd, [
       definePlugin({
         id: "delegation-test-tools",
         session(api) {
@@ -190,8 +192,7 @@ async function fixture(hook: RefUpdateHook = ({ proceed }) => proceed()) {
           });
         },
       }),
-    ],
-    env: { cwd },
+    ]),
   });
   const { sessionId: parent } = await nyte.sessions.create();
   nyte.attach();

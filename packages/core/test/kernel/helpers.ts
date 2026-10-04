@@ -6,7 +6,6 @@
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
-import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach } from "vitest";
@@ -35,13 +34,43 @@ import { SqliteStore } from "../../src/kernel/sqlite.ts";
 import { WorkerStore } from "../../src/kernel/worker-store.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
 import type { Turn, TurnInput } from "../../src/kernel/turn.ts";
-import type { ToolCall as ToolCallContext, ToolRun } from "../../src/kernel/loop/types.ts";
-import { TRUSTED_WORKSPACE } from "../../src/kernel/sdk/types.ts";
-import type { TrustedWorkspace } from "../../src/kernel/sdk/types.ts";
+import type { ToolContext, ToolRun } from "../../src/kernel/loop/types.ts";
+import type { ExecutionEnv } from "../../src/kernel/loop/env.ts";
+import type { NyteOptions, Workspace } from "../../src/kernel/sdk/types.ts";
+import type { Plugin } from "../../src/plugins/types.ts";
+import { createLocalExecutionEnv, localEnvironmentPlugin } from "../../src/tools/env.ts";
 
-/** What the host's trust store would mint after a grant on `cwd`. */
-export async function trustWorkspace(cwd: string): Promise<TrustedWorkspace> {
-  return { cwd: await realpath(cwd), [TRUSTED_WORKSPACE]: true };
+const LOCAL_ID = "test";
+
+export function localWorkspace(cwd: string): Workspace {
+  return { kind: "local", id: LOCAL_ID, cwd };
+}
+
+export function localEnv(cwd: string): ExecutionEnv {
+  return createLocalExecutionEnv({ id: LOCAL_ID, cwd });
+}
+
+/** A host that runs `plugins`, provides this machine's workspaces, and starts new sessions at `cwd`. */
+export function localOptions(
+  cwd: string,
+  plugins: readonly Plugin[] = [],
+): Pick<NyteOptions, "plugins" | "defaultWorkspace"> {
+  return {
+    plugins: [...plugins, localEnvironmentPlugin({ id: LOCAL_ID })],
+    defaultWorkspace: localWorkspace(cwd),
+  };
+}
+
+/** A host's trust: each granted directory opens with its project plugins, and any other asks for a grant. */
+export function trustGrants(
+  grants: ReadonlyMap<string, readonly Plugin[]>,
+): NonNullable<NyteOptions["trust"]> {
+  return (workspace) => {
+    const plugins = grants.get(workspace.cwd);
+    return plugins === undefined
+      ? { kind: "requires", requirement: { kind: "workspace_trust", cwd: workspace.cwd } }
+      : { kind: "trusted", plugins: async () => plugins };
+  };
 }
 
 export const drain = "one" as const;
@@ -143,12 +172,15 @@ export function bareRun(id: string, head: string): ToolRun {
   };
 }
 
-/** A direct call into `execute`, outside any run, the way the bare loop makes one. */
-export function toolCall(
-  id: string,
-  options: Partial<Omit<ToolCallContext, "id">> = {},
-): ToolCallContext {
-  return { signal: new AbortController().signal, update: () => undefined, ...options, id };
+/** A direct call into `execute`, outside any run. */
+export function toolCall(id: string, options: Partial<Omit<ToolContext, "id">> = {}): ToolContext {
+  return {
+    signal: new AbortController().signal,
+    update: () => undefined,
+    env: localEnv(tmpdir()),
+    ...options,
+    id,
+  };
 }
 
 export function call(id: string, name: string, args: ToolCall["arguments"] = {}): ToolCall {

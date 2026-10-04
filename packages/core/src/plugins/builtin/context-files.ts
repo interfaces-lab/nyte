@@ -10,18 +10,12 @@
  * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/resource-loader.ts
  * and system-prompt.ts (project context block), findGitPaths from footer-data-provider.ts.
  */
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { basename, dirname, join, resolve, sep } from "node:path";
-import { definePlugin } from "../types.ts";
+import type { EnvOps, ExecutionEnv } from "../../kernel/loop/env.ts";
+import { localOps } from "../../tools/env.ts";
 
 export interface ContextFile {
   readonly path: string;
   readonly content: string;
-}
-
-export interface ContextFilesOptions {
-  /** Directory holding the user-global context file, e.g. `~/.nyte`. */
-  readonly globalDir?: string;
 }
 
 const CANDIDATES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
@@ -31,30 +25,28 @@ function stripBom(content: string): string {
 }
 
 /** Resolve a path to its real form, falling back to the raw path when it does not exist. */
-function realpathOrSelf(path: string): string {
-  try {
-    return realpathSync(path);
-  } catch {
-    return path;
-  }
+async function realpathOrSelf(ops: EnvOps, path: string): Promise<string> {
+  return (await ops.realpath(path).catch(() => undefined)) ?? path;
 }
 
-function loadContextFileFromDir(dir: string, warn: (message: string) => void): ContextFile | null {
+async function loadContextFileFromDir(
+  ops: EnvOps,
+  dir: string,
+  warn: (message: string) => void,
+): Promise<ContextFile | undefined> {
   for (const filename of CANDIDATES) {
-    const filePath = join(dir, filename);
-
-    if (!existsSync(filePath)) continue;
+    const filePath = ops.resolve(dir, filename);
 
     try {
-      if (!statSync(filePath).isFile()) continue;
+      if ((await ops.stat(filePath))?.kind !== "file") continue;
 
-      return { path: filePath, content: stripBom(readFileSync(filePath, "utf8")) };
+      return { path: filePath, content: stripBom((await ops.readFile(filePath)).toString("utf8")) };
     } catch (error) {
       warn(`could not read ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  return null;
+  return undefined;
 }
 
 interface GitPaths {
@@ -66,44 +58,61 @@ interface GitPaths {
  * Find git metadata paths by walking up from cwd. Handles both regular repos
  * (`.git` is a directory) and linked worktrees (`.git` is a file).
  */
-function findGitPaths(cwd: string): GitPaths | null {
+async function findGitPaths(ops: EnvOps, cwd: string): Promise<GitPaths | undefined> {
+  const exists = async (path: string): Promise<boolean> => (await ops.stat(path)) !== undefined;
+
+  const text = async (path: string): Promise<string> =>
+    (await ops.readFile(path)).toString("utf8").trim();
+
   let dir = cwd;
 
   while (true) {
-    const gitPath = join(dir, ".git");
+    const gitPath = ops.resolve(dir, ".git");
 
-    if (existsSync(gitPath)) {
-      try {
-        const stat = statSync(gitPath);
+    try {
+      const info = await ops.stat(gitPath);
 
-        if (stat.isFile()) {
-          const content = readFileSync(gitPath, "utf8").trim();
+      if (info?.kind === "file") {
+        const content = await text(gitPath);
 
-          if (content.startsWith("gitdir: ")) {
-            const gitDir = resolve(dir, content.slice(8).trim());
+        if (content.startsWith("gitdir: ")) {
+          const gitDir = ops.resolve(dir, content.slice(8).trim());
 
-            if (!existsSync(join(gitDir, "HEAD"))) return null;
-            const commonDirPath = join(gitDir, "commondir");
+          if (!(await exists(ops.resolve(gitDir, "HEAD")))) return undefined;
+          const commonDirPath = ops.resolve(gitDir, "commondir");
 
-            const commonGitDir = existsSync(commonDirPath)
-              ? resolve(gitDir, readFileSync(commonDirPath, "utf8").trim())
-              : gitDir;
+          const commonGitDir = (await exists(commonDirPath))
+            ? ops.resolve(gitDir, await text(commonDirPath))
+            : gitDir;
 
-            return { repoDir: dir, commonGitDir };
-          }
-        } else if (stat.isDirectory()) {
-          if (!existsSync(join(gitPath, "HEAD"))) return null;
-
-          return { repoDir: dir, commonGitDir: gitPath };
+          return { repoDir: dir, commonGitDir };
         }
-      } catch {
-        return null;
+      } else if (info?.kind === "directory") {
+        if (!(await exists(ops.resolve(gitPath, "HEAD")))) return undefined;
+
+        return { repoDir: dir, commonGitDir: gitPath };
       }
+    } catch {
+      return undefined;
     }
 
-    const parent = dirname(dir);
+    const parent = ops.resolve(dir, "..");
 
-    if (parent === dir) return null;
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
+/** Whether `ancestor` contains `path`, walking up the environment's own paths. */
+function isBelow(ops: EnvOps, path: string, ancestor: string): boolean {
+  let dir = path;
+
+  while (true) {
+    const parent = ops.resolve(dir, "..");
+
+    if (parent === dir) return false;
+
+    if (parent === ancestor) return true;
     dir = parent;
   }
 }
@@ -117,69 +126,78 @@ function findGitPaths(cwd: string): GitPaths | null {
  * file's `gitdir:` target in realpath form while cwd may still be symlinked
  * (macOS `/tmp` -> `/private/tmp`).
  */
-function findShadowedContextFile(cwd: string, warn: (message: string) => void): string | undefined {
-  const gitPaths = findGitPaths(cwd);
+async function findShadowedContextFile(
+  ops: EnvOps,
+  cwd: string,
+  warn: (message: string) => void,
+): Promise<string | undefined> {
+  const gitPaths = await findGitPaths(ops, cwd);
 
-  if (gitPaths === null) return undefined;
-  const commonGitDir = realpathOrSelf(gitPaths.commonGitDir);
-  const worktreeRoot = realpathOrSelf(gitPaths.repoDir);
-  const mainRepoRoot = dirname(commonGitDir);
+  if (gitPaths === undefined) return undefined;
+  const commonGitDir = await realpathOrSelf(ops, gitPaths.commonGitDir);
+  const worktreeRoot = await realpathOrSelf(ops, gitPaths.repoDir);
+  const mainRepoRoot = ops.resolve(commonGitDir, "..");
 
   // False for an ordinary repo, where the two are the same dir, and for a sibling
   // worktree (`git worktree add ../feat`), whose main repo is not an ancestor.
-  if (!worktreeRoot.startsWith(`${mainRepoRoot}${sep}`)) return undefined;
+  if (!isBelow(ops, worktreeRoot, mainRepoRoot)) return undefined;
 
   // dirname of the common git dir is the main worktree root only when that dir is
   // itself checked out from the same repo. In a bare layout (`proj/.bare` +
   // `proj/main`) it is just the directory holding `.bare`, which tracks nothing; a
   // submodule's gitdir has no `commondir`, so it lands under `.git/modules`.
-  if (realpathOrSelf(join(mainRepoRoot, ".git")) !== commonGitDir) return undefined;
-  const worktreeContextFile = loadContextFileFromDir(worktreeRoot, warn);
+  if ((await realpathOrSelf(ops, ops.resolve(mainRepoRoot, ".git"))) !== commonGitDir)
+    return undefined;
 
-  return worktreeContextFile === null
-    ? undefined
-    : join(mainRepoRoot, basename(worktreeContextFile.path));
+  const worktreeContextFile = await loadContextFileFromDir(ops, worktreeRoot, warn);
+
+  const filename = CANDIDATES.find(
+    (candidate) => worktreeContextFile?.path === ops.resolve(worktreeRoot, candidate),
+  );
+
+  return filename === undefined ? undefined : ops.resolve(mainRepoRoot, filename);
 }
 
-/** Global context file first, then ancestors of cwd outermost-first, cwd last. */
-export function loadProjectContextFiles(options: {
-  cwd: string;
+/** Global context file first, then ancestors of the environment's cwd outermost-first, cwd last. */
+export async function loadProjectContextFiles(options: {
+  env: ExecutionEnv;
   globalDir?: string;
   warn?: (message: string) => void;
-}): ContextFile[] {
+}): Promise<ContextFile[]> {
   const warn = options.warn ?? (() => undefined);
-  const resolvedCwd = resolve(options.cwd);
+  const { env } = options;
 
   const contextFiles: ContextFile[] = [];
   const seenPaths = new Set<string>();
 
   if (options.globalDir !== undefined) {
-    const globalContext = loadContextFileFromDir(resolve(options.globalDir), warn);
+    const host = localOps(options.globalDir);
+    const globalContext = await loadContextFileFromDir(host, host.resolve(), warn);
 
-    if (globalContext !== null) {
+    if (globalContext !== undefined) {
       contextFiles.push(globalContext);
       seenPaths.add(globalContext.path);
     }
   }
 
   const ancestorContextFiles: ContextFile[] = [];
-  const shadowedContextFile = findShadowedContextFile(resolvedCwd, warn);
-  let currentDir = resolvedCwd;
+  const shadowedContextFile = await findShadowedContextFile(env, env.cwd, warn);
+  let currentDir = env.cwd;
 
   while (true) {
-    const contextFile = loadContextFileFromDir(currentDir, warn);
+    const contextFile = await loadContextFileFromDir(env, currentDir, warn);
 
     const isShadowed =
       shadowedContextFile !== undefined &&
-      contextFile !== null &&
-      realpathOrSelf(contextFile.path) === shadowedContextFile;
+      contextFile !== undefined &&
+      (await realpathOrSelf(env, contextFile.path)) === shadowedContextFile;
 
-    if (contextFile !== null && !isShadowed && !seenPaths.has(contextFile.path)) {
+    if (contextFile !== undefined && !isShadowed && !seenPaths.has(contextFile.path)) {
       ancestorContextFiles.unshift(contextFile);
       seenPaths.add(contextFile.path);
     }
 
-    const parentDir = dirname(currentDir);
+    const parentDir = env.resolve(currentDir, "..");
 
     if (parentDir === currentDir) break;
     currentDir = parentDir;
@@ -203,27 +221,4 @@ export function formatContextFilesForPrompt(files: readonly ContextFile[]): stri
   text += "</project_context>";
 
   return text;
-}
-
-export function contextFilesPlugin(options: ContextFilesOptions = {}) {
-  return definePlugin({
-    id: "context-files",
-    session(api) {
-      const loadOptions = {
-        cwd: api.env.cwd,
-        warn: (message: string) => api.diagnostics.warn(message),
-      };
-
-      const files =
-        options.globalDir === undefined
-          ? loadProjectContextFiles(loadOptions)
-          : loadProjectContextFiles({ ...loadOptions, globalDir: options.globalDir });
-
-      const text = formatContextFilesForPrompt(files);
-
-      if (text === "") return;
-      // After the base system prompt, before skills.
-      api.prompt.add((draft) => draft.set("project-context", { text, order: 10 }));
-    },
-  });
 }

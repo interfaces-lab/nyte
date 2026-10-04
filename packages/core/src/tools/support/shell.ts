@@ -60,23 +60,13 @@ function findExecutableOnPath(executable: string): string | null {
 }
 
 /**
- * Resolve shell configuration based on platform and an optional explicit shell path.
+ * Resolve shell configuration based on platform.
  * Resolution order:
- * 1. User-specified shellPath
- * 2. On Windows: Git Bash in known locations, then bash on PATH
- * 3. On Unix: /bin/bash, then bash on PATH, then fallback to sh
+ * 1. On Windows: Git Bash in known locations, then bash on PATH
+ * 2. On Unix: /bin/bash, then bash on PATH, then fallback to sh
  */
-export function getShellConfig(customShellPath?: string): ShellConfig {
-  // 1. Check user-specified shell path
-  if (customShellPath) {
-    if (existsSync(customShellPath)) {
-      return getBashShellConfig(customShellPath);
-    }
-    throw new Error(`Custom shell path not found: ${customShellPath}`);
-  }
-
+export function getShellConfig(): ShellConfig {
   if (process.platform === "win32") {
-    // 2. Try Git Bash in known locations
     const paths: string[] = [];
     const programFiles = process.env.ProgramFiles;
     if (programFiles) {
@@ -93,7 +83,6 @@ export function getShellConfig(customShellPath?: string): ShellConfig {
       }
     }
 
-    // 3. Fallback: search bash.exe on PATH (Cygwin, MSYS2, WSL, etc.)
     const bashOnPath = findExecutableOnPath("bash.exe");
     if (bashOnPath) {
       return getBashShellConfig(bashOnPath);
@@ -102,8 +91,7 @@ export function getShellConfig(customShellPath?: string): ShellConfig {
     throw new Error(
       `No bash shell found. Options:\n` +
         `  1. Install Git for Windows: https://git-scm.com/download/win\n` +
-        `  2. Add your bash to PATH (Cygwin, MSYS2, etc.)\n` +
-        "  3. Set shellPath in settings.json\n\n" +
+        `  2. Add your bash to PATH (Cygwin, MSYS2, etc.)\n\n` +
         `Searched Git Bash in:\n${paths.map((p) => `  ${p}`).join("\n")}`,
     );
   }

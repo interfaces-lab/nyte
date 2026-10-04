@@ -26,19 +26,6 @@ export const ISSUE_GROUPS: readonly {
     title: "Correctness",
     issues: [
       {
-        name: "wake",
-        path: "sdk/runner.ts",
-        line: 414,
-        why: (
-          <>
-            A host that restarts within 30 s of a crash finds the dead owner's lease still live.{" "}
-            <C>drive</C> answers <C>busy</C> and <C>wake</C> returns. Lease expiry writes no event,
-            so nothing wakes the head until some other ref on it moves.
-          </>
-        ),
-        fix: { kind: "patch", patches: PATCHES.wake },
-      },
-      {
         name: "advanceStep",
         path: "sdk/advance.ts",
         line: 85,
@@ -63,19 +50,6 @@ export const ISSUE_GROUPS: readonly {
           </>
         ),
         fix: { kind: "patch", patches: PATCHES.respond },
-      },
-      {
-        name: "executeToolCalls",
-        path: "loop/agent-loop.ts",
-        line: 188,
-        why: (
-          <>
-            Dispose and relocation abort the step's signal without setting <C>abortRequested</C>.
-            The loop stops before the remaining calls start, <C>runTools</C> still answers{" "}
-            <C>complete</C>, and the unstarted calls are published without results. They never run.
-          </>
-        ),
-        fix: { kind: "patch", patches: PATCHES.executeToolCalls },
       },
       {
         name: "tools",
@@ -216,7 +190,12 @@ const { changes, skipped } = await pendingIn(session, { head, delivery });
         name: "clearEffects",
         path: "effects.ts",
         line: 366,
-        why: "Four exports have no callers outside tests.",
+        why: (
+          <>
+            These exports have no callers outside tests. <C>collect</C> and <C>trimStream</C> are
+            the kernel's only retention, so no host trims the event log or sweeps objects.
+          </>
+        ),
         fix: {
           kind: "unused",
           exports: [
@@ -224,6 +203,10 @@ const { changes, skipped } = await pendingIn(session, { head, delivery });
             ["nextToLand", "queue.ts", 523],
             ["NextChange", "queue.ts", 41],
             ["CHAIN_PREFIX", "names.ts", 193],
+            ["advanceBase", "stacks.ts", 294],
+            ["stackStatus", "stacks.ts", 281],
+            ["collect", "gc.ts", 83],
+            ["trimStream", "gc.ts", 116],
           ],
         },
       },

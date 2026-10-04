@@ -6,7 +6,7 @@ description: >
   @nyte-ai/ui exports, or answers a question by citing those pages. Trigger on component docs,
   design system docs, styled components, tokens, theming, and any request to document a
   component or check that a page is still true.
-  Not for the core design record in content/docs/design.mdx, marketing pages under src/app,
+  Not for the Core guide in packages/lab/src/core/guide.tsx, marketing pages under src/app,
   or code changes in packages/ui that leave the public exports unchanged.
 ---
 

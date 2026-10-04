@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
 import { createNyteClient, NyteWireError } from "@nyte-ai/client";
 import { createNyte } from "@nyte-ai/core";
+import { localEnvironmentPlugin } from "@nyte-ai/core/plugins";
 import { SqliteStore } from "@nyte-ai/core/store";
 import {
   CallReplySchema,
@@ -260,8 +261,8 @@ async function serve(
       getAvailable: async () => [model],
     },
     model,
-    plugins: [],
-    env: { cwd: "/tmp/nowhere" },
+    plugins: [localEnvironmentPlugin({ id: "environment-test" })],
+    defaultWorkspace: { kind: "local", id: "environment-test", cwd: "/tmp/nowhere" },
   });
   cleanups.push(
     () => nyte.close(),

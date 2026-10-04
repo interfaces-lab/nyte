@@ -13,7 +13,16 @@ import {
   type SessionId,
 } from "../../src/kernel/sdk/types.ts";
 import type { StreamFn, ThinkingLevel } from "../../src/kernel/loop/types.ts";
-import { assistant, message, openStore, seedHead, usage, user, within } from "./helpers.ts";
+import {
+  assistant,
+  localOptions,
+  message,
+  openStore,
+  seedHead,
+  usage,
+  user,
+  within,
+} from "./helpers.ts";
 
 function testModel(id: string, reasoning = false): Model<Api> {
   return {
@@ -106,8 +115,7 @@ async function openNyte(input: {
     streamFn: input.streamFn,
     models: catalog(models),
     model: input.model ?? fallbackModel,
-    plugins: [],
-    env: { cwd: "/tmp/nowhere" },
+    ...localOptions("/tmp/nowhere"),
     compaction: { enabled: true, reserveTokens: 100, keepRecentTokens: 1 },
   };
   return createNyte(

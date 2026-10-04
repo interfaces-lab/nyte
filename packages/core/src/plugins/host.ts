@@ -12,10 +12,10 @@ import type {
   Agent,
   Command,
   Disposer,
+  EnvironmentWrap,
   Plugin,
   ModelContextPolicy,
   Notification,
-  PluginEnv,
   PluginInfo,
   PluginSetting,
   PromptSection,
@@ -33,21 +33,23 @@ export interface PluginRegistries {
   readonly settings: ContributionRegistry<PluginSetting, MapDraft<PluginSetting>>;
   readonly status: ContributionRegistry<StatusItem, MapDraft<StatusItem>>;
   readonly modelContext: ContributionRegistry<ModelContextPolicy, ModelContextDraft>;
+  readonly environmentWraps: ContributionRegistry<EnvironmentWrap, MapDraft<EnvironmentWrap>>;
 }
 
-export function createRegistries(env: ExecutionEnv): PluginRegistries {
+export function createRegistries(): PluginRegistries {
   // Binding must not make an unchanged contribution appear changed on every rebuild.
   const toolBindings = new WeakMap<object, AgentTool>();
 
   return {
     agents: new ContributionRegistry(() => new MapDraft<Agent>()),
-    tools: new ContributionRegistry(() => new ToolMapDraft(env, toolBindings)),
+    tools: new ContributionRegistry(() => new ToolMapDraft(toolBindings)),
     commands: new ContributionRegistry(() => new MapDraft<Command>()),
     prompt: new ContributionRegistry(() => new MapDraft<PromptSection>()),
     resources: new ContributionRegistry(() => new MapDraft<Skill>()),
     settings: new ContributionRegistry(() => new MapDraft<PluginSetting>()),
     status: new ContributionRegistry(() => new MapDraft<StatusItem>()),
     modelContext: new ContributionRegistry(() => new ModelContextDraft()),
+    environmentWraps: new ContributionRegistry(() => new MapDraft<EnvironmentWrap>()),
   };
 }
 
@@ -75,7 +77,7 @@ export interface PluginHostTarget {
   readonly registries: PluginRegistries;
   readonly session: PluginSessionStorage;
   readonly events: PluginEventSource;
-  readonly env: PluginEnv;
+  readonly env: ExecutionEnv;
   subscribe(listener: (event: PluginNotice) => void | Promise<void>): Disposer;
   /** Replay every registry; a contribution that throws is reported as a diagnostic. */
   rebuildAll(): void;
@@ -213,6 +215,7 @@ export class PluginHost {
       settings: this.target.registries.settings.stage(excluded, orderByOwner),
       status: this.target.registries.status.stage(excluded, orderByOwner),
       modelContext: this.target.registries.modelContext.stage(excluded, orderByOwner),
+      environmentWraps: this.target.registries.environmentWraps.stage(excluded, orderByOwner),
     };
     const registries: PluginRegistries = {
       agents: stages.agents.registry,
@@ -223,6 +226,7 @@ export class PluginHost {
       settings: stages.settings.registry,
       status: stages.status.registry,
       modelContext: stages.modelContext.registry,
+      environmentWraps: stages.environmentWraps.registry,
     };
     const candidates = new Map<string, ActivePlugin>();
     let staging = true;

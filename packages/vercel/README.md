@@ -8,8 +8,15 @@ Private workspace integration for Workflow **4.8.8**. It does not replace Nyte's
 - `/workflow`: `driveNyte`. Only type imports; safe for the Workflow compiler's workflow bundle.
 - `/postgres`: `openPostgresExecution`. Node-only pg pool ownership, Vercel pool attachment, store/outbox initialization, and idempotent resource cleanup.
 - `/outbox`: `dispatchOutbox`, `reconcileDispatch`, and their types. PostgreSQL, separate from workflow code.
+- `/sandbox`: `vercelSandboxPlugin` and its types. The `vercel-sandbox` environment provider.
 
 Applications own provider configuration, plugins, secrets, server authentication, deployment configuration, and the compiled wrapper files. No factories or closures cross the Workflow journal.
+
+`vercelSandboxPlugin({ connect })` provides the `vercel-sandbox` environment. Install it in `NyteOptions.plugins`, or in `HostOptions.environments` under `createHost`. Opening a workspace `{ kind: "vercel-sandbox", id, cwd, locator }` connects nothing. Every operation calls `connect(workspace)` and acts in the Sandbox it returns, so memoize `connect`. The host assigns `id`. `locator` holds what `connect` needs to reconnect, such as the Sandbox name, and never credentials. `connect` must reject when it cannot reach the files `id` names, such as when a non-persistent Sandbox would resume from its source. Every operation then fails with that error while the session still reports `active`. Use a persistent Sandbox for a workspace that outlives one session. A `cwd` that is not absolute fails the open. Creation, reconnection, credentials, billing, snapshots, and stopping stay with the application's SDK handle.
+
+`VercelSandbox` is a structural subset of the `@vercel/sandbox@3.5.1` `Sandbox`, so the package does not depend on the SDK; re-check it when upgrading. Paths are POSIX and resolve against `cwd`. The image must provide `realpath -e` and GNU `find`; the default image has both.
+
+`exec` runs `/bin/bash -lc`. Log data arrives already decoded as UTF-8 strings, so `onData` does not receive the raw bytes. On abort `exec` sends `SIGKILL` and forwards output until the command exits. The SDK kills the shell process and cannot guarantee that its descendants die. Transport failures propagate as SDK errors. Nothing retries an ambiguous command submission. The tests run against a fake Sandbox, not the service.
 
 ## Consumer wrappers
 

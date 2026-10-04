@@ -2,21 +2,21 @@ import type { Message } from "@nyte-ai/schema";
 import { runToolCall, type RunToolCallOptions } from "./agent-loop.ts";
 import { callableTools } from "./tool-catalog.ts";
 import { toolCallArguments, toolFailure } from "./tool-result.ts";
-import { isToolWait, type AgentTool, type ToolRun } from "./types.ts";
+import { isToolWait, type ExecutableTool, type ToolRun } from "./types.ts";
 
 export function liveTools(options: {
-  tools: readonly AgentTool[];
+  tools: readonly ExecutableTool[];
   runId: string;
   head: string;
   history: () => Promise<readonly Message[]>;
   call: Omit<RunToolCallOptions, "tools" | "signal" | "onUpdate">;
-}): AgentTool[] {
+}): ExecutableTool[] {
   const callable = callableTools(options.tools);
   const wrap = (
-    tool: AgentTool,
+    tool: ExecutableTool,
     parentToolCallId?: string,
     activation?: Set<string>,
-  ): AgentTool => ({
+  ): ExecutableTool => ({
     ...tool,
     execute: async (input, call) => {
       let nextId = 1;
@@ -75,10 +75,10 @@ export function liveTools(options: {
     },
   });
   const nestedTool = (
-    tool: AgentTool,
+    tool: ExecutableTool,
     parentToolCallId: string,
     activation: Set<string>,
-  ): AgentTool => {
+  ): ExecutableTool => {
     const wrapped = wrap(tool, parentToolCallId, activation);
     return {
       ...wrapped,
@@ -90,7 +90,7 @@ export function liveTools(options: {
           throw new Error(`Tool "${tool.name}" cannot wait during a nested invocation`);
         }
       },
-    } satisfies AgentTool;
+    };
   };
   return options.tools.map((tool) => wrap(tool));
 }

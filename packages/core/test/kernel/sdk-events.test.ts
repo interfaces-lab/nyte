@@ -309,6 +309,7 @@ test("a session's row folds its facts, its branch config, and its newest message
   const info = sessionInfo({
     id: "s1",
     activation: { kind: "active" },
+    workspace: { kind: "local", id: "test", cwd: "/" },
     createdAt: 0,
     heads: [headInfo({ head: "main", tip: "t" }, "t")],
     facts,
@@ -386,6 +387,7 @@ test("session rows omit unknown thinking levels at the SDK boundary", () => {
     sessionInfo({
       id: "s1",
       activation: { kind: "active" },
+      workspace: { kind: "local", id: "test", cwd: "/" },
       createdAt: 0,
       heads: [],
       facts: new Map(),
@@ -437,6 +439,7 @@ test("a choice drain during a snapshot cannot overwrite a newer branch choice", 
   const info = sessionInfo({
     id: "s1",
     activation: { kind: "active" },
+    workspace: { kind: "local", id: "test", cwd: "/" },
     createdAt: 0,
     heads: [],
     facts: new Map(),

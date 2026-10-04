@@ -2,7 +2,7 @@ import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
-import { layer, menu, radius } from "./schema.stylex.ts";
+import { layer, menu } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
 import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
@@ -30,7 +30,7 @@ const styles = create({
     overflow: "hidden",
     fontFamily: "inherit",
     textOverflow: "ellipsis",
-    textAlign: "left",
+    textAlign: "start",
     whiteSpace: "nowrap",
   },
   icon: {
@@ -52,7 +52,7 @@ const styles = create({
     overflowY: "auto",
     overscrollBehavior: "contain",
     borderStyle: "none",
-    borderRadius: radius.surface,
+    borderRadius: menu.radius,
     outline: "none",
     backgroundColor: role.popupMaterial,
     backdropFilter: appearance.popupMaterialFilter,
@@ -101,7 +101,10 @@ const styles = create({
     paddingBlock: menu.itemPaddingBlock,
     paddingInline: menu.itemPaddingInline,
     borderRadius: menu.itemRadius,
-    outline: "none",
+    outlineStyle: { default: "none", "[data-highlighted]": "solid" },
+    outlineWidth: 1,
+    outlineColor: appearance.focusRing,
+    outlineOffset: -1,
     backgroundColor: {
       default: "transparent",
       "[data-highlighted]": role.bgHover,

@@ -1,20 +1,19 @@
 import { ClerkFailed, ClerkLoading, ClerkProvider, SignIn, useAuth, useClerk } from "@clerk/react";
-import type { ClerkProviderProps } from "@clerk/react";
 import { createBrokerClient } from "@nyte-ai/connect";
 import type { EnvironmentSummary } from "@nyte-ai/connect";
 import type { AccountConfig } from "@nyte-ai/connect/account-config";
+import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Row } from "@nyte-ai/ui/row";
 import { radius } from "@nyte-ai/ui/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { useMountEffect } from "../use-mount-effect.ts";
-import { accountAppearance } from "../account/appearance.ts";
+import { AccountScope, accountAppearance } from "../account/appearance.tsx";
 import { serverConnectionProblem } from "../server-connection.ts";
 import type { Connection } from "./bridge.ts";
 import {
@@ -36,11 +35,6 @@ import { webBridge } from "./install.ts";
 import { WebPage } from "./web-page.tsx";
 
 const styles = create({
-  title: { "--_title": role.contentPrimary },
-  accent: {
-    "--_accent-fill": role.buttonFill,
-    "--_accent-content": role.contentOnInteractiveStrong,
-  },
   list: {
     display: "flex",
     flexDirection: "column",
@@ -50,6 +44,12 @@ const styles = create({
   },
   leading: { color: role.contentSecondary },
   offline: { color: role.contentDisabled },
+  wrap: {
+    overflow: "visible",
+    overflowWrap: "anywhere",
+    textOverflow: "clip",
+    whiteSpace: "normal",
+  },
   status: { margin: 0, color: role.contentSecondary, textAlign: "center" },
   frame: { display: "flex", flexDirection: "column", height: "100%" },
   bar: {
@@ -69,40 +69,11 @@ const styles = create({
   barName: {
     flex: 1,
     minWidth: 0,
-    overflow: "hidden",
     color: role.contentPrimary,
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    overflowWrap: "anywhere",
   },
   shell: { flex: 1, minHeight: 0, position: "relative" },
 });
-
-const appearance = {
-  ...accountAppearance,
-  theme: "simple",
-  variables: {
-    ...accountAppearance.variables,
-    colorPrimary: "var(--_accent-fill)",
-    colorPrimaryForeground: "var(--_accent-content)",
-    borderRadius: "var(--nyte-shape-control)",
-  },
-  options: { elevation: "flush", socialButtonsVariant: "blockButton" },
-  elements: {
-    ...accountAppearance.elements,
-    rootBox: { width: "100%" },
-    cardBox: { width: "100%", boxShadow: "none" },
-    headerTitle: {
-      fontSize: "var(--nyte-font-size-lg)",
-      lineHeight: "var(--nyte-line-height-lg)",
-      fontWeight: 600,
-      color: "var(--_title)",
-    },
-    buttonArrowIcon: { display: "none" },
-    formFieldInput: { height: "var(--nyte-input-height-md)", paddingBlock: 0 },
-    formButtonPrimary: { height: "var(--nyte-btn-height-md)", paddingBlock: 0 },
-    socialButtonsBlockButton: { height: "var(--nyte-btn-height-md)", paddingBlock: 0 },
-  },
-} satisfies NonNullable<ClerkProviderProps["appearance"]>;
 
 export function DesktopList({
   environments,
@@ -132,7 +103,7 @@ export function DesktopList({
               <Icon name="laptop" size={16} />
             </Row.Leading>
             <Row.Body>
-              <Row.Label>{environment.name}</Row.Label>
+              <Row.Label xstyle={styles.wrap}>{environment.name}</Row.Label>
               <Row.Description>{environment.online ? "Online" : "Offline"}</Row.Description>
             </Row.Body>
           </Row.Primary>
@@ -386,18 +357,14 @@ function AccountFlow({
   if (ownerId === undefined) {
     return (
       <WebPage footer={manualButton}>
-        <div {...props(styles.title)}>
-          <div {...props(intent.primary, styles.accent)}>
-            <div {...props(surfaceTheme.gray)}>
-              <SignIn
-                routing="hash"
-                withSignUp
-                forceRedirectUrl={redirectUrl}
-                signUpForceRedirectUrl={redirectUrl}
-              />
-            </div>
-          </div>
-        </div>
+        <AccountScope>
+          <SignIn
+            routing="hash"
+            withSignUp
+            forceRedirectUrl={redirectUrl}
+            signUpForceRedirectUrl={redirectUrl}
+          />
+        </AccountScope>
       </WebPage>
     );
   }
@@ -413,6 +380,7 @@ function AccountFlow({
           : email
       }
       busy={progress !== undefined}
+      status={progress}
       footer={
         <>
           <Button
@@ -443,9 +411,14 @@ function AccountFlow({
           onPick={(environment) => void pick(environment)}
         />
       )}
-      {(problem ?? progress) !== undefined && (
-        <p role={problem !== undefined ? "alert" : "status"} {...props(styles.status)}>
-          {problem ?? progress}
+      {problem !== undefined && (
+        <p role="alert" {...props(styles.status)}>
+          {problem}
+        </p>
+      )}
+      {problem === undefined && progress !== undefined && (
+        <p aria-hidden {...props(styles.status)}>
+          {progress}
         </p>
       )}
     </WebPage>
@@ -476,11 +449,12 @@ function AccountBoundary({ config, onConnected }: AccountScreenProps): ReactElem
           </Button>
         }
       >
-        <ClerkLoading>
-          <p role="status" {...props(styles.status)}>
+        <p role="status" {...props(styles.status)}>
+          <ClerkLoading>
             <Spinner />
-          </p>
-        </ClerkLoading>
+            <span {...props(srOnly)}>Loading sign-in</span>
+          </ClerkLoading>
+        </p>
         <ClerkFailed>
           <p role="alert" {...props(styles.status)}>
             Couldn't load sign-in.
@@ -507,7 +481,11 @@ function AccountBoundary({ config, onConnected }: AccountScreenProps): ReactElem
 
 export function AccountScreen({ config, onConnected }: AccountScreenProps): ReactElement {
   return (
-    <ClerkProvider publishableKey={config.publishableKey} telemetry={false} appearance={appearance}>
+    <ClerkProvider
+      publishableKey={config.publishableKey}
+      telemetry={false}
+      appearance={accountAppearance}
+    >
       <AccountBoundary config={config} onConnected={onConnected} />
     </ClerkProvider>
   );

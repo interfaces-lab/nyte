@@ -408,6 +408,7 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
               id: waiting.toolCallId,
               signal: context.signal,
               update: () => undefined,
+              env: api.env,
             }),
           };
         },

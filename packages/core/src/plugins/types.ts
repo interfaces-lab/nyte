@@ -3,7 +3,7 @@
  * hands its `session` factory. Built-ins under `./builtin` and files under
  * `.nyte/plugins` both use this and nothing else.
  *
- * Design: packages/docs/content/docs/design.mdx, "Plugins". Contract from pi
+ * Design: packages/lab/src/core/guide.tsx, "Plugins". Contract from pi
  * dev's extensions-v2 notes, runtime form from opencode v2
  * (`define({ id, effect(ctx) })`, a scope per plugin).
  */
@@ -19,8 +19,9 @@ import type {
   SettingChoice,
 } from "@nyte-ai/protocol";
 import { Value } from "typebox/value";
-import type { SessionEvent } from "../kernel/sdk/types.ts";
+import type { SessionEvent, Workspace } from "../kernel/sdk/types.ts";
 import { Type, type TSchema } from "typebox";
+import type { EnvOps, ExecutionEnv } from "../kernel/loop/env.ts";
 import type { AgentTool, ToolDefinition } from "../kernel/loop/types.ts";
 import type { HookHandler, HookName } from "./hooks.ts";
 
@@ -39,8 +40,24 @@ export type { PluginInfo, PluginSource, SettingChoice, SettingInfo } from "@nyte
 
 export interface Plugin {
   readonly id: string;
+  /** Opens workspaces of one kind. Only `NyteOptions.plugins` are consulted; a workspace's own plugins load after it opens. */
+  readonly environment?: EnvironmentProvider;
   session(api: SessionApi): void | Promise<void>;
 }
+
+export interface EnvironmentProvider {
+  /** The workspace kind this provider opens. One provider per kind. */
+  readonly kind: string;
+  /** The workspace is unreachable if this rejects or returns another `id` or `cwd`. */
+  open(workspace: Workspace): Promise<ExecutionEnv>;
+}
+
+export type EnvironmentPlugin = Plugin & { readonly environment: EnvironmentProvider };
+
+/** Extends an environment's operations. */
+export type EnvironmentWrap = (
+  inner: EnvOps,
+) => EnvOps & { readonly id?: never; readonly cwd?: never };
 
 export interface Draft<T> {
   set(id: string, value: T): void;
@@ -90,7 +107,7 @@ export interface Agent {
    * read-only agent declared once works in a host that lacks some of its tools.
    */
   readonly tools?: readonly string[];
-  /** A step-count ceiling, not a wall-clock budget (design.mdx invariant 23). */
+  /** A step-count ceiling, not a wall-clock budget. */
   readonly steps?: number;
   readonly disabled?: boolean;
 }
@@ -204,10 +221,6 @@ export interface PluginStorage {
   set(key: string, value: JsonValue): Promise<void>;
 }
 
-export interface PluginEnv {
-  readonly cwd: string;
-}
-
 /** Something the user should see outside the conversation; the client decides how. */
 export interface Notification {
   readonly title?: string;
@@ -272,7 +285,10 @@ export interface PluginEvents {
 }
 
 export interface SessionApi {
-  readonly env: PluginEnv;
+  /** Where this session acts: its provider's environment through the wraps of the last rebuild. */
+  readonly env: ExecutionEnv;
+  /** Wrap the environment's operations for this session's tools and plugins, from the next rebuild. */
+  wrapEnv(wrap: EnvironmentWrap): Disposer;
 
   // 1. contribute
   readonly tools: ToolRegistry;

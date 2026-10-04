@@ -1,12 +1,46 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "vitest";
 import { Type } from "typebox";
 import { executeToolCalls } from "../src/kernel/loop/agent-loop.ts";
+import { activate, type Activation } from "../src/kernel/sdk/activation.ts";
+import { definePlugin, type ExecutionEnv, type Plugin } from "../src/plugins/index.ts";
 import { bindTool } from "../src/tools/bind-tool.ts";
-import { createLocalExecutionEnv } from "../src/tools/env.ts";
+import { createWriteToolDefinition } from "../src/tools/write.ts";
 import { ContributionRegistry, ToolMapDraft } from "../src/plugins/registry.ts";
 import type { AgentEvent, AgentLoopConfig, AgentTool, ToolCall } from "../src/kernel/loop/types.ts";
-import { assistant, call, toolCall, within } from "./kernel/helpers.ts";
+import { bindEnv } from "./builtin-tools.ts";
+import { assistant, call, localEnv, toolCall, within } from "./kernel/helpers.ts";
+
+const env = localEnv("/tmp");
+
+/** `plugins` activated in `env`, as a session runs them. */
+async function activated(plugins: readonly Plugin[], env: ExecutionEnv) {
+  const outcome = await activate({
+    target: { kind: "new-session" },
+    plugins,
+    env,
+  });
+
+  assert.ok(outcome.kind === "active");
+
+  return outcome.activation;
+}
+
+const writePlugin = definePlugin({
+  id: "tools",
+  session(api) {
+    api.tools.add((draft) => draft.set("write", { ...createWriteToolDefinition(), name: "write" }));
+  },
+});
+
+async function writeNote(activation: Activation, content: string) {
+  const write = activation.tools().find((tool) => tool.name === "write");
+  assert.ok(write);
+  await write.execute({ path: "note.txt", content }, toolCall("call"));
+}
 
 const config: AgentLoopConfig = {
   model: {
@@ -44,8 +78,7 @@ test("the bound executor rejects invalid runtime input before work starts", asyn
 });
 
 test("heterogeneous registry tools keep their schema after wrapping and rebuilding", async () => {
-  const env = createLocalExecutionEnv({ cwd: "/tmp" });
-  const registry = new ContributionRegistry<AgentTool, ToolMapDraft>(() => new ToolMapDraft(env));
+  const registry = new ContributionRegistry<AgentTool, ToolMapDraft>(() => new ToolMapDraft());
   registry.add("tools", 0, (draft) => {
     draft.set("count", {
       name: "count",
@@ -75,7 +108,7 @@ test("heterogeneous registry tools keep their schema after wrapping and rebuildi
   for (let rebuild = 0; rebuild < 2; rebuild += 1) {
     assert.deepEqual(registry.rebuild().errors, []);
     const messages = await executeToolCalls(
-      { messages: [], tools: registry.values() },
+      { messages: [], tools: registry.values().map((tool) => bindEnv(tool, env)) },
       assistant("", {
         calls: [
           call("a", "count", { count: "21", optional: null }),
@@ -111,7 +144,7 @@ test("compatibility runs before validation and hook replacements are revalidated
     { replacement: { count: {} }, isError: true },
   ]) {
     const result = await executeToolCalls(
-      { messages: [], tools: [tool] },
+      { messages: [], tools: [bindEnv(tool, env)] },
       assistant("", { calls: [call("a", "count", { legacy: "2" })] }),
       {
         ...config,
@@ -150,7 +183,7 @@ test("concurrent results retain source order and identity; failed tools retain p
   });
   const events: AgentEvent[] = [];
   const batch = executeToolCalls(
-    { messages: [], tools: [tool] },
+    { messages: [], tools: [bindEnv(tool, env)] },
     assistant("", {
       calls: [call("first", "work", { fail: false }), call("second", "work", { fail: true })],
     }),
@@ -191,12 +224,15 @@ test("after hooks retain every falsy details override", async () => {
       {
         messages: [],
         tools: [
-          bindTool({
-            name: "work",
-            description: "Work",
-            parameters: Type.Object({}),
-            execute: async () => ({ content: [], details: "original" }),
-          }),
+          bindEnv(
+            bindTool({
+              name: "work",
+              description: "Work",
+              parameters: Type.Object({}),
+              execute: async () => ({ content: [], details: "original" }),
+            }),
+            env,
+          ),
         ],
       },
       assistant("", { calls: [call("a", "work")] }),
@@ -205,5 +241,111 @@ test("after hooks retain every falsy details override", async () => {
       () => undefined,
     );
     assert.equal(messages[0]?.message.details, details);
+  }
+});
+
+test("environment wraps compose over a tool's file operations but cannot change the environment's id or cwd", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "nyte-env-wrap-"));
+  const base = localEnv(directory);
+  const seen: { id: string; cwd: string }[] = [];
+
+  try {
+    const activation = await activated(
+      [
+        writePlugin,
+        definePlugin({
+          id: "witness",
+          session(api) {
+            api.tools.add((draft) =>
+              draft.wrap("write", (execute) => async (input, call) => {
+                seen.push({ id: call.env.id, cwd: call.env.cwd });
+
+                return execute(input, call);
+              }),
+            );
+          },
+        }),
+        definePlugin({
+          id: "loud",
+          session(api) {
+            // @ts-expect-error Forges identity on purpose, to prove the kernel re-attaches the provider's.
+            api.wrapEnv((inner) => {
+              const forged = {
+                ...inner,
+                id: "forged",
+                cwd: "/forged",
+                writeFile: (path: string, content: string) =>
+                  inner.writeFile(path, content.toUpperCase()),
+              };
+
+              return forged;
+            });
+          },
+        }),
+        definePlugin({
+          id: "tail",
+          session(api) {
+            api.wrapEnv((inner) => ({
+              ...inner,
+              writeFile: (path, content) => inner.writeFile(path, `${content}tail\n`),
+            }));
+          },
+        }),
+      ],
+      base,
+    );
+
+    try {
+      await writeNote(activation, "quiet\n");
+      assert.equal(await readFile(join(directory, "note.txt"), "utf8"), "QUIET\nTAIL\n");
+      assert.deepEqual(seen, [{ id: base.id, cwd: directory }]);
+      assert.throws(() => {
+        // @ts-expect-error The environment's identity is read-only.
+        activation.env.id = "forged";
+      }, TypeError);
+    } finally {
+      await activation.close();
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("a wrap that mutates its inner operations reaches no other activation", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "nyte-env-wrap-"));
+  const base = localEnv(directory);
+  const note = join(directory, "note.txt");
+
+  try {
+    const muted = await activated(
+      [
+        writePlugin,
+        definePlugin({
+          id: "mute",
+          session(api) {
+            api.wrapEnv((inner) => {
+              inner.writeFile = async () => undefined;
+
+              return inner;
+            });
+          },
+        }),
+      ],
+      base,
+    );
+
+    const plain = await activated([writePlugin], base);
+
+    try {
+      await writeNote(muted, "muted\n");
+      await assert.rejects(readFile(note, "utf8"), { code: "ENOENT" });
+      await writeNote(plain, "plain\n");
+      assert.equal(await readFile(note, "utf8"), "plain\n");
+    } finally {
+      await muted.close();
+      await plain.close();
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });

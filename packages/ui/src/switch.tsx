@@ -8,6 +8,8 @@ import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { intent } from "./surface-theme.ts";
 import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
 
+const THUMB_TRAVEL = `calc(${switchControl.widthMd} - ${switchControl.knobMd} - ${switchControl.paddingMd} * 2)`;
+
 const styles = create({
   target: {
     display: "inline-flex",
@@ -76,7 +78,10 @@ const styles = create({
     boxShadow: shadow.shadowSm,
     transform: {
       default: "translateX(0)",
-      "[data-checked]": `translateX(calc(${switchControl.widthMd} - ${switchControl.knobMd} - ${switchControl.paddingMd} * 2))`,
+      "[data-checked]": {
+        default: `translateX(${THUMB_TRAVEL})`,
+        ":dir(rtl)": `translateX(calc(${THUMB_TRAVEL} * -1))`,
+      },
     },
     transitionProperty: "transform",
     transitionDuration: {

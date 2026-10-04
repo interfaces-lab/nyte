@@ -15,7 +15,17 @@ import { estimateTokens, projectContextStatus } from "@nyte-ai/client";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { sessionId } from "../../src/kernel/sdk/types.ts";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
-import { assistant, call, commit, message, openStore, seedHead, usage, user } from "./helpers.ts";
+import {
+  assistant,
+  call,
+  commit,
+  localOptions,
+  message,
+  openStore,
+  seedHead,
+  usage,
+  user,
+} from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "test-model",
@@ -293,8 +303,7 @@ test("branch navigation summarizes the full native backup within the model windo
     store,
     model,
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
-    env: { cwd: "/tmp" },
-    plugins: [],
+    ...localOptions("/tmp"),
     streamFn: provider.streamFn,
   });
   try {

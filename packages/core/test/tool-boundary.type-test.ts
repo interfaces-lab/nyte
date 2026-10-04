@@ -1,10 +1,9 @@
 import { Type } from "typebox";
 import { bindTool } from "../src/plugins/index.ts";
-import { createLocalExecutionEnv } from "../src/tools/env.ts";
 import { createLsToolDefinition, type LsToolInput } from "../src/tools/ls.ts";
 import { createWriteToolDefinition } from "../src/tools/write.ts";
 import type { createJobs } from "../src/kernel/sdk/jobs.ts";
-import type { AgentTool } from "../src/kernel/loop/types.ts";
+import type { AgentTool, ExecutableTool } from "../src/kernel/loop/types.ts";
 import { ToolMapDraft } from "../src/plugins/registry.ts";
 import { builtinTools } from "./builtin-tools.ts";
 import { toolCall } from "./kernel/helpers.ts";
@@ -23,6 +22,8 @@ export function toolTypeContracts() {
   // @ts-expect-error A typed executor must be bound before heterogeneous storage.
   const unchecked: AgentTool[] = [countTool];
   const checked: AgentTool[] = [bindTool(countTool)];
+  // @ts-expect-error An authored tool must be bound before the loop runs it.
+  const loop: ExecutableTool[] = [bindTool(countTool)];
   bindTool({
     name: "bad",
     description: "An incompatible executor",
@@ -30,14 +31,14 @@ export function toolTypeContracts() {
     // @ts-expect-error The schema, not the executor, determines the input type.
     execute: async (input: { text: string }) => ({ content: [], details: input.text }),
   });
-  new ToolMapDraft(createLocalExecutionEnv({ cwd: "/tmp" })).set("bad", {
+  new ToolMapDraft().set("bad", {
     name: "bad",
     description: "An incompatible registry contribution",
     parameters: countSchema,
     // @ts-expect-error Registry contributions must pair the schema with its executor.
     execute: async (input: { text: string }) => ({ content: [], details: input.text }),
   });
-  return { unchecked, checked };
+  return { unchecked, checked, loop };
 }
 
 export function builtinTypeContracts(jobs: ReturnType<typeof createJobs>) {

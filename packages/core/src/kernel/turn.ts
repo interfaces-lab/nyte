@@ -57,6 +57,7 @@ import type {
   AgentTool,
   AgentToolCall,
   AgentToolResult,
+  ExecutableTool,
   ReadyToolCall,
   StreamFn,
   ThinkingLevel,
@@ -232,9 +233,9 @@ export interface TurnOptions {
   readonly model: Model<Api>;
   /** The prompt as named, ordered sections; they become `SystemMessage.sections`. */
   readonly sections: Readonly<Record<string, string>>;
-  readonly tools: readonly AgentTool[];
-  /** Where this turn's calls act; stamped on each intent so a `safe` replay runs only on the same filesystem. */
-  readonly env?: ExecutionEnv;
+  readonly tools: readonly ExecutableTool[];
+  /** The environment `tools` are bound to; its `id` is stamped on each intent for `safe` replay. */
+  readonly env: ExecutionEnv;
   readonly thinkingLevel?: ThinkingLevel;
   readonly loop?: Pick<AgentLoopConfig, "transformContext" | "beforeToolCall" | "afterToolCall"> &
     Omit<SimpleStreamOptions, "reasoning" | "signal">;
@@ -656,7 +657,7 @@ async function runTools(
     settling,
     state,
     tools: live.filter((tool) => declaredNames.has(tool.name)),
-    fs: options.env?.fs,
+    environment: options.env.id,
   });
   context.tools = durable.tools;
   const callerBeforeToolCall = options.loop?.beforeToolCall;
@@ -670,6 +671,7 @@ async function runTools(
       tool: toolCall.name,
       args: toolCall.arguments,
       replay: "never",
+      environment: options.env.id,
     });
 
     if (opened.kind === "opened") return opened.view;
@@ -840,7 +842,7 @@ async function declaredTools(
   options: TurnOptions,
   input: TurnInput,
   history: () => Promise<readonly Message[]> = () => fullHistory(input),
-): Promise<AgentTool[]> {
+): Promise<ExecutableTool[]> {
   const activated = options.tools.some(
     (tool) => tool.exposure === "codemode" || tool.exposure === "deferred",
   )
@@ -852,7 +854,7 @@ async function declaredTools(
 function agentContext(options: {
   readonly options: TurnOptions;
   readonly input: TurnInput;
-  readonly tools: AgentTool[];
+  readonly tools: ExecutableTool[];
 }): AgentContext {
   const projected = modelContext(
     options.input.commits.map((entry) => entry.commit),
@@ -956,8 +958,8 @@ function durableCalls(options: {
   readonly parked: Set<string>;
   readonly settling: Map<string, EffectView>;
   readonly state: ToolBatchState;
-  readonly tools: readonly AgentTool[];
-  readonly fs: string | undefined;
+  readonly tools: readonly ExecutableTool[];
+  readonly environment: string;
 }) {
   const executionSignal = options.input.signal;
 
@@ -994,9 +996,9 @@ function durableCalls(options: {
   };
 
   const proceed = async (
-    tool: AgentTool | undefined,
+    tool: ExecutableTool | undefined,
     name: string,
-    intent: Pick<EffectView["intent"], "args" | "replay" | "fs">,
+    intent: Pick<EffectView["intent"], "args" | "replay">,
     args: () => unknown,
     call: ToolCall,
   ): Promise<AgentToolResult<unknown>> => {
@@ -1012,7 +1014,7 @@ function durableCalls(options: {
         tool: name,
         args: intent.args,
         replay: intent.replay,
-        ...(intent.fs === undefined ? {} : { fs: intent.fs }),
+        environment: options.environment,
       });
     } catch (cause) {
       return failed(cause);
@@ -1027,7 +1029,7 @@ function durableCalls(options: {
     // Another call may have lost ownership while this open was in flight.
     if (options.state.stopped !== undefined) return waitingResult();
     let view = opened.view;
-    let recovery = opened.kind === "opened" ? "execute" : decideRecovery(view, options.fs);
+    let recovery = opened.kind === "opened" ? "execute" : decideRecovery(view, options.environment);
 
     if (
       recovery === "blocked" &&
@@ -1101,7 +1103,11 @@ function durableCalls(options: {
         throw new ToolError(
           {
             content: toolResultContent(
-              `Tool call "${name}" was interrupted before completing and was not replayed.`,
+              view.effect.state === "intent" &&
+                view.effect.replay === "safe" &&
+                view.effect.environment !== undefined
+                ? `Tool call "${name}" was interrupted before completing and was not replayed because it started in another environment.`
+                : `Tool call "${name}" was interrupted before completing and was not replayed.`,
             ),
             details: {},
           },
@@ -1227,7 +1233,7 @@ function durableCalls(options: {
     );
 
   return {
-    tools: options.tools.map((tool): AgentTool => ({
+    tools: options.tools.map((tool): ExecutableTool => ({
       ...tool,
       execute: (input, call) =>
         traced(tool.name, call.id, async () => {
@@ -1238,11 +1244,7 @@ function durableCalls(options: {
           return proceed(
             tool,
             tool.name,
-            {
-              args: toJsonValue(input),
-              replay: tool.replay ?? "never",
-              ...(options.fs === undefined ? {} : { fs: options.fs }),
-            },
+            { args: toJsonValue(input), replay: tool.replay ?? "never" },
             () => input,
             call,
           );
@@ -1260,7 +1262,7 @@ function durableCalls(options: {
           }
         : undefined,
     recorded: (
-      tool: AgentTool | undefined,
+      tool: ExecutableTool | undefined,
       toolCall: AgentToolCall,
       record: EffectView,
     ): ReadyToolCall => ({

@@ -17,6 +17,7 @@ function session(
   return {
     sessionId: sessionId("chat"),
     activation: { kind: "active" },
+    workspace: { kind: "local", id: "fixture", cwd: "/" },
     name: "A thread",
     createdAt: 0,
     lastActivityAt: startedAt + 20,

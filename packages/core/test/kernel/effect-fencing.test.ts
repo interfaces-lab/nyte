@@ -17,12 +17,13 @@ import { headRef, runRef } from "../../src/kernel/names.ts";
 import { submit } from "../../src/kernel/queue.ts";
 import { step } from "../../src/kernel/step.ts";
 import { bindTurn, type TurnOptions } from "../../src/kernel/turn.ts";
-import { backgroundWait, ToolWait, type AgentTool } from "../../src/kernel/loop/types.ts";
+import { backgroundWait, ToolWait, type ExecutableTool } from "../../src/kernel/loop/types.ts";
 import {
   assistant,
   call,
   drain,
   lease,
+  localEnv,
   message,
   openSession,
   toolResult,
@@ -48,10 +49,12 @@ async function fixture(ids = ["call"]) {
   const session = await openSession();
   const held = await lease(session, "main");
   const requested = assistant("", { calls: ids.map((id) => call(id, "test")) });
-  const makeTurn = (tool: Pick<AgentTool, "execute" | "wake">, loop?: TurnOptions["loop"]) =>
+  const env = localEnv("/tmp/nowhere");
+  const makeTurn = (tool: Pick<ExecutableTool, "execute" | "wake">, loop?: TurnOptions["loop"]) =>
     bindTurn({
       model,
       sections: { prompt: "test" },
+      env,
       loop,
       tools: [
         {
@@ -105,6 +108,7 @@ async function fixture(ids = ["call"]) {
       tool: "test",
       args: {},
       replay: "safe",
+      environment: env.id,
     });
   const read = (callId = "call") => readEffect(session, { runId: run.id, callId });
   const takeover = async () => {

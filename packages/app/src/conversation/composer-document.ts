@@ -11,6 +11,7 @@ import {
   $createParagraphNode,
   $createRangeSelection,
   $createTextNode,
+  $getNearestNodeFromDOMNode,
   $getRoot,
   $getSelection,
   $hasUpdateTag,
@@ -20,6 +21,7 @@ import {
   $setSelection,
   DecoratorNode,
   HISTORY_MERGE_TAG,
+  isDOMTextNode,
   PASTE_TAG,
   SKIP_DOM_SELECTION_TAG,
   TextNode,
@@ -325,6 +327,13 @@ export function $insertComposerReference(
     $applyNodeReplacement(new ComposerReferenceNode(reference)),
     $createTextNode(" "),
   ]);
+}
+
+/** Move the caret to a DOM text position, such as a drop point; anywhere else keeps the caret. */
+export function $selectComposerDomPoint(node: Node, offset: number): void {
+  const target = $getNearestNodeFromDOMNode(node);
+
+  if (isDOMTextNode(node) && $isTextNode(target)) target.select(offset, offset);
 }
 
 interface ComposerReferenceCatalog {

@@ -10,20 +10,33 @@ import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
 const lists = create({
   segmented: {
     display: "flex",
+    flexDirection: { default: "row", '[data-orientation="vertical"]': "column" },
     alignItems: "center",
     gap: 0,
     padding: 2,
-    borderRadius: radius.control,
+    borderRadius: `calc(${button.radiusSm} + 2px)`,
     backgroundColor: role.bgMutedTranslucent,
     boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
   },
   underline: {
     display: "flex",
+    flexDirection: { default: "row", '[data-orientation="vertical"]': "column" },
     gap: 16,
     boxShadow: `inset 0 -1px 0 ${role.borderSecondaryTranslucent}`,
   },
-  pill: { display: "flex", alignItems: "center", gap: 4, paddingBlock: 2 },
-  plain: { display: "flex", alignItems: "center", gap: 4 },
+  pill: {
+    display: "flex",
+    flexDirection: { default: "row", '[data-orientation="vertical"]': "column" },
+    alignItems: "center",
+    gap: 4,
+    paddingBlock: 2,
+  },
+  plain: {
+    display: "flex",
+    flexDirection: { default: "row", '[data-orientation="vertical"]': "column" },
+    alignItems: "center",
+    gap: 4,
+  },
 });
 
 const tab = create({

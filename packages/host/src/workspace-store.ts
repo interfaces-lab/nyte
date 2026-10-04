@@ -14,13 +14,19 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import process from "node:process";
-import { TRUSTED_WORKSPACE } from "@nyte-ai/core";
-import type { TrustedWorkspace } from "@nyte-ai/core";
 import type { WorkspaceInfo } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import { withFileLeaseLock } from "./tree-snapshot.ts";
+
+const TRUSTED_WORKSPACE: unique symbol = Symbol("TrustedWorkspace");
+
+/** A realpath workspace that passed this store's trust decision. */
+export interface TrustedWorkspace {
+  readonly cwd: string;
+  readonly [TRUSTED_WORKSPACE]: true;
+}
 
 const WorkspaceRowSchema = Type.Object({
   trusted: Type.Boolean(),

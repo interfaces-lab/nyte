@@ -1,7 +1,7 @@
 /**
  * Environments: where chats run. It opens over the stage the way Customize
- * does, in Customize's column. The Server is the place this app sends chats
- * to; remote access is the reverse, other devices sending chats to this Mac.
+ * does, in Customize's column. Remote access leads: other devices sending
+ * chats to this Mac. The Server is the reverse, where this app sends chats.
  */
 import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
@@ -18,17 +18,17 @@ export function EnvironmentsSurface(): ReactElement {
       <div {...props(styles.root)}>
         <section {...props(settingsPatterns.section)}>
           <div {...props(settingsPatterns.sectionHeader)}>
+            <h2 {...props(settingsPatterns.sectionTitle)}>Remote access</h2>
+          </div>
+          <RemoteAccess active={active} />
+        </section>
+        <section {...props(settingsPatterns.section)}>
+          <div {...props(settingsPatterns.sectionHeader)}>
             <h2 {...props(settingsPatterns.sectionTitle)}>Server</h2>
           </div>
           <ConnectionList>
             <CloudConnection active={active} />
           </ConnectionList>
-        </section>
-        <section {...props(settingsPatterns.section)}>
-          <div {...props(settingsPatterns.sectionHeader)}>
-            <h2 {...props(settingsPatterns.sectionTitle)}>Remote access</h2>
-          </div>
-          <RemoteAccess active={active} />
         </section>
       </div>
     </div>

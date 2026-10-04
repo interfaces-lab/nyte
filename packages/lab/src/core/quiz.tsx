@@ -19,22 +19,23 @@ const QUESTIONS: readonly Question[] = [
   {
     prompt: (
       <>
-        <C>messages.send</C> returns <C>{'{ kind: "queued" }'}</C>. What has been published?
+        <C>messages.send</C> returns <C>{'{ kind: "queued" }'}</C> for an idle head. What has been
+        published?
       </>
     ),
     choices: [
       <>
-        A user commit at <C>refs/heads/main</C>
+        A <C>Change</C> at <C>refs/inbox/main/next/tip</C>
       </>,
       <>
-        A <C>Change</C> at <C>refs/inbox/main/next/tip</C>
+        A user commit at <C>refs/heads/main</C>
       </>,
       <>
         A <C>Run</C> at <C>refs/runs/main</C>
       </>,
       "Only an event",
     ],
-    answer: 1,
+    answer: 0,
     why: <>Submit moves only the inbox tip. The commit and the run appear later, in land.</>,
   },
   {
@@ -43,15 +44,15 @@ const QUESTIONS: readonly Question[] = [
       <>
         A <C>setInterval</C> polling the run ref
       </>,
-      <>
-        The <C>for await</C> over <C>session.events.watch</C> in <C>loop()</C>
-      </>,
+      <C key="3">waitForHead</C>,
       <>
         The <C>for (;;)</C> in <C>drive</C>
       </>,
-      <C key="3">waitForHead</C>,
+      <>
+        The <C>for await</C> over <C>session.events.watch</C> in <C>loop()</C>
+      </>,
     ],
-    answer: 1,
+    answer: 3,
     why: <>drive returns once the head rests. The store wakes the watch after every ref commit.</>,
   },
   {
@@ -64,16 +65,16 @@ const QUESTIONS: readonly Question[] = [
     choices: [
       "At once, joining the run",
       <>
-        At the next <C>respond</C> boundary
+        After the run is terminal, through <C>landOrIdle</C>
       </>,
       <>
-        After the run is terminal, through <C>landOrIdle</C>
+        At the next <C>respond</C> boundary
       </>,
       <>
         Never. <C>next</C> is for idle sessions only
       </>,
     ],
-    answer: 2,
+    answer: 1,
     why: (
       <>
         The respond boundary lands only <C>steer</C>. <C>landOrIdle</C> runs only with no run or a
@@ -90,15 +91,15 @@ const QUESTIONS: readonly Question[] = [
     ),
     choices: [
       <C key="0">wait</C>,
-      <C key="1">join</C>,
       <C key="2">handoff</C>,
+      <C key="1">join</C>,
       <C key="3">start</C>,
     ],
-    answer: 1,
+    answer: 2,
     why: (
       <>
-        Live and user is <C>join</C>. With a different agent it is <C>handoff</C>. The run ends{" "}
-        <C>done</C> and the next pass starts a new one.
+        Live and user is <C>join</C>. With a different agent it is <C>handoff</C>, which ends the
+        run <C>done</C> so the next pass starts a new one.
       </>
     ),
   },
@@ -111,17 +112,17 @@ const QUESTIONS: readonly Question[] = [
     ),
     choices: [
       <>
-        <C>drive</C> loops on <C>finished</C>
+        Its own run-ref events marked the head dirty, so <C>wake</C> drives again
       </>,
       <>
-        Its own run-ref events marked the head dirty, so <C>wake</C> drives again
+        <C>drive</C> loops on <C>finished</C>
       </>,
       "A 1 s timer",
       <>
         The client calls <C>nyte.advance</C>
       </>,
     ],
-    answer: 1,
+    answer: 0,
     why: (
       <>
         <C>handleRef</C> sees <C>refs/runs/main</C> move during the drive and calls <C>wake</C>,
@@ -137,10 +138,10 @@ const QUESTIONS: readonly Question[] = [
         <C>ok</C>, last writer wins
       </>,
       <C key="1">conflict</C>,
-      <C key="2">fenced</C>,
       "A's write merges with B's",
+      <C key="2">fenced</C>,
     ],
-    answer: 2,
+    answer: 3,
     why: (
       <>
         B holds the raised fence. <C>refs.update</C> checks the lease before any <C>from</C>, so A
@@ -157,11 +158,11 @@ const QUESTIONS: readonly Question[] = [
     ),
     choices: [
       "It clears a stale delete",
-      "It asserts the session is not being deleted",
       "It bumps the event seq",
+      "It asserts the session is not being deleted",
       "It releases the lease",
     ],
-    answer: 1,
+    answer: 2,
     why: (
       <>
         <C>to === from</C> is an assertion. Once <C>sessions.delete</C> writes <C>refs/deleted</C>,
@@ -178,11 +179,11 @@ const QUESTIONS: readonly Question[] = [
     ),
     choices: [
       <C key="0">wait</C>,
-      <C key="1">start</C>,
       <C key="2">settle</C>,
+      <C key="1">start</C>,
       <C key="3">join</C>,
     ],
-    answer: 2,
+    answer: 1,
     why: (
       <>
         Idle and passive is <C>settle</C>. The config commit lands under the last run's id and no
@@ -199,15 +200,36 @@ const QUESTIONS: readonly Question[] = [
     ),
     choices: [
       "It runs again",
-      "The call settles with an interrupted error",
-      "The run parks",
       "The stored result is reused",
+      "The run parks",
+      "The call settles with an interrupted error",
     ],
-    answer: 1,
+    answer: 3,
     why: (
       <>
         <C>replay</C> defaults to <C>"never"</C>, and <C>decideRecovery</C> answers{" "}
         <C>interrupted</C>. Only <C>"safe"</C> runs again.
+      </>
+    ),
+  },
+  {
+    prompt: (
+      <>
+        A <C>"safe"</C> tool crashes between intent and result. The session reopens on a host whose
+        environment has a different <C>id</C>. What happens?
+      </>
+    ),
+    choices: [
+      "The call settles with an interrupted error",
+      "It runs again on the new host",
+      "The run parks until the old host returns",
+      "The run fails",
+    ],
+    answer: 0,
+    why: (
+      <>
+        The intent recorded the environment <C>id</C> it opened in. <C>decideRecovery</C> compares
+        it with the resuming runner's, and a mismatch answers <C>interrupted</C>.
       </>
     ),
   },
@@ -219,11 +241,11 @@ const QUESTIONS: readonly Question[] = [
     ),
     choices: [
       "It parks until the runner wakes it",
-      "It does not type-check",
       "It expires after 30 s",
+      "It does not type-check",
       "It becomes a background wait",
     ],
-    answer: 1,
+    answer: 2,
     why: (
       <>
         <C>ToolWaitOptions</C> needs a <C>selection</C>, an <C>until</C>, or both, so every parked
@@ -239,15 +261,16 @@ const QUESTIONS: readonly Question[] = [
     ),
     choices: [
       "The run waits for the hook",
+      "After 5 s the call settles as an error",
       "After 5 s the call runs without the policy",
-      "After 5 s the policy fails closed: the call settles as an error and the run fails",
       "The plugin is unloaded",
     ],
-    answer: 2,
+    answer: 1,
     why: (
       <>
         The hook's 5 s budget runs out and the handler counts as thrown. A thrown <C>before_tool</C>{" "}
-        becomes <C>error</C>, which blocks the call and fails the run with a policy error.
+        becomes <C>error</C>, which blocks this call and the rest of its batch with the policy's
+        message as an error result.
       </>
     ),
   },
@@ -265,10 +288,10 @@ const QUESTIONS: readonly Question[] = [
       <>
         <C>retry</C> with a 4 s delay
       </>,
-      <C key="2">failed</C>,
       <C key="3">aborted</C>,
+      <C key="2">failed</C>,
     ],
-    answer: 2,
+    answer: 3,
     why: <>maxRetries is 3. The three retries waited 1 s, 2 s and 4 s.</>,
   },
   {
@@ -279,15 +302,15 @@ const QUESTIONS: readonly Question[] = [
     ),
     choices: [
       <>
-        Waits out <C>phase.at</C>, then aborts
+        Calls <C>respond</C> at once, which ends the run <C>aborted</C>
       </>,
       <>
-        Calls <C>respond</C> at once, which ends the run <C>aborted</C>
+        Waits out <C>phase.at</C>, then aborts
       </>,
       "Deletes the run ref",
       "Nothing until the lease expires",
     ],
-    answer: 1,
+    answer: 0,
     why: (
       <>
         The stop cuts <C>drive</C>'s sleep. The next <C>advance</C> sees <C>abortRequested</C> and
@@ -304,13 +327,13 @@ const QUESTIONS: readonly Question[] = [
     ),
     choices: [
       <C key="0">failed</C>,
+      <C key="2">done</C>,
       <>
         <C>aborted</C>, with the failure as a notice
       </>,
-      <C key="2">done</C>,
       <C key="3">retry</C>,
     ],
-    answer: 1,
+    answer: 2,
     why: (
       <>
         The flag moved <C>refs/runs</C>, so the respond publish conflicts. <C>afterConflict</C>{" "}
@@ -321,8 +344,8 @@ const QUESTIONS: readonly Question[] = [
   {
     prompt: (
       <>
-        <C>contextWindow</C> is 200_000, the context is 190_000 tokens, settings are default. Does{" "}
-        <C>respond</C> checkpoint first?
+        <C>contextWindow</C> is 200_000, the context is 190_000 tokens, settings are default. Does
+        the step checkpoint before it calls <C>turn.respond</C>?
       </>
     ),
     choices: [
@@ -336,21 +359,22 @@ const QUESTIONS: readonly Question[] = [
     answer: 1,
     why: (
       <>
-        The threshold is <C>contextWindow − reserveTokens</C>, 200_000 − 16_384.
+        <C>turn.prepare</C> returns a checkpoint past <C>contextWindow − reserveTokens</C>,
+        200_000 − 16_384.
       </>
     ),
   },
   {
     prompt: "How many assistant responses can one run make by default?",
     choices: [
-      "25",
-      "50",
       <>
         No ceiling unless the agent sets <C>steps</C>
       </>,
+      "50",
+      "25",
       <C key="3">maxRetries + 1</C>,
     ],
-    answer: 2,
+    answer: 0,
     why: (
       <>
         <C>steps</C> resolves to the agent's own. Undefined skips the check. The counter lives in{" "}
@@ -359,20 +383,21 @@ const QUESTIONS: readonly Question[] = [
     ),
   },
   {
-    prompt: "A host crashes mid-run and restarts 10 s later. What drives the run again today?",
+    prompt:
+      "A host crashes mid-run and restarts 10 s later. The startup wake gets busy from the dead owner's lease. What drives the run again?",
     choices: [
-      <>
-        The runner retries at the old lease's <C>expiresAt</C>
-      </>,
       "Nothing until another ref on that head moves",
-      <C key="2">runs.wait</C>,
+      <>
+        A timer the runner sets for the lease's <C>expiresAt</C>
+      </>,
       "The 1 s runner restart delay",
+      <C key="2">runs.wait</C>,
     ],
     answer: 1,
     why: (
       <>
-        The startup wake gets <C>busy</C> from the unexpired lease and returns. Lease expiry writes
-        no event. The first open issue has the fix.
+        Lease expiry writes no event, so on <C>busy</C> the runner calls <C>driveAt</C> with the
+        holder's <C>expiresAt</C>, at least 250 ms out.
       </>
     ),
   },
@@ -381,15 +406,55 @@ const QUESTIONS: readonly Question[] = [
       "Deltas stream during respond. Another host takes over the expired lease, and this host's publish is fenced. Are the deltas in the log?",
     choices: [
       "No, the outbox discards them",
-      "Yes, keyed by run id and attempt, but no commit lands for them",
       "Yes, and they become a commit",
+      "Yes, keyed by run id and attempt, but no commit lands for them",
       "Only if the lease is still held",
     ],
-    answer: 1,
+    answer: 2,
     why: (
       <>
         The outbox appended them before the takeover. Clients treat deltas as provisional until{" "}
         <C>head_moved</C> shows the commit.
+      </>
+    ),
+  },
+  {
+    prompt: (
+      <>
+        <C>heads.move</C> reads the tip and finds no live run. Before its CAS, a message lands and a
+        run starts. What does the move answer?
+      </>
+    ),
+    choices: [
+      <C key="0">busy</C>,
+      <C key="1">moved_since</C>,
+      <>
+        <C>moved</C>, and the new run ends <C>superseded</C>
+      </>,
+      "It retries until the head rests",
+    ],
+    answer: 1,
+    why: (
+      <>
+        Landing moved the tip, so the CAS from the tip it read loses. A move takes no lease and
+        never retries.
+      </>
+    ),
+  },
+  {
+    prompt:
+      "A model sends a child a request, then the user stops the parent run. The child answers afterwards. What does the answer do?",
+    choices: [
+      "Starts a continuation under the parent's chain",
+      "Waits in the parent's inbox for the next user message",
+      "Is dropped at once",
+      "Aborts the child",
+    ],
+    answer: 1,
+    why: (
+      <>
+        Stop rewrites the request's authorization to <C>input</C>. The answer is then an
+        unauthorized <C>answer</C>, and <C>decide</C> says <C>wait</C> on an idle head.
       </>
     ),
   },

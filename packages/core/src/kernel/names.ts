@@ -15,6 +15,7 @@
  *   refs/delegations/<child>/<change> a request this session sent a child, and whether its answer landed here
  *   refs/cancelled/<change>        a submitted change withdrawn before it landed
  *   refs/deleted                   the session is being deleted; runs may not publish
+ *   refs/workspace                 where the session tree acts; root sessions only
  *
  * Each head has two inbox chains. `steer` lands at every boundary and when
  * idle. `next` lands only when idle. The default head belongs to the SDK.
@@ -27,6 +28,8 @@ import type { Oid, RefName } from "./model.ts";
 export { isHeadName };
 
 export const DELETED_REF: RefName = "refs/deleted";
+
+export const WORKSPACE_REF: RefName = "refs/workspace";
 
 const HEADS = "refs/heads/";
 

@@ -55,7 +55,7 @@ const styles = create({
     fontFamily: "inherit",
     lineHeight: type.leadingSm,
     textOverflow: "ellipsis",
-    textAlign: "left",
+    textAlign: "start",
     whiteSpace: "nowrap",
   },
   triggerIcon: {
@@ -109,14 +109,16 @@ const styles = create({
     paddingInline: 12,
     borderStyle: "none",
     borderRadius: 0,
-    outline: "none",
     backgroundColor: "transparent",
     boxShadow: `inset 0 -1px 0 0 ${role.borderSecondaryTranslucent}`,
     color: role.contentPrimary,
     fontFamily: type.fontSans,
-    fontSize: type.fontBase,
+    fontSize: {
+      default: type.fontBase,
+      "@media (pointer: coarse)": `max(16px, ${type.fontBase})`,
+    },
     lineHeight: type.leadingBase,
-    "::placeholder": { color: role.contentTertiary },
+    "::placeholder": { color: role.contentSecondary },
   },
   list: {
     display: "flex",
@@ -137,7 +139,10 @@ const styles = create({
     paddingBlock: 0,
     paddingInline: 12,
     borderRadius: radius.control,
-    outline: "none",
+    outlineStyle: { default: "none", "[data-highlighted]": "solid" },
+    outlineWidth: 1,
+    outlineColor: appearance.focusRing,
+    outlineOffset: -1,
     backgroundColor: { default: "transparent", "[data-highlighted]": role.bgHover },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
     fontSize: type.fontBase,
@@ -342,7 +347,11 @@ export function AutocompleteInput({
   return (
     <AutocompletePrimitive.Input
       data-slot="autocomplete-input"
-      {...mergeStyleProps(props(styles.input, inputVariants[variant], xstyle), className, style)}
+      {...mergeStyleProps(
+        props(styles.input, focus.ringInset, inputVariants[variant], xstyle),
+        className,
+        style,
+      )}
       {...rest}
     />
   );

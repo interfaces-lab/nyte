@@ -2,7 +2,6 @@ import type { ImageResizeOptions } from "./support/image-resize.ts";
 import type { AgentToolResult, ToolDefinition } from "../kernel/loop/types.ts";
 import type { ImageContent, TextContent } from "@nyte-ai/schema";
 import { type Static, Type } from "typebox";
-import { requireEnv } from "./env.ts";
 import { processImage } from "./support/image-process.ts";
 import { detectSupportedImageMimeType } from "./support/image.ts";
 import { resolveReadPathAsync } from "./support/path-utils.ts";
@@ -47,8 +46,7 @@ export function createReadToolDefinition(
     present: ({ path }) => ({ kind: "file_read", path }),
     constrainedSampling: { type: "json_schema", strict: "prefer" },
     async execute({ path, offset, limit }, call) {
-      const { signal } = call;
-      const env = requireEnv(call);
+      const { signal, env } = call;
       return new Promise<AgentToolResult<ReadToolDetails | undefined>>((resolve, reject) => {
         if (signal.aborted) {
           reject(new Error("Operation aborted"));

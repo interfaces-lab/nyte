@@ -19,6 +19,8 @@ import {
   assistant,
   commit,
   drain,
+  localEnv,
+  localOptions,
   message,
   openSession,
   openStore,
@@ -198,6 +200,7 @@ test.each([false, true])(
       model,
       sections: { prompt: "normal agent" },
       tools: [],
+      env: localEnv("/tmp"),
       compaction: settings,
       retry,
     });
@@ -252,8 +255,7 @@ test("failed branch summarization retains its usage without navigating", async (
   const nyte = await createNyte({
     store,
     model,
-    env: { cwd: "/tmp" },
-    plugins: [],
+    ...localOptions("/tmp"),
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     streamFn: () =>
       stream(assistant("partial", { stop: "error", error: "billing", usage: usageOf(100) })),
@@ -322,6 +324,7 @@ test.each([false, true])(
       model,
       sections: { prompt: "normal agent" },
       tools: [],
+      env: localEnv("/tmp"),
       compaction: settings,
       retry,
       streamFn: () =>

@@ -1,82 +1,6 @@
-import { homedir } from "node:os";
-import { isAbsolute, join, resolve as nodeResolvePath } from "node:path";
-import { fileURLToPath } from "node:url";
-import type { ExecutionEnv } from "../../kernel/loop/env.ts";
+import type { EnvOps, ExecutionEnv } from "../../kernel/loop/env.ts";
 
 const UNICODE_SPACES = /[  -   　]/g;
-
-export interface PathInputOptions {
-  /** Trim leading/trailing whitespace before normalization. */
-  trim?: boolean;
-  /** Expand leading `~` to a home directory. Defaults to true. */
-  expandTilde?: boolean;
-  /** Home directory used for `~` expansion. Defaults to `os.homedir()`. */
-  homeDir?: string;
-  /** Strip a leading `@`, used for CLI @file paths. */
-  stripAtPrefix?: boolean;
-  /** Normalize unicode space variants to regular spaces. */
-  normalizeUnicodeSpaces?: boolean;
-}
-
-/** Convert Git Bash, MSYS, Cygwin, and WSL drive paths to a form native Windows APIs accept. */
-function normalizeWindowsShellPath(filePath: string): string {
-  if (!filePath.startsWith("/") || filePath.startsWith("//") || filePath.includes("\\"))
-    return filePath;
-  const match = filePath.match(/^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/(.*))?$/i);
-
-  if (!match) return filePath;
-  const suffix = match[2]?.replaceAll("/", "\\");
-
-  return `${match[1].toUpperCase()}:\\${suffix ?? ""}`;
-}
-
-function normalizePath(input: string, options: PathInputOptions = {}): string {
-  let normalized = options.trim ? input.trim() : input;
-
-  if (options.normalizeUnicodeSpaces) {
-    normalized = normalized.replace(UNICODE_SPACES, " ");
-  }
-
-  if (options.stripAtPrefix && normalized.startsWith("@")) {
-    normalized = normalized.slice(1);
-  }
-
-  if (process.platform === "win32") {
-    normalized = normalizeWindowsShellPath(normalized);
-  }
-
-  if (options.expandTilde ?? true) {
-    const home = options.homeDir ?? homedir();
-
-    if (normalized === "~") return home;
-
-    if (
-      normalized.startsWith("~/") ||
-      (process.platform === "win32" && normalized.startsWith("~\\"))
-    ) {
-      return join(home, normalized.slice(2));
-    }
-  }
-
-  if (normalized.startsWith("file://")) {
-    return fileURLToPath(normalized);
-  }
-
-  return normalized;
-}
-
-function resolvePath(
-  input: string,
-  baseDir: string = process.cwd(),
-  options: PathInputOptions = {},
-): string {
-  const normalized = normalizePath(input, options);
-  const normalizedBaseDir = normalizePath(baseDir);
-
-  return isAbsolute(normalized)
-    ? nodeResolvePath(normalized)
-    : nodeResolvePath(normalizedBaseDir, normalized);
-}
 
 const NARROW_NO_BREAK_SPACE = " ";
 
@@ -95,16 +19,13 @@ function tryCurlyQuoteVariant(filePath: string): string {
   return filePath.replace(/'/g, "’");
 }
 
-/**
- * Resolve a path relative to the given cwd.
- * Handles ~ expansion and absolute paths.
- */
-export function resolveToCwd(filePath: string, cwd: string): string {
-  return resolvePath(filePath, cwd, { normalizeUnicodeSpaces: true, stripAtPrefix: true });
+/** Resolve a tool path in `env` after normalizing unicode spaces and dropping a leading `@`. */
+export function resolveToCwd(filePath: string, env: Pick<EnvOps, "resolve">): string {
+  return env.resolve(filePath.replace(UNICODE_SPACES, " ").replace(/^@/, ""));
 }
 
 export async function resolveReadPathAsync(env: ExecutionEnv, filePath: string): Promise<string> {
-  const resolved = resolveToCwd(filePath, env.cwd);
+  const resolved = resolveToCwd(filePath, env);
   const exists = async (path: string): Promise<boolean> => (await env.stat(path)) !== undefined;
 
   if (await exists(resolved)) {

@@ -42,7 +42,6 @@ import {
 import type { BrokerKeys, PublicJwk, ReceiptClaims } from "@nyte-ai/connect";
 import { machineName } from "./machine-name.ts";
 import {
-  PrivateJwk,
   brokerKey,
   generateMachineKey,
   nowSeconds,
@@ -74,7 +73,7 @@ import {
   REVOCATION_LIMIT,
   UNLINK_LIMIT,
 } from "./connect-store.ts";
-import type { ConnectFile, SecretCipher, StoredDevice, StoredLink } from "./connect-store.ts";
+import type { ConnectFile, StoredDevice, StoredLink } from "./connect-store.ts";
 import { ExpectedHostError } from "./errors.ts";
 
 /** What the host binds for account remote access. */
@@ -136,7 +135,6 @@ export interface ConnectRuntimeOptions {
   readonly config: ConnectConfig | undefined;
   /** `~/.nyte`, where the store lives. */
   readonly home: string;
-  readonly cipher: SecretCipher;
   readonly account: AccountSession | undefined;
   /** Something Settings shows has changed. Carries nothing itself. */
   readonly onChange: () => void;
@@ -190,7 +188,7 @@ interface HighWater {
 function storeFailed(): ExpectedHostError {
   return new ExpectedHostError({
     code: "internal",
-    message: "Nyte can't read or write ~/.nyte/connect.json. Fix or remove it, then restart Nyte.",
+    message: "Nyte can't use ~/.nyte/connect.json. Remote access is off.",
   });
 }
 
@@ -288,8 +286,6 @@ export class ConnectRuntime {
   private notice: ConnectNotice = { kind: "none" };
   /** Refused here before the store has caught up. */
   private readonly denied = new Set<string>();
-  private key: { readonly sealed: string; readonly jwk: PrivateJwk } | undefined;
-  private keychainUnavailable = false;
   private highWater: HighWater | undefined;
   private keysReadAt = Number.NEGATIVE_INFINITY;
   private revocationsSentAt = Number.NEGATIVE_INFINITY;
@@ -368,7 +364,7 @@ export class ConnectRuntime {
   async link(): Promise<ConnectView> {
     await this.requireUsable();
 
-    if (this.options.account === undefined || !(await this.keychainUsable())) throw unavailable();
+    if (this.options.account === undefined) throw unavailable();
     const pending = this.linkAttempt;
 
     if (pending !== undefined) {
@@ -419,7 +415,6 @@ export class ConnectRuntime {
       await this.serial(async () => {
         if (this.closed) throw closed();
 
-        if (!(await this.keychainUsable())) throw unavailable();
         const file = await this.readyFile();
 
         if (file.link === null) throw notLinked();
@@ -453,7 +448,6 @@ export class ConnectRuntime {
 
       if (read.kind === "failed" || !read.file.enabled || read.file.link === null) return;
 
-      if (!(await this.keychainUsable())) return;
       await this.startServing(share).catch(() => undefined);
     });
     this.changed();
@@ -610,12 +604,9 @@ export class ConnectRuntime {
         const resumable =
           pending !== null && (pending.owner === null || owner === null || pending.owner === owner);
 
-        const key = resumable ? await this.openKey(pending.sealed) : await generateMachineKey();
+        const key = resumable ? pending.key : await generateMachineKey();
 
-        if (!resumable) {
-          const sealed = await this.options.cipher.seal(JSON.stringify(key));
-          await this.change((current) => ({ ...current, linkKey: { sealed, owner } }));
-        }
+        if (!resumable) await this.change((current) => ({ ...current, linkKey: { key, owner } }));
 
         const linked = await broker.link({
           key,
@@ -636,7 +627,7 @@ export class ConnectRuntime {
             link: {
               environment: { id: linked.environment.id, name: linked.environment.name },
               owner: { id: linked.owner.id, label: linked.owner.label },
-              key: current.linkKey.sealed,
+              key: current.linkKey.key,
               brokerKeys: linked.brokerKeys,
               devices: [],
               revocations: [],
@@ -678,7 +669,6 @@ export class ConnectRuntime {
     if (broker === undefined) throw unavailable();
 
     if (link === null) throw notLinked();
-    await this.machineKey(link);
     const url = broker.relayUrl(link.environment.id);
     const epoch = this.epoch;
 
@@ -723,7 +713,7 @@ export class ConnectRuntime {
         if (current === undefined || !this.isLive(serving)) throw new Error("Not serving");
 
         return broker.relayProof({
-          key: await this.machineKey(current),
+          key: current.key,
           environmentId: serving.environmentId,
         });
       },
@@ -833,7 +823,7 @@ export class ConnectRuntime {
 
     try {
       const answer = await this.broker.lease({
-        key: await this.machineKey(link),
+        key: link.key,
         environmentId: serving.environmentId,
         signal: serving.controller.signal,
       });
@@ -1283,7 +1273,7 @@ export class ConnectRuntime {
       status: 200,
       body: {
         receipt: await signClaims({
-          key: await this.machineKey(link),
+          key: link.key,
           typ: TOKEN_TYPES.receipt,
           claims: receipt,
         }),
@@ -1413,11 +1403,11 @@ export class ConnectRuntime {
     const read = this.store.snapshot();
     const link = read?.kind === "ready" ? read.file.link : null;
 
-    if (link === null || link.revocations.length === 0 || !(await this.keychainUsable())) return;
+    if (link === null || link.revocations.length === 0) return;
 
     for (const sent of link.revocations) {
       const input = {
-        key: await this.machineKey(link),
+        key: link.key,
         environmentId: link.environment.id,
         deviceId: sent.deviceId,
         signal: this.lifetime.signal,
@@ -1497,8 +1487,7 @@ export class ConnectRuntime {
     if (broker === undefined || this.closed) return;
     const read = await this.store.read();
 
-    if (read.kind === "failed" || read.file.unlinks.length === 0 || !(await this.keychainUsable()))
-      return;
+    if (read.kind === "failed" || read.file.unlinks.length === 0) return;
     let remaining = 0;
 
     for (const pending of read.file.unlinks) {
@@ -1506,7 +1495,7 @@ export class ConnectRuntime {
 
       try {
         await broker.removeEnvironment({
-          key: await this.openKey(pending.key),
+          key: pending.key,
           environmentId: pending.environmentId,
           signal: this.lifetime.signal,
         });
@@ -1535,7 +1524,6 @@ export class ConnectRuntime {
   }
 
   private forgetLink(): void {
-    this.key = undefined;
     this.highWater = undefined;
     this.denied.clear();
   }
@@ -1573,18 +1561,7 @@ export class ConnectRuntime {
   }
 
   private unavailableReason(): ConnectUnavailable | undefined {
-    if (this.broker === undefined) return "not_configured";
-
-    if (this.keychainUnavailable) return "keychain_unavailable";
-
-    return undefined;
-  }
-
-  /** Asking can reach the OS keychain, so only key work asks; Settings shows the last answer. */
-  private async keychainUsable(): Promise<boolean> {
-    this.keychainUnavailable = !(await this.options.cipher.available());
-
-    return !this.keychainUnavailable;
+    return this.broker === undefined ? "not_configured" : undefined;
   }
 
   private async requireUsable(): Promise<void> {
@@ -1620,21 +1597,5 @@ export class ConnectRuntime {
       this.failClosed();
       throw storeFailed();
     }
-  }
-
-  private async openKey(sealed: string): Promise<PrivateJwk> {
-    const key: unknown = JSON.parse(await this.options.cipher.open(sealed));
-
-    if (!Value.Check(PrivateJwk, key)) throw new Error("The sealed machine key is not a key");
-
-    return key;
-  }
-
-  private async machineKey(link: StoredLink): Promise<PrivateJwk> {
-    if (this.key?.sealed === link.key) return this.key.jwk;
-    const jwk = await this.openKey(link.key);
-    this.key = { sealed: link.key, jwk };
-
-    return jwk;
   }
 }

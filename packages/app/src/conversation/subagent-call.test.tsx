@@ -43,6 +43,7 @@ const child = sessionId("child");
 const childSession: SessionInfo = {
   sessionId: child,
   activation: { kind: "active" },
+  workspace: { kind: "local", id: "fixture", cwd: "/" },
   name: "Map the workbench",
   createdAt: 1,
   lastActivityAt: 2,

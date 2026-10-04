@@ -58,6 +58,7 @@ export const thirdTurn = changedTurn(THIRD_TURN, ["src/third.ts"]);
 const session: SessionSnapshot["session"] = {
   sessionId: changesSession,
   activation: { kind: "active" },
+  workspace: { kind: "local", id: "fixture", cwd: "/" },
   createdAt: 1,
   lastActivityAt: 2,
   pinned: false,

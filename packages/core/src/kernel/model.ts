@@ -118,8 +118,12 @@ export type Effect =
       readonly args: JsonValue;
       /** After a crash between intent and result: run again, or settle as interrupted. */
       readonly replay: "safe" | "never";
-      /** The filesystem the call acts in. A `safe` replay runs only where this matches; absent, the call has no environment. */
-      readonly fs?: string;
+      /**
+       * The id of the environment the call acts in. A `safe` replay runs only
+       * where this matches. Absent on intents written before environments were
+       * recorded; those never replay.
+       */
+      readonly environment?: string;
       readonly at: number;
     }
   | {

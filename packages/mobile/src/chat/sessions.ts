@@ -33,9 +33,13 @@ export function needsAttention(session: SessionInfo): boolean {
   return needsInput(session) || hasFailed(session);
 }
 
-/** A question or an activation the user has to answer. */
+/** A question or a trust grant the user has to answer. */
 export function needsInput(session: SessionInfo): boolean {
-  return sessionMark(session) === "waiting" || session.activation.kind === "requires";
+  return (
+    sessionMark(session) === "waiting" ||
+    (session.activation.kind === "requires" &&
+      session.activation.requirement.kind === "workspace_trust")
+  );
 }
 
 export function hasFailed(session: SessionInfo): boolean {

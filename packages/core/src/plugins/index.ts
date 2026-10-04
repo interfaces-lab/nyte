@@ -6,13 +6,11 @@
  *
  * `PluginHost`, the contribution registries, and `PluginScope` are internals:
  * they are exported from nowhere and reached only by relative path inside
- * core (design record, "Plugins").
+ * core (Core guide, "Plugins").
  */
 export * from "./types.ts";
 
 export { systemPromptPlugin } from "./builtin/system-prompt.ts";
-
-export { contextFilesPlugin } from "./builtin/context-files.ts";
 
 export { SKILLS_PLUGIN_ID, skillsPlugin } from "./builtin/skills.ts";
 
@@ -25,7 +23,7 @@ export { toolsFsPlugin } from "./builtin/tools-fs.ts";
 
 /**
  * Durable suspension, the mechanism behind asks and subagent waits: a tool
- * throws `ToolWait` and settles on wake (design record, "Wait and wake").
+ * throws `ToolWait` and settles on wake (Core guide, "Tools").
  * A wait that needs a participant carries a `Selection`, which every client
  * renders without knowing the tool. The question example shows the whole pattern.
  */
@@ -50,9 +48,13 @@ export { bindTool } from "../tools/bind-tool.ts";
  * a tool that reaches files or processes takes it from there, never from
  * anything captured when the tool was built.
  */
-export type { ExecutionEnv, ExecOptions, FileInfo, FileKind } from "../kernel/loop/env.ts";
+export type { EnvOps, ExecutionEnv, ExecOptions, FileInfo, FileKind } from "../kernel/loop/env.ts";
 
-export { requireEnv } from "../tools/env.ts";
+/** Where a session tree acts: what an environment provider opens. */
+export type { Workspace } from "../kernel/sdk/types.ts";
+
+/** This machine as an environment: the provider a local host installs, and the environment it opens. */
+export { createLocalExecutionEnv, localEnvironmentPlugin } from "../tools/env.ts";
 
 /** Shared truncation helpers so tool output notices read identically to `read` and `bash`. */
 export { truncateHead, formatSize, type TruncationResult } from "../tools/support/truncate.ts";
@@ -74,8 +76,10 @@ export type {
   AgentToolCall,
   AgentToolResult,
   AgentToolUpdateCallback,
+  ExecutableTool,
   ToolCall,
   ToolCallOutcome,
+  ToolContext,
   ToolDefinition,
   ToolRun,
 } from "../kernel/loop/types.ts";

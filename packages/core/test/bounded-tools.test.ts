@@ -4,17 +4,14 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "vitest";
-import { createLocalExecutionEnv, withExecutionEnv } from "../src/tools/env.ts";
 import { createReadToolDefinition } from "../src/tools/read.ts";
 import { OutputAccumulator } from "../src/tools/support/output-accumulator.ts";
 import { toolResultText } from "../src/kernel/loop/tool-result.ts";
-
-function callContext(id: string, signal = new AbortController().signal) {
-  return { id, signal, update: () => {} };
-}
+import { bindEnv } from "./builtin-tools.ts";
+import { localEnv, toolCall } from "./kernel/helpers.ts";
 
 const readAt = (cwd: string) =>
-  withExecutionEnv(createReadToolDefinition(), createLocalExecutionEnv({ cwd }));
+  bindEnv({ ...createReadToolDefinition(), name: "read" }, localEnv(cwd));
 
 describe("bounded shell output", () => {
   test("persists every byte when output exceeds the display limit", async () => {
@@ -49,7 +46,7 @@ describe("bounded shell output", () => {
     "delivers stdout and stderr from the local shell",
     { skip: process.platform === "win32" },
     async () => {
-      const operations = createLocalExecutionEnv({ cwd: "/tmp" });
+      const operations = localEnv("/tmp");
       let output = "";
 
       const result = await operations.exec(
@@ -75,12 +72,12 @@ describe("bounded text reads", () => {
       const content = `\ufeff${"x".repeat(65_532)}🐈\nnext`;
       await writeFile(join(directory, "unicode.txt"), content);
       const tool = readAt(directory);
-      const tail = await tool.execute({ path: "unicode.txt", offset: 2 }, callContext("read"));
+      const tail = await tool.execute({ path: "unicode.txt", offset: 2 }, toolCall("read"));
       assert.equal(toolResultText(tail.content), "next");
       await writeFile(join(directory, "unicode.txt"), "\ufeffhello");
-      const head = await tool.execute({ path: "unicode.txt" }, callContext("read"));
+      const head = await tool.execute({ path: "unicode.txt" }, toolCall("read"));
       assert.equal(toolResultText(head.content), "\ufeffhello");
-      await assert.rejects(tool.execute({ path: directory }, callContext("read")), /EISDIR/u);
+      await assert.rejects(tool.execute({ path: directory }, toolCall("read")), /EISDIR/u);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -92,7 +89,7 @@ describe("bounded text reads", () => {
     await assert.rejects(
       readAt("/tmp").execute(
         { path: "/dev/zero", limit: 1 },
-        callContext("read", controller.signal),
+        toolCall("read", { signal: controller.signal }),
       ),
       /Operation aborted/u,
     );
@@ -108,7 +105,7 @@ describe("bounded text reads", () => {
       await writeFile(join(directory, "large.txt"), lines.join("\n"));
       const tool = readAt(directory);
 
-      const truncated = await tool.execute({ path: "large.txt" }, callContext("read"));
+      const truncated = await tool.execute({ path: "large.txt" }, toolCall("read"));
       assert.equal(truncated.details?.truncation?.truncatedBy, "lines");
       assert.equal(truncated.details?.truncation?.totalLines, 10_000);
       assert.match(toolResultText(truncated.content), /Showing lines 1-2000 of 10000/u);
@@ -119,7 +116,7 @@ describe("bounded text reads", () => {
           offset: 9001,
           limit: 5,
         },
-        callContext("read"),
+        toolCall("read"),
       );
       assert.equal(
         toolResultText(selected.content),
@@ -135,7 +132,7 @@ describe("bounded text reads", () => {
     const content = `${Array.from({ length: 2000 }, () => "x").join("\n")}\n`;
     try {
       await writeFile(join(directory, "lines.txt"), content);
-      const result = await readAt(directory).execute({ path: "lines.txt" }, callContext("read"));
+      const result = await readAt(directory).execute({ path: "lines.txt" }, toolCall("read"));
 
       assert.equal(toolResultText(result.content), content);
       assert.equal(result.details, undefined);
@@ -148,7 +145,7 @@ describe("bounded text reads", () => {
     const directory = await mkdtemp(join(tmpdir(), "nyte-long-line-read-"));
     try {
       await writeFile(join(directory, "long.txt"), `${"x".repeat(60 * 1024)}\ntail`);
-      const result = await readAt(directory).execute({ path: "long.txt" }, callContext("read"));
+      const result = await readAt(directory).execute({ path: "long.txt" }, toolCall("read"));
 
       assert.match(toolResultText(result.content), /Line 1 is 60\.0KB, exceeds 50\.0KB limit/u);
       assert.equal(result.details?.truncation?.firstLineExceedsLimit, true);
@@ -165,7 +162,7 @@ describe("bounded text reads", () => {
       const controller = new AbortController();
       const execution = readAt(directory).execute(
         { path: "large.txt" },
-        callContext("read", controller.signal),
+        toolCall("read", { signal: controller.signal }),
       );
       controller.abort();
 

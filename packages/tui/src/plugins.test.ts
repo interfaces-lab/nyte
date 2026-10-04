@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createNyte } from "@nyte-ai/core";
+import { localEnvironmentPlugin } from "@nyte-ai/core/plugins";
 import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
 import { SqliteStore } from "@nyte-ai/core/store";
 import { createWorkspaceStore } from "@nyte-ai/host";
@@ -66,8 +67,8 @@ async function fixture(wait: string, setupBudgetMs?: number) {
       modelsStore: new InMemoryModelsStore(),
     }),
     store,
-    plugins: [],
-    env: { cwd: root },
+    plugins: [localEnvironmentPlugin({ id: "test" })],
+    defaultWorkspace: { kind: "local", id: "test", cwd: root },
     model: {
       id: "fixture",
       name: "Fixture",

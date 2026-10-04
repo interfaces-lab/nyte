@@ -32,7 +32,7 @@ import {
   useConnectAction,
   useConnectView,
 } from "./connect-view.ts";
-import { ConnectionStatus } from "./connection-list.tsx";
+import { ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
 import { signOutDescription, useGitHubAccount } from "./github-account.ts";
 import { LinkTray } from "./link-tray.tsx";
 import { DeviceCodePanel } from "./sign-in-panels.tsx";
@@ -532,26 +532,28 @@ function MacGroup({
     </Button>
   );
 
+  const macGlyph = <Icon name="laptop" size={16} />;
+
   if (view === undefined || view.kind === "unavailable") {
     return (
       <Group label="This Mac">
-        <Row title={name} control={environments} />
+        <ConnectionRow glyph={macGlyph} title={name} control={environments} />
       </Group>
     );
   }
 
   if (view.kind === "linked" && !trayOpen) {
     const { tone, status } = linkedStanding(view);
-    const devices = view.devices.map((device) => device.name).join(", ");
 
     return (
       <Group label="This Mac">
-        <Row
+        <ConnectionRow
+          glyph={macGlyph}
           title={name}
-          description={
+          detail={
             <>
               <ConnectionStatus tone={tone}>{status}</ConnectionStatus>
-              {devices === "" ? "" : ` · ${devices}`}
+              {` · ${view.owner.label}`}
             </>
           }
           control={environments}
@@ -562,9 +564,10 @@ function MacGroup({
 
   return (
     <Group label="This Mac">
-      <Row
+      <ConnectionRow
+        glyph={macGlyph}
         title={name}
-        description="Not linked to a Nyte account."
+        detail="Not linked to a Nyte account."
         control={
           <LinkTray
             connect={connect}

@@ -11,6 +11,7 @@ import {
 import type { JsonValue } from "@nyte-ai/schema";
 import { Type, type Static } from "typebox";
 import { Compile } from "typebox/compile";
+import type { ExecutionEnv } from "../loop/env.ts";
 import type {
   AgentTool,
   AgentToolResult,
@@ -569,6 +570,7 @@ export function createJobs(input: {
     owner: JobOwner,
     tool: AgentTool,
     args: JobArguments,
+    env: ExecutionEnv,
     signal: AbortSignal | undefined,
     onUpdate: AgentToolUpdateCallback | undefined,
   ): Promise<Admitted> => {
@@ -786,6 +788,7 @@ export function createJobs(input: {
                     // The job outlives the call that started it, so the tool runs outside the run's scope.
                     return tool.execute(args, {
                       id: callId,
+                      env,
                       signal: jobSignal,
                       update: (partial: AgentToolResult<unknown>) => {
                         if (!acceptingUpdates || jobSignal.aborted) return;
@@ -896,6 +899,7 @@ export function createJobs(input: {
                 { kind: "run", runId: call.run.id, callId: call.id, head: call.run.head },
                 tool,
                 input,
+                call.env,
                 call.signal,
                 (partial) => {
                   if (executing) call.update(partial);
@@ -934,12 +938,12 @@ export function createJobs(input: {
 
   return {
     wrap,
-    /** Run the command tool as a user-owned job on `head`; progress arrives as `job` events. */
-    start(head: string, command: string): Promise<JobInfo> {
+    /** Run the command tool in `env` as a user-owned job on `head`; progress arrives as `job` events. */
+    start(head: string, command: string, env: ExecutionEnv): Promise<JobInfo> {
       if (commandTool === undefined) return Promise.reject(new Error("This chat has no bash tool"));
 
       return track(
-        admit({ kind: "user", head }, commandTool, { command }, undefined, undefined).then(
+        admit({ kind: "user", head }, commandTool, { command }, env, undefined, undefined).then(
           (admitted) => admitted.info,
         ),
       );

@@ -6,7 +6,7 @@ import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import type { Nyte, NyteOptions, SessionId } from "../../src/kernel/sdk/types.ts";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
-import { assistant } from "./helpers.ts";
+import { assistant, localOptions } from "./helpers.ts";
 
 export const acceptanceModel: Model<Api> = {
   id: "acceptance-model",
@@ -68,8 +68,7 @@ export function openAcceptanceNyte(
           : undefined,
       getAvailable: async () => [acceptanceModel],
     },
-    plugins: options.plugins ?? [],
-    env: { cwd: "/tmp/nyte-acceptance" },
+    ...localOptions("/tmp/nyte-acceptance", options.plugins ?? []),
     drain: options.drain,
   });
 }

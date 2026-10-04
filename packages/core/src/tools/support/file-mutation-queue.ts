@@ -1,12 +1,14 @@
 import type { ExecutionEnv } from "../../kernel/loop/env.ts";
 
 const fileMutationQueues = new Map<string, Promise<void>>();
-let registrationQueue = Promise.resolve();
+
+/** One registration line per environment, so a slow remote `realpath` holds up only its own disk. */
+const registrationQueues = new Map<string, Promise<void>>();
 
 /**
  * Serialize `edit` and `write` mutations of one file within this process: same
- * filesystem and canonical path, whichever environment object the call got.
- * Other files, and other filesystems, never wait. Not a lock against `bash`
+ * environment id and canonical path, whichever environment object the call got.
+ * Other files, and other environments, never wait. Not a lock against `bash`
  * or other processes.
  */
 export async function withFileMutationQueue<T>(
@@ -14,8 +16,10 @@ export async function withFileMutationQueue<T>(
   absolutePath: string,
   fn: () => Promise<T>,
 ): Promise<T> {
+  const registrationQueue = registrationQueues.get(env.id) ?? Promise.resolve();
+
   const registration = registrationQueue.then(async () => {
-    const key = `${env.fs}\0${(await env.realpath(absolutePath)) ?? absolutePath}`;
+    const key = `${env.id}\0${(await env.realpath(absolutePath)) ?? absolutePath}`;
     const currentQueue = fileMutationQueues.get(key) ?? Promise.resolve();
 
     const next = Promise.withResolvers<void>();
@@ -26,10 +30,11 @@ export async function withFileMutationQueue<T>(
 
     return { key, currentQueue, chainedQueue, releaseNext };
   });
-  registrationQueue = registration.then(
+  const settled = registration.then(
     () => undefined,
     () => undefined,
   );
+  registrationQueues.set(env.id, settled);
 
   const { key, currentQueue, chainedQueue, releaseNext } = await registration;
   await currentQueue;
@@ -40,5 +45,7 @@ export async function withFileMutationQueue<T>(
     if (fileMutationQueues.get(key) === chainedQueue) {
       fileMutationQueues.delete(key);
     }
+
+    if (registrationQueues.get(env.id) === settled) registrationQueues.delete(env.id);
   }
 }

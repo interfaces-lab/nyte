@@ -18,7 +18,12 @@ import { AboutDialog } from "./chrome/about-dialog.tsx";
 import type { ReactElement } from "react";
 import { WorkspaceDialogHost } from "./chrome/open-workspace.tsx";
 import { isSettingsSection } from "./chrome/settings-navigation.tsx";
-import { shellActions, subscribeShellStage, useShellState } from "./chrome/shell-state.ts";
+import {
+  applyShellStage,
+  shellActions,
+  subscribeShellStage,
+  useShellState,
+} from "./chrome/shell-state.ts";
 import { SidebarPane } from "./chrome/sidebar-pane.tsx";
 import { Sidebar } from "./chrome/sidebar.tsx";
 import { Button } from "@nyte-ai/ui/button";
@@ -32,11 +37,16 @@ import type { SessionPage } from "./session-directory.ts";
 import { getStartupDestination, startupSession } from "./startup-preference.ts";
 import { WorkspaceStage } from "./shell/workspace-stage.tsx";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { radius } from "@nyte-ai/ui/schema.stylex";
 import { sessionId } from "@nyte-ai/protocol";
 import type { SessionId } from "@nyte-ai/protocol";
 import { nyte } from "./nyte.ts";
 import { macPlatform } from "./platform.ts";
-import { clientCapabilities, resolveClientAction } from "./client-actions.ts";
+import { clientCapabilities, resolveClientAction, resolveTabShortcut } from "./client-actions.ts";
+import { activeTab, currentView, tabPlace } from "./tabs/model.ts";
+import { placeHref } from "./tabs/places.ts";
+import { useWindowTabsState, useWindowTabsSync } from "./tabs/use-window-tabs.tsx";
+import { windowTabs } from "./tabs/window-tabs.ts";
 
 import { CustomizeSurface } from "./chrome/customize.tsx";
 import { EnvironmentsSurface } from "./chrome/environments.tsx";
@@ -65,6 +75,14 @@ const styles = create({
     backgroundColor: role.bgBase,
     overflow: "hidden",
   },
+  /** With window tabs the main area is a card set into the chrome, which the titlebar shares. */
+  card: {
+    marginInlineEnd: 8,
+    marginBlockEnd: 8,
+    borderRadius: radius.card,
+    boxShadow: `0 0 0 1px ${role.borderSecondaryTranslucent}`,
+  },
+  cardSidebarHidden: { marginInlineStart: 8 },
   loadError: {
     display: "flex",
     flexDirection: "column",
@@ -84,10 +102,14 @@ const styles = create({
 /** `appIcon` is the host's product mark, shown in About; the host bundles it. */
 export function Shell({ appIcon }: { appIcon: string }): ReactElement {
   const host = useHostState();
+  const tabs = useWindowTabsState();
 
   return (
     <TooltipProvider>
-      <PaneControllerProvider workspaceKey={host.data?.workspace?.path}>
+      <PaneControllerProvider
+        workspaceKey={host.data?.workspace?.path}
+        controller={windowTabs.enabled ? windowTabs.controller(tabs.activeTabId) : undefined}
+      >
         <ShellChrome appIcon={appIcon} />
       </PaneControllerProvider>
     </TooltipProvider>
@@ -99,10 +121,12 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
   const shellRouter = useRouter();
   const panes = usePaneActions();
   const canSplit = useCanSplitPane();
-  const { stage: shellStage, about } = useShellState();
+  const { stage: shellStage, about, sidebarVisible } = useShellState();
   // Customize and Environments cover the stage; Back and a sidebar row both leave them.
   const stageOpen = shellStage.kind !== "workspace";
   const mac = macPlatform(host.data?.platform);
+  const tabbed = windowTabs.enabled;
+  useWindowTabsSync();
 
   useEffect(() => {
     restoreChromeStage(shellRouter);
@@ -152,6 +176,15 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
         return;
       }
 
+      const shortcut = tabbed && !settingsOpen ? resolveTabShortcut(event, mac) : undefined;
+
+      if (shortcut !== undefined) {
+        event.preventDefault();
+        windowTabs.dispatch(shortcut);
+
+        return;
+      }
+
       const action = resolveClientAction(
         event,
         mac,
@@ -160,6 +193,18 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       );
 
       if (action === undefined) return;
+
+      if (action.id === "new-tab" || action.id === "close-tab" || action.id === "reopen-tab") {
+        if (!tabbed) return;
+        event.preventDefault();
+
+        if (action.id === "new-tab") windowTabs.dispatch({ kind: "new-tab" });
+        else if (action.id === "reopen-tab") windowTabs.dispatch({ kind: "reopen-tab" });
+        else
+          windowTabs.dispatch({ kind: "close-tab", tabId: windowTabs.getSnapshot().activeTabId });
+
+        return;
+      }
 
       if (action.id === "split-right" || action.id === "split-down") {
         if (!canSplit) return;
@@ -181,6 +226,10 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       } else if (action.id === "back" && settingsOpen) {
         event.preventDefault();
         closeSettings(shellRouter);
+      } else if ((action.id === "back" || action.id === "forward") && tabbed) {
+        if (settingsOpen) return;
+        event.preventDefault();
+        windowTabs.dispatch({ kind: "travel", step: action.id === "back" ? -1 : 1 });
       } else if (action.id === "back" && shellRouter.history.canGoBack()) {
         event.preventDefault();
         shellRouter.history.back();
@@ -207,7 +256,7 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [canSplit, stageOpen, mac, panes, shellRouter, shellStage.kind]);
+  }, [canSplit, stageOpen, mac, panes, shellRouter, shellStage.kind, tabbed]);
 
   return (
     <div data-nyte-shell {...props(styles.shell)}>
@@ -215,7 +264,8 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
       <div
         {...props(styles.stage)}
         onClickCapture={(event) => {
-          if (!stageOpen || !(event.target instanceof Element)) return;
+          // A tab's page is left by the navigation the row makes, not by the click.
+          if (tabbed || !stageOpen || !(event.target instanceof Element)) return;
 
           const sidebarAction = event.target.closest(
             'nav[aria-label="Sessions and workspaces"] button',
@@ -230,7 +280,13 @@ function ShellChrome({ appIcon }: { appIcon: string }): ReactElement {
           <SidebarPane>
             <Sidebar />
           </SidebarPane>
-          <main {...props(styles.surface)}>
+          <main
+            {...props(
+              styles.surface,
+              tabbed && styles.card,
+              tabbed && !sidebarVisible && styles.cardSidebarHidden,
+            )}
+          >
             <Matches />
           </main>
         </SessionDndProvider>
@@ -305,6 +361,9 @@ const indexRoute = createRoute({
   beforeLoad: ({ context, preload, search }) => {
     if (preload || !context.startup.pending) return;
     context.startup.pending = false;
+
+    // A restored strip, or a window opened beside others, already knows what it shows.
+    if (windowTabs.enabled && !windowTabs.startupDestination) return;
 
     if (search.customize !== undefined || search.environment !== undefined) return;
 
@@ -399,21 +458,17 @@ const workspaceRouteTree = workspaceRoute.addChildren([indexRoute, threadRoute])
 
 const routeTree = rootRoute.addChildren([workspaceRouteTree, settingsRoute]);
 
-export function initialChromeRoute(): string {
-  try {
-    return window.sessionStorage.getItem("nyte.chrome.route") ?? "/";
-  } catch {
-    return "/";
-  }
+/** Desktop windows show tabs: restore this window's strip before the router starts. */
+export function startWindowTabs(): Promise<void> {
+  return windowTabs.start();
 }
 
-export function createAppRouter({
-  history,
-  persistChromeRoute = false,
-}: {
-  history: RouterHistory;
-  persistChromeRoute?: boolean;
-}) {
+/** The route the active window tab shows. */
+export function windowTabRoute(): string {
+  return placeHref(tabPlace(activeTab(windowTabs.getSnapshot())));
+}
+
+export function createAppRouter({ history }: { history: RouterHistory }) {
   const router = createRouter({
     routeTree,
     history,
@@ -428,16 +483,6 @@ export function createAppRouter({
     if (!router.state.matches.some((match) => match.routeId === settingsRoute.id))
       rememberWorkspaceHref(router.state.location.href);
     restoreChromeStage(router);
-
-    if (!persistChromeRoute) return;
-
-    try {
-      const { customize, environment } = router.state.location.search;
-
-      if (customize !== undefined || environment !== undefined)
-        window.sessionStorage.setItem("nyte.chrome.route", router.state.location.href);
-      else window.sessionStorage.removeItem("nyte.chrome.route");
-    } catch {}
   });
 
   restoreChromeStage(router);
@@ -450,9 +495,18 @@ export type AppRouter = ReturnType<typeof createAppRouter>;
 function restoreChromeStage(router: AppRouter): void {
   const { customize, environment } = router.state.location.search;
 
-  if (customize !== undefined) shellActions.openCustomize(currentRouteSession(router));
-  else if (environment !== undefined) shellActions.openEnvironments();
-  else shellActions.showWorkspace();
+  if (customize !== undefined)
+    applyShellStage({ kind: "customize", sessionId: customizeSession(router) });
+  else if (environment !== undefined) applyShellStage({ kind: "environments" });
+  else applyShellStage({ kind: "workspace" });
+}
+
+/** A tab's Customize page remembers the chat it opened from; elsewhere the route names it. */
+function customizeSession(router: AppRouter): SessionId | undefined {
+  if (!windowTabs.enabled) return currentRouteSession(router);
+  const view = currentView(activeTab(windowTabs.getSnapshot()));
+
+  return view.kind === "page" && view.page.kind === "customize" ? view.page.sessionId : undefined;
 }
 
 /** The chat the current location shows, if it is one. */

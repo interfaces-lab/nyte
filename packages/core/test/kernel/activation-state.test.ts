@@ -10,12 +10,22 @@ import {
   type Nyte,
   type NyteOptions,
   type SummaryDiagnostic,
-  type SessionActivationResolver,
   type SessionEvent,
 } from "../../src/kernel/sdk/types.ts";
 import { definePlugin, type Plugin } from "../../src/plugins/index.ts";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
-import { assistant, message, openStore, seedHead, usage, user, within } from "./helpers.ts";
+import {
+  assistant,
+  localOptions,
+  localWorkspace,
+  message,
+  openStore,
+  seedHead,
+  storePath,
+  usage,
+  user,
+  within,
+} from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "activation-model",
@@ -41,8 +51,9 @@ function responseStream(onRequest?: () => void): StreamFn {
   };
 }
 
-function openLazy(input: {
-  readonly resolveActivation: SessionActivationResolver;
+function openHost(input: {
+  readonly trust: NonNullable<NyteOptions["trust"]>;
+  readonly plugins?: readonly Plugin[];
   readonly store?: ReturnType<typeof openStore>;
   readonly streamFn?: StreamFn;
   readonly onDiagnostic?: NyteOptions["onDiagnostic"];
@@ -52,7 +63,8 @@ function openLazy(input: {
     streamFn: input.streamFn ?? responseStream(),
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     model,
-    resolveActivation: input.resolveActivation,
+    ...localOptions("/workspace", input.plugins),
+    trust: input.trust,
     onDiagnostic: input.onDiagnostic,
   });
 }
@@ -81,8 +93,8 @@ test("session reads expose requires without instantiating plugins", async () => 
   const plugin = countingPlugin(() => {
     pluginSessions += 1;
   });
-  const nyte = await openLazy({
-    resolveActivation: () => ({
+  const nyte = await openHost({
+    trust: () => ({
       kind: "requires",
       requirement: { kind: "workspace_trust", cwd: "/workspace" },
     }),
@@ -115,13 +127,7 @@ test("active session reads do not instantiate plugins", async () => {
   const plugin = countingPlugin(() => {
     pluginSessions += 1;
   });
-  const nyte = await openLazy({
-    resolveActivation: () => ({
-      kind: "active",
-      plugins: [plugin],
-      env: { cwd: "/workspace" },
-    }),
-  });
+  const nyte = await openHost({ trust: () => ({ kind: "trusted" }), plugins: [plugin] });
   try {
     const created = await nyte.sessions.create();
     await nyte.sessions.get({ sessionId: created.sessionId });
@@ -135,12 +141,46 @@ test("active session reads do not instantiate plugins", async () => {
   }
 });
 
+test("a child of a refused root announces its activation once, however often it is read", async () => {
+  const nyte = await openHost({
+    trust: () => ({
+      kind: "requires",
+      requirement: { kind: "workspace_trust", cwd: "/workspace" },
+    }),
+  });
+  const controller = new AbortController();
+  try {
+    const root = await nyte.sessions.create();
+    const { sessionId } = await nyte.sessions.create({
+      parent: { sessionId: root.sessionId, runId: "run_1", callId: "call_1", depth: 1 },
+    });
+    const watching = nyte
+      .watch({ sessionId, live: true, signal: controller.signal })
+      [Symbol.asyncIterator]();
+    assert.equal((await nextActivation(watching)).activation.kind, "requires");
+    await nyte.sessions.get({ sessionId });
+    assert.deepEqual(await nyte.plugins.commands.list({ sessionId }), []);
+    await nyte.sessions.setPinned({ sessionId, pinned: true });
+    const activations: SessionEvent[] = [];
+    for (;;) {
+      const result = await within(watching.next());
+      if (result.done) assert.fail("watch ended before the pin");
+      if (result.value.kind === "fact" && result.value.key === "pinned") break;
+      if (result.value.kind === "activation_changed") activations.push(result.value);
+    }
+    assert.deepEqual(activations, []);
+  } finally {
+    controller.abort();
+    await nyte.close();
+  }
+});
+
 test("watch replays current activation and observes requires to active", async () => {
   let active = false;
-  const nyte = await openLazy({
-    resolveActivation: () =>
+  const nyte = await openHost({
+    trust: () =>
       active
-        ? { kind: "active", plugins: [], env: { cwd: "/workspace" } }
+        ? { kind: "trusted" }
         : {
             kind: "requires",
             requirement: { kind: "workspace_trust", cwd: "/workspace" },
@@ -168,14 +208,15 @@ test("send queues under requires and reactivate starts the attached runner", asy
   const plugin = countingPlugin(() => {
     pluginSessions += 1;
   });
-  const nyte = await openLazy({
-    resolveActivation: () =>
+  const nyte = await openHost({
+    trust: () =>
       active
-        ? { kind: "active", plugins: [plugin], env: { cwd: "/workspace" } }
+        ? { kind: "trusted" }
         : {
             kind: "requires",
             requirement: { kind: "workspace_trust", cwd: "/workspace" },
           },
+    plugins: [plugin],
   });
   try {
     const session = await nyte.sessions.create();
@@ -203,21 +244,25 @@ test("reactivate refreshes every blocked session and the prospective catalog", a
       api.commands.add((draft) => draft.set("hello", { description: "Hi", run: () => "hi" }));
     },
   });
-  const nyte = await openLazy({
-    resolveActivation(target) {
-      if (active) return { kind: "active", plugins: [plugin], env: { cwd: "/workspace" } };
-      return target.kind === "session" && target.sessionId === "inactive"
+  const nyte = await openHost({
+    trust(workspace) {
+      if (active) return { kind: "trusted" };
+      return workspace.cwd === "/inactive"
         ? { kind: "inactive" }
         : {
             kind: "requires",
             requirement: { kind: "workspace_trust", cwd: "/workspace" },
           };
     },
+    plugins: [plugin],
   });
   try {
     assert.deepEqual((await nyte.plugins.catalog()).commands, []);
     const required = await nyte.sessions.create({ sessionId: sessionId("required") });
-    const inactive = await nyte.sessions.create({ sessionId: sessionId("inactive") });
+    const inactive = await nyte.sessions.create({
+      sessionId: sessionId("inactive"),
+      workspace: localWorkspace("/inactive"),
+    });
     assert.equal(required.activation.kind, "requires");
     assert.equal(inactive.activation.kind, "inactive");
     assert.deepEqual(await nyte.plugins.commands.list({ sessionId: inactive.sessionId }), []);
@@ -241,7 +286,7 @@ test("reactivate refreshes every blocked session and the prospective catalog", a
 });
 
 test("inactive plugin reads are empty and mutations are not_found", async () => {
-  const nyte = await openLazy({ resolveActivation: () => ({ kind: "inactive" }) });
+  const nyte = await openHost({ trust: () => ({ kind: "inactive" }) });
   try {
     const session = await nyte.sessions.create();
     assert.deepEqual(await nyte.plugins.catalog(), {
@@ -289,12 +334,12 @@ test("inactive compaction and summary fail without writes", async () => {
   assert.ok(target !== undefined && tip !== undefined);
   const diagnostics: SummaryDiagnostic[] = [];
   let modelCalls = 0;
-  const nyte = await openLazy({
+  const nyte = await openHost({
     store,
     streamFn: responseStream(() => {
       modelCalls += 1;
     }),
-    resolveActivation: () => ({ kind: "inactive" }),
+    trust: () => ({ kind: "inactive" }),
     onDiagnostic: (diagnostic) => {
       diagnostics.push(diagnostic);
     },
@@ -333,21 +378,18 @@ test("inactive compaction and summary fail without writes", async () => {
   }
 });
 
-test("resolver faults reject, are not cached, and never become requires", async () => {
+test("trust faults reject, are not cached, and never become requires", async () => {
   let calls = 0;
-  const nyte = await openLazy({
-    resolveActivation: () => {
+  const nyte = await openHost({
+    trust: () => {
       calls += 1;
-      if (calls < 3) throw new Error(`resolver fault ${String(calls)}`);
-      return { kind: "active", plugins: [], env: { cwd: "/workspace" } };
+      if (calls < 3) throw new Error(`trust fault ${String(calls)}`);
+      return { kind: "trusted" };
     },
   });
   try {
-    await assert.rejects(
-      nyte.sessions.create({ sessionId: sessionId("fault") }),
-      /resolver fault 1/,
-    );
-    await assert.rejects(nyte.sessions.get({ sessionId: sessionId("fault") }), /resolver fault 2/);
+    await assert.rejects(nyte.sessions.create({ sessionId: sessionId("fault") }), /trust fault 1/);
+    await assert.rejects(nyte.sessions.get({ sessionId: sessionId("fault") }), /trust fault 2/);
     const session = await nyte.sessions.get({ sessionId: sessionId("fault") });
     assert.equal(session?.activation.kind, "active");
     assert.equal(calls, 3);
@@ -357,21 +399,21 @@ test("resolver faults reject, are not cached, and never become requires", async 
 });
 
 for (const operation of ["runs.compact", "heads.move"] satisfies SummaryDiagnostic["operation"][]) {
-  test(`${operation} reports resolver faults as unexpected without writes`, async () => {
+  test(`${operation} reports trust faults as unexpected without writes`, async () => {
     const store = openStore();
     const stored = await store.create();
     await seedHead(stored, "main", [message(user("first")), message(user("second"))]);
     const cause = new Error("Session is not active in this host");
     const diagnostics: SummaryDiagnostic[] = [];
-    const nyte = await openLazy({
+    const nyte = await openHost({
       store,
-      resolveActivation: () => {
+      trust: () => {
         throw cause;
       },
       onDiagnostic: (diagnostic) => {
         diagnostics.push(diagnostic);
       },
-      streamFn: () => assert.fail("Resolver failure must prevent provider work"),
+      streamFn: () => assert.fail("A trust failure must prevent provider work"),
     });
     try {
       const id = sessionId(stored.id);
@@ -395,3 +437,31 @@ for (const operation of ["runs.compact", "heads.move"] satisfies SummaryDiagnost
     }
   });
 }
+
+test("a new plugin set recovers a child read before its failed root", async () => {
+  const path = storePath();
+  let broken = false;
+  const trust: NonNullable<NyteOptions["trust"]> = () => ({
+    kind: "trusted",
+    plugins: async () => {
+      if (broken) throw new Error("project plugins failed");
+      return [];
+    },
+  });
+  const first = await openHost({ trust, store: openStore(path) });
+  const root = (await first.sessions.create()).sessionId;
+  const parent = { sessionId: root, runId: "run_1", callId: "call_1", depth: 1 };
+  const child = (await first.sessions.create({ parent })).sessionId;
+  await first.close();
+  broken = true;
+  const nyte = await openHost({ trust, store: openStore(path) });
+  try {
+    assert.equal((await nyte.sessions.get({ sessionId: child }))?.activation.kind, "failed");
+    assert.equal((await nyte.sessions.list({ parent: root })).items[0]?.activation.kind, "failed");
+    broken = false;
+    await nyte.setPlugins([]);
+    assert.equal((await nyte.sessions.list({ parent: root })).items[0]?.activation.kind, "active");
+  } finally {
+    await nyte.close();
+  }
+});

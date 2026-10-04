@@ -1,4 +1,4 @@
-import { accountAppearance } from "@nyte-ai/app/account/appearance.ts";
+import { AccountScope, accountAppearance } from "@nyte-ai/app/account/appearance.tsx";
 import { ClerkLoading, ClerkProvider, SignIn, useClerk } from "@clerk/electron/react";
 import { useEffect } from "react";
 import type { ReactElement, ReactNode } from "react";
@@ -157,17 +157,17 @@ function Provider({
   );
 }
 
-function Form(): ReactElement {
+function Form({ fallback }: { readonly fallback: ReactNode }): ReactElement {
   return (
-    <>
-      <ClerkLoading>Loading…</ClerkLoading>
+    <AccountScope>
+      <ClerkLoading>{fallback}</ClerkLoading>
       <SignIn
         routing="hash"
         withSignUp
         forceRedirectUrl={redirectUrl}
         signUpForceRedirectUrl={redirectUrl}
       />
-    </>
+    </AccountScope>
   );
 }
 

@@ -48,6 +48,27 @@ export const clientActions = {
     scope: "window",
     palette: { keywords: "start create conversation session", icon: "plus", group: "actions" },
   },
+  newTab: {
+    id: "new-tab",
+    label: "New Tab",
+    key: "t",
+    chord: "primary",
+    scope: "outside-settings",
+  },
+  closeTab: {
+    id: "close-tab",
+    label: "Close Tab",
+    key: "w",
+    chord: "primary",
+    scope: "outside-settings",
+  },
+  reopenTab: {
+    id: "reopen-tab",
+    label: "Reopen Closed Tab",
+    key: "t",
+    chord: "primary-shift",
+    scope: "outside-settings",
+  },
   selectWorkspace: {
     id: "select-workspace",
     label: "Select Workspace",
@@ -252,6 +273,33 @@ export function resolveClientAction(
 
     return !event.altKey && event.shiftKey === (action.chord === "primary-shift");
   });
+}
+
+export type TabShortcut =
+  | { readonly kind: "activate-index"; readonly index: number }
+  | { readonly kind: "cycle-tab"; readonly step: 1 | -1 };
+
+/** ⌘1–⌘9 pick a window tab by position; ⌃Tab and ⌘⌥→ step through them, with Shift or ← going back. */
+export function resolveTabShortcut(event: ActionKeyEvent, mac: boolean): TabShortcut | undefined {
+  if (event.defaultPrevented || event.isComposing) return undefined;
+  const primary = mac ? event.metaKey : event.ctrlKey;
+  const digit = /^Digit([1-9])$/.exec(event.code)?.[1];
+
+  if (digit !== undefined && primary && !event.altKey && !event.shiftKey)
+    return { kind: "activate-index", index: Number(digit) - 1 };
+
+  if (event.key === "Tab" && event.ctrlKey && !event.metaKey && !event.altKey)
+    return { kind: "cycle-tab", step: event.shiftKey ? -1 : 1 };
+
+  if (
+    (event.key === "ArrowRight" || event.key === "ArrowLeft") &&
+    primary &&
+    event.altKey &&
+    !event.shiftKey
+  )
+    return { kind: "cycle-tab", step: event.key === "ArrowRight" ? 1 : -1 };
+
+  return undefined;
 }
 
 export function clientActionKeys(action: ActionDefinition, mac: boolean): string[] {

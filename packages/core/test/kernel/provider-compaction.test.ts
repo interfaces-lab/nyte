@@ -17,6 +17,7 @@ import type { HookInvocation } from "../../src/plugins/hooks.ts";
 import {
   assistant,
   lease,
+  localOptions,
   message,
   openStore,
   seedHead,
@@ -102,10 +103,9 @@ test("native compaction serves manual and automatic checkpoints without a local 
   const nyte = await createNyte({
     store,
     model,
-    env: { cwd: "/tmp" },
     models,
     compaction: settings,
-    plugins: [
+    ...localOptions("/tmp", [
       definePlugin({
         id: "native-lifecycle",
         session(api) {
@@ -120,7 +120,7 @@ test("native compaction serves manual and automatic checkpoints without a local 
           });
         },
       }),
-    ],
+    ]),
     streamFn: (_model, context) => {
       requests.push(context);
       const stream = createAssistantMessageEventStream();
@@ -230,9 +230,8 @@ test("a rejected native request falls back to a portable summary under the summa
     store,
     model,
     models,
-    env: { cwd: "/tmp" },
     compaction: settings,
-    plugins: [
+    ...localOptions("/tmp", [
       definePlugin({
         id: "manual-provider",
         session(api) {
@@ -245,7 +244,7 @@ test("a rejected native request falls back to a portable summary under the summa
           });
         },
       }),
-    ],
+    ]),
     streamFn: (_model, context) => {
       requests.push(context);
       const stream = createAssistantMessageEventStream();
@@ -285,10 +284,9 @@ test("cancelling a native compaction preserves the head, releases its lease, ski
   const nyte = await createNyte({
     store,
     model,
-    env: { cwd: "/tmp" },
     models,
     compaction: settings,
-    plugins: [
+    ...localOptions("/tmp", [
       definePlugin({
         id: "cancel-provider",
         session(api) {
@@ -304,7 +302,7 @@ test("cancelling a native compaction preserves the head, releases its lease, ski
           });
         },
       }),
-    ],
+    ]),
     streamFn: () => assert.fail("a cancelled native request must not fall back"),
   });
   const id = sessionId(session.id);
@@ -401,9 +399,8 @@ test("losing a compaction lease aborts the provider, cannot publish stale contex
     const reader = await createNyte({
       store: openStore(path),
       model,
-      env: { cwd: "/tmp" },
       models,
-      plugins: [],
+      ...localOptions("/tmp"),
       streamFn: () => assert.fail("snapshot recovery must not request a model"),
     });
     try {

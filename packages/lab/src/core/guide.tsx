@@ -37,12 +37,15 @@ const CONTENTS: readonly ContentsGroup[] = [
     sections: [
       ["runner", "Runner"],
       ["step", "Step"],
+      ["inbox", "Inbox"],
       ["admission", "Admission"],
       ["respond", "Respond"],
       ["tools", "Tools"],
       ["stop", "Stop"],
+      ["heads", "Heads"],
       ["events", "Events"],
       ["plugins", "Plugins"],
+      ["agents", "Agents"],
     ],
   },
   {
@@ -85,28 +88,28 @@ const LAYERS: readonly Layer[] = [
     name: "Runner",
     icon: "refresh",
     files: "sdk/runner.ts, sdk/advance.ts",
-    role: "One loop per session per host. Every ref event wakes a head; every wake drives it until it rests.",
+    role: "One loop per session per host. A ref event that names a head wakes it, and a wake drives the head until it rests.",
     href: "#runner",
   },
   {
     name: "Step",
     icon: "arrow-right",
     files: "step.ts, admission.ts, queue.ts",
-    role: "Holds the head lease. Reads the refs, advances the run by one phase, publishes one CAS.",
+    role: "Holds the head lease. Reads the refs, advances the run by one phase, publishes by CAS.",
     href: "#step",
   },
   {
     name: "Turn",
     icon: "sparkle",
     files: "turn.ts, effects.ts, loop/",
-    role: "One model response or one tool batch: context, checkpoints, retries, durable tool effects.",
+    role: "One model request or one tool batch: prompt declaration, checkpoints, retries, durable tool effects.",
     href: "#respond",
   },
   {
     name: "Plugins",
     icon: "apps",
-    files: "plugins/, sdk/activation.ts",
-    role: "Beside the turn. Tools it can call and hooks that intercept it, each call on a time budget.",
+    files: "../plugins/, sdk/activation.ts",
+    role: "Beside the turn. Tools it can call, hooks that intercept it on a wall-clock budget, and the providers that open workspaces.",
     href: "#plugins",
   },
   {
@@ -323,10 +326,9 @@ export function CoreGuide(input: {
             <p {...props(page.kicker)}>Kernel guide</p>
             <h1 {...props(page.title)}>Nyte core</h1>
             <p {...props(page.lede)}>
-              Each session is a small git repository. Objects never change, refs are the only
-              mutable state, and every write is a compare-and-swap on refs. On each head one runner
-              holds a lease, advances the run by one phase, and publishes the result in a single
-              CAS.
+              Each session is a small git repository. Objects never change. Refs are the only
+              mutable state, and every ref write is a compare-and-swap. On each head one runner
+              holds a lease and advances the run one phase per step.
             </p>
             <div {...props(page.meta)}>
               <a
@@ -335,7 +337,7 @@ export function CoreGuide(input: {
                 rel="noreferrer"
                 {...props(page.metaLink)}
               >
-                packages/{KERNEL} ↗
+                packages/{KERNEL} <span aria-hidden>↗</span>
               </a>
               <span>
                 Read at{" "}
@@ -362,30 +364,32 @@ export function CoreGuide(input: {
             <P>
               Core is a stack. Work moves down it: a client queues a message, a runner notices, a
               step lands it, a turn calls the model. Results move back up as events in the store's
-              log, which every layer above can watch.
+              log, which every layer above can watch. A host is a process that calls{" "}
+              <C>createNyte</C>. It supplies the store, the models and the plugins, and may{" "}
+              <C>attach</C> runners.
             </P>
             <LayerStack layers={LAYERS} />
-            <P>Three rules hold at every layer.</P>
+            <P>Three rules hold throughout.</P>
             <List>
               <li>
                 A step keeps nothing in memory. The next step starts again from the refs, so any
                 host can take over a head between two steps.
               </li>
               <li>
-                A runner writes only through <C>refs.update</C>, carrying the head lease and
+                A runner moves refs only through <C>refs.update</C>, carrying the head lease and
                 asserting that <C>refs/deleted</C> is absent. A stale lease or a moved ref loses the
                 whole write.
               </li>
               <li>
                 No submission fails because a run is live. Contention exists only on leases, on a
-                runner's publish, and on structural head operations.
+                runner's publish, and on head operations that refuse a held head, such as{" "}
+                <C>deleteHead</C>.
               </li>
             </List>
             <H3>Two drivers</H3>
             <P>
-              Something has to call <C>step</C>. A long-lived host attaches a runner; a serverless
-              host calls <C>nyte.advance</C> from its own scheduler. Both run the same step under
-              the same lease.
+              Something has to call <C>step</C>. Both drivers run the same step under the same
+              lease.
             </P>
             <Table
               head={["Driver", "Used by", "Loop"]}
@@ -404,28 +408,48 @@ export function CoreGuide(input: {
                   "Serverless schedulers",
                   <>
                     One step per call. Answers <C>idle</C>, <C>continue</C>, <C>finished</C>,{" "}
-                    <C>fenced</C>, <C>retry</C> with <C>at</C>, <C>waiting</C> with <C>until</C>, or{" "}
-                    <C>busy</C> with the lease expiry. The caller schedules the next call.
+                    <C>fenced</C>, <C>retry</C> with <C>at</C>, <C>waiting</C> with an optional{" "}
+                    <C>until</C>, or <C>busy</C> with the lease expiry. The caller schedules the
+                    next call.
                   </>,
                 ],
               ]}
             />
+            <P>
+              Admission is a store write and stepping is the host's decision, so a crash between
+              them leaves an accepted message with no runner. The host closes the gap with an
+              obligation, a durable record of a session and an optional head, written first.
+            </P>
+            <Sketch
+              title="withDispatch, vercel/src/admission.ts"
+              code={`const obligation = await outbox.record(target); // names the session and head, no content
+const outcome = await admit(); // the core CAS
+if (accepted(outcome)) await wake(target); // start a workflow
+await outbox.settle(obligation);`}
+            />
+            <P>
+              A reconciler re-dispatches old records, which is safe because a second <C>advance</C>{" "}
+              answers <C>busy</C> or <C>idle</C>. It clears a record only past an age the host sets,
+              because an admission that began earlier can still commit after the cleanup.
+            </P>
           </Section>
 
           <Section id="message" title="Life of a message">
             <P>
-              Follow one <C>messages.send</C> from the SDK until the head is idle again. A step that
-              writes ends in <C>refs.update</C>, and its table lists every ref the update compares.
-              An <C>=</C> marks an assertion. The ref must hold that value, and nothing is written.
+              Follow one <C>messages.send</C> from the SDK until the head is idle again. Each write
+              below shows its <C>refs.update</C> as a table of the refs it compares. <C>=</C> marks
+              an assertion, a ref that must already hold that value and is not written.
             </P>
             <Trace>
               <TraceStep number={1} title="Submit" where={<Src path="queue.ts" line={199} />}>
                 <P>
                   <C>messages.send</C> writes a <C>Change</C> object, then moves the inbox tip to
-                  it. It takes no lease, so a submit never waits on a run. With a key, the same CAS
-                  claims <C>refs/keys/&lt;key&gt;</C>, so a retried send answers <C>duplicate</C>. A
-                  lost tip race retries, and <C>reconcileRunner</C> starts the session's runner
-                  without waiting for it.
+                  it. A submit never waits on a run. With a key, the same CAS claims{" "}
+                  <C>refs/keys/&lt;key&gt;</C>, so a retried send answers <C>duplicate</C>. The
+                  client's outbox mints the key on Enter and resends it, 500 ms apart and doubling
+                  to 10 s, until the store answers <C>queued</C> or <C>duplicate</C>. Both mean the
+                  change is durable. A lost tip race retries. <C>reconcileRunner</C> then starts the
+                  session's runner without waiting for it.
                 </P>
                 <Cas
                   reason="submit"
@@ -440,8 +464,8 @@ export function CoreGuide(input: {
                 <P>
                   The moved tip appends a <C>ref</C> event. The runner's watch sees it,{" "}
                   <C>handleRef</C> maps the ref to head <C>main</C>, and <C>wake</C> starts a drive.{" "}
-                  <C>drive</C> takes the lease on <C>refs/heads/main</C> for 30 s. There is no run
-                  yet, so <C>advance</C> calls <C>landOrIdle</C>. Nothing is published.
+                  <C>drive</C> takes the lease on <C>refs/heads/main</C> for 30 s. <C>step</C> finds
+                  no run and calls <C>landOrIdle</C>.
                 </P>
               </TraceStep>
               <TraceStep number={3} title="Land" where={<Src path="step.ts" line={256} />}>
@@ -456,7 +480,7 @@ export function CoreGuide(input: {
                     { ref: "heads/main", from: "tip", to: "user commit { start }" },
                     { ref: "inbox/main/next/base", from: "base", to: "change" },
                     { ref: "runs/main", from: "null", to: "Run { phase: respond, attempts: 0 }" },
-                    { ref: "chains/<run>", from: "null", to: "{ attempts: 0 }" },
+                    { ref: "chains/<root>", from: "null", to: "{ attempts: 0 }" },
                     { ref: "cancelled/<change>", from: "null", to: "null" },
                     { ref: "deleted", from: "null", to: "null" },
                   ]}
@@ -472,7 +496,7 @@ export function CoreGuide(input: {
                 <Cas
                   reason="reserve response"
                   moves={[
-                    { ref: "chains/<run>", from: "{ attempts: 0 }", to: "{ attempts: 1 }" },
+                    { ref: "chains/<root>", from: "{ attempts: 0 }", to: "{ attempts: 1 }" },
                     { ref: "deleted", from: "null", to: "null" },
                   ]}
                 />
@@ -506,8 +530,8 @@ export function CoreGuide(input: {
                   The model answers without tool calls. <C>respond</C> publishes the message with
                   phase <C>done</C> and <C>drive</C> returns <C>finished</C>. The run-ref events
                   from this drive marked the head dirty, so <C>wake</C> drives once more.{" "}
-                  <C>landOrIdle</C> finds nothing, the drive answers <C>idle</C>, and the lease is
-                  released.
+                  <C>landOrIdle</C> finds nothing, so the second drive answers <C>idle</C> and
+                  releases its lease.
                 </P>
                 <Cas
                   reason="respond"
@@ -525,7 +549,8 @@ export function CoreGuide(input: {
           <Section id="runner" group="Runtime" title="Runner">
             <P>
               A host keeps one loop per attached session. The loop never polls. It watches the
-              store's event log, and every ref event names a head to wake.
+              store's event log and wakes the head that a heads, inbox, runs or effects ref belongs
+              to.
             </P>
             <Sketch
               title="loop and wake, sdk/runner.ts"
@@ -550,7 +575,11 @@ function wake(head: HeadName) {
       state.dirty = false;
       const outcome = await drive(session, turn, optionsFor(head, signal));
 
-      if (outcome.kind === "busy") return; // another host holds the lease
+      if (outcome.kind === "busy") {
+        // Lease expiry writes no event: look again when the holder's lease lapses, at least 250 ms out.
+        driveAt(head, Math.max(outcome.holder.expiresAt, Date.now() + BUSY_RETRY_MIN_MS));
+        return;
+      }
 
       if (outcome.kind === "waiting") {
         await jobs.recheck(outcome.run.id);
@@ -564,9 +593,8 @@ function wake(head: HeadName) {
 }`}
             />
             <P>
-              The dirty flag is the whole scheduler. A ref event during a drive only marks the head,
-              and the running pass drives again when it sees the mark. That is how a message queued
-              mid-run lands after the run ends, without a timer.
+              A ref event during a drive only marks the head. That is how a <C>next</C> message
+              queued mid-run lands after the run ends.
             </P>
             <Source title="drive" excerpt={EXCERPTS.drive} />
             <P>
@@ -574,6 +602,15 @@ function wake(head: HeadName) {
               each step and lets go when a step answers anything but <C>continue</C> or <C>retry</C>
               . During a provider or tool call, <C>withLeaseRenewal</C> renews every 10 s, and a
               failed renewal aborts the call.
+            </P>
+            <H3>Who volunteers</H3>
+            <P>
+              <C>nyte.attach()</C> volunteers this process for every session in the store, and{" "}
+              <C>{"attach({ sessions })"}</C> names some. A named session also covers the children
+              it delegates to. A client that never attaches only queues. Before each step, and
+              before <C>prepare</C>, <C>respond</C> and <C>tools</C>, a runner checks that its
+              environment still acts where <C>refs/workspace</C> says. If another host moved the
+              tree, the step throws and the session runs again once its new workspace opens here.
             </P>
           </Section>
 
@@ -586,7 +623,7 @@ function wake(head: HeadName) {
             <Source title="advance" excerpt={EXCERPTS.advance} />
             <Table head={["Phase", "Handler", "Work", "Next"]} rows={PHASES} nowrap={[1]} />
             <H3>One way to write</H3>
-            <P>Every run and head write goes through one function.</P>
+            <P>Every write a step makes to a run or head goes through one function.</P>
             <Source title="publish" excerpt={EXCERPTS.publish} />
             <P>
               The appended update is an assertion. It writes nothing, but it must hold, so once{" "}
@@ -604,7 +641,7 @@ function wake(head: HeadName) {
                 [
                   "Another run on the head",
                   <>
-                    <C>fenced</C>. This host stops.
+                    <C>fenced</C>. The drive ends.
                   </>,
                 ],
                 [
@@ -612,8 +649,8 @@ function wake(head: HeadName) {
                     The same run, with <C>abortRequested</C>
                   </>,
                   <>
-                    A stop raced the step. Keep the output and end <C>aborted</C>, or keep{" "}
-                    <C>tools</C> or <C>waiting</C> with reason <C>interrupt</C>.
+                    A stop raced the step. Keep the output. A <C>tools</C> or <C>waiting</C> phase
+                    publishes as is with reason <C>interrupt</C>. Anything else ends <C>aborted</C>.
                   </>,
                 ],
                 [
@@ -632,12 +669,66 @@ function wake(head: HeadName) {
             />
           </Section>
 
+          <Section id="inbox" title="Inbox">
+            <P>
+              Submitting never touches the head. The submitter stamps <C>kind</C> and{" "}
+              <C>delivery</C> on the change, and nothing infers them later. An automatic delivery is{" "}
+              <C>steer</C> while the head has a live run and <C>next</C> otherwise.
+            </P>
+            <Table
+              head={["Source", "kind", "delivery"]}
+              nowrap={[0, 1]}
+              rows={[
+                [<C key="0">messages.send</C>, <C key="1">user</C>, "The caller's, or automatic"],
+                [<C key="0">sessions.configure</C>, <C key="1">passive</C>, "Automatic"],
+                ["A background command ends", <C key="1">report</C>, <C key="2">steer</C>],
+                ["A child answers a request", <C key="1">answer</C>, <C key="2">steer</C>],
+              ]}
+            />
+            <H3>Two chains</H3>
+            <P>
+              Each head has a <C>steer</C> chain and a <C>next</C> chain, each with a <C>tip</C> and
+              a <C>base</C>. A change names the tip it followed in <C>previous</C>, so pending is{" "}
+              <C>(base, tip]</C> read back from the tip and no ref holds a list. <C>steer</C> lands
+              at every response boundary and when the head is idle. <C>next</C> lands only when the
+              head is idle and <C>steer</C> waits. <C>pending</C> merges the two chains by
+              submission time without reordering either, so a redelivered copy, which keeps its
+              time, stays where <C>before</C> put it.
+            </P>
+            <P>
+              <C>drain</C> sets how much one landing takes. <C>"one"</C> takes everything through
+              the first <C>user</C> change, so a <C>report</C> or <C>passive</C> change queued ahead
+              of it lands with it, and a chain with no <C>user</C> change lands whole. <C>"all"</C>{" "}
+              takes the chain.
+            </P>
+            <H3>Cancel and redeliver</H3>
+            <P>
+              Only a landing or a cancel takes a change out of pending, so a run that fails, aborts
+              or is superseded leaves every pending change where it was. A cancel that races a
+              landing has one winner. If the landing wins, the cancel reads again and answers{" "}
+              <C>landed</C>.
+            </P>
+            <Cas
+              reason="cancel"
+              note="no lease"
+              moves={[
+                { ref: "cancelled/<change>", from: "null", to: "tombstone" },
+                { ref: "inbox/main/<delivery>/base", from: "base", to: "base" },
+              ]}
+            />
+            <P>
+              <C>redeliver</C> changes a pending item's <C>delivery</C>, moves it with <C>before</C>
+              , or replaces a pending user message's content, in one CAS. It tombstones the change
+              and every change after the splice point, asserts the source base, and rewrites that
+              suffix after the target's tip.
+            </P>
+          </Section>
+
           <Section id="admission" title="Admission">
             <P>
               Admission decides what queued input may land, and whether it may start model work.
-              User input starts a run. So does a delegate's answer to a request that a run
-              authorized and did not stop. Background results, reconnects and ref events can wake a
-              runner, but they never start a run.
+              User input starts a run. So does a delegate's answer to a request its run authorized,
+              unless that run was stopped or failed.
             </P>
             <Sketch
               title="land, step.ts"
@@ -668,20 +759,28 @@ const decision = decide(headFor(run), await leadFor(session, batch), agentChange
             <List>
               <li>
                 <C>fresh</C> has no run and <C>idle</C> has a terminal one. <C>live</C> is any other
-                phase, and <C>settling</C> is live with <C>abortRequested</C>.
+                phase, and <C>settling</C> is live with <C>abortRequested</C>. A live head is
+                decided only at a <C>respond</C> boundary.
+              </li>
+              <li>
+                The lead is the batch's first <C>user</C> change or authorized <C>answer</C>.
+                Without one it is <C>passive</C> when any change in the batch is passive, and
+                otherwise the first <C>report</C> or unauthorized <C>answer</C>.
               </li>
               <li>
                 <C>join*</C> becomes <C>handoff</C> when the batch names another agent. Handoff ends
-                the run <C>done</C> and leaves the batch pending for a new run.
+                the run <C>done</C> and leaves the batch pending.
               </li>
               <li>
-                An authorized answer is a child's answer to a live delegation. It starts a
-                continuation that inherits the chain counter, and the landing CAS consumes the
-                authorization.
+                An authorized answer is a child's answer to a request whose run was neither stopped
+                nor failed, and that no landing has consumed. It starts a continuation that inherits
+                the chain counter, and the landing CAS consumes the authorization.
               </li>
+
               <li>
-                A live head is decided only at a <C>respond</C> boundary, which lands only{" "}
-                <C>steer</C>. <C>next</C> waits for <C>landOrIdle</C>.
+                On an idle head a <C>report</C> or unauthorized <C>answer</C> starts nothing. The
+                next run picks it up in its first batch or at its first <C>respond</C> boundary. A{" "}
+                <C>passive</C> lead lands its batch without a model call.
               </li>
             </List>
           </Section>
@@ -699,10 +798,14 @@ if (!lastIsUserOrToolResult) return endRun("done");
 if (resolvedConfig !== run.config) return storeRun(resolved); // phase stays respond
 if (chain.attempts >= ceiling) return endRun(failed("step ceiling"));
 
+const prepared = await callTurn(turn.prepare); // not an attempt
+if (prepared.kind === "checkpoint") return publishCheckpoint(prepared); // phase stays respond
+if (prepared.kind === "system") tip = await publishSystem(prepared.message);
+
 await publish({ chains: chain.attempts + 1 }, "reserve response");
 const outcome = await callTurn(turn.respond); // lease renewal and outbox around the call
 
-if (outcome.kind === "checkpoint") return publishCheckpoint(outcome); // phase stays respond
+if (outcome.kind === "checkpoint") return publishCheckpoint(outcome); // overflow; phase stays respond
 await publish({ head: assistantCommit, run: nextPhase(outcome) }, "respond");`}
             />
             <Table
@@ -730,21 +833,34 @@ await publish({ head: assistantCommit, run: nextPhase(outcome) }, "respond");`}
               ]}
             />
             <P>
+              A host that cannot supply the model a run recorded fails <C>respond</C> with a runner
+              failure. It never answers under a substitute.
+            </P>
+            <P>
               Retries cover <C>rate_limit</C>, <C>overloaded</C> and <C>network</C>
               {"\u00a0"}
               <Src root="ai/src" path="utils/failure.ts" line={265} />. Three retries wait 1 s, 2 s
               and 4 s, or the provider's <C>retryAfterMs</C> when it is longer. <C>phase.at</C> is
-              stored on the run, so any host can resume the retry.
+              stored on the run, so any host can resume the retry. Each retry commits the failed
+              attempt and adds one to <C>attempts</C>. A request reserves its response before the
+              call, so retries spend the step ceiling, and so does a crash mid-request, which
+              repeats the call.
+            </P>
+            <H3>Prepare</H3>
+            <P>
+              <C>turn.prepare</C> compares the branch with the prompt and tools this host wants the
+              model to have. When the branch lacks some, it returns one <C>system</C> message that
+              declares them. The step commits that and goes on to <C>turn.respond</C>, so a resumed
+              run finds nothing left to declare.
             </P>
             <H3>Checkpoints</H3>
             <P>
-              <C>turn.respond</C> checkpoints before generating once the context passes{" "}
-              <C>contextWindow − 16_384</C> tokens. An overflow error also tries a checkpoint, and a
+              <C>turn.prepare</C> checkpoints once the context passes <C>contextWindow − 16_384</C>{" "}
+              tokens. An overflow error from <C>turn.respond</C> also tries a checkpoint, and a
               successful one replaces the failed response. While the work runs,{" "}
               <C>refs/compactions/&lt;head&gt;</C> names it; <C>publishCheckpoint</C> lands the
               checkpoint commit and clears that ref in one CAS. A successor that finds a leftover
-              record clears it before anything else, and history reads stop at the newest
-              checkpoint.
+              record clears it before anything else. History reads stop at the newest checkpoint.
             </P>
           </Section>
 
@@ -757,22 +873,47 @@ await publish({ head: assistantCommit, run: nextPhase(outcome) }, "respond");`}
             </P>
             <Sketch
               title="one call, turn.ts"
-              code={`// effects/<run>/<call>: null → intent { tool, args, replay }
+              code={`// effects/<run>/<call>: null → intent { tool, args, replay, environment: env.id }
 const view = await openEffect(call);
 
-switch (decideRecovery(view)) {
-  case "execute": return settle(await tool.execute(call)); // a thrown ToolWait parks instead
+switch (decideRecovery(view, env.id)) {
+  case "execute": return settle(await tool.execute(input, call)); // a thrown ToolWait parks instead
   case "interrupted": return settle(interruptedError); // it may have run once already
   case "blocked": return waiting(); // still parked
   case "wake": return settle(await tool.wake(call, { reply, expired }));
   case "reuse": return view.effect.result; // never runs twice
 }`}
             />
-            <Source title="decideRecovery" excerpt={EXCERPTS.decideRecovery} />
             <P>
-              After a wake, <C>tools</C> runs the whole batch again. Settled calls reuse their
-              result, so only the woken call does new work, and <C>publishTools</C> clears{" "}
-              <C>effects/&lt;run&gt;/*</C> only when its CAS wins.
+              An effect ref holds one immutable object per state. <C>intent</C> moves to{" "}
+              <C>result</C>, or to <C>waiting</C> when the tool parks. A reply moves <C>waiting</C>{" "}
+              to <C>signal</C>, the deadline moves it to <C>expired</C>, and a stop settles it to{" "}
+              <C>result</C>. <C>wake</C> then settles the call or parks it again, and <C>tools</C>{" "}
+              runs the whole batch again. Settled calls reuse their result, so only the woken call
+              does new work, and <C>publishTools</C> clears <C>effects/&lt;run&gt;/*</C> only when
+              its CAS wins.
+            </P>
+            <H3>Where a call acts</H3>
+            <P>
+              A tool acts through <C>call.env</C>, an <C>ExecutionEnv</C>: an environment <C>id</C>,
+              a <C>cwd</C>, <C>resolve</C> for paths, file operations and <C>exec</C>. Built-in
+              tools reach files and processes only through it. <C>activation.tools()</C> binds the
+              activation's env outside every plugin wrapper, so a plugin's <C>draft.wrap</C> and the
+              jobs wrapper see it too. The env opens where the root's <C>refs/workspace</C> says,
+              through the provider plugin for its <C>kind</C>. A plugin's <C>wrapEnv</C> extends its
+              operations and never changes its <C>id</C>.
+            </P>
+            <P>
+              <C>sessions.create</C> writes <C>refs/workspace</C> before it returns, from the root's{" "}
+              <C>workspace</C> input or <C>defaultWorkspace</C>. <C>relocate</C> moves a whole tree
+              to another workspace and answers <C>relocated</C>, <C>busy</C> or the destination's
+              refusal. <C>busy</C> means a live drive, a non-terminal run, queued work the runner
+              would land, a running job or a held lease anywhere in the tree.
+            </P>
+            <P>
+              A <C>safe</C> intent reruns only when the resuming runner's environment <C>id</C>{" "}
+              equals the one its intent recorded. Otherwise it settles <C>interrupted</C>, as does
+              an intent that recorded none. A <C>never</C> call runs at most once.
             </P>
             <H3>Parking a call</H3>
             <P>
@@ -784,9 +925,12 @@ switch (decideRecovery(view)) {
             <Source title="ToolWaitOptions" excerpt={EXCERPTS.toolWait} />
             <P>
               <C>runs.reply</C> answers a parked call without a lease. Its <C>waitId</C> must equal
-              the current waiting oid, so a stale reply cannot answer a re-park, and the CAS on that
-              oid gives racing replies one winner{"\u00a0"}
-              <Src path="effects.ts" line={266} />. A waiting run that asks someone reports{" "}
+              the current waiting oid, so a stale reply cannot answer a re-park. The CAS on that oid
+              gives racing replies, and a reply racing the deadline, one winner{"\u00a0"}
+              <Src path="effects.ts" line={266} />. A reply at or after <C>until</C> answers{" "}
+              <C>not_waiting</C>. Core checks a selection before it writes one, and a malformed one
+              fails its call as a tool error. It stores a reply as given, and the tool's <C>wake</C>{" "}
+              handler decides what it means. A waiting run that asks someone reports{" "}
               <C>awaitingReply</C> and the selection's title as <C>question</C> in its summary.
             </P>
           </Section>
@@ -800,8 +944,7 @@ switch (decideRecovery(view)) {
             <P>
               The flag and the revoked delegate authorizations land in one CAS.{" "}
               <C>abortLocalDrive</C> then cancels this host's provider or tool call, and{" "}
-              <C>runs.abort</C> interrupts the command jobs the run owns. From there the flag works
-              through the runner.
+              <C>runs.abort</C> interrupts the command jobs the run owns.
             </P>
             <Table
               head={["Where", "What the flag does"]}
@@ -835,10 +978,68 @@ switch (decideRecovery(view)) {
             />
             <Source title="withPhase and endingPhase" excerpt={EXCERPTS.endingPhase} />
             <P>
-              Every phase a step publishes passes through <C>withPhase</C>, so a flagged run can
-              only end <C>aborted</C>. A failure it would have reported becomes a runner notice. A
-              tool that ignores its signal keeps running, and the lease keeps renewing until it
-              returns. Children the run created keep working; only <C>stop</C> ends a child.
+              A failure it would have reported becomes a runner notice. A tool that ignores its
+              signal keeps running, and the lease keeps renewing until it returns. Children the run
+              created keep working; only <C>stop</C> ends a child.
+            </P>
+          </Section>
+
+          <Section id="heads" title="Heads">
+            <P>
+              A head is a name. <C>heads.move</C> defaults it to <C>main</C>; the other calls
+              require one, and none takes the head lease. A parent or head the session does not list
+              answers <C>unknown_parent</C> or <C>not_found</C>. <C>heads.delete</C> answers{" "}
+              <C>busy</C> while the head lease is live, and the SDK throws for <C>main</C>.
+            </P>
+            <Table
+              head={["Call", "One CAS", "Answers"]}
+              rows={[
+                [
+                  <C key="0">heads.create</C>,
+                  "Writes the head at the parent's tip and its stack. From a commit, the head alone.",
+                  <Codes key="2" items={["created", "exists", "unknown_parent"]} />,
+                ],
+                [
+                  <C key="0">heads.move</C>,
+                  "Moves the head from the tip the call read.",
+                  <Codes key="2" items={["moved", "moved_since", "not_found", "busy", "failed"]} />,
+                ],
+                [
+                  <C key="0">heads.delete</C>,
+                  "Deletes the head, its stack, both inbox deliveries and its run ref.",
+                  <Codes key="2" items={["deleted", "not_found", "busy"]} />,
+                ],
+                [
+                  <C key="0">heads.merge</C>,
+                  "Moves the parent to the child's tip and the stack's base to the same tip.",
+                  <Codes key="2" items={["merged", "stale", "empty", "no_stack"]} />,
+                ],
+              ]}
+            />
+            <H3>Moving a head</H3>
+            <P>
+              <C>heads.move</C> runs these checks in order, and the CAS at the end decides. If{" "}
+              <C>expect</C> is set and the tip differs, the call answers <C>moved_since</C>. A run
+              in any phase but <C>done</C>, <C>failed</C> or <C>aborted</C> answers <C>busy</C>, a
+              parked run included. A target that is not a commit answers <C>not_found</C>. A message
+              that lands between the checks and the CAS moves the tip, so the move answers{" "}
+              <C>moved_since</C>.
+            </P>
+            <P>
+              A user message target lands on its parent and comes back as <C>restored</C>, so the
+              client can refill the composer. With <C>summary</C>, a model call writes one{" "}
+              <C>summary</C> commit over the abandoned commits, parented on the landing target, and
+              the head moves to it. With nothing abandoned the move stays plain. A failed call
+              answers <C>failed</C> and leaves the head put.
+            </P>
+            <H3>Stacks</H3>
+            <P>
+              A stack holds the parent's name and a <C>base</C>, the parent's tip when the head was
+              cut. A stacked head is stale when <C>base</C> differs from the parent's tip, and{" "}
+              <C>heads.list</C> reports it. <C>heads.merge</C> answers <C>no_stack</C> without a
+              stack, <C>stale</C> for a stale one, and <C>empty</C> when the child has no commit
+              past <C>base</C>. It never answers <C>busy</C>. A run live on the parent loses its
+              next publish and ends <C>aborted</C> with reason <C>superseded</C>.
             </P>
           </Section>
 
@@ -863,8 +1064,14 @@ for await (const event of events.watch({ afterSeq })) {
             <P>
               Deltas are keyed by run id, attempt and index, never by commit id. A commit's id is
               its hash and does not exist until the message is whole. Treat deltas as provisional
-              until <C>head_moved</C> shows the commit: a fenced or lost publish can leave deltas in
+              until <C>head_moved</C> shows the commit. A fenced or lost publish can leave deltas in
               the log with no commit behind them.
+            </P>
+            <P>
+              A seq is a place in the log, not an event's identity, so a consumer must not drop an
+              event because its seq repeats. The host-local events <C>activation_changed</C>,{" "}
+              <C>plugins_changed</C>, <C>notification</C> and <C>status_changed</C> are stamped with
+              the latest seq and are not in the log.
             </P>
           </Section>
 
@@ -872,8 +1079,8 @@ for await (const event of events.watch({ afterSeq })) {
             <P>
               Plugins load per session. Each registers tools, hooks and commands into its own scope,
               and disposing the scope undoes all of it. Every call into plugin code other than a
-              tool runs under a wall-clock budget, and running out counts as a thrown error. A tool
-              runs as long as its call does, and a stop cancels it through the call's signal.
+              tool runs under a wall-clock budget, and running out counts as a thrown error. A stop
+              cancels a tool through the call's signal.
             </P>
             <Source title="HOOK_BUDGETS_MS" excerpt={EXCERPTS.hookBudgets} />
             <Table
@@ -887,10 +1094,19 @@ for await (const event of events.watch({ afterSeq })) {
                 [
                   <C key="0">before_tool</C>,
                   "5 s",
-                  "Fails closed. The call is blocked, and the run fails with a policy error.",
+                  "Fails closed. This call and the rest of its batch get the policy's message as an error result.",
                 ],
                 [
-                  <Codes key="0" items={["transform_context", "before_request", "after_tool"]} />,
+                  <Codes
+                    key="0"
+                    items={[
+                      "transform_context",
+                      "transform_transcript",
+                      "before_request",
+                      "after_tool",
+                      "cache_warming_decision",
+                    ]}
+                  />,
                   "5 s",
                   "Reported. The handler's result is skipped.",
                 ],
@@ -904,15 +1120,69 @@ for await (const event of events.watch({ afterSeq })) {
                   "5 s",
                   "The command rejects; a listener failure becomes a diagnostic.",
                 ],
-                ["disposer", "5 s", "Reported and skipped. The next disposer runs."],
+                ["disposer", "5 s", "Reported. The next disposer runs."],
               ]}
             />
             <P>
               Hooks run in plugin order. <C>before_tool</C> policies chain: <C>modify</C> hands new
               arguments to the next policy, <C>continue</C> objects to nothing, and the first{" "}
               <C>reject</C> or <C>error</C> ends the chain. A reload loads the new scope before it
-              disposes the old one, so policy hooks never lapse. File plugin ids are lowercase
-              letters, digits and hyphens, and <C>subagents</C> and <C>jobs</C> are reserved.
+              disposes the old one, so policy hooks never lapse. <C>setPlugins</C> answers{" "}
+              <C>queued</C> while the session has an offered response, a run in <C>tools</C> or{" "}
+              <C>waiting</C>, or a running command or listener, and the set publishes once they
+              finish. File plugin ids are lowercase letters, digits and hyphens, and{" "}
+              <C>subagents</C> and <C>jobs</C> are reserved.
+            </P>
+            <H3>Where plugins come from</H3>
+            <P>
+              A host passes <C>NyteOptions.plugins</C>, among them the providers that open
+              workspaces. Its <C>trust</C> answer decides each workspace once, when it opens, as{" "}
+              <C>trusted</C>, <C>inactive</C> or <C>requires</C>, and only a trusted workspace
+              reaches its provider. Once the provider has opened the environment, the answer's{" "}
+              <C>plugins</C> loader adds the project plugins, and it runs again before each
+              response. Project plugins can wrap an environment but cannot provide one. Without a{" "}
+              <C>trust</C> function, only <C>defaultWorkspace</C> is trusted.
+            </P>
+          </Section>
+
+          <Section id="agents" title="Agents">
+            <P>
+              An agent preset is data from the <C>agents</C> registry: a model pin, a persona added
+              to the base prompt, a tool allowlist and a <C>steps</C> ceiling. A run records the
+              preset's name in <C>config.agent</C>.
+            </P>
+            <P>
+              The <C>subagents</C> plugin gives a parent's model six tools: <C>task</C>,{" "}
+              <C>create</C>, <C>send</C>, <C>await</C>, <C>read</C> and <C>stop</C>. Only root
+              sessions get them, so depth is 1. A child's <C>parent</C> fact names the parent
+              session, run and call. The child's id hashes those with the head, so a replayed{" "}
+              <C>create</C> finds the child it already made. A child also loses every tool marked{" "}
+              <C>availability: "foreground"</C>, because nobody is there to answer it. A child with
+              no <C>model</C> tries <C>DEFAULT_TASK_MODELS</C> in order, and an explicit{" "}
+              <C>model</C> never falls back.
+            </P>
+            <H3>A request and its answer</H3>
+            <P>
+              A parent and a child are two sessions, so no CAS spans them, and <C>send</C> orders
+              its writes instead. It first writes the request record at{" "}
+              <C>refs/delegations/&lt;child&gt;/&lt;change&gt;</C> in the parent's store, in a CAS
+              that asserts the parent's run ref. A stop that moved that ref makes the write fail,
+              and <C>send</C> abandons the request. Only then does the child's inbox tip move, with
+              a <C>user</C> change, and a submit that fails removes the record.
+            </P>
+            <P>
+              The record carries the authorization: <C>authorized</C> for a model's <C>send</C> or{" "}
+              <C>task</C>, <C>input</C> for a message a person sends to the child. When the child's
+              run for the request ends, <C>deliverDue</C> submits one <C>answer</C> to the parent
+              head as <C>steer</C> under the key <C>delegate-&lt;child&gt;-&lt;change&gt;</C>, and
+              then marks the record delivered. A crash between the two writes lands nothing twice,
+              because the key answers <C>duplicate</C>.
+            </P>
+            <P>
+              <C>await</C>, and <C>task</C> with <C>waitMs</C>, park the call with an <C>until</C>{" "}
+              and no selection. <C>wakeWaits</C> signals it when the named children satisfy{" "}
+              <C>any</C> or <C>all</C>, or when user input is queued on the parent's head, so the
+              model can answer the user first.
             </P>
           </Section>
 
@@ -936,9 +1206,9 @@ for await (const event of events.watch({ afterSeq })) {
             />
             <P>
               Git does not fit everywhere. A commit has exactly one context parent, because model
-              context is linear. There is no worktree; a client reads at any commit. A stale branch
-              is carried forward with a summary commit instead of a rebase, and the event log is
-              trimmed rather than kept forever.
+              context is linear. There is no worktree; a client reads at any commit. The SDK carries
+              a stale branch forward with a summary commit instead of rebasing. The event log can be
+              trimmed, so a cursor can expire.
             </P>
             <H3>One publish</H3>
             <List ordered>
@@ -956,7 +1226,7 @@ for await (const event of events.watch({ afterSeq })) {
               </li>
               <li>
                 Each moved ref appends a <C>ref</C> event in the same transaction, and watchers wake
-                on the commit.
+                when the transaction commits.
               </li>
             </List>
             <Source title="Refs and Leases" excerpt={EXCERPTS.refs} />
@@ -973,10 +1243,7 @@ for await (const event of events.watch({ afterSeq })) {
                     it, and a stored body is hashed again on every read.
                   </>,
                 ],
-                [
-                  "oid",
-                  "The SHA-256 of the body. A different body is a different object; an omitted property and one set to undefined hash the same.",
-                ],
+                ["oid", "The SHA-256 of the body."],
                 ["ref", "A named pointer to an oid."],
                 [
                   "CAS",
@@ -991,11 +1258,19 @@ for await (const event of events.watch({ afterSeq })) {
                     event.
                   </>,
                 ],
-                ["lease", "An expiring lock on a name. Only its holder runs that head."],
+                [
+                  "lease",
+                  <>
+                    An expiring lock on a name. A step, a compaction and a relocation hold{" "}
+                    <C>refs/heads/&lt;head&gt;</C>, and a job holds <C>refs/jobs/&lt;job&gt;</C>.
+                  </>,
+                ],
                 [
                   "fence",
                   <>
                     A lease's generation. Writes that carry an older fence answer <C>fenced</C>.
+                    Renew and release match the owner and the fence, never the expiry, so a holder
+                    past its expiry keeps its write rights until another host takes over.
                   </>,
                 ],
                 ["seq", "An event's position in the session log, from 1."],
@@ -1018,9 +1293,9 @@ for await (const event of events.watch({ afterSeq })) {
           <Section id="refs" title="Refs">
             <P>
               A feature that can be a ref is a ref. <C>&lt;delivery&gt;</C> is <C>steer</C> or{" "}
-              <C>next</C>, and the SDK's default head is <C>main</C>
+              <C>next</C>
               {"\u00a0"}
-              <Src path="names.ts" />.
+              <Src path="names.ts" />, and the SDK's default head is <C>main</C>.
             </P>
             <Table
               head={["Ref", "Holds", "Written by"]}
@@ -1030,19 +1305,47 @@ for await (const event of events.watch({ afterSeq })) {
 
           <Section id="objects" title="Objects">
             <P>
-              A <C>Change</C> is a message waiting to land; landing turns it into a commit. The{" "}
-              <C>Run</C> object is replaced on every phase change, so the run ref's history is the
-              run's history.
+              A <C>Change</C> is a commit body waiting for its parent: a user message, a completion
+              or a config. Landing turns it into a commit. The <C>Run</C> object is replaced on
+              every phase change, so the run ref's history is the run's history. <C>done</C>,{" "}
+              <C>failed</C> and <C>aborted</C> are terminal.
             </P>
             <Source title="Change and Run" excerpt={EXCERPTS.objects} />
             <Source title="RunPhase" excerpt={EXCERPTS.runPhase} />
+            <Table
+              head={["Body", "Reaches the model as"]}
+              rows={[
+                [
+                  <C key="0">message</C>,
+                  <Inline
+                    key="1"
+                    text="The message itself: user, assistant, tool result or `system`. An assistant message that ended `error`, `aborted` or `deferred` stays in history and is left out of context."
+                  />,
+                ],
+                [<C key="0">completion</C>, "A user message holding the job's output."],
+                [
+                  <C key="0">checkpoint</C>,
+                  "Its system message, its summary, then the retained tail.",
+                ],
+                [
+                  <C key="0">summary</C>,
+                  <Inline
+                    key="1"
+                    text="One user message with its text. `imports` names the abandoned commits and is never sent."
+                  />,
+                ],
+                [
+                  <C key="0">config</C>,
+                  "Nothing. The newest value of each field sets the model, thinking level and agent.",
+                ],
+                [<C key="0">usage</C>, "Nothing. It bills a model call that wrote no message."],
+              ]}
+            />
             <P>
-              <C>done</C>, <C>failed</C> and <C>aborted</C> are terminal. A commit body is a{" "}
-              <C>message</C>, <C>config</C>, <C>completion</C>, <C>checkpoint</C> or <C>summary</C>.
               Every commit records when it was written, and the run that wrote it when a runner did.
               Assistant <C>calls</C> and <C>outcome</C>, a tool result's <C>call</C> and <C>tree</C>
-              , and a run's <C>start</C> are provenance: the runner stamps them, and the model never
-              sees them.
+              , and <C>start</C> on the commit that opens a run are provenance: the runner stamps
+              them, and the model never sees them.
             </P>
           </Section>
 

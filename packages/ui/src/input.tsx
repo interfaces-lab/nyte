@@ -19,10 +19,13 @@ const field = create({
     margin: 0,
     color: role.contentPrimary,
     fontFamily: "inherit",
-    fontSize: type.fontBase,
+    fontSize: {
+      default: type.fontBase,
+      "@media (pointer: coarse)": `max(16px, ${type.fontBase})`,
+    },
     lineHeight: type.leadingBase,
     letterSpacing: type.letterBase,
-    "::placeholder": { color: role.contentTertiary },
+    "::placeholder": { color: role.contentSecondary },
   },
   framed: {
     borderWidth: 1,
@@ -54,7 +57,7 @@ const variants = create({
   quiet: {
     borderColor: {
       default: role.borderSecondaryTranslucent,
-      ":focus": role.borderPrimaryTranslucent,
+      ":focus": appearance.focusColor,
       "[aria-invalid=true]": role.borderInteractivePrimary,
     },
     backgroundColor: role.bgMutedTranslucent,
@@ -72,7 +75,7 @@ const groupVariants = create({
   quiet: {
     borderColor: {
       default: role.borderSecondaryTranslucent,
-      ":focus-within": role.borderPrimaryTranslucent,
+      ":focus-within": appearance.focusColor,
     },
     backgroundColor: role.bgMutedTranslucent,
   },

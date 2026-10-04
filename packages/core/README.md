@@ -2,7 +2,7 @@
 
 Core owns durable session state and execution. Hosts compose it with models and plugins; clients consume its SDK and shared client state.
 
-The [kernel guide](src/kernel/README.md) explains persistence and execution. The [design record](../docs/content/docs/design.mdx) describes the wider architecture, and [host](../host/README.md) shows how to compose a runtime.
+The [kernel guide](src/kernel/README.md) explains persistence and execution. The [Core guide](../lab/src/core/guide.tsx) describes the wider architecture, and [host](../host/README.md) shows how to compose a runtime.
 
 Public entrypoints are declared in [package.json](package.json): the SDK, plugin contracts, stores, and workspace files. Keep runtime behavior here when terminal, desktop, and remote clients must agree.
 

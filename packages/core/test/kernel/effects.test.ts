@@ -36,6 +36,7 @@ async function open(
     tool: "read",
     args: { path: "a.txt" },
     replay,
+    environment: "one",
   });
   assert.ok(outcome.kind === "opened" || outcome.kind === "exists");
   return outcome.view;
@@ -57,6 +58,7 @@ test("concurrent opens share one durable intent; a later open finds it instead o
     tool: "read",
     args: { path: "a.txt" },
     replay: "safe",
+    environment: "one",
   } as const;
   const outcomes = await Promise.all([openEffect(session, intent), openEffect(session, intent)]);
   assert.deepEqual(outcomes.map((outcome) => outcome.kind).sort(), ["exists", "opened"]);
@@ -124,7 +126,7 @@ test("expiry claims a wait once and refuses every later answer", async () => {
   );
   const expired = await expireEffect(session, { lease: held, view: waiting, now: 0 });
   assert.ok(expired.kind === "expired");
-  assert.equal(decideRecovery(expired.view, undefined), "wake");
+  assert.equal(decideRecovery(expired.view, "one"), "wake");
 
   assert.equal(
     (
@@ -142,7 +144,7 @@ test("expiry claims a wait once and refuses every later answer", async () => {
   );
 });
 
-test("a safe intent replays only on the filesystem it was opened for", async () => {
+test("a safe intent replays only in the environment it was opened in", async () => {
   const session = await openSession();
   const held = await lease(session, "main");
   const opened = await openEffect(session, {
@@ -152,16 +154,11 @@ test("a safe intent replays only on the filesystem it was opened for", async () 
     tool: "read",
     args: { path: "a.txt" },
     replay: "safe",
-    fs: "local:one",
+    environment: "one",
   });
   assert.ok(opened.kind === "opened");
-  assert.equal(decideRecovery(opened.view, "local:one"), "execute");
-  assert.equal(decideRecovery(opened.view, "local:two"), "interrupted");
-  assert.equal(decideRecovery(opened.view, undefined), "interrupted");
-  assert.equal(
-    decideRecovery(await open(session, held, "anywhere", "safe"), "local:two"),
-    "execute",
-  );
+  assert.equal(decideRecovery(opened.view, "one"), "execute");
+  assert.equal(decideRecovery(opened.view, "two"), "interrupted");
 });
 
 test("a reply before the deadline wins over a later expiry claim", async () => {

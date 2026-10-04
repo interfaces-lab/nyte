@@ -2,7 +2,6 @@ import type { ShellFacts } from "@nyte-ai/protocol";
 import type { ToolDefinition } from "../kernel/loop/types.ts";
 import { ToolError, toolResultContent, toolResultText } from "../kernel/loop/tool-result.ts";
 import { type Static, Type } from "typebox";
-import { requireEnv } from "./env.ts";
 import { OutputAccumulator } from "./support/output-accumulator.ts";
 import {
   DEFAULT_MAX_BYTES,
@@ -81,8 +80,7 @@ export function createBashToolDefinition(
     outputSchema: bashOutputSchema,
     constrainedSampling: { type: "json_schema", strict: "prefer" },
     async execute({ command, timeout }, call) {
-      const { signal, update } = call;
-      const env = requireEnv(call);
+      const { signal, update, env } = call;
       const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
       const output = new OutputAccumulator({ tempFilePrefix: "nyte-bash" });
       let acceptingOutput = true;
@@ -99,7 +97,6 @@ export function createBashToolDefinition(
           content: [{ type: "text", text: snapshot.content || "" }],
           details: {
             truncation: snapshot.truncation.truncated ? snapshot.truncation : undefined,
-            fullOutputPath: snapshot.fullOutputPath,
           },
         });
       };
@@ -147,32 +144,40 @@ export function createBashToolDefinition(
 
       const settle = async (emptyText = "(no output)") => {
         const snapshot = await finishOutput();
+        const spilled = snapshot.fullOutputPath;
+
+        const fullOutputPath =
+          spilled !== undefined && (await env.stat(spilled).catch(() => undefined))?.kind === "file"
+            ? spilled
+            : undefined;
+
+        const where = fullOutputPath === undefined ? "" : `. Full output: ${fullOutputPath}`;
         const durationMs = Math.round(performance.now() - startedAt);
         const truncation = snapshot.truncation;
         let text = snapshot.content || emptyText;
         const details: BashToolDetails = truncation.truncated
-          ? { durationMs, truncation, fullOutputPath: snapshot.fullOutputPath }
+          ? { durationMs, truncation, fullOutputPath }
           : { durationMs };
         if (truncation.truncated) {
           const startLine = truncation.totalLines - truncation.outputLines + 1;
           const endLine = truncation.totalLines;
           if (truncation.lastLinePartial) {
             const lastLineSize = formatSize(output.getLastLineBytes());
-            text += `\n\n[Showing last ${formatSize(truncation.outputBytes)} of line ${endLine} (line is ${lastLineSize}). Full output: ${snapshot.fullOutputPath}]`;
+            text += `\n\n[Showing last ${formatSize(truncation.outputBytes)} of line ${endLine} (line is ${lastLineSize})${where}]`;
           } else if (truncation.truncatedBy === "lines") {
-            text += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines}. Full output: ${snapshot.fullOutputPath}]`;
+            text += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines}${where}]`;
           } else {
-            text += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(DEFAULT_MAX_BYTES)} limit). Full output: ${snapshot.fullOutputPath}]`;
+            text += `\n\n[Showing lines ${startLine}-${endLine} of ${truncation.totalLines} (${formatSize(DEFAULT_MAX_BYTES)} limit)${where}]`;
           }
         }
-        return { text, details, snapshot, durationMs };
+        return { text, details, fullOutputPath, durationMs };
       };
 
       const appendStatus = (text: string, status: string) =>
         `${text ? `${text}\n\n` : ""}${status}`;
 
       try {
-        let exitCode: number | null;
+        let exitCode: number;
         try {
           const result = await env.exec(resolvedCommand, {
             onData: handleData,
@@ -194,15 +199,7 @@ export function createBashToolDefinition(
           );
         }
 
-        const { text: outputText, details, snapshot, durationMs } = await settle();
-        if (exitCode === null) {
-          throw new ToolError({
-            content: toolResultContent(
-              appendStatus(outputText, "Command terminated without an exit code"),
-            ),
-            details,
-          });
-        }
+        const { text: outputText, details, fullOutputPath, durationMs } = await settle();
         const wallTimeSeconds = Math.round(durationMs / 100) / 10;
         const fullOutput = await output.readFullOutput(STRUCTURED_OUTPUT_MAX_BYTES);
         const structuredContent: BashToolOutput = {
@@ -211,9 +208,8 @@ export function createBashToolDefinition(
           exit_code: exitCode,
           wall_time_seconds: wallTimeSeconds,
         };
-        if (fullOutput.truncated && snapshot.fullOutputPath) {
-          structuredContent.full_output_path = snapshot.fullOutputPath;
-        }
+        if (fullOutput.truncated && fullOutputPath !== undefined)
+          structuredContent.full_output_path = fullOutputPath;
         if (exitCode !== 0) {
           throw new ToolError(
             {

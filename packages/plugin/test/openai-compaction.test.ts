@@ -533,7 +533,7 @@ test.each(["openai", "openai-codex"] as const)(
       const outcome = await activate({
         target: { kind: "session", session },
         plugins: [plugin],
-        env: { cwd: world.directory },
+        env: world.env,
       });
       if (outcome.kind === "failed") throw new Error(outcome.error);
       const active = outcome.activation;

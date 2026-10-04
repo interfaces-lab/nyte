@@ -16,13 +16,14 @@ import {
   type Nyte,
   type ModelCatalog,
   type JobInfo,
-  type SessionActivationResolver,
+  type NyteOptions,
   type SessionEvent,
   type SessionId,
   type WorkspaceBackend,
 } from "@nyte-ai/core";
 import { createGitVcs } from "@nyte-ai/host";
 import { CallReplySchema, sessionId, type ServerDescription } from "@nyte-ai/protocol";
+import { localEnvironmentPlugin } from "@nyte-ai/core/plugins";
 import { SqliteStore } from "@nyte-ai/core/store";
 import { Value } from "typebox/value";
 import type { Api, Model } from "@nyte-ai/schema";
@@ -61,14 +62,14 @@ interface FixtureOptions {
   readonly wrap?: (sdk: Nyte) => Nyte;
   readonly server?: Partial<Omit<NyteServerOptions, "sdk">>;
   readonly token?: string;
-  readonly resolveActivation?: SessionActivationResolver;
+  readonly trust?: NyteOptions["trust"];
   /** A directory to serve, with its version control. */
   readonly workspace?: { readonly cwd: string; readonly backend: WorkspaceBackend };
 }
 
 async function fixture(options: FixtureOptions = {}) {
   const store = new SqliteStore(":memory:", { watchPollIntervalMs: 5 });
-  const base = {
+  const nyte = await createNyte({
     store,
     workspace: options.workspace?.backend,
     streamFn: () => {
@@ -80,12 +81,14 @@ async function fixture(options: FixtureOptions = {}) {
       getAvailable: async () => [model],
     },
     model,
-  };
-  const nyte = await createNyte(
-    options.resolveActivation === undefined
-      ? { ...base, plugins: [], env: { cwd: options.workspace?.cwd ?? "/tmp/nowhere" } }
-      : { ...base, resolveActivation: options.resolveActivation },
-  );
+    plugins: [localEnvironmentPlugin({ id: "wire-test" })],
+    defaultWorkspace: {
+      kind: "local",
+      id: "wire-test",
+      cwd: options.workspace?.cwd ?? "/tmp/nowhere",
+    },
+    trust: options.trust,
+  });
   cleanups.push(
     () => nyte.close(),
     () => store.close(),
@@ -787,18 +790,18 @@ test("a live watch syncs first and then carries a queued message", async () => {
 test("activation state and activation_changed round-trip over HTTP and SSE", async () => {
   let active = false;
   const { client, nyte } = await fixture({
-    resolveActivation: () =>
+    trust: (workspace) =>
       active
-        ? { kind: "active", plugins: [], env: { cwd: "/workspace" } }
+        ? { kind: "trusted" }
         : {
             kind: "requires",
-            requirement: { kind: "workspace_trust", cwd: "/workspace" },
+            requirement: { kind: "workspace_trust", cwd: workspace.cwd },
           },
   });
   const created = await client.sessions.create();
   assert.deepEqual(created.activation, {
     kind: "requires",
-    requirement: { kind: "workspace_trust", cwd: "/workspace" },
+    requirement: { kind: "workspace_trust", cwd: "/tmp/nowhere" },
   });
   assert.equal(
     (await client.sessions.snapshot({ sessionId: created.sessionId }))?.session.activation.kind,

@@ -27,6 +27,7 @@ import {
   commit,
   drain,
   lease,
+  localEnv,
   message,
   openSession,
   seedHead,
@@ -191,6 +192,7 @@ test("the turn asks for a checkpoint before answering only when the last report 
       model,
       sections: { prompt: "system" },
       tools: [],
+      env: localEnv("/tmp"),
       compaction,
     });
   const turn = bind(settings);
@@ -238,6 +240,7 @@ test("an oversized request compacts once, then the failure stands", async () => 
     model,
     sections: { prompt: "system" },
     tools: [],
+    env: localEnv("/tmp"),
     compaction: settings,
     retry: { enabled: false, maxRetries: 0, baseDelayMs: 0 },
   });
@@ -277,6 +280,7 @@ test("the step commits a checkpoint the turn asked for and asks again over the s
     model,
     sections: { prompt: "system" },
     tools: [],
+    env: localEnv("/tmp"),
     compaction: settings,
   });
   await seedHead(session, "main", longChat().slice(0, 6));

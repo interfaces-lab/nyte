@@ -21,7 +21,6 @@ import type {
   CommandResult,
   Disposer,
   Plugin,
-  PluginEnv,
   PluginInfo,
   PluginReplacement,
   SessionTransition,
@@ -31,6 +30,7 @@ import {
   isThinkingLevel,
   type AgentContext,
   type AgentTool,
+  type ExecutableTool,
   type ThinkingLevel,
 } from "../loop/types.ts";
 import { toolOutcome } from "../loop/tool-result.ts";
@@ -52,7 +52,7 @@ import { contextCommits } from "../graph.ts";
 import { FACT_PREFIX, decodeFactKey, encodeFactKey, factRef, headRef, runRef } from "../names.ts";
 import type { Session } from "../store.ts";
 import type { ExecutionEnv } from "../loop/env.ts";
-import { createLocalExecutionEnv } from "../../tools/env.ts";
+import { wrappedEnvironment } from "../../plugins/environment.ts";
 import { projectEvent } from "./events.ts";
 import { providerCompactionFor, requestStream, type RequestStreamFn } from "./requests.ts";
 import { NAME_FACT, PARENT_FACT } from "./snapshot.ts";
@@ -69,6 +69,7 @@ const REGISTRY_PROPERTIES = [
   "settings",
   "status",
   "modelContext",
+  "environmentWraps",
 ] satisfies readonly (keyof PluginRegistries)[];
 
 export type Notice = PluginNotice;
@@ -80,9 +81,10 @@ export interface Activation {
   readonly registries: PluginRegistries;
   readonly hooks: HookRegistry;
   readonly plugins: PluginHost;
-  /** Where this activation's tools act. Every contributed tool is bound to it. */
+  /** Where this activation's tools and plugins act: the opened environment through the plugins' wraps. */
   readonly env: ExecutionEnv;
-  tools(): readonly AgentTool[];
+  /** The contributed tools, each bound to `env` outside every plugin's wrap. */
+  tools(): readonly ExecutableTool[];
   /** The prompt registry as named, ordered sections: what `SystemMessage.sections` declares. */
   promptSections(): Record<string, string>;
   /** The rendered prompt, as the model reads it once declared. */
@@ -221,10 +223,11 @@ export type ActivationOutcome =
 export async function activate(input: {
   target: ActivationTarget;
   plugins: readonly Plugin[];
-  env: PluginEnv;
+  env: ExecutionEnv;
 }): Promise<ActivationOutcome> {
-  const env = createLocalExecutionEnv({ cwd: input.env.cwd });
-  const registries = createRegistries(env);
+  const registries = createRegistries();
+  const env = wrappedEnvironment(input.env, () => registries.environmentWraps.values());
+  const executable = new WeakMap<AgentTool, ExecutableTool>();
   let initializing = true;
   const session = input.target.kind === "session" ? input.target.session : undefined;
   const facts = session === undefined ? transientFacts() : factsFor(session);
@@ -488,7 +491,7 @@ export async function activate(input: {
       },
     },
     events,
-    env: input.env,
+    env,
     subscribe,
     rebuildAll,
     defer: (action) => {
@@ -527,7 +530,21 @@ export async function activate(input: {
     hooks,
     plugins,
     env,
-    tools: () => registries.tools.values(),
+    tools: () =>
+      registries.tools.values().map((tool) => {
+        const cached = executable.get(tool);
+
+        if (cached !== undefined) return cached;
+
+        const bound: ExecutableTool = {
+          ...tool,
+          execute: (args, call) => tool.execute(args, { ...call, env }),
+        };
+
+        executable.set(tool, bound);
+
+        return bound;
+      }),
     promptSections,
     systemPrompt,
     agents: () => registries.agents.values(),
@@ -657,7 +674,7 @@ export interface TurnResolution {
   readonly steps: number | undefined;
   /** The prompt the branch must declare: the registry sections, then the agent persona as `agent`. */
   readonly sections: Readonly<Record<string, string>>;
-  readonly tools: readonly AgentTool[];
+  readonly tools: readonly ExecutableTool[];
 }
 
 interface InvocationState {
@@ -671,7 +688,7 @@ interface CachedTurn {
   readonly agent: Agent | undefined;
   readonly thinkingLevel: ThinkingLevel | undefined;
   readonly sections: Readonly<Record<string, string>>;
-  readonly tools: readonly AgentTool[];
+  readonly tools: readonly ExecutableTool[];
   readonly turn: Turn;
 }
 

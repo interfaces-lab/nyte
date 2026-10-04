@@ -99,6 +99,7 @@ function snapshotUpdate(state: Partial<SessionState>): SessionUpdate {
       archived: false,
       heads: [],
       activation: { kind: "active" },
+      workspace: { kind: "local", id: "fixture", cwd: "/" },
       config: {},
     },
     head: "main",

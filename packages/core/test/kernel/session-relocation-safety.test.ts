@@ -6,9 +6,18 @@ import { getCurrentSystemPrompt, getCurrentTools } from "@nyte-ai/schema";
 import { expect, test } from "vitest";
 import { submit } from "../../src/kernel/queue.ts";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
-import { definePlugin, toolsFsPlugin } from "../../src/plugins/index.ts";
+import { definePlugin, toolsFsPlugin, type Plugin } from "../../src/plugins/index.ts";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
-import { assistant, call, openStore, storePath, trustWorkspace, within } from "./helpers.ts";
+import {
+  assistant,
+  call,
+  localOptions,
+  localWorkspace,
+  openStore,
+  storePath,
+  trustGrants,
+  within,
+} from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "test-model",
@@ -44,7 +53,12 @@ function fixture(streamFn?: StreamFn) {
   const destination = join(cwd, "destination");
   mkdirSync(destination);
   const requests: (string | undefined)[] = [];
-  const open = () =>
+  const grants = (destinationPlugins?: readonly Plugin[]) => {
+    const granted = new Map<string, readonly Plugin[]>([[cwd, plugins("original")]]);
+    if (destinationPlugins !== undefined) granted.set(destination, destinationPlugins);
+    return granted;
+  };
+  const open = (trusted: ReadonlyMap<string, readonly Plugin[]>) =>
     createNyte({
       store: openStore(path),
       model,
@@ -53,8 +67,8 @@ function fixture(streamFn?: StreamFn) {
         getModel: () => model,
         getAvailable: async () => [model],
       },
-      plugins: plugins("original"),
-      env: { cwd },
+      ...localOptions(cwd),
+      trust: trustGrants(trusted),
       streamFn:
         streamFn ??
         ((_model, context) => {
@@ -84,34 +98,30 @@ function fixture(streamFn?: StreamFn) {
     cwd,
     destination,
     requests,
+    grants,
     open,
-    workspace: trustWorkspace(destination),
+    workspace: localWorkspace(destination),
   };
 }
 
 test("failed destination setup preserves the original activation, cwd and runnable tools", async () => {
   const setup = fixture();
-  const nyte = await setup.open();
+  const nyte = await setup.open(
+    setup.grants([
+      definePlugin({
+        id: "broken",
+        session() {
+          throw new Error("setup failed");
+        },
+      }),
+    ]),
+  );
   try {
     const session = await nyte.sessions.create();
     const input = { sessionId: session.sessionId };
     await nyte.plugins.list(input);
-    const workspace = await setup.workspace;
-    await assert.rejects(
-      nyte.relocate({
-        ...input,
-        workspace,
-        plugins: [
-          definePlugin({
-            id: "broken",
-            session() {
-              throw new Error("setup failed");
-            },
-          }),
-        ],
-      }),
-      /Destination plugin setup failed: broken/,
-    );
+    const outcome = await nyte.relocate({ ...input, workspace: setup.workspace });
+    assert.deepEqual(outcome, { kind: "failed", error: "broken: setup failed" });
     assert.equal(await nyte.sessionCwd(input), setup.cwd);
     assert.deepEqual(await nyte.plugins.commands.run({ ...input, name: "where" }), {
       kind: "ran",
@@ -132,17 +142,18 @@ test("failed destination setup preserves the original activation, cwd and runnab
 
 test("a cached foreign runner cannot land or execute in its old cwd and plugin operations block until trust is restored", async () => {
   const setup = fixture();
-  const old = await setup.open();
-  const moving = await setup.open();
+  const oldGrants = setup.grants();
+  const old = await setup.open(oldGrants);
+  const moving = await setup.open(setup.grants(plugins("destination")));
   try {
     const session = await old.sessions.create();
     const input = { sessionId: session.sessionId };
     old.attach();
     await old.messages.send({ ...input, content: "before" });
     await within(old.runs.wait(input));
-    const workspace = await setup.workspace;
+    const workspace = setup.workspace;
     await expect
-      .poll(() => moving.relocate({ ...input, workspace, plugins: plugins("destination") }))
+      .poll(() => moving.relocate({ ...input, workspace }))
       .toEqual({ kind: "relocated" });
     const stored = await openStore(setup.path).open(session.sessionId);
     const afterSeq = await stored.events.last();
@@ -158,13 +169,13 @@ test("a cached foreign runner cannot land or execute in its old cwd and plugin o
     await expect
       .poll(async () =>
         (await stored.events.read({ afterSeq })).some(
-          (event) => event.kind === "notice" && event.message.includes("directory changed"),
+          (event) => event.kind === "notice" && event.message.includes("workspace changed"),
         ),
       )
       .toBe(true);
     assert.equal(setup.requests.length, priorRequests);
     assert.equal((await old.messages.pending(input)).length, 1);
-    assert.equal(await old.sessionCwd(input), workspace.cwd);
+    assert.equal((await old.sessionWorkspace(input)).cwd, workspace.cwd);
     assert.equal((await old.sessions.get(input))?.activation.kind, "requires");
     assert.deepEqual(await old.plugins.commands.run({ ...input, name: "where" }), {
       kind: "not_found",
@@ -172,9 +183,8 @@ test("a cached foreign runner cannot land or execute in its old cwd and plugin o
     await assert.rejects(old.setPlugins(plugins("unsafe-reload"), input), /not active/);
     await old.setPlugins(plugins("global"));
     assert.deepEqual(await old.plugins.list(input), []);
-    await expect
-      .poll(() => old.relocate({ ...input, workspace, plugins: plugins("destination") }))
-      .toEqual({ kind: "relocated" });
+    oldGrants.set(setup.destination, plugins("destination"));
+    await expect.poll(() => old.relocate({ ...input, workspace })).toEqual({ kind: "relocated" });
     await within(old.runs.wait(input));
     assert.equal(
       readFileSync(join(setup.destination, "result.txt"), "utf8"),
@@ -191,17 +201,85 @@ test("a cached foreign runner cannot land or execute in its old cwd and plugin o
   }
 });
 
-test("children keep their creation directory across parent moves and resume without bypassing trust", async () => {
+test("a tree another host moved to a workspace this host trusts runs its next message there", async () => {
   const setup = fixture();
-  const nyte = await setup.open();
-  const workspace = await setup.workspace;
+  const old = await setup.open(setup.grants(plugins("destination")));
+  const moving = await setup.open(setup.grants(plugins("destination")));
+  try {
+    const session = await old.sessions.create();
+    const input = { sessionId: session.sessionId };
+    old.attach();
+    await old.messages.send({ ...input, content: "before" });
+    await within(old.runs.wait(input));
+    await expect
+      .poll(() => moving.relocate({ ...input, workspace: setup.workspace }))
+      .toEqual({ kind: "relocated" });
+    await within(
+      Promise.all([
+        old.plugins.list(input),
+        old.plugins.commands.list(input),
+        old.plugins.status.list(input),
+      ]),
+    );
+    assert.deepEqual(await old.plugins.commands.run({ ...input, name: "where" }), {
+      kind: "ran",
+      output: setup.destination,
+    });
+    await old.messages.send({ ...input, content: "after" });
+    await within(old.runs.wait(input));
+    assert.equal(
+      readFileSync(join(setup.destination, "result.txt"), "utf8"),
+      `Current working directory: ${setup.destination}`,
+    );
+  } finally {
+    await old.close();
+    await moving.close();
+  }
+});
+
+test("a tree another host moved into a workspace this host trusts is active here, children included", async () => {
+  const setup = fixture();
+  const old = await setup.open(new Map([[setup.destination, plugins("destination")]]));
+  const moving = await setup.open(setup.grants(plugins("destination")));
+  try {
+    const root = await moving.sessions.create();
+    const input = { sessionId: root.sessionId };
+    const child = await moving.sessions.create({
+      parent: { ...input, runId: "run", callId: "call", depth: 1 },
+    });
+    const childRow = async () =>
+      (await old.sessions.list({ parent: root.sessionId })).items.find(
+        (row) => row.sessionId === child.sessionId,
+      );
+    assert.deepEqual((await old.sessions.get(input))?.activation, {
+      kind: "requires",
+      requirement: { kind: "workspace_trust", cwd: setup.cwd },
+    });
+    assert.equal((await childRow())?.workspace.cwd, setup.cwd);
+    assert.deepEqual(await moving.relocate({ ...input, workspace: setup.workspace }), {
+      kind: "relocated",
+    });
+    assert.deepEqual((await old.sessions.get(input))?.activation, { kind: "active" });
+    const moved = await childRow();
+    assert.equal(moved?.workspace.cwd, setup.destination);
+    assert.deepEqual(moved?.activation, { kind: "active" });
+  } finally {
+    await old.close();
+    await moving.close();
+  }
+});
+
+test("children follow the root across moves and resume without bypassing trust", async () => {
+  const setup = fixture();
+  const nyte = await setup.open(setup.grants(plugins("destination")));
+  const workspace = setup.workspace;
   const parent = await nyte.sessions.create();
   const input = { sessionId: parent.sessionId };
   const originalChild = await nyte.sessions.create({
     parent: { ...input, runId: "original", callId: "original", depth: 1 },
   });
   const oldChildInput = { sessionId: originalChild.sessionId };
-  await nyte.relocate({ ...input, workspace, plugins: plugins("destination") });
+  await nyte.relocate({ ...input, workspace });
   const child = await nyte.sessions.create({
     parent: { ...input, runId: "destination", callId: "destination", depth: 1 },
   });
@@ -214,21 +292,23 @@ test("children keep their creation directory across parent moves and resume with
     await nyte.plugins.list(childInput);
     await nyte.setPlugins(plugins("global"));
     assert.ok((await nyte.plugins.list(childInput)).some((plugin) => plugin.id === "destination"));
-    assert.equal(await nyte.sessionCwd(oldChildInput), setup.cwd);
+    assert.equal(await nyte.sessionCwd(oldChildInput), workspace.cwd);
     assert.equal(await nyte.sessionCwd(childInput), workspace.cwd);
   } finally {
     await nyte.close();
   }
-  const resumed = await setup.open();
+  const resumedGrants = setup.grants();
+  const resumed = await setup.open(resumedGrants);
   try {
-    assert.equal(await resumed.sessionCwd(oldChildInput), setup.cwd);
-    assert.equal(await resumed.sessionCwd(childInput), workspace.cwd);
+    assert.equal((await resumed.sessionWorkspace(oldChildInput)).cwd, workspace.cwd);
+    assert.equal((await resumed.sessionWorkspace(childInput)).cwd, workspace.cwd);
     assert.equal((await resumed.sessions.get(childInput))?.activation.kind, "requires");
     assert.deepEqual(await resumed.plugins.list(childInput), []);
     resumed.attach({ sessions: [parent.sessionId] });
     await resumed.messages.send({ ...childInput, content: "resume child" });
+    resumedGrants.set(setup.destination, plugins("destination"));
     await expect
-      .poll(() => resumed.relocate({ ...input, workspace, plugins: plugins("destination") }))
+      .poll(() => resumed.relocate({ ...input, workspace }))
       .toEqual({ kind: "relocated" });
     await within(resumed.runs.wait(childInput));
     assert.equal((await resumed.sessions.get(childInput))?.activation.kind, "active");
@@ -240,14 +320,16 @@ test("children keep their creation directory across parent moves and resume with
       readFileSync(join(setup.destination, "result.txt"), "utf8"),
       `Current working directory: ${workspace.cwd}`,
     );
-    assert.equal((await resumed.sessions.get(oldChildInput))?.activation.kind, "requires");
-    assert.deepEqual(await resumed.plugins.list(oldChildInput), []);
+    assert.equal((await resumed.sessions.get(oldChildInput))?.activation.kind, "active");
+    assert.ok(
+      (await resumed.plugins.list(oldChildInput)).some((plugin) => plugin.id === "destination"),
+    );
   } finally {
     await resumed.close();
   }
 });
 
-test("spawned subagents persist the parent's destination instead of following a later parent move", async () => {
+test("spawned subagents follow a later parent move", async () => {
   const setup = fixture((_model, context) => {
     // The child's report reaches the parent twice: as the wake and again as a completion.
     const last = context.messages.findLast((item) => item.role !== "system");
@@ -269,12 +351,13 @@ test("spawned subagents persist the parent's destination instead of following a 
     });
     return stream;
   });
-  const nyte = await setup.open();
-  const workspace = await setup.workspace;
+  const grants = setup.grants(plugins("destination"));
+  const nyte = await setup.open(grants);
+  const workspace = setup.workspace;
   try {
     const parent = await nyte.sessions.create();
     const input = { sessionId: parent.sessionId };
-    await nyte.relocate({ ...input, workspace, plugins: plugins("destination") });
+    await nyte.relocate({ ...input, workspace });
     nyte.attach({ sessions: [parent.sessionId] });
     await nyte.messages.send({ ...input, content: "delegate" });
     await expect
@@ -289,22 +372,24 @@ test("spawned subagents persist the parent's destination instead of following a 
     await nyte.setPlugins(plugins("global"));
     assert.ok((await nyte.plugins.list(childInput)).some((plugin) => plugin.id === "destination"));
     const elsewhere = dirname(storePath());
-    const nextWorkspace = await trustWorkspace(elsewhere);
+    const nextWorkspace = localWorkspace(elsewhere);
+    grants.set(elsewhere, plugins("elsewhere"));
     await expect
-      .poll(() =>
-        nyte.relocate({ ...input, workspace: nextWorkspace, plugins: plugins("elsewhere") }),
-      )
+      .poll(() => nyte.relocate({ ...input, workspace: nextWorkspace }))
       .toEqual({ kind: "relocated" });
-    assert.equal(await nyte.sessionCwd(childInput), workspace.cwd);
+    assert.equal(await nyte.sessionCwd(childInput), nextWorkspace.cwd);
     await nyte.close();
-    const resumed = await setup.open();
+    const resumedGrants = setup.grants();
+    const resumed = await setup.open(resumedGrants);
     try {
-      assert.equal(await resumed.sessionCwd(childInput), workspace.cwd);
+      assert.equal((await resumed.sessionWorkspace(childInput)).cwd, nextWorkspace.cwd);
       assert.equal((await resumed.sessions.get(childInput))?.activation.kind, "requires");
-      await resumed.relocate({ ...input, workspace: nextWorkspace, plugins: plugins("elsewhere") });
-      assert.equal((await resumed.sessions.get(childInput))?.activation.kind, "requires");
+      resumedGrants.set(elsewhere, plugins("elsewhere"));
+      await resumed.relocate({ ...input, workspace: nextWorkspace });
+      assert.equal((await resumed.sessions.get(childInput))?.activation.kind, "active");
       assert.deepEqual(await resumed.plugins.commands.run({ ...childInput, name: "where" }), {
-        kind: "not_found",
+        kind: "ran",
+        output: nextWorkspace.cwd,
       });
     } finally {
       await resumed.close();
@@ -316,25 +401,23 @@ test("spawned subagents persist the parent's destination instead of following a 
 
 test("destination setup holds head reservations against another store connection", async () => {
   const setup = fixture();
-  const nyte = await setup.open();
   const started = Promise.withResolvers<void>();
   const finish = Promise.withResolvers<void>();
+  const nyte = await setup.open(
+    setup.grants([
+      definePlugin({
+        id: "slow",
+        async session() {
+          started.resolve();
+          await finish.promise;
+        },
+      }),
+    ]),
+  );
   try {
     const session = await nyte.sessions.create();
     const input = { sessionId: session.sessionId };
-    const relocating = nyte.relocate({
-      ...input,
-      workspace: await setup.workspace,
-      plugins: [
-        definePlugin({
-          id: "slow",
-          async session() {
-            started.resolve();
-            await finish.promise;
-          },
-        }),
-      ],
-    });
+    const relocating = nyte.relocate({ ...input, workspace: setup.workspace });
     await within(started.promise);
     const stored = await openStore(setup.path).open(session.sessionId);
     try {

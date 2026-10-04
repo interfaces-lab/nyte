@@ -18,7 +18,15 @@ import type { Nyte, NyteOptions, SessionId } from "../../src/kernel/sdk/types.ts
 import type { Session, Store } from "../../src/kernel/store.ts";
 import { ToolWait, type StreamFn } from "../../src/kernel/loop/types.ts";
 import { definePlugin } from "../../src/plugins/index.ts";
-import { assistant, call, openInProcessStore, openStore, usage, within } from "./helpers.ts";
+import {
+  assistant,
+  call,
+  localOptions,
+  openInProcessStore,
+  openStore,
+  usage,
+  within,
+} from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "held-model",
@@ -204,8 +212,7 @@ async function open(
       getAvailable: async () => [model],
     },
     model,
-    plugins,
-    env: { cwd: "/tmp/nowhere" },
+    ...localOptions("/tmp/nowhere", plugins),
   });
 }
 

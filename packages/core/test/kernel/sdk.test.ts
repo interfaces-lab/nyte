@@ -16,12 +16,22 @@ import {
   type Nyte,
   type SessionEvent,
   type SessionId,
+  type Workspace,
 } from "../../src/kernel/sdk/types.ts";
 import { definePlugin, type AgentTool, type Plugin } from "../../src/plugins/index.ts";
 import { headRef } from "../../src/kernel/names.ts";
 import type { Store } from "../../src/kernel/store.ts";
 import { backgroundWait, ToolWait, type StreamFn } from "../../src/kernel/loop/types.ts";
-import { assistant, call, openStore, sleep, usage, within } from "./helpers.ts";
+import {
+  assistant,
+  call,
+  localOptions,
+  localWorkspace,
+  openStore,
+  sleep,
+  usage,
+  within,
+} from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "echo-model",
@@ -127,8 +137,7 @@ async function open(
       getAvailable: async () => [model],
     },
     model,
-    plugins: plugins(),
-    env: { cwd: "/tmp/nowhere" },
+    ...localOptions("/tmp/nowhere", plugins()),
     ...extra,
   });
 }
@@ -825,13 +834,15 @@ test("the prospective plugin catalog is sessionless, cached, and invalidated by 
     streamFn: echo(),
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     model,
-    plugins: [catalogPlugin("first-plugin", "first")],
-    env: { cwd: "/tmp/nowhere" },
+    ...localOptions("/tmp/nowhere", [catalogPlugin("first-plugin", "first")]),
   });
   try {
     const first = await nyte.plugins.catalog();
     assert.deepEqual(first, {
-      plugins: [{ id: "first-plugin", version: "inline", source: "inline", status: "active" }],
+      plugins: [
+        { id: "first-plugin", version: "inline", source: "inline", status: "active" },
+        { id: "local-environment", version: "inline", source: "inline", status: "active" },
+      ],
       commands: [{ name: "first", owner: "first-plugin", description: "Run first" }],
       skills: [
         {
@@ -888,21 +899,27 @@ test("the prospective inventory includes failed plugins without creating a chat"
     streamFn: echo(),
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     model,
-    plugins: [
+    ...localOptions("/tmp/nowhere", [
       definePlugin({
         id: "broken",
         session() {
           throw new Error("Cannot connect");
         },
       }),
-    ],
-    env: { cwd: "/tmp/nowhere" },
+    ]),
   });
   try {
     const inventory = await nyte.plugins.catalog();
     assert.deepEqual(inventory.plugins, [
       {
         id: "broken",
+        version: "inline",
+        source: "inline",
+        status: "failed",
+        error: "broken: Cannot connect",
+      },
+      {
+        id: "local-environment",
         version: "inline",
         source: "inline",
         status: "failed",
@@ -916,8 +933,8 @@ test("the prospective inventory includes failed plugins without creating a chat"
   }
 });
 
-test("lazy activation resolves new-session and session targets explicitly", async () => {
-  const targets: string[] = [];
+test("the catalog and a session in the default workspace share one trusted open", async () => {
+  const asked: Workspace[] = [];
   const plugin = definePlugin({
     id: "catalog",
     session(api) {
@@ -931,18 +948,23 @@ test("lazy activation resolves new-session and session targets explicitly", asyn
     streamFn: echo(),
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     model,
-    resolveActivation(target) {
-      targets.push(
-        target.kind === "new-session" ? target.kind : `${target.kind}:${target.sessionId}`,
-      );
-      return { kind: "active", plugins: [plugin], env: { cwd: "/tmp/nowhere" } };
+    ...localOptions("/tmp/nowhere"),
+    trust: (workspace) => {
+      asked.push(workspace);
+      return { kind: "trusted", plugins: async () => [plugin] };
     },
   });
   try {
-    await nyte.plugins.catalog();
+    assert.deepEqual(
+      (await nyte.plugins.catalog()).commands.map((command) => command.name),
+      ["catalog"],
+    );
     const { sessionId: id } = await nyte.sessions.create();
-    await nyte.plugins.commands.list({ sessionId: id });
-    assert.deepEqual(targets, ["new-session", `session:${id}`]);
+    assert.deepEqual(
+      (await nyte.plugins.commands.list({ sessionId: id })).map((command) => command.name),
+      ["catalog"],
+    );
+    assert.deepEqual(asked, [localWorkspace("/tmp/nowhere")]);
   } finally {
     await nyte.close();
   }
@@ -954,7 +976,7 @@ test("a plugin command may read messages, name its session, or answer with a cli
     streamFn: echo(),
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     model,
-    plugins: [
+    ...localOptions("/tmp/nowhere", [
       ...plugins(),
       definePlugin({
         id: "commands",
@@ -977,8 +999,7 @@ test("a plugin command may read messages, name its session, or answer with a cli
           });
         },
       }),
-    ],
-    env: { cwd: "/tmp/nowhere" },
+    ]),
   });
   try {
     const { sessionId } = await nyte.sessions.create();

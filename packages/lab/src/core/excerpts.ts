@@ -225,47 +225,6 @@ export const backgroundWait: BackgroundWait = { [BACKGROUND_WAIT]: true };
 
 type WaitOptions = ToolWaitOptions | BackgroundWait;`,
   },
-  decideRecovery: {
-    path: "core/src/kernel/effects.ts",
-    line: 383,
-    code: `/**
- * Recovery depends only on the durable state. An unstarted intent follows its replay policy, a
- * parked call stays blocked until signalled or expired, either wake state enters the handler, and a
- * settled result is reused.
- * This avoids guessing whether the uncertain work ran after a process disappeared.
- */
-export function decideRecovery(
-  view: EffectView,
-): "execute" | "interrupted" | "blocked" | "wake" | "reuse" {
-  switch (view.effect.state) {
-    case "intent":
-      switch (view.effect.replay) {
-        case "safe":
-          return "execute";
-        case "never":
-          return "interrupted";
-        default: {
-          const _exhaustive: never = view.effect.replay;
-
-          return _exhaustive;
-        }
-      }
-
-    case "waiting":
-      return "blocked";
-    case "expired":
-    case "signal":
-      return "wake";
-    case "result":
-      return "reuse";
-    default: {
-      const _exhaustive: never = view.effect;
-
-      return _exhaustive;
-    }
-  }
-}`,
-  },
   hookBudgets: {
     path: "core/src/plugins/hooks.ts",
     line: 195,

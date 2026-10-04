@@ -22,6 +22,7 @@ import type { CacheWarming } from "./cache-warming.ts";
 import { JOB_PREFIX, JOBS_CANCELLED_REF, type createJobs } from "./jobs.ts";
 import {
   RUN_PREFIX,
+  actsIn,
   attributed,
   type DriveState,
   type Pooled,
@@ -233,18 +234,13 @@ export function createRunners(input: {
       },
     );
 
-    const cwd =
-      pooled.activationState?.kind === "active" ? pooled.activationState.env.cwd : undefined;
+    let moved = false;
 
+    /** A tree moved by another host runs again once its new workspace opens here. */
     const requireRunnerLocation = async (): Promise<void> => {
-      const saved = await pool.storedCwd(pooled.session);
-
-      if (saved !== undefined && saved !== cwd) {
-        await pool.resolveSessionActivation(id, pooled);
-        throw new Error(
-          "Session directory changed; reactivate it in the trusted workspace before running.",
-        );
-      }
+      if (actsIn(activation.env, await pool.storedWorkspace(pooled))) return;
+      moved = true;
+      throw new Error("The session's workspace changed; it runs once that workspace opens.");
     };
 
     const modelLabel = (model: NonNullable<RunConfig["model"]>): string =>
@@ -280,13 +276,20 @@ export function createRunners(input: {
 
     const inputDelegation = input.delegation;
 
-    // Sources are reconciled before the turn resolves what the branch must
-    // declare, so the declaration and the request that follows share one catalog.
-    const prepareResponsePlugins = async (input: TurnInput): Promise<void> => {
-      if (options.prepareResponsePlugins === undefined || cwd === undefined) return;
+    // The workspace's plugins load again before the turn resolves what the branch
+    // must declare, so the declaration and the request that follows share one catalog.
+    const reloadPlugins = async (input: TurnInput): Promise<void> => {
+      const state = pooled.activationState;
+
+      if (
+        state?.kind !== "active" ||
+        state.reload === undefined ||
+        !actsIn(state.env, activation.env)
+      )
+        return;
 
       try {
-        const plugins = await options.prepareResponsePlugins({ sessionId: id, cwd });
+        const plugins = await state.reload();
         input.signal.throwIfAborted();
         await activation.setPlugins(inputDelegation.pluginsFor({ id, pooled, plugins }), () => {
           if (pooled.activationState?.kind === "active")
@@ -313,7 +316,7 @@ export function createRunners(input: {
         if (unavailableModel(input.run.config) !== undefined) return { kind: "ready" };
 
         activation.observeRun(input.run);
-        await prepareResponsePlugins(input);
+        await reloadPlugins(input);
 
         return bound.turn.prepare === undefined ? { kind: "ready" } : bound.turn.prepare(input);
       },
@@ -361,7 +364,10 @@ export function createRunners(input: {
         drain: input.drain,
         telemetry: options.telemetry,
         signal,
-        tree: vcs === undefined || cwd === undefined ? undefined : () => vcs.tree({ cwd }),
+        tree:
+          vcs === undefined || !pool.served(activation.env)
+            ? undefined
+            : () => vcs.tree({ cwd: activation.env.cwd }),
         steps: (run) =>
           unavailableModel(run.config) === undefined ? bound.stepsFor(run) : undefined,
         resolveConfig: (config) =>
@@ -380,7 +386,7 @@ export function createRunners(input: {
       };
     };
 
-    return { turn, optionsFor };
+    return { turn, optionsFor, moved: () => moved };
   };
 
   const advance: Nyte["advance"] = async (request) => {
@@ -515,6 +521,9 @@ export function createRunners(input: {
               }
             } catch (error) {
               if (!stopped && !pooled.retired) await emitRunnerDiagnostic(pooled.session, error);
+
+              // After the notice, which the stop would silence. Not awaited: stopping waits for this task.
+              if (prepared.moved()) void reconcileRunner(id, pooled).catch(input.reportBackground);
             } finally {
               state.controller = undefined;
               state.runId = undefined;
@@ -725,17 +734,24 @@ export function createRunners(input: {
           return;
         }
 
-        if ((await pool.resolveSessionActivation(id, pooled)).kind !== "active") {
+        const state = await pool.resolveSessionActivation(id, pooled);
+
+        if (state.kind !== "active") {
           await stopRunner(pooled);
 
           return;
         }
 
         if (pooled.runner !== undefined) {
-          if (pooled.parent !== undefined) await input.delegation.childRunChanged(id, pooled);
-          pooled.wake?.();
+          if (pooled.activation !== undefined && actsIn(pooled.activation.env, state.env)) {
+            if (pooled.parent !== undefined) await input.delegation.childRunChanged(id, pooled);
+            pooled.wake?.();
 
-          return;
+            return;
+          }
+
+          // Bound to an activation from before the tree moved: start over in the new one.
+          await stopRunner(pooled);
         }
 
         const activation = await pool.activationFor(id, pooled);

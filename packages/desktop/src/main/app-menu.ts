@@ -21,6 +21,17 @@ export function applicationMenuTemplate(options: {
     click: () => options.dispatch({ kind: "action", action: clientActions.settings.id }),
   };
 
+  const action = (
+    definition:
+      | typeof clientActions.newTab
+      | typeof clientActions.reopenTab
+      | typeof clientActions.closeTab,
+  ): MenuItemConstructorOptions => ({
+    label: definition.label,
+    accelerator: clientActionAccelerator(definition),
+    click: () => options.dispatch({ kind: "action", action: definition.id }),
+  });
+
   const fileActions = [
     { label: "New Window", accelerator: "Shift+CommandOrControl+N", click: options.newWindow },
     {
@@ -28,6 +39,7 @@ export function applicationMenuTemplate(options: {
       accelerator: clientActionAccelerator(clientActions.newChat),
       click: () => options.dispatch({ kind: "action", action: clientActions.newChat.id }),
     },
+    action(clientActions.newTab),
     {
       label: "Open Folder…",
       accelerator: clientActionAccelerator(clientActions.openFolder),
@@ -73,9 +85,18 @@ export function applicationMenuTemplate(options: {
       label: "File",
       submenu:
         options.platform === "darwin"
-          ? [...fileActions, { type: "separator" }, { role: "close" }]
+          ? [
+              ...fileActions,
+              { type: "separator" },
+              action(clientActions.reopenTab),
+              action(clientActions.closeTab),
+              { role: "close", accelerator: "Shift+CommandOrControl+W" },
+            ]
           : [
               ...fileActions,
+              { type: "separator" },
+              action(clientActions.reopenTab),
+              action(clientActions.closeTab),
               { type: "separator" },
               settings,
               { type: "separator" },
@@ -84,7 +105,16 @@ export function applicationMenuTemplate(options: {
     },
     { role: "editMenu" },
     { role: "viewMenu" },
-    { role: "windowMenu" },
+    // ⌘W closes a tab, so closing the window takes Shift.
+    options.platform === "darwin"
+      ? { role: "windowMenu" }
+      : {
+          role: "windowMenu",
+          submenu: [
+            { role: "minimize" },
+            { role: "close", accelerator: "Shift+CommandOrControl+W" },
+          ],
+        },
     { role: "help", submenu: options.platform === "darwin" ? [] : [about, update] },
   ];
 }

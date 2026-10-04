@@ -12,7 +12,13 @@ import type {
 import { renderToolSample } from "@earendil-works/pi-codemode/declarations";
 import { parseCodemodeSource } from "@earendil-works/pi-codemode/source";
 import { ToolError, stopReason } from "@nyte-ai/core/plugins";
-import type { AgentTool, AgentToolResult, ToolCall, ToolRun } from "@nyte-ai/core/plugins";
+import type {
+  AgentTool,
+  AgentToolResult,
+  ExecutionEnv,
+  ToolContext,
+  ToolRun,
+} from "@nyte-ai/core/plugins";
 import { contentText } from "@nyte-ai/schema";
 import type { ImageContent, Message, TextContent } from "@nyte-ai/schema";
 import { Type } from "typebox";
@@ -114,6 +120,7 @@ async function spillOutput(text: string): Promise<{ path: string } | { error: st
 async function truncateOutput(
   items: (TextContent | ImageContent)[],
   maxTokens: number,
+  env: ExecutionEnv,
 ): Promise<{ items: (TextContent | ImageContent)[]; fullOutputPath?: string }> {
   const texts = items
     .filter((item): item is TextContent => item.type === "text")
@@ -128,13 +135,19 @@ async function truncateOutput(
   const tail = tailChars > 0 ? combined.slice(-tailChars) : "";
   let text = `Warning: truncated output (original token count: ${Math.ceil(combined.length / CHARS_PER_TOKEN)})\nTotal output lines: ${combined.split("\n").length}\n\n${head}…${Math.ceil(removed / CHARS_PER_TOKEN)} tokens truncated…${tail}`;
   const spilled = await spillOutput(combined);
-  text +=
-    "path" in spilled
-      ? `\n\n[Full output: ${spilled.path} (read with offset/limit)]`
-      : `\n\n[Could not save the full output: ${spilled.error}]`;
+
+  const fullOutputPath =
+    "path" in spilled && (await env.stat(spilled.path).catch(() => undefined))?.kind === "file"
+      ? spilled.path
+      : undefined;
+
+  if (fullOutputPath !== undefined)
+    text += `\n\n[Full output: ${fullOutputPath} (read with offset/limit)]`;
+
+  if ("error" in spilled) text += `\n\n[Could not save the full output: ${spilled.error}]`;
   return {
     items: [{ type: "text", text }, ...items.filter((item) => item.type === "image")],
-    ...("path" in spilled ? { fullOutputPath: spilled.path } : {}),
+    ...(fullOutputPath === undefined ? {} : { fullOutputPath }),
   };
 }
 
@@ -152,7 +165,7 @@ function toScriptValue(
 /** Run a script. Outside a run it has no tools and an empty store; inside one it has the run's. */
 export async function executeCodemode(input: {
   code: string;
-  call: ToolCall<CodemodeToolDetails>;
+  call: ToolContext<CodemodeToolDetails>;
   runtime?: Pick<CodemodeSandboxOptions, "workerUrl" | "wasm">;
 }): Promise<AgentToolResult<CodemodeToolDetails>> {
   const startedAt = performance.now();
@@ -233,6 +246,7 @@ export async function executeCodemode(input: {
   const truncated = await truncateOutput(
     items,
     sourceOptions.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+    input.call.env,
   );
   const wallTime = ((performance.now() - startedAt) / 1000).toFixed(1);
   const header = `${result.ok ? "Script completed" : "Script failed"}\nWall time ${wallTime} seconds\nOutput:\n`;

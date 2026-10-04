@@ -4,8 +4,9 @@ The desktop app treats startup and thread navigation as paint problems. It shows
 first, then fills that page with local data. Local storage is fast, but waiting for every local read,
 React module, and formatter before changing the screen still feels slow.
 
-This note records the design after the 2026-09-03 first-shell pass. It supplements the core
-[design record](../docs/content/docs/design.mdx). That record still owns SDK and storage contracts.
+This note records the design after the 2026-09-03 first-shell pass. It supplements the
+[Core guide](../lab/src/core/guide.tsx) and [kernel guide](../core/src/kernel/README.md), which
+own SDK and storage contracts.
 
 ## Result
 

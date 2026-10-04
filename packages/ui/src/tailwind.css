@@ -7,7 +7,7 @@
   --color-popover: var(--nyte-bg-elevated);
   --color-popover-foreground: var(--nyte-content-primary);
   --color-sidebar: var(--nyte-bg-chrome);
-  --color-primary: var(--nyte-bg-interactive-strong);
+  --color-primary: var(--nyte-button-fill);
   --color-primary-foreground: var(--nyte-content-on-interactive-strong);
   --color-muted: var(--nyte-bg-muted-translucent);
   --color-muted-foreground: var(--nyte-content-secondary);

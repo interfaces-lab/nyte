@@ -9,7 +9,7 @@ import { DocArticle } from "../../_layout/article";
 
 export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
   const params = await props.params;
-  if (!params.slug || params.slug.length === 0) redirect(`${docsRoute}/design`);
+  if (!params.slug || params.slug.length === 0) redirect(`${docsRoute}/composition`);
   const page = source.getPage(params.slug);
   if (!page) notFound();
 

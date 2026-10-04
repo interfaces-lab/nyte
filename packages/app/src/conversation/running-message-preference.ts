@@ -8,9 +8,9 @@ const listeners = new Set<() => void>();
 
 function readPreference(): RunningMessagePreference {
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === "steer" ? "steer" : "queue";
+    return window.localStorage.getItem(STORAGE_KEY) === "queue" ? "queue" : "steer";
   } catch {
-    return "queue";
+    return "steer";
   }
 }
 

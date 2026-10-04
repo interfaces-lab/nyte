@@ -8,7 +8,18 @@ import { readFile, rm } from "node:fs/promises";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { writePrivateFile } from "./connect-store.ts";
-import type { SecretCipher } from "./connect-store.ts";
+
+/**
+ * Encrypts secrets with a key the OS holds for this app. Each call may reach the OS keychain,
+ * which on macOS can ask the user, so callers ask only when they need a key.
+ */
+export interface SecretCipher {
+  /** False when the OS would store the key in plain text, or has none. */
+  available(): Promise<boolean>;
+  seal(plain: string): Promise<string>;
+  /** Rejects when the sealed text is not this app's. */
+  open(sealed: string): Promise<string>;
+}
 
 const savedSignIn = Compile(
   Type.Object(

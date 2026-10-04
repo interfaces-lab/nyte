@@ -9,7 +9,7 @@ import { headRef } from "../../src/kernel/names.ts";
 import { SqliteStore } from "../../src/kernel/sqlite.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
 import { definePlugin } from "../../src/plugins/index.ts";
-import { assistant, call, openStore, storePath, within } from "./helpers.ts";
+import { assistant, call, localOptions, openStore, storePath, within } from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "admission-model",
@@ -38,7 +38,7 @@ async function open(
     store,
     model,
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
-    plugins: [
+    ...localOptions("/tmp/nowhere", [
       definePlugin({
         id: "personas",
         session(api) {
@@ -67,8 +67,7 @@ async function open(
           }
         },
       }),
-    ],
-    env: { cwd: "/tmp/nowhere" },
+    ]),
     streamFn: (_model, context) => {
       const latest = context.messages.findLast((message) => message.role === "user");
       assert.ok(latest !== undefined && !Array.isArray(latest.content));

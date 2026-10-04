@@ -30,7 +30,7 @@ import {
 } from "./schemas.ts";
 import type { BrokerJwk, BrokerKeys } from "./schemas.ts";
 
-/** An Ed25519 private key. Kept sealed on the desktop and as a secret in the broker. */
+/** An Ed25519 private key. Kept in the desktop's private store and as a secret in the broker. */
 export const PrivateJwk = Type.Object({
   kty: Type.Literal("OKP"),
   crv: Type.Literal("Ed25519"),

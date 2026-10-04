@@ -28,6 +28,15 @@ function toggle(styles: StyleXArray<CompiledStyles>, enabled: boolean): void {
   }
 }
 
+export function withoutTransitions(change: () => void): void {
+  const style = document.createElement("style");
+  style.textContent = "*,*::before,*::after{transition:none !important}";
+  document.head.append(style);
+  change();
+  void getComputedStyle(document.body).transitionDuration;
+  requestAnimationFrame(() => style.remove());
+}
+
 /** `data-display-mode` stays for what reads the mode outside StyleX: Shiki and the terminal. */
 export function applyDisplayMode(mode: "light" | "dark"): void {
   toggle([scheme.dark, dark], mode === "dark");

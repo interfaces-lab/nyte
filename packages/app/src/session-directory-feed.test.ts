@@ -9,6 +9,7 @@ function row(id: string, parent?: string): SessionInfo {
   const root: SessionInfo = {
     sessionId: sessionId(id),
     activation: { kind: "active" },
+    workspace: { kind: "local", id: "fixture", cwd: "/" },
     createdAt: 1,
     lastActivityAt: 1,
     pinned: false,

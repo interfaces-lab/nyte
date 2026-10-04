@@ -53,9 +53,7 @@ export function unavailableDetail(reason: ConnectUnavailable): string {
     case "not_configured":
       return "This build of Nyte isn’t set up for Nyte accounts.";
     case "store_failed":
-      return "Nyte can’t read or write ~/.nyte/connect.json. Fix or remove it, then restart Nyte.";
-    case "keychain_unavailable":
-      return "Nyte can’t use the macOS Keychain to protect this Mac’s key.";
+      return "Nyte can’t use ~/.nyte/connect.json. Remote access is off.";
     default: {
       const _exhaustive: never = reason;
 

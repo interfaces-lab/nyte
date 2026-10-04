@@ -3,9 +3,6 @@
  * The fold consumes turns, not raw commits, so a client folds the same
  * message commits it already renders and a git panel needs no second read.
  * Declared mutations only: whole-tree truth is the host's VCS.
- *
- * Design: packages/docs/content/docs/design.mdx, "Views" and the nineteenth
- * revision.
  */
 import type { FileChange, Oid, VcsFile, VcsFileKind, VcsSnapshot } from "@nyte-ai/protocol";
 import type { Turn } from "./transcript.ts";

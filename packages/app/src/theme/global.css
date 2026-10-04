@@ -30,7 +30,6 @@
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: var(--nyte-font-smoothing, antialiased);
     -moz-osx-font-smoothing: var(--nyte-moz-font-smoothing, grayscale);
-    user-select: none;
   }
 
   [data-nyte-session-drag-active],

@@ -23,16 +23,23 @@ import type {
   Plugin,
   ModelCatalog,
   Nyte,
+  NyteOptions,
   SessionEvent,
   SessionId,
-  StaticNyteOptions,
   StreamFn,
   WaitOutcome,
 } from "@nyte-ai/core";
 import type { ToolTurnPart } from "@nyte-ai/protocol";
 import { branch, SqliteStore, type Store } from "@nyte-ai/core/store";
 import type { Api, AssistantMessage, Model, ToolCall, ToolResultMessage } from "@nyte-ai/schema";
-import type { ToolCall as ToolCallContext } from "@nyte-ai/core/plugins";
+import {
+  createLocalExecutionEnv,
+  localEnvironmentPlugin,
+  type ExecutionEnv,
+  type ToolContext,
+} from "@nyte-ai/core/plugins";
+
+const ENVIRONMENT_ID = "test";
 
 /** A model that advertises nothing special; tests spread over it for what they need. */
 export const testModel: Model<Api> = {
@@ -88,12 +95,18 @@ export function respond(
   return stream;
 }
 
-/** A direct call into `execute`, outside any run. */
+/** A direct call into `execute`, outside any run, acting in the temp directory. */
 export function directCall(
   id: string,
-  options: Partial<Omit<ToolCallContext, "id">> = {},
-): ToolCallContext {
-  return { signal: new AbortController().signal, update: () => undefined, ...options, id };
+  options: Partial<Omit<ToolContext, "id">> = {},
+): ToolContext {
+  return {
+    signal: new AbortController().signal,
+    update: () => undefined,
+    env: createLocalExecutionEnv({ id: ENVIRONMENT_ID, cwd: tmpdir() }),
+    ...options,
+    id,
+  };
 }
 
 export function toolCall(id: string, name: string, args: ToolCall["arguments"]): ToolCall {
@@ -116,12 +129,14 @@ export interface OpenOptions {
  */
 export class TestWorkspace {
   readonly directory: string;
+  readonly env: ExecutionEnv;
   readonly store: SqliteStore;
   private sessionIdValue: SessionId | undefined;
   private readonly opened: Nyte[] = [];
 
   private constructor(directory: string) {
     this.directory = directory;
+    this.env = createLocalExecutionEnv({ id: ENVIRONMENT_ID, cwd: directory });
     this.store = new SqliteStore(join(directory, "sessions.db"), { watchPollIntervalMs: 5 });
   }
 
@@ -136,13 +151,13 @@ export class TestWorkspace {
   }
 
   async open(options: OpenOptions): Promise<Nyte> {
-    const base: StaticNyteOptions = {
+    const base: NyteOptions = {
       store: this.store,
       streamFn: options.streamFn,
       models: catalogOf(...(options.models ?? [options.model])),
       model: options.model,
-      plugins: options.plugins,
-      env: { cwd: this.directory },
+      plugins: [localEnvironmentPlugin({ id: ENVIRONMENT_ID }), ...options.plugins],
+      defaultWorkspace: { kind: "local", id: ENVIRONMENT_ID, cwd: this.directory },
     };
     const sdk = await createNyte(
       options.compaction === undefined ? base : { ...base, compaction: options.compaction },

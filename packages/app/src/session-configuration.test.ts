@@ -20,6 +20,7 @@ function fixture() {
   const session: SessionInfo = {
     sessionId: id,
     activation: { kind: "active" },
+    workspace: { kind: "local", id: "fixture", cwd: "/" },
     name: "Draft",
     createdAt: 1,
     lastActivityAt: 1,

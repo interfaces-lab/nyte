@@ -3,6 +3,8 @@ import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { Icon } from "@nyte-ai/ui/icon";
+import { Spinner } from "@nyte-ai/ui/spinner";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 import { CatchBoundary } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
@@ -71,10 +73,43 @@ function loadRuntime(): Promise<typeof accountRuntime> {
 }
 
 const styles = create({
-  popup: { padding: 0, width: "auto" },
-  pending: { padding: 24, minWidth: 320 },
+  panel: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    minHeight: 280,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    textAlign: "center",
+  },
+  message: { margin: 0 },
   close: { position: "absolute", insetBlockStart: 8, insetInlineEnd: 8 },
 });
+
+function SignInPending(): ReactElement {
+  return (
+    <div role="status" {...props(styles.panel)}>
+      <Spinner />
+      <span {...props(srOnly)}>Loading sign-in</span>
+    </div>
+  );
+}
+
+function SignInFailed({ onRetry }: { readonly onRetry: () => void }): ReactElement {
+  return (
+    <div {...props(styles.panel)}>
+      <p role="alert" {...props(styles.message)}>
+        Couldn’t load sign-in.
+      </p>
+      <Button variant="outline" onClick={onRetry}>
+        Try again
+      </Button>
+    </div>
+  );
+}
 
 function AccountLoader(): ReactElement {
   const [state, setState] = useState<RuntimeState>({ kind: "idle" });
@@ -147,18 +182,11 @@ function AccountLoader(): ReactElement {
       }}
     >
       {state.kind === "ready" ? (
-        <state.runtime.Form />
+        <state.runtime.Form fallback={<SignInPending />} />
+      ) : state.kind === "failed" ? (
+        <SignInFailed onRetry={() => setAttempt((value) => value + 1)} />
       ) : (
-        <div {...props(styles.pending)}>
-          {state.kind === "failed" ? (
-            <>
-              <p role="alert">Couldn’t load sign-in.</p>
-              <Button onClick={() => setAttempt((value) => value + 1)}>Try again</Button>
-            </>
-          ) : (
-            <span role="status">Loading…</span>
-          )}
-        </div>
+        <SignInPending />
       )}
     </AccountDialog>
   );
@@ -191,7 +219,7 @@ function AccountDialog({
         }
       }}
     >
-      <Dialog.Popup xstyle={styles.popup}>
+      <Dialog.Popup>
         <Dialog.Title xstyle={srOnly}>Sign In to Nyte</Dialog.Title>
         {children}
         <Dialog.Close
@@ -224,10 +252,7 @@ function AccountUnavailable({ reset }: { readonly reset: () => void }): ReactEle
 
   return (
     <AccountDialog prompt={prompt} onDismiss={() => setPrompt(undefined)}>
-      <div {...props(styles.pending)}>
-        <p role="alert">Couldn’t load sign-in.</p>
-        <Button onClick={reset}>Try again</Button>
-      </div>
+      <SignInFailed onRetry={reset} />
     </AccountDialog>
   );
 }

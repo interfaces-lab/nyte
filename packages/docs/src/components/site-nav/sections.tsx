@@ -13,7 +13,7 @@ interface Props {
 
 function FeatureGlyph({ icon }: { icon: SiteFeatureIcon }) {
   switch (icon) {
-    case "design":
+    case "docs":
       return <IconBookSimple size={18} />;
     case "cloud":
       return <IconLayersThree size={18} />;

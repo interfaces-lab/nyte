@@ -104,7 +104,6 @@ export function ConnectScreen({
           <Input
             type="url"
             autoComplete="off"
-            autoFocus
             spellCheck={false}
             placeholder="http://100.64.0.1:52000"
             value={address}

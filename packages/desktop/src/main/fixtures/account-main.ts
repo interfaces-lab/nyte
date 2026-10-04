@@ -12,7 +12,7 @@ import { ACCOUNT_HOST, ACCOUNT_SCHEMES } from "../../account/scheme.ts";
 import { registerAccount } from "../account.ts";
 import { AccountCancelled } from "../account-session.ts";
 import { AccountStore } from "../account-store.ts";
-import type { SecretCipher } from "../connect-store.ts";
+import type { SecretCipher } from "../account-store.ts";
 import { registerRenderer } from "../renderer.ts";
 
 const directory = process.argv[2];
@@ -221,7 +221,7 @@ async function run(): Promise<void> {
   await until(
     async () =>
       (await contents.executeJavaScript('document.querySelector("[role=status]")?.textContent')) ===
-      "Loading…",
+      "Loading sign-in",
     "Sign-in did not show loading while the module was pending",
   );
   await contents.executeJavaScript(

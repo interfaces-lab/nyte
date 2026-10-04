@@ -2,6 +2,7 @@ import { NyteWireError, type NyteClient } from "@nyte-ai/client";
 import { waitingCall, type SessionState, type SessionUpdate } from "@nyte-ai/client";
 import {
   acceptsSelectionReply,
+  type Delivery,
   type ModelInfo,
   type ModelRef,
   type OperationInput,
@@ -30,9 +31,9 @@ export function useRemoteChat(client: NyteClient, activeSessionId: SessionId | u
     { target: typeof target; message: string } | undefined
   >(undefined);
 
-  const submission = useRef<
-    { target: typeof target; serializedContent: string; key: string } | undefined
-  >(undefined);
+  const submission = useRef<{ target: typeof target; serialized: string; key: string } | undefined>(
+    undefined,
+  );
 
   const inFlight = useRef<typeof submission.current>(undefined);
   const [sendingTarget, setSendingTarget] = useState<typeof target | undefined>(undefined);
@@ -148,7 +149,7 @@ export function useRemoteChat(client: NyteClient, activeSessionId: SessionId | u
   }, [state?.overlay]);
 
   const send = useCallback(
-    async (content: UserContent): Promise<boolean> => {
+    async (content: UserContent, delivery?: Delivery): Promise<boolean> => {
       const sessionId = target.sessionId;
 
       const empty = Array.isArray(content)
@@ -169,13 +170,14 @@ export function useRemoteChat(client: NyteClient, activeSessionId: SessionId | u
 
       // A lost response may hide an accepted send. Retrying that draft must reuse its receipt key.
       // Snapshot only when Send is pressed, including photo bytes without retaining mutable parts.
-      const serializedContent = JSON.stringify(content);
+      // Queueing the same draft after a lost steer is a different send, so delivery is part of it.
+      const serialized = JSON.stringify({ content, delivery });
       const previous = submission.current;
 
       const attempt =
-        previous?.target === target && previous.serializedContent === serializedContent
+        previous?.target === target && previous.serialized === serialized
           ? previous
-          : { target, serializedContent, key: randomUUID() };
+          : { target, serialized, key: randomUUID() };
 
       submission.current = attempt;
       inFlight.current = attempt;
@@ -183,7 +185,7 @@ export function useRemoteChat(client: NyteClient, activeSessionId: SessionId | u
       setSendError(undefined);
 
       try {
-        await client.messages.send({ sessionId, content, key: attempt.key });
+        await client.messages.send({ sessionId, content, delivery, key: attempt.key });
 
         if (submission.current === attempt) submission.current = undefined;
 

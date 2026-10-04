@@ -4,16 +4,17 @@
  * answer, and the notice fan-out to watchers. Runners and delegation are built
  * on top of it and reach back through `SessionPoolHooks`.
  */
-import { isAbsolute } from "node:path";
-import { isTerminalPhase } from "@nyte-ai/protocol";
+import { isTerminalPhase, schemas, type WorkspaceRef } from "@nyte-ai/protocol";
 import type { JsonValue } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { Plugin } from "../../plugins/types.ts";
+import { environmentProviders } from "../../plugins/environment.ts";
+import type { Plugin, PluginInfo } from "../../plugins/types.ts";
+import type { ExecutionEnv } from "../loop/env.ts";
 import { listEffects } from "../effects.ts";
 import { branch } from "../graph.ts";
 import type { Actor, Oid, RefName, Run } from "../model.ts";
-import { DELETED_REF, factRef, headRef, runRef } from "../names.ts";
+import { DELETED_REF, WORKSPACE_REF, factRef, headRef, runRef } from "../names.ts";
 import { pending } from "../queue.ts";
 import { listHeads, type ListedHead } from "../stacks.ts";
 import type { Session } from "../store.ts";
@@ -34,8 +35,6 @@ import {
   NyteClosed,
   UnknownSession,
   sessionId,
-  type ActiveSessionActivation,
-  type ActivationTarget,
   type CommandInfo,
   type Disposer,
   type HeadInfo,
@@ -44,17 +43,29 @@ import {
   type ParkedCall,
   type PluginCatalog,
   type RunInfo,
-  type SessionActivation,
-  type SessionActivationResolver,
   type SessionActivationState,
   type SessionId,
   type SessionInfo,
   type SessionParent,
   type Seq,
+  type Workspace,
+  type WorkspaceTrust,
 } from "./types.ts";
 import type { HostNotice, NoticeListener } from "./watch.ts";
 
-export const CWD_FACT = "cwd";
+const CWD_FACT = "cwd";
+
+/** What clients see of a workspace: never the locator. */
+function workspaceRef(workspace: Workspace): WorkspaceRef {
+  return { kind: workspace.kind, id: workspace.id, cwd: workspace.cwd };
+}
+
+export function actsIn(
+  env: Pick<ExecutionEnv, "id" | "cwd">,
+  workspace: Pick<Workspace, "id" | "cwd">,
+): boolean {
+  return env.id === workspace.id && env.cwd === workspace.cwd;
+}
 
 export const RUN_PREFIX = "refs/runs/";
 
@@ -67,6 +78,28 @@ export interface DriveState {
   deadline?: ReturnType<typeof setTimeout>;
 }
 
+/** An opened workspace a session runs in. */
+interface ActiveSessionActivation {
+  readonly kind: "active";
+  readonly plugins: readonly Plugin[];
+  /** The provider's environment, before any plugin wraps it. */
+  readonly env: ExecutionEnv;
+  /** The bootstrap plugins and the workspace's project plugins, loaded again. */
+  readonly reload?: () => Promise<readonly Plugin[]>;
+}
+
+/** A plugin set the host could not bring up; the inventory names the plugin that stopped it. */
+interface FailedSessionActivation {
+  readonly kind: "failed";
+  readonly error: string;
+  readonly plugins: readonly PluginInfo[];
+}
+
+type SessionActivation =
+  | ActiveSessionActivation
+  | FailedSessionActivation
+  | Exclude<SessionActivationState, { readonly kind: "active" | "failed" }>;
+
 export interface Pooled {
   readonly session: Session;
   /** The durable parent link, read once at adoption; a child's coverage follows its parent's. */
@@ -77,18 +110,20 @@ export interface Pooled {
    * The directory row as of `seq`, for the host answer it was built with.
    * Every store write appends an event, so an unchanged `events.last()` means
    * the row's inputs (facts, refs, queue, main branch) are unchanged too, and
-   * a list need not read the branch again.
+   * a list need not read the branch again, except a child's workspace, which
+   * comes from its root.
    */
   listed?: {
     readonly seq: Seq;
     readonly activation: SessionActivation | undefined;
     readonly info: SessionInfo;
+    /** The root's `refs/workspace` oid the row was built against; a child's row changes with it. */
+    readonly workspace: Oid | null;
   };
   /** The host's answer for this session, once asked; `reactivate` clears a blocked one. */
-  activationState?: SessionActivation;
-  resolving?: Promise<SessionActivation>;
+  activationState?: SessionActivation & { readonly resolvedFor: Workspace };
+  resolving?: Promise<NonNullable<Pooled["activationState"]>>;
   activation?: Activation;
-  activationCwd?: string;
   opening?: Promise<Activation | undefined>;
   relocating?: boolean;
   scopedPlugins?: boolean;
@@ -119,10 +154,6 @@ export interface SessionPoolHooks {
   }) => readonly Plugin[];
 }
 
-type ActivationSource =
-  | { readonly kind: "static"; readonly activation: ActiveSessionActivation }
-  | { readonly kind: "resolver"; readonly resolve: SessionActivationResolver };
-
 export function attributed<const Input extends object>(input: Input, actor: Actor | undefined) {
   return actor === undefined ? input : { ...input, actor };
 }
@@ -148,6 +179,16 @@ export function commandInfos(activation: Activation): CommandInfo[] {
   });
 }
 
+function unavailable(
+  workspace: Workspace,
+  reason: "unsupported" | "unreachable",
+): SessionActivation {
+  return {
+    kind: "requires",
+    requirement: { kind: "workspace_unavailable", workspace: workspaceRef(workspace), reason },
+  };
+}
+
 export function clientActivation(activation: SessionActivation): SessionActivationState {
   switch (activation.kind) {
     case "active":
@@ -155,8 +196,9 @@ export function clientActivation(activation: SessionActivation): SessionActivati
     case "failed":
       return { kind: "failed", error: activation.error };
     case "inactive":
+      return { kind: "inactive" };
     case "requires":
-      return activation;
+      return { kind: "requires", requirement: activation.requirement };
     default: {
       const _exhaustive: never = activation;
 
@@ -171,17 +213,14 @@ export function createSessionPool(input: {
 }) {
   const { options, hooks } = input;
   const pool = new Map<SessionId, Pooled>();
+  const providers = environmentProviders(options.plugins);
 
-  const activationSource: ActivationSource =
-    options.resolveActivation === undefined
-      ? {
-          kind: "static",
-          activation: { kind: "active", plugins: options.plugins, env: options.env },
-        }
-      : { kind: "resolver", resolve: options.resolveActivation };
-
-  let pluginsOverride =
-    activationSource.kind === "static" ? activationSource.activation.plugins : undefined;
+  if (!providers.has(options.defaultWorkspace.kind))
+    throw new Error(
+      `No plugin provides the "${options.defaultWorkspace.kind}" environment of the default workspace`,
+    );
+  const opened = new Map<string, Promise<SessionActivation>>();
+  let pluginsOverride: readonly Plugin[] | undefined;
 
   let catalogCache: Promise<PluginCatalog> | undefined;
   let closed = false;
@@ -247,6 +286,15 @@ export function createSessionPool(input: {
     return adopt(await options.store.open(id));
   };
 
+  const rootOf = async (pooled: Pooled, seen = new Set<string>()): Promise<Pooled> => {
+    if (pooled.parent === undefined) return pooled;
+
+    if (seen.has(pooled.session.id)) throw new Error("Session parent chain forms a cycle");
+    seen.add(pooled.session.id);
+
+    return rootOf(await open(pooled.parent.sessionId), seen);
+  };
+
   /** Delete the session from the store and drop its handle, after its work has stopped. */
   const retire = async (id: SessionId, pooled: Pooled): Promise<void> => {
     pooled.retired = true;
@@ -282,8 +330,7 @@ export function createSessionPool(input: {
   // Facts
   // -------------------------------------------------------------------------
 
-  async function readFact(session: Session, key: string): Promise<JsonValue | undefined> {
-    const name = factRef(key);
+  async function readBlobRef(session: Session, name: RefName): Promise<JsonValue | undefined> {
     const oid = await session.refs.read(name);
 
     if (oid === null) return undefined;
@@ -294,14 +341,31 @@ export function createSessionPool(input: {
     return object.value;
   }
 
-  const storedCwd = async (session: Session): Promise<string | undefined> => {
-    const value = await readFact(session, CWD_FACT);
+  const readFact = (session: Session, key: string): Promise<JsonValue | undefined> =>
+    readBlobRef(session, factRef(key));
 
-    if (value === undefined) return undefined;
+  /**
+   * The root's workspace. A root from before `refs/workspace` acts where new
+   * sessions start, at the directory its `cwd` fact kept if it has one.
+   */
+  const storedWorkspace = async (pooled: Pooled): Promise<Workspace> => {
+    const root = await rootOf(pooled);
+    const value = await readBlobRef(root.session, WORKSPACE_REF);
 
-    if (!Value.Check(Type.String(), value) || !isAbsolute(value)) {
-      throw new Error("Invalid stored session cwd");
+    if (value === undefined) {
+      const cwd = await readFact(root.session, CWD_FACT);
+
+      if (cwd === undefined) return options.defaultWorkspace;
+
+      if (!Value.Check(Type.String({ minLength: 1 }), cwd)) {
+        throw new Error("Invalid stored session cwd");
+      }
+
+      return { ...options.defaultWorkspace, cwd };
     }
+
+    if (!Value.Check(schemas.WorkspaceRef, value))
+      throw new Error("Invalid stored session workspace");
 
     return value;
   };
@@ -347,6 +411,30 @@ export function createSessionPool(input: {
 
   const writeFact = (session: Session, key: string, value: JsonValue | undefined): Promise<void> =>
     writeBlobRef(session, factRef(key), value, "fact");
+
+  /** Record the root's workspace against what the writer saw; `false` when another writer got there first. */
+  const writeWorkspace = async (
+    root: Session,
+    workspace: Workspace,
+    expect: Oid | null,
+  ): Promise<boolean> => {
+    const { kind, id, cwd, locator } = workspace;
+    const value: JsonValue = locator === undefined ? { kind, id, cwd } : { kind, id, cwd, locator };
+    const [oid] = await root.objects.put([{ kind: "blob", value }]);
+
+    if (oid === undefined) throw new Error(`Writing ${WORKSPACE_REF} returned no oid`);
+
+    const outcome = await root.refs.update(
+      [{ name: WORKSPACE_REF, from: expect, to: oid }],
+      attributed({ reason: "workspace" }, options.actor),
+    );
+
+    if (outcome.ok) return true;
+
+    if (outcome.reason === "fenced") throw new Error(`Workspace update was fenced: ${root.id}`);
+
+    return false;
+  };
 
   const readFacts = async (session: Session): Promise<ReadonlyMap<string, JsonValue>> => {
     // Session rows do not consume plugin settings or other host metadata.
@@ -483,17 +571,19 @@ export function createSessionPool(input: {
     const listed = await listSessionHeads(session);
     const mainTip = listed.find((item) => item.head === MAIN)?.tip ?? null;
 
-    const [activation, createdAt, heads, facts, commits] = await Promise.all([
+    const [activation, createdAt, heads, facts, commits, workspace] = await Promise.all([
       resolveSessionActivation(id, pooled),
       createdAtFor(id, pooled),
       projectHeads(session, listed),
       known.facts ?? readFacts(session),
       branch(session.objects, mainTip),
+      storedWorkspace(pooled),
     ]);
 
     return {
       id,
       activation: clientActivation(activation),
+      workspace: workspaceRef(workspace),
       createdAt,
       heads,
       facts,
@@ -523,22 +613,62 @@ export function createSessionPool(input: {
   // Activation
   // -------------------------------------------------------------------------
 
-  const resolveHostActivation = async (target: ActivationTarget): Promise<SessionActivation> => {
-    const resolved =
-      activationSource.kind === "static"
-        ? activationSource.activation
-        : await activationSource.resolve(target);
+  /**
+   * Open a workspace once: the host's trust first, then its kind's provider,
+   * then its project plugins. Only an active outcome is kept; anything else is asked again.
+   */
+  const openWorkspace = (workspace: Workspace): Promise<SessionActivation> => {
+    const key = JSON.stringify([workspace.kind, workspace.id, workspace.cwd]);
+    const known = opened.get(key);
 
-    if (resolved.kind !== "active" || pluginsOverride === undefined) return resolved;
+    if (known !== undefined) return known;
 
-    return { ...resolved, plugins: pluginsOverride };
+    const opening = (async (): Promise<SessionActivation> => {
+      const trust: WorkspaceTrust =
+        options.trust !== undefined
+          ? await options.trust(workspace)
+          : actsIn(workspace, options.defaultWorkspace)
+            ? { kind: "trusted" }
+            : { kind: "requires", requirement: { kind: "workspace_trust", cwd: workspace.cwd } };
+
+      if (trust.kind !== "trusted") return trust;
+      const provider = providers.get(workspace.kind);
+
+      if (provider === undefined) return unavailable(workspace, "unsupported");
+      const env = await provider.open(workspace).catch(() => undefined);
+
+      if (env === undefined || !actsIn(env, workspace))
+        return unavailable(workspace, "unreachable");
+      const load = trust.plugins;
+
+      if (load === undefined) return { kind: "active", plugins: options.plugins, env };
+      const reload = async () => [...options.plugins, ...(await load(env))];
+
+      try {
+        return { kind: "active", plugins: await reload(), env, reload };
+      } catch (cause) {
+        const error = cause instanceof Error ? cause.message : String(cause);
+
+        return { kind: "failed", error, plugins: [] };
+      }
+    })();
+
+    opened.set(key, opening);
+
+    void opening
+      .catch(() => undefined)
+      .then((state) => {
+        if (state?.kind !== "active") opened.delete(key);
+      });
+
+    return opening;
   };
 
   const catalogForNewSession = (): Promise<PluginCatalog> => {
     if (catalogCache !== undefined) return catalogCache;
 
     const opening = (async (): Promise<PluginCatalog> => {
-      const resolved = await resolveHostActivation({ kind: "new-session" });
+      const resolved = await openWorkspace(options.defaultWorkspace);
 
       if (closed) throw new NyteClosed();
 
@@ -547,7 +677,7 @@ export function createSessionPool(input: {
 
       const outcome = await activate({
         target: { kind: "new-session" },
-        plugins: resolved.plugins,
+        plugins: pluginsOverride ?? resolved.plugins,
         env: resolved.env,
       });
 
@@ -580,40 +710,29 @@ export function createSessionPool(input: {
   async function resolveSessionActivation(
     id: SessionId,
     pooled: Pooled,
-  ): Promise<SessionActivation> {
+  ): Promise<NonNullable<Pooled["activationState"]>> {
     if (closed) throw new NyteClosed();
 
     if (pooled.retired) throw new UnknownSession(id);
-    const saved = await storedCwd(pooled.session);
+    const workspace = await storedWorkspace(pooled);
 
-    if (
-      pooled.activationState?.kind === "active" &&
-      saved !== undefined &&
-      saved !== pooled.activationState.env.cwd
-    ) {
-      pooled.activationState = {
-        kind: "requires",
-        requirement: { kind: "workspace_trust", cwd: saved },
-      };
-      pooled.scopedPlugins = true;
-      await dispatchNotice(pooled, {
-        kind: "activation_changed",
-        activation: clientActivation(pooled.activationState),
-      });
-    }
-
+    // A tree that moved, here or on another host, opens again where it is now.
     if (
       pooled.activationState !== undefined &&
-      (pooled.parent === undefined || pooled.activationState.kind === "active")
-    )
-      return pooled.activationState;
+      !actsIn(pooled.activationState.resolvedFor, workspace)
+    ) {
+      pooled.activationState = undefined;
+      pooled.scopedPlugins = true;
+    }
+
+    if (pooled.activationState !== undefined) return pooled.activationState;
 
     if (pooled.resolving !== undefined) return pooled.resolving;
 
     const resolving = (async () => {
       const resolved =
         pooled.parent === undefined
-          ? await resolveHostActivation({ kind: "session", sessionId: id })
+          ? await openWorkspace(workspace)
           : await resolveSessionActivation(
               pooled.parent.sessionId,
               await open(pooled.parent.sessionId),
@@ -621,38 +740,23 @@ export function createSessionPool(input: {
 
       if (closed || pooled.retired) throw closed ? new NyteClosed() : new UnknownSession(id);
 
-      // Freeze the initial location too: a completed child must not follow a later parent move.
-      const initialCwd =
-        resolved.kind === "active"
-          ? resolved.env.cwd
-          : resolved.kind === "requires" && resolved.requirement.kind === "workspace_trust"
-            ? resolved.requirement.cwd
-            : undefined;
-
-      if (saved === undefined && initialCwd !== undefined) {
-        const [oid] = await pooled.session.objects.put([{ kind: "blob", value: initialCwd }]);
-
-        if (oid === undefined) throw new Error("Writing session cwd returned no oid");
-        await pooled.session.refs.update(
-          [{ name: factRef(CWD_FACT), from: null, to: oid }],
-          attributed({ reason: "fact" }, options.actor),
-        );
-      }
-
-      const cwd = await storedCwd(pooled.session);
-
-      const state: SessionActivation =
-        cwd !== undefined && (resolved.kind !== "active" || resolved.env.cwd !== cwd)
-          ? { kind: "requires", requirement: { kind: "workspace_trust", cwd } }
-          : resolved;
-
       pooled.scopedPlugins =
         pooled.scopedPlugins === true ||
-        (pooled.parent !== undefined
-          ? (await open(pooled.parent.sessionId)).scopedPlugins === true
-          : activationSource.kind === "static" &&
-            cwd !== undefined &&
-            cwd !== activationSource.activation.env.cwd);
+        (pooled.parent === undefined
+          ? !actsIn(workspace, options.defaultWorkspace)
+          : (await open(pooled.parent.sessionId)).scopedPlugins === true);
+
+      // A global plugin swap reaches the roots that act where new sessions start.
+      const state = {
+        ...(resolved.kind === "active" &&
+        pooled.parent === undefined &&
+        !pooled.scopedPlugins &&
+        pluginsOverride !== undefined
+          ? { ...resolved, plugins: pluginsOverride }
+          : resolved),
+        resolvedFor: workspace,
+      };
+
       pooled.activationState = state;
       await dispatchNotice(pooled, {
         kind: "activation_changed",
@@ -677,10 +781,12 @@ export function createSessionPool(input: {
 
     if (state.kind !== "active") return undefined;
 
-    if (pooled.activation !== undefined && pooled.activationCwd !== state.env.cwd) {
-      await hooks.stopRunner(pooled);
-      await pooled.activation.close();
+    const stale = pooled.activation;
+
+    if (stale !== undefined && !actsIn(stale.env, state.env)) {
       pooled.activation = undefined;
+      await hooks.stopRunner(pooled);
+      await stale.close();
     }
 
     if (pooled.activation !== undefined) return pooled.activation;
@@ -706,7 +812,7 @@ export function createSessionPool(input: {
       }
 
       if (outcome.kind === "failed") {
-        pooled.activationState = outcome;
+        pooled.activationState = { ...outcome, resolvedFor: resolved.resolvedFor };
         await dispatchNotice(pooled, {
           kind: "activation_changed",
           activation: clientActivation(outcome),
@@ -719,7 +825,6 @@ export function createSessionPool(input: {
       const built = outcome.activation;
       built.subscribe((notice) => dispatchNotice(pooled, notice));
       pooled.activation = built;
-      pooled.activationCwd = resolved.env.cwd;
       // Activation's first inventory notice fires before activate() returns.
       // Relay the resulting inventory to watches that were already open.
       const plugins = built.plugins.list();
@@ -736,15 +841,6 @@ export function createSessionPool(input: {
     pooled.opening = opening;
 
     return opening;
-  };
-
-  const activeFor = async (id: SessionId): Promise<Activation> => {
-    const pooled = await open(id);
-    const active = await activationFor(id, pooled);
-
-    if (active === undefined) throw new Error("Session is not active in this host");
-
-    return active;
   };
 
   return {
@@ -769,7 +865,12 @@ export function createSessionPool(input: {
     writeFact,
     writeBlobRef,
     readFacts,
-    storedCwd,
+    rootOf,
+    storedWorkspace,
+    writeWorkspace,
+    openWorkspace,
+    /** Whether the host's workspace backend reads this environment's files: it reads the default workspace's. */
+    served: (env: Pick<Workspace, "id">): boolean => env.id === options.defaultWorkspace.id,
     readRun,
     currentRun,
     parkedCalls,
@@ -780,11 +881,10 @@ export function createSessionPool(input: {
     subscribeNotices,
     resolveSessionActivation,
     activationFor,
-    activeFor,
     catalogForNewSession,
-    /** Where a new session would start, without creating or activating one. */
+    /** Where a new session would start, once its workspace opens; nothing is created or activated. */
     async cwdForNewSession(): Promise<string | undefined> {
-      const resolved = await resolveHostActivation({ kind: "new-session" });
+      const resolved = await openWorkspace(options.defaultWorkspace);
 
       return resolved.kind === "active" ? resolved.env.cwd : undefined;
     },

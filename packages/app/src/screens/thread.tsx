@@ -84,6 +84,7 @@ import { outbox, useOutboxRows } from "../use-outbox.ts";
 import { nyte } from "../nyte.ts";
 import type { DesktopModelOption } from "../nyte.ts";
 import { sessionReadState } from "../session-read-state.ts";
+import { useMountEffect } from "../use-mount-effect.ts";
 
 import { BackgroundWork } from "../conversation/tray/terminals.tsx";
 import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
@@ -616,7 +617,6 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
               ) : (
                 <Input
                   aria-label="Chat name"
-                  autoFocus
                   xstyle={threadStyles.renameInput}
                   value={draftName}
                   onValueChange={setDraftName}
@@ -743,7 +743,6 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
                       }))
                     }
                     inputRef={attachComposer}
-                    autoFocus={false}
                   />
                 )}
               </TranscriptViewport>
@@ -1101,6 +1100,46 @@ function DropPreview({
   );
 }
 
+/** Places where a key already means something: fields, editors, menus, lists, and dialogs. */
+const KEY_OWNERS =
+  'input, textarea, select, [contenteditable], [role="textbox"], [role="menu"], [role="listbox"], [role="dialog"], [role="alertdialog"]';
+
+/**
+ * Typing while nothing owns the keys starts a message in the active pane.
+ * Focus moves during keydown, so the browser types the character into the
+ * composer itself; a key that belongs elsewhere is never taken.
+ */
+function TypeToCompose({
+  input,
+}: {
+  readonly input: RefObject<ComposerEditorHandle | null>;
+}): null {
+  useMountEffect(() => {
+    const route = (event: KeyboardEvent): void => {
+      const owner = document.activeElement;
+
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.key.length !== 1 ||
+        (event.key === " " && owner !== document.body) ||
+        owner?.closest(KEY_OWNERS)
+      )
+        return;
+      input.current?.focus({ preventScroll: true });
+    };
+
+    window.addEventListener("keydown", route);
+
+    return () => window.removeEventListener("keydown", route);
+  });
+
+  return null;
+}
+
 type PanePosition =
   | { readonly kind: "single" }
   | { readonly kind: "leading"; readonly ratio: number }
@@ -1152,6 +1191,7 @@ function PaneHost({ pane, position }: { pane: PaneState; position: PanePosition 
       onPointerDown={() => actions.focus(pane.id)}
       onFocusCapture={() => actions.focus(pane.id)}
     >
+      {activePane(layout).id === pane.id && <TypeToCompose input={inputRef} />}
       <ReferenceOpenerProvider value={referenceOpener}>
         {pane.selection.kind === "session" ? (
           <SessionConversation

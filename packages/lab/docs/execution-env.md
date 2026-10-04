@@ -1,141 +1,358 @@
 # Execution environment
 
-Where a tool call acts. One object per call, `call.env`, carrying a filesystem
-and the shell that runs in it. Tools reach files and processes only through it,
-never through anything captured when they were built. The lab's environments
-prototype (This Mac, Studio, Cloud) is the picker for the same thing this doc
-describes underneath.
+Where a tool call acts. An environment is a set of file and shell operations
+plus the identity of the disk they reach. A provider plugin opens one for a
+workspace, plugins wrap its operations, and every tool call of the session gets
+it as `call.env`. Tools reach files and processes only through it, never
+through anything captured when they were built. The lab's environments
+prototype (This Mac, Studio Mac, Work MacBook, Cloud) is the picker for the
+same thing this record describes underneath.
 
-Source: `packages/core/src/kernel/loop/env.ts` (the contract),
-`packages/core/src/tools/env.ts` (the local implementation, `requireEnv`,
-`withExecutionEnv`), `packages/core/src/plugins/registry.ts` (where every tool
-gets one). Related: `refs/facts/cwd` in `packages/core/src/kernel/sdk/session-pool.ts`,
-which this replaces over the steps below.
+Source:
 
-## Shape
+- `packages/core/src/kernel/loop/env.ts`: the contract.
+- `packages/core/src/plugins/environment.ts`: providers by kind, and wraps under the provider's identity.
+- `packages/core/src/tools/env.ts`: the local provider.
+- `packages/core/src/kernel/sdk/session-pool.ts`: opening a workspace and the stored ref.
+- `packages/core/src/kernel/sdk/activation.ts`: tool binding.
+- `packages/core/src/kernel/sdk/relocate.ts` and `packages/core/src/kernel/effects.ts`: moves and replay.
+- `packages/host/src/environment-id.ts`: the local id.
+
+## The environment
 
 ```ts
-interface ExecutionEnv {
-  readonly fs: string;   // filesystem identity: equal values see the same files at the same paths
-  readonly cwd: string;  // a path inside that filesystem
-  readFile(path): Promise<Buffer>;
-  writeFile(path, content): Promise<void>;
-  mkdir(path): Promise<void>;                     // creates parents
-  stat(path): Promise<FileInfo | undefined>;      // undefined when nothing is there
-  readdir(path): Promise<string[]>;
-  realpath(path): Promise<string | undefined>;
-  exec(command, { onData, signal, timeout }): Promise<{ exitCode: number | null }>;
+interface EnvOps {
+  resolve(...paths: string[]): string;                 // absolute; the first path resolves against cwd
+  readFile(path: string): Promise<Buffer>;
+  writeFile(path: string, content: string): Promise<void>;
+  mkdir(path: string): Promise<void>;                  // creates parents
+  stat(path: string): Promise<FileInfo | undefined>;   // follows symlinks; undefined when nothing is there
+  readdir(path: string): Promise<string[]>;
+  realpath(path: string): Promise<string | undefined>;
+  exec(command: string, options: { onData; signal?; timeout? }): Promise<{ exitCode: number }>;
+}
+
+interface ExecutionEnv extends EnvOps {
+  readonly id: string;   // equal ids see the same files at the same paths; compared exactly
+  readonly cwd: string;  // a path inside that environment
 }
 ```
 
-`fs` and the object are deliberately separate. The object answers "how do I
-touch this disk"; `fs` answers "is this the same disk". The file mutation queue
-serialises `edit` and `write` on `fs + canonical path`, so two env objects over
-one disk share a queue and two disks with identical paths never wait on each
-other. A fresh object per call is fine.
+`EnvOps` is what an environment does. `ExecutionEnv` adds which environment it
+is. `id` names the disk, not the object: two env objects over one disk share an
+id. The file mutation queue serialises `edit` and `write` on `id` plus the
+canonical path, so two objects over one disk share a queue and two disks with
+identical paths never wait on each other.
 
-The local implementation is `createLocalExecutionEnv({ cwd })` with
-`fs = "local:<hostname>"`. A container, VM, or remote host is another
-implementation with its own `fs`.
+Path rules belong to the environment. Tools and plugins build paths with
+`resolve` and walk up with `resolve(dir, "..")`. The local provider's `resolve`
+reads a path the way a person types one on this machine: `~`, `file://` URLs,
+and on Windows the Git Bash, MSYS, Cygwin and WSL drive forms. The Vercel
+provider's is POSIX `resolve` against `cwd`.
 
-## How a call gets one
+`exec` runs a shell command in `cwd` and streams combined stdout and stderr to
+`onData`. A command the timeout stops rejects with a `ToolError` of reason
+`timeout`; one the signal stops rejects with the stop reason the abort carries.
 
-```text
-activate({ env: { cwd } })
-  └─ createRegistries(createLocalExecutionEnv({ cwd }))
-       └─ ToolMapDraft.set(id, tool)
-            └─ withExecutionEnv(bindTool(tool), env)   ← every contributed tool, once, identity cached
-                 └─ tool.execute(input, { ...call, env })
+## Providers
+
+```ts
+interface Plugin {
+  readonly id: string;
+  readonly environment?: EnvironmentProvider;
+  session(api: SessionApi): void | Promise<void>;
+}
+
+interface EnvironmentProvider {
+  readonly kind: string;                              // the workspace kind it opens
+  open(workspace: Workspace): Promise<ExecutionEnv>;
+}
 ```
 
-Binding time is the chokepoint: the jobs wrapper's inner `bash`, nested
-`call.run.tools.execute`, and plugin `wrap`s all sit above it and see the same
-env. `call.env` is absent only in the bare loop, like `call.run`.
+A host installs its providers among `NyteOptions.plugins`, the plugins it
+passes when it creates the SDK. `createNyte` throws when two of them provide
+the same kind, or when none provides `defaultWorkspace.kind`. Desktop, the
+terminal and `@nyte-ai/serve` compose through `createHost`, which puts
+`localEnvironmentPlugin({ id })` first and `HostOptions.environments` after it.
+A server that composes its own SDK installs the same kind of list and adds or
+swaps a provider plugin, such as the Vercel sandbox.
 
-The built-in tools take no `cwd` and no `operations`:
+The kernel consults providers when it opens a workspace, before any session in
+that workspace activates. Project plugins, the ones that live inside a
+workspace, load only after that open, from the trust answer's loader. So they
+can wrap but never provide: the kernel builds its provider map once from
+`NyteOptions.plugins` and never reads a later plugin's `environment`. Load order
+settles this; there is no separate rule to check.
+
+The host owns allocation, reconnection, credentials and cleanup. `ExecutionEnv`
+has no `close`, and the kernel never disposes of an environment.
+
+## Wraps
+
+```ts
+type EnvironmentWrap = (inner: EnvOps) => EnvOps & { readonly id?: never; readonly cwd?: never };
+
+// SessionApi
+readonly env: ExecutionEnv;                 // the provider's environment through the wraps of the last rebuild
+wrapEnv(wrap: EnvironmentWrap): Disposer;   // takes effect at the next rebuild
+```
+
+Any plugin of a session can wrap, project plugins included. Wraps compose in
+plugin order, each around the ones before it. A wrap sees `EnvOps`, its return
+type rejects `id` and `cwd`, and `wrappedEnvironment` takes both from the
+provider and freezes the result. So a wrap cannot change identity, by
+construction. Each composition starts from a fresh object that forwards to the
+provider's, so a wrap that assigns to `inner` changes no other session. An
+extension that changes what the disk is, such as an overlay, a copy-on-write
+layer or a worktree, is a provider deriving from another one, with its own kind
+and its own `id` recorded in the workspace.
+
+Wraps are not a boundary. `exec` takes a shell string, so a wrap that refuses a
+path in `readFile` does not stop `cat` from reading it.
+
+## Opening a workspace
+
+```text
+open(workspace)
+  1. trust(workspace)                     NyteOptions.trust; without one, trusted for defaultWorkspace only, else requires workspace_trust
+       inactive | requires                that state; no provider runs, no plugin loads
+  2. the provider for workspace.kind      none: requires workspace_unavailable, reason "unsupported"
+  3. provider.open(workspace)             throws, or env.id or env.cwd differ: "unreachable"
+  4. trusted.plugins?.(env)               the project plugins; a throw: failed
+  → active { plugins: [...NyteOptions.plugins, ...project], env, reload? }
+```
+
+Trust is decided once, when a workspace opens. `WorkspaceTrust` is `trusted`,
+with an optional loader for project plugins, `inactive`, or `requires` with a
+requirement such as `workspace_trust`. A denied open loads nothing. After a
+`trusted` answer nothing asks again: no tool call, plugin or child waits on a
+confirmation. Before each response the runner calls `reload`, the same loader,
+to pick up changed project plugins without asking trust again. Children resolve
+through their parent to the root and run under the root's open. Extra approval
+checks belong in plugins.
+
+The SDK caches only successful opens. A root keeps its refusal until
+`reactivate()` asks again or its tree moves; a new root or a relocation into
+that workspace asks again.
+
+`createHost` from `@nyte-ai/host` answers `trust` in every mode. A workspace in
+another environment is trusted and runs the host's own plugins; in `workspace`
+mode those are the home target's built-ins and user plugins, never a project
+folder's.
+For this installation's id, the folder the host was created for gets the host's
+plugin set. In `workspace` mode another folder gets what the workspace store
+says: trusted loads its project plugins, unknown is `requires/workspace_trust`,
+and a missing or unreadable folder is `inactive`. `chat` and `custom` hosts
+report `requires/workspace_trust` for any other folder. A loader
+failure reaches `onFailure` with its paths and errors, and the session's
+activation reads `Plugins failed to load`.
+
+## Identity
+
+The environment `id` is the only identity. The workspace ref, the effect stamp,
+the mutation queue key and the client view all carry it, and the kernel
+compares it exactly for every kind, `local` included.
+
+A local installation's id is `environmentId()` from `@nyte-ai/host`: a
+lowercase v4 UUID, the shape of Connect's `Uuid`, stored in
+`${nyteHome()}/environment-id`, where `nyteHome()` is `NYTE_HOME` or `~/.nyte`.
+Concurrent first calls converge on one value, and no reader sees a partial
+file. A malformed file throws, and nothing overwrites it. Desktop and
+terminal both call it, so they share one id for one OS user and `NYTE_HOME`.
+
+The id is independent of the Connect link. The broker assigns a linked
+environment its id (`LinkedEnvironment.id`) when the machine links, and
+unlinking drops that link. An installation has its environment id before any
+link and keeps it through link and unlink, because effects and workspace refs
+record it.
+
+Two machines sharing a store have different ids. The local provider opens
+every workspace with its own id, so a root stored with another machine's id is
+`unreachable`. Other providers take `id` from the stored workspace, which the
+host assigned when it allocated the environment. A server without a Nyte home
+passes a fixed UUID; the demos keep one as a constant.
+
+## The workspace ref
+
+```text
+refs/workspace    on the root session only. Blob { kind, id, cwd, locator? }
+```
+
+- `kind` names the provider that opens it. It is an open string.
+- `id` is the environment's identity.
+- `cwd` is a path inside that environment.
+- `locator` is whatever the provider reopens it with. The store keeps it in
+  plain text, so never credentials. The kernel never reads it, and clients
+  never see it.
+
+`sessions.create` records it. A root gets `input.workspace`, or
+`NyteOptions.defaultWorkspace` when the input names none, written as a CAS from
+nothing before `create` returns. A child gets only its parent link and resolves
+through it to the root. The input is a union, so one call cannot name both:
+
+```ts
+create(input?: { sessionId?: SessionId; name?: string } & (
+  | { parent?: SessionParent; workspace?: never }
+  | { parent?: never; workspace?: Workspace }
+)): Promise<SessionInfo>;
+```
+
+The wire operation `sessions.create` carries no `workspace`: a client's root
+starts where the host starts new sessions, and only a host names another.
+
+Legacy roots are read, never migrated. A root without `refs/workspace` acts in
+the default workspace at the directory its `refs/facts/cwd` holds, or at the
+default directory when it has none. Nothing writes the `cwd` fact or backfills
+the ref.
+
+Host-only `sessionWorkspace({ sessionId })` returns the tree's workspace with
+its locator. `sessionCwd` returns its `cwd` while the tree is active in the
+environment the host's workspace backend reads, and `undefined` otherwise. A
+saved path is not a trust grant.
+
+## Tool binding
+
+```text
+registry tools                    AgentTool, call: ToolContext { id, signal, update, run?, env }
+  plugin draft.wrap, jobs wrapper   sit here, so they see call.env
+activation.tools()                the single executable read, cached per tool
+  └─ execute: (args, call) => tool.execute(args, { ...call, env })
+turn, loop, call.run.tools        ExecutableTool, call: ToolCall without env
+```
+
+`ToolContext` is `ToolCall` with a required `env`. `AgentTool` and
+`ToolDefinition` take it by default, so an authored tool always has an
+environment. `ExecutableTool` is the bound form the loop runs. The binding sits
+outside every plugin wrap, so a wrapper's call carries `env` as the tool's
+does. `env` is the activation's: the provider's environment through every wrap.
+
+A job forwards the env of the call that started it, and a user job from
+`jobs.start` gets the activation's. The built-in tools take no `cwd`:
 
 ```ts
 api.tools.add("read", { ...createReadToolDefinition(), replay: "safe" });
 ```
 
-## What it replaced
+Plugins act in the same environment through `api.env`. `createHost` in
+`workspace` mode reads `AGENTS.md` and its alternatives in the trust answer's
+loader, through the opened environment and before any plugin loads. A sandbox
+tree gets the sandbox's instructions. Only the user-global file in `globalDir`
+comes from the host's disk.
 
-| before | after |
-| --- | --- |
-| `ReadOperations`, `WriteOperations`, `EditOperations`, `LsOperations`, `BashOperations` | one `ExecutionEnv` |
-| `createBashToolDefinition(cwd, { operations, shellPath, spawnHook })` | `createBashToolDefinition({ commandPrefix? })`; shell choice lives on the env |
-| `cwd` closed over at `session(api)` | `call.env.cwd` at each call |
-| image sniff that opened the file itself | sniff on the bytes `env.readFile` returned |
-| mutation queue keyed on absolute path | keyed on `fs + realpath` |
-| "[Image: original WxH, displayed at …]" and "[Image converted …]" text in tool output | gone; the image is bounded silently |
+## Replay
 
-## Why not Pi Durable's shape
+`TurnOptions.env` is required, and each effect intent records
+`environment: env.id`. On resume, `decideRecovery(view, env.id)` reruns a
+`replay: "safe"` intent only when the id it recorded equals the runner's, and
+settles it `interrupted` otherwise. An intent that recorded no environment
+never reruns.
 
-Pi Durable has the same object (`ExecutionEnv`) but reaches it through
-`HarnessOptions.env`, a host closure the harness calls on every tool task,
-reading a per-conversation document (`defineDoc`) to decide where. That fits a
-harness with a single commit line, durable tasks, and typed documents. Nyte
-skipped all three for git's four authorities: objects, refs, leases, events.
+## Relocate
 
-What carries over is the object, per-call resolution, and `fs` as a separate
-identity. What does not: documents (a fact is a ref), a per-call host closure
-(the activation is already lease-scoped), and a static `replay` flag as the
-only replay guard (see step 2).
+`relocate({ sessionId, workspace })` moves the whole tree of that session's
+root. The destination opens as any workspace opens, and a refusal returns that
+state with nothing moved. The move returns `busy` while any session in the tree
+has a live drive, a non-terminal run, queued work the runner would land, a
+running job, or a held head or job lease. Moving a root that is not active back
+to its stored workspace skips the run, queued-work and running-job checks.
 
-## Steps
+The kernel stops every runner in the tree, holds every head lease while the
+destination's plugins activate, and writes the root's `refs/workspace` as a
+CAS against the value read when the move began. A lost CAS returns `busy`.
+Descendants drop their activations and resolve through the root on their next
+use. Global `setPlugins` reaches only roots created in the default workspace and
+never moved; a host reloads any other tree with
+`setPlugins(plugins, { sessionId })`.
 
-Steps 1 and 2 are done. Each later step stands on its own.
+A runner checks before each step, and before it prepares, sends or runs tools,
+that its environment still matches the stored workspace. When another host has
+moved the tree, the runner resolves the session again and stops; the session
+runs once its new workspace opens.
 
-| step | change | where |
-| --- | --- | --- |
-| 1 | `ExecutionEnv`, `call.env`, tools stop closing over `cwd`, local only | done |
-| 2 | effect intent records `fs`; resume reruns a `replay: "safe"` call only when this runner's `fs` matches, else settles `interrupted` | done: `Effect.fs`, `decideRecovery(view, fs)`, `TurnOptions.env`, `Activation.env` |
-| 3 | `refs/workspace` on the root session; activation resolves it; `requires/workspace_trust` generalises to `requires/workspace { ref, reason }` | `session-pool.ts`, `protocol` |
-| 4 | relocate is a CAS on the root's ref; retire `refs/facts/cwd` | `relocate.ts` |
-| 5 | first non-local `kind` on the server host | `host`, `server` |
+## The workspace fact
 
-### The workspace ref
+The ref reaches watchers as the `fact` event with key `workspace` and value
+`{ kind, id, cwd }`, locator stripped. `SessionInfo.workspace` carries the same
+value for every session; a child's comes from its root. Only the root's stream
+carries the event.
 
-```text
-refs/workspace    on the root session only. Blob { fs, kind, locator, cwd }
+`ActivationRequirement` includes `workspace_unavailable { workspace, reason }`.
+`unsupported` means this host has no provider for the kind; `unreachable` means
+the provider threw or returned a different `id` or `cwd`. The app shows it as a
+toast rather than a trust prompt.
+
+The host's `WorkspaceBackend`, its file reads and version control, serves only
+sessions that are active in an environment whose `id` equals the default
+workspace's. A sandbox tree gets neither.
+
+## The Vercel provider
+
+`@nyte-ai/vercel/sandbox` exports `vercelSandboxPlugin({ connect })`, the
+provider for kind `vercel-sandbox`. Opening a workspace connects nothing; each
+operation calls `connect(workspace)` for the application's `@vercel/sandbox`
+Sandbox and acts in it under the workspace's `id` and `cwd`. `locator` holds
+what `connect` needs, such as the Sandbox name.
+
+```ts
+const nyte = await createNyte({
+  ...options,
+  plugins: [localEnvironmentPlugin({ id }), vercelSandboxPlugin({ connect }), ...plugins],
+  defaultWorkspace: { kind: "local", id, cwd },
+  trust: () => ({ kind: "trusted" }),
+});
+
+await nyte.sessions.create({
+  workspace: { kind: "vercel-sandbox", id: randomUUID(), cwd: sandboxCwd, locator: { name } },
+});
 ```
 
-- `fs` is the filesystem identity above.
-- `kind` and `locator` are what the host needs to reopen it. The kernel stores
-  them and asks; it never interprets them and never allocates.
-- `cwd` is a path inside that filesystem.
+Without `trust`, only `defaultWorkspace` is trusted, so a host that creates
+sandbox workspaces passes `trust`.
+
+Command, abort and file semantics: `packages/vercel/README.md`.
+
+## Pi Durable
+
+Pi Durable has the same object, `ExecutionEnv`, and reaches it through
+`HarnessOptions.env`: a host closure the harness calls on every tool task,
+reading a per-conversation document to decide where. Nyte opens an environment
+once per workspace through a provider plugin, keeps where in a root ref, and
+records the id per call in effect intents. What carries over is the object and
+an identity separate from it. Pi's server id is not copied; the identity is
+Nyte's environment id.
 
 ## Decisions
 
-**The host writes the ref.** A session created in a sandbox has its ref written
-by whoever allocated the sandbox. The kernel asks the host to `open` it at
-activation and gets an env or a requirement. Same division as trust today.
+**Identity is Nyte's environment id.** A UUID in the Nyte home for local
+installations, assigned by the host for other kinds, compared exactly
+everywhere. A hostname can change and can collide; a Connect link comes and
+goes.
 
 **Children inherit; there is no per-child workspace.** A child is a branch off
-its parent and resolves up through `PARENT_FACT` to the root's one ref. Every
-head in a session and every child under it shares it. Something that needs a
-different place is a new root, not a branch. This is why the child-`cwd`
-freeze in `resolveSessionActivation` goes away: a finished child is a leaf and
-runs no tools; what it did is in its effects once intent carries `fs`.
+its parent and resolves up through its parent link to the root's one ref.
+Something that needs a different place is a new root. Relocating a child
+relocates its root.
 
-**Current state in refs, history in objects.** The ref says where the tree acts
-now. Effect intent says where each call acted. Nothing else records location.
+**Current state in refs, history in objects.** The ref says where the tree
+acts. Effect intents say where each call acted. Nothing else records location.
 
-**Moves wait for quiet.** Relocate is a CAS on the root ref, refused while any
-head or child in the tree is live, which `relocate` already enforces. Every
-activation in the tree closes and reopens on the new ref.
-
-**Env lifetime is the activation's.** The activation is lease-scoped; lose the
-head lease and the env closes; another runner, maybe another host, opens its
-own. The host dedupes connections by `fs`. Nothing new fences this.
+**Moves wait for quiet.** Work is never cancelled to move a tree.
 
 ## Open
 
-- `requires/workspace` reasons: `trust` (local), `unreachable`, `unsupported_kind`.
-  A desktop opening a server-created sandbox session says `unsupported` rather
-  than running local.
-- `~` expansion in `resolveToCwd` still uses this machine's home directory. Fine
-  for `local:*`; a remote env needs its own.
-- The mutation queue is per process. Two hosts on PostgreSQL editing one file
-  through one sandbox are not serialised by it; the head lease is what keeps
-  them apart.
+- MCP stdio servers start on the host with the session's `cwd`, even for a
+  sandbox tree.
+- `sessions.list` and `sessions.get` open each root's workspace once, so a
+  provider's `open` must be cheap: construct the environment and connect on
+  first use.
+- The `local-environment` provider plugin appears in plugin inventories.
+- The mutation queue is per process, so it does not serialise two hosts on
+  PostgreSQL editing one file through one sandbox.
+- The head lease covers one head, so two hosts driving different heads or
+  children of one tree in one sandbox are not kept apart by it.
+- `bash`, MCP and code mode spill truncated output to the host's temp directory
+  and withhold the path when the session's environment cannot read it, so a
+  sandbox session never sees the full output.
+- The demos and Cloudflare pin one environment id for every instance and
+  install the local provider, which hands every plugin the host's files and
+  shell through `SessionApi.env`.

@@ -117,7 +117,6 @@ function ConnectForm({
           type="url"
           aria-label="Server URL"
           autoComplete="off"
-          autoFocus
           spellCheck={false}
           placeholder="https://nyte-server.example.com"
           value={baseUrl}
@@ -542,7 +541,6 @@ function TunnelForm({
           variant="quiet"
           aria-label="Public hostname"
           autoComplete="off"
-          autoFocus
           spellCheck={false}
           placeholder="nyte.example.com"
           value={hostname}
@@ -842,7 +840,7 @@ function TunnelRow({
     onSettled: () => client.invalidateQueries({ queryKey: keys.remoteAccess }),
   });
 
-  const glyph = <Icon name="globe" size={16} />;
+  const glyph = <Icon name="cloudflare" size={16} />;
   const title = "Over Cloudflare Tunnel";
 
   switch (tunnel.kind) {
@@ -1015,7 +1013,7 @@ export function RemoteAccess({ active }: { readonly active: boolean }): ReactEle
           </>
         ) : state.reach === "cloudflare" ? (
           <ConnectionRow
-            glyph={<Icon name="globe" size={16} />}
+            glyph={<Icon name="cloudflare" size={16} />}
             title={`Serving ${servedTargetLabel(state.target)}`}
             detail={state.address}
             control={

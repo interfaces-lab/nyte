@@ -35,7 +35,7 @@ export function submissionDelivery(
   action: SubmitAction,
   choices: DeliveryChoices,
   current?: Delivery,
-  preference: RunningMessagePreference = "queue",
+  preference: RunningMessagePreference = "steer",
 ): Delivery {
   const primary = current ?? choices[preference];
 

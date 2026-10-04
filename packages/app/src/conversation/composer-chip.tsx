@@ -61,6 +61,7 @@ export function ComposerChipView({
       {...props(
         reference.kind === "skill" ? intent.warning : intent.primary,
         composerStyles.mentionChip,
+        onRemove !== undefined && composerStyles.mentionChipRemovable,
       )}
     >
       {open === undefined ? (
@@ -78,25 +79,27 @@ export function ComposerChipView({
         </Button>
       )}
       {onRemove !== undefined && (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                size="2xs"
-                iconOnly
-                icon="x"
-                aria-label={`Remove ${label}`}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onRemove();
-                }}
-                xstyle={composerStyles.mentionChipRemove}
-              />
-            }
-          />
-          <TooltipContent>{`Remove ${label}`}</TooltipContent>
-        </Tooltip>
+        <span {...props(composerStyles.mentionChipRemove)}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="plain"
+                  size="2xs"
+                  iconOnly
+                  icon="x"
+                  aria-label={`Remove ${label}`}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRemove();
+                  }}
+                />
+              }
+            />
+            <TooltipContent>{`Remove ${label}`}</TooltipContent>
+          </Tooltip>
+        </span>
       )}
     </span>
   );

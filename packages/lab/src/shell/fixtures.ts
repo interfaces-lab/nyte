@@ -11,6 +11,7 @@ function subagent(id: string, name: string, phase: RunPhase, awaitingReply?: tru
   return {
     sessionId: sessionId(id),
     activation: { kind: "active" },
+    workspace: { kind: "local", id: "fixture", cwd: "/" },
     name,
     createdAt: now - 600_000,
     lastActivityAt: now - 60_000,

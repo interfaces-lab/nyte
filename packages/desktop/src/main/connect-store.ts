@@ -1,16 +1,18 @@
 /**
  * Account remote access on disk: `~/.nyte/connect.json`, mode 0600 beside the
- * other credential stores. The machine key is sealed by the OS keychain
- * before it reaches the file; device tokens exist here only as SHA-256
+ * other credential stores. The machine key is stored in it as plain JSON,
+ * protected by file permissions; device tokens exist here only as SHA-256
  * digests; session JWTs and leases never do.
  *
  * Every change lands on disk before it is visible, through an fsynced
- * temporary file renamed into place. A file that cannot be read, does not
- * parse, is from another version, or cannot be written makes the store
- * `failed` for the life of the process, and a failed store authorizes nothing.
+ * temporary file renamed into place. A file that cannot be read, is readable
+ * by other users on POSIX, does not parse, is from another version, or cannot
+ * be written makes the store `failed` for the life of the process, and a
+ * failed store authorizes nothing. Windows relies on the ACL it inherits from
+ * the user's profile.
  */
 import { randomBytes } from "node:crypto";
-import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
+import { mkdir, open, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Type } from "typebox";
 import type { Static, TProperties } from "typebox";
@@ -24,18 +26,7 @@ import {
   RandomId,
   Uuid,
 } from "@nyte-ai/connect";
-
-/**
- * Encrypts secrets with a key the OS holds for this app. Each call may reach the OS keychain,
- * which on macOS can ask the user, so callers ask only when they need a key.
- */
-export interface SecretCipher {
-  /** False when the OS would store the key in plain text, or has none. */
-  available(): Promise<boolean>;
-  seal(plain: string): Promise<string>;
-  /** Rejects when the sealed text is not this app's. */
-  open(sealed: string): Promise<string>;
-}
+import { PrivateJwk } from "@nyte-ai/connect/signing";
 
 /** Local revocations whose broker revoke has not been confirmed. */
 export const REVOCATION_LIMIT = 64;
@@ -48,8 +39,6 @@ export const UNLINK_LIMIT = 8;
 
 const strict = <P extends TProperties>(properties: P) =>
   Type.Object(properties, { additionalProperties: false });
-
-const Sealed = Type.String({ minLength: 1, maxLength: 16_384 });
 
 const Time = Type.Integer({ minimum: 0 });
 
@@ -70,8 +59,8 @@ const StoredLink = strict({
     id: Type.String({ minLength: 1, maxLength: 128 }),
     label: Type.String({ maxLength: 320 }),
   }),
-  /** The sealed machine key, a `PrivateJwk`. */
-  key: Sealed,
+  /** The machine key. */
+  key: PrivateJwk,
   brokerKeys: BrokerKeys,
   devices: Type.Array(StoredDevice, { maxItems: DEVICE_LIMIT }),
   /**
@@ -94,23 +83,23 @@ const StoredLink = strict({
 
 export type StoredLink = Static<typeof StoredLink>;
 
-const PendingUnlink = strict({ environmentId: Uuid, key: Sealed, at: Time });
+const PendingUnlink = strict({ environmentId: Uuid, key: PrivateJwk, at: Time });
 
 export type PendingUnlink = Static<typeof PendingUnlink>;
 
 const ConnectFileType = strict({
-  version: Type.Literal(2),
+  version: Type.Literal(3),
   /** Serve whenever Nyte runs. Off by default. */
   enabled: Type.Boolean(),
   link: Type.Union([StoredLink, Type.Null()]),
   /**
-   * The sealed key of a link the broker may have begun; a retry by the same
+   * The key of a link the broker may have begun; a retry by the same
    * account resumes it. `owner` is the session JWT's `sub` as read here, for
    * this bookkeeping only; the broker decides who owns what.
    */
   linkKey: Type.Union([
     strict({
-      sealed: Sealed,
+      key: PrivateJwk,
       owner: Type.Union([Type.String({ minLength: 1, maxLength: 128 }), Type.Null()]),
     }),
     Type.Null(),
@@ -123,7 +112,7 @@ const connectFile = Compile(ConnectFileType);
 export type ConnectFile = Static<typeof ConnectFileType>;
 
 export const EMPTY_CONNECT_FILE: ConnectFile = {
-  version: 2,
+  version: 3,
   enabled: false,
   link: null,
   linkKey: null,
@@ -251,7 +240,19 @@ export class ConnectStore {
     let text: string;
 
     try {
-      text = await readFile(this.path, "utf8");
+      const handle = await open(this.path, "r");
+
+      try {
+        const stats = await handle.stat();
+
+        if (process.platform !== "win32" && (!stats.isFile() || (stats.mode & 0o077) !== 0)) {
+          return { kind: "failed" };
+        }
+
+        text = await handle.readFile("utf8");
+      } finally {
+        await handle.close();
+      }
     } catch (cause) {
       return isMissing(cause) ? { kind: "ready", file: EMPTY_CONNECT_FILE } : { kind: "failed" };
     }

@@ -11,20 +11,14 @@ import { createRegistries } from "../src/plugins/host.ts";
 import { createBashToolDefinition } from "../src/tools/bash.ts";
 import { applyEditsToNormalizedContent } from "../src/tools/edit-diff.ts";
 import { createEditToolDefinition } from "../src/tools/edit.ts";
-import { createLocalExecutionEnv, withExecutionEnv } from "../src/tools/env.ts";
-import { builtinTools } from "./builtin-tools.ts";
+import { bindEnv, builtinTools } from "./builtin-tools.ts";
 import { createLsToolDefinition } from "../src/tools/ls.ts";
 import { createReadToolDefinition } from "../src/tools/read.ts";
 import { createWriteToolDefinition } from "../src/tools/write.ts";
 import { ToolError, ToolStop, toolResultText } from "../src/kernel/loop/tool-result.ts";
+import type { ExecutionEnv } from "../src/kernel/loop/env.ts";
 import type { AgentLoopConfig } from "../src/kernel/loop/types.ts";
-import { assistant, call, storePath } from "./kernel/helpers.ts";
-
-function callContext(id: string, signal = new AbortController().signal) {
-  return { id, signal, update: () => {} };
-}
-
-const local = (cwd: string) => createLocalExecutionEnv({ cwd });
+import { assistant, call, localEnv, storePath, toolCall } from "./kernel/helpers.ts";
 
 const config: AgentLoopConfig = {
   model: {
@@ -81,10 +75,11 @@ test(
           height: 1,
         },
       ];
-      const tool = withExecutionEnv(createReadToolDefinition(), local(directory));
+
+      const tool = bindEnv({ ...createReadToolDefinition(), name: "read" }, localEnv(directory));
       for (const fixture of fixtures) {
         await writeFile(join(directory, fixture.name), fixture.bytes);
-        const result = await tool.execute({ path: fixture.name }, callContext("read"));
+        const result = await tool.execute({ path: fixture.name }, toolCall("read"));
         const image = result.content.find((part) => part.type === "image");
         assert.ok(image, `${fixture.name} returns an attachment`);
         assert.ok(image.data.length <= 4.5 * 1024 * 1024);
@@ -112,14 +107,18 @@ describe("ls tool", () => {
     const entries = new Promise<string[]>((resolve) => {
       finishRead = resolve;
     });
-    const tool = withExecutionEnv(createLsToolDefinition(), {
-      ...local("/workspace"),
-      stat: async () => ({ kind: "directory" }),
-      readdir: () => entries,
-    });
+
+    const tool = bindEnv(
+      { ...createLsToolDefinition(), name: "ls" },
+      {
+        ...localEnv("/workspace"),
+        stat: async () => ({ kind: "directory" }),
+        readdir: () => entries,
+      },
+    );
     const controller = new AbortController();
 
-    const execution = tool.execute({}, callContext("call_1", controller.signal));
+    const execution = tool.execute({}, toolCall("call_1", { signal: controller.signal }));
     controller.abort();
     finishRead?.([]);
 
@@ -130,7 +129,8 @@ describe("ls tool", () => {
     const directory = dirname(storePath());
     await writeFile(join(directory, "a.txt"), "a");
     await writeFile(join(directory, "b.txt"), "b");
-    const ls = withExecutionEnv({ ...createLsToolDefinition(), name: "ls" }, local(directory));
+    const ls = { ...createLsToolDefinition(), name: "ls" };
+    const tools = [bindEnv(bindTool(ls), localEnv(directory))];
     const parse = createToolArgumentParser(ls);
     assert.deepEqual(parse({ path: null, limit: "1" }), { limit: 1 });
     assert.deepEqual(parse({ limit: null }), {});
@@ -138,7 +138,7 @@ describe("ls tool", () => {
     assert.throws(() => ls.prepareArguments?.({ limit: Number.NaN }), /limit must be number/);
     for (const args of [{ limit: "1" }, { limit: null }, { path: null }, { path: 1 }]) {
       const result = await executeToolCalls(
-        { messages: [], tools: [bindTool(ls)] },
+        { messages: [], tools },
         assistant("", { calls: [call("ls", "ls", args)] }),
         config,
         undefined,
@@ -147,7 +147,7 @@ describe("ls tool", () => {
       assert.equal(result[0]?.outcome.kind, "error");
     }
     const result = await executeToolCalls(
-      { messages: [], tools: [bindTool(ls)] },
+      { messages: [], tools },
       assistant("", { calls: [call("ls", "ls", { limit: 2 })] }),
       { ...config, beforeToolCall: async () => ({ args: { path: null, limit: "1" } }) },
       undefined,
@@ -163,29 +163,24 @@ describe("ls tool", () => {
     await writeFile(join(directory, "gone"), "gone");
     await writeFile(join(directory, "z.txt"), "z");
     await mkdir(join(directory, "folder"));
-    const env = local(directory);
-    const ls = bindTool(
-      withExecutionEnv(
-        { name: "ls", ...createLsToolDefinition() },
-        {
-          ...env,
-          readdir: async (path) => {
-            const entries = await env.readdir(path);
-            await rm(join(path, "gone"));
-            return entries;
-          },
-        },
-      ),
-    );
-    assert.equal(
-      toolResultText((await ls.execute({}, callContext("ls"))).content),
-      "folder/\nz.txt",
-    );
+    const env = localEnv(directory);
+
+    const ls = bindEnv(bindTool({ name: "ls", ...createLsToolDefinition() }), {
+      ...env,
+      readdir: async (path) => {
+        const entries = await env.readdir(path);
+        await rm(join(path, "gone"));
+
+        return entries;
+      },
+    });
+
+    assert.equal(toolResultText((await ls.execute({}, toolCall("ls"))).content), "folder/\nz.txt");
   });
 });
 
 test("builtin registry contributions retain identity through rebuilds", () => {
-  const registries = createRegistries(local("/tmp"));
+  const registries = createRegistries();
   const tools = builtinTools("/tmp");
   registries.tools.add("builtin", 0, (draft) => {
     for (const tool of tools) draft.set(tool.name, tool);
@@ -199,20 +194,17 @@ describe("file mutation tools", () => {
     const directory = await mkdtemp(join(tmpdir(), "nyte-write-tool-"));
     const path = "nested/example.ts";
     const absolutePath = join(directory, path);
-    const tool = withExecutionEnv(createWriteToolDefinition(), local(directory));
+    const tool = bindEnv({ ...createWriteToolDefinition(), name: "write" }, localEnv(directory));
 
     try {
-      const created = await tool.execute({ path, content: "first\nkept\n" }, callContext("call_1"));
+      const created = await tool.execute({ path, content: "first\nkept\n" }, toolCall("call_1"));
       assert.equal(toolResultText(created.content), `Successfully wrote to ${path}`);
       assert.deepEqual(created.details, {
         patch: `--- ${path}\n+++ ${path}\n@@ -0,0 +1,2 @@\n+first\n+kept\n`,
       });
       assert.equal(await readFile(absolutePath, "utf8"), "first\nkept\n");
 
-      const updated = await tool.execute(
-        { path, content: "changed\nkept\n" },
-        callContext("call_2"),
-      );
+      const updated = await tool.execute({ path, content: "changed\nkept\n" }, toolCall("call_2"));
       assert.equal(toolResultText(updated.content), `Successfully wrote to ${path}`);
       assert.deepEqual(updated.details, {
         patch: `--- ${path}\n+++ ${path}\n@@ -1,2 +1,2 @@\n-first\n+changed\n kept\n`,
@@ -229,12 +221,14 @@ describe("file mutation tools", () => {
 
     try {
       await writeFile(join(directory, path), "before\nkept\n");
-      const result = await withExecutionEnv(createEditToolDefinition(), local(directory)).execute(
+      const edit = bindEnv({ ...createEditToolDefinition(), name: "edit" }, localEnv(directory));
+
+      const result = await edit.execute(
         {
           path,
           edits: [{ oldText: "before", newText: "after" }],
         },
-        callContext("call_1"),
+        toolCall("call_1"),
       );
       assert.equal(toolResultText(result.content), `Successfully replaced 1 block(s) in ${path}.`);
       assert.ok(result.details);
@@ -303,7 +297,7 @@ describe("local bash lifecycle", () => {
     "abort kills the active shell process group",
     { skip: process.platform === "win32" },
     async () => {
-      const operations = local("/tmp");
+      const operations = localEnv("/tmp");
       const controller = new AbortController();
       let resolvePid: ((pid: number) => void) | undefined;
       const childPid = new Promise<number>((resolve) => {
@@ -340,10 +334,10 @@ describe("local bash lifecycle", () => {
       builtinTools(process.cwd()).map((tool) => tool.name),
       ["read", "bash", "edit", "write"],
     );
-    const tool = withExecutionEnv(createBashToolDefinition(), local(process.cwd()));
+    const tool = bindEnv({ ...createBashToolDefinition(), name: "bash" }, localEnv(process.cwd()));
     const present = { runId: "run_1", head: "main", callId: "bash" };
     assert.deepEqual(Object.keys(tool.parameters.properties), ["command", "timeout"]);
-    const result = await tool.execute({ command: "printf done" }, callContext("bash"));
+    const result = await tool.execute({ command: "printf done" }, toolCall("bash"));
     expect(result.content).toEqual([{ type: "text", text: "done" }]);
     expect(result.structuredContent).toMatchObject({ output: "done", exit_code: 0 });
     assert.deepEqual(tool.present?.({ command: "printf done" }, present), {
@@ -356,7 +350,7 @@ describe("local bash lifecycle", () => {
     assert.equal(settled.facts.fullOutputPath, undefined);
     assert.ok(Number.isInteger(settled.facts.durationMs) && settled.facts.durationMs >= 0);
     await assert.rejects(
-      tool.execute({ command: "printf failed; exit 7" }, callContext("bash-error")),
+      tool.execute({ command: "printf failed; exit 7" }, toolCall("bash-error")),
       (error) => {
         assert.ok(error instanceof ToolError);
         assert.deepEqual(error.reason, { kind: "exit", code: 7 });
@@ -371,9 +365,9 @@ describe("local bash lifecycle", () => {
   });
 
   test("a timeout, a participant's stop, and the host's stop settle with their own reasons and keep the output so far", async () => {
-    const tool = withExecutionEnv(createBashToolDefinition(), local(process.cwd()));
+    const tool = bindEnv({ ...createBashToolDefinition(), name: "bash" }, localEnv(process.cwd()));
     await assert.rejects(
-      tool.execute({ command: "printf partial; sleep 30", timeout: 0.2 }, callContext("slow")),
+      tool.execute({ command: "printf partial; sleep 30", timeout: 0.2 }, toolCall("slow")),
       (error) => {
         assert.ok(error instanceof ToolError);
         assert.deepEqual(error.reason, { kind: "timeout" });
@@ -388,12 +382,12 @@ describe("local bash lifecycle", () => {
     const controller = new AbortController();
     const execution = tool.execute(
       { command: "printf partial; sleep 30" },
-      {
-        ...callContext("stopped", controller.signal),
+      toolCall("stopped", {
+        signal: controller.signal,
         update: ({ content }) => {
           if (toolResultText(content) === "partial") controller.abort(new ToolStop("cancelled"));
         },
-      },
+      }),
     );
     await assert.rejects(execution, (error) => {
       assert.ok(error instanceof ToolError);
@@ -405,7 +399,7 @@ describe("local bash lifecycle", () => {
     const host = new AbortController();
     host.abort();
     await assert.rejects(
-      tool.execute({ command: "printf never" }, callContext("left", host.signal)),
+      tool.execute({ command: "printf never" }, toolCall("left", { signal: host.signal })),
       (error) => {
         assert.ok(error instanceof ToolError);
         assert.deepEqual(error.reason, { kind: "interrupted" });
@@ -418,7 +412,7 @@ describe("local bash lifecycle", () => {
 
   test("the first stop to fire is the one reported: a timeout is not relabelled by a later abort", async () => {
     const controller = new AbortController();
-    const execution = local(process.cwd()).exec("printf started; sleep 30", {
+    const execution = localEnv(process.cwd()).exec("printf started; sleep 30", {
       signal: controller.signal,
       timeout: 0.1,
       onData: () => {
@@ -436,39 +430,77 @@ describe("local bash lifecycle", () => {
     });
   });
 
-  test("a spawn failure and a missing exit code keep what was measured", async () => {
-    const failing = withExecutionEnv(createBashToolDefinition(), {
-      ...local(process.cwd()),
-      exec: async () => {
-        throw new Error("spawn failed");
+  test("a spawn failure keeps what was measured", async () => {
+    const failing = bindEnv(
+      { ...createBashToolDefinition(), name: "bash" },
+      {
+        ...localEnv(process.cwd()),
+        exec: async () => {
+          throw new Error("spawn failed");
+        },
       },
-    });
-    await assert.rejects(failing.execute({ command: "nothing" }, callContext("spawn")), (error) => {
+    );
+    await assert.rejects(failing.execute({ command: "nothing" }, toolCall("spawn")), (error) => {
       assert.ok(error instanceof ToolError);
       assert.deepEqual(error.reason, { kind: "error" });
       assert.equal(toolResultText(error.result.content), "spawn failed");
       assert.ok(error.result.details?.durationMs !== undefined);
       return true;
     });
-    const signalled = withExecutionEnv(createBashToolDefinition(), {
-      ...local(process.cwd()),
-      exec: async (_command, { onData }) => {
-        onData(Buffer.from("partial"));
-        return { exitCode: null };
-      },
-    });
-    await assert.rejects(
-      signalled.execute({ command: "kill me" }, callContext("null")),
-      (error) => {
-        assert.ok(error instanceof ToolError);
-        assert.deepEqual(error.reason, { kind: "error" });
-        assert.equal(
-          toolResultText(error.result.content),
-          "partial\n\nCommand terminated without an exit code",
-        );
-        assert.ok(error.result.details?.durationMs !== undefined);
-        return true;
-      },
+  });
+
+  test("truncated output names its spill file only where the environment can see it", async () => {
+    const output = Array.from({ length: 5000 }, (_, line) => String(line).padEnd(300, "x")).join(
+      "\n",
     );
+
+    const spills: string[] = [];
+
+    const printing = (env: ExecutionEnv) =>
+      bindEnv(
+        { ...createBashToolDefinition(), name: "bash" },
+        {
+          ...env,
+          exec: async (_command, { onData }) => {
+            onData(Buffer.from(output));
+
+            return { exitCode: 0 };
+          },
+        },
+      );
+
+    try {
+      const hidden = await printing({
+        ...localEnv(process.cwd()),
+        stat: async (path) => {
+          spills.push(path);
+
+          return undefined;
+        },
+      }).execute({ command: "print" }, toolCall("hidden"));
+
+      assert.equal(spills.length, 1);
+      assert.equal(await readFile(spills[0], "utf8"), output);
+      assert.match(toolResultText(hidden.content), /\[Showing lines \d+-5000 of 5000/);
+      assert.doesNotMatch(toolResultText(hidden.content), /Full output/);
+      assert.ok(hidden.details?.truncation);
+      assert.equal(hidden.details.fullOutputPath, undefined);
+      expect(hidden.structuredContent).toMatchObject({ truncated: true });
+      expect(hidden.structuredContent).not.toHaveProperty("full_output_path");
+
+      const visible = await printing(localEnv(process.cwd())).execute(
+        { command: "print" },
+        toolCall("visible"),
+      );
+
+      const spilled = visible.details?.fullOutputPath;
+
+      assert.ok(spilled !== undefined);
+      spills.push(spilled);
+      assert.ok(toolResultText(visible.content).includes(`Full output: ${spilled}`));
+      expect(visible.structuredContent).toMatchObject({ full_output_path: spilled });
+    } finally {
+      await Promise.all(spills.map((path) => rm(path, { force: true })));
+    }
   });
 });

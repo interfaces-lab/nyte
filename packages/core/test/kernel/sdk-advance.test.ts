@@ -11,7 +11,7 @@ import type { Nyte, NyteOptions } from "../../src/kernel/sdk/types.ts";
 import { definePlugin, type AgentTool } from "../../src/plugins/index.ts";
 import { headRef } from "../../src/kernel/names.ts";
 import { ToolWait, backgroundWait, type StreamFn } from "../../src/kernel/loop/types.ts";
-import { assistant, call, openStore, storePath, within } from "./helpers.ts";
+import { assistant, call, localOptions, openStore, storePath, within } from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "advance-test",
@@ -67,15 +67,14 @@ function scripted(
 
 async function open(
   streamFn: StreamFn,
-  options: Partial<Pick<NyteOptions, "store" | "plugins" | "prepareResponsePlugins">> = {},
+  { plugins, ...options }: Partial<Pick<NyteOptions, "store" | "plugins" | "trust">> = {},
 ): Promise<Nyte> {
   const sdk = await createNyte({
     store: openStore(),
     streamFn,
     model,
     models,
-    plugins: [],
-    env: { cwd: "/tmp/nyte-advance" },
+    ...localOptions("/tmp/nyte-advance", plugins),
     ...options,
   });
   sdks.push(sdk);
@@ -293,17 +292,15 @@ test("closing an unattached SDK aborts and drains a step before closing its sess
 });
 
 test("a host that cannot activate the session leaves queued input untouched", async () => {
-  const sdk = await createNyte({
-    store: openStore(),
-    models,
-    model,
-    streamFn: scripted(() => assistant("must not run")),
-    resolveActivation: () => ({
-      kind: "requires",
-      requirement: { kind: "workspace_trust", cwd: "/untrusted" },
-    }),
-  });
-  sdks.push(sdk);
+  const sdk = await open(
+    scripted(() => assistant("must not run")),
+    {
+      trust: () => ({
+        kind: "requires",
+        requirement: { kind: "workspace_trust", cwd: "/untrusted" },
+      }),
+    },
+  );
   const { sessionId } = await sdk.sessions.create();
   await sdk.messages.send({ sessionId, content: "pending trust" });
   await assert.rejects(sdk.advance({ sessionId }), /not active/);
@@ -543,7 +540,6 @@ test("replacement from a tool executing in the attached runner returns without w
 
 test("response preparation reconciles source changes before resolving the next request, never during tools", async () => {
   let written = false;
-  const inputs: Parameters<NonNullable<NyteOptions["prepareResponsePlugins"]>>[0][] = [];
   const catalog = (version: string) =>
     withPluginSource(
       definePlugin({
@@ -585,27 +581,16 @@ test("response preparation reconciles source changes before resolving the next r
         : assistant("done");
     }),
     {
-      plugins: [old],
-      prepareResponsePlugins: async (input) => {
-        inputs.push(input);
-        return [written ? next : old];
-      },
+      trust: () => ({ kind: "trusted", plugins: async () => [written ? next : old] }),
     },
   );
   const { sessionId } = await sdk.sessions.create();
   await sdk.messages.send({ sessionId, content: "write a plugin" });
   await sdk.advance({ sessionId });
-  assert.equal(inputs.length, 0);
   await sdk.advance({ sessionId });
-  assert.equal(inputs.length, 1);
   await sdk.advance({ sessionId });
   assert.equal(written, true);
-  assert.equal(inputs.length, 1);
   await sdk.advance({ sessionId });
-  assert.deepEqual(inputs, [
-    { sessionId, cwd: "/tmp/nyte-advance" },
-    { sessionId, cwd: "/tmp/nyte-advance" },
-  ]);
   assert.equal(offered[0]?.includes("new-tool"), false);
   assert.equal(offered[1]?.includes("new-tool"), true);
   assert.deepEqual(prompts, ["old", "new"]);
@@ -619,16 +604,21 @@ test("a response source-preparation failure emits a diagnostic and uses the last
     },
   });
   let prompt = "";
+  let loads = 0;
   const sdk = await open(
     scripted((_model, context) => {
       prompt = getCurrentSystemPrompt(context.messages);
       return assistant("done");
     }),
     {
-      plugins: [initial],
-      prepareResponsePlugins: async () => {
-        throw new Error("source preparation failed");
-      },
+      trust: () => ({
+        kind: "trusted",
+        plugins: async () => {
+          loads += 1;
+          if (loads > 1) throw new Error("source preparation failed");
+          return [initial];
+        },
+      }),
     },
   );
   const { sessionId } = await sdk.sessions.create();

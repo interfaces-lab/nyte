@@ -51,6 +51,7 @@ const session = {
   pinned: false,
   archived: false,
   activation: { kind: "active" },
+  workspace: { kind: "local", id: "fixture", cwd: "/" },
   config: {},
   heads: [{ head: "main", tip: "stable-answer", run: activeRun }],
 } satisfies SessionInfo;

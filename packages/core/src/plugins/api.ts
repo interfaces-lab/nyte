@@ -200,8 +200,17 @@ export function bindSessionApi(
     };
   }
 
+  let wrapCount = 0;
+
   return {
     env: target.env,
+    wrapEnv: (wrap) => {
+      const key = `${plugin.id}/${wrapCount++}`;
+      return contribute(
+        () => target.registries.environmentWraps,
+        (draft) => draft.set(key, wrap),
+      );
+    },
     tools: { add: addTool, list: () => target.registries.tools.contributionValues() },
     commands,
     prompt: registry(() => target.registries.prompt),

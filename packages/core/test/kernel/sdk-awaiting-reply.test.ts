@@ -14,7 +14,7 @@ import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { sessionId } from "../../src/kernel/sdk/types.ts";
 import { definePlugin } from "../../src/plugins/index.ts";
 import { backgroundWait, ToolWait } from "../../src/kernel/loop/types.ts";
-import { assistant, call, openStore, within } from "./helpers.ts";
+import { assistant, call, localOptions, openStore, within } from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "park-model",
@@ -37,8 +37,7 @@ async function fixture() {
     store: openStore(),
     model,
     models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
-    env: { cwd: "/tmp/nowhere" },
-    plugins: [
+    ...localOptions("/tmp/nowhere", [
       definePlugin({
         id: "parking",
         session(api) {
@@ -70,7 +69,7 @@ async function fixture() {
           });
         },
       }),
-    ],
+    ]),
     streamFn: (_model, context) => {
       const stream = createAssistantMessageEventStream();
       const tail = context.messages.findLast((item) => item.role !== "system");

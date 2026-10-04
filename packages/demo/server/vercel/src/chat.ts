@@ -7,7 +7,7 @@ import {
   type Models,
 } from "@nyte-ai/ai";
 import { createNyte, type Nyte, type NyteOptions } from "@nyte-ai/core";
-import { systemPromptPlugin } from "@nyte-ai/core/plugins";
+import { localEnvironmentPlugin, systemPromptPlugin } from "@nyte-ai/core/plugins";
 import { openaiAstraContextPlugin } from "@nyte-ai/plugin/openai-astra-context";
 import { openaiCompactionPlugin } from "@nyte-ai/plugin/openai-compaction";
 import { createNyteServer } from "@nyte-ai/server";
@@ -16,6 +16,9 @@ import type { DispatchOutbox } from "@nyte-ai/vercel/outbox";
 import { getVercelOidcToken } from "@vercel/functions/oidc";
 
 export type WakeSession = (input: WakeTarget) => Promise<void>;
+
+/** Sessions record this id; changing it makes them unreachable. */
+const ENVIRONMENT_ID = "9ec9572b-d5eb-4bb6-83ff-0002da282978";
 
 export function createServerModels(secrets: Readonly<Record<string, string | undefined>>) {
   const models = createModels({
@@ -55,12 +58,13 @@ export function createChatSdk(options: Pick<NyteOptions, "store" | "model"> & { 
     streamFn: (model, context, streamOptions) =>
       options.models.streamSimple(model, context, streamOptions),
     plugins: [
+      localEnvironmentPlugin({ id: ENVIRONMENT_ID }),
       systemPromptPlugin(),
       openaiCompactionPlugin({ models: options.models }),
       openaiAstraContextPlugin(),
     ],
     thinkingLevel: "medium",
-    env: { cwd: "/" },
+    defaultWorkspace: { kind: "local", id: ENVIRONMENT_ID, cwd: "/" },
   });
 }
 

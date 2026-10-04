@@ -44,13 +44,13 @@ export const roles = defineVars({
   "--nyte-border-primary": step(30, 120),
   "--nyte-border-secondary": step(20, 135),
   "--nyte-border-strong": step(40, 100),
-  "--nyte-border-control": control(40, 100),
+  "--nyte-border-control": control(80, 80),
   "--nyte-border-interactive-primary": "var(--nyte-theme-80)",
   "--nyte-border-primary-translucent": glass(30, 120),
   "--nyte-border-secondary-translucent": glass(20, 135),
   "--nyte-border-strong-translucent": glass(40, 100),
   "--nyte-border-control-translucent":
-    "light-dark(var(--nyte-neutral-translucent-40), var(--nyte-neutral-translucent-100))",
+    "light-dark(var(--nyte-neutral-translucent-80), var(--nyte-neutral-translucent-80))",
   "--nyte-border-interactive-primary-translucent": "var(--nyte-theme-translucent-80)",
 
   "--nyte-bg-base": step(0, 145),
@@ -94,7 +94,7 @@ export const roles = defineVars({
   "--nyte-bg-hover": glass(15, 135),
   "--nyte-bg-pressed": lift("bg-hover", 0.045),
 
-  "--nyte-bg-control": control(40, 100),
+  "--nyte-bg-control": control(80, 100),
   "--nyte-bg-control-hover": shade("bg-control", 0.95, 1.05),
   "--nyte-bg-control-pressed": shade("bg-control", 0.88, 1.12),
   "--nyte-bg-control-selected": step(130, 100),
@@ -102,9 +102,9 @@ export const roles = defineVars({
   "--nyte-bg-control-selected-pressed": shade("bg-control-selected", 0.88, 1.12),
 
   // Step 80, capped in lightness so a white label reads at 4.5:1 in every hue.
-  "--nyte-button-fill": "oklch(from var(--nyte-theme-80) min(l, 0.55) c h)",
-  "--nyte-button-fill-hover": shade("button-fill", 0.95, 1.05),
-  "--nyte-button-fill-pressed": shade("button-fill", 0.88, 1.12),
+  "--nyte-button-fill": "oklch(from var(--nyte-theme-80) min(l, 0.52) c h)",
+  "--nyte-button-fill-hover": shade("button-fill", 0.95, 0.95),
+  "--nyte-button-fill-pressed": shade("button-fill", 0.88, 0.88),
 
   "--nyte-sidebar-material":
     "light-dark(var(--nyte-bg-chrome), color-mix(in srgb, var(--nyte-bg-chrome) calc(36% + 64% * var(--nyte-reduce-transparency)), transparent))",

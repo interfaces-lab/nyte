@@ -16,14 +16,16 @@ import {
   SyntaxStyle,
 } from "@opentui/core";
 import type { ClipboardService, CliRenderer, KeyEvent } from "@opentui/core";
-import { formatSkillInvocation } from "@nyte-ai/core/plugins";
+import { createLocalExecutionEnv, formatSkillInvocation } from "@nyte-ai/core/plugins";
 import {
   createWorkspaceStore,
   discoverMentionFiles,
+  environmentId,
   nyteHome,
   pluginWatchTargets,
   resolveHostPlugins,
 } from "@nyte-ai/host";
+import type { TrustedWorkspace } from "@nyte-ai/host";
 import { createOtelExport } from "@nyte-ai/host/otel";
 import { catalogForUsage } from "@nyte-ai/host/store-usage";
 import { UsageScanWorker } from "@nyte-ai/host/usage-scan";
@@ -45,7 +47,6 @@ import type {
   SessionInfo,
   SettingInfo,
   ThinkingLevel,
-  TrustedWorkspace,
 } from "@nyte-ai/core";
 import type { JsonValue, Skill } from "@nyte-ai/schema";
 import { authProviderChoices, loginProvider, logoutProvider } from "./auth.ts";
@@ -828,6 +829,7 @@ class Interactive {
     await this.follow(info);
 
     if (this.disposed) return;
+    this.noticeUnavailable(info);
     this.watchWorkspacePlugins();
     void loadAuthenticatedModels(this.runtime.models).catch(() => undefined);
     void this.refreshMentionFiles();
@@ -907,22 +909,29 @@ class Interactive {
 
   /** Point the shell at a session: stop following the old one, snapshot the new one. */
   private async follow(info: SessionInfo): Promise<void> {
-    const cwd = await this.host.sessionCwd(info.sessionId);
+    const { activation } = info;
 
-    const workspace =
-      cwd === this.workspace.cwd
-        ? this.workspace
-        : cwd === this.options.workspace.cwd
-          ? this.options.workspace
-          : await this.trustDirectory(cwd);
+    // A session waiting on trust names its folder; any other has one only while active here.
+    const cwd =
+      activation.kind === "requires" && activation.requirement.kind === "workspace_trust"
+        ? activation.requirement.cwd
+        : await this.host.nyte.sessionCwd({ sessionId: info.sessionId });
 
-    if (this.disposed) return;
+    if (cwd !== undefined) {
+      const workspace =
+        cwd === this.workspace.cwd
+          ? this.workspace
+          : cwd === this.options.workspace.cwd
+            ? this.options.workspace
+            : await this.trustDirectory(cwd);
 
-    if (info.activation.kind !== "active" && cwd !== this.host.cwd) {
-      await this.relocateSession(info.sessionId, workspace);
+      if (this.disposed) return;
+
+      if (activation.kind !== "active" && cwd !== this.host.cwd)
+        await this.relocateSession(info.sessionId, workspace);
+
+      await this.useWorkspace(workspace);
     }
-
-    await this.useWorkspace(workspace);
 
     if (this.disposed) return;
     this.shell.dismissInfoPanel?.();
@@ -1068,6 +1077,34 @@ class Interactive {
     await this.tuiPlugins.reconcile();
 
     if (!this.disposed && this.session === followed) this.shell.setUi("loading", undefined);
+  }
+
+  private noticeUnavailable(info: SessionInfo): void {
+    const { activation } = info;
+
+    if (
+      this.session?.sessionId !== info.sessionId ||
+      activation.kind !== "requires" ||
+      activation.requirement.kind !== "workspace_unavailable"
+    )
+      return;
+
+    let message: string;
+
+    switch (activation.requirement.reason) {
+      case "unreachable":
+        message = "Couldn't reach this session's workspace";
+        break;
+      case "unsupported":
+        message = "Can't open this session's workspace";
+        break;
+      default: {
+        const _exhaustive: never = activation.requirement.reason;
+        message = _exhaustive;
+      }
+    }
+
+    notice(this.shell, message, this.shell.theme.warning);
   }
 
   private async refreshContributions(session: FollowedSession): Promise<void> {
@@ -3209,23 +3246,18 @@ class Interactive {
   }
 
   private async relocateSession(id: SessionId, workspace: TrustedWorkspace): Promise<void> {
-    const resolved = await resolveHostPlugins(
-      { kind: "project", workspace },
-      {
-        model: this.config.model,
-        models: this.runtime.models,
-        extra: tuiPlugins(),
-        sources: this.host.pluginSources,
-        codemode: codemodeRuntimeOptions(),
-      },
-    );
-
-    this.stopped.signal.throwIfAborted();
-
-    const outcome = await this.host.relocate(id, workspace, resolved.plugins);
+    const outcome = await this.host.nyte.relocate({
+      sessionId: id,
+      workspace: { kind: "local", id: await environmentId(), cwd: workspace.cwd },
+    });
 
     if (outcome.kind === "busy")
       throw new Error("Wait for active runs and jobs to finish before changing directories.");
+
+    if (outcome.kind === "failed") throw new Error(outcome.error);
+
+    if (outcome.kind !== "relocated")
+      throw new Error(`Couldn't open ${workspace.cwd} for this session.`);
   }
 
   private async changeDirectory(argument: string): Promise<void> {
@@ -3325,6 +3357,7 @@ class Interactive {
         extra: tuiPlugins(),
         sources: this.host.pluginSources,
         codemode: codemodeRuntimeOptions(),
+        env: createLocalExecutionEnv({ id: await environmentId(), cwd: workspace.cwd }),
       },
     );
 
@@ -3420,6 +3453,8 @@ class Interactive {
           `Resumed ${shortId(info.sessionId)} · ${String(session.state.transcript.items.length)} items`,
         );
       }
+
+      this.noticeUnavailable(info);
     } finally {
       this.switchingSession = false;
       if (!this.disposed) this.shell.setUi("loading", undefined);
@@ -4482,13 +4517,13 @@ class Interactive {
         return;
       case "new": {
         noArgument();
-        await this.switchSession(async () => {
-          const info = await this.host.nyte.sessions.create();
-
-          if (this.workspace.cwd !== this.host.cwd)
-            await this.relocateSession(info.sessionId, this.workspace);
-          return info;
-        }, false);
+        await this.switchSession(
+          async () =>
+            this.host.nyte.sessions.create({
+              workspace: { kind: "local", id: await environmentId(), cwd: this.workspace.cwd },
+            }),
+          false,
+        );
 
         return;
       }

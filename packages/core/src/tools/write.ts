@@ -1,9 +1,7 @@
 import type { ToolDefinition } from "../kernel/loop/types.ts";
 import { parsePatchFacts } from "@nyte-ai/client";
-import { dirname } from "node:path";
 import { type Static, Type } from "typebox";
 import { generateUnifiedPatch } from "./edit-diff.ts";
-import { requireEnv } from "./env.ts";
 import { withFileMutationQueue } from "./support/file-mutation-queue.ts";
 import { resolveToCwd } from "./support/path-utils.ts";
 
@@ -43,9 +41,8 @@ export function createWriteToolDefinition(): ToolDefinition<
     },
     constrainedSampling: { type: "json_schema", strict: "prefer" },
     async execute({ path, content }, call) {
-      const { signal } = call;
-      const env = requireEnv(call);
-      const absolutePath = resolveToCwd(path, env.cwd);
+      const { signal, env } = call;
+      const absolutePath = resolveToCwd(path, env);
       return withFileMutationQueue(env, absolutePath, async () => {
         // Do not reject from an abort event listener here: that would release the
         // mutation queue while an in-flight filesystem operation may still finish.
@@ -62,7 +59,7 @@ export function createWriteToolDefinition(): ToolDefinition<
             : (await env.readFile(absolutePath)).toString("utf-8");
         throwIfAborted();
 
-        await env.mkdir(dirname(absolutePath));
+        await env.mkdir(env.resolve(absolutePath, ".."));
         throwIfAborted();
 
         await env.writeFile(absolutePath, content);

@@ -1,6 +1,9 @@
 import type { AgentTool } from "./types.ts";
 
-export function modelTools(tools: readonly AgentTool[], activated: readonly string[]): AgentTool[] {
+export function modelTools<T extends AgentTool>(
+  tools: readonly T[],
+  activated: readonly string[],
+): T[] {
   const names = new Set(activated);
   return tools.filter(
     (tool) =>
@@ -9,7 +12,7 @@ export function modelTools(tools: readonly AgentTool[], activated: readonly stri
   );
 }
 
-export function callableTools(tools: readonly AgentTool[]): AgentTool[] {
+export function callableTools<T extends AgentTool>(tools: readonly T[]): T[] {
   return tools.filter(
     (tool) =>
       tool.exposure !== "hidden" &&

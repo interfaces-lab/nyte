@@ -6,6 +6,7 @@ import type { ClientCapabilities } from "../client-actions.ts";
 import { errorMessage } from "../errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
+import { SortableItem, SortableList } from "../components/sortable-strip.tsx";
 import { Icon } from "@nyte-ai/ui/icon";
 import type { IconName } from "@nyte-ai/ui/icon";
 import {
@@ -58,6 +59,7 @@ const styles = create({
   control: { WebkitAppRegion: "no-drag" },
   tabs: { display: "flex", minWidth: 0, overflowX: "auto", scrollbarWidth: "none" },
   list: { display: "flex", alignItems: "center", gap: 1, minWidth: 0 },
+  slot: { display: "flex", flexShrink: 0 },
   item: {
     "--_tab-close-opacity": {
       default: "0",
@@ -200,6 +202,7 @@ export function WorkbenchTabStrip({
   const files = useFileTabs(viewKey);
   const pendingFile = files.pendingClose;
   const stripRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const terminalCloseRef = useRef<HTMLButtonElement>(null);
   const fileCloseRef = useRef<HTMLButtonElement>(null);
   const [terminalClose, setTerminalClose] = useState<TerminalCloseState>({ kind: "closed" });
@@ -275,148 +278,173 @@ export function WorkbenchTabStrip({
   return (
     <div ref={stripRef} {...props(styles.root)}>
       <Tabs.Root
+        ref={listRef}
         value={activeValue}
         xstyle={styles.tabs}
         onValueChange={(id) => workbenchController.actions.activateTab({ view: viewKey, id })}
       >
         <Tabs.List aria-label="Workbench tabs" xstyle={styles.list}>
-          {tabs.map((tab) => {
-            const file =
-              tab.kind === "file" ? files.tabs.find((item) => item.id === tab.id) : undefined;
+          <SortableList
+            ids={tabs.map((tab) => tab.id)}
+            listRef={listRef}
+            onPick={(id) => workbenchController.actions.activateTab({ view: viewKey, id })}
+            onReorder={(order, id) => {
+              const after = order[order.indexOf(id) + 1];
 
-            const terminal = tab.kind === "terminal" ? terminals.get(tab.id) : undefined;
-            const label = terminal?.title ?? workbenchTabLabel(tab);
+              workbenchController.actions.moveTab({
+                view: viewKey,
+                id,
+                index:
+                  after === undefined
+                    ? view.tabs.length
+                    : view.tabs.filter((tab) => tab.id !== id).findIndex((tab) => tab.id === after),
+              });
+            }}
+          >
+            {tabs.map((tab) => {
+              const file =
+                tab.kind === "file" ? files.tabs.find((item) => item.id === tab.id) : undefined;
 
-            const agentTerminal = terminal !== undefined && isJobTerminal(terminal);
-            const running = agentTerminal && terminal.state.kind === "running";
+              const terminal = tab.kind === "terminal" ? terminals.get(tab.id) : undefined;
+              const label = terminal?.title ?? workbenchTabLabel(tab);
 
-            const trigger = (
-              <div
-                key={tab.id}
-                role="presentation"
-                {...props(
-                  agentTerminal && surfaceTheme.purple,
-                  styles.item,
-                  agentTerminal && styles.agentTerminal,
-                  activeValue === tab.id && styles.active,
-                )}
-                onAuxClick={(event) => {
-                  if (event.button === 1) {
-                    event.preventDefault();
-                    closeTab(tab);
-                  }
-                }}
-              >
-                <Tabs.Tab
-                  id={`${viewKey}-tab-${tab.id}`}
-                  value={tab.id}
-                  title={
-                    agentTerminal
-                      ? `${terminal.title} · Agent command · read-only`
-                      : (terminal?.cwd ?? file?.displayPath ?? label)
-                  }
-                  aria-label={
-                    file === undefined
-                      ? label
-                      : `${file.displayPath}${file.dirty ? ", unsaved changes" : ""}`
-                  }
-                  onDoubleClick={() => {
-                    if (tab.kind === "file") fileActions.pin(viewKey, tab.path);
-                  }}
-                  aria-controls={`${viewKey}-panel-${tab.kind === "file" || tab.kind === "files" ? "files" : tab.id}`}
-                  xstyle={styles.tab}
-                  onFocus={(event) =>
-                    event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === "Delete") {
+              const agentTerminal = terminal !== undefined && isJobTerminal(terminal);
+              const running = agentTerminal && terminal.state.kind === "running";
+
+              const trigger = (
+                <div
+                  role="presentation"
+                  {...props(
+                    agentTerminal && surfaceTheme.purple,
+                    styles.item,
+                    agentTerminal && styles.agentTerminal,
+                    activeValue === tab.id && styles.active,
+                  )}
+                  onAuxClick={(event) => {
+                    if (event.button === 1) {
                       event.preventDefault();
                       closeTab(tab);
                     }
                   }}
                 >
-                  <span
-                    data-agent-terminal={agentTerminal ? "true" : undefined}
-                    {...props(styles.content)}
-                  >
-                    {tab.kind === "file" ? (
-                      <FileTypeIcon path={tab.path} />
-                    ) : (
-                      <span {...props(styles.tabIcon)}>
-                        <Icon name={tabIcons[tab.kind]} size={16} />
-                      </span>
-                    )}
-                    <span
-                      {...props(styles.label, tab.kind === "file" && tab.preview && styles.preview)}
-                    >
-                      {label}
-                    </span>
-                    {file?.dirty && (
-                      <span aria-hidden="true" {...props(surfaceTheme.yellow, styles.dirty)} />
-                    )}
-                    {running && (
-                      <span aria-label="Running" {...props(styles.running)}>
-                        <Spinner />
-                      </span>
-                    )}
-                  </span>
-                </Tabs.Tab>
-                <span {...props(styles.close)}>
-                  <Button
-                    size="2xs"
-                    variant="plain"
-                    iconOnly
-                    icon="x"
-                    aria-label={`Close ${label} tab`}
-                    ref={
-                      activeValue !== tab.id
-                        ? undefined
-                        : tab.kind === "terminal"
-                          ? terminalCloseRef
-                          : tab.kind === "file"
-                            ? fileCloseRef
-                            : undefined
+                  <Tabs.Tab
+                    id={`${viewKey}-tab-${tab.id}`}
+                    value={tab.id}
+                    title={
+                      agentTerminal
+                        ? `${terminal.title} · Agent command · read-only`
+                        : (terminal?.cwd ?? file?.displayPath ?? label)
                     }
-                    tabIndex={activeValue === tab.id ? 0 : -1}
-                    onClick={(event) => {
-                      if (tab.kind === "terminal") terminalCloseRef.current = event.currentTarget;
-
-                      if (tab.kind === "file") fileCloseRef.current = event.currentTarget;
-                      closeTab(tab);
+                    aria-label={
+                      file === undefined
+                        ? label
+                        : `${file.displayPath}${file.dirty ? ", unsaved changes" : ""}`
+                    }
+                    onDoubleClick={() => {
+                      if (tab.kind === "file") fileActions.pin(viewKey, tab.path);
                     }}
-                  />
-                </span>
-              </div>
-            );
-
-            return terminal === undefined ? (
-              trigger
-            ) : (
-              <ContextMenu key={tab.id}>
-                <ContextMenuTrigger render={trigger} />
-                <ContextMenuContent aria-label={`${label} actions`}>
-                  {capabilities.terminal && (
-                    <ContextMenuItem
-                      icon="console"
-                      onClick={() => newTerminal(viewKey, workspacePath)}
+                    aria-controls={`${viewKey}-panel-${tab.kind === "file" || tab.kind === "files" ? "files" : tab.id}`}
+                    xstyle={styles.tab}
+                    onFocus={(event) =>
+                      event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Delete") {
+                        event.preventDefault();
+                        closeTab(tab);
+                      }
+                    }}
+                  >
+                    <span
+                      data-agent-terminal={agentTerminal ? "true" : undefined}
+                      {...props(styles.content)}
                     >
-                      New Terminal
-                    </ContextMenuItem>
+                      {tab.kind === "file" ? (
+                        <FileTypeIcon path={tab.path} />
+                      ) : (
+                        <span {...props(styles.tabIcon)}>
+                          <Icon name={tabIcons[tab.kind]} size={16} />
+                        </span>
+                      )}
+                      <span
+                        {...props(
+                          styles.label,
+                          tab.kind === "file" && tab.preview && styles.preview,
+                        )}
+                      >
+                        {label}
+                      </span>
+                      {file?.dirty && (
+                        <span aria-hidden="true" {...props(surfaceTheme.yellow, styles.dirty)} />
+                      )}
+                      {running && (
+                        <span aria-label="Running" {...props(styles.running)}>
+                          <Spinner />
+                        </span>
+                      )}
+                    </span>
+                  </Tabs.Tab>
+                  <span {...props(styles.close)}>
+                    <Button
+                      size="2xs"
+                      variant="plain"
+                      iconOnly
+                      icon="x"
+                      aria-label={`Close ${label} tab`}
+                      ref={
+                        activeValue !== tab.id
+                          ? undefined
+                          : tab.kind === "terminal"
+                            ? terminalCloseRef
+                            : tab.kind === "file"
+                              ? fileCloseRef
+                              : undefined
+                      }
+                      tabIndex={activeValue === tab.id ? 0 : -1}
+                      onClick={(event) => {
+                        if (tab.kind === "terminal") terminalCloseRef.current = event.currentTarget;
+
+                        if (tab.kind === "file") fileCloseRef.current = event.currentTarget;
+                        closeTab(tab);
+                      }}
+                    />
+                  </span>
+                </div>
+              );
+
+              return (
+                <SortableItem key={tab.id} id={tab.id} xstyle={styles.slot}>
+                  {terminal === undefined ? (
+                    trigger
+                  ) : (
+                    <ContextMenu>
+                      <ContextMenuTrigger render={trigger} />
+                      <ContextMenuContent aria-label={`${label} actions`}>
+                        {capabilities.terminal && (
+                          <ContextMenuItem
+                            icon="console"
+                            onClick={() => newTerminal(viewKey, workspacePath)}
+                          >
+                            New Terminal
+                          </ContextMenuItem>
+                        )}
+                        <ContextMenuItem icon="copy" onClick={() => copyTerminal(terminal.id)}>
+                          Copy Selection
+                        </ContextMenuItem>
+                        <ContextMenuItem icon="refresh" onClick={() => clearTerminal(terminal.id)}>
+                          Clear Terminal
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem icon="x" onClick={() => closeTab(tab)}>
+                          Close Tab
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
                   )}
-                  <ContextMenuItem icon="copy" onClick={() => copyTerminal(terminal.id)}>
-                    Copy Selection
-                  </ContextMenuItem>
-                  <ContextMenuItem icon="refresh" onClick={() => clearTerminal(terminal.id)}>
-                    Clear Terminal
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem icon="x" onClick={() => closeTab(tab)}>
-                    Close Tab
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              </ContextMenu>
-            );
-          })}
+                </SortableItem>
+              );
+            })}
+          </SortableList>
         </Tabs.List>
       </Tabs.Root>
       <span {...props(styles.control)}>

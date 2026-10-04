@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { hostname } from "node:os";
 import { test } from "vitest";
 import { foldEvent, stateFromSnapshot, type SessionState } from "@nyte-ai/client";
 import { CursorExpired } from "@nyte-ai/protocol";
@@ -8,8 +7,16 @@ import { Type } from "typebox";
 import { trimStream } from "../../src/kernel/gc.ts";
 import { backgroundWait, ToolWait } from "../../src/kernel/loop/types.ts";
 import { headRef } from "../../src/kernel/names.ts";
+import { createNyte } from "../../src/kernel/sdk/nyte.ts";
+import { sessionId } from "../../src/kernel/sdk/types.ts";
 import { definePlugin } from "../../src/plugins/index.ts";
-import { driveToIdle, openAcceptanceNyte, scripted } from "./acceptance-helpers.ts";
+import { localEnvironmentPlugin } from "../../src/tools/env.ts";
+import {
+  acceptanceModel,
+  driveToIdle,
+  openAcceptanceNyte,
+  scripted,
+} from "./acceptance-helpers.ts";
 import { assistant, call, openStore, sleep, storePath, within } from "./helpers.ts";
 
 const emptyParameters = Type.Object({});
@@ -101,17 +108,6 @@ test("A crash between effect intent and result follows safe or never replay", as
 
   const reopenedStore = openStore(path);
   const recoverySession = await reopenedStore.open(sessionId);
-  const intents = await Promise.all(
-    (await recoverySession.refs.list("refs/effects/")).map(({ oid }) =>
-      recoverySession.objects.get(oid),
-    ),
-  );
-  // A safe replay is only safe on the same disk, so every intent names where it was opened.
-  assert.equal(intents.length, 2);
-  for (const intent of intents) {
-    assert.ok(intent?.kind === "effect" && intent.state === "intent");
-    assert.equal(intent.fs, `local:${hostname()}`);
-  }
   const abandonedLease = await recoverySession.leases.read(headRef("main"));
   assert.ok(abandonedLease);
   assert.equal(await recoverySession.leases.renew(abandonedLease, 1), true);
@@ -131,6 +127,86 @@ test("A crash between effect intent and result follows safe or never replay", as
     assert.equal(safe?.state.kind, "success");
     assert.equal(never?.state.kind, "error");
     assert.match(never?.output ?? "", /interrupted/u);
+  } finally {
+    await reopened.close();
+  }
+});
+
+test("A safe effect on a legacy root is not replayed by a runner in another environment", async () => {
+  const path = storePath();
+  const firstStore = openStore(path);
+  const started = Promise.withResolvers<void>();
+  const crash = Promise.withResolvers<void>();
+  let executions = 0;
+  let responses = 0;
+  const plugin = definePlugin({
+    id: "replay-tools",
+    session(api) {
+      api.tools.add((draft) => {
+        draft.set("safe-effect", {
+          name: "safe-effect",
+          description: "Safe replay test",
+          parameters: emptyParameters,
+          replay: "safe",
+          execute: async () => {
+            executions += 1;
+            started.resolve();
+            await crash.promise;
+            return { content: [{ type: "text", text: "safe run" }], details: {} };
+          },
+        });
+      });
+    },
+  });
+  const provider = scripted(() => {
+    responses += 1;
+    return responses === 1
+      ? assistant("", { calls: [call("safe-call", "safe-effect")] })
+      : assistant("recovered");
+  });
+  // Only a tree with no stored workspace acts wherever its host starts new sessions.
+  const seeded = await firstStore.create({});
+  await seeded.close();
+  const id = sessionId(seeded.id);
+  const first = await openAcceptanceNyte(firstStore, provider, { plugins: [plugin] });
+  await first.messages.send({ sessionId: id, content: "run effect" });
+  await first.advance({ sessionId: id });
+  await first.advance({ sessionId: id });
+  const interrupted = first.advance({ sessionId: id });
+  await within(started.promise);
+  await firstStore.close();
+  crash.resolve();
+  await assert.rejects(interrupted);
+  await first.close();
+
+  const reopenedStore = openStore(path);
+  const recoverySession = await reopenedStore.open(id);
+  const abandonedLease = await recoverySession.leases.read(headRef("main"));
+  assert.ok(abandonedLease);
+  assert.equal(await recoverySession.leases.renew(abandonedLease, 1), true);
+  await sleep(5);
+  const reopened = await createNyte({
+    store: reopenedStore,
+    streamFn: provider,
+    model: acceptanceModel,
+    models: {
+      getModels: () => [acceptanceModel],
+      getModel: () => acceptanceModel,
+      getAvailable: async () => [acceptanceModel],
+    },
+    plugins: [plugin, localEnvironmentPlugin({ id: "other-machine" })],
+    defaultWorkspace: { kind: "local", id: "other-machine", cwd: "/tmp/nyte-acceptance" },
+  });
+  try {
+    await driveToIdle(reopened, id);
+    assert.equal(executions, 1);
+    const safe = (await reopened.messages.list({ sessionId: id }))
+      .flatMap((turn) =>
+        turn.kind === "turn" ? turn.parts.filter((part) => part.kind === "tool") : [],
+      )
+      .find((part) => part.callId === "safe-call");
+    assert.equal(safe?.state.kind, "error");
+    assert.match(safe?.output ?? "", /another environment/u);
   } finally {
     await reopened.close();
   }

@@ -5,6 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expect, test } from "vitest";
 import { NOOP_TELEMETRY_CONTEXT } from "@nyte-ai/telemetry";
@@ -16,8 +17,9 @@ import {
 } from "@nyte-ai/ai";
 import { getCurrentSystemPrompt, getCurrentTools } from "@nyte-ai/schema";
 import { Type } from "typebox";
+import { createBashToolDefinition } from "../../src/tools/bash.ts";
 import { bindTool } from "../../src/tools/bind-tool.ts";
-import { builtinTools } from "../builtin-tools.ts";
+import { bindEnv, builtinTools } from "../builtin-tools.ts";
 import { createJobs } from "../../src/kernel/sdk/jobs.ts";
 import { openEffect, readEffect, signalEffect } from "../../src/kernel/effects.ts";
 import type { Commit, EventBody, Lease, Run, ToolClass } from "../../src/kernel/model.ts";
@@ -33,7 +35,7 @@ import {
 import {
   backgroundWait,
   ToolWait,
-  type AgentTool,
+  type ExecutableTool,
   type StreamFn,
   type ToolCall,
 } from "../../src/kernel/loop/types.ts";
@@ -46,6 +48,7 @@ import {
   commit,
   declared,
   lease,
+  localEnv,
   message,
   openSession,
   seedHead,
@@ -68,8 +71,10 @@ const model: Model<Api> = {
   maxTokens: 1_000,
 };
 
+const env = localEnv(tmpdir());
+
 const parameters = Type.Object({ value: Type.String() });
-type TestTool = AgentTool<typeof parameters>;
+type TestTool = ExecutableTool<typeof parameters>;
 
 interface ProviderScript {
   readonly streamFn: StreamFn;
@@ -186,16 +191,26 @@ async function bench(): Promise<Bench> {
 function tool(
   execute: TestTool["execute"],
   extra: Partial<Pick<TestTool, "replay" | "wake">> = {},
-): AgentTool {
-  return bindTool({ name: "test", description: "a test tool", parameters, execute, ...extra });
+): ExecutableTool {
+  return bindEnv(
+    bindTool({ name: "test", description: "a test tool", parameters, execute, ...extra }),
+    env,
+  );
 }
 
 function turnWith(
   streamFn: StreamFn,
-  tools: readonly AgentTool[] = [],
+  tools: readonly ExecutableTool[] = [],
   options: Partial<TurnOptions> = {},
 ): Turn {
-  return bindTurn({ streamFn, model, sections: { prompt: "system" }, tools, ...options });
+  return bindTurn({
+    streamFn,
+    model,
+    sections: { prompt: "system" },
+    tools,
+    env,
+    ...options,
+  });
 }
 
 const askTool = (id = "call-1", value = "input") =>
@@ -337,16 +352,19 @@ test("a tool runs once inside its effect, reports progress, and settles with its
 test("settled presentation uses arguments replaced by before-tool", async () => {
   const b = await bench();
   const pathParameters = Type.Object({ path: Type.String() });
-  const pathTool = bindTool({
-    name: "path",
-    description: "reads a path",
-    parameters: pathParameters,
-    present: ({ path }) => ({ kind: "file_read", path }),
-    execute: async ({ path }) => ({
-      content: [{ type: "text", text: path }],
-      details: {},
+  const pathTool = bindEnv(
+    bindTool({
+      name: "path",
+      description: "reads a path",
+      parameters: pathParameters,
+      present: ({ path }) => ({ kind: "file_read", path }),
+      execute: async ({ path }) => ({
+        content: [{ type: "text", text: path }],
+        details: {},
+      }),
     }),
-  });
+    env,
+  );
   const requested = assistant("", {
     calls: [call("path-call", "path", { path: "model.txt" })],
   });
@@ -580,6 +598,7 @@ test("after a crash, an intent replays only when its tool says that is safe", as
       tool: "test",
       args: { value: "x" },
       replay,
+      environment: env.id,
     });
   }
   const safe = await turnWith(scripted([]).streamFn, [tool(execute, { replay: "safe" })]).tools({
@@ -778,12 +797,15 @@ test("a recorded result is answered before lookup and validation: today's tool s
     tool(async () => ({ content: [{ type: "text", text: "ran" }], details: {} })),
   ]).tools({ ...b.input(), assistant: askTool() });
   assert.ok(first.kind === "complete");
-  const evolved = bindTool({
-    name: "test",
-    description: "the next release's tool",
-    parameters: Type.Object({ value: Type.String(), requiredNow: Type.String() }),
-    execute: async () => assert.fail("a recorded result is never re-executed"),
-  });
+  const evolved = bindEnv(
+    bindTool({
+      name: "test",
+      description: "the next release's tool",
+      parameters: Type.Object({ value: Type.String(), requiredNow: Type.String() }),
+      execute: async () => assert.fail("a recorded result is never re-executed"),
+    }),
+    env,
+  );
   for (const tools of [[evolved], []]) {
     const again = await turnWith(scripted([]).streamFn, tools).tools({
       ...b.input(),
@@ -881,6 +903,7 @@ test("a safe replay runs the live tool, with the run context a fresh call would 
     tool: "test",
     args: { value: "recorded" },
     replay: "safe",
+    environment: env.id,
   });
   const replayed = await turnWith(scripted([]).streamFn, [
     tool(
@@ -907,6 +930,7 @@ test("a stored result without a settlement is reused through its isError bit", a
     tool: "test",
     args: { value: "x" },
     replay: "never",
+    environment: env.id,
   });
   assert.ok(opened.kind === "opened");
   const legacy = {
@@ -1048,23 +1072,27 @@ test("builtin factories execute approved arguments after durable intent and jobs
       diagnostics.push(cause);
     },
   });
+  const bash = bindTool({ ...createBashToolDefinition(), name: "bash" });
   const tools = builtinTools(directory).map((builtin) =>
     builtin.name !== "bash"
       ? builtin
-      : jobs.wrap({
-          ...builtin,
-          execute: async (input, call) => {
-            executions += 1;
-            const effect = await readEffect(b.session, { runId: b.run.id, callId: call.id });
-            assert.ok(effect, "durable intent must precede the real command's side effect");
-            assert.deepEqual(effect.intent.args, { command: "printf approved > command.txt" });
-            assert.deepEqual(input, effect.intent.args);
-            await assert.rejects(access(join(directory, "command.txt")));
-            started.resolve();
-            await release.promise;
-            return builtin.execute(input, call);
-          },
-        }),
+      : bindEnv(
+          jobs.wrap({
+            ...bash,
+            execute: async (input, call) => {
+              executions += 1;
+              const effect = await readEffect(b.session, { runId: b.run.id, callId: call.id });
+              assert.ok(effect, "durable intent must precede the real command's side effect");
+              assert.deepEqual(effect.intent.args, { command: "printf approved > command.txt" });
+              assert.deepEqual(input, effect.intent.args);
+              await assert.rejects(access(join(directory, "command.txt")));
+              started.resolve();
+              await release.promise;
+              return bash.execute(input, call);
+            },
+          }),
+          localEnv(directory),
+        ),
   );
   const requested = assistant("", {
     calls: [
@@ -1117,25 +1145,28 @@ test("nested failures retain structured output, reject waits and cancellation, a
   const b = await bench();
   let saved: ToolCall | undefined;
   let cancellations = 0;
-  const target = bindTool({
-    name: "target",
-    description: "target",
-    parameters,
-    execute: async (input, call) => {
-      if (input.value === "wait") throw new ToolWait({ until: 10 });
-      if (input.value === "cancel") {
-        cancellations += 1;
-        call.update({ content: [], details: {}, structuredContent: { partial: true } });
-        call.signal.throwIfAborted();
-        return { content: [], details: {} };
-      }
-      throw new ToolError({
-        content: [{ type: "text", text: "failed" }],
-        details: {},
-        structuredContent: { error: "kept" },
-      });
-    },
-  });
+  const target = bindEnv(
+    bindTool({
+      name: "target",
+      description: "target",
+      parameters,
+      execute: async (input, call) => {
+        if (input.value === "wait") throw new ToolWait({ until: 10 });
+        if (input.value === "cancel") {
+          cancellations += 1;
+          call.update({ content: [], details: {}, structuredContent: { partial: true } });
+          call.signal.throwIfAborted();
+          return { content: [], details: {} };
+        }
+        throw new ToolError({
+          content: [{ type: "text", text: "failed" }],
+          details: {},
+          structuredContent: { error: "kept" },
+        });
+      },
+    }),
+    env,
+  );
   const outer = tool(async (_input, call) => {
     saved = call;
     assert.ok(call.run);
@@ -1184,15 +1215,15 @@ test("nested failures retain structured output, reject waits and cancellation, a
 
 test("tool activation and full tool history follow durable branch ancestry across checkpoints and recovery", async () => {
   const b = await bench();
-  const hidden: AgentTool = {
+  const hidden: ExecutableTool = {
     ...tool(async () => ({ content: [], details: {} })),
     name: "hidden",
     exposure: "hidden",
   };
-  const deferred: AgentTool = { ...hidden, name: "later", exposure: "deferred" };
-  const codemode: AgentTool = { ...hidden, name: "scripted", exposure: "codemode" };
-  const modelOnly: AgentTool = { ...hidden, name: "visible", exposure: "model-only" };
-  const search: AgentTool = {
+  const deferred: ExecutableTool = { ...hidden, name: "later", exposure: "deferred" };
+  const codemode: ExecutableTool = { ...hidden, name: "scripted", exposure: "codemode" };
+  const modelOnly: ExecutableTool = { ...hidden, name: "visible", exposure: "model-only" };
+  const search: ExecutableTool = {
     name: "tool_search",
     description: "activate",
     parameters: Type.Object({}),
@@ -1294,14 +1325,18 @@ test("nested bash finishes inside the caller without parking a durable job", asy
     return nested.result;
   });
   try {
-    const turn = turnWith(scripted([]).streamFn, [caller, jobs.wrap(bash)], {
-      loop: {
-        beforeToolCall: async ({ toolCall }) =>
-          toolCall.name === "bash"
-            ? { args: { command: "printf approved > nested.txt" } }
-            : undefined,
+    const turn = turnWith(
+      scripted([]).streamFn,
+      [caller, bindEnv(jobs.wrap(bash), localEnv(directory))],
+      {
+        loop: {
+          beforeToolCall: async ({ toolCall }) =>
+            toolCall.name === "bash"
+              ? { args: { command: "printf approved > nested.txt" } }
+              : undefined,
+        },
       },
-    });
+    );
     const outcome = await turn.tools({ ...b.input(), assistant: askTool() });
     assert.ok(outcome.kind === "complete");
     assert.equal(outcome.settlements[0]?.message.isError, false);

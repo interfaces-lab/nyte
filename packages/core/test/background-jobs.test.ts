@@ -18,10 +18,11 @@ import type { StreamFn } from "../src/kernel/loop/types.ts";
 import {
   assistant,
   call,
+  localOptions,
+  localWorkspace,
   only,
   openStore,
   storePath,
-  trustWorkspace,
   within,
 } from "./kernel/helpers.ts";
 
@@ -92,7 +93,6 @@ async function fixture(background: boolean, continuingParent = false) {
     completions: number;
     completionText: string;
   }[] = [];
-  const resolved: SessionId[] = [];
   const command = `exec '${process.execPath.replaceAll("'", "'\\''")}' work.cjs`;
   const streamFn: StreamFn = (_model, context, options) => {
     const tail = context.messages.slice(
@@ -207,12 +207,8 @@ async function fixture(background: boolean, continuingParent = false) {
         getModel: () => model,
         getAvailable: async () => [model],
       },
-      resolveActivation(target) {
-        if (target.kind === "session") resolved.push(target.sessionId);
-        return target.kind === "session" && target.sessionId === parent
-          ? { kind: "active", plugins, env: { cwd } }
-          : { kind: "requires", requirement: { kind: "workspace_trust", cwd } };
-      },
+      ...localOptions(cwd, plugins),
+      trust: () => ({ kind: "trusted" }),
     });
   const nyte = await open();
   await nyte.sessions.create({ sessionId: parent });
@@ -229,7 +225,6 @@ async function fixture(background: boolean, continuingParent = false) {
     parent,
     open,
     requests,
-    resolved,
     events,
     parentGate,
     release() {
@@ -777,13 +772,13 @@ test("foreground work waits and returns a normal tool result, including after pl
 test("an idle parent cannot relocate while background work is running", async () => {
   const f = await fixture(true);
   const destination = dirname(storePath());
-  const workspace = await trustWorkspace(destination);
+  const workspace = localWorkspace(destination);
   try {
     await f.start();
     f.parentGate.release();
     await idle(f.nyte, f.parent);
     expect((await f.nyte.runs.current({ sessionId: f.parent }))?.phase.kind).toBe("done");
-    expect(await f.nyte.relocate({ sessionId: f.parent, workspace, plugins: [] })).toEqual({
+    expect(await f.nyte.relocate({ sessionId: f.parent, workspace })).toEqual({
       kind: "busy",
     });
     expect(await f.nyte.sessionCwd({ sessionId: f.parent })).toBe(f.cwd);
@@ -795,7 +790,7 @@ test("an idle parent cannot relocate while background work is running", async ()
     await idle(f.nyte, f.parent);
     // The finished job's report waits for the next message; inert, it does not hold the move.
     await expect
-      .poll(() => f.nyte.relocate({ sessionId: f.parent, workspace, plugins: [] }), poll)
+      .poll(() => f.nyte.relocate({ sessionId: f.parent, workspace }), poll)
       .toEqual({ kind: "relocated" });
     expect(f.requests.filter((request) => request.completions > 0)).toHaveLength(0);
     const session = await openStore(join(f.cwd, "store.db")).open(f.parent);

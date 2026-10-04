@@ -11,6 +11,7 @@ function snapshot(id: string, name = id): SessionSnapshot {
     session: {
       sessionId: sessionId(id),
       activation: { kind: "active" },
+      workspace: { kind: "local", id: "fixture", cwd: "/" },
       name,
       createdAt: 1,
       lastActivityAt: 1,

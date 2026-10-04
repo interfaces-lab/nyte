@@ -18,6 +18,7 @@ import type { Run } from "../../src/kernel/model.ts";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import {
   assistant,
+  localOptions,
   message,
   openStore,
   seedHead,
@@ -54,8 +55,7 @@ function host(
         catalog.find((model) => model.provider === provider && model.id === id),
       getAvailable: async () => catalog,
     },
-    plugins: [],
-    env: { cwd: "/tmp/nowhere" },
+    ...localOptions("/tmp/nowhere"),
   });
 }
 

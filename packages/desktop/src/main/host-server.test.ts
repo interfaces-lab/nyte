@@ -22,6 +22,7 @@ import {
 import type { MutableModels } from "@nyte-ai/ai";
 import { createNyte } from "@nyte-ai/core";
 import type { Nyte } from "@nyte-ai/core";
+import { localEnvironmentPlugin } from "@nyte-ai/core/plugins";
 import { SqliteStore } from "@nyte-ai/core/store";
 import { createNyteServer } from "@nyte-ai/server";
 import type { NyteServer } from "@nyte-ai/server";
@@ -207,8 +208,8 @@ async function remoteHost(phase: "done" | "failed" = "done"): Promise<{
       getAvailable: async () => [model, alternate],
     },
     model,
-    plugins: [],
-    env: { cwd: "/" },
+    plugins: [localEnvironmentPlugin({ id: "test" })],
+    defaultWorkspace: { kind: "local", id: "test", cwd: "/" },
   });
 
   sdk.attach();

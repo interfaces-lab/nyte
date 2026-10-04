@@ -1,10 +1,9 @@
 /**
  * The Nyte account's row in Environments › Remote access. Unlinked, it offers
  * the link tray; linked, its status menu turns access on or off and unlinks,
- * and the devices the account enrolled are listed under it. Who is signed in
+ * and the devices the account enrolled follow in their own card. Who is signed in
  * on this Mac is Profile's business, not this row's.
  */
-import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
@@ -24,34 +23,18 @@ import {
   useConnectView,
 } from "./connect-view.ts";
 import type { LinkedView } from "./connect-view.ts";
+import { ConnectDevices } from "./connect-devices.tsx";
 import { ConnectionList, ConnectionMenu, ConnectionRow } from "./connection-list.tsx";
 import { LinkTray } from "./link-tray.tsx";
 
 const styles = create({
   expansion: { display: "flex", flexDirection: "column", gap: 6 },
   note: { color: role.contentSecondary, fontSize: type.fontSm, lineHeight: type.leadingSm },
-  devices: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-    margin: 0,
-    padding: 0,
-    listStyle: "none",
-  },
-  device: { display: "flex", alignItems: "center", gap: 8 },
-  deviceName: {
-    flexGrow: 1,
-    minWidth: 0,
-    color: role.contentPrimary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-    overflowWrap: "anywhere",
-  },
 });
 
 const TITLE = "Nyte account";
 
-const glyph = <Icon name="phone" size={16} />;
+const glyph = <Icon name="laptop" size={16} />;
 
 function LinkedConnection({
   view,
@@ -69,11 +52,6 @@ function LinkedConnection({
   );
 
   const unlink = useConnectAction(() => connect.unlink(), "Couldn’t unlink this Mac");
-
-  const revoke = useConnectAction(
-    (deviceId: string) => connect.revokeDevice({ deviceId }),
-    "Couldn’t revoke the device",
-  );
 
   const standing = linkedStanding(view);
   const { owner, devices } = view;
@@ -102,37 +80,20 @@ function LinkedConnection({
           </ConnectionMenu>
         }
         expansion={
-          <div {...props(styles.expansion)}>
-            {standing.note !== undefined && (
-              <span role="alert" {...props(intent.danger, styles.note)}>
-                {standing.note}
-              </span>
-            )}
-            {devices.length === 0 ? (
-              <span {...props(styles.note)}>
-                {`No devices yet. Sign in to the Nyte iOS app as ${owner.label} to add one.`}
-              </span>
-            ) : (
-              <ul aria-label="Devices" {...props(styles.devices)}>
-                {devices.map((device) => (
-                  <li key={device.id} {...props(styles.device)}>
-                    <span {...props(styles.deviceName)}>{device.name}</span>
-                    {view.lease.kind === "current" && !device.authorized && (
-                      <span {...props(styles.note)}>Not authorized yet</span>
-                    )}
-                    <Button
-                      loading={revoke.isPending && revoke.variables === device.id}
-                      disabled={revoke.isPending}
-                      onClick={() => revoke.mutate(device.id)}
-                    >
-                      Revoke
-                      <span {...props(srOnly)}>{` ${device.name}`}</span>
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          standing.note === undefined && devices.length > 0 ? undefined : (
+            <div {...props(styles.expansion)}>
+              {standing.note !== undefined && (
+                <span role="alert" {...props(intent.danger, styles.note)}>
+                  {standing.note}
+                </span>
+              )}
+              {devices.length === 0 && (
+                <span {...props(styles.note)}>
+                  {`No devices yet. Sign in to the Nyte iOS app as ${owner.label} to add one.`}
+                </span>
+              )}
+            </div>
+          )
         }
       />
       <ConfirmDialog
@@ -183,9 +144,12 @@ export function NyteConnection({
 
   if (view.kind === "linked" && !trayOpen) {
     return (
-      <ConnectionList>
-        <LinkedConnection view={view} connect={connect} />
-      </ConnectionList>
+      <>
+        <ConnectionList>
+          <LinkedConnection view={view} connect={connect} />
+        </ConnectionList>
+        <ConnectDevices view={view} connect={connect} />
+      </>
     );
   }
 

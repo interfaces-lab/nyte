@@ -57,7 +57,6 @@ export async function run(): Promise<string> {
                 document={{ text, selectionStart: 0, selectionEnd: 0 }}
                 files={[]}
                 disabled={false}
-                autoFocus={false}
                 placeholder=""
                 onKeyDown={() => {
                   edited += 1;

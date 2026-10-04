@@ -1,13 +1,14 @@
 import { spawn } from "node:child_process";
 import { mkdir, readFile, readdir, realpath, stat, writeFile } from "node:fs/promises";
-import { constants, hostname } from "node:os";
+import { constants, homedir } from "node:os";
+import { isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
-import type { TSchema } from "typebox";
 import { Value } from "typebox/value";
 import type { ToolReason } from "@nyte-ai/protocol";
-import type { ExecutionEnv, FileInfo } from "../kernel/loop/env.ts";
+import type { EnvOps, ExecutionEnv, FileInfo } from "../kernel/loop/env.ts";
 import { ToolError, stopReason, toolResultContent } from "../kernel/loop/tool-result.ts";
-import type { AgentTool, ToolCall, ToolDefinition } from "../kernel/loop/types.ts";
+import type { EnvironmentPlugin } from "../plugins/types.ts";
 import {
   getShellConfig,
   getShellEnv,
@@ -25,27 +26,28 @@ const MissingPath = Type.Object({
   code: Type.Union([Type.Literal("ENOENT"), Type.Literal("ENOTDIR")]),
 });
 
-/** The call's environment; a tool that reaches files or processes without one fails. */
-export function requireEnv(call: Pick<ToolCall, "env">): ExecutionEnv {
-  if (call.env === undefined) throw new Error("Tool call has no execution environment");
+/** Convert Git Bash, MSYS, Cygwin, and WSL drive paths to a form native Windows APIs accept. */
+function windowsShellPath(filePath: string): string {
+  if (!filePath.startsWith("/") || filePath.startsWith("//") || filePath.includes("\\"))
+    return filePath;
+  const match = filePath.match(/^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/(.*))?$/i);
 
-  return call.env;
+  if (!match) return filePath;
+  const suffix = match[2]?.replaceAll("/", "\\");
+
+  return `${match[1].toUpperCase()}:\\${suffix ?? ""}`;
 }
 
-/** The tool with `env` on every call it executes. */
-export function withExecutionEnv<P extends TSchema, D>(
-  tool: AgentTool<P, D>,
-  env: ExecutionEnv,
-): AgentTool<P, D>;
-export function withExecutionEnv<P extends TSchema, D>(
-  tool: ToolDefinition<P, D>,
-  env: ExecutionEnv,
-): ToolDefinition<P, D>;
-export function withExecutionEnv<P extends TSchema, D>(
-  tool: ToolDefinition<P, D>,
-  env: ExecutionEnv,
-): ToolDefinition<P, D> {
-  return { ...tool, execute: (input, call) => tool.execute(input, { ...call, env }) };
+/** A path as a person types one here: `~`, `file://`, and Windows shell drive forms. */
+function typedPath(input: string): string {
+  const path = process.platform === "win32" ? windowsShellPath(input) : input;
+
+  if (path === "~") return homedir();
+
+  if (path.startsWith("~/") || (process.platform === "win32" && path.startsWith("~\\")))
+    return join(homedir(), path.slice(2));
+
+  return path.startsWith("file://") ? fileURLToPath(path) : path;
 }
 
 function resolveTimeoutMs(timeout: number | undefined): number | undefined {
@@ -88,19 +90,36 @@ function fileInfo(stats: { isFile(): boolean; isDirectory(): boolean }): FileInf
   return { kind: stats.isFile() ? "file" : stats.isDirectory() ? "directory" : "other" };
 }
 
-export interface LocalExecutionEnvOptions {
+export function createLocalExecutionEnv({
+  id,
+  cwd,
+}: {
+  readonly id: string;
   readonly cwd: string;
-  /** An explicit shell; default: bash as `getShellConfig` finds it. */
-  readonly shellPath?: string;
+}): ExecutionEnv {
+  return { id, cwd, ...localOps(cwd) };
 }
 
-/** This machine's filesystem and shell, at `cwd`. */
-export function createLocalExecutionEnv(options: LocalExecutionEnvOptions): ExecutionEnv {
-  const { cwd, shellPath } = options;
-
+/** Provides `local` workspaces: this machine's directories, as the environment `id`. */
+export function localEnvironmentPlugin({ id }: { readonly id: string }): EnvironmentPlugin {
   return {
-    fs: `local:${hostname()}`,
-    cwd,
+    id: "local-environment",
+    environment: {
+      kind: "local",
+      open: async ({ cwd }) => {
+        if (!isAbsolute(cwd)) throw new Error(`Workspace directory is not absolute: ${cwd}`);
+
+        return createLocalExecutionEnv({ id, cwd });
+      },
+    },
+    session: () => undefined,
+  };
+}
+
+/** This machine's files and shell, at `cwd`. */
+export function localOps(cwd: string): EnvOps {
+  return {
+    resolve: (first = ".", ...rest) => resolve(cwd, typedPath(first), ...rest),
     readFile: (path) => readFile(path),
     writeFile: (path, content) => writeFile(path, content, "utf-8"),
     mkdir: (path) => mkdir(path, { recursive: true }).then(() => undefined),
@@ -115,7 +134,7 @@ export function createLocalExecutionEnv(options: LocalExecutionEnvOptions): Exec
       const timeoutMs = resolveTimeoutMs(timeout);
 
       if (signal?.aborted) throw aborted(signal);
-      const shellConfig = getShellConfig(shellPath);
+      const shellConfig = getShellConfig();
 
       if ((await missingAsUndefined(stat(cwd))) === undefined) {
         throw new Error(`Working directory does not exist: ${cwd}\nCannot execute bash commands.`);

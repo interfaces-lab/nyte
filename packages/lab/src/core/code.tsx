@@ -227,7 +227,7 @@ function SourceLink(input: {
       rel="noreferrer"
       {...props(styles.link)}
     >
-      {sourceLabel(input.path, input.line, input.end)} ↗
+      {sourceLabel(input.path, input.line, input.end)} <span aria-hidden>↗</span>
     </a>
   );
 }
@@ -265,7 +265,7 @@ export function Sketch(input: { readonly title: string; readonly code: string })
   const lines = useMemo(() => tokenize(input.code), [input.code]);
 
   return (
-    <Frame label={input.title} title={input.title} meta="Sketch">
+    <Frame label={`${input.title}, sketch`} title={input.title} meta="Sketch">
       {lines.map((line, index) => (
         <Fragment key={index}>
           {index > 0 && "\n"}

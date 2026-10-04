@@ -3,6 +3,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { router } from "expo-router";
 import { randomUUID } from "expo-crypto";
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Keyboard,
   Pressable,
@@ -41,7 +42,7 @@ import { platformColors } from "@nyte-ai/ui/platform-colors";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { controls, media, useTheme, radii, spacing, textStyles, typography } from "../theme.ts";
 import { useHost } from "../connection/host-context.tsx";
-import type { ModelInfo, ModelRef, RunConfig, SessionId } from "@nyte-ai/protocol";
+import type { Delivery, ModelInfo, ModelRef, RunConfig, SessionId } from "@nyte-ai/protocol";
 import { describeHostError } from "../connection/connection.ts";
 import { MAX_ATTACHMENTS, type StagedImage } from "../media/attachments.ts";
 import {
@@ -100,9 +101,20 @@ type SessionTarget = {
   running: boolean;
   stopping: boolean;
   error: string | undefined;
-  onSend: (content: UserContent) => Promise<boolean>;
+  /** Without a delivery the host steers a live run; Queue passes `next`. */
+  onSend: (content: UserContent, delivery?: Delivery) => Promise<boolean>;
   onStop: () => void;
 };
+
+/** A plain tap steers the run; holding Send offers to queue behind it instead. */
+function queueSheet(onQueue: () => void): void {
+  ActionSheetIOS.showActionSheetWithOptions(
+    { options: ["Cancel", "Queue Message"], cancelButtonIndex: 0 },
+    (index) => {
+      if (index === 1) onQueue();
+    },
+  );
+}
 
 /**
  * The one composer, on the list and in a conversation. Resting it is a single
@@ -396,7 +408,7 @@ export const Composer = memo(function Composer({
     }
   };
 
-  const submit = async () => {
+  const submit = async (delivery?: Delivery) => {
     if (busy || !hasContent || dictation.recording) return;
     const submitted = draft;
     const submittedImages = images;
@@ -453,7 +465,9 @@ export const Composer = memo(function Composer({
     }
 
     try {
-      if (await deliver({ sessionId: target.sessionId, content, line, send: target.onSend }))
+      const send = (message: UserContent) => target.onSend(message, delivery);
+
+      if (await deliver({ sessionId: target.sessionId, content, line, send }))
         clearSubmitted(submitted, submittedImages);
     } catch (cause) {
       setLocalError(describeHostError(cause));
@@ -884,9 +898,16 @@ export const Composer = memo(function Composer({
               accessibilityRole="button"
               accessibilityLabel="Send message"
               accessibilityState={{ busy: sending }}
+              accessibilityActions={
+                running ? [{ name: "queue", label: "Queue message" }] : undefined
+              }
               disabled={staging && !sending}
               onPress={() => {
                 void submit();
+              }}
+              onLongPress={running ? () => queueSheet(() => void submit("next")) : undefined}
+              onAccessibilityAction={(event) => {
+                if (event.nativeEvent.actionName === "queue") void submit("next");
               }}
               style={[field.hit, field.primary, busy && field.disabled]}
             >

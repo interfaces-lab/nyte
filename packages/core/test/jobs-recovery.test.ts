@@ -370,6 +370,7 @@ test("recovery leaves a leased job alive, then interrupts the orphan and wakes i
       tool: "bash",
       args: {},
       replay: "never",
+      environment: f.call.env.id,
     });
     assert.ok(effect.kind === "opened");
     await parkEffect(f.session, { lease: headLease, view: effect.view });
@@ -714,6 +715,7 @@ test("recheck signals a job that finished before its call was parked, and skips 
         tool: callId === "call" ? "bash" : "clarify",
         args: {},
         replay: "never",
+        environment: f.call.env.id,
       });
       assert.ok(effect.kind === "opened");
       await parkEffect(f.session, { lease: headLease, view: effect.view });

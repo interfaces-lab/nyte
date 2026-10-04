@@ -96,11 +96,37 @@ export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
 
 let failedShown = false;
 
-/** A session's activation says what it needs: trust, asked once per folder until granted, or a plugin fix. */
+/** A session's activation says what it needs: trust, asked once per folder until granted, a workspace this host cannot open, or a plugin fix. */
 export function observeActivation(activation: SessionActivationState): void {
+  if (activation.kind !== "requires" || activation.requirement.kind !== "workspace_unavailable")
+    toast.close("workspace-unavailable");
+
   switch (activation.kind) {
     case "requires": {
-      const path = activation.requirement.cwd;
+      const { requirement } = activation;
+
+      if (requirement.kind === "workspace_unavailable") {
+        let title: string;
+
+        switch (requirement.reason) {
+          case "unreachable":
+            title = "Couldn't reach this session's workspace";
+            break;
+          case "unsupported":
+            title = "Can't open this session's workspace";
+            break;
+          default: {
+            const _exhaustive: never = requirement.reason;
+            title = _exhaustive;
+          }
+        }
+
+        toast.add({ type: "error", title, id: "workspace-unavailable", timeout: 0 });
+
+        return;
+      }
+
+      const path = requirement.cwd;
 
       if (declined.has(path)) return;
       toast.close("workspace-open");
@@ -115,7 +141,6 @@ export function observeActivation(activation: SessionActivationState): void {
         type: "error",
         title: "Plugins failed to load",
         id: "plugins-failed",
-        description: activation.error,
         timeout: 0,
       });
 
@@ -179,14 +204,10 @@ export function WorkspaceDialogHost(): ReactElement | null {
         </Dialog.Description>
         <Dialog.Footer>
           {trust === undefined ? (
-            <Button autoFocus onClick={() => declineTrust(current)}>
-              Close
-            </Button>
+            <Button onClick={() => declineTrust(current)}>Close</Button>
           ) : (
             <>
-              <Button autoFocus onClick={() => declineTrust(current)}>
-                Cancel
-              </Button>
+              <Button onClick={() => declineTrust(current)}>Cancel</Button>
               <Button variant="solid" tone="primary" onClick={() => grantTrust(trust, current)}>
                 Trust Folder
               </Button>

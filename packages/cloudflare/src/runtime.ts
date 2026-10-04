@@ -7,7 +7,7 @@ import { sqlScan } from "./scan.ts";
 import { durableSqlite } from "./sqlite.ts";
 
 export interface CloudflareOptions {
-  readonly nyte: Omit<Extract<NyteOptions, { plugins: unknown }>, "store" | "workspace">;
+  readonly nyte: Omit<NyteOptions, "store" | "workspace" | "trust">;
   readonly server: Omit<NyteServerOptions, "sdk" | "environment" | "describe">;
   readonly maxHeads?: number;
   readonly budgetMs?: number;

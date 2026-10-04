@@ -1,7 +1,10 @@
+import type { MentionFile } from "@nyte-ai/client";
+
 interface ComposerFileDropTransfer {
   readonly types: ArrayLike<string>;
   readonly files: FileList | readonly File[];
   dropEffect: string;
+  getData(format: string): string;
 }
 
 interface ComposerFileDropEvent {
@@ -14,6 +17,28 @@ export function carriesFiles(event: ComposerFileDropEvent): boolean {
   const transfer = event.dataTransfer;
 
   return transfer !== null && Array.from(transfer.types).includes("Files");
+}
+
+let treeDrag: readonly MentionFile[] = [];
+
+/** The workspace tree's drag carries only its row path as text, so the files ride here. */
+export function setTreeDrag(files: readonly MentionFile[]): void {
+  treeDrag = files;
+}
+
+export function carriesTreeFiles(event: ComposerFileDropEvent): boolean {
+  const types = Array.from(event.dataTransfer?.types ?? []);
+
+  return treeDrag.length > 0 && types.includes("text/plain") && !types.includes("Files");
+}
+
+/** The tree's files, when the dropped text is the path its drag started from. */
+export function droppedTreeFiles(event: ComposerFileDropEvent): readonly MentionFile[] {
+  const path = event.dataTransfer?.getData("text/plain");
+
+  return carriesTreeFiles(event) && treeDrag.some((file) => file.displayPath === path)
+    ? treeDrag
+    : [];
 }
 
 export function dropHandlers(args: {

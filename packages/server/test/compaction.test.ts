@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { createNyte, type SessionEvent } from "@nyte-ai/core";
-import { definePlugin } from "@nyte-ai/core/plugins";
+import { definePlugin, localEnvironmentPlugin } from "@nyte-ai/core/plugins";
 import { SqliteStore } from "@nyte-ai/core/store";
 import { createNyteClient } from "@nyte-ai/client";
 import type { Api, AssistantMessage, Message, Model } from "@nyte-ai/schema";
@@ -51,6 +51,7 @@ test("compaction activity survives HTTP snapshots and SSE replay through publica
       getAvailable: async () => [model],
     },
     plugins: [
+      localEnvironmentPlugin({ id: "compaction-test" }),
       definePlugin({
         id: "test-compaction",
         session(api) {
@@ -70,7 +71,7 @@ test("compaction activity survives HTTP snapshots and SSE replay through publica
         },
       }),
     ],
-    env: { cwd: "/tmp/nowhere" },
+    defaultWorkspace: { kind: "local", id: "compaction-test", cwd: "/tmp/nowhere" },
     compaction: { enabled: true, reserveTokens: 100, keepRecentTokens: 1 },
     streamFn: () => assert.fail("Native compaction does not request an assistant response"),
   });

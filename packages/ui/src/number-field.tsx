@@ -49,7 +49,10 @@ const styles = create({
     backgroundColor: "transparent",
     color: role.contentSecondary,
     fontFamily: "inherit",
-    fontSize: type.fontSm,
+    fontSize: {
+      default: type.fontSm,
+      "@media (pointer: coarse)": `max(16px, ${type.fontSm})`,
+    },
     lineHeight: type.leadingSm,
     textAlign: "center",
     // The global ::selection is an accent wash and would tint the value.

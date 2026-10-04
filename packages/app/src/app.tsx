@@ -9,7 +9,8 @@ import type { AppRouter } from "./router.tsx";
 import { nyte } from "./nyte.ts";
 import type { HostState } from "./nyte.ts";
 import { useMountEffect } from "./use-mount-effect.ts";
-import { paneControllerForWorkspace } from "./layout/pane-context.tsx";
+import { activePaneController, paneControllerForWorkspace } from "./layout/pane-context.tsx";
+import { windowTabs } from "./tabs/window-tabs.ts";
 import { BLANK_SELECTION, activeSelection } from "./layout/pane-layout.ts";
 import { applyBrowserEvent, applyBrowserAgentOpened } from "./workbench/browser-surfaces.ts";
 import { applyTerminalEvent } from "./workbench/terminal-store.ts";
@@ -23,6 +24,8 @@ import { applyLoginEvent } from "./chrome/login-attempts.ts";
  * before it navigates.
  */
 function bindRouteToOpenFolder(router: AppRouter): void {
+  // A window tab keeps its own places whichever folder is current.
+  if (windowTabs.enabled) return;
   const workspacePath = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path;
   const sessionId = currentRouteSession(router);
   paneControllerForWorkspace(workspacePath).syncSelection(
@@ -32,7 +35,7 @@ function bindRouteToOpenFolder(router: AppRouter): void {
 
 function focusedSession(): SessionId | undefined {
   const workspacePath = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path;
-  const selection = activeSelection(paneControllerForWorkspace(workspacePath).getSnapshot().layout);
+  const selection = activeSelection(activePaneController(workspacePath).getSnapshot().layout);
 
   return selection.kind === "session" ? selection.sessionId : undefined;
 }

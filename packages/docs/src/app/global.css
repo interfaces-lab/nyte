@@ -33,22 +33,12 @@
     --site-nav-control: calc(var(--site-nav-height) - 2 * var(--site-nav-pad));
 
     --hero-blue: #2222dd;
-    --hero-sky: var(--hero-blue);
-    --hero-moon: var(--hero-blue);
-    --hero-glow: rgb(255 255 255 / 0.14);
 
     --plate-inset: 12px;
     --plate-radius: 28px;
     /* Header top below the plate edge, so nav pills sit concentric in its corner. */
     --plate-nav-drop: calc(var(--plate-inset) - var(--site-nav-pad));
     --plate-ink: #0e0e5c;
-  }
-
-  /* Midnight: a dark sky with only the stars. The moon turns a darker blue. */
-  .dark {
-    --hero-sky: #07071a;
-    --hero-moon: #0e0e5c;
-    --hero-glow: rgb(72 72 255 / 0.3);
   }
 
   /* Set by viewport only, never by page, so the nav keeps its edges across routes. */
@@ -113,18 +103,13 @@
   }
 }
 
-/* The landing hero plate repaints the shared site nav. */
-@custom-variant hero (body:has(.hero-plate, .landing-plate) &);
+/* The landing hero plate repaints the shared site nav until the preview reaches it. */
+@custom-variant hero (html:not([data-nav-stuck]) body:has(.landing-plate) &);
+@custom-variant stuck (html[data-nav-stuck] body:has(.landing-plate) &);
 @custom-variant plate (body:has(.landing-plate) &);
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
-  /* The plate has to reach the canvas, or overscroll shows the white page under it. */
-  html:has(.hero-plate),
-  body:has(.hero-plate) {
-    background: var(--hero-sky);
-  }
-
   html > body[data-scroll-locked] {
     margin-right: 0px !important;
     --removed-body-scroll-bar-size: 0px !important;
@@ -147,28 +132,6 @@
     margin-inline: auto;
     height: auto;
     max-width: 100%;
-  }
-
-  /* ------------------------------------------------------- landing sky --- */
-
-  /* Opacity only, so the twinkle stays on the compositor. */
-  .sky-twinkle {
-    animation: sky-twinkle 6s ease-in-out infinite alternate;
-  }
-
-  @keyframes sky-twinkle {
-    from {
-      opacity: 0.12;
-    }
-    to {
-      opacity: 0.5;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .sky-twinkle {
-      animation: none;
-    }
   }
 
   /* ----------------------------------------------------- landing plate --- */
@@ -224,6 +187,60 @@
     opacity: 0.55;
   }
 
+  /* Facts pop out of a word: scale and tilt overshoot, then drift after the pointer. */
+  .fact-pill {
+    position: absolute;
+    left: 50%;
+    z-index: 10;
+    width: max-content;
+    padding: 6px 10px;
+    border-radius: 9999px;
+    background: var(--tint);
+    color: var(--plate-ink);
+    box-shadow: 0 8px 20px -8px rgb(0 0 40 / 0.55);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-decoration: none;
+    pointer-events: none;
+    opacity: 0;
+    scale: 0.8;
+    rotate: 0deg;
+    translate: calc(-50% + var(--dx) + var(--px, 0px) * 0.3) var(--dy-rest);
+    transition:
+      opacity 120ms ease-out,
+      scale 420ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      rotate 420ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      translate 420ms var(--ease-nav);
+  }
+
+  .fact-pill + .fact-pill {
+    transition-delay: 40ms;
+  }
+
+  .fact:is(:hover, :focus-visible) .fact-pill {
+    opacity: 1;
+    scale: 1;
+    rotate: var(--r);
+    translate: calc(-50% + var(--dx) + var(--px, 0px) * 0.3) 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fact-pill {
+      scale: 1;
+      rotate: var(--r);
+      translate: calc(-50% + var(--dx)) 0;
+      transition: opacity 120ms ease-out;
+    }
+
+    .fact:is(:hover, :focus-visible) .fact-pill {
+      translate: calc(-50% + var(--dx)) 0;
+    }
+  }
+
   /* UIActivityIndicatorView turns in eight spoke-sized steps. */
   @keyframes ios-spin {
     to {
@@ -248,7 +265,7 @@
 }
 
 @layer utilities {
-  /* The plate scrolls the document, so the nav painted on it leaves with it. */
+  /* The plate scrolls the document; the nav stays pinned in its corner. */
   html:has(.landing-plate),
   html:has(.landing-plate) body {
     height: auto;

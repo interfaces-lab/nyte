@@ -1,6 +1,6 @@
 /**
  * The question tool over durable suspension. The model calls `question`;
- * the call parks the run (design record, "Wait and wake") with a `Selection`,
+ * the call parks the run with a `Selection`,
  * which is what every client renders: the question and its options travel
  * with the waiting effect, so a client that opens the session later, on any
  * host, answers from the snapshot alone. The user answers through the reply

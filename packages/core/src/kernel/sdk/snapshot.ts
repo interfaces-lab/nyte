@@ -16,6 +16,7 @@ import {
   type SessionActivationState,
   type SessionInfo,
   type SessionParent,
+  type WorkspaceRef,
 } from "./types.ts";
 
 export const NAME_FACT = "name";
@@ -191,6 +192,7 @@ export function headConfig(commits: readonly Commit[], run: RunInfo | undefined)
 export function sessionInfo(input: {
   readonly id: string;
   readonly activation: SessionActivationState;
+  readonly workspace: WorkspaceRef;
   readonly createdAt: number;
   readonly heads: readonly HeadInfo[];
   readonly facts: ReadonlyMap<string, JsonValue>;
@@ -223,6 +225,7 @@ export function sessionInfo(input: {
   const base = {
     sessionId: sessionId(input.id),
     activation: input.activation,
+    workspace: input.workspace,
     createdAt: input.createdAt,
     lastActivityAt: row.lastActivity,
     pinned: input.facts.get(PINNED_FACT) === true,

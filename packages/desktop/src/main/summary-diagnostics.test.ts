@@ -75,10 +75,10 @@ async function fixture(active: boolean) {
       createHost({
         ...options,
         plugins: active
-          ? { kind: "custom", plugins: [], env: { cwd: root } }
+          ? { kind: "custom", plugins: [], cwd: root }
           : {
               kind: "workspace",
-              target: { kind: "deferred", resolve: async () => ({ kind: "inactive" }) },
+              target: { kind: "deferred", cwd: root, resolve: async () => ({ kind: "inactive" }) },
             },
         onDiagnostic: (diagnostic) => {
           diagnostics.push(diagnostic);

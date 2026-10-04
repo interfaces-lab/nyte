@@ -11,6 +11,7 @@ import {
   applyPointerCursors,
   applyTint,
   applyTransparency,
+  withoutTransitions,
 } from "./appearance.ts";
 import { type } from "@nyte-ai/ui/vars.stylex";
 
@@ -270,7 +271,7 @@ export function setAppearanceSettings(next: AppearanceSettings): void {
     // Preference persistence is best-effort.
   }
 
-  apply(next);
+  withoutTransitions(() => apply(next));
 
   for (const listener of listeners) listener();
 }
@@ -278,11 +279,11 @@ export function setAppearanceSettings(next: AppearanceSettings): void {
 apply(appearance);
 
 colorSchemeQuery.addEventListener("change", () => {
-  if (appearance.theme === "system") apply(appearance);
+  if (appearance.theme === "system") withoutTransitions(() => apply(appearance));
 });
 
 reduceTransparencyQuery.addEventListener("change", () => {
-  apply(appearance);
+  withoutTransitions(() => apply(appearance));
 
   for (const listener of listeners) listener();
 });

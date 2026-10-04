@@ -31,6 +31,7 @@ async function showActivityPreview(kind: "working" | "attention") {
     sessionId: sessionId(PREVIEW_ACTIVITY),
     name: "Live Activity preview",
     activation: { kind: "active" },
+    workspace: { kind: "local", id: "fixture", cwd: "/" },
     createdAt: startedAt,
     lastActivityAt: startedAt,
     pinned: false,

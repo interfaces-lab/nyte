@@ -19,16 +19,12 @@ export const titlebarStyles = create({
   contentFill: {
     position: "absolute",
     insetBlock: 0,
-    insetInlineStart: `calc(${sidebar.width} - 1px)`,
+    insetInlineStart: sidebar.width,
     insetInlineEnd: 0,
-    borderInlineStartWidth: 1,
-    borderInlineStartStyle: "solid",
-    borderInlineStartColor: role.borderSecondaryTranslucent,
-    backgroundClip: "padding-box",
     backgroundColor: role.bgBase,
     pointerEvents: "none",
   },
-  contentFillSidebarHidden: { insetInlineStart: 0, borderInlineStartWidth: 0 },
+  contentFillSidebarHidden: { insetInlineStart: 0 },
   workbenchTrack: {
     position: "absolute",
     zIndex: 3,
@@ -48,6 +44,13 @@ export const titlebarStyles = create({
     backgroundColor: role.bgBase,
     WebkitAppRegion: "drag",
   },
+  /** Window tabs: the strip sits on the chrome, over the workbench column of the inset card. */
+  workbenchTrackTabbed: {
+    insetInlineEnd: 8,
+    borderInlineStartWidth: 0,
+    boxShadow: "none",
+    backgroundColor: "transparent",
+  },
   workbenchTrackSidebarHiddenMac: {
     maxWidth: `calc(100% - ${shell.trafficLightInset} - ${button.heightMd} - 12px)`,
   },
@@ -56,6 +59,9 @@ export const titlebarStyles = create({
     width: `calc(${workbench.activeWidth} - 10px)`,
     flexShrink: 0,
   },
+  workbenchReservationTabbed: { width: `calc(${workbench.activeWidth} - 2px)` },
+  tabSlot: { pointerEvents: "auto" },
+  tabSlotWorkbenchOpen: { insetInlineEnd: `calc(${workbench.activeWidth} + 52px)` },
   titleSlotWorkbenchOpen: {
     insetInlineEnd: `calc(${workbench.activeWidth} + 44px)`,
   },

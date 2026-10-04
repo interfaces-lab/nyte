@@ -51,7 +51,6 @@ export async function run(): Promise<string> {
           document={draft}
           files={files}
           disabled={false}
-          autoFocus={false}
           placeholder="Message"
           onKeyDown={() => {}}
           onReferencesChange={(next) => {

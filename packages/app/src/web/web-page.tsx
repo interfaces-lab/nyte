@@ -1,3 +1,4 @@
+import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { radius } from "@nyte-ai/ui/schema.stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
@@ -9,7 +10,7 @@ const styles = create({
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    minHeight: "100%",
+    height: "100%",
     padding: 24,
     overflowY: "auto",
     backgroundColor: role.bgBase,
@@ -23,6 +24,7 @@ const styles = create({
     maxWidth: 360,
     marginBlock: "auto",
     paddingBlock: 32,
+    overflowWrap: "break-word",
   },
   header: {
     display: "flex",
@@ -62,27 +64,34 @@ export function WebPage({
   description,
   footer,
   busy,
+  status,
   children,
 }: {
   readonly title?: string;
   readonly description?: ReactNode;
   readonly footer?: ReactNode;
   readonly busy?: boolean;
+  readonly status?: string;
   readonly children?: ReactNode;
 }): ReactElement {
   return (
-    <main {...props(styles.page)} aria-busy={busy}>
-      <div {...props(styles.column)}>
-        <img src="/icon.svg" alt="" width={40} height={40} {...props(styles.mark)} />
-        {title !== undefined && (
-          <header {...props(styles.header)}>
-            <h1 {...props(styles.title)}>{title}</h1>
-            {description !== undefined && <p {...props(styles.description)}>{description}</p>}
-          </header>
-        )}
-        {children}
-        {footer !== undefined && <footer {...props(styles.footer)}>{footer}</footer>}
-      </div>
-    </main>
+    <>
+      <main {...props(styles.page)} aria-busy={busy}>
+        <div {...props(styles.column)}>
+          <img src="/icon.svg" alt="" width={40} height={40} {...props(styles.mark)} />
+          {title !== undefined && (
+            <header {...props(styles.header)}>
+              <h1 {...props(styles.title)}>{title}</h1>
+              {description !== undefined && <p {...props(styles.description)}>{description}</p>}
+            </header>
+          )}
+          {children}
+          {footer !== undefined && <footer {...props(styles.footer)}>{footer}</footer>}
+        </div>
+      </main>
+      <p role="status" {...props(srOnly)}>
+        {status}
+      </p>
+    </>
   );
 }

@@ -3,12 +3,12 @@
  * loopback listener and relay connection, a `ws` stand-in for the broker's
  * relay, and an in-process broker that verifies every proof and signs every
  * lease and enrollment with real Ed25519 keys. Phones reach the desktop only
- * through that relay, as they do in production. Only the sign-in dialog, the
- * keychain, and the broker's network are replaced; nothing bypasses a
+ * through that relay, as they do in production. Only the sign-in dialog and the
+ * broker's network are replaced; nothing bypasses a
  * signature or the server's own auth.
  */
 import assert from "node:assert/strict";
-import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +16,7 @@ import { afterEach, test, vi } from "vitest";
 import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
 import type { MutableModels, Provider } from "@nyte-ai/ai";
 import { createNyteClient } from "@nyte-ai/client";
+import { environmentId } from "@nyte-ai/host";
 import type { Api, Model } from "@nyte-ai/schema";
 import type { ConnectView, HostEvent } from "@nyte-ai/app/bridge.ts";
 import {
@@ -37,6 +38,7 @@ import type {
 import { RELAY_CLOSE } from "@nyte-ai/connect/relay";
 import type { RelayMethod } from "@nyte-ai/connect/relay";
 import {
+  PrivateJwk,
   generateMachineKey,
   keyThumbprint,
   nowSeconds,
@@ -47,7 +49,6 @@ import {
   verifyClaims,
   verifyProof,
 } from "@nyte-ai/connect/signing";
-import type { PrivateJwk } from "@nyte-ai/connect/signing";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { DesktopHost } from "./host.ts";
@@ -59,7 +60,6 @@ import type { ConnectConfig } from "./connect-config.ts";
 import { connectRouteHandler } from "./connect-routes.ts";
 import { ConnectRuntime } from "./connect-runtime.ts";
 import type { ConnectTiming } from "./connect-runtime.ts";
-import type { SecretCipher } from "./connect-store.ts";
 import { RelayServer } from "./fixtures/relay-server.ts";
 
 const ORIGIN = "https://connect.nyte.test";
@@ -124,33 +124,8 @@ afterEach(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// The keychain and the sign-in dialog: the external boundaries
+// The sign-in dialog: the external boundary
 // ---------------------------------------------------------------------------
-
-/** AES-256-GCM under a key held in memory, standing in for the OS keychain. */
-function fixtureCipher(available = true): SecretCipher {
-  const key = randomBytes(32);
-
-  return {
-    available: async () => available,
-    seal: async (plain) => {
-      const iv = randomBytes(12);
-      const cipher = createCipheriv("aes-256-gcm", key, iv);
-      const body = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-
-      return Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64");
-    },
-    open: async (sealed) => {
-      const bytes = Buffer.from(sealed, "base64");
-      const decipher = createDecipheriv("aes-256-gcm", key, bytes.subarray(0, 12));
-      decipher.setAuthTag(bytes.subarray(12, 28));
-
-      return Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString(
-        "utf8",
-      );
-    },
-  };
-}
 
 class FixtureAccount implements AccountSession {
   token = SESSION_JWT;
@@ -560,7 +535,6 @@ class Broker {
 interface Fixture {
   readonly root: string;
   readonly state: string;
-  readonly cipher: SecretCipher;
   readonly account: FixtureAccount;
   readonly broker: Broker;
   readonly relay: RelayServer;
@@ -579,7 +553,7 @@ async function fixture(): Promise<Fixture> {
   cleanups.push(() => relay.stop());
   broker.relay = relay;
 
-  return { root, state, cipher: fixtureCipher(), account: new FixtureAccount(), broker, relay };
+  return { root, state, account: new FixtureAccount(), broker, relay };
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -602,7 +576,6 @@ async function desktop(
   options: {
     readonly timing?: Partial<ConnectTiming>;
     readonly config?: ConnectConfig | undefined;
-    readonly cipher?: SecretCipher;
     readonly account?: AccountSession | undefined;
   } = {},
 ): Promise<Desktop> {
@@ -614,7 +587,6 @@ async function desktop(
   const runtime = new ConnectRuntime({
     config: "config" in options ? options.config : CONFIG,
     home: setup.state,
-    cipher: options.cipher ?? setup.cipher,
     account: "account" in options ? options.account : setup.account,
     onChange: () => events.push({ kind: "remote_access_changed" }),
     name: "Fixture Mac",
@@ -772,7 +744,7 @@ const allowed = { status: 200, code: undefined } as const;
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
-test("a linked Mac serves only leased devices, and no secret reaches disk in the clear or the renderer", async () => {
+test("a linked Mac serves only leased devices, and no session secret reaches disk or the renderer", async () => {
   const setup = await fixture();
   const desktop_ = await desktop(setup);
   const serving = await serve(desktop_);
@@ -795,14 +767,9 @@ test("a linked Mac serves only leased devices, and no secret reaches disk in the
   const parsed = JSON.parse(file);
   assert.equal(file.includes(SESSION_JWT), false);
   assert.equal(file.includes(phone.token), false);
-  assert.equal(file.includes('"d"'), false);
   assert.deepEqual(parsed.link.environment, { id: serving.environment.id, name: "Fixture Mac" });
-  assert.ok(
-    Value.Check(
-      Type.Object({ d: Type.String() }),
-      JSON.parse(await setup.cipher.open(parsed.link.key)),
-    ),
-  );
+  assert.ok(Value.Check(PrivateJwk, parsed.link.key));
+  assert.equal(await keyThumbprint(parsed.link.key), broker.env?.thumbprint);
   assert.equal(parsed.link.devices[0].digest, await sha256(phone.token));
 
   const after = await linked(desktop_.host);
@@ -812,7 +779,7 @@ test("a linked Mac serves only leased devices, and no secret reaches disk in the
   );
   const renderer = JSON.stringify([after, desktop_.events]);
 
-  for (const hidden of [SESSION_JWT, phone.token, parsed.link.key])
+  for (const hidden of [SESSION_JWT, phone.token, parsed.link.key.d])
     assert.equal(renderer.includes(hidden), false);
   assert.ok(desktop_.events.some((event) => event.kind === "remote_access_changed"));
   assert.deepEqual(setup.relay.violations, []);
@@ -894,24 +861,6 @@ test("showing the sign-in dialog while a link waits on it does not replace that 
 
   await host.call(1, "host.connect.cancel", undefined);
   assert.equal((await waiting).kind, "unlinked");
-});
-
-test("a link this keychain cannot open is turned off without serving or calling the broker", async () => {
-  const setup = await fixture();
-  const first = await desktop(setup);
-  assert.equal((await first.host.call(1, "host.connect.link", undefined)).kind, "linked");
-  await first.host.close();
-  const calls = setup.broker.calls.length;
-
-  const second = await desktop(setup, { cipher: fixtureCipher() });
-  await assert.rejects(second.host.call(1, "host.connect.setEnabled", { enabled: true }));
-  const after = await linked(second.host);
-  assert.equal(after.enabled, false);
-  assert.deepEqual(after.lease, { kind: "stopped" });
-  assert.deepEqual(after.connection, { kind: "stopped" });
-  await sleep(300);
-  assert.equal(setup.broker.calls.length, calls);
-  assert.equal(setup.relay.auths, 0);
 });
 
 test("a readiness refresh that fails may be tried again within the phone's retry window", async () => {
@@ -1524,6 +1473,22 @@ test("pending unlinks are kept until the broker confirms them, and a full queue 
   assert.deepEqual(await pending(), []);
 }, 30_000);
 
+test("sessions keep this Mac's environment id while it links and unlinks", async () => {
+  const setup = await fixture();
+  const { host } = await desktop(setup);
+  const before = await host.call(1, "sessions.create", {});
+  assert.equal((await host.call(1, "host.connect.link", undefined)).kind, "linked");
+  const whileLinked = await host.call(1, "sessions.create", {});
+  const linkId = setup.broker.env?.id;
+  assert.ok(linkId);
+  await host.call(1, "host.connect.unlink", undefined);
+  const after = await host.call(1, "sessions.create", {});
+  assert.equal(before.workspace.id, await environmentId());
+  assert.notEqual(before.workspace.id, linkId);
+  assert.equal(whileLinked.workspace.id, before.workspace.id);
+  assert.equal(after.workspace.id, before.workspace.id);
+});
+
 test("a linked Mac keeps serving with its machine key when the sign-in dialog is unavailable", async () => {
   const setup = await fixture();
   const first = await desktop(setup);
@@ -1702,71 +1667,65 @@ test("waking refuses everyone until a fresh lease and dials the relay again", as
   await vi.waitFor(async () => assert.deepEqual(await info(setup, phone.token), allowed));
 });
 
-test("launches and views leave the keychain alone until remote access needs the key", async () => {
+test("a cancelled link keeps its key on disk, and a restart resumes the same environment with it", async () => {
   const setup = await fixture();
-
-  const spies = [
-    vi.spyOn(setup.cipher, "available"),
-    vi.spyOn(setup.cipher, "seal"),
-    vi.spyOn(setup.cipher, "open"),
-  ];
-
-  const keychainCalls = (): number => spies.reduce((sum, spy) => sum + spy.mock.calls.length, 0);
   const first = await desktop(setup);
-
-  await first.host.autostartConnect(1);
-  assert.equal((await view(first.host)).kind, "unlinked");
-  assert.equal(keychainCalls(), 0);
-  await first.host.call(1, "host.connect.link", undefined);
+  const { broker } = setup;
+  const gate = Promise.withResolvers<void>();
+  broker.linkGate = gate.promise;
+  const inFlight = first.host.call(1, "host.connect.link", undefined);
+  await vi.waitFor(() => assert.equal(broker.count(`POST ${BROKER_ROUTES.environments}`), 1));
+  const pending = JSON.parse(await stored(setup)).linkKey;
+  assert.ok(Value.Check(PrivateJwk, pending.key));
+  assert.equal(await keyThumbprint(pending.key), broker.env?.thumbprint);
+  await first.host.call(1, "host.connect.cancel", undefined);
+  gate.resolve();
+  assert.equal((await inFlight).kind, "unlinked");
   await first.host.close();
-  const linkCalls = keychainCalls();
-  assert.ok(linkCalls > 0);
+  broker.linkGate = undefined;
+  const environment = broker.env?.id;
+  assert.deepEqual(JSON.parse(await stored(setup)).linkKey.key, pending.key);
 
-  const { host } = await desktop(setup);
-
-  await host.autostartConnect(1);
-  const current = await linked(host);
-
-  assert.equal(current.enabled, false);
-  assert.deepEqual(current.connection, { kind: "stopped" });
-  assert.equal(keychainCalls(), linkCalls);
+  const second = await desktop(setup);
+  assert.equal((await second.host.call(1, "host.connect.link", undefined)).kind, "linked");
+  assert.equal(broker.env?.id, environment);
+  const file = JSON.parse(await stored(setup));
+  assert.deepEqual(file.link.key, pending.key);
+  assert.equal(file.linkKey, null);
 });
 
-test("a keychain that refuses at launch keeps remote access off, and turning it off needs no keychain", async () => {
+test("a malformed machine key on disk keeps a restart off the broker and the relay", async () => {
   const setup = await fixture();
   const first = await desktop(setup);
-
   await serve(first);
   await first.host.close();
-  const available = vi.spyOn(setup.cipher, "available").mockResolvedValue(false);
-  const open = vi.spyOn(setup.cipher, "open");
-  const { host } = await desktop(setup);
-
-  await host.autostartConnect(1);
   await relayGone(setup);
-  assert.deepEqual(await view(host), { kind: "unavailable", reason: "keychain_unavailable" });
-  available.mockClear();
-  await host.call(1, "host.connect.setEnabled", { enabled: false });
-  assert.equal(JSON.parse(await stored(setup)).enabled, false);
-  assert.equal(available.mock.calls.length, 0);
-  assert.equal(open.mock.calls.length, 0);
+  const path = join(setup.state, "connect.json");
+  const file = JSON.parse(await stored(setup));
+  delete file.link.key.d;
+  const corrupted = `${JSON.stringify(file, null, 2)}\n`;
+  await writeFile(path, corrupted);
+  const calls = setup.broker.calls.length;
+  const auths = setup.relay.auths;
+
+  const { host } = await desktop(setup);
+  await host.autostartConnect(1);
+  await sleep(300);
+  assert.deepEqual(await view(host), { kind: "unavailable", reason: "store_failed" });
+  await assert.rejects(host.call(1, "host.connect.setEnabled", { enabled: true }));
+  await assert.rejects(host.call(1, "host.connect.link", undefined));
+  assert.equal(setup.broker.calls.length, calls);
+  assert.equal(setup.relay.auths, auths);
+  assert.equal(setup.relay.connected(), undefined);
+  assert.equal(await stored(setup), corrupted);
 });
 
-test("nothing is linked without configuration or a keychain", async () => {
+test("nothing is linked without configuration", async () => {
   const setup = await fixture();
+  const { host } = await desktop(setup, { config: undefined });
 
-  const cases: readonly [Parameters<typeof desktop>[1], ConnectView][] = [
-    [{ config: undefined }, { kind: "unavailable", reason: "not_configured" }],
-    [{ cipher: fixtureCipher(false) }, { kind: "unavailable", reason: "keychain_unavailable" }],
-  ];
-
-  for (const [options, expected] of cases) {
-    const { host } = await desktop(setup, options);
-    await assert.rejects(host.call(1, "host.connect.link", undefined));
-    assert.deepEqual(await view(host), expected);
-    await host.close();
-  }
-
+  await assert.rejects(host.call(1, "host.connect.link", undefined));
+  assert.deepEqual(await view(host), { kind: "unavailable", reason: "not_configured" });
   assert.equal(setup.account.requests, 0);
   assert.equal(setup.broker.calls.length, 0);
 });

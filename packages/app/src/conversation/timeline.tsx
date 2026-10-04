@@ -201,17 +201,7 @@ export function Timeline({
         }
       }
     },
-    [
-      branchModel,
-      cwd,
-      onEditUser,
-      onOpenChanges,
-      onRetry,
-      rows,
-      sessionId,
-      settledWork,
-      working,
-    ],
+    [branchModel, cwd, onEditUser, onOpenChanges, onRetry, rows, sessionId, settledWork, working],
   );
 
   return (

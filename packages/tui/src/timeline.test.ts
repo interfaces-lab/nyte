@@ -135,6 +135,7 @@ function state(
     info: {
       sessionId: activeSession,
       activation: { kind: "active" },
+      workspace: { kind: "local", id: "test", cwd: "/" },
       createdAt: 0,
       lastActivityAt: 0,
       pinned: false,

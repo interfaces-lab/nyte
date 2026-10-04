@@ -43,6 +43,7 @@ import {
   $readComposerDocument,
   $replaceComposerText,
   $restoreComposerDocument,
+  $selectComposerDomPoint,
   COMPOSER_EXTERNAL_TAG,
   registerComposerReferences,
   sameComposerDocument,
@@ -64,6 +65,8 @@ export interface ComposerEditorHandle {
   readDocument(): ComposerDocumentState;
   replaceText(start: number, end: number, text: string): void;
   insertReference(reference: MessageReference, start?: number, end?: number): void;
+  /** Insert at the text under a viewport point, else at the caret. */
+  dropReferences(references: readonly MessageReference[], clientX: number, clientY: number): void;
 }
 
 export interface ComposerComboboxState {
@@ -86,7 +89,6 @@ interface ComposerEditorProps {
   readonly onReferencesChange?: (references: readonly MessageReference[]) => void;
   readonly files: readonly MentionFile[];
   readonly disabled: boolean;
-  readonly autoFocus: boolean;
   readonly placeholder: string;
   /** Present when a suggestion popup can open: the editor is then its combobox. */
   readonly combobox?: ComposerComboboxState;
@@ -176,7 +178,6 @@ export function ComposerEditor({
   onReferencesChange,
   files,
   disabled,
-  autoFocus,
   placeholder,
   combobox,
   onKeyDown,
@@ -240,6 +241,27 @@ export function ComposerEditor({
           tag: HISTORY_PUSH_TAG,
         });
       },
+      dropReferences(references, clientX, clientY) {
+        const root = rootRef.current;
+        const page = root?.ownerDocument;
+
+        // Older engines lack the standard call; there the drop lands at the caret.
+        const caret =
+          page !== undefined && "caretPositionFromPoint" in page
+            ? page.caretPositionFromPoint(clientX, clientY)
+            : null;
+
+        focusEditor();
+        editor.update(
+          () => {
+            if (caret !== null && root?.contains(caret.offsetNode) === true)
+              $selectComposerDomPoint(caret.offsetNode, caret.offset);
+
+            for (const reference of references) $insertComposerReference(reference);
+          },
+          { discrete: true, tag: HISTORY_PUSH_TAG },
+        );
+      },
     }),
     [editor, focusEditor, rootRef],
   );
@@ -301,10 +323,6 @@ export function ComposerEditor({
     });
     editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
   }, [editor, externalDocument, rootRef]);
-
-  useLayoutEffect(() => {
-    if (autoFocus && !disabled) focusEditor();
-  }, [autoFocus, disabled, focusEditor]);
 
   useLayoutEffect(
     () =>

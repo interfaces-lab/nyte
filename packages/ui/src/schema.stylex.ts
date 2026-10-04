@@ -168,6 +168,7 @@ export const layer = defineConsts({
   stickyContent: 10,
   workbench: 20,
   chrome: 30,
+  sash: 31,
   menu: 60,
   submenu: 61,
   tooltip: 70,

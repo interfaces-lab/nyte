@@ -19,6 +19,9 @@ import {
 import { conversation, diffView, pane, tray } from "../theme/schema.stylex.ts";
 import { appearance, motion, role, shadow, type } from "@nyte-ai/ui/vars.stylex";
 
+const CHIP_LABEL_FADE =
+  "linear-gradient(to right, black calc(100% - 28px), transparent calc(100% - 8px))";
+
 const caretBlink = keyframes({
   "0%, 49%": { opacity: 1 },
   "50%, 100%": { opacity: 0 },
@@ -646,7 +649,12 @@ export const composerStyles = create({
     lineHeight: "inherit",
     whiteSpace: "nowrap",
   },
-  mentionChipLabel: { display: "inline-flex", alignItems: "baseline" },
+  mentionChipLabel: {
+    display: "inline-flex",
+    alignItems: "baseline",
+    WebkitMaskImage: "var(--_chip-label-mask)",
+    maskImage: "var(--_chip-label-mask)",
+  },
   mentionChipLeading: {
     display: "inline-flex",
     alignItems: "center",
@@ -657,7 +665,40 @@ export const composerStyles = create({
     height: "1em",
     marginInlineEnd: 4,
   },
-  mentionChipRemove: { flexShrink: 0 },
+  /** Like a workbench tab: the remove button appears over the faded end of the label. */
+  mentionChipRemovable: {
+    "--_chip-remove-opacity": {
+      default: "0",
+      ":hover": "1",
+      ":has(:focus-visible)": "1",
+      "@media (hover: none)": "1",
+    },
+    "--_chip-remove-pointer-events": {
+      default: "none",
+      ":hover": "auto",
+      ":has(:focus-visible)": "auto",
+      "@media (hover: none)": "auto",
+    },
+    "--_chip-label-mask": {
+      default: "none",
+      ":hover": CHIP_LABEL_FADE,
+      ":has(:focus-visible)": CHIP_LABEL_FADE,
+      "@media (hover: none)": CHIP_LABEL_FADE,
+    },
+  },
+  mentionChipRemove: {
+    position: "absolute",
+    insetBlock: 0,
+    insetInlineEnd: 0,
+    zIndex: 1,
+    display: "flex",
+    alignItems: "center",
+    opacity: "var(--_chip-remove-opacity)",
+    pointerEvents: "var(--_chip-remove-pointer-events)",
+    transitionProperty: "opacity",
+    transitionDuration: motion.durationFast,
+    transitionTimingFunction: motion.easeOut,
+  },
   /** A pasted snippet, scrolling past its bounds. */
   clipboardPreview: {
     display: "block",

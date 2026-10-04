@@ -17,7 +17,7 @@ import { headRef } from "../../src/kernel/names.ts";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { sessionId, type SummaryDiagnostic } from "../../src/kernel/sdk/types.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
-import { assistant, message, openStore, seedHead, usage, user } from "./helpers.ts";
+import { assistant, localOptions, message, openStore, seedHead, usage, user } from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "diagnostic-test",
@@ -57,7 +57,7 @@ test.each(["success", "fault"])(
         getModel: () => model,
         getAvailable: async () => [model],
       },
-      plugins: [
+      ...localOptions("/tmp", [
         definePlugin({
           id: "navigation-request-test",
           session(api) {
@@ -67,8 +67,7 @@ test.each(["success", "fault"])(
             });
           },
         }),
-      ],
-      env: { cwd: "/tmp" },
+      ]),
       compaction: settings,
       streamOptions: {
         temperature: 0.4,
@@ -243,8 +242,7 @@ for (const operation of ["runs.compact", "heads.move"] satisfies SummaryDiagnost
           getModel: () => model,
           getAvailable: async () => [model],
         },
-        plugins: [],
-        env: { cwd: "/tmp" },
+        ...localOptions("/tmp"),
         compaction: settings,
         onDiagnostic: (diagnostic) => {
           diagnostics.push(diagnostic);
@@ -392,8 +390,7 @@ test("manual cancellation and empty history do not emit unexpected diagnostics",
       getModel: () => model,
       getAvailable: async () => [model],
     },
-    plugins: [],
-    env: { cwd: "/tmp" },
+    ...localOptions("/tmp"),
     onDiagnostic: (diagnostic) => {
       diagnostics.push(diagnostic);
     },

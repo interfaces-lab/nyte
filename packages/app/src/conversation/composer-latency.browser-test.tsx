@@ -84,7 +84,6 @@ function Harness({ streaming }: { streaming: boolean }): ReactElement {
         onDocumentChange={setDocument}
         onSubmit={() => true}
         placeholder="Type"
-        autoFocus
         suggestionCatalog={{
           status: "ready",
           data: { plugins: [], commands: [], skills: [], settings: [] },

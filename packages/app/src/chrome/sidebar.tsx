@@ -29,7 +29,7 @@ import { LayoutGroup, motion, MotionConfig } from "motion/react";
 import type { Transition } from "motion/react";
 // oxlint-disable-next-line no-restricted-imports -- neighbouring sessions preload as the active session changes
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { ReactElement, ReactNode } from "react";
+import type { MouseEvent, ReactElement, ReactNode } from "react";
 import type { SessionMark } from "@nyte-ai/client";
 import type { SessionId, SessionInfo, WorkspaceInfo } from "@nyte-ai/protocol";
 import type { ChatDraft } from "../layout/session-view-state.ts";
@@ -47,6 +47,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import {
+  activePaneController,
   paneControllerForWorkspace,
   usePaneActions,
   usePaneControllerSnapshot,
@@ -92,6 +93,8 @@ import {
 import { SettingsNavigation, type SettingsSection } from "./settings-navigation.tsx";
 import { shellActions, useShellState } from "./shell-state.ts";
 import { activateWorkspace } from "./use-show-session.ts";
+import type { OpenTarget } from "../tabs/model.ts";
+import { windowTabs } from "../tabs/window-tabs.ts";
 import { clientActionAriaShortcut, clientActionKeys, clientActions } from "../client-actions.ts";
 import { cloudSessions, localSessions } from "../bridge.ts";
 import type { GitHubRepository } from "../bridge.ts";
@@ -102,6 +105,17 @@ type SessionPlace =
   | { readonly kind: "cloud" };
 
 const COLLAPSED_SESSION_LIMIT = 5;
+
+/** With window tabs, ⌘-click or middle-click opens a background tab and ⌘⇧-click shows it. */
+function openTarget(event: MouseEvent): OpenTarget {
+  if (!windowTabs.enabled) return "here";
+
+  if (event.button === 1) return "background";
+
+  if (event.metaKey || event.ctrlKey) return event.shiftKey ? "foreground" : "background";
+
+  return "here";
+}
 
 const INSTANT: Transition = { duration: 0 };
 
@@ -352,7 +366,7 @@ export function Sidebar(): ReactElement {
 
   const activeDraftId =
     selection.kind === "blank"
-      ? paneControllerForWorkspace(workspacePath).viewState.readBlank(activePane(layout).id).id
+      ? activePaneController(workspacePath).viewState.readBlank(activePane(layout).id).id
       : undefined;
 
   const mac = macPlatform(host.data?.platform);
@@ -408,10 +422,23 @@ export function Sidebar(): ReactElement {
     place: SessionPlace,
     sessionId: SessionId,
     beside = false,
+    target: OpenTarget = "here",
   ): Promise<void> => {
     // A local session selects its folder first. A server session opens in
     // whichever folder's panes are showing; nothing local is selected.
-    if (place.kind === "local" && !(await activateWorkspace(place.path))) return;
+    // A background tab leaves the current folder alone until it is shown.
+    if (target !== "background" && place.kind === "local" && !(await activateWorkspace(place.path)))
+      return;
+
+    if (windowTabs.enabled) {
+      const controller = windowTabs.controller();
+
+      if (beside)
+        controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
+      else windowTabs.dispatch({ kind: "open", place: { kind: "session", sessionId }, target });
+
+      return;
+    }
 
     const controller = paneControllerForWorkspace(
       place.kind === "local" ? (place.path ?? undefined) : workspacePath,
@@ -424,7 +451,9 @@ export function Sidebar(): ReactElement {
   };
 
   const showDraft = async (draftId: string): Promise<void> => {
-    paneControllerForWorkspace(workspacePath).selectDraft(draftId);
+    activePaneController(workspacePath).selectDraft(draftId);
+
+    if (windowTabs.enabled) return;
     shellActions.showWorkspace();
     await router.navigate({ to: "/" });
   };
@@ -432,7 +461,14 @@ export function Sidebar(): ReactElement {
   const newWorkspaceChat = async (path: string | null): Promise<void> => {
     if (!(await activateWorkspace(path))) return;
     setExpanded(path, true);
-    paneControllerForWorkspace(path ?? undefined).newChat();
+
+    if (windowTabs.enabled) {
+      windowTabs.dispatch({ kind: "new-tab" });
+
+      return;
+    }
+
+    activePaneController(path).newChat();
     shellActions.showWorkspace();
     await router.navigate({ to: "/" });
   };
@@ -491,9 +527,9 @@ export function Sidebar(): ReactElement {
         optimistic={optimisticSessions.has(session.sessionId)}
         layoutEnabled={layoutEnabled}
         showUpdated={view.show.includes("updated")}
-        onOpen={() => {
-          sessionReadState.markRead(session);
-          void showSession(place, session.sessionId);
+        onOpen={(target) => {
+          if (target !== "background") sessionReadState.markRead(session);
+          void showSession(place, session.sessionId, false, target);
         }}
         onOpenBeside={() => {
           sessionReadState.markRead(session);
@@ -619,7 +655,7 @@ export function Sidebar(): ReactElement {
             selected={draft.id === activeDraftId}
             layoutEnabled={layoutEnabled}
             onOpen={() => void showDraft(draft.id)}
-            onDelete={() => paneControllerForWorkspace(workspacePath).removeDraft(draft.id)}
+            onDelete={() => activePaneController(workspacePath).removeDraft(draft.id)}
           />
         ))}
         {visible.map(({ place, session }) => sessionRow(place, session, layoutEnabled))}
@@ -698,7 +734,7 @@ export function Sidebar(): ReactElement {
                 selected={path === (workspacePath ?? null) && draft.id === activeDraftId}
                 layoutEnabled={sidebarVisible && collectionExpanded && !collapsed}
                 onOpen={() => void showDraft(draft.id)}
-                onDelete={() => paneControllerForWorkspace(workspacePath).removeDraft(draft.id)}
+                onDelete={() => activePaneController(workspacePath).removeDraft(draft.id)}
               />
             ))}
           </div>
@@ -782,6 +818,16 @@ export function Sidebar(): ReactElement {
               recentSessions={rows?.map(({ session }) => session)}
               onOpenChange={setPaletteOpen}
               onOpenSession={(sessionId) => {
+                if (windowTabs.enabled) {
+                  windowTabs.dispatch({
+                    kind: "open",
+                    place: { kind: "session", sessionId },
+                    target: "here",
+                  });
+
+                  return;
+                }
+
                 shellActions.showWorkspace();
                 panes.openSession(sessionId);
               }}
@@ -1292,7 +1338,7 @@ interface SessionRowProps {
   optimistic: boolean;
   layoutEnabled: boolean;
   showUpdated: boolean;
-  onOpen: () => void;
+  onOpen: (target: OpenTarget) => void;
   onOpenBeside: () => void;
   onHover: () => void;
   onRename: (name: string) => void;
@@ -1372,7 +1418,6 @@ function SessionRow({
         <Row.Label>
           <Input
             aria-label={`Rename ${title}`}
-            autoFocus
             xstyle={styles.sessionRenameInput}
             value={draftName}
             onFocus={(event) => event.currentTarget.select()}
@@ -1463,7 +1508,10 @@ function SessionRow({
       <Row.Primary
         xstyle={unreachable && styles.sessionUnreachable}
         aria-current={selected ? "page" : undefined}
-        onClick={onOpen}
+        onClick={(event) => onOpen(openTarget(event))}
+        onAuxClick={(event) => {
+          if (event.button === 1 && windowTabs.enabled) onOpen("background");
+        }}
         {...listeners}
       >
         <Row.Leading xstyle={[styles.rowIcon, ask !== undefined && styles.rowIconAsk]}>

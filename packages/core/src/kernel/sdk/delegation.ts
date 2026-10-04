@@ -36,13 +36,7 @@ import { delegationPrefix, delegationRef, headRef, runRef } from "../names.ts";
 import { cancel, pending, submit } from "../queue.ts";
 import { createJobs, JOBS_CANCELLED_REF } from "./jobs.ts";
 import { runAtRef, type Runners } from "./runner.ts";
-import {
-  CWD_FACT,
-  RUN_PREFIX,
-  parentValue,
-  type Pooled,
-  type SessionPool,
-} from "./session-pool.ts";
+import { RUN_PREFIX, parentValue, type Pooled, type SessionPool } from "./session-pool.ts";
 import { NAME_FACT, PARENT_FACT } from "./snapshot.ts";
 import {
   MAIN,
@@ -623,10 +617,6 @@ export function createDelegation(input: {
         if (input.system !== undefined) await pool.writeFact(session, SYSTEM_FACT, input.system);
 
         if (fast) await pool.writeFact(session, FAST_FACT, true);
-        const location = await pool.storedCwd(pooled.session);
-
-        if (location === undefined) throw new Error("Parent session has no directory");
-        await pool.writeFact(session, CWD_FACT, location);
         // A follower may pool the child first; adopt then closes this handle
         // and answers with the pooled one, which the rest of setup must use.
         const child = await pool.adopt(session);

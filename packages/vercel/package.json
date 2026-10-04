@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./workflow": "./src/workflow.ts",
     "./postgres": "./src/postgres.ts",
-    "./outbox": "./src/outbox.ts"
+    "./outbox": "./src/outbox.ts",
+    "./sandbox": "./src/sandbox.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

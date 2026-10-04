@@ -6,6 +6,7 @@ import { expect, onTestFinished, test } from "vitest";
 import { createAssistantMessageEventStream } from "@nyte-ai/ai";
 import { createNyte } from "@nyte-ai/core";
 import type { SessionId, StreamFn } from "@nyte-ai/core";
+import { localEnvironmentPlugin } from "@nyte-ai/core/plugins";
 import { SqliteStore } from "@nyte-ai/core/store";
 
 import type { Api, AssistantMessage, Model } from "@nyte-ai/schema";
@@ -150,9 +151,10 @@ async function browserSession(agent: BrowserAgent, streamFn: StreamFn, folder?: 
     store,
     model,
     streamFn,
-    env: { cwd: directory },
+    defaultWorkspace: { kind: "local", id: "test", cwd: directory },
     models: { getModels: () => [model], getAvailable: async () => [model], getModel: () => model },
     plugins: [
+      localEnvironmentPlugin({ id: "test" }),
       browserToolsPlugin({
         agent,
         access: new BrowserAccessStore(join(directory, "browser-access.json")),

@@ -36,8 +36,8 @@ const STARTUP_OPTIONS = [
 ] as const satisfies readonly { readonly value: StartupDestination; readonly label: string }[];
 
 const RUNNING_MESSAGE_OPTIONS = [
-  { value: "queue", label: "Queue" },
   { value: "steer", label: "Steer" },
+  { value: "queue", label: "Queue" },
 ] as const satisfies readonly {
   readonly value: RunningMessagePreference;
   readonly label: string;

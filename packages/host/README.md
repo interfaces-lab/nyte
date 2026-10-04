@@ -32,7 +32,7 @@ a plugin list. The caller opens the store and closes it after `nyte.close()`.
 ## Plugin modes
 
 - `chat`: a system prompt and provider compaction. No filesystem tools, no
-  plugin directories, no skills, no trust. `env.cwd` is informational.
+  plugin directories, no skills. Sessions start in `process.cwd()`.
 - `workspace`: the shared built-ins (`resolveHostPlugins`), then
   `~/.nyte/plugins`, then `<cwd>/.nyte/plugins`, then skills. `readManifest`
   merges `~/.nyte/nyte.json` and `<cwd>/.nyte/nyte.json`: `plugins` disables
@@ -40,9 +40,17 @@ a plugin list. The caller opens the store and closes it after `nyte.close()`.
   one process-wide connection pool. `pluginWatchTargets` is what a host
   watches to re-resolve through `watchPluginDirectories` from `@nyte-ai/host/plugins`. `target` is `{ kind: "home" }`, `{ kind: "project", workspace }`
   where `workspace` is a `TrustedWorkspace` (only the workspace store makes one), or
-  `{ kind: "deferred", resolve }` to open storage now and resolve the target
-  when the first session activates. `extra` appends client-specific built-ins.
-- `custom`: plugins the caller loaded itself, passed through.
+  `{ kind: "deferred", cwd, resolve }` to open storage now and resolve the target
+  when the host first opens `cwd`. `extra` appends client-specific built-ins.
+- `custom`: plugins the caller loaded itself, passed through. Sessions start in `cwd`.
+
+Every mode installs `localEnvironmentPlugin` under `environmentId()`, then the providers in
+`environments`, such as `vercelSandboxPlugin`. `createHost` answers trust in every mode. It trusts
+a workspace in another environment, which runs the host's own plugins; in `workspace` mode those
+are the home target's built-ins and user plugins, never a project folder's. This machine's folders
+other than `cwd` follow the workspace store in `workspace` mode and report
+`requires/workspace_trust` in `chat` and `custom` modes. `environmentId()` is the installation's
+id, shared by every host on one `NYTE_HOME`.
 
 `nyteHome()` is `NYTE_HOME` or `~/.nyte`. `createWorkspaceStore()` names the
 file there that every client shares: `workspaces.json`, which records each

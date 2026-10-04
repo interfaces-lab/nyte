@@ -6,9 +6,10 @@ import process from "node:process";
 import { clampThinkingLevel, createNyteModels } from "@nyte-ai/ai";
 import type { Api, Model, Models, MutableModels, Provider } from "@nyte-ai/ai";
 import { isThinkingLevel, sessionId } from "@nyte-ai/core";
-import type { Nyte, SessionInfo, ThinkingLevel, TrustedWorkspace } from "@nyte-ai/core";
+import type { Nyte, SessionInfo, ThinkingLevel } from "@nyte-ai/core";
 import type { Plugin } from "@nyte-ai/core/plugins";
 import { workspaceStorePath } from "@nyte-ai/host";
+import type { TrustedWorkspace } from "@nyte-ai/host";
 import { notificationsPlugin } from "@nyte-ai/plugin/examples/notifications";
 import type { TelemetryContext } from "@nyte-ai/telemetry";
 import {

@@ -7,7 +7,7 @@
  * stand-ins. Every request crosses real HTTP or a real WebSocket.
  */
 import assert from "node:assert/strict";
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -47,7 +47,6 @@ import type { AccountSession, AccountState } from "./account-session.ts";
 import { unusedBrowserAgent } from "./browser-stub.ts";
 import type { ConnectConfig } from "./connect-config.ts";
 import { ConnectRuntime } from "./connect-runtime.ts";
-import type { SecretCipher } from "./connect-store.ts";
 import { DesktopHost } from "./host.ts";
 
 const OWNER = "user_interop";
@@ -165,31 +164,6 @@ function localModels(): MutableModels {
   return models;
 }
 
-/** AES-256-GCM under a key held in memory, standing in for the OS keychain. */
-function memoryCipher(): SecretCipher {
-  const key = randomBytes(32);
-
-  return {
-    available: async () => true,
-    seal: async (plain) => {
-      const iv = randomBytes(12);
-      const cipher = createCipheriv("aes-256-gcm", key, iv);
-      const body = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-
-      return Buffer.concat([iv, cipher.getAuthTag(), body]).toString("base64");
-    },
-    open: async (sealed) => {
-      const bytes = Buffer.from(sealed, "base64");
-      const decipher = createDecipheriv("aes-256-gcm", key, bytes.subarray(0, 12));
-      decipher.setAuthTag(bytes.subarray(12, 28));
-
-      return Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString(
-        "utf8",
-      );
-    },
-  };
-}
-
 /** The sign-in dialog: a signed-in Clerk session whose fresh JWT names the renderer as `azp`. */
 const account: AccountSession = {
   requestSessionToken: () =>
@@ -229,7 +203,6 @@ async function setUp(): Promise<Setup> {
   const runtime: ConnectRuntime = new ConnectRuntime({
     config: CONFIG,
     home: state,
-    cipher: memoryCipher(),
     account,
     onChange: () =>
       void runtime.view().then((view) => {

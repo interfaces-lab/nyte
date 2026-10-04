@@ -24,7 +24,7 @@ import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { type Nyte, type SessionId } from "../../src/kernel/sdk/types.ts";
 import type { Commit } from "../../src/kernel/model.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
-import type { AgentTool, StreamFn } from "../../src/kernel/loop/types.ts";
+import type { AgentTool, ExecutableTool, StreamFn } from "../../src/kernel/loop/types.ts";
 import { definePlugin, type Plugin } from "../../src/plugins/index.ts";
 import { drive, step } from "../../src/kernel/step.ts";
 import { submit } from "../../src/kernel/queue.ts";
@@ -33,6 +33,8 @@ import {
   assistant,
   call,
   drain,
+  localEnv,
+  localOptions,
   message,
   openStore,
   seedHead,
@@ -62,7 +64,7 @@ const models = {
   getAvailable: async () => [model],
 };
 
-function tool(name: string, description = name): AgentTool {
+function tool(name: string, description = name): ExecutableTool {
   return {
     name,
     description,
@@ -140,7 +142,7 @@ function script(onRequest?: (context: Context, session: Session) => Promise<void
 const sessions = new Map<number, Session>();
 
 async function host(store: Store, streamFn: StreamFn, plugins: readonly Plugin[]): Promise<Nyte> {
-  return createNyte({ store, model, models, streamFn, plugins, env: { cwd: "/tmp/nowhere" } });
+  return createNyte({ store, model, models, streamFn, ...localOptions("/tmp/nowhere", plugins) });
 }
 
 async function mainBranch(session: Session): Promise<Commit[]> {
@@ -373,6 +375,7 @@ test("a declaration that loses the head to a participant is not forced; the next
     model,
     sections: { "0000-intro": "base" },
     tools: [tool("grep")],
+    env: localEnv("/tmp/nowhere"),
   });
   let moves = 0;
   const racing: Turn = {
@@ -487,6 +490,7 @@ test("a checkpoint carries the prompt and tools the model had, and the response 
     model: { ...model, contextWindow: 1_000, maxTokens: 100 },
     sections: { "0000-intro": "base" },
     tools: [tool("grep")],
+    env: localEnv("/tmp/nowhere"),
     compaction: { enabled: true, reserveTokens: 100, keepRecentTokens: 40 },
   });
   await submit(session, {

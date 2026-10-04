@@ -14,6 +14,9 @@ import type {
 } from "./pane-layout.ts";
 import type { SessionViewStateStore } from "./session-view-state.ts";
 import { shellActions } from "../chrome/shell-state.ts";
+import { activeTab } from "../tabs/model.ts";
+import { routeShows } from "../tabs/places.ts";
+import { windowTabs } from "../tabs/window-tabs.ts";
 
 const controllerCache = new Map<string, PaneController>();
 
@@ -43,14 +46,27 @@ export function paneControllerForWorkspace(workspacePath: string | undefined): P
   return controller;
 }
 
+/** The controller showing now: the active window tab's on the desktop, else the folder's. */
+export function activePaneController(workspacePath: string | null | undefined): PaneController {
+  return windowTabs.enabled
+    ? windowTabs.controller()
+    : paneControllerForWorkspace(workspacePath ?? undefined);
+}
+
 export function PaneControllerProvider({
   workspaceKey,
+  controller: tabController,
   children,
 }: {
   workspaceKey: string | undefined;
+  /** A window tab's controller, which wins over the folder's. */
+  controller?: PaneController;
   children: ReactNode;
 }): ReactElement {
-  const controller = useMemo(() => paneControllerForWorkspace(workspaceKey), [workspaceKey]);
+  const controller = useMemo(
+    () => tabController ?? paneControllerForWorkspace(workspaceKey),
+    [tabController, workspaceKey],
+  );
 
   return (
     <PaneControllerContext.Provider value={controller}>{children}</PaneControllerContext.Provider>
@@ -81,11 +97,17 @@ function subscribeWindowWidth(listener: () => void): () => void {
   return () => window.removeEventListener("resize", listener);
 }
 
+/** A pinned tab stays on its one place, so it never splits. */
+function activeTabPinned(): boolean {
+  return windowTabs.enabled && activeTab(windowTabs.getSnapshot()).pinned;
+}
+
 export function useCanSplitPane(): boolean {
   const { layout } = usePaneControllerSnapshot();
   const width = useSyncExternalStore(subscribeWindowWidth, windowWidth, windowWidth);
+  const pinned = useSyncExternalStore(windowTabs.subscribe, activeTabPinned, activeTabPinned);
 
-  return canSplitPane(layout, width);
+  return !pinned && canSplitPane(layout, width);
 }
 
 export function usePaneViewStateStore(): SessionViewStateStore {
@@ -118,6 +140,8 @@ export function usePaneActions(): PaneActions {
 
   const navigateToActive = useCallback(
     (layout: PaneLayout): void => {
+      // Window tabs move the route themselves once the tab has settled.
+      if (windowTabs.enabled) return;
       const path = activePath(layout);
 
       if (router.state.location.pathname === path) return;
@@ -138,9 +162,17 @@ export function usePaneActions(): PaneActions {
   return useMemo(
     () => ({
       syncRoute(selection) {
+        // A route that resolves after its tab moved on is stale, not a navigation.
+        if (windowTabs.enabled && !routeShows(router, selection)) return;
         controller.syncSelection(selection);
       },
       newChat() {
+        if (windowTabs.enabled) {
+          windowTabs.dispatch({ kind: "new-tab" });
+
+          return;
+        }
+
         shellActions.showWorkspace();
         navigateToActive(controller.newChat());
       },
@@ -151,7 +183,8 @@ export function usePaneActions(): PaneActions {
         navigateToActive(controller.selectSessionInPane(paneId, sessionId));
       },
       split(direction) {
-        if (!canSplitPane(controller.getSnapshot().layout, windowWidth())) return;
+        if (activeTabPinned() || !canSplitPane(controller.getSnapshot().layout, windowWidth()))
+          return;
         navigateToActive(controller.split(direction));
       },
       close(paneId) {
@@ -183,6 +216,6 @@ export function usePaneActions(): PaneActions {
         navigateToActive(controller.removeSession(sessionId));
       },
     }),
-    [controller, navigateToActive],
+    [controller, navigateToActive, router],
   );
 }

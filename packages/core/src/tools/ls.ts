@@ -1,8 +1,6 @@
-import { join, relative } from "node:path";
 import { Type, type Static } from "typebox";
 import type { ToolDefinition } from "../kernel/loop/types.ts";
 import { toolResultContent } from "../kernel/loop/tool-result.ts";
-import { requireEnv } from "./env.ts";
 import { argumentParser } from "./support/arguments.ts";
 import { resolveToCwd } from "./support/path-utils.ts";
 import {
@@ -40,14 +38,13 @@ export function createLsToolDefinition(): ToolDefinition<
     prepareArguments: argumentParser(lsParameters),
     present: ({ path }) => ({ kind: "list", path: path || "." }),
     async execute({ path, limit }, call) {
-      const { signal } = call;
-      const env = requireEnv(call);
+      const { signal, env } = call;
       const throwIfAborted = (): void => {
         if (signal.aborted) throw new Error("Operation aborted");
       };
 
-      const dirPath = resolveToCwd(path || ".", env.cwd);
-      const title = relative(env.cwd, dirPath) || ".";
+      const title = path || ".";
+      const dirPath = resolveToCwd(title, env);
       const effectiveLimit = limit ?? DEFAULT_LIMIT;
 
       throwIfAborted();
@@ -85,7 +82,7 @@ export function createLsToolDefinition(): ToolDefinition<
         throwIfAborted();
 
         try {
-          const entryInfo = await env.stat(join(dirPath, entry));
+          const entryInfo = await env.stat(env.resolve(dirPath, entry));
           throwIfAborted();
 
           if (entryInfo !== undefined)

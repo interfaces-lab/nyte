@@ -6,15 +6,19 @@ Private workspace integration for SQLite-backed Durable Objects. The native host
 
 ```ts
 import { NyteDurableObject, type CloudflareOptions } from "@nyte-ai/cloudflare";
+import { localEnvironmentPlugin } from "@nyte-ai/core/plugins";
 import { configureModels } from "./models.ts";
+
+// One fixed UUID per deployment; sessions record it, and changing it makes them unreachable.
+const ENVIRONMENT_ID = "0b6f8d2e-3c41-4a97-8e5b-2f9c7a1d4e60";
 
 export class NyteHost extends NyteDurableObject<Env> {
   protected configure(): CloudflareOptions {
     return {
       nyte: {
         ...configureModels(this.env),
-        plugins: [],
-        env: { cwd: "/tmp" },
+        plugins: [localEnvironmentPlugin({ id: ENVIRONMENT_ID })],
+        defaultWorkspace: { kind: "local", id: ENVIRONMENT_ID, cwd: "/tmp" },
       },
       server: {
         version: "my-host-version",
@@ -26,7 +30,7 @@ export class NyteHost extends NyteDurableObject<Env> {
 }
 ```
 
-`configure` runs during initialization. Read `this.env` and `this.ctx`, not fields initialized by a subclass constructor. The package creates the `SqlStore`, Nyte SDK, server, and alarm driver. It uses static plugin configuration, not lazy activation. Do not attach a timer runner or override `alarm()`.
+`configure` runs during initialization. Read `this.env` and `this.ctx`, not fields initialized by a subclass constructor. The package creates the `SqlStore`, Nyte SDK, server, and alarm driver. `nyte` takes no `trust`, so sessions run only in `defaultWorkspace`, with `nyte.plugins`. Do not attach a timer runner or override `alarm()`.
 
 Server options retain authentication, parsed-operation permissions, browser origins, request limits, and error reporting. The package advertises no workspace capability and does not accept an environment/terminal backend. Plugins must be Worker-compatible; the type system cannot prevent a plugin from using unsupported Node APIs or starting local timers/jobs.
 

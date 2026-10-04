@@ -6,12 +6,12 @@ export const REFS: readonly (readonly [string, string, string])[] = [
   [
     "refs/heads/<head>",
     "Tip commit of a branch. Absent means unborn.",
-    "land, respond, tools, checkpoint; heads.create, move, delete, fast-forward",
+    "land, respond, tools, checkpoint; heads.create, move, delete, merge",
   ],
   [
     "refs/stacks/<head>",
     "Where the branch sits: its parent head and base commit.",
-    "heads.create, restack, merge, delete",
+    "heads.create, merge, delete",
   ],
   ["refs/inbox/<head>/<delivery>/tip", "Newest submitted Change.", "submit, redeliver"],
   ["refs/inbox/<head>/<delivery>/base", "Last landed Change. Pending is (base, tip].", "land"],
@@ -37,8 +37,13 @@ export const REFS: readonly (readonly [string, string, string])[] = [
   ],
   ["refs/jobs/<job>", "A command job, its output, and what it still owes the head.", "jobs"],
   [
+    "refs/usage/<head>",
+    "`usage` commits that bill model calls with no message, such as a cache warm.",
+    "cache warming",
+  ],
+  [
     "refs/delegations/<child>/<change>",
-    "A request sent to a child, and whether its answer landed.",
+    "A request sent to a child, kept in the parent's store, and whether its answer landed.",
     "delegation; land consumes it, Stop revokes it",
   ],
   ["refs/keys/<key>", "Idempotency receipt: the Change a key produced.", "submit"],
@@ -48,6 +53,11 @@ export const REFS: readonly (readonly [string, string, string])[] = [
     "cancel, redeliver",
   ],
   ["refs/facts/<key>", "A small session value.", "facts, plugin storage"],
+  [
+    "refs/workspace",
+    "Blob { kind, id, cwd, locator? }, where the session tree acts. Root only; children resolve up through their parent.",
+    "sessions.create, relocate",
+  ],
   ["refs/deleted", "The session is being deleted.", "sessions.delete"],
 ];
 
@@ -65,7 +75,7 @@ export const PHASES: readonly (readonly ReactNode[])[] = [
       landOrIdle
     </To>,
     <>
-      Land <C>steer</C>, then <C>next</C>.
+      Land <C>steer</C>, or <C>next</C> when <C>steer</C> waits.
     </>,
     <C key="3">respond</C>,
   ],
@@ -75,8 +85,9 @@ export const PHASES: readonly (readonly ReactNode[])[] = [
       respond
     </To>,
     <>
-      Land <C>steer</C> at the boundary, reserve a response, call <C>turn.respond</C>. Resolving
-      config or landing a checkpoint keeps the phase.
+      Land <C>steer</C> at the boundary, call <C>turn.prepare</C>, reserve a response, call{" "}
+      <C>turn.respond</C>. Resolving config, landing a checkpoint or declaring the prompt keeps the
+      phase.
     </>,
     <Codes key="3" items={["respond", "tools", "done", "retry", "failed", "aborted"]} />,
   ],
@@ -88,14 +99,17 @@ export const PHASES: readonly (readonly ReactNode[])[] = [
     <>
       <C>turn.tools</C>, one effect ref per call.
     </>,
-    <Codes key="3" items={["respond", "waiting", "failed"]} />,
+    <Codes key="3" items={["respond", "waiting", "failed", "aborted"]} />,
   ],
   [
     <C key="0">waiting</C>,
     <To key="1" href="#fn-advance">
       advance
     </To>,
-    "Wake on a reply, an expiry, a full batch of results, a stop, or a passed deadline.",
+    <>
+      Run <C>tools</C> once any effect is signalled or expired, every effect has a result, a stop is
+      flagged, or a deadline has passed.
+    </>,
     <C key="3">tools</C>,
   ],
   [
@@ -240,7 +254,7 @@ export const CONSTANTS: readonly Constant[] = [
     name: "HOOK_BUDGETS_MS",
     value: "5_000",
     governs:
-      "Budget per hook handler. `before_compaction` gets 300_000, the room one provider request takes.",
+      "Budget per hook handler. `before_compaction` gets 300_000, enough for one provider request.",
     path: "hooks.ts",
     line: 201,
     root: "core/src/plugins",
@@ -248,7 +262,7 @@ export const CONSTANTS: readonly Constant[] = [
   {
     name: "budgetMs",
     value: "5_000",
-    governs: "Budget for a plugin's `session()` factory and for each disposer.",
+    governs: "Budget for a plugin's `session()` factory.",
     path: "host.ts",
     line: 102,
     root: "core/src/plugins",
@@ -256,21 +270,23 @@ export const CONSTANTS: readonly Constant[] = [
   {
     name: "drain",
     value: '"one"',
-    governs: "Default batch: through the first user change.",
+    governs:
+      'Default batch: through the first user change. `createHost` and the desktop host pass `"all"`.',
     path: "sdk/nyte.ts",
     line: 134,
   },
   {
     name: "delivery",
     value: '"next"',
-    governs: "Default for `messages.send`.",
+    governs: "Default for `messages.send`. `steer` while the head has a live run.",
     path: "sdk/nyte.ts",
     line: 380,
   },
   {
     name: "replay",
     value: '"never"',
-    governs: "Default when a tool declares none.",
+    governs:
+      "Default when a tool declares none. An unfinished call then settles `interrupted` on resume.",
     path: "turn.ts",
     line: 720,
   },
@@ -384,7 +400,7 @@ export const FUNCTION_GROUPS: readonly {
         id: "respond",
         path: "step.ts",
         line: 667,
-        does: "Lands `steer`, checks the stop and the ceiling, reserves a response, calls `turn.respond`, publishes the message.",
+        does: "Lands `steer`, checks the stop and the ceiling, calls `turn.prepare`, reserves a response, calls `turn.respond`, publishes the message.",
       },
       {
         id: "tools",
@@ -408,7 +424,7 @@ export const FUNCTION_GROUPS: readonly {
         id: "afterConflict",
         path: "step.ts",
         line: 486,
-        does: "Reads what a lost CAS lost to and ends, keeps or continues the run.",
+        does: "After a lost CAS, reads the winning write, then ends, keeps or continues the run.",
       },
       {
         id: "endingPhase",
@@ -431,7 +447,7 @@ export const FUNCTION_GROUPS: readonly {
         id: "leadFor",
         path: "admission.ts",
         line: 194,
-        does: "The first non-passive change: `user`, `report`, or `answer`, authorized or not. All passive is `passive`.",
+        does: "The batch's lead. The first `user` change or authorized `answer`, else `passive` when any change is passive, else the first `report` or unauthorized `answer`.",
       },
       {
         id: "decide",
@@ -466,7 +482,7 @@ export const FUNCTION_GROUPS: readonly {
         id: "bindTurn",
         path: "turn.ts",
         line: 202,
-        does: "Builds `Turn { respond, tools }` over the agent loop and durable effects.",
+        does: "Builds `Turn { prepare, respond, tools }` over the agent loop and durable effects.",
       },
       {
         id: "runTools",
@@ -484,7 +500,7 @@ export const FUNCTION_GROUPS: readonly {
         id: "decideRecovery",
         path: "effects.ts",
         line: 389,
-        does: "Effect state to `execute`, `interrupted`, `blocked`, `wake` or `reuse`.",
+        does: "Effect state and this runner's environment id to `execute`, `interrupted`, `blocked`, `wake` or `reuse`. A `safe` intent executes only in the environment it opened in.",
       },
       {
         id: "generateAssistant",

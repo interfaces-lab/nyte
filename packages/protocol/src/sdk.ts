@@ -70,10 +70,22 @@ export interface RunConfig {
 // Sessions
 // ---------------------------------------------------------------------------
 
-export type ActivationRequirement = {
-  readonly kind: "workspace_trust";
+/** `refs/workspace` without the host's locator. */
+export interface WorkspaceRef {
+  readonly kind: string;
+  /** The environment's id: equal ids see the same files at the same paths. */
+  readonly id: string;
   readonly cwd: string;
-};
+}
+
+export type ActivationRequirement =
+  | { readonly kind: "workspace_trust"; readonly cwd: string }
+  | {
+      readonly kind: "workspace_unavailable";
+      readonly workspace: WorkspaceRef;
+      /** `unsupported`: this host has no provider for the kind. `unreachable`: its provider could not reach that environment. */
+      readonly reason: "unsupported" | "unreachable";
+    };
 
 /** Success, error, and requirement: what a session can do, what stopped it, or what it needs first. */
 export type SessionActivationState =
@@ -103,6 +115,8 @@ export interface SessionParent {
 export interface SessionInfo {
   readonly sessionId: SessionId;
   readonly activation: SessionActivationState;
+  /** The tree's workspace; a child reports its root's. */
+  readonly workspace: WorkspaceRef;
   readonly name?: string;
   readonly preview?: string;
   readonly createdAt: number;
@@ -119,7 +133,7 @@ export interface Page<T> {
   readonly next?: string;
 }
 
-/** A tool call the run has parked for a reply (design record, "Wait and wake"). */
+/** A tool call the run has parked for a reply. */
 export interface ParkedCall {
   readonly runId: RunId;
   readonly callId: string;

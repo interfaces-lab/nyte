@@ -76,6 +76,7 @@ test("every object a ref can reach through the graph is kept", async () => {
     tool: "read",
     args: {},
     replay: "never",
+    environment: "test",
   });
   assert.ok(opened.kind === "opened");
   await settleEffect(session, {

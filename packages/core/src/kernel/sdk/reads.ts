@@ -16,7 +16,7 @@ import type {
 import { activeCompaction } from "../compaction.ts";
 import { branch } from "../graph.ts";
 import type { Commit } from "../model.ts";
-import { headRef } from "../names.ts";
+import { WORKSPACE_REF, headRef } from "../names.ts";
 import { pending } from "../queue.ts";
 import { projectContextStatus, transcriptFromCommits } from "@nyte-ai/client";
 import type { Pooled, SessionPool } from "./session-pool.ts";
@@ -119,9 +119,14 @@ export function createReads(input: {
 
   const listedInfo = async (pooled: Pooled, id: SessionId): Promise<SessionInfo> => {
     const seq = await pooled.session.events.last();
+    const workspace = await (await pool.rootOf(pooled)).session.refs.read(WORKSPACE_REF);
     const listed = pooled.listed;
 
-    if (listed !== undefined && listed.activation === pooled.activationState) {
+    if (
+      listed !== undefined &&
+      listed.activation === pooled.activationState &&
+      listed.workspace === workspace
+    ) {
       if (listed.seq === seq) return listed.info;
 
       if (seq - listed.seq <= 256) {
@@ -141,7 +146,7 @@ export function createReads(input: {
 
     const facts = await pool.readFacts(pooled.session);
     const info = sessionInfo(await pool.readSession(id, pooled, { facts }));
-    pooled.listed = { seq, activation: pooled.activationState, info };
+    pooled.listed = { seq, activation: pooled.activationState, workspace, info };
 
     return info;
   };
@@ -348,17 +353,8 @@ export function createReads(input: {
   const runTrees = async (input: { readonly sessionId: SessionId; readonly head?: HeadName }) => {
     const pooled = await pool.open(input.sessionId);
     const session = pooled.session;
-    const storedCwd = await pool.storedCwd(session);
-
-    const activation =
-      storedCwd === undefined && pooled.activationCwd === undefined
-        ? await pool.resolveSessionActivation(input.sessionId, pooled)
-        : undefined;
-
-    const cwd =
-      storedCwd ??
-      pooled.activationCwd ??
-      (activation?.kind === "active" ? activation.env.cwd : null);
+    const state = await pool.resolveSessionActivation(input.sessionId, pooled);
+    const cwd = state.kind === "active" && pool.served(state.env) ? state.env.cwd : null;
 
     const head = input.head ?? MAIN;
 

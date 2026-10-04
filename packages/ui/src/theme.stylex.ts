@@ -599,7 +599,7 @@ const neutral = (step: number) => ({
 export const theme = defineVars({
   ...ramp("gray"),
   ...neutral(0),
-  ...neutral(40),
+  ...neutral(80),
   ...neutral(100),
 });
 

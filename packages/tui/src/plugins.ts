@@ -16,7 +16,7 @@ import {
 } from "@nyte-ai/host/plugins";
 import type { PluginSources } from "@nyte-ai/host/plugins";
 import { bunPluginLoader } from "./plugin-loader.ts";
-import type { TrustedWorkspace } from "@nyte-ai/core";
+import type { TrustedWorkspace } from "@nyte-ai/host";
 import type { JsonValue } from "@nyte-ai/schema";
 
 const ModuleNamespace = Type.Object({ default: Type.Optional(Type.Unknown()) });

@@ -93,6 +93,7 @@ import type {
   SessionActivationState as SessionActivationStateType,
   SessionMetadata as SessionMetadataType,
   SessionSnapshot as SessionSnapshotType,
+  WorkspaceRef as WorkspaceRefType,
 } from "./sdk.ts";
 import type {
   ContextStatus as ContextStatusType,
@@ -785,11 +786,26 @@ export const ToolProgress = typed<ToolProgressType>()(
 // Sessions and runs
 // ---------------------------------------------------------------------------
 
-export const ActivationRequirement = typed<ActivationRequirementType>()(
+export const WorkspaceRef = typed<WorkspaceRefType>()(
   open({
-    kind: Type.Literal("workspace_trust"),
+    kind: Type.String({ minLength: 1 }),
+    id: Type.String({ minLength: 1 }),
     cwd: Type.String({ minLength: 1 }),
   }),
+);
+
+export const ActivationRequirement = typed<ActivationRequirementType>()(
+  Type.Union([
+    open({
+      kind: Type.Literal("workspace_trust"),
+      cwd: Type.String({ minLength: 1 }),
+    }),
+    open({
+      kind: Type.Literal("workspace_unavailable"),
+      workspace: WorkspaceRef,
+      reason: Type.Union([Type.Literal("unsupported"), Type.Literal("unreachable")]),
+    }),
+  ]),
 );
 
 export const SessionActivationState = typed<SessionActivationStateType>()(
@@ -866,6 +882,7 @@ export const SessionInfo = typed<SessionInfoType>()(
   open({
     sessionId: SessionId,
     activation: SessionActivationState,
+    workspace: WorkspaceRef,
     name: Type.Optional(Type.String()),
     preview: Type.Optional(Type.String()),
     createdAt: Type.Number(),

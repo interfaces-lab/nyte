@@ -25,11 +25,12 @@ for local TUI plugins. Nyte's clients share one database per workspace at
 import process from "node:process";
 import { createModels, FileCredentialStore, openaiCodexProvider } from "@nyte-ai/ai";
 import { createNyte, MAIN } from "@nyte-ai/core";
-import { systemPromptPlugin, toolsFsPlugin } from "@nyte-ai/core/plugins";
+import { localEnvironmentPlugin, systemPromptPlugin, toolsFsPlugin } from "@nyte-ai/core/plugins";
 import { SqliteStore } from "@nyte-ai/core/store";
-import { workspaceStorePath } from "@nyte-ai/host";
+import { environmentId, workspaceStorePath } from "@nyte-ai/host";
 
 const cwd = process.cwd();
+const id = await environmentId();
 const store = new SqliteStore(await workspaceStorePath(cwd));
 const models = createModels({ credentials: new FileCredentialStore() });
 models.setProvider(openaiCodexProvider());
@@ -42,8 +43,8 @@ const nyte = await createNyte({
   models,
   model,
   drain: "one",
-  plugins: [systemPromptPlugin(), toolsFsPlugin()],
-  env: { cwd },
+  plugins: [localEnvironmentPlugin({ id }), systemPromptPlugin(), toolsFsPlugin()],
+  defaultWorkspace: { kind: "local", id, cwd },
 });
 
 const detach = nyte.attach();
@@ -148,7 +149,7 @@ async function submit(
 | `steer`  | At the next response boundary, or when the head is idle |
 | `next`   | Only when the head is idle                              |
 
-`messages.send` defaults to `delivery: "next"`.
+`messages.send` defaults to `delivery: "steer"` while the head has a live run, and to `"next"` otherwise.
 
 `messages.redeliver` changes a pending item's `delivery`. Pass `content` to edit it and `before` to
 reorder it. Omit `before` to keep its position, or pass `null` to move it last. Items from the first
@@ -302,8 +303,12 @@ A compaction checkpoint arrives as a `commit`; `compaction` reports progress onl
    `@nyte-ai/host/plugins`. A failed reload keeps the active set. `setPlugins` returns `applied`,
    `queued`, or `rejected`. A queued replacement waits for the current response and its tool calls,
    parked calls included, to finish.
-4. Pass that list, `streamFn`, `store`, and `env.cwd` into `createNyte`, or pass `resolveActivation`
-   to load plugins the first time a session activates.
+4. Pass `localEnvironmentPlugin({ id })`, `streamFn`, `store`, and
+   `defaultWorkspace: { kind: "local", id, cwd }` into `createNyte`, where `id` comes from
+   `environmentId()`. Pass `trust` to load the step-3 plugins. The SDK asks it when a workspace
+   opens. After a refusal it asks again on `reactivate()`, and when a new root or a relocation
+   reaches that workspace. The `plugins` loader in its answer calls `resolveHostPlugins` with the
+   opened `env`. Without `trust`, only `defaultWorkspace` is trusted.
 5. Call `attach()` in the process that should run tools.
 6. Pass `workspace.vcs`, such as `createGitVcs` from `@nyte-ai/host`, so `nyte.workspace.vcs`
    answers snapshot, diff, contents, log, refs, stage, discard, commit, createBranch, and push for
@@ -314,37 +319,20 @@ A compaction checkpoint arrives as a `commit`; `compaction` reports progress onl
 Trust is not a sandbox or per-call approval. It loads project plugins and unrestricted filesystem
 tools.
 
-Pass plugin objects directly: `plugins: [systemPromptPlugin(), toolsFsPlugin()]`. Reusing the same
+Pass plugin objects directly:
+`plugins: [localEnvironmentPlugin({ id }), systemPromptPlugin(), toolsFsPlugin()]`. Reusing the same
 object keeps its setup; a new object with the same ID replaces it. File-loaded plugins use the
 loader's content revision, so unchanged scans keep the active setup and `/reload` forces a fresh load.
 
-Agents are plugin contributions. See [Agents](/docs/design#agents).
+Agents are plugin contributions.
 
 ## Related
 
 <Cards>
   <DocCard
-    icon="IconPackage"
-    title="Design record"
-    href="/docs/design#the-sdk"
-    description="Namespaces, outcome unions, and the event kinds"
-  />
-  <DocCard
     icon="IconAgent"
     title="Desktop"
     href="/docs/desktop"
     description="Electron host with the same SDK over window.nyte"
-  />
-  <DocCard
-    icon="IconCodeBrackets"
-    title="Admission"
-    href="/docs/design#admission-is-open"
-    description="Inbox deliveries and chains"
-  />
-  <DocCard
-    icon="IconConsole"
-    title="Events and views"
-    href="/docs/design#events-and-views"
-    description="The retained stream, the floor, and the projections"
   />
 </Cards>

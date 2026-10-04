@@ -22,6 +22,7 @@ import { Icon, PanelToggleIcon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { WorkspaceFileTree } from "./file-tree.tsx";
+import { setTreeDrag } from "../conversation/composer-file-drop.ts";
 import { nyte } from "../nyte.ts";
 import { macPlatform } from "../platform.ts";
 import { refreshVcs, useHostState, useMentionFiles, useVcsSnapshot } from "../queries.ts";
@@ -210,6 +211,17 @@ export function FilesPanel({
     flattenEmptyDirectories: true,
     initialExpansion: 1,
     search: false,
+    // Rows drag out as composer mentions; nothing moves inside the tree.
+    dragAndDrop: {
+      canDrag: (paths) => {
+        const dragged = new Set(paths);
+        const files = (fileEntries.current ?? []).filter((file) => dragged.has(file.displayPath));
+        setTreeDrag(files);
+
+        return files.length > 0;
+      },
+      canDrop: () => false,
+    },
     composition: {
       // Without a native menu the tree keeps neither a menu button nor the right-click.
       contextMenu:
@@ -518,6 +530,7 @@ export function FilesPanel({
             )}
             <WorkspaceFileTree
               model={model}
+              onDragEnd={() => setTreeDrag([])}
               onClick={(event) => {
                 if (!(event.metaKey || event.ctrlKey || event.shiftKey)) {
                   openFromTree(event.nativeEvent, true);

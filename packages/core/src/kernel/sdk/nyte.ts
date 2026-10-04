@@ -5,7 +5,7 @@
  */
 import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isTerminalPhase, OPERATIONS, validateHeadName } from "@nyte-ai/protocol";
+import { isTerminalPhase, OPERATIONS, schemas, validateHeadName } from "@nyte-ai/protocol";
 import { getSupportedThinkingLevels, ModelsError } from "@nyte-ai/ai";
 import { Value } from "typebox/value";
 import { branch } from "../graph.ts";
@@ -26,7 +26,6 @@ import { createRelocation } from "./relocate.ts";
 import { createDelegation } from "./delegation.ts";
 import { createSummaries } from "./summaries.ts";
 import {
-  CWD_FACT,
   attributed,
   createSessionPool,
   clientActivation,
@@ -155,6 +154,9 @@ async function providerAuth(
 
 /** Compose the host services into the kernel SDK. */
 export async function createNyte(options: NyteOptions): Promise<Nyte> {
+  if (!Value.Check(schemas.WorkspaceRef, options.defaultWorkspace))
+    throw new TypeError("Invalid default workspace");
+
   const attachments = new Set<Attachment>();
   const detached: unknown[] = [];
   const drain = options.drain ?? "one";
@@ -225,7 +227,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
   const delegation = createDelegation({ options, pool, runners });
   const relocation = createRelocation({ options, pool, runners, delegation });
 
-  /** Resolve a protocol target to the directory it names. */
+  /** Resolve a protocol target to the directory it names, when the host's backend reads it. */
   const workspaceCwd = async (target: WorkspaceTarget): Promise<string | undefined> => {
     pool.alive();
 
@@ -247,10 +249,10 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
     const target = await realpath(cwd).catch(() => cwd);
 
     for (const [id, pooled] of pool.entries()) {
-      const sessionPath = await relocation.sessionCwd({ sessionId: id });
+      const workspace = await relocation.sessionWorkspace({ sessionId: id });
 
-      if (sessionPath === undefined) continue;
-      const resolved = await realpath(sessionPath).catch(() => sessionPath);
+      if (!pool.served(workspace)) continue;
+      const resolved = await realpath(workspace.cwd).catch(() => workspace.cwd);
 
       if (resolved !== target) continue;
 
@@ -267,31 +269,28 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
   const summaries = createSummaries({ options, pool, resolveModel: resolveModelRef });
   const reads = createReads({ options, pool, resolveModel: resolveModelRef });
 
-  if (options.resolveActivation === undefined) {
-    await options.workspace?.touch(options.env.cwd);
-  }
-
   return {
     advance: runners.advance,
     sessions: {
       async create(input = {}) {
         pool.alive();
 
+        if (input.workspace !== undefined && !Value.Check(schemas.WorkspaceRef, input.workspace))
+          throw new TypeError("Invalid workspace");
+
         const session = await options.store.create(
           input.sessionId === undefined ? {} : { id: input.sessionId },
         );
 
         try {
-          if (input.name !== undefined) await pool.writeFact(session, NAME_FACT, input.name);
-
-          if (input.parent !== undefined) {
+          if (input.parent !== undefined)
             await pool.writeFact(session, PARENT_FACT, parentValue(input.parent));
-            const parent = await pool.open(input.parent.sessionId);
-            await pool.resolveSessionActivation(input.parent.sessionId, parent);
-            const cwd = await pool.storedCwd(parent.session);
+          else if (
+            !(await pool.writeWorkspace(session, input.workspace ?? options.defaultWorkspace, null))
+          )
+            throw new Error(`Session ${session.id} already records a workspace`);
 
-            if (cwd !== undefined) await pool.writeFact(session, CWD_FACT, cwd);
-          }
+          if (input.name !== undefined) await pool.writeFact(session, NAME_FACT, input.name);
 
           const pooled = await pool.adopt(session);
 
@@ -413,7 +412,10 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         const pooled = await pool.open(input.sessionId);
         const { session } = pooled;
         const head = input.head ?? MAIN;
-        const delivery = input.delivery ?? "next";
+        const live = await pool.readRun(session, head);
+        const delivery =
+          input.delivery ??
+          (live !== undefined && !isTerminalPhase(live.run.phase) ? "steer" : "next");
 
         // Clients attach whatever the OS handed them; bound it before it lands.
         const content = Array.isArray(input.content)
@@ -515,10 +517,13 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         const pooled = await pool.open(input.sessionId);
 
         // Activation registers the jobs wrapper that `start` runs the tool through.
-        if ((await pool.activationFor(input.sessionId, pooled)) === undefined)
-          throw new Error("This chat is not active");
+        const activation = await pool.activationFor(input.sessionId, pooled);
 
-        return delegation.jobsFor(input.sessionId, pooled).start(input.head ?? MAIN, input.command);
+        if (activation === undefined) throw new Error("This chat is not active");
+
+        return delegation
+          .jobsFor(input.sessionId, pooled)
+          .start(input.head ?? MAIN, input.command, activation.env);
       },
       async background(input) {
         const pooled = await pool.open(input.sessionId);
@@ -797,9 +802,8 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         await options.workspace?.forget(input.path);
       },
       /**
-       * Discovery runs where the files are. One session names its own
-       * directory; without one the host's own working directory answers, which
-       * is the folder a new session would start in.
+       * Discovery runs where the files are. `target` picks a session's
+       * directory or the one a new session would start in.
        */
       async files(input) {
         pool.alive();
@@ -1065,6 +1069,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
     },
 
     sessionCwd: relocation.sessionCwd,
+    sessionWorkspace: relocation.sessionWorkspace,
 
     relocate: relocation.relocate,
 
@@ -1101,10 +1106,15 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
 
       const prepared: Extract<PreparedPluginReplacement, { kind: "ready" }>[] = [];
       const errors: string[] = [];
+      // A new set is a new chance for a session its old set failed. Clear every
+      // one first, or a child resolved before its root copies the root's failed state.
+      for (const [, pooled] of pool.entries()) {
+        if (!pooled.relocating && pooled.activationState?.kind === "failed")
+          pooled.activationState = undefined;
+      }
+
       for (const [id, pooled] of pool.entries()) {
         if (pooled.relocating) continue;
-        // A new set is a new chance for a session its old set failed.
-        if (pooled.activationState?.kind === "failed") pooled.activationState = undefined;
         await pool.resolveSessionActivation(id, pooled);
 
         if (pooled.scopedPlugins) continue;

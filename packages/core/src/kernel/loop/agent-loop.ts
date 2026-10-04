@@ -18,6 +18,7 @@ import type {
   AgentTool,
   AgentToolCall,
   AgentToolResult,
+  ExecutableTool,
   ReadyToolCall,
   StreamFn,
   ToolCallOutcome,
@@ -245,7 +246,7 @@ function prepareToolCallArguments(tool: AgentTool, toolCall: AgentToolCall): Age
 type ToolCallHooks = Pick<AgentLoopConfig, "beforeToolCall" | "afterToolCall">;
 
 export interface RunToolCallOptions extends ToolCallHooks {
-  tools: readonly AgentTool[];
+  tools: readonly ExecutableTool[];
   assistantMessage: AssistantMessage;
   context: AgentContext;
   signal?: AbortSignal;
@@ -296,7 +297,7 @@ async function prepareToolCall(
   toolCall: AgentToolCall,
   config: ToolCallHooks,
   signal: AbortSignal | undefined,
-  tools: readonly AgentTool[] = currentContext.tools ?? [],
+  tools: readonly ExecutableTool[] = currentContext.tools ?? [],
 ): Promise<PreparedToolCall | ImmediateToolCallOutcome> {
   const tool = tools.find((t) => t.name === toolCall.name);
 

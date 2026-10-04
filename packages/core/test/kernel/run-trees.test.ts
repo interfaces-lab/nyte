@@ -16,7 +16,7 @@ import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import type { VcsBackend, WorkspaceBackend } from "../../src/kernel/sdk/types.ts";
 import { definePlugin, type AgentTool } from "../../src/plugins/index.ts";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
-import { assistant, call, openStore, usage, within } from "./helpers.ts";
+import { assistant, call, localOptions, openStore, usage, within } from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "tree-model",
@@ -171,8 +171,7 @@ async function open(vcs: VcsBackend | undefined, gate: PromiseWithResolvers<void
       getAvailable: async () => [model],
     },
     model,
-    plugins: [toolsPlugin([writeTool({ release: gate.promise })])],
-    env: { cwd: "/tmp/nowhere" },
+    ...localOptions("/tmp/nowhere", [toolsPlugin([writeTool({ release: gate.promise })])]),
     workspace: workspaceWith(vcs),
   });
   const { sessionId } = await nyte.sessions.create();

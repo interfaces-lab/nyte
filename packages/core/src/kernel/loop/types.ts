@@ -217,7 +217,7 @@ export type ToolCallOutcome<TDetails = unknown> = ToolOutcome & {
 };
 
 // ---------------------------------------------------------------------------
-// Durable tool wait (design record: "Wait and wake")
+// Durable tool wait (Core guide: "Tools")
 // ---------------------------------------------------------------------------
 
 /**
@@ -341,7 +341,7 @@ export interface ToolRun {
   readonly parentToolCallId?: string;
   history(this: void): Promise<readonly Message[]>;
   readonly tools: {
-    list(): readonly AgentTool[];
+    list(): readonly ExecutableTool[];
     execute(
       name: string,
       args: unknown,
@@ -354,8 +354,8 @@ export interface ToolRun {
 
 /**
  * One call of a tool, as the runtime hands it to `execute` beside the parsed
- * input. `run` and `env` are absent only in the bare loop, which executes
- * tools outside any run; a session always supplies both.
+ * input. `run` is absent in the bare loop, which executes tools outside any
+ * run, and for a job, which outlives the call that started it.
  */
 export interface ToolCall<TDetails = unknown> {
   readonly id: string;
@@ -363,8 +363,11 @@ export interface ToolCall<TDetails = unknown> {
   /** Stream a partial result. A call made after `execute` settles is ignored. */
   update(this: void, partial: AgentToolResult<TDetails>): void;
   readonly run?: ToolRun;
-  /** Where the call acts. */
-  readonly env?: ExecutionEnv;
+}
+
+/** A call as a session's tool receives it: the call, and where it acts. */
+export interface ToolContext<TDetails = unknown> extends ToolCall<TDetails> {
+  readonly env: ExecutionEnv;
 }
 
 /** The call `present` classifies: the run and head that committed it, and its call id. */
@@ -374,10 +377,14 @@ export interface ToolPresentContext {
   readonly callId: string;
 }
 
-/** Tool definition used by the agent runtime. */
+/**
+ * Tool definition used by the agent runtime. A session's tools take a
+ * `ToolContext`; the session binds its environment before the loop runs them.
+ */
 export interface AgentTool<
   TParameters extends TSchema = TSchema,
   TDetails = unknown,
+  TCall extends ToolCall<TDetails> = ToolContext<TDetails>,
 > extends Tool<TParameters> {
   exposure?: "direct" | "codemode" | "deferred" | "model-only" | "hidden";
   namespace?: { name: string; description?: string; instructions?: string };
@@ -391,7 +398,7 @@ export interface AgentTool<
   execute: (
     // An erased schema cannot prove an input type. Bind typed definitions before storage.
     input: TSchema extends TParameters ? unknown : Static<TParameters>,
-    call: ToolCall<TDetails>,
+    call: TCall,
   ) => Promise<AgentToolResult<TDetails>>;
   /** Available only while the session is foreground work with a participant present. */
   availability?: "foreground";
@@ -412,7 +419,7 @@ export interface AgentTool<
   label?: string;
   /** Recovery policy for an effect whose durable intent exists but whose outcome is unknown. */
   replay?: "never" | "safe";
-  /** Settles this tool's waiting calls on wake (design record: "Wait and wake"). */
+  /** Settles this tool's waiting calls on wake. */
   wake?: ToolWake;
 }
 
@@ -420,6 +427,13 @@ export interface AgentTool<
 export type ToolDefinition<TParameters extends TSchema = TSchema, TDetails = unknown> = Omit<
   AgentTool<TParameters, TDetails>,
   "name"
+>;
+
+/** A tool the loop runs: its environment is already bound, so its call carries none. */
+export type ExecutableTool<TParameters extends TSchema = TSchema, TDetails = unknown> = AgentTool<
+  TParameters,
+  TDetails,
+  ToolCall<TDetails>
 >;
 
 /**
@@ -433,7 +447,7 @@ export interface AgentContext {
   /** Transcript visible to the model after the checkpoint, if any. */
   messages: Message[];
   /** Executable tools for this run. */
-  tools?: AgentTool[];
+  tools?: ExecutableTool[];
 }
 
 /**

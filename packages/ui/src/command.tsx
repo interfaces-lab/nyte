@@ -20,7 +20,7 @@ import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
 import { glyph, layer, radius, target } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
-import { motion, role, type } from "./vars.stylex.ts";
+import { appearance, motion, role, type } from "./vars.stylex.ts";
 import { Icon } from "./icon.tsx";
 
 const styles = create({
@@ -55,7 +55,7 @@ const styles = create({
     width: "min(560px, 100%)",
     maxHeight: "min(430px, 100%)",
     borderStyle: "none",
-    borderRadius: radius.surface,
+    borderRadius: `calc(${radius.card} + 8px)`,
     outline: "none",
     overflow: "hidden",
     color: role.contentPrimary,
@@ -84,6 +84,10 @@ const styles = create({
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: role.borderSecondaryTranslucent,
+    outlineStyle: { default: "none", ":focus-within": "solid" },
+    outlineWidth: 1,
+    outlineColor: appearance.focusRing,
+    outlineOffset: -1,
     color: role.contentSecondary,
     cursor: "text",
   },
@@ -103,9 +107,12 @@ const styles = create({
     backgroundColor: "transparent",
     color: role.contentPrimary,
     fontFamily: type.fontSans,
-    fontSize: type.fontBase,
+    fontSize: {
+      default: type.fontBase,
+      "@media (pointer: coarse)": `max(16px, ${type.fontBase})`,
+    },
     lineHeight: type.leadingBase,
-    "::placeholder": { color: role.contentTertiary },
+    "::placeholder": { color: role.contentSecondary },
   },
   list: {
     minHeight: 0,
@@ -135,7 +142,10 @@ const styles = create({
     paddingBlock: 8,
     paddingInline: 12,
     borderRadius: radius.card,
-    outline: "none",
+    outlineStyle: { default: "none", "[data-highlighted]": "solid" },
+    outlineWidth: 1,
+    outlineColor: appearance.focusRing,
+    outlineOffset: -1,
     backgroundColor: { default: "transparent", "[data-highlighted]": role.bgHover },
     color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
     fontSize: type.fontBase,
