@@ -68,6 +68,10 @@ function useHostEvents(router: AppRouter): void {
           void queryClient.invalidateQueries({ queryKey: keys.pluginCatalog });
 
           return;
+        case "update_changed":
+          queryClient.setQueryData(keys.updates, event.state);
+
+          return;
         case "github_changed":
           void queryClient.invalidateQueries({ queryKey: keys.github });
 

@@ -49,6 +49,7 @@ import type {
   RemoteAccessState,
   ServerState,
   SessionDirectoryChange,
+  UpdateState,
   UsageSnapshot,
   UsageWindow,
   WorkspaceSessionDirectory,
@@ -204,6 +205,17 @@ const readSession = async (sessionId: SessionId) =>
 
 export function useHostState() {
   return useQuery({ queryKey: keys.host, queryFn: readHost });
+}
+
+export function useUpdateState() {
+  return useQuery({
+    queryKey: keys.updates,
+    queryFn: async (): Promise<UpdateState> => nyte.host.updates?.state() ?? { kind: "idle" },
+  });
+}
+
+export function setUpdateStateForDemo(state: UpdateState): void {
+  queryClient.setQueryData(keys.updates, state);
 }
 
 export function useServerState(active: boolean) {

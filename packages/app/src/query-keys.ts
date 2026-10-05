@@ -2,6 +2,7 @@ import type { SessionId, WorkspaceSearchInput } from "@nyte-ai/protocol";
 
 export const keys = {
   host: ["host"] as const,
+  updates: ["updates"] as const,
   workspaces: ["workspaces"] as const,
   sessions: ["sessions"] as const,
   sessionPreview: ["sessions", "preview"] as const,

@@ -422,6 +422,16 @@ export const sidebarStyles = create({
       ":is([data-disabled])": role.contentDisabled,
     },
   },
+  accountLabel: { display: "flex", alignItems: "center", gap: 6 },
+  accountName: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
+  /* Roles under `intent.danger` resolve red; elsewhere they follow the theme hue. */
+  updateDot: {
+    flexShrink: 0,
+    width: 6,
+    height: 6,
+    borderRadius: radius.pill,
+    backgroundColor: role.bgInteractivePrimary,
+  },
   preview: {
     display: "flex",
     flexDirection: "column",

@@ -245,6 +245,10 @@ const bridge = {
       createPullRequest: object("host.github.createPullRequest"),
     },
     server: {
+    updates: {
+      state: none("host.updates.state"),
+      check: none("host.updates.check"),
+    },
       state: none("host.server.state"),
       connect: object("host.server.connect"),
       disconnect: none("host.server.disconnect"),

@@ -155,6 +155,7 @@ export interface DesktopHostDependencies {
    * loopback listener. Absent, as in tests that never link, it reads as unavailable.
    */
   readonly connect?: ConnectRuntime;
+  readonly updates?: HostBridge["updates"];
   readonly createHost?: typeof createHost;
   /** The store's worker thread module, so SQLite work never runs on the main thread. */
   readonly storeWorker: URL;
@@ -530,6 +531,14 @@ export class DesktopHost {
         return this.github.createPullRequest(decoded, project.workspace.path);
       }
 
+      case "host.updates.state":
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+
+        return this.dependencies.updates?.state() ?? { kind: "idle" };
+      case "host.updates.check":
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+
+        return this.dependencies.updates?.check();
       case "host.github.state":
         CALL_INPUT_SCHEMAS[path].Parse(input);
 

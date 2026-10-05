@@ -3,8 +3,10 @@ import { Link } from "@tanstack/react-router";
 import type { router } from "../router";
 
 const PAGES = [
-  ["/environments", "Environments"],
+  ["/requests", "Requests"],
   ["/review", "Review"],
+  ["/updates", "Updates"],
+  ["/settings", "Settings"],
 ] as const;
 
 type Path = (typeof PAGES)[number][0];

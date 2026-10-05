@@ -1,10 +1,15 @@
 export { App } from "./app.tsx";
 
-export type { NyteBridge } from "./bridge.ts";
+export type { NyteBridge, UpdateState } from "./bridge.ts";
 
 export { installBridge } from "./nyte.ts";
 
-export { connectSessionDirectory, loadLocalResources, queryClient } from "./queries.ts";
+export {
+  connectSessionDirectory,
+  loadLocalResources,
+  queryClient,
+  setUpdateStateForDemo,
+} from "./queries.ts";
 
 export { createAppRouter, startWindowTabs, windowTabRoute } from "./router.tsx";
 

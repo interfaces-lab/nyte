@@ -2,8 +2,10 @@ import { createRoute, createRouter, redirect } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { EnvironmentsPage } from "./environments/page";
+import { RequestsPage } from "./requests/page";
 import { ReviewPage } from "./review/page";
+import { SettingsPage } from "./settings/page";
+import { UpdatesPage } from "./updates/page";
 import { rootRoute } from "./routes/__root";
 
 const ReviewSearch = Type.Object({ id: Type.Optional(Type.String()) });
@@ -26,16 +28,28 @@ const routeTree = rootRoute.addChildren([
     getParentRoute: () => rootRoute,
     path: "/",
     beforeLoad: () => {
-      throw redirect({ to: "/environments" });
+      throw redirect({ to: "/requests" });
     },
   }),
   createRoute({
     getParentRoute: () => rootRoute,
-    path: "/environments",
-    component: EnvironmentsPage,
-    head: () => ({ meta: [{ title: "Lab · Environments" }] }),
+    path: "/requests",
+    component: RequestsPage,
+    head: () => ({ meta: [{ title: "Lab · Requests" }] }),
   }),
   reviewRoute,
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/updates",
+    component: UpdatesPage,
+    head: () => ({ meta: [{ title: "Lab · Updates" }] }),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/settings",
+    component: SettingsPage,
+    head: () => ({ meta: [{ title: "Lab · Settings" }] }),
+  }),
 ]);
 
 export const router = createRouter({ routeTree, scrollRestoration: true });

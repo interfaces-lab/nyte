@@ -15,12 +15,14 @@ import {
   MenuTrigger,
 } from "@nyte-ai/ui/menu";
 import { Row } from "@nyte-ai/ui/row";
+import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement, RefObject } from "react";
 import type { ConnectBridge, GitHubBridge } from "../bridge.ts";
 import { nyte } from "../nyte.ts";
-import { useHostState } from "../queries.ts";
+import { useHostState, useUpdateState } from "../queries.ts";
+import { updateLabel } from "../updates.ts";
 import { useConnectAction, useConnectView } from "./connect-view.ts";
 import { useGitHubAccount } from "./github-account.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
@@ -119,6 +121,9 @@ export function AccountFooterMenu({
 }): ReactElement {
   const host = useHostState();
   const account = useGitHubAccount(github);
+  const update = useUpdateState().data ?? { kind: "idle" };
+  // Downloading asks nothing of the user; the dot is for a restart or a retry.
+  const attention = update.kind !== "idle" && update.kind !== "downloading";
   // A workspace switch reads GitHub afresh; the label keeps the last answer meanwhile.
   const [last, setLast] = useState(account.query.data);
 
@@ -143,11 +148,35 @@ export function AccountFooterMenu({
                 <Icon name={signedIn === undefined ? "laptop" : "user"} size={14} />
               )}
             </Row.Leading>
-            <Row.Label>{signedIn?.login ?? host.data?.machineName ?? "Profile"}</Row.Label>
+            <Row.Label xstyle={styles.accountLabel}>
+              <span {...props(styles.accountName)}>
+                {signedIn?.login ?? host.data?.machineName ?? "Profile"}
+              </span>
+              {attention && (
+                <span
+                  {...props(styles.updateDot, update.kind === "failed" && intent.danger)}
+                  aria-hidden="true"
+                />
+              )}
+            </Row.Label>
           </Row>
         }
       />
       <MenuContent side="top" align="start" anchor={anchor} sideOffset={4} matchAnchorWidth>
+        {nyte.host.updates !== undefined && (
+          <>
+            <MenuItem
+              layout="plain"
+              disabled={update.kind === "downloading"}
+              variant={update.kind === "failed" ? "danger" : "default"}
+              xstyle={styles.accountMenuItem}
+              onClick={() => void nyte.host.updates?.check().catch(() => undefined)}
+            >
+              {updateLabel(update)}
+            </MenuItem>
+            <MenuSeparator inset />
+          </>
+        )}
         <GitHubGroup account={account} onOpenProfile={onOpenProfile} />
         <NyteGroup connect={connect} onOpenProfile={onOpenProfile} />
         <MenuSeparator inset />

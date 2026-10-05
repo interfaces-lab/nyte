@@ -26,7 +26,7 @@ import {
   WINDOW_ZOOM_CHANNEL,
 } from "../shared/ipc.ts";
 import type { WatchEnvelope } from "../shared/ipc.ts";
-import type { HostEvent } from "@nyte-ai/app/bridge.ts";
+import type { HostEvent, UpdateState } from "@nyte-ai/app/bridge.ts";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
 import { applicationMenuTemplate, createMenuCommandDelivery } from "./app-menu.ts";
 import { safeExternalUrl } from "./external-url.ts";
@@ -178,7 +178,13 @@ const browserSurfaces = createBrowserSurfaces({
   windowShown: (window) => windows.get(window.webContents.id)?.shown ?? false,
 });
 
+let updates: ReturnType<typeof registerUpdates> | undefined;
+
 const hostDependencies = {
+  updates: {
+    state: async (): Promise<UpdateState> => updates?.state() ?? { kind: "idle" },
+    check: async () => updates?.click(),
+  },
   createModels: createNyteModels,
   appVersion: app.getVersion(),
   appRoot: app.isPackaged
@@ -547,7 +553,8 @@ if (!hasSingleInstanceLock) {
     const updateItem = menu.getMenuItemById("check-for-updates");
 
     if (updateItem !== null)
-      registerUpdates({
+      updates = registerUpdates({
+        publish: (state) => broadcast({ kind: "update_changed", state }),
         item: updateItem,
         activity: () => getHost().updateActivity(),
         beforeRelaunch: async () => {

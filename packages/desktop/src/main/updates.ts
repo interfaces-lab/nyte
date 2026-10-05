@@ -1,14 +1,14 @@
+import type { UpdateState } from "@nyte-ai/app/bridge.ts";
 import electronUpdater from "electron-updater";
 import { updater } from "electron-sparkle";
 import { app, BrowserWindow, dialog } from "electron";
 import type { MenuItem } from "electron";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createUpdateController } from "./update-controller.ts";
-import { installBlockedDialog, runRelaunchCleanup } from "./update-relaunch.ts";
+import { createUpdateController, errorMessage, requestRestart } from "./update-controller.ts";
+import { updateLabel } from "@nyte-ai/app/updates.ts";
+import { runRelaunchCleanup } from "./update-relaunch.ts";
 import type { DesktopUpdateActivity } from "./host.ts";
-
-const CHECK_LABEL = "Check for Updates…";
 
 const UPDATE_INTERVAL_MS = 6 * 60 * 60_000;
 
@@ -20,11 +20,35 @@ export function registerUpdates({
   item,
   activity,
   beforeRelaunch,
+  publish,
 }: {
   readonly item: MenuItem;
   readonly activity: () => Promise<DesktopUpdateActivity>;
   readonly beforeRelaunch: () => Promise<void>;
-}): void {
+  readonly publish: (state: UpdateState) => void;
+}) {
+  const unavailable = !app.isPackaged
+    ? "This is a development build. Install the packaged Nyte app to receive updates."
+    : process.env["NYTE_OFFLINE"] !== undefined
+      ? "NYTE_OFFLINE is set. Disable it and restart Nyte to check for updates."
+      : process.platform === "linux" && process.env["APPIMAGE"] === undefined
+        ? "Install the AppImage build to receive desktop updates."
+        : undefined;
+
+  if (unavailable !== undefined) {
+    const click = async (): Promise<void> => {
+      await dialog.showMessageBox({
+        type: "info",
+        message: "Updates unavailable",
+        detail: unavailable,
+      });
+    };
+
+    item.click = () => void click();
+
+    return { state: (): UpdateState => ({ kind: "idle" }), click };
+  }
+
   const logPath = join(app.getPath("userData"), "updates.log");
   let logTail = Promise.resolve();
 
@@ -35,203 +59,142 @@ export function registerUpdates({
 
   const logError = (message: string): void => log("error", { message });
 
-  const unavailable = !app.isPackaged
-    ? "This is a development build. Install the packaged Nyte app to receive updates."
-    : process.env["NYTE_OFFLINE"] !== undefined
-      ? "NYTE_OFFLINE is set. Disable it and restart Nyte to check for updates."
-      : process.platform === "linux" && process.env["APPIMAGE"] === undefined
-        ? "Install the AppImage build to receive desktop updates."
-        : undefined;
-
-  let resumeInstall: (() => void) | undefined;
-  let sessionActive = false;
-
-  if (process.platform === "darwin" && unavailable === undefined) {
-    updater.setBeforeRelaunchHandler(async (update) => {
-      const current = await activity();
-
-      if (current.kind === "busy") {
-        log("install-blocked", {
-          tasks: current.taskCount,
-          terminalCommands: current.terminalCommandCount,
-        });
-        item.label = "Restart to Update…";
-        item.enabled = true;
-        await dialog.showMessageBox(installBlockedDialog(current));
-        // Sparkle relaunches once this handler settles, so the install waits here
-        // until the menu item releases it on an idle app.
-        await new Promise<void>((resolve) => {
-          resumeInstall = resolve;
-        });
-      }
-
-      item.label = "Preparing to Restart…";
-      item.enabled = false;
-      log("relaunch-requested", {
-        fromVersion: app.getVersion(),
-        targetVersion: update.displayVersion,
-      });
-      const cleanup = await runRelaunchCleanup({ cleanup: beforeRelaunch });
-
-      if (cleanup.kind === "completed") log("relaunch-cleanup-completed");
-      else if (cleanup.kind === "timed-out") log("relaunch-cleanup-timed-out");
-      else log("relaunch-cleanup-failed", { message: cleanup.message });
-    });
-    updater.on("state-changed", ({ state }) => {
-      item.enabled = state.canCheckForUpdates;
-    });
-    updater.on("update-available", ({ update }) => {
-      sessionActive = true;
-      item.label = "Update Available…";
-      log("update-available", { targetVersion: update.displayVersion });
-    });
-    updater.on("update-not-available", () => log("update-not-available"));
-    updater.on("update-downloaded", ({ update }) => {
-      item.label = "Preparing Update…";
-      log("update-downloaded", { targetVersion: update.displayVersion });
-    });
-    updater.on("before-install", ({ update }) => {
-      item.label = "Installing Update…";
-      log("install-started", { targetVersion: update.displayVersion });
-
-      // Sparkle swaps the bundle and relaunches without feedback; leaving the
-      // windows up makes the app look hung for those seconds.
-      for (const window of BrowserWindow.getAllWindows()) window.hide();
-    });
-    updater.on("before-relaunch", () => {
-      item.label = "Restarting Nyte…";
-      item.enabled = false;
-      log("relaunch-started");
-    });
-    updater.on("cycle-complete", () => {
-      sessionActive = false;
-      item.label = CHECK_LABEL;
-      item.enabled = updater.getState().canCheckForUpdates;
-      log("cycle-complete");
-    });
-    updater.on("error", ({ error }) => {
-      sessionActive = false;
-      logError(error.message);
-    });
-    log("app-started", { version: app.getVersion() });
-  }
-
-  item.click = () => {
-    void check(true);
+  const show = (state: UpdateState): void => {
+    item.label = updateLabel(state);
+    item.enabled = state.kind !== "downloading";
+    publish(state);
   };
 
-  let controller: ReturnType<typeof createUpdateController> | undefined;
+  const updates =
+    process.platform === "darwin"
+      ? sparkleUpdates({ activity, beforeRelaunch, publish: show, log })
+      : electronUpdates({ activity, publish: show, logError });
 
-  const load = () => {
-    const { autoUpdater } = electronUpdater;
-    autoUpdater.autoDownload = false;
-    autoUpdater.autoInstallOnAppQuit = false;
-    autoUpdater.allowPrerelease = false;
-    autoUpdater.allowDowngrade = false;
-    autoUpdater.logger = { info: () => undefined, warn: logError, error: logError };
-    autoUpdater.on("error", (error: Error) => logError(error.message));
-    autoUpdater.signals.progress((info) => {
-      item.label = `Downloading Update… ${Math.floor(info.percent)}%`;
-    });
+  const click = (): Promise<void> => {
+    const { kind } = updates.state();
 
-    return createUpdateController({
-      updater: autoUpdater,
-      message: (options) => dialog.showMessageBox(options),
-      activity,
-      status: (label, enabled) => {
-        item.label = label;
-        item.enabled = enabled;
-      },
-      logError,
-      version: app.getVersion(),
-      unavailable,
-    });
+    return kind === "ready" || kind === "blocked" ? updates.restart() : updates.check();
   };
 
-  async function check(manual: boolean): Promise<void> {
-    try {
-      if (process.platform === "darwin") {
-        if (resumeInstall !== undefined) {
-          if (!manual) return;
-          const current = await activity();
+  item.click = () => void click();
 
-          if (current.kind === "busy") {
-            await dialog.showMessageBox(installBlockedDialog(current));
-
-            return;
-          }
-
-          const resume = resumeInstall;
-          resumeInstall = undefined;
-          log("install-resumed");
-          resume();
-
-          return;
-        }
-
-        if (unavailable !== undefined) {
-          if (manual)
-            await dialog.showMessageBox({
-              type: "info",
-              message: "Updates unavailable",
-              detail: unavailable,
-            });
-
-          return;
-        }
-
-        await updater.start();
-        // Nyte owns the schedule and environment flags on every platform.
-        updater.setAutomaticallyChecksForUpdates(false);
-        updater.setAutomaticallyDownloadsUpdates(false);
-
-        if (!updater.getState().canCheckForUpdates) return;
-
-        if (sessionActive && !manual) return;
-        item.label = "Checking for Updates…";
-        item.enabled = false;
-        log("check-started", { manual });
-
-        if (manual) updater.checkForUpdates();
-        else updater.checkForUpdatesInBackground();
-
-        return;
-      }
-
-      controller ??= load();
-      await controller.check(manual);
-    } catch (cause) {
-      controller = undefined;
-      const detail = errorMessage(cause);
-      logError(detail);
-      item.label = CHECK_LABEL;
-      item.enabled = true;
-
-      if (manual)
-        await dialog.showMessageBox({
-          type: "error",
-          message: "Couldn't check for updates",
-          detail,
-        });
-    }
+  if (process.env["NYTE_SKIP_VERSION_CHECK"] === undefined) {
+    const startup = setTimeout(() => void updates.check(), 15_000);
+    const periodic = setInterval(() => void updates.check(), UPDATE_INTERVAL_MS);
+    startup.unref();
+    periodic.unref();
+    app.once("before-quit", () => {
+      clearTimeout(startup);
+      clearInterval(periodic);
+    });
   }
 
-  if (
-    !app.isPackaged ||
-    process.env["NYTE_OFFLINE"] !== undefined ||
-    process.env["NYTE_SKIP_VERSION_CHECK"] !== undefined
-  )
-    return;
-  const startup = setTimeout(() => void check(false), 15_000);
-  const periodic = setInterval(() => void check(false), UPDATE_INTERVAL_MS);
-  startup.unref();
-  periodic.unref();
-  app.once("before-quit", () => {
-    clearTimeout(startup);
-    clearInterval(periodic);
-  });
+  return { state: updates.state, click };
 }
 
-function errorMessage(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
+function electronUpdates({
+  activity,
+  publish,
+  logError,
+}: {
+  readonly activity: () => Promise<DesktopUpdateActivity>;
+  readonly publish: (state: UpdateState) => void;
+  readonly logError: (message: string) => void;
+}) {
+  const { autoUpdater } = electronUpdater;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.allowPrerelease = false;
+  autoUpdater.allowDowngrade = false;
+  autoUpdater.logger = { info: () => undefined, warn: logError, error: logError };
+  autoUpdater.on("error", (error: Error) => logError(error.message));
+  const controller = createUpdateController({ updater: autoUpdater, activity, publish, logError });
+  autoUpdater.signals.progress((info) => controller.progress(info.percent));
+
+  return controller;
+}
+
+/**
+ * Sparkle has no download, progress, or install call. Checks run with its automatic
+ * download on, so an update downloads silently and surfaces as `ready`; installing
+ * reopens Sparkle's own prompt for that download, the one install path it exposes.
+ */
+function sparkleUpdates({
+  activity,
+  beforeRelaunch,
+  publish,
+  log,
+}: {
+  readonly activity: () => Promise<DesktopUpdateActivity>;
+  readonly beforeRelaunch: () => Promise<void>;
+  readonly publish: (state: UpdateState) => void;
+  readonly log: (event: string, details?: UpdateLogDetails) => void;
+}) {
+  let state: UpdateState = { kind: "idle" };
+
+  const set = (next: UpdateState): void => {
+    state = next;
+    publish(next);
+  };
+
+  updater.setBeforeRelaunchHandler(async (update) => {
+    log("relaunch-requested", {
+      fromVersion: app.getVersion(),
+      targetVersion: update.displayVersion,
+    });
+    const cleanup = await runRelaunchCleanup({ cleanup: beforeRelaunch });
+
+    if (cleanup.kind === "completed") log("relaunch-cleanup-completed");
+    else if (cleanup.kind === "timed-out") log("relaunch-cleanup-timed-out");
+    else log("relaunch-cleanup-failed", { message: cleanup.message });
+  });
+  updater.on("update-available", ({ update }) => {
+    set({ kind: "downloading", version: update.displayVersion, percent: 0 });
+    log("update-available", { targetVersion: update.displayVersion });
+  });
+  updater.on("update-not-available", () => log("update-not-available"));
+  updater.on("update-downloaded", ({ update }) => {
+    set({ kind: "ready", version: update.displayVersion });
+    log("update-downloaded", { targetVersion: update.displayVersion });
+  });
+  updater.on("before-install", ({ update }) => {
+    log("install-started", { targetVersion: update.displayVersion });
+
+    // Sparkle swaps the bundle and relaunches without feedback; leaving the
+    // windows up makes the app look hung for those seconds.
+    for (const window of BrowserWindow.getAllWindows()) window.hide();
+  });
+  updater.on("before-relaunch", () => log("relaunch-started"));
+  updater.on("cycle-complete", () => log("cycle-complete"));
+  updater.on("error", ({ error }) => {
+    log("error", { message: error.message });
+
+    if (state.kind === "downloading")
+      set({ kind: "failed", version: state.version, message: error.message });
+  });
+  log("app-started", { version: app.getVersion() });
+
+  const check = async (): Promise<void> => {
+    if (state.kind !== "idle" && state.kind !== "failed") return;
+
+    try {
+      await updater.start();
+      // Nyte owns the schedule on every platform.
+      updater.setAutomaticallyChecksForUpdates(false);
+      updater.setAutomaticallyDownloadsUpdates(true);
+
+      if (!updater.getState().canCheckForUpdates) return;
+      log("check-started");
+      updater.checkForUpdatesInBackground();
+    } catch (cause) {
+      log("error", { message: errorMessage(cause) });
+    }
+  };
+
+  return {
+    state: () => state,
+    check,
+    restart: () =>
+      requestRestart({ state, activity, publish: set, install: () => updater.checkForUpdates() }),
+  };
 }

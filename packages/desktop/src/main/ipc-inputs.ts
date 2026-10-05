@@ -130,6 +130,8 @@ export const CALL_INPUT_SCHEMAS = {
   "host.github.createPullRequest": compile(
     ENVIRONMENT_OPERATIONS["environment.github.createPullRequest"].input,
   ),
+  "host.updates.state": compile(noInput),
+  "host.updates.check": compile(noInput),
   "host.github.state": compile(noInput),
   "host.github.signIn": compile(noInput),
   "host.github.signOut": compile(noInput),

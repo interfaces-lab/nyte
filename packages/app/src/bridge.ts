@@ -513,7 +513,21 @@ export interface TerminalInfo {
   readonly cwd: string;
 }
 
+/** A found release downloads at once; the renderer only ever hears about the download. */
+export type UpdateState =
+  | { readonly kind: "idle" }
+  | { readonly kind: "downloading"; readonly version: string; readonly percent: number }
+  | { readonly kind: "ready"; readonly version: string }
+  | {
+      readonly kind: "blocked";
+      readonly version: string;
+      readonly taskCount: number;
+      readonly terminalCommandCount: number;
+    }
+  | { readonly kind: "failed"; readonly version: string; readonly message: string };
+
 export type HostEvent =
+  | { kind: "update_changed"; state: UpdateState }
   | { kind: "terminal_data"; id: string; data: string }
   | { kind: "terminal_exit"; id: string; exitCode: number }
   | { kind: "workspace_opened"; workspace: WorkspaceInfo }
@@ -690,6 +704,12 @@ export interface HostBridge {
   logout(input: { provider: string }): Promise<void>;
   /** Apply one preference change and answer with the catalog as it now stands. */
   setPreference(change: PreferenceChange): Promise<DesktopCatalog>;
+  /** Absent where the host does not update itself. */
+  readonly updates?: {
+    state(): Promise<UpdateState>;
+    /** What the Check for Updates menu item does in this state. */
+    check(): Promise<void>;
+  };
   /** Absent where no environment answers for `gh`. */
   readonly github?: GitHubBridge;
   server: {
