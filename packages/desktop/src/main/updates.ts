@@ -1,6 +1,6 @@
 import electronUpdater from "electron-updater";
 import { updater } from "electron-sparkle";
-import { app, dialog } from "electron";
+import { app, BrowserWindow, dialog } from "electron";
 import type { MenuItem } from "electron";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -44,6 +44,7 @@ export function registerUpdates({
         : undefined;
 
   let resumeInstall: (() => void) | undefined;
+  let sessionActive = false;
 
   if (process.platform === "darwin" && unavailable === undefined) {
     updater.setBeforeRelaunchHandler(async (update) => {
@@ -80,6 +81,7 @@ export function registerUpdates({
       item.enabled = state.canCheckForUpdates;
     });
     updater.on("update-available", ({ update }) => {
+      sessionActive = true;
       item.label = "Update Available…";
       log("update-available", { targetVersion: update.displayVersion });
     });
@@ -91,6 +93,10 @@ export function registerUpdates({
     updater.on("before-install", ({ update }) => {
       item.label = "Installing Update…";
       log("install-started", { targetVersion: update.displayVersion });
+
+      // Sparkle swaps the bundle and relaunches without feedback; leaving the
+      // windows up makes the app look hung for those seconds.
+      for (const window of BrowserWindow.getAllWindows()) window.hide();
     });
     updater.on("before-relaunch", () => {
       item.label = "Restarting Nyte…";
@@ -98,11 +104,15 @@ export function registerUpdates({
       log("relaunch-started");
     });
     updater.on("cycle-complete", () => {
+      sessionActive = false;
       item.label = CHECK_LABEL;
       item.enabled = updater.getState().canCheckForUpdates;
       log("cycle-complete");
     });
-    updater.on("error", ({ error }) => logError(error.message));
+    updater.on("error", ({ error }) => {
+      sessionActive = false;
+      logError(error.message);
+    });
     log("app-started", { version: app.getVersion() });
   }
 
@@ -176,6 +186,8 @@ export function registerUpdates({
         updater.setAutomaticallyDownloadsUpdates(false);
 
         if (!updater.getState().canCheckForUpdates) return;
+
+        if (sessionActive && !manual) return;
         item.label = "Checking for Updates…";
         item.enabled = false;
         log("check-started", { manual });
