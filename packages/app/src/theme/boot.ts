@@ -231,6 +231,10 @@ function apply(settings: AppearanceSettings): void {
   // @nyte-ai/ui/tokens.stylex derives the whole type scale from these four.
   root.style.setProperty("--nyte-font-family-sans", uiFontFamily(settings.uiFont));
   root.style.setProperty("--nyte-font-family-mono", codeFontFamily(settings.codeFont));
+  root.style.setProperty(
+    "--nyte-letter-spacing-lg",
+    localFontFamily(settings.uiFont) === undefined ? "" : "0em",
+  );
   root.style.setProperty("--nyte-font-size-base", `${String(settings.uiFontSize)}px`);
   root.style.setProperty("--nyte-font-size-code", `${String(settings.codeFontSize)}px`);
   root.style.setProperty(
