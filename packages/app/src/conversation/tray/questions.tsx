@@ -364,7 +364,6 @@ function SelectionCard({
                   variant="solid"
                   tone="primary"
                   size="sm"
-                  round
                   loading={reply.isPending}
                   disabled={blocked || selected.length === 0}
                 >

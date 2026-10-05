@@ -15,7 +15,6 @@ export function Toggle<Value extends string>({
   indicator = "fill",
   size = "md",
   iconOnly = false,
-  round,
   icon,
   tone,
   xstyle,
@@ -36,7 +35,7 @@ export function Toggle<Value extends string>({
       {...buttonStyle(
         "ghost",
         size,
-        { iconOnly, round, tone, xstyle, className, style },
+        { iconOnly, tone, xstyle, className, style },
         indicator === "glyph",
       )}
     >

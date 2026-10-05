@@ -49,6 +49,8 @@ export const titlebarStyles = create({
     height: "100%",
     overflow: "clip",
   },
+  /** Without the workbench slot, the chat actions keep the slot's trailing inset so the glyph sits where the panel toggle would. */
+  centerTrailing: { paddingInlineEnd: 10 },
   workbenchSlot: {
     display: "flex",
     alignItems: "center",

@@ -700,7 +700,6 @@ function TranscriptScrollButton(): ReactElement {
           render={
             <Button
               iconOnly
-              round
               aria-label="Scroll to bottom"
               tabIndex={away ? undefined : -1}
               className={scrollButton.className}

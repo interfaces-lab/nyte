@@ -43,9 +43,7 @@ export function ButtonStatesDemo() {
       <Button variant="outline" icon="refresh">
         Refresh
       </Button>
-      <Button variant="outline" round>
-        Round
-      </Button>
+      <Button variant="pill">Pill</Button>
       <Button variant="outline" disabled disabledReason="No changes to save">
         Save Changes
       </Button>

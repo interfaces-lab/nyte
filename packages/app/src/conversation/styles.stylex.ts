@@ -733,6 +733,8 @@ export const composerStyles = create({
   controlsInset: { paddingInline: 8, paddingBlockEnd: 8 },
   controlsCompact: { display: "contents" },
   addButtonCompact: { gridColumn: 1, gridRow: 1 },
+  /** Composer actions keep the frame's pill corners. */
+  pillButton: { borderRadius: radius.pill },
   addMenu: { width: 260, maxWidth: "calc(100vw - 24px)" },
   modelSlot: {
     display: "inline-flex",

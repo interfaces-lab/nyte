@@ -160,14 +160,13 @@ export async function run(): Promise<string> {
     flushSync(() =>
       root.render(
         <TooltipProvider>
-          {(["ghost", "outline", "solid", "plain", "text"] as const).flatMap((variant) =>
+          {(["ghost", "pill", "outline", "solid", "plain", "text"] as const).flatMap((variant) =>
             (["2xs", "xs", "sm", "md", "lg", "xl"] as const).map((size) => (
               <Sample key={`${variant}:${size}`}>
                 <Button variant={variant} size={size}>
                   Save
                 </Button>
                 <Button variant={variant} size={size} iconOnly icon="plus" aria-label="Add" />
-                <Button variant={variant} size={size} round iconOnly icon="plus" aria-label="Add" />
                 <ButtonLink variant={variant} size={size} href="#">
                   View
                 </ButtonLink>

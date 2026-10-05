@@ -93,7 +93,6 @@ export function TrayPill({
         ref={ref}
         variant="outline"
         size="sm"
-        round
         aria-description={label}
         aria-controls={controls}
         aria-expanded={false}

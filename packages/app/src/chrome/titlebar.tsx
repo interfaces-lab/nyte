@@ -374,7 +374,7 @@ export function Titlebar(): ReactElement {
         </span>
       </span>
       <div {...props(titlebarStyles.contentArea, tabbed && titlebarStyles.contentAreaTabbed)}>
-        <span {...props(titlebarStyles.center)}>
+        <span {...props(titlebarStyles.center, !workspaceVisible && titlebarStyles.centerTrailing)}>
           {tabbed ? (
             <TitlebarTabStrip state={tabs} mac={mac} />
           ) : (

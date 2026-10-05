@@ -54,7 +54,7 @@ import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button
 <Button size="2xs" iconOnly icon="x" aria-label="Remove" />
 ```
 
-### Glyph, round, and disabled
+### Glyph, pill, and disabled
 
 <Preview>
   <ButtonStatesDemo />
@@ -62,7 +62,7 @@ import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button
 
 ```tsx
 <Button variant="outline" icon="refresh">Refresh</Button>
-<Button variant="outline" round>Round</Button>
+<Button variant="pill">Pill</Button>
 <Button variant="outline" disabled disabledReason="No changes to save">Save Changes</Button>
 ```
 
@@ -105,20 +105,19 @@ import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button
 `Button` takes every Base UI `Button` prop. `className` and `style` take plain values, not functions
 of state. `ButtonLink` takes native `<a>` attributes.
 
-| Prop                 | Type                                                           | Default                                       | Description                                            |
-| -------------------- | -------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------ |
-| `variant`            | `"ghost" \| "outline" \| "solid" \| "plain" \| "text"`         | `"ghost"`                                     |                                                        |
-| `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"` | `"primary"` for `text`, otherwise `"neutral"` |                                                        |
-| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                | `"md"`                                        | 16, 20, 24, 28, 32, or 36px tall.                      |
-| `iconOnly`           | `boolean`                                                      | `false`                                       | Square control.                                        |
-| `icon`               | `IconName`                                                     |                                               | Leading or standalone glyph.                           |
-| `children`           | `ReactNode`                                                    |                                               | Required for visible-text controls.                    |
-| `round`              | `boolean`                                                      | `false`                                       | Fully rounded corners.                                 |
-| `xstyle`             | `ButtonLayout`                                                 |                                               | Position, inset, margin, flex, grid, order, and width. |
-| `className`, `style` | See [Theming](/docs/components/foundations/theming)            |                                               | Applied to the control.                                |
-| `loading`            | `boolean`                                                      | `false`                                       | Button only. Disables activation but stays focusable.  |
-| `disabledReason`     | `string`                                                       |                                               | Button only. Shown as the `title` while `disabled`.    |
-| `href`               | `string`                                                       | Required for ButtonLink                       |                                                        |
+| Prop                 | Type                                                             | Default                                       | Description                                            |
+| -------------------- | ---------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------ |
+| `variant`            | `"ghost" \| "pill" \| "outline" \| "solid" \| "plain" \| "text"` | `"ghost"`                                     |                                                        |
+| `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"`   | `"primary"` for `text`, otherwise `"neutral"` |                                                        |
+| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                  | `"md"`                                        | 16, 20, 24, 28, 32, or 36px tall.                      |
+| `iconOnly`           | `boolean`                                                        | `false`                                       | Square control.                                        |
+| `icon`               | `IconName`                                                       |                                               | Leading or standalone glyph.                           |
+| `children`           | `ReactNode`                                                      |                                               | Required for visible-text controls.                    |
+| `xstyle`             | `ButtonLayout`                                                   |                                               | Position, inset, margin, flex, grid, order, and width. |
+| `className`, `style` | See [Theming](/docs/components/foundations/theming)              |                                               | Applied to the control.                                |
+| `loading`            | `boolean`                                                        | `false`                                       | Button only. Disables activation but stays focusable.  |
+| `disabledReason`     | `string`                                                         |                                               | Button only. Shown as the `title` while `disabled`.    |
+| `href`               | `string`                                                         | Required for ButtonLink                       |                                                        |
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 

@@ -82,7 +82,6 @@ function Composer({
                 type="submit"
                 variant="solid"
                 tone="primary"
-                round
                 disabled={task.trim() === ""}
                 loading={start.isPending}
               />

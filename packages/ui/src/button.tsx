@@ -66,7 +66,6 @@ const control = create({
     paddingInline: button.iconPaddingInline,
     "::before": { insetInline: "calc(-1 * var(--_btn-hit-inset))" },
   },
-  round: { borderRadius: radius.pill },
   joined: {
     "--_btn-hit-inset": "0px",
     height: `max(var(--_btn-height), ${target.min})`,
@@ -166,14 +165,15 @@ const pillSizes = create({
   xl: { paddingInline: button.pillPaddingInlineXl },
 });
 
+const ghostFill = {
+  default: "transparent",
+  "[data-pressed]": role.bgInteractiveSecondaryTranslucent,
+  '[aria-expanded="true"]': role.bgInteractiveSecondaryTranslucent,
+} as const;
+
 const buttonVariants = create({
-  ghost: {
-    backgroundColor: {
-      default: "transparent",
-      "[data-pressed]": role.bgInteractiveSecondaryTranslucent,
-      '[aria-expanded="true"]': role.bgInteractiveSecondaryTranslucent,
-    },
-  },
+  ghost: { backgroundColor: ghostFill },
+  pill: { borderRadius: radius.pill, backgroundColor: ghostFill },
   outline: {
     backgroundColor: role.bgElevated,
     boxShadow: `inset 0 0 0 1px ${role.borderPrimary}, ${shadow.shadowSm}`,
@@ -253,7 +253,7 @@ const contentStyles = create({
     justifyContent: "center",
     pointerEvents: "none",
   },
-  glyphPressed: { backgroundColor: "transparent" },
+  glyphPressed: { backgroundColor: "transparent", backgroundImage: "none" },
 });
 
 export type ButtonVariant = keyof typeof buttonVariants;
@@ -296,11 +296,10 @@ export type ButtonLayout = StyleXStyles<{
   width?: number | string;
   minWidth?: number | string;
   maxWidth?: number | string;
+  borderRadius?: number | string;
 }>;
 
 export interface ButtonAppearance {
-  /** Pill corners. A `ghost` button has no edge to square against, so it defaults on; the other variants keep the size radius and sit flush beside inputs. */
-  readonly round?: boolean;
   readonly icon?: IconName;
   readonly tone?: ButtonTone;
   readonly xstyle?: ButtonLayout;
@@ -331,7 +330,6 @@ export function buttonStyle(
   size: ButtonSize,
   {
     iconOnly = false,
-    round,
     joined = false,
     tone = variant === "text" ? "primary" : "neutral",
     xstyle,
@@ -344,17 +342,14 @@ export function buttonStyle(
     },
   glyphPressed = false,
 ) {
-  const pill = round ?? (variant === "ghost" && !joined);
-
   return mergeStyleProps(
     props(
       tone !== "neutral" && intent[tone],
       control.base,
       buttonSizes[size],
-      pill && pillSizes[size],
+      variant === "pill" && pillSizes[size],
       iconOnly && control.iconOnly,
       buttonVariants[variant],
-      pill && control.round,
       joined && control.joined,
       joined && iconOnly && control.joinedIcon,
       size === "2xs" ? focus.ringInset : focus.ring,
@@ -402,7 +397,6 @@ export function Button({
   variant = "ghost",
   size = "md",
   iconOnly = false,
-  round,
   icon,
   tone,
   xstyle,
@@ -424,7 +418,7 @@ export function Button({
       focusableWhenDisabled={showReason || loading}
       {...rest}
       disabled={disabled || loading}
-      {...buttonStyle(variant, size, { iconOnly, round, joined, tone, xstyle, className, style })}
+      {...buttonStyle(variant, size, { iconOnly, joined, tone, xstyle, className, style })}
     >
       <ButtonContent icon={icon} size={size} iconOnly={iconOnly} loading={loading}>
         {children}
@@ -437,7 +431,6 @@ export function ButtonLink({
   variant = "ghost",
   size = "md",
   iconOnly = false,
-  round,
   icon,
   tone,
   xstyle,
@@ -457,7 +450,7 @@ export function ButtonLink({
     <a
       title={tooltipTitle(iconOnly, rest["aria-label"])}
       {...rest}
-      {...buttonStyle(variant, size, { iconOnly, round, joined, tone, xstyle, className, style })}
+      {...buttonStyle(variant, size, { iconOnly, joined, tone, xstyle, className, style })}
     >
       <ButtonContent icon={icon} size={size} iconOnly={iconOnly}>
         {children}

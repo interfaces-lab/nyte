@@ -476,7 +476,7 @@ export function ComposerFrame({
                 <Button
                   size="2xs"
                   variant="solid"
-                  round
+                  xstyle={composerStyles.pillButton}
                   iconOnly
                   icon="x"
                   aria-label={`Remove ${attachment.name}`}
@@ -707,9 +707,8 @@ export function ComposerFrame({
                     icon="plus"
                     aria-label="Add to message"
                     variant="outline"
-                    round
                     disabled={disabled}
-                    xstyle={compact ? composerStyles.addButtonCompact : undefined}
+                    xstyle={[composerStyles.pillButton, compact && composerStyles.addButtonCompact]}
                   />
                 }
               />
@@ -750,7 +749,7 @@ export function ComposerFrame({
                   title="Stop response (Esc)"
                   variant="solid"
                   tone="primary"
-                  round
+                  xstyle={composerStyles.pillButton}
                   disabled={disabled}
                   loading={stopping}
                   onClick={onAbort}
@@ -765,7 +764,7 @@ export function ComposerFrame({
                   type="submit"
                   variant="solid"
                   tone="primary"
-                  round
+                  xstyle={composerStyles.pillButton}
                   disabled={disabled || attachmentBusy || !hasSubmission}
                   loading={submitting}
                 />
