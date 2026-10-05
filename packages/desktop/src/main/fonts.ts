@@ -19,6 +19,7 @@ ObjC.import("AppKit");
 
 const manager = $.NSFontManager.sharedFontManager;
 const fixedPitchMask = Number($.NSFixedPitchFontMask);
+const symbolicClass = 12;
 const sans = [];
 const monospace = [];
 
@@ -27,12 +28,12 @@ for (const nativeFamily of ObjC.unwrap(manager.availableFontFamilies)) {
   if (typeof family !== "string" || family.startsWith(".")) continue;
 
   const font = manager.fontWithFamilyTraitsWeightSize(nativeFamily, 0, 5, 13);
-  if (!font) continue;
+  if (font.isNil()) continue;
 
   const managerTraits = Number(manager.traitsOfFont(font));
-  const descriptorTraits = Number(font.fontDescriptor.symbolicTraits);
+  const stylisticClass = Number(font.fontDescriptor.symbolicTraits) >>> 28;
   if ((managerTraits & fixedPitchMask) !== 0) monospace.push(family);
-  else if ((descriptorTraits >>> 28) === 8) sans.push(family);
+  else if (stylisticClass !== symbolicClass) sans.push(family);
 }
 
 JSON.stringify({ sans, monospace });
