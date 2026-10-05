@@ -60,6 +60,7 @@ export const typography = defineVars({
   "--nyte-line-height-sm": "calc(var(--nyte-font-size-base) * 16 / 13)",
   "--nyte-line-height-base": "calc(var(--nyte-font-size-base) * 18 / 13)",
   "--nyte-line-height-lg": "calc(var(--nyte-font-size-base) * 24 / 13)",
+  "--nyte-line-height-code": "calc(var(--nyte-font-size-code) * 18 / 12)",
   "--nyte-letter-spacing-base": "0em",
   "--nyte-letter-spacing-lg": "-0.016em",
 });

@@ -68,6 +68,6 @@ export const layout = defineVars({
   "--nyte-workbench-launcher-card-size": "112px",
   "--nyte-pane-sash-size": { default: "24px", "@media (pointer: coarse)": "44px" },
   "--nyte-pane-divider-gap": "5px",
-  "--nyte-diff-line-height": "20px",
+  "--nyte-diff-line-height": "calc(var(--nyte-font-size-code) * 20 / 12)",
   "--nyte-diff-preview-max-height": "min(480px, 60vh)",
 });

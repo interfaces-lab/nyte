@@ -12,6 +12,7 @@ import { memo, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import type { ToolCallDensity } from "../theme/boot.ts";
+import { diffView } from "../theme/schema.stylex.ts";
 import { DiffView } from "./diff-view.tsx";
 import { fileFromUrl } from "./message-references.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
@@ -28,9 +29,7 @@ const HOVER = "@media (hover: hover) and (pointer: fine)";
 
 const DIMMED = `color-mix(in oklab, ${role.contentSecondary} 55%, ${role.contentTertiary})`;
 
-const CARD_COLLAPSED_HEIGHT = 80;
-
-const DIFF_ROW_HEIGHT = 20;
+const CARD_PREVIEW_ROWS = 4;
 
 const TRANSITION = {
   transitionDuration: {
@@ -152,7 +151,10 @@ const styles = create({
     borderTopStyle: "solid",
     borderTopColor: role.borderSecondaryTranslucent,
   },
-  cardBodyCollapsed: { maxHeight: CARD_COLLAPSED_HEIGHT, overflow: "hidden" },
+  cardBodyCollapsed: {
+    maxHeight: `calc(${CARD_PREVIEW_ROWS} * ${diffView.lineHeight})`,
+    overflow: "hidden",
+  },
   expand: {
     position: "absolute",
     insetInline: 0,
@@ -267,7 +269,7 @@ export const EditCallView = memo(function EditCallView({
   );
 
   if (density === "detailed" && diff !== undefined) {
-    const expandable = (rows ?? 0) * DIFF_ROW_HEIGHT > CARD_COLLAPSED_HEIGHT;
+    const expandable = (rows ?? 0) > CARD_PREVIEW_ROWS;
 
     const header = (
       <>

@@ -38,7 +38,7 @@ export const trayStyles = create({
     whiteSpace: "nowrap",
     fontSize: type.fontBase,
     fontWeight: 400,
-    lineHeight: "20px",
+    lineHeight: type.leadingBase,
     color: role.contentSecondary,
   },
   list: {

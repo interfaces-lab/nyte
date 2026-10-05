@@ -23,7 +23,7 @@ import { changeSelectionSummary, filesChangedLabel, filterChangePaths } from "./
 import type { ChangeStatus } from "./change-tree.ts";
 import type { ViewedState } from "./changes-viewed.ts";
 import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
-import { useTreeStatusTheme } from "./tree-theme.ts";
+import { treeItemHeight, useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 export interface ChangesSidebarFile {
@@ -187,12 +187,12 @@ export const ChangesSidebar = memo(function ChangesSidebar({
   const syncing = useRef(false);
   const paths = useRef<ReadonlySet<string>>(new Set());
 
+  const [itemHeight] = useState(treeItemHeight);
+
   const { model } = useFileTree({
     paths: [],
     density: "compact",
-    itemHeight: Number.parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue("--nyte-target-min"),
-    ),
+    itemHeight,
     unsafeCSS: PIERRE_TREE_CSS,
     initialExpansion: "open",
     onSelectionChange: (selected) => {

@@ -210,7 +210,7 @@ const STEP_GROUP_ESTIMATE = {
 
 const PROSE_BASE_ESTIMATE = 40;
 
-const PROSE_LINE_HEIGHT = 22;
+const PROSE_LINE_HEIGHT = 24;
 
 const PROSE_CHARS_PER_LINE = 90;
 
@@ -226,12 +226,28 @@ const BANNER_ESTIMATE = 28;
 
 const SKELETON_ESTIMATE = 240;
 
+const ESTIMATE_FONT_SIZE = 13;
+
 /**
  * A first guess at each row's height so unmeasured rows place their
  * neighbours roughly right. The parts of a turn add up: a prompt, one work
  * group, and prose sized by its text.
  */
-export function estimateRowSize(row: TranscriptRow | undefined, density: ToolCallDensity): number {
+export function estimateRowSize(
+  row: TranscriptRow | undefined,
+  density: ToolCallDensity,
+  uiFontSize: number,
+): number {
+  const scale = uiFontSize / ESTIMATE_FONT_SIZE;
+
+  return scale * rowEstimate(row, density, scale);
+}
+
+function rowEstimate(
+  row: TranscriptRow | undefined,
+  density: ToolCallDensity,
+  scale: number,
+): number {
   if (row === undefined) return 0;
 
   switch (row.kind) {
@@ -245,7 +261,7 @@ export function estimateRowSize(row: TranscriptRow | undefined, density: ToolCal
     case "live":
       return row.working ? LIVE_ROW_ESTIMATE : 0;
     case "turn":
-      return estimateTurnSize(row.turn, density);
+      return estimateTurnSize(row.turn, density, scale);
     default: {
       const _exhaustive: never = row;
 
@@ -254,7 +270,7 @@ export function estimateRowSize(row: TranscriptRow | undefined, density: ToolCal
   }
 }
 
-function estimateTurnSize(turn: Turn, density: ToolCallDensity): number {
+function estimateTurnSize(turn: Turn, density: ToolCallDensity, scale: number): number {
   if (turn.kind !== "turn") return RECORD_ROW_ESTIMATE;
   let size = 0;
   let prose = 0;
@@ -290,7 +306,8 @@ function estimateTurnSize(turn: Turn, density: ToolCallDensity): number {
   }
 
   if (prose > 0) {
-    size += PROSE_BASE_ESTIMATE + PROSE_LINE_HEIGHT * Math.ceil(prose / PROSE_CHARS_PER_LINE);
+    size +=
+      PROSE_BASE_ESTIMATE + PROSE_LINE_HEIGHT * Math.ceil((prose * scale) / PROSE_CHARS_PER_LINE);
   }
 
   return size;

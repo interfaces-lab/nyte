@@ -120,11 +120,11 @@ export function Timeline({
   readonly onOpenChanges: (target: TurnChangesTarget) => void;
   readonly onRetry: () => void;
 }): ReactElement {
-  const density = useAppearanceSettings().toolCalls;
+  const { toolCalls: density, uiFontSize } = useAppearanceSettings();
 
   const estimateSize = useCallback(
-    (index: number) => estimateRowSize(rows[index], density),
-    [density, rows],
+    (index: number) => estimateRowSize(rows[index], density, uiFontSize),
+    [density, rows, uiFontSize],
   );
 
   const renderItem = useCallback(

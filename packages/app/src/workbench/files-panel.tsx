@@ -36,7 +36,7 @@ import { fileActions, useFileTabs } from "./file-store.ts";
 import { Popover } from "@nyte-ai/ui/popover";
 import { WorkspaceSearch } from "./workspace-search.tsx";
 import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
-import { useTreeStatusTheme } from "./tree-theme.ts";
+import { treeItemHeight, useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const styles = create({
@@ -201,12 +201,12 @@ export function FilesPanel({
     );
   };
 
+  const [itemHeight] = useState(treeItemHeight);
+
   const { model } = useFileTree({
     paths: [],
     density: "compact",
-    itemHeight: Number.parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue("--nyte-target-min"),
-    ),
+    itemHeight,
     unsafeCSS: PIERRE_TREE_CSS,
     flattenEmptyDirectories: true,
     initialExpansion: 1,
@@ -702,12 +702,12 @@ function BreadcrumbTree({
     [files, prefix],
   );
 
+  const [itemHeight] = useState(treeItemHeight);
+
   const { model } = useFileTree({
     paths: [],
     density: "compact",
-    itemHeight: Number.parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue("--nyte-target-min"),
-    ),
+    itemHeight,
     unsafeCSS: PIERRE_TREE_CSS,
     initialExpansion: 0,
     search: false,

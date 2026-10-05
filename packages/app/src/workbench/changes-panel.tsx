@@ -28,6 +28,7 @@ import {
 } from "./change-scopes.ts";
 import { ChangesSidebar } from "./changes-sidebar.tsx";
 import type { ChangesSidebarFile } from "./changes-sidebar.tsx";
+import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { ChangesStack } from "./changes-stack.tsx";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
 import { ChangesToolbar, changesShortcutAction } from "./changes-toolbar.tsx";
@@ -217,6 +218,7 @@ function ChangesPanelView({
   turnsError,
   liveRun,
 }: ChangesPanelViewProps): ReactElement {
+  const { uiFontSize } = useAppearanceSettings();
   const turnOptions = useMemo(() => turnChangeOptions(turns), [turns]);
   const snapshot = useVcsSnapshot(visible);
   const filterInput = useRef<HTMLInputElement>(null);
@@ -720,6 +722,7 @@ function ChangesPanelView({
       ) : (
         <div key={`${optionsScopeId}\u0000${activeScopeValue}`} {...props(styles.body)}>
           <ChangesSidebar
+            key={uiFontSize}
             files={sidebarFiles}
             visible={fileTreeVisible}
             activePath={activePath}

@@ -43,6 +43,7 @@ import type {
 import { terminalActions, useTerminalRuntime } from "./terminal-store";
 import { BrowserPanel } from "./browser-panel";
 import { FilesPanel } from "./files-panel.tsx";
+import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { useFileTabs } from "./file-store.ts";
 import { TerminalPanel } from "./terminal-panel";
 import { ChangesPanel } from "./changes-panel";
@@ -304,10 +305,19 @@ function PanelContent({
   readonly sidebarVisible: boolean;
   readonly onToggleSidebar: () => void;
 }): ReactElement {
+  const { uiFontSize } = useAppearanceSettings();
+
   switch (tab.kind) {
     case "file":
     case "files":
-      return <FilesPanel viewKey={viewKey} visible={visible} workspaceActive={workspaceActive} />;
+      return (
+        <FilesPanel
+          key={uiFontSize}
+          viewKey={viewKey}
+          visible={visible}
+          workspaceActive={workspaceActive}
+        />
+      );
     case "changes":
       return (
         <ChangesPanel

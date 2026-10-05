@@ -288,8 +288,8 @@ const rawStyles = create({
     overflowX: "auto",
     whiteSpace: "pre",
     fontFamily: type.fontMono,
-    fontSize: "12px",
-    lineHeight: "18px",
+    fontSize: type.fontCode,
+    lineHeight: type.leadingCode,
   },
 });
 

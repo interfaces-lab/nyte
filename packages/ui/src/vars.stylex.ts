@@ -81,6 +81,7 @@ export const type = defineConsts({
   leadingSm: "var(--nyte-line-height-sm)",
   leadingBase: "var(--nyte-line-height-base)",
   leadingLg: "var(--nyte-line-height-lg)",
+  leadingCode: "var(--nyte-line-height-code)",
   letterBase: "var(--nyte-letter-spacing-base)",
   letterLg: "var(--nyte-letter-spacing-lg)",
   uiFontInter: "var(--nyte-ui-font-inter)",

@@ -1,7 +1,7 @@
 import { glyph, radius } from "@nyte-ai/ui/schema.stylex";
 /** Controls unique to Settings › Appearance. */
 import { create } from "@stylexjs/stylex";
-import { settings } from "../theme/schema.stylex.ts";
+import { diffView, settings } from "../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 
 export const appearancePanelStyles = create({
@@ -61,7 +61,7 @@ export const appearancePanelStyles = create({
     borderRadius: radius.indicator,
     fontFamily: type.fontMono,
     fontSize: type.fontCode,
-    lineHeight: "20px",
+    lineHeight: diffView.lineHeight,
   },
   diffLine: {
     display: "grid",
