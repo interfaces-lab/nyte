@@ -6,8 +6,8 @@ import { layer, menu } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
 import { appearance, motion, role, shadow, type } from "./vars.stylex.ts";
-import { buttonStyle, type ButtonLayout } from "./button.tsx";
-import { ControlGlyphs, Icon } from "./icon.tsx";
+import { PickerTrigger, type PickerTriggerProps } from "./button.tsx";
+import { Icon } from "./icon.tsx";
 
 const COLLISION: NonNullable<SelectPrimitive.Positioner.Props["collisionAvoidance"]> = {
   side: "flip",
@@ -21,24 +21,6 @@ const OVER_TRIGGER: NonNullable<SelectPrimitive.Positioner.Props["sideOffset"]> 
 }) => -(side === "top" || side === "bottom" ? anchor.height : anchor.width);
 
 const styles = create({
-  /** The trigger is an `outline` `md` button; only its width is its own. */
-  trigger: { maxWidth: 180 },
-  value: {
-    display: "block",
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-    fontFamily: "inherit",
-    textOverflow: "ellipsis",
-    textAlign: "start",
-    whiteSpace: "nowrap",
-  },
-  icon: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
   positioner: { zIndex: layer.menu, outline: "none" },
   popup: {
     boxSizing: "border-box",
@@ -131,60 +113,26 @@ const styles = create({
   },
 });
 
-const triggerWidths = create({
-  standard: {},
-  wide: { maxWidth: "100%" },
-});
-
 export const Select = SelectPrimitive.Root;
 
-/** An `outline` `md` button that ends in a chevron, the same control a Menu opens from. */
 export function SelectTrigger({
-  width = "standard",
-  children,
+  width,
   xstyle,
   className,
   style,
   ...rest
-}: Omit<StyledProps<SelectPrimitive.Trigger.Props>, "xstyle"> & {
-  /** `wide` lets the trigger fill its container instead of stopping at 180px. */
-  readonly width?: keyof typeof triggerWidths;
-  readonly xstyle?: ButtonLayout;
-}): ReactElement {
+}: Omit<SelectPrimitive.Trigger.Props, "className" | "style" | "render"> &
+  Pick<PickerTriggerProps, "width" | "xstyle" | "className" | "style">): ReactElement {
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
-      {...buttonStyle("outline", "md", {
-        xstyle: [styles.trigger, triggerWidths[width], xstyle],
-        className,
-        style,
-      })}
-      {...rest}
-    >
-      <ControlGlyphs>
-        {children}
-        <SelectPrimitive.Icon {...props(styles.icon)}>
-          <Icon name="chevron-down" size={12} />
-        </SelectPrimitive.Icon>
-      </ControlGlyphs>
-    </SelectPrimitive.Trigger>
-  );
-}
-
-export function SelectValue({
-  xstyle,
-  className,
-  style,
-  ...rest
-}: StyledProps<SelectPrimitive.Value.Props>): ReactElement {
-  return (
-    <SelectPrimitive.Value
-      data-slot="select-value"
-      {...mergeStyleProps(props(styles.value, xstyle), className, style)}
+      render={<PickerTrigger width={width} xstyle={xstyle} className={className} style={style} />}
       {...rest}
     />
   );
 }
+
+export const SelectValue = SelectPrimitive.Value;
 
 export function SelectContent({
   side = "bottom",

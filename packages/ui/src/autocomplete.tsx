@@ -4,65 +4,17 @@ import type { ReactElement } from "react";
 
 import { focus } from "./a11y.stylex.ts";
 import { floatingSurfaceStyles } from "./floating-surface.stylex.ts";
-import { button, glyph, input, layer, menu, radius, target } from "./schema.stylex.ts";
+import { glyph, input, layer, menu, radius } from "./schema.stylex.ts";
 import { mergeStyleProps, type StyledProps } from "./style.ts";
 import { surfaceTheme, type Tint } from "./surface-theme.ts";
 import { appearance, motion, role, type } from "./vars.stylex.ts";
+import { PickerTrigger, type PickerTriggerProps } from "./button.tsx";
 import { Icon } from "./icon.tsx";
 
 const styles = create({
-  trigger: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 6,
-    boxSizing: "border-box",
-    minWidth: target.min,
-    maxWidth: "100%",
-    height: button.heightSm,
-    minHeight: target.min,
-    paddingBlock: 0,
-    paddingInline: button.paddingInlineSm,
-    overflow: "hidden",
-    appearance: "none",
-    borderRadius: button.radiusSm,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: role.borderPrimaryTranslucent,
-    backgroundColor: role.bgInteractiveSecondaryTranslucent,
-    backgroundImage: {
-      default: "none",
-      ":hover": role.layerHover,
-      "[data-popup-open]": role.layerHover,
-      "[data-disabled]": "none",
-    },
-    color: { default: role.contentPrimary, "[data-disabled]": role.contentDisabled },
-    fontFamily: type.fontSans,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-    cursor: { default: appearance.cursorInteractive, "[data-disabled]": "default" },
-    flexShrink: 0,
-  },
   clear: {
     minWidth: menu.itemHeight,
     minHeight: menu.itemHeight,
-  },
-  triggerValue: {
-    display: "block",
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-    fontFamily: "inherit",
-    lineHeight: type.leadingSm,
-    textOverflow: "ellipsis",
-    textAlign: "start",
-    whiteSpace: "nowrap",
-  },
-  triggerIcon: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
   },
   positioner: { zIndex: layer.menu, outline: "none" },
   popup: {
@@ -245,23 +197,19 @@ export const AutocompleteGroup = AutocompletePrimitive.Group;
 export const AutocompleteCollection = AutocompletePrimitive.Collection;
 
 export function AutocompleteTrigger({
-  children,
+  width,
+  xstyle,
   className,
   style,
-  xstyle,
   ...rest
-}: StyledProps<AutocompletePrimitive.Trigger.Props>): ReactElement {
+}: Omit<AutocompletePrimitive.Trigger.Props, "className" | "style" | "render"> &
+  Pick<PickerTriggerProps, "width" | "xstyle" | "className" | "style">): ReactElement {
   return (
     <AutocompletePrimitive.Trigger
       data-slot="autocomplete-trigger"
-      {...mergeStyleProps(props(styles.trigger, focus.ring, xstyle), className, style)}
+      render={<PickerTrigger width={width} xstyle={xstyle} className={className} style={style} />}
       {...rest}
-    >
-      <span {...props(styles.triggerValue)}>{children}</span>
-      <AutocompletePrimitive.Icon {...props(styles.triggerIcon)}>
-        <Icon name="chevron-down" size={11} />
-      </AutocompletePrimitive.Icon>
-    </AutocompletePrimitive.Trigger>
+    />
   );
 }
 

@@ -427,6 +427,63 @@ export function Button({
   );
 }
 
+const picker = create({
+  trigger: { maxWidth: 180 },
+  value: {
+    display: "block",
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    fontFamily: "inherit",
+    textOverflow: "ellipsis",
+    textAlign: "start",
+    whiteSpace: "nowrap",
+  },
+});
+
+const pickerWidths = create({
+  standard: {},
+  wide: { maxWidth: "100%" },
+});
+
+export type PickerTriggerProps = Omit<StyledProps<ComponentProps<"button">>, "xstyle"> & {
+  /** `wide` lets the trigger fill its container instead of stopping at 180px. */
+  readonly width?: keyof typeof pickerWidths;
+  readonly xstyle?: ButtonLayout;
+};
+
+/**
+ * The one control a picker opens from: an `outline` `md` button showing the
+ * current value and ending in a chevron. Select and Autocomplete render it
+ * through their primitive's `render` prop, so a new picker inherits the fill,
+ * border, and height instead of restyling a trigger of its own.
+ */
+export function PickerTrigger({
+  width = "standard",
+  children,
+  xstyle,
+  className,
+  style,
+  ...rest
+}: PickerTriggerProps): ReactElement {
+  return (
+    <button
+      type="button"
+      {...rest}
+      {...buttonStyle("outline", "md", {
+        xstyle: [picker.trigger, pickerWidths[width], xstyle],
+        className,
+        style,
+      })}
+    >
+      <ControlGlyphs>
+        <span {...props(picker.value)}>{children}</span>
+        <Icon name="chevron-down" size={12} />
+      </ControlGlyphs>
+    </button>
+  );
+}
+
 export function ButtonLink({
   variant = "ghost",
   size = "md",
