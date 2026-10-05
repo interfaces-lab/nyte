@@ -24,6 +24,13 @@ export function SiteFooter() {
         return first ? [{ title: group.label, href: first.href }] : [];
       }),
     },
+    {
+      label: "Legal",
+      links: [
+        { title: "Privacy policy", href: "/privacy" },
+        { title: "Terms of service", href: "/terms" },
+      ],
+    },
   ];
 
   return (

@@ -122,8 +122,8 @@ read them from the project's environment variables on expo.dev, since the
 local file is gitignored. Set both as plain text project variables for
 `development`, `preview`, and `production`; `eas.json` selects the matching
 environment for each build profile. Use the same Clerk instance as the Worker
-and desktop. The current Worker uses `wise-ocelot-6839.clerk.accounts.dev`, a
-Clerk test instance, at `https://nyte-connect.daniel-fu90.workers.dev`.
+and desktop. The current Worker uses the production Clerk instance at
+`clerk.nyte.sh` and serves `https://nyte-connect.daniel-fu90.workers.dev`.
 
 For EAS Update, select the same environment with `--environment development`,
 `--environment preview`, or `--environment production`.
