@@ -180,12 +180,11 @@ const styles = create({
   },
   empty: {
     flexShrink: 0,
-    padding: "10px 12px",
+    padding: { default: 0, ":not(:empty)": "10px 12px" },
     color: role.contentSecondary,
     fontSize: type.fontSm,
     lineHeight: type.leadingSm,
   },
-  status: { padding: { default: 0, ":not(:empty)": "10px 12px" } },
 });
 
 /**
@@ -463,7 +462,7 @@ export function AutocompleteStatus({
   return (
     <AutocompletePrimitive.Status
       data-slot="autocomplete-status"
-      {...mergeStyleProps(props(styles.empty, styles.status, xstyle), className, style)}
+      {...mergeStyleProps(props(styles.empty, xstyle), className, style)}
       {...rest}
     />
   );
