@@ -793,7 +793,7 @@ const long: Scenario = {
               // The answer field is its own row under the choices, level with their labels.
               await terminal.waitForScreen(
                 (screen) =>
-                  screen.lines.includes(`     ${typed.trimEnd()}`) &&
+                  screen.lines.includes(`   ❯ ${typed.trimEnd()}`) &&
                   (screen.cursor.x !== input.before.cursor.x ||
                     screen.cursor.y !== input.before.cursor.y),
                 deadline(),

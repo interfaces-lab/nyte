@@ -1,7 +1,7 @@
-import { matchesKeyName } from "./keymap.ts";
+import { matchesKey, matchesKeyName } from "./keymap.ts";
 import { CliRenderEvents, InputRenderableEvents, TextRenderable } from "@opentui/core";
 import type { BoxRenderable, CliRenderer, InputRenderable, KeyEvent } from "@opentui/core";
-import { CHAT_KEYBINDS, keycap } from "./constants.ts";
+import { CHAT_KEYBINDS, GLYPHS, keycap } from "./constants.ts";
 import type { ChatCommand } from "./constants.ts";
 import type { createChatKeymap } from "./keymap.ts";
 import { commandBindings } from "@opentui/keymap/extras";
@@ -98,6 +98,7 @@ export class InlineMenu {
   private readonly layout: PanelLayout;
   private readonly list: MenuList;
   private readonly count: TextRenderable;
+  private readonly answerMarker: TextRenderable;
   private readonly empty: TextRenderable;
   private readonly onError: (cause: unknown) => void;
   private readonly onRows: (rows: number) => void;
@@ -106,6 +107,7 @@ export class InlineMenu {
   private matches: readonly Choice[];
   private loading = false;
   private filtering = true;
+  private answering = false;
   private busy = false;
   private destroyed = false;
   private readonly options: InlineMenuOptions;
@@ -124,6 +126,21 @@ export class InlineMenu {
     this.layout = new PanelLayout({ ...options, title: screen.title });
     this.container = this.layout.container;
     this.queryInput = this.layout.addSearch(screen.typed?.placeholder ?? FILTER_PLACEHOLDER);
+    this.answerMarker = new TextRenderable(options.renderer, {
+      id: nextId("menu-answer-marker"),
+      content: "  ",
+      fg: theme.selectionForeground,
+      width: 2,
+      height: 1,
+      flexShrink: 0,
+      selectable: false,
+    });
+    this.layout.searchRow.insertBefore(this.answerMarker, this.queryInput);
+    this.layout.searchRow.onMouseDown = (event) => {
+      if (event.button !== 0 || this.screen.typed === undefined) return;
+      this.setAnswering(true);
+    };
+
     this.count = new TextRenderable(options.renderer, {
       id: nextId("menu-count"),
       content: this.countText(),
@@ -184,6 +201,7 @@ export class InlineMenu {
     if (this.destroyed) return;
     this.screen = screen;
     this.choices = screen.choices;
+    this.answering = false;
     this.layout.setTitle(screen.title);
     this.queryInput.placeholder = screen.typed?.placeholder ?? FILTER_PLACEHOLDER;
     this.placeInput();
@@ -228,7 +246,7 @@ export class InlineMenu {
   private placeInput(): void {
     const { searchRow, body } = this.layout;
     this.container.remove(searchRow);
-    searchRow.paddingLeft = this.screen.typed === undefined ? 0 : 2;
+    this.answerMarker.visible = this.screen.typed !== undefined;
 
     if (this.screen.typed === undefined) this.container.insertBefore(searchRow, body);
     else this.container.add(searchRow);
@@ -302,6 +320,7 @@ export class InlineMenu {
     this.filtering = false;
     this.queryInput.value = value;
     this.filtering = true;
+    this.refreshAnswerHighlight();
   }
 
   private repaintStatus(): void {
@@ -332,8 +351,53 @@ export class InlineMenu {
     this.repaintStatus();
   };
 
+  private setAnswering(answering: boolean): void {
+    this.answering = answering;
+    this.refreshAnswerHighlight();
+  }
+
+  /** The answer row sits after the last choice; moving past either end of the choices lands on it. */
+  private navigateAnswer(key: KeyEvent): boolean {
+    const last = this.matches.length - 1;
+    const previous = matchesKey("picker.previous", key, "required");
+    const next = matchesKey("picker.next", key, "required");
+
+    if (!previous && !next) return false;
+
+    if (this.answering) {
+      this.setAnswering(false);
+      this.list.selectedIndex = next ? 0 : last;
+
+      return true;
+    }
+
+    const index = this.list.selectedIndex;
+
+    if ((next && index === last) || (previous && index === 0)) {
+      this.setAnswering(true);
+
+      return true;
+    }
+
+    return false;
+  }
+
+  private refreshAnswerHighlight(): void {
+    const active = this.screen.typed !== undefined && this.answering;
+    const { theme } = this.options;
+    this.list.setSelectionVisible(!active);
+    this.answerMarker.content = active ? `${GLYPHS.prompt} ` : "  ";
+    this.layout.searchRow.backgroundColor = active ? theme.selectionBackground : theme.transparent;
+    this.queryInput.textColor = active ? theme.selectionForeground : theme.foreground;
+    this.queryInput.focusedTextColor = active ? theme.selectionForeground : theme.foreground;
+  }
+
   private readonly onInput = (value: string): void => {
-    if (!this.filtering || this.screen.typed !== undefined) return;
+    if (!this.filtering) return;
+
+    if (this.screen.typed !== undefined && value !== "") this.setAnswering(true);
+
+    if (this.screen.typed !== undefined) return;
     this.matches = filterChoices(this.choices, value);
     this.list.setItems(this.matches);
     const top = this.list.selectedItem;
@@ -389,9 +453,18 @@ export class InlineMenu {
     const { typed } = this.screen;
     const text = this.queryInput.value;
 
-    if (matchesKeyName("picker.accept", key) && typed !== undefined && text.trim() !== "") {
+    if (typed !== undefined && this.answering) {
+      if (matchesKeyName("picker.accept", key)) {
+        consume(key);
+
+        if (text.trim() !== "") this.run(() => typed.onSubmit(text));
+
+        return;
+      }
+    }
+
+    if (typed !== undefined && this.matches.length > 0 && this.navigateAnswer(key)) {
       consume(key);
-      this.run(() => typed.onSubmit(text));
 
       return;
     }

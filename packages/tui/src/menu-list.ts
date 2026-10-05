@@ -69,6 +69,7 @@ interface MenuRowsOptions extends RenderableOptions<MenuRows> {
 class MenuRows extends Renderable {
   private items: readonly MenuItem[] = [];
   private selected = 0;
+  private selectionVisible = true;
   private widestLabel = 0;
   private marked = false;
   private readonly viewport: ScrollBoxRenderable["viewport"];
@@ -111,6 +112,12 @@ class MenuRows extends Renderable {
     this.marked = items.some((item) => item.mark !== undefined);
     this.height = Math.max(1, items.length);
     this.setSelectedIndex(selectedIndex);
+    this.requestRender();
+  }
+
+  setSelectionVisible(visible: boolean): void {
+    if (this.selectionVisible === visible) return;
+    this.selectionVisible = visible;
     this.requestRender();
   }
 
@@ -173,7 +180,7 @@ class MenuRows extends Renderable {
       const item = this.items[index];
 
       if (item === undefined) continue;
-      const selected = index === this.selected;
+      const selected = this.selectionVisible && index === this.selected;
 
       const background = selected
         ? this.selectedBackground
@@ -307,6 +314,10 @@ export class MenuList {
     this.container.content.on("resize", () => this.scrollIntoView(this.selectedIndex));
     this.container.viewport.on("resize", () => this.scrollIntoView(this.selectedIndex));
     this.setItems(options.items ?? [], options.selectedIndex ?? 0);
+  }
+
+  setSelectionVisible(visible: boolean): void {
+    this.rows.setSelectionVisible(visible);
   }
 
   get selectedIndex(): number {
