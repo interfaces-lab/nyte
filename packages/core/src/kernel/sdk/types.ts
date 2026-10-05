@@ -210,6 +210,7 @@ export interface Sessions {
     readonly sessionId: SessionId;
     readonly head?: HeadName;
   }): Promise<SessionMetadata | undefined>;
+  /** Newest first. A page is `limit` rows from `cursor`, the position the previous page handed back. */
   list(input?: {
     readonly search?: string;
     readonly limit?: number;

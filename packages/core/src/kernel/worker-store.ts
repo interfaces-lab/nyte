@@ -23,12 +23,14 @@ import type {
 import type {
   Events,
   Leases,
+  Listing,
   Objects,
   RefUpdateOptions,
   Refs,
   Session,
   SessionInfo,
   Store,
+  StoredListing,
 } from "./store.ts";
 import { CorruptObject, UnknownSession } from "./store.ts";
 import { validateLimit } from "./sqlite.ts";
@@ -40,6 +42,7 @@ import {
   ObjectSchema,
   RefUpdateOutcomeSchema,
   StoreSessionInfoSchema,
+  StoredListingSchema,
 } from "./store-schemas.ts";
 import {
   checkResponses,
@@ -79,6 +82,7 @@ const result = {
   lease: Compile(Type.Union([LeaseSchema, Type.Null()])),
   append: Compile(AppendOutcomeSchema),
   events: Compile(Type.Array(EventSchema)),
+  listing: Compile(Type.Union([StoredListingSchema, Type.Null()])),
 };
 
 interface Validator<T> {
@@ -387,6 +391,7 @@ class WorkerSession implements Session {
   readonly refs: Refs;
   readonly leases: Leases;
   readonly events: Events;
+  readonly listing: Listing;
   private readonly bridge: Bridge;
   private readonly handle: number;
   private readonly closedController = new AbortController();
@@ -455,6 +460,12 @@ class WorkerSession implements Session {
             : AbortSignal.any([options.signal, this.closedController.signal]);
 
         return bridge.watch(handle, options.afterSeq, signal);
+      },
+    };
+    this.listing = {
+      read: async () => (await call("listing.read", [], result.listing)) ?? undefined,
+      write: async (listing: StoredListing) => {
+        await call("listing.write", [listing], result.null);
       },
     };
   }

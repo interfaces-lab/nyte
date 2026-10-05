@@ -30,12 +30,14 @@ import type {
   AppendOutcome,
   Events,
   Leases,
+  Listing,
   Objects,
   Refs,
   RefUpdateOptions,
   Session,
   SessionInfo,
   Store,
+  StoredListing,
 } from "./store.ts";
 
 /** Durable Object SQLite allows 100 parameters, including the session ID. */
@@ -85,12 +87,21 @@ CREATE TABLE IF NOT EXISTS events (
   body TEXT NOT NULL,
   PRIMARY KEY (session_id, seq)
 ) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS listings (
+  session_id TEXT PRIMARY KEY,
+  seq INTEGER NOT NULL,
+  body TEXT NOT NULL
+) WITHOUT ROWID;
 `;
 
 /**
  * Bumped whenever the tables or a stored object or event shape changes. There
  * is no migration: an earlier schema is refused because accepting it would
- * defer an incompatibility until a stored value is read.
+ * defer an incompatibility until a stored value is read. The `listings` cache
+ * is the exception: it arrived without a bump because the SDK checks every
+ * row it reads from it and rebuilds one it cannot use, so an older build
+ * leaving it behind or lacking it costs a rebuild, never a misread.
  */
 const SCHEMA_VERSION = 4;
 
@@ -969,12 +980,42 @@ class SqliteEvents implements Events {
   }
 }
 
+class SqliteListing implements Listing {
+  private readonly state: SessionState;
+
+  constructor(state: SessionState) {
+    this.state = state;
+  }
+
+  async read(): Promise<StoredListing | undefined> {
+    this.state.assertOpen();
+
+    const row = sql`SELECT seq, body FROM listings WHERE session_id = ${this.state.id}`.get(
+      this.state.db,
+    );
+
+    return row === undefined
+      ? undefined
+      : { seq: numberColumn(row, "seq"), body: stringColumn(row, "body") };
+  }
+
+  async write(listing: StoredListing): Promise<void> {
+    this.state.assertOpen();
+    sql`INSERT INTO listings (session_id, seq, body)
+      VALUES (${this.state.id}, ${listing.seq}, ${listing.body})
+      ON CONFLICT(session_id) DO UPDATE SET seq = excluded.seq, body = excluded.body`.run(
+      this.state.db,
+    );
+  }
+}
+
 class SqliteSession implements Session {
   readonly id: string;
   readonly objects: Objects;
   readonly refs: Refs;
   readonly leases: Leases;
   readonly events: Events;
+  readonly listing: Listing;
   private readonly state: SessionState;
 
   constructor(state: SessionState) {
@@ -984,6 +1025,7 @@ class SqliteSession implements Session {
     this.refs = new SqliteRefs(state);
     this.leases = new SqliteLeases(state);
     this.events = new SqliteEvents(state);
+    this.listing = new SqliteListing(state);
   }
 
   async close(): Promise<void> {
@@ -1026,6 +1068,8 @@ export class SqlStore implements Store {
         VALUES (${id}, ${createdAt}, 1, 0) RETURNING 1`.count(this.db);
 
       if (inserted !== 1) throw new Error(`Session already exists: ${id}`);
+      // A build without the cache deletes sessions around it; the id must not inherit its row.
+      sql`DELETE FROM listings WHERE session_id = ${id}`.run(this.db);
     });
 
     return this.session(id);
@@ -1058,6 +1102,7 @@ export class SqlStore implements Store {
       sql`DELETE FROM refs WHERE session_id = ${id}`.run(this.db);
       sql`DELETE FROM leases WHERE session_id = ${id}`.run(this.db);
       sql`DELETE FROM events WHERE session_id = ${id}`.run(this.db);
+      sql`DELETE FROM listings WHERE session_id = ${id}`.run(this.db);
       sql`DELETE FROM sessions WHERE id = ${id}`.run(this.db);
     });
     this.changes.notify(id);

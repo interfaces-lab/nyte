@@ -11,7 +11,13 @@ import type { Event } from "./model.ts";
 import type { Session } from "./store.ts";
 import { CorruptObject, UnknownSession } from "./store.ts";
 import { SqliteStore } from "./sqlite.ts";
-import { EventBodySchema, LeaseSchema, ObjectSchema, RefUpdateSchema } from "./store-schemas.ts";
+import {
+  EventBodySchema,
+  LeaseSchema,
+  ObjectSchema,
+  RefUpdateSchema,
+  StoredListingSchema,
+} from "./store-schemas.ts";
 import {
   checkRequests,
   STORE_BATCH_SIZE,
@@ -95,6 +101,7 @@ const check = {
   readOptions: Compile(
     Type.Object({ afterSeq: Type.Number(), limit: Type.Optional(Type.Number()) }),
   ),
+  listing: Compile(StoredListingSchema),
 };
 
 function argument<T>(
@@ -216,6 +223,12 @@ async function call(request: CallRequest) {
       return session(request.session).events.floor();
     case "events.trim":
       await session(request.session).events.trim(argument(request, 0, check.number));
+
+      return null;
+    case "listing.read":
+      return (await session(request.session).listing.read()) ?? null;
+    case "listing.write":
+      await session(request.session).listing.write(argument(request, 0, check.listing));
 
       return null;
     default: {

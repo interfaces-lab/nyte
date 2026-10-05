@@ -123,7 +123,28 @@ export interface Session {
   readonly refs: Refs;
   readonly leases: Leases;
   readonly events: Events;
+  readonly listing: Listing;
   close(): Promise<void>;
+}
+
+/** A directory row the SDK built, and the stream position it stands for. */
+export interface StoredListing {
+  /** `events.last()` when the row was built; a stream past it may have changed the row. */
+  readonly seq: Seq;
+  /** The row as the SDK serialized it; the store neither reads nor checks it. */
+  readonly body: string;
+}
+
+/**
+ * The session's directory row as the SDK last built it. A cache over the four
+ * authorities, never one of them: it is derived from refs, objects, and the
+ * stream, the SDK rebuilds it when the stream has moved past it, and writing
+ * it appends no event. It is what keeps a cold `sessions.list` from walking
+ * every branch, as git's commit-graph keeps a log from reading every commit.
+ */
+export interface Listing {
+  read(): Promise<StoredListing | undefined>;
+  write(listing: StoredListing): Promise<void>;
 }
 
 export interface SessionInfo {

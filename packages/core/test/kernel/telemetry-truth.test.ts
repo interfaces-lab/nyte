@@ -204,6 +204,7 @@ test("the publish span reports the checkpoint CAS result, and durable state matc
     const failure = new Error("storage unavailable");
     const raced: Session = {
       id: session.id,
+      listing: session.listing,
       objects: session.objects,
       leases: session.leases,
       events: session.events,

@@ -108,6 +108,7 @@ export function gateRefUpdate(base: Store) {
     | undefined;
   const wrap = (session: Session): Session => ({
     id: session.id,
+    listing: session.listing,
     objects: session.objects,
     leases: session.leases,
     events: session.events,

@@ -77,6 +77,7 @@ type RefUpdateHook = (input: {
 function hookedStore(store: Store, hook: RefUpdateHook): Store {
   const wrap = (session: Session): Session => ({
     id: session.id,
+    listing: session.listing,
     objects: session.objects,
     leases: session.leases,
     events: session.events,

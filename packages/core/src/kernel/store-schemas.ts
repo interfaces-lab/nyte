@@ -179,6 +179,8 @@ export const AppendOutcomeSchema = Type.Union([
 
 export const StoreSessionInfoSchema = Type.Object({ id: Type.String(), createdAt: Type.Number() });
 
+export const StoredListingSchema = Type.Object({ seq: Type.Number(), body: Type.String() });
+
 export const checkObject = Compile(ObjectSchema);
 
 export const checkEventBody = Compile(EventBodySchema);

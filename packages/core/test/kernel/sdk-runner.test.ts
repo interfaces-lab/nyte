@@ -136,6 +136,7 @@ function gatedStore(base: Store): GatedStore {
     });
   const gateSession = (session: Session): Session => ({
     id: session.id,
+    listing: session.listing,
     refs: session.refs,
     leases: session.leases,
     close: () => session.close(),
@@ -440,6 +441,7 @@ test("a faulted runner drops its parked deadline before SDK close", async () => 
   const fail = Promise.withResolvers<void>();
   const faultSession = (session: Session): Session => ({
     id: session.id,
+    listing: session.listing,
     objects: session.objects,
     refs: session.refs,
     leases: session.leases,

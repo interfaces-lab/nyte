@@ -57,10 +57,10 @@ refs/deleted                   Blob: the session is being deleted
 | File          | Owns                                                                   |
 | ------------- | ---------------------------------------------------------------------- |
 | `model.ts`    | The types. Objects, ref updates, leases, events.                       |
-| `store.ts`    | The store contract a backend implements. `objects.chain` reads a parent chain in one query, git's commit-graph. |
+| `store.ts`    | The store contract a backend implements. `objects.chain` reads a parent chain in one query, git's commit-graph. `listing` keeps the SDK's directory row between launches: a cache keyed by the stream position it was built at, rebuilt when the stream moves past it, never an authority. |
 | `names.ts`    | Ref names and their rules.                                             |
 | `hash.ts`     | `hashObject(object)`.                                                       |
-| `sqlite.ts`   | The SQLite backend: five tables, `BEGIN IMMEDIATE`, one seq per session. |
+| `sqlite.ts`   | The SQLite backend: five tables and the listing cache, `BEGIN IMMEDIATE`, one seq per session. |
 | `sql.ts`      | The shared statement text both backends build on.                      |
 | `store-worker.ts`, `worker-store.ts`, `store-rpc.ts`, `store-schemas.ts` | The same store behind a worker thread, for hosts that also render. |
 | `result.ts`   | The outcome helpers the kernel returns instead of throwing.            |

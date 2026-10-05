@@ -14,9 +14,11 @@ import {
   type RefUpdateOptions,
   type Refs,
   type Leases,
+  type Listing,
   type Objects,
   type Events,
   type AppendOutcome,
+  type StoredListing,
 } from "../store.ts";
 import {
   databaseTime,
@@ -557,6 +559,36 @@ class PostgresEvents implements Events {
   }
 }
 
+class PostgresListing implements Listing {
+  private readonly state: SessionState;
+
+  constructor(state: SessionState) {
+    this.state = state;
+  }
+
+  async read(): Promise<StoredListing | undefined> {
+    this.state.assertOpen();
+
+    const [row] = await this.state.db.query(
+      "SELECT seq, body FROM nyte_listings WHERE session_id = $1",
+      [this.state.id],
+    );
+
+    return row === undefined
+      ? undefined
+      : { seq: integerColumn(row, "seq"), body: stringColumn(row, "body") };
+  }
+
+  async write(listing: StoredListing): Promise<void> {
+    this.state.assertOpen();
+    await this.state.db.query(
+      `INSERT INTO nyte_listings (session_id, seq, body) VALUES ($1, $2, $3)
+       ON CONFLICT (session_id) DO UPDATE SET seq = excluded.seq, body = excluded.body`,
+      [this.state.id, listing.seq, listing.body],
+    );
+  }
+}
+
 export function postgresSession(options: ConstructorParameters<typeof SessionState>[0]): Session {
   const state = new SessionState(options);
 
@@ -566,6 +598,7 @@ export function postgresSession(options: ConstructorParameters<typeof SessionSta
     refs: new PostgresRefs(state),
     leases: new PostgresLeases(state),
     events: new PostgresEvents(state),
+    listing: new PostgresListing(state),
     close: async () => state.close(),
   };
 }

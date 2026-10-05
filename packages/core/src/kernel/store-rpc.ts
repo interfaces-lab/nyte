@@ -34,6 +34,8 @@ const StoreMethodSchema = Type.Union([
   Type.Literal("events.last"),
   Type.Literal("events.floor"),
   Type.Literal("events.trim"),
+  Type.Literal("listing.read"),
+  Type.Literal("listing.write"),
 ]);
 
 export type StoreMethod = Static<typeof StoreMethodSchema>;

@@ -186,6 +186,7 @@ for (const operation of ["runs.compact", "heads.move"] satisfies SummaryDiagnost
       let armed = false;
       const faulted: Session = {
         id: session.id,
+        listing: session.listing,
         leases: {
           acquire: (name, ttl) => session.leases.acquire(name, ttl),
           renew: (lease, ttl) => session.leases.renew(lease, ttl),
@@ -343,6 +344,7 @@ test.each(["conflict", "fenced"])("checkpoint %s stays an expected failure", asy
   const faulted: Session = {
     objects: session.objects,
     id: session.id,
+    listing: session.listing,
     leases: session.leases,
     events: session.events,
     close: () => session.close(),

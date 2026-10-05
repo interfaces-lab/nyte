@@ -4,7 +4,9 @@
  * Nothing here instantiates plugins; `runs.revert` moves files, never a ref.
  */
 import type { Api, Model } from "@nyte-ai/schema";
-import { CursorExpired, isTerminalPhase } from "@nyte-ai/protocol";
+import { CursorExpired, isTerminalPhase, schemas } from "@nyte-ai/protocol";
+import { Type } from "typebox";
+import { Compile } from "typebox/compile";
 import type {
   FileDiff,
   OperationInput,
@@ -15,11 +17,12 @@ import type {
 } from "@nyte-ai/protocol";
 import { activeCompaction } from "../compaction.ts";
 import { branch } from "../graph.ts";
-import type { Commit } from "../model.ts";
+import type { Commit, Seq } from "../model.ts";
 import { WORKSPACE_REF, headRef } from "../names.ts";
 import { pending } from "../queue.ts";
+import type { Session } from "../store.ts";
 import { projectContextStatus, transcriptFromCommits } from "@nyte-ai/client";
-import type { Pooled, SessionPool } from "./session-pool.ts";
+import { clientActivation, type Pooled, type SessionPool } from "./session-pool.ts";
 import { headConfig, pendingItems, sessionInfo } from "./snapshot.ts";
 import {
   CorruptObject,
@@ -37,6 +40,48 @@ import {
 
 /** Sessions examined at once by `sessions.list`; bounds open handles and store reads per page. */
 const LIST_BATCH = 8;
+
+/** Bumped when the stored row's shape changes; a row in another format is rebuilt. */
+const LISTING_FORMAT = 1;
+
+const checkListing = Compile(
+  Type.Object({ format: Type.Literal(LISTING_FORMAT), row: schemas.SessionInfo }),
+);
+
+function encodeListing(row: SessionInfo): string {
+  return JSON.stringify({ format: LISTING_FORMAT, row });
+}
+
+function decodeListing(body: string): SessionInfo | undefined {
+  let value: unknown;
+
+  try {
+    value = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+
+  return checkListing.Check(value) ? value.row : undefined;
+}
+
+/**
+ * Whether a row built at `builtAt` still describes the session at `seq`: the
+ * stream has not moved, or has moved only by events no row reads.
+ */
+async function rowHolds(session: Session, builtAt: Seq, seq: Seq): Promise<boolean> {
+  if (builtAt === seq) return true;
+
+  if (seq - builtAt > 256) return false;
+
+  try {
+    const events = await session.events.read({ afterSeq: builtAt, limit: 256 });
+
+    return events.every((event) => event.kind !== "ref");
+  } catch (cause) {
+    if (cause instanceof CursorExpired) return false;
+    throw cause;
+  }
+}
 
 function matches(info: SessionInfo, needle: string): boolean {
   return (
@@ -117,6 +162,40 @@ export function createReads(input: {
     };
   };
 
+  /**
+   * The row the store kept from an earlier list, when it still describes the
+   * session. The host's answer is never stored, so it is asked for again; a
+   * child's workspace is its root's, whose move leaves this stream untouched,
+   * so the stored workspace is checked against the one the tree acts in now.
+   */
+  const storedListing = async (
+    pooled: Pooled,
+    id: SessionId,
+    seq: Seq,
+  ): Promise<SessionInfo | undefined> => {
+    const stored = await pooled.session.listing.read();
+
+    if (stored === undefined) return undefined;
+    const row = decodeListing(stored.body);
+
+    if (row === undefined || !(await rowHolds(pooled.session, stored.seq, seq))) return undefined;
+
+    const [workspace, activation] = await Promise.all([
+      pool.storedWorkspace(pooled),
+      pool.resolveSessionActivation(id, pooled),
+    ]);
+
+    if (
+      row.workspace.kind !== workspace.kind ||
+      row.workspace.id !== workspace.id ||
+      row.workspace.cwd !== workspace.cwd
+    ) {
+      return undefined;
+    }
+
+    return { ...row, activation: clientActivation(activation) };
+  };
+
   const listedInfo = async (pooled: Pooled, id: SessionId): Promise<SessionInfo> => {
     const seq = await pooled.session.events.last();
     const workspace = await (await pool.rootOf(pooled)).session.refs.read(WORKSPACE_REF);
@@ -127,26 +206,26 @@ export function createReads(input: {
       listed.activation === pooled.activationState &&
       listed.workspace === workspace
     ) {
-      if (listed.seq === seq) return listed.info;
+      if (await rowHolds(pooled.session, listed.seq, seq)) {
+        pooled.listed = { ...listed, seq };
 
-      if (seq - listed.seq <= 256) {
-        try {
-          const events = await pooled.session.events.read({ afterSeq: listed.seq, limit: 256 });
+        return listed.info;
+      }
+    } else if (listed === undefined) {
+      const info = await storedListing(pooled, id, seq);
 
-          if (events.every((event) => event.kind !== "ref")) {
-            pooled.listed = { ...listed, seq };
+      if (info !== undefined) {
+        pooled.listed = { seq, activation: pooled.activationState, workspace, info };
 
-            return listed.info;
-          }
-        } catch (cause) {
-          if (!(cause instanceof CursorExpired)) throw cause;
-        }
+        return info;
       }
     }
 
     const facts = await pool.readFacts(pooled.session);
     const info = sessionInfo(await pool.readSession(id, pooled, { facts }));
     pooled.listed = { seq, activation: pooled.activationState, workspace, info };
+    // A cache the next launch reads; a store that cannot keep it costs that launch a walk, nothing more.
+    await pooled.session.listing.write({ seq, body: encodeListing(info) }).catch(() => undefined);
 
     return info;
   };
@@ -293,7 +372,10 @@ export function createReads(input: {
     } = {},
   ) => {
     pool.alive();
-    const all = await options.store.list();
+    // Newest first: a directory and a bounded search answer with the sessions
+    // in use. The store lists roots before their children, which attachment
+    // and relocation walk in that order, so the reversal is here.
+    const all = (await options.store.list()).toReversed();
     const parsed = input.cursor === undefined ? 0 : Number.parseInt(input.cursor, 10);
     const start = Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
     const limit = input.limit ?? all.length;

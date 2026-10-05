@@ -153,11 +153,20 @@ const TABLES = [
     body TEXT NOT NULL,
     PRIMARY KEY (session_id, seq)
   )`,
+  `CREATE TABLE IF NOT EXISTS nyte_listings (
+    session_id TEXT PRIMARY KEY REFERENCES nyte_sessions(id) ON DELETE CASCADE,
+    seq BIGINT NOT NULL,
+    body TEXT NOT NULL
+  )`,
 ];
 
 const TABLE_NAMES = ["nyte_sessions", "nyte_objects", "nyte_refs", "nyte_leases", "nyte_events"];
 
-/** Bumped whenever the tables or a stored object or event shape changes; another version is refused. */
+/**
+ * Bumped whenever the tables or a stored object or event shape changes; another
+ * version is refused. The `nyte_listings` cache arrived without a bump: the SDK
+ * checks every row it reads from it and rebuilds one it cannot use.
+ */
 const SCHEMA_VERSION = 3;
 
 export async function initializePostgres(db: PostgresDatabase): Promise<void> {
