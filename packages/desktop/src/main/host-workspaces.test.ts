@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test, vi } from "vitest";
 import {
@@ -1291,7 +1291,10 @@ test.each(["store", "registry"])(
 
     await writeFile(history, `${JSON.stringify(record)}\n`);
     await mkdir(join(root, "state"), { recursive: true });
-    const broken = join(root, "state", failure === "store" ? "sessions.db" : "workspaces.json");
+    const broken =
+      failure === "store"
+        ? await workspaceStorePath(homedir())
+        : join(root, "state", "workspaces.json");
 
     if (failure === "store") await writeFile(broken, "not sqlite");
     else await mkdir(broken);

@@ -244,9 +244,7 @@ type WorkspaceTarget =
 
 /** Keep desktop history outside the project, including when the project is deleted. */
 function storePath(target: WorkspaceTarget): Promise<string> {
-  return target.kind === "home"
-    ? Promise.resolve(join(nyteHome(), "sessions.db"))
-    : workspaceStorePath(target.workspace.path);
+  return workspaceStorePath(target.kind === "home" ? homedir() : target.workspace.path);
 }
 
 function serverTarget(settings: ServerSettings): OpenServerTarget {
