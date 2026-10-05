@@ -31,11 +31,11 @@ import {
   SessionSchema,
   type Ask,
   type Change,
-  type Chat,
   type CreateReview,
   type ReviewDetail,
   type Task,
 } from "./wire";
+import type { SideThread } from "./review-state";
 
 const ROOT = "/core/review";
 
@@ -205,7 +205,9 @@ export const useChange = (id: string) => useDetailMutation<Change>(id, "change")
 export const useApprove = (id: string) =>
   useDetailMutation<{ readonly head: string }>(id, "approve");
 
-export const useRetry = (id: string) => useDetailMutation<{ readonly head: string }>(id, "retry");
+/** The only request that spends on a guide; the server ignores it for a head that has one. */
+export const useWriteGuide = (id: string) =>
+  useDetailMutation<{ readonly head: string }>(id, "guide");
 
 let nyteClient: NyteClient | undefined;
 
@@ -306,18 +308,30 @@ export function useHeadTurns(
  * The side chat as one conversation: Nyte's work on the branch and the
  * reviewer's answers, in the order they happened. Two sessions, one timeline.
  */
-export function useSideChat(review: ReviewDetail, version: number): readonly ChatTurn[] {
+/**
+ * One side chat thread: the reviewer's turns on each fork the thread cut (one
+ * per head it asked about), with what Nyte did after the thread began, since
+ * a change asked for there lands in Nyte's session.
+ */
+export function useSideThread(
+  review: ReviewDetail,
+  thread: SideThread | undefined,
+  version: number,
+): readonly ChatTurn[] {
   const author = review.author?.sessionId;
+  const forks = review.threads.filter((entry) => entry.thread === thread?.id);
 
   const { data } = useQuery({
-    queryKey: ["review", "side-chat", review.id, author ?? "", review.chats.length, version],
+    queryKey: ["review", "side", review.id, thread?.id ?? "", forks.length, version],
     queryFn: async (): Promise<readonly ChatTurn[]> => {
+      if (thread === undefined) return [];
+
       const reviewer = await Promise.all(
-        review.chats.map(async (chat: Chat) =>
-          (await headTurns(review.sessionId, chat.name, chat.forkedAt)).map((turn): ChatTurn => ({
+        forks.map(async (fork) =>
+          (await headTurns(review.sessionId, fork.name, fork.forkedAt)).map((turn): ChatTurn => ({
             turn,
             source: "reviewer",
-            head: chat.head,
+            head: fork.head,
           })),
         ),
       );
@@ -325,7 +339,7 @@ export function useSideChat(review: ReviewDetail, version: number): readonly Cha
       const nyteTurns =
         author === undefined
           ? []
-          : (await headTurns(author, "main", null)).map((turn): ChatTurn => ({
+          : (await headTurns(author, "main", thread.startedAt)).map((turn): ChatTurn => ({
               turn,
               source: "nyte",
             }));
@@ -334,10 +348,10 @@ export function useSideChat(review: ReviewDetail, version: number): readonly Cha
         (left, right) => left.turn.startedAt - right.turn.startedAt,
       );
     },
-    placeholderData: sameAs(["review", "side-chat", review.id]),
+    placeholderData: (previous) => (thread === undefined ? undefined : previous),
   });
 
-  return data ?? [];
+  return thread === undefined ? [] : (data ?? []);
 }
 
 /**

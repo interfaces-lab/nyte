@@ -9,13 +9,13 @@ import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-a
 
 A list of actions that opens from a button. Every row reserves a leading icon column and a trailing
 meta column, even when empty. The list opens below its trigger. For a control whose label shows the
-current choice, use [Select](/cloud/components/select), which opens over its trigger.
+current choice, use [Select](/docs/components/components/select), which opens over its trigger.
 
 ## Usage
 
 - `MenuItem` and `MenuRadioItem` close on click. `MenuCheckboxItem` and `MenuSwitchItem` stay open.
   `closeOnClick` changes either.
-- For a searchable palette under a scrim, use [Command](/cloud/components/command).
+- For a searchable palette under a scrim, use [Command](/docs/components/components/command).
 
 ## Anatomy
 
@@ -118,18 +118,18 @@ function SessionMenu() {
 ## Props
 
 Every styled part takes `xstyle`, `className`, and `style`. See
-[Theming](/cloud/foundations/theming). `Menu`, `MenuTrigger`, `MenuGroup`, `MenuRadioGroup`, and
+[Theming](/docs/components/foundations/theming). `Menu`, `MenuTrigger`, `MenuGroup`, `MenuRadioGroup`, and
 `MenuSub` are Base UI's.
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Menu
 
-<include>../../base-ui-reference/menu/Root.md</include>
+<include>../../../base-ui-reference/menu/Root.md</include>
 
 ### MenuTrigger
 
-<include>../../base-ui-reference/menu/Trigger.md</include>
+<include>../../../base-ui-reference/menu/Trigger.md</include>
 
 ### MenuContent
 
@@ -152,11 +152,11 @@ The popup scrolls when it runs out of room.
 
 #### Positioner
 
-<include>../../base-ui-reference/menu/Positioner.md</include>
+<include>../../../base-ui-reference/menu/Positioner.md</include>
 
 #### Popup
 
-<include>../../base-ui-reference/menu/Popup.md</include>
+<include>../../../base-ui-reference/menu/Popup.md</include>
 
 ### MenuSubContent
 
@@ -181,20 +181,20 @@ Takes the same props as `MenuContent` except `matchAnchorWidth`.
 | `layout`   | `"menu" \| "plain"`     | `"menu"`    | `plain` removes the leading column.          |
 | `children` | `ReactNode`             |             | Optional when `render` supplies the content. |
 
-<include>../../base-ui-reference/menu/Item.md</include>
+<include>../../../base-ui-reference/menu/Item.md</include>
 
 ### MenuLinkItem
 
 Renders a link. Takes the props in the `MenuItem` table except `variant` and `selected`.
 
-<include>../../base-ui-reference/menu/LinkItem.md</include>
+<include>../../../base-ui-reference/menu/LinkItem.md</include>
 
 ### MenuCheckboxItem
 
 Takes the props in the `MenuItem` table except `variant` and `selected`. A checkmark follows `meta`
 while checked.
 
-<include>../../base-ui-reference/menu/CheckboxItem.md</include>
+<include>../../../base-ui-reference/menu/CheckboxItem.md</include>
 
 ### MenuSwitchItem
 
@@ -202,7 +202,7 @@ A `MenuCheckboxItem` that draws a switch in place of `meta` and the checkmark. I
 
 ### MenuRadioGroup
 
-<include>../../base-ui-reference/menu/RadioGroup.md</include>
+<include>../../../base-ui-reference/menu/RadioGroup.md</include>
 
 ### MenuRadioItem
 
@@ -213,15 +213,15 @@ on the chosen row.
 | -------------- | --------- | ------- | --------------------------------- |
 | `closeOnClick` | `boolean` | `true`  | Replaces Base UI's `false` below. |
 
-<include>../../base-ui-reference/menu/RadioItem.md</include>
+<include>../../../base-ui-reference/menu/RadioItem.md</include>
 
 ### MenuGroup
 
-<include>../../base-ui-reference/menu/Group.md</include>
+<include>../../../base-ui-reference/menu/Group.md</include>
 
 ### MenuGroupLabel
 
-<include>../../base-ui-reference/menu/GroupLabel.md</include>
+<include>../../../base-ui-reference/menu/GroupLabel.md</include>
 
 ### MenuSeparator
 
@@ -229,11 +229,11 @@ on the chosen row.
 | ------- | --------- | ------- | ------------------ |
 | `inset` | `boolean` | `false` | Shortens the line. |
 
-<include>../../base-ui-reference/menu/Separator.md</include>
+<include>../../../base-ui-reference/menu/Separator.md</include>
 
 ### MenuSub
 
-<include>../../base-ui-reference/menu/SubmenuRoot.md</include>
+<include>../../../base-ui-reference/menu/SubmenuRoot.md</include>
 
 ### MenuSubTrigger
 
@@ -243,7 +243,7 @@ Takes `icon`, `leading`, and `layout` as `MenuItem` does.
 | ------- | ----------- | ---------------------------------- |
 | `value` | `ReactNode` | Current choice before the chevron. |
 
-<include>../../base-ui-reference/menu/SubmenuTrigger.md</include>
+<include>../../../base-ui-reference/menu/SubmenuTrigger.md</include>
 
 ## Accessibility
 

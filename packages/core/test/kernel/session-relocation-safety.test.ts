@@ -110,8 +110,10 @@ test("failed destination setup preserves the original activation, cwd and runnab
     setup.grants([
       definePlugin({
         id: "broken",
-        session() {
-          throw new Error("setup failed");
+        session(api) {
+          api.commands.add(() => {
+            throw new Error("setup failed");
+          });
         },
       }),
     ]),

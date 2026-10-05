@@ -916,14 +916,13 @@ test("the prospective inventory includes failed plugins without creating a chat"
         version: "inline",
         source: "inline",
         status: "failed",
-        error: "broken: Cannot connect",
+        error: "Cannot connect",
       },
       {
         id: "local-environment",
         version: "inline",
         source: "inline",
-        status: "failed",
-        error: "broken: Cannot connect",
+        status: "active",
       },
     ]);
     assert.deepEqual(inventory.settings, []);

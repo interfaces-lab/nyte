@@ -467,11 +467,11 @@ test("a global setup failure leaves every session's old plugins and the default 
     definePlugin({
       id: "catalog",
       async session(api) {
-        if ((await api.session.info()).id === second)
-          throw new Error("cannot prepare second session");
-        api.commands.add((draft) =>
-          draft.set("version", { description: "Version", run: () => "new" }),
-        );
+        const failing = (await api.session.info()).id === second;
+        api.commands.add((draft) => {
+          if (failing) throw new Error("cannot prepare second session");
+          draft.set("version", { description: "Version", run: () => "new" });
+        });
       },
     }),
     { source: "inline", version: "new" },

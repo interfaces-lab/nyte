@@ -3,7 +3,7 @@
 import { shadow } from "@nyte-ai/ui/vars.stylex";
 import { create, props } from "@stylexjs/stylex";
 
-import { IconBookSimple, IconLayersThree } from "central-icons";
+import { IconArrowDown, IconCodeBrackets, IconComponents, IconLayersThree } from "central-icons";
 import { useCallback, useRef, useState } from "react";
 import { SITE_SECTIONS, type SiteFeature, type SiteFeatureIcon } from "~/lib/site-sections";
 
@@ -13,11 +13,14 @@ interface Props {
 
 function FeatureGlyph({ icon }: { icon: SiteFeatureIcon }) {
   switch (icon) {
-    case "docs":
-      return <IconBookSimple size={18} />;
+    case "start":
+      return <IconArrowDown size={18} />;
+    case "build":
+      return <IconCodeBrackets size={18} />;
     case "kernel":
-    case "cloud":
       return <IconLayersThree size={18} />;
+    case "components":
+      return <IconComponents size={18} />;
   }
 }
 

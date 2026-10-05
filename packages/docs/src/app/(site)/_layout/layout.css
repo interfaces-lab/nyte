@@ -1,28 +1,25 @@
 @reference "../../global.css";
 
 /*
- * One stylesheet for /docs and /cloud. Elements carry
- * `doc-*` classes, so a rule written here lands in both sections and the
- * two cannot drift. Section-local surfaces (Cloud previews and CTAs, docs
- * cards and TUI figures) stay in cloud.css and docs.css, which load after
- * this file.
+ * One stylesheet for /docs. Elements carry `doc-*` classes. Group-local
+ * surfaces (component previews and CTAs, kernel figures, docs cards) stay in
+ * components.css, kernel.css and docs.css, which load after this file.
  *
- * Geometry is Cloud's: 1072 inner, 1312 once the rail fits, 24 pad, 240
- * sidebar, 72 gutter, 710 article. Colour, type, motion, and hairlines are
- * @nyte-ai/ui platform tokens. Inter for chrome and prose, Geist Mono on code.
+ * Geometry: 1072 inner, 1312 once the rail fits, 24 pad, 220 sidebar, 48
+ * gutter, 72ch article. Mono for eyebrows and group labels; never uppercase.
  */
 
 @layer components {
   .doc {
-    --doc-side: 240px;
+    --doc-side: 220px;
     --doc-toc: 200px;
-    --doc-gutter: 72px;
-    --doc-article: 710px;
+    --doc-gutter: 48px;
+    --doc-article: 72ch;
 
     @apply bg-background;
     @apply text-foreground;
-    font-size: 16px;
-    line-height: 24px;
+    font-size: 15px;
+    line-height: 1.6;
     text-rendering: optimizeLegibility;
   }
 
@@ -41,15 +38,13 @@
   /* ---- frame ----------------------------------------------------------- */
 
   .doc-frame {
+    --doc-rail-top: calc(var(--site-nav-top) + var(--site-nav-height) + 24px);
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr);
-    flex: 1;
+    align-items: start;
     width: min(100%, var(--site-inner));
-    min-height: 0;
     margin-inline: auto;
-    padding-inline: var(--site-pad);
-    overflow: hidden;
+    padding: 32px var(--site-pad) 96px;
   }
 
   @media (min-width: 1024px) {
@@ -77,60 +72,17 @@
     }
   }
 
-  .doc-side .doc-scroll {
-    padding: 48px 0 96px;
-  }
-
-  .doc-side-label {
-    margin: 0;
-    padding: 6px 0;
-    @apply text-foreground;
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 19px;
-    letter-spacing: -0.01px;
-  }
-
-  .doc-side-group {
-    margin: 0 0 18px;
-    padding: 0;
-  }
-
-  .doc-side ul,
-  .doc-side li {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .doc-side-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: 10px 0;
-    @apply text-muted-foreground;
-    font-size: 14px;
-    font-weight: 400;
-    letter-spacing: -0.09px;
-    line-height: 1;
-    transition: color 120ms ease-out;
-  }
-
-  .doc-side-row:hover {
-    @apply text-foreground;
-  }
-
-  .doc-side-row[aria-current="page"] {
-    @apply text-foreground;
-    font-weight: 500;
+  .doc-side,
+  .doc-toc {
+    position: sticky;
+    top: var(--doc-rail-top);
+    max-height: calc(100dvh - var(--doc-rail-top) - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
   }
 
   /* ---- article --------------------------------------------------------- */
-
-  .doc-main .doc-scroll {
-    padding: 54px 0 128px;
-  }
 
   .doc-article {
     max-width: var(--doc-article);
@@ -141,11 +93,11 @@
   }
 
   .doc-eyebrow {
+    @apply font-mono text-tertiary-foreground;
     font-size: 12px;
-    font-weight: 600;
-    line-height: 19px;
-    letter-spacing: -0.01px;
-    @apply text-muted-foreground;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: 0;
   }
 
   .doc-head .doc-eyebrow {
@@ -157,10 +109,10 @@
     margin: 0 0 16px;
     overflow: visible;
     @apply text-foreground;
-    font-size: 32px;
-    font-weight: 600;
-    line-height: 40px;
-    letter-spacing: -0.45px;
+    font-size: 34px;
+    font-weight: 500;
+    line-height: 1.15;
+    letter-spacing: -0.03em;
     text-wrap: balance;
   }
 
@@ -168,11 +120,11 @@
     margin: 0;
     padding: 0 0 32px;
     max-width: 640px;
-    @apply text-foreground;
-    font-size: 16px;
+    @apply text-muted-foreground;
+    font-size: 17px;
     font-weight: 400;
-    line-height: 24px;
-    letter-spacing: -0.18px;
+    line-height: 1.65;
+    letter-spacing: -0.01em;
     text-wrap: pretty;
   }
 
@@ -183,7 +135,7 @@
   }
 
   .doc-prose p {
-    margin: 0 0 21px;
+    margin: 0 0 14px;
     text-wrap: pretty;
   }
 
@@ -200,14 +152,18 @@
 
   .doc-prose h2 {
     margin: 48px 0 12px;
-    font-size: 20px;
-    line-height: 23px;
+    padding-top: 24px;
+    border-top: 1px solid;
+    @apply border-border-subtle;
+    font-size: 22px;
+    line-height: 1.3;
+    letter-spacing: -0.02em;
   }
 
   .doc-prose h3 {
-    margin: 32px 0 8px;
+    margin: 28px 0 8px;
     font-size: 16px;
-    line-height: 19px;
+    line-height: 1.4;
   }
 
   .doc-prose h4 {
@@ -375,10 +331,6 @@
     display: none;
   }
 
-  .doc-toc .doc-scroll {
-    padding: 54px 0 96px;
-  }
-
   @media (min-width: 1400px) {
     .doc-toc {
       display: block;
@@ -437,11 +389,32 @@
   }
 
   .doc-toc a[aria-current="true"] {
-    @apply text-muted-foreground;
+    @apply text-foreground;
   }
 
   .doc-toc a[aria-current="true"]::before {
     opacity: 1;
+  }
+
+  /* Where the page was read from, for kernel pages. */
+  .doc-read {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 20px 0 0 13px;
+    padding-top: 16px;
+    border-top: 1px solid;
+    @apply border-border-subtle font-mono text-tertiary-foreground;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .doc-read a {
+    @apply text-muted-foreground;
+  }
+
+  .doc-read a:hover {
+    @apply text-foreground;
   }
 
   /* ---- footer nav ------------------------------------------------------ */
@@ -449,26 +422,22 @@
   .doc-pager {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 13px;
-    margin-top: 89px;
-    padding-top: 34px;
-    border-top: 0.5px solid;
-    @apply border-border-subtle;
+    gap: 12px;
+    margin-top: 56px;
   }
 
   .doc-pager a {
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    padding: 13px;
-    border: 0.5px solid;
-    @apply border-border-subtle;
-    border-radius: 13px;
-    transition: border-color 120ms ease-out;
+    gap: 2px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    @apply bg-fill-selected;
+    transition: background-color 120ms ease-out;
   }
 
   .doc-pager a:hover {
-    @apply border-tertiary-foreground;
+    @apply bg-fill-hover;
   }
 
   .doc-pager a[data-dir="next"] {
@@ -481,10 +450,6 @@
   }
 
   @media (max-width: 1023px) {
-    .doc-main .doc-scroll {
-      padding: 20px 0 64px;
-    }
-
     .doc-head {
       margin-bottom: 24px;
     }

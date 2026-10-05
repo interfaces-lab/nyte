@@ -1,5 +1,6 @@
 ---
 title: "Heads"
+description: "Branches of a session: create, move, delete, merge, and stacks"
 ---
 
 A head is a name. `heads.move` defaults it to `main`; the other calls require one, and none takes the head lease. A parent or head the session does not list answers `unknown_parent` or `not_found`. `heads.delete` answers `busy` while the head lease is live, and the SDK throws for `main`.

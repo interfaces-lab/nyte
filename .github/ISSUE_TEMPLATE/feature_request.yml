@@ -1,0 +1,67 @@
+name: Feature request
+description: Suggest something Nyte should do, or do differently.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One idea per issue. Search [existing issues](https://github.com/interfaces-lab/nyte/issues?q=is%3Aissue) first; if one matches, add your use case there.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and found no duplicate.
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Desktop app
+        - Terminal (nyte CLI)
+        - Web app (app.nyte.sh)
+        - iOS app
+        - Remote access (Nyte Connect)
+        - Models and providers
+        - Plugins
+        - SDK or self-hosted server
+        - Docs or website
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you were trying to do, and what got in the way.
+      placeholder: I run several chats in one folder and can't tell which one changed a file.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What you'd like Nyte to do.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do today
+      description: Workarounds, other tools, or alternatives you considered.
+
+  - type: upload
+    id: attachments
+    attributes:
+      label: Mockups or examples
+    validations:
+      required: false
+      accept: ".png,.jpg,.jpeg,.gif,.webp,.mp4,.mov,.webm"

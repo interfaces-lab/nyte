@@ -8,7 +8,7 @@ import { Input, InputGroup } from "@nyte-ai/ui/input";
 ```
 
 `InputGroup` frames an `Input` with the icons or controls beside it. For multi-line text, use
-[Textarea](/cloud/components/textarea).
+[Textarea](/docs/components/components/textarea).
 
 ## Usage
 
@@ -68,25 +68,25 @@ const [query, setQuery] = useState("");
 Takes every Base UI `Input` prop except the native `size` attribute. `className` and `style` take
 plain values, not functions of state.
 
-| Prop                           | Type                                      | Default                             | Description |
-| ------------------------------ | ----------------------------------------- | ----------------------------------- | ----------- |
-| `variant`                      | `"raised" \| "quiet" \| "bare"`           | `"raised"`, `"bare"` inside a group |             |
-| `size`                         | `"md" \| "lg" \| "xl"`                    | `"md"`, or the group's size         |             |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |                                     |             |
+| Prop                           | Type                                                | Default                             | Description |
+| ------------------------------ | --------------------------------------------------- | ----------------------------------- | ----------- |
+| `variant`                      | `"raised" \| "quiet" \| "bare"`                     | `"raised"`, `"bare"` inside a group |             |
+| `size`                         | `"md" \| "lg" \| "xl"`                              | `"md"`, or the group's size         |             |
+| `className`, `style`, `xstyle` | see [Theming](/docs/components/foundations/theming) |                                     |             |
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
-<include>../../base-ui-reference/input/Input.md</include>
+<include>../../../base-ui-reference/input/Input.md</include>
 
 ### InputGroup
 
 Takes every native `<label>` attribute.
 
-| Prop                           | Type                                      | Default    | Description                          |
-| ------------------------------ | ----------------------------------------- | ---------- | ------------------------------------ |
-| `variant`                      | `"raised" \| "quiet"`                     | `"raised"` |                                      |
-| `size`                         | `"md" \| "lg" \| "xl"`                    | `"md"`     | Height, and the size of its `Input`. |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |            |                                      |
+| Prop                           | Type                                                | Default    | Description                          |
+| ------------------------------ | --------------------------------------------------- | ---------- | ------------------------------------ |
+| `variant`                      | `"raised" \| "quiet"`                               | `"raised"` |                                      |
+| `size`                         | `"md" \| "lg" \| "xl"`                              | `"md"`     | Height, and the size of its `Input`. |
+| `className`, `style`, `xstyle` | see [Theming](/docs/components/foundations/theming) |            |                                      |
 
 ## Accessibility
 

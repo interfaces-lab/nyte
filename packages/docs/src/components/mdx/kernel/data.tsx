@@ -70,7 +70,7 @@ export const ADMISSION: readonly (readonly string[])[] = [
 export const PHASES: readonly (readonly ReactNode[])[] = [
   [
     <Codes key="0" items={["none", "done", "failed", "aborted"]} />,
-    <To key="1" href="/kernel/functions#fn-landOrIdle">
+    <To key="1" href="/docs/kernel/functions#fn-landOrIdle">
       landOrIdle
     </To>,
     <>
@@ -80,7 +80,7 @@ export const PHASES: readonly (readonly ReactNode[])[] = [
   ],
   [
     <C key="0">respond</C>,
-    <To key="1" href="/kernel/functions#fn-respond">
+    <To key="1" href="/docs/kernel/functions#fn-respond">
       respond
     </To>,
     <>
@@ -92,7 +92,7 @@ export const PHASES: readonly (readonly ReactNode[])[] = [
   ],
   [
     <C key="0">tools</C>,
-    <To key="1" href="/kernel/functions#fn-tools">
+    <To key="1" href="/docs/kernel/functions#fn-tools">
       tools
     </To>,
     <>
@@ -102,7 +102,7 @@ export const PHASES: readonly (readonly ReactNode[])[] = [
   ],
   [
     <C key="0">waiting</C>,
-    <To key="1" href="/kernel/functions#fn-advance">
+    <To key="1" href="/docs/kernel/functions#fn-advance">
       advance
     </To>,
     <>
@@ -113,7 +113,7 @@ export const PHASES: readonly (readonly ReactNode[])[] = [
   ],
   [
     <C key="0">retry</C>,
-    <To key="1" href="/kernel/functions#fn-advance">
+    <To key="1" href="/docs/kernel/functions#fn-advance">
       advance
     </To>,
     <>

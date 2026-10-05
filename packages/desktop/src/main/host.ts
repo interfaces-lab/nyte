@@ -12,11 +12,12 @@ import { existsSync } from "node:fs";
 import { mkdir, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { setTimeout } from "node:timers/promises";
 import type { MutableModels } from "@nyte-ai/ai";
 import { createNyte, dispatch } from "@nyte-ai/core";
 import { createLocalExecutionEnv, localEnvironmentPlugin } from "@nyte-ai/core/plugins";
 import { watchPluginDirectories } from "@nyte-ai/host/plugins";
-import type { ResolvedPlugins } from "@nyte-ai/host/plugins";
+import type { PluginFailure } from "@nyte-ai/host/plugins";
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { Environment, OperationInput } from "@nyte-ai/protocol";
 import type {
@@ -288,6 +289,19 @@ function isSettled(session: SessionInfo): boolean {
 
 /** How often open stores and the server are listed for changes no watch can see. */
 const SWEEP_INTERVAL_MS = 5_000;
+
+/**
+ * Rows an open store lists per read. Each page lands in the directory before
+ * the next is read, so a large store fills the sidebar as it is walked.
+ */
+const SWEEP_PAGE_SIZE = 32;
+
+/**
+ * How long the first snapshot read waits for the local sweep. A store the
+ * sweep is still walking answers with the rows landed so far; the rest are
+ * pushed as they land, behind the mounted screen.
+ */
+const DIRECTORY_HYDRATION_BUDGET_MS = 1_500;
 
 const CLOSED_DIRECTORY_MAX_AGE_MS = 60_000;
 
@@ -1609,11 +1623,13 @@ export class DesktopHost {
         }),
       ];
 
-      const reportPluginFailure = (failure: ResolvedPlugins["failures"][number]): void =>
+      const reportPluginFailure = (failure: PluginFailure): void =>
         this.dependencies.emitHostEvent({
           kind: "status",
-          // The producer retained only this failure record, not its original Error.
-          message: ipcFailure(failure).message,
+          message:
+            failure.id === undefined
+              ? `Couldn't read ${failure.path}: ${failure.error}`
+              : `Plugin "${failure.id}" couldn't load: ${failure.error}`,
         });
 
       // Plugin sources are only read once the workspace is trusted, so the watch starts with the
@@ -1638,7 +1654,10 @@ export class DesktopHost {
             if (replacement.kind === "rejected") throw new Error(replacement.error);
           },
           onError: (error) =>
-            this.dependencies.emitHostEvent({ kind: "status", message: ipcFailure(error).message }),
+            this.dependencies.emitHostEvent({
+              kind: "status",
+              message: `Plugins couldn't reload: ${error.message}`,
+            }),
         });
       };
 
@@ -1853,7 +1872,7 @@ export class DesktopHost {
 
     if (this.sweepTimer === undefined) this.startSweeping();
     else this.requestSweep();
-    await this.hydrated;
+    await Promise.race([this.hydrated, setTimeout(DIRECTORY_HYDRATION_BUDGET_MS)]);
 
     return this.directory.snapshot();
   }
@@ -2027,10 +2046,23 @@ export class DesktopHost {
 
   private async sweepOpen(open: OpenLocalTarget): Promise<readonly SessionInfo[]> {
     const startedAt = this.directory.clock();
-    const { items } = await open.sdk.sessions.list({ parent: null, includeArchived: true });
     const workspacePath = open.kind === "home" ? null : open.workspace.path;
+    const items: SessionInfo[] = [];
+    let cursor: string | undefined;
 
-    if (this.closed || this.openTargets.get(workspacePath) !== open) return [];
+    do {
+      const page = await open.sdk.sessions.list({
+        parent: null,
+        includeArchived: true,
+        limit: SWEEP_PAGE_SIZE,
+        cursor,
+      });
+
+      if (this.closed || this.openTargets.get(workspacePath) !== open) return [];
+      items.push(...page.items);
+      this.directory.fill(sourceOf(open), page.items, startedAt);
+      cursor = page.next;
+    } while (cursor !== undefined);
 
     for (const session of items) {
       if (session.archived) {

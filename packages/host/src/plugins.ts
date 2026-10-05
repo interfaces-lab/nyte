@@ -36,12 +36,12 @@ import {
   skillDirectories,
 } from "./paths.ts";
 import type { PluginTarget } from "./paths.ts";
-import { createRequire } from "node:module";
 import { createPluginSources } from "./plugins/sources.ts";
 import type { PluginSources } from "./plugins/sources.ts";
+import { hostModules } from "./plugins/host-modules.ts";
 import { nodePluginLoader } from "./plugins/node-loader.ts";
 import { discoverPluginUnits } from "./plugins/units.ts";
-import type { PluginRoot } from "./plugins/units.ts";
+import type { PluginRoot, PluginUnit } from "./plugins/units.ts";
 import { createSourceWatcher, notifyPluginSources } from "./plugins/watch.ts";
 
 // MCP connections belong to the process: every session shares them, and a
@@ -60,14 +60,11 @@ export async function resolveHostPlugins(
     readonly env: ExecutionEnv;
   },
 ): Promise<ResolvedPlugins> {
-  const [manifest, skills] = await Promise.all([
-    readManifest(target).catch((cause: unknown) => {
-      throw new PluginPreparationError([
-        { path: "manifest", error: cause instanceof Error ? cause.message : String(cause) },
-      ]);
-    }),
+  const [manifests, skills] = await Promise.all([
+    readManifests(target),
     loadSkills(skillDirectories(target)),
   ]);
+  const { manifest } = manifests;
 
   const mcp = manifest.mcp ?? {};
 
@@ -115,8 +112,7 @@ export async function resolveHostPlugins(
       [MCP_PLUGIN_ID]: `builtin:${digest(JSON.stringify(mcp))}`,
     },
   });
-  if (prepared.kind === "failed") throw new PluginPreparationError(prepared.failures);
-  return prepared;
+  return { plugins: prepared.plugins, failures: [...manifests.failures, ...prepared.failures] };
 }
 
 function digest(text: string): string {
@@ -164,7 +160,28 @@ export type HostManifest = Static<typeof manifestSchema>;
  * servers. A missing file contributes nothing; a malformed one throws.
  */
 export async function readManifest(target: PluginTarget): Promise<HostManifest> {
-  const files = await Promise.all(manifestPaths(target).map(readManifestFile));
+  const { manifest, failures } = await readManifests(target);
+  const failure = failures[0];
+
+  if (failure !== undefined) throw new Error(`${failure.path}: ${failure.error}`);
+
+  return manifest;
+}
+
+/** The merged manifest from every readable file, and each malformed one against its path. */
+async function readManifests(
+  target: PluginTarget,
+): Promise<{ readonly manifest: HostManifest; readonly failures: PluginFailure[] }> {
+  const failures: PluginFailure[] = [];
+  const files = await Promise.all(
+    manifestPaths(target).map((path) =>
+      readManifestFile(path).catch((cause: unknown) => {
+        failures.push({ path, error: cause instanceof Error ? cause.message : String(cause) });
+
+        return undefined;
+      }),
+    ),
+  );
 
   const merged: HostManifest = {};
 
@@ -174,7 +191,7 @@ export async function readManifest(target: PluginTarget): Promise<HostManifest> 
     if (file?.mcp !== undefined) merged.mcp = { ...merged.mcp, ...file.mcp };
   }
 
-  return merged;
+  return { manifest: merged, failures };
 }
 
 async function readManifestFile(path: string): Promise<HostManifest | undefined> {
@@ -184,26 +201,21 @@ async function readManifestFile(path: string): Promise<HostManifest | undefined>
   });
   if (text === undefined) return undefined;
 
-  try {
-    const parsed: unknown = JSON.parse(text);
+  const parsed: unknown = JSON.parse(text);
 
-    if (manifestFile.Check(parsed)) return parsed;
+  if (manifestFile.Check(parsed)) return parsed;
 
-    const problems = manifestFile
-      .Errors(parsed)
-      .map((error) => `${error.instancePath || "/"}: ${error.message}`);
+  const problems = manifestFile
+    .Errors(parsed)
+    .map((error) => `${error.instancePath || "/"}: ${error.message}`);
 
-    throw new Error(problems.join("; "));
-  } catch (cause) {
-    throw new Error(`${path}: ${cause instanceof Error ? cause.message : String(cause)}`, {
-      cause,
-    });
-  }
+  throw new Error(problems.join("; "));
 }
 
 export { createPluginSources } from "./plugins/sources.ts";
 export type { Loaded, PluginSources, Prepare, Prepared, Track } from "./plugins/sources.ts";
 export { nodePluginLoader } from "./plugins/node-loader.ts";
+export { hostModules } from "./plugins/host-modules.ts";
 export {
   createSourceWatcher,
   notifyPluginSources,
@@ -212,9 +224,21 @@ export {
 export type { SourceWatcher, WatchOptions, WatchTarget } from "./plugins/watch.ts";
 export { discoverPluginUnits, unitDataFiles } from "./plugins/units.ts";
 export type { PluginRoot, PluginUnit, PluginEntries, UnitSource } from "./plugins/units.ts";
+
+/** A plugin source that did not load. `id` names the unit; a manifest or directory failure has none. */
+export interface PluginFailure {
+  readonly id?: string;
+  readonly path: string;
+  readonly error: string;
+}
+
+/**
+ * Everything that loaded, plus a placeholder for each failed unit so the session
+ * lists it as `failed` with its error, and every failure against its path.
+ */
 export interface ResolvedPlugins {
   readonly plugins: Plugin[];
-  readonly failures: { readonly path: string; readonly error: string }[];
+  readonly failures: PluginFailure[];
 }
 
 export function samePluginSources(left: readonly Plugin[], right: readonly Plugin[]): boolean {
@@ -235,10 +259,6 @@ export function samePluginSources(left: readonly Plugin[], right: readonly Plugi
   );
 }
 
-export type PluginPreparation =
-  | ({ readonly kind: "ready"; readonly failures: [] } & ResolvedPlugins)
-  | { readonly kind: "failed"; readonly failures: ResolvedPlugins["failures"] };
-
 export interface ResolveOptions {
   readonly builtins: readonly Plugin[];
   readonly directories?: readonly PluginRoot[];
@@ -246,16 +266,6 @@ export interface ResolveOptions {
   readonly builtinVersion?: string;
   readonly builtinVersions?: Readonly<Record<string, string>>;
   readonly sources: PluginSources<unknown>;
-}
-
-export class PluginPreparationError extends Error {
-  readonly failures: ResolvedPlugins["failures"];
-
-  constructor(failures: ResolvedPlugins["failures"]) {
-    super(failures.map((failure) => `${failure.path}: ${failure.error}`).join("; "));
-    this.name = "PluginPreparationError";
-    this.failures = failures;
-  }
 }
 
 const PluginModule = Type.Object({
@@ -269,70 +279,79 @@ const PluginModule = Type.Object({
 });
 const pluginModule = Compile(PluginModule);
 
-export async function resolvePlugins(options: ResolveOptions): Promise<PluginPreparation> {
+export async function resolvePlugins(options: ResolveOptions): Promise<ResolvedPlugins> {
   const byId = new Map<string, Plugin>();
-  const failures: ResolvedPlugins["failures"] = [];
-  try {
-    const units = await discoverPluginUnits(options.directories ?? []);
-    for (const builtin of options.builtins) {
+  const failures: PluginFailure[] = [];
+  const units = new Map<string, PluginUnit>();
+  for (const root of options.directories ?? []) {
+    // One unreadable root loses its own units, not another root's.
+    const discovered = await discoverPluginUnits([root]).catch((cause: unknown) => {
+      failures.push({
+        path: root.path,
+        error: cause instanceof Error ? cause.message : String(cause),
+      });
+      return [];
+    });
+    for (const unit of discovered) units.set(unit.id, unit);
+  }
+  for (const builtin of options.builtins) {
+    byId.set(
+      builtin.id,
+      withPluginSource(builtin, {
+        source: "builtin",
+        version: options.builtinVersions?.[builtin.id] ?? options.builtinVersion ?? "builtin",
+      }),
+    );
+  }
+  const disabled = new Set(
+    options.manifest?.plugins?.flatMap((item) => (item.startsWith("-") ? [item.slice(1)] : [])) ??
+      [],
+  );
+  for (const unit of units.values()) {
+    if (disabled.has(unit.id)) {
+      byId.delete(unit.id);
+      continue;
+    }
+    const entry = unit.entries.session;
+    if (entry === undefined) {
+      byId.delete(unit.id);
+      continue;
+    }
+    try {
+      const loaded = await options.sources.read(entry);
+      if (!pluginModule.Check(loaded.value))
+        throw new Error("default export is not a session plugin (use definePlugin)");
+      const module = loaded.value.default;
+      if (module.id !== unit.id)
+        throw new Error(`plugin id "${module.id}" must match directory name "${unit.id}"`);
       byId.set(
-        builtin.id,
-        withPluginSource(builtin, {
-          source: "builtin",
-          version: options.builtinVersions?.[builtin.id] ?? options.builtinVersion ?? "builtin",
+        unit.id,
+        withPluginSource(module, {
+          source: unit.source,
+          path: entry,
+          version: loaded.version,
         }),
       );
+    } catch (cause) {
+      const error = cause instanceof Error ? cause.message : String(cause);
+      failures.push({ id: unit.id, path: entry, error });
+      // The unit keeps its place in the set so the session lists it as failed;
+      // its version follows the error, so a changed outcome is a new revision.
+      byId.set(
+        unit.id,
+        withPluginSource(
+          {
+            id: unit.id,
+            session() {
+              throw new Error(error);
+            },
+          },
+          { source: unit.source, path: entry, version: `failed:${digest(error)}` },
+        ),
+      );
     }
-    const disabled = new Set(
-      options.manifest?.plugins?.flatMap((item) => (item.startsWith("-") ? [item.slice(1)] : [])) ??
-        [],
-    );
-    for (const unit of units) {
-      if (disabled.has(unit.id)) {
-        byId.delete(unit.id);
-        continue;
-      }
-      const entry = unit.entries.session;
-      if (entry === undefined) {
-        byId.delete(unit.id);
-        continue;
-      }
-      try {
-        const loaded = await options.sources.read(entry);
-        if (!pluginModule.Check(loaded.value))
-          throw new Error("default export is not a session plugin (use definePlugin)");
-        const module = loaded.value.default;
-        if (module.id !== unit.id)
-          throw new Error(`plugin id "${module.id}" must match directory name "${unit.id}"`);
-        byId.set(
-          unit.id,
-          withPluginSource(module, {
-            source: unit.source,
-            path: entry,
-            version: loaded.version,
-          }),
-        );
-      } catch (cause) {
-        failures.push({
-          path: entry,
-          error: cause instanceof Error ? cause.message : String(cause),
-        });
-      }
-    }
-    if (failures.length > 0) return { kind: "failed", failures };
-    return {
-      kind: "ready",
-      plugins: [...byId.values()].filter((item) => !disabled.has(item.id)),
-      failures: [],
-    };
-  } catch (cause) {
-    return {
-      kind: "failed",
-      failures: [
-        { path: "plugins", error: cause instanceof Error ? cause.message : String(cause) },
-      ],
-    };
   }
+  return { plugins: [...byId.values()].filter((item) => !disabled.has(item.id)), failures };
 }
 
 const nodeWatcher = createSourceWatcher(notifyPluginSources);
@@ -340,12 +359,6 @@ let defaultSources: PluginSources<unknown> | undefined;
 
 function nodeSources(): PluginSources<unknown> {
   if (defaultSources !== undefined) return defaultSources;
-  const load = createRequire(import.meta.url);
-  const module: unknown = load("@nyte-ai/plugin");
-  if (typeof module !== "object" || module === null) throw new Error("Invalid host plugin module");
-  defaultSources = createPluginSources(
-    nodePluginLoader({ "@nyte-ai/plugin": module, "@nyte-ai/core/plugins": module }),
-    nodeWatcher.wait,
-  );
+  defaultSources = createPluginSources(nodePluginLoader(hostModules), nodeWatcher.wait);
   return defaultSources;
 }

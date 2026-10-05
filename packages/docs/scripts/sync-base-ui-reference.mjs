@@ -4,7 +4,7 @@
  *
  * Every `@nyte-ai/ui` component built on Base UI gets one
  * markdown file per part, copied word for word (MIT, (c) Material-UI SAS).
- * The hand-written pages under content/cloud/components pull the parts they
+ * The hand-written pages under content/docs/components/components pull the parts they
  * document in with `<include>`.
  *
  *   node scripts/sync-base-ui-reference.mjs           # rewrite the parts files

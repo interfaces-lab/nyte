@@ -20,8 +20,8 @@ import { createModelCatalog, createModelPreferencesStore } from "./catalog.ts";
 import { environmentId } from "./environment-id.ts";
 import { nyteHome } from "./paths.ts";
 import type { PluginTarget } from "./paths.ts";
-import { PluginPreparationError, resolveHostPlugins, samePluginSources } from "./plugins.ts";
-import type { PluginSources, ResolvedPlugins } from "./plugins.ts";
+import { resolveHostPlugins, samePluginSources } from "./plugins.ts";
+import type { PluginFailure, PluginSources } from "./plugins.ts";
 import { providerOverrides } from "./provider-plugins.ts";
 import { WorkspaceStore } from "./workspace-store.ts";
 import { readCacheWarmingMode } from "./settings.ts";
@@ -111,7 +111,8 @@ export type HostPlugins =
       readonly extra?: readonly Plugin[];
       readonly sources?: PluginSources<unknown>;
       readonly codemode?: Pick<CodemodeSandboxOptions, "workerUrl" | "wasm">;
-      readonly onFailure?: (failure: ResolvedPlugins["failures"][number]) => void;
+      /** A plugin source that did not load, reported when it first appears and again after a change. */
+      readonly onFailure?: (failure: PluginFailure) => void;
     }
   /** Plugins the caller loaded itself (an embedded product, a test), installed as given. Sessions start in `cwd`. */
   | { readonly kind: "custom"; readonly plugins: readonly Plugin[]; readonly cwd: string };
@@ -233,6 +234,7 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
       /** Loads `resolved`'s plugins through the opened environment, the same objects while their sources are unchanged. */
       const trusted = (resolved: PluginTarget): WorkspaceTrust => {
         let snapshot: readonly Plugin[] | undefined;
+        let reported: string[] = [];
 
         return {
           kind: "trusted",
@@ -244,21 +246,16 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
               sources: plugins.sources,
               codemode: plugins.codemode,
               env,
-            }).catch((cause: unknown) => {
-              const failures =
-                cause instanceof PluginPreparationError
-                  ? cause.failures
-                  : [
-                      {
-                        path: "plugins",
-                        error: cause instanceof Error ? cause.message : String(cause),
-                      },
-                    ];
-
-              for (const failure of failures) plugins.onFailure?.(failure);
-              // Paths and plugin errors stay on the host; the session's activation reaches clients.
-              throw new Error("Plugins failed to load");
             });
+
+            // The loader runs before every response; a failure is news once until it changes.
+            const key = (failure: PluginFailure): string => `${failure.path}\0${failure.error}`;
+
+            for (const failure of next.failures) {
+              if (!reported.includes(key(failure))) plugins.onFailure?.(failure);
+            }
+
+            reported = next.failures.map(key);
 
             if (snapshot === undefined || !samePluginSources(snapshot, next.plugins))
               snapshot = next.plugins;

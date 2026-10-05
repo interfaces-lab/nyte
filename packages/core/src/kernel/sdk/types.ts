@@ -529,6 +529,37 @@ export class NyteClosed extends Error {
   }
 }
 
+/** The prospective catalog has no plugins to list because the default workspace did not open. */
+export class WorkspaceNotActive extends Error {
+  readonly activation: Exclude<SessionActivationState, { readonly kind: "active" }>;
+
+  constructor(activation: Exclude<SessionActivationState, { readonly kind: "active" }>) {
+    super(describeInactive(activation));
+    this.name = "WorkspaceNotActive";
+    this.activation = activation;
+  }
+}
+
+function describeInactive(
+  activation: Exclude<SessionActivationState, { readonly kind: "active" }>,
+): string {
+  switch (activation.kind) {
+    case "failed":
+      return `The workspace's plugins failed to load: ${activation.error}`;
+    case "inactive":
+      return "The workspace is inactive";
+    case "requires":
+      return activation.requirement.kind === "workspace_trust"
+        ? `Workspace trust is required for ${activation.requirement.cwd}`
+        : `The workspace is ${activation.requirement.reason}`;
+    default: {
+      const _exhaustive: never = activation;
+
+      return _exhaustive;
+    }
+  }
+}
+
 export { CorruptObject, UnknownSession } from "../store.ts";
 
 export type { Disposer };

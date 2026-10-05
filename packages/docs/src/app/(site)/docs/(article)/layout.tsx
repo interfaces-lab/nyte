@@ -1,11 +1,9 @@
-import { docsNavGroups } from "~/lib/docs-nav";
-import { DocFrame } from "../_layout/frame";
-import "./docs.css";
+import { navGroups } from "~/lib/nav";
+import { DocFrame } from "../../_layout/frame";
+import "../docs.css";
+import "../kernel.css";
+import "../components.css";
 
 export default function Layout({ children }: LayoutProps<"/docs">) {
-  return (
-    <DocFrame label="Docs" groups={docsNavGroups()}>
-      {children}
-    </DocFrame>
-  );
+  return <DocFrame groups={navGroups()}>{children}</DocFrame>;
 }

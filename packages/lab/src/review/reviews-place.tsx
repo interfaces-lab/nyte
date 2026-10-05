@@ -13,11 +13,10 @@ import { Spinner } from "@nyte-ai/ui/spinner";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { useRepo } from "./api";
-import { targetOf } from "./chat-place";
 import { count, plural, when } from "./files";
 import { NewReview } from "./new-review";
 import { pullRequestNumber } from "./pull-request";
-import type { OpenTarget, Place } from "./window";
+import { targetOf, type OpenTarget, type Place } from "./window";
 import type { ReviewSummary } from "./wire";
 
 function statusOf(review: ReviewSummary): string | undefined {

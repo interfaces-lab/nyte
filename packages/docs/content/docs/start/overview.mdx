@@ -1,0 +1,26 @@
+---
+title: Overview
+description: A durable runtime for agent conversations, with terminal and desktop clients
+---
+
+Nyte is a durable runtime for agent conversations. Each session is a small git repository:
+objects never change, refs are the only mutable state, and every ref write is a compare-and-swap.
+A runner holds a lease on a head and advances the run one phase per step, so a session outlives
+the process that started it.
+
+The terminal and desktop clients embed the host, store sessions in SQLite, and run agents in
+process. The same kernel runs in a long-lived server over JSON and server-sent events with
+PostgreSQL storage, and in serverless hosts on Cloudflare Durable Objects and Vercel. A step reads
+all durable state, so any host can take over a head between two steps.
+
+<Cards>
+  <DocCard href="/docs/start/install" title="Install" icon="IconRocket">
+    The desktop app for Apple Silicon, or the CLI for macOS and Linux.
+  </DocCard>
+  <DocCard href="/docs/build/composition" title="Build an agent app" icon="IconCodeBrackets">
+    Run a host first, then compose your own from the packages.
+  </DocCard>
+  <DocCard href="/docs/kernel/architecture" title="Kernel" icon="IconLayersThree">
+    How a message becomes a run.
+  </DocCard>
+</Cards>

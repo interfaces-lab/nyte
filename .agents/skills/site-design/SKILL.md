@@ -28,6 +28,7 @@ product itself, a few true sentences, and motion that rewards attention.
 - **Motion explains or rewards; it never loops for attention.** Every animation has a
   reduced-motion path and a keyboard path that shows what hover shows.
 - **Reuse before adding.** `KeyLink`, `FactWord`, `HostStage`, `NavSentinel`, `DocArticle`.
+- **No uppercase.** Not in CSS, not in copy, not in a pill. Mono and a muted colour carry a label.
 - **Delete what lost.** A hero that is no longer shipped is removed, not parked.
 - **Verify the rendered page.** Code review cannot establish visual quality. Say so when the user
   has not looked yet.

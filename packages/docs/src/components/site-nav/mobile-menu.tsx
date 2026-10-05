@@ -144,22 +144,10 @@ function NavNodes({ nodes, onNavigate }: { nodes: NavNode[]; onNavigate: () => v
   });
 }
 
-export function SiteMobileNav({
-  cloud,
-  docs,
-  kernel,
-  githubHref,
-}: {
-  cloud: NavGroup[];
-  docs: NavGroup[];
-  kernel: NavGroup[];
-  githubHref: string;
-}) {
+export function SiteMobileNav({ groups, githubHref }: { groups: NavGroup[]; githubHref: string }) {
   const [open, setOpen] = useState(false);
   const root: NavNode[] = [
-    { type: "folder", title: "Docs", items: foldersFrom(docs) },
-    { type: "folder", title: "Cloud", items: foldersFrom(cloud) },
-    { type: "folder", title: "Kernel", items: foldersFrom(kernel) },
+    ...foldersFrom(groups),
     { type: "link", title: "GitHub", href: githubHref, external: true },
   ];
 

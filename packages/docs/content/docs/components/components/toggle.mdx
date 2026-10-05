@@ -34,23 +34,23 @@ const [pinned, setPinned] = useState(true);
 Takes every Base UI `Toggle` prop. `className` and `style` take plain values, not functions of
 state.
 
-| Prop                 | Type                                                           | Default     | Description                             |
-| -------------------- | -------------------------------------------------------------- | ----------- | --------------------------------------- |
-| `indicator`          | `"fill" \| "glyph"`                                            | `"fill"`    | `"glyph"` drops the pressed fill.       |
-| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                | `"md"`      | See [Button](/cloud/components/button). |
-| `iconOnly`           | `boolean`                                                      | `false`     |                                         |
-| `icon`               | `IconName`                                                     |             |                                         |
-| `round`              | `boolean`                                                      | `false`     | Pill corners.                           |
-| `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"` | `"neutral"` |                                         |
-| `xstyle`             | `ButtonLayout`                                                 |             | Placement and width only.               |
-| `className`, `style` | see [Theming](/cloud/foundations/theming)                      |             |                                         |
+| Prop                 | Type                                                           | Default     | Description                                       |
+| -------------------- | -------------------------------------------------------------- | ----------- | ------------------------------------------------- |
+| `indicator`          | `"fill" \| "glyph"`                                            | `"fill"`    | `"glyph"` drops the pressed fill.                 |
+| `size`               | `"2xs" \| "xs" \| "sm" \| "md" \| "lg" \| "xl"`                | `"md"`      | See [Button](/docs/components/components/button). |
+| `iconOnly`           | `boolean`                                                      | `false`     |                                                   |
+| `icon`               | `IconName`                                                     |             |                                                   |
+| `round`              | `boolean`                                                      | `false`     | Pill corners.                                     |
+| `tone`               | `"neutral" \| "primary" \| "success" \| "warning" \| "danger"` | `"neutral"` |                                                   |
+| `xstyle`             | `ButtonLayout`                                                 |             | Placement and width only.                         |
+| `className`, `style` | see [Theming](/docs/components/foundations/theming)            |             |                                                   |
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
-<include>../../base-ui-reference/toggle/Toggle.md</include>
+<include>../../../base-ui-reference/toggle/Toggle.md</include>
 
 ## Accessibility
 
 - Renders a native `<button>` with `aria-pressed`. Enter and Space flip it.
 - The `aria-label` names the control, not the current state.
-- Keyboard focus shows the [focus ring](/cloud/foundations/focus).
+- Keyboard focus shows the [focus ring](/docs/components/foundations/focus).

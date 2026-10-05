@@ -163,7 +163,9 @@ function PluginRow({
       detail={detail}
       control={
         hasPage(plugin, inventory) ? (
-          <Button onClick={() => onOpen(plugin)}>Manage</Button>
+          <Button variant="outline" onClick={() => onOpen(plugin)}>
+            Manage
+          </Button>
         ) : undefined
       }
     />
@@ -202,7 +204,11 @@ function Overview({
                 glyph={<Icon name="folder-add" size={16} />}
                 title="Add your own plugin"
                 control={
-                  <Button icon="folder-open" onClick={() => void openPluginsFolder()}>
+                  <Button
+                    variant="outline"
+                    icon="folder-open"
+                    onClick={() => void openPluginsFolder()}
+                  >
                     Open Plugins Folder
                   </Button>
                 }
@@ -343,7 +349,11 @@ function Detail({
             title="Couldn’t load this plugin"
             detail="Nyte tries again when a file in its folder changes."
             control={
-              <Button icon="copy" onClick={() => void navigator.clipboard.writeText(failure)}>
+              <Button
+                variant="outline"
+                icon="copy"
+                onClick={() => void navigator.clipboard.writeText(failure)}
+              >
                 Copy Error
               </Button>
             }
@@ -360,7 +370,7 @@ function Detail({
           {path !== undefined && (
             <SettingsRow title="Location" description={path} controlWidth="wide">
               {reveal !== undefined && (
-                <Button icon="folder-open" onClick={() => void reveal({ path })}>
+                <Button variant="outline" icon="folder-open" onClick={() => void reveal({ path })}>
                   {revealLabel(host.data?.platform)}
                 </Button>
               )}
@@ -474,17 +484,10 @@ export function CustomizeSurface({
           />
         ) : (
           <>
-            <div {...props(page.titleRow)}>
-              <h1 {...props(settingsPatterns.pageTitle)}>Customize</h1>
-            </div>
             {inventory.isPending && <InventoryLoading />}
             {inventory.isError && (
-              <p
-                role="alert"
-                title={inventory.error.message}
-                {...props(settingsPatterns.sectionDescription)}
-              >
-                Couldn&rsquo;t load plugins and skills. Try again.
+              <p role="alert" {...props(settingsPatterns.sectionDescription)}>
+                Couldn&rsquo;t load plugins and skills: {inventory.error.message}
               </p>
             )}
             {inventory.data !== undefined && (

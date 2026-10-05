@@ -19,7 +19,7 @@ const kbdClass =
 
 export function PlateHero() {
   return (
-    <div className="landing-plate relative isolate mx-(--plate-inset) mt-(--plate-inset) overflow-hidden rounded-(--plate-radius) text-white after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-border-subtle">
+    <div className="landing-plate relative isolate mx-(--plate-inset) mt-[calc(var(--plate-inset)-var(--site-nav-top)-var(--site-nav-height))] overflow-hidden rounded-(--plate-radius) text-white after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-border-subtle">
       <div
         aria-hidden="true"
         className="landing-plate-grain pointer-events-none absolute inset-0"
@@ -37,16 +37,16 @@ export function PlateHero() {
           <p className="mt-6 max-w-[34rem] animate-plate-rise text-[17px]/8 text-balance text-white/72 [animation-delay:90ms] motion-reduce:animate-none">
             One kernel, built like{" "}
             <FactWord
-              href="/docs/sdk"
+              href="/docs/kernel/store"
               above="Content-addressed"
               below="Compare-and-swap refs"
               tint="[--tint:#ffd6e8]"
             >
               git
-            </FactWord>{" "}
-            and written by hand. Run it{" "}
+            </FactWord>
+            . Run it{" "}
             <FactWord
-              href="/docs/desktop"
+              href="/docs/build/desktop"
               above="SQLite"
               below="Terminal + desktop"
               tint="[--tint:#e3dcff]"
@@ -55,7 +55,7 @@ export function PlateHero() {
             </FactWord>{" "}
             or{" "}
             <FactWord
-              href="/docs/composition"
+              href="/docs/build/composition"
               above="Durable Objects"
               below="Postgres"
               tint="[--tint:#c8f3ff]"
@@ -75,7 +75,7 @@ export function PlateHero() {
               Install Nyte
             </KeyLink>
             <KeyLink
-              href="/docs/composition"
+              href="/docs"
               shortcut="D"
               className={`${buttonClass} bg-white/10 text-white ring-1 ring-white/15 ring-inset backdrop-blur-sm hover:bg-white/16`}
               kbdClassName={`${kbdClass} bg-white/16 text-white/90`}

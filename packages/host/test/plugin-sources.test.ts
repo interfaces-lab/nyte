@@ -88,11 +88,11 @@ test("canonical roots replace whole units and ignore loose and legacy entries", 
   assert.equal(units[0]?.path, join(project, "greet"));
   assert.deepEqual(units[0]?.entries, { tui: join(project, "greet", "tui.js") });
   const prepared = await resolvePlugins({ sources, builtins: [], directories });
-  if (prepared.kind !== "ready") assert.fail(JSON.stringify(prepared.failures));
+  assert.deepEqual(prepared.failures, []);
   assert.deepEqual(prepared.plugins, []);
 });
 
-test("failed evaluations are cached until bytes change and never return a partial snapshot", async () => {
+test("failed evaluations are cached until bytes change and keep their place as failed placeholders", async () => {
   const directory = pluginsDirectory();
   const unit = join(directory, "broken");
   const marker = join(directory, "attempts");
@@ -102,30 +102,41 @@ test("failed evaluations are cached until bytes change and never return a partia
     entry,
     `import { appendFileSync } from "node:fs"; appendFileSync(${JSON.stringify(marker)}, "attempt\\n"); throw new Error("broken plugin");`,
   );
+  const builtin = { id: "builtin", session: () => undefined };
   const options = {
     sources,
-    builtins: [],
+    builtins: [builtin],
     directories: [{ path: directory, source: "project" }],
   } as const;
   for (let attempt = 0; attempt < 2; attempt++) {
     const prepared = await resolvePlugins(options);
-    assert.equal(prepared.kind, "failed");
-    assert.ok(!("plugins" in prepared));
+    assert.deepEqual(
+      prepared.failures.map((failure) => [failure.id, failure.path]),
+      [["broken", entry]],
+    );
     assert.match(prepared.failures[0]?.error ?? "", /broken plugin/);
+    assert.deepEqual(
+      prepared.plugins.map((plugin) => plugin.id),
+      ["builtin", "broken"],
+    );
   }
   assert.equal(readFileSync(marker, "utf8"), "attempt\n");
   sources.invalidate();
-  assert.equal((await resolvePlugins(options)).kind, "failed");
+  assert.equal((await resolvePlugins(options)).failures.length, 1);
   assert.equal(readFileSync(marker, "utf8"), "attempt\nattempt\n");
   writeFileSync(entry, 'export default { id: "broken", session() {} };');
-  assert.equal((await resolvePlugins(options)).kind, "ready");
+  assert.deepEqual((await resolvePlugins(options)).failures, []);
   writeFileSync(join(directory, "not-a-directory"), "x");
   const unreadable = await resolvePlugins({
     ...options,
     directories: [{ path: join(directory, "not-a-directory"), source: "project" }],
   });
-  assert.equal(unreadable.kind, "failed");
-  assert.ok(!("plugins" in unreadable));
+  assert.deepEqual(
+    unreadable.plugins.map((plugin) => plugin.id),
+    ["builtin"],
+  );
+  assert.equal(unreadable.failures[0]?.path, join(directory, "not-a-directory"));
+  assert.equal(unreadable.failures[0]?.id, undefined);
 });
 
 test("unit data reloads and import.meta.url still resolves real assets", async () => {
@@ -147,6 +158,38 @@ test("unit data reloads and import.meta.url still resolves real assets", async (
   assert.notEqual(next.version, first.version);
   assert.ok(typeof next.value === "object" && next.value !== null && "text" in next.value);
   assert.equal(next.value.text, "other");
+});
+
+test("a unit with no node_modules ancestor imports host modules under native Node ESM", async () => {
+  const directory = pluginsDirectory();
+  mkdirSync(join(directory, "typed"));
+  const entry = join(directory, "typed", "index.ts");
+  writeFileSync(
+    entry,
+    [
+      'import { definePlugin } from "@nyte-ai/plugin";',
+      'import { Type } from "typebox";',
+      'import { Value } from "typebox/value";',
+      'export default definePlugin({ id: "typed", session() {} });',
+      'export const ok = Value.Check(Type.String(), "x");',
+    ].join("\n"),
+  );
+  await promisify(execFile)(process.execPath, [
+    "--input-type=module",
+    "-e",
+    `
+    import assert from "node:assert/strict";
+    import { createPluginSources } from ${JSON.stringify(new URL("../src/plugins/sources.ts", import.meta.url).href)};
+    import { nodePluginLoader } from ${JSON.stringify(new URL("../src/plugins/node-loader.ts", import.meta.url).href)};
+    import { hostModules } from ${JSON.stringify(new URL("../src/plugins/host-modules.ts", import.meta.url).href)};
+    const sources = createPluginSources(nodePluginLoader(hostModules), async () => {});
+    try {
+      const loaded = await sources.read(${JSON.stringify(entry)});
+      assert.equal(loaded.value.default.id, "typed");
+      assert.equal(loaded.value.ok, true);
+    } finally { sources.dispose(); }
+  `,
+  ]);
 });
 
 test("the watcher holds from the first raw event until the change handler has run", async () => {

@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { cloudNavGroups } from "~/lib/cloud-nav";
-import { docsNavGroups } from "~/lib/docs-nav";
+import { navGroups } from "~/lib/nav";
 import { releasesUrl } from "~/lib/releases";
 import { githubUrl } from "~/lib/shared";
 
@@ -18,12 +17,11 @@ export function SiteFooter() {
         { title: "llms.txt", href: "/llms.txt" },
       ],
     },
-    { label: "Docs", links: docsNavGroups().flatMap((group) => group.items) },
     {
-      label: "Cloud",
-      links: cloudNavGroups().flatMap((group) => {
+      label: "Docs",
+      links: navGroups().flatMap((group) => {
         const [first] = group.items;
-        return first ? [{ title: group.label || first.title, href: first.href }] : [];
+        return first ? [{ title: group.label, href: first.href }] : [];
       }),
     },
   ];

@@ -105,18 +105,7 @@ export class SessionDirectory {
   ): void {
     const held = this.#source(source);
     const notify = held.hydrated;
-    const listed = new Set<SessionId>();
-
-    for (const session of sessions) {
-      listed.add(session.sessionId);
-      const tombstone = this.#tombstones.get(session.sessionId);
-
-      if (tombstone !== undefined && tombstone.at > startedAt) continue;
-      const current = held.rows.get(session.sessionId);
-
-      if (current !== undefined && current.writtenAt > startedAt) continue;
-      this.#write(held, session, notify);
-    }
+    const listed = this.#fill(held, sessions, startedAt);
 
     for (const [sessionId, row] of held.rows) {
       if (row.session.parent !== undefined || listed.has(sessionId)) continue;
@@ -132,6 +121,15 @@ export class SessionDirectory {
     }
 
     held.hydrated = true;
+  }
+
+  /**
+   * One page of a sweep still listing: its rows land under `replace`'s rules so
+   * a snapshot read mid-sweep shows them, and nothing is removed until the
+   * sweep's full list arrives.
+   */
+  fill(source: SessionDirectorySource, sessions: readonly SessionInfo[], startedAt: number): void {
+    this.#fill(this.#source(source), sessions, startedAt);
   }
 
   drop(source: SessionDirectorySource): void {
@@ -232,6 +230,27 @@ export class SessionDirectory {
     this.#sources.set(key, created);
 
     return created;
+  }
+
+  #fill(
+    held: SourceRows,
+    sessions: readonly SessionInfo[],
+    startedAt: number,
+  ): ReadonlySet<SessionId> {
+    const listed = new Set<SessionId>();
+
+    for (const session of sessions) {
+      listed.add(session.sessionId);
+      const tombstone = this.#tombstones.get(session.sessionId);
+
+      if (tombstone !== undefined && tombstone.at > startedAt) continue;
+      const current = held.rows.get(session.sessionId);
+
+      if (current !== undefined && current.writtenAt > startedAt) continue;
+      this.#write(held, session, held.hydrated);
+    }
+
+    return listed;
   }
 
   #write(held: SourceRows, session: SessionInfo, notify: boolean): void {

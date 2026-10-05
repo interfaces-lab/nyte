@@ -36,7 +36,7 @@ import {
   type ReviewFile,
 } from "./code";
 import { workspace } from "../shell/host-stub";
-import { useHeadTurns, useRetry, type ConversationTurn } from "./api";
+import { useHeadTurns, type ConversationTurn } from "./api";
 import { plural, sectionFiles } from "./files";
 import { linkProse, type LineTarget, type ProseSegment } from "./prose-links";
 import type { Brief, Guide, ReviewDetail } from "./wire";
@@ -82,19 +82,26 @@ function lastStep(turns: readonly ConversationTurn[]): string | undefined {
   return part.class.kind === "custom" ? part.class.label : undefined;
 }
 
+/** Writing the guide: the page's one way to spend on it, and whether that request is in flight. */
+export interface GuideWriting {
+  readonly onWrite: () => void;
+  readonly requesting: boolean;
+}
+
 export function StatusLine({
   review,
   current,
   shown,
   version,
+  writing: request,
 }: {
   readonly review: ReviewDetail;
   readonly current: Brief | undefined;
   readonly shown: Brief | undefined;
   readonly version: number;
+  readonly writing: GuideWriting;
 }): ReactElement {
-  const retry = useRetry(review.id);
-  const writing = current === undefined || current.status === "running";
+  const writing = current?.status === "running" || (current === undefined && request.requesting);
   const turns = useHeadTurns(review.sessionId, writing ? current : undefined, version);
   const step = lastStep(turns);
 
@@ -109,8 +116,8 @@ export function StatusLine({
         </span>
         <span {...props(styles.statusText)}>
           {review.author?.status === "working"
-            ? "Nyte is working on the task. The guide is written once the branch has a commit."
-            : "The guide is written once the branch has a commit."}
+            ? "Nyte is working on the task. The guide can be written once the branch has a commit."
+            : "The guide can be written once the branch has a commit."}
         </span>
       </div>
     );
@@ -124,12 +131,38 @@ export function StatusLine({
         <span {...props(styles.statusText)}>
           The guide for {review.revision.head.slice(0, 7)} failed. {current.failure}
         </span>
-        <Button
-          variant="outline"
-          loading={retry.isPending}
-          onClick={() => retry.mutate({ head: review.revision.head })}
-        >
+        <Button variant="outline" loading={request.requesting} onClick={request.onWrite}>
           Try again
+        </Button>
+      </div>
+    );
+
+  // No guide yet: the page's one action, under the words that explain it, where the eye already is.
+  if (current === undefined && !writing && shown === undefined)
+    return (
+      <div {...props(styles.empty)}>
+        <Icon name="sparkle" size={20} xstyle={styles.emptyIcon} />
+        <h2 {...props(styles.emptyTitle)}>No guide yet</h2>
+        <p {...props(styles.emptyText)}>
+          Nyte reads the change and walks you through it, part by part, beside its code.
+        </p>
+        <Button variant="solid" tone="primary" size="lg" onClick={request.onWrite}>
+          Write Guide
+        </Button>
+      </div>
+    );
+
+  if (current === undefined && !writing)
+    return (
+      <div role="status" {...props(styles.status)}>
+        <span {...props(styles.statusIcon)}>
+          <Icon name="git-branch" size={14} />
+        </span>
+        <span {...props(styles.statusText)}>
+          {plural(Math.max(behind, 1), "new commit", "new commits")} since this guide.
+        </span>
+        <Button variant="outline" onClick={request.onWrite}>
+          Update Guide
         </Button>
       </div>
     );
@@ -320,6 +353,7 @@ export function ReviewGuide({
   input,
   header,
   navigation,
+  writing,
   onAsk,
 }: {
   readonly review: ReviewDetail;
@@ -330,8 +364,10 @@ export function ReviewGuide({
   /** The pull request's title block, above the guide's status. */
   readonly header: ReactNode;
   readonly navigation: GuideNavigation;
+  readonly writing: GuideWriting;
   readonly onAsk: (section: string) => void;
 }): ReactElement {
+  const scroller = useRef<HTMLDivElement>(null);
   const cards = useRef(new Map<string, HTMLDivElement>());
   const bands = useRef(new Map<number, HTMLElement>());
   const waiting = useRef<LineTarget | undefined>(undefined);
@@ -366,6 +402,17 @@ export function ReviewGuide({
     return true;
   };
 
+  // Only the guide scrolls: a row's own scrollIntoView would also slide Pierre's code sideways under its sticky gutter.
+  const center = (row: Element): void => {
+    const box = scroller.current?.getBoundingClientRect();
+
+    if (box === undefined) return;
+
+    const top = row.getBoundingClientRect().top - box.top - box.height / 2;
+
+    scroller.current?.scrollBy({ top, behavior: "smooth" });
+  };
+
   const showFile = (path: string): void => {
     unfold(path);
     cards.current.get(path)?.scrollIntoView({ block: "start", behavior: "smooth" });
@@ -377,7 +424,7 @@ export function ReviewGuide({
     const row = unfold(target.path) ? undefined : lineRow(cards.current.get(target.path), target);
 
     if (row !== undefined) {
-      row.scrollIntoView({ block: "center", behavior: "smooth" });
+      center(row);
 
       return;
     }
@@ -397,7 +444,7 @@ export function ReviewGuide({
     if (found === undefined) return;
 
     waiting.current = undefined;
-    found.scrollIntoView({ block: "center", behavior: "smooth" });
+    center(found);
   };
 
   /** The section in view is the last band whose top has passed the upper third. */
@@ -418,6 +465,7 @@ export function ReviewGuide({
   return (
     <PierreWorkerProvider>
       <div
+        ref={scroller}
         onScroll={(event) => follow(event.currentTarget)}
         onKeyDown={(event) => {
           if (event.key === "Escape") setPinned(undefined);
@@ -426,7 +474,13 @@ export function ReviewGuide({
       >
         <div {...props(styles.top)}>
           {header}
-          <StatusLine review={review} current={current} shown={shown} version={version} />
+          <StatusLine
+            review={review}
+            current={current}
+            shown={shown}
+            version={version}
+            writing={writing}
+          />
         </div>
         {sections.map(({ section, index, id, files }) => {
           const done = files.filter((file) => input.reviewed(file.path) === "reviewed").length;
@@ -555,7 +609,33 @@ const styles = create({
   },
   statusEmpty: { display: "contents" },
   statusIcon: { display: "inline-grid", placeItems: "center", width: glyph.sm, flexShrink: 0 },
-  statusText: { flex: 1, minWidth: 0, textWrap: "pretty" },
+  // The button follows the sentence it answers instead of waiting at the far edge of a wide row.
+  statusText: { flex: "0 1 auto", minWidth: 0, textWrap: "pretty" },
+  empty: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 8,
+    marginInline: "auto",
+    maxWidth: 420,
+    paddingBlock: "72px 24px",
+    textAlign: "center",
+  },
+  emptyIcon: { marginBlockEnd: 4, color: role.contentSecondary },
+  emptyTitle: {
+    margin: 0,
+    color: role.contentPrimary,
+    fontSize: type.fontLg,
+    lineHeight: type.leadingLg,
+    fontWeight: 600,
+  },
+  emptyText: {
+    margin: "0 0 12px",
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    textWrap: "pretty",
+  },
   step: {
     color: role.contentSecondary,
     fontFamily: type.fontMono,
@@ -674,7 +754,14 @@ const styles = create({
     textAlign: "start",
     cursor: appearance.cursorInteractive,
   },
-  fileName: { flexShrink: 0, maxWidth: "60%", overflow: "hidden", fontWeight: 500, textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  fileName: {
+    flexShrink: 0,
+    maxWidth: "60%",
+    overflow: "hidden",
+    fontWeight: 500,
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
   fileDirectory: {
     flex: 1,
     minWidth: 0,

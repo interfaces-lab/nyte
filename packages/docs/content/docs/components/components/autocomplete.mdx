@@ -21,7 +21,7 @@ import {
 ```
 
 A search field for a long list, such as fonts or models. For a short list, use
-[Select](/cloud/components/select).
+[Select](/docs/components/components/select).
 
 ## Usage
 
@@ -121,7 +121,7 @@ const [search, setSearch] = useState("");
 
 ### Inside a submenu
 
-The [Menu](/cloud/components/menu) submenu supplies the popup. `mode="none"` leaves filtering to
+The [Menu](/docs/components/components/menu) submenu supplies the popup. `mode="none"` leaves filtering to
 you.
 
 ```tsx
@@ -157,7 +157,7 @@ you.
 ## Props
 
 Styled parts take `xstyle`, `className`, and `style`; see
-[Theming](/cloud/foundations/theming). Each sets `data-slot` to its kebab-case name, such as
+[Theming](/docs/components/foundations/theming). Each sets `data-slot` to its kebab-case name, such as
 `autocomplete-item`. `Autocomplete`, `AutocompleteValue`, `AutocompleteInputGroup`,
 `AutocompleteGroup`, and `AutocompleteCollection` pass through Base UI.
 
@@ -165,19 +165,19 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Autocomplete
 
-<include>../../base-ui-reference/autocomplete/Root.md</include>
+<include>../../../base-ui-reference/autocomplete/Root.md</include>
 
 ### AutocompleteTrigger
 
-<include>../../base-ui-reference/autocomplete/Trigger.md</include>
+<include>../../../base-ui-reference/autocomplete/Trigger.md</include>
 
 ### AutocompleteValue
 
-<include>../../base-ui-reference/autocomplete/Value.md</include>
+<include>../../../base-ui-reference/autocomplete/Value.md</include>
 
 ### AutocompleteClear
 
-<include>../../base-ui-reference/autocomplete/Clear.md</include>
+<include>../../../base-ui-reference/autocomplete/Clear.md</include>
 
 ### AutocompleteContent
 
@@ -196,23 +196,23 @@ Everything else goes to the popup.
 
 #### Positioner
 
-<include>../../base-ui-reference/autocomplete/Positioner.md</include>
+<include>../../../base-ui-reference/autocomplete/Positioner.md</include>
 
 #### Popup
 
-<include>../../base-ui-reference/autocomplete/Popup.md</include>
+<include>../../../base-ui-reference/autocomplete/Popup.md</include>
 
 ### AutocompleteInput
 
-<include>../../base-ui-reference/autocomplete/Input.md</include>
+<include>../../../base-ui-reference/autocomplete/Input.md</include>
 
 ### AutocompleteInputGroup
 
-<include>../../base-ui-reference/autocomplete/InputGroup.md</include>
+<include>../../../base-ui-reference/autocomplete/InputGroup.md</include>
 
 ### AutocompleteList
 
-<include>../../base-ui-reference/autocomplete/List.md</include>
+<include>../../../base-ui-reference/autocomplete/List.md</include>
 
 ### AutocompleteItem
 
@@ -221,33 +221,33 @@ Everything else goes to the popup.
 | `variant`  | `"popup" \| "inline"` | `"popup"` | See [Variant](#variant).                                                 |
 | `selected` | `boolean`             | `false`   | Shows a trailing checkmark. With `variant="inline"`, also fills the row. |
 
-<include>../../base-ui-reference/autocomplete/Item.md</include>
+<include>../../../base-ui-reference/autocomplete/Item.md</include>
 
 ### AutocompleteCollection
 
-<include>../../base-ui-reference/autocomplete/Collection.md</include>
+<include>../../../base-ui-reference/autocomplete/Collection.md</include>
 
 ### AutocompleteGroup
 
-<include>../../base-ui-reference/autocomplete/Group.md</include>
+<include>../../../base-ui-reference/autocomplete/Group.md</include>
 
 ### AutocompleteGroupLabel
 
-<include>../../base-ui-reference/autocomplete/GroupLabel.md</include>
+<include>../../../base-ui-reference/autocomplete/GroupLabel.md</include>
 
 ### AutocompleteSeparator
 
-<include>../../base-ui-reference/autocomplete/Separator.md</include>
+<include>../../../base-ui-reference/autocomplete/Separator.md</include>
 
 ### AutocompleteEmpty
 
-<include>../../base-ui-reference/autocomplete/Empty.md</include>
+<include>../../../base-ui-reference/autocomplete/Empty.md</include>
 
 ### AutocompleteStatus
 
 Takes up no space while empty.
 
-<include>../../base-ui-reference/autocomplete/Status.md</include>
+<include>../../../base-ui-reference/autocomplete/Status.md</include>
 
 ### Variant
 
@@ -267,4 +267,4 @@ Takes up no space while empty.
 - Arrow Down and Up move the highlight. The input is part of the loop. Enter picks the highlighted
   item. Escape closes the popup.
 - `AutocompleteGroupLabel` names its group.
-- Keyboard focus on the trigger shows the [focus ring](/cloud/foundations/focus).
+- Keyboard focus on the trigger shows the [focus ring](/docs/components/foundations/focus).

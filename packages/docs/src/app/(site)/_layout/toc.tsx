@@ -4,7 +4,6 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { props } from "@stylexjs/stylex";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Column } from "./column";
 
 export interface TocEntry {
   title: ReactNode;
@@ -17,7 +16,7 @@ export interface TocEntry {
  * crossed the top third of the viewport, so the mark moves as you read, not
  * only when a heading enters view.
  */
-export function Toc({ entries }: { entries: TocEntry[] }) {
+export function Toc({ entries, aside }: { entries: TocEntry[]; aside?: ReactNode }) {
   const [current, setCurrent] = useState<string | null>(null);
 
   useEffect(() => {
@@ -43,36 +42,26 @@ export function Toc({ entries }: { entries: TocEntry[] }) {
     };
   }, [entries]);
 
-  if (entries.length === 0) {
-    return (
-      <div className="doc-toc relative h-full min-h-0 min-w-0 overflow-hidden">
-        <Column>{null}</Column>
-      </div>
-    );
-  }
+  if (entries.length === 0) return <div className="doc-toc">{aside}</div>;
 
   return (
-    <aside
-      className="doc-toc relative h-full min-h-0 min-w-0 overflow-hidden"
-      aria-label="On this page"
-    >
-      <Column>
-        <span className="doc-eyebrow">On this page</span>
-        <ol>
-          {entries.map((entry) => (
-            <li key={entry.url}>
-              <a
-                {...props(current === entry.url.slice(1) && intent.primary)}
-                href={entry.url}
-                data-depth={entry.depth}
-                aria-current={current === entry.url.slice(1) ? "true" : undefined}
-              >
-                {entry.title}
-              </a>
-            </li>
-          ))}
-        </ol>
-      </Column>
+    <aside className="doc-toc" aria-label="On this page">
+      <span className="doc-eyebrow">On this page</span>
+      <ol>
+        {entries.map((entry) => (
+          <li key={entry.url}>
+            <a
+              {...props(current === entry.url.slice(1) && intent.primary)}
+              href={entry.url}
+              data-depth={entry.depth}
+              aria-current={current === entry.url.slice(1) ? "true" : undefined}
+            >
+              {entry.title}
+            </a>
+          </li>
+        ))}
+      </ol>
+      {aside}
     </aside>
   );
 }

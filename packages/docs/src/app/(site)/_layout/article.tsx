@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Column } from "./column";
 import { Toc, type TocEntry } from "./toc";
 
 interface PagerTarget {
@@ -27,6 +26,7 @@ export function DocArticle({
   title,
   lede,
   actions,
+  aside,
   toc,
   previous,
   next,
@@ -36,6 +36,8 @@ export function DocArticle({
   title: ReactNode;
   lede?: ReactNode;
   actions?: ReactNode;
+  /** Sits under the on-this-page list. */
+  aside?: ReactNode;
   toc: TocEntry[];
   previous?: PagerTarget;
   next?: PagerTarget;
@@ -43,26 +45,24 @@ export function DocArticle({
 }) {
   return (
     <>
-      <main className="doc-main relative h-full min-h-0 min-w-0 overflow-hidden">
-        <Column>
-          <article className="doc-article">
-            <header className="doc-head">
-              {eyebrow ? <span className="doc-eyebrow">{eyebrow}</span> : null}
-              <h1 className="doc-title">{title}</h1>
-              {lede ? <p className="doc-lede">{lede}</p> : null}
-              {actions}
-            </header>
-            <div className="doc-prose">{children}</div>
-            {previous || next ? (
-              <nav className="doc-pager" aria-label="Pages">
-                <PagerLink target={previous} dir="previous" />
-                <PagerLink target={next} dir="next" />
-              </nav>
-            ) : null}
-          </article>
-        </Column>
+      <main className="doc-main min-w-0">
+        <article className="doc-article">
+          <header className="doc-head">
+            {eyebrow ? <span className="doc-eyebrow">{eyebrow}</span> : null}
+            <h1 className="doc-title">{title}</h1>
+            {lede ? <p className="doc-lede">{lede}</p> : null}
+            {actions}
+          </header>
+          <div className="doc-prose">{children}</div>
+          {previous || next ? (
+            <nav className="doc-pager" aria-label="Pages">
+              <PagerLink target={previous} dir="previous" />
+              <PagerLink target={next} dir="next" />
+            </nav>
+          ) : null}
+        </article>
       </main>
-      <Toc entries={toc.filter((entry) => entry.depth <= 3)} />
+      <Toc entries={toc.filter((entry) => entry.depth <= 3)} aside={aside} />
     </>
   );
 }

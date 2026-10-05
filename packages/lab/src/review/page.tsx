@@ -3,11 +3,12 @@
  * The chrome runs behind everything:
  * - a titlebar with the sidebar toggle, back and forward, the tab strip, and
  *   at its end "⋯" and the workbench toggle;
- * - the app's sidebar: New Chat, Review, and the chats Nyte is working in.
- * The main area is a card set into the chrome. It holds one pane or a split of
- * two, each showing a place: a new chat, the Review page, a pull request's
- * chat, or its review. The pull requests are faked; see `pull-request.ts`.
- * The workbench beside it shows the focused review's diff.
+ * - the app's sidebar: New Chat and Review.
+ * The main area is a card set into the chrome, showing a place: a new chat,
+ * the Review page, or a pull request. Questions about a pull request go to its
+ * side chat, which belongs to the page and is never a place or a chat of its
+ * own. The pull requests are faked; see `pull-request.ts`. The workbench
+ * beside the card shows the focused pull request's diff.
  *
  * Everything inside the places is real: core sessions, git, Nyte's worktrees.
  * The shell keeps its window in a reducer and its toggles in state; nothing
@@ -16,7 +17,6 @@
 import { create, props } from "@stylexjs/stylex";
 import { useReducer, useState, type MouseEvent, type ReactElement } from "react";
 import { sidebarStyles } from "@nyte-ai/app/chrome/sidebar.stylex.ts";
-import { StatusDot } from "@nyte-ai/app/components/ui.tsx";
 import { FileTypeIconSprite } from "@nyte-ai/app/components/file-type-icon.tsx";
 import { shell, sidebar } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
@@ -40,38 +40,27 @@ import { Spinner } from "@nyte-ai/ui/spinner";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { useLiveReview, useReviews } from "./api";
-import { ChatPlace, targetOf } from "./chat-place";
-import { DiffStack } from "./diff-stack";
 import { NewChatPlace } from "./new-chat";
 import { pullRequestNumber } from "./pull-request";
-import { ReviewPlace } from "./review-place";
+import { ReviewDiff, ReviewPlace, type DiffSettings } from "./review-place";
 import { ReviewsPlace } from "./reviews-place";
-import { ReviewStateProvider, useReviewState } from "./review-state";
-import { useReviewFiles } from "./use-review-files";
+import { ReviewStateProvider } from "./review-state";
 import {
   activeTab,
   canGo,
-  focusedPane,
   focusedPlace,
   focusedReview,
   initialWindow,
   placeOf,
   reduce,
+  targetOf,
   type OpenTarget,
-  type Pane,
   type Place,
   type WindowAction,
 } from "./window";
-import type { ReviewDetail, ReviewSummary } from "./wire";
+import type { ReviewSummary } from "./wire";
 
 type Dispatch = (action: WindowAction) => void;
-
-interface DiffSettings {
-  readonly layout: "unified" | "split";
-  readonly tree: boolean;
-  /** A file to reveal, and a count that remounts the diff to reveal it. */
-  readonly reveal: { readonly path: string | undefined; readonly count: number };
-}
 
 function titleOf(place: Place, reviews: readonly ReviewSummary[]): string {
   if (place.kind === "new-chat") return "New chat";
@@ -80,42 +69,23 @@ function titleOf(place: Place, reviews: readonly ReviewSummary[]): string {
 
   const title = reviews.find((review) => review.id === place.reviewId)?.title ?? "Pull request";
 
-  return place.kind === "review" ? `${title} #${pullRequestNumber(place.reviewId)}` : title;
+  return `${title} #${pullRequestNumber(place.reviewId)}`;
 }
 
-function markOf(review: ReviewSummary | undefined): "working" | "failed" | "idle" {
-  if (review === undefined) return "idle";
-
-  if (review.author === "working" || review.guide === "running") return "working";
-
-  return review.author === "failed" || review.guide === "failed" ? "failed" : "idle";
-}
-
-function PlaceGlyph({
-  place,
-  reviews,
-}: {
-  readonly place: Place;
-  readonly reviews: readonly ReviewSummary[];
-}): ReactElement {
-  if (place.kind === "new-chat") return <Icon name="new-chat" size={14} />;
-
-  if (place.kind === "review" || place.kind === "reviews")
-    return <Icon name="pull-request" size={14} />;
-
-  return <StatusDot mark={markOf(reviews.find((review) => review.id === place.reviewId))} />;
+function PlaceGlyph({ place }: { readonly place: Place }): ReactElement {
+  return <Icon name={place.kind === "new-chat" ? "new-chat" : "pull-request"} size={14} />;
 }
 
 function PlaceView({
   place,
   reviews,
+  diff,
   dispatch,
-  onShowDiff,
 }: {
   readonly place: Place;
   readonly reviews: { readonly list: readonly ReviewSummary[]; readonly loading: boolean };
+  readonly diff: DiffSettings;
   readonly dispatch: Dispatch;
-  readonly onShowDiff: (path: string) => void;
 }): ReactElement {
   const onOpen = (next: Place, target: OpenTarget): void =>
     dispatch({ kind: "open", place: next, target });
@@ -124,20 +94,23 @@ function PlaceView({
     case "new-chat":
       return (
         <NewChatPlace
-          onStarted={(reviewId) => dispatch({ kind: "replace", place: { kind: "chat", reviewId } })}
+          onStarted={(reviewId) =>
+            dispatch({ kind: "replace", place: { kind: "review", reviewId } })
+          }
         />
       );
     case "reviews":
       return <ReviewsPlace reviews={reviews.list} loading={reviews.loading} onOpen={onOpen} />;
-    case "chat":
-      return <ChatPlace key={place.reviewId} reviewId={place.reviewId} onOpen={onOpen} />;
     case "review":
       return (
         <ReviewPlace
           key={place.reviewId}
           reviewId={place.reviewId}
-          onOpen={onOpen}
-          onShowDiff={onShowDiff}
+          view={place.view ?? "overview"}
+          diff={diff}
+          onView={(view) =>
+            dispatch({ kind: "replace", place: { kind: "review", reviewId: place.reviewId, view } })
+          }
         />
       );
     default: {
@@ -148,7 +121,7 @@ function PlaceView({
   }
 }
 
-/** The focused review's diff, in the workbench beside the main card. */
+/** The focused pull request's diff, in the workbench beside the main card. */
 function Workbench({
   reviewId,
   settings,
@@ -165,55 +138,9 @@ function Workbench({
           <Spinner /> Loading changes
         </p>
       ) : (
-        <WorkbenchDiff key={settings.reveal.count} review={review.data} settings={settings} />
+        <ReviewDiff review={review.data} settings={settings} reveal={undefined} />
       )}
     </aside>
-  );
-}
-
-function WorkbenchDiff({
-  review,
-  settings,
-}: {
-  readonly review: ReviewDetail;
-  readonly settings: DiffSettings;
-}): ReactElement {
-  const data = useReviewFiles(review);
-  const local = useReviewState(review.id, data.files);
-  const [commit, setCommit] = useState<string | undefined>(undefined);
-
-  if (data.empty) return <p {...props(styles.note)}>No commits yet.</p>;
-
-  if (data.error !== null)
-    return (
-      <p role="alert" {...props(styles.note)}>
-        {data.error.message}
-      </p>
-    );
-
-  if (data.loading)
-    return (
-      <p role="status" {...props(styles.note)}>
-        <Spinner /> Loading changes
-      </p>
-    );
-
-  return (
-    <DiffStack
-      files={data.files}
-      commits={review.commits.map((entry) => ({ oid: entry.short, subject: entry.subject }))}
-      commit={commit}
-      onCommit={setCommit}
-      layout={settings.layout}
-      treeVisible={settings.tree}
-      reviewed={local.reviewed}
-      onReviewed={local.setReviewed}
-      collapsed={(path) => local.collapsed(path, local.reviewed(path) === "reviewed")}
-      onToggle={(path) => local.toggle(path, local.reviewed(path) === "reviewed")}
-      justUpdated={(path) => data.updated.has(path) && local.reviewed(path) !== "reviewed"}
-      reveal={settings.reveal.path}
-      onReference={local.addReference}
-    />
   );
 }
 
@@ -271,53 +198,6 @@ function Sidebar({
           )}
         </Row>
       </div>
-      <div {...props(sidebarStyles.scroll, styles.railScroll)}>
-        <section aria-labelledby="sidebar-chats" {...props(sidebarStyles.section)}>
-          <div {...props(sidebarStyles.sectionHeader)}>
-            <span {...props(sidebarStyles.sectionToggle)}>
-              <span id="sidebar-chats" {...props(sidebarStyles.sectionLabel)}>
-                Chats
-              </span>
-            </span>
-          </div>
-          <div {...props(sidebarStyles.sessionList)}>
-            {reviews.map((review) => {
-              const selected = focused?.kind === "chat" && focused.reviewId === review.id;
-
-              return (
-                <Row
-                  key={review.id}
-                  selected={selected}
-                  xstyle={[
-                    sidebarStyles.rowSurface,
-                    sidebarStyles.sessionRow,
-                    selected && sidebarStyles.rowSelected,
-                  ]}
-                >
-                  {selected && <Row.Backdrop xstyle={sidebarStyles.sessionSelection} />}
-                  <Row.Primary
-                    aria-current={selected ? "page" : undefined}
-                    onClick={(event) => open(event, { kind: "chat", reviewId: review.id })}
-                    onAuxClick={(event) => {
-                      if (event.button === 1) open(event, { kind: "chat", reviewId: review.id });
-                    }}
-                  >
-                    <Row.Leading xstyle={sidebarStyles.rowIcon}>
-                      <StatusDot mark={markOf(review)} />
-                    </Row.Leading>
-                    <Row.Label>{review.title}</Row.Label>
-                    {review.approved && (
-                      <Row.Meta xstyle={sidebarStyles.rowMeta}>
-                        <Icon name="checkmark" size={12} label="Approved" />
-                      </Row.Meta>
-                    )}
-                  </Row.Primary>
-                </Row>
-              );
-            })}
-          </div>
-        </section>
-      </div>
     </aside>
   );
 }
@@ -335,8 +215,7 @@ function TabStrip({
     <div {...props(styles.strip)}>
       <ul aria-label="Tabs" {...props(styles.tabs)}>
         {state.tabs.map((tab) => {
-          const pane = focusedPane(tab);
-          const place = pane === undefined ? { kind: "new-chat" as const } : placeOf(pane);
+          const place = placeOf(tab);
           const title = titleOf(place, reviews);
           const active = tab.id === state.active;
 
@@ -351,12 +230,9 @@ function TabStrip({
                   {...props(styles.tabButton)}
                 >
                   <span aria-hidden="true" {...props(styles.tabGlyph)}>
-                    <PlaceGlyph place={place} reviews={reviews} />
+                    <PlaceGlyph place={place} />
                   </span>
                   <span {...props(styles.tabLabel)}>{title}</span>
-                  {tab.panes.length > 1 && (
-                    <Icon name="split-right" size={12} label="Split" xstyle={styles.splitMark} />
-                  )}
                 </button>
                 <button
                   type="button"
@@ -386,11 +262,7 @@ function Shell({ initialReview }: { readonly initialReview: string | undefined }
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [workbenchOpen, setWorkbenchOpen] = useState(false);
 
-  const [diff, setDiff] = useState<DiffSettings>({
-    layout: "unified",
-    tree: true,
-    reveal: { path: undefined, count: 0 },
-  });
+  const [diff, setDiff] = useState<DiffSettings>({ layout: "unified", tree: true });
 
   const focused = focusedPlace(state);
   const reviewId = focusedReview(state);
@@ -400,49 +272,6 @@ function Shell({ initialReview }: { readonly initialReview: string | undefined }
   const tab = activeTab(state);
   const detail = live.review.data;
   const workbench = workbenchOpen && reviewId !== undefined;
-
-  const showDiff = (path: string): void => {
-    setWorkbenchOpen(true);
-    setDiff({ ...diff, reveal: { path, count: diff.reveal.count + 1 } });
-  };
-
-  const paneView = (pane: Pane, split: boolean): ReactElement => {
-    const place = placeOf(pane);
-    const active = pane.id === tab?.focus;
-
-    return (
-      <div
-        key={pane.id}
-        onPointerDownCapture={() => {
-          if (!active) dispatch({ kind: "focus-pane", paneId: pane.id });
-        }}
-        {...props(styles.pane)}
-      >
-        {split && (
-          <div {...props(styles.paneHeader, active && styles.paneHeaderActive)}>
-            <span aria-hidden="true" {...props(styles.tabGlyph)}>
-              <PlaceGlyph place={place} reviews={reviews} />
-            </span>
-            <span {...props(styles.paneTitle)}>{titleOf(place, reviews)}</span>
-            <Button
-              iconOnly
-              icon="x"
-              aria-label={`Close ${titleOf(place, reviews)} pane`}
-              onClick={() => dispatch({ kind: "close-pane", paneId: pane.id })}
-            />
-          </div>
-        )}
-        <div {...props(styles.paneBody)}>
-          <PlaceView
-            place={place}
-            reviews={{ list: reviews, loading: reviewList.isPending }}
-            dispatch={dispatch}
-            onShowDiff={showDiff}
-          />
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div {...props(styles.window)}>
@@ -488,34 +317,6 @@ function Shell({ initialReview }: { readonly initialReview: string | undefined }
               render={<Button iconOnly icon="more-horizontal" aria-label="More options" />}
             />
             <MenuContent align="end">
-              {focused?.kind === "review" && (
-                <MenuItem
-                  icon="split-right"
-                  onClick={() =>
-                    dispatch({
-                      kind: "open",
-                      place: { kind: "chat", reviewId: focused.reviewId },
-                      target: "beside",
-                    })
-                  }
-                >
-                  Open Chat Beside
-                </MenuItem>
-              )}
-              {focused?.kind === "chat" && (
-                <MenuItem
-                  icon="split-right"
-                  onClick={() =>
-                    dispatch({
-                      kind: "open",
-                      place: { kind: "review", reviewId: focused.reviewId },
-                      target: "beside",
-                    })
-                  }
-                >
-                  Open Review Beside
-                </MenuItem>
-              )}
               <MenuSub>
                 <MenuSubTrigger
                   icon="split-right"
@@ -588,15 +389,14 @@ function Shell({ initialReview }: { readonly initialReview: string | undefined }
       <div {...props(styles.body)}>
         {sidebarOpen && <Sidebar reviews={reviews} focused={focused} dispatch={dispatch} />}
         <main {...props(styles.card, styles.main, !sidebarOpen && styles.mainAlone)}>
-          {tab !== undefined && (
-            <div {...props(styles.panes)}>
-              {tab.panes.map((pane, index) => (
-                <div key={pane.id} {...props(styles.paneSlot)}>
-                  {index > 0 && <span aria-hidden="true" {...props(styles.divider)} />}
-                  {paneView(pane, tab.panes.length > 1)}
-                </div>
-              ))}
-            </div>
+          {focused !== undefined && (
+            <PlaceView
+              key={tab?.id}
+              place={focused}
+              reviews={{ list: reviews, loading: reviewList.isPending }}
+              diff={diff}
+              dispatch={dispatch}
+            />
           )}
         </main>
         {workbench && reviewId !== undefined && <Workbench reviewId={reviewId} settings={diff} />}
@@ -717,7 +517,6 @@ const styles = create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  splitMark: { flexShrink: 0, color: role.contentSecondary },
   // The close button shows on hover, on focus, and on the active tab.
   close: {
     display: "inline-grid",
@@ -761,33 +560,6 @@ const styles = create({
   main: { flex: 1 },
   mainAlone: { marginInlineStart: 8 },
   workbench: { width: "min(44%, 720px)", flexShrink: 0 },
-  panes: { display: "flex", flex: 1, minHeight: 0 },
-  paneSlot: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
-  pane: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
-  divider: { width: 1, flexShrink: 0, backgroundColor: role.borderSecondaryTranslucent },
-  paneHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    height: button.heightLg,
-    paddingInline: "12px 4px",
-    flexShrink: 0,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: role.borderSecondaryTranslucent,
-    color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-  },
-  paneHeaderActive: { color: role.contentPrimary },
-  paneTitle: {
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  paneBody: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 },
   note: {
     display: "flex",
     alignItems: "center",

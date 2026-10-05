@@ -1,5 +1,4 @@
 import type { MDXComponents } from "mdx/types";
-import { sharedMdxComponents } from "~/app/(site)/_layout/mdx";
 import { CloudFeatures } from "./features";
 import { Preview } from "./preview";
 import { TokenTable } from "./token-table";
@@ -34,12 +33,10 @@ import { SpinnerDemo } from "./demos/spinner";
 import { ToastDemo } from "./demos/toast";
 
 /*
- * Cloud renders MDX with the shared doc elements plus its own demo
- * surfaces, none from fumadocs-ui.
+ * The component pages' demo surfaces, none from fumadocs-ui.
  */
-export function cloudMdxComponents(): MDXComponents {
+export function componentsMdxComponents(): MDXComponents {
   return {
-    ...sharedMdxComponents(),
     CloudFeatures,
     Preview,
     TokenTable,

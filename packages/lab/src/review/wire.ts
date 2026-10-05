@@ -33,6 +33,8 @@ export const CommitSchema = Type.Object({
   author: Type.String(),
   at: Type.Number(),
   parents: Type.Array(Type.String()),
+  /** The message past its subject line; empty for most commits. */
+  body: Type.String(),
 });
 
 export type Commit = Static<typeof CommitSchema>;
@@ -49,11 +51,23 @@ const fileChangeFields = {
   added: Type.Number(),
   removed: Type.Number(),
   binary: Type.Boolean(),
+  /** The file's blob before and after, `old..new`: a reviewed mark keeps it and goes stale when it changes. */
+  blobs: Type.String(),
 };
 
 export const FileChangeSchema = Type.Object(fileChangeFields);
 
 export type FileChange = Static<typeof FileChangeSchema>;
+
+/** What a core head's own model calls took: the calls, tokens read from the cache and written fresh, and dollars. */
+export const UsageSchema = Type.Object({
+  calls: Type.Integer(),
+  cached: Type.Number(),
+  fresh: Type.Number(),
+  cost: Type.Number(),
+});
+
+export type Usage = Static<typeof UsageSchema>;
 
 export const BriefStatusSchema = Type.Union([
   Type.Literal("running"),
@@ -75,6 +89,7 @@ export const BriefSchema = Type.Object({
   forkedAt: Type.Union([Type.Number(), Type.Null()]),
   /** When its run settled. */
   doneAt: Type.Optional(Type.Number()),
+  usage: UsageSchema,
 });
 
 export type Brief = Static<typeof BriefSchema>;
@@ -93,15 +108,24 @@ export const ApprovalSchema = Type.Object({ head: Oid, at: Type.Number() });
 
 export type Approval = Static<typeof ApprovalSchema>;
 
-/** One head's reviewer conversation, cut from that head's brief. */
-export const ChatSchema = Type.Object({
+/**
+ * A side chat: questions asked beside the pull request, answered by a fork of
+ * the head's brief. Each thread is its own fork, so it starts from what the
+ * guide already read and nothing it says is saved as a chat.
+ */
+export const ThreadSchema = Type.Object({
+  /** The commit whose brief it forks. */
   head: Oid,
+  /** The page's id for the thread. */
+  thread: Type.String(),
+  /** Core head name, for reading its transcript. */
   name: Type.String(),
   status: BriefStatusSchema,
   forkedAt: Type.Union([Type.Number(), Type.Null()]),
+  usage: UsageSchema,
 });
 
-export type Chat = Static<typeof ChatSchema>;
+export type Thread = Static<typeof ThreadSchema>;
 
 export const RevisionSchema = Type.Object({
   head: Oid,
@@ -165,7 +189,7 @@ export const ReviewDetailSchema = Type.Object({
   commits: Type.Array(CommitSchema),
   files: Type.Array(FileChangeSchema),
   briefs: Type.Array(BriefSchema),
-  chats: Type.Array(ChatSchema),
+  threads: Type.Array(ThreadSchema),
 });
 
 export type ReviewDetail = Static<typeof ReviewDetailSchema>;
@@ -251,6 +275,8 @@ export const CodeReferenceSchema = Type.Object({
 
 export const AskSchema = Type.Object({
   head: Oid,
+  /** The side chat thread: its first question forks the brief, later ones follow in that fork. */
+  thread: Type.String({ pattern: "^[a-z0-9]{1,16}$" }),
   /** Idempotency key: a retried send lands once. */
   key: Type.String({ minLength: 1 }),
   text: Type.String(),
@@ -270,6 +296,7 @@ export type Change = Static<typeof ChangeSchema>;
 
 export const ApproveSchema = Type.Object({ head: Oid });
 
-export const RetrySchema = Type.Object({ head: Oid });
+/** Write the guide for `head`, or write it again after it failed. */
+export const WriteGuideSchema = Type.Object({ head: Oid });
 
 export const ErrorSchema = Type.Object({ error: Type.String() });

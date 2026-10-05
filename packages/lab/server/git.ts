@@ -25,6 +25,8 @@ export interface CommitInfo {
   /** Epoch milliseconds. */
   readonly at: number;
   readonly parents: string[];
+  /** The message past its subject line; empty for most commits. */
+  readonly body: string;
 }
 
 export type ChangeStatus = "added" | "modified" | "deleted" | "renamed";
@@ -36,6 +38,8 @@ export interface FileChange {
   readonly added: number;
   readonly removed: number;
   readonly binary: boolean;
+  /** The file's blob before and after, `old..new`: names this exact change, and changes with it. */
+  readonly blobs: string;
 }
 
 export interface BranchInfo {
@@ -126,7 +130,7 @@ export async function openRepo() {
     const out = await git([
       "log",
       `--max-count=${limit}`,
-      `--format=%H${FIELD}%h${FIELD}%s${FIELD}%an${FIELD}%at${FIELD}%P${RECORD}`,
+      `--format=%H${FIELD}%h${FIELD}%s${FIELD}%an${FIELD}%at${FIELD}%P${FIELD}%b${RECORD}`,
       `${base}..${head}`,
     ]);
 
@@ -135,7 +139,7 @@ export async function openRepo() {
       .map((record) => record.trim())
       .filter((record) => record !== "")
       .flatMap((record) => {
-        const [oid, short, subject, author, at, parents] = record.split(FIELD);
+        const [oid, short, subject, author, at, parents, body] = record.split(FIELD);
 
         if (oid === undefined || short === undefined || subject === undefined) return [];
 
@@ -147,6 +151,7 @@ export async function openRepo() {
             author: author ?? "",
             at: Number(at ?? 0) * 1000,
             parents: (parents ?? "").split(" ").filter((parent) => parent !== ""),
+            body: (body ?? "").trim(),
           },
         ];
       });
@@ -154,9 +159,9 @@ export async function openRepo() {
 
   /** Files changed between two commits, with rename detection and line counts. */
   const changes = async (base: string, head: string): Promise<readonly FileChange[]> => {
-    const [numstat, status] = await Promise.all([
+    const [numstat, raw] = await Promise.all([
       git(["diff", "--numstat", "-z", "-M", base, head]),
-      git(["diff", "--name-status", "-z", "-M", base, head]),
+      git(["diff", "--raw", "--no-abbrev", "-z", "-M", base, head]),
     ]);
 
     const counts = new Map<string, { readonly added: number; readonly removed: number }>();
@@ -179,13 +184,14 @@ export async function openRepo() {
       counts.set(target, { added: Number(added) || 0, removed: Number(removed) || 0 });
     }
 
-    const fields = status.split("\0");
+    const fields = raw.split("\0");
     const found: FileChange[] = [];
 
     for (let index = 0; index < fields.length; index++) {
-      const code = fields[index];
+      // `:oldmode newmode oldblob newblob status`, then the path, or both paths for a rename.
+      const [, , before, after, code] = (fields[index] ?? "").slice(1).split(" ");
 
-      if (code === undefined || code === "") continue;
+      if (before === undefined || after === undefined || code === undefined) continue;
 
       const renamed = code.startsWith("R") || code.startsWith("C");
       const previousPath = renamed ? fields[++index] : undefined;
@@ -209,6 +215,7 @@ export async function openRepo() {
         added: count.added,
         removed: count.removed,
         binary: binary.has(path),
+        blobs: `${before}..${after}`,
       };
 
       found.push(previousPath === undefined ? change : { ...change, previousPath });

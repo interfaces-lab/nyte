@@ -109,7 +109,7 @@ export function SiteSearch() {
             autoFocus
             variant="bare"
             className="min-h-12 border-b border-b-border-subtle px-4 text-[15px]"
-            placeholder="Search Docs, Cloud and Kernel"
+            placeholder="Search docs"
             aria-label="Search"
             aria-controls={listId}
             value={query}
@@ -138,7 +138,7 @@ export function SiteSearch() {
             </ul>
           ) : (
             <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-              {query.trim() === "" ? "Type to search" : "No results"}
+              {query.trim() === "" ? null : "No results. Try a function or ref name."}
             </div>
           )}
         </Dialog.Popup>

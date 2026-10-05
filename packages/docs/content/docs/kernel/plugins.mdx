@@ -1,5 +1,6 @@
 ---
 title: "Plugins"
+description: "Tools, hooks and providers beside the turn, and where they come from"
 ---
 
 import { EXCERPTS } from "~/components/mdx/kernel/excerpts";
@@ -13,8 +14,8 @@ Plugins load per session. Each registers tools, hooks and commands into its own 
   rows={[
     [
       <C key="0">session()</C>,
-      "5 s",
-      "The load fails and its scope is disposed. A reload keeps the old plugin.",
+      "5 s",
+      "That plugin alone is listed as failed with its error and its scope is disposed; the rest of the set loads. A reload retries it once its version changes.",
     ],
     [
       <C key="0">before_tool</C>,
@@ -45,8 +46,8 @@ Plugins load per session. Each registers tools, hooks and commands into its own 
   ]}
 />
 
-Hooks run in plugin order. `before_tool` policies chain: `modify` hands new arguments to the next policy, `continue` objects to nothing, and the first `reject` or `error` ends the chain. A reload loads the new scope before it disposes the old one, so policy hooks never lapse. `setPlugins` answers `queued` while the session has an offered response, a run in `tools` or `waiting`, or a running command or listener, and the set publishes once they finish. File plugin ids are lowercase letters, digits and hyphens, and `subagents` and `jobs` are reserved.
+Hooks run in plugin order. `before_tool` policies chain: `modify` hands new arguments to the next policy, `continue` objects to nothing, and the first `reject` or `error` ends the chain. A reload loads the new scope before it disposes the old one, so policy hooks never lapse. A set whose contributions cannot materialize together is rejected whole, and the old set stays. `setPlugins` answers `queued` while the session has an offered response, a run in `tools` or `waiting`, or a running command or listener, and the set publishes once they finish. File plugin ids are lowercase letters, digits and hyphens, and `subagents` and `jobs` are reserved.
 
 ## Where plugins come from
 
-A host passes `NyteOptions.plugins`, among them the providers that open workspaces. Its `trust` answer decides each workspace once, when it opens, as `trusted`, `inactive` or `requires`, and only a trusted workspace reaches its provider. Once the provider has opened the environment, the answer's `plugins` loader adds the project plugins, and it runs again before each response. Project plugins can wrap an environment but cannot provide one. Without a `trust` function, only `defaultWorkspace` is trusted.
+A host passes `NyteOptions.plugins`, among them the providers that open workspaces. Its `trust` answer decides each workspace once, when it opens, as `trusted`, `inactive` or `requires`, and only a trusted workspace reaches its provider. Once the provider has opened the environment, the answer's `plugins` loader adds the project plugins, and it runs again before each response. A file plugin that does not load keeps its place in the set as `failed` with its error and path, beside the built-ins and every plugin that did load. Project plugins can wrap an environment but cannot provide one. Without a `trust` function, only `defaultWorkspace` is trusted. `plugins.catalog` lists what a new session would get; while the default workspace is not active it rejects with `WorkspaceNotActive`, which names that state, rather than answering an empty list.

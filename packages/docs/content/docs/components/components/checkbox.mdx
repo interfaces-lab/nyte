@@ -8,7 +8,7 @@ import { Checkbox, CheckboxField } from "@nyte-ai/ui/checkbox";
 ```
 
 `CheckboxField` is a checkbox in a labelled row, with an optional description. For a setting that
-applies on change, use [Switch](/cloud/components/switch).
+applies on change, use [Switch](/docs/components/components/switch).
 
 ## Usage
 
@@ -77,24 +77,24 @@ const [archived, setArchived] = useState(false);
 Takes every Base UI `Checkbox.Root` prop except `children`. `className` and `style` take plain
 values, not functions of state. The indicator is built in.
 
-| Prop                           | Type                                      | Default | Description |
-| ------------------------------ | ----------------------------------------- | ------- | ----------- |
-| `size`                         | `"md" \| "lg"`                            | `"md"`  |             |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |         |             |
+| Prop                           | Type                                                | Default | Description |
+| ------------------------------ | --------------------------------------------------- | ------- | ----------- |
+| `size`                         | `"md" \| "lg"`                                      | `"md"`  |             |
+| `className`, `style`, `xstyle` | see [Theming](/docs/components/foundations/theming) |         |             |
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
-<include>../../base-ui-reference/checkbox/Root.md</include>
+<include>../../../base-ui-reference/checkbox/Root.md</include>
 
 ### CheckboxField
 
 Takes every `Checkbox` prop except `aria-label`, `aria-labelledby`, and `nativeButton`.
 
-| Prop                           | Type                                      | Default | Description                     |
-| ------------------------------ | ----------------------------------------- | ------- | ------------------------------- |
-| `label`                        | `string`                                  |         | Required. Names the checkbox.   |
-| `description`                  | `string`                                  |         | Secondary line under the label. |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |         | Apply to the row, not the box.  |
+| Prop                           | Type                                                | Default | Description                     |
+| ------------------------------ | --------------------------------------------------- | ------- | ------------------------------- |
+| `label`                        | `string`                                            |         | Required. Names the checkbox.   |
+| `description`                  | `string`                                            |         | Secondary line under the label. |
+| `className`, `style`, `xstyle` | see [Theming](/docs/components/foundations/theming) |         | Apply to the row, not the box.  |
 
 ## Accessibility
 
@@ -103,4 +103,4 @@ Takes every `Checkbox` prop except `aria-label`, `aria-labelledby`, and `nativeB
 - A hidden `<input type="checkbox">` beside it takes part in form submission.
 - `CheckboxField` renders a `<label>`. Its `label` text names the checkbox through
   `aria-labelledby`, and `description` is added to `aria-describedby`.
-- Keyboard focus shows the [focus ring](/cloud/foundations/focus).
+- Keyboard focus shows the [focus ring](/docs/components/foundations/focus).

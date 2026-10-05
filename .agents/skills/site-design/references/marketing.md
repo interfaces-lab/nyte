@@ -43,7 +43,7 @@ shortcut is ignored while the visitor is typing.
 A word in a sentence that, on hover or focus, throws two facts about itself.
 
 - The word has a dotted underline and links to the page that backs the claim.
-- Two uppercase mono pills, 11px: one above tilted -7°, one below tilted +5°.
+- Two mono pills, 11px, sentence case: one above tilted -7°, one below tilted +5°.
 - They scale from 0.8 and rotate in on `cubic-bezier(0.34, 1.56, 0.64, 1)` over 420ms; the second
   starts 40ms later. While hovered they drift 0.3 times the pointer's offset from centre.
 - Reduced motion: they fade in at their final angle and do not drift.

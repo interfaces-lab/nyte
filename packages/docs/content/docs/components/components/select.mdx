@@ -7,8 +7,8 @@ description: "A compact trigger that picks one value from a list"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 ```
 
-For a searchable list, use [Autocomplete](/cloud/components/autocomplete). For a list of
-actions, use [Menu](/cloud/components/menu).
+For a searchable list, use [Autocomplete](/docs/components/components/autocomplete). For a list of
+actions, use [Menu](/docs/components/components/menu).
 
 ## Usage
 
@@ -82,14 +82,14 @@ function ThemeSelect() {
 ## Props
 
 Styled parts take `xstyle`, `className`, and `style`; see
-[Theming](/cloud/foundations/theming). Each sets `data-slot` to its kebab-case name, such as
+[Theming](/docs/components/foundations/theming). Each sets `data-slot` to its kebab-case name, such as
 `select-item`. `Select` passes through Base UI.
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Select
 
-<include>../../base-ui-reference/select/Root.md</include>
+<include>../../../base-ui-reference/select/Root.md</include>
 
 ### SelectTrigger
 
@@ -97,11 +97,11 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 | ------- | ---------------------- | ------------ | --------------------------------------------------- |
 | `width` | `"standard" \| "wide"` | `"standard"` | `wide` removes the 112px minimum and 180px maximum. |
 
-<include>../../base-ui-reference/select/Trigger.md</include>
+<include>../../../base-ui-reference/select/Trigger.md</include>
 
 ### SelectValue
 
-<include>../../base-ui-reference/select/Value.md</include>
+<include>../../../base-ui-reference/select/Value.md</include>
 
 ### SelectContent
 
@@ -120,19 +120,19 @@ Everything else goes to the popup.
 
 #### Positioner
 
-<include>../../base-ui-reference/select/Positioner.md</include>
+<include>../../../base-ui-reference/select/Positioner.md</include>
 
 #### Popup
 
-<include>../../base-ui-reference/select/Popup.md</include>
+<include>../../../base-ui-reference/select/Popup.md</include>
 
 #### List
 
-<include>../../base-ui-reference/select/List.md</include>
+<include>../../../base-ui-reference/select/List.md</include>
 
 ### SelectItem
 
-<include>../../base-ui-reference/select/Item.md</include>
+<include>../../../base-ui-reference/select/Item.md</include>
 
 ## Accessibility
 
@@ -140,4 +140,4 @@ Everything else goes to the popup.
   with `aria-selected`.
 - Arrow keys move through the options, Enter picks, and Escape closes. Typing matches option
   labels.
-- Keyboard focus on the trigger shows the [focus ring](/cloud/foundations/focus).
+- Keyboard focus on the trigger shows the [focus ring](/docs/components/foundations/focus).

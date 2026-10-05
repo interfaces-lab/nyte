@@ -5,7 +5,7 @@ description: Host API for stores, models, plugins, operations, and events
 
 Create one `Nyte` from a store, stream function, model catalog, and plugins.
 
-For runnable apps and higher-level host composition, start with [Build an agent app](/docs/composition).
+For runnable apps and higher-level host composition, start with [Build an agent app](/docs/build/composition).
 
 `messages.send` writes to the inbox but does not start a run. The process that called `attach()` runs
 the message. Without one, `runs.wait` never returns.
@@ -300,7 +300,8 @@ A compaction checkpoint arrives as a `commit`; `compaction` reports progress onl
    `plugins/<id>/index.ts` for session behavior and `plugins/<id>/tui.ts` for the terminal.
    Global roots load before trusted project roots, and a later plugin replaces an earlier one with the same ID.
    Watch plugin, context, skill and manifest inputs with `watchPluginDirectories` from
-   `@nyte-ai/host/plugins`. A failed reload keeps the active set. `setPlugins` returns `applied`,
+   `@nyte-ai/host/plugins`. A unit that fails to load stays in the set as `failed` with its error;
+   a set whose contributions cannot materialize is rejected and the active set stays. `setPlugins` returns `applied`,
    `queued`, or `rejected`. A queued replacement waits for the current response and its tool calls,
    parked calls included, to finish.
 4. Pass `localEnvironmentPlugin({ id })`, `streamFn`, `store`, and
@@ -332,7 +333,7 @@ Agents are plugin contributions.
   <DocCard
     icon="IconAgent"
     title="Desktop"
-    href="/docs/desktop"
+    href="/docs/build/desktop"
     description="Electron host with the same SDK over window.nyte"
   />
 </Cards>

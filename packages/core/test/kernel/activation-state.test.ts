@@ -6,6 +6,7 @@ import { Value } from "typebox/value";
 import type { AssistantMessage } from "@nyte-ai/schema";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import {
+  WorkspaceNotActive,
   sessionId,
   type Nyte,
   type NyteOptions,
@@ -257,7 +258,15 @@ test("reactivate refreshes every blocked session and the prospective catalog", a
     plugins: [plugin],
   });
   try {
-    assert.deepEqual((await nyte.plugins.catalog()).commands, []);
+    await assert.rejects(nyte.plugins.catalog(), (cause: unknown) => {
+      assert.ok(cause instanceof WorkspaceNotActive);
+      assert.deepEqual(cause.activation, {
+        kind: "requires",
+        requirement: { kind: "workspace_trust", cwd: "/workspace" },
+      });
+      assert.equal(cause.message, "Workspace trust is required for /workspace");
+      return true;
+    });
     const required = await nyte.sessions.create({ sessionId: sessionId("required") });
     const inactive = await nyte.sessions.create({
       sessionId: sessionId("inactive"),
@@ -285,15 +294,14 @@ test("reactivate refreshes every blocked session and the prospective catalog", a
   }
 });
 
-test("inactive plugin reads are empty and mutations are not_found", async () => {
+test("inactive plugin reads are empty, the catalog names the inactive workspace, and mutations are not_found", async () => {
   const nyte = await openHost({ trust: () => ({ kind: "inactive" }) });
   try {
     const session = await nyte.sessions.create();
-    assert.deepEqual(await nyte.plugins.catalog(), {
-      plugins: [],
-      commands: [],
-      skills: [],
-      settings: [],
+    await assert.rejects(nyte.plugins.catalog(), (cause: unknown) => {
+      assert.ok(cause instanceof WorkspaceNotActive);
+      assert.deepEqual(cause.activation, { kind: "inactive" });
+      return true;
     });
     assert.deepEqual(await nyte.plugins.list({ sessionId: session.sessionId }), []);
     assert.deepEqual(await nyte.plugins.commands.list({ sessionId: session.sessionId }), []);
@@ -441,8 +449,10 @@ for (const operation of ["runs.compact", "heads.move"] satisfies SummaryDiagnost
 test("a new plugin set recovers a root whose own plugins failed to start", async () => {
   const broken = definePlugin({
     id: "broken-plugin",
-    session() {
-      throw new Error("setup failed");
+    session(api) {
+      api.commands.add(() => {
+        throw new Error("setup failed");
+      });
     },
   });
   let started = 0;

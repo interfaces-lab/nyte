@@ -14,7 +14,7 @@ import { Button, ButtonGroup, ButtonLink, SplitButton } from "@nyte-ai/ui/button
 - An icon-only control needs `iconOnly` and `aria-label`. A control with visible text omits
   `aria-label`.
 - The icon-only label doubles as the native `title`. Inside a
-  [Tooltip](/cloud/components/tooltip), pass `title={undefined}` to keep one tooltip on screen.
+  [Tooltip](/docs/components/components/tooltip), pass `title={undefined}` to keep one tooltip on screen.
 - Reserve `disabled` for an impossible action. Give the reason with `disabledReason` or nearby text.
 - `Button` defaults to `type="button"`. Pass `type="submit"` to submit a form.
 - In a popup trigger's `render`, put the text inside the `Button`, as in
@@ -115,14 +115,14 @@ of state. `ButtonLink` takes native `<a>` attributes.
 | `children`           | `ReactNode`                                                    |                                               | Required for visible-text controls.                    |
 | `round`              | `boolean`                                                      | `false`                                       | Fully rounded corners.                                 |
 | `xstyle`             | `ButtonLayout`                                                 |                                               | Position, inset, margin, flex, grid, order, and width. |
-| `className`, `style` | See [Theming](/cloud/foundations/theming)                      |                                               | Applied to the control.                                |
+| `className`, `style` | See [Theming](/docs/components/foundations/theming)            |                                               | Applied to the control.                                |
 | `loading`            | `boolean`                                                      | `false`                                       | Button only. Disables activation but stays focusable.  |
 | `disabledReason`     | `string`                                                       |                                               | Button only. Shown as the `title` while `disabled`.    |
 | `href`               | `string`                                                       | Required for ButtonLink                       |                                                        |
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
-<include>../../base-ui-reference/button/Button.md</include>
+<include>../../../base-ui-reference/button/Button.md</include>
 
 ### ButtonGroup and SplitButton
 

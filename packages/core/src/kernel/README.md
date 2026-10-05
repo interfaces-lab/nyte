@@ -460,6 +460,12 @@ loads nothing and reaches clients as `inactive` or `requires`. A kind with no
 provider is `requires/workspace_unavailable` with reason `unsupported`; an
 environment that fails to open, or opens with a different `id` or `cwd`, is
 `unreachable`. Children run under their root's open, and nothing asks again.
+A plugin whose `session()` throws or outlives its budget is listed as `failed`
+with its error, and the rest of the set activates; only a set whose
+contributions cannot materialize together fails the activation whole. The
+prospective catalog rejects with `WorkspaceNotActive` while the default
+workspace is `inactive`, `requires`, or `failed`, so a client shows that state
+instead of an empty list.
 
 `relocate({ sessionId, workspace })` moves the whole tree of that session's
 root. The destination opens as any workspace opens, and a refusal returns that

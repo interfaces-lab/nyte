@@ -8,7 +8,7 @@ import { Command } from "@nyte-ai/ui/command";
 ```
 
 A dialog near the top of the window holding an inline
-[Autocomplete](/cloud/components/autocomplete). The dialog owns open state, the scrim, and focus;
+[Autocomplete](/docs/components/components/autocomplete). The dialog owns open state, the scrim, and focus;
 the autocomplete owns the input, the highlight, and arrow-key and Enter handling. Focus lands in
 the input when the palette opens, and Enter runs the highlighted row's `onClick`.
 
@@ -100,17 +100,17 @@ const matches = commands.filter((command) =>
 | `Command.Close`     | `<button>`                                                | None                                |
 
 Except `Command.Root`, each part takes `xstyle`, `className`, and `style`. `className` and `style`
-take plain values, not functions of state. See [Theming](/cloud/foundations/theming).
+take plain values, not functions of state. See [Theming](/docs/components/foundations/theming).
 
 The part tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Root
 
-<include>../../base-ui-reference/dialog/Root.md</include>
+<include>../../../base-ui-reference/dialog/Root.md</include>
 
 ### Trigger
 
-<include>../../base-ui-reference/dialog/Trigger.md</include>
+<include>../../../base-ui-reference/dialog/Trigger.md</include>
 
 ### Popup
 
@@ -131,7 +131,7 @@ dialog popup props, including `ref`, and these.
 | `onItemHighlighted` | `(value, eventDetails) => void` |                     | Fires as the highlight moves.                           |
 | `itemToStringValue` | `(value) => string`             |                     | Names a non-string `value` for assistive tech.          |
 
-<include>../../base-ui-reference/dialog/Popup.md</include>
+<include>../../../base-ui-reference/dialog/Popup.md</include>
 
 ### Input
 
@@ -139,11 +139,11 @@ dialog popup props, including `ref`, and these.
 | ---------- | ----------- | ------- | ----------------------------------------------- |
 | `trailing` | `ReactNode` |         | Right of the field: a shortcut, a clear button. |
 
-<include>../../base-ui-reference/autocomplete/Input.md</include>
+<include>../../../base-ui-reference/autocomplete/Input.md</include>
 
 ### List
 
-<include>../../base-ui-reference/autocomplete/List.md</include>
+<include>../../../base-ui-reference/autocomplete/List.md</include>
 
 ### Group
 
@@ -151,11 +151,11 @@ dialog popup props, including `ref`, and these.
 | --------- | ----------- | ------- | ---------------------------------- |
 | `heading` | `ReactNode` |         | Labels the group; the rows follow. |
 
-<include>../../base-ui-reference/autocomplete/Group.md</include>
+<include>../../../base-ui-reference/autocomplete/Group.md</include>
 
 ### Separator
 
-<include>../../base-ui-reference/autocomplete/Separator.md</include>
+<include>../../../base-ui-reference/autocomplete/Separator.md</include>
 
 ### Item
 
@@ -167,12 +167,12 @@ dialog popup props, including `ref`, and these.
 | `meta`     | `ReactNode`                  |         | Display only. It binds no key.                     |
 | `children` | `ReactNode`                  |         | The label.                                         |
 
-<include>../../base-ui-reference/autocomplete/Item.md</include>
+<include>../../../base-ui-reference/autocomplete/Item.md</include>
 
 ### Empty
 
-<include>../../base-ui-reference/autocomplete/Empty.md</include>
+<include>../../../base-ui-reference/autocomplete/Empty.md</include>
 
 ### Close
 
-<include>../../base-ui-reference/dialog/Close.md</include>
+<include>../../../base-ui-reference/dialog/Close.md</include>

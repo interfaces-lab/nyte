@@ -18,6 +18,9 @@ export function registerRenderer(input: {
         supportFetchAPI: true,
         corsEnabled: true,
         stream: true,
+        // The renderer bundle is served by this scheme; without this a launch
+        // compiles it again, which file: URLs never did.
+        codeCache: true,
       },
     },
   ]);
@@ -46,7 +49,7 @@ export function registerRenderer(input: {
       return;
     }
 
-    const root = join(app.getAppPath(), "out", "renderer");
+    const root = join(import.meta.dirname, "../renderer");
 
     protocol.handle(input.scheme, async (request) => {
       if (request.method !== "GET") return new Response(null, { status: 405 });

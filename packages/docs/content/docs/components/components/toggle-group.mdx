@@ -7,7 +7,7 @@ description: "Shared pressed state across a series of toggle buttons"
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 ```
 
-A track of [Toggle](/cloud/components/toggle) buttons for picking options in place.
+A track of [Toggle](/docs/components/components/toggle) buttons for picking options in place.
 
 ## Usage
 
@@ -82,13 +82,13 @@ const [range, setRange] = useState(["week"]);
 ## Props
 
 `xstyle` places and sizes the track. `className` and `style` take plain values, not functions of
-state. See [Theming](/cloud/foundations/theming).
+state. See [Theming](/docs/components/foundations/theming).
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
 ### ToggleGroup
 
-<include>../../base-ui-reference/toggle-group/ToggleGroup.md</include>
+<include>../../../base-ui-reference/toggle-group/ToggleGroup.md</include>
 
 `Orientation` is `"horizontal" | "vertical"`.
 
@@ -96,4 +96,4 @@ The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
 - Renders `role="group"`. Label it with `aria-label` or `aria-labelledby`.
 - Arrow keys move focus between the toggles and wrap at the end unless `loopFocus={false}`.
-- Each toggle keeps its own `aria-pressed`. See [Toggle](/cloud/components/toggle).
+- Each toggle keeps its own `aria-pressed`. See [Toggle](/docs/components/components/toggle).

@@ -34,6 +34,7 @@ import {
   MAIN,
   NyteClosed,
   UnknownSession,
+  WorkspaceNotActive,
   sessionId,
   type CommandInfo,
   type Disposer,
@@ -673,7 +674,9 @@ export function createSessionPool(input: {
       if (closed) throw new NyteClosed();
 
       if (resolved.kind !== "active")
-        return { plugins: [], commands: [], skills: [], settings: [] };
+        throw new WorkspaceNotActive(
+          resolved.kind === "failed" ? { kind: "failed", error: resolved.error } : resolved,
+        );
 
       const outcome = await activate({
         target: { kind: "new-session" },

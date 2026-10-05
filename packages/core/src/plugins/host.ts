@@ -106,9 +106,16 @@ interface RuntimePlugin extends PluginSourceInfo {
   readonly revision: Plugin | string;
 }
 
+interface FailedPlugin {
+  readonly revision: Plugin | string;
+  readonly error: string;
+}
+
 export class PluginHost {
   private readonly target: PluginHostTarget;
   private readonly active = new Map<string, ActivePlugin>();
+  /** Plugins whose `session()` failed, kept by revision so a reload retries only a changed one. */
+  private failed = new Map<string, FailedPlugin>();
   private inventory: PluginInfo[] = [];
   private tail: Promise<unknown> = Promise.resolve();
   private closed = false;
@@ -176,14 +183,13 @@ export class PluginHost {
       return { kind: "rejected", error: `duplicate plugin id: ${duplicate}` };
     this.pending?.();
     this.pending = undefined;
+    const settled = (plugin: RuntimePlugin): boolean =>
+      this.active.get(plugin.id)?.plugin.revision === plugin.revision ||
+      this.failed.get(plugin.id)?.revision === plugin.revision;
     if (
-      this.active.size === next.length &&
+      this.active.size + this.failed.size === next.length &&
       next.length === this.inventory.length &&
-      next.every(
-        (plugin, index) =>
-          this.inventory[index]?.id === plugin.id &&
-          this.active.get(plugin.id)?.plugin.revision === plugin.revision,
-      )
+      next.every((plugin, index) => this.inventory[index]?.id === plugin.id && settled(plugin))
     ) {
       return {
         kind: "ready",
@@ -229,6 +235,7 @@ export class PluginHost {
       environmentWraps: stages.environmentWraps.registry,
     };
     const candidates = new Map<string, ActivePlugin>();
+    const failures = new Map<string, FailedPlugin>();
     let staging = true;
     const report = (cause: unknown): void => {
       void this.target.emit({
@@ -276,6 +283,11 @@ export class PluginHost {
       for (const [order, plugin] of next.entries()) {
         const previous = this.active.get(plugin.id);
         if (previous?.plugin.revision === plugin.revision) continue;
+        const known = this.failed.get(plugin.id);
+        if (known?.revision === plugin.revision) {
+          failures.set(plugin.id, known);
+          continue;
+        }
         const scope = new PluginScope(plugin.id, (cause) => {
           void this.target.emit({
             kind: "diagnostic",
@@ -284,15 +296,19 @@ export class PluginHost {
             message: cause.message,
           });
         });
-        candidates.set(plugin.id, { plugin, scope });
         const api = bindSessionApi(apiTarget, plugin.module, scope, order);
-        await withBudget({ what: `session()`, ms: this.budgetMs }, () =>
-          plugin.module.session(api),
-        ).catch((cause: unknown) => {
-          throw new Error(
-            `${plugin.id}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        try {
+          await withBudget({ what: `session()`, ms: this.budgetMs }, () =>
+            plugin.module.session(api),
           );
-        });
+          candidates.set(plugin.id, { plugin, scope });
+        } catch (cause) {
+          // One plugin's failure is its own: its scope goes, the rest of the set loads.
+          this.retire(scope);
+          const error = cause instanceof Error ? cause.message : String(cause);
+          failures.set(plugin.id, { revision: plugin.revision, error });
+          report(new Error(`${plugin.id}: ${error}`));
+        }
       }
       validate();
     } catch (cause) {
@@ -332,7 +348,13 @@ export class PluginHost {
         this.active.set(id, candidate);
         candidate.scope.publish();
       }
-      this.inventory = next.map(activeInfo);
+      this.failed = failures;
+      this.inventory = next.map((plugin) => {
+        const failure = failures.get(plugin.id);
+        return failure === undefined
+          ? activeInfo(plugin)
+          : { ...activeInfo(plugin), status: "failed", error: failure.error };
+      });
       applied?.();
       void this.target.emit({ kind: "plugins_changed", plugins: this.inventory });
     };

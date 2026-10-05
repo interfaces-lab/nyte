@@ -2,7 +2,7 @@
   "title": "Kernel",
   "pages": [
     "---Overview---",
-    "index",
+    "architecture",
     "life-of-a-message",
     "---Runtime---",
     "runner",

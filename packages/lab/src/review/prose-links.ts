@@ -30,7 +30,7 @@ const FILE = /\.(?:[cm]?[jt]sx?|css|json|md|mdx|ya?ml|toml|rs|go|py|sh|html)$/;
 const HUNK = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 
 /** Code by its shape alone: a call, a dotted name, or snake_case. */
-const shapedAsCode = (word: string): boolean =>
+const writtenAsCode = (word: string): boolean =>
   word.endsWith("()") || word.includes("_") || /[\w$]{2,}\.[\w$]{2,}/.test(word);
 
 /** camelCase reads as code too, but only counts when the diff holds it: prose has its iPhones. */
@@ -61,7 +61,13 @@ function patchLines(file: ReviewFile): readonly PatchLine[] {
       lines.push({ path: file.path, line: after, side: "additions", row: "change-addition", text });
       after += 1;
     } else if (raw.startsWith("-")) {
-      lines.push({ path: file.path, line: before, side: "deletions", row: "change-deletion", text });
+      lines.push({
+        path: file.path,
+        line: before,
+        side: "deletions",
+        row: "change-deletion",
+        text,
+      });
       before += 1;
     } else if (raw.startsWith(" ")) {
       lines.push({ path: file.path, line: after, side: "additions", row: "context", text });
@@ -92,7 +98,7 @@ export function linkProse(text: string, files: readonly ReviewFile[]): readonly 
   for (const match of text.matchAll(WORD)) {
     const word = match[0];
 
-    if (!shapedAsCode(word) && !camel(word)) continue;
+    if (!writtenAsCode(word) && !camel(word)) continue;
 
     const file = FILE.test(word)
       ? files.find((entry) => entry.path === word || entry.path.endsWith(`/${word}`))
@@ -100,7 +106,7 @@ export function linkProse(text: string, files: readonly ReviewFile[]): readonly 
 
     const target = file === undefined ? lineOf(word.replace(/\(\)$/, ""), lines) : undefined;
 
-    if (file === undefined && target === undefined && !shapedAsCode(word)) continue;
+    if (file === undefined && target === undefined && !writtenAsCode(word)) continue;
 
     if (match.index > from) segments.push({ kind: "text", text: text.slice(from, match.index) });
 

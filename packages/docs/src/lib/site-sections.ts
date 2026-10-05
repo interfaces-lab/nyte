@@ -1,8 +1,6 @@
-import { cloudRoute, docsRoute, kernelRoute } from "./shared";
+import { docsRoute } from "./shared";
 
-export type SiteSectionId = "docs" | "cloud" | "kernel";
-
-export type SiteFeatureIcon = "docs" | "cloud" | "kernel";
+export type SiteFeatureIcon = "start" | "build" | "kernel" | "components";
 
 export interface SiteFeature {
   href: string;
@@ -11,45 +9,23 @@ export interface SiteFeature {
 }
 
 export interface SiteSection {
-  id: SiteSectionId;
+  id: string;
   label: string;
   href: string;
   features: readonly SiteFeature[];
 }
 
-/*
- * Featured destinations, not page trees. Family's Developers panel is two
- * product cards; the catalog lives in each product's own sidebar.
- */
+/* One section. Its panel lists the four groups of the docs sidebar. */
 export const SITE_SECTIONS = [
   {
     id: "docs",
     label: "Docs",
-    href: `${docsRoute}/composition`,
+    href: docsRoute,
     features: [
-      {
-        href: `${docsRoute}/composition`,
-        title: "Build an agent app",
-        icon: "docs",
-      },
+      { href: `${docsRoute}/start/overview`, title: "Start", icon: "start" },
+      { href: `${docsRoute}/build/composition`, title: "Build", icon: "build" },
+      { href: `${docsRoute}/kernel/architecture`, title: "Kernel", icon: "kernel" },
+      { href: `${docsRoute}/components/introduction`, title: "Components", icon: "components" },
     ],
-  },
-  {
-    id: "cloud",
-    label: "Cloud",
-    href: `${cloudRoute}/introduction`,
-    features: [
-      {
-        href: `${cloudRoute}/introduction`,
-        title: "Cloud",
-        icon: "cloud",
-      },
-    ],
-  },
-  {
-    id: "kernel",
-    label: "Kernel",
-    href: kernelRoute,
-    features: [{ href: kernelRoute, title: "Nyte core", icon: "kernel" }],
   },
 ] as const satisfies readonly SiteSection[];

@@ -1,17 +1,13 @@
 ---
-title: "Nyte core"
-description: "Each session is a small git repository. Objects never change. Refs are the only mutable state, and every ref write is a compare-and-swap. On each head one runner holds a lease and advances the run one phase per step."
+title: Architecture
+description: "Each session is a small git repository; one runner per head advances it a step at a time"
 ---
 
 import { LAYERS } from "~/components/mdx/kernel/layers";
 
-## Architecture
-
 Core is a stack. Work moves down it: a client queues a message, a runner notices, a step lands it, a turn calls the model. Results move back up as events in the store's log, which every layer above can watch. A host is a process that calls `createNyte`. It supplies the store, the models and the plugins, and may `attach` runners.
 
 <LayerStack layers={LAYERS} />
-
-Three rules hold throughout.
 
 - A step keeps nothing in memory. The next step starts again from the refs, so any host can take over a head between two steps.
 - A runner moves refs only through `refs.update`, carrying the head lease and asserting that `refs/deleted` is absent. A stale lease or a moved ref loses the whole write.
@@ -19,20 +15,20 @@ Three rules hold throughout.
 
 ## Two drivers
 
-Something has to call `step`. Both drivers run the same step under the same lease.
+Both drivers run the same step under the same lease.
 
 <Table
   head={["Driver", "Used by", "Loop"]}
   rows={[
     [
-      <To key="0" href="/kernel/runner">
+      <To key="0" href="/docs/kernel/runner">
         runner
       </To>,
       "Desktop and TUI hosts",
       "Watches ref events, wakes the head, drives it until it rests.",
     ],
     [
-      <To key="0" href="/kernel/functions#fn-advanceStep">
+      <To key="0" href="/docs/kernel/functions#fn-advanceStep">
         nyte.advance
       </To>,
       "Serverless schedulers",

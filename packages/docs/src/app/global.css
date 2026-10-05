@@ -30,6 +30,8 @@
     /* 4 + 32 + 4: the same pad sits above the controls, below them, and before a dropdown. */
     --site-nav-height: 40px;
     --site-nav-pad: 4px;
+    /* The bar's offset from the top. Its pills sit concentric in a plate's corner. */
+    --site-nav-top: calc(var(--plate-inset) + var(--plate-nav-drop));
     --site-nav-control: calc(var(--site-nav-height) - 2 * var(--site-nav-pad));
 
     --hero-blue: #2222dd;
@@ -106,10 +108,8 @@
   }
 }
 
-/* The landing hero plate repaints the shared site nav until the preview reaches it. */
-@custom-variant hero (html:not([data-nav-stuck]) body:has(.landing-plate:not([style*="display: none"] *)) &);
-@custom-variant stuck (html[data-nav-stuck] body:has(.landing-plate:not([style*="display: none"] *)) &);
-@custom-variant plate (body:has(.landing-plate:not([style*="display: none"] *)) &);
+/* A page that opens with a plate repaints the nav white until the plate scrolls away. */
+@custom-variant hero (html:not([data-nav-stuck]) body:has(.landing-plate) &);
 @custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
@@ -186,8 +186,6 @@
     font-size: 11px;
     font-weight: 500;
     line-height: 1;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
     text-decoration: none;
     pointer-events: none;
     opacity: 0;
@@ -258,14 +256,5 @@
     --diffs-font-size: var(--nyte-font-size-code);
     --diffs-line-height: 20px;
     --diffs-tab-size: 4;
-  }
-}
-
-@layer utilities {
-  /* The plate scrolls the document; the nav stays pinned in its corner. A cached, hidden plate does not. */
-  html:has(.landing-plate:not([style*="display: none"] *)),
-  html:has(.landing-plate:not([style*="display: none"] *)) body {
-    height: auto;
-    overflow: visible;
   }
 }

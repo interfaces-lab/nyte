@@ -113,7 +113,7 @@ function install(): Installed {
       );
 
       const source = [
-        `const m = globalThis[Symbol.for(${JSON.stringify(MODULES.description)})].get(${JSON.stringify(name)});`,
+        `const m = globalThis[globalThis.Symbol.for(${JSON.stringify(MODULES.description)})].get(${JSON.stringify(name)});`,
         "export default m.default;",
         ...(names.length === 0 ? [] : [`export const { ${names.join(", ")} } = m;`]),
       ].join("\n");

@@ -13,6 +13,7 @@ import {
   createPluginSources,
   createSourceWatcher,
   discoverPluginUnits,
+  hostModules,
 } from "@nyte-ai/host/plugins";
 import type { PluginSources } from "@nyte-ai/host/plugins";
 import { bunPluginLoader } from "./plugin-loader.ts";
@@ -30,16 +31,7 @@ const PluginCleanup = Type.Function([], Type.Unknown());
 
 ensureRuntimePluginSupport();
 
-const runtimeModules = new Map<string, unknown>([["@nyte-ai/plugin", require("@nyte-ai/plugin")]]);
-
-const modules: Record<string, object> = {};
-for (const [specifier, exported] of runtimeModules) {
-  if (typeof exported !== "object" || exported === null)
-    throw new TypeError(`Invalid runtime module: ${specifier}`);
-  modules[specifier] = exported;
-  if (specifier === "@nyte-ai/plugin") modules["@nyte-ai/core/plugins"] = exported;
-}
-const prepareSource = bunPluginLoader(modules);
+const prepareSource = bunPluginLoader(hostModules);
 
 interface Registration {
   readonly target: string;

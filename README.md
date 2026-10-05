@@ -6,9 +6,9 @@
 
 Nyte is a durable runtime for agent conversations, with terminal and desktop clients.
 
-## Local and cloud
+## Hosts
 
-Nyte is local-first today: its clients embed the host, store sessions locally, and run agents in process. The kernel also supports long-lived and serverless hosts backed by remote storage. `@nyte-ai/server` exposes the SDK over JSON and server-sent events, but Nyte does not yet ship a hosted cloud service or production remote backend.
+The terminal and desktop clients embed the host, store sessions in SQLite, and run agents in process. The same kernel runs in a long-lived server (`@nyte-ai/server`, JSON and server-sent events over Web Request/Response, with PostgreSQL storage) and in serverless hosts: a Cloudflare Durable Object (`packages/cloudflare`) and Vercel (`packages/vercel`). A step reads all durable state, so any host can take over a head between two steps.
 
 ## Install
 

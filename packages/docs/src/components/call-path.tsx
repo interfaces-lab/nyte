@@ -22,7 +22,7 @@ const stages: Stage[] = [
   {
     name: "client",
     note: "tui (OpenTUI) · desktop (Electron)",
-    href: "/docs/sdk#the-client-loop",
+    href: "/docs/build/sdk#the-client-loop",
     built: true,
     hop: "solid",
   },
@@ -41,7 +41,7 @@ const stages: Stage[] = [
   {
     name: "StreamFn",
     note: "one injected function; the loop knows no provider",
-    href: "/docs/sdk",
+    href: "/docs/build/sdk",
     built: true,
     hop: "solid",
   },

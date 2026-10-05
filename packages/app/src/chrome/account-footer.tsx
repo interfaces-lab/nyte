@@ -25,7 +25,7 @@ import { useConnectAction, useConnectView } from "./connect-view.ts";
 import { useGitHubAccount } from "./github-account.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 
-const REPORT_ISSUE_URL = "https://github.com/interfaces-lab/nyte/issues/new";
+const FEEDBACK_URL = "https://github.com/interfaces-lab/nyte/issues/new/choose";
 
 const INSTALL_GITHUB_CLI_URL = "https://cli.github.com";
 
@@ -152,11 +152,11 @@ export function AccountFooterMenu({
         <NyteGroup connect={connect} onOpenProfile={onOpenProfile} />
         <MenuSeparator inset />
         <MenuItem
-          icon="bubble-question"
+          icon="bubble-heart"
           xstyle={styles.accountMenuItem}
-          onClick={() => openExternal(REPORT_ISSUE_URL)}
+          onClick={() => openExternal(FEEDBACK_URL)}
         >
-          Report Issue
+          Give Feedback
         </MenuItem>
       </MenuContent>
     </Menu>

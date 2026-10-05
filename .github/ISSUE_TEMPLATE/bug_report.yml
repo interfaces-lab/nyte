@@ -1,0 +1,115 @@
+name: Bug report
+description: Something in Nyte is broken, crashed, or stopped working.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One problem per issue. Search [existing issues](https://github.com/interfaces-lab/nyte/issues?q=is%3Aissue) first; if one matches, add your details there.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and found no duplicate.
+          required: true
+        - label: I removed API keys, tokens, and private file contents from everything below.
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Desktop app
+        - Terminal (nyte CLI)
+        - Web app (app.nyte.sh)
+        - iOS app
+        - Remote access (Nyte Connect)
+        - Models and providers
+        - Plugins
+        - SDK or self-hosted server
+        - Docs or website
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The shortest sequence that triggers the problem.
+      placeholder: |
+        1. Open a folder
+        2. Start a new chat with ...
+        3. Send ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - Blocks work completely
+        - Fails often or degrades badly
+        - Fails occasionally
+        - Cosmetic
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Nyte version
+      description: In the desktop app, open About Nyte (Nyte menu on macOS, Help menu elsewhere). In a terminal, run `nyte --version`.
+      placeholder: 0.0.15
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS and version, plus the provider and model if the problem involves a chat.
+      placeholder: macOS 15.3 (Apple silicon), Anthropic claude-opus-5
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error messages
+      description: Only the relevant lines.
+      render: shell
+
+  - type: upload
+    id: attachments
+    attributes:
+      label: Screenshots or recordings
+    validations:
+      required: false
+      accept: ".png,.jpg,.jpeg,.gif,.webp,.mp4,.mov,.webm,.log,.txt,.json,.zip"
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+      description: Anything that gets you unstuck for now.

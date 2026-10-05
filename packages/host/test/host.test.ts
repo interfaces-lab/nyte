@@ -369,15 +369,19 @@ test("deferred target returns requires without loading project code", async () =
   assert.equal(failures, 0);
 });
 
-test("plugin discovery failures report onFailure and fail the session without partial activation", async () => {
+test("a broken plugin is listed as failed while the built-ins and other plugins activate", async () => {
   const f = await fixture();
   const workspace = await createWorkspaceStore().trust(f.cwd);
-  await mkdir(join(f.cwd, ".nyte", "plugins", "broken"), { recursive: true });
+  const plugins = join(f.cwd, ".nyte", "plugins");
+  await mkdir(join(plugins, "broken"), { recursive: true });
+  await mkdir(join(plugins, "healthy"), { recursive: true });
+  const broken = join(plugins, "broken", "index.ts");
+  await writeFile(broken, 'throw new Error("broken plugin");');
   await writeFile(
-    join(f.cwd, ".nyte", "plugins", "broken", "index.ts"),
-    'throw new Error("broken plugin");',
+    join(plugins, "healthy", "index.ts"),
+    toolPluginSource("healthy", "healthy_tool"),
   );
-  const failures: string[] = [];
+  const failures: { id?: string; path: string; error: string }[] = [];
   const host = await createHost({
     store: f.store("static.db"),
     models: f.models,
@@ -385,14 +389,61 @@ test("plugin discovery failures report onFailure and fail the session without pa
     plugins: {
       kind: "workspace",
       target: { kind: "project", workspace },
-      onFailure: (failure) => failures.push(failure.error),
+      onFailure: (failure) => failures.push(failure),
     },
   });
   hosts.push(host);
-  const { activation } = await host.sessions.create();
-  assert.deepEqual(activation, { kind: "failed", error: "Plugins failed to load" });
+  const { activation, sessionId: id } = await host.sessions.create();
+  assert.deepEqual(activation, { kind: "active" });
+  const listed = await host.plugins.list({ sessionId: id });
+  const failed = listed.filter((plugin) => plugin.status === "failed");
+  assert.deepEqual(
+    failed.map((plugin) => [plugin.id, plugin.path, plugin.status === "failed" && plugin.error]),
+    [["broken", broken, "broken plugin"]],
+  );
+  assert.equal(listed.find((plugin) => plugin.id === "healthy")?.status, "active");
+  assert.equal(listed.find((plugin) => plugin.id === "skills")?.status, "active");
+  assert.ok(listed.filter((plugin) => plugin.source === "builtin").length > 5);
+  assert.deepEqual(failures, [{ id: "broken", path: broken, error: "broken plugin" }]);
+  host.attach();
+  await answer(host, id, "first");
+  assert.ok(f.tools.at(-1)?.includes("healthy_tool"));
+  assert.equal(failures.length, 1, "an unchanged failure is reported once");
+
+  await writeFile(broken, toolPluginSource("broken", "fixed_tool"));
+  await answer(host, id, "second");
+  assert.equal(
+    (await host.plugins.list({ sessionId: id })).find((plugin) => plugin.id === "broken")?.status,
+    "active",
+  );
+  assert.ok(f.tools.at(-1)?.includes("fixed_tool"));
+});
+
+test("a malformed manifest is reported against its path and the built-ins still activate", async () => {
+  const f = await fixture();
+  const workspace = await createWorkspaceStore().trust(f.cwd);
+  const manifest = join(f.cwd, ".nyte", "nyte.json");
+  await mkdir(join(f.cwd, ".nyte"), { recursive: true });
+  await writeFile(manifest, "{");
+  const failures: { id?: string; path: string; error: string }[] = [];
+  const host = await createHost({
+    store: f.store("static.db"),
+    models: f.models,
+    model,
+    plugins: {
+      kind: "workspace",
+      target: { kind: "project", workspace },
+      onFailure: (failure) => failures.push(failure),
+    },
+  });
+  hosts.push(host);
+  const { activation, sessionId: id } = await host.sessions.create();
+  assert.deepEqual(activation, { kind: "active" });
+  assert.ok((await host.plugins.list({ sessionId: id })).some((plugin) => plugin.id === "skills"));
   assert.equal(failures.length, 1);
-  assert.match(failures[0] ?? "", /broken plugin/);
+  assert.equal(failures[0]?.path, manifest);
+  assert.equal(failures[0]?.id, undefined);
+  assert.match(failures[0]?.error ?? "", /JSON/);
 });
 
 async function answer(host: Nyte, id: SessionId, content: string): Promise<string | undefined> {
@@ -596,7 +647,9 @@ test("context activation uses its fingerprinted snapshot and reloads in the same
   assert.match(f.prompts.at(-1) ?? "", /updated context snapshot/);
   await mkdir(join(f.cwd, "home"), { recursive: true });
   await writeFile(join(f.cwd, "home", "nyte.json"), "{");
-  await assert.rejects(resolveHostPlugins(target, resolving), /nyte.json/);
+  const withBrokenManifest = await resolveHostPlugins(target, resolving);
+  assert.equal(withBrokenManifest.failures[0]?.path, join(f.cwd, "home", "nyte.json"));
+  assert.equal(withBrokenManifest.plugins.length, next.plugins.length);
   await answer(host, id, "third");
   assert.match(f.prompts.at(-1) ?? "", /updated context snapshot/);
 });

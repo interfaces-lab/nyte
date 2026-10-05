@@ -117,6 +117,17 @@ export function startLocalShell(options: {
     options.onUpdate(snapshot);
   }
 
+  function kill(target: number): void {
+    try {
+      process.kill(target, "SIGKILL");
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) {
+        failure ??= error instanceof Error ? error.message : String(error);
+        child?.kill("SIGKILL");
+      }
+    }
+  }
+
   function killOwnedProcesses() {
     const pid = ownedPid;
     // Revoke ownership before signalling. In particular, cancellation after exit
@@ -148,17 +159,6 @@ export function startLocalShell(options: {
 
       return;
     }
-
-    const kill = (target: number): void => {
-      try {
-        process.kill(target, "SIGKILL");
-      } catch (error) {
-        if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) {
-          failure ??= error instanceof Error ? error.message : String(error);
-          child?.kill("SIGKILL");
-        }
-      }
-    };
 
     // After exit the tree has already been reparented, so only the group remains.
     // Before, descendants are listed first: a parent's death orphans its children.

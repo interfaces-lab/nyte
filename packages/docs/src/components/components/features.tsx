@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { cloudNavGroups } from "~/lib/cloud-nav";
+import { navGroups } from "~/lib/nav";
 import { docsIcons, type DocsIconName } from "~/lib/docs-icons";
 
 function layerPresentation(label: string): { icon: DocsIconName; description: string } | undefined {
@@ -22,19 +22,20 @@ function layerPresentation(label: string): { icon: DocsIconName; description: st
 export function CloudFeatures() {
   return (
     <div className="cloud-features">
-      {cloudNavGroups().map((group) => {
-        const first = group.items[0];
-        if (group.label === "" || !first) return null;
-        const presentation = layerPresentation(group.label);
-        if (!presentation) return null;
+      {["Foundations", "Components"].map((label) => {
+        const first = navGroups()
+          .find((group) => group.label === "Components")
+          ?.items.find((item) => item.sub === label);
+        const presentation = layerPresentation(label);
+        if (!first || !presentation) return null;
         const Icon = docsIcons[presentation.icon];
         return (
-          <Link key={group.label} href={first.href} className="cloud-feature">
+          <Link key={label} href={first.href} className="cloud-feature">
             <span className="cloud-feature-icon">
               <Icon size={28} />
             </span>
             <span>
-              <strong>{group.label}</strong>
+              <strong>{label}</strong>
               <span>{presentation.description}</span>
             </span>
           </Link>

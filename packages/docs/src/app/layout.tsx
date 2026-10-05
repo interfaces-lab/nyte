@@ -26,10 +26,10 @@ export default function Layout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${GeistSans.variable} ${GeistMono.variable} ${GeistPixelSquare.variable} ${props(siteTypography).className ?? ""} overflow-hidden`}
+      className={`${inter.variable} ${GeistSans.variable} ${GeistMono.variable} ${GeistPixelSquare.variable} ${props(siteTypography).className ?? ""}`}
       suppressHydrationWarning
     >
-      <body className="flex h-dvh min-h-svh min-w-0 flex-col overflow-hidden bg-background font-sans text-foreground antialiased">
+      <body className="flex min-h-svh min-w-0 flex-col bg-background font-sans text-foreground antialiased">
         {children}
       </body>
     </html>

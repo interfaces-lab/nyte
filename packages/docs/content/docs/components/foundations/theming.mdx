@@ -3,16 +3,16 @@ title: Theming and styling channels
 description: "Token overrides, className, and xstyle"
 ---
 
-| Layer                       | Owns                                             | Mechanism                                                          |
-| --------------------------- | ------------------------------------------------ | ------------------------------------------------------------------ |
-| Base UI and `@shadcn/react` | Interaction, focus, ARIA, data attributes        | Components and scroll/form controllers                             |
-| `@nyte-ai/ui`               | Reusable component styling                       | StyleX `stylex.create` reading [tokens](/cloud/foundations/tokens) |
-| The app                     | Layout, typography, product identity, composites | Token overrides, `className`, `xstyle`, own components             |
+| Layer                       | Owns                                             | Mechanism                                                                    |
+| --------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------- |
+| Base UI and `@shadcn/react` | Interaction, focus, ARIA, data attributes        | Components and scroll/form controllers                                       |
+| `@nyte-ai/ui`               | Reusable component styling                       | StyleX `stylex.create` reading [tokens](/docs/components/foundations/tokens) |
+| The app                     | Layout, typography, product identity, composites | Token overrides, `className`, `xstyle`, own components                       |
 
 ## Colour scopes
 
 Pass a scope such as `surfaceTheme.blue` to `props()`, and components inside read that hue's colour
-roles. See [Tokens](/cloud/foundations/tokens).
+roles. See [Tokens](/docs/components/foundations/tokens).
 
 ```tsx
 import { create, props } from "@stylexjs/stylex";

@@ -13,6 +13,19 @@ Each directory is one plugin unit. `index.ts` exports its session plugin; option
 `tui.ts` exports its terminal UI definition. The directory name matches both ids.
 A later plugin root replaces the whole unit.
 
+## Imports that need no install
+
+The host resolves these bare specifiers to its own module instances, so a plugin
+under `~/.nyte/plugins` imports them with no `node_modules` of its own, in the
+packaged desktop app and the compiled TUI alike (see `packages/host/src/plugins/host-modules.ts`):
+
+- `@nyte-ai/plugin`, `@nyte-ai/plugin/provider`, `@nyte-ai/core/plugins`
+- `@nyte-ai/ai`, `@nyte-ai/schema`
+- `typebox`, `typebox/value`, `typebox/compile`
+
+Anything else resolves from the plugin's own directory: ship a `node_modules`
+inside the unit, or use Node built-ins.
+
 | Plugin | What it demonstrates |
 | --- | --- |
 | `question.ts` | A model-visible tool that parks with a single or multiple `Selection`, accepts a separate custom response, labels its transcript call with the question through `present`, and applies a host-independent deadline from its plugin setting. TUI, desktop, and remote clients render the same waiting data. |

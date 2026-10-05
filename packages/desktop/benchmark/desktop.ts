@@ -149,7 +149,7 @@ export async function launchDesktop(options: DesktopLaunchOptions = {}): Promise
       try {
         const page = await preparation.firstWindow();
         await page.locator("[data-nyte-shell]").waitFor({ state: "visible", timeout: 30_000 });
-        await page.getByRole("button", { name: "Open settings" }).click();
+        await page.getByRole("button", { name: "Settings", exact: true }).click();
         const restoration = page.getByRole("combobox", { name: "Window restoration" });
         await restoration.click();
         await page.getByRole("option", { name: "Last chat" }).click();

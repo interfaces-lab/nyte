@@ -1,33 +1,26 @@
 /**
  * The window the review demo runs in, as `docs/tabs.md` describes it: tabs,
- * each holding one pane or a split of two, each pane with its own history.
- * A plain open lands in the focused pane; a modified one opens a background
- * tab; "beside" splits the tab. Back and forward walk the focused pane.
+ * each with its own history. A plain open lands in the active tab; a modified
+ * one opens a background tab. Back and forward walk the active tab. Switching
+ * a pull request's view replaces its entry instead of adding one.
  *
  * Pure: the shell keeps it in a reducer, so nothing here needs an effect.
  */
+import type { MouseEvent } from "react";
+
+export type ReviewView = "overview" | "guide" | "diff";
 
 export type Place =
   | { readonly kind: "new-chat" }
   /** The pull requests waiting on you: the sidebar's Review page. */
   | { readonly kind: "reviews" }
-  /** A pull request's conversation with Nyte and the reviewer. */
-  | { readonly kind: "chat"; readonly reviewId: string }
-  /** The pull request's page, on one of its views; switching views replaces the entry. */
+  /** A pull request's page, on one of its views. */
   | { readonly kind: "review"; readonly reviewId: string; readonly view?: ReviewView };
-
-export type ReviewView = "overview" | "guide" | "diff";
-
-export interface Pane {
-  readonly id: string;
-  readonly entries: readonly Place[];
-  readonly index: number;
-}
 
 export interface Tab {
   readonly id: string;
-  readonly panes: readonly Pane[];
-  readonly focus: string;
+  readonly entries: readonly Place[];
+  readonly index: number;
 }
 
 export interface WindowState {
@@ -36,69 +29,57 @@ export interface WindowState {
   readonly serial: number;
 }
 
-export type OpenTarget = "here" | "background" | "foreground" | "beside";
+export type OpenTarget = "here" | "background" | "foreground";
 
 export type WindowAction =
   | { readonly kind: "open"; readonly place: Place; readonly target: OpenTarget }
-  /** Swap what a pane shows without a step for Back: the focused pane, or `paneId`. */
-  | { readonly kind: "replace"; readonly place: Place; readonly paneId?: string }
+  /** Swap what the active tab shows without a step for Back. */
+  | { readonly kind: "replace"; readonly place: Place }
   | { readonly kind: "new-tab" }
   | { readonly kind: "activate"; readonly tabId: string }
   | { readonly kind: "close-tab"; readonly tabId: string }
-  | { readonly kind: "focus-pane"; readonly paneId: string }
-  | { readonly kind: "close-pane"; readonly paneId: string }
   | { readonly kind: "back" }
   | { readonly kind: "forward" };
 
 /** The pull request a place is about, if it is about one. */
 export function reviewOf(place: Place): string | undefined {
-  return place.kind === "chat" || place.kind === "review" ? place.reviewId : undefined;
+  return place.kind === "review" ? place.reviewId : undefined;
+}
+
+/** How a click asks to open a place: ⌘ or a middle click for a background tab. */
+export function targetOf(event: MouseEvent): OpenTarget {
+  return event.metaKey || event.ctrlKey || event.button === 1 ? "background" : "here";
 }
 
 export function samePlace(left: Place, right: Place): boolean {
   return left.kind === right.kind && reviewOf(left) === reviewOf(right);
 }
 
-export const placeOf = (pane: Pane): Place => pane.entries[pane.index] ?? { kind: "new-chat" };
+export const placeOf = (tab: Tab): Place => tab.entries[tab.index] ?? { kind: "new-chat" };
 
 export function activeTab(state: WindowState): Tab | undefined {
   return state.tabs.find((tab) => tab.id === state.active);
 }
 
-export function focusedPane(tab: Tab): Pane | undefined {
-  return tab.panes.find((pane) => pane.id === tab.focus) ?? tab.panes[0];
-}
-
-/** What the focused pane of the active tab shows. */
+/** What the active tab shows. */
 export function focusedPlace(state: WindowState): Place | undefined {
   const tab = activeTab(state);
-  const pane = tab === undefined ? undefined : focusedPane(tab);
 
-  return pane === undefined ? undefined : placeOf(pane);
+  return tab === undefined ? undefined : placeOf(tab);
 }
 
-/** The review the active tab is about, from its focused pane first. */
+/** The pull request the active tab shows, if it shows one. */
 export function focusedReview(state: WindowState): string | undefined {
-  const tab = activeTab(state);
+  const place = focusedPlace(state);
 
-  if (tab === undefined) return undefined;
-
-  const ordered = [focusedPane(tab), ...tab.panes].flatMap((pane) =>
-    pane === undefined ? [] : [placeOf(pane)],
-  );
-
-  return ordered.flatMap((place) => {
-    const reviewId = reviewOf(place);
-
-    return reviewId === undefined ? [] : [reviewId];
-  })[0];
+  return place === undefined ? undefined : reviewOf(place);
 }
 
-function newTab(serial: number, place: Place): Tab {
-  const pane: Pane = { id: `pane-${serial}`, entries: [place], index: 0 };
-
-  return { id: `tab-${serial}`, panes: [pane], focus: pane.id };
-}
+const newTab = (serial: number, place: Place): Tab => ({
+  id: `tab-${serial}`,
+  entries: [place],
+  index: 0,
+});
 
 /** The window opens on the Review page, or on one pull request when the address names it. */
 export function initialWindow(reviewId: string | undefined): WindowState {
@@ -107,30 +88,10 @@ export function initialWindow(reviewId: string | undefined): WindowState {
   return { tabs: [newTab(1, place)], active: "tab-1", serial: 2 };
 }
 
-function updateTab(state: WindowState, change: (tab: Tab) => Tab): WindowState {
+function updateActive(state: WindowState, change: (tab: Tab) => Tab): WindowState {
   return {
     ...state,
     tabs: state.tabs.map((tab) => (tab.id === state.active ? change(tab) : tab)),
-  };
-}
-
-function updatePane(tab: Tab, change: (pane: Pane) => Pane, paneId?: string): Tab {
-  const target = tab.panes.find((pane) => pane.id === paneId) ?? focusedPane(tab);
-
-  return {
-    ...tab,
-    panes: tab.panes.map((pane) => (pane.id === target?.id ? change(pane) : pane)),
-  };
-}
-
-/** Push `place` onto a pane's history, dropping anything forward of where it stands. */
-function push(pane: Pane, place: Place): Pane {
-  if (samePlace(placeOf(pane), place)) return pane;
-
-  return {
-    ...pane,
-    entries: [...pane.entries.slice(0, pane.index + 1), place],
-    index: pane.index + 1,
   };
 }
 
@@ -143,7 +104,7 @@ function insertAfterActive(state: WindowState, tab: Tab): readonly Tab[] {
 export function reduce(state: WindowState, action: WindowAction): WindowState {
   switch (action.kind) {
     case "open": {
-      if (action.target === "background" || action.target === "foreground") {
+      if (action.target !== "here") {
         const tab = newTab(state.serial, action.place);
 
         return {
@@ -153,44 +114,23 @@ export function reduce(state: WindowState, action: WindowAction): WindowState {
         };
       }
 
-      if (action.target === "beside")
-        return updateTab({ ...state, serial: state.serial + 1 }, (tab) => {
-          const other = tab.panes.find((pane) => pane.id !== tab.focus);
-
-          // The other half already shows it: focus it instead of opening a third.
-          if (other !== undefined && samePlace(placeOf(other), action.place))
-            return { ...tab, focus: other.id };
-
-          if (other !== undefined)
-            return {
+      // Push, dropping anything forward of where the tab stands.
+      return updateActive(state, (tab) =>
+        samePlace(placeOf(tab), action.place)
+          ? tab
+          : {
               ...tab,
-              panes: tab.panes.map((pane) =>
-                pane.id === other.id ? push(pane, action.place) : pane,
-              ),
-              focus: other.id,
-            };
-
-          const pane: Pane = { id: `pane-${state.serial}`, entries: [action.place], index: 0 };
-
-          return { ...tab, panes: [...tab.panes, pane], focus: pane.id };
-        });
-
-      return updateTab(state, (tab) => updatePane(tab, (pane) => push(pane, action.place)));
+              entries: [...tab.entries.slice(0, tab.index + 1), action.place],
+              index: tab.index + 1,
+            },
+      );
     }
 
     case "replace":
-      return updateTab(state, (tab) =>
-        updatePane(
-          tab,
-          (pane) => ({
-            ...pane,
-            entries: pane.entries.map((entry, index) =>
-              index === pane.index ? action.place : entry,
-            ),
-          }),
-          action.paneId,
-        ),
-      );
+      return updateActive(state, (tab) => ({
+        ...tab,
+        entries: tab.entries.map((entry, index) => (index === tab.index ? action.place : entry)),
+      }));
     case "new-tab": {
       const tab = newTab(state.serial, { kind: "new-chat" });
 
@@ -220,30 +160,13 @@ export function reduce(state: WindowState, action: WindowAction): WindowState {
       return { ...state, tabs: rest, active: next?.id ?? state.active };
     }
 
-    case "focus-pane":
-      return updateTab(state, (tab) =>
-        tab.panes.some((pane) => pane.id === action.paneId)
-          ? { ...tab, focus: action.paneId }
-          : tab,
-      );
-    case "close-pane":
-      return updateTab(state, (tab) => {
-        const panes = tab.panes.filter((pane) => pane.id !== action.paneId);
-        const first = panes[0];
-
-        return first === undefined ? tab : { ...tab, panes, focus: first.id };
-      });
     case "back":
-      return updateTab(state, (tab) =>
-        updatePane(tab, (pane) => ({ ...pane, index: Math.max(0, pane.index - 1) })),
-      );
+      return updateActive(state, (tab) => ({ ...tab, index: Math.max(0, tab.index - 1) }));
     case "forward":
-      return updateTab(state, (tab) =>
-        updatePane(tab, (pane) => ({
-          ...pane,
-          index: Math.min(pane.entries.length - 1, pane.index + 1),
-        })),
-      );
+      return updateActive(state, (tab) => ({
+        ...tab,
+        index: Math.min(tab.entries.length - 1, tab.index + 1),
+      }));
     default: {
       const _exhaustive: never = action;
 
@@ -254,9 +177,8 @@ export function reduce(state: WindowState, action: WindowAction): WindowState {
 
 export function canGo(state: WindowState, direction: "back" | "forward"): boolean {
   const tab = activeTab(state);
-  const pane = tab === undefined ? undefined : focusedPane(tab);
 
-  if (pane === undefined) return false;
+  if (tab === undefined) return false;
 
-  return direction === "back" ? pane.index > 0 : pane.index < pane.entries.length - 1;
+  return direction === "back" ? tab.index > 0 : tab.index < tab.entries.length - 1;
 }

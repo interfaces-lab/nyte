@@ -83,21 +83,44 @@ test("a before_tool handler that outlives its budget fails closed and is reporte
   assert.match(reported[0] ?? "", /before_tool hook stuck exceeded 20ms/);
 });
 
-test("a session factory that outlives its budget is failed and the previous version stays", async () => {
+test("a session factory that outlives its budget is listed as failed and the rest of the set loads", async () => {
   const hooks = new HookRegistry(() => undefined);
   const { host, notices } = hostFor(hooks, 20);
   await host.activate([rejecting("guard", "v1")]);
-  const stuck = definePlugin({ id: "guard", session: () => new Promise(() => undefined) });
-  const outcome = await host.activate([stuck]);
-  assert.equal(outcome.kind, "rejected");
-  assert.match(
-    outcome.kind === "rejected" ? outcome.error : "",
-    /guard: session\(\) exceeded 20ms/,
+  const stuck = withPluginSource(
+    definePlugin({ id: "guard", session: () => new Promise(() => undefined) }),
+    { source: "inline", version: "stuck" },
   );
-  assert.deepEqual(await hooks.run("before_tool", toolCall), { action: "reject", message: "v1" });
+  const outcome = await host.activate([stuck, rejecting("other", "other")]);
+  assert.deepEqual(outcome, { kind: "applied" });
+  assert.deepEqual(
+    host.list().map((plugin) => [plugin.id, plugin.status]),
+    [
+      ["guard", "failed"],
+      ["other", "active"],
+    ],
+  );
+  const guard = host.list()[0];
+  assert.match(guard?.status === "failed" ? guard.error : "", /session\(\) exceeded 20ms/);
+  assert.deepEqual(await hooks.run("before_tool", toolCall), {
+    action: "reject",
+    message: "other",
+  });
+  assert.ok(
+    notices.some(
+      (notice) =>
+        notice.kind === "diagnostic" && /guard: session\(\) exceeded 20ms/.test(notice.message),
+    ),
+  );
   assert.equal(
     notices.some((notice) => notice.kind === "plugins_changed"),
     true,
+  );
+  await host.activate([stuck, rejecting("other", "other")]);
+  assert.equal(
+    notices.filter((notice) => notice.kind === "diagnostic").length,
+    1,
+    "an unchanged failed revision is not retried",
   );
 });
 
@@ -230,12 +253,13 @@ test("a timed-out setup cannot register hooks or mutate storage, and late rebuil
       { source: "inline", version: "2" },
     ),
   ]);
-  assert.equal(outcome.kind, "rejected");
+  assert.deepEqual(outcome, { kind: "applied" });
+  assert.equal(host.list()[0]?.status, "failed");
   finish.resolve();
   await resumed.promise;
   assert.equal(refused.length, 5);
   assert.equal(registries.prompt.get("late"), undefined);
-  assert.deepEqual(await hooks.run("before_tool", toolCall), { action: "reject", message: "old" });
+  assert.deepEqual(await hooks.run("before_tool", toolCall), { action: "continue" });
   await host.close();
 });
 

@@ -27,6 +27,7 @@ export interface ReviewFile {
   readonly patch: string;
   readonly added: number;
   readonly removed: number;
+  readonly blobs: string;
   readonly metadata: FileDiffMetadata | undefined;
 }
 

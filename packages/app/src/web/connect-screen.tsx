@@ -3,7 +3,7 @@ import { useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { Button } from "@nyte-ai/ui/button";
 import { Input } from "@nyte-ai/ui/input";
-import { role, type } from "@nyte-ai/ui/vars.stylex";
+import { type } from "@nyte-ai/ui/vars.stylex";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { errorMessage } from "../errors.ts";
 import { serverConnectionProblem } from "../server-connection.ts";

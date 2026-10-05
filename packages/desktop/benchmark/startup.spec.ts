@@ -65,8 +65,14 @@ benchmark("opens Home with 50 saved workspaces", async ({ report }) => {
     { sessionCount: 0, turnsPerSession: 1, workspaceCount: 50, rememberWorkspace: false },
     expectComposer,
     async (desktop) => {
-      const directories = await desktop.page.evaluate(() => window.nyte.host.sessionDirectory());
-      expect(directories).toHaveLength(51);
+      await expect
+        .poll(
+          async () =>
+            (await desktop.page.evaluate(() => window.nyte.host.sessionDirectory())).directories
+              .length,
+          { timeout: 30_000 },
+        )
+        .toBe(51);
     },
   );
 

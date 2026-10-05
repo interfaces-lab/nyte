@@ -5,12 +5,15 @@
  *   brief-<head>   the head's guide: written from the patch, or cut from the
  *                  brief of an earlier head on the same base and sent only the
  *                  interdiff, so everything before it comes from the prompt cache
- *   chat-<head>    the reviewer's answers about that head, cut from its brief
+ *   side-<head>-<thread>  one side chat thread about that head: a fork of its
+ *                  brief, so a question starts from everything the guide read
  *
  * A review stores refs, not commits. Reading one resolves its head ref, so a
- * branch that gained commits shows up as a new head and gets its guide by
- * interdiff. Nothing else is kept in memory: heads, runs, guides and answers
- * are read back from the store, so a reload or a restart sees the same review.
+ * branch that gained commits shows up as a new head. Reading never calls the
+ * model: a head gets its guide when someone presses Write Guide or Update, by
+ * interdiff when an earlier head has one. Nothing else is kept in memory:
+ * heads, runs, guides and answers are read back from the store, so a reload or
+ * a restart sees the same review.
  *
  * Nyte codes on the branch in a second session, `author <id>`, whose
  * workspace is a git worktree with only that branch checked out. A task
@@ -38,13 +41,13 @@ import {
   ChangeSchema,
   CreateReviewSchema,
   GuideSchema,
-  RetrySchema,
+  WriteGuideSchema,
   TaskSchema,
   type Ask,
   type Author,
   type Brief,
   type Change,
-  type Chat,
+  type Thread,
   type Compare,
   type FileChange,
   type Guide,
@@ -73,7 +76,8 @@ class BadRequest extends Error {}
 
 const briefName = (head: string): string => `brief-${head.slice(0, 12)}`;
 
-const chatName = (head: string): string => `chat-${head.slice(0, 12)}`;
+/** One side chat thread about a head: a fork of that head's brief. */
+const threadPrefix = (head: string): string => `side-${head.slice(0, 12)}-`;
 
 function fenced(language: string, text: string): string {
   return ["```" + language, text.replace(/\n$/, ""), "```"].join("\n");
@@ -258,6 +262,8 @@ export async function createReviews(deps: {
   const defaultBase = (await repo.resolve("origin/main")) === undefined ? "main" : "origin/main";
   const sessions = new Map<string, Promise<SessionId>>();
   const reported = new Set<string>();
+  /** Runs that settled before this server opened were reported, and paid for, by an earlier one. */
+  const openedAt = Date.now();
   const changes = memoized((base, head) => repo.changes(base, head));
   const commits = memoized((base, head) => repo.log(base, head));
   const fullPatch = memoized((base, head) => repo.patch(base, head));
@@ -336,23 +342,32 @@ export async function createReviews(deps: {
 
     if (reported.has(key)) return;
 
+    reported.add(key);
+
+    if ((own.at(-1)?.at ?? 0) < openedAt) return;
+
     const usage = usageOf(own, host.models);
 
-    reported.add(key);
     log(
       `${name} ${status} from ${from}: ${usage.calls} calls, ${tokens(usage.cached)} cached, ` +
         `${tokens(usage.fresh)} new, $${usage.cost.toFixed(3)} ($${usage.uncachedCost.toFixed(3)} without the cache)`,
     );
   };
 
-  /** Every brief and chat the review session holds, read from core. */
+  const spentOn = (own: readonly Commit[]) => {
+    const { calls, cached, fresh, cost } = usageOf(own, host.models);
+
+    return { calls, cached, fresh, cost };
+  };
+
+  /** Every brief and side chat thread the review session holds, read from core. */
   const coreState = async (record: ReviewRecord, sessionId: SessionId) => {
     const store = await host.store.open(sessionId);
 
     try {
       const heads = await sdk.heads.list({ sessionId });
       const briefs: Brief[] = [];
-      const chats: Chat[] = [];
+      const threads: Thread[] = [];
 
       for (const revision of record.revisions) {
         const brief = heads.find((head) => head.head === briefName(revision.head));
@@ -381,6 +396,7 @@ export async function createReviews(deps: {
             name: brief.head,
             status: !read.settled ? "running" : failure === undefined ? "done" : "failed",
             forkedAt: read.forkedAt,
+            usage: spentOn(read.own),
           };
 
           if (failure !== undefined) entry.failure = failure;
@@ -396,21 +412,25 @@ export async function createReviews(deps: {
           briefs.push(entry);
         }
 
-        const chat = heads.find((head) => head.head === chatName(revision.head));
+        const prefix = threadPrefix(revision.head);
 
-        if (chat !== undefined && !chats.some((entry) => entry.head === revision.head)) {
-          const read = await readHead(store, sessionId, chat);
+        for (const side of heads.filter((head) => head.head.startsWith(prefix))) {
+          if (threads.some((entry) => entry.name === side.head)) continue;
 
-          chats.push({
+          const read = await readHead(store, sessionId, side);
+
+          threads.push({
             head: revision.head,
-            name: chat.head,
+            thread: side.head.slice(prefix.length),
+            name: side.head,
             status: read.settled ? (read.phase?.kind === "failed" ? "failed" : "done") : "running",
             forkedAt: read.forkedAt,
+            usage: spentOn(read.own),
           });
         }
       }
 
-      return { heads, briefs, chats };
+      return { heads, briefs, threads };
     } finally {
       await store.close();
     }
@@ -682,14 +702,12 @@ export async function createReviews(deps: {
     return record;
   };
 
-  const detail = async (id: string, retry: Revision["head"] | undefined): Promise<ReviewDetail> => {
+  /** Reading a review never calls the model: the guide is written when someone opens it. */
+  const detail = async (id: string): Promise<ReviewDetail> => {
     const revision = await revisionOf(find(id));
     const record = find(id);
     const sessionId = await sessionOf(record);
-    let state = await coreState(record, sessionId);
-
-    await ensureBrief(record, sessionId, revision, state, retry === revision.head);
-    state = await coreState(record, sessionId);
+    const state = await coreState(record, sessionId);
 
     const [list, files] = await Promise.all([
       commits(revision.base, revision.head),
@@ -709,7 +727,7 @@ export async function createReviews(deps: {
       commits: [...list],
       files: [...files],
       briefs: state.briefs,
-      chats: state.chats,
+      threads: state.threads,
     };
 
     if (record.task !== undefined) view.task = record.task;
@@ -783,13 +801,25 @@ export async function createReviews(deps: {
       revision: { head: compared.head, base: compared.base, at: Date.now() },
     });
 
-    const sessionId = await sessionOf(record);
-    const [revision] = record.revisions;
-
-    if (revision !== undefined)
-      await ensureBrief(record, sessionId, revision, await coreState(record, sessionId), false);
+    await sessionOf(record);
 
     return { id: record.id };
+  };
+
+  /**
+   * The one call that spends on a guide: the page makes it only when you press
+   * Write Guide, Update or Try Again.
+   */
+  const writeGuide = async (id: string, head: string): Promise<void> => {
+    const record = find(id);
+    const revision = await revisionOf(record);
+
+    if (revision.head !== head)
+      throw new BadRequest(`The branch moved to ${revision.head.slice(0, 7)}; reload the review`);
+
+    const sessionId = await sessionOf(record);
+
+    await ensureBrief(record, sessionId, revision, await coreState(record, sessionId), true);
   };
 
   const patches = async (id: string, base: string, head: string): Promise<readonly Patch[]> => {
@@ -824,11 +854,12 @@ export async function createReviews(deps: {
     const brief = state.briefs.find((entry) => entry.head === input.head);
 
     if (brief?.status !== "done" || brief.guide === undefined)
-      throw new BadRequest("Questions open once the guide is written");
+      throw new BadRequest("Side chats fork the guide; write it first");
 
+    // A thread's first question cuts it from the brief; later ones land on the same fork.
     await fork({
       sessionId,
-      head: chatName(input.head),
+      head: `${threadPrefix(input.head)}${input.thread}`,
       from: brief.name,
       config: pinned(state.heads, brief.name),
       key: input.key,
@@ -942,7 +973,7 @@ export async function createReviews(deps: {
         case "POST /reviews":
           return json(await create(await readBody(CreateReviewSchema, request)));
         case "GET /reviews/:id":
-          return json(await detail(id, undefined));
+          return json(await detail(id));
         case "GET /reviews/:id/session":
           return json(await sessionsOf(id));
         case "POST /tasks":
@@ -950,13 +981,15 @@ export async function createReviews(deps: {
         case "POST /reviews/:id/change":
           await change(id, await readBody(ChangeSchema, request));
 
-          return json(await detail(id, undefined));
+          return json(await detail(id));
         case "POST /reviews/:id/approve":
           await approve(id, (await readBody(ApproveSchema, request)).head);
 
-          return json(await detail(id, undefined));
-        case "POST /reviews/:id/retry":
-          return json(await detail(id, (await readBody(RetrySchema, request)).head));
+          return json(await detail(id));
+        case "POST /reviews/:id/guide":
+          await writeGuide(id, (await readBody(WriteGuideSchema, request)).head);
+
+          return json(await detail(id));
         case "GET /reviews/:id/patches":
           return json({
             patches: await patches(
@@ -968,7 +1001,7 @@ export async function createReviews(deps: {
         case "POST /reviews/:id/ask":
           await ask(id, await readBody(AskSchema, request));
 
-          return json(await detail(id, undefined));
+          return json(await detail(id));
         default:
           return json({ error: `No route ${route}` }, 404);
       }

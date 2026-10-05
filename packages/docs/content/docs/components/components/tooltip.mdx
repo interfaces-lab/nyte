@@ -8,13 +8,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@nyte-
 ```
 
 A visible label and optional shortcut for a control with an accessible name. For longer content,
-use [Preview card](/cloud/components/preview-card).
+use [Preview card](/docs/components/components/preview-card).
 
 ## Usage
 
 - Pass the control to `TooltipTrigger` through `render`. Give the control its own `aria-label`,
   because the tooltip does not name it.
-- An icon-only [Button](/cloud/components/button) also sets its label as the native `title`. Pass
+- An icon-only [Button](/docs/components/components/button) also sets its label as the native `title`. Pass
   `title={undefined}` so only one tooltip appears.
 - `TooltipContent` keeps line breaks in its text.
 - Wrap the app once in `TooltipProvider`. A trigger's own `delay` or `closeDelay` overrides it.
@@ -60,18 +60,18 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@nyte-
 ## Props
 
 `TooltipContent` takes `xstyle`, `className`, and `style`. Its `className` and `style` cannot be
-functions of state. See [Theming](/cloud/foundations/theming). `Tooltip` and `TooltipTrigger` are
+functions of state. See [Theming](/docs/components/foundations/theming). `Tooltip` and `TooltipTrigger` are
 Base UI's.
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 ### Tooltip
 
-<include>../../base-ui-reference/tooltip/Root.md</include>
+<include>../../../base-ui-reference/tooltip/Root.md</include>
 
 ### TooltipTrigger
 
-<include>../../base-ui-reference/tooltip/Trigger.md</include>
+<include>../../../base-ui-reference/tooltip/Trigger.md</include>
 
 ### TooltipContent
 
@@ -88,11 +88,11 @@ the popup.
 
 #### Positioner
 
-<include>../../base-ui-reference/tooltip/Positioner.md</include>
+<include>../../../base-ui-reference/tooltip/Positioner.md</include>
 
 #### Popup
 
-<include>../../base-ui-reference/tooltip/Popup.md</include>
+<include>../../../base-ui-reference/tooltip/Popup.md</include>
 
 ### TooltipProvider
 
@@ -102,7 +102,7 @@ the popup.
 | `closeDelay` | `100`   |
 | `timeout`    | `200`   |
 
-<include>../../base-ui-reference/tooltip/Provider.md</include>
+<include>../../../base-ui-reference/tooltip/Provider.md</include>
 
 ## Accessibility
 

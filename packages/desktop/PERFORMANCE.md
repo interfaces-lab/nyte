@@ -20,6 +20,22 @@ timings on the development machine:
 
 Those timings are historical rather than a measure of the current startup shell or first React frame.
 
+The 2026-10-04 pass measured a 2.4 GB store of 512 sessions on the development machine. The
+first directory list walked every main branch before the shell could mount, and the renderer held
+the loading moon for 5–18 s depending on page cache and a second process polling the same store.
+Bounding that read and landing it in pages put the composer on screen in 2.3 s on three launches,
+with the rest of the rows arriving behind the mounted screen over the next 10 s. The repaired
+benchmark records these medians for its fixtures (`--repeat-each=3`, `usefulScreenMs`):
+
+| Scenario | Useful screen |
+| --- | ---: |
+| Loopback server that never answers | 780 ms |
+| Remembered project, two-second login shell | 841 ms |
+| Restored 160-turn transcript | 1,071 ms |
+| Home with 50 saved workspaces | 2,412 ms |
+
+The 50-workspace case meets the directory budget: its closed stores finish listing just past it.
+
 The build guard budgets these entries:
 
 | Entry | Budget |
@@ -87,6 +103,11 @@ the entry stays small by what it pulls in, not by when. Opening the
 window therefore does not open a workspace, compose plugins, initialize the SDK, or run input
 validation.
 
+The renderer is served over the app's own privileged scheme from the build's `out/renderer`,
+resolved beside the main bundle so a launcher with another app path, such as the benchmark, finds
+it. The scheme opts into Chromium's code cache, which `file:` URLs had by default, so a repeat
+launch does not compile the 4.4 MiB startup graph again.
+
 The preload exposes the typed SDK bridge and writes the platform marker used by first-frame chrome.
 Startup profiling, measurement events, and benchmark-only environment switches are not shipped.
 
@@ -100,7 +121,12 @@ sessions outside it, so a 5 s poll never blocks a folder switch. Core keeps each
 row keyed by its event cursor, so a poll over an unchanged store costs one cursor read per session
 rather than a walk of every main branch; on a 1 GB store that is 1 ms instead of ~1 s, which is
 what kept the store worker busy under a chat click. The first list after launch still walks every
-branch, behind the startup shell. The connected server's list runs
+branch, so the snapshot read waits for it only up to a 1.5 s budget and then answers with the rows
+held so far; a store the sweep has not reached is left out of the snapshot, which the sidebar shows
+as a workspace with no list yet rather than an empty one. An open store lists in pages of 32, and
+each page lands in the directory as it is read, so the budget answers with the first pages and the
+feed pushes the rest behind the mounted screen. Pages arrive in creation order, oldest first,
+because core opens roots before their children in that order. The connected server's list runs
 beside the local reads with a 1.5 s budget; past it the directory answers with the last server list
 and its last availability while the read continues for the next poll, so an unreachable server never
 holds startup or the sidebar behind its request timeout.

@@ -48,24 +48,24 @@ const [wrap, setWrap] = useState(true);
 Takes every Base UI `Switch.Root` prop except `children`. `className` and `style` take plain
 values, not functions of state. The thumb is built in.
 
-| Prop                           | Type                                      | Default | Description |
-| ------------------------------ | ----------------------------------------- | ------- | ----------- |
-| `label`                        | `string`                                  |         | Required.   |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |         |             |
+| Prop                           | Type                                                | Default | Description |
+| ------------------------------ | --------------------------------------------------- | ------- | ----------- |
+| `label`                        | `string`                                            |         | Required.   |
+| `className`, `style`, `xstyle` | see [Theming](/docs/components/foundations/theming) |         |             |
 
 The reference table below comes from Base UI, MIT, © Material-UI SAS.
 
-<include>../../base-ui-reference/switch/Root.md</include>
+<include>../../../base-ui-reference/switch/Root.md</include>
 
 ### SwitchField
 
 Takes every `Switch` prop except `aria-label`, `aria-labelledby`, and `nativeButton`.
 
-| Prop                           | Type                                      | Default | Description                      |
-| ------------------------------ | ----------------------------------------- | ------- | -------------------------------- |
-| `label`                        | `string`                                  |         | Required. Names the switch.      |
-| `description`                  | `string`                                  |         | Secondary line under the label.  |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |         | Apply to the row, not the track. |
+| Prop                           | Type                                                | Default | Description                      |
+| ------------------------------ | --------------------------------------------------- | ------- | -------------------------------- |
+| `label`                        | `string`                                            |         | Required. Names the switch.      |
+| `description`                  | `string`                                            |         | Secondary line under the label.  |
+| `className`, `style`, `xstyle` | see [Theming](/docs/components/foundations/theming) |         | Apply to the row, not the track. |
 
 ## Accessibility
 
@@ -73,4 +73,4 @@ Takes every `Switch` prop except `aria-label`, `aria-labelledby`, and `nativeBut
 - `readOnly` keeps the switch focusable but blocks changes.
 - `SwitchField` renders a `<label>`. Its `label` text names the switch through `aria-labelledby`,
   and `description` is added to `aria-describedby`.
-- Keyboard focus shows the [focus ring](/cloud/foundations/focus).
+- Keyboard focus shows the [focus ring](/docs/components/foundations/focus).

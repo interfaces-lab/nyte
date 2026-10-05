@@ -20,6 +20,7 @@ export function reviewFiles(
     patch: change.patch,
     added: change.added,
     removed: change.removed,
+    blobs: change.blobs,
     metadata:
       change.patch === "" ? undefined : parsePatch(change.patch, `${base}:${head}:${change.path}`),
   }));

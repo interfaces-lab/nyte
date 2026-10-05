@@ -13,6 +13,7 @@ import { plugin, resolveSync, Transpiler } from "bun";
 import {
   createPluginSources,
   createSourceWatcher,
+  hostModules,
   notifyPluginSources,
 } from "@nyte-ai/host/plugins";
 import type { PluginSources, Prepare, Track } from "@nyte-ai/host/plugins";
@@ -122,13 +123,8 @@ export function bunPluginLoader(modules: Readonly<Record<string, object>>): Prep
 }
 
 export function createBunPluginSources(): PluginSources<unknown> {
-  const module: unknown = require("@nyte-ai/plugin");
-  if (typeof module !== "object" || module === null) throw new Error("Invalid host plugin module");
   const watcher = createSourceWatcher(notifyPluginSources);
-  const sources = createPluginSources(
-    bunPluginLoader({ "@nyte-ai/plugin": module, "@nyte-ai/core/plugins": module }),
-    watcher.wait,
-  );
+  const sources = createPluginSources(bunPluginLoader(hostModules), watcher.wait);
   return {
     ...sources,
     dispose() {

@@ -356,12 +356,12 @@ test("untrusted send queues once, reports the requirement, and runs after trust"
       requirement: { kind: "workspace_trust", cwd: path },
     },
   );
-  assert.deepEqual(await host.call(1, "plugins.catalog", undefined), {
-    plugins: [],
-    commands: [],
-    skills: [],
-    settings: [],
-  });
+  // An untrusted default workspace is a visible state, never an empty catalog.
+  await assert.rejects(
+    host.call(1, "plugins.catalog", undefined),
+    (cause: unknown) =>
+      cause instanceof Error && cause.message === `Workspace trust is required for ${path}`,
+  );
   await host.call(1, "host.trustWorkspace", { path });
   await vi.waitFor(async () => {
     const snapshot = await host.call(1, "sessions.snapshot", { sessionId: session.sessionId });
@@ -1439,26 +1439,33 @@ test("thread choices survive workspace switches and restart before and after the
   assert.deepEqual(snapshot?.session.config, selected);
 });
 
-test("failed plugin preparation fails the session with a redacted error and keeps the failure record in main", async () => {
+test("a broken plugin activates the session without it, is listed as failed, and the status names it", async () => {
   const { root, createHost, events } = await fixture();
   const path = join(root, "plugin-project");
   const directory = join(path, ".nyte", "plugins", "broken");
   await mkdir(directory, { recursive: true });
   const plugin = join(directory, "index.js");
-  await writeFile(plugin, 'throw new Error("synthetic-secret-plugin-body");\n');
+  await writeFile(plugin, 'throw new Error("plugin-body-error");\n');
   const host = createHost();
   await host.call(1, "host.openWorkspace", { path });
   await host.call(1, "host.trustWorkspace", { path });
   const before = new Set(ipcDiagnostics.keys());
   const session = await host.call(1, "sessions.create", { name: "Plugin failure" });
-  assert.deepEqual(session.activation, { kind: "failed", error: "Plugins failed to load" });
+  assert.deepEqual(session.activation, { kind: "active" });
+  const listed = await host.call(1, "plugins.list", { sessionId: session.sessionId });
+  const broken = listed.find((item) => item.id === "broken");
+  assert.deepEqual(broken, {
+    id: "broken",
+    version: broken?.version ?? "",
+    source: "project",
+    path: plugin,
+    status: "failed",
+    error: "plugin-body-error",
+  });
+  assert.ok(listed.some((item) => item.source === "builtin" && item.status === "active"));
   const status = events.filter((event) => event.kind === "status");
-  assert.equal(status.length, 1);
-  const diagnostics = [...ipcDiagnostics.entries()].filter(([id]) => !before.has(id));
-  assert.equal(diagnostics.length, 1);
-  const diagnostic = diagnostics[0];
-  assert.ok(diagnostic);
-  assert.deepEqual(diagnostic[1], { path: plugin, error: "synthetic-secret-plugin-body" });
-  assert.equal(status[0]?.message, `The host operation failed. Diagnostic ID: ${diagnostic[0]}`);
-  assert.doesNotMatch(JSON.stringify(status), /synthetic-secret-plugin-body|broken\/index.js/);
+  assert.deepEqual(status, [
+    { kind: "status", message: 'Plugin "broken" couldn\'t load: plugin-body-error' },
+  ]);
+  assert.equal([...ipcDiagnostics.keys()].filter((id) => !before.has(id)).length, 0);
 });

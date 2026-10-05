@@ -31,6 +31,21 @@ const uiLibraryImports = [
 const buttonLibraryMessage =
   "Buttons come styled from @nyte-ai/ui/button and @nyte-ai/ui/toggle; pass layout through their props, not a new look.";
 
+const runtimeLoadMessage =
+  "Import modules statically. The bundler cannot follow a runtime require, and the packaged app ships no node_modules for it to find.";
+
+const runtimeLoadImports = ["node:module", "module"].map((name) => ({
+  name,
+  importNames: ["createRequire"],
+  message: runtimeLoadMessage,
+}));
+
+const reflectGlobal = {
+  name: "Reflect",
+  message:
+    "Use typed property access or direct invocation. Suppress this rule only for genuine reflection.",
+};
+
 export default defineConfig({
   // Generated brand assets and audit evidence, not source.
   ignorePatterns: ["output/**", ".agents/**"],
@@ -48,13 +63,13 @@ export default defineConfig({
     "oxc/no-accumulating-spread": "error",
     "eslint/no-restricted-globals": [
       "error",
-      {
-        name: "Reflect",
-        message:
-          "Use typed property access or direct invocation. Suppress this rule only for genuine reflection.",
-      },
+      reflectGlobal,
+      { name: "require", message: runtimeLoadMessage },
     ],
-    "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
+    "eslint/no-restricted-imports": [
+      "error",
+      { paths: runtimeLoadImports, patterns: uiLibraryImports },
+    ],
     "react/rules-of-hooks": "error",
     "react/no-unstable-nested-components": "error",
     // A component React Compiler cannot compile ships without memoization.
@@ -64,6 +79,14 @@ export default defineConfig({
     typeAware: true,
   },
   overrides: [
+    {
+      // CommonJS configs, tests, and scripts run from the repository and never ship in a bundle.
+      files: ["**/*.cjs", "**/*.test.{ts,tsx}", "scripts/**"],
+      rules: {
+        "eslint/no-restricted-globals": ["error", reflectGlobal],
+        "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
+      },
+    },
     {
       // Vendored from opencode v2 (dmmulroy/anti-slop); see scripts/oxlint/anti-slop/UPSTREAM.md.
       // packages/ai is carved out of earendil-works/pi and tracks upstream.
@@ -204,7 +227,7 @@ export default defineConfig({
         "eslint/no-restricted-imports": [
           "error",
           {
-            paths: [...rendererCoreImports.paths, mountEffectImport],
+            paths: [...rendererCoreImports.paths, mountEffectImport, ...runtimeLoadImports],
             patterns: [...rendererCoreImports.patterns, ...uiLibraryImports],
           },
         ],
@@ -282,7 +305,7 @@ export default defineConfig({
       rules: {
         "eslint/no-restricted-imports": [
           "error",
-          { paths: [mountEffectImport], patterns: uiLibraryImports },
+          { paths: [mountEffectImport, ...runtimeLoadImports], patterns: uiLibraryImports },
         ],
       },
     },
@@ -298,6 +321,7 @@ export default defineConfig({
         "eslint/no-restricted-imports": [
           "error",
           {
+            paths: runtimeLoadImports,
             patterns: [
               {
                 group: ["**/harness/**", "../../harness/*"],
@@ -308,6 +332,20 @@ export default defineConfig({
             ],
           },
         ],
+      },
+    },
+    {
+      // Both resolve a file path through createRequire and load nothing with it.
+      files: ["packages/plugin/src/codemode-runtime.ts", "packages/tui/src/plugin-loader.ts"],
+      rules: {
+        "eslint/no-restricted-imports": ["error", { patterns: uiLibraryImports }],
+      },
+    },
+    {
+      // Bun reloads a user plugin by evicting its graph from require.cache.
+      files: ["packages/tui/src/plugin-loader.ts"],
+      rules: {
+        "eslint/no-restricted-globals": ["error", reflectGlobal],
       },
     },
   ],

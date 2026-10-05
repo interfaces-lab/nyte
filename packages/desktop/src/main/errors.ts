@@ -5,7 +5,7 @@ import {
   WorkspaceTrustRequired,
 } from "@nyte-ai/host";
 import { randomUUID } from "node:crypto";
-import { NyteClosed, UnknownSession } from "@nyte-ai/core";
+import { NyteClosed, UnknownSession, WorkspaceNotActive } from "@nyte-ai/core";
 import { CursorExpired } from "@nyte-ai/protocol";
 import type { NyteOptions } from "@nyte-ai/core";
 import type { IpcFailure, IpcResult } from "@nyte-ai/app/errors.ts";
@@ -91,6 +91,13 @@ export function ipcFailure(cause: unknown): IpcFailure {
     return {
       code: "forbidden",
       message: "Workspace trust is required. Review the workspace trust prompt.",
+    };
+
+  // The default workspace's own state, named so the renderer can show it instead of an empty catalog.
+  if (cause instanceof WorkspaceNotActive)
+    return {
+      code: cause.activation.kind === "requires" ? "forbidden" : "internal",
+      message: cause.message,
     };
   const correlationId = randomUUID();
   retainDiagnostic({ correlationId, cause });

@@ -1,20 +1,21 @@
 /**
- * A pull request's chat: one conversation about the branch, a place you open
- * in a pane and split beside its review. Nyte's work on it (the task, each
- * change you asked for, what it ran and committed) and the reviewer's
- * answers sit in the order they happened. The card at the top opens the
- * review: in place, in a background tab with ⌘, or beside.
+ * The side chat: questions asked beside the pull request, without leaving it
+ * and without becoming a chat. It is not a place, has no tab and is not
+ * listed anywhere; the toolbar's Ask opens and closes it on every view.
  *
- * Asking and changing are two explicit actions, never guessed from the text.
- * Ask (↵) goes to the reviewer, a fork of the head's brief that only reads.
- * Request change (⌘↵) goes to Nyte, which edits and commits in a worktree of
- * its own, so your checkout never moves.
+ * Each thread is a fork of the guide's brief, cut by its first question. The
+ * fork starts from everything the brief already read, so an answer pays for
+ * the question, not for reading the change again. That reuse is what this
+ * page tests, so the header says what the thread has spent and how much of
+ * it the cache served. New Thread drops the thread on screen; the next
+ * question cuts a fresh fork, and the old one is never shown again.
  *
- * Empty, it is only the composer, and the placeholder says what it does.
- * Code selected in the Guide or Changes rides along as chips.
+ * Asking and changing stay two explicit actions. Ask (↵) goes to the fork,
+ * which only reads. Request change (⌘↵) goes to Nyte, which commits in a
+ * worktree of its own; what it does after the thread began shows here too.
  */
 import { create, props } from "@stylexjs/stylex";
-import { useRef, type MouseEvent, type ReactElement } from "react";
+import { useRef, type ReactElement } from "react";
 import { FileTypeIcon } from "@nyte-ai/app/components/file-type-icon.tsx";
 import { composerStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
 import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
@@ -25,70 +26,56 @@ import { Kbd } from "@nyte-ai/ui/kbd";
 import { radius, target } from "@nyte-ai/ui/schema.stylex";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
-import { useAsk, useChange, useLiveReview, useRepo, useSideChat } from "./api";
+import { useAsk, useChange, useRepo, useSideThread } from "./api";
 import { referenceLabel } from "./code";
-import { pullRequestNumber } from "./pull-request";
+import type { GuideWriting } from "./guide";
 import { useReviewState } from "./review-state";
-import type { OpenTarget, Place } from "./window";
 import type { ReviewDetail } from "./wire";
 
 const NO_LIVE_TOOLS = new Map();
 
-/** How a click asks to open a place: ⌘ or a middle click for a background tab. */
-export function targetOf(event: MouseEvent): OpenTarget {
-  return event.metaKey || event.ctrlKey || event.button === 1 ? "background" : "here";
-}
+const PERCENT = new Intl.NumberFormat(undefined, { style: "percent", maximumFractionDigits: 0 });
 
-export function ChatPlace({
-  reviewId,
-  onOpen,
-}: {
-  readonly reviewId: string;
-  readonly onOpen: (place: Place, target: OpenTarget) => void;
-}): ReactElement {
-  const { review, version } = useLiveReview(reviewId);
+const DOLLARS = new Intl.NumberFormat(undefined, {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 3,
+});
 
-  if (review.data === undefined)
-    return (
-      <p role="status" {...props(styles.note)}>
-        {review.error === null ? (
-          <>
-            <Spinner /> Opening the chat
-          </>
-        ) : (
-          review.error.message
-        )}
-      </p>
-    );
-
-  return <Chat review={review.data} version={version} onOpen={onOpen} />;
-}
-
-function Chat({
+export function SideChat({
   review,
   version,
-  onOpen,
+  writing,
 }: {
   readonly review: ReviewDetail;
   readonly version: number;
-  readonly onOpen: (place: Place, target: OpenTarget) => void;
+  readonly writing: GuideWriting;
 }): ReactElement {
   const root = useRepo().data?.root;
-  const turns = useSideChat(review, version);
-  const local = useReviewState(review.id, []);
-  const { draft, references } = local;
+  const local = useReviewState(review.id, review.files);
+  const { draft, references, thread } = local;
+  const turns = useSideThread(review, thread, version);
   const focused = useRef(local.focus);
   const ask = useAsk(review.id);
   const change = useChange(review.id);
   const head = review.revision.head;
   const brief = review.briefs.find((entry) => entry.head === head);
   const guided = brief?.status === "done" && brief.guide !== undefined;
-  const answering = review.chats.some((chat) => chat.head === head && chat.status === "running");
+  const forks = review.threads.filter((entry) => entry.thread === thread?.id);
+  const answering = forks.some((fork) => fork.status === "running");
   const working = review.author?.status === "working";
   const written = draft.trim() !== "" || references.length > 0;
   const pending = ask.isPending || change.isPending;
   const error = ask.error ?? change.error;
-  const reviewPlace: Place = { kind: "review", reviewId: review.id };
+
+  const spent = forks.reduce(
+    (total, fork) => ({
+      cached: total.cached + fork.usage.cached,
+      fresh: total.fresh + fork.usage.fresh,
+      cost: total.cost + fork.usage.cost,
+    }),
+    { cached: 0, fresh: 0, cost: 0 },
+  );
 
   const clear = (): void => {
     local.setDraft("");
@@ -99,7 +86,13 @@ function Chat({
     if (!written || !guided || pending) return;
 
     ask.mutate(
-      { head, key: crypto.randomUUID(), text: draft.trim(), references: [...references] },
+      {
+        head,
+        thread: local.threadForQuestion().id,
+        key: crypto.randomUUID(),
+        text: draft.trim(),
+        references: [...references],
+      },
       { onSuccess: clear },
     );
   };
@@ -107,6 +100,7 @@ function Chat({
   const requestChange = (): void => {
     if (!written || review.blocked !== undefined || pending) return;
 
+    local.threadForQuestion();
     change.mutate(
       { key: crypto.randomUUID(), text: draft.trim(), references: [...references] },
       { onSuccess: clear },
@@ -114,62 +108,52 @@ function Chat({
   };
 
   return (
-    <section aria-label={`Chat: ${review.title}`} {...props(styles.pane)}>
-      <div {...props(styles.card)}>
-        <a
-          href={`/review?id=${encodeURIComponent(review.id)}`}
-          onClick={(event) => {
-            event.preventDefault();
-            onOpen(reviewPlace, targetOf(event));
-          }}
-          onAuxClick={(event) => {
-            if (event.button !== 1) return;
-
-            event.preventDefault();
-            onOpen(reviewPlace, "background");
-          }}
-          {...props(styles.cardLink)}
-        >
-          <Icon name="pull-request" size={14} xstyle={styles.cardIcon} />
-          <span {...props(styles.cardBody)}>
-            <span {...props(styles.cardTitle)}>
-              {review.title}{" "}
-              <span {...props(styles.cardNumber)}>#{pullRequestNumber(review.id)}</span>
-            </span>
-            <span
-              translate="no"
-              title={
-                review.author === undefined
-                  ? undefined
-                  : `Nyte works on ${review.headRef} in ${review.author.worktree}`
-              }
-              {...props(styles.cardMeta)}
-            >
-              {review.headRef} → {review.baseRef}
-            </span>
-          </span>
-        </a>
+    <aside aria-label="Side chat" {...props(styles.panel)}>
+      <header {...props(styles.header)}>
+        <span {...props(styles.title)}>Side chat</span>
+        <span {...props(styles.spend)}>
+          {spent.cached + spent.fresh > 0
+            ? `${PERCENT.format(spent.cached / (spent.cached + spent.fresh))} from the guide's cache · ${DOLLARS.format(spent.cost)}`
+            : guided
+              ? `Forks the guide for ${head.slice(0, 7)}`
+              : undefined}
+        </span>
         <Button
           iconOnly
-          icon="split-right"
-          aria-label="Open review beside"
-          onClick={() => onOpen(reviewPlace, "beside")}
+          icon="new-chat"
+          aria-label="New thread"
+          disabled={thread === undefined}
+          onClick={local.newThread}
         />
-      </div>
+      </header>
       <div {...props(styles.scroller)}>
         <div {...props(styles.transcript)}>
+          {!guided && (
+            <div {...props(styles.empty)}>
+              <p {...props(styles.emptyText)}>
+                Side chats fork the guide, so a question starts from everything it already read.
+              </p>
+              {brief?.status === "running" || writing.requesting ? (
+                <span {...props(styles.emptyStatus)}>
+                  <Spinner /> Writing the guide
+                </span>
+              ) : (
+                <Button variant="solid" tone="primary" onClick={writing.onWrite}>
+                  Write Guide
+                </Button>
+              )}
+            </div>
+          )}
           {turns.map(({ turn, source, head: about }, index) => (
             <div key={`${source}:${turn.id}`} {...props(styles.turn)}>
-              {source === "reviewer" && (
-                <p {...props(styles.voice)}>
-                  Reviewer
-                  {about !== undefined && (
-                    <span translate="no" {...props(styles.voiceSha)}>
-                      {about.slice(0, 7)}
-                    </span>
-                  )}
-                </p>
-              )}
+              <p {...props(styles.voice)}>
+                {source === "nyte" ? "Nyte" : "Reviewer"}
+                {about !== undefined && about !== head && (
+                  <span translate="no" {...props(styles.voiceSha)}>
+                    {about.slice(0, 7)}
+                  </span>
+                )}
+              </p>
               <TurnView
                 turn={turn}
                 liveTools={NO_LIVE_TOOLS}
@@ -185,7 +169,7 @@ function Chat({
         {(working || answering) && (
           <>
             <Spinner />
-            {working ? "Nyte is working on the branch" : "Reviewer is answering"}
+            {working ? "Nyte is working on the branch" : "Answering"}
           </>
         )}
       </div>
@@ -222,7 +206,7 @@ function Chat({
           )}
           <textarea
             ref={(node) => {
-              // "Ask about this section" in the review asks for focus by bumping the counter.
+              // "Ask about this section" asks for focus by bumping the counter.
               if (node === null || focused.current === local.focus) return;
 
               focused.current = local.focus;
@@ -255,7 +239,7 @@ function Chat({
               type="submit"
               variant="outline"
               disabled={!written || !guided}
-              disabledReason={guided ? undefined : "Ask once the guide is written"}
+              disabledReason={guided ? undefined : "Write the guide first"}
               loading={ask.isPending}
               aria-keyshortcuts="Enter"
             >
@@ -276,61 +260,61 @@ function Chat({
           </div>
         </div>
       </form>
-    </section>
+    </aside>
   );
 }
 
 const styles = create({
-  pane: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
-  note: {
+  panel: {
+    display: "flex",
+    flexDirection: "column",
+    width: "min(420px, 42%)",
+    minWidth: 320,
+    minHeight: 0,
+    flexShrink: 0,
+    borderInlineStartWidth: 1,
+    borderInlineStartStyle: "solid",
+    borderInlineStartColor: role.borderSecondaryTranslucent,
+  },
+  header: {
     display: "flex",
     alignItems: "center",
     gap: 8,
-    margin: 0,
-    padding: 28,
-    color: role.contentSecondary,
-  },
-  card: {
-    display: "flex",
-    alignItems: "center",
-    gap: 4,
-    marginInline: conversation.gutter,
-    marginBlockStart: 12,
-    paddingInlineEnd: 4,
-    borderRadius: radius.card,
-    backgroundColor: role.bgMutedTranslucent,
-    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
     flexShrink: 0,
+    paddingBlock: 6,
+    paddingInline: "16px 8px",
   },
-  cardLink: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
+  title: { color: role.contentPrimary, fontSize: type.fontSm, fontWeight: 600, flexShrink: 0 },
+  spend: {
     flex: 1,
     minWidth: 0,
-    paddingBlock: 8,
-    paddingInlineStart: 12,
-    borderRadius: radius.card,
-    color: role.contentPrimary,
-    textDecoration: "none",
-  },
-  cardIcon: { color: role.contentSecondary, flexShrink: 0 },
-  cardNumber: { color: role.contentSecondary, fontWeight: 400 },
-  cardBody: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
-  cardTitle: {
-    overflow: "hidden",
-    fontSize: type.fontSm,
-    fontWeight: 500,
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  cardMeta: {
     overflow: "hidden",
     color: role.contentSecondary,
-    fontFamily: type.fontMono,
     fontSize: type.fontXs,
+    fontVariantNumeric: "tabular-nums",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+  },
+  empty: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 12,
+    paddingInline: conversation.gutter,
+  },
+  emptyText: {
+    margin: 0,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+    textWrap: "pretty",
+  },
+  emptyStatus: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
   },
   dock: { flexShrink: 0 },
   // Reversed, so the newest message stays in view as turns arrive and nothing has to scroll it there.

@@ -1,20 +1,30 @@
 /**
  * What you are doing in a review, shared by every surface that shows it: the
- * chat pane's draft and attached code, which files you opened or closed, and
- * your reviewed marks. The Guide in one pane, the chat in the other and the
- * diff in the workbench read and write the same state. Reviewed marks stay
- * attached to the patch you saw and outlive the page in local storage.
+ * side chat (open or not, its thread, its draft and attached code), which
+ * files you opened or closed, and your reviewed marks. The Guide in one pane, the chat in the other and the
+ * diff in the workbench read and write the same state. A reviewed mark keeps
+ * the file's blobs from when you marked it, so it goes stale when the file
+ * changes again, and it outlives the page in local storage. Marking needs no
+ * patch, so the Overview counts your progress without loading one.
  */
 import { createContext, use, useState, type ReactElement, type ReactNode } from "react";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { CodeReference, ReviewedState, ReviewFile } from "./code";
+import type { CodeReference, ReviewedState } from "./code";
+
+/** The side chat thread on screen. It lives as long as the page does: a side chat is never saved as a chat. */
+export interface SideThread {
+  readonly id: string;
+  readonly startedAt: number;
+}
 
 interface Local {
+  readonly side: boolean;
+  readonly thread: SideThread | undefined;
   readonly draft: string;
   readonly references: readonly CodeReference[];
   readonly opened: ReadonlyMap<string, boolean>;
-  /** Path to the fingerprint of the patch you marked reviewed. */
+  /** Path to the file's blobs, `old..new`, when you marked it reviewed. */
   readonly marks: Readonly<Record<string, string>>;
   /** Bumped to ask the chat composer for focus. */
   readonly focus: number;
@@ -27,7 +37,7 @@ interface Store {
 
 const MarksSchema = Type.Record(Type.String(), Type.String());
 
-const storageKey = (reviewId: string): string => `nyte-lab:reviewed:${reviewId}`;
+const storageKey = (reviewId: string): string => `nyte-lab:reviewed:v2:${reviewId}`;
 
 function readMarks(reviewId: string): Readonly<Record<string, string>> {
   try {
@@ -40,6 +50,8 @@ function readMarks(reviewId: string): Readonly<Record<string, string>> {
 }
 
 const fresh = (reviewId: string): Local => ({
+  side: false,
+  thread: undefined,
   draft: "",
   references: [],
   opened: new Map(),
@@ -66,36 +78,49 @@ export function ReviewStateProvider({ children }: { readonly children: ReactNode
   return <ReviewStore value={{ states, update }}>{children}</ReviewStore>;
 }
 
-/** FNV-1a: enough to tell whether the patch under a reviewed mark changed. */
-function fingerprint(text: string): string {
-  let hash = 0x811c9dc5;
-
-  for (let index = 0; index < text.length; index++) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-
-  return (hash >>> 0).toString(36);
+/** A changed file as far as marks go: where it is and which change it is. */
+interface Marked {
+  readonly path: string;
+  readonly blobs: string;
 }
 
-export function useReviewState(reviewId: string, files: readonly ReviewFile[]) {
+export function useReviewState(reviewId: string, files: readonly Marked[]) {
   const store = use(ReviewStore);
 
   if (store === undefined) throw new Error("useReviewState needs a ReviewStateProvider");
 
   const local = store.states.get(reviewId) ?? fresh(reviewId);
   const update = (change: (local: Local) => Local): void => store.update(reviewId, change);
-  const patchOf = (path: string): string => files.find((file) => file.path === path)?.patch ?? "";
+  const blobsOf = (path: string): string => files.find((file) => file.path === path)?.blobs ?? "";
 
   const reviewed = (path: string): ReviewedState => {
     const seen = local.marks[path];
 
     if (seen === undefined) return "unreviewed";
 
-    return seen === fingerprint(patchOf(path)) ? "reviewed" : "changed";
+    return seen === blobsOf(path) ? "reviewed" : "changed";
   };
 
   return {
+    side: local.side,
+    thread: local.thread,
+    setSide: (side: boolean): void => update((current) => ({ ...current, side })),
+    /** The thread a question goes to: the one on screen, or a new one it starts. */
+    threadForQuestion: (): SideThread => {
+      if (local.thread !== undefined) return local.thread;
+
+      const thread = {
+        id: crypto.randomUUID().replaceAll("-", "").slice(0, 8),
+        startedAt: Date.now(),
+      };
+
+      update((current) => ({ ...current, thread }));
+
+      return thread;
+    },
+    /** Put the side chat back to empty; the next question forks the guide afresh. */
+    newThread: (): void =>
+      update((current) => ({ ...current, thread: undefined, draft: "", references: [] })),
     draft: local.draft,
     references: local.references,
     focus: local.focus,
@@ -106,7 +131,7 @@ export function useReviewState(reviewId: string, files: readonly ReviewFile[]) {
         const marks = { ...current.marks };
 
         for (const path of paths) {
-          if (next) marks[path] = fingerprint(patchOf(path));
+          if (next) marks[path] = blobsOf(path);
           else delete marks[path];
         }
 
@@ -136,10 +161,10 @@ export function useReviewState(reviewId: string, files: readonly ReviewFile[]) {
             entry.end === reference.end,
         )
           ? current
-          : { ...current, references: [...current.references, reference] },
+          : { ...current, side: true, references: [...current.references, reference] },
       ),
-    /** Put `draft` in the chat composer and ask it for focus. */
+    /** Open the side chat with `draft` in its composer, focused. */
     compose: (draft: string): void =>
-      update((current) => ({ ...current, draft, focus: current.focus + 1 })),
+      update((current) => ({ ...current, side: true, draft, focus: current.focus + 1 })),
   };
 }
