@@ -25,10 +25,12 @@ export function renderDiagram(source: string): DiagramResult {
       surface: role.bgElevated,
       border: role.borderSecondaryTranslucent,
       line: role.borderPrimaryTranslucent,
-      font: type.fontSans,
       padding: 24,
       transparent: true,
-    });
+    })
+      .replace(/^ *@import .*\n/gm, "")
+      .replace(/^ *text \{ font-family: .*\n/m, "")
+      .replace(/(\.mono \{ font-family: )[^;]*/, `$1${type.fontMono}`);
 
     return svg.length > MAX_SVG_LENGTH ? { kind: "source" } : { kind: "diagram", svg };
   } catch {
