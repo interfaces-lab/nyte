@@ -24,15 +24,18 @@ The 2026-10-04 pass measured a 2.4 GB store of 512 sessions on the development m
 first directory list walked every main branch before the shell could mount, and the renderer held
 the loading moon for 5–18 s depending on page cache and a second process polling the same store.
 Bounding that read and landing it in pages put the composer on screen in 2.3 s on three launches,
-with the rest of the rows arriving behind the mounted screen over the next 10 s. The repaired
-benchmark records these medians for its fixtures (`--repeat-each=3`, `usefulScreenMs`):
+with the rest of the rows arriving behind the mounted screen over the next 10 s. Keeping each
+row in the store's listing cache then made the walk a one-time cost: the next launch read all 137
+rows in ~200 ms and showed the composer at 1.0–1.3 s. The repaired benchmark records these
+medians for its fixtures (`--repeat-each=2`, `usefulScreenMs`):
 
 | Scenario | Useful screen |
 | --- | ---: |
-| Loopback server that never answers | 780 ms |
-| Remembered project, two-second login shell | 841 ms |
-| Restored 160-turn transcript | 1,071 ms |
-| Home with 50 saved workspaces | 2,412 ms |
+| Loopback server that never answers | 773 ms |
+| Remembered project, two-second login shell | 811 ms |
+| Restored 160-turn transcript | 1,030 ms |
+| Empty Home | 1,315 ms |
+| Home with 50 saved workspaces | 2,381 ms |
 
 The 50-workspace case meets the directory budget: its closed stores finish listing just past it.
 
@@ -124,9 +127,11 @@ what kept the store worker busy under a chat click. The first list after launch 
 branch, so the snapshot read waits for it only up to a 1.5 s budget and then answers with the rows
 held so far; a store the sweep has not reached is left out of the snapshot, which the sidebar shows
 as a workspace with no list yet rather than an empty one. An open store lists in pages of 32, and
-each page lands in the directory as it is read, so the budget answers with the first pages and the
-feed pushes the rest behind the mounted screen. Pages arrive in creation order, oldest first,
-because core opens roots before their children in that order. The connected server's list runs
+each page lands in the directory as it is read, so the budget answers with the newest pages and
+the feed pushes the rest behind the mounted screen. Core lists newest first and keeps each row it
+builds in the store's listing cache, keyed by the stream position it was built at, so a launch
+reads rows for the sessions that have not changed instead of walking their branches again; only
+the first launch after this change, or a session with new commits, pays the walk. The connected server's list runs
 beside the local reads with a 1.5 s budget; past it the directory answers with the last server list
 and its last availability while the read continues for the next poll, so an unreachable server never
 holds startup or the sidebar behind its request timeout.
