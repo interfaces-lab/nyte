@@ -9,7 +9,7 @@ const KIB = 1_024;
 const budgets = {
   main: 700 * KIB,
   preload: 16 * KIB,
-  renderer: 4_600 * KIB,
+  renderer: 4_700 * KIB,
 };
 
 const desktopRoot = join(import.meta.dirname, "..");

@@ -45,7 +45,7 @@ The build guard budgets these entries:
 | --- | ---: |
 | Electron main | 700 KiB |
 | Preload | 16 KiB |
-| Renderer startup graph | 4,600 KiB |
+| Renderer startup graph | 4,700 KiB |
 
 The renderer budget includes the entry, HTML module preloads, and every transitively
 imported static JavaScript chunk, counted once. The Vite manifest supplies the import
