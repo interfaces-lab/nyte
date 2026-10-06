@@ -77,7 +77,7 @@ disagreement goes in coverage-gaps.md for the user to settle.
 
 ## Verify
 
-1. `pnpm --dir packages/docs types:check`, `pnpm lint`, and `pnpm format`.
+1. `pnpm exec turbo typecheck --filter=@nyte-ai/web`, `pnpm lint`, and `pnpm format`.
 2. Ask the user to look; dev servers are theirs.
 3. Name what still needs eyes: light and dark, 375px and 1440px, reduced motion, keyboard focus
    on every hover effect, and the nav state over each surface it scrolls across.

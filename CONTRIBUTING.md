@@ -50,7 +50,7 @@ pnpm --dir packages/desktop build
 
 There is no root `test` script. Some packages, including schema and UI, have no test script. The TUI test command also builds and runs binary QA; see its [verification instructions](packages/tui/AGENTS.md#verification).
 
-Repository checks are `pnpm typecheck`, `pnpm lint`, and `pnpm format`. The docs site needs a separate `pnpm --dir packages/docs types:check` because its script has a different name. For a Markdown-only edit, review layout and local links and run `git diff --check`; build or typecheck the site when MDX or site code changes.
+Repository checks are `pnpm typecheck`, `pnpm lint`, and `pnpm format`. Root typechecking includes the docs site and builds its shared UI dependency first. To check only docs and its dependencies, run `pnpm exec turbo typecheck --filter=@nyte-ai/web`. For a Markdown-only edit, review layout and local links and run `git diff --check`; build or typecheck the site when MDX or site code changes.
 
 `pnpm format:fix` formats the whole repository. The formatter excludes `.md` files, so `pnpm format` does not validate READMEs or agent instructions. For supported files, limit formatting to your edits with `pnpm exec oxfmt <file> ...`. Preserve unrelated changes and report failures outside your scope.
 

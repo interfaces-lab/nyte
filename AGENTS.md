@@ -44,7 +44,7 @@ Stage only files that belong to the requested change.
 Choose checks relevant to the change.
 
 - Package tests, when the package defines a test script: `pnpm --dir packages/<package> test`.
-- The docs site uses `pnpm --dir packages/docs types:check`. Root `pnpm typecheck` does not include it.
+- Root `pnpm typecheck` includes the docs site. To check only docs and its dependencies, use `pnpm exec turbo typecheck --filter=@nyte-ai/web`.
 - Workspace checks: `pnpm typecheck`, `pnpm lint`, `pnpm format`.
 - `pnpm format:fix` applies formatting. Report failures without fixing unrelated files.
 
