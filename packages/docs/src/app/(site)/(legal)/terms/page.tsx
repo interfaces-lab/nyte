@@ -22,7 +22,7 @@ export default function Page() {
         { title: "Availability and responsibility", url: "#availability", depth: 2 },
         { title: "Ending use and changes", url: "#changes", depth: 2 },
       ]}
-      previous={{ name: "Privacy policy", url: "/privacy" }}
+      previous={{ title: "Privacy policy", href: "/privacy" }}
     >
       <h2 id="using-nyte">Using Nyte</h2>
       <p>

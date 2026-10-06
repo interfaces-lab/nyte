@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { source } from "~/lib/source";
+import { allDocs } from "~/lib/docs";
 import { siteUrl } from "~/lib/shared";
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -7,6 +7,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: siteUrl },
     { url: `${siteUrl}/privacy` },
     { url: `${siteUrl}/terms` },
-    ...source.getPages().map((page) => ({ url: `${siteUrl}${page.url}` })),
+    ...allDocs().map((page) => ({ url: `${siteUrl}${page.url}` })),
   ];
 }

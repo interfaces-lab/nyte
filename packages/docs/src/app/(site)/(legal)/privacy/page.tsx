@@ -23,7 +23,7 @@ export default function Page() {
         { title: "Your choices", url: "#choices", depth: 2 },
         { title: "Children and changes", url: "#changes", depth: 2 },
       ]}
-      next={{ name: "Terms of service", url: "/terms" }}
+      next={{ title: "Terms of service", href: "/terms" }}
     >
       <h2 id="operator">Who we are</h2>
       <p>

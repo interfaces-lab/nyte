@@ -22,8 +22,15 @@ const config = {
       { source: "/kernel", destination: "/docs/kernel/architecture", permanent: true },
       { source: "/kernel/:path*", destination: "/docs/kernel/:path*", permanent: true },
       { source: "/docs/composition", destination: "/docs/build/composition", permanent: true },
-      { source: "/docs/sdk", destination: "/docs/build/sdk", permanent: true },
-      { source: "/docs/desktop", destination: "/docs/build/desktop", permanent: true },
+      { source: "/docs/sdk", destination: "/docs/build/composition", permanent: true },
+      { source: "/docs/build/sdk", destination: "/docs/build/composition", permanent: true },
+      {
+        source: "/docs/build/environments",
+        destination: "/docs/build/composition",
+        permanent: true,
+      },
+      { source: "/docs/desktop", destination: "/docs", permanent: true },
+      { source: "/docs/build/desktop", destination: "/docs", permanent: true },
     ];
   },
 

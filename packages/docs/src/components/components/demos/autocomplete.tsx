@@ -14,6 +14,7 @@ import {
   AutocompleteTrigger,
 } from "@nyte-ai/ui/autocomplete";
 import { useState } from "react";
+import { modelId } from "~/lib/shared";
 
 interface ModelGroup {
   readonly label: string;
@@ -22,7 +23,7 @@ interface ModelGroup {
 
 const groups: readonly ModelGroup[] = [
   { label: "Anthropic", items: ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"] },
-  { label: "OpenAI", items: ["gpt-5.2"] },
+  { label: "OpenAI", items: [modelId] },
   { label: "Google", items: ["gemini-3-pro"] },
 ];
 

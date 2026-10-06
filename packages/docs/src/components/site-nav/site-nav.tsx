@@ -3,7 +3,7 @@ import { SiteMobileNav } from "~/components/site-nav/mobile-menu";
 import { SiteSearch } from "~/components/site-nav/search";
 import { SiteNavSections } from "~/components/site-nav/sections";
 import { ThemeToggle } from "~/components/site-nav/theme-toggle";
-import { navGroups } from "~/lib/nav";
+import { docsNav } from "~/lib/docs";
 import { githubUrl } from "~/lib/shared";
 
 /*
@@ -31,7 +31,7 @@ export function SiteNav() {
           <div className="flex items-center gap-2 justify-self-end">
             <ThemeToggle />
             <SiteSearch />
-            <SiteMobileNav groups={navGroups()} githubHref={githubUrl} />
+            <SiteMobileNav sections={docsNav} githubHref={githubUrl} />
           </div>
         </div>
       </div>

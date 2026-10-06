@@ -1,11 +1,11 @@
-import { getLLMText, source } from "~/lib/source";
+import { allDocs } from "~/lib/docs";
 
 async function everyPage() {
   "use cache";
 
-  const scanned = await Promise.all(source.getPages().map(getLLMText));
+  const pages = await Promise.all(allDocs().map((page) => page.text()));
 
-  return scanned.join("\n\n");
+  return pages.join("\n\n");
 }
 
 export async function GET() {

@@ -4,7 +4,7 @@ import { DocFrame } from "../_layout/frame";
 export default function Layout({ children }: { children: ReactNode }) {
   return (
     <DocFrame
-      groups={[
+      sections={[
         {
           label: "Legal",
           items: [

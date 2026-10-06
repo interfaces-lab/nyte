@@ -13,7 +13,7 @@ import { createHost, resolveModel } from "@nyte-ai/host";
 const models = createNyteModels();
 const sdk = await createHost({
   models,
-  model: await resolveModel(models, "openai-codex/gpt-6.1-sol"),
+  model: await resolveModel(models, "{{model}}"),
   store: new SqliteStore("./agent.db"),
   plugins: { kind: "chat", system: "You are a helpful assistant." },
 });
@@ -53,7 +53,7 @@ const workspace = await workspaces.require(process.cwd()); // [!code ++]
 
 const sdk = await createHost({
   models,
-  model: await resolveModel(models, "openai-codex/gpt-6.1-sol"),
+  model: await resolveModel(models, "{{model}}"),
   store: new SqliteStore("./agent.db"),
   workspace: createWorkspaceBackend(workspaces), // [!code ++]
   plugins: { kind: "chat", system: "You are a helpful assistant." }, // [!code --]
@@ -68,15 +68,9 @@ the store at `workspaceStorePath(workspace.cwd)`.
 
 ## Make a web app
 
-The first MIT-licensed SDK release, `0.0.16-dev.2`, is pending publication. The planned public
-packages are `@nyte-ai/{ai,core,host,server,client,plugin,protocol,schema,telemetry}`. The registry
-commands below will work after these packages publish under `@next`. Both examples are standalone
-projects and do not require a repository checkout. `@nyte-ai/serve` stays private because it depends
-on Nyte's app; `@nyte-ai/server/node` is the same listener without it.
+The SDK packages aren't on npm yet. The install commands below work once they publish under `@next`.
 
-Use Node 26.4 or later for the host. This example uses `openai/gpt-4.1` with an `OPENAI_API_KEY`.
-The `openai-codex` provider used above instead requires OAuth through `nyte login`.
-The host keeps provider credentials and the SQLite database out of the browser.
+The host needs Node 26.4 or later. Run `nyte login` first, since the `openai-codex` provider signs in through it.
 
 ### Vite
 
@@ -104,7 +98,7 @@ const models = createNyteModels();
 const store = new SqliteStore("./agent.db");
 const sdk = await createHost({
   models,
-  model: await resolveModel(models, "openai/gpt-4.1"),
+  model: await resolveModel(models, "{{model}}"),
   store,
   plugins: { kind: "chat", system: "You are a helpful assistant." },
 });
@@ -129,10 +123,9 @@ process.once("SIGINT", async () => {
 `serve` binds `127.0.0.1` and refuses a token shorter than 16 characters. `attach()` runs queued
 messages in this process; serving the API alone does not execute them.
 
-From `chat-web`, set your OpenAI API key, generate a separate host token, and start the host:
+From `chat-web`, generate a host token and start the host:
 
 ```sh
-export OPENAI_API_KEY="your-openai-api-key"
 export NYTE_TOKEN="$(node -e 'console.log(crypto.randomUUID())')"
 printf '%s\n' "$NYTE_TOKEN"
 node server.ts
@@ -385,20 +378,3 @@ render into the `session.composer.top` slot.
 The server demos are chat only, with no workspace or terminal. Setup is in the
 [Cloudflare guide](https://github.com/interfaces-lab/nyte/blob/main/packages/demo/server/cloudflare/README.md)
 and the [Vercel guide](https://github.com/interfaces-lab/nyte/blob/main/packages/demo/server/vercel/README.md).
-
-## Related
-
-<Cards>
-  <DocCard
-    icon="IconCodeBrackets"
-    title="SDK"
-    href="/docs/build/sdk"
-    description="Operations, events, storage, and execution lifecycle"
-  />
-  <DocCard
-    icon="IconAgent"
-    title="Desktop"
-    href="/docs/build/desktop"
-    description="Electron hosts, workspace trust, and the IPC bridge"
-  />
-</Cards>

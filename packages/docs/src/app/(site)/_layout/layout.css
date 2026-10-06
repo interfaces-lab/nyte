@@ -62,16 +62,6 @@
 
   /* ---- sidebar --------------------------------------------------------- */
 
-  .doc-side {
-    display: none;
-  }
-
-  @media (min-width: 1024px) {
-    .doc-side {
-      display: block;
-    }
-  }
-
   .doc-side,
   .doc-toc {
     position: sticky;
@@ -93,18 +83,14 @@
   }
 
   .doc-eyebrow {
-    @apply font-mono text-tertiary-foreground;
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 1;
-    letter-spacing: 0;
+    @apply text-tertiary-foreground;
+    font-size: 14px;
+    line-height: 1.4;
   }
 
   .doc-head .doc-eyebrow {
     display: block;
-    margin-bottom: 12px;
-    @apply text-muted-foreground;
-    font-size: 14px;
+    margin-bottom: 8px;
   }
 
   .doc-title {
@@ -354,7 +340,7 @@
 
   .doc-toc .doc-eyebrow {
     display: block;
-    margin: 0 0 13px 13px;
+    margin: 0 0 8px 12px;
   }
 
   .doc-toc ol {
@@ -369,7 +355,7 @@
   .doc-toc a {
     position: relative;
     display: block;
-    padding: 3px 0 3px 13px;
+    padding: 4px 0 4px 12px;
     @apply text-muted-foreground;
     font-size: 13px;
     line-height: 21px;
@@ -378,11 +364,11 @@
   }
 
   .doc-toc a[data-depth="3"] {
-    padding-left: 26px;
+    padding-left: 24px;
   }
 
   .doc-toc a[data-depth="4"] {
-    padding-left: 39px;
+    padding-left: 36px;
   }
 
   .doc-toc a:hover {
@@ -416,11 +402,11 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    margin: 20px 0 0 13px;
+    margin: 16px 0 0 12px;
     padding-top: 16px;
     border-top: 1px solid;
-    @apply border-border-subtle font-mono text-tertiary-foreground;
-    font-size: 12px;
+    @apply border-border-subtle text-tertiary-foreground;
+    font-size: 13px;
     line-height: 1.6;
   }
 
@@ -488,6 +474,71 @@
     .doc-code-copy {
       opacity: 1;
     }
+  }
+
+  /* ---- install blocks -------------------------------------------------- */
+
+  .doc-prose small {
+    display: block;
+    margin: -8px 0 14px;
+    @apply text-muted-foreground;
+    font-size: 13px;
+  }
+
+  .doc-platform-icon {
+    display: inline-flex;
+    margin-right: 6px;
+    vertical-align: -0.2em;
+  }
+
+  .doc-toc .doc-platform-icon {
+    display: none;
+  }
+
+  .doc-download {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 21px;
+    padding: 12px 16px 12px 8px;
+    border: 1px solid;
+    @apply border-border-subtle;
+    border-radius: 12px;
+  }
+
+  .doc-download img {
+    flex-shrink: 0;
+  }
+
+  .doc-download-text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .doc-download-text span:first-child {
+    @apply text-foreground;
+  }
+
+  .doc-download-text span:last-child {
+    @apply text-tertiary-foreground;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .doc-prose .doc-download a {
+    flex-shrink: 0;
+    padding: 6px 16px;
+    border-radius: 999px;
+    @apply bg-foreground text-background;
+    font-size: 14px;
+    text-decoration: none;
+    transition: opacity 120ms ease-out;
+  }
+
+  .doc-prose .doc-download a:hover {
+    opacity: 0.85;
   }
 
   /* ---- tables ---------------------------------------------------------- */

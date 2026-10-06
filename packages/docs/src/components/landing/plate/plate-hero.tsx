@@ -46,7 +46,7 @@ export function PlateHero() {
             </FactWord>
             . Run it{" "}
             <FactWord
-              href="/docs/build/desktop"
+              href="/docs"
               above="SQLite"
               below="Terminal + desktop"
               tint="[--tint:#e3dcff]"

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { modelId } from "~/lib/shared";
 import { Bezel } from "./bezel";
 
 const row = "overflow-hidden text-ellipsis whitespace-pre";
@@ -170,7 +171,7 @@ export function TerminalHost() {
               <span className="hidden @min-[42ch]:inline">
                 <span className="text-(--t-path)">nyte main*</span> │{" "}
               </span>
-              <span className="shrink-0 text-(--t-accent)">gpt-5.6-luna</span>
+              <span className="shrink-0 text-(--t-accent)">{modelId}</span>
               <span className="hidden @min-[29ch]:inline">
                 {" │ "}
                 <span className="text-(--t-thinking)">medium</span>

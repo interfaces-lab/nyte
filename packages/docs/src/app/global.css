@@ -72,31 +72,6 @@
   --font-pixel: var(--font-geist-pixel-square), var(--font-geist-mono), ui-monospace, monospace;
 
   --ease-nav: cubic-bezier(0.22, 1, 0.36, 1);
-  --animate-nav-panel-in: nav-panel-in 420ms var(--ease-nav) both;
-  --animate-nav-panel-content-in: nav-panel-content-in 360ms var(--ease-nav) both;
-  --animate-nav-panel-row-in: nav-panel-row-in 380ms var(--ease-nav) both;
-
-  @keyframes nav-panel-in {
-    from {
-      opacity: 0;
-      transform: translateY(-8px);
-    }
-  }
-
-  @keyframes nav-panel-content-in {
-    from {
-      opacity: 0;
-      transform: translateX(var(--enter-x, 0));
-    }
-  }
-
-  @keyframes nav-panel-row-in {
-    from {
-      opacity: 0;
-      transform: translateY(6px);
-    }
-  }
-
   --animate-plate-rise: plate-rise 900ms var(--ease-nav) both;
 
   @keyframes plate-rise {

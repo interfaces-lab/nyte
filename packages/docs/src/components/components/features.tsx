@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { navGroups } from "~/lib/nav";
+import { docsNav } from "~/lib/docs";
 import { docsIcons, type DocsIconName } from "~/lib/docs-icons";
 
 function layerPresentation(label: string): { icon: DocsIconName; description: string } | undefined {
@@ -23,9 +23,7 @@ export function CloudFeatures() {
   return (
     <div className="cloud-features">
       {["Foundations", "Components"].map((label) => {
-        const first = navGroups()
-          .find((group) => group.label === "Components")
-          ?.items.find((item) => item.sub === label);
+        const first = docsNav.find((section) => section.label === label)?.items[0];
         const presentation = layerPresentation(label);
         if (!first || !presentation) return null;
         const Icon = docsIcons[presentation.icon];

@@ -1,18 +1,14 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import type { NavItem } from "~/lib/docs";
 import { Toc, type TocEntry } from "./toc";
 
-interface PagerTarget {
-  name?: unknown;
-  url: string;
-}
-
-function PagerLink({ target, dir }: { target?: PagerTarget; dir: "previous" | "next" }) {
-  if (!target || typeof target.name !== "string") return null;
+function PagerLink({ target, dir }: { target?: NavItem; dir: "previous" | "next" }) {
+  if (!target) return null;
   return (
-    <Link href={target.url} data-dir={dir}>
+    <Link href={target.href} data-dir={dir}>
       <span className="doc-eyebrow">{dir === "previous" ? "Previous" : "Next"}</span>
-      <strong>{target.name}</strong>
+      <strong>{target.title}</strong>
     </Link>
   );
 }
@@ -39,8 +35,8 @@ export function DocArticle({
   /** Sits under the on-this-page list. */
   aside?: ReactNode;
   toc: TocEntry[];
-  previous?: PagerTarget;
-  next?: PagerTarget;
+  previous?: NavItem;
+  next?: NavItem;
   children: ReactNode;
 }) {
   return (

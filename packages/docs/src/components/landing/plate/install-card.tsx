@@ -51,13 +51,13 @@ export async function InstallCard() {
           <CopyCommand command="curl -fsSL https://nyte.sh/install | sh" />
         </div>
         <p className="mt-4 text-[13px]/5 text-muted-foreground">
-          Building a host?{" "}
+          Building your own?{" "}
           <Link
-            href="/docs/build/sdk"
+            href="/docs/build/composition"
             {...props(intent.primary)}
             className="text-muted-foreground hover:underline"
           >
-            Read the SDK
+            Build an agent app
           </Link>
         </p>
       </div>

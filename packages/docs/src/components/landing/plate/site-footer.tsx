@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { navGroups } from "~/lib/nav";
+import { docsNav } from "~/lib/docs";
 import { releasesUrl } from "~/lib/releases";
 import { githubUrl } from "~/lib/shared";
 
@@ -19,10 +19,9 @@ export function SiteFooter() {
     },
     {
       label: "Docs",
-      links: navGroups().flatMap((group) => {
-        const [first] = group.items;
-        return first ? [{ title: group.label, href: first.href }] : [];
-      }),
+      links: docsNav.flatMap((section) =>
+        section.label ? [{ title: section.label, href: section.items[0].href }] : section.items,
+      ),
     },
     {
       label: "Legal",
