@@ -8,6 +8,7 @@ import { ReviewPage } from "./review/page";
 import { SettingsPage } from "./settings/page";
 import { CanvasPage } from "./canvas/page";
 import { ChangesPage } from "./changes/page";
+import { ChatRailPage } from "./chat-rail/page";
 import { SdkSpecPage } from "./sdk/page";
 import { rootRoute } from "./routes/__root";
 
@@ -58,6 +59,12 @@ const routeTree = rootRoute.addChildren([
     path: "/changes",
     component: ChangesPage,
     head: () => ({ meta: [{ title: "Lab · Changes" }] }),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/chat-rail",
+    component: ChatRailPage,
+    head: () => ({ meta: [{ title: "Lab · Chat rail" }] }),
   }),
   createRoute({
     getParentRoute: () => rootRoute,

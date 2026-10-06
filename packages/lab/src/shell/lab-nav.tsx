@@ -8,6 +8,7 @@ const PAGES = [
   ["/projects", "Projects"],
   ["/canvas", "Canvas"],
   ["/changes", "Changes"],
+  ["/chat-rail", "Chat rail"],
   ["/sdk", "SDK"],
   ["/settings", "Settings"],
 ] as const;
