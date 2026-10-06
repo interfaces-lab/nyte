@@ -7,6 +7,7 @@ import { ProjectsPage } from "./projects/page";
 import { ReviewPage } from "./review/page";
 import { SettingsPage } from "./settings/page";
 import { CanvasPage } from "./canvas/page";
+import { ChangesPage } from "./changes/page";
 import { SdkSpecPage } from "./sdk/page";
 import { rootRoute } from "./routes/__root";
 
@@ -51,6 +52,12 @@ const routeTree = rootRoute.addChildren([
     path: "/canvas",
     component: CanvasPage,
     head: () => ({ meta: [{ title: "Lab · Canvas" }] }),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/changes",
+    component: ChangesPage,
+    head: () => ({ meta: [{ title: "Lab · Changes" }] }),
   }),
   createRoute({
     getParentRoute: () => rootRoute,

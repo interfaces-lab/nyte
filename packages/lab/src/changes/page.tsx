@@ -439,15 +439,12 @@ function Sections(): ReactElement {
               trailing={
                 <HoverActions>
                   <IconButton icon="refresh" label="Discard changes" />
-                  <IconButton
+                  <Button
+                    size="sm"
+                    iconOnly
                     icon={staged.has(file.path) ? "minimize" : "plus"}
-                    label={group.action}
-                  />
-                  <button
-                    type="button"
                     aria-label={group.action}
                     onClick={() => move(file.path)}
-                    {...props(styles.overlayButton)}
                   />
                 </HoverActions>
               }
@@ -781,7 +778,7 @@ const IDEAS: readonly {
   },
   {
     title: "Compact",
-    note: "Scope, branch and totals fit on one line. The field is 28px with a small Commit button beside it.",
+    note: "Scope, branch and totals fit on one line, with a small Commit button beside the field.",
     render: () => <Compact />,
   },
   {
@@ -859,7 +856,7 @@ const styles = create({
     flexDirection: "column",
     height: 460,
     overflow: "hidden",
-    borderRadius: radius.lg,
+    borderRadius: radius.card,
     backgroundColor: role.bgBase,
     boxShadow: `0 0 0 1px ${role.borderPrimary}`,
   },
@@ -923,7 +920,7 @@ const styles = create({
     gap: 6,
     minHeight: 32,
     paddingInline: "10px 4px",
-    borderRadius: radius.md,
+    borderRadius: radius.control,
     backgroundColor: role.bgElevated,
     boxShadow: {
       default: `inset 0 0 0 1px ${role.borderControl}`,
@@ -958,15 +955,15 @@ const styles = create({
   },
   primaryMain: {
     flex: 1,
-    borderStartStartRadius: radius.md,
-    borderEndStartRadius: radius.md,
+    borderStartStartRadius: radius.control,
+    borderEndStartRadius: radius.control,
   },
   primaryMenu: {
     display: "grid",
     placeItems: "center",
     width: 32,
-    borderStartEndRadius: radius.md,
-    borderEndEndRadius: radius.md,
+    borderStartEndRadius: radius.control,
+    borderEndEndRadius: radius.control,
   },
 
   inlineActions: { display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0 },
@@ -977,7 +974,7 @@ const styles = create({
     height: 24,
     paddingInline: 6,
     border: "none",
-    borderRadius: radius.sm,
+    borderRadius: radius.indicator,
     backgroundColor: { default: "transparent", ":hover": role.bgHover },
     color: role.contentSecondary,
     font: "inherit",
@@ -1014,7 +1011,7 @@ const styles = create({
     gap: 8,
     height: 30,
     paddingInline: "6px 4px",
-    borderRadius: radius.sm,
+    borderRadius: radius.indicator,
     backgroundColor: { default: "transparent", ":hover": role.bgHover },
     position: "relative",
   },
@@ -1048,16 +1045,6 @@ const styles = create({
   },
   revealCheck: { display: "inline-flex" },
   revealOnHover: { opacity: { default: 0, [hover]: 1 } },
-  overlayButton: {
-    position: "absolute",
-    insetBlock: 0,
-    insetInlineEnd: 0,
-    width: 28,
-    padding: 0,
-    border: "none",
-    backgroundColor: "transparent",
-    cursor: "pointer",
-  },
   letter: {
     width: 16,
     color: role.contentSecondary,
@@ -1153,14 +1140,14 @@ const styles = create({
     padding: 2,
     marginInline: 8,
     marginBlockEnd: 8,
-    borderRadius: radius.md,
+    borderRadius: radius.control,
     backgroundColor: role.bgMuted,
   },
   segment: {
     flex: 1,
     height: 26,
     border: "none",
-    borderRadius: radius.sm,
+    borderRadius: radius.indicator,
     backgroundColor: "transparent",
     color: role.contentSecondary,
     font: "inherit",
@@ -1169,7 +1156,7 @@ const styles = create({
   },
   segmentOn: {
     backgroundColor: role.bgElevated,
-    boxShadow: role.borderPrimary === "" ? "none" : `0 0 0 1px ${role.borderPrimary}`,
+    boxShadow: `0 0 0 1px ${role.borderPrimary}`,
     color: role.contentPrimary,
     fontWeight: 500,
   },
@@ -1216,7 +1203,7 @@ const styles = create({
     height: 32,
     paddingInline: 10,
     border: "none",
-    borderRadius: radius.md,
+    borderRadius: radius.control,
     backgroundColor: { default: role.bgMuted, ":hover": role.bgControlHover },
     color: role.contentSecondary,
     font: "inherit",
@@ -1231,7 +1218,7 @@ const styles = create({
   card: {
     display: "flex",
     flexDirection: "column",
-    borderRadius: radius.md,
+    borderRadius: radius.control,
     backgroundColor: role.bgElevated,
     boxShadow: {
       default: `inset 0 0 0 1px ${role.borderControl}`,
