@@ -1,6 +1,6 @@
 {
   "name": "@nyte-ai/web",
-  "version": "0.0.16-dev.2",
+  "version": "0.0.16-dev.3",
   "private": true,
   "scripts": {
     "clean": "rm -rf node_modules .turbo .next",
