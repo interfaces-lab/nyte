@@ -8,7 +8,7 @@ import type {
   VcsFile,
   VcsSnapshot,
 } from "@nyte-ai/protocol";
-import type { VcsDiffRequest } from "../queries.ts";
+import type { VcsDiffRead, VcsDiffRequest } from "../queries.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
 
 type TurnChangesScope = Extract<WorkbenchChangesScope, { kind: "turn" }>;
@@ -158,6 +158,32 @@ export function diffRequestForScope(
       return _exhaustive;
     }
   }
+}
+
+/** The repository a scope is read against; absent outside a Git working tree. */
+export interface ChangesRepository {
+  readonly root: string;
+  readonly revision: string;
+}
+
+export function changesRepository(
+  snapshot: VcsSnapshot | undefined,
+): ChangesRepository | undefined {
+  return snapshot?.kind === "repository"
+    ? { root: snapshot.root, revision: snapshot.revision }
+    : undefined;
+}
+
+export function diffRead(
+  repository: ChangesRepository | undefined,
+  scope: WorkbenchChangesScope,
+  ignoreWhitespace: boolean,
+): VcsDiffRead | undefined {
+  const request = diffRequestForScope(scope, { ignoreWhitespace });
+
+  if (repository === undefined || request === undefined) return undefined;
+
+  return { ...repository, request };
 }
 
 export function diffScopeStats(diffs: readonly VcsDiff[]): ChangeScopeStats {

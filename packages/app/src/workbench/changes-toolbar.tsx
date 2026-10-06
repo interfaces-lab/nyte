@@ -34,7 +34,6 @@ import { Button } from "@nyte-ai/ui/button";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { macPlatform } from "../platform.ts";
 import { useVcsDiff, useVcsLog } from "../queries.ts";
-import type { VcsDiffRead } from "../queries.ts";
 import { menu, radius } from "@nyte-ai/ui/schema.stylex";
 import { workbenchStyles } from "./workbench.stylex.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
@@ -43,7 +42,7 @@ import { ChangesCommitBar, isWorkingTreeScope } from "./changes-commit-bar.tsx";
 import {
   changesScopeValue,
   commitScopeOptions,
-  diffRequestForScope,
+  diffRead,
   turnHasChanges,
   visibleTurnOptions,
   workingTreeScopeOptions,
@@ -51,6 +50,7 @@ import {
 import type {
   BranchReadout,
   ChangeScopeRead,
+  ChangesRepository,
   ChangeScopeStats,
   ChangesScopeOption,
   TurnChangeOption,
@@ -62,12 +62,6 @@ import type { WorkbenchChangesScope } from "./controller.ts";
 const COMMIT_PAGE_SIZE = 20;
 
 const MAX_COMMIT_PAGES = 10;
-
-/** The repository a scope is read against; absent outside a Git working tree. */
-export interface ChangesRepository {
-  readonly root: string;
-  readonly revision: string;
-}
 
 /** The panel's own keyboard bindings, which is all the Changes panel claims. */
 export type ChangesShortcutAction = "filter-files" | "ignore-whitespace" | "refresh";
@@ -270,18 +264,6 @@ function ScopeRadioItem({ option }: { readonly option: ChangesScopeOption }): Re
       {option.label}
     </MenuRadioItem>
   );
-}
-
-function diffRead(
-  repository: ChangesRepository | undefined,
-  scope: WorkbenchChangesScope,
-  ignoreWhitespace: boolean,
-): VcsDiffRead | undefined {
-  const request = diffRequestForScope(scope, { ignoreWhitespace });
-
-  if (repository === undefined || request === undefined) return undefined;
-
-  return { ...repository, request };
 }
 
 /**

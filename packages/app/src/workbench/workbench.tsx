@@ -4,7 +4,6 @@ import { props } from "@stylexjs/stylex";
 import { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import type { SessionId } from "@nyte-ai/protocol";
-import { changesFromTurns } from "@nyte-ai/client";
 import { clientCapabilities } from "../client-actions.ts";
 import type { ClientCapabilities } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
@@ -13,7 +12,9 @@ import type { IconName } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Row } from "@nyte-ai/ui/row";
 import { Toggle } from "@nyte-ai/ui/toggle";
-import { useHostState, useSessionSnapshot } from "../queries.ts";
+import { useHostState, useVcsDiff, useVcsSnapshot } from "../queries.ts";
+import { changesRepository, diffRead, diffScopeStats } from "./change-scopes.ts";
+import { useChangesViewOptions } from "./changes-view-options.ts";
 import {
   activeWorkbenchTab,
   clampWorkbenchWidthToBounds,
@@ -125,13 +126,17 @@ function DoubleChevron({ back = false }: { readonly back?: boolean }): ReactElem
   );
 }
 
-function RailChangeStats({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
-  const snapshot = useSessionSnapshot(sessionId);
+function RailChangeStats(): ReactElement | null {
+  const snapshot = useVcsSnapshot(true);
+  const repository = changesRepository(snapshot.data);
+  const { ignoreWhitespace } = useChangesViewOptions(repository?.root ?? "workspace");
 
-  const stats = changesFromTurns(snapshot.data?.transcript ?? []).reduce(
-    (total, file) => ({ added: total.added + file.added, removed: total.removed + file.removed }),
-    { added: 0, removed: 0 },
+  const diffs = useVcsDiff(
+    diffRead(repository, { kind: "uncommitted" }, ignoreWhitespace),
+    repository !== undefined,
   );
+
+  const stats = diffScopeStats(diffs.data ?? []);
 
   if (stats.added === 0 && stats.removed === 0) return null;
 
@@ -176,7 +181,6 @@ function FloatingWorkbenchPanel({
   viewKey,
   view,
   scope,
-  sessionId,
   workspaceName,
   workspacePath,
   capabilities,
@@ -184,7 +188,6 @@ function FloatingWorkbenchPanel({
   readonly viewKey: WorkbenchViewKey;
   readonly view: WorkbenchViewState;
   readonly scope: WorkbenchScope;
-  readonly sessionId: SessionId | undefined;
   readonly workspaceName: string | undefined;
   readonly workspacePath: string | null;
   readonly capabilities: ClientCapabilities;
@@ -243,9 +246,7 @@ function FloatingWorkbenchPanel({
             label={workbenchKindLabel(kind)}
             onClick={() => openWorkbenchTab({ view: viewKey, kind, workspacePath, capabilities })}
           >
-            {kind === "changes" && sessionId !== undefined && (
-              <RailChangeStats sessionId={sessionId} />
-            )}
+            {kind === "changes" && <RailChangeStats />}
           </RailRow>
         ))}
       </section>
@@ -607,7 +608,6 @@ function WorkbenchViewHost({
             viewKey={viewKey}
             view={view}
             scope={scope}
-            sessionId={sessionId}
             workspaceName={workspaceName}
             workspacePath={workspacePath}
             capabilities={capabilities}

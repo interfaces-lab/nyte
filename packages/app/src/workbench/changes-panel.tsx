@@ -18,6 +18,7 @@ import {
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import {
   branchReadout,
+  changesRepository,
   changesScopeLabel,
   changesScopeValue,
   diffRequestForScope,
@@ -247,9 +248,9 @@ function ChangesPanelView({
     scope.kind === "turn" && selectedTurn === undefined ? UNCOMMITTED_SCOPE : scope;
 
   const activeScopeValue = changesScopeValue(activeScope);
-  const root = snapshot.data?.kind === "repository" ? snapshot.data.root : undefined;
-  const revision = snapshot.data?.kind === "repository" ? snapshot.data.revision : undefined;
-  const repository = root === undefined || revision === undefined ? undefined : { root, revision };
+  const repository = changesRepository(snapshot.data);
+  const root = repository?.root;
+  const revision = repository?.revision;
 
   const viewedSnapshot = useSyncExternalStore(
     changesViewed.subscribe,
