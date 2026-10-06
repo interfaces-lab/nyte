@@ -191,126 +191,35 @@ function Block({ block }: { readonly block: SpecBlock }): ReactElement {
   }
 }
 
-interface TocItem {
-  readonly id: string;
-  readonly label: string;
-  readonly depth: 0 | 1 | 2;
-}
-
-const TOC: readonly TocItem[] = BLOCKS.flatMap((block): TocItem[] => {
-  switch (block.kind) {
-    case "part":
-      return [{ id: block.id, label: block.line.text.replace(/^Part [IVX]+\. /, ""), depth: 0 }];
-    case "section":
-      return [{ id: block.id, label: splitTitle(block.line.text).title, depth: 1 }];
-    case "note":
-      return block.title === undefined ? [] : [{ id: block.id, label: block.title.text, depth: 2 }];
-    case "entry":
-      return [{ id: block.id, label: block.names[0], depth: 2 }];
-  }
-});
-
 export function SdkSpecPage(): ReactElement {
   const [intro, ...rest] = BLOCKS;
 
   return (
-    <div {...props(styles.page)}>
-      <nav aria-label="Contents" {...props(styles.sidebar)}>
-        <a href="#top" {...props(styles.tocHome)}>
-          SDK spec
-        </a>
-        {TOC.map((item) => (
-          <a
-            key={item.id}
-            href={`#${item.id}`}
-            {...props(
-              styles.toc,
-              item.depth === 0 && styles.tocPart,
-              item.depth === 2 && styles.tocLeaf,
-            )}
-          >
-            {item.label}
-          </a>
+    <main {...props(styles.page)}>
+      <article {...props(styles.article)}>
+        <header {...props(styles.header)}>
+          <h1 {...props(styles.title)}>Nyte SDK spec</h1>
+          <p {...props(styles.meta)}>
+            packages/lab/sdk-spec.ts · {LINE_COUNT.toLocaleString()} lines
+          </p>
+        </header>
+        {intro?.kind === "note" ? <Prose lines={intro.lines} /> : intro && <Block block={intro} />}
+        {rest.map((block) => (
+          <Block key={block.id} block={block} />
         ))}
-      </nav>
-      <main {...props(styles.main)}>
-        <article id="top" {...props(styles.article)}>
-          <header {...props(styles.header)}>
-            <h1 {...props(styles.title)}>Nyte SDK spec</h1>
-            <p {...props(styles.meta)}>
-              packages/lab/sdk-spec.ts · {LINE_COUNT.toLocaleString()} lines
-            </p>
-          </header>
-          {intro?.kind === "note" ? (
-            <Prose lines={intro.lines} />
-          ) : (
-            intro && <Block block={intro} />
-          )}
-          {rest.map((block) => (
-            <Block key={block.id} block={block} />
-          ))}
-        </article>
-      </main>
-    </div>
+      </article>
+    </main>
   );
 }
 
 const styles = create({
   page: {
-    display: "grid",
-    gridTemplateColumns: "264px minmax(0, 1fr)",
     blockSize: "100%",
+    overflowY: "auto",
     backgroundColor: role.bgBase,
     color: role.contentPrimary,
     fontFamily: type.fontSans,
     userSelect: "text",
-  },
-  sidebar: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 1,
-    overflowY: "auto",
-    paddingBlock: "24px 72px",
-    paddingInline: 12,
-    borderInlineEndWidth: 1,
-    borderInlineEndStyle: "solid",
-    borderInlineEndColor: role.borderSecondary,
-    backgroundColor: role.bgMuted,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-  },
-  tocHome: {
-    paddingBlock: 4,
-    paddingInline: 8,
-    marginBlockEnd: 8,
-    color: role.contentPrimary,
-    fontSize: type.fontBase,
-    fontWeight: 600,
-    textDecoration: "none",
-  },
-  toc: {
-    paddingBlock: 3,
-    paddingInline: 8,
-    borderRadius: radius.control,
-    color: { default: role.contentSecondary, ":hover": role.contentPrimary },
-    backgroundColor: { default: "transparent", ":hover": role.bgHover },
-    textDecoration: "none",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  tocPart: {
-    marginBlockStart: 16,
-    color: role.contentPrimary,
-    fontWeight: 600,
-  },
-  tocLeaf: {
-    paddingInlineStart: 20,
-    color: { default: role.contentTertiary, ":hover": role.contentPrimary },
-  },
-  main: {
-    overflowY: "auto",
-    scrollPaddingBlockStart: 24,
   },
   article: {
     maxInlineSize: 820,
