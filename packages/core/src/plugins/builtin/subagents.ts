@@ -48,6 +48,9 @@ export const FAST_MODEL_SUFFIX = "-fast";
 
 const defaultModelDescription = `Defaults to ${DEFAULT_TASK_MODEL.model} with ${DEFAULT_TASK_MODEL.thinkingLevel} thinking, falling back to ${FALLBACK_TASK_MODEL.model} with ${FALLBACK_TASK_MODEL.thinkingLevel} thinking if the default is unavailable.`;
 
+const citationDescription =
+  'When mentioning an agent you created, link its title using its returned session id: "I started [Review auth flow](agent:s_child_1a2b) to check the tokens." The transcript draws the link as the agent\'s icon and name.';
+
 const DEFAULT_TASK_WAIT_MS = 120_000;
 
 const DEFAULT_READ_TURNS = 5;
@@ -454,7 +457,7 @@ export function subagentsPlugin(host: SubagentHost) {
     name: TASK_TOOL,
     description: `Creates an agent in a fresh session, sends it the prompt, and waits up to waitMs (default ${DEFAULT_TASK_WAIT_MS} ms) for its report. ${defaultModelDescription} Use an explicit model or thinking level when the user requests one.
 Returns the report when the agent finishes in time; otherwise returns the agent's id and phase, and the agent keeps working. Its report then arrives on its own as a "Background" message, or call await with the id when you need it before you reply. The agent persists until you call stop: send it follow-up messages, read its transcript, or stop it.
-If the user sends something while you wait, this returns early so you can answer them. Never poll, sleep, or relaunch a task to check progress.`,
+If the user sends something while you wait, this returns early so you can answer them. Never poll, sleep, or relaunch a task to check progress. ${citationDescription}`,
     parameters: taskParameters,
     replay: "never",
     present: (input, context) => presentChild(taskTitle(input), context),
@@ -507,7 +510,7 @@ If the user sends something while you wait, this returns early so you can answer
 
   const create: AgentTool<typeof createParameters, AgentDetails> = {
     name: "create",
-    description: `Creates a persistent agent in a fresh session and returns its id at once, without sending it anything. ${defaultModelDescription} Use send to give it work, await or read to follow it, and stop when you are done with it; it persists until stop.`,
+    description: `Creates a persistent agent in a fresh session and returns its id at once, without sending it anything. ${defaultModelDescription} Use send to give it work, await or read to follow it, and stop when you are done with it; it persists until stop. ${citationDescription}`,
     parameters: createParameters,
     replay: "never",
     present: (input, context) => presentChild(input.title, context),

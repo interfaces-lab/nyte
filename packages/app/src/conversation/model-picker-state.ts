@@ -6,6 +6,7 @@ import type { RunConfig } from "@nyte-ai/protocol";
 import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
 import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../nyte.ts";
+import type { IconName } from "@nyte-ai/ui/icon";
 
 /** The catalog's name for a session's model; the raw id until the catalog loads. */
 export function modelDisplayName(
@@ -21,6 +22,22 @@ export function modelDisplayName(
   );
 
   return option?.name ?? model.id;
+}
+
+export function providerIcon(providerId: string): IconName {
+  if (providerId === "anthropic") return "model-anthropic";
+
+  if (providerId === "openai" || providerId === "openai-codex") return "model-openai";
+
+  if (providerId === "opencode" || providerId === "opencode-go") return "provider-opencode";
+
+  if (providerId === "openrouter") return "provider-openrouter";
+
+  if (providerId === "vercel-ai-gateway") return "provider-vercel";
+
+  if (providerId === "github-copilot") return "github";
+
+  return "model-generic";
 }
 
 export const THINKING_LABELS: Readonly<Record<ModelThinkingLevel, string>> = {

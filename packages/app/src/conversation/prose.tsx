@@ -18,7 +18,8 @@ import {
 } from "react";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 import { CachedMarkdown, Streamdown } from "@lobehub/streamdown";
-import type { Components, ExtraProps } from "react-markdown";
+import { defaultUrlTransform } from "react-markdown";
+import type { Components, ExtraProps, UrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remend from "remend";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
@@ -36,8 +37,10 @@ import {
 } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 import type { MentionFile } from "@nyte-ai/client";
+import { sessionId } from "@nyte-ai/protocol";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import { proseStyles } from "./styles.stylex.ts";
+import { SubagentCitation } from "./subagent-call.tsx";
 
 const textNode = Type.Union([Type.String(), Type.Number(), Type.BigInt()]);
 
@@ -50,6 +53,9 @@ function nodeText(node: ReactNode): string {
 
   return "";
 }
+
+/** The scheme of a link the model writes to name an agent it created. */
+const AGENT_LINK = "agent:";
 
 const InsideLink = createContext(false);
 
@@ -186,6 +192,16 @@ function MarkdownLink({
   const opener = useReferenceOpener();
   const files = useMentionFiles(opener !== undefined && href !== undefined);
 
+  if (href?.startsWith(AGENT_LINK) === true) {
+    const agent = href.slice(AGENT_LINK.length);
+
+    return agent === "" ? (
+      <>{children}</>
+    ) : (
+      <SubagentCitation session={sessionId(agent)} label={nodeText(children)} />
+    );
+  }
+
   const reference =
     opener === undefined || href === undefined ? undefined : linkReference(href, files.data ?? []);
 
@@ -319,6 +335,10 @@ const markdownComponents = {
 
 const remarkPlugins = [remarkGfm];
 
+/** Keeps `agent:` links, which name a child session; every other URL gets the default scrub. */
+const urlTransform: UrlTransform = (url) =>
+  url.startsWith(AGENT_LINK) ? url : defaultUrlTransform(url);
+
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 function subscribeReducedMotion(onChange: () => void): () => void {
@@ -347,11 +367,17 @@ export const Prose = memo(function Prose({
           content={markdown}
           components={markdownComponents}
           remarkPlugins={remarkPlugins}
+          urlTransform={urlTransform}
           skipHtml
         />
       ) : (
         // Whole-document parsing preserves reference links and footnotes in saved turns.
-        <CachedMarkdown components={markdownComponents} remarkPlugins={remarkPlugins} skipHtml>
+        <CachedMarkdown
+          components={markdownComponents}
+          remarkPlugins={remarkPlugins}
+          urlTransform={urlTransform}
+          skipHtml
+        >
           {streaming ? remend(markdown) : markdown}
         </CachedMarkdown>
       )}

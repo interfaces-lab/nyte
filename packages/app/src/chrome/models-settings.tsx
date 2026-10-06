@@ -8,7 +8,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { toast } from "@nyte-ai/ui/toast";
-import { Icon, type IconName } from "@nyte-ai/ui/icon";
+import { Icon } from "@nyte-ai/ui/icon";
 import { Button } from "@nyte-ai/ui/button";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
@@ -18,6 +18,7 @@ import { focus } from "@nyte-ai/ui/a11y.stylex";
 import {
   formatContextWindow,
   formatPricing,
+  providerIcon,
   THINKING_LABELS,
   thinkingLevelsFor,
 } from "../conversation/model-picker-state.ts";
@@ -66,22 +67,6 @@ const popularProviders = [
     recommended: false,
   },
 ];
-
-function providerIcon(providerId: string): IconName {
-  if (providerId === "anthropic") return "model-anthropic";
-
-  if (providerId === "openai" || providerId === "openai-codex") return "model-openai";
-
-  if (providerId === "opencode" || providerId === "opencode-go") return "provider-opencode";
-
-  if (providerId === "openrouter") return "provider-openrouter";
-
-  if (providerId === "vercel-ai-gateway") return "provider-vercel";
-
-  if (providerId === "github-copilot") return "github";
-
-  return "model-generic";
-}
 
 /** Model and reasoning for new chats. Rendered by Settings › Agent, from the same catalog. */
 export function NewChatsSection({

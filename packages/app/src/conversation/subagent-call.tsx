@@ -10,6 +10,7 @@ import { UnreadMark } from "../components/ui.tsx";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Icon } from "@nyte-ai/ui/icon";
+import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@nyte-ai/ui/preview-card";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Row } from "@nyte-ai/ui/row";
 import { radius } from "@nyte-ai/ui/schema.stylex";
@@ -18,8 +19,8 @@ import { useSessionFrameSelector } from "../live.ts";
 import type { SessionFrame } from "../live.ts";
 import { useCatalog, useChildSessions, useSession } from "../queries.ts";
 import { sessionHasUnreadCompletion, useReadSessions } from "../session-read-state.ts";
-import { modelDisplayName } from "./model-picker-state.ts";
-import { activityStyles, subagentCallStyles } from "./styles.stylex.ts";
+import { modelDisplayName, providerIcon, THINKING_LABELS } from "./model-picker-state.ts";
+import { activityStyles, proseStyles, subagentCallStyles } from "./styles.stylex.ts";
 import { useChildSession, useOpenSubagentTray } from "./subagent-sessions.ts";
 import {
   callStatus,
@@ -379,5 +380,106 @@ export function SubagentLineView({
         </div>
       </Collapsible.Panel>
     </Collapsible.Root>
+  );
+}
+
+const citationStyles = create({
+  popup: { maxWidth: "min(280px, var(--available-width))" },
+  card: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+  },
+  title: { fontWeight: 500 },
+  detail: {
+    display: "grid",
+    gridTemplateColumns: "16px minmax(0, 1fr)",
+    alignItems: "center",
+    columnGap: 8,
+    color: role.contentSecondary,
+  },
+  detailText: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+});
+
+function CitationModel({ session }: { readonly session: SessionInfo }): ReactElement | null {
+  const catalog = useCatalog(session.sessionId);
+  const { model, thinkingLevel } = session.config;
+  const name = modelDisplayName(catalog.data, model);
+
+  if (model === undefined || name === undefined) return null;
+
+  return (
+    <span {...props(citationStyles.detail)}>
+      <Icon name={providerIcon(model.provider ?? "")} size={12} />
+      <span {...props(citationStyles.detailText)}>
+        {thinkingLevel === undefined || thinkingLevel === "off"
+          ? name
+          : `${name} ${THINKING_LABELS[thinkingLevel]}`}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * An agent the prose names as `[label](agent:<id>)`: the agent icon and the
+ * model's own words, which fit its sentence. The card carries the agent's
+ * title, folder, and model once the session resolves.
+ */
+export function SubagentCitation({
+  session,
+  label,
+}: {
+  readonly session: SessionId;
+  readonly label: string;
+}): ReactElement {
+  const listed = useChildSession(session);
+  const read = useSession(session);
+  const child = listed ?? read.data ?? undefined;
+  const openTray = useOpenSubagentTray();
+  const title = child === undefined ? undefined : "kind" in child ? child.title : child.name;
+  const text = label === "" || label === session ? (title ?? session) : label;
+
+  const link = (
+    <a
+      href={`agent:${session}`}
+      data-citation="agent"
+      {...props(intent.primary, proseStyles.link)}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openTray?.(session);
+      }}
+    >
+      <span {...props(proseStyles.linkLead)}>
+        <span aria-hidden="true" {...props(proseStyles.linkIcon)}>
+          <Icon name="agent" size={12} />
+        </span>
+        {text}
+      </span>
+    </a>
+  );
+
+  if (child === undefined) return link;
+
+  return (
+    <PreviewCard>
+      <PreviewCardTrigger delay={400} render={link} />
+      <PreviewCardContent side="bottom" align="start" xstyle={citationStyles.popup}>
+        <div {...props(citationStyles.card)}>
+          <span {...props(citationStyles.title)}>{title ?? text}</span>
+          {!("kind" in child) && (
+            <>
+              <span {...props(citationStyles.detail)}>
+                <Icon name="folder" size={12} />
+                <span {...props(citationStyles.detailText)}>{child.workspace.cwd}</span>
+              </span>
+              <CitationModel session={child} />
+            </>
+          )}
+        </div>
+      </PreviewCardContent>
+    </PreviewCard>
   );
 }
