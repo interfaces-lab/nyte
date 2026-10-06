@@ -35,75 +35,17 @@ export function parsePatch(patch: string, key: string): FileDiffMetadata | undef
   return parsePatchFiles(patch, key).flatMap((parsed) => parsed.files)[0];
 }
 
-/** A selected range, pinned to the revision it was read from. */
-export interface CodeReference {
-  readonly path: string;
-  readonly side: "old" | "new";
-  readonly revision: string;
-  readonly start: number;
-  readonly end: number;
-  readonly text: string;
-}
-
-/** The lines a patch shows on one side, by line number. Only these can be selected. */
-function patchLines(patch: string, side: "old" | "new"): ReadonlyMap<number, string> {
-  const lines = new Map<number, string>();
-  let old = 0;
-  let next = 0;
-
-  for (const line of patch.split("\n")) {
-    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
-
-    if (hunk !== null) {
-      old = Number(hunk[1]);
-      next = Number(hunk[2]);
-      continue;
-    }
-
-    if (old === 0 && next === 0) continue;
-
-    const text = line.slice(1);
-
-    if (line.startsWith("+") && !line.startsWith("+++")) {
-      if (side === "new") lines.set(next, text);
-      next += 1;
-    } else if (line.startsWith("-") && !line.startsWith("---")) {
-      if (side === "old") lines.set(old, text);
-      old += 1;
-    } else if (line.startsWith(" ")) {
-      lines.set(side === "old" ? old : next, text);
-      old += 1;
-      next += 1;
-    }
-  }
-
-  return lines;
-}
-
-export function referenceOf(file: ReviewFile, range: SelectedLineRange): CodeReference {
-  const side = range.side === "deletions" ? "old" : "new";
-  const revision = side === "old" ? file.from : file.to;
+/**
+ * How a message names selected lines: `path:12-18`, marked `at base` for
+ * removed lines. The side chat forks the brief, which already read the patch,
+ * so the place is enough; the lines need not be quoted.
+ */
+export function referenceOf(file: ReviewFile, range: SelectedLineRange): string {
   const start = Math.min(range.start, range.end);
   const end = Math.max(range.start, range.end);
-  const lines = patchLines(file.patch, side);
+  const lines = start === end ? `${start}` : `${start}-${end}`;
 
-  const text = Array.from({ length: end - start + 1 }, (_, index) => lines.get(start + index))
-    .filter((line) => line !== undefined)
-    .join("\n");
-
-  return { path: file.path, side, revision, start, end, text };
-}
-
-/** `pairing.test.ts · R21–26`, the way the composer names a reference. */
-export function referenceLabel(reference: CodeReference): string {
-  const name = reference.path.split("/").at(-1) ?? reference.path;
-
-  const lines =
-    reference.start === reference.end
-      ? `${reference.start}`
-      : `${reference.start}–${reference.end}`;
-
-  return `${name} · ${reference.side === "new" ? "R" : "L"}${lines}`;
+  return `\`${file.path}:${lines}\`${range.side === "deletions" ? " at base" : ""}`;
 }
 
 function subscribeTheme(onChange: () => void): () => void {

@@ -18,3 +18,12 @@ export function accountScheme(build: { readonly packaged: boolean; readonly upda
 
   return build.updateTest ? ACCOUNT_SCHEMES.updateTest : ACCOUNT_SCHEMES.production;
 }
+
+/**
+ * Where the browser lands after Clerk's OAuth callback: a page that opens the
+ * deep link and says to return to Nyte, instead of a tab that never finishes.
+ * `app` names the build the deep link opens.
+ */
+export function signedInPage(scheme: ReturnType<typeof accountScheme>): string {
+  return `https://nyte.sh/desktop/signed-in?app=${scheme}`;
+}

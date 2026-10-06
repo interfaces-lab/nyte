@@ -103,6 +103,7 @@ test("a create draws one agent card", () => {
       >
         <TurnView
           turn={turn}
+          continuations={[]}
           liveTools={new Map()}
           cwd={undefined}
           onOpenChanges={() => {}}

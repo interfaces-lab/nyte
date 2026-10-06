@@ -22,7 +22,7 @@ export const SITE_SECTIONS = [
     label: "Docs",
     href: docsRoute,
     features: [
-      { href: `${docsRoute}/start/overview`, title: "Start", icon: "start" },
+      { href: `${docsRoute}#get-started`, title: "Start", icon: "start" },
       { href: `${docsRoute}/build/composition`, title: "Build", icon: "build" },
       { href: `${docsRoute}/kernel/architecture`, title: "Kernel", icon: "kernel" },
       { href: `${docsRoute}/components/introduction`, title: "Components", icon: "components" },

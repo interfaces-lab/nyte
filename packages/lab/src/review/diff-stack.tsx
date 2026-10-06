@@ -24,7 +24,6 @@ import {
   pierreHost,
   referenceOf,
   usePierreOptions,
-  type CodeReference,
   type ReviewedState,
   type ReviewFile,
 } from "./code";
@@ -43,7 +42,8 @@ export interface DiffStackProps {
   readonly justUpdated: (path: string) => boolean;
   /** A file to reveal when the stack mounts; mount it with a new `key` to reveal another. */
   readonly reveal: string | undefined;
-  readonly onReference: (reference: CodeReference) => void;
+  /** Selected lines, named the way a message names them. */
+  readonly onReference: (reference: string) => void;
 }
 
 interface Cached {

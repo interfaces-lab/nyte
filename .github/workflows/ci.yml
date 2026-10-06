@@ -33,6 +33,7 @@ jobs:
           key: turbo-ci-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'turbo.json', 'tsconfig.base.json') }}
           restore-keys: turbo-ci-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
+      - run: pnpm sdk:check
       - run: pnpm format
       - run: pnpm lint
       - run: pnpm typecheck

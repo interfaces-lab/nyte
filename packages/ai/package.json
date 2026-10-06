@@ -1,6 +1,18 @@
 {
   "name": "@nyte-ai/ai",
-  "private": true,
+  "version": "0.0.16-dev.2",
+  "private": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/interfaces-lab/nyte.git",
+    "directory": "packages/ai"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.md"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
@@ -26,14 +38,19 @@
     "./utils/text": "./src/utils/text.ts",
     "./utils/transcript": "./src/utils/transcript.ts",
     "./utils/uuid": "./src/utils/uuid.ts",
-    "./utils/validation": "./src/utils/validation.ts"
+    "./utils/validation": "./src/utils/validation.ts",
+    "./auth/oauth/anthropic": "./src/auth/oauth/anthropic.ts"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
     "models:generate": "node scripts/generate-models.ts",
     "models:publish": "node scripts/publish-models.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest --run"
+    "test": "vitest --run",
+    "build:package": "bun ../../scripts/sdk-packages.mjs build ai"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.129.0",
@@ -48,5 +65,8 @@
     "@types/node": "^26.6.3",
     "typescript": "^7.0.2",
     "vitest": "^5.0.2"
+  },
+  "engines": {
+    "node": ">=26.4.0"
   }
 }

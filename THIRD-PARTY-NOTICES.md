@@ -261,8 +261,14 @@ SOFTWARE.
   `packages/ai/src/api/openai-codex-responses.ts` is ported from the
   `codex-rs` compaction endpoint.
 
-License: Apache License 2.0, reproduced in the appendix below. Upstream ships
-no `NOTICE` file, so no additional attribution text is carried.
+License: Apache License 2.0, reproduced in the appendix below. The applicable
+attribution from upstream's `NOTICE` at revision
+`121f91fd5d9dc66017866ce9bdc49f1e182721df` is preserved here:
+
+```text
+OpenAI Codex
+Copyright 2025 OpenAI
+```
 
 ## OpenCode (`anomalyco/opencode`)
 

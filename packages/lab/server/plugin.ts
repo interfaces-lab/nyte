@@ -6,8 +6,8 @@
  * and the static build has neither route.
  */
 import { join } from "node:path";
-import { getRequestListener } from "@hono/node-server";
 import { createNyteServer, type NyteServer } from "@nyte-ai/server";
+import { requestListener } from "@nyte-ai/server/node";
 import type { Plugin } from "vite";
 import { openRepo } from "./git.ts";
 import { CACHE_DIR, openReviewHost, type ReviewHost } from "./host.ts";
@@ -72,7 +72,7 @@ export function reviewCore(): Plugin {
       };
 
       const listen = (handle: (core: Opened, request: Request) => Promise<Response>) =>
-        getRequestListener(
+        requestListener(
           async (request) => {
             try {
               return await handle(await core(), request);
@@ -80,18 +80,17 @@ export function reviewCore(): Plugin {
               return Response.json({ error: messageOf(cause) }, { status: 503 });
             }
           },
-          { overrideGlobalObjects: false },
+          { onError: (cause) => log(messageOf(cause)) },
         );
 
-      const nyte = listen((opened, request) => opened.server.fetch(request));
-      const review = listen((opened, request) => opened.review(request));
-
-      server.middlewares.use("/core/nyte", (request, response) => {
-        nyte(request, response).catch((cause: unknown) => log(messageOf(cause)));
-      });
-      server.middlewares.use("/core/review", (request, response) => {
-        review(request, response).catch((cause: unknown) => log(messageOf(cause)));
-      });
+      server.middlewares.use(
+        "/core/nyte",
+        listen((opened, request) => opened.server.fetch(request)),
+      );
+      server.middlewares.use(
+        "/core/review",
+        listen((opened, request) => opened.review(request)),
+      );
 
       server.httpServer?.once("close", () => {
         void opened?.then(async (live) => {

@@ -59,16 +59,6 @@ export const FileChangeSchema = Type.Object(fileChangeFields);
 
 export type FileChange = Static<typeof FileChangeSchema>;
 
-/** What a core head's own model calls took: the calls, tokens read from the cache and written fresh, and dollars. */
-export const UsageSchema = Type.Object({
-  calls: Type.Integer(),
-  cached: Type.Number(),
-  fresh: Type.Number(),
-  cost: Type.Number(),
-});
-
-export type Usage = Static<typeof UsageSchema>;
-
 export const BriefStatusSchema = Type.Union([
   Type.Literal("running"),
   Type.Literal("done"),
@@ -89,7 +79,6 @@ export const BriefSchema = Type.Object({
   forkedAt: Type.Union([Type.Number(), Type.Null()]),
   /** When its run settled. */
   doneAt: Type.Optional(Type.Number()),
-  usage: UsageSchema,
 });
 
 export type Brief = Static<typeof BriefSchema>;
@@ -122,7 +111,6 @@ export const ThreadSchema = Type.Object({
   name: Type.String(),
   status: BriefStatusSchema,
   forkedAt: Type.Union([Type.Number(), Type.Null()]),
-  usage: UsageSchema,
 });
 
 export type Thread = Static<typeof ThreadSchema>;
@@ -264,23 +252,13 @@ export const TaskSchema = Type.Object({
 
 export type Task = Static<typeof TaskSchema>;
 
-export const CodeReferenceSchema = Type.Object({
-  path: Type.String({ minLength: 1 }),
-  side: Type.Union([Type.Literal("old"), Type.Literal("new")]),
-  revision: Type.String({ minLength: 1 }),
-  start: Type.Integer({ minimum: 1 }),
-  end: Type.Integer({ minimum: 1 }),
-  text: Type.String(),
-});
-
 export const AskSchema = Type.Object({
   head: Oid,
   /** The side chat thread: its first question forks the brief, later ones follow in that fork. */
   thread: Type.String({ pattern: "^[a-z0-9]{1,16}$" }),
   /** Idempotency key: a retried send lands once. */
   key: Type.String({ minLength: 1 }),
-  text: Type.String(),
-  references: Type.Array(CodeReferenceSchema),
+  text: Type.String({ minLength: 1 }),
 });
 
 export type Ask = Static<typeof AskSchema>;
@@ -288,8 +266,7 @@ export type Ask = Static<typeof AskSchema>;
 /** A change request: the same message, sent to Nyte on the branch instead of the reviewer. */
 export const ChangeSchema = Type.Object({
   key: Type.String({ minLength: 1 }),
-  text: Type.String(),
-  references: Type.Array(CodeReferenceSchema),
+  text: Type.String({ minLength: 1 }),
 });
 
 export type Change = Static<typeof ChangeSchema>;

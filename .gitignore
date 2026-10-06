@@ -29,3 +29,7 @@ share/
 
 /tmp
 .next
+
+# copied into SDK tarballs by scripts/sdk-packages.mjs
+/packages/*/LICENSE
+/packages/*/THIRD-PARTY-NOTICES.md

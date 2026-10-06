@@ -1291,6 +1291,7 @@ test.each(["store", "registry"])(
 
     await writeFile(history, `${JSON.stringify(record)}\n`);
     await mkdir(join(root, "state"), { recursive: true });
+
     const broken =
       failure === "store"
         ? await workspaceStorePath(homedir())

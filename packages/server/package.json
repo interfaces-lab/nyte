@@ -1,15 +1,32 @@
 {
   "name": "@nyte-ai/server",
-  "private": true,
+  "version": "0.0.16-dev.2",
+  "private": false,
   "description": "Serve a Nyte SDK over Web Request/Response: JSON calls and SSE watches, token or callback auth, no listener of its own.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/interfaces-lab/nyte.git",
+    "directory": "packages/server"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.md"
+  ],
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
     "test": "vitest --run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:package": "bun ../../scripts/sdk-packages.mjs build server"
   },
   "dependencies": {
     "@nyte-ai/core": "workspace:*",
@@ -23,5 +40,8 @@
     "@types/node": "^26.6.3",
     "typescript": "^7.0.2",
     "vitest": "^5.0.2"
+  },
+  "engines": {
+    "node": ">=26.4.0"
   }
 }

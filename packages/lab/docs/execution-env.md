@@ -4,9 +4,7 @@ Where a tool call acts. An environment is a set of file and shell operations
 plus the identity of the disk they reach. A provider plugin opens one for a
 workspace, plugins wrap its operations, and every tool call of the session gets
 it as `call.env`. Tools reach files and processes only through it, never
-through anything captured when they were built. The lab's environments
-prototype (This Mac, Studio Mac, Work MacBook, Cloud) is the picker for the
-same thing this record describes underneath.
+through anything captured when they were built.
 
 Source:
 

@@ -31,7 +31,6 @@ import {
   pierreHost,
   referenceOf,
   usePierreOptions,
-  type CodeReference,
   type ReviewedState,
   type ReviewFile,
 } from "./code";
@@ -57,7 +56,8 @@ export interface GuideFiles {
   readonly onToggle: (path: string, fallback: boolean) => void;
   readonly justUpdated: (path: string) => boolean;
   readonly onOpenInDiff: (path: string) => void;
-  readonly onReference: (reference: CodeReference) => void;
+  /** Selected lines, named the way a message names them. */
+  readonly onReference: (reference: string) => void;
 }
 
 /** How the page around the guide follows it. */

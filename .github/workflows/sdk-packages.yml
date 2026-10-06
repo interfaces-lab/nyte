@@ -1,0 +1,58 @@
+name: SDK packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified tarballs to npm, requires a release tag
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-packages
+
+jobs:
+  sdk:
+    runs-on: ubuntu-latest
+    environment: npm-sdk
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      CENTRAL_LICENSE_KEY: ${{ secrets.CENTRAL_LICENSE_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm sdk:check
+      - run: pnpm sdk:pack
+      - run: pnpm sdk:verify
+      - uses: actions/upload-artifact@v6
+        with:
+          name: sdk-packages
+          path: dist/sdk/
+          if-no-files-found: error
+      - name: Verify publish tag
+        if: ${{ inputs.publish }}
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          test "${{ github.ref_type }}" = tag
+          pnpm sdk:check
+      - name: Publish SDK packages
+        if: ${{ inputs.publish }}
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          npm install -g npm@latest
+          node scripts/publish-sdk-packages.mjs

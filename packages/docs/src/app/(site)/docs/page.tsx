@@ -1,167 +1,123 @@
 import type { Metadata } from "next";
-import { Geist_Pixel } from "next/font/google";
 import Link from "next/link";
-import { DitherMoon } from "~/components/landing/plate/dither-moon";
-import { FactWord } from "~/components/landing/plate/fact-word";
-import { KeyLink } from "~/components/landing/plate/key-link";
-import { NavSentinel } from "~/components/landing/plate/nav-sentinel";
-import { REVISION } from "~/components/mdx/kernel/source";
-import { navGroups } from "~/lib/nav";
 
-export const metadata: Metadata = { title: "Docs" };
+export const metadata: Metadata = {
+  title: "Docs",
+  description: "Install Nyte, run your first prompt, or build an agent app from the packages.",
+};
 
-const geistPixel = Geist_Pixel({ subsets: ["latin"], display: "swap" });
-
-const buttonClass =
-  "inline-flex h-9 items-center gap-2.5 rounded-full pr-2 pl-4 text-[14px] font-medium outline-none transition-[background-color,scale] duration-150 active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-(--hero-blue)";
-
-const kbdClass =
-  "inline-flex size-5 items-center justify-center rounded-full font-sans text-[11px] font-semibold";
-
-const tileClass =
-  "grid size-9 place-items-center rounded-[10px] text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.18),0_1px_2px_rgb(12_16_32/0.2)]";
-
-const GROUPS = [
+const guides = [
   {
-    label: "Start",
-    tile: (
-      <span className={`${tileClass} bg-[linear-gradient(180deg,#4a5af2,#2222dd)] text-[16px]`}>
-        ↓
-      </span>
-    ),
-    blurb: "Install the app or the CLI and run one prompt.",
+    href: "/docs/build/composition",
+    title: "Build an agent app",
+    description: "Run a host, then build a React chat or a terminal interface around it.",
   },
   {
-    label: "Build",
-    tile: (
-      <span
-        className={`${tileClass} bg-[linear-gradient(180deg,#2c2c2c,#0a0a0a)] font-mono text-[13px] font-semibold text-[#f5f5f5]`}
-      >
-        &gt;_
-      </span>
-    ),
-    blurb: "Compose your own host from the packages.",
+    href: "/docs/build/sdk",
+    title: "SDK",
+    description: "Create sessions, send messages, and follow the conversation as it runs.",
   },
   {
-    label: "Kernel",
-    tile: (
-      <span className={`${tileClass} bg-[linear-gradient(180deg,#232a44,#0c1020)] text-[#c1d0f6]`}>
-        <DitherMoon cells={8} pixel={3} />
-      </span>
-    ),
-    blurb: "How a message becomes a run.",
+    href: "/docs/kernel/architecture",
+    title: "Kernel",
+    description: "How Nyte stores conversations and resumes work across processes.",
   },
   {
-    label: "Components",
-    tile: (
-      <span className={`${tileClass} bg-[linear-gradient(180deg,#c9b8ff,#8f7af2)] text-[15px]`}>
-        ▣
-      </span>
-    ),
-    blurb: "Tokens and styled components in @nyte-ai/ui.",
+    href: "/docs/components/introduction",
+    title: "Components",
+    description: "Tokens and styled components for building your interface with @nyte-ai/ui.",
   },
 ];
 
+const actionClass =
+  "inline-flex min-h-11 items-center justify-center rounded-lg border border-border-subtle px-5 py-2.5 text-[15px] font-medium transition-colors hover:bg-fill-hover focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring";
+
+const codeClass =
+  "mt-4 overflow-x-auto rounded-xl border border-border-subtle bg-fill-selected p-5 font-mono text-[14px]/7 text-foreground";
+
 export default function DocsHomePage() {
-  const groups = navGroups();
-
   return (
-    <>
-      <div className="landing-plate relative isolate mx-(--plate-inset) mt-[calc(var(--plate-inset)-var(--site-nav-top)-var(--site-nav-height))] overflow-hidden rounded-(--plate-radius) text-white after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:border after:border-border-subtle">
-        <div
-          aria-hidden="true"
-          className="landing-plate-grain pointer-events-none absolute inset-0"
-        />
-        <section className="relative mx-auto w-[min(100%,var(--site-inner))] px-(--site-pad) pt-[calc(var(--plate-nav-drop)+var(--site-nav-height)+56px)] pb-10">
-          <h1
-            className={`${geistPixel.className} animate-plate-rise text-[clamp(2.25rem,1rem+3vw,3.25rem)] leading-[1.05] tracking-[-0.01em] text-balance motion-reduce:animate-none`}
-          >
-            Read the kernel.
-            <br />
-            Build a host.
-          </h1>
-          <p className="mt-4 max-w-[34rem] animate-plate-rise text-[17px]/7 text-balance text-white/72 [animation-delay:90ms] motion-reduce:animate-none">
-            A session is a small{" "}
-            <FactWord
-              href="/docs/kernel/store"
-              above="Content-addressed"
-              below="Compare-and-swap refs"
-              tint="[--tint:#ffd6e8]"
-            >
-              git repository
-            </FactWord>
-            ; a host is anything that calls{" "}
-            <FactWord
-              href="/docs/build/composition"
-              above="Terminal · Desktop"
-              below="Serverless"
-              tint="[--tint:#c8f3ff]"
-            >
-              <code className="font-mono text-[15px]">createNyte</code>
-            </FactWord>
-            .
-          </p>
-          <div className="mt-6 flex animate-plate-rise flex-wrap gap-2 [animation-delay:180ms] motion-reduce:animate-none">
-            <KeyLink
-              href="/docs/start/install"
-              shortcut="I"
-              className={`${buttonClass} bg-white text-(--plate-ink) shadow-[0_1px_2px_rgb(0_0_40/0.2),0_6px_16px_-6px_rgb(0_0_40/0.4)] hover:bg-white/90`}
-              kbdClassName={`${kbdClass} bg-(--plate-ink)/10 text-(--plate-ink)/80`}
-            >
-              Install
-            </KeyLink>
-            <KeyLink
-              href="/docs/build/composition"
-              shortcut="B"
-              className={`${buttonClass} bg-white/10 text-white ring-1 ring-white/15 ring-inset backdrop-blur-sm hover:bg-white/16`}
-              kbdClassName={`${kbdClass} bg-white/16 text-white/90`}
-            >
-              Build an agent app
-            </KeyLink>
-          </div>
-        </section>
-      </div>
+    <main className="mx-auto w-full max-w-5xl px-(--site-pad) pt-14 pb-24 sm:pt-20">
+      <header className="border-b border-border-subtle pb-12 sm:pb-16">
+        <h1 className="text-[clamp(2.25rem,1.5rem+2vw,3.5rem)] leading-tight font-medium tracking-[-0.03em]">
+          Nyte docs
+        </h1>
+        <p className="mt-5 max-w-2xl text-[18px]/8 text-muted-foreground">
+          Nyte runs agents in your terminal, on your desktop, or in your own app. Conversations are
+          stored so you can return to them after the process stops.
+        </p>
+      </header>
 
-      <div className="relative mx-auto w-[min(100%,var(--site-inner))] px-(--site-pad) pt-6 pb-24">
-        <NavSentinel />
-        <nav
-          aria-label="Groups"
-          className="grid animate-plate-rise gap-3 [animation-delay:260ms] max-md:grid-cols-2 max-sm:grid-cols-1 md:grid-cols-4 motion-reduce:animate-none"
-        >
-          {groups.map((group) => {
-            const first = group.items[0];
-            const known = GROUPS.find((candidate) => candidate.label === group.label);
-            if (!first || !known) return null;
-            return (
-              <Link
-                key={group.label}
-                href={first.href}
-                className="flex min-h-44 flex-col gap-2.5 rounded-2xl bg-fill-selected p-5 outline-none transition-colors duration-150 hover:bg-fill-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                {known.tile}
-                <span className="mt-1 text-[16px] font-medium">{group.label}</span>
-                <span className="flex-1 text-[14px]/5 text-muted-foreground">{known.blurb}</span>
-                <span className="font-mono text-[12px] text-tertiary-foreground">
-                  {group.items.length} pages
-                  {group.label === "Kernel" ? (
-                    <>
-                      {" · read at "}
-                      <a
-                        href={`https://github.com/interfaces-lab/nyte/commit/${REVISION}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="underline decoration-dotted underline-offset-2 hover:text-foreground"
-                      >
-                        {REVISION.slice(0, 7)}
-                      </a>
-                    </>
-                  ) : null}
-                </span>
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
-    </>
+      <section aria-labelledby="get-started" className="py-12 sm:py-16">
+        <h2 id="get-started" className="scroll-mt-28 text-3xl font-medium tracking-tight">
+          Get started
+        </h2>
+        <p className="mt-4 text-[17px]/7 text-muted-foreground">
+          Download the desktop app or install the CLI. Both run the agent locally and save your
+          sessions in SQLite.
+        </p>
+
+        <h3 className="mt-9 text-xl font-medium tracking-tight">Desktop app</h3>
+        <p className="mt-3 text-[16px]/7 text-muted-foreground">
+          For Apple Silicon Macs. Open the disk image and drag Nyte to Applications. No separate
+          host installation needed.
+        </p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <a
+            href="https://github.com/interfaces-lab/nyte/releases/latest"
+            className={`${actionClass} border-ring`}
+          >
+            Download for macOS
+          </a>
+          <Link href="/docs/build/composition" className={actionClass}>
+            Build from source
+          </Link>
+        </div>
+
+        <h3 className="mt-10 text-xl font-medium tracking-tight">CLI</h3>
+        <p className="mt-3 text-[16px]/7 text-muted-foreground">
+          For macOS and Linux, on arm64 and x64. The installer places the nyte binary on your PATH.
+        </p>
+        <pre className={codeClass}>
+          <code>curl -fsSL https://nyte.sh/install | sh</code>
+        </pre>
+        <p className="mt-5 text-[16px]/7 text-muted-foreground">Sign in, then start a session:</p>
+        <pre className={codeClass}>
+          <code>{"nyte login\nnyte"}</code>
+        </pre>
+        <p className="mt-5 text-[16px]/7 text-muted-foreground">
+          For a single prompt without the terminal interface, run{" "}
+          <code className="font-mono text-[14px] text-foreground">
+            nyte -p &quot;your prompt&quot;
+          </code>
+          . See the{" "}
+          <a
+            href="https://github.com/interfaces-lab/nyte/blob/main/packages/cli/docs/README.md"
+            className="underline underline-offset-4 hover:text-foreground"
+          >
+            CLI user guide
+          </a>{" "}
+          for commands and configuration.
+        </p>
+      </section>
+
+      <section aria-labelledby="guides" className="border-t border-border-subtle pt-12 sm:pt-16">
+        <h2 id="guides" className="text-3xl font-medium tracking-tight">
+          Explore the docs
+        </h2>
+        <div className="mt-7 grid gap-4 sm:grid-cols-2">
+          {guides.map((guide) => (
+            <Link
+              key={guide.href}
+              href={guide.href}
+              className="rounded-xl border border-border-subtle p-6 transition-colors hover:bg-fill-hover focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+            >
+              <h3 className="text-lg font-medium">{guide.title}</h3>
+              <p className="mt-3 text-[16px]/7 text-muted-foreground">{guide.description}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+    </main>
   );
 }

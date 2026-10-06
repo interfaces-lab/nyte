@@ -5,6 +5,13 @@ calls `assemble-release.sh`. The assembly step only copies an existing executabl
 copies `packages/cli/docs`, writes `VERSION`, and creates the tarball and SHA-256
 file. CLI and TUI package versions must match. It never downloads or publishes.
 
+## SDK packages
+
+[Package distribution](../PACKAGES.md) declares public and private packages. Run
+`pnpm sdk:check`, `pnpm sdk:pack`, then `pnpm sdk:verify` before publishing the SDK.
+The separate SDK workflow builds declarations with TypeScript, JavaScript with Bun,
+and publishes the verified pnpm tarballs. It does not publish by default.
+
 ## Release versions
 
 The release workflow requires CLI, TUI, and desktop versions to match the release tag and

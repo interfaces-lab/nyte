@@ -1,6 +1,7 @@
 {
   "name": "nyte-ai",
   "version": "0.0.16-dev.2",
+  "private": false,
   "description": "Headless agent runner and terminal client for Nyte",
   "keywords": [
     "agent",
@@ -9,6 +10,7 @@
     "coding-agent",
     "headless"
   ],
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/interfaces-lab/nyte.git",

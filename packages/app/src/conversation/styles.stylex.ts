@@ -42,6 +42,7 @@ const ACTIVITY_SHIMMER = `linear-gradient(90deg, ${role.contentSecondary} 0%, ${
 const CODE_RING = `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`;
 
 const COMPOSER_RING_DROP = `0 0 0 2px ${role.borderInteractivePrimary}`;
+const COMPOSER_COMPACT_HEIGHT = 40;
 
 export const proseStyles = create({
   root: {
@@ -463,7 +464,7 @@ export const composerStyles = create({
   },
   frameFollowUpCompact: {
     gap: 6,
-    minHeight: 40,
+    minHeight: COMPOSER_COMPACT_HEIGHT,
     padding: "4px 8px 4px 10px",
     borderRadius: radius.pill,
   },
@@ -766,6 +767,7 @@ export const composerStyles = create({
     width: "var(--anchor-width)",
     maxHeight: "min(280px, var(--available-height))",
     padding: 0,
+    boxShadow: shadow.shadowSm,
     // The frame clips and carries the inset hairline; the list inside scrolls.
     // An absolutely positioned hairline on a scroll container would travel
     // with the content.
@@ -865,10 +867,10 @@ export const composerStyles = create({
     },
   },
   suggestionEmpty: {
-    minHeight: menu.itemHeight,
+    minHeight: COMPOSER_COMPACT_HEIGHT,
     display: "flex",
     alignItems: "center",
-    paddingInline: 8,
+    paddingInline: 12,
     color: role.contentSecondary,
     fontSize: type.fontBase,
     lineHeight: type.leadingBase,

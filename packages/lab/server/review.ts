@@ -212,16 +212,6 @@ function memoized<T>(read: (base: string, head: string) => Promise<T>) {
   };
 }
 
-/** A message with the code it is about: each reference fenced under its place in the change. */
-function message(text: string, references: Ask["references"]): string {
-  const quoted = references.map(
-    (reference) =>
-      `${reference.path}:${reference.start}-${reference.end} (${reference.side === "new" ? "head" : "base"} ${reference.revision})\n${fenced("", reference.text)}`,
-  );
-
-  return [text, ...quoted].filter((part) => part !== "").join("\n\n");
-}
-
 /** A task's title: its first line, cut at a word near 72 characters. */
 function titleOf(task: string): string {
   const line = task.trim().split("\n")[0]?.trim() ?? "Task";
@@ -354,12 +344,6 @@ export async function createReviews(deps: {
     );
   };
 
-  const spentOn = (own: readonly Commit[]) => {
-    const { calls, cached, fresh, cost } = usageOf(own, host.models);
-
-    return { calls, cached, fresh, cost };
-  };
-
   /** Every brief and side chat thread the review session holds, read from core. */
   const coreState = async (record: ReviewRecord, sessionId: SessionId) => {
     const store = await host.store.open(sessionId);
@@ -396,7 +380,6 @@ export async function createReviews(deps: {
             name: brief.head,
             status: !read.settled ? "running" : failure === undefined ? "done" : "failed",
             forkedAt: read.forkedAt,
-            usage: spentOn(read.own),
           };
 
           if (failure !== undefined) entry.failure = failure;
@@ -425,7 +408,6 @@ export async function createReviews(deps: {
             name: side.head,
             status: read.settled ? (read.phase?.kind === "failed" ? "failed" : "done") : "running",
             forkedAt: read.forkedAt,
-            usage: spentOn(read.own),
           });
         }
       }
@@ -845,9 +827,6 @@ export async function createReviews(deps: {
   };
 
   const ask = async (id: string, input: Ask): Promise<void> => {
-    if (input.text.trim() === "" && input.references.length === 0)
-      throw new BadRequest("Write a question or attach code");
-
     const record = find(id);
     const sessionId = await sessionOf(record);
     const state = await coreState(record, sessionId);
@@ -863,7 +842,7 @@ export async function createReviews(deps: {
       from: brief.name,
       config: pinned(state.heads, brief.name),
       key: input.key,
-      content: message(input.text, input.references),
+      content: input.text,
     });
   };
 
@@ -898,15 +877,12 @@ export async function createReviews(deps: {
   };
 
   const change = async (id: string, input: Change): Promise<void> => {
-    if (input.text.trim() === "" && input.references.length === 0)
-      throw new BadRequest("Say what to change");
-
     const author = await authorOf(find(id));
 
     await sdk.messages.send({
       sessionId: author.sessionId,
       key: input.key,
-      content: message(input.text, input.references),
+      content: input.text,
     });
   };
 

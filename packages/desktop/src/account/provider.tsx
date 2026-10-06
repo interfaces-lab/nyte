@@ -86,6 +86,7 @@ const styles = create({
     textAlign: "center",
   },
   message: { margin: 0 },
+  hidden: { display: "none" },
   close: { position: "absolute", insetBlockStart: 8, insetInlineEnd: 8 },
 });
 
@@ -94,6 +95,15 @@ function SignInPending(): ReactElement {
     <div role="status" {...props(styles.panel)}>
       <Spinner />
       <span {...props(srOnly)}>Loading sign-in</span>
+    </div>
+  );
+}
+
+function SignInFinishing(): ReactElement {
+  return (
+    <div role="status" {...props(styles.panel)}>
+      <Spinner />
+      <p {...props(styles.message)}>Finishing sign-in…</p>
     </div>
   );
 }
@@ -115,8 +125,26 @@ function AccountLoader(): ReactElement {
   const [state, setState] = useState<RuntimeState>({ kind: "idle" });
   const [prompt, setPrompt] = useState<AccountCommand>();
   const [attempt, setAttempt] = useState(0);
+  const [returned, setReturned] = useState<string>();
   const command = useRef<AccountCommand | undefined>(undefined);
   const ready = state.kind === "ready";
+  const finishing = prompt !== undefined && returned === prompt.id;
+
+  useEffect(() => {
+    let timer: number | undefined;
+
+    const stop = bridge.onReturn(() => {
+      window.clearTimeout(timer);
+      setReturned(command.current?.id);
+      // Clerk shows its own error in the form when the callback fails; stop covering it.
+      timer = window.setTimeout(() => setReturned(undefined), 15_000);
+    });
+
+    return () => {
+      window.clearTimeout(timer);
+      stop();
+    };
+  }, []);
 
   useEffect(() => {
     if (ready) return;
@@ -182,7 +210,12 @@ function AccountLoader(): ReactElement {
       }}
     >
       {state.kind === "ready" ? (
-        <state.runtime.Form fallback={<SignInPending />} />
+        <>
+          {finishing && <SignInFinishing />}
+          <div {...props(finishing && styles.hidden)}>
+            <state.runtime.Form fallback={<SignInPending />} />
+          </div>
+        </>
       ) : state.kind === "failed" ? (
         <SignInFailed onRetry={() => setAttempt((value) => value + 1)} />
       ) : (

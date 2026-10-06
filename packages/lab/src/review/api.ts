@@ -265,13 +265,6 @@ export type ConversationTurn = Extract<Turn, { readonly kind: "turn" }>;
 
 const isConversationTurn = (turn: Turn): turn is ConversationTurn => turn.kind === "turn";
 
-/** One turn in the side chat: whose it is, and for the reviewer, which head it was about. */
-export interface ChatTurn {
-  readonly turn: ConversationTurn;
-  readonly source: "nyte" | "reviewer";
-  readonly head?: string;
-}
-
 async function headTurns(
   session: SessionId,
   head: string,
@@ -305,50 +298,32 @@ export function useHeadTurns(
 }
 
 /**
- * The side chat as one conversation: Nyte's work on the branch and the
- * reviewer's answers, in the order they happened. Two sessions, one timeline.
- */
-/**
- * One side chat thread: the reviewer's turns on each fork the thread cut (one
- * per head it asked about), with what Nyte did after the thread began, since
- * a change asked for there lands in Nyte's session.
+ * A live side chat thread as one conversation: the reviewer's turns on each
+ * fork the thread cut (one per head it asked about), and what Nyte did after
+ * the thread began, since a change asked for there lands in Nyte's session.
  */
 export function useSideThread(
   review: ReviewDetail,
-  thread: SideThread | undefined,
+  thread: Extract<SideThread, { readonly kind: "live" }> | undefined,
   version: number,
-): readonly ChatTurn[] {
+): readonly ConversationTurn[] {
   const author = review.author?.sessionId;
   const forks = review.threads.filter((entry) => entry.thread === thread?.id);
 
   const { data } = useQuery({
     queryKey: ["review", "side", review.id, thread?.id ?? "", forks.length, version],
-    queryFn: async (): Promise<readonly ChatTurn[]> => {
-      if (thread === undefined) return [];
-
-      const reviewer = await Promise.all(
-        forks.map(async (fork) =>
-          (await headTurns(review.sessionId, fork.name, fork.forkedAt)).map((turn): ChatTurn => ({
-            turn,
-            source: "reviewer",
-            head: fork.head,
-          })),
-        ),
-      );
-
-      const nyteTurns =
-        author === undefined
+    queryFn: async (): Promise<readonly ConversationTurn[]> => {
+      const turns = await Promise.all([
+        ...forks.map((fork) => headTurns(review.sessionId, fork.name, fork.forkedAt)),
+        author === undefined || thread === undefined
           ? []
-          : (await headTurns(author, "main", thread.startedAt)).map((turn): ChatTurn => ({
-              turn,
-              source: "nyte",
-            }));
+          : headTurns(author, "main", thread.startedAt),
+      ]);
 
-      return [...nyteTurns, ...reviewer.flat()].toSorted(
-        (left, right) => left.turn.startedAt - right.turn.startedAt,
-      );
+      return turns.flat().toSorted((left, right) => left.startedAt - right.startedAt);
     },
-    placeholderData: (previous) => (thread === undefined ? undefined : previous),
+    enabled: thread !== undefined,
+    placeholderData: (previous) => previous,
   });
 
   return thread === undefined ? [] : (data ?? []);

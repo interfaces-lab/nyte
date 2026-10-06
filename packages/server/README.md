@@ -37,7 +37,7 @@ const server = createNyteServer({
 
 // The handler is a function; the listener is yours. Bind it to loopback:
 //   Bun:  Bun.serve({ hostname: "127.0.0.1", port: 8787, fetch: server.fetch });
-//   Node: an adapter that builds a Request from the IncomingMessage and writes the Response back.
+//   Node: `serve` from `@nyte-ai/server/node`, below.
 // The package tests call `server.fetch` directly. Deployment examples own their runtime checks.
 
 // shutdown
@@ -45,6 +45,40 @@ server.close();  // ends open watch streams with a `closed` error frame
 detach();
 await nyte.close();
 await store.close();
+```
+
+## Node
+
+`@nyte-ai/server/node` binds the same handler to one Node address. It takes
+every `createNyteServer` option plus `hostname` (default `127.0.0.1`, never
+every interface), `port` (default 0, a port the system picks), and `handle`, a
+fetch that answers before the Nyte server does. It depends on nothing beyond
+`node:http`.
+
+```ts
+import { serve } from "@nyte-ai/server/node";
+
+const serving = await serve({ sdk: nyte, version: "0.0.2", auth: { kind: "token", token }, port: 8787 });
+console.log(serving.address); // http://127.0.0.1:8787
+
+// shutdown: ends watches with a `closed` frame, drops what stops reading, keeps accepted SDK work
+await serving.close();
+```
+
+`disconnectClients()` drops every open connection and keeps listening, so a
+credential refused from now on loses the streams it opened before.
+
+For a server or middleware chain you already own, `requestListener(fetch)` is
+the bridge alone: a Node request listener that builds the `Request`, streams
+the `Response` back, aborts the request when the client leaves, and closes a
+connection whose upload the server stopped reading. Request URLs resolve
+against the `Host` header unless you pass `origin`.
+
+```ts
+import { createServer } from "node:http";
+import { requestListener } from "@nyte-ai/server/node";
+
+createServer(requestListener(server.fetch, { onError: console.error })).listen(8787, "127.0.0.1");
 ```
 
 The server owns nothing of the SDK's lifecycle. It does not call `attach`,

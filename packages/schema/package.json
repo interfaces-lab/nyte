@@ -1,13 +1,29 @@
 {
   "name": "@nyte-ai/schema",
-  "private": true,
+  "version": "0.0.16-dev.2",
+  "private": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/interfaces-lab/nyte.git",
+    "directory": "packages/schema"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.md"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:package": "bun ../../scripts/sdk-packages.mjs build schema"
   },
   "dependencies": {
     "typebox": "1.3.34"
@@ -15,5 +31,8 @@
   "devDependencies": {
     "@types/node": "^26.6.3",
     "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=26.4.0"
   }
 }

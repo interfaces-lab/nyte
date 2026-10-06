@@ -1,15 +1,31 @@
 {
   "name": "@nyte-ai/telemetry",
-  "private": true,
+  "version": "0.0.16-dev.2",
+  "private": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/interfaces-lab/nyte.git",
+    "directory": "packages/telemetry"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.md"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./otel": "./src/otel.ts"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
     "test": "vitest --run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:package": "bun ../../scripts/sdk-packages.mjs build telemetry"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.1"
@@ -19,5 +35,8 @@
     "@types/node": "^26.6.3",
     "typescript": "^7.0.2",
     "vitest": "^5.0.2"
+  },
+  "engines": {
+    "node": ">=26.4.0"
   }
 }

@@ -89,7 +89,7 @@
   }
 
   .doc-head {
-    margin: 0 0 40px;
+    margin: 0 0 32px;
   }
 
   .doc-eyebrow {
@@ -103,6 +103,8 @@
   .doc-head .doc-eyebrow {
     display: block;
     margin-bottom: 12px;
+    @apply text-muted-foreground;
+    font-size: 14px;
   }
 
   .doc-title {
@@ -118,7 +120,6 @@
 
   .doc-lede {
     margin: 0;
-    padding: 0 0 32px;
     max-width: 640px;
     @apply text-muted-foreground;
     font-size: 17px;
@@ -323,6 +324,20 @@
     @apply bg-fill-selected;
     margin-inline: -13px;
     padding-inline: 13px;
+  }
+
+  .doc-code .diff {
+    margin-inline: -13px;
+    padding-inline: 13px;
+  }
+
+  .doc-code .diff.add {
+    background: color-mix(in srgb, var(--color-green-500, #22c55e) 14%, transparent);
+  }
+
+  .doc-code .diff.remove {
+    background: color-mix(in srgb, var(--color-red-500, #ef4444) 14%, transparent);
+    opacity: 0.7;
   }
 
   /* ---- on this page ---------------------------------------------------- */

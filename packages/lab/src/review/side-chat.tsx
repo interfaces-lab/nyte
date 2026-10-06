@@ -1,46 +1,55 @@
 /**
- * The side chat: questions asked beside the pull request, without leaving it
- * and without becoming a chat. It is not a place, has no tab and is not
- * listed anywhere; the toolbar's Ask opens and closes it on every view.
+ * The side chat: questions beside the pull request, drawn with the app's own
+ * conversation parts (TurnView with its working groups, ComposerFrame). It
+ * is not a place and is never saved as a chat; the toolbar's Ask opens it on
+ * every view.
  *
- * Each thread is a fork of the guide's brief, cut by its first question. The
- * fork starts from everything the brief already read, so an answer pays for
- * the question, not for reading the change again. That reuse is what this
- * page tests, so the header says what the thread has spent and how much of
- * it the cache served. New Thread drops the thread on screen; the next
- * question cuts a fresh fork, and the old one is never shown again.
- *
- * Asking and changing stay two explicit actions. Ask (↵) goes to the fork,
- * which only reads. Request change (⌘↵) goes to Nyte, which commits in a
- * worktree of its own; what it does after the thread began shows here too.
+ * A thread is demo or live. Live, a question goes to a fork of the guide's
+ * brief, cut by the thread's first question, so it starts from everything
+ * the guide read; a change goes to Nyte on the branch. Demo plays a scripted
+ * turn instead and calls no model. A CSS animation paces it, so nothing here
+ * needs a timer.
  */
-import { create, props } from "@stylexjs/stylex";
-import { useRef, type ReactElement } from "react";
-import { FileTypeIcon } from "@nyte-ai/app/components/file-type-icon.tsx";
+import { create, keyframes, props } from "@stylexjs/stylex";
+import { useRef, useState, type ReactElement } from "react";
+import type { ComposerSubmission } from "@nyte-ai/app/conversation/composer-document.ts";
+import type {
+  ComposerMentionFiles,
+  ComposerSuggestionCatalog,
+} from "@nyte-ai/app/conversation/composer-suggestions.tsx";
+import { ComposerFrame } from "@nyte-ai/app/conversation/composer.tsx";
+import { StatusMarker } from "@nyte-ai/app/conversation/row-surfaces.tsx";
 import { composerStyles } from "@nyte-ai/app/conversation/styles.stylex.ts";
 import { TurnView } from "@nyte-ai/app/conversation/turn-view.tsx";
 import { conversation } from "@nyte-ai/app/theme/schema.stylex.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
-import { Kbd } from "@nyte-ai/ui/kbd";
-import { radius, target } from "@nyte-ai/ui/schema.stylex";
+import { Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Spinner } from "@nyte-ai/ui/spinner";
-import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
+import { Toggle } from "@nyte-ai/ui/toggle";
+import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { useAsk, useChange, useRepo, useSideThread } from "./api";
-import { referenceLabel } from "./code";
+import {
+  PART_MS,
+  demoTurn,
+  playing,
+  shownTurn,
+  stop,
+  type DemoExchange,
+  type Recipient,
+} from "./demo-thread";
 import type { GuideWriting } from "./guide";
 import { useReviewState } from "./review-state";
 import type { ReviewDetail } from "./wire";
 
 const NO_LIVE_TOOLS = new Map();
 
-const PERCENT = new Intl.NumberFormat(undefined, { style: "percent", maximumFractionDigits: 0 });
+const NO_SUGGESTIONS = {
+  status: "ready",
+  data: { plugins: [], commands: [], skills: [], settings: [] },
+} satisfies ComposerSuggestionCatalog;
 
-const DOLLARS = new Intl.NumberFormat(undefined, {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 3,
-});
+const NO_FILES = { status: "ready", data: [] } satisfies ComposerMentionFiles;
 
 export function SideChat({
   review,
@@ -53,219 +62,196 @@ export function SideChat({
 }): ReactElement {
   const root = useRepo().data?.root;
   const local = useReviewState(review.id, review.files);
-  const { draft, references, thread } = local;
-  const turns = useSideThread(review, thread, version);
-  const focused = useRef(local.focus);
+  const { thread } = local;
+  const [recipient, setRecipient] = useState<Recipient>("reviewer");
+  const liveTurns = useSideThread(review, thread.kind === "live" ? thread : undefined, version);
   const ask = useAsk(review.id);
   const change = useChange(review.id);
+  const focused = useRef(-1);
   const head = review.revision.head;
   const brief = review.briefs.find((entry) => entry.head === head);
   const guided = brief?.status === "done" && brief.guide !== undefined;
-  const forks = review.threads.filter((entry) => entry.thread === thread?.id);
-  const answering = forks.some((fork) => fork.status === "running");
-  const working = review.author?.status === "working";
-  const written = draft.trim() !== "" || references.length > 0;
-  const pending = ask.isPending || change.isPending;
-  const error = ask.error ?? change.error;
+  const last = thread.kind === "demo" ? thread.exchanges.at(-1) : undefined;
+  const turns = thread.kind === "demo" ? thread.exchanges.map(shownTurn) : liveTurns;
 
-  const spent = forks.reduce(
-    (total, fork) => ({
-      cached: total.cached + fork.usage.cached,
-      fresh: total.fresh + fork.usage.fresh,
-      cost: total.cost + fork.usage.cost,
-    }),
-    { cached: 0, fresh: 0, cost: 0 },
-  );
+  const running =
+    thread.kind === "demo"
+      ? last !== undefined && playing(last)
+      : review.author?.status === "working" ||
+        review.threads.some((fork) => fork.thread === thread.id && fork.status === "running");
 
-  const clear = (): void => {
-    local.setDraft("");
-    local.setReferences([]);
-  };
+  const closed =
+    thread.kind === "live" && (recipient === "reviewer" ? !guided : review.blocked !== undefined);
 
-  const askReviewer = (): void => {
-    if (!written || !guided || pending) return;
-
-    ask.mutate(
-      {
-        head,
-        thread: local.threadForQuestion().id,
-        key: crypto.randomUUID(),
-        text: draft.trim(),
-        references: [...references],
-      },
-      { onSuccess: clear },
+  const updateLast = (next: (exchange: DemoExchange) => DemoExchange): void =>
+    local.updateDemo((exchanges) =>
+      exchanges.map((exchange, index) =>
+        index === exchanges.length - 1 ? next(exchange) : exchange,
+      ),
     );
-  };
 
-  const requestChange = (): void => {
-    if (!written || review.blocked !== undefined || pending) return;
+  const send = async ({ text }: ComposerSubmission): Promise<boolean> => {
+    const message = text.trim();
 
-    local.threadForQuestion();
-    change.mutate(
-      { key: crypto.randomUUID(), text: draft.trim(), references: [...references] },
-      { onSuccess: clear },
-    );
+    if (message === "" || running || closed) return false;
+
+    if (thread.kind === "demo") {
+      const paths = review.files.map((file) => file.path);
+
+      local.updateDemo((exchanges) => [
+        ...exchanges,
+        demoTurn({ text: message, recipient, paths }),
+      ]);
+    } else {
+      const key = crypto.randomUUID();
+
+      const sent =
+        recipient === "reviewer"
+          ? ask.mutateAsync({ head, thread: thread.id, key, text: message })
+          : change.mutateAsync({ key, text: message });
+
+      if (
+        !(await sent.then(
+          () => true,
+          () => false,
+        ))
+      )
+        return false;
+    }
+
+    local.setDraft({ text: "", selectionStart: 0, selectionEnd: 0 });
+
+    return true;
   };
 
   return (
     <aside aria-label="Side chat" {...props(styles.panel)}>
       <header {...props(styles.header)}>
         <span {...props(styles.title)}>Side chat</span>
-        <span {...props(styles.spend)}>
-          {spent.cached + spent.fresh > 0
-            ? `${PERCENT.format(spent.cached / (spent.cached + spent.fresh))} from the guide's cache · ${DOLLARS.format(spent.cost)}`
-            : guided
-              ? `Forks the guide for ${head.slice(0, 7)}`
-              : undefined}
-        </span>
+        <Toggle
+          pressed={thread.kind === "demo"}
+          onPressedChange={(demo) => local.startThread(demo ? "demo" : "live")}
+        >
+          Demo
+        </Toggle>
         <Button
           iconOnly
           icon="new-chat"
           aria-label="New thread"
-          disabled={thread === undefined}
-          onClick={local.newThread}
+          disabled={turns.length === 0}
+          onClick={() => local.startThread(thread.kind)}
         />
       </header>
       <div {...props(styles.scroller)}>
         <div {...props(styles.transcript)}>
-          {!guided && (
+          {turns.length === 0 && (
             <div {...props(styles.empty)}>
-              <p {...props(styles.emptyText)}>
-                Side chats fork the guide, so a question starts from everything it already read.
-              </p>
-              {brief?.status === "running" || writing.requesting ? (
-                <span {...props(styles.emptyStatus)}>
-                  <Spinner /> Writing the guide
-                </span>
-              ) : (
-                <Button variant="solid" tone="primary" onClick={writing.onWrite}>
-                  Write Guide
-                </Button>
-              )}
+              {thread.kind === "demo" && "Replies are scripted. Nothing calls a model."}
+              {thread.kind === "live" &&
+                guided &&
+                `Questions fork the guide for ${head.slice(0, 7)}.`}
+              {thread.kind === "live" &&
+                !guided &&
+                (brief?.status === "running" || writing.requesting ? (
+                  <>
+                    <Spinner /> Writing the guide
+                  </>
+                ) : (
+                  <>
+                    Questions fork the guide.
+                    <Button size="sm" onClick={writing.onWrite}>
+                      Write Guide
+                    </Button>
+                  </>
+                ))}
             </div>
           )}
-          {turns.map(({ turn, source, head: about }, index) => (
-            <div key={`${source}:${turn.id}`} {...props(styles.turn)}>
-              <p {...props(styles.voice)}>
-                {source === "nyte" ? "Nyte" : "Reviewer"}
-                {about !== undefined && about !== head && (
-                  <span translate="no" {...props(styles.voiceSha)}>
-                    {about.slice(0, 7)}
-                  </span>
-                )}
-              </p>
-              <TurnView
-                turn={turn}
-                liveTools={NO_LIVE_TOOLS}
-                cwd={source === "nyte" ? review.author?.worktree : root}
-                onOpenChanges={() => {}}
-                running={index === turns.length - 1 && (source === "nyte" ? working : answering)}
-              />
-            </div>
+          {turns.map((turn, index) => (
+            <TurnView
+              key={turn.id}
+              turn={turn}
+              liveTools={NO_LIVE_TOOLS}
+              cwd={root}
+              onOpenChanges={() => {}}
+              running={running && index === turns.length - 1}
+            />
           ))}
+          {(ask.error ?? change.error) !== null && (
+            <StatusMarker role="alert" variant="destructive">
+              {(ask.error ?? change.error)?.message}
+            </StatusMarker>
+          )}
         </div>
       </div>
-      <div role="status" {...props(styles.status)}>
-        {(working || answering) && (
-          <>
-            <Spinner />
-            {working ? "Nyte is working on the branch" : "Answering"}
-          </>
-        )}
-      </div>
-      <form
-        {...props(composerStyles.dock, styles.dock)}
-        onSubmit={(event) => {
-          event.preventDefault();
-          askReviewer();
-        }}
-      >
-        <div {...props(composerStyles.frame, composerStyles.frameFollowUpExpanded, styles.frame)}>
-          {references.length > 0 && (
-            <ul aria-label="Attached code" {...props(styles.references)}>
-              {references.map((reference, index) => (
-                <li
-                  key={`${reference.path}:${reference.side}:${reference.start}:${reference.end}`}
-                  {...props(styles.reference)}
-                >
-                  <FileTypeIcon path={reference.path} />
-                  <span {...props(styles.referenceLabel)}>{referenceLabel(reference)}</span>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${referenceLabel(reference)}`}
-                    onClick={() =>
-                      local.setReferences(references.filter((_, position) => position !== index))
+      {last !== undefined && playing(last) && (
+        <span
+          key={`${last.turn.id}:${last.shown}`}
+          aria-hidden="true"
+          onAnimationEnd={() =>
+            updateLast((exchange) => ({ ...exchange, shown: exchange.shown + 1 }))
+          }
+          {...props(styles.pacer(PART_MS))}
+        />
+      )}
+      <div {...props(composerStyles.dock, styles.dock)}>
+        <div role="region" aria-label="Side chat input" {...props(composerStyles.region)}>
+          <div {...props(composerStyles.inputStack)}>
+            <ComposerFrame
+              surface="follow-up"
+              document={local.draft}
+              onDocumentChange={local.setDraft}
+              onSubmit={send}
+              placeholder={
+                recipient === "reviewer" ? "Ask about this change" : "Describe the change"
+              }
+              disabled={closed}
+              busy={thread.kind === "demo" && running}
+              onAbort={() => updateLast(stop)}
+              suggestionCatalog={NO_SUGGESTIONS}
+              mentionFiles={NO_FILES}
+              inputRef={(handle) => {
+                // Opening the side chat, or "Ask about this section", asks for focus by bumping the counter.
+                if (handle === null || focused.current === local.focus) return;
+
+                focused.current = local.focus;
+                handle.focus();
+              }}
+              model={
+                <Menu>
+                  <MenuTrigger
+                    render={
+                      <Button size="sm" aria-description="Who answers">
+                        {recipient === "reviewer" ? "Ask" : "Change"}
+                        <Icon name="chevron-down" size={12} />
+                      </Button>
                     }
-                    {...props(styles.remove)}
-                  >
-                    <Icon name="x" size={10} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <textarea
-            ref={(node) => {
-              // "Ask about this section" asks for focus by bumping the counter.
-              if (node === null || focused.current === local.focus) return;
-
-              focused.current = local.focus;
-              node.focus();
-              node.setSelectionRange(node.value.length, node.value.length);
-            }}
-            aria-label="Message"
-            placeholder="Ask about this change, or ask Nyte to change it"
-            rows={2}
-            value={draft}
-            onChange={(event) => local.setDraft(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
-
-              event.preventDefault();
-
-              if (event.metaKey || event.ctrlKey) requestChange();
-              else askReviewer();
-            }}
-            {...props(composerStyles.input, styles.input)}
-          />
-          {error !== null && (
-            <p role="alert" {...props(styles.error)}>
-              {error.message}
-            </p>
-          )}
-          <div {...props(styles.controls)}>
-            <span {...props(styles.spacer)} />
-            <Button
-              type="submit"
-              variant="outline"
-              disabled={!written || !guided}
-              disabledReason={guided ? undefined : "Write the guide first"}
-              loading={ask.isPending}
-              aria-keyshortcuts="Enter"
-            >
-              Ask <Kbd keys={["↵"]} plain />
-            </Button>
-            <Button
-              type="button"
-              variant="solid"
-              tone="primary"
-              disabled={!written || review.blocked !== undefined}
-              disabledReason={review.blocked}
-              loading={change.isPending}
-              aria-keyshortcuts="Meta+Enter"
-              onClick={requestChange}
-            >
-              Request change <Kbd keys={["⌘", "↵"]} plain />
-            </Button>
+                  />
+                  <MenuContent align="start">
+                    <MenuRadioGroup
+                      value={recipient}
+                      onValueChange={(value) =>
+                        setRecipient(value === "nyte" ? "nyte" : "reviewer")
+                      }
+                    >
+                      <MenuRadioItem value="reviewer">Ask the guide</MenuRadioItem>
+                      <MenuRadioItem value="nyte">Ask Nyte to change it</MenuRadioItem>
+                    </MenuRadioGroup>
+                  </MenuContent>
+                </Menu>
+              }
+            />
           </div>
         </div>
-      </form>
+      </div>
     </aside>
   );
 }
 
+const pace = keyframes({ from: { opacity: 0 }, to: { opacity: 0 } });
+
 const styles = create({
   panel: {
+    position: "relative",
     display: "flex",
     flexDirection: "column",
     width: "min(420px, 42%)",
@@ -279,44 +265,12 @@ const styles = create({
   header: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: 4,
     flexShrink: 0,
     paddingBlock: 6,
     paddingInline: "16px 8px",
   },
-  title: { color: role.contentPrimary, fontSize: type.fontSm, fontWeight: 600, flexShrink: 0 },
-  spend: {
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-    color: role.contentSecondary,
-    fontSize: type.fontXs,
-    fontVariantNumeric: "tabular-nums",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  empty: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-start",
-    gap: 12,
-    paddingInline: conversation.gutter,
-  },
-  emptyText: {
-    margin: 0,
-    color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
-    textWrap: "pretty",
-  },
-  emptyStatus: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    color: role.contentSecondary,
-    fontSize: type.fontSm,
-  },
-  dock: { flexShrink: 0 },
+  title: { flex: 1, color: role.contentPrimary, fontSize: type.fontSm, fontWeight: 600 },
   // Reversed, so the newest message stays in view as turns arrive and nothing has to scroll it there.
   scroller: {
     display: "flex",
@@ -331,80 +285,23 @@ const styles = create({
     flexDirection: "column",
     gap: conversation.turnGap,
     paddingBlock: 16,
+    paddingInline: conversation.gutter,
   },
-  turn: { display: "flex", flexDirection: "column", gap: 6, paddingInline: conversation.gutter },
-  voice: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    margin: 0,
-    color: role.contentSecondary,
-    fontSize: type.fontXs,
-    fontWeight: 500,
-  },
-  voiceSha: { fontFamily: type.fontMono, fontWeight: 400, fontVariantNumeric: "tabular-nums" },
-  status: {
+  empty: {
     display: "flex",
     alignItems: "center",
     gap: 8,
-    paddingInline: conversation.gutter,
     color: role.contentSecondary,
     fontSize: type.fontSm,
-    ":not(:empty)": { paddingBlock: 8 },
+    textWrap: "pretty",
   },
-  frame: { gap: 6, padding: "8px 8px 8px 12px" },
-  references: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 6,
-    margin: 0,
-    padding: 0,
-    listStyle: "none",
-  },
-  reference: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    minWidth: 0,
-    minHeight: target.min,
-    paddingInline: "6px 2px",
-    borderRadius: radius.control,
-    backgroundColor: role.bgMutedTranslucent,
-    boxShadow: `inset 0 0 0 1px ${role.borderSecondaryTranslucent}`,
-    color: role.contentSecondary,
-    fontFamily: type.fontMono,
-    fontSize: type.fontXs,
-  },
-  referenceLabel: {
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  remove: {
-    display: "inline-grid",
-    placeItems: "center",
-    width: target.min,
-    height: target.min,
-    borderStyle: "none",
-    borderRadius: radius.indicator,
-    backgroundColor: {
-      default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": role.bgHover },
-    },
-    color: role.contentInteractiveSecondary,
-    cursor: appearance.cursorInteractive,
-  },
-  input: {
-    minHeight: 40,
-    resize: "none",
-    borderStyle: "none",
-    outlineStyle: "none",
-    backgroundColor: "transparent",
-    color: role.contentPrimary,
-    font: "inherit",
-  },
-  error: { margin: 0, color: role.contentSecondary, fontSize: type.fontSm, textWrap: "pretty" },
-  controls: { display: "flex", alignItems: "center", gap: 8 },
-  spacer: { flex: 1 },
+  // The demo's clock: each run of this invisible animation lets the next part of the scripted turn land.
+  pacer: (ms: number) => ({
+    position: "absolute",
+    opacity: 0,
+    pointerEvents: "none",
+    animationName: pace,
+    animationDuration: `${ms}ms`,
+  }),
+  dock: { position: "relative", flexShrink: 0 },
 });

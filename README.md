@@ -30,6 +30,8 @@ pnpm lint
 pnpm typecheck
 ```
 
-To run an app first or build your own TUI or editor app, see [Build an agent app](packages/docs/content/docs/composition.mdx).
+To run an app first or build your own TUI or editor app, see [Build an agent app](packages/docs/content/docs/build/composition.mdx).
+
+See [Package distribution](PACKAGES.md) for public and private packages, SDK tarball checks, and npm publishing. Nyte's code uses the [MIT license](LICENSE); upstream licenses remain in [Third-party notices](THIRD-PARTY-NOTICES.md).
 
 Build and test individual packages. See [CONTRIBUTING.md](CONTRIBUTING.md) for the package map, checks, and commit conventions, the [Core guide](packages/lab/src/core/guide.tsx) for architecture, and [AGENTS.md](AGENTS.md) for agent instructions.

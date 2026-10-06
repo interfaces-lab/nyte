@@ -8,6 +8,7 @@ export const ACCOUNT_CHANNELS = {
   command: "nyte-account:command",
   answer: "nyte-account:answer",
   report: "nyte-account:report",
+  returned: "nyte-account:returned",
 } as const;
 
 export interface AccountConfig {
@@ -27,6 +28,8 @@ export interface AccountBridge {
   config(): Promise<AccountConfig | undefined>;
   /** Delivers the pending command now and whenever it changes; `undefined` means none. */
   onCommand(listener: (command: AccountCommand | undefined) => void): () => void;
+  /** The browser came back from the sign-in; the session follows shortly. */
+  onReturn(listener: () => void): () => void;
   answer(answer: AccountAnswer): void;
   report(report: AccountReport): void;
 }

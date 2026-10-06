@@ -310,7 +310,7 @@ async function run(): Promise<void> {
     await contents.executeJavaScript(
       "window.__clerk_internal_electron.oauthTransport.getRedirectUrl()",
     ),
-    redirectUrl,
+    `https://nyte.sh/desktop/signed-in?app=${scheme}`,
   );
   const openExternal = shell.openExternal.bind(shell);
 

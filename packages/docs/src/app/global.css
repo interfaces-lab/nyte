@@ -98,7 +98,6 @@
   }
 
   --animate-plate-rise: plate-rise 900ms var(--ease-nav) both;
-  --animate-host-in: plate-rise 520ms var(--ease-nav) both;
 
   @keyframes plate-rise {
     from {
@@ -220,13 +219,6 @@
 
     .fact:is(:hover, :focus-visible) .fact-pill {
       translate: calc(-50% + var(--dx)) 0;
-    }
-  }
-
-  /* UIActivityIndicatorView turns in eight spoke-sized steps. */
-  @keyframes ios-spin {
-    to {
-      transform: rotate(360deg);
     }
   }
 

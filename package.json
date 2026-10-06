@@ -25,7 +25,10 @@
     "e2e:desktop": "pnpm --dir packages/app e2e:desktop",
     "test:benchmark": "node --test packages/core/benchmark/smoke.test.ts",
     "typecheck:benchmark": "tsc --noEmit -p packages/core/benchmark/tsconfig.json",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "sdk:check": "bun scripts/sdk-packages.mjs check",
+    "sdk:pack": "bun scripts/sdk-packages.mjs pack",
+    "sdk:verify": "bun scripts/verify-sdk-packages.mjs"
   },
   "devDependencies": {
     "@oxlint/plugins": "^1.86.0",

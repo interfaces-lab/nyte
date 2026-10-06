@@ -88,7 +88,7 @@ export async function main(argv: readonly string[]): Promise<void> {
     throw new Error("--token must be at least 16 characters.");
   }
 
-  const host = values.host === "tailnet" ? await tailnetHost() : values.host;
+  const hostname = values.host === "tailnet" ? await tailnetHost() : values.host;
   const cwd = resolve(values.cwd ?? process.cwd());
 
   if (values.trust === true) await createWorkspaceStore().trust(cwd);
@@ -107,7 +107,7 @@ export async function main(argv: readonly string[]): Promise<void> {
     attach: served.attach,
     version: packageMetadata.version,
     describe: () => ({ capabilities: { workspace: true }, persistence: "durable" }),
-    host,
+    hostname,
     port,
     auth: { kind: "token", token },
     appRoot: built ? appRoot : undefined,

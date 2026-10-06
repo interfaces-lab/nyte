@@ -77,12 +77,6 @@ export async function resizeImage(
   mimeType: string,
   options?: ImageResizeOptions,
 ): Promise<ResizedImage | null> {
-  const isTypeScriptRuntime = import.meta.url.endsWith(".ts");
-  const workerUrl = new URL(
-    isTypeScriptRuntime ? "./image-resize-worker.ts" : "./image-resize-worker.js",
-    import.meta.url,
-  );
-
   // Bun compiled executables resolve worker entrypoints by string path, not via
   // new URL(..., import.meta.url). Try the string path first under Bun so the
   // release binary uses the embedded worker instead of falling back in-process.
@@ -98,6 +92,7 @@ export async function resizeImage(
   }
 
   try {
+    const workerUrl = new URL(import.meta.resolve("@nyte-ai/core/image-resize-worker"));
     return await resizeImageInWorker(workerUrl, inputBytes, mimeType, options);
   } catch {
     return resizeImageInProcess(inputBytes, mimeType, options);

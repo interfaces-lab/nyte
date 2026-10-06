@@ -6,12 +6,19 @@ import { AccountOperations } from "../account/operations.ts";
 import { accountAnswer, accountReport } from "../account/policy.ts";
 import { ACCOUNT_CHANNELS } from "../account/protocol.ts";
 import type { AccountConfig } from "../account/protocol.ts";
-import { ACCOUNT_HOST } from "../account/scheme.ts";
+import { ACCOUNT_HOST, signedInPage } from "../account/scheme.ts";
 import type { accountScheme } from "../account/scheme.ts";
 import type { AccountSession, AccountState } from "./account-session.ts";
 import type { AccountStore } from "./account-store.ts";
 
 const CLIENT_TOKEN_KEY = "__clerk_client_jwt";
+
+/**
+ * `@clerk/electron` answers this with the bare deep link, which leaves the
+ * browser tab on a page that never loads. Nyte answers with the hosted page
+ * that opens the deep link instead. Internal to @clerk/electron 0.0.x.
+ */
+const OAUTH_REDIRECT_CHANNEL = "clerk:oauth-transport:get-redirect-url";
 
 export function registerAccount(options: {
   readonly publishableKey: string;
@@ -176,6 +183,22 @@ export function registerAccount(options: {
 
     return { publishableKey: options.publishableKey };
   });
+  ipcMain.removeHandler(OAUTH_REDIRECT_CHANNEL);
+  ipcMain.handle(OAUTH_REDIRECT_CHANNEL, (event) => {
+    if (!fromRenderer(event)) throw new Error("Only Nyte windows start a sign-in.");
+
+    return signedInPage(options.scheme);
+  });
+
+  const returned = (url: string): void => {
+    if (!url.startsWith(`${options.scheme}://${ACCOUNT_HOST}/`)) return;
+    const contents = pending?.window.webContents;
+
+    if (contents !== undefined && !contents.isDestroyed()) contents.send(ACCOUNT_CHANNELS.returned);
+  };
+
+  app.on("open-url", (_event, url) => returned(url));
+  app.on("second-instance", (_event, argv) => argv.forEach(returned));
   ipcMain.on(ACCOUNT_CHANNELS.ready, (event) => {
     if (fromRenderer(event) && event.sender === pending?.window.webContents) push();
   });

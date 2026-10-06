@@ -5,6 +5,30 @@ description: "Tools, hooks and providers beside the turn, and where they come fr
 
 import { EXCERPTS } from "~/components/mdx/kernel/excerpts";
 
+A plugin adds tools, hooks, and commands to a session. It is an object with an `id` and a `session` function:
+
+```ts title="~/.nyte/plugins/hello/index.ts"
+import { definePlugin } from "@nyte-ai/plugin";
+import { Type } from "typebox";
+
+export default definePlugin({
+  id: "hello",
+  session(api) {
+    api.tools.add("hello", {
+      description: "Greet someone by name",
+      parameters: Type.Object({ name: Type.String() }),
+      execute: async ({ name }) => ({
+        content: [{ type: "text", text: `Hello, ${name}` }],
+        details: null,
+      }),
+    });
+  },
+});
+```
+
+Save it under `~/.nyte/plugins/<id>/` for every project, or `.nyte/plugins/<id>/` for one. The
+directory name must match the `id`. More in `packages/plugin/examples`.
+
 Plugins load per session. Each registers tools, hooks and commands into its own scope, and disposing the scope undoes all of it. Every call into plugin code other than a tool runs under a wall-clock budget, and running out counts as a thrown error. A stop cancels a tool through the call's signal.
 
 <Source title="HOOK_BUDGETS_MS" excerpt={EXCERPTS.hookBudgets} />
@@ -50,4 +74,9 @@ Hooks run in plugin order. `before_tool` policies chain: `modify` hands new argu
 
 ## Where plugins come from
 
-A host passes `NyteOptions.plugins`, among them the providers that open workspaces. Its `trust` answer decides each workspace once, when it opens, as `trusted`, `inactive` or `requires`, and only a trusted workspace reaches its provider. Once the provider has opened the environment, the answer's `plugins` loader adds the project plugins, and it runs again before each response. A file plugin that does not load keeps its place in the set as `failed` with its error and path, beside the built-ins and every plugin that did load. Project plugins can wrap an environment but cannot provide one. Without a `trust` function, only `defaultWorkspace` is trusted. `plugins.catalog` lists what a new session would get; while the default workspace is not active it rejects with `WorkspaceNotActive`, which names that state, rather than answering an empty list.
+A host passes `NyteOptions.plugins`, among them the providers that open workspaces. Hosts built with `createHost` choose these through `plugins.kind`: `chat`, `workspace`, or `custom`.
+
+- **Trust.** The host's `trust` answer decides each workspace once, when it opens: `trusted`, `inactive`, or `requires`. Only a trusted workspace reaches its provider. Without a `trust` function, only `defaultWorkspace` is trusted.
+- **Project plugins.** Once the provider has opened the environment, the answer's `plugins` loader adds the project plugins. It runs again before each response. Project plugins can wrap an environment but cannot provide one.
+- **Failures.** A file plugin that does not load stays in the set as `failed`, with its error and path, beside the built-ins and every plugin that did load.
+- **Catalog.** `plugins.catalog` lists what a new session would get. While the default workspace is not active it rejects with `WorkspaceNotActive`, not an empty list.

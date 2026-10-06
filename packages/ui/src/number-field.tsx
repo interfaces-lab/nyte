@@ -4,7 +4,7 @@ import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 
 import { mergeStyleProps, type StyledProps } from "./style.ts";
-import { appearance, role, type } from "./vars.stylex.ts";
+import { appearance, role, shadow, type } from "./vars.stylex.ts";
 
 const styles = create({
   group: {
@@ -17,8 +17,9 @@ const styles = create({
     borderRadius: radius.control,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: role.borderPrimaryTranslucent,
-    backgroundColor: role.bgMutedTranslucent,
+    borderColor: role.borderPrimary,
+    backgroundColor: role.bgElevated,
+    boxShadow: shadow.shadowSm,
     outlineStyle: { default: "none", ":focus-within": "solid" },
     outlineWidth: 1,
     outlineColor: appearance.focusRing,
@@ -33,8 +34,17 @@ const styles = create({
     padding: 0,
     borderStyle: "none",
     outlineStyle: "none",
-    backgroundColor: { default: "transparent", ":hover:not([data-disabled])": role.bgHover },
-    color: { default: role.contentInteractiveSecondary, "[data-disabled]": role.contentDisabled },
+    backgroundColor: "transparent",
+    backgroundImage: {
+      default: "none",
+      ":hover:not([data-disabled])": role.layerHover,
+      ":active:not([data-disabled])": role.layerPressed,
+    },
+    color: {
+      default: role.contentSecondary,
+      ":hover:not([data-disabled])": role.contentPrimary,
+      "[data-disabled]": role.contentDisabled,
+    },
     fontSize: type.fontLg,
     lineHeight: type.leadingBase,
     cursor: { default: appearance.cursorInteractive, "[data-disabled]": "default" },
