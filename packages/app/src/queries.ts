@@ -11,7 +11,7 @@ import {
 } from "@tanstack/react-query";
 import type { MutationState } from "@tanstack/react-query";
 import { projectPreference } from "./preference-projection.ts";
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { keys } from "./query-keys.ts";
 import { SessionActions } from "./session-actions.ts";
 import {
@@ -60,7 +60,7 @@ import { SessionDirectoryFeed } from "./session-directory-feed.ts";
 // this cache; neither module touches the other while it evaluates.
 import { readSessionSnapshot, sessionSelection } from "./live.ts";
 import { nyte } from "./nyte.ts";
-import { activateOutbox } from "./use-outbox.ts";
+import { activateOutbox, useOptimisticSessionIds } from "./use-outbox.ts";
 import { installSnapshotCacheBudget, releaseSessionQueries } from "./snapshot-cache.ts";
 import { USAGE_STALE_AFTER_MS } from "./chrome/usage-view.ts";
 
@@ -296,6 +296,17 @@ export function useWorkspaceSessionDirectory() {
         sessions: projection.list(directory.sessions),
       })),
   });
+}
+
+/** Chats to draw as working whatever their own run says: a submission in the outbox, or a subagent still running. */
+export function useWorkingSessionIds(): ReadonlySet<SessionId> {
+  const optimistic = useOptimisticSessionIds();
+  const directory = useWorkspaceSessionDirectory();
+
+  return useMemo(
+    () => new Set([...optimistic, ...(directory.data ?? []).flatMap((entry) => entry.delegating)]),
+    [directory.data, optimistic],
+  );
 }
 
 /** The directory a session lives in: a local store (`null` is Home) or the configured server. */

@@ -66,6 +66,7 @@ import {
   useRenameSession,
   useServerState,
   useSessionActions,
+  useWorkingSessionIds,
   useWorkspaceSessionDirectory,
   useWorkspaces,
 } from "../queries.ts";
@@ -73,7 +74,7 @@ import { nyte } from "../nyte.ts";
 import { useReadSessions } from "../session-read-state.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
 import { sessionActivityMark } from "../session-activity.ts";
-import { useOptimisticSessionIds } from "../use-outbox.ts";
+
 import { useMountEffect } from "../use-mount-effect.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { AccountFooterMenu } from "./account-footer.tsx";
@@ -364,7 +365,7 @@ export function Sidebar(): ReactElement {
   // list; folders are a grouping you pick.
   const flat = view.grouping === "none" || view.grouping === "inbox";
   const readSessions = useReadSessions();
-  const optimisticSessions = useOptimisticSessionIds();
+  const workingSessions = useWorkingSessionIds();
   const selection = activePane(layout).selection;
   const paneSessionId = selection.kind === "session" ? selection.sessionId : undefined;
   const onWorkspace = stage.kind === "workspace";
@@ -388,7 +389,7 @@ export function Sidebar(): ReactElement {
         ? undefined
         : {
             sessionId: paneSession.sessionId,
-            shelf: shelfOf(paneSession, readSessions, optimisticSessions, undefined),
+            shelf: shelfOf(paneSession, readSessions, workingSessions, undefined),
           },
     );
   }
@@ -422,7 +423,7 @@ export function Sidebar(): ReactElement {
       "local",
       Date.now(),
       readSessions,
-      optimisticSessions,
+      workingSessions,
     ).flatMap((group) => group.sessions);
 
     const index = ordered.findIndex((session) => session.sessionId === activeSessionId);
@@ -436,7 +437,7 @@ export function Sidebar(): ReactElement {
           params: { sessionId: neighbour.sessionId },
         });
     }
-  }, [activeSessionId, activeWorkspaceSessions, optimisticSessions, readSessions, router, view]);
+  }, [activeSessionId, activeWorkspaceSessions, workingSessions, readSessions, router, view]);
 
   // One fixed, name-ordered column: a click expands a row in place instead of
   // moving the opened workspace to the top.
@@ -544,7 +545,7 @@ export function Sidebar(): ReactElement {
         draggable={path === (workspacePath ?? null)}
         previewContext={previewContextFor(place)}
         selected={session.sessionId === activeSessionId}
-        optimistic={optimisticSessions.has(session.sessionId)}
+        working={workingSessions.has(session.sessionId)}
         layoutEnabled={layoutEnabled}
         showUpdated={view.show.includes("updated")}
         onOpen={(target) => void showSession(place, session.sessionId, false, target)}
@@ -602,7 +603,7 @@ export function Sidebar(): ReactElement {
     ...(cloudFolderVisible ? [{ kind: "cloud" } as const] : []),
   ];
 
-  const order = sessionOrder(view.sortByStatus, optimisticSessions);
+  const order = sessionOrder(view.sortByStatus, workingSessions);
 
   const rows =
     sessionDirectory.data === undefined
@@ -617,7 +618,7 @@ export function Sidebar(): ReactElement {
               place.kind,
               undefined,
               readSessions,
-              optimisticSessions,
+              workingSessions,
             )
               .flatMap((group) => group.sessions)
               .map((session) => ({ place, session })),
@@ -683,7 +684,7 @@ export function Sidebar(): ReactElement {
     if (view.grouping === "inbox") {
       const shelved = (shelf: SessionShelf): typeof listed =>
         listed.filter(
-          ({ session }) => shelfOf(session, readSessions, optimisticSessions, hold) === shelf,
+          ({ session }) => shelfOf(session, readSessions, workingSessions, hold) === shelf,
         );
 
       const inbox = shelved("inbox");
@@ -750,7 +751,7 @@ export function Sidebar(): ReactElement {
 
     const live = listed.filter(
       ({ session }) =>
-        sessionActivityMark(session, optimisticSessions.has(session.sessionId)) !== "idle",
+        sessionActivityMark(session, workingSessions.has(session.sessionId)) !== "idle",
     ).length;
 
     const limit = live + COLLAPSED_SESSION_LIMIT;
@@ -792,7 +793,7 @@ export function Sidebar(): ReactElement {
     const sessionGroups =
       sessions === undefined
         ? []
-        : sessionsForView(sessions, view, place.kind, undefined, readSessions, optimisticSessions);
+        : sessionsForView(sessions, view, place.kind, undefined, readSessions, workingSessions);
 
     const displayedSessionCount = sessionGroups.reduce(
       (count, group) => count + group.sessions.length,
@@ -1468,7 +1469,7 @@ interface SessionRowProps {
   draggable: boolean;
   previewContext: SessionPreviewContext;
   selected: boolean;
-  optimistic: boolean;
+  working: boolean;
   layoutEnabled: boolean;
   showUpdated: boolean;
   onOpen: (target: OpenTarget) => void;
@@ -1487,7 +1488,7 @@ function SessionRow({
   draggable,
   previewContext,
   selected,
-  optimistic,
+  working,
   layoutEnabled,
   showUpdated,
   onOpen,
@@ -1499,7 +1500,7 @@ function SessionRow({
   onDelete,
 }: SessionRowProps): ReactElement {
   const warmTimer = useRef<number | undefined>(undefined);
-  const mark = sessionActivityMark(session, optimistic);
+  const mark = sessionActivityMark(session, working);
   const title = sessionTitle(session);
   const ask = mark === "waiting" || mark === "failed" ? sessionAsk(session) : undefined;
   const [draftName, setDraftName] = useState<string | undefined>();

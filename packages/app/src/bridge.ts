@@ -94,16 +94,22 @@ export type CloudAvailability =
   | { readonly kind: "ready" }
   | { readonly kind: "unavailable"; readonly message: string };
 
-/** Sessions live in a local store (Home or a folder) or on the configured server. */
+/**
+ * Sessions live in a local store (Home or a folder) or on the configured server.
+ * `sessions` are the top-level rows; `delegating` names those with a subagent
+ * still working, which the host sees and the rows alone do not say.
+ */
 export type WorkspaceSessionDirectory =
   | {
       readonly environment: "local";
       readonly workspacePath: string | null;
       readonly sessions: readonly SessionInfo[];
+      readonly delegating: readonly SessionId[];
     }
   | {
       readonly environment: "cloud";
       readonly sessions: readonly SessionInfo[];
+      readonly delegating: readonly SessionId[];
       readonly availability: CloudAvailability;
     };
 
@@ -120,7 +126,12 @@ export type SessionDirectoryChange =
     }
   | { readonly kind: "removed"; readonly sessionId: SessionId }
   | { readonly kind: "dropped"; readonly source: SessionDirectorySource }
-  | { readonly kind: "availability"; readonly availability: CloudAvailability };
+  | { readonly kind: "availability"; readonly availability: CloudAvailability }
+  | {
+      readonly kind: "delegating";
+      readonly source: SessionDirectorySource;
+      readonly sessionIds: readonly SessionId[];
+    };
 
 /** Top-level rows as the host holds them; `revision` is the last change event folded in. */
 export interface SessionDirectorySnapshot {

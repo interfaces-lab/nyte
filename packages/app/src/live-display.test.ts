@@ -723,7 +723,7 @@ test("a watch that dies and resumes on the same cursor reconciles nothing", asyn
 test("a metadata read after a run event updates the session's own row; the sidebar directory is the host's", async () => {
   const initial = snapshot([calls], 1);
   queryClient.setQueryData<readonly WorkspaceSessionDirectory[]>(keys.sessionDirectory, [
-    { environment: "local", workspacePath: "/repo", sessions: [initial.session] },
+    { environment: "local", workspacePath: "/repo", sessions: [initial.session], delegating: [] },
   ]);
   const view = await open(initial);
 
@@ -772,7 +772,7 @@ test("a fresh session row updates the session's own row and leaves the host-owne
   const view = await open(initial);
   queryClient.setQueryData(keys.sessionPreview, { items: [initial.session] });
   queryClient.setQueryData<readonly WorkspaceSessionDirectory[]>(keys.sessionDirectory, [
-    { environment: "local", workspacePath: "/repo", sessions: [initial.session] },
+    { environment: "local", workspacePath: "/repo", sessions: [initial.session], delegating: [] },
   ]);
   bridge.metadata.mockResolvedValue(metadataOf({ ...initial, session: current }));
   await view.emit({ kind: "fact", seq: 2, key: "name", value: "New title" });

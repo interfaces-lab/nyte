@@ -11,11 +11,16 @@ import type { WorkspaceSessionDirectory } from "../bridge.ts";
 import { activateWorkspace } from "../chrome/use-show-session.ts";
 import { StatusDot } from "../components/ui.tsx";
 import { userDisplayText } from "../conversation/transcript-presentation.ts";
-import { keys, queryClient, useWorkspaceSessionDirectory } from "../queries.ts";
+import {
+  keys,
+  queryClient,
+  useWorkingSessionIds,
+  useWorkspaceSessionDirectory,
+} from "../queries.ts";
 import { sessionActivityMark } from "../session-activity.ts";
 import { sessionHasUnreadCompletion, useReadSessions } from "../session-read-state.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
-import { useOptimisticSessionIds } from "../use-outbox.ts";
+
 import { activeTab, currentView, isPage, tabPlace, tabPlaces } from "./model.ts";
 import type { Place, WindowState } from "./model.ts";
 import { locationPlace, navigateTo, pageSection, samePlaceAt } from "./places.ts";
@@ -126,7 +131,7 @@ function placeTitle(place: Place, sessions: ReadonlyMap<SessionId, SessionInfo>)
 export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] {
   const directory = useWorkspaceSessionDirectory();
   const read = useReadSessions();
-  const optimistic = useOptimisticSessionIds();
+  const working = useWorkingSessionIds();
 
   const sessions = useMemo(
     () =>
@@ -145,9 +150,7 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
     const session = place.kind === "session" ? sessions.get(place.sessionId) : undefined;
 
     const mark =
-      session === undefined
-        ? "idle"
-        : sessionActivityMark(session, optimistic.has(session.sessionId));
+      session === undefined ? "idle" : sessionActivityMark(session, working.has(session.sessionId));
 
     const glyph =
       place.kind === "session" ? (

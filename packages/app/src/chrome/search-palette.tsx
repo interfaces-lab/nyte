@@ -12,9 +12,9 @@ import { srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { Kbd } from "@nyte-ai/ui/kbd";
 import { macPlatform } from "../platform.ts";
 import { sessionActivityMark } from "../session-activity.ts";
-import { useOptimisticSessionIds } from "../use-outbox.ts";
+
 import { isOption, sessionsForNavigation } from "./sidebar-view.ts";
-import { useSessionSearch } from "../queries.ts";
+import { useSessionSearch, useWorkingSessionIds } from "../queries.ts";
 import { PaletteLegend } from "./palette-legend.tsx";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
 import { settingsSectionGroups, type SettingsSection } from "../settings/index.ts";
@@ -102,7 +102,7 @@ export function SearchPalette({
   onOpenSettings,
   onOpenCustomize,
 }: SearchPaletteProps): ReactElement {
-  const optimisticSessions = useOptimisticSessionIds();
+  const workingSessions = useWorkingSessionIds();
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<PaletteTab>("all");
   const includesAgents = tab === "all" || tab === "agents";
@@ -228,7 +228,7 @@ export function SearchPalette({
           leading={
             <StatusGlyph
               session={session}
-              mark={sessionActivityMark(session, optimisticSessions.has(session.sessionId))}
+              mark={sessionActivityMark(session, workingSessions.has(session.sessionId))}
             />
           }
           meta={formatTimeAgo(session.lastActivityAt)}

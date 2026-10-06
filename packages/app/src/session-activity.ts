@@ -1,14 +1,14 @@
 import { sessionMark, type OutboxRow, type SessionMark } from "@nyte-ai/client";
 import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
 
-/** A local submission supersedes terminal history while it remains in the outbox. */
+/** A local submission still in the outbox, or a subagent still working, supersedes terminal history. */
 export function sessionActivityMark(
   session: Pick<SessionInfo, "heads">,
-  optimistic: boolean,
+  working: boolean,
 ): SessionMark {
   const mark = sessionMark(session);
 
-  return optimistic && (mark === "idle" || mark === "failed") ? "working" : mark;
+  return working && (mark === "idle" || mark === "failed") ? "working" : mark;
 }
 
 export function optimisticSessionIds(rows: readonly OutboxRow[]): ReadonlySet<SessionId> {

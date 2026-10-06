@@ -5,7 +5,7 @@ import type { ReadSessions } from "../session-read-state.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
-const NO_OPTIMISTIC_SESSIONS: ReadonlySet<SessionId> = new Set();
+const NO_WORKING_SESSIONS: ReadonlySet<SessionId> = new Set();
 
 export const GROUPINGS = [
   "inbox",
@@ -75,9 +75,9 @@ export function sessionIsDraft(session: SessionInfo): boolean {
 export function statusOf(
   session: SessionInfo,
   read: ReadSessions,
-  optimistic: ReadonlySet<SessionId>,
+  working: ReadonlySet<SessionId>,
 ): SessionStatus {
-  const mark = sessionActivityMark(session, optimistic.has(session.sessionId));
+  const mark = sessionActivityMark(session, working.has(session.sessionId));
 
   switch (mark) {
     // `sessionMark` reports `waiting` only for a run parked on a reply; one
@@ -112,7 +112,7 @@ export interface ShelfHold {
 export function shelfOf(
   session: SessionInfo,
   read: ReadSessions,
-  optimistic: ReadonlySet<SessionId>,
+  working: ReadonlySet<SessionId>,
   hold: ShelfHold | undefined,
 ): SessionShelf {
   if (session.archived) return "archived";
@@ -121,7 +121,7 @@ export function shelfOf(
 
   if (session.pinned) return "inbox";
 
-  const status = statusOf(session, read, optimistic);
+  const status = statusOf(session, read, working);
 
   switch (status) {
     case "needs-attention":
@@ -153,8 +153,8 @@ function compareUpdated(left: SessionInfo, right: SessionInfo): number {
  * drafts. Read state takes no part: opening a chat never moves it. A chat
  * leaves the ranking only when it is archived.
  */
-function stageRank(session: SessionInfo, optimistic: ReadonlySet<SessionId>): number {
-  const mark = sessionActivityMark(session, optimistic.has(session.sessionId));
+function stageRank(session: SessionInfo, working: ReadonlySet<SessionId>): number {
+  const mark = sessionActivityMark(session, working.has(session.sessionId));
 
   switch (mark) {
     case "waiting":
@@ -176,13 +176,13 @@ function stageRank(session: SessionInfo, optimistic: ReadonlySet<SessionId>): nu
 /** The row order a view settles on; the flat list merges workspaces with it. */
 export function sessionOrder(
   sortByStatus: boolean,
-  optimistic: ReadonlySet<SessionId> = NO_OPTIMISTIC_SESSIONS,
+  working: ReadonlySet<SessionId> = NO_WORKING_SESSIONS,
 ): (left: SessionInfo, right: SessionInfo) => number {
   if (!sortByStatus) return compareUpdated;
 
   return (left, right) =>
     Number(right.pinned) - Number(left.pinned) ||
-    stageRank(left, optimistic) - stageRank(right, optimistic) ||
+    stageRank(left, working) - stageRank(right, working) ||
     compareUpdated(left, right);
 }
 
@@ -192,7 +192,7 @@ function groupSessions(
   environment: SessionEnvironment,
   now: number,
   read: ReadSessions,
-  optimistic: ReadonlySet<SessionId>,
+  working: ReadonlySet<SessionId>,
 ): readonly SessionViewGroup[] {
   switch (grouping) {
     case "inbox":
@@ -213,9 +213,7 @@ function groupSessions(
       };
 
       return STATUSES.flatMap((status) => {
-        const members = sessions.filter(
-          (session) => statusOf(session, read, optimistic) === status,
-        );
+        const members = sessions.filter((session) => statusOf(session, read, working) === status);
 
         return members.length === 0
           ? []
@@ -267,7 +265,7 @@ export function sessionsForView(
   environment: SessionEnvironment = "local",
   now = Date.now(),
   read: ReadSessions = EMPTY_READ_SESSIONS,
-  optimistic: ReadonlySet<SessionId> = NO_OPTIMISTIC_SESSIONS,
+  working: ReadonlySet<SessionId> = NO_WORKING_SESSIONS,
 ): readonly SessionViewGroup[] {
   if (
     (settings.pullRequests.length > 0 && !settings.pullRequests.includes("none")) ||
@@ -278,12 +276,12 @@ export function sessionsForView(
   const filtered = sessionsForNavigation(sessions, settings.archived).filter(
     (session) =>
       settings.statuses.length === 0 ||
-      settings.statuses.includes(statusOf(session, read, optimistic)),
+      settings.statuses.includes(statusOf(session, read, working)),
   );
 
-  const ordered = filtered.toSorted(sessionOrder(settings.sortByStatus, optimistic));
+  const ordered = filtered.toSorted(sessionOrder(settings.sortByStatus, working));
 
-  return groupSessions(ordered, settings.grouping, environment, now, read, optimistic);
+  return groupSessions(ordered, settings.grouping, environment, now, read, working);
 }
 
 export function hasSessionFilters(settings: SessionViewSettings): boolean {

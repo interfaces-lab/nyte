@@ -6,6 +6,7 @@
  * snapshot the renderer starts from is read straight from here.
  */
 import { isDeepStrictEqual } from "node:util";
+import { sessionMark } from "@nyte-ai/client";
 import type { SessionId, SessionInfo } from "@nyte-ai/core";
 import type {
   CloudAvailability,
@@ -30,6 +31,8 @@ interface SourceRows {
   readonly rows: Map<SessionId, Row>;
   hydrated: boolean;
   availability: CloudAvailability;
+  /** Top-level rows with a working subagent, as last sent. */
+  delegating: ReadonlySet<SessionId>;
 }
 
 export type SessionTransition = (
@@ -85,18 +88,24 @@ export class SessionDirectory {
     this.#write(this.#source(source), session, true);
   }
 
+  /** The session and every descendant leave at once, and a sweep already listing cannot bring them back. */
   remove(sessionId: SessionId): void {
     const key = this.#owners.get(sessionId);
 
     if (key === undefined) return;
-    this.#tombstones.set(sessionId, { key, at: this.#tick() });
-    this.#delete(key, sessionId, true);
+    const held = this.#sources.get(key);
+
+    if (held === undefined) return;
+
+    for (const member of this.#subtree(held, sessionId)) {
+      this.#tombstones.set(member, { key, at: this.#tick() });
+      this.#delete(key, member, true);
+    }
   }
 
   /**
-   * A sweep's top-level rows for one source. Rows written after `startedAt`
-   * keep their newer copy, rows removed after it stay removed, and children
-   * are untouched: a sweep lists roots only.
+   * A sweep's rows for one source, children included. Rows written after
+   * `startedAt` keep their newer copy, and rows removed after it stay removed.
    */
   replace(
     source: SessionDirectorySource,
@@ -108,9 +117,7 @@ export class SessionDirectory {
     const listed = this.#fill(held, sessions, startedAt);
 
     for (const [sessionId, row] of held.rows) {
-      if (row.session.parent !== undefined || listed.has(sessionId)) continue;
-
-      if (row.writtenAt > startedAt) continue;
+      if (listed.has(sessionId) || row.writtenAt > startedAt) continue;
       this.#delete(held.key, sessionId, notify);
     }
 
@@ -148,7 +155,8 @@ export class SessionDirectory {
     this.#pending = this.#pending.filter(
       (change) =>
         !(
-          (change.kind === "upsert" && sourceKey(change.source) === key) ||
+          ((change.kind === "upsert" || change.kind === "delegating") &&
+            sourceKey(change.source) === key) ||
           (change.kind === "availability" && key === "cloud")
         ),
     );
@@ -178,9 +186,16 @@ export class SessionDirectory {
           .filter((session) => session.parent === undefined)
           .toArray();
 
+        const delegating = [...held.delegating];
+
         return held.source.environment === "cloud"
-          ? { environment: "cloud", sessions, availability: held.availability }
-          : { environment: "local", workspacePath: held.source.workspacePath, sessions };
+          ? { environment: "cloud", sessions, delegating, availability: held.availability }
+          : {
+              environment: "local",
+              workspacePath: held.source.workspacePath,
+              sessions,
+              delegating,
+            };
       }),
     };
   }
@@ -190,6 +205,24 @@ export class SessionDirectory {
     this.#flush = undefined;
 
     if (this.#pending.length === 0 || this.#closed) return;
+
+    for (const held of this.#sources.values()) {
+      const delegating = this.#delegating(held);
+
+      if (
+        delegating.size === held.delegating.size &&
+        delegating.values().every((sessionId) => held.delegating.has(sessionId))
+      )
+        continue;
+
+      held.delegating = delegating;
+      this.#pending.push({
+        kind: "delegating",
+        source: held.source,
+        sessionIds: [...delegating],
+      });
+    }
+
     const changes = this.#pending;
     this.#pending = [];
     this.#revision += 1;
@@ -225,11 +258,57 @@ export class SessionDirectory {
       rows: new Map(),
       hydrated: false,
       availability: { kind: "ready" },
+      delegating: new Set(),
     };
 
     this.#sources.set(key, created);
 
     return created;
+  }
+
+  /** The rows above a child, nearest first, stopping where the chain leaves what is held. */
+  #ancestors(held: SourceRows, session: SessionInfo): readonly SessionInfo[] {
+    const chain: SessionInfo[] = [];
+    let current = session;
+
+    while (current.parent !== undefined && chain.length <= held.rows.size) {
+      const above = held.rows.get(current.parent.sessionId)?.session;
+
+      if (above === undefined) break;
+      chain.push(above);
+      current = above;
+    }
+
+    return chain;
+  }
+
+  /** Top-level rows with a subagent still running, at any depth. */
+  #delegating(held: SourceRows): ReadonlySet<SessionId> {
+    const roots = new Set<SessionId>();
+
+    for (const { session } of held.rows.values()) {
+      if (session.parent === undefined) continue;
+      const mark = sessionMark(session);
+
+      if (mark !== "working" && mark !== "retry") continue;
+      const root = this.#ancestors(held, session).at(-1);
+
+      if (root !== undefined && root.parent === undefined) roots.add(root.sessionId);
+    }
+
+    return roots;
+  }
+
+  #subtree(held: SourceRows, sessionId: SessionId): readonly SessionId[] {
+    return [
+      sessionId,
+      ...held.rows
+        .values()
+        .filter(({ session }) =>
+          this.#ancestors(held, session).some((above) => above.sessionId === sessionId),
+        )
+        .map(({ session }) => session.sessionId),
+    ];
   }
 
   #fill(
@@ -278,11 +357,6 @@ export class SessionDirectory {
     if (held === undefined || previous === undefined) return;
     held.rows.delete(sessionId);
     this.#owners.delete(sessionId);
-
-    for (const [childId, row] of held.rows) {
-      if (row.session.parent?.sessionId === sessionId) this.#delete(key, childId, notify);
-    }
-
     this.#queue({ kind: "removed", sessionId });
 
     if (notify) for (const listener of this.#transitions) listener(previous, undefined);

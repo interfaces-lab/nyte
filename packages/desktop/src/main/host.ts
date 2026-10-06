@@ -1896,7 +1896,7 @@ export class DesktopHost {
           }
         },
       });
-      const { items } = await sdk.sessions.list({ parent: null, includeArchived: true });
+      const { items } = await sdk.sessions.list({ includeArchived: true });
 
       return items;
     } finally {
@@ -2091,7 +2091,6 @@ export class DesktopHost {
 
     do {
       const page = await open.sdk.sessions.list({
-        parent: null,
         includeArchived: true,
         limit: SWEEP_PAGE_SIZE,
         cursor,
@@ -2126,7 +2125,7 @@ export class DesktopHost {
     const startedAt = this.directory.clock();
 
     try {
-      const { items } = await server.sdk.sessions.list({ parent: null, includeArchived: true });
+      const { items } = await server.sdk.sessions.list({ includeArchived: true });
 
       // The server was replaced or disconnected during the read; its list is nobody's.
       if (this.server !== server) return;

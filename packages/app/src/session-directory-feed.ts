@@ -8,6 +8,7 @@ import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
 import type {
   SessionDirectoryChange,
   SessionDirectorySnapshot,
+  SessionDirectorySource,
   WorkspaceSessionDirectory,
 } from "./bridge.ts";
 
@@ -29,10 +30,7 @@ export interface SessionDirectorySink {
   resync(): void;
 }
 
-function sameSource(
-  directory: WorkspaceSessionDirectory,
-  source: Extract<SessionDirectoryChange, { kind: "upsert" | "dropped" }>["source"],
-): boolean {
+function sameSource(directory: WorkspaceSessionDirectory, source: SessionDirectorySource): boolean {
   return directory.environment === "cloud"
     ? source.environment === "cloud"
     : source.environment === "local" && directory.workspacePath === source.workspacePath;
@@ -61,8 +59,18 @@ export function applyDirectoryChange(
             sessions: without(directory.sessions, session.sessionId),
           })),
           source.environment === "cloud"
-            ? { environment: "cloud", sessions: [session], availability: { kind: "ready" } }
-            : { environment: "local", workspacePath: source.workspacePath, sessions: [session] },
+            ? {
+                environment: "cloud",
+                sessions: [session],
+                delegating: [],
+                availability: { kind: "ready" },
+              }
+            : {
+                environment: "local",
+                workspacePath: source.workspacePath,
+                sessions: [session],
+                delegating: [],
+              },
         ];
       }
 
@@ -95,7 +103,7 @@ export function applyDirectoryChange(
       if (cloud === undefined) {
         return [
           ...directories,
-          { environment: "cloud", sessions: [], availability: change.availability },
+          { environment: "cloud", sessions: [], delegating: [], availability: change.availability },
         ];
       }
 
@@ -105,6 +113,13 @@ export function applyDirectoryChange(
           : directory,
       );
     }
+
+    case "delegating":
+      return directories.map((directory) =>
+        sameSource(directory, change.source)
+          ? { ...directory, delegating: change.sessionIds }
+          : directory,
+      );
 
     default: {
       const _exhaustive: never = change;

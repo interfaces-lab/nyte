@@ -58,7 +58,7 @@ test("an event buffered before the snapshot applies on top of it", () => {
 
   const applied = h.feed.snapshot({
     revision: 3,
-    directories: [{ ...home, sessions: [row("a")] }],
+    directories: [{ ...home, sessions: [row("a")], delegating: [] }],
   });
 
   assert.deepEqual(
@@ -71,7 +71,10 @@ test("an event buffered before the snapshot applies on top of it", () => {
 
 test("a duplicate or older revision is ignored", () => {
   const h = harness();
-  h.feed.snapshot({ revision: 3, directories: [{ ...home, sessions: [row("a")] }] });
+  h.feed.snapshot({
+    revision: 3,
+    directories: [{ ...home, sessions: [row("a")], delegating: [] }],
+  });
   h.feed.receive({ revision: 3, changes: [{ kind: "removed", sessionId: sessionId("a") }] });
   h.feed.receive({ revision: 2, changes: [{ kind: "removed", sessionId: sessionId("a") }] });
   assert.deepEqual(h.ids(), ["a"]);
@@ -80,20 +83,26 @@ test("a duplicate or older revision is ignored", () => {
 
 test("a gap re-reads the snapshot and holds later events until it lands", () => {
   const h = harness();
-  h.feed.snapshot({ revision: 3, directories: [{ ...home, sessions: [] }] });
+  h.feed.snapshot({ revision: 3, directories: [{ ...home, sessions: [], delegating: [] }] });
   h.feed.receive({ revision: 5, changes: [{ kind: "upsert", source: home, session: row("c") }] });
   assert.equal(h.resyncs(), 1);
   assert.deepEqual(h.ids(), []);
 
   h.feed.receive({ revision: 6, changes: [{ kind: "removed", sessionId: sessionId("c") }] });
-  h.feed.snapshot({ revision: 5, directories: [{ ...home, sessions: [row("c")] }] });
+  h.feed.snapshot({
+    revision: 5,
+    directories: [{ ...home, sessions: [row("c")], delegating: [] }],
+  });
   assert.deepEqual(h.ids(), []);
   assert.equal(h.resyncs(), 1);
 });
 
 test("a child row never enters the top-level list but still reaches the row sink", () => {
   const h = harness();
-  h.feed.snapshot({ revision: 1, directories: [{ ...home, sessions: [row("parent")] }] });
+  h.feed.snapshot({
+    revision: 1,
+    directories: [{ ...home, sessions: [row("parent")], delegating: [] }],
+  });
   const child = row("child", "parent");
   h.feed.receive({ revision: 2, changes: [{ kind: "upsert", source: home, session: child }] });
   assert.deepEqual(h.ids(), ["parent"]);
@@ -102,7 +111,10 @@ test("a child row never enters the top-level list but still reaches the row sink
 
 test("a dropped source leaves the directory and availability creates the cloud entry", () => {
   const h = harness();
-  h.feed.snapshot({ revision: 1, directories: [{ ...home, sessions: [row("a")] }] });
+  h.feed.snapshot({
+    revision: 1,
+    directories: [{ ...home, sessions: [row("a")], delegating: [] }],
+  });
   h.feed.receive({
     revision: 2,
     changes: [{ kind: "availability", availability: { kind: "unavailable", message: "down" } }],

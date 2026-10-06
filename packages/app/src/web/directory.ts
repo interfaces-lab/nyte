@@ -146,7 +146,14 @@ export function createSessionDirectory(dependencies: {
         directories:
           workspacePath === undefined
             ? []
-            : [{ environment: "local", workspacePath, sessions: [...rows.values()] }],
+            : [
+                {
+                  environment: "local",
+                  workspacePath,
+                  sessions: [...rows.values()],
+                  delegating: [],
+                },
+              ],
       };
     },
   };
