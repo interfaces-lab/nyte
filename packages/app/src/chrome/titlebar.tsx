@@ -202,9 +202,13 @@ export function Titlebar(): ReactElement {
 
       switch (command.action) {
         case clientActions.newChat.id:
-        case clientActions.newTab.id:
           if (settingsOpen) closeSettings(shellRouter);
           panes.newChat();
+
+          return;
+        case clientActions.newTab.id:
+          if (settingsOpen) closeSettings(shellRouter);
+          windowTabs.dispatch({ kind: "new-tab" });
 
           return;
         case clientActions.reopenTab.id:

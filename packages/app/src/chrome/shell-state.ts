@@ -174,10 +174,9 @@ export const shellActions = Object.freeze({
     else applyShellStage({ kind: "environments" });
   },
   showWorkspace(): void {
-    if (state.stage.kind === "workspace") return;
-
+    // The tab knows a page it just opened before the stage, which waits on the route.
     if (pageRoute !== undefined) pageRoute(undefined);
-    else applyShellStage({ kind: "workspace" });
+    else if (state.stage.kind !== "workspace") applyShellStage({ kind: "workspace" });
   },
 });
 
