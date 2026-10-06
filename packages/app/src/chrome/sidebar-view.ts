@@ -7,7 +7,16 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 
 const NO_OPTIMISTIC_SESSIONS: ReadonlySet<SessionId> = new Set();
 
-export const GROUPINGS = ["none", "repository", "updated", "status", "environment"] as const;
+export const GROUPINGS = [
+  "inbox",
+  "none",
+  "repository",
+  "updated",
+  "status",
+  "environment",
+] as const;
+
+export const SHELVES = ["inbox", "working", "done", "archived"] as const;
 
 export const SHOW_FIELDS = ["updated", "environment", "pr", "branch", "machine"] as const;
 
@@ -27,6 +36,8 @@ export type SessionPullRequest = (typeof PULL_REQUESTS)[number];
 
 export type SessionEnvironment = (typeof ENVIRONMENTS)[number];
 
+export type SessionShelf = (typeof SHELVES)[number];
+
 export interface SessionViewSettings {
   readonly grouping: SessionGrouping;
   readonly sortByStatus: boolean;
@@ -45,9 +56,9 @@ export interface SessionViewGroup {
 }
 
 export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
-  // One flat list across every workspace, ranked by what each chat needs;
-  // folders and other groupings are opt-in from the filter menu.
-  grouping: "none",
+  // One flat list across every workspace, with what needs you on top and the
+  // rest folded; folders and other groupings are opt-in from the filter menu.
+  grouping: "inbox",
   sortByStatus: true,
   show: ["updated", "environment", "pr"] as const,
   statuses: [],
@@ -61,7 +72,7 @@ export function sessionIsDraft(session: SessionInfo): boolean {
   return session.name === undefined && session.preview === undefined;
 }
 
-function statusOf(
+export function statusOf(
   session: SessionInfo,
   read: ReadSessions,
   optimistic: ReadonlySet<SessionId>,
@@ -85,6 +96,44 @@ function statusOf(
       return "done";
     default: {
       const _exhaustive: never = mark;
+
+      return _exhaustive;
+    }
+  }
+}
+
+/** The open chat and the shelf it was opened from, so reading or replying never moves its row. */
+export interface ShelfHold {
+  readonly sessionId: SessionId;
+  readonly shelf: SessionShelf;
+}
+
+/** Archiving beats the hold, and so does restoring: the row leaves or returns at once. */
+export function shelfOf(
+  session: SessionInfo,
+  read: ReadSessions,
+  optimistic: ReadonlySet<SessionId>,
+  hold: ShelfHold | undefined,
+): SessionShelf {
+  if (session.archived) return "archived";
+
+  if (hold?.sessionId === session.sessionId && hold.shelf !== "archived") return hold.shelf;
+
+  if (session.pinned) return "inbox";
+
+  const status = statusOf(session, read, optimistic);
+
+  switch (status) {
+    case "needs-attention":
+    case "unread":
+    case "draft":
+      return "inbox";
+    case "working":
+      return "working";
+    case "done":
+      return "done";
+    default: {
+      const _exhaustive: never = status;
 
       return _exhaustive;
     }
@@ -146,6 +195,7 @@ function groupSessions(
   optimistic: ReadonlySet<SessionId>,
 ): readonly SessionViewGroup[] {
   switch (grouping) {
+    case "inbox":
     case "none":
     case "repository":
       return [{ key: grouping, label: undefined, sessions }];

@@ -151,6 +151,9 @@ export function WorkspaceControls({
                   if (isOption(grouping, GROUPINGS)) onChange({ ...value, grouping });
                 }}
               >
+                <MenuRadioItem value="inbox" icon="inbox-empty" closeOnClick={false}>
+                  Inbox
+                </MenuRadioItem>
                 <MenuRadioItem value="none" icon="list" closeOnClick={false}>
                   None
                 </MenuRadioItem>

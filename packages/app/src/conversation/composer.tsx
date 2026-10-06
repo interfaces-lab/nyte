@@ -40,6 +40,7 @@ import {
   useMentionFiles,
   usePluginCatalog,
   usePluginSettings,
+  useSessionActions,
   useSessionCommands,
   useSessionSnapshot,
   useSetPreference,
@@ -992,6 +993,7 @@ export function Composer({
   const editorRef = useRef<ComposerEditorHandle | null>(null);
   const pluginCatalog = usePluginCatalog();
   const sessionCommands = useSessionCommands(sessionId);
+  const sessionActions = useSessionActions();
 
   const activeCommands =
     sessionCommands.data ?? (sessionCommands.isError ? NO_COMMANDS : undefined);
@@ -1307,11 +1309,17 @@ export function Composer({
     }
   };
 
-  const send = (
+  const send = async (
     submission: ComposerSubmission,
     delivery: Delivery,
     document: ComposerDocumentState,
-  ): Promise<boolean> => deliver(submission, delivery, document, pendingEdit);
+  ): Promise<boolean> => {
+    const sent = await deliver(submission, delivery, document, pendingEdit);
+
+    if (sent) sessionActions.restore(sessionId);
+
+    return sent;
+  };
 
   const abort = (): void => {
     if (disabled || liveRun === undefined || stopping) return;

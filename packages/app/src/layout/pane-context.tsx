@@ -14,7 +14,6 @@ import type {
 } from "./pane-layout.ts";
 import type { SessionViewStateStore } from "./session-view-state.ts";
 import { shellActions } from "../chrome/shell-state.ts";
-import { activeTab } from "../tabs/model.ts";
 import { routeShows } from "../tabs/places.ts";
 import { windowTabs } from "../tabs/window-tabs.ts";
 
@@ -97,17 +96,11 @@ function subscribeWindowWidth(listener: () => void): () => void {
   return () => window.removeEventListener("resize", listener);
 }
 
-/** A pinned tab stays on its one place, so it never splits. */
-function activeTabPinned(): boolean {
-  return windowTabs.enabled && activeTab(windowTabs.getSnapshot()).pinned;
-}
-
 export function useCanSplitPane(): boolean {
   const { layout } = usePaneControllerSnapshot();
   const width = useSyncExternalStore(subscribeWindowWidth, windowWidth, windowWidth);
-  const pinned = useSyncExternalStore(windowTabs.subscribe, activeTabPinned, activeTabPinned);
 
-  return !pinned && canSplitPane(layout, width);
+  return canSplitPane(layout, width);
 }
 
 export function usePaneViewStateStore(): SessionViewStateStore {
@@ -122,7 +115,8 @@ function activePath(layout: PaneLayout): string {
 
 export interface PaneActions {
   syncRoute(selection: PaneSelection): void;
-  newChat(): void;
+  /** `workspacePath` names the folder whose web controller gets the chat; `null` is no folder. */
+  newChat(workspacePath?: string | null): void;
   openSession(sessionId: SessionId): void;
   openSessionInPane(paneId: PaneId, sessionId: SessionId): void;
   split(direction: SplitDirection): void;
@@ -166,15 +160,13 @@ export function usePaneActions(): PaneActions {
         if (windowTabs.enabled && !routeShows(router, selection)) return;
         controller.syncSelection(selection);
       },
-      newChat() {
-        if (windowTabs.enabled) {
-          windowTabs.dispatch({ kind: "new-tab" });
-
-          return;
-        }
-
+      newChat(workspacePath) {
         shellActions.showWorkspace();
-        navigateToActive(controller.newChat());
+
+        const target =
+          workspacePath === undefined ? controller : activePaneController(workspacePath);
+
+        navigateToActive(target.newChat());
       },
       openSession(sessionId) {
         navigateToActive(controller.selectSession(sessionId));

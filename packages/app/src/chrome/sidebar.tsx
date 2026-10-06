@@ -36,6 +36,7 @@ import type { ChatDraft } from "../layout/session-view-state.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
 import { Icon, type IconName } from "@nyte-ai/ui/icon";
 import { Input } from "@nyte-ai/ui/input";
+import { StatusDot } from "../components/ui.tsx";
 import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@nyte-ai/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { floatingSurfaceStyles } from "@nyte-ai/ui/floating-surface.stylex";
@@ -69,7 +70,7 @@ import {
   useWorkspaces,
 } from "../queries.ts";
 import { nyte } from "../nyte.ts";
-import { sessionReadState, useReadSessions } from "../session-read-state.ts";
+import { useReadSessions } from "../session-read-state.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
 import { sessionActivityMark } from "../session-activity.ts";
 import { useOptimisticSessionIds } from "../use-outbox.ts";
@@ -87,7 +88,10 @@ import {
   sessionOrder,
   sessionsForNavigation,
   sessionsForView,
+  shelfOf,
+  type SessionShelf,
   type SessionViewSettings,
+  type ShelfHold,
 } from "./sidebar-view.ts";
 import { closeSettings, SettingsNavigation, type SettingsSection } from "../settings/index.ts";
 import { shellActions, useShellState } from "./shell-state.ts";
@@ -356,14 +360,38 @@ export function Sidebar(): ReactElement {
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [view, setSessionView] = useState<SessionViewSettings>(DEFAULT_SESSION_VIEW);
-  // Without a grouping the rail is one list of chats; folders are a grouping you pick.
-  const flat = view.grouping === "none";
+  // Without a grouping the rail is one list of chats, and Inbox shelves that
+  // list; folders are a grouping you pick.
+  const flat = view.grouping === "none" || view.grouping === "inbox";
   const readSessions = useReadSessions();
   const optimisticSessions = useOptimisticSessionIds();
   const selection = activePane(layout).selection;
   const paneSessionId = selection.kind === "session" ? selection.sessionId : undefined;
   const onWorkspace = stage.kind === "workspace";
   const activeSessionId = onWorkspace ? paneSessionId : undefined;
+
+  // The open chat keeps the shelf it had when it became active, whichever way
+  // it did. Captured here, in render, so it predates the thread marking it read.
+  const [hold, setHold] = useState<ShelfHold | undefined>();
+  const [openShelves, setOpenShelves] = useState<ReadonlySet<SessionShelf>>(() => new Set());
+
+  const paneSession =
+    paneSessionId === undefined
+      ? undefined
+      : sessionDirectory.data
+          ?.flatMap((directory) => directory.sessions)
+          .find((session) => session.sessionId === paneSessionId);
+
+  if (hold?.sessionId !== paneSession?.sessionId) {
+    setHold(
+      paneSession === undefined
+        ? undefined
+        : {
+            sessionId: paneSession.sessionId,
+            shelf: shelfOf(paneSession, readSessions, optimisticSessions, undefined),
+          },
+    );
+  }
 
   const activeDraftId =
     onWorkspace && selection.kind === "blank"
@@ -462,16 +490,7 @@ export function Sidebar(): ReactElement {
   const newWorkspaceChat = async (path: string | null): Promise<void> => {
     if (!(await activateWorkspace(path))) return;
     setExpanded(path, true);
-
-    if (windowTabs.enabled) {
-      windowTabs.dispatch({ kind: "new-tab" });
-
-      return;
-    }
-
-    activePaneController(path).newChat();
-    shellActions.showWorkspace();
-    await router.navigate({ to: "/" });
+    panes.newChat(path);
   };
 
   const closeConfirmation = (): void => {
@@ -528,14 +547,8 @@ export function Sidebar(): ReactElement {
         optimistic={optimisticSessions.has(session.sessionId)}
         layoutEnabled={layoutEnabled}
         showUpdated={view.show.includes("updated")}
-        onOpen={(target) => {
-          if (target !== "background") sessionReadState.markRead(session);
-          void showSession(place, session.sessionId, false, target);
-        }}
-        onOpenBeside={() => {
-          sessionReadState.markRead(session);
-          void showSession(place, session.sessionId, true);
-        }}
+        onOpen={(target) => void showSession(place, session.sessionId, false, target)}
+        onOpenBeside={() => void showSession(place, session.sessionId, true)}
         onHover={() =>
           void router.preloadRoute({
             to: "/session/$sessionId",
@@ -617,6 +630,123 @@ export function Sidebar(): ReactElement {
     if (rows === undefined && drafts.length === 0) return null;
 
     const listed = rows ?? [];
+    const layoutEnabled = sidebarVisible && collectionExpanded;
+    const listId = `${sessionListId}-chats`;
+
+    const empty = listed.length === 0 && drafts.length === 0 && (
+      <>
+        {filtersActive ? (
+          <>
+            <div {...props(styles.quiet, styles.sessionQuiet)}>No chats match these filters</div>
+            <Row
+              variant="nav"
+              xstyle={styles.showMore}
+              onClick={() => setSessionView(clearSessionFilters(view))}
+            >
+              Clear Filters
+            </Row>
+          </>
+        ) : (
+          <div {...props(styles.quiet, styles.sessionQuiet)}>No sessions yet</div>
+        )}
+      </>
+    );
+
+    const draftRows = drafts.map((draft) => (
+      <DraftRow
+        key={draft.id}
+        draft={draft}
+        selected={draft.id === activeDraftId}
+        layoutEnabled={layoutEnabled}
+        onOpen={() => void showDraft(draft.id)}
+        onDelete={() => activePaneController(workspacePath).removeDraft(draft.id)}
+      />
+    ));
+
+    const showMore = (
+      key: string,
+      id: string,
+      hidden: number,
+      focusIndex: number,
+    ): ReactElement => (
+      <Row
+        variant="nav"
+        aria-expanded={false}
+        aria-controls={id}
+        xstyle={styles.showMore}
+        onClick={() => revealSessionList(key, id, focusIndex)}
+      >
+        Show {hidden} More
+      </Row>
+    );
+
+    if (view.grouping === "inbox") {
+      const shelved = (shelf: SessionShelf): typeof listed =>
+        listed.filter(
+          ({ session }) => shelfOf(session, readSessions, optimisticSessions, hold) === shelf,
+        );
+
+      const inbox = shelved("inbox");
+
+      // Working shows every row once open; Done and Archived fold after a few.
+      const shelfPanel = (
+        shelf: Exclude<SessionShelf, "inbox">,
+        label: string,
+        leading: ReactNode,
+        capped: boolean,
+      ): ReactElement | null => {
+        const members = shelved(shelf);
+
+        if (members.length === 0) return null;
+
+        const panelId = `${listId}-${shelf}`;
+        const open = openShelves.has(shelf);
+        const listExpanded = expandedSessionLists.has(shelf);
+        const hasOverflow = capped && members.length > COLLAPSED_SESSION_LIMIT + 1;
+
+        const visible =
+          listExpanded || !hasOverflow ? members : members.slice(0, COLLAPSED_SESSION_LIMIT);
+
+        return (
+          <Shelf
+            label={label}
+            count={members.length}
+            leading={leading}
+            panelId={panelId}
+            open={open}
+            onOpenChange={(next) =>
+              setOpenShelves((current) => {
+                const shelves = new Set(current);
+
+                if (next) shelves.add(shelf);
+                else shelves.delete(shelf);
+
+                return shelves;
+              })
+            }
+          >
+            {visible.map(({ place, session }) => sessionRow(place, session, layoutEnabled && open))}
+            {hasOverflow &&
+              !listExpanded &&
+              showMore(shelf, panelId, members.length - visible.length, visible.length)}
+          </Shelf>
+        );
+      };
+
+      return (
+        <div id={listId} {...props(styles.section)}>
+          {empty}
+          {draftRows}
+          {inbox.map(({ place, session }) => sessionRow(place, session, layoutEnabled))}
+          {inbox.length === 0 && drafts.length === 0 && listed.length > 0 && (
+            <div {...props(styles.quiet, styles.sessionQuiet)}>Nothing new</div>
+          )}
+          {shelfPanel("working", "Working", <StatusDot mark="working" />, false)}
+          {shelfPanel("done", "Done", <Icon name="inbox-checked" size={14} />, true)}
+          {shelfPanel("archived", "Archived", <Icon name="archive" size={14} />, true)}
+        </div>
+      );
+    }
 
     const live = listed.filter(
       ({ session }) =>
@@ -627,50 +757,15 @@ export function Sidebar(): ReactElement {
     const listExpanded = expandedSessionLists.has("chats");
     const hasOverflow = listed.length > limit + 1;
     const visible = listExpanded || !hasOverflow ? listed : listed.slice(0, limit);
-    const layoutEnabled = sidebarVisible && collectionExpanded;
-
-    const listId = `${sessionListId}-chats`;
 
     return (
       <div id={listId} {...props(styles.section)}>
-        {listed.length === 0 &&
-          drafts.length === 0 &&
-          (filtersActive ? (
-            <>
-              <div {...props(styles.quiet, styles.sessionQuiet)}>No chats match these filters</div>
-              <Row
-                variant="nav"
-                xstyle={styles.showMore}
-                onClick={() => setSessionView(clearSessionFilters(view))}
-              >
-                Clear Filters
-              </Row>
-            </>
-          ) : (
-            <div {...props(styles.quiet, styles.sessionQuiet)}>No sessions yet</div>
-          ))}
-        {drafts.map((draft) => (
-          <DraftRow
-            key={draft.id}
-            draft={draft}
-            selected={draft.id === activeDraftId}
-            layoutEnabled={layoutEnabled}
-            onOpen={() => void showDraft(draft.id)}
-            onDelete={() => activePaneController(workspacePath).removeDraft(draft.id)}
-          />
-        ))}
+        {empty}
+        {draftRows}
         {visible.map(({ place, session }) => sessionRow(place, session, layoutEnabled))}
-        {hasOverflow && !listExpanded && (
-          <Row
-            variant="nav"
-            aria-expanded={false}
-            aria-controls={listId}
-            xstyle={styles.showMore}
-            onClick={() => revealSessionList("chats", listId, visible.length + drafts.length)}
-          >
-            Show {listed.length - visible.length} More
-          </Row>
-        )}
+        {hasOverflow &&
+          !listExpanded &&
+          showMore("chats", listId, listed.length - visible.length, visible.length + drafts.length)}
       </div>
     );
   };
@@ -1192,6 +1287,43 @@ function WorkspaceRow({
         <ContextMenuContent aria-label={`Options for ${name}`}>{menuItems}</ContextMenuContent>
       </ContextMenu>
       <Collapsible.Panel {...props(styles.sessionList)}>{children}</Collapsible.Panel>
+    </Collapsible.Root>
+  );
+}
+
+/** A folded group of rows under one header that says how many it holds. */
+function Shelf({
+  label,
+  count,
+  leading,
+  panelId,
+  open,
+  onOpenChange,
+  children,
+}: {
+  readonly label: string;
+  readonly count: number;
+  readonly leading: ReactNode;
+  readonly panelId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly children: ReactNode;
+}): ReactElement {
+  return (
+    <Collapsible.Root open={open} onOpenChange={onOpenChange} xstyle={styles.section}>
+      <Collapsible.Trigger
+        variant="plain"
+        aria-controls={panelId}
+        xstyle={[styles.shelf, focus.ringInset]}
+      >
+        <span {...props(styles.rowIcon, styles.shelfLeading)}>{leading}</span>
+        <span {...props(styles.shelfLabel)}>{label}</span>
+        <span {...props(styles.shelfCount)}>{count}</span>
+        <Collapsible.Chevron xstyle={styles.shelfChevron} />
+      </Collapsible.Trigger>
+      <Collapsible.Panel id={panelId} hiddenUntilFound={false} xstyle={styles.shelfPanel}>
+        {children}
+      </Collapsible.Panel>
     </Collapsible.Root>
   );
 }

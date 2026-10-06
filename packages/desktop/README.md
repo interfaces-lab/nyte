@@ -33,7 +33,9 @@ The rules read style objects, not the rendered page. Anything the compiler resol
 
 ## Sidebar
 
-Each workspace shows five chat items by default, including drafts. Lists with six or fewer items show everything without a toggle. **Show more** reveals the full filtered list; **Show less** returns it to five. Each workspace expands independently, including Home and Cloud. Unsent composer text for new chats and follow-ups is stored with the pane layout, so a Reload Window restores the draft.
+The sidebar opens on **Inbox**: one list of chats across every workspace and Cloud, grouped into shelves. The Inbox shelf is always open and holds what needs you: chats waiting on a reply or failed, finished chats you have not opened, drafts, and pinned chats. **Working**, **Done**, and **Archived** fold below it with a count, closed by default; Archived appears only while the Archived filter is on. The open chat keeps its shelf until you open another, so reading it or replying never moves the row. Sending a message to an archived chat restores it. The filter menu's Grouping offers the Inbox default, a plain list, or folders by Repository, Updated, Status, and Environment; filters apply in every grouping.
+
+Each folder shows five chat items by default, including drafts. Lists with six or fewer items show everything without a toggle. **Show more** reveals the full filtered list; **Show less** returns it to five. Each workspace expands independently, including Home and Cloud. Unsent composer text for new chats and follow-ups is stored with the pane layout, so a Reload Window restores the draft.
 
 ## Chat Markdown
 

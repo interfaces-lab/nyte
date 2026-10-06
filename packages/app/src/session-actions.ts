@@ -171,6 +171,17 @@ export class SessionActions {
     }
   }
 
+  /**
+   * A message to an archived chat brings it back. No notification: the message
+   * is the reason, and undoing the restore would hide the reply.
+   */
+  restore(sessionId: SessionId): void {
+    if (this.#find(sessionId)?.archived !== true) return;
+    this.#archiveNotifications.get(sessionId)?.();
+    this.#archiveVersions.delete(sessionId);
+    void this.#run(this.#add(sessionId, { kind: "archive", archived: false }));
+  }
+
   delete(sessionId: SessionId, hide: HideSession): void {
     if (
       this.#pending.some(

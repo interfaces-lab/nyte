@@ -17,7 +17,6 @@ import { isOption, sessionsForNavigation } from "./sidebar-view.ts";
 import { useSessionSearch } from "../queries.ts";
 import { PaletteLegend } from "./palette-legend.tsx";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
-import { sessionReadState } from "../session-read-state.ts";
 import { settingsSectionGroups, type SettingsSection } from "../settings/index.ts";
 import {
   clientActionKeys,
@@ -233,12 +232,7 @@ export function SearchPalette({
             />
           }
           meta={formatTimeAgo(session.lastActivityAt)}
-          onSelect={() =>
-            run(() => {
-              sessionReadState.markRead(session);
-              onOpenSession(session.sessionId);
-            })
-          }
+          onSelect={() => run(() => onOpenSession(session.sessionId))}
         >
           {sessionTitle(session)}
         </Command.Item>
