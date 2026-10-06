@@ -71,14 +71,42 @@ const styles = create({
   },
 });
 
+/** A preview whose collapsible is closed. Base UI marks an open one `data-panel-open`. */
+const PREVIEWING = '[data-slot="collapsible-preview"]:not([data-panel-open])';
+
+/** Shift extends a selection and a drag ends one. Neither press toggles anything. */
+function selecting(event: {
+  readonly shiftKey: boolean;
+  readonly currentTarget: Element;
+}): boolean {
+  return event.shiftKey || event.currentTarget.ownerDocument.getSelection()?.isCollapsed === false;
+}
+
 function CollapsibleRoot({
+  onOpenChange,
   xstyle,
   className,
   style,
   ...rest
 }: StyledProps<CollapsiblePrimitive.Root.Props>): ReactElement {
   return (
-    <CollapsiblePrimitive.Root {...rest} {...mergeStyleProps(props(xstyle), className, style)} />
+    <CollapsiblePrimitive.Root
+      {...rest}
+      onOpenChange={(open, details) => {
+        const { target } = details.event;
+
+        // A press inside a closed preview only reveals, so a disclosure there stays open.
+        if (!open && target instanceof Element && target.closest(PREVIEWING) !== null) {
+          details.cancel();
+          onOpenChange?.(true, details);
+
+          return;
+        }
+
+        onOpenChange?.(open, details);
+      }}
+      {...mergeStyleProps(props(xstyle), className, style)}
+    />
   );
 }
 
@@ -102,8 +130,7 @@ function CollapsibleTrigger({
             : null;
 
         if (
-          event.shiftKey ||
-          event.currentTarget.ownerDocument.getSelection()?.isCollapsed === false ||
+          selecting(event) ||
           (childControl !== null &&
             childControl !== event.currentTarget &&
             event.currentTarget.contains(childControl))
@@ -140,6 +167,41 @@ function CollapsiblePanel({
   );
 }
 
+/**
+ * What a closed collapsible still shows of its content, when that content has
+ * controls of its own. Closed, a press anywhere in it opens the collapsible, and
+ * a disclosure pressed inside opens without closing. Open, it is a plain
+ * container. The trigger stays the accessible control, so the preview takes no
+ * role and no tab stop.
+ */
+function CollapsiblePreview({
+  xstyle,
+  className,
+  style,
+  ...rest
+}: StyledProps<ComponentProps<"div">>): ReactElement {
+  return (
+    <CollapsiblePrimitive.Trigger
+      nativeButton={false}
+      onClick={(event) => {
+        if (selecting(event) || !event.currentTarget.matches(PREVIEWING))
+          event.preventBaseUIHandler();
+      }}
+      render={
+        <div
+          role={undefined}
+          tabIndex={undefined}
+          aria-expanded={undefined}
+          aria-controls={undefined}
+          {...rest}
+          data-slot="collapsible-preview"
+          {...mergeStyleProps(props(xstyle), className, style)}
+        />
+      }
+    />
+  );
+}
+
 /** A chevron that turns a quarter while its trigger's panel is open. Place it inside the trigger. */
 function CollapsibleChevron({
   size = 11,
@@ -167,4 +229,5 @@ export const Collapsible = {
   Trigger: CollapsibleTrigger,
   Panel: CollapsiblePanel,
   Chevron: CollapsibleChevron,
+  Preview: CollapsiblePreview,
 };

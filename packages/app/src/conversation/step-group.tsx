@@ -16,7 +16,6 @@ import { turnPartId } from "@nyte-ai/client";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
-import { Row } from "@nyte-ai/ui/row";
 import { focus, srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { livePartKey } from "../live.ts";
 import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
@@ -522,18 +521,13 @@ export function StepGroupView({
         <Collapsible.Chevron xstyle={stepGroupStyles.chevron} />
       </Collapsible.Trigger>
       {content !== "closed" && (
-        <Row
+        <Collapsible.Preview
           id={panelId}
           ref={viewportRef}
           data-nyte-scrollport={preview || undefined}
           data-step-preview={preview || undefined}
           xstyle={[stepGroupStyles.panel, preview && stepGroupStyles.preview]}
         >
-          {preview && (
-            <Row.Primary tabIndex={-1} aria-hidden xstyle={srOnly} onClick={() => setOpen(true)}>
-              Show work details
-            </Row.Primary>
-          )}
           <div ref={callsRef} {...props(stepGroupStyles.calls)}>
             {expanded && earlier > 0 && (
               <Button
@@ -562,7 +556,7 @@ export function StepGroupView({
               />
             ))}
           </div>
-        </Row>
+        </Collapsible.Preview>
       )}
     </Collapsible.Root>
   );

@@ -1427,13 +1427,7 @@ export const stepGroupStyles = create({
     paddingBlockStart: 6,
   },
   earlier: { alignSelf: "flex-start" },
-  panel: {
-    display: "block",
-    minHeight: 0,
-    paddingInline: 0,
-    borderRadius: 0,
-    color: "inherit",
-  },
+  panel: { position: "relative" },
   preview: {
     boxSizing: "border-box",
     maxHeight: 144,
@@ -1633,7 +1627,7 @@ export const markerStyles = create({
     minWidth: 0,
     gap: 8,
     color: role.contentSecondary,
-    fontSize: type.fontBase,
+    fontSize: type.fontLg,
     lineHeight: conversation.rowMinHeight,
   },
   shimmer: {

@@ -14,9 +14,13 @@ output or earlier messages.
 
 - `defaultOpen` leaves the panel uncontrolled. `open` with `onOpenChange` controls it.
 - Use `variant="plain"` when another styled part, such as `Row.Primary`, renders the trigger.
-- `Collapsible.Root` and `Collapsible.Panel` bring no look of their own. Lay them out with `xstyle`.
+- `Collapsible.Root`, `Collapsible.Panel`, and `Collapsible.Preview` bring no look of their own. Lay
+  them out with `xstyle`.
 - `Collapsible.Panel` defaults `hiddenUntilFound` to `true`. The closed panel stays in the DOM, and
   find-in-page can match its text and open it. Pass `hiddenUntilFound={false}` to unmount it.
+- Use `Collapsible.Preview` to keep content in view while closed when that content has controls of
+  its own. Closed, a press anywhere in it opens the collapsible, and a collapsible pressed inside it
+  opens without closing. Open, it is a plain container.
 
 ## Anatomy
 
@@ -26,6 +30,7 @@ output or earlier messages.
     <Collapsible.Chevron />
   </Collapsible.Trigger>
   <Collapsible.Panel />
+  <Collapsible.Preview />
 </Collapsible.Root>
 ```
 
@@ -79,6 +84,20 @@ const [open, setOpen] = useState(false);
 </Collapsible.Root>
 ```
 
+### A preview that opens on press
+
+```tsx
+const [open, setOpen] = useState(false);
+
+<Collapsible.Root open={open} onOpenChange={setOpen}>
+  <Collapsible.Trigger>
+    Working
+    <Collapsible.Chevron />
+  </Collapsible.Trigger>
+  <Collapsible.Preview>{steps}</Collapsible.Preview>
+</Collapsible.Root>;
+```
+
 ## Props
 
 Every part takes `xstyle`, and `className` and `style` as plain values, not functions of state.
@@ -98,6 +117,10 @@ It takes every `<span>` prop, plus:
 | Prop   | Type     | Default | Description          |
 | ------ | -------- | ------- | -------------------- |
 | `size` | `number` | `11`    | Icon size in pixels. |
+
+### Preview
+
+Renders a `<div>` and takes every `<div>` prop.
 
 The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
@@ -119,3 +142,5 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
   panel while it is open. Enter and Space toggle it.
 - Rendering the trigger as something other than a `<button>` needs `nativeButton={false}`.
 - `disclosure` draws a focus ring. With `plain`, the rendered part owns focus styling.
+- The preview takes no role and no tab stop. The trigger stays the control, and controls inside
+  the preview keep their own roles.
