@@ -4,6 +4,7 @@
  */
 import { create, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
+import { CodeBlock } from "@nyte-ai/app/conversation/code-block.tsx";
 import { radius } from "@nyte-ai/ui/schema.stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import source from "../../sdk-spec.ts?raw";
@@ -99,21 +100,6 @@ function Prose({ lines }: { readonly lines: readonly SpecLine[] }): ReactElement
   );
 }
 
-function Code({ lines }: { readonly lines: readonly SpecLine[] }): ReactElement {
-  return (
-    <pre {...props(styles.code)}>
-      {lines.map((line) => (
-        <span key={line.number} id={`L${String(line.number)}`} {...props(styles.row)}>
-          <span aria-hidden {...props(styles.number)}>
-            {line.number}
-          </span>
-          {line.text}
-        </span>
-      ))}
-    </pre>
-  );
-}
-
 function rangeOf(lines: readonly SpecLine[]): string {
   const first = lines[0]?.number;
   const last = lines.at(-1)?.number;
@@ -184,7 +170,7 @@ function Block({ block }: { readonly block: SpecBlock }): ReactElement {
           </div>
           {others.length > 0 && <p {...props(styles.also)}>Also declares {others.join(", ")}</p>}
           {block.doc.length > 0 && <Prose lines={block.doc} />}
-          <Code lines={block.code} />
+          <CodeBlock code={block.code.map((line) => line.text).join("\n")} lang="typescript" />
         </section>
       );
     }
@@ -361,29 +347,5 @@ const styles = create({
   row: {
     display: "block",
     ":target": { backgroundColor: role.bgInteractivePrimaryTranslucent },
-  },
-  code: {
-    margin: 0,
-    paddingBlock: 12,
-    paddingInlineEnd: 16,
-    overflowX: "auto",
-    borderRadius: radius.card,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: role.borderSecondary,
-    backgroundColor: role.bgMuted,
-    color: role.contentPrimary,
-    fontFamily: type.fontMono,
-    fontSize: type.fontCode,
-    lineHeight: type.leadingCode,
-    tabSize: 2,
-  },
-  number: {
-    display: "inline-block",
-    inlineSize: 52,
-    paddingInlineEnd: 16,
-    textAlign: "end",
-    color: role.contentDisabled,
-    userSelect: "none",
   },
 });
