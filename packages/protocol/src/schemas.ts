@@ -1036,6 +1036,7 @@ const sessionMetadata = {
   head: HeadName,
   config: RunConfig,
   context: ContextStatus,
+  usage: Usage,
 };
 
 export const SessionMetadata = typed<SessionMetadataType>()(open(sessionMetadata));

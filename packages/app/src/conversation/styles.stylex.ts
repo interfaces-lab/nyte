@@ -774,12 +774,6 @@ export const composerStyles = create({
     minWidth: 0,
     maxWidth: 220,
   },
-  // Same line height as the model trigger so the digits share its baseline.
-  gauge: {
-    color: role.contentSecondary,
-    fontSize: type.fontXs,
-    lineHeight: type.leadingBase,
-  },
   spacer: { flex: 1 },
   spacerCompact: { display: "none" },
   suggestionPositioner: {

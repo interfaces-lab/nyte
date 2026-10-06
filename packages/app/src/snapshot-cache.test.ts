@@ -5,6 +5,7 @@ import type { SessionSnapshot } from "@nyte-ai/protocol";
 import { sessionId } from "@nyte-ai/protocol";
 import { installSnapshotCacheBudget, releaseSessionQueries } from "./snapshot-cache.ts";
 import { keys } from "./query-keys.ts";
+import { emptyUsageSummary } from "@nyte-ai/client";
 
 function snapshot(id: string, name = id): SessionSnapshot {
   return {
@@ -27,6 +28,7 @@ function snapshot(id: string, name = id): SessionSnapshot {
     transcript: [],
     pending: [],
     context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 1_000 },
+    usage: emptyUsageSummary().total,
   };
 }
 
@@ -36,7 +38,7 @@ async function enforce(): Promise<void> {
 
 test("inactive transcripts stay within the entry and byte budgets", async () => {
   const client = new QueryClient();
-  const unsubscribe = installSnapshotCacheBudget(client, { maxEntries: 2, maxBytes: 1_000 });
+  const unsubscribe = installSnapshotCacheBudget(client, { maxEntries: 2, maxBytes: 1_200 });
   client.setQueryData(keys.snapshot(sessionId("one")), snapshot("one", "a".repeat(300)), {
     updatedAt: 1,
   });

@@ -33,7 +33,7 @@ import { observedAccountUsage, readAccountUsage } from "@nyte-ai/host/usage";
 import type { AccountUsage } from "@nyte-ai/host/usage";
 import { clampThinkingLevel, getSupportedThinkingLevels } from "@nyte-ai/ai";
 import type { Api, AuthInteraction, Model } from "@nyte-ai/ai";
-import { collectAbandoned, projectTree } from "@nyte-ai/client";
+import { collectAbandoned, projectTree, emptyUsageSummary } from "@nyte-ai/client";
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import { MAIN, sessionId } from "@nyte-ai/core";
 import { watchPluginDirectories } from "@nyte-ai/host/plugins";
@@ -1042,6 +1042,7 @@ class Interactive {
         settledToolCalls: new Set(),
         parked: [],
         context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 0 },
+        usage: emptyUsageSummary().total,
         expectedTip: undefined,
       },
       commands: new Map(),

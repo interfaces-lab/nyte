@@ -17,6 +17,7 @@ import { deliveryChoices } from "./lanes.ts";
 import { InlineMenu } from "./picker.ts";
 import { setSlotRows } from "./app/ui.ts";
 import { DARK_THEME } from "./theme.ts";
+import { emptyUsageSummary } from "@nyte-ai/client";
 
 type TranscriptTurn = Extract<
   SessionState["transcript"]["items"][number],
@@ -174,6 +175,7 @@ function state(
     settledToolCalls: new Set(),
     parked: [],
     context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 128_000 },
+    usage: emptyUsageSummary().total,
     expectedTip: undefined,
   };
 }

@@ -20,7 +20,13 @@ import {
   type SessionSnapshot,
   type Turn,
 } from "@nyte-ai/protocol";
-import { foldEvent, stateFromSnapshot, waitingCall, type SessionState } from "../src/index.ts";
+import {
+  foldEvent,
+  stateFromSnapshot,
+  waitingCall,
+  type SessionState,
+  emptyUsageSummary,
+} from "../src/index.ts";
 
 const SESSION = sessionId("session-state-test");
 const selection: Selection = { title: "Continue?", choices: [{ id: "yes", label: "Yes" }] };
@@ -60,6 +66,7 @@ function snapshot(
     pending,
     ...(parked === undefined || parked.length === 0 ? {} : { run: activeRun }),
     context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 1000 },
+    usage: emptyUsageSummary().total,
     parked,
   };
 }

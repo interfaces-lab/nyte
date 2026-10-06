@@ -10,6 +10,7 @@ import type {
   VcsWorktreeFile,
 } from "@nyte-ai/protocol";
 import type { NyteBridge } from "../bridge.ts";
+import { emptyUsageSummary } from "@nyte-ai/client";
 
 export const changesSession = sessionId("changes-scope-session");
 
@@ -77,6 +78,7 @@ export function snapshotWith(transcript: readonly Turn[]): SessionSnapshot {
     transcript,
     pending: [],
     context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 1 },
+    usage: emptyUsageSummary().total,
   };
 }
 
@@ -150,7 +152,13 @@ const snapshot: NyteBridge["sessions"]["snapshot"] = async () => {
 const metadata: NyteBridge["sessions"]["metadata"] = async () => {
   const held = snapshotWith(changesScopeScript.transcript);
 
-  return { session: held.session, head: held.head, config: held.config, context: held.context };
+  return {
+    session: held.session,
+    head: held.head,
+    config: held.config,
+    context: held.context,
+    usage: held.usage,
+  };
 };
 
 const vcsSnapshot = async (): Promise<VcsSnapshot> => {

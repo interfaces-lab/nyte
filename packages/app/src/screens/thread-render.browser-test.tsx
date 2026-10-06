@@ -21,6 +21,7 @@ import { ThreadScreen } from "./thread.tsx";
 import { createAppRouter } from "../router.tsx";
 import { applyDisplayMode } from "../theme/appearance.ts";
 import "../theme/tokens.stylex.ts";
+import { emptyUsageSummary } from "@nyte-ai/client";
 
 declare global {
   interface Window {
@@ -100,6 +101,7 @@ const snapshot = {
     },
   ],
   context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 1_000 },
+  usage: emptyUsageSummary().total,
   session,
   run: activeRun,
 } satisfies SessionSnapshot;
@@ -109,6 +111,7 @@ const metadata = {
   head: snapshot.head,
   config: snapshot.config,
   context: snapshot.context,
+  usage: snapshot.usage,
 } satisfies SessionMetadata;
 
 const catalog = {

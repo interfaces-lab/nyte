@@ -54,7 +54,6 @@ import { outbox } from "../use-outbox.ts";
 import { macPlatform } from "../platform.ts";
 import { DEFAULT_COMPOSER_VIEW_STATE } from "../layout/session-view-state.ts";
 import type { ComposerViewState } from "../layout/session-view-state.ts";
-import { formatContextWindow } from "./model-picker-state.ts";
 import { ModelPicker, type ModelPickerChange } from "./model-picker.tsx";
 import { ImagePreview } from "./image-preview.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
@@ -105,8 +104,7 @@ type ComposerGeometry = "new-chat" | "follow-up-compact" | "follow-up-expanded";
 
 /**
  * Session-bound chip: shows the selected inputs for the next message, even
- * while an older run is still executing. The context gauge continues to
- * describe that run's context.
+ * while an older run is still executing.
  */
 const SessionModelChip = memo(function SessionModelChip({
   sessionId,
@@ -116,7 +114,6 @@ const SessionModelChip = memo(function SessionModelChip({
   const catalog = useCatalog(sessionId);
   const snapshot = useSessionSnapshot(sessionId);
   const configure = useConfigureSession(sessionId);
-  const context = snapshot.data?.context;
   const options = catalog.data?.models ?? [];
   const configured = snapshot.data?.session.config.model ?? snapshot.data?.config.model;
 
@@ -198,18 +195,6 @@ const SessionModelChip = memo(function SessionModelChip({
         <Button size="sm" onClick={() => void catalog.refetch()} loading={catalog.isFetching}>
           Retry Models
         </Button>
-      )}
-      {context?.percent !== undefined && (
-        <span
-          {...props(composerStyles.gauge)}
-          title={
-            context.contextWindow === undefined
-              ? `${String(context.estimatedTokens)} tokens`
-              : `${String(context.estimatedTokens)} tokens of ${formatContextWindow(context.contextWindow)}`
-          }
-        >
-          {String(Math.round(context.percent))}%
-        </span>
       )}
     </>
   );

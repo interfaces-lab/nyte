@@ -12,7 +12,7 @@ import type {
   TurnPart,
 } from "@nyte-ai/protocol";
 import type { AssistantMessage } from "@nyte-ai/schema";
-import { transcriptFromCommits } from "@nyte-ai/client";
+import { transcriptFromCommits, emptyUsageSummary } from "@nyte-ai/client";
 import type { NyteBridge, WorkspaceSessionDirectory } from "./bridge.ts";
 import {
   loadThread,
@@ -208,6 +208,7 @@ function snapshot(events: readonly CommitEvent[], seq: number): SessionSnapshot 
     pending: [],
     transcript: transcriptFromCommits(events.map((event) => event.item)),
     context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 1000 },
+    usage: emptyUsageSummary().total,
     session: {
       sessionId: ID,
       createdAt: 0,
@@ -228,6 +229,7 @@ function metadataOf(current: SessionSnapshot): SessionMetadata {
     head: current.head,
     config: current.config,
     context: current.context,
+    usage: current.usage,
   };
 }
 

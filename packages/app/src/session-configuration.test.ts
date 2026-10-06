@@ -9,6 +9,7 @@ import {
   projectSessionConfiguration,
   sessionConfigurationOptions,
 } from "./session-configuration.ts";
+import { emptyUsageSummary } from "@nyte-ai/client";
 
 const id = sessionId("chosen-model");
 
@@ -39,6 +40,7 @@ function fixture() {
     transcript: [],
     pending: [],
     context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 1000 },
+    usage: emptyUsageSummary().total,
   };
 
   const response = Promise.withResolvers<Awaited<ReturnType<SessionsBridge["configure"]>>>();

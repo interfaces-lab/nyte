@@ -7,6 +7,7 @@ import type { TestRendererSetup } from "@opentui/core/testing";
 import { mountShell } from "./app/App.tsx";
 import { deliveryChoices } from "./lanes.ts";
 import { DARK_THEME } from "./theme.ts";
+import { emptyUsageSummary } from "@nyte-ai/client";
 
 type TranscriptTurn = Extract<
   SessionState["transcript"]["items"][number],
@@ -78,6 +79,7 @@ function session(parts: readonly ToolPart[], running: boolean): SessionState {
     settledToolCalls: new Set(),
     parked: [],
     context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 128_000 },
+    usage: emptyUsageSummary().total,
     expectedTip: undefined,
   };
 }

@@ -172,6 +172,7 @@ for (const checkpoints of [0, 2]) {
             transcript: await f.nyte.messages.list(input),
             pending: await f.nyte.messages.pending(input),
             context: await f.nyte.runs.context(input),
+            usage: (await f.nyte.sessions.metadata(input))?.usage,
           };
           f.reads.length = 0;
           const snapshot = await f.nyte.sessions.snapshot(input);
@@ -195,6 +196,7 @@ for (const checkpoints of [0, 2]) {
             head,
             config: expected.config,
             context: expected.context,
+            usage: expected.usage,
           });
           assert.ok(
             f.reads.length <= branches,

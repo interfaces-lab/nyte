@@ -67,6 +67,7 @@ export interface SessionState {
   /** The asks of `run` as the snapshot orders them. A wait on background work is the run's own. */
   readonly parked: readonly Ask[];
   readonly context: ContextStatus;
+  readonly usage: SessionMetadata["usage"];
   /**
    * Where a `head_moved` said the head now is, while the commits that would
    * bring the transcript there have not arrived. Cleared once they do; a tip
@@ -130,6 +131,7 @@ export function stateFromSnapshot(snapshot: SessionSnapshot): SessionState {
     settledToolCalls: settledToolCallsOf(snapshot),
     parked: (snapshot.parked ?? []).filter(isAsk),
     context: snapshot.context,
+    usage: snapshot.usage,
     expectedTip: undefined,
   };
 }
@@ -140,6 +142,7 @@ export function snapshotOf(state: SessionState): SessionSnapshot {
     head: state.head,
     config: state.config,
     context: state.context,
+    usage: state.usage,
     seq: state.seq,
     tip: state.transcript.tip,
     transcript: state.transcript.items,
@@ -187,6 +190,7 @@ export function stateWithMetadata(
     },
     config: metadata.config,
     context: metadata.context,
+    usage: metadata.usage,
   };
 }
 

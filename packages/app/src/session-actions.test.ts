@@ -11,6 +11,7 @@ import { PaneController } from "./layout/pane-controller.ts";
 import { activeSelection } from "./layout/pane-layout.ts";
 import { keys } from "./query-keys.ts";
 import type { SessionPage } from "./session-directory.ts";
+import { emptyUsageSummary } from "@nyte-ai/client";
 
 function chat(id: string): SessionInfo {
   return {
@@ -37,6 +38,7 @@ function snapshot(session: SessionInfo): SessionSnapshot {
     transcript: [],
     pending: [],
     context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 1000 },
+    usage: emptyUsageSummary().total,
   };
 }
 

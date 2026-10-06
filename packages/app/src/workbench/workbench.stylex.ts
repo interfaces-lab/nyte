@@ -103,6 +103,18 @@ export const workbenchStyles = create({
   },
   // The stats follow the label rather than the row's end.
   railLabel: { flex: "0 1 auto" },
+  railValue: { color: role.contentPrimary, fontVariantNumeric: "tabular-nums" },
+  // The detail gives way before the label it qualifies.
+  railDetail: {
+    flex: "0 1000 auto",
+    minWidth: 0,
+    overflow: "hidden",
+    color: role.contentTertiary,
+    fontVariantNumeric: "tabular-nums",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  railActions: { marginInlineStart: "auto" },
   railStats: {
     display: "inline-flex",
     gap: workbench.rowGap,

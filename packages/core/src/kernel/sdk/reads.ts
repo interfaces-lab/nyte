@@ -21,7 +21,7 @@ import type { Commit, Seq } from "../model.ts";
 import { WORKSPACE_REF, headRef } from "../names.ts";
 import { pending } from "../queue.ts";
 import type { Session } from "../store.ts";
-import { projectContextStatus, transcriptFromCommits } from "@nyte-ai/client";
+import { projectContextStatus, projectUsage, transcriptFromCommits } from "@nyte-ai/client";
 import { clientActivation, type Pooled, type SessionPool } from "./session-pool.ts";
 import { headConfig, pendingItems, sessionInfo } from "./snapshot.ts";
 import {
@@ -159,6 +159,7 @@ export function createReads(input: {
           ? undefined
           : { provider: model.provider, api: model.api, model: model.id },
       ),
+      usage: projectUsage(commits).total,
     };
   };
 
@@ -318,6 +319,7 @@ export function createReads(input: {
         transcript: transcriptFromCommits(commits, { run, parked }),
         pending: pendingItems(selectedPending ?? data.pendingChanges),
         context: projected.status,
+        usage: projected.usage,
       };
 
       const withRun = run === undefined ? snapshot : { ...snapshot, run };
@@ -355,6 +357,7 @@ export function createReads(input: {
         head,
         config: projected.config,
         context: projected.status,
+        usage: projected.usage,
       };
     } catch (error) {
       if (error instanceof UnknownSession) return undefined;

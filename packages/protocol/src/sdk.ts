@@ -8,7 +8,7 @@
  * they carry host concerns such as `AbortSignal`. The remote subset is
  * `RemoteNyte` in `remote.ts`.
  */
-import type { JsonValue, ModelThinkingLevel, UserMessage } from "@nyte-ai/schema";
+import type { JsonValue, ModelThinkingLevel, Usage, UserMessage } from "@nyte-ai/schema";
 import type {
   Actor,
   Commit,
@@ -167,6 +167,8 @@ export interface SessionMetadata {
   /** Active run inputs, or the head's declared/last observed inputs when idle. Never reader defaults. */
   readonly config: RunConfig;
   readonly context: ContextStatus;
+  /** Tokens and API-equivalent cost recorded on the head's branch, every model summed. */
+  readonly usage: Usage;
 }
 
 export interface SessionSnapshot extends SessionMetadata {

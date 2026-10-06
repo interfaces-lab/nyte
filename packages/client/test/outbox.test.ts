@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import type { SendInput, SendReceipt, SessionId } from "@nyte-ai/protocol";
 import { sessionId } from "@nyte-ai/protocol";
-import { createOutbox, retryDelayMs, stateFromSnapshot } from "../src/index.ts";
+import { createOutbox, retryDelayMs, stateFromSnapshot, emptyUsageSummary } from "../src/index.ts";
 import type { OutboxRecord, OutboxStorage, SessionState, SessionUpdate } from "../src/index.ts";
 
 const SESSION: SessionId = sessionId("session-1");
@@ -105,6 +105,7 @@ function snapshotUpdate(state: Partial<SessionState>): SessionUpdate {
     head: "main",
     config: {},
     context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 0 },
+    usage: emptyUsageSummary().total,
     seq: 0,
     tip: null,
     transcript: [],

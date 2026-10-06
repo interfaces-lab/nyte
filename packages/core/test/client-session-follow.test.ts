@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, test } from "vitest";
-import { SessionObserver, type SessionUpdate } from "@nyte-ai/client";
+import { emptyUsageSummary, SessionObserver, type SessionUpdate } from "@nyte-ai/client";
 import {
   MAIN,
   sessionId,
@@ -56,6 +56,7 @@ function metadataAt(input: {
       trailingTokens: 0,
       contextWindow: 1000,
     },
+    usage: emptyUsageSummary().total,
   };
 }
 
