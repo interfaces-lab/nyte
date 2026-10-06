@@ -8,6 +8,7 @@ const PAGES = [
   ["/sidebar", "Sidebar"],
   ["/projects", "Projects"],
   ["/canvas", "Canvas"],
+  ["/sdk", "SDK"],
   ["/settings", "Settings"],
 ] as const;
 

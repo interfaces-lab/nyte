@@ -8,6 +8,7 @@ import { ReviewPage } from "./review/page";
 import { SettingsPage } from "./settings/page";
 import { SidebarPage } from "./sidebar/page";
 import { CanvasPage } from "./canvas/page";
+import { SdkSpecPage } from "./sdk/page";
 import { rootRoute } from "./routes/__root";
 
 const ReviewSearch = Type.Object({ id: Type.Optional(Type.String()) });
@@ -57,6 +58,12 @@ const routeTree = rootRoute.addChildren([
     path: "/canvas",
     component: CanvasPage,
     head: () => ({ meta: [{ title: "Lab · Canvas" }] }),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/sdk",
+    component: SdkSpecPage,
+    head: () => ({ meta: [{ title: "Lab · SDK spec" }] }),
   }),
   createRoute({
     getParentRoute: () => rootRoute,

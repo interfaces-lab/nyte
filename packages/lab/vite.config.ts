@@ -1,6 +1,6 @@
 import { stylex } from "@nyte-ai/ui/stylex";
 import react from "@vitejs/plugin-react";
-import { defaultClientConditions, defineConfig } from "vite";
+import { defaultClientConditions, defineConfig, type Plugin } from "vite";
 import { reviewCore } from "./server/plugin.ts";
 
 /** A blank room: StyleX and nothing else. No Tailwind, no inherited palette. */
@@ -18,6 +18,7 @@ export default defineConfig(({ command }) => ({
       "motion/react",
       "@pierre/diffs",
       "@pierre/diffs/react",
+      "react-grab",
     ],
   },
   plugins: [
@@ -33,6 +34,17 @@ export default defineConfig(({ command }) => ({
     }),
     react(),
     reviewCore(),
+    {
+      name: "lab:serve-devtools",
+      apply: "serve",
+      transformIndexHtml: () => [
+        {
+          tag: "script",
+          attrs: { type: "module", src: "/src/devtools.ts" },
+          injectTo: "head-prepend",
+        },
+      ],
+    } satisfies Plugin,
   ],
   build: {
     rolldownOptions: {
