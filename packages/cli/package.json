@@ -1,6 +1,6 @@
 {
   "name": "nyte-ai",
-  "version": "0.0.16-dev.3",
+  "version": "0.0.16-dev.4",
   "private": false,
   "description": "Headless agent runner and terminal client for Nyte",
   "keywords": [
