@@ -1,6 +1,6 @@
 import { intent } from "@nyte-ai/ui/surface-theme";
 /**
- * Settings › Providers: connections, model defaults, and enabled models.
+ * Settings › Providers: connections and enabled models. The new-chat defaults render on Settings › Agent.
  */
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { props } from "@stylexjs/stylex";
@@ -35,7 +35,7 @@ import {
   useLoginAttempt,
 } from "./login-attempts.ts";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
-import { SettingsRow } from "./settings-controls.tsx";
+import { SettingsRow } from "../settings/rows.tsx";
 import { BrowserSignInPanel, DeviceCodePanel } from "./sign-in-panels.tsx";
 
 type CatalogDefaults = NonNullable<DesktopCatalog["defaults"]>;
@@ -83,7 +83,8 @@ function providerIcon(providerId: string): IconName {
   return "model-generic";
 }
 
-function DefaultsSection({
+/** Model and reasoning for new chats. Rendered by Settings › Agent, from the same catalog. */
+export function NewChatsSection({
   catalog,
   defaults,
 }: {
@@ -118,7 +119,11 @@ function DefaultsSection({
         <SettingsRow
           title="Model"
           controlWidth="wide"
-          description={listed.length === 0 ? "Connect a provider below to choose one" : undefined}
+          description={
+            listed.length === 0
+              ? "Connect a provider below to choose one"
+              : "New chats start on this model. Switch per chat from the composer"
+          }
         >
           <Select
             items={modelOptions}
@@ -598,8 +603,6 @@ export function ProvidersSettings(): ReactElement | null {
     );
   }
 
-  const defaults = catalog.data.defaults;
-
   const connected = catalog.data.providers.filter(
     (provider) => provider.connection.kind !== "disconnected",
   );
@@ -647,7 +650,6 @@ export function ProvidersSettings(): ReactElement | null {
           <p {...props(settingsPatterns.sectionDescription)}>No model providers available.</p>
         )}
       </section>
-      {defaults !== undefined && <DefaultsSection catalog={catalog.data} defaults={defaults} />}
       <EnabledModelsSection catalog={catalog.data} />
     </>
   );

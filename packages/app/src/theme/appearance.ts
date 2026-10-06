@@ -60,3 +60,20 @@ export function applyFocusModality(modality: "keyboard" | "pointer"): void {
 export function applyTint(enabled: boolean): void {
   toggle(surfaceTheme.custom, enabled);
 }
+
+let reduceTransparencyQuery: MediaQueryList | undefined;
+
+/** Lazy, so importing this module needs no window; tests load it under node. */
+function transparencyQuery(): MediaQueryList {
+  return (reduceTransparencyQuery ??= window.matchMedia("(prefers-reduced-transparency: reduce)"));
+}
+
+export function systemReducesTransparency(): boolean {
+  return transparencyQuery().matches;
+}
+
+export function subscribeSystemTransparency(listener: () => void): () => void {
+  transparencyQuery().addEventListener("change", listener);
+
+  return () => transparencyQuery().removeEventListener("change", listener);
+}

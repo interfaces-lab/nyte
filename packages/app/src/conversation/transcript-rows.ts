@@ -6,7 +6,7 @@
 import type { Delivery, SessionSnapshot, Turn, UserTurnPart } from "@nyte-ai/protocol";
 import { changesFromTurns, isTerminalPhase } from "@nyte-ai/client";
 import type { OutboxRow } from "@nyte-ai/client";
-import type { ToolCallDensity } from "../theme/boot.ts";
+import type { ToolCallDensity } from "../preferences/index.ts";
 import { CHANGES_VISIBLE_FILES } from "../workbench/change-tree.ts";
 
 interface LandingMessage {
@@ -24,6 +24,13 @@ export type TranscriptRow =
       readonly messageId: string;
       readonly scrollAnchor: boolean;
       readonly turn: RenderedTurn;
+      /**
+       * Turns opened under this one without a request. A background report
+       * opens its own turn, but the prompt it answers is this row's; drawing
+       * them here keeps that prompt stuck above the work they hold instead of
+       * pushing it out at the turn boundary.
+       */
+      readonly continuations: readonly ConversationTurn[];
       readonly trailing: boolean;
     }
   | {
@@ -64,6 +71,13 @@ function turnMessageId(turn: Turn): string {
 
 /** A turn the transcript draws. A config turn can never reach a row. */
 export type RenderedTurn = Exclude<Turn, { readonly kind: "config" }>;
+
+export type ConversationTurn = Extract<Turn, { readonly kind: "turn" }>;
+
+/** A request opens every turn but the one a background report opens. */
+function continuesTurn(turn: RenderedTurn): turn is ConversationTurn {
+  return turn.kind === "turn" && turn.parts[0]?.kind !== "user";
+}
 
 /**
  * Config turns draw nothing: every turn already shows the model it ran with,
@@ -165,15 +179,27 @@ export function transcriptRows({
 
   if (failed) rows.push({ kind: "error", messageId: "row:error", scrollAnchor: false });
 
-  for (const [index, turn] of rendered.entries()) {
+  for (const turn of rendered) {
+    const previous = rows.at(-1);
+
+    if (previous?.kind === "turn" && previous.turn.kind === "turn" && continuesTurn(turn)) {
+      rows[rows.length - 1] = { ...previous, continuations: [...previous.continuations, turn] };
+      continue;
+    }
+
     rows.push({
       kind: "turn",
       messageId: turnMessageId(turn),
       scrollAnchor: turn.kind === "turn" && turn.parts.some((part) => part.kind === "user"),
       turn,
-      trailing: index === rendered.length - 1,
+      continuations: [],
+      trailing: false,
     });
   }
+
+  const last = rows.at(-1);
+
+  if (last?.kind === "turn") rows[rows.length - 1] = { ...last, trailing: true };
 
   for (const message of landing) {
     rows.push({
@@ -261,7 +287,10 @@ function rowEstimate(
     case "live":
       return row.working ? LIVE_ROW_ESTIMATE : 0;
     case "turn":
-      return estimateTurnSize(row.turn, density, scale);
+      return row.continuations.reduce(
+        (size, turn) => size + estimateTurnSize(turn, density, scale),
+        estimateTurnSize(row.turn, density, scale),
+      );
     default: {
       const _exhaustive: never = row;
 

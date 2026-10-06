@@ -14,7 +14,7 @@ import {
 } from "./composer-document.ts";
 import { messageDraftText } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
-import { openConversationLink } from "./link-preference.ts";
+import { openConversationLink } from "./external-link.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
 import type { ReferenceOpener } from "./reference-opener.tsx";
 import { composerStyles } from "./styles.stylex.ts";

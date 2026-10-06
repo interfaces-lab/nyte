@@ -18,7 +18,7 @@ import {
 import { diffStyles } from "../conversation/styles.stylex.ts";
 import { PIERRE_TOKEN_CSS, PierreWorkerProvider } from "../pierre-worker-provider.tsx";
 import { workbench } from "../theme/schema.stylex.ts";
-import { useAppearanceSettings } from "../theme/use-appearance.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { ReviewCheckbox } from "./changes-sidebar.tsx";
 import { createChangesCodeViewItems, type ChangesStackItem } from "./changes-stack-code-view.ts";
@@ -124,7 +124,7 @@ export function ChangesStack({
   readonly onScrollTop: (scrollTop: number) => void;
   readonly onActivePath: (path: string) => void;
 }): ReactElement {
-  const appearance = useAppearanceSettings();
+  const theme = useSetting(preferences.theme);
   const viewer = useRef<CodeViewHandle<string, undefined>>(null);
   const restore = useRef<number | undefined>(scrollTop);
   const appliedFocusRevision = useRef(0);
@@ -136,7 +136,7 @@ export function ChangesStack({
   const options = useMemo(
     () =>
       ({
-        themeType: appearance.theme,
+        themeType: theme,
         diffStyle: layout,
         overflow: wordWrap ? "wrap" : "scroll",
         loadDiffFiles,
@@ -149,7 +149,7 @@ export function ChangesStack({
           if (phase !== "unmount") adaptDiffExpanders(node);
         },
       }) satisfies CodeViewReactOptions<string, undefined>,
-    [appearance.theme, layout, loadDiffFiles, wordWrap],
+    [theme, layout, loadDiffFiles, wordWrap],
   );
 
   useLayoutEffect(() => {

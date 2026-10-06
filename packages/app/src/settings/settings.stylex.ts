@@ -4,7 +4,42 @@ import { create } from "@stylexjs/stylex";
 import { settings, sidebar } from "../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 
-export const appearanceSettingsStyles = create({
+export const settingsStyles = create({
+  /** A card whose rows all decided this host can't back them has nothing to say. */
+  section: {
+    display: { default: "flex", ":not(:has([data-settings-row]))": "none" },
+  },
+  steps: {
+    display: "flex",
+    flexDirection: "column",
+    width: {
+      default: 150,
+      "@media (max-width: 500px)": "100%",
+      "@container (max-width: 500px)": "100%",
+    },
+    minWidth: 0,
+    maxWidth: "100%",
+    boxSizing: "border-box",
+  },
+  stepsSlider: {
+    width: "100%",
+    paddingBlock: 8,
+  },
+  /** A read-only value beside a row's action, like a count. */
+  rowValue: {
+    marginInlineEnd: 12,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+  },
+  stepsLabels: {
+    display: "flex",
+    justifyContent: "space-between",
+    marginTop: 4,
+    color: role.contentSecondary,
+    fontSize: type.fontSm,
+    lineHeight: type.leadingSm,
+  },
   navigation: {
     display: "flex",
     flexDirection: "column",

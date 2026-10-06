@@ -4,7 +4,7 @@ import { memo, useCallback } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { useSessionLive } from "../live.ts";
 import type { LiveToolProgress } from "../live-fold.ts";
-import { useAppearanceSettings } from "../theme/use-appearance.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
 import { Button } from "@nyte-ai/ui/button";
 import { TranscriptSkeleton } from "../screens/transcript-skeleton.tsx";
 import { LiveTurn, liveTurnStyles } from "./live-turn.tsx";
@@ -13,7 +13,7 @@ import { StatusMarker } from "./row-surfaces.tsx";
 import { TurnView, UserMessageView } from "./turn-view.tsx";
 import type { BranchModelChoice, BranchModelPicker, TurnChangesTarget } from "./turn-view.tsx";
 import { estimateRowSize } from "./transcript-rows.ts";
-import type { RenderedTurn, TranscriptRow } from "./transcript-rows.ts";
+import type { ConversationTurn, RenderedTurn, TranscriptRow } from "./transcript-rows.ts";
 
 const NO_LIVE_TOOLS: ReadonlyMap<string, LiveToolProgress> = new Map();
 
@@ -25,12 +25,14 @@ type EditUserMessage = (
 
 const SettledTurnView = memo(function SettledTurnView({
   turn,
+  continuations,
   cwd,
   onEditUser,
   branchModel,
   onOpenChanges,
 }: {
   turn: RenderedTurn;
+  continuations: readonly ConversationTurn[];
   cwd: string | undefined;
   onEditUser: EditUserMessage;
   branchModel: BranchModelPicker;
@@ -39,6 +41,7 @@ const SettledTurnView = memo(function SettledTurnView({
   return (
     <TurnView
       turn={turn}
+      continuations={continuations}
       liveTools={NO_LIVE_TOOLS}
       cwd={cwd}
       onEditUser={onEditUser}
@@ -52,6 +55,7 @@ const SettledTurnView = memo(function SettledTurnView({
 const TrailingTurnView = memo(function TrailingTurnView({
   sessionId,
   turn,
+  continuations,
   cwd,
   onEditUser,
   branchModel,
@@ -59,6 +63,7 @@ const TrailingTurnView = memo(function TrailingTurnView({
 }: {
   sessionId: SessionId;
   turn: RenderedTurn;
+  continuations: readonly ConversationTurn[];
   cwd: string | undefined;
   onEditUser: EditUserMessage;
   branchModel: BranchModelPicker;
@@ -69,6 +74,7 @@ const TrailingTurnView = memo(function TrailingTurnView({
   return (
     <TurnView
       turn={turn}
+      continuations={continuations}
       liveTools={live.tools}
       live={live}
       cwd={cwd}
@@ -120,7 +126,8 @@ export function Timeline({
   readonly onOpenChanges: (target: TurnChangesTarget) => void;
   readonly onRetry: () => void;
 }): ReactElement {
-  const { toolCalls: density, uiFontSize } = useAppearanceSettings();
+  const density = useSetting(preferences.toolCalls);
+  const uiFontSize = useSetting(preferences.uiFontSize);
 
   const estimateSize = useCallback(
     (index: number) => estimateRowSize(rows[index], density, uiFontSize),
@@ -151,6 +158,7 @@ export function Timeline({
               <TrailingTurnView
                 sessionId={sessionId}
                 turn={row.turn}
+                continuations={row.continuations}
                 cwd={cwd}
                 onEditUser={onEditUser}
                 branchModel={branchModel}
@@ -162,6 +170,7 @@ export function Timeline({
           return (
             <SettledTurnView
               turn={row.turn}
+              continuations={row.continuations}
               cwd={cwd}
               onEditUser={onEditUser}
               branchModel={branchModel}

@@ -63,6 +63,11 @@ import { createModelPreferencesStore, readCatalog } from "@nyte-ai/host/catalog"
 import type { ResolvedCatalog } from "@nyte-ai/host/catalog";
 import { createProviderEnvironment } from "@nyte-ai/host/environment";
 import { createOtelExport } from "@nyte-ai/host/otel";
+import {
+  compactionSettings,
+  HostSettingsStore,
+  UnreadableSettingsFile,
+} from "@nyte-ai/host/settings";
 import { catalogForUsage, projectUsageReport, UsageScanner } from "@nyte-ai/host/store-usage";
 import type {
   StoreLocation,
@@ -117,8 +122,7 @@ import {
   randomToken,
   startServe,
 } from "@nyte-ai/serve";
-import type { Serving } from "@nyte-ai/serve";
-import type { ServerAuth } from "@nyte-ai/server";
+import type { ServeOptions, Serving } from "@nyte-ai/serve";
 import type { RemoteAccessPlugins, RemoteExposure } from "./remote-access-plugin.ts";
 import type { ConnectRuntime, ConnectShare } from "./connect-runtime.ts";
 import { ServerSettingsStore } from "./server-settings.ts";
@@ -156,6 +160,8 @@ export interface DesktopHostDependencies {
    */
   readonly connect?: ConnectRuntime;
   readonly updates?: HostBridge["updates"];
+  /** ~/.nyte/settings.json. Absent, as in tests, the host opens the real one. */
+  readonly settings?: HostSettingsStore;
   readonly createHost?: typeof createHost;
   /** The store's worker thread module, so SQLite work never runs on the main thread. */
   readonly storeWorker: URL;
@@ -366,6 +372,7 @@ export class DesktopHost {
   private readonly serverSettings = new ServerSettingsStore(join(nyteHome(), "server.json"));
   private readonly usageScan: UsageScanReader;
   private readonly otel: ReturnType<typeof createOtelExport>;
+  private readonly settings: HostSettingsStore;
   private modelsPromise: Promise<MutableModels> | undefined;
   private catalogPromise: Promise<ResolvedCatalog> | undefined;
   private catalogRefreshTimer: ReturnType<typeof setInterval> | undefined;
@@ -438,8 +445,17 @@ export class DesktopHost {
   constructor(dependencies: DesktopHostDependencies) {
     this.dependencies = dependencies;
     this.usageScan = dependencies.usageScan ?? new UsageScanner(nyteHome());
+    this.settings = dependencies.settings ?? new HostSettingsStore();
     this.otel = (dependencies.createOtelExport ?? createOtelExport)({
       serviceName: "nyte-desktop",
+      endpoint: this.settings.current().traceEndpoint ?? undefined,
+    });
+    this.settings.subscribe((next, previous) => {
+      this.dependencies.emitHostEvent({ kind: "settings_changed", settings: next });
+
+      if (next.cacheWarming === previous.cacheWarming) return;
+
+      for (const open of this.openTargets.values()) open.sdk.cacheWarming.modeChanged();
     });
   }
 
@@ -531,6 +547,16 @@ export class DesktopHost {
         return this.github.createPullRequest(decoded, project.workspace.path);
       }
 
+      case "host.settings.get":
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+
+        return this.settings.read();
+      case "host.settings.set":
+        return this.settings.set(CALL_INPUT_SCHEMAS[path].Parse(input)).catch((cause: unknown) => {
+          if (cause instanceof UnreadableSettingsFile)
+            throw new ExpectedHostError({ code: "internal", message: cause.message });
+          throw cause;
+        });
       case "host.updates.state":
         CALL_INPUT_SCHEMAS[path].Parse(input);
 
@@ -1156,8 +1182,9 @@ export class DesktopHost {
 
     if (existing !== undefined) return existing;
 
-    const terminals = new TerminalSessions((event) =>
-      this.dependencies.emitHostEvent(event, window),
+    const terminals = new TerminalSessions(
+      (event) => this.dependencies.emitHostEvent(event, window),
+      () => this.settings.current().terminalShell,
     );
 
     this.terminalSessions.set(window, terminals);
@@ -1629,6 +1656,7 @@ export class DesktopHost {
         browserToolsPlugin({
           agent: this.dependencies.browser.agent,
           access: this.browserAccess,
+          defaultAccess: () => this.settings.current().browserAccess,
         }),
       ];
 
@@ -1676,6 +1704,8 @@ export class DesktopHost {
         model: fallback,
         thinkingLevel: catalog.defaults.thinkingLevel,
         telemetry: this.otel.telemetry,
+        cacheWarming: () => this.settings.current().cacheWarming,
+        compaction: compactionSettings(this.settings.current()),
         onDiagnostic: retainDiagnostic,
         workspace: configuredWorkspaceBackend,
         plugins: {
@@ -2828,7 +2858,7 @@ export class DesktopHost {
 
     if (this.remoteAccess === undefined) {
       const pending = (async (): Promise<ActiveRemoteAccess> => {
-        const host = reach === "tailnet" ? await this.requireTailnetHost() : undefined;
+        const hostname = reach === "tailnet" ? await this.requireTailnetHost() : undefined;
 
         const via =
           reach === "local" || reach === "tailnet"
@@ -2859,7 +2889,7 @@ export class DesktopHost {
             const token = randomToken();
 
             const serving = await this.serveShare(cursor, environment.operations, {
-              host,
+              hostname,
               auth: { kind: "token", token },
             });
 
@@ -2963,7 +2993,7 @@ export class DesktopHost {
       try {
         serving = await this.serveShare(cursor, environment.operations, {
           ...listen,
-          host: "127.0.0.1",
+          hostname: "127.0.0.1",
         });
       } catch (cause) {
         environment.close();
@@ -2997,13 +3027,7 @@ export class DesktopHost {
   private serveShare(
     cursor: ShareCursor,
     environment: Environment,
-    listen: {
-      readonly host?: string;
-      readonly port?: number;
-      readonly auth: ServerAuth;
-      readonly browserOrigins?: readonly string[];
-      readonly handle?: (request: Request) => Promise<Response | undefined>;
-    },
+    listen: Pick<ServeOptions, "hostname" | "port" | "auth" | "browserOrigins" | "handle">,
   ): Promise<Serving> {
     return startServe({
       ...listen,
@@ -3032,7 +3056,7 @@ export class DesktopHost {
 
     try {
       const serving = await this.serveShare(cursor, environment, {
-        host: "127.0.0.1",
+        hostname: "127.0.0.1",
         ...exposure.listen,
       }).catch((cause: unknown) => {
         if (cause instanceof Error && "code" in cause && cause.code === "EADDRINUSE") {

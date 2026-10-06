@@ -43,7 +43,7 @@ import type {
 import { terminalActions, useTerminalRuntime } from "./terminal-store";
 import { BrowserPanel } from "./browser-panel";
 import { FilesPanel } from "./files-panel.tsx";
-import { useAppearanceSettings } from "../theme/use-appearance.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
 import { useFileTabs } from "./file-store.ts";
 import { TerminalPanel } from "./terminal-panel";
 import { ChangesPanel } from "./changes-panel";
@@ -305,7 +305,7 @@ function PanelContent({
   readonly sidebarVisible: boolean;
   readonly onToggleSidebar: () => void;
 }): ReactElement {
-  const { uiFontSize } = useAppearanceSettings();
+  const uiFontSize = useSetting(preferences.uiFontSize);
 
   switch (tab.kind) {
     case "file":

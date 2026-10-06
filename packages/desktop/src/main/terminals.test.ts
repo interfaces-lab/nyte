@@ -10,7 +10,10 @@ let terminals: TerminalSessions;
 
 beforeEach(() => {
   events.length = 0;
-  terminals = new TerminalSessions((event) => events.push(event), "/bin/bash");
+  terminals = new TerminalSessions(
+    (event) => events.push(event),
+    () => "/bin/bash",
+  );
 });
 
 afterEach(() => {

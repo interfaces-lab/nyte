@@ -16,6 +16,7 @@ import { applyBrowserEvent, applyBrowserAgentOpened } from "./workbench/browser-
 import { applyTerminalEvent } from "./workbench/terminal-store.ts";
 import { handleOpenOutcome } from "./chrome/open-workspace.tsx";
 import { applyLoginEvent } from "./chrome/login-attempts.ts";
+import { acceptHostSettings } from "./preferences/host.ts";
 
 /**
  * The route owns what the stage shows. A folder the host opened on its own
@@ -70,6 +71,10 @@ function useHostEvents(router: AppRouter): void {
           return;
         case "update_changed":
           queryClient.setQueryData(keys.updates, event.state);
+
+          return;
+        case "settings_changed":
+          acceptHostSettings(event.settings);
 
           return;
         case "github_changed":

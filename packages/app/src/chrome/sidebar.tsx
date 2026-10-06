@@ -76,7 +76,6 @@ import { useOptimisticSessionIds } from "../use-outbox.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { AccountFooterMenu } from "./account-footer.tsx";
-import { closeSettings } from "./settings-return.ts";
 import { useGitHubState } from "./github-account.ts";
 import { folderPicker } from "./open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
@@ -90,7 +89,7 @@ import {
   sessionsForView,
   type SessionViewSettings,
 } from "./sidebar-view.ts";
-import { SettingsNavigation, type SettingsSection } from "./settings-navigation.tsx";
+import { closeSettings, SettingsNavigation, type SettingsSection } from "../settings/index.ts";
 import { shellActions, useShellState } from "./shell-state.ts";
 import { activateWorkspace } from "./use-show-session.ts";
 import type { OpenTarget } from "../tabs/model.ts";
@@ -362,10 +361,12 @@ export function Sidebar(): ReactElement {
   const readSessions = useReadSessions();
   const optimisticSessions = useOptimisticSessionIds();
   const selection = activePane(layout).selection;
-  const activeSessionId = selection.kind === "session" ? selection.sessionId : undefined;
+  const paneSessionId = selection.kind === "session" ? selection.sessionId : undefined;
+  const onWorkspace = stage.kind === "workspace";
+  const activeSessionId = onWorkspace ? paneSessionId : undefined;
 
   const activeDraftId =
-    selection.kind === "blank"
+    onWorkspace && selection.kind === "blank"
       ? activePaneController(workspacePath).viewState.readBlank(activePane(layout).id).id
       : undefined;
 
@@ -842,7 +843,7 @@ export function Sidebar(): ReactElement {
                     }
               }
               onOpenSettings={openSettings}
-              onOpenCustomize={() => shellActions.openCustomize(activeSessionId)}
+              onOpenCustomize={() => shellActions.openCustomize(paneSessionId)}
               trigger={
                 <Row variant="nav" xstyle={styles.navRow}>
                   <Row.Leading xstyle={styles.navLeading}>
@@ -862,7 +863,7 @@ export function Sidebar(): ReactElement {
               aria-haspopup="dialog"
               aria-current={stage.kind === "customize" ? "page" : undefined}
               xstyle={styles.navRow}
-              onClick={() => shellActions.openCustomize(activeSessionId)}
+              onClick={() => shellActions.openCustomize(paneSessionId)}
             >
               <Row.Leading xstyle={styles.navLeading}>
                 <Icon name="customize" size={14} />

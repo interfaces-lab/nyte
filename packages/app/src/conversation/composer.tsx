@@ -79,10 +79,7 @@ import { UserMessageText, messageImages, userMessageText } from "./message-conte
 import { messageDraftText } from "./message-references.ts";
 import { parsePluginCommand } from "./plugin-command.ts";
 import type { MessageReference } from "./message-references.ts";
-import {
-  useRunningMessagePreference,
-  type RunningMessagePreference,
-} from "./running-message-preference.ts";
+import { preferences, useSetting, type RunningMessagePreference } from "../preferences/index.ts";
 import { composerStyles } from "./styles.stylex.ts";
 import { TranscriptButton, useTranscriptDock } from "./transcript.tsx";
 import type { ComposerAnswer } from "./tray/questions.tsx";
@@ -976,7 +973,7 @@ export function Composer({
   /** A waiting question the composer's words answer. */
   answer?: ComposerAnswer;
 }): ReactElement {
-  const runningMessagePreference = useRunningMessagePreference();
+  const runningMessagePreference = useSetting(preferences.runningMessage);
   const attachTranscriptDock = useTranscriptDock();
   const [currentViewState, setCurrentViewState] = useState(initialViewState);
   const attachments = currentViewState.attachments;

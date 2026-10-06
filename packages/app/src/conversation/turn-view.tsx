@@ -17,17 +17,17 @@ import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ReactElement, ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { changesFromTurns, turnPartId } from "@nyte-ai/client";
-import type { FileChange, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
+import type { FileChange, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
 import type { ModelThinkingLevel } from "@nyte-ai/schema";
-import type { RenderedTurn } from "./transcript-rows.ts";
+import type { ConversationTurn, RenderedTurn } from "./transcript-rows.ts";
 import { CHANGES_VISIBLE_FILES, filesChangedLabel } from "../workbench/change-tree.ts";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { Button } from "@nyte-ai/ui/button";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
-import type { ToolCallDensity } from "../theme/boot.ts";
-import { useAppearanceSettings } from "../theme/use-appearance.ts";
+import type { ToolCallDensity } from "../preferences/index.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
 import { useMentionFiles, usePluginCatalog } from "../queries.ts";
 import { Prose } from "./prose.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
@@ -144,7 +144,7 @@ export interface BranchModelPicker extends BranchModelChoice {
   readonly catalog: DesktopCatalog | undefined;
 }
 
-type ConversationTurnId = Extract<Turn, { kind: "turn" }>["id"];
+type ConversationTurnId = ConversationTurn["id"];
 
 export type TurnChangesTarget =
   | { readonly kind: "turn"; readonly turnId: ConversationTurnId }
@@ -551,17 +551,7 @@ const ResponseView = memo(function ResponseView({
   return markdown === "" ? null : <Prose markdown={markdown} />;
 });
 
-export const TurnView = memo(function TurnView({
-  turn,
-  liveTools,
-  live,
-  cwd,
-  onEditUser,
-  branchModel,
-  onOpenChanges,
-  running,
-}: {
-  turn: RenderedTurn;
+interface TurnBodyProps {
   liveTools: ReadonlyMap<string, LiveToolProgress>;
   live?: LiveSnapshot;
   cwd: string | undefined;
@@ -573,8 +563,24 @@ export const TurnView = memo(function TurnView({
   branchModel?: BranchModelPicker;
   onOpenChanges: (target: TurnChangesTarget) => void;
   running: boolean;
-}): ReactElement | null {
-  const appearance = useAppearanceSettings();
+}
+
+function drawsNothing(turn: ConversationTurn): boolean {
+  return turn.parts.length === 0 && turn.failure === undefined;
+}
+
+/** One turn's parts, failure, and changes, as siblings in the row's column. */
+const TurnBody = memo(function TurnBody({
+  turn,
+  liveTools,
+  live,
+  cwd,
+  onEditUser,
+  branchModel,
+  onOpenChanges,
+  running,
+}: TurnBodyProps & { turn: ConversationTurn }): ReactElement | null {
+  const toolCalls = useSetting(preferences.toolCalls);
   const changes = useMemo(() => changesFromTurns([turn]), [turn]);
 
   const changeTotals = useMemo(
@@ -590,97 +596,130 @@ export const TurnView = memo(function TurnView({
   );
 
   // Progress updates must reuse the settled grouping so summaries can update only live tools.
-  const display = useMemo(
-    () => (turn.kind === "turn" ? displayTranscriptParts(turn.parts) : []),
-    [turn],
-  );
+  const display = useMemo(() => displayTranscriptParts(turn.parts), [turn]);
 
-  switch (turn.kind) {
-    case "turn": {
-      // A completion's continuation turn draws nothing until its response
-      // lands; an empty completed turn must not leave a blank row behind.
-      if (turn.parts.length === 0 && turn.failure === undefined) return null;
-      const failure = turn.failure === undefined ? undefined : failureNotice(turn.failure);
+  if (drawsNothing(turn)) return null;
+  const failure = turn.failure === undefined ? undefined : failureNotice(turn.failure);
 
-      return (
-        <div {...props(turnStyles.turn)}>
-          {display.map((item, index) => {
-            if (item.kind === "step") {
-              const first = item.parts[0];
-              // Only the trailing group carries the run; an earlier one is
-              // settled history, and the run's indicator belongs below the
-              // prose that follows it.
-              const trailing = index === display.length - 1;
-              const active = running && trailing;
+  return (
+    <>
+      {display.map((item, index) => {
+        if (item.kind === "step") {
+          const first = item.parts[0];
+          // Only the trailing group carries the run; an earlier one is
+          // settled history, and the run's indicator belongs below the
+          // prose that follows it.
+          const trailing = index === display.length - 1;
+          const active = running && trailing;
 
-              // One settled call has nothing to fold; its own line says more
-              // than a header counting it.
-              if (!active && item.parts.length === 1 && first?.kind === "tool") {
-                return (
-                  <TurnPartView
-                    key={turnPartId(first)}
-                    part={first}
-                    liveTools={liveTools}
-                    cwd={cwd}
-                    toolCalls={appearance.toolCalls}
-                  />
-                );
-              }
-
-              return (
-                <StepGroupView
-                  key={`step:${first === undefined ? turn.id : turnPartId(first)}`}
-                  parts={item.parts}
-                  run={turn.run}
-                  live={trailing ? live : undefined}
-                  liveTools={liveTools}
-                  cwd={cwd}
-                  added={trailing ? changeTotals.added : 0}
-                  removed={trailing ? changeTotals.removed : 0}
-                  running={active}
-                  density={appearance.toolCalls}
-                />
-              );
-            }
-
-            if (item.kind === "response") {
-              const first = item.parts[0];
-
-              return (
-                <ResponseView
-                  key={`response:${first === undefined ? turn.id : turnPartId(first)}`}
-                  parts={item.parts}
-                />
-              );
-            }
-
+          // One settled call has nothing to fold; its own line says more
+          // than a header counting it.
+          if (!active && item.parts.length === 1 && first?.kind === "tool") {
             return (
               <TurnPartView
-                key={turnPartId(item.part)}
-                part={item.part}
+                key={turnPartId(first)}
+                part={first}
                 liveTools={liveTools}
                 cwd={cwd}
-                toolCalls={appearance.toolCalls}
-                onEditUser={onEditUser}
-                branchModel={branchModel}
+                toolCalls={toolCalls}
+              />
+            );
+          }
+
+          return (
+            <StepGroupView
+              key={`step:${first === undefined ? turn.id : turnPartId(first)}`}
+              parts={item.parts}
+              run={turn.run}
+              live={trailing ? live : undefined}
+              liveTools={liveTools}
+              cwd={cwd}
+              added={trailing ? changeTotals.added : 0}
+              removed={trailing ? changeTotals.removed : 0}
+              running={active}
+              density={toolCalls}
+            />
+          );
+        }
+
+        if (item.kind === "response") {
+          const first = item.parts[0];
+
+          return (
+            <ResponseView
+              key={`response:${first === undefined ? turn.id : turnPartId(first)}`}
+              parts={item.parts}
+            />
+          );
+        }
+
+        return (
+          <TurnPartView
+            key={turnPartId(item.part)}
+            part={item.part}
+            liveTools={liveTools}
+            cwd={cwd}
+            toolCalls={toolCalls}
+            onEditUser={onEditUser}
+            branchModel={branchModel}
+          />
+        );
+      })}
+      {failure !== undefined && (
+        <StatusMarker
+          role={failure.tone === "danger" ? "alert" : "status"}
+          variant={failure.tone === "danger" ? "destructive" : "default"}
+        >
+          {failure.text}
+        </StatusMarker>
+      )}
+      {!running && changes.length > 0 && (
+        <TurnChangesCard
+          files={changes}
+          onReview={() => onOpenChanges({ kind: "turn", turnId: turn.id })}
+          onOpenFile={(path) => onOpenChanges({ kind: "file", turnId: turn.id, path })}
+        />
+      )}
+    </>
+  );
+});
+
+export const TurnView = memo(function TurnView({
+  turn,
+  continuations,
+  live,
+  running,
+  ...body
+}: TurnBodyProps & {
+  turn: RenderedTurn;
+  continuations: readonly ConversationTurn[];
+}): ReactElement | null {
+  switch (turn.kind) {
+    case "turn": {
+      const turns = [turn, ...continuations];
+
+      // A completion's continuation turn draws nothing until its response
+      // lands; an empty completed turn must not leave a blank row behind.
+      if (turns.every(drawsNothing)) return null;
+
+      // The prompt sticks within this column, so the request's turn and the
+      // turns background reports opened under it share it. Only the last
+      // turn can still be running.
+      return (
+        <div {...props(turnStyles.turn)}>
+          {turns.map((entry, index) => {
+            const last = index === turns.length - 1;
+
+            return (
+              <TurnBody
+                key={entry.id}
+                {...body}
+                turn={entry}
+                live={last ? live : undefined}
+                running={running && last}
               />
             );
           })}
-          {failure !== undefined && (
-            <StatusMarker
-              role={failure.tone === "danger" ? "alert" : "status"}
-              variant={failure.tone === "danger" ? "destructive" : "default"}
-            >
-              {failure.text}
-            </StatusMarker>
-          )}
-          {!running && changes.length > 0 && (
-            <TurnChangesCard
-              files={changes}
-              onReview={() => onOpenChanges({ kind: "turn", turnId: turn.id })}
-              onOpenFile={(path) => onOpenChanges({ kind: "file", turnId: turn.id, path })}
-            />
-          )}
         </div>
       );
     }

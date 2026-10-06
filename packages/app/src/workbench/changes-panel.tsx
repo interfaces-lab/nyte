@@ -28,7 +28,7 @@ import {
 } from "./change-scopes.ts";
 import { ChangesSidebar } from "./changes-sidebar.tsx";
 import type { ChangesSidebarFile } from "./changes-sidebar.tsx";
-import { useAppearanceSettings } from "../theme/use-appearance.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
 import { ChangesStack } from "./changes-stack.tsx";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
 import { ChangesToolbar, changesShortcutAction } from "./changes-toolbar.tsx";
@@ -218,7 +218,7 @@ function ChangesPanelView({
   turnsError,
   liveRun,
 }: ChangesPanelViewProps): ReactElement {
-  const { uiFontSize } = useAppearanceSettings();
+  const uiFontSize = useSetting(preferences.uiFontSize);
   const turnOptions = useMemo(() => turnChangeOptions(turns), [turns]);
   const snapshot = useVcsSnapshot(visible);
   const filterInput = useRef<HTMLInputElement>(null);

@@ -18,8 +18,8 @@ import {
 } from "../queries.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
-import { SettingsRow, SettingsSwitchRow } from "./settings-controls.tsx";
-import { appearanceSettingsStyles as page } from "./appearance-settings.stylex.ts";
+import { SettingsRow, SettingsSwitchRow } from "../settings/rows.tsx";
+import { settingsStyles as page } from "../settings/settings.stylex.ts";
 import { customizeStyles as styles } from "./customize.stylex.ts";
 
 interface Presentation {

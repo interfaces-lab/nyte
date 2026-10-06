@@ -7,7 +7,7 @@ import { installBridge } from "../nyte.ts";
 import { keys } from "../query-keys.ts";
 import { createWebBridge } from "../web/bridge.ts";
 import { ProfileSettings } from "./profile-settings.tsx";
-import { settingsSectionGroups } from "./settings-navigation.tsx";
+import { settingsSectionGroups } from "../settings/index.ts";
 
 const web = createWebBridge().bridge;
 

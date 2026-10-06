@@ -1,4 +1,4 @@
-import type { ToolCallDensity } from "../theme/boot.ts";
+import type { ToolCallDensity } from "../preferences/index.ts";
 
 type StepGroupContent = "closed" | "preview" | "open";
 

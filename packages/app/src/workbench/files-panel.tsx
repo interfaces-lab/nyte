@@ -502,7 +502,7 @@ export function FilesPanel({
               viewKey={viewKey}
               file={file}
               active={shown && file.id === activeFile?.id}
-              preferences={{
+              filePreferences={{
                 ...preferences,
                 autoSave:
                   preferences.autoSave &&

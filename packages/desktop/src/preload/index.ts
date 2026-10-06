@@ -51,6 +51,13 @@ contextBridge.exposeInMainWorld("nyteAccount", {
 
     return () => ipcRenderer.removeListener(ACCOUNT_CHANNELS.command, wrapped);
   },
+  onReturn(listener) {
+    const wrapped = (): void => listener();
+
+    ipcRenderer.on(ACCOUNT_CHANNELS.returned, wrapped);
+
+    return () => ipcRenderer.removeListener(ACCOUNT_CHANNELS.returned, wrapped);
+  },
   answer: (answer) => ipcRenderer.send(ACCOUNT_CHANNELS.answer, answer),
   report: (report) => ipcRenderer.send(ACCOUNT_CHANNELS.report, report),
 } satisfies AccountBridge);
@@ -238,6 +245,11 @@ const bridge = {
     cancelLogin: object("host.cancelLogin"),
     logout: object("host.logout"),
     setPreference: object("host.setPreference"),
+    settings: { get: none("host.settings.get"), set: object("host.settings.set") },
+    updates: {
+      state: none("host.updates.state"),
+      check: none("host.updates.check"),
+    },
     github: {
       state: none("host.github.state"),
       signIn: none("host.github.signIn"),
@@ -245,10 +257,6 @@ const bridge = {
       createPullRequest: object("host.github.createPullRequest"),
     },
     server: {
-    updates: {
-      state: none("host.updates.state"),
-      check: none("host.updates.check"),
-    },
       state: none("host.server.state"),
       connect: object("host.server.connect"),
       disconnect: none("host.server.disconnect"),

@@ -19,7 +19,7 @@ import {
   PIERRE_TOKEN_CSS,
   PierreWorkerProvider,
 } from "../pierre-worker-provider.tsx";
-import { useAppearanceSettings } from "../theme/use-appearance.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
 import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 import { patchDigest } from "../workbench/changes-viewed.ts";
 import { diffStyles } from "./styles.stylex.ts";
@@ -344,7 +344,7 @@ export const DiffView = memo(function DiffView({
 }): ReactElement {
   const headed = variant === "workbench";
   const stacked = variant === "stack";
-  const appearance = useAppearanceSettings();
+  const theme = useSetting(preferences.theme);
   const renderable = useMemo(() => renderablePatch(diff.patch), [diff.patch]);
   const wrapped = wordWrap ?? stacked;
   const expansion = expandContext ? loadDiffFiles : undefined;
@@ -354,13 +354,13 @@ export const DiffView = memo(function DiffView({
       ...PATCH_OPTIONS,
       diffStyle: layout,
       overflow: wrapped ? "wrap" : "scroll",
-      themeType: appearance.theme,
+      themeType: theme,
       // `expandUnchanged` stays off: it would open every gap at once, and the
       // point of the band is that the reader chooses.
       loadDiffFiles: expansion,
       expansionLineCount: EXPANSION_LINE_COUNT,
     }),
-    [layout, wrapped, appearance.theme, expansion],
+    [layout, wrapped, theme, expansion],
   );
 
   return (

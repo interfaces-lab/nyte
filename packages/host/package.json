@@ -1,23 +1,40 @@
 {
   "name": "@nyte-ai/host",
-  "private": true,
+  "version": "0.0.16-dev.2",
+  "private": false,
   "description": "Compose a Nyte host with models, storage, trusted plugins, and optional local telemetry export.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/interfaces-lab/nyte.git",
+    "directory": "packages/host"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.md"
+  ],
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./catalog": "./src/catalog.ts",
     "./environment": "./src/environment.ts",
     "./plugins": "./src/plugins.ts",
+    "./settings": "./src/settings/index.ts",
     "./otel": "./src/otel.ts",
     "./store-usage": "./src/store-usage.ts",
     "./usage": "./src/usage.ts",
     "./usage-scan": "./src/usage-scan.ts",
     "./usage-worker": "./src/usage-worker.ts"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
     "test": "vitest --run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:package": "bun ../../scripts/sdk-packages.mjs build host"
   },
   "dependencies": {
     "@nyte-ai/ai": "workspace:*",
@@ -38,5 +55,8 @@
     "@types/node": "^26.6.3",
     "typescript": "^7.0.2",
     "vitest": "^5.0.2"
+  },
+  "engines": {
+    "node": ">=26.4.0"
   }
 }

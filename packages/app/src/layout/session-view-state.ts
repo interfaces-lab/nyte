@@ -5,7 +5,7 @@ import type { Static, TSchema } from "typebox";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { ComposerImageAttachment } from "../conversation/composer-files.ts";
-import type { ToolCallDensity } from "../theme/boot.ts";
+import type { ToolCallDensity } from "../preferences/index.ts";
 import type { PaneId, SplitDirection } from "./pane-layout.ts";
 
 const DRAFT_LIST_DEBOUNCE_MS = 200;

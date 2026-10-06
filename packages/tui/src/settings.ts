@@ -4,9 +4,8 @@
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/settings-manager.ts
  */
-import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import process from "node:process";
@@ -14,6 +13,7 @@ import type { Transport } from "@nyte-ai/ai";
 import { DEFAULT_COMPACTION_SETTINGS, isThinkingLevel } from "@nyte-ai/core";
 import type { CacheWarmingMode, CompactionSettings, ThinkingLevel } from "@nyte-ai/core";
 import { cacheWarmingMode } from "@nyte-ai/host";
+import { settingsFileObject, updateSettingsFile } from "@nyte-ai/host/settings";
 import { toJsonValue } from "@nyte-ai/core/store";
 import type { JsonValue } from "@nyte-ai/schema";
 import { isJsonObject, type JsonObject } from "./json.ts";
@@ -69,21 +69,6 @@ export interface ResolvedSettings {
 }
 
 export type SettingsPatch = SettingsFile;
-
-const SETTINGS_KEYS = new Set([
-  "defaultProvider",
-  "defaultModel",
-  "defaultThinkingLevel",
-  "transport",
-  "cacheWarming",
-  "externalEditor",
-  "compaction",
-  "autoUpdate",
-  "theme",
-  "copyOnSelect",
-  "scrollAcceleration",
-  "followUp",
-]);
 
 const COMPACTION_KEYS = new Set(["enabled", "reserveTokens", "keepRecentTokens"]);
 
@@ -169,8 +154,8 @@ function parseCompaction(
 
 /** Parse the complete settings file before any of it is trusted. */
 export function parseSettingsFile(value: JsonValue, path = "settings"): SettingsFile {
+  // Other frontends keep their own keys in the same file; only the compaction object is closed.
   if (!isJsonObject(value)) throw new Error(`${path} must be an object`);
-  rejectUnknownKeys(value, SETTINGS_KEYS, path);
 
   let settings: SettingsFile = {};
   const defaultProvider = optionalString(value, "defaultProvider", path);
@@ -293,32 +278,18 @@ function mergeSettings(global: SettingsFile, project: SettingsFile): ResolvedSet
   return resolved;
 }
 
-function applySettingsPatch(current: SettingsFile, patch: SettingsPatch): SettingsFile {
-  const merged: SettingsFile = { ...current, ...patch };
+/** Merges the patch into the file as stored, so keys this UI doesn't parse survive the write. */
+function applySettingsPatch(
+  current: Readonly<Record<string, unknown>>,
+  patch: SettingsPatch,
+): Readonly<Record<string, unknown>> {
+  const merged: Record<string, unknown> = { ...current, ...patch };
 
   if (patch.compaction !== undefined) {
-    return { ...merged, compaction: { ...current.compaction, ...patch.compaction } };
+    merged["compaction"] = { ...settingsFileObject(current["compaction"]), ...patch.compaction };
   }
 
   return merged;
-}
-
-async function writeSettings(path: string, settings: SettingsFile): Promise<void> {
-  const directory = dirname(path);
-  await mkdir(directory, { recursive: true, mode: 0o700 });
-  const temporaryPath = join(directory, `.${basename(path)}.${randomUUID()}.tmp`);
-  let committed = false;
-
-  try {
-    await writeFile(temporaryPath, `${JSON.stringify(settings, null, 2)}\n`, {
-      flag: "wx",
-      mode: 0o600,
-    });
-    await rename(temporaryPath, path);
-    committed = true;
-  } finally {
-    if (!committed) await unlink(temporaryPath).catch(() => undefined);
-  }
 }
 
 /** Reads trusted project settings over user settings and serializes global updates. */
@@ -351,8 +322,9 @@ export class FileSettingsStore {
 
   updateGlobal(patch: SettingsPatch): Promise<void> {
     const next = this.writes.then(async () => {
-      const current = await readSettings(this.globalPath);
-      await writeSettings(this.globalPath, applySettingsPatch(current, patch));
+      // Parse first so a broken file still fails loudly instead of being written around.
+      await readSettings(this.globalPath);
+      await updateSettingsFile(this.globalPath, (current) => applySettingsPatch(current, patch));
     });
 
     this.writes = next.catch(() => undefined);

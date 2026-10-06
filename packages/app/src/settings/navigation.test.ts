@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { installBridge } from "../nyte.ts";
 import { createWebBridge } from "../web/bridge.ts";
-import { isSettingsSection } from "./settings-navigation.tsx";
+import { isSettingsSection } from "./pages.ts";
 
 const web = createWebBridge().bridge;
 

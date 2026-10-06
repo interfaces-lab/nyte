@@ -37,7 +37,7 @@ import { Button } from "@nyte-ai/ui/button";
 import { menu } from "@nyte-ai/ui/schema.stylex";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { nyte, type DesktopCatalog, type DesktopModelOption } from "../nyte.ts";
-import { isSettingsSection } from "../chrome/settings-navigation.tsx";
+import { isSettingsSection } from "../settings/index.ts";
 import { shellActions } from "../chrome/shell-state.ts";
 import {
   modelTriggerLabel,

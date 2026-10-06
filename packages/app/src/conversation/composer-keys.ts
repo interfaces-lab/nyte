@@ -1,6 +1,6 @@
 import type { Delivery, PendingItem } from "@nyte-ai/protocol";
 
-import type { RunningMessagePreference } from "./running-message-preference.ts";
+import type { RunningMessagePreference } from "../preferences/index.ts";
 
 interface DeliveryChoices {
   readonly steer: Delivery;

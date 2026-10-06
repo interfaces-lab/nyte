@@ -1,47 +1,48 @@
-import { Type } from "typebox";
-import { Value } from "typebox/value";
+import { clientCapabilities } from "../client-actions.ts";
 import { nyte } from "../nyte.ts";
-
-const STORAGE_KEY = "nyte:trusted-link-hosts:v1";
-
-const trustedHosts = Type.Array(Type.String());
-
-function readTrustedHosts(): ReadonlySet<string> {
-  try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "[]");
-
-    return new Set(Value.Check(trustedHosts, parsed) ? parsed : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function trustHost(host: string): void {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([...readTrustedHosts(), host]));
-  } catch {
-    return;
-  }
-}
+import { preferences } from "../preferences/index.ts";
+import type { ReferenceOpener } from "./reference-opener.tsx";
 
 async function confirmAndOpen(url: URL): Promise<void> {
-  if (!readTrustedHosts().has(url.host)) {
+  const trusted = preferences.trustedLinkHosts.get();
+
+  if (preferences.confirmExternalLinks.get() && !trusted.includes(url.host)) {
     const choice = await nyte.host.confirmExternal({ url: url.href });
 
     if (choice === "cancel") return;
 
     if (choice === "copy") return navigator.clipboard.writeText(url.href);
 
-    if (choice === "trust") trustHost(url.host);
+    if (choice === "trust") preferences.trustedLinkHosts.set([...trusted, url.host]);
   }
 
   return nyte.host.openExternal({ url: url.href });
 }
 
-/** Opens a link from conversation content, asking first unless its host was trusted. */
+/** Opens a link in the system browser, asking first unless its host was trusted. */
 export function openExternalLink(href: string): void {
   const url = URL.parse(href);
 
   if (url === null || (url.protocol !== "http:" && url.protocol !== "https:")) return;
   void confirmAndOpen(url).catch(() => undefined);
+}
+
+/** Opens a link from conversation content where the user chose: the workbench browser, or the system browser. */
+export function openConversationLink(href: string, opener: ReferenceOpener | undefined): void {
+  const url = URL.parse(href);
+
+  if (url === null || (url.protocol !== "http:" && url.protocol !== "https:")) return;
+
+  const builtIn =
+    preferences.linkTarget.get() === "built-in" && clientCapabilities(nyte.host).browser
+      ? opener?.({ kind: "url", url: url.href })
+      : undefined;
+
+  if (builtIn === undefined) {
+    openExternalLink(url.href);
+
+    return;
+  }
+
+  builtIn();
 }

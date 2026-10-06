@@ -72,6 +72,20 @@ test("updating another setting preserves the saved cache-warming choice", async 
   ).toBe("off");
 });
 
+test("another frontend's keys survive a read and a write", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nyte-tui-shared-settings-"));
+  temporaryDirectories.push(root);
+  const path = join(root, "settings.json");
+  await writeFile(path, JSON.stringify({ desktop: { blockAds: false }, cacheWarming: "idle" }));
+  const store = new FileSettingsStore(path);
+  await store.read(root);
+  await store.updateGlobal({ compaction: { enabled: false } });
+  const saved = JSON.parse(await readFile(path, "utf8"));
+  expect(saved.desktop).toEqual({ blockAds: false });
+  expect(saved.cacheWarming).toBe("idle");
+  expect(saved.compaction).toEqual({ enabled: false });
+});
+
 test("copy-on-select uses the platform default and respects saved overrides", async () => {
   const root = await mkdtemp(join(tmpdir(), "nyte-tui-copy-settings-"));
   temporaryDirectories.push(root);

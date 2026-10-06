@@ -5,7 +5,7 @@ import { titlebarStyles } from "./titlebar.stylex.ts";
  */
 import { props } from "@stylexjs/stylex";
 import { createLink, useCanGoBack, useMatch, useRouter } from "@tanstack/react-router";
-import { closeSettings } from "./settings-return.ts";
+import { closeSettings } from "../settings/index.ts";
 // oxlint-disable-next-line no-restricted-imports -- menu commands and shortcuts act on the current workspace state
 import { useCallback, useEffect } from "react";
 import type { ReactElement } from "react";

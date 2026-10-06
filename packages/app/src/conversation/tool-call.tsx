@@ -16,7 +16,7 @@ import type { ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
 import { focus } from "@nyte-ai/ui/a11y.stylex";
 import { Button } from "@nyte-ai/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import type { ToolCallDensity } from "../theme/boot.ts";
+import type { ToolCallDensity } from "../preferences/index.ts";
 import { DiffView } from "./diff-view.tsx";
 import type { DiffFacts } from "./diff-view.tsx";
 import { EditCallView } from "./edit-call.tsx";

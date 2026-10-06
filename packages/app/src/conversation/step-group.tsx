@@ -20,7 +20,7 @@ import { Row } from "@nyte-ai/ui/row";
 import { focus, srOnly } from "@nyte-ai/ui/a11y.stylex";
 import { livePartKey } from "../live.ts";
 import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
-import type { ToolCallDensity } from "../theme/boot.ts";
+import type { ToolCallDensity } from "../preferences/index.ts";
 import { activityStyles, stepGroupStyles } from "./styles.stylex.ts";
 import { ToolCallView } from "./tool-call.tsx";
 import { Prose } from "./prose.tsx";

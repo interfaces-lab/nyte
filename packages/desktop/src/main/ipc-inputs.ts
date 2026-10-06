@@ -11,6 +11,7 @@ import type { Validator } from "typebox/compile";
 import { ParseError } from "typebox/value";
 import { ExpectedHostError } from "./errors.ts";
 import { ENVIRONMENT_OPERATIONS, OPERATIONS, schemas } from "@nyte-ai/protocol";
+import { HostSettingsPatchSchema } from "@nyte-ai/host/settings";
 import { Uuid } from "@nyte-ai/connect";
 import { sessionId } from "@nyte-ai/app/schemas.ts";
 import type { CallInput, CallPath, CallRequest, WatchStartInput } from "../shared/ipc.ts";
@@ -130,6 +131,8 @@ export const CALL_INPUT_SCHEMAS = {
   "host.github.createPullRequest": compile(
     ENVIRONMENT_OPERATIONS["environment.github.createPullRequest"].input,
   ),
+  "host.settings.get": compile(noInput),
+  "host.settings.set": compile(HostSettingsPatchSchema),
   "host.updates.state": compile(noInput),
   "host.updates.check": compile(noInput),
   "host.github.state": compile(noInput),

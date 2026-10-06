@@ -10,9 +10,16 @@ const LOW_WATER = 32 * 1024;
 
 interface TerminalProcess {
   readonly process: IPty;
+  readonly shell: string;
   readonly subscriptions: readonly { dispose(): void }[];
   pending: number;
   paused: boolean;
+}
+
+function loginShell(): string {
+  return process.platform === "win32"
+    ? (process.env["COMSPEC"] ?? "cmd.exe")
+    : userInfo().shell || process.env["SHELL"] || "/bin/sh";
 }
 
 /** Window-owned shells. A hidden renderer panel is not a closed terminal. */
@@ -20,14 +27,10 @@ export class TerminalSessions {
   private readonly processes = new Map<string, TerminalProcess>();
 
   private readonly emit: (event: HostEvent) => void;
-  private readonly shell: string;
+  /** Read per terminal, so a changed setting applies to the next one. Null is the login shell. */
+  private readonly shell: () => string | null;
 
-  constructor(
-    emit: (event: HostEvent) => void,
-    shell = process.platform === "win32"
-      ? (process.env["COMSPEC"] ?? "cmd.exe")
-      : userInfo().shell || process.env["SHELL"] || "/bin/sh",
-  ) {
+  constructor(emit: (event: HostEvent) => void, shell: () => string | null = () => null) {
     this.emit = emit;
     this.shell = shell;
   }
@@ -36,7 +39,7 @@ export class TerminalSessions {
     if (this.processes.has(input.id)) throw new Error("Terminal already exists");
 
     if (this.processes.size >= 32) throw new Error("Close a terminal before opening another");
-    const shell = this.shell;
+    const shell = this.shell() ?? loginShell();
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -83,6 +86,7 @@ export class TerminalSessions {
 
     this.processes.set(input.id, {
       process: pty,
+      shell,
       subscriptions: [output, exit],
       pending: 0,
       paused: false,
@@ -151,6 +155,6 @@ export class TerminalSessions {
   private processIsIdle(entry: TerminalProcess): boolean {
     if (process.platform === "win32") return false;
 
-    return basename(entry.process.process) === basename(this.shell);
+    return basename(entry.process.process) === basename(entry.shell);
   }
 }

@@ -26,7 +26,7 @@ import {
   PierreWorkerProvider,
 } from "../pierre-worker-provider.tsx";
 import { useHostState, useSaveWorkspaceFile, useWorkspaceFile } from "../queries.ts";
-import { useAppearanceSettings } from "../theme/use-appearance.ts";
+import { preferences, useSetting } from "../preferences/index.ts";
 import { intent } from "@nyte-ai/ui/surface-theme";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import type { WorkbenchViewKey } from "./controller.ts";
@@ -48,7 +48,7 @@ interface FileEditorProps {
   readonly viewKey: WorkbenchViewKey;
   readonly file: FileTab;
   readonly active: boolean;
-  readonly preferences: FilePreferences;
+  readonly filePreferences: FilePreferences;
 }
 
 // The shadow host owns these properties, so inherited overrides cannot replace them.
@@ -204,7 +204,7 @@ function TextFileEditor({
   viewKey,
   file,
   active,
-  preferences,
+  filePreferences,
   document,
 }: FileEditorProps & { readonly document: TextFile }): ReactElement {
   const { navigationRevision } = file;
@@ -239,7 +239,9 @@ function TextFileEditor({
   const line =
     clickedLine.navigationRevision === navigationRevision ? clickedLine.line : (file.line ?? 1);
 
-  const appearance = useAppearanceSettings();
+  const theme = useSetting(preferences.theme);
+  const codeFont = useSetting(preferences.codeFont);
+  const codeFontSize = useSetting(preferences.codeFontSize);
   const host = useHostState();
   const saveFile = useSaveWorkspaceFile();
   const disk = useWorkspaceFile(file.path);
@@ -248,7 +250,7 @@ function TextFileEditor({
   const blame = useQuery({
     queryKey: ["files", "blame", file.path, snapshot.version],
     queryFn: () => nyte.workspace.blame({ target: { kind: "workspace" }, path: file.path }),
-    enabled: preferences.gitBlame && active && !dirty,
+    enabled: filePreferences.gitBlame && active && !dirty,
   });
 
   const [initialItems] = useState<readonly CodeViewItem<undefined>[]>(() => [
@@ -267,16 +269,16 @@ function TextFileEditor({
   const save = (): Promise<void> =>
     buffer.save({
       write: saveFile.mutateAsync,
-      format: preferences.formatOnSave
+      format: filePreferences.formatOnSave
         ? (input) => nyte.workspace.format({ target: { kind: "workspace" }, ...input })
         : undefined,
     });
 
   // The autosave timer is armed inside the buffer subscription, which is bound
   // once per buffer; it reads the current save and the preference at fire time.
-  const autosave = useRef({ enabled: preferences.autoSave, save });
+  const autosave = useRef({ enabled: filePreferences.autoSave, save });
   useLayoutEffect(() => {
-    autosave.current = { enabled: preferences.autoSave, save };
+    autosave.current = { enabled: filePreferences.autoSave, save };
   });
 
   useLayoutEffect(() => {
@@ -332,7 +334,7 @@ function TextFileEditor({
 
   useLayoutEffect(() => {
     viewer.current?.getInstance()?.render(true);
-  }, [appearance.codeFont, appearance.codeFontSize]);
+  }, [codeFont, codeFontSize]);
 
   useLayoutEffect(() => {
     const editor = viewer.current?.getEditor(file.path);
@@ -503,12 +505,12 @@ function TextFileEditor({
             }}
             options={{
               theme: PIERRE_THEME,
-              themeType: appearance.theme,
+              themeType: theme,
               unsafeCSS: EDITOR_CSS,
               disableFileHeader: true,
               layout: { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 },
-              disableLineNumbers: !preferences.lineNumbers,
-              overflow: preferences.wordWrap ? "wrap" : "scroll",
+              disableLineNumbers: !filePreferences.lineNumbers,
+              overflow: filePreferences.wordWrap ? "wrap" : "scroll",
               onLineClick: (event) =>
                 setClickedLine({ line: event.lineNumber, navigationRevision }),
             }}
@@ -517,7 +519,7 @@ function TextFileEditor({
           />
         </EditProvider>
       </PierreWorkerProvider>
-      {preferences.gitBlame && (
+      {filePreferences.gitBlame && (
         <div {...props(styles.status)} title={blameText}>
           <span>Line {line}</span>
           <span {...props(styles.statusText)}>{blameText}</span>

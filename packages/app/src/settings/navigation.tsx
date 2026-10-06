@@ -4,131 +4,21 @@
  * with nothing to fade in.
  *
  * Rows reuse the rail's row geometry, so labels and icons keep their edges when
- * the column swaps. `SECTIONS` is the one table: titles, icons, and search
- * terms live together, and `SECTION_GROUPS` only orders them. Groups are
+ * the column swaps. The pages and their order come from `pages.ts`. Groups are
  * separated by space rather than a rule, which is why the gap between them has
  * to beat the gap between two rows.
  */
 import { props } from "@stylexjs/stylex";
 import { Link, useRouter } from "@tanstack/react-router";
-import { closeSettings } from "./settings-return.ts";
 import { useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactElement } from "react";
-import { Icon, type IconName } from "@nyte-ai/ui/icon";
+import { Icon } from "@nyte-ai/ui/icon";
 import { Input, InputGroup } from "@nyte-ai/ui/input";
 import { Row } from "@nyte-ai/ui/row";
-import { appearanceSettingsStyles as styles } from "./appearance-settings.stylex.ts";
-import { sidebarStyles as rail } from "./sidebar.stylex.ts";
-import { nyte } from "../nyte.ts";
-
-interface SectionInfo {
-  readonly icon: IconName;
-  readonly title: string;
-  /** What the section holds, beyond its title, as lowercase substrings. */
-  readonly keywords: readonly string[];
-}
-
-const SECTIONS = {
-  general: {
-    icon: "settings",
-    title: "General",
-    keywords: [
-      "startup",
-      "window restoration",
-      "chat",
-      "messages",
-      "queue",
-      "steer",
-      "links",
-      "browser",
-      "external",
-    ],
-  },
-  appearance: {
-    icon: "canvas-grid",
-    title: "Appearance",
-    keywords: [
-      "theme",
-      "color",
-      "typography",
-      "font",
-      "tool calls",
-      "transparency",
-      "cursor",
-      "pointer",
-    ],
-  },
-  providers: {
-    icon: "box-3d",
-    title: "Providers",
-    keywords: [
-      "models",
-      "api key",
-      "sign in",
-      "anthropic",
-      "openai",
-      "opencode",
-      "default model",
-      "reasoning",
-      "fast",
-    ],
-  },
-  usage: {
-    icon: "trending",
-    title: "Usage",
-    keywords: ["tokens", "cost", "spend", "billing", "cache", "activity", "charts", "history"],
-  },
-  profile: {
-    icon: "user",
-    title: "Profile",
-    keywords: [
-      "account",
-      "nyte",
-      "email",
-      "sign in",
-      "sign out",
-      "github",
-      "repository",
-      "pull request",
-      "iphone",
-      "remote access",
-    ],
-  },
-} as const satisfies Record<string, SectionInfo>;
-
-export type SettingsSection = keyof typeof SECTIONS;
-
-/** You, the app itself, then the agent's providers and spend. */
-const SECTION_GROUPS: readonly (readonly SettingsSection[])[] = [
-  ["profile"],
-  ["general", "appearance"],
-  ["providers", "usage"],
-];
-
-const WEB_SECTION_GROUPS: readonly (readonly SettingsSection[])[] = [["general", "appearance"]];
-
-/** A desktop over the relay: its sign-ins are changed on it, so no credential crosses the relay. */
-const RELAY_SECTION_GROUPS: readonly (readonly SettingsSection[])[] = [
-  ["general", "appearance"],
-  ["usage"],
-];
-
-/** What this host can show. The web app reaches Profile, Providers, and Usage only through a server environment. */
-export function settingsSectionGroups(): readonly (readonly SettingsSection[])[] {
-  if (nyte.clientSurface === "desktop") return SECTION_GROUPS;
-
-  if (nyte.relay) return RELAY_SECTION_GROUPS;
-
-  return nyte.environment ? SECTION_GROUPS : WEB_SECTION_GROUPS;
-}
-
-export function isSettingsSection(value: string): value is SettingsSection {
-  return settingsSectionGroups().some((group) => group.some((section) => section === value));
-}
-
-export function settingsTitle(section: SettingsSection): string {
-  return SECTIONS[section].title;
-}
+import { sidebarStyles as rail } from "../chrome/sidebar.stylex.ts";
+import { SETTINGS_PAGES, settingsSectionGroups, type SettingsSection } from "./pages.ts";
+import { closeSettings } from "./return.ts";
+import { settingsStyles as styles } from "./settings.stylex.ts";
 
 export function SettingsNavigation({
   section,
@@ -147,7 +37,7 @@ export function SettingsNavigation({
     if (query === "") return undefined;
 
     return sectionGroups.flat().filter((id) => {
-      const { title, keywords } = SECTIONS[id];
+      const { title, keywords } = SETTINGS_PAGES[id];
 
       return (
         title.toLocaleLowerCase().includes(query) ||
@@ -247,9 +137,9 @@ export function SettingsNavigation({
                 ]}
               >
                 <Row.Leading xstyle={rail.navLeading}>
-                  <Icon name={SECTIONS[id].icon} size={14} />
+                  <Icon name={SETTINGS_PAGES[id].icon} size={14} />
                 </Row.Leading>
-                <Row.Label>{SECTIONS[id].title}</Row.Label>
+                <Row.Label>{SETTINGS_PAGES[id].title}</Row.Label>
               </Row>
             ))}
           </div>

@@ -18,7 +18,7 @@ import {
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { usePaneViewStateStore } from "../layout/pane-context.tsx";
 import type { PaneId } from "../layout/pane-layout.ts";
-import type { ToolCallDensity } from "../theme/boot.ts";
+import type { ToolCallDensity } from "../preferences/index.ts";
 import { messageScrollerStyles } from "./styles.stylex.ts";
 import type { TranscriptRow } from "./transcript-rows.ts";
 import {

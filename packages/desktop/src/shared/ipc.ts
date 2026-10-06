@@ -99,6 +99,8 @@ export const HOST_OPERATION_PATHS = [
   "host.cancelLogin",
   "host.logout",
   "host.setPreference",
+  "host.settings.get",
+  "host.settings.set",
   "host.updates.state",
   "host.updates.check",
   "host.github.state",

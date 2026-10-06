@@ -5,6 +5,7 @@
  * terminals, browser surfaces). The desktop carries it over Electron IPC; a
  * browser client carries it over `@nyte-ai/client`.
  */
+import type { HostSettings, HostSettingsPatch } from "@nyte-ai/host/settings";
 import type {
   AccountUsage,
   BrowserSignIn,
@@ -528,6 +529,8 @@ export type UpdateState =
 
 export type HostEvent =
   | { kind: "update_changed"; state: UpdateState }
+  /** settings.json changed: from any window, the terminal UI, or a hand edit. */
+  | { kind: "settings_changed"; settings: HostSettings }
   | { kind: "terminal_data"; id: string; data: string }
   | { kind: "terminal_exit"; id: string; exitCode: number }
   | { kind: "workspace_opened"; workspace: WorkspaceInfo }
@@ -650,7 +653,16 @@ export interface BrowserBridge {
   setBounds(message: BrowserBoundsMessage): void;
 }
 
+/** ~/.nyte/settings.json on the machine this host runs on. */
+export interface HostSettingsBridge {
+  get(): Promise<HostSettings>;
+  /** Change the given keys and answer with every setting as it now stands. */
+  set(patch: HostSettingsPatch): Promise<HostSettings>;
+}
+
 export interface HostBridge {
+  /** Absent where the settings file is on another machine: the web app and mobile. */
+  readonly settings?: HostSettingsBridge;
   /** Subscribe before main delivers a menu action that reopened the window. */
   onMenuCommand(listener: (command: AppMenuCommand) => void): Disposer;
   /** Keep Electron's native material and controls in the renderer's appearance mode. */

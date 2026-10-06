@@ -143,8 +143,11 @@ const stopped = (context: { readonly aborted: boolean; readonly signal: AbortSig
 export function browserToolsPlugin(options: {
   readonly agent: BrowserAgent;
   readonly access: BrowserAccessStore;
+  /** What a folder with no remembered answer gets; `ask` keeps the gate. Read when a session opens. */
+  readonly defaultAccess?: () => BrowserAccessLevel | "ask";
 }) {
   const { agent, access } = options;
+  const defaultAccess = options.defaultAccess ?? (() => "ask");
 
   return definePlugin({
     id: BROWSER_TOOLS_PLUGIN_ID,
@@ -160,9 +163,11 @@ export function browserToolsPlugin(options: {
       // seeded into the fact; the settings row falls back to it instead.
       const stored = await api.storage.get(BROWSER_GATE_KEY);
 
+      const configured = defaultAccess();
+
       let accessLevel: BrowserAccessLevel | undefined = isBrowserAccessLevel(stored)
         ? stored
-        : await access.read(folder);
+        : ((await access.read(folder)) ?? (configured === "ask" ? undefined : configured));
 
       const factName = `${BROWSER_TOOLS_PLUGIN_ID}:${BROWSER_GATE_KEY}`;
       api.events.subscribe((event) => {

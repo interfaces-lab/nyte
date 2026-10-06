@@ -17,7 +17,6 @@ import { useEffect, useSyncExternalStore } from "react";
 import { AboutDialog } from "./chrome/about-dialog.tsx";
 import type { ReactElement } from "react";
 import { WorkspaceDialogHost } from "./chrome/open-workspace.tsx";
-import { isSettingsSection } from "./chrome/settings-navigation.tsx";
 import {
   applyShellStage,
   shellActions,
@@ -34,7 +33,7 @@ import { warmThread } from "./live.ts";
 import { keys, queryClient, useHostState } from "./queries.ts";
 import { readRouteSession } from "./route-session.ts";
 import type { SessionPage } from "./session-directory.ts";
-import { getStartupDestination, startupSession } from "./startup-preference.ts";
+import { preferences } from "./preferences/index.ts";
 import { WorkspaceStage } from "./shell/workspace-stage.tsx";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { radius } from "@nyte-ai/ui/schema.stylex";
@@ -51,8 +50,12 @@ import { windowTabs } from "./tabs/window-tabs.ts";
 
 import { CustomizeSurface } from "./chrome/customize.tsx";
 import { EnvironmentsSurface } from "./chrome/environments.tsx";
-import { SettingsSurface } from "./chrome/appearance-settings.tsx";
-import { closeSettings, rememberWorkspaceHref } from "./chrome/settings-return.ts";
+import {
+  closeSettings,
+  isSettingsSection,
+  rememberWorkspaceHref,
+  SettingsSurface,
+} from "./settings/index.ts";
 
 const styles = create({
   shell: {
@@ -372,14 +375,11 @@ const indexRoute = createRoute({
 
     if (search.customize !== undefined || search.environment !== undefined) return;
 
-    if (getStartupDestination() === "new-chat") return;
+    if (preferences.startupDestination.get() === "new-chat") return;
 
+    // The directory is newest-first, so its first open item is the last chat.
     const sessions = queryClient.getQueryData<SessionPage>(keys.sessionPreview);
-
-    const sessionId = startupSession(
-      "last-session",
-      sessions?.items.filter((session) => !session.archived) ?? [],
-    );
+    const sessionId = sessions?.items.find((session) => !session.archived)?.sessionId;
 
     if (sessionId !== undefined) {
       throw redirect({

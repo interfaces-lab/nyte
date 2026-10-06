@@ -24,9 +24,9 @@ import { resolveHostPlugins, samePluginSources } from "./plugins.ts";
 import type { PluginFailure, PluginSources } from "./plugins.ts";
 import { providerOverrides } from "./provider-plugins.ts";
 import { WorkspaceStore } from "./workspace-store.ts";
-import { readCacheWarmingMode } from "./settings.ts";
+import { decodeHostSettings, readSettingsFileSync } from "./settings/index.ts";
 
-export { cacheWarmingMode } from "./settings.ts";
+export { cacheWarmingMode } from "./settings/index.ts";
 
 export { environmentId } from "./environment-id.ts";
 
@@ -162,7 +162,7 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
 
   let cacheWarming = options.cacheWarming;
   if (cacheWarming === undefined) {
-    const mode = await readCacheWarmingMode();
+    const mode = decodeHostSettings(readSettingsFileSync()).cacheWarming;
     cacheWarming = () => mode;
   }
   const shared = {

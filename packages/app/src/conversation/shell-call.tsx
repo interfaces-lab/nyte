@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
 import { appearance, motion, role, type } from "@nyte-ai/ui/vars.stylex";
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { ToolCallDensity } from "../theme/boot.ts";
+import type { ToolCallDensity } from "../preferences/index.ts";
 import { activityStyles } from "./styles.stylex.ts";
 import { terminalText } from "./terminal-text.ts";
 import { condensedCommand, toolVerbs } from "./tool-copy.ts";

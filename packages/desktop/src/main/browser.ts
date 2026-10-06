@@ -11,6 +11,7 @@ import type {
   BrowserBridge,
 } from "@nyte-ai/app/bridge.ts";
 import type { SessionId } from "@nyte-ai/core";
+import type { HostSettings } from "@nyte-ai/host/settings";
 import { loadBlocker, type Blocker } from "./adblock.ts";
 import {
   httpsUpgrade,
@@ -138,6 +139,8 @@ export interface BrowserSurfacesDependencies {
   readonly filterListPath: string;
   /** Whether the window has been shown at least once. Mouse input is dropped until then. */
   readonly windowShown: (window: BrowserWindow) => boolean;
+  /** Read per request, so a changed setting applies to the next one. */
+  readonly settings: () => Pick<HostSettings, "blockAds" | "upgradeToHttps">;
 }
 
 interface Surface {
@@ -237,7 +240,7 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     });
 
     guest.webRequest.onBeforeRequest((details, callback) => {
-      if (blocker !== undefined) {
+      if (blocker !== undefined && dependencies.settings().blockAds) {
         const decision = blocker.decide(details);
 
         if (decision.kind !== "allow") {
@@ -259,7 +262,9 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
         return;
       }
 
-      const upgraded = httpsUpgrade(details.url, plainHosts);
+      const upgraded = dependencies.settings().upgradeToHttps
+        ? httpsUpgrade(details.url, plainHosts)
+        : undefined;
 
       if (upgraded === undefined) {
         callback({});
@@ -293,7 +298,7 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
         canGoBack: false,
         canGoForward: false,
         secure: "none",
-        blocking: blocker !== undefined,
+        blocking: blocker !== undefined && dependencies.settings().blockAds,
         blocked: surface.blocked,
         error: surface.error,
         agentHolders,
@@ -309,7 +314,7 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       canGoBack: contents.navigationHistory.canGoBack(),
       canGoForward: contents.navigationHistory.canGoForward(),
       secure: surfaceSecurity(url),
-      blocking: blocker !== undefined,
+      blocking: blocker !== undefined && dependencies.settings().blockAds,
       blocked: surface.blocked,
       error: surface.error,
       agentHolders,
@@ -408,7 +413,9 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       publish(surface);
     });
     contents.on("dom-ready", () => {
-      const styles = blocker?.stylesFor(contents.getURL()) ?? "";
+      const styles = dependencies.settings().blockAds
+        ? (blocker?.stylesFor(contents.getURL()) ?? "")
+        : "";
 
       if (styles !== "")
         void contents.insertCSS(styles, { cssOrigin: "user" }).catch(() => undefined);

@@ -4,7 +4,7 @@ import { create } from "@stylexjs/stylex";
 import { diffView, settings } from "../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 
-export const appearancePanelStyles = create({
+export const appearanceStyles = create({
   root: { display: "flex", flexDirection: "column", gap: settings.sectionGap },
   tintControl: {
     display: "inline-flex",
@@ -31,30 +31,6 @@ export const appearancePanelStyles = create({
   },
   tintSwatchActive: {
     backgroundColor: role.bgInteractiveStrong,
-  },
-  density: {
-    display: "flex",
-    flexDirection: "column",
-    width: {
-      default: 150,
-      "@media (max-width: 500px)": "100%",
-      "@container (max-width: 500px)": "100%",
-    },
-    minWidth: 0,
-    maxWidth: "100%",
-    boxSizing: "border-box",
-  },
-  densitySlider: {
-    width: "100%",
-    paddingBlock: 8,
-  },
-  densityLabels: {
-    display: "flex",
-    justifyContent: "space-between",
-    marginTop: 4,
-    color: role.contentSecondary,
-    fontSize: type.fontSm,
-    lineHeight: type.leadingSm,
   },
   codeFontPreview: {
     overflow: "hidden",

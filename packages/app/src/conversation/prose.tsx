@@ -22,7 +22,7 @@ import type { Components, ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remend from "remend";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@nyte-ai/ui/tooltip";
-import { openConversationLink } from "./link-preference.ts";
+import { openConversationLink } from "./external-link.ts";
 import { useMentionFiles } from "../queries.ts";
 import { CodeBlock } from "./code-block.tsx";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";

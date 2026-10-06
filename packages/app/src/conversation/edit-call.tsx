@@ -11,7 +11,7 @@ import { appearance, motion, role, type } from "@nyte-ai/ui/vars.stylex";
 import { memo, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
-import type { ToolCallDensity } from "../theme/boot.ts";
+import type { ToolCallDensity } from "../preferences/index.ts";
 import { diffView } from "../theme/schema.stylex.ts";
 import { DiffView } from "./diff-view.tsx";
 import { fileFromUrl } from "./message-references.ts";

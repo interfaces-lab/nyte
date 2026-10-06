@@ -12,6 +12,7 @@ import {
 } from "electron";
 import { createNyteModels } from "@nyte-ai/ai";
 import { nyteHome } from "@nyte-ai/host";
+import { HostSettingsStore } from "@nyte-ai/host/settings";
 import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
 import { join } from "node:path";
 import {
@@ -168,7 +169,11 @@ function reveal(window: BrowserWindow): void {
   window.focus();
 }
 
+/** One view of ~/.nyte/settings.json per process, shared by the host and the browser surfaces. */
+const settings = new HostSettingsStore();
+
 const browserSurfaces = createBrowserSurfaces({
+  settings: settings.current,
   window: (id) =>
     (id === undefined ? undefined : windows.get(id))?.window ?? currentWindow()?.window,
   emit: broadcast,
@@ -181,6 +186,7 @@ const browserSurfaces = createBrowserSurfaces({
 let updates: ReturnType<typeof registerUpdates> | undefined;
 
 const hostDependencies = {
+  settings,
   updates: {
     state: async (): Promise<UpdateState> => updates?.state() ?? { kind: "idle" },
     check: async () => updates?.click(),

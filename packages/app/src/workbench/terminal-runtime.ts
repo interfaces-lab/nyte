@@ -3,6 +3,7 @@ import type { ITheme } from "ghostty-web";
 import wasmUrl from "ghostty-web/ghostty-vt.wasm?url";
 import { toast } from "@nyte-ai/ui/toast";
 import { nyte } from "../nyte.ts";
+import { preferences } from "../preferences/index.ts";
 import { errorMessage } from "../errors.ts";
 import type { TerminalBridge } from "../bridge.ts";
 import { props } from "@stylexjs/stylex";
@@ -173,12 +174,12 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   const terminal = new Terminal({
     ghostty: engine,
     cursorStyle: "bar",
-    cursorBlink: false,
+    cursorBlink: preferences.terminalCursorBlink.get(),
     theme: initialAppearance.theme,
     colorScheme: root.dataset["displayMode"] === "dark" ? "dark" : "light",
     fontFamily: initialAppearance.fontFamily,
     fontSize: initialAppearance.fontSize,
-    scrollback: 10000,
+    scrollback: preferences.terminalScrollback.get(),
     smoothScrollDuration: 0,
     convertEol: commandOutput,
     disableStdin: commandOutput || initialTab.state.kind !== "running",
@@ -289,6 +290,14 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     attributes: true,
     attributeFilter: ["style", "class", "data-display-mode"],
   });
+
+  const stopBlink = preferences.terminalCursorBlink.subscribe(() => {
+    terminal.options.cursorBlink = preferences.terminalCursorBlink.get();
+  });
+
+  const stopScrollback = preferences.terminalScrollback.subscribe(() => {
+    terminal.options.scrollback = preferences.terminalScrollback.get();
+  });
   document.fonts.addEventListener("loadingdone", scheduleFit);
   let pendingInput = Promise.resolve();
 
@@ -357,6 +366,8 @@ async function createView(id: string): Promise<TerminalView | undefined> {
       cancelAnimationFrame(resizeFrame);
       resize.disconnect();
       appearance.disconnect();
+      stopBlink();
+      stopScrollback();
       document.fonts.removeEventListener("loadingdone", scheduleFit);
       data.dispose();
       sized.dispose();

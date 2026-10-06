@@ -18,7 +18,7 @@ import { useSessionSearch } from "../queries.ts";
 import { PaletteLegend } from "./palette-legend.tsx";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
 import { sessionReadState } from "../session-read-state.ts";
-import { settingsSectionGroups, type SettingsSection } from "./settings-navigation.tsx";
+import { settingsSectionGroups, type SettingsSection } from "../settings/index.ts";
 import {
   clientActionKeys,
   clientActions,

@@ -7,7 +7,7 @@ import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { ConnectionList } from "./connection-list.tsx";
-import { appearanceSettingsStyles as page } from "./appearance-settings.stylex.ts";
+import { settingsStyles as page } from "../settings/settings.stylex.ts";
 import { CloudConnection, RemoteAccess, useWindowFocused } from "./server-settings.tsx";
 
 export function EnvironmentsSurface(): ReactElement {
