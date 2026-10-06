@@ -9,6 +9,7 @@ import {
   type PostgresDatabase,
 } from "./database.ts";
 import { postgresSession } from "./session.ts";
+import { serializeEventBody, serializeInitialFacts } from "../store-schemas.ts";
 
 export interface PostgresStoreOptions {
   /** Cross-instance replay interval while a consumer is watching. Defaults to 250 ms. */
@@ -41,18 +42,45 @@ export class PostgresStore implements Store {
     if (this.closeController.signal.aborted) throw new Error("PostgreSQL store is closed");
   }
 
-  async create(options?: { readonly id?: string }): Promise<Session> {
+  async create(options?: Parameters<Store["create"]>[0]): Promise<Session> {
     await this.initialize();
     const id = options?.id ?? `session_${randomUUID().slice(0, 12)}`;
+    const facts = serializeInitialFacts(options);
 
-    const rows = await this.db.query(
-      `INSERT INTO nyte_sessions (id, created_at)
-       VALUES ($1, floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint)
-       ON CONFLICT (id) DO NOTHING RETURNING id`,
-      [id],
-    );
+    await this.db.transaction(async (transaction) => {
+      const rows = await transaction.query(
+        `INSERT INTO nyte_sessions (id, created_at, next_seq)
+         VALUES ($1, floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint, $2)
+         ON CONFLICT (id) DO NOTHING RETURNING id`,
+        [id, facts.length + 1],
+      );
 
-    if (rows.length !== 1) throw new Error(`Session already exists: ${id}`);
+      if (rows.length !== 1) throw new Error(`Session already exists: ${id}`);
+
+      if (facts.length === 0) return;
+
+      await transaction.query(
+        `INSERT INTO nyte_objects (session_id, oid, kind, body, at)
+         SELECT $1, item.oid, item.kind, item.body,
+           floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint
+         FROM json_to_recordset($2::json) AS item(oid text, kind text, body text)
+         ON CONFLICT (session_id, oid) DO NOTHING`,
+        [id, JSON.stringify(facts.map((fact) => fact.object))],
+      );
+      await transaction.query(
+        `INSERT INTO nyte_refs (session_id, name, oid)
+         SELECT $1, item.name, item.oid
+         FROM json_to_recordset($2::json) AS item(name text, oid text)`,
+        [id, JSON.stringify(facts.map((fact) => ({ name: fact.name, oid: fact.object.oid })))],
+      );
+      await transaction.query(
+        `INSERT INTO nyte_events (session_id, seq, at, body)
+         SELECT $1, ordinal,
+           floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint, body
+         FROM json_array_elements_text($2::json) WITH ORDINALITY AS batch(body, ordinal)`,
+        [id, JSON.stringify(facts.map((fact) => serializeEventBody(fact.event)))],
+      );
+    });
 
     return this.session(id);
   }

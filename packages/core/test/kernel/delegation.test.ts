@@ -74,7 +74,11 @@ type RefUpdateHook = (input: {
   readonly proceed: () => ReturnType<Refs["update"]>;
 }) => ReturnType<Refs["update"]>;
 
-function hookedStore(store: Store, hook: RefUpdateHook): Store {
+function hookedStore(
+  store: Store,
+  hook: RefUpdateHook,
+  onCreate: (session: Session) => Promise<void>,
+): Store {
   const wrap = (session: Session): Session => ({
     id: session.id,
     listing: session.listing,
@@ -95,7 +99,12 @@ function hookedStore(store: Store, hook: RefUpdateHook): Store {
     close: () => session.close(),
   });
   return {
-    create: async (options) => wrap(await store.create(options)),
+    create: async (options) => {
+      const session = await store.create(options);
+      await onCreate(session);
+
+      return wrap(session);
+    },
     open: async (id) => wrap(await store.open(id)),
     list: () => store.list(),
     delete: (id) => store.delete(id),
@@ -169,7 +178,10 @@ async function fixture(hook: RefUpdateHook = ({ proceed }) => proceed()) {
   };
   const store = openStore(path);
   const nyte = await createNyte({
-    store: hookedStore(store, hook),
+    store: hookedStore(store, hook, async (session) => {
+      if (session.id.startsWith("s_child_"))
+        await nyte.sessions.get({ sessionId: sessionId(session.id) });
+    }),
     streamFn,
     model,
     models: {
@@ -440,6 +452,14 @@ test("create makes a persistent child session the parent names; it is not a job"
     expect(f.requests[0]?.tools).toEqual(
       expect.arrayContaining(["task", "create", "send", "await", "read", "stop", "clarify"]),
     );
+
+    const sent = await f.command("send", {
+      agent: child.sessionId,
+      message: "first question",
+      waitMs: 5_000,
+    });
+
+    expect(sent.said).toContain("answer: first question");
   } finally {
     await f.close();
   }

@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import { isTerminalPhase, OPERATIONS, schemas, validateHeadName } from "@nyte-ai/protocol";
 import { getSupportedThinkingLevels, ModelsError } from "@nyte-ai/ai";
 import { Value } from "typebox/value";
+import type { JsonValue } from "@nyte-ai/schema";
 import { branch } from "../graph.ts";
 import { signalEffect } from "../effects.ts";
 import type { Commit, CommitBody, Oid } from "../model.ts";
@@ -278,19 +279,24 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         if (input.workspace !== undefined && !Value.Check(schemas.WorkspaceRef, input.workspace))
           throw new TypeError("Invalid workspace");
 
-        const session = await options.store.create(
-          input.sessionId === undefined ? {} : { id: input.sessionId },
-        );
+        const initialFacts: Record<string, JsonValue> = {};
+
+        if (input.parent !== undefined) initialFacts[PARENT_FACT] = parentValue(input.parent);
+
+        if (input.name !== undefined) initialFacts[NAME_FACT] = input.name;
+
+        const session = await options.store.create({
+          id: input.sessionId,
+          initialFacts,
+          actor: options.actor,
+        });
 
         try {
-          if (input.parent !== undefined)
-            await pool.writeFact(session, PARENT_FACT, parentValue(input.parent));
-          else if (
+          if (
+            input.parent === undefined &&
             !(await pool.writeWorkspace(session, input.workspace ?? options.defaultWorkspace, null))
           )
             throw new Error(`Session ${session.id} already records a workspace`);
-
-          if (input.name !== undefined) await pool.writeFact(session, NAME_FACT, input.name);
 
           const pooled = await pool.adopt(session);
 

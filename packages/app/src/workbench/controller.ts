@@ -57,6 +57,37 @@ export type WorkbenchTabInput = WorkbenchTab extends infer Tab
     : never
   : never;
 
+/**
+ * Maximized, the stage shows one surface at a time: the workbench, or the
+ * conversation behind it as a tab in the same strip.
+ */
+export type WorkbenchLayout =
+  | { readonly kind: "split" }
+  | { readonly kind: "maximized"; readonly showing: "workbench" | "chat" };
+
+const SPLIT_LAYOUT = Object.freeze({ kind: "split" }) satisfies WorkbenchLayout;
+
+const MAXIMIZED_WORKBENCH_LAYOUT = Object.freeze({
+  kind: "maximized",
+  showing: "workbench",
+}) satisfies WorkbenchLayout;
+
+const MAXIMIZED_CHAT_LAYOUT = Object.freeze({
+  kind: "maximized",
+  showing: "chat",
+}) satisfies WorkbenchLayout;
+
+/** The conversation's value in the workbench tab strip; never a workbench tab id. */
+export const WORKBENCH_CHAT_TAB = "chat";
+
+export function workbenchShowsChat(layout: WorkbenchLayout): boolean {
+  return layout.kind === "maximized" && layout.showing === "chat";
+}
+
+function revealWorkbench(layout: WorkbenchLayout): WorkbenchLayout {
+  return workbenchShowsChat(layout) ? MAXIMIZED_WORKBENCH_LAYOUT : layout;
+}
+
 export function sameChangesScope(
   left: WorkbenchChangesScope,
   right: WorkbenchChangesScope,
@@ -153,7 +184,7 @@ export interface WorkbenchViewState {
   readonly active: WorkbenchTabId | null;
   readonly expanded: boolean;
   readonly collapsed: "floating" | "compact";
-  readonly maximized: boolean;
+  readonly layout: WorkbenchLayout;
   readonly width: number;
 }
 
@@ -226,6 +257,8 @@ export interface WorkbenchController {
     readonly toggleCollapsed: (input: { readonly view: WorkbenchViewKey }) => void;
     readonly toggleWorkbench: (input: { readonly view: WorkbenchViewKey }) => void;
     readonly toggleMaximized: (input: { readonly view: WorkbenchViewKey }) => void;
+    /** Maximized, shows the conversation in place of the workbench; the active tab waits. */
+    readonly showChat: (input: { readonly view: WorkbenchViewKey }) => void;
     readonly setWidth: (input: { readonly view: WorkbenchViewKey; readonly width: number }) => void;
   };
 }
@@ -237,7 +270,7 @@ const DEFAULT_VIEW = Object.freeze({
   active: null,
   expanded: false,
   collapsed: "floating",
-  maximized: false,
+  layout: SPLIT_LAYOUT,
   width: WORKBENCH_WIDTH_DEFAULT,
 }) satisfies WorkbenchViewState;
 
@@ -468,7 +501,7 @@ function restoreSnapshot(
         active,
         expanded: stored.expanded,
         collapsed: "floating",
-        maximized: stored.maximized,
+        layout: stored.maximized ? MAXIMIZED_WORKBENCH_LAYOUT : SPLIT_LAYOUT,
         width: clampWorkbenchWidth(stored.width),
       }),
     );
@@ -494,7 +527,7 @@ function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnapshot {
         tabs,
         active,
         expanded: view.expanded,
-        maximized: view.maximized,
+        maximized: view.layout.kind === "maximized",
         width: view.width,
       };
     }),
@@ -612,8 +645,13 @@ export function createWorkbenchController(
       const existing = current.tabs.find((candidate) => sameTab(candidate, tab));
 
       if (existing !== undefined) {
-        if (activate && (current.active !== existing.id || !current.expanded)) {
-          publish(view, { ...current, active: existing.id, expanded: true });
+        const layout = revealWorkbench(current.layout);
+
+        if (
+          activate &&
+          (current.active !== existing.id || !current.expanded || layout !== current.layout)
+        ) {
+          publish(view, { ...current, active: existing.id, expanded: true, layout });
         }
 
         return existing.id;
@@ -626,16 +664,20 @@ export function createWorkbenchController(
         tabs: [...current.tabs, next],
         active: activate ? id : current.active,
         expanded: activate ? true : current.expanded,
+        layout: activate ? revealWorkbench(current.layout) : current.layout,
       });
 
       return id;
     },
     activateTab({ view, id }) {
-      update(view, (current) =>
-        current.tabs.some((tab) => tab.id === id) && (current.active !== id || !current.expanded)
-          ? { ...current, active: id, expanded: true }
-          : current,
-      );
+      update(view, (current) => {
+        if (!current.tabs.some((tab) => tab.id === id)) return current;
+        const layout = revealWorkbench(current.layout);
+
+        return current.active === id && current.expanded && layout === current.layout
+          ? current
+          : { ...current, active: id, expanded: true, layout };
+      });
     },
     closeTab({ view, id }) {
       update(view, (current) => {
@@ -717,7 +759,11 @@ export function createWorkbenchController(
       });
     },
     toggle({ view }) {
-      update(view, (current) => ({ ...current, expanded: !current.expanded }));
+      update(view, (current) => ({
+        ...current,
+        expanded: !current.expanded,
+        layout: current.expanded ? current.layout : revealWorkbench(current.layout),
+      }));
     },
     toggleCollapsed({ view }) {
       update(view, (current) => ({
@@ -726,7 +772,17 @@ export function createWorkbenchController(
       }));
     },
     toggleMaximized({ view }) {
-      update(view, (current) => ({ ...current, maximized: !current.maximized }));
+      update(view, (current) => ({
+        ...current,
+        layout: current.layout.kind === "maximized" ? SPLIT_LAYOUT : MAXIMIZED_WORKBENCH_LAYOUT,
+      }));
+    },
+    showChat({ view }) {
+      update(view, (current) =>
+        current.layout.kind === "maximized" && !workbenchShowsChat(current.layout)
+          ? { ...current, layout: MAXIMIZED_CHAT_LAYOUT }
+          : current,
+      );
     },
     toggleWorkbench({ view }) {
       actions.toggle({ view });

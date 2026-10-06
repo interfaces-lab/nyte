@@ -607,16 +607,23 @@ export function createDelegation(input: {
         depth: 1,
       };
 
-      const session = await options.store.create({ id: childId });
+      const initialFacts: Record<string, JsonValue> = {};
+      initialFacts[PARENT_FACT] = parentValue(parent);
+      initialFacts[NAME_FACT] = input.title;
+
+      if (input.system !== undefined) initialFacts[SYSTEM_FACT] = input.system;
+
+      if (fast) initialFacts[FAST_FACT] = true;
+      input.signal?.throwIfAborted();
+
+      const session = await options.store.create({
+        id: childId,
+        initialFacts,
+        actor: options.actor,
+      });
 
       try {
         input.signal?.throwIfAborted();
-        await pool.writeFact(session, PARENT_FACT, parentValue(parent));
-        await pool.writeFact(session, NAME_FACT, input.title);
-
-        if (input.system !== undefined) await pool.writeFact(session, SYSTEM_FACT, input.system);
-
-        if (fast) await pool.writeFact(session, FAST_FACT, true);
         // A follower may pool the child first; adopt then closes this handle
         // and answers with the pooled one, which the rest of setup must use.
         const child = await pool.adopt(session);

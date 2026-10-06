@@ -5,7 +5,6 @@ import type { router } from "../router";
 const PAGES = [
   ["/requests", "Requests"],
   ["/review", "Review"],
-  ["/sidebar", "Sidebar"],
   ["/projects", "Projects"],
   ["/canvas", "Canvas"],
   ["/sdk", "SDK"],

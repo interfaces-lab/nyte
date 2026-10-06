@@ -43,10 +43,10 @@ function connection(pg: PGlite): PostgresDatabase {
   };
 }
 
-async function sessions() {
+async function sessions(options?: Parameters<PostgresStore["create"]>[0]) {
   const firstStore = new PostgresStore(connection(database), { watchPollIntervalMs: 5 });
   const secondStore = new PostgresStore(connection(database), { watchPollIntervalMs: 5 });
-  const first = await firstStore.create({ id: `postgres-test-${randomUUID()}` });
+  const first = await firstStore.create({ ...options, id: `postgres-test-${randomUUID()}` });
   const second = await secondStore.open(first.id);
   return { firstStore, secondStore, first, second };
 }
@@ -117,16 +117,36 @@ test("invalid serialized writes leave PostgreSQL object and event batches untouc
 });
 
 test("independent PostgreSQL stores see objects, chains, refs, and session lifecycle", async () => {
-  const { firstStore, secondStore, first, second } = await sessions();
+  const { firstStore, secondStore, first, second } = await sessions({
+    initialFacts: { a: { x: 1, y: 2 }, b: { x: 1, y: 2 } },
+    actor: { userId: "creator" },
+  });
   const object = { kind: "blob", value: { x: 1, y: 2 } } satisfies Parameters<
     typeof first.objects.put
   >[0][number];
   const oid = hashObject(object);
+  assert.deepEqual(await second.objects.get(oid), object);
+  assert.deepEqual(await second.refs.list("refs/facts/"), [
+    { name: "refs/facts/a", oid },
+    { name: "refs/facts/b", oid },
+  ]);
+  assert.deepEqual(
+    (await second.events.read({ afterSeq: 0 })).map(({ at: _at, ...event }) => event),
+    ["a", "b"].map((key, index) => ({
+      kind: "ref",
+      name: `refs/facts/${key}`,
+      from: null,
+      to: oid,
+      reason: "fact",
+      actor: { userId: "creator" },
+      seq: index + 1,
+    })),
+  );
+  assert.equal(await second.events.last(), 2);
   assert.deepEqual(await first.objects.put([object]), [oid]);
   assert.deepEqual(await second.objects.put([{ kind: "blob", value: { y: 2, x: 1 } }]), [oid]);
   assert.deepEqual(await second.objects.get(oid), object);
   assert.equal((await first.objects.list()).length, 1);
-  await first.refs.update([{ name: "refs/facts/a", from: null, to: oid }], { reason: "publish" });
   assert.equal(await second.refs.read("refs/facts/a"), oid);
   assert.ok((await secondStore.list()).some((item) => item.id === first.id));
   await assert.rejects(firstStore.create({ id: first.id }), /Session already exists/);

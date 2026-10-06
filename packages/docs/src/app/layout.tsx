@@ -14,6 +14,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://nyte.sh"),
+  applicationName: "Nyte",
   title: {
     default: "Nyte — a handwritten core for agentic UI",
     template: "%s — Nyte",

@@ -2,6 +2,7 @@ import { create, props } from "@stylexjs/stylex";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { useRef, useState } from "react";
 import type { ReactElement } from "react";
+import type { SessionId } from "@nyte-ai/protocol";
 import type { ClientCapabilities } from "../client-actions.ts";
 import { errorMessage } from "../errors.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
@@ -20,6 +21,7 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Spinner } from "@nyte-ai/ui/spinner";
 import { Button } from "@nyte-ai/ui/button";
 import { nyte } from "../nyte.ts";
+import { useSession } from "../queries.ts";
 import { button, glyph, radius, target } from "@nyte-ai/ui/schema.stylex";
 import { surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { appearance, motion, role, type } from "@nyte-ai/ui/vars.stylex";
@@ -29,8 +31,10 @@ import {
   workbenchController,
   workbenchTabAvailable,
   workbenchKindLabel,
+  workbenchShowsChat,
   workbenchTabLabel,
   workbenchTabs,
+  WORKBENCH_CHAT_TAB,
 } from "./controller.ts";
 import type {
   WorkbenchScope,
@@ -92,6 +96,8 @@ const styles = create({
     color: role.contentInteractiveSecondary,
   },
   active: { backgroundColor: role.bgInteractiveSecondaryTranslucent, color: role.contentPrimary },
+  /** The chat tab has no close button, so its label keeps its end. */
+  chatItem: { "--_tab-content-mask": "none" },
   tab: {
     display: "inline-flex",
     alignItems: "center",
@@ -185,18 +191,27 @@ function newTerminal(view: WorkbenchViewKey, workspacePath: string | null): void
   void terminalActions.create({ id, workspacePath });
 }
 
+function ChatTabLabel({ sessionId }: { readonly sessionId: SessionId }): ReactElement {
+  const session = useSession(sessionId);
+
+  return <>{session.data?.name ?? session.data?.preview ?? "New chat"}</>;
+}
+
 export function WorkbenchTabStrip({
   viewKey,
   view,
   scope,
   capabilities,
   workspacePath,
+  sessionId,
 }: {
   readonly viewKey: WorkbenchViewKey;
   readonly view: WorkbenchViewState;
   readonly scope: WorkbenchScope;
   readonly capabilities: ClientCapabilities;
   readonly workspacePath: string | null;
+  /** The open chat, which names the chat tab while the workbench is maximized. */
+  readonly sessionId?: SessionId;
 }): ReactElement {
   const terminals = useTerminalRuntime();
   const files = useFileTabs(viewKey);
@@ -207,7 +222,11 @@ export function WorkbenchTabStrip({
   const fileCloseRef = useRef<HTMLButtonElement>(null);
   const [terminalClose, setTerminalClose] = useState<TerminalCloseState>({ kind: "closed" });
   const tabs = view.tabs.filter((tab) => workbenchTabAvailable(scope, tab.kind, capabilities));
-  const activeValue = activeWorkbenchTab(view, scope, capabilities)?.id ?? null;
+  const chatShowing = workbenchShowsChat(view.layout);
+
+  const activeValue = chatShowing
+    ? WORKBENCH_CHAT_TAB
+    : (activeWorkbenchTab(view, scope, capabilities)?.id ?? null);
 
   const focusSelectedTab = (): void => {
     requestAnimationFrame(() => {
@@ -281,9 +300,38 @@ export function WorkbenchTabStrip({
         ref={listRef}
         value={activeValue}
         xstyle={styles.tabs}
-        onValueChange={(id) => workbenchController.actions.activateTab({ view: viewKey, id })}
+        onValueChange={(id) =>
+          id === WORKBENCH_CHAT_TAB
+            ? workbenchController.actions.showChat({ view: viewKey })
+            : workbenchController.actions.activateTab({ view: viewKey, id })
+        }
       >
         <Tabs.List aria-label="Workbench tabs" xstyle={styles.list}>
+          {view.layout.kind === "maximized" && (
+            <div
+              role="presentation"
+              {...props(styles.item, styles.chatItem, chatShowing && styles.active)}
+            >
+              <Tabs.Tab
+                id={`${viewKey}-tab-${WORKBENCH_CHAT_TAB}`}
+                value={WORKBENCH_CHAT_TAB}
+                aria-controls={`${viewKey}-panel-${WORKBENCH_CHAT_TAB}`}
+                xstyle={styles.tab}
+                onFocus={(event) =>
+                  event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })
+                }
+              >
+                <span {...props(styles.content)}>
+                  <span {...props(styles.tabIcon)}>
+                    <Icon name="imac" size={16} />
+                  </span>
+                  <span {...props(styles.label)}>
+                    {sessionId === undefined ? "New chat" : <ChatTabLabel sessionId={sessionId} />}
+                  </span>
+                </span>
+              </Tabs.Tab>
+            </div>
+          )}
           <SortableList
             ids={tabs.map((tab) => tab.id)}
             listRef={listRef}

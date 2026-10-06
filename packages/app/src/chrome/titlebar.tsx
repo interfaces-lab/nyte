@@ -29,6 +29,7 @@ import {
   defaultWorkbenchTab,
   workbenchController,
   workbenchScope,
+  workbenchShowsChat,
   workbenchViewKey,
   useWorkbenchSnapshot,
 } from "../workbench/controller.ts";
@@ -164,6 +165,8 @@ export function Titlebar(): ReactElement {
   const settingsOpen = settingsMatch !== undefined;
   const workspaceVisible = !settingsOpen && stage.kind === "workspace";
   const workbenchOpen = workspaceVisible && view.expanded;
+  const maximized = view.layout.kind === "maximized";
+  const chatShowing = workbenchShowsChat(view.layout);
   const historyCanGoBack = useCanGoBack();
   const tabbed = windowTabs.enabled;
   const tabs = useWindowTabsState();
@@ -266,7 +269,12 @@ export function Titlebar(): ReactElement {
       if (action?.id === "terminal" || action?.id === "new-terminal") {
         event.preventDefault();
 
-        if (action.id === "terminal" && workbenchOpen && activeTab?.kind === "terminal") {
+        if (
+          action.id === "terminal" &&
+          workbenchOpen &&
+          !chatShowing &&
+          activeTab?.kind === "terminal"
+        ) {
           workbenchController.actions.toggle({ view: viewKey });
         } else if (action.id === "terminal" && userTerminals[0] !== undefined) {
           workbenchController.actions.activateTab({ view: viewKey, id: userTerminals[0].id });
@@ -285,7 +293,16 @@ export function Titlebar(): ReactElement {
     window.addEventListener("keydown", onKeyDown);
 
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeTab, mac, openTerminal, userTerminals, viewKey, workbenchOpen, workspaceVisible]);
+  }, [
+    activeTab,
+    chatShowing,
+    mac,
+    openTerminal,
+    userTerminals,
+    viewKey,
+    workbenchOpen,
+    workspaceVisible,
+  ]);
 
   if (settingsOpen) {
     return (
@@ -389,7 +406,7 @@ export function Titlebar(): ReactElement {
           )}
           {(workspaceVisible || tabbed) &&
             layout.kind === "single" &&
-            !(workbenchOpen && view.maximized) && (
+            !(workbenchOpen && maximized) && (
               <span {...props(titlebarStyles.actionTrack)}>
                 <Menu>
                   <MenuTrigger render={<Button iconOnly icon="more" aria-label="Chat actions" />} />
@@ -432,6 +449,7 @@ export function Titlebar(): ReactElement {
                   scope={scope}
                   capabilities={capabilities}
                   workspacePath={terminalWorkspacePath}
+                  sessionId={selection.kind === "session" ? selection.sessionId : undefined}
                 />
                 <span {...props(titlebarStyles.control)}>
                   <Tooltip>
@@ -439,10 +457,8 @@ export function Titlebar(): ReactElement {
                       render={
                         <Button
                           iconOnly
-                          icon={view.maximized ? "minimize" : "expand"}
-                          aria-label={
-                            view.maximized ? "Restore workbench width" : "Expand workbench"
-                          }
+                          icon={maximized ? "minimize" : "expand"}
+                          aria-label={maximized ? "Restore split view" : "Expand workbench"}
                           onClick={() =>
                             workbenchController.actions.toggleMaximized({ view: viewKey })
                           }
@@ -451,7 +467,7 @@ export function Titlebar(): ReactElement {
                       }
                     />
                     <TooltipContent>
-                      {view.maximized ? "Restore Workbench Width" : "Expand Workbench"}
+                      {maximized ? "Restore Split View" : "Expand Workbench"}
                     </TooltipContent>
                   </Tooltip>
                 </span>

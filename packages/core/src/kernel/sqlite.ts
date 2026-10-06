@@ -11,6 +11,7 @@ import {
   checkEventBody,
   parseStoredObject,
   serializeEventBody,
+  serializeInitialFacts,
   serializeObject,
 } from "./store-schemas.ts";
 import { UnknownSession } from "./store.ts";
@@ -1059,9 +1060,10 @@ export class SqlStore implements Store {
     this.changes = new SqliteChangeTracker(db, watchPollIntervalMs);
   }
 
-  async create(options?: { readonly id?: string }): Promise<Session> {
+  async create(options?: Parameters<Store["create"]>[0]): Promise<Session> {
     this.assertOpen();
     const id = options?.id ?? `session_${randomUUID().slice(0, 12)}`;
+    const facts = serializeInitialFacts(options);
     const createdAt = Date.now();
     this.db.transact(() => {
       const inserted = sql`INSERT OR IGNORE INTO sessions (id, created_at, next_seq, event_floor)
@@ -1070,7 +1072,17 @@ export class SqlStore implements Store {
       if (inserted !== 1) throw new Error(`Session already exists: ${id}`);
       // A build without the cache deletes sessions around it; the id must not inherit its row.
       sql`DELETE FROM listings WHERE session_id = ${id}`.run(this.db);
+
+      for (const { name, object } of facts) {
+        sql`INSERT OR IGNORE INTO objects (session_id, oid, kind, body, at)
+          VALUES (${id}, ${object.oid}, ${object.kind}, ${object.body}, ${createdAt})`.run(this.db);
+        sql`INSERT INTO refs (session_id, name, oid)
+          VALUES (${id}, ${name}, ${object.oid})`.run(this.db);
+      }
+
+      writeEvents({ db: this.db, sessionId: id, bodies: facts.map((fact) => fact.event) });
     });
+    this.changes.notify(id);
 
     return this.session(id);
   }

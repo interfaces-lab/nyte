@@ -1835,7 +1835,7 @@ export function Composer({
                     variant="chip"
                     onClick={() => {
                       focusAfterMove.current = true;
-                      workbenchController.actions.toggleMaximized({ view: workbenchViewKey(cwd) });
+                      workbenchController.actions.showChat({ view: workbenchViewKey(cwd) });
                     }}
                   >
                     Show Chat

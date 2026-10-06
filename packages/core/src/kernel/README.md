@@ -391,7 +391,10 @@ owes no completion, signals no effect, survives `runs.abort`, and only
 
 A child is a session the parent addresses by `SessionId`, created by `create`
 or `task` at `childIdOf(parent, head, runId, callId)` with a `parent` fact, the
-title as its `name` fact, and a config commit naming its model. It acts in its
+title as its `name` fact, and a config commit naming its model. `Store.create`
+publishes the session and its `initialFacts` in one transaction, including the
+fact blobs, refs, and ref events. No reader can open a child before its parent
+link exists; a pool may safely cache that link at adoption. It acts in its
 root's workspace. It persists until `stop`: `send` enqueues a user message on its
 `main` head as the parent (`{ clientId: parent, device: "delegate" }`), with
 `delivery: "next"` when the child is idle and `delivery: "steer"` when it is

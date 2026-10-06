@@ -502,7 +502,7 @@ export class WorkerStore implements Store {
     return this.bridge.ready;
   }
 
-  async create(options?: { readonly id?: string }): Promise<Session> {
+  async create(options?: Parameters<Store["create"]>[0]): Promise<Session> {
     const opened = await this.bridge.call(null, "store.create", [options], result.handle);
 
     return new WorkerSession(this.bridge, opened.handle, opened.id);

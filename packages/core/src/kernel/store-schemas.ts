@@ -10,7 +10,8 @@ import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { hashBody, objectBody } from "./hash.ts";
 import type { EventBody, Obj, Oid } from "./model.ts";
-import { CorruptObject } from "./store.ts";
+import { factRef, isRefName } from "./names.ts";
+import { CorruptObject, type Store } from "./store.ts";
 
 const NullableString = Type.Union([Type.String(), Type.Null()]);
 
@@ -204,6 +205,26 @@ export function serializeObject(object: Obj) {
   }
 
   return { body, kind: value.kind, oid: hashBody(body) };
+}
+
+export function serializeInitialFacts(options: Parameters<Store["create"]>[0]) {
+  return Object.entries(options?.initialFacts ?? {}).map(([key, value]) => {
+    const name = factRef(key);
+
+    if (!isRefName(name)) throw new TypeError(`Invalid ref name: ${name}`);
+    const object = serializeObject({ kind: "blob", value });
+
+    const event = {
+      kind: "ref",
+      name,
+      from: null,
+      to: object.oid,
+      reason: "fact",
+      actor: options?.actor,
+    } satisfies EventBody;
+
+    return { name, object, event };
+  });
 }
 
 export function serializeEventBody(body: EventBody): string {

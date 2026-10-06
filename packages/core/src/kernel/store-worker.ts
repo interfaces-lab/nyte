@@ -78,8 +78,15 @@ function endWatches(session: number | undefined): void {
 const check = {
   string: Compile(Type.String()),
   number: Compile(Type.Number()),
-  optionalId: Compile(
-    Type.Union([Type.Object({ id: Type.Optional(Type.String()) }), Type.Undefined()]),
+  createOptions: Compile(
+    Type.Union([
+      Type.Object({
+        id: Type.Optional(Type.String()),
+        initialFacts: Type.Optional(Type.Record(Type.String(), schemas.JsonValue)),
+        actor: Type.Optional(schemas.Actor),
+      }),
+      Type.Undefined(),
+    ]),
   ),
   objects: Compile(Type.Array(ObjectSchema)),
   strings: Compile(Type.Array(Type.String())),
@@ -135,7 +142,7 @@ function adopt(open: Session) {
 async function call(request: CallRequest) {
   switch (request.method) {
     case "store.create":
-      return adopt(await store.create(argument(request, 0, check.optionalId)));
+      return adopt(await store.create(argument(request, 0, check.createOptions)));
     case "store.open":
       return adopt(await store.open(argument(request, 0, check.string)));
     case "store.list":

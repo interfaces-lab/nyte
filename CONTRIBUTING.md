@@ -59,3 +59,32 @@ Repository checks are `pnpm typecheck`, `pnpm lint`, and `pnpm format`. The docs
 Use `type(scope): summary`, for example `fix(core): preserve tool errors` or `docs: clarify repository instructions`. The scope names an existing Nyte package directory or repository area and is optional for repository-wide changes. The full convention lives in [AGENTS.md](AGENTS.md#commits-and-pr-titles).
 
 Explain the problem, the resulting behavior, and how you checked it. Include screenshots for visible UI changes when useful. Keep each change focused and stage only its files or hunks.
+
+## Vercel deployments
+
+Run Vercel CLI from the repository root. On a fresh checkout, link the existing projects:
+
+```sh
+vercel link --repo --scope interface-co
+vercel
+```
+
+Select `nyte-app`, `nyte-labs`, or `nyte-web` in the native project picker. Do not link a single project at the repository root: `.vercel/project.json` overrides the repo picker in `.vercel/repo.json`.
+
+| Vercel project | Root directory | Framework |
+| --- | --- | --- |
+| `nyte-app` | `packages/app` | Vite |
+| `nyte-labs` | `packages/lab` | Vite |
+| `nyte-web` | `packages/docs` | Next.js |
+
+All three need access to source files outside their root directory and the shared `CENTRAL_LICENSE_KEY` for dependency installation. `.vercelignore` excludes local artifacts, secrets, and unrelated demos while retaining shared workspace dependencies. Vercel detects pnpm and the workspace build graph.
+
+For an explicit target without a prompt:
+
+```sh
+vercel --project nyte-app --scope interface-co
+```
+
+Deployments are previews by default. Add `--prod` to update production. Use `vercel deploy --dry --project nyte-app --scope interface-co --json` to inspect upload contents without deploying.
+
+The app also needs `VITE_NYTE_CLERK_PUBLISHABLE_KEY` and `VITE_NYTE_CONNECT_ORIGIN` in the intended deployment environment. Labs deploys as a static site; its local Vite server's `/core` endpoints are not deployed.

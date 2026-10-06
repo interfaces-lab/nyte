@@ -25,6 +25,7 @@ import {
   workbenchScope,
   workbenchTabAvailable,
   workbenchKindLabel,
+  workbenchShowsChat,
   workbenchTabLabel,
   workbenchTabs,
   workbenchViewKey,
@@ -437,7 +438,9 @@ function WorkbenchViewHost({
   const resizeRef = useRef<ResizeState | undefined>(undefined);
   const bounds = workbenchWidthBounds(stageWidth);
   const compact = view.collapsed === "compact" || bounds.kind === "overlay";
-  const panelWidth = view.maximized ? stageWidth : clampWorkbenchWidthToBounds(view.width, bounds);
+  const maximized = view.layout.kind === "maximized";
+  const chatShowing = workbenchShowsChat(view.layout);
+  const panelWidth = maximized ? stageWidth : clampWorkbenchWidthToBounds(view.width, bounds);
   const defaultWidth = clampWorkbenchWidthToBounds(stageWidth / 2, bounds);
 
   const resetWidth = useCallback(
@@ -506,10 +509,21 @@ function WorkbenchViewHost({
 
   const activeTab = activeWorkbenchTab(view, scope, capabilities);
   const panelVisible = current && view.expanded;
+  // Maximized with the chat showing, the panel stays mounted but out of the
+  // way; the titlebar strip keeps the stage's width so the tabs stay put.
+  const panelShown = panelVisible && !chatShowing;
+  const panelHidden = !current || (panelVisible && chatShowing);
   useLayoutEffect(() => {
     const panel = panelRef.current;
 
     if (!panelVisible || panel === null) return;
+
+    if (chatShowing) {
+      setActiveWidth(stageWidth);
+
+      return;
+    }
+
     const update = (): void => setActiveWidth(panel.getBoundingClientRect().width);
     update();
     const observer = new ResizeObserver(update);
@@ -520,7 +534,7 @@ function WorkbenchViewHost({
       observer.disconnect();
       window.removeEventListener("resize", update);
     };
-  }, [panelVisible, panelWidth]);
+  }, [chatShowing, panelVisible, panelWidth, stageWidth]);
 
   const mountedTabs = view.tabs.filter((tab) =>
     workbenchTabAvailable(scope, tab.kind, capabilities),
@@ -530,7 +544,7 @@ function WorkbenchViewHost({
   const panelTabs = mountedTabs.filter((tab) => tab.kind !== "file" && tab.kind !== "files");
 
   const fileVisible =
-    panelVisible &&
+    panelShown &&
     (activeTab?.kind === "file" || activeTab?.kind === "files") &&
     fileTab !== undefined;
 
@@ -567,17 +581,15 @@ function WorkbenchViewHost({
   return (
     <section
       ref={panelRef}
-      hidden={!current}
-      aria-hidden={!current}
-      inert={!current ? true : undefined}
+      hidden={panelHidden}
+      aria-hidden={panelHidden}
+      inert={panelHidden ? true : undefined}
       {...props(
         workbenchStyles.panel,
         panelVisible && workbenchStyles.panelOpen,
         !panelVisible && (compact ? workbenchStyles.railHostCompact : workbenchStyles.railHost),
-        panelVisible &&
-          (view.maximized || bounds.kind === "overlay") &&
-          workbenchStyles.panelOverlay,
-        !current && workbenchStyles.panelHidden,
+        panelVisible && (maximized || bounds.kind === "overlay") && workbenchStyles.panelOverlay,
+        panelHidden && workbenchStyles.panelHidden,
       )}
       style={panelVisible ? { width: panelWidth } : undefined}
     >
@@ -605,7 +617,7 @@ function WorkbenchViewHost({
         hidden={!panelVisible}
         {...props(workbenchStyles.panelBody, !panelVisible && workbenchStyles.panelHidden)}
       >
-        {panelVisible && !view.maximized && (
+        {panelVisible && !maximized && (
           <div
             role="separator"
             tabIndex={0}
@@ -626,8 +638,8 @@ function WorkbenchViewHost({
           />
         )}
         {fileTab !== undefined && renderSlot(fileTab, fileVisible, "files")}
-        {panelTabs.map((tab) => renderSlot(tab, panelVisible && activeTab?.id === tab.id, tab.id))}
-        {panelVisible && activeTab === null && (
+        {panelTabs.map((tab) => renderSlot(tab, panelShown && activeTab?.id === tab.id, tab.id))}
+        {panelShown && activeTab === null && (
           <div {...props(workbenchStyles.launcher)}>
             {workbenchTabs(scope, capabilities).map((kind) => (
               <Row

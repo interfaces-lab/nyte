@@ -13,6 +13,7 @@
  * transaction. A backend that cannot hold that transaction cannot host the
  * kernel.
  */
+import type { JsonValue } from "@nyte-ai/schema";
 import type {
   Actor,
   Commit,
@@ -153,7 +154,11 @@ export interface SessionInfo {
 }
 
 export interface Store {
-  create(options?: { readonly id?: string }): Promise<Session>;
+  create(options?: {
+    readonly id?: string;
+    readonly initialFacts?: Readonly<Record<string, JsonValue>>;
+    readonly actor?: Actor;
+  }): Promise<Session>;
   open(id: string): Promise<Session>;
   list(): Promise<readonly SessionInfo[]>;
   /** Removes the session and everything it owns. Unknown ids are a no-op. */

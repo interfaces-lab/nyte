@@ -301,7 +301,31 @@ test("a watcher replays from its cursor, then receives every later event once, i
 test("sessions are created, listed, reopened, and deleted with everything they own", async () => {
   const path = storePath();
   const store = openStore(path);
-  const session = await store.create({ id: "one" });
+
+  const session = await store.create({
+    id: "one",
+    initialFacts: { name: "one", alias: "one" },
+    actor: { userId: "creator" },
+  });
+
+  const initial = await openStore(path).open("one");
+  const name = await initial.refs.read("refs/facts/name");
+  assert.ok(name);
+  assert.equal(await initial.refs.read("refs/facts/alias"), name);
+  assert.deepEqual(await initial.objects.get(name), { kind: "blob", value: "one" });
+  assert.equal((await initial.objects.list()).length, 1);
+  assert.deepEqual(
+    (await initial.events.read({ afterSeq: 0 })).map(({ at: _at, ...event }) => event),
+    ["name", "alias"].map((key, index) => ({
+      kind: "ref",
+      name: `refs/facts/${key}`,
+      from: null,
+      to: name,
+      reason: "fact",
+      actor: { userId: "creator" },
+      seq: index + 1,
+    })),
+  );
   const [oid] = await session.objects.put([blob("x")]);
   await session.refs.update([{ name: "refs/heads/main", from: null, to: oid ?? "" }], {
     reason: "seed",
@@ -322,6 +346,8 @@ test("sessions are created, listed, reopened, and deleted with everything they o
   await assert.rejects(store.open("one"), UnknownSession);
   const reborn = await store.create({ id: "one" });
   assert.equal(await reborn.refs.read("refs/heads/main"), null);
+  assert.deepEqual(await reborn.refs.list("refs/facts/"), []);
+  assert.equal(await reborn.objects.get(name), undefined);
   assert.equal(await reborn.events.last(), 0);
   assert.equal(await reborn.leases.read("refs/heads/main"), undefined);
   assert.equal(await reborn.objects.get(oid ?? ""), undefined);

@@ -6,7 +6,6 @@ import { RequestsPage } from "./requests/page";
 import { ProjectsPage } from "./projects/page";
 import { ReviewPage } from "./review/page";
 import { SettingsPage } from "./settings/page";
-import { SidebarPage } from "./sidebar/page";
 import { CanvasPage } from "./canvas/page";
 import { SdkSpecPage } from "./sdk/page";
 import { rootRoute } from "./routes/__root";
@@ -46,12 +45,6 @@ const routeTree = rootRoute.addChildren([
     path: "/projects",
     component: ProjectsPage,
     head: () => ({ meta: [{ title: "Lab · Projects" }] }),
-  }),
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/sidebar",
-    component: SidebarPage,
-    head: () => ({ meta: [{ title: "Lab · Sidebar" }] }),
   }),
   createRoute({
     getParentRoute: () => rootRoute,

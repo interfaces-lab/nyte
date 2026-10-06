@@ -103,7 +103,9 @@ import {
   useWorkbenchSnapshot,
   workbenchController,
   workbenchScope,
+  workbenchShowsChat,
   workbenchViewKey,
+  WORKBENCH_CHAT_TAB,
 } from "../workbench/controller.ts";
 import { Workbench } from "../workbench/workbench.tsx";
 import { workbenchReferenceOpener } from "../workbench/open-reference.ts";
@@ -1398,10 +1400,12 @@ export function ThreadScreen({
 
   const viewKey = workbenchViewKey(workspacePath);
   const view = workbench.views.get(viewKey) ?? workbenchController.getView(viewKey);
+  const maximized = view.expanded && view.layout.kind === "maximized";
+  const chatShowing = maximized && workbenchShowsChat(view.layout);
 
   const paneFloatingMount =
-    view.expanded &&
-    view.maximized &&
+    maximized &&
+    !chatShowing &&
     activeWorkbenchTab(view, workbenchScope(workspacePath), clientCapabilities(nyte.host))?.kind !==
       "browser"
       ? floatingMount
@@ -1428,6 +1432,9 @@ export function ThreadScreen({
       <FileTypeIconSprite />
       <div
         ref={containerRef}
+        id={`${viewKey}-panel-${WORKBENCH_CHAT_TAB}`}
+        role={maximized ? "tabpanel" : undefined}
+        aria-labelledby={maximized ? `${viewKey}-tab-${WORKBENCH_CHAT_TAB}` : undefined}
         {...props(
           threadStyles.panes,
           layout.kind === "split" &&
