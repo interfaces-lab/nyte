@@ -612,6 +612,7 @@ export function refreshVcs(): void {
     predicate: vcsNeedsRefresh,
   });
   void queryClient.invalidateQueries({ queryKey: keys.mentionFiles, exact: true });
+  void queryClient.invalidateQueries({ queryKey: ["files", "document"] });
 }
 
 /**

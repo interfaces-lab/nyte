@@ -34,6 +34,7 @@ import { keys, queryClient, useHostState } from "./queries.ts";
 import { readRouteSession } from "./route-session.ts";
 import type { SessionPage } from "./session-directory.ts";
 import { preferences } from "./preferences/index.ts";
+import { loadHostSettings } from "./preferences/host.ts";
 import { WorkspaceStage } from "./shell/workspace-stage.tsx";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import { radius } from "@nyte-ai/ui/schema.stylex";
@@ -456,6 +457,7 @@ export const settingsRoute = createRoute({
     },
     stringify: ({ section }) => ({ section }),
   },
+  loader: () => loadHostSettings(),
   component: SettingsSurface,
 });
 

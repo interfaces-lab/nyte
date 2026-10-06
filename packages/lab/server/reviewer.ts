@@ -19,6 +19,9 @@ import { definePlugin, toolsFsPlugin, type Plugin, type SessionApi } from "@nyte
 import { Type } from "typebox";
 import { GuideSchema, type GuideSection } from "../src/review/wire.ts";
 import type { Repo } from "./git.ts";
+import { canvasPlugin } from "./canvas-plugin.ts";
+import { compileCanvas } from "./canvas.ts";
+import { storeCanvas } from "./canvas-store.ts";
 import type { Registry } from "./registry.ts";
 
 const MAX_WORDS = 60;
@@ -290,6 +293,13 @@ export function labPlugins(deps: {
       id: "lab-roles",
       async session(api) {
         const { name } = await api.session.info();
+
+        if (name?.startsWith("canvas ")) {
+          await toolsFsPlugin().session(api);
+          await canvasPlugin({ compile: compileCanvas, store: storeCanvas }).session(api);
+
+          return;
+        }
 
         if (name?.startsWith(AUTHOR_PREFIX)) {
           api.prompt.add((draft) => draft.set("system-prompt", { text: AUTHOR_PROMPT, order: 0 }));

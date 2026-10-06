@@ -174,6 +174,11 @@ const ghostFill = {
 const buttonVariants = create({
   ghost: { backgroundColor: ghostFill },
   pill: { borderRadius: radius.pill, backgroundColor: ghostFill },
+  chip: {
+    borderRadius: radius.pill,
+    backgroundColor: role.bgElevated,
+    boxShadow: `inset 0 0 0 1px ${role.borderPrimary}, ${shadow.shadowSm}`,
+  },
   outline: {
     backgroundColor: role.bgElevated,
     boxShadow: `inset 0 0 0 1px ${role.borderPrimary}, ${shadow.shadowSm}`,
@@ -347,7 +352,7 @@ export function buttonStyle(
       tone !== "neutral" && intent[tone],
       control.base,
       buttonSizes[size],
-      variant === "pill" && pillSizes[size],
+      (variant === "pill" || variant === "chip") && pillSizes[size],
       iconOnly && control.iconOnly,
       buttonVariants[variant],
       joined && control.joined,

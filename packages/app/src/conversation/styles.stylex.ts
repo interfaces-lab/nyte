@@ -280,6 +280,31 @@ const USER_PROMPT_PADDING_INLINE = 10;
 const USER_IMAGES_GAP = 8;
 
 export const composerStyles = create({
+  portalSlot: { display: "contents" },
+  dockFloating: { "::before": { content: "none" } },
+  regionFloating: { paddingInline: 0, paddingBottom: 0 },
+  frameFloating: { boxShadow: shadow.shadowLg },
+  floatingStatus: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: button.gapSm,
+    maxWidth: "100%",
+    height: button.heightSm,
+    paddingInline: button.pillPaddingInlineSm,
+    borderRadius: radius.pill,
+    backgroundColor: role.bgElevated,
+    boxShadow: `inset 0 0 0 1px ${role.borderPrimary}, ${shadow.shadowSm}`,
+    color: role.contentSecondary,
+    fontSize: type.fontBase,
+    lineHeight: type.leadingBase,
+    pointerEvents: "auto",
+  },
+  floatingStatusText: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
   dock: {
     position: "sticky",
     bottom: 0,
@@ -1625,10 +1650,12 @@ export const markerStyles = create({
     display: "flex",
     alignItems: "center",
     minWidth: 0,
+    minHeight: conversation.rowMinHeight,
+    paddingBlock: 2,
     gap: 8,
     color: role.contentSecondary,
     fontSize: type.fontLg,
-    lineHeight: conversation.rowMinHeight,
+    lineHeight: type.leadingLg,
   },
   shimmer: {
     minWidth: 0,

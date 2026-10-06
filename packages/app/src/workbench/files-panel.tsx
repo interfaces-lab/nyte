@@ -25,13 +25,13 @@ import { WorkspaceFileTree } from "./file-tree.tsx";
 import { setTreeDrag } from "../conversation/composer-file-drop.ts";
 import { nyte } from "../nyte.ts";
 import { macPlatform } from "../platform.ts";
+import { preferences, useSetting, type Preference } from "../preferences/index.ts";
 import { refreshVcs, useHostState, useMentionFiles, useVcsSnapshot } from "../queries.ts";
 import { workbench } from "../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import type { WorkbenchViewKey } from "./controller.ts";
 import { WorkspaceFileEditor } from "./file-editor.tsx";
 import type { FileEditorHandle } from "./file-editor.tsx";
-import { setFilePreference, useFilePreferences } from "./file-preferences.ts";
 import { fileActions, useFileTabs } from "./file-store.ts";
 import { Popover } from "@nyte-ai/ui/popover";
 import { WorkspaceSearch } from "./workspace-search.tsx";
@@ -96,6 +96,30 @@ const styles = create({
   },
 });
 
+const FILE_TOGGLES = [
+  ["Line Numbers", preferences.fileLineNumbers],
+  ["Word Wrap", preferences.fileWordWrap],
+  ["Git Blame", preferences.fileGitBlame],
+  ["Auto Save", preferences.fileAutoSave],
+  ["Format on Save", preferences.fileFormatOnSave],
+] as const;
+
+function FilePreferenceItem({
+  label,
+  setting,
+}: {
+  readonly label: string;
+  readonly setting: Preference<boolean>;
+}): ReactElement {
+  const checked = useSetting(setting);
+
+  return (
+    <MenuSwitchItem layout="plain" checked={checked} onCheckedChange={setting.set}>
+      {label}
+    </MenuSwitchItem>
+  );
+}
+
 export function FilesPanel({
   viewKey,
   visible,
@@ -115,7 +139,7 @@ export function FilesPanel({
   const vcs = useVcsSnapshot(shown);
   const host = useHostState();
   const tabs = useFileTabs(viewKey);
-  const preferences = useFilePreferences();
+  const autoSave = useSetting(preferences.fileAutoSave);
   const [sidebar, setSidebar] = useState<"explorer" | "search">("explorer");
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [searchOpened, setSearchOpened] = useState(false);
@@ -419,41 +443,9 @@ export function FilesPanel({
               </MenuItem>
             )}
             <MenuSeparator inset />
-            <MenuSwitchItem
-              layout="plain"
-              checked={preferences.lineNumbers}
-              onCheckedChange={(checked) => setFilePreference("lineNumbers", checked)}
-            >
-              Line Numbers
-            </MenuSwitchItem>
-            <MenuSwitchItem
-              layout="plain"
-              checked={preferences.wordWrap}
-              onCheckedChange={(checked) => setFilePreference("wordWrap", checked)}
-            >
-              Word Wrap
-            </MenuSwitchItem>
-            <MenuSwitchItem
-              layout="plain"
-              checked={preferences.gitBlame}
-              onCheckedChange={(checked) => setFilePreference("gitBlame", checked)}
-            >
-              Git Blame
-            </MenuSwitchItem>
-            <MenuSwitchItem
-              layout="plain"
-              checked={preferences.autoSave}
-              onCheckedChange={(checked) => setFilePreference("autoSave", checked)}
-            >
-              Auto Save
-            </MenuSwitchItem>
-            <MenuSwitchItem
-              layout="plain"
-              checked={preferences.formatOnSave}
-              onCheckedChange={(checked) => setFilePreference("formatOnSave", checked)}
-            >
-              Format on Save
-            </MenuSwitchItem>
+            {FILE_TOGGLES.map(([label, setting]) => (
+              <FilePreferenceItem key={label} label={label} setting={setting} />
+            ))}
             <MenuSeparator inset />
             <MenuItem
               layout="plain"
@@ -502,14 +494,12 @@ export function FilesPanel({
               viewKey={viewKey}
               file={file}
               active={shown && file.id === activeFile?.id}
-              filePreferences={{
-                ...preferences,
-                autoSave:
-                  preferences.autoSave &&
-                  workspaceActive &&
-                  tabs.pendingClose?.id !== file.id &&
-                  discardPath !== file.path,
-              }}
+              autoSave={
+                autoSave &&
+                workspaceActive &&
+                tabs.pendingClose?.id !== file.id &&
+                discardPath !== file.path
+              }
             />
           ))}
         </div>

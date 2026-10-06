@@ -15,16 +15,24 @@ import type { Setting } from "./store.ts";
 
 const HASH = hashKey(keys.hostSettings);
 
-/** The settings route's loader: host rows render with their values, never empty first. */
+/**
+ * The settings route's loader: host rows render with their values, never empty
+ * first. A file that can't be read leaves those rows disabled, not the whole page.
+ */
 export async function loadHostSettings(): Promise<void> {
   const bridge = nyte.host.settings;
 
   if (bridge === undefined) return;
-  await queryClient.ensureQueryData({
-    queryKey: keys.hostSettings,
-    queryFn: () => bridge.get(),
-    staleTime: Number.POSITIVE_INFINITY,
-  });
+
+  try {
+    await queryClient.ensureQueryData({
+      queryKey: keys.hostSettings,
+      queryFn: () => bridge.get(),
+      staleTime: Number.POSITIVE_INFINITY,
+    });
+  } catch (cause) {
+    toast.add({ title: errorMessage(cause) });
+  }
 }
 
 /** Main pushed the file's new values: from this window, another, the terminal UI, or a hand edit. */

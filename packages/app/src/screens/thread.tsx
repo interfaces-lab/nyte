@@ -98,14 +98,20 @@ import {
   transcriptRows,
 } from "../conversation/transcript-rows.ts";
 import { ConfirmDialog } from "@nyte-ai/ui/alert-dialog";
-import { workbenchController, workbenchViewKey } from "../workbench/controller.ts";
+import {
+  activeWorkbenchTab,
+  useWorkbenchSnapshot,
+  workbenchController,
+  workbenchScope,
+  workbenchViewKey,
+} from "../workbench/controller.ts";
 import { Workbench } from "../workbench/workbench.tsx";
 import { workbenchReferenceOpener } from "../workbench/open-reference.ts";
 import { openJobTerminal } from "../workbench/terminal-store.ts";
 import { SubagentTray, type SubagentTrayView } from "../conversation/tray/agents.tsx";
 import { SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
 import type { SubagentSession } from "../conversation/subagent-sessions.ts";
-import { clientActions, clientActionShortcut } from "../client-actions.ts";
+import { clientActions, clientActionShortcut, clientCapabilities } from "../client-actions.ts";
 import { errorMessage } from "../errors.ts";
 import { pickerDefaults } from "../preference-projection.ts";
 
@@ -329,6 +335,7 @@ async function applyMessageEdit({
 type SessionConversationProps =
   | {
       readonly presentation: "full";
+      readonly floatingMount: HTMLDivElement | null;
       readonly paneId: PaneId;
       readonly sessionId: SessionId;
       readonly inputRef: (element: ComposerEditorHandle | null) => void;
@@ -670,6 +677,7 @@ function SessionConversation(conversation: SessionConversationProps): ReactEleme
                 {presentation === "full" && (
                   <Composer
                     sessionId={sessionId}
+                    floatingMount={conversation.floatingMount}
                     answer={answer}
                     backgroundWork={{
                       content: (
@@ -1145,7 +1153,15 @@ type PanePosition =
   | { readonly kind: "leading"; readonly ratio: number }
   | { readonly kind: "trailing" };
 
-function PaneHost({ pane, position }: { pane: PaneState; position: PanePosition }): ReactElement {
+function PaneHost({
+  pane,
+  position,
+  floatingMount,
+}: {
+  pane: PaneState;
+  position: PanePosition;
+  floatingMount: HTMLDivElement | null;
+}): ReactElement {
   const actions = usePaneActions();
   const { focusRequest, layout } = usePaneControllerSnapshot();
   const viewStore = usePaneViewStateStore();
@@ -1197,6 +1213,7 @@ function PaneHost({ pane, position }: { pane: PaneState; position: PanePosition 
           <SessionConversation
             key={pane.selection.sessionId}
             presentation="full"
+            floatingMount={activePane(layout).id === pane.id ? floatingMount : null}
             paneId={pane.id}
             sessionId={pane.selection.sessionId}
             inputRef={attachInput}
@@ -1369,6 +1386,8 @@ export function ThreadScreen({
   const actions = usePaneActions();
   const host = useHostState();
   const containerRef = useRef<HTMLDivElement>(null);
+  const [floatingMount, setFloatingMount] = useState<HTMLDivElement | null>(null);
+  const workbench = useWorkbenchSnapshot();
   const dropTarget = useSessionDropTarget();
   const [dragRatio, setDragRatio] = useState<number | undefined>();
   const panes = orderedPanes(layout);
@@ -1376,6 +1395,17 @@ export function ThreadScreen({
   const trailing = layout.kind === "split" ? panes[1] : undefined;
   const activeSelection = activePane(layout).selection;
   const workspacePath = host.data?.workspace?.path;
+
+  const viewKey = workbenchViewKey(workspacePath);
+  const view = workbench.views.get(viewKey) ?? workbenchController.getView(viewKey);
+
+  const paneFloatingMount =
+    view.expanded &&
+    view.maximized &&
+    activeWorkbenchTab(view, workbenchScope(workspacePath), clientCapabilities(nyte.host))?.kind !==
+      "browser"
+      ? floatingMount
+      : null;
 
   const syncedRoute = useRef<{ readonly sessionId: SessionId | undefined } | undefined>(undefined);
   useLayoutEffect(() => {
@@ -1407,6 +1437,7 @@ export function ThreadScreen({
         <PaneHost
           key={leading.id}
           pane={leading}
+          floatingMount={paneFloatingMount}
           position={
             layout.kind === "single"
               ? { kind: "single" }
@@ -1424,7 +1455,12 @@ export function ThreadScreen({
           />
         )}
         {layout.kind === "split" && trailing !== undefined && (
-          <PaneHost key={trailing.id} pane={trailing} position={{ kind: "trailing" }} />
+          <PaneHost
+            key={trailing.id}
+            pane={trailing}
+            position={{ kind: "trailing" }}
+            floatingMount={paneFloatingMount}
+          />
         )}
         {dropTarget !== undefined && <DropPreview layout={layout} target={dropTarget} />}
       </div>
@@ -1432,6 +1468,7 @@ export function ThreadScreen({
         workspacePath={workspacePath}
         sessionId={activeSelection.kind === "session" ? activeSelection.sessionId : undefined}
       />
+      <div ref={setFloatingMount} {...props(threadStyles.floatingMount)} />
     </div>
   );
 }

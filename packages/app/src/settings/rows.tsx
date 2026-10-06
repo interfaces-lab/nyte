@@ -4,6 +4,7 @@
  * `Setting` handle and required copy, and render nothing where this host
  * can't back the value. A section with nothing rendered inside hides itself.
  */
+import { Input } from "@nyte-ai/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@nyte-ai/ui/select";
 import { Slider } from "@nyte-ai/ui/slider";
 import { SwitchField, type SwitchFieldProps } from "@nyte-ai/ui/switch";
@@ -246,6 +247,37 @@ export function StepsRow<T extends string>(
           <span>{last.label}</span>
         </span>
       </span>
+    </SettingsRow>
+  );
+}
+
+/** Free text, saved on blur. Empty saves null: the built-in choice. */
+export function TextRow(
+  input: Bound<string | null> & {
+    readonly placeholder: string;
+    readonly type?: "text" | "url";
+  },
+): ReactElement | null {
+  const value = useSetting(input.setting);
+
+  if (hidden(input)) return null;
+
+  return (
+    <SettingsRow title={input.title} description={input.description} controlWidth="wide">
+      <Input
+        // Keyed by the value, so a change from another window replaces the draft.
+        key={value ?? ""}
+        type={input.type ?? "text"}
+        aria-label={input.title}
+        placeholder={input.placeholder}
+        defaultValue={value ?? ""}
+        disabled={value === undefined}
+        onBlur={(event) => {
+          const next = event.currentTarget.value.trim();
+
+          if (next !== (value ?? "")) input.setting.set(next === "" ? null : next);
+        }}
+      />
     </SettingsRow>
   );
 }

@@ -31,7 +31,6 @@ import { intent } from "@nyte-ai/ui/surface-theme";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import type { WorkbenchViewKey } from "./controller.ts";
 import { createFileDocument } from "./file-document.ts";
-import type { FilePreferences } from "./file-preferences.ts";
 import { fileActions } from "./file-store.ts";
 import type { FileTab } from "./file-store.ts";
 
@@ -48,7 +47,8 @@ interface FileEditorProps {
   readonly viewKey: WorkbenchViewKey;
   readonly file: FileTab;
   readonly active: boolean;
-  readonly filePreferences: FilePreferences;
+  /** The Auto save preference, already narrowed to whether this tab may write. */
+  readonly autoSave: boolean;
 }
 
 // The shadow host owns these properties, so inherited overrides cannot replace them.
@@ -204,7 +204,7 @@ function TextFileEditor({
   viewKey,
   file,
   active,
-  filePreferences,
+  autoSave,
   document,
 }: FileEditorProps & { readonly document: TextFile }): ReactElement {
   const { navigationRevision } = file;
@@ -242,6 +242,10 @@ function TextFileEditor({
   const theme = useSetting(preferences.theme);
   const codeFont = useSetting(preferences.codeFont);
   const codeFontSize = useSetting(preferences.codeFontSize);
+  const lineNumbers = useSetting(preferences.fileLineNumbers);
+  const wordWrap = useSetting(preferences.fileWordWrap);
+  const gitBlame = useSetting(preferences.fileGitBlame);
+  const formatOnSave = useSetting(preferences.fileFormatOnSave);
   const host = useHostState();
   const saveFile = useSaveWorkspaceFile();
   const disk = useWorkspaceFile(file.path);
@@ -250,7 +254,7 @@ function TextFileEditor({
   const blame = useQuery({
     queryKey: ["files", "blame", file.path, snapshot.version],
     queryFn: () => nyte.workspace.blame({ target: { kind: "workspace" }, path: file.path }),
-    enabled: filePreferences.gitBlame && active && !dirty,
+    enabled: gitBlame && active && !dirty,
   });
 
   const [initialItems] = useState<readonly CodeViewItem<undefined>[]>(() => [
@@ -269,16 +273,16 @@ function TextFileEditor({
   const save = (): Promise<void> =>
     buffer.save({
       write: saveFile.mutateAsync,
-      format: filePreferences.formatOnSave
+      format: formatOnSave
         ? (input) => nyte.workspace.format({ target: { kind: "workspace" }, ...input })
         : undefined,
     });
 
   // The autosave timer is armed inside the buffer subscription, which is bound
   // once per buffer; it reads the current save and the preference at fire time.
-  const autosave = useRef({ enabled: filePreferences.autoSave, save });
+  const autosave = useRef({ enabled: autoSave, save });
   useLayoutEffect(() => {
-    autosave.current = { enabled: filePreferences.autoSave, save };
+    autosave.current = { enabled: autoSave, save };
   });
 
   useLayoutEffect(() => {
@@ -509,8 +513,8 @@ function TextFileEditor({
               unsafeCSS: EDITOR_CSS,
               disableFileHeader: true,
               layout: { ...DEFAULT_CODE_VIEW_LAYOUT, paddingTop: 0 },
-              disableLineNumbers: !filePreferences.lineNumbers,
-              overflow: filePreferences.wordWrap ? "wrap" : "scroll",
+              disableLineNumbers: !lineNumbers,
+              overflow: wordWrap ? "wrap" : "scroll",
               onLineClick: (event) =>
                 setClickedLine({ line: event.lineNumber, navigationRevision }),
             }}
@@ -519,7 +523,7 @@ function TextFileEditor({
           />
         </EditProvider>
       </PierreWorkerProvider>
-      {filePreferences.gitBlame && (
+      {gitBlame && (
         <div {...props(styles.status)} title={blameText}>
           <span>Line {line}</span>
           <span {...props(styles.statusText)}>{blameText}</span>

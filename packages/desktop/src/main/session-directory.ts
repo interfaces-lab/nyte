@@ -84,6 +84,17 @@ export class SessionDirectory {
     return () => this.#transitions.delete(listener);
   }
 
+  /** Whether any held row matches, children included. */
+  some(predicate: (session: SessionInfo, source: SessionDirectorySource) => boolean): boolean {
+    for (const held of this.#sources.values()) {
+      for (const row of held.rows.values()) {
+        if (predicate(row.session, held.source)) return true;
+      }
+    }
+
+    return false;
+  }
+
   upsert(source: SessionDirectorySource, session: SessionInfo): void {
     this.#write(this.#source(source), session, true);
   }

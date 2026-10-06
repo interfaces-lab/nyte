@@ -162,6 +162,8 @@ export interface DesktopHostDependencies {
   readonly updates?: HostBridge["updates"];
   /** ~/.nyte/settings.json. Absent, as in tests, the host opens the real one. */
   readonly settings?: HostSettingsStore;
+  /** Called on each change: true while Keep awake is on and a chat on this machine is working. */
+  readonly keepAwake?: (awake: boolean) => void;
   readonly createHost?: typeof createHost;
   /** The store's worker thread module, so SQLite work never runs on the main thread. */
   readonly storeWorker: URL;
@@ -392,9 +394,10 @@ export class DesktopHost {
   private readonly sessionOwners = new Map<SessionId, OpenTarget | WorkspaceTarget>();
   /** When each closed store was last listed; the rows themselves live in the directory. */
   private readonly closedDirectories = new Map<string | null, number>();
-  private readonly directory = new SessionDirectory((event) =>
-    this.dependencies.emitHostEvent(event),
-  );
+  private readonly directory = new SessionDirectory((event) => {
+    this.dependencies.emitHostEvent(event);
+    this.holdAwake();
+  });
   private readonly tracked = new Map<SessionId, TrackedSession>();
   private sweepTimer: ReturnType<typeof setInterval> | undefined;
   private localSweep: Promise<void> | undefined;
@@ -438,6 +441,8 @@ export class DesktopHost {
     },
   });
   private closed = false;
+  /** What `keepAwake` was last told. */
+  private awake = false;
   private readonly terminalSessions = new Map<HostWindow, TerminalSessions>();
   /** Aborts with the window, cancelling the sign-ins it started. */
   private readonly windowSignIns = new Map<HostWindow, AbortController>();
@@ -452,11 +457,31 @@ export class DesktopHost {
     });
     this.settings.subscribe((next, previous) => {
       this.dependencies.emitHostEvent({ kind: "settings_changed", settings: next });
+      this.holdAwake();
 
       if (next.cacheWarming === previous.cacheWarming) return;
 
       for (const open of this.openTargets.values()) open.sdk.cacheWarming.modeChanged();
     });
+  }
+
+  /**
+   * Every directory change and settings change lands here. Cloud chats run on
+   * the server, and one waiting on a reply is waiting on a person: neither
+   * needs this machine awake.
+   */
+  private holdAwake(): void {
+    const awake =
+      this.settings.current().keepAwake &&
+      this.directory.some((session, source) => {
+        const mark = sessionMark(session);
+
+        return source.environment === "local" && (mark === "working" || mark === "retry");
+      });
+
+    if (awake === this.awake) return;
+    this.awake = awake;
+    this.dependencies.keepAwake?.(awake);
   }
 
   /** The one renderer entry point: an operation path and its single input object. */
@@ -1118,6 +1143,7 @@ export class DesktopHost {
     clearInterval(this.sweepTimer);
     clearInterval(this.catalogRefreshTimer);
     this.directory.close();
+    this.holdAwake();
 
     for (const tracked of this.tracked.values()) tracked.controller.abort();
     this.tracked.clear();

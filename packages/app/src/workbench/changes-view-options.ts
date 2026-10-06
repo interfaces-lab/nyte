@@ -1,6 +1,8 @@
+import { useSyncExternalStore } from "react";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
+import { preferences, useSetting } from "../preferences/index.ts";
 
 const STORAGE_KEY = "nyte.desktop.changes-view-options.v1";
 
@@ -16,8 +18,12 @@ const changesViewOptionsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+/** Only what the repository picked; the rest follows the Settings defaults. */
 const scopedOptionsSchema = Type.Object(
-  { options: changesViewOptionsSchema, updatedAt: Type.Number() },
+  {
+    options: Type.Partial(changesViewOptionsSchema, { additionalProperties: false }),
+    updatedAt: Type.Number(),
+  },
   { additionalProperties: false },
 );
 
@@ -28,13 +34,6 @@ export type ChangesLayout = Static<typeof changesViewOptionsSchema>["layout"];
 export type ChangesViewOptions = Static<typeof changesViewOptionsSchema>;
 
 export type StoredChangesViewOptions = Static<typeof storedOptionsSchema>;
-
-/** Today's Changes tab: one unified column, whitespace shown, stacked diffs wrapped. */
-export const defaultChangesViewOptions: ChangesViewOptions = {
-  layout: "unified",
-  ignoreWhitespace: false,
-  wordWrap: true,
-};
 
 export const EMPTY_CHANGES_VIEW_OPTIONS: StoredChangesViewOptions = {};
 
@@ -89,12 +88,8 @@ export class ChangesViewOptionsStore {
     return () => this.#listeners.delete(listener);
   };
 
-  options(scopeId: string): ChangesViewOptions {
-    return this.#stored[scopeId]?.options ?? defaultChangesViewOptions;
-  }
-
   setOptions(scopeId: string, changes: Partial<ChangesViewOptions>): void {
-    const current = this.options(scopeId);
+    const current = this.#stored[scopeId]?.options ?? {};
     const next = { ...current, ...changes };
 
     if (
@@ -150,3 +145,18 @@ function browserStorage(): OptionsStorage | undefined {
 }
 
 export const changesViewOptions = new ChangesViewOptionsStore({ storage: browserStorage() });
+
+/** What a repository shows: its own picks over the Settings defaults. */
+export function useChangesViewOptions(scopeId: string): ChangesViewOptions {
+  const stored = useSyncExternalStore(
+    changesViewOptions.subscribe,
+    changesViewOptions.getSnapshot,
+    changesViewOptions.getSnapshot,
+  );
+
+  const layout = useSetting(preferences.changesLayout);
+  const ignoreWhitespace = useSetting(preferences.changesIgnoreWhitespace);
+  const wordWrap = useSetting(preferences.changesWordWrap);
+
+  return { layout, ignoreWhitespace, wordWrap, ...stored[scopeId]?.options };
+}

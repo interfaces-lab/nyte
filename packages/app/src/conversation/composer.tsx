@@ -15,6 +15,7 @@ import { intent, surfaceTheme } from "@nyte-ai/ui/surface-theme";
 import { trayStyles } from "../theme/tray.stylex.ts";
 import { props } from "@stylexjs/stylex";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { DragEvent, KeyboardEvent, ReactElement, ReactNode } from "react";
 import type {
   CommandInfo,
@@ -29,7 +30,8 @@ import { errorMessage } from "../errors.ts";
 import { Icon } from "@nyte-ai/ui/icon";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@nyte-ai/ui/menu";
 import { Button } from "@nyte-ai/ui/button";
-import { refreshThread, requestStop } from "../live.ts";
+import { refreshThread, requestStop, useSessionFrameSelector } from "../live.ts";
+import type { SessionFrame } from "../live.ts";
 import {
   keys,
   queryClient,
@@ -81,7 +83,10 @@ import { messageDraftText } from "./message-references.ts";
 import { parsePluginCommand } from "./plugin-command.ts";
 import type { MessageReference } from "./message-references.ts";
 import { preferences, useSetting, type RunningMessagePreference } from "../preferences/index.ts";
-import { composerStyles } from "./styles.stylex.ts";
+import { StatusDot } from "../components/ui.tsx";
+import { workbenchController, workbenchViewKey } from "../workbench/controller.ts";
+import { subagentActivity } from "./subagent-status.ts";
+import { composerStyles, markerStyles } from "./styles.stylex.ts";
 import { TranscriptButton, useTranscriptDock } from "./transcript.tsx";
 import type { ComposerAnswer } from "./tray/questions.tsx";
 
@@ -245,6 +250,7 @@ interface ComposerFrameProps {
   onAbort?: () => void;
   /** An open composer tray handles Escape before the empty-input abort shortcut. */
   onDismissTray?: () => boolean;
+  floating?: boolean;
   /** Enter on a truly empty composer; return true when it was handled. */
   onEmptySubmit?: () => boolean;
   /** The model chip slot, left side of the controls row. */
@@ -278,6 +284,7 @@ export function ComposerFrame({
   stopping = false,
   onAbort,
   onDismissTray,
+  floating = false,
   onEmptySubmit,
   model,
   inputRef,
@@ -574,6 +581,7 @@ export function ComposerFrame({
         {...props(
           dragging && intent.primary,
           composerStyles.frame,
+          floating && composerStyles.frameFloating,
           geometry === "new-chat" && composerStyles.frameNewChat,
           compact && composerStyles.frameFollowUpCompact,
           followUpCard && composerStyles.frameFollowUpExpanded,
@@ -952,6 +960,7 @@ export function Composer({
   fileDropRoot,
   backgroundWork,
   answer,
+  floatingMount = null,
 }: {
   sessionId: SessionId;
   /** The head's run as the fold holds it; Stop names it and follows its abort flag. */
@@ -973,6 +982,7 @@ export function Composer({
   backgroundWork?: { readonly content: ReactNode; readonly onEscape: () => boolean };
   /** A waiting question the composer's words answer. */
   answer?: ComposerAnswer;
+  floatingMount?: HTMLDivElement | null;
 }): ReactElement {
   const runningMessagePreference = useSetting(preferences.runningMessage);
   const attachTranscriptDock = useTranscriptDock();
@@ -994,6 +1004,52 @@ export function Composer({
   const pluginCatalog = usePluginCatalog();
   const sessionCommands = useSessionCommands(sessionId);
   const sessionActions = useSessionActions();
+
+  const floating = floatingMount !== null;
+
+  const [portalHost] = useState(() => {
+    const element = document.createElement("div");
+    element.style.display = "contents";
+
+    return element;
+  });
+
+  const inlineSlot = useRef<HTMLDivElement | null>(null);
+  const focusAfterMove = useRef(false);
+  const cwd = host.data?.workspace?.path;
+
+  const selectActivity = useCallback(
+    (frame: SessionFrame | undefined) => subagentActivity(frame, cwd),
+    [cwd],
+  );
+
+  const activity = useSessionFrameSelector(floating ? sessionId : undefined, selectActivity);
+
+  const attachInlineSlot = useCallback(
+    (slot: HTMLDivElement | null): void => {
+      inlineSlot.current = slot;
+
+      if (slot === null) {
+        portalHost.remove();
+
+        return;
+      }
+
+      slot.append(portalHost);
+    },
+    [portalHost],
+  );
+
+  useLayoutEffect(() => {
+    const destination = floatingMount ?? inlineSlot.current;
+
+    if (destination === null || portalHost.parentElement === destination) return;
+    destination.append(portalHost);
+
+    if (!focusAfterMove.current) return;
+    focusAfterMove.current = false;
+    editorRef.current?.focus({ preventScroll: true });
+  }, [floatingMount, portalHost]);
 
   const activeCommands =
     sessionCommands.data ?? (sessionCommands.isError ? NO_COMMANDS : undefined);
@@ -1718,9 +1774,16 @@ export function Composer({
       </section>
     );
 
-  return (
-    <div ref={attachTranscriptDock} {...props(composerStyles.dock)}>
-      <div role="region" aria-label="Conversation input" {...props(composerStyles.region)}>
+  const dock = (
+    <div
+      ref={attachTranscriptDock}
+      {...props(composerStyles.dock, floating && composerStyles.dockFloating)}
+    >
+      <div
+        role="region"
+        aria-label="Conversation input"
+        {...props(composerStyles.region, floating && composerStyles.regionFloating)}
+      >
         <div {...props(composerStyles.inputStack)}>
           <div {...props(composerStyles.preComposerOverlay)}>
             <div {...props(composerStyles.preComposerStack)}>
@@ -1757,7 +1820,30 @@ export function Composer({
             </div>
             <div {...props(composerStyles.preComposerPills)}>
               {backgroundWork?.content}
-              <TranscriptButton />
+              {floating ? (
+                <>
+                  {liveRun !== undefined && (
+                    <span {...props(composerStyles.floatingStatus)}>
+                      <StatusDot mark="working" />
+                      <span {...props(composerStyles.floatingStatusText, markerStyles.shimmer)}>
+                        {activity ?? "Working"}
+                      </span>
+                    </span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="chip"
+                    onClick={() => {
+                      focusAfterMove.current = true;
+                      workbenchController.actions.toggleMaximized({ view: workbenchViewKey(cwd) });
+                    }}
+                  >
+                    Show Chat
+                  </Button>
+                </>
+              ) : (
+                <TranscriptButton />
+              )}
             </div>
           </div>
           <ComposerFrame
@@ -1781,6 +1867,7 @@ export function Composer({
             }}
             onSubmit={send}
             placeholder={answer?.placeholder ?? FOLLOW_UP_PLACEHOLDER}
+            floating={floating}
             disabled={disabled}
             busy={liveRun !== undefined}
             runningMessagePreference={runningMessagePreference}
@@ -1815,5 +1902,12 @@ export function Composer({
         </div>
       </div>
     </div>
+  );
+
+  return (
+    <>
+      <div ref={attachInlineSlot} {...props(composerStyles.portalSlot)} />
+      {createPortal(dock, portalHost)}
+    </>
   );
 }

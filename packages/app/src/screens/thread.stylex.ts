@@ -5,11 +5,21 @@ import { appearance, role, type } from "@nyte-ai/ui/vars.stylex";
 
 export const threadStyles = create({
   stage: {
+    position: "relative",
     display: "flex",
     flex: 1,
     minWidth: 0,
     minHeight: 0,
     overflow: "hidden",
+  },
+  floatingMount: {
+    position: "absolute",
+    insetInline: conversation.gutter,
+    bottom: conversation.gutter,
+    zIndex: layer.workbench,
+    maxWidth: 608,
+    marginInline: "auto",
+    pointerEvents: "none",
   },
   panes: {
     position: "relative",

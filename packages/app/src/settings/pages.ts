@@ -16,6 +16,7 @@ import { AdvancedSettings } from "./advanced.tsx";
 import { AgentSettings } from "./agent.tsx";
 import { AppearanceSettings } from "./appearance.tsx";
 import { BrowserSettings } from "./browser.tsx";
+import { EditorSettings } from "./editor.tsx";
 import { GeneralSettings } from "./general.tsx";
 import { TerminalSettings } from "./terminal.tsx";
 
@@ -104,9 +105,8 @@ export const SETTINGS_PAGES = {
       "browser",
       "external",
       "trusted sites",
-      "notifications",
-      "badge",
       "sleep",
+      "awake",
     ],
     Page: GeneralSettings,
   },
@@ -134,6 +134,26 @@ export const SETTINGS_PAGES = {
     needs: ["providers"],
     keywords: ["model", "reasoning", "thinking", "context", "compaction", "cache"],
     Page: AgentSettings,
+  },
+  editor: {
+    icon: "file-text",
+    title: "Editor",
+    group: "tools",
+    needs: [],
+    keywords: [
+      "files",
+      "line numbers",
+      "word wrap",
+      "git blame",
+      "auto save",
+      "format on save",
+      "changes",
+      "diff",
+      "split",
+      "unified",
+      "whitespace",
+    ],
+    Page: EditorSettings,
   },
   terminal: {
     icon: "console",

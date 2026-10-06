@@ -44,6 +44,7 @@ export function ButtonStatesDemo() {
         Refresh
       </Button>
       <Button variant="pill">Pill</Button>
+      <Button variant="chip">Chip</Button>
       <Button variant="outline" disabled disabledReason="No changes to save">
         Save Changes
       </Button>

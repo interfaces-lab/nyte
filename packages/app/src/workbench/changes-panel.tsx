@@ -32,7 +32,7 @@ import { preferences, useSetting } from "../preferences/index.ts";
 import { ChangesStack } from "./changes-stack.tsx";
 import type { ChangesStackItem } from "./changes-stack-code-view.ts";
 import { ChangesToolbar, changesShortcutAction } from "./changes-toolbar.tsx";
-import { changesViewOptions } from "./changes-view-options.ts";
+import { changesViewOptions, useChangesViewOptions } from "./changes-view-options.ts";
 import { changesViewed, patchDigest } from "./changes-viewed.ts";
 import type { ViewedFile, ViewedState } from "./changes-viewed.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
@@ -257,16 +257,11 @@ function ChangesPanelView({
     changesViewed.getSnapshot,
   );
 
-  useSyncExternalStore(
-    changesViewOptions.subscribe,
-    changesViewOptions.getSnapshot,
-    changesViewOptions.getSnapshot,
-  );
   // Options follow the repository; a turn shares the layout chosen for the tree
   // it belongs to. Review marks do not: the same path carries a different patch
   // in each scope, and a mark from one must not read as stale in another.
   const optionsScopeId = root ?? "workspace";
-  const options = changesViewOptions.options(optionsScopeId);
+  const options = useChangesViewOptions(optionsScopeId);
 
   const workingScope = activeScope.kind !== "turn" && activeScope.kind !== "commit";
 

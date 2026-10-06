@@ -6,6 +6,7 @@ import {
   Menu,
   nativeTheme,
   powerMonitor,
+  powerSaveBlocker,
   safeStorage,
   screen,
   shell,
@@ -185,8 +186,23 @@ const browserSurfaces = createBrowserSurfaces({
 
 let updates: ReturnType<typeof registerUpdates> | undefined;
 
+/** The power save blocker Keep awake holds while a chat works. */
+let awakeBlocker: number | undefined;
+
 const hostDependencies = {
   settings,
+  keepAwake: (awake: boolean) => {
+    if (awake) {
+      // The system stays up; the display may still sleep.
+      awakeBlocker ??= powerSaveBlocker.start("prevent-app-suspension");
+
+      return;
+    }
+
+    if (awakeBlocker === undefined) return;
+    powerSaveBlocker.stop(awakeBlocker);
+    awakeBlocker = undefined;
+  },
   updates: {
     state: async (): Promise<UpdateState> => updates?.state() ?? { kind: "idle" },
     check: async () => updates?.click(),

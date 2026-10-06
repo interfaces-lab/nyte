@@ -3,7 +3,7 @@ import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { modifierKeyLabel } from "../conversation/composer-keys.ts";
 import { macPlatform } from "../platform.ts";
-import { preferences, useSetting } from "../preferences/index.ts";
+import { hostSetting, preferences, useSetting } from "../preferences/index.ts";
 import { SelectRow, SettingsRow, SettingsSection, SwitchRow } from "./rows.tsx";
 import { settingsStyles as styles } from "./settings.stylex.ts";
 
@@ -79,6 +79,13 @@ export function GeneralSettings(): ReactElement {
           description="Confirm before a chat link opens in your default browser"
         />
         <TrustedSitesRow />
+      </SettingsSection>
+      <SettingsSection title="System">
+        <SwitchRow
+          setting={hostSetting("keepAwake")}
+          title="Keep awake while working"
+          description="Stop the computer from sleeping while a chat is working. The display can still turn off"
+        />
       </SettingsSection>
     </>
   );

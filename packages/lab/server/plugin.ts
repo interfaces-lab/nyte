@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { createNyteServer, type NyteServer } from "@nyte-ai/server";
 import { requestListener } from "@nyte-ai/server/node";
 import type { Plugin } from "vite";
+import { canvasRoutes } from "./canvas-routes.ts";
 import { openRepo } from "./git.ts";
 import { CACHE_DIR, openReviewHost, type ReviewHost } from "./host.ts";
 import { openRegistry } from "./registry.ts";
@@ -83,6 +84,10 @@ export function reviewCore(): Plugin {
           { onError: (cause) => log(messageOf(cause)) },
         );
 
+      server.middlewares.use(
+        "/core/canvas",
+        requestListener(canvasRoutes(core), { onError: (cause) => log(messageOf(cause)) }),
+      );
       server.middlewares.use(
         "/core/nyte",
         listen((opened, request) => opened.server.fetch(request)),

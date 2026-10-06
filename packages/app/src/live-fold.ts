@@ -50,8 +50,8 @@ export function livePartKey(runId: RunId, attempt: number, index: number): strin
   return `${runId}:${String(attempt)}:${String(index)}`;
 }
 
-/** Streaming or calling tools is work; a retry waits out its delay; a flagged stop is settling; anything else leaves the overlay idle. */
-export function liveRun(run: RunInfo | undefined): LiveRun {
+/** Streaming or calling tools is work; a retry waits out its delay until the next attempt streams; a flagged stop is settling; anything else leaves the overlay idle. */
+export function liveRun(run: RunInfo | undefined, parts: LiveParts): LiveRun {
   if (run === undefined) return { runState: "idle" };
 
   switch (run.phase.kind) {
@@ -59,12 +59,21 @@ export function liveRun(run: RunInfo | undefined): LiveRun {
     case "tools":
       return { runState: run.abortRequested === true ? "stopping" : "working" };
     case "retry":
-      return run.abortRequested === true
-        ? { runState: "stopping" }
-        : {
-            runState: "retrying",
-            retry: { at: run.phase.at, message: run.phase.failure.message },
-          };
+      if (run.abortRequested === true) return { runState: "stopping" };
+
+      // The phase stays `retry` until the next attempt commits; its stream is the signal.
+      if (
+        parts.some(
+          (part) => part.kind !== "tool" && part.runId === run.runId && part.attempt > run.attempts,
+        )
+      ) {
+        return { runState: "working" };
+      }
+
+      return {
+        runState: "retrying",
+        retry: { at: run.phase.at, message: run.phase.failure.message },
+      };
     case "waiting":
       return { runState: run.abortRequested === true ? "stopping" : "idle" };
     case "done":
@@ -132,7 +141,7 @@ export function projectLive(
   parts: LiveParts,
   run: RunInfo | undefined,
 ): LiveSnapshot {
-  const state = liveRun(run);
+  const state = liveRun(run, parts);
 
   if (parts === previous.parts) {
     return sameRun(previous, state)

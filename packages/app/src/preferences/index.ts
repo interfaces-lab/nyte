@@ -24,6 +24,10 @@ const APPEARANCE = "nyte:appearance:v1";
 
 const TERMINAL = "nyte:terminal:v1";
 
+const FILES = "nyte:desktop:file-preferences:v1";
+
+const CHANGES = "nyte:changes:v1";
+
 const integer = (minimum: number, maximum: number) => Type.Integer({ minimum, maximum });
 
 export const preferences = {
@@ -98,6 +102,24 @@ export const preferences = {
     Type.Boolean(),
     false,
   ),
+  fileLineNumbers: definePreference({ key: FILES, field: "lineNumbers" }, Type.Boolean(), true),
+  fileWordWrap: definePreference({ key: FILES, field: "wordWrap" }, Type.Boolean(), true),
+  fileGitBlame: definePreference({ key: FILES, field: "gitBlame" }, Type.Boolean(), false),
+  // Opening a file must not opt a workspace into writes or formatter execution.
+  fileAutoSave: definePreference({ key: FILES, field: "autoSave" }, Type.Boolean(), false),
+  fileFormatOnSave: definePreference({ key: FILES, field: "formatOnSave" }, Type.Boolean(), false),
+  /** Defaults for repositories that haven't picked their own from the Changes menu. */
+  changesLayout: definePreference(
+    { key: CHANGES, field: "layout" },
+    Type.Enum(["unified", "split"]),
+    "unified",
+  ),
+  changesIgnoreWhitespace: definePreference(
+    { key: CHANGES, field: "ignoreWhitespace" },
+    Type.Boolean(),
+    false,
+  ),
+  changesWordWrap: definePreference({ key: CHANGES, field: "wordWrap" }, Type.Boolean(), true),
 } as const;
 
 type ValueOf<P> = P extends Preference<infer T> ? T : never;

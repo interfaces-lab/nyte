@@ -3,9 +3,11 @@ import type { ReactElement } from "react";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { RequestsPage } from "./requests/page";
+import { ProjectsPage } from "./projects/page";
 import { ReviewPage } from "./review/page";
 import { SettingsPage } from "./settings/page";
-import { UpdatesPage } from "./updates/page";
+import { SidebarPage } from "./sidebar/page";
+import { CanvasPage } from "./canvas/page";
 import { rootRoute } from "./routes/__root";
 
 const ReviewSearch = Type.Object({ id: Type.Optional(Type.String()) });
@@ -40,9 +42,21 @@ const routeTree = rootRoute.addChildren([
   reviewRoute,
   createRoute({
     getParentRoute: () => rootRoute,
-    path: "/updates",
-    component: UpdatesPage,
-    head: () => ({ meta: [{ title: "Lab · Updates" }] }),
+    path: "/projects",
+    component: ProjectsPage,
+    head: () => ({ meta: [{ title: "Lab · Projects" }] }),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/sidebar",
+    component: SidebarPage,
+    head: () => ({ meta: [{ title: "Lab · Sidebar" }] }),
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/canvas",
+    component: CanvasPage,
+    head: () => ({ meta: [{ title: "Lab · Canvas" }] }),
   }),
   createRoute({
     getParentRoute: () => rootRoute,
