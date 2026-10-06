@@ -1,4 +1,5 @@
 import type { MentionFile } from "@nyte-ai/client";
+import { createFileRanking } from "../file-ranking.ts";
 import { isFolder } from "./message-references.ts";
 
 /** The context entry does not count toward the workspace result limit. */
@@ -40,15 +41,9 @@ function fileSuggestion(file: MentionFile): FileSuggestion {
   };
 }
 
-interface SearchableFile {
-  readonly file: MentionFile;
-  readonly label: string;
-  readonly description: string;
-}
-
 /** One catalog owns one lazy index, not a growing cache of queries or catalogs. */
 export function createMentionSuggestionRanking(files: readonly MentionFile[]) {
-  let searchable: readonly SearchableFile[] | undefined;
+  const rankFiles = createFileRanking(files, MAX_FILE_SUGGESTIONS);
 
   return (
     rawQuery: string,
@@ -65,45 +60,8 @@ export function createMentionSuggestionRanking(files: readonly MentionFile[]) {
       results.push(CONVERSATION_SUGGESTION);
     }
 
-    if (query === "") {
-      return [...results, ...files.slice(0, MAX_FILE_SUGGESTIONS).map(fileSuggestion)];
-    }
+    const matches = query === "" ? files.slice(0, MAX_FILE_SUGGESTIONS) : rankFiles(query);
 
-    searchable ??= files.map((file) => ({
-      file,
-      label: file.label.toLocaleLowerCase(),
-      description: file.displayPath.toLocaleLowerCase(),
-    }));
-    const prefixes: MentionFile[] = [];
-    const substrings: MentionFile[] = [];
-    const descriptions: MentionFile[] = [];
-
-    for (const entry of searchable) {
-      const bucket = entry.label.startsWith(query)
-        ? prefixes
-        : entry.label.includes(query)
-          ? substrings
-          : entry.description.includes(query)
-            ? descriptions
-            : undefined;
-
-      if (bucket !== undefined && bucket.length < MAX_FILE_SUGGESTIONS) {
-        bucket.push(entry.file);
-      }
-
-      // Later entries cannot outrank or precede these prefix matches.
-      if (prefixes.length === MAX_FILE_SUGGESTIONS) break;
-    }
-
-    const contextCount = results.length;
-
-    for (const bucket of [prefixes, substrings, descriptions]) {
-      for (const file of bucket) {
-        if (results.length - contextCount === MAX_FILE_SUGGESTIONS) return results;
-        results.push(fileSuggestion(file));
-      }
-    }
-
-    return results;
+    return [...results, ...matches.map(fileSuggestion)];
   };
 }

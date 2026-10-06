@@ -31,12 +31,13 @@ import { workbench } from "../theme/schema.stylex.ts";
 import { role, type } from "@nyte-ai/ui/vars.stylex";
 import type { WorkbenchViewKey } from "./controller.ts";
 import { WorkspaceFileEditor } from "./file-editor.tsx";
+import { FilesEmptyState } from "./files-empty-state.tsx";
 import type { FileEditorHandle } from "./file-editor.tsx";
 import { fileActions, useFileTabs } from "./file-store.ts";
 import { Popover } from "@nyte-ai/ui/popover";
 import { WorkspaceSearch } from "./workspace-search.tsx";
 import { PIERRE_TREE_CSS } from "../pierre-worker-provider.tsx";
-import { treeItemHeight, useTreeStatusTheme } from "./tree-theme.ts";
+import { treeItemHeight, treeStatus, useTreeStatusTheme } from "./tree-theme.ts";
 import { workbenchStyles } from "./workbench.stylex.ts";
 
 const styles = create({
@@ -137,6 +138,12 @@ export function FilesPanel({
     fileEntries.current = files.data;
   }, [files.data]);
   const vcs = useVcsSnapshot(shown);
+
+  const changes = useMemo(
+    () => (vcs.data?.kind === "repository" ? worktreeFiles(vcs.data) : undefined),
+    [vcs.data],
+  );
+
   const host = useHostState();
   const tabs = useFileTabs(viewKey);
   const autoSave = useSetting(preferences.fileAutoSave);
@@ -313,15 +320,9 @@ export function FilesPanel({
   }, [model, paths, tabs.revealPath, tabs.revealRevision]);
   useLayoutEffect(() => {
     model.setGitStatus(
-      vcs.data?.kind === "repository"
-        ? worktreeFiles(vcs.data).map((file) => ({
-            path: file.path,
-            // The tree has no conflict mark; a conflict is a modification to resolve.
-            status: file.kind === "conflicted" ? "modified" : file.kind,
-          }))
-        : undefined,
+      changes?.map((file) => ({ path: file.path, status: treeStatus(file.kind) })),
     );
-  }, [model, vcs.data]);
+  }, [model, changes]);
 
   const discard = async (): Promise<void> => {
     if (discardPath === undefined) return;
@@ -344,7 +345,7 @@ export function FilesPanel({
   return (
     <section
       aria-label="Files"
-      {...props(styles.panel)}
+      {...props(styles.panel, treeStatusTheme)}
       onKeyDownCapture={(event) => {
         if (!(event.metaKey || event.ctrlKey)) return;
         const key = event.key.toLowerCase();
@@ -484,6 +485,19 @@ export function FilesPanel({
       )}
       <div {...props(styles.body)}>
         <div {...props(styles.editors)}>
+          {tabs.tabs.length === 0 && (
+            <FilesEmptyState
+              files={files.data}
+              changes={changes ?? []}
+              explorerVisible={sidebarVisible && sidebar === "explorer"}
+              onOpen={(file) => fileActions.open(viewKey, { ...file, preview: true })}
+              onShowExplorer={() => {
+                setSidebar("explorer");
+                setSidebarVisible(true);
+              }}
+              onSearch={showSearch}
+            />
+          )}
           {tabs.tabs.map((file) => (
             <WorkspaceFileEditor
               key={file.path}
@@ -530,7 +544,7 @@ export function FilesPanel({
               onKeyDown={(event) => {
                 if (event.key === "Enter") openFromTree(event.nativeEvent, true);
               }}
-              {...props(workbenchStyles.treeTheme, treeStatusTheme, styles.tree)}
+              {...props(workbenchStyles.treeTheme, styles.tree)}
             />
           </div>
           <div
