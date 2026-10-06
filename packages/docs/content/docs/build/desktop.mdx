@@ -92,19 +92,19 @@ split of two, or a full-tab page such as Customize or Environments. Settings cov
 hides the strip. The web app has no tabs; its URL and browser history work as before.
 
 A sidebar click opens the place in the focused pane of the current tab. Cmd+click or middle-click
-opens a background tab; Cmd+Shift+click opens a tab and switches to it. New Chat opens a new tab
-in the current folder. The sidebar's grouping and filters don't affect tabs.
+opens a background tab; Cmd+Shift+click opens a tab and switches to it. New Chat opens the composer
+in the focused pane of the current tab. The sidebar's grouping and filters don't affect tabs.
 
 Back and Forward are per tab. They walk the focused pane's history first, then the views the tab
-moved between. A pinned tab stays on its place at the front of the strip: anything opened from it
-lands in a new tab, and it can't split or go back. When the active tab closes, the next unpinned
-tab to the right takes over, then the one to the left; with none left, a new chat opens. The
-workbench follows the focused chat's folder. A window keeps its tabs across a reload, and the first
-window after a restart restores the last focused window's tabs.
+moved between. When the active tab closes, the tab to the right takes over, then the one to the
+left; with none left, a new chat opens. The workbench follows the focused chat's folder. A window
+keeps its tabs across a reload, and the first window after a restart restores the last focused
+window's tabs.
 
 | Keys                         | Action                   |
 | ---------------------------- | ------------------------ |
-| Cmd+T, Cmd+N                 | New chat tab             |
+| Cmd+N                        | New chat in this tab     |
+| Cmd+T                        | New tab                  |
 | Cmd+W                        | Close tab                |
 | Cmd+Shift+W                  | Close window             |
 | Cmd+Shift+T                  | Reopen a closed tab      |

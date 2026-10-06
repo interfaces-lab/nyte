@@ -25,7 +25,6 @@ export const stripStyles = create({
   },
   /** Tabs share the row up to 240px each and shrink to 72px before the list scrolls. */
   slot: { display: "flex", flex: "0 1 240px", minWidth: 72, WebkitAppRegion: "no-drag" },
-  slotPinned: { flex: "none", minWidth: 0 },
   tab: {
     "--_close-opacity": { default: "0", ":hover": "1", ":focus-within": "1" },
     position: "relative",
@@ -39,7 +38,6 @@ export const stripStyles = create({
     color: { default: role.contentSecondary, ":hover": role.contentPrimary },
   },
   tabClosable: { paddingInlineEnd: 4 },
-  tabPinned: { flex: "none", width: button.heightMd },
   /** The main area is a card set into the chrome; the active tab wears the card. */
   tabActive: {
     backgroundColor: { default: role.bgBase, ":hover": role.bgBase },
@@ -68,8 +66,6 @@ export const stripStyles = create({
   },
   /** Without a close button the label keeps the same distance from both edges. */
   tabButtonUnclosable: { paddingInlineEnd: 10 },
-  /** A pinned tab is its glyph alone, centred in a square. */
-  tabButtonPinned: { justifyContent: "center", paddingInline: 0 },
   glyph: {
     display: { default: "grid", ":empty": "none" },
     placeItems: "center",
@@ -92,7 +88,6 @@ export const stripStyles = create({
     borderRadius: "50%",
     backgroundColor: role.contentInteractiveTertiary,
   },
-  unreadPinned: { position: "absolute", insetBlockStart: 4, insetInlineEnd: 4 },
   close: { display: "inline-flex", flexShrink: 0, opacity: "var(--_close-opacity)" },
   closeVisible: { opacity: 1 },
   control: { display: "inline-flex", flexShrink: 0, WebkitAppRegion: "no-drag" },

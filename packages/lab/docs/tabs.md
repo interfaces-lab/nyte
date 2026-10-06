@@ -39,7 +39,7 @@ and the strip isn't tied to any folder.
 - A plain click opens the place in the focused pane of the current tab.
 - ⌘-click or middle-click opens it in a background tab. ⌘⇧-click opens it and
   switches to it.
-- New Chat opens a new tab, the same as ⌘N.
+- New Chat opens the composer in the focused pane, the same as ⌘N.
 - If the other half of the split already shows that page, it just gets focus.
 - Dragging a chat into a pane still splits it, as today.
 
@@ -52,25 +52,13 @@ and the strip isn't tied to any folder.
   when a chat in a background tab finishes.
 - Hovering a tab shows its title and its ⌘1–9 shortcut. Each keycap lights up
   while that key is held.
-- The right-click menu has Pin tab, New tab (⌘T) and Duplicate tab, then
+- The right-click menu has New tab (⌘T) and Duplicate tab, then
   Close tab (⌘W), Close other tabs and Close tabs to the right.
-
-## Pinned tabs
-
-A pinned tab stays on its place.
-
-- It sits at the front as an icon only, and can't be dragged or split.
-- Anything you open while it's active lands in a new tab right after the
-  pinned group.
-- Back and forward do nothing in a pinned tab.
-- Close other tabs and Close tabs to the right leave it open. ⌘W still
-  closes it.
 
 ## Closing
 
-When the active tab closes, the next unpinned tab to its right takes over,
-then the one to its left. A pinned tab never takes over: if no unpinned tab
-is left, a new chat tab opens. There is no Home or overview page behind the
+When the active tab closes, the tab to its right takes over, then the one to
+its left. If none is left, a new chat tab opens. There is no Home or overview page behind the
 strip.
 
 ## History
@@ -96,7 +84,8 @@ full-tab pages, as it is on Customize and Environments today.
 
 | keys | action |
 | --- | --- |
-| ⌘T, ⌘N | new chat tab |
+| ⌘N | new chat in the focused pane |
+| ⌘T | new tab |
 | ⌘W | close tab (see Closing) |
 | ⌘⇧T | reopen the last closed tab (keeps 25; skips empty new chats) |
 | ⌘1 … ⌘9 | tab 1 … 9 (⌘9 is the ninth tab, not the last) |
@@ -114,7 +103,6 @@ Only reordering within the strip:
 - Pressing the close button never starts a drag. Escape cancels.
 - The tab drops in place without animating. Neighbours slide aside once the
   dragged tab's leading edge passes their centre.
-- Pinned tabs neither move nor accept a dragged tab.
 
 No dragging tabs out to a new window, and no dropping a tab into a pane.
 Nothing in the sidebar can be reordered by dragging; its filters decide the

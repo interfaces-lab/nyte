@@ -25,12 +25,11 @@ export interface WindowTabItem {
   readonly title: string;
   /** Hover text: the title, or both pane titles of a split. */
   readonly tooltip: string;
-  /** Status mark or place icon; undefined shows none (a pinned tab then shows a fallback icon). */
+  /** Status mark or place icon; undefined shows none. */
   readonly glyph: ReactNode;
   /** A chat in this background tab finished since it was last seen. */
   readonly unread: boolean;
   readonly split: WindowTabSplit | undefined;
-  readonly pinned: boolean;
 }
 
 export interface WindowTabStripProps {
@@ -41,9 +40,8 @@ export interface WindowTabStripProps {
   readonly onActivate: (tabId: string) => void;
   readonly onClose: (tabId: string) => void;
   readonly onNewTab: () => void;
-  /** The full new order of every tab id; pinned tabs keep their places at the front. */
+  /** The full new order of every tab id. */
   readonly onReorder: (tabIds: readonly string[]) => void;
-  readonly onTogglePin: (tabId: string) => void;
   readonly onDuplicate: (tabId: string) => void;
   readonly onCloseOthers: (tabId: string) => void;
   readonly onCloseToRight: (tabId: string) => void;
@@ -118,7 +116,6 @@ function TabItem({
             {...props(
               stripStyles.tab,
               closable && stripStyles.tabClosable,
-              tab.pinned && stripStyles.tabPinned,
               active && stripStyles.tabActive,
             )}
             onMouseDown={(event) => {
@@ -137,29 +134,18 @@ function TabItem({
               <Tabs.Tab
                 value={tab.id}
                 aria-label={tab.unread ? `${tab.tooltip}, unread` : tab.tooltip}
-                xstyle={[
-                  stripStyles.tabButton,
-                  !closable && stripStyles.tabButtonUnclosable,
-                  tab.pinned && stripStyles.tabButtonPinned,
-                ]}
+                xstyle={[stripStyles.tabButton, !closable && stripStyles.tabButtonUnclosable]}
               />
             }
           >
-            <span {...props(stripStyles.glyph)}>
-              {tab.glyph ?? (tab.pinned ? <Icon name="draft" size={14} /> : null)}
-            </span>
-            {!tab.pinned && <span {...props(stripStyles.label)}>{tab.title}</span>}
-            {!tab.pinned && tab.split !== undefined && (
+            <span {...props(stripStyles.glyph)}>{tab.glyph}</span>
+            <span {...props(stripStyles.label)}>{tab.title}</span>
+            {tab.split !== undefined && (
               <span {...props(stripStyles.splitMark)}>
                 <Icon name={tab.split === "down" ? "split-down" : "split-right"} size={12} />
               </span>
             )}
-            {tab.unread && (
-              <span
-                aria-hidden="true"
-                {...props(stripStyles.unread, tab.pinned && stripStyles.unreadPinned)}
-              />
-            )}
+            {tab.unread && <span aria-hidden="true" {...props(stripStyles.unread)} />}
           </TooltipTrigger>
           <TooltipContent>
             <span {...props(stripStyles.shortcut)}>
@@ -193,12 +179,6 @@ function TabItem({
         )}
       </ContextMenuTrigger>
       <ContextMenuContent aria-label={`${tab.title} tab actions`}>
-        <ContextMenuItem
-          icon={tab.pinned ? "unpin" : "pin"}
-          onClick={() => strip.onTogglePin(tab.id)}
-        >
-          {tab.pinned ? "Unpin Tab" : "Pin Tab"}
-        </ContextMenuItem>
         <ContextMenuItem icon="plus" meta={shortcut("T")} onClick={strip.onNewTab}>
           New Tab
         </ContextMenuItem>
@@ -242,24 +222,19 @@ export function WindowTabStrip(strip: WindowTabStripProps): ReactElement {
       <Tabs.List ref={listRef} aria-label="Tabs" xstyle={stripStyles.list}>
         <SortableList
           ids={tabs.map((tab) => tab.id)}
-          fixed={new Set(tabs.filter((tab) => tab.pinned).map((tab) => tab.id))}
           listRef={listRef}
           onPick={strip.onActivate}
           onReorder={strip.onReorder}
         >
           {tabs.map((tab, position) => (
-            <SortableItem
-              key={tab.id}
-              id={tab.id}
-              xstyle={[stripStyles.slot, tab.pinned && stripStyles.slotPinned]}
-            >
+            <SortableItem key={tab.id} id={tab.id} xstyle={stripStyles.slot}>
               <TabItem
                 tab={tab}
                 position={position}
                 active={tab.id === activeTabId}
-                closable={!tab.pinned && tabs.length > 1}
-                othersClosable={tabs.some((other) => other.id !== tab.id && !other.pinned)}
-                rightClosable={tabs.slice(position + 1).some((other) => !other.pinned)}
+                closable={tabs.length > 1}
+                othersClosable={tabs.length > 1}
+                rightClosable={position < tabs.length - 1}
                 held={held}
                 strip={strip}
               />

@@ -168,29 +168,23 @@ function shiftOf(drag: Drag, id: string): number {
 
 interface SortableState {
   readonly drag: Drag | undefined;
-  readonly fixed: ReadonlySet<string>;
   readonly items: Map<string, HTMLElement>;
 }
 
 const SortableContext = createContext<SortableState | undefined>(undefined);
 
-const NONE: ReadonlySet<string> = new Set();
-
 export function SortableList({
   ids,
-  fixed = NONE,
   listRef,
   onPick,
   onReorder,
   children,
 }: {
   readonly ids: readonly string[];
-  /** Items that hold their place. */
-  readonly fixed?: ReadonlySet<string>;
   /** The scrolling list the items live in. */
   readonly listRef: RefObject<HTMLElement | null>;
   readonly onPick: (id: string) => void;
-  /** The full new order, and the item that moved; fixed items keep their places. */
+  /** The full new order, and the item that moved. */
   readonly onReorder: (order: readonly string[], id: string) => void;
   readonly children: ReactNode;
 }): ReactElement {
@@ -255,8 +249,7 @@ export function SortableList({
 
         if (list === null || !(activatorEvent instanceof MouseEvent)) return;
 
-        const order = ids.filter((item) => !fixed.has(item));
-        const started = startDrag(list, items, order, id, activatorEvent.clientX);
+        const started = startDrag(list, items, ids, id, activatorEvent.clientX);
 
         if (started === undefined) return;
 
@@ -269,20 +262,16 @@ export function SortableList({
 
         if (current === undefined || current.target === current.order.indexOf(current.id)) return;
 
-        if (ids.filter((id) => !fixed.has(id)).join("\n") !== current.order.join("\n")) return;
-
-        const moved = current.order
-          .filter((id) => id !== current.id)
-          .toSpliced(current.target, 0, current.id);
+        if (ids.join("\n") !== current.order.join("\n")) return;
 
         onReorder(
-          ids.map((id) => (fixed.has(id) ? id : (moved.shift() ?? id))),
+          current.order.filter((id) => id !== current.id).toSpliced(current.target, 0, current.id),
           current.id,
         );
       }}
       onDragCancel={finish}
     >
-      <SortableContext value={{ drag, fixed, items }}>{children}</SortableContext>
+      <SortableContext value={{ drag, items }}>{children}</SortableContext>
     </DndContext>
   );
 }
@@ -301,8 +290,8 @@ export function SortableItem({
 
   if (context === undefined) throw new Error("SortableItem must be inside a SortableList");
 
-  const { drag, fixed, items } = context;
-  const { setNodeRef, listeners } = useDraggable({ id, disabled: fixed.has(id) });
+  const { drag, items } = context;
+  const { setNodeRef, listeners } = useDraggable({ id });
   const shift = drag === undefined ? 0 : shiftOf(drag, id);
 
   const ref = useCallback(

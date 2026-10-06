@@ -182,7 +182,6 @@ export function useWindowTabItems(state: WindowState): readonly WindowTabItem[] 
         }),
       split:
         view.kind === "panes" && view.layout.kind === "split" ? view.layout.direction : undefined,
-      pinned: tab.pinned,
     };
   });
 }

@@ -5,9 +5,6 @@
  * History is per tab. A pane keeps its own entries; the tab keeps the views
  * it moved between. Back walks the focused pane first, then the tab, so an
  * unsplit tab reads as one list and a page returns to the split it covered.
- *
- * A pinned tab is locked to its place: it sits at the front, survives Close
- * Other Tabs, and anything opened from it lands in a new tab.
  */
 import type { SessionId } from "@nyte-ai/protocol";
 import {
@@ -49,7 +46,6 @@ export interface Tab {
   readonly id: string;
   readonly views: readonly View[];
   readonly index: number;
-  readonly pinned: boolean;
 }
 
 export interface ClosedTab {
@@ -76,7 +72,6 @@ export type WindowAction =
   | { readonly kind: "close-tab"; readonly tabId: string }
   | { readonly kind: "close-others"; readonly tabId: string }
   | { readonly kind: "close-right"; readonly tabId: string }
-  | { readonly kind: "toggle-pin"; readonly tabId: string }
   | { readonly kind: "duplicate-tab"; readonly tabId: string }
   | { readonly kind: "reopen-tab" }
   | { readonly kind: "activate-tab"; readonly tabId: string }
@@ -168,7 +163,6 @@ export function newTab(id: string, place: Place): Tab {
       isPage(place) ? { kind: "page", page: place } : panesView(createSinglePane("primary", place)),
     ],
     index: 0,
-    pinned: false,
   };
 }
 
@@ -262,10 +256,6 @@ function openHere(tab: Tab, place: Place): Tab {
   return next === view.layout ? tab : recordLayout(tab, view, next, action);
 }
 
-function pinnedCount(state: WindowState): number {
-  return state.tabs.filter((tab) => tab.pinned).length;
-}
-
 function insertTab(state: WindowState, tab: Tab, at: number, activate: boolean): WindowState {
   return {
     ...state,
@@ -274,18 +264,14 @@ function insertTab(state: WindowState, tab: Tab, at: number, activate: boolean):
   };
 }
 
-/** Open a place in a new tab beside the active one, or past the pinned group. */
+/** Open a place in a new tab beside the active one. */
 function openInTab(
   state: WindowState,
   place: Place,
   activate: boolean,
   createId: () => string,
 ): WindowState {
-  const tab = activeTab(state);
-
-  const at = tab.pinned
-    ? pinnedCount(state)
-    : state.tabs.findIndex((candidate) => candidate.id === tab.id) + 1;
+  const at = state.tabs.findIndex((tab) => tab.id === state.activeTabId) + 1;
 
   return insertTab(state, newTab(createId(), place), at, activate);
 }
@@ -302,11 +288,6 @@ function worthReopening(tab: Tab): boolean {
     view.history.primary.back.length + view.history.primary.forward.length > 0 ||
     view.history.secondary.back.length + view.history.secondary.forward.length > 0
   );
-}
-
-/** Pinned tabs stay at the front; everything else keeps its order. */
-function pinnedFirst(tabs: readonly Tab[]): readonly Tab[] {
-  return [...tabs.filter((tab) => tab.pinned), ...tabs.filter((tab) => !tab.pinned)];
 }
 
 function closeTabs(
@@ -327,10 +308,9 @@ function closeTabs(
 
   if (!tabIds.has(state.activeTabId) && tabs.length > 0) return { ...state, tabs, closed };
 
-  // The right-hand neighbour takes over, then the left. A pinned tab never
-  // takes over: with no unpinned tab left, a new chat opens.
+  // The right-hand neighbour takes over, then the left; with none left, a new chat opens.
   const index = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
-  const takesOver = (tab: Tab): boolean => !tabIds.has(tab.id) && !tab.pinned;
+  const takesOver = (tab: Tab): boolean => !tabIds.has(tab.id);
 
   const neighbour =
     state.tabs.slice(index + 1).find(takesOver) ?? state.tabs.slice(0, index).findLast(takesOver);
@@ -369,12 +349,10 @@ function travelTab(tab: Tab, step: 1 | -1): Tab | undefined {
 }
 
 export function canTravel(state: WindowState, step: 1 | -1): boolean {
-  const tab = activeTab(state);
-
-  return !tab.pinned && travelTab(tab, step) !== undefined;
+  return travelTab(activeTab(state), step) !== undefined;
 }
 
-/** The place a layout change brings on screen, for a pinned tab to hand to a new one. */
+/** The place a layout change brings on screen, for a page to hand to fresh panes. */
 function proposedPlace(action: PaneLayoutAction): PaneSelection | undefined {
   switch (action.kind) {
     case "select":
@@ -391,19 +369,10 @@ function reduceLayout(
   state: WindowState,
   action: PaneLayoutAction,
   layout: PaneLayout,
-  createId: () => string,
 ): WindowState {
   const tab = activeTab(state);
   const view = currentView(tab);
   const place = proposedPlace(action);
-
-  if (tab.pinned) {
-    if (place !== undefined) return openInTab(state, place, true, createId);
-
-    if (action.kind === "split" || action.kind === "close" || view.kind === "page") return state;
-
-    return withTab(state, withView(tab, { ...view, layout }));
-  }
 
   if (view.kind === "page") {
     if (place === undefined || action.kind === "drop-session") return state;
@@ -423,7 +392,7 @@ export function reduce(
     case "open": {
       const tab = activeTab(state);
 
-      if (action.target === "here" && !tab.pinned) {
+      if (action.target === "here") {
         const next = openHere(tab, action.place);
 
         return next === tab ? state : withTab(state, next);
@@ -433,7 +402,7 @@ export function reduce(
     }
 
     case "layout":
-      return reduceLayout(state, action.action, action.layout, createId);
+      return reduceLayout(state, action.action, action.layout);
     case "page-section": {
       const tab = activeTab(state);
       const view = currentView(tab);
@@ -451,8 +420,6 @@ export function reduce(
 
       if (currentView(tab).kind !== "page") return state;
 
-      if (tab.pinned) return openInTab(state, BLANK, true, createId);
-
       const covered =
         tab.views.slice(0, tab.index).findLast((view) => view.kind === "panes") ??
         panesView(BLANK_LAYOUT);
@@ -467,9 +434,7 @@ export function reduce(
     case "close-others":
       return closeTabs(
         state,
-        new Set(
-          state.tabs.filter((tab) => tab.id !== action.tabId && !tab.pinned).map((tab) => tab.id),
-        ),
+        new Set(state.tabs.filter((tab) => tab.id !== action.tabId).map((tab) => tab.id)),
         createId,
       );
     case "close-right": {
@@ -477,39 +442,16 @@ export function reduce(
 
       if (index === -1) return state;
 
-      return closeTabs(
-        state,
-        new Set(
-          state.tabs
-            .slice(index + 1)
-            .filter((tab) => !tab.pinned)
-            .map((tab) => tab.id),
-        ),
-        createId,
-      );
+      return closeTabs(state, new Set(state.tabs.slice(index + 1).map((tab) => tab.id)), createId);
     }
 
-    case "toggle-pin":
-      return {
-        ...state,
-        tabs: pinnedFirst(
-          state.tabs.map((tab) =>
-            tab.id === action.tabId ? { ...tab, pinned: !tab.pinned } : tab,
-          ),
-        ),
-      };
     case "duplicate-tab": {
       const index = state.tabs.findIndex((tab) => tab.id === action.tabId);
       const tab = state.tabs[index];
 
       if (tab === undefined) return state;
 
-      return insertTab(
-        state,
-        { ...tab, id: createId(), pinned: false },
-        Math.max(index + 1, pinnedCount(state)),
-        true,
-      );
+      return insertTab(state, { ...tab, id: createId() }, index + 1, true);
     }
 
     case "reopen-tab": {
@@ -519,9 +461,7 @@ export function reduce(
 
       return {
         ...state,
-        tabs: pinnedFirst(
-          state.tabs.toSpliced(Math.min(last.index, state.tabs.length), 0, last.tab),
-        ),
+        tabs: state.tabs.toSpliced(Math.min(last.index, state.tabs.length), 0, last.tab),
         activeTabId: last.tab.id,
         closed: rest,
       };
@@ -552,12 +492,11 @@ export function reduce(
     case "reorder": {
       const tabs = action.tabIds.flatMap((id) => state.tabs.filter((tab) => tab.id === id));
 
-      return tabs.length === state.tabs.length ? { ...state, tabs: pinnedFirst(tabs) } : state;
+      return tabs.length === state.tabs.length ? { ...state, tabs } : state;
     }
 
     case "travel": {
-      const tab = activeTab(state);
-      const next = tab.pinned ? undefined : travelTab(tab, action.step);
+      const next = travelTab(activeTab(state), action.step);
 
       return next === undefined ? state : withTab(state, next);
     }

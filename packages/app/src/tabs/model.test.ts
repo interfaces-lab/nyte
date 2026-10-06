@@ -70,7 +70,7 @@ test("a new chat that starts its chat is replaced, not stacked", () => {
   expect(canTravel(started, -1)).toBe(false);
 });
 
-test("closing hands over right, then left, never to a pinned tab", () => {
+test("closing hands over right, then left", () => {
   const state = run([
     { kind: "open", place: chat("a"), target: "here" },
     { kind: "open", place: chat("b"), target: "background" },
@@ -83,39 +83,18 @@ test("closing hands over right, then left, never to a pinned tab", () => {
   const right = run([{ kind: "close-tab", tabId: state.activeTabId }], state);
   expect(tabPlace(activeTab(right))).toEqual(chat("b"));
 
-  const pinned = run(
+  const left = run(
     [
-      { kind: "toggle-pin", tabId: "t1" },
       { kind: "activate-index", index: 2 },
       { kind: "close-tab", tabId: state.tabs[2]?.id ?? "" },
     ],
     state,
   );
 
-  expect(tabPlace(activeTab(pinned))).toEqual(chat("c"));
+  expect(tabPlace(activeTab(left))).toEqual(chat("c"));
 
-  const alone = run([{ kind: "close-others", tabId: "t1" }], pinned);
-  expect(alone.tabs.map((tab) => tab.pinned)).toEqual([true, false]);
-  expect(tabPlace(activeTab(alone))).toEqual({ kind: "blank" });
-});
-
-test("a pinned tab keeps its place and opens what it is asked to past the pinned group", () => {
-  let state = run([
-    { kind: "open", place: chat("a"), target: "here" },
-    { kind: "open", place: chat("b"), target: "background" },
-    { kind: "toggle-pin", tabId: "t1" },
-  ]);
-
-  state = run([pane(state, { kind: "select", selection: chat("c") })], state);
-
-  expect(state.tabs.map((tab) => tabPlace(tab))).toEqual([chat("a"), chat("c"), chat("b")]);
-  expect(activeTab(state).id).toBe(state.tabs[1]?.id);
-
-  state = run([{ kind: "activate-tab", tabId: "t1" }], state);
-  state = run([pane(state, { kind: "split", direction: "right" })], state);
-  expect(tabPlaces(activeTab(state))).toEqual([chat("a")]);
-  expect(canTravel(state, -1)).toBe(false);
-  expect(run([{ kind: "close-right", tabId: "t1" }], state).tabs).toHaveLength(1);
+  const alone = run([{ kind: "close-others", tabId: "t1" }], state);
+  expect(alone.tabs.map((tab) => tabPlace(tab))).toEqual([chat("a")]);
 });
 
 test("reopen skips untouched new chats and keeps twenty-five", () => {

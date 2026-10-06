@@ -131,7 +131,6 @@ function TitlebarTabStrip({ state, mac }: { state: WindowState; mac: boolean }):
       onClose={(tabId) => windowTabs.dispatch({ kind: "close-tab", tabId })}
       onNewTab={() => windowTabs.dispatch({ kind: "new-tab" })}
       onReorder={(tabIds) => windowTabs.dispatch({ kind: "reorder", tabIds })}
-      onTogglePin={(tabId) => windowTabs.dispatch({ kind: "toggle-pin", tabId })}
       onDuplicate={(tabId) => windowTabs.dispatch({ kind: "duplicate-tab", tabId })}
       onCloseOthers={(tabId) => windowTabs.dispatch({ kind: "close-others", tabId })}
       onCloseToRight={(tabId) => windowTabs.dispatch({ kind: "close-right", tabId })}

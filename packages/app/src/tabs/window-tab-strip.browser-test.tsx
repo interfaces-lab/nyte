@@ -39,8 +39,8 @@ async function drag(from: Element, distance: number): Promise<void> {
   await nextFrame();
 }
 
-function tab(id: string, title: string, pinned = false): WindowTabItem {
-  return { id, title, tooltip: title, glyph: undefined, unread: false, split: undefined, pinned };
+function tab(id: string, title: string): WindowTabItem {
+  return { id, title, tooltip: title, glyph: undefined, unread: false, split: undefined };
 }
 
 export async function run(): Promise<string> {
@@ -61,7 +61,6 @@ export async function run(): Promise<string> {
       onClose: (id) => calls.push(`close ${id}`),
       onNewTab: () => calls.push("new"),
       onReorder: (ids) => calls.push(`reorder ${ids.join(",")}`),
-      onTogglePin: (id) => calls.push(`pin ${id}`),
       onDuplicate: (id) => calls.push(`duplicate ${id}`),
       onCloseOthers: (id) => calls.push(`close-others ${id}`),
       onCloseToRight: (id) => calls.push(`close-right ${id}`),
@@ -86,25 +85,17 @@ export async function run(): Promise<string> {
       "A tab without a close button pads its label unevenly",
     );
 
-    render([tab("pinned", "Pinned", true), tab("a", "Alpha"), tab("b", "Beta")]);
+    render([tab("first", "First"), tab("a", "Alpha"), tab("b", "Beta")]);
     const tabs = [...container.querySelectorAll('[role="tab"]')];
-    const [pinned, alpha, beta] = tabs;
+    const [first, alpha, beta] = tabs;
 
-    if (pinned === undefined || alpha === undefined || beta === undefined)
+    if (first === undefined || alpha === undefined || beta === undefined)
       throw new Error("Missing tabs");
-    check(pinned.getAttribute("aria-selected") === "true", "The active tab is not selected");
-    check(pinned.querySelector("svg") !== null, "A pinned tab without a glyph shows no icon");
+    check(first.getAttribute("aria-selected") === "true", "The active tab is not selected");
 
     await drag(beta, -600);
     check(calls.includes("activate b"), "Picking a tab up did not select it");
-    check(
-      calls.includes("reorder pinned,b,a"),
-      `A tab passed the pinned group or did not move: ${calls.join("; ")}`,
-    );
-
-    calls.length = 0;
-    await drag(pinned, 600);
-    check(!calls.some((call) => call.startsWith("reorder")), "A pinned tab moved");
+    check(calls.includes("reorder b,first,a"), `A tab did not move: ${calls.join("; ")}`);
 
     alpha.parentElement?.dispatchEvent(new MouseEvent("auxclick", { bubbles: true, button: 1 }));
     check(calls.includes("close a"), "Middle-click did not close the tab");

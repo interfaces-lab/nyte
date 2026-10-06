@@ -61,7 +61,6 @@ const tabSchema = Type.Object(
     id: Type.String({ minLength: 1 }),
     views: Type.Array(viewSchema, { minItems: 1 }),
     index: Type.Integer({ minimum: 0 }),
-    pinned: Type.Boolean(),
   },
   strict,
 );
@@ -97,7 +96,6 @@ function storedTab(tab: StoredTab): Tab {
     id: tab.id,
     views: tab.views.map(storedView),
     index: Math.min(tab.index, tab.views.length - 1),
-    pinned: tab.pinned,
   };
 }
 
