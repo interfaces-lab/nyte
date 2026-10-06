@@ -21,8 +21,10 @@ function usableFontFamily(family: string): boolean {
 }
 
 const LocalFontSelection = Type.Refine(
-  Type.TemplateLiteral([Type.Literal(LOCAL_FONT_PREFIX), Type.String()]),
-  (selection) => usableFontFamily(selection.slice(LOCAL_FONT_PREFIX.length)),
+  Type.String(),
+  (selection) =>
+    selection.startsWith(LOCAL_FONT_PREFIX) &&
+    usableFontFamily(selection.slice(LOCAL_FONT_PREFIX.length)),
 );
 
 type LocalFontSelection = Static<typeof LocalFontSelection>;
