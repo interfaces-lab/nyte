@@ -22,8 +22,6 @@ import {
   type FileStatus,
 } from "./fixtures";
 
-const hover = when.ancestor(":hover");
-
 function Stat({
   added,
   removed,
@@ -48,7 +46,13 @@ function Stat({
   );
 }
 
-function IconButton({ icon, label }: { readonly icon: IconName; readonly label: string }): ReactElement {
+function IconButton({
+  icon,
+  label,
+}: {
+  readonly icon: IconName;
+  readonly label: string;
+}): ReactElement {
   return <Button size="sm" icon={icon} iconOnly aria-label={label} />;
 }
 
@@ -62,7 +66,13 @@ function HeaderActions(): ReactElement {
   );
 }
 
-function FileName({ path, dim = true }: { readonly path: string; readonly dim?: boolean }): ReactElement {
+function FileName({
+  path,
+  dim = true,
+}: {
+  readonly path: string;
+  readonly dim?: boolean;
+}): ReactElement {
   const { dir, base } = splitPath(path);
 
   return (
@@ -94,7 +104,13 @@ function StatusLetter({ status }: { readonly status: FileStatus }): ReactElement
 }
 
 /** Five blocks, GitHub style: green and red in proportion, grey for the rest. */
-function Blocks({ added, removed }: { readonly added: number; readonly removed: number }): ReactElement {
+function Blocks({
+  added,
+  removed,
+}: {
+  readonly added: number;
+  readonly removed: number;
+}): ReactElement {
   const total = added + removed;
   const scale = Math.min(5, Math.ceil(total / 60));
   const green = total === 0 ? 0 : Math.round((added / total) * scale);
@@ -370,10 +386,7 @@ function StatusLetters(): ReactElement {
             stat={<Stat added={file.added} removed={file.removed} quiet />}
             trailing={
               <span
-                {...props(
-                  styles.revealCheck,
-                  checked.has(file.path) ? null : styles.revealOnHover,
-                )}
+                {...props(styles.revealCheck, checked.has(file.path) ? null : styles.revealOnHover)}
               >
                 <Checkbox
                   aria-label={`Include ${file.path}`}
@@ -876,7 +889,7 @@ const styles = create({
     gap: 6,
     height: 28,
     paddingInline: 8,
-    border: "none",
+    borderStyle: "none",
     borderRadius: radius.pill,
     backgroundColor: { default: role.bgMuted, ":hover": role.bgControlHover },
     color: role.contentPrimary,
@@ -912,7 +925,9 @@ const styles = create({
     paddingInline: 8,
     paddingBlockEnd: 8,
     flexShrink: 0,
-    borderBlockEnd: `1px solid ${role.borderSecondary}`,
+    borderBlockEndWidth: 1,
+    borderBlockEndStyle: "solid",
+    borderBlockEndColor: role.borderSecondary,
   },
   field: {
     display: "flex",
@@ -932,8 +947,8 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     paddingBlock: 6,
-    border: "none",
-    outline: "none",
+    borderStyle: "none",
+    outlineStyle: "none",
     backgroundColor: "transparent",
     color: role.contentPrimary,
     font: "inherit",
@@ -942,7 +957,7 @@ const styles = create({
   split: { display: "flex", gap: 1 },
   primary: {
     height: 30,
-    border: "none",
+    borderStyle: "none",
     backgroundColor: {
       default: role.buttonFill,
       ":hover:not(:disabled)": role.buttonFillHover,
@@ -973,7 +988,7 @@ const styles = create({
     gap: 2,
     height: 24,
     paddingInline: 6,
-    border: "none",
+    borderStyle: "none",
     borderRadius: radius.indicator,
     backgroundColor: { default: "transparent", ":hover": role.bgHover },
     color: role.contentSecondary,
@@ -986,7 +1001,7 @@ const styles = create({
     placeItems: "center",
     width: 24,
     height: 24,
-    border: "none",
+    borderStyle: "none",
     borderRadius: radius.pill,
     backgroundColor: role.bgMuted,
     color: role.contentDisabled,
@@ -1041,10 +1056,10 @@ const styles = create({
     alignItems: "center",
     gap: 2,
     position: "relative",
-    opacity: { default: 0, [hover]: 1 },
+    opacity: { default: 0, [when.ancestor(":hover")]: 1 },
   },
   revealCheck: { display: "inline-flex" },
-  revealOnHover: { opacity: { default: 0, [hover]: 1 } },
+  revealOnHover: { opacity: { default: 0, [when.ancestor(":hover")]: 1 } },
   letter: {
     width: 16,
     color: role.contentSecondary,
@@ -1060,7 +1075,9 @@ const styles = create({
     gap: 6,
     padding: 8,
     flexShrink: 0,
-    borderBlockStart: `1px solid ${role.borderSecondary}`,
+    borderBlockStartWidth: 1,
+    borderBlockStartStyle: "solid",
+    borderBlockStartColor: role.borderSecondary,
     backgroundColor: role.bgChrome,
   },
 
@@ -1078,7 +1095,7 @@ const styles = create({
     alignItems: "center",
     gap: 4,
     padding: 0,
-    border: "none",
+    borderStyle: "none",
     backgroundColor: "transparent",
     color: role.contentPrimary,
     font: "inherit",
@@ -1113,7 +1130,7 @@ const styles = create({
   },
   textAction: {
     padding: 0,
-    border: "none",
+    borderStyle: "none",
     backgroundColor: "transparent",
     color: role.contentInteractivePrimary,
     font: "inherit",
@@ -1146,7 +1163,7 @@ const styles = create({
   segment: {
     flex: 1,
     height: 26,
-    border: "none",
+    borderStyle: "none",
     borderRadius: radius.indicator,
     backgroundColor: "transparent",
     color: role.contentSecondary,
@@ -1202,7 +1219,7 @@ const styles = create({
     gap: 8,
     height: 32,
     paddingInline: 10,
-    border: "none",
+    borderStyle: "none",
     borderRadius: radius.control,
     backgroundColor: { default: role.bgMuted, ":hover": role.bgControlHover },
     color: role.contentSecondary,
@@ -1230,8 +1247,8 @@ const styles = create({
     minWidth: 0,
     paddingBlock: 8,
     paddingInline: 10,
-    border: "none",
-    outline: "none",
+    borderStyle: "none",
+    outlineStyle: "none",
     backgroundColor: "transparent",
     color: role.contentPrimary,
     font: "inherit",
@@ -1241,8 +1258,8 @@ const styles = create({
   cardBody: {
     paddingBlock: "0 8px",
     paddingInline: 10,
-    border: "none",
-    outline: "none",
+    borderStyle: "none",
+    outlineStyle: "none",
     resize: "none",
     backgroundColor: "transparent",
     color: role.contentSecondary,
@@ -1255,7 +1272,9 @@ const styles = create({
     alignItems: "center",
     gap: 4,
     padding: 4,
-    borderBlockStart: `1px solid ${role.borderSecondary}`,
+    borderBlockStartWidth: 1,
+    borderBlockStartStyle: "solid",
+    borderBlockStartColor: role.borderSecondary,
   },
   spacer: { flex: 1 },
 
@@ -1292,7 +1311,9 @@ const styles = create({
     paddingInline: 8,
     paddingBlockEnd: 8,
     flexShrink: 0,
-    borderBlockEnd: `1px solid ${role.borderSecondary}`,
+    borderBlockEndWidth: 1,
+    borderBlockEndStyle: "solid",
+    borderBlockEndColor: role.borderSecondary,
   },
 
   subjectRow: { display: "flex", alignItems: "center", paddingInlineEnd: 10 },
